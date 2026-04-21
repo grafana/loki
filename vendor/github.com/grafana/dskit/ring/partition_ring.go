@@ -80,6 +80,12 @@ type PartitionRing struct {
 	// reducing comparisons from log2(16384)=14 to log2(64)=6.
 	tokenBuckets *[257]uint16
 
+	// activePartBits and pendingPartBits are bitsets of active/pending PIDs for PIDs 0-63.
+	// Only populated for root rings (parent == nil, allPIDsFitBitset == true).
+	// Lets the bitset fast path avoid map lookups entirely for the common lookbackPeriod=0 case.
+	activePartBits  uint64
+	pendingPartBits uint64
+
 	// allPIDsFitBitset is true when every partition ID in desc is in [0, 63], enabling the
 	// zero-alloc bitset fast path in shuffleShard.
 	allPIDsFitBitset bool
@@ -262,6 +268,17 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		tokenBuckets = tb
 	}
 
+	var activePartBits, pendingPartBits uint64
+	if allPIDsFitBitset {
+		for pid, part := range desc.Partitions {
+			if part.IsActive() {
+				activePartBits |= 1 << uint(pid)
+			} else if part.IsPending() {
+				pendingPartBits |= 1 << uint(pid)
+			}
+		}
+	}
+
 	return &PartitionRing{
 		desc:                  desc,
 		ringTokens:            ringTokens,
@@ -271,6 +288,8 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		shuffleShardCache:     shuffleShardCache,
 		pidTokenCounts:        pidTokenCounts,
 		tokenBuckets:          tokenBuckets,
+		activePartBits:        activePartBits,
+		pendingPartBits:       pendingPartBits,
 		allPIDsFitBitset:      allPIDsFitBitset,
 		opts:                  opts,
 	}, nil
@@ -428,30 +447,45 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 					continue
 				}
 
-				part, ok := r.desc.Partitions[pid]
-				if !ok {
-					return nil, ErrInconsistentTokensInfo
-				}
-
-				if part.IsPending() {
-					excludeBits |= pidBit
-					continue
-				}
-
-				withinLookbackPeriod := lookbackPeriod > 0 && part.GetStateTimestamp() >= lookbackUntil
-				shouldInclude := part.IsActive() || withinLookbackPeriod
-
-				if shouldInclude {
-					resultBits |= pidBit
-					resultCount++
+				if lookbackPeriod == 0 {
+					// Fast path: no lookback — use precomputed bitsets, no map lookup needed.
+					if r.pendingPartBits&pidBit != 0 {
+						excludeBits |= pidBit
+						continue
+					}
+					if r.activePartBits&pidBit != 0 {
+						resultBits |= pidBit
+						resultCount++
+						found = true
+					} else {
+						excludeBits |= pidBit
+					}
 				} else {
-					excludeBits |= pidBit
-				}
-				if withinLookbackPeriod {
-					size++
-				}
-				if shouldInclude && !withinLookbackPeriod {
-					found = true
+					part, ok := r.desc.Partitions[pid]
+					if !ok {
+						return nil, ErrInconsistentTokensInfo
+					}
+
+					if part.IsPending() {
+						excludeBits |= pidBit
+						continue
+					}
+
+					withinLookbackPeriod := part.GetStateTimestamp() >= lookbackUntil
+					shouldInclude := part.IsActive() || withinLookbackPeriod
+
+					if shouldInclude {
+						resultBits |= pidBit
+						resultCount++
+					} else {
+						excludeBits |= pidBit
+					}
+					if withinLookbackPeriod {
+						size++
+					}
+					if shouldInclude && !withinLookbackPeriod {
+						found = true
+					}
 				}
 			}
 
@@ -666,16 +700,12 @@ func (r *PartitionRing) newSubring(selected map[int32]struct{}) (*PartitionRing,
 // Zero-alloc fast path used by shuffleShard when allPIDsFitBitset is true: avoids
 // constructing a map[int32]struct{} entirely (saves 2 allocs vs newSubring).
 func (r *PartitionRing) newSubringFromBits(selectedBits uint64) (*PartitionRing, error) {
-	// Combined O(k) loop: count tokens and active partitions using precomputed pidTokenCounts.
+	// Combined O(k) loop: count tokens and active partitions using precomputed tables.
 	tokenCount := 0
-	activeParts := 0
 	for b := selectedBits; b != 0; b &= b - 1 {
-		pid := int32(bits.TrailingZeros64(b))
-		tokenCount += int(r.pidTokenCounts[pid])
-		if part, ok := r.desc.Partitions[pid]; ok && part.IsActive() {
-			activeParts++
-		}
+		tokenCount += int(r.pidTokenCounts[bits.TrailingZeros64(b)])
 	}
+	activeParts := bits.OnesCount64(selectedBits & r.activePartBits)
 
 	return &PartitionRing{
 		desc:                  r.desc,
