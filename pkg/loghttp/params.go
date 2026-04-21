@@ -179,6 +179,21 @@ func parseTimestamp(value string, def time.Time) (time.Time, error) {
 
 	if strings.Contains(value, ".") {
 		if t, err := strconv.ParseFloat(value, 64); err == nil {
+			// The float branch exists to accept Prometheus-style
+			// "seconds.fraction" timestamps such as "1234567890.123".
+			// Scientific notation like "1.767610546875e+18" (a
+			// nanosecond-precision int accidentally stringified as a
+			// float) also lands here, and would be interpreted as
+			// 1.76e18 seconds -- far past year 2286 -- which causes
+			// downstream range expansion and can exhaust memory
+			// building the query plan. Reject values that are not
+			// representable as a time.Time in a sensible range.
+			// time.Time internally clamps to roughly year 2262 for
+			// nanosecond precision; 1e10 seconds is year 2286, which
+			// is well beyond any realistic Loki query horizon.
+			if math.IsNaN(t) || math.IsInf(t, 0) || t < 0 || t > 1e10 {
+				return time.Time{}, fmt.Errorf("timestamp %q is out of range", value)
+			}
 			s, ns := math.Modf(t)
 			ns = math.Round(ns*1000) / 1000
 			return time.Unix(int64(s), int64(ns*float64(time.Second))), nil
