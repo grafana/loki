@@ -334,7 +334,7 @@ func (e *Engine) buildContext(ctx context.Context) context.Context {
 	// [rangeio.ReadRanges] to make use of.
 	ctx = rangeio.WithConfig(ctx, &e.cfg.Executor.RangeConfig)
 
-	metadataContext.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
+	metadataContext.AddWarning("Query was executed using the next-generation Loki query engine.")
 	return ctx
 }
 
