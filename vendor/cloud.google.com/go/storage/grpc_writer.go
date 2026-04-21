@@ -232,7 +232,7 @@ func (c *grpcStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 		w.streamResult = checkCanceled(run(w.preRunCtx, func(ctx context.Context) error {
 			w.lastErr = w.writeLoop(ctx)
 			return w.lastErr
-		}, writerRetry, w.settings.idempotent))
+		}, writerRetry, w.settings.idempotent, withOperation("WriteObject"), withBucket(w.bucket), withObject(w.attrs.Name)))
 		w.setError(w.streamResult)
 		close(w.donec)
 	}()
@@ -240,7 +240,7 @@ func (c *grpcStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 	return w, nil
 }
 
-// gRPCWriter is a wrapper around the the gRPC client-stream API that manages
+// gRPCWriter is a wrapper around the gRPC client-stream API that manages
 // sending chunks of data provided by the user over the stream.
 type gRPCWriter struct {
 	preRunCtx context.Context
@@ -992,22 +992,6 @@ func (w *gRPCWriter) newGRPCOneshotBidiWriteBufferSender() *gRPCOneshotBidiWrite
 
 func (s *gRPCOneshotBidiWriteBufferSender) err() error { return s.streamErr }
 
-// drainInboundStream calls stream.Recv() repeatedly until an error is returned.
-// It returns the last Resource received on the stream, or nil if no Resource
-// was returned. drainInboundStream always returns a non-nil error. io.EOF
-// indicates all messages were successfully read.
-func drainInboundStream(stream storagepb.Storage_BidiWriteObjectClient) (object *storagepb.Object, err error) {
-	for err == nil {
-		var resp *storagepb.BidiWriteObjectResponse
-		resp, err = stream.Recv()
-		// GetResource() returns nil on a nil response
-		if resp.GetResource() != nil {
-			object = resp.GetResource()
-		}
-	}
-	return object, err
-}
-
 func (s *gRPCOneshotBidiWriteBufferSender) connect(ctx context.Context, cs gRPCBufSenderChans, opts ...gax.CallOption) {
 	s.streamErr = nil
 	ctx = gRPCWriteRequestParams{bucket: s.bucket}.apply(ctx)
@@ -1019,59 +1003,93 @@ func (s *gRPCOneshotBidiWriteBufferSender) connect(ctx context.Context, cs gRPCB
 	}
 
 	go func() {
-		firstSend := true
-		for r := range cs.requests {
-			if r.requestAck {
-				cs.requestAcks <- struct{}{}
-				continue
-			}
+		var sendErr, recvErr error
+		sendDone := make(chan struct{})
+		recvDone := make(chan struct{})
 
-			var bufChecksum *uint32
-			if !s.disableAutoChecksum {
-				bufChecksum = proto.Uint32(crc32.Checksum(r.buf, crc32cTable))
-			}
-			objectChecksums := getObjectChecksums(&getObjectChecksumsParams{
-				sendCRC32C:          s.sendCRC32C,
-				objectAttrs:         s.objectAttrs,
-				fullObjectChecksum:  s.fullObjectChecksum,
-				disableAutoChecksum: s.disableAutoChecksum,
-				finishWrite:         r.finishWrite,
-			})
-			req := bidiWriteObjectRequest(r, bufChecksum, objectChecksums)
+		go func() {
+			sendErr = func() error {
+				firstSend := true
+				for {
+					select {
+					case <-recvDone:
+						// Because `requests` is not connected to the gRPC machinery, we
+						// have to check for asynchronous termination on the receive side.
+						return nil
+					case r, ok := <-cs.requests:
+						if !ok {
+							stream.CloseSend()
+							return nil
+						}
+						if r.requestAck {
+							cs.requestAcks <- struct{}{}
+							continue
+						}
 
-			if firstSend {
-				proto.Merge(req, s.firstMessage)
-				firstSend = false
-			}
+						var bufChecksum *uint32
+						if !s.disableAutoChecksum {
+							bufChecksum = proto.Uint32(crc32.Checksum(r.buf, crc32cTable))
+						}
+						objectChecksums := getObjectChecksums(&getObjectChecksumsParams{
+							sendCRC32C:          s.sendCRC32C,
+							objectAttrs:         s.objectAttrs,
+							fullObjectChecksum:  s.fullObjectChecksum,
+							disableAutoChecksum: s.disableAutoChecksum,
+							finishWrite:         r.finishWrite,
+						})
+						req := bidiWriteObjectRequest(r, bufChecksum, objectChecksums)
 
-			if err := stream.Send(req); err != nil {
-				_, s.streamErr = drainInboundStream(stream)
-				if err != io.EOF {
-					s.streamErr = err
+						if firstSend {
+							proto.Merge(req, s.firstMessage)
+							firstSend = false
+						}
+
+						if err := stream.Send(req); err != nil {
+							return err
+						}
+
+						if r.finishWrite {
+							stream.CloseSend()
+							return nil
+						}
+
+						// Oneshot uploads assume all flushes succeed.
+						if r.flush {
+							select {
+							case cs.completions <- gRPCBidiWriteCompletion{flushOffset: r.offset + int64(len(r.buf))}:
+							case <-stream.Context().Done():
+								return stream.Context().Err()
+							}
+						}
+					}
 				}
-				close(cs.completions)
-				return
-			}
+			}()
+			close(sendDone)
+		}()
 
-			if r.finishWrite {
-				stream.CloseSend()
-				// Oneshot uploads only read from the response stream on completion or
-				// failure
-				obj, err := drainInboundStream(stream)
-				if obj == nil || err != io.EOF {
-					s.streamErr = err
-				} else {
-					cs.completions <- gRPCBidiWriteCompletion{flushOffset: obj.GetSize(), resource: obj}
+		go func() {
+			recvErr = func() error {
+				for {
+					resp, err := stream.Recv()
+					if err != nil {
+						return err
+					}
+					if c := completion(resp); c != nil {
+						select {
+						case cs.completions <- *c:
+						case <-stream.Context().Done():
+							return stream.Context().Err()
+						}
+					}
 				}
-				close(cs.completions)
-				return
-			}
+			}()
+			close(recvDone)
+		}()
 
-			// Oneshot uploads assume all flushes succeed
-			if r.flush {
-				cs.completions <- gRPCBidiWriteCompletion{flushOffset: r.offset + int64(len(r.buf))}
-			}
-		}
+		<-sendDone
+		<-recvDone
+		s.streamErr = pickStreamError(recvErr, sendErr)
+		close(cs.completions)
 	}()
 }
 
@@ -1203,7 +1221,11 @@ func (s *gRPCResumableBidiWriteBufferSender) connect(ctx context.Context, cs gRP
 						return err
 					}
 					if c := completion(resp); c != nil {
-						cs.completions <- *c
+						select {
+						case cs.completions <- *c:
+						case <-stream.Context().Done():
+							return stream.Context().Err()
+						}
 					}
 				}
 			}()
@@ -1212,15 +1234,7 @@ func (s *gRPCResumableBidiWriteBufferSender) connect(ctx context.Context, cs gRP
 
 		<-sendDone
 		<-recvDone
-		// Prefer recvErr since that's where RPC errors are delivered
-		if recvErr != nil {
-			s.streamErr = recvErr
-		} else if sendErr != nil {
-			s.streamErr = sendErr
-		}
-		if s.streamErr == io.EOF {
-			s.streamErr = nil
-		}
+		s.streamErr = pickStreamError(recvErr, sendErr)
 		close(cs.completions)
 	}()
 }
@@ -1329,7 +1343,11 @@ func (s *gRPCAppendBidiWriteBufferSender) handleStream(stream storagepb.Storage_
 				s.maybeUpdateFirstMessage(resp)
 
 				if c := completion(resp); c != nil {
-					cs.completions <- *c
+					select {
+					case cs.completions <- *c:
+					case <-stream.Context().Done():
+						return stream.Context().Err()
+					}
 				}
 			}
 		}()
@@ -1338,15 +1356,7 @@ func (s *gRPCAppendBidiWriteBufferSender) handleStream(stream storagepb.Storage_
 
 	<-sendDone
 	<-recvDone
-	// Prefer recvErr since that's where RPC errors are delivered
-	if recvErr != nil {
-		s.streamErr = recvErr
-	} else if sendErr != nil {
-		s.streamErr = sendErr
-	}
-	if s.streamErr == io.EOF {
-		s.streamErr = nil
-	}
+	s.streamErr = pickStreamError(recvErr, sendErr)
 	close(cs.completions)
 }
 
@@ -1598,18 +1608,27 @@ func withBidiWriteObjectRedirectionErrorRetries(s *settings) (newr *retryConfig)
 		// not contain a handle and are "affirmative failures" which indicate that
 		// no server-side action occurred.
 		newr.policy = RetryAlways
-		newr.shouldRetry = func(err error) bool {
+		newr.shouldRetry = func(err error, retryCtx *RetryContext) bool {
 			return errors.Is(err, bidiWriteObjectRedirectionError{})
 		}
 		return newr
 	}
 	// If retry settings allow retries normally, fall back to that behavior.
-	newr.shouldRetry = func(err error) bool {
+	newr.shouldRetry = func(err error, retryCtx *RetryContext) bool {
 		if errors.Is(err, bidiWriteObjectRedirectionError{}) {
 			return true
 		}
-		v := oldr.runShouldRetry(err)
+		v := oldr.runShouldRetry(err, nil)
 		return v
 	}
 	return newr
+}
+
+// pickStreamError determines the final error to be reported by prioritizing recvErr.
+// An io.EOF from a receiver is not considered an error.
+func pickStreamError(recvErr, sendErr error) error {
+	if recvErr != nil && recvErr != io.EOF {
+		return recvErr
+	}
+	return sendErr
 }
