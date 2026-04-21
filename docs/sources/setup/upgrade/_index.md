@@ -43,7 +43,8 @@ We deprecated legacy storage backends in Loki 3.0 and now they are subsequently 
 - Google BigTable (for chunks and indexes)
 - Apache Cassandra (for chunks and indexes)
 - Amazon DynamoDB (for indexes)
-- gRPC Store
+- gRPC Store (for chunks and indexes)
+- BoltDB (for indexes)
 
 Loki will fail to start if a deprecated and removed storage backend is referenced in the schema or storage configuration. You must not upgrade if you still use one of the above mentioned backends.
 
