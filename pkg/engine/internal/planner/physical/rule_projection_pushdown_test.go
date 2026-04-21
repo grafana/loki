@@ -437,6 +437,78 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				return builder.Value()
 			},
 		},
+		{
+			name: "cluster_extracted filter should push 'cluster' (not 'cluster_extracted') to logfmt requestedKeys",
+			buildLogical: func() logical.Value {
+				// Reproduces the goldfish mismatch bug:
+				// sum by(replica)(count_over_time({cluster="prod-us-central-0"} | logfmt | user="102436" | cluster_extracted="ts-saas" [10m]))
+				//
+				// When "cluster" is a stream label AND a logfmt field in the log line (e.g.
+				// "... cluster=ts-saas ..."), ColumnCompat renames the parsed column to
+				// "cluster_extracted" to avoid collision. Downstream filters then reference
+				// the post-ColumnCompat name "cluster_extracted".
+				//
+				// The projection pushdown incorrectly passes "cluster_extracted" as a
+				// requestedKey to the logfmt tokenizer. But the log line contains key
+				// "cluster" (not "cluster_extracted"), so the tokenizer skips the field,
+				// the column is never populated, and the filter matches nothing → 0 results.
+				//
+				// Fix: strip the "_extracted" suffix before adding to requestedKeys so that
+				// "cluster_extracted" → "cluster" is what the logfmt tokenizer receives.
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("cluster", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("prod-us-central-0"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
+
+				builder = builder.Select(&logical.BinOp{
+					Left:  logical.NewColumnRef("user", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("102436"),
+					Op:    types.BinaryOpEq,
+				})
+
+				// cluster_extracted is the post-ColumnCompat name for the logfmt-parsed
+				// "cluster" field (renamed because "cluster" stream label already exists).
+				builder = builder.Select(&logical.BinOp{
+					Left:  logical.NewColumnRef("cluster_extracted", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("ts-saas"),
+					Op:    types.BinaryOpEq,
+				})
+
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					10*time.Minute,
+				)
+
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "replica", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+
+				return builder.Value()
+			},
+			// groupByPushdown pushes "replica" into RangeAggregation (changes Without=false),
+			// then projectionPushdown adds: replica+timestamp (RangeAggregation), user+cluster_extracted (filters).
+			// handleParse must strip "_extracted": "cluster_extracted" → "cluster" in requestedKeys.
+			// Bug: requestedKeys = ["cluster_extracted", "replica", "user"]
+			// Fix: requestedKeys = ["cluster", "replica", "user"]
+			expectedParseKeysRequested:     []string{"cluster", "replica", "user"},
+			expectedDataObjScanProjections: []string{"cluster_extracted", "message", "replica", "timestamp", "user"},
+		},
 	}
 
 	for _, tt := range tests {
