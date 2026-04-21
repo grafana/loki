@@ -68,6 +68,11 @@ type PartitionRing struct {
 	// activePartitionsCount is a saved count of active partitions to avoid recomputing it.
 	activePartitionsCount int
 
+	// pidTokenCounts holds the number of ring tokens per partition ID for PIDs 0-63.
+	// Only populated for root rings (parent == nil) as a precomputed lookup table that lets
+	// newSubring compute the subring token count in O(k) instead of O(total_tokens).
+	pidTokenCounts [64]uint16
+
 	// opts is used to propagate the options to sub rings when shuffle sharding.
 	opts PartitionRingOptions
 }
@@ -199,6 +204,13 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 
 	ringTokens, ringPartitionIDs := desc.tokensByPartition()
 
+	var pidTokenCounts [64]uint16
+	for _, pid := range ringPartitionIDs {
+		if uint32(pid) < 64 {
+			pidTokenCounts[pid]++
+		}
+	}
+
 	return &PartitionRing{
 		desc:                  desc,
 		ringTokens:            ringTokens,
@@ -206,6 +218,7 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		ownersByPartition:     desc.ownersByPartition(),
 		activePartitionsCount: desc.activePartitionsCount(),
 		shuffleShardCache:     shuffleShardCache,
+		pidTokenCounts:        pidTokenCounts,
 		opts:                  opts,
 	}, nil
 }
@@ -439,16 +452,13 @@ func (r *PartitionRing) newSubring(selected map[int32]struct{}) (*PartitionRing,
 		}
 
 		if allFitBitset {
-			// Count tokens with a simple linear scan — kept separate from the active-partition
-			// count so the inner loop stays free of map accesses and remains vectorizable.
+			// Count tokens using precomputed per-PID counts: O(k) instead of O(total_tokens).
 			tokenCount := 0
-			for _, pid := range r.ringPartitionIDs {
-				if selectedBits>>uint(pid)&1 != 0 {
-					tokenCount++
-				}
+			for b := selectedBits; b != 0; b &= b - 1 {
+				tokenCount += int(r.pidTokenCounts[bits.TrailingZeros64(b)])
 			}
 
-			// Count active partitions by iterating only the 8 selected PIDs.
+			// Count active partitions by iterating only the k selected PIDs.
 			activeParts := 0
 			for pid := range selected {
 				if p, ok := r.desc.Partitions[pid]; ok && p.IsActive() {
