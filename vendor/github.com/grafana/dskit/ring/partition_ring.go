@@ -213,19 +213,10 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 	// (if any) continuing walking the ring.
 	tokensCount := len(r.ringTokens)
 
-	// Compute max partition ID so we can use boolean arrays instead of maps for
-	// O(1) membership tests without hash overhead in the inner loop.
-	var maxPID int32
-	for pid := range r.desc.Partitions {
-		if pid > maxPID {
-			maxPID = pid
-		}
-	}
-	inResult := make([]bool, maxPID+1)
-	inExclude := make([]bool, maxPID+1)
-	resultList := make([]int32, 0, size)
+	result := make(map[int32]struct{}, size)
+	exclude := map[int32]struct{}{}
 
-	for len(resultList) < size {
+	for len(result) < size {
 		start := searchToken(r.ringTokens, random.Uint32())
 		iterations := 0
 		found := false
@@ -244,34 +235,36 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 			}
 
 			// Ensure the partition has not already been included or excluded.
-			if inResult[pid] || inExclude[pid] {
+			if _, ok := result[pid]; ok {
+				continue
+			}
+			if _, ok := exclude[pid]; ok {
 				continue
 			}
 
-			part, ok := r.desc.Partitions[pid]
+			p, ok := r.desc.Partitions[pid]
 			if !ok {
 				return nil, ErrInconsistentTokensInfo
 			}
 
 			// PENDING partitions should be skipped because they're not ready for read or write yet,
 			// and they don't need to be looked back.
-			if part.IsPending() {
-				inExclude[pid] = true
+			if p.IsPending() {
+				exclude[pid] = struct{}{}
 				continue
 			}
 
 			var (
-				withinLookbackPeriod = lookbackPeriod > 0 && part.GetStateTimestamp() >= lookbackUntil
+				withinLookbackPeriod = lookbackPeriod > 0 && p.GetStateTimestamp() >= lookbackUntil
 				shouldExtend         = withinLookbackPeriod
-				shouldInclude        = part.IsActive() || withinLookbackPeriod
+				shouldInclude        = p.IsActive() || withinLookbackPeriod
 			)
 
 			// Either include or exclude the found partition.
 			if shouldInclude {
-				inResult[pid] = true
-				resultList = append(resultList, pid)
+				result[pid] = struct{}{}
 			} else {
-				inExclude[pid] = true
+				exclude[pid] = struct{}{}
 			}
 
 			// Extend the shard, if requested.
@@ -292,11 +285,6 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 		}
 	}
 
-	// Build result map from collected list for subring construction.
-	result := make(map[int32]struct{}, len(resultList))
-	for _, pid := range resultList {
-		result[pid] = struct{}{}
-	}
 	return NewPartitionRingWithOptions(r.desc.WithPartitions(result), r.opts)
 }
 
