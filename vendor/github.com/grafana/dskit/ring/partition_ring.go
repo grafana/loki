@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	shardUtil "github.com/grafana/dskit/ring/shard"
@@ -47,12 +48,15 @@ type PartitionRing struct {
 	ringPartitionIDs []int32
 
 	// Compact subring fields — set only when this ring was created by newSubring.
-	// When parent != nil, ringTokens and ringPartitionIDs are nil; all token access goes through
-	// parent.ringTokens[ringTokenIndices[i]] and parent.ringPartitionIDs[ringTokenIndices[i]].
-	// Storing uint16 indices (8 KB for 4096 tokens) instead of full token+PID copies (32 KB)
-	// reduces per-subring allocation by 75%, cutting GC pressure on the shuffle-shard cache.
+	// When parent != nil, ringTokens and ringPartitionIDs are nil.
+	// ringTokenIndices is lazily initialised on first use: subrings returned by ShuffleShard are
+	// typically cached and never queried for token-level operations (ActivePartitionForKey, nested
+	// ShuffleShard), so deferring the 8 KB allocation eliminates it entirely for the common case.
 	parent           *PartitionRing
-	ringTokenIndices []uint16
+	selectedBits     uint64     // bitset of selected PIDs (0-63); 0 means "use desc map" for PIDs ≥ 64
+	tokenCountVal    int        // pre-computed; len(ringTokenIndices) once built
+	indicesOnce      sync.Once  // guards lazy init of ringTokenIndices
+	ringTokenIndices []uint16   // indices into parent.ringTokens; nil until first token access
 
 	// ownersByPartition is a map where the key is the partition ID and the value is a list of owner IDs.
 	ownersByPartition map[int32][]string
@@ -70,14 +74,38 @@ type PartitionRing struct {
 // tokenLen returns the number of ring tokens (works for both full and compact subrings).
 func (r *PartitionRing) tokenLen() int {
 	if r.parent != nil {
-		return len(r.ringTokenIndices)
+		return r.tokenCountVal
 	}
 	return len(r.ringTokens)
+}
+
+// ensureIndices builds ringTokenIndices lazily on first call.  Subsequent calls are a
+// single atomic load via sync.Once and cost ~1 ns.
+func (r *PartitionRing) ensureIndices() {
+	r.indicesOnce.Do(func() {
+		indices := make([]uint16, 0, r.tokenCountVal)
+		if bits := r.selectedBits; bits != 0 {
+			for i, pid := range r.parent.ringPartitionIDs {
+				if bits>>uint(pid)&1 != 0 {
+					indices = append(indices, uint16(i))
+				}
+			}
+		} else {
+			// selectedBits == 0: some PID ≥ 64 — fall back to desc.Partitions map lookup.
+			for i, pid := range r.parent.ringPartitionIDs {
+				if _, ok := r.desc.Partitions[pid]; ok {
+					indices = append(indices, uint16(i))
+				}
+			}
+		}
+		r.ringTokenIndices = indices
+	})
 }
 
 // partitionAt returns the partition ID owning the i-th token slot.
 func (r *PartitionRing) partitionAt(i int) int32 {
 	if r.parent != nil {
+		r.ensureIndices()
 		return r.parent.ringPartitionIDs[r.ringTokenIndices[i]]
 	}
 	return r.ringPartitionIDs[i]
@@ -86,6 +114,7 @@ func (r *PartitionRing) partitionAt(i int) int32 {
 // tokenAt returns the i-th token value.
 func (r *PartitionRing) tokenAt(i int) uint32 {
 	if r.parent != nil {
+		r.ensureIndices()
 		return r.parent.ringTokens[r.ringTokenIndices[i]]
 	}
 	return r.ringTokens[i]
@@ -95,6 +124,7 @@ func (r *PartitionRing) tokenAt(i int) uint32 {
 // wrapping to 0 if key is past the last token.
 func (r *PartitionRing) searchRingToken(key uint32) int {
 	if r.parent != nil {
+		r.ensureIndices()
 		return searchTokenIndirect(r.ringTokenIndices, r.parent.ringTokens, key)
 	}
 	return searchToken(r.ringTokens, key)
@@ -122,6 +152,7 @@ func (r *PartitionRing) resolveRingTokens() Tokens {
 	if r.parent == nil {
 		return r.ringTokens
 	}
+	r.ensureIndices()
 	tokens := make(Tokens, len(r.ringTokenIndices))
 	for i, idx := range r.ringTokenIndices {
 		tokens[i] = r.parent.ringTokens[idx]
@@ -381,32 +412,33 @@ func (r *PartitionRing) newSubring(selected map[int32]struct{}) (*PartitionRing,
 		return nil, fmt.Errorf("failed to create shuffle shard cache: %w", err)
 	}
 
-	// Compact path: build uint16 index slice into the parent's token/PID arrays.
+	// Compact path: store selected-partition metadata but defer building ringTokenIndices
+	// until first use.  Subrings are usually cached and never queried for token-level ops
+	// (nested ShuffleShard, ActivePartitionForKey), so the lazy 8 KB allocation is
+	// avoided entirely in the common case.
 	// Only valid when r is a root ring (not itself compact) and the index fits in uint16.
 	if r.parent == nil && len(r.ringTokens) <= 65535 {
 		var selectedBits uint64
-		allFitBitset := true
 		for pid := range selected {
 			if uint32(pid) >= 64 {
-				allFitBitset = false
+				selectedBits = 0 // sentinel: fall back to desc map in ensureIndices
 				break
 			}
 			selectedBits |= 1 << uint(pid)
 		}
 
-		capacity := len(selected) * optimalTokensPerInstance
-		indices := make([]uint16, 0, capacity)
-
-		if allFitBitset {
-			for i, pid := range r.ringPartitionIDs {
+		// Pre-compute token count so tokenLen() works without materialising indices.
+		tokenCount := 0
+		if selectedBits != 0 {
+			for _, pid := range r.ringPartitionIDs {
 				if selectedBits>>uint(pid)&1 != 0 {
-					indices = append(indices, uint16(i))
+					tokenCount++
 				}
 			}
 		} else {
-			for i, pid := range r.ringPartitionIDs {
+			for _, pid := range r.ringPartitionIDs {
 				if _, ok := selected[pid]; ok {
-					indices = append(indices, uint16(i))
+					tokenCount++
 				}
 			}
 		}
@@ -414,7 +446,8 @@ func (r *PartitionRing) newSubring(selected map[int32]struct{}) (*PartitionRing,
 		return &PartitionRing{
 			desc:                  subDesc,
 			parent:                r,
-			ringTokenIndices:      indices,
+			selectedBits:          selectedBits,
+			tokenCountVal:         tokenCount,
 			ownersByPartition:     subDesc.ownersByPartition(),
 			activePartitionsCount: subDesc.activePartitionsCount(),
 			shuffleShardCache:     shuffleShardCache,
