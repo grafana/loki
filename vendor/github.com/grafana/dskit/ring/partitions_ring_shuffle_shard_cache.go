@@ -87,7 +87,10 @@ func (r *partitionRingShuffleShardCache) setSubringWithLookback(identifier strin
 		validForLookbackWindowsStartingBefore = int64(math.MaxInt64)
 	)
 
-	for _, partition := range subring.desc.Partitions {
+	for id, partition := range subring.desc.Partitions {
+		if !subring.isInSubring(id) {
+			continue
+		}
 		stateChangedDuringLookbackWindow := partition.StateTimestamp >= lookbackWindowStart
 
 		if stateChangedDuringLookbackWindow && partition.StateTimestamp < validForLookbackWindowsStartingBefore {
