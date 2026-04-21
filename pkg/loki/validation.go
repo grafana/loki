@@ -93,8 +93,7 @@ func validateSchemaValues(c *Config) []error {
 	var errs []error
 	for _, cfg := range c.SchemaConfig.Configs {
 		if !util.StringsContain(types.TestingStorageTypes, cfg.IndexType) &&
-			!util.StringsContain(types.SupportedIndexTypes, cfg.IndexType) &&
-			!util.StringsContain(types.DeprecatedIndexTypes, cfg.IndexType) {
+			!util.StringsContain(types.SupportedIndexTypes, cfg.IndexType) {
 			errs = append(errs, fmt.Errorf("unrecognized `store` (index) type `%s`, choose one of: %s", cfg.IndexType, strings.Join(types.SupportedIndexTypes, ", ")))
 		}
 
