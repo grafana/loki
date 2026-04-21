@@ -6514,12 +6514,6 @@ boltdb:
 # Storage (Swift) object storage backend.
 [swift: <swift_storage_config>]
 
-# Deprecated:
-grpc_store:
-  # Hostname or IP of the gRPC store instance.
-  # CLI flag: -grpc-store.server-address
-  [server_address: <string> | default = ""]
-
 hedging:
   # If set to a non-zero value a second request will be issued at the provided
   # duration. Default is 0 (disabled)
