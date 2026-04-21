@@ -39,11 +39,20 @@ type PartitionRing struct {
 	desc PartitionRingDesc
 
 	// ringTokens is a sorted list of all tokens registered by all partitions.
+	// Nil for compact subrings (parent != nil); use tokenLen/partitionAt/searchRingToken accessors.
 	ringTokens Tokens
 
 	// ringPartitionIDs is parallel to ringTokens: ringPartitionIDs[i] is the partition ID owning ringTokens[i].
-	// This enables O(1) token-to-partition lookup without a map.
+	// Nil for compact subrings (parent != nil).
 	ringPartitionIDs []int32
+
+	// Compact subring fields — set only when this ring was created by newSubring.
+	// When parent != nil, ringTokens and ringPartitionIDs are nil; all token access goes through
+	// parent.ringTokens[ringTokenIndices[i]] and parent.ringPartitionIDs[ringTokenIndices[i]].
+	// Storing uint16 indices (8 KB for 4096 tokens) instead of full token+PID copies (32 KB)
+	// reduces per-subring allocation by 75%, cutting GC pressure on the shuffle-shard cache.
+	parent           *PartitionRing
+	ringTokenIndices []uint16
 
 	// ownersByPartition is a map where the key is the partition ID and the value is a list of owner IDs.
 	ownersByPartition map[int32][]string
@@ -56,6 +65,68 @@ type PartitionRing struct {
 
 	// opts is used to propagate the options to sub rings when shuffle sharding.
 	opts PartitionRingOptions
+}
+
+// tokenLen returns the number of ring tokens (works for both full and compact subrings).
+func (r *PartitionRing) tokenLen() int {
+	if r.parent != nil {
+		return len(r.ringTokenIndices)
+	}
+	return len(r.ringTokens)
+}
+
+// partitionAt returns the partition ID owning the i-th token slot.
+func (r *PartitionRing) partitionAt(i int) int32 {
+	if r.parent != nil {
+		return r.parent.ringPartitionIDs[r.ringTokenIndices[i]]
+	}
+	return r.ringPartitionIDs[i]
+}
+
+// tokenAt returns the i-th token value.
+func (r *PartitionRing) tokenAt(i int) uint32 {
+	if r.parent != nil {
+		return r.parent.ringTokens[r.ringTokenIndices[i]]
+	}
+	return r.ringTokens[i]
+}
+
+// searchRingToken returns the insertion point for key in the sorted token sequence,
+// wrapping to 0 if key is past the last token.
+func (r *PartitionRing) searchRingToken(key uint32) int {
+	if r.parent != nil {
+		return searchTokenIndirect(r.ringTokenIndices, r.parent.ringTokens, key)
+	}
+	return searchToken(r.ringTokens, key)
+}
+
+// searchTokenIndirect is searchToken for compact subrings: binary-searches over
+// parent.ringTokens values addressed through the indices slice.
+func searchTokenIndirect(indices []uint16, tokens Tokens, key uint32) int {
+	n := len(indices)
+	lo, hi := 0, n
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if tokens[indices[mid]] < key {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo % n
+}
+
+// resolveRingTokens returns the sorted token slice.  For compact subrings it materialises
+// a copy; callers outside the hot path (e.g. GetTokenRangesForPartition) use this.
+func (r *PartitionRing) resolveRingTokens() Tokens {
+	if r.parent == nil {
+		return r.ringTokens
+	}
+	tokens := make(Tokens, len(r.ringTokenIndices))
+	for i, idx := range r.ringTokenIndices {
+		tokens[i] = r.parent.ringTokens[idx]
+	}
+	return tokens
 }
 
 // PartitionRingOptions holds optional configuration parameters for creating a PartitionRing.
@@ -102,19 +173,19 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 // Only one partition is returned: in other terms, the replication factor is always 1.
 func (r *PartitionRing) ActivePartitionForKey(key uint32) (int32, error) {
 	var (
-		start       = searchToken(r.ringTokens, key)
+		start       = r.searchRingToken(key)
 		iterations  = 0
-		tokensCount = len(r.ringTokens)
+		tokensCount = r.tokenLen()
 	)
 
 	for i := start; iterations < tokensCount; i++ {
 		iterations++
 
 		if i >= tokensCount {
-			i %= len(r.ringTokens)
+			i %= tokensCount
 		}
 
-		partitionID := r.ringPartitionIDs[i]
+		partitionID := r.partitionAt(i)
 
 		partition, ok := r.desc.Partitions[partitionID]
 		if !ok {
@@ -221,13 +292,13 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 	// To select one more instance while guaranteeing the "consistency" property,
 	// we do pick a random value from the generator and resolve uniqueness collisions
 	// (if any) continuing walking the ring.
-	tokensCount := len(r.ringTokens)
+	tokensCount := r.tokenLen()
 
 	result := make(map[int32]struct{}, size)
 	exclude := map[int32]struct{}{}
 
 	for len(result) < size {
-		start := searchToken(r.ringTokens, splitmix64Step(&rngState))
+		start := r.searchRingToken(splitmix64Step(&rngState))
 		iterations := 0
 		found := false
 
@@ -239,7 +310,7 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 				p %= tokensCount
 			}
 
-			pid := r.ringPartitionIDs[p]
+			pid := r.partitionAt(p)
 
 			// Ensure the partition has not already been included or excluded.
 			if _, ok := result[pid]; ok {
@@ -295,14 +366,69 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 	return r.newSubring(result)
 }
 
-// newSubring builds a subring containing only the selected partition IDs, reusing the parent
-// ring's pre-sorted ringTokens and ringPartitionIDs arrays to avoid re-sorting and re-building
-// the token-to-partition map.
+// newSubring builds a subring containing only the selected partition IDs.
+//
+// Compact path (parent == nil and ≤65535 tokens): stores uint16 indices into the parent's
+// sorted arrays instead of copying full token/PID slices.  Saves 24 KB per subring (32→8 KB)
+// which cuts GC pressure on the shuffle-shard cache significantly.
+//
+// Fallback path: materialises full token and PID arrays (recursive subrings or large rings).
 func (r *PartitionRing) newSubring(selected map[int32]struct{}) (*PartitionRing, error) {
 	subDesc := r.desc.WithPartitions(selected)
 
-	// Build a uint64 bitset for selected partition IDs when all IDs fit in 0..63.
-	// This replaces a map lookup per token with a single bit-test, saving ~3 ns × len(ringTokens).
+	shuffleShardCache, err := newPartitionRingShuffleShardCache(r.opts.ShuffleShardCacheSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create shuffle shard cache: %w", err)
+	}
+
+	// Compact path: build uint16 index slice into the parent's token/PID arrays.
+	// Only valid when r is a root ring (not itself compact) and the index fits in uint16.
+	if r.parent == nil && len(r.ringTokens) <= 65535 {
+		var selectedBits uint64
+		allFitBitset := true
+		for pid := range selected {
+			if uint32(pid) >= 64 {
+				allFitBitset = false
+				break
+			}
+			selectedBits |= 1 << uint(pid)
+		}
+
+		capacity := len(selected) * optimalTokensPerInstance
+		indices := make([]uint16, 0, capacity)
+
+		if allFitBitset {
+			for i, pid := range r.ringPartitionIDs {
+				if selectedBits>>uint(pid)&1 != 0 {
+					indices = append(indices, uint16(i))
+				}
+			}
+		} else {
+			for i, pid := range r.ringPartitionIDs {
+				if _, ok := selected[pid]; ok {
+					indices = append(indices, uint16(i))
+				}
+			}
+		}
+
+		return &PartitionRing{
+			desc:                  subDesc,
+			parent:                r,
+			ringTokenIndices:      indices,
+			ownersByPartition:     subDesc.ownersByPartition(),
+			activePartitionsCount: subDesc.activePartitionsCount(),
+			shuffleShardCache:     shuffleShardCache,
+			opts:                  r.opts,
+		}, nil
+	}
+
+	// Fallback: materialise full token/PID arrays (recursive subrings or rings > 65535 tokens).
+	// Resolve parent arrays once regardless of whether r is compact.
+	n := r.tokenLen()
+	capacity := len(selected) * optimalTokensPerInstance
+	subTokens := make(Tokens, 0, capacity)
+	subPIDs := make([]int32, 0, capacity)
+
 	var selectedBits uint64
 	allFitBitset := true
 	for pid := range selected {
@@ -313,31 +439,22 @@ func (r *PartitionRing) newSubring(selected map[int32]struct{}) (*PartitionRing,
 		selectedBits |= 1 << uint(pid)
 	}
 
-	capacity := len(selected) * optimalTokensPerInstance
-	subTokens := make(Tokens, 0, capacity)
-	subPIDs := make([]int32, 0, capacity)
-
 	if allFitBitset {
-		for i, tok := range r.ringTokens {
-			pid := r.ringPartitionIDs[i]
+		for i := 0; i < n; i++ {
+			pid := r.partitionAt(i)
 			if selectedBits>>uint(pid)&1 != 0 {
-				subTokens = append(subTokens, tok)
+				subTokens = append(subTokens, r.tokenAt(i))
 				subPIDs = append(subPIDs, pid)
 			}
 		}
 	} else {
-		for i, tok := range r.ringTokens {
-			pid := r.ringPartitionIDs[i]
+		for i := 0; i < n; i++ {
+			pid := r.partitionAt(i)
 			if _, ok := selected[pid]; ok {
-				subTokens = append(subTokens, tok)
+				subTokens = append(subTokens, r.tokenAt(i))
 				subPIDs = append(subPIDs, pid)
 			}
 		}
-	}
-
-	shuffleShardCache, err := newPartitionRingShuffleShardCache(r.opts.ShuffleShardCacheSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create shuffle shard cache: %w", err)
 	}
 
 	return &PartitionRing{
@@ -508,7 +625,7 @@ func (r *PartitionRing) GetTokenRangesForPartition(partitionID int32) (TokenRang
 	startOfLastRange := uint32(0)
 
 	// We start with all tokens, but will remove tokens we already skipped, to let binary search do less work.
-	ringTokens := r.ringTokens
+	ringTokens := r.resolveRingTokens()
 
 	for iter, t := range partition.Tokens {
 		lastOwnedToken := t - 1
