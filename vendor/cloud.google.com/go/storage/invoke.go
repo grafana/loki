@@ -53,19 +53,62 @@ var (
 	})
 )
 
-func (r *retryConfig) runShouldRetry(err error) bool {
+// runShouldRetry calls the configured shouldRetry function if it exists,
+// otherwise it falls back to the default ShouldRetry function.
+func (r *retryConfig) runShouldRetry(err error, retryCtx *RetryContext) bool {
 	if r == nil || r.shouldRetry == nil {
 		return ShouldRetry(err)
 	}
-	return r.shouldRetry(err)
+
+	return r.shouldRetry(err, retryCtx)
+}
+
+// runOptions holds optional metadata for retry contexts.
+type runOptions struct {
+	operation string
+	bucket    string
+	object    string
+}
+
+// runOption configures optional metadata for retry contexts.
+type runOption func(*runOptions)
+
+// withOperation specifies the operation name for retry context.
+func withOperation(op string) runOption {
+	return func(o *runOptions) { o.operation = op }
+}
+
+// withBucket specifies the bucket name for retry context.
+func withBucket(bucket string) runOption {
+	return func(o *runOptions) { o.bucket = bucket }
+}
+
+// withObject specifies the object name for retry context.
+func withObject(object string) runOption {
+	return func(o *runOptions) { o.object = object }
 }
 
 // run determines whether a retry is necessary based on the config and
 // idempotency information. It then calls the function with or without retries
 // as appropriate, using the configured settings.
-func run(ctx context.Context, call func(ctx context.Context) error, retry *retryConfig, isIdempotent bool) error {
+// TODO: consider replacing the functional option (runOption) pattern with a
+// hardcoded struct based approach if parameter related changes requires for all
+// the callers. Ref: http://shortn/_ciY2iWLh2J
+func run(ctx context.Context, call func(ctx context.Context) error, retry *retryConfig, isIdempotent bool, opts ...runOption) error {
+	options := &runOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	attempts := 1
 	invocationID := uuid.New().String()
+	retryCtx := &RetryContext{
+		Attempt:      attempts,
+		InvocationID: invocationID,
+		Operation:    options.operation,
+		Bucket:       options.bucket,
+		Object:       options.object,
+	}
 
 	if retry == nil {
 		retry = defaultRetry
@@ -105,8 +148,10 @@ func run(ctx context.Context, call func(ctx context.Context) error, retry *retry
 		if lastErr != nil && retry.maxAttempts != nil && attempts >= *retry.maxAttempts {
 			return true, fmt.Errorf("storage: retry failed after %v attempts; last error: %w", *retry.maxAttempts, lastErr)
 		}
+
+		retryCtx.Attempt = attempts
+		retryable := retry.runShouldRetry(lastErr, retryCtx)
 		attempts++
-		retryable := retry.runShouldRetry(lastErr)
 		// Explicitly check context cancellation so that we can distinguish between a
 		// DEADLINE_EXCEEDED error from the server and a user-set context deadline.
 		// Unfortunately gRPC will codes.DeadlineExceeded (which may be retryable if it's
@@ -164,7 +209,7 @@ func ShouldRetry(err error) bool {
 		// Retry socket-level errors ECONNREFUSED and ECONNRESET (from syscall).
 		// Unfortunately the error type is unexported, so we resort to string
 		// matching.
-		retriable := []string{"connection refused", "connection reset", "broken pipe"}
+		retriable := []string{"connection refused", "connection reset", "broken pipe", "client connection lost"}
 		for _, s := range retriable {
 			if strings.Contains(e.Error(), s) {
 				return true
