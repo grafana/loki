@@ -1,7 +1,6 @@
 package ring
 
 import (
-	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -28,21 +27,14 @@ type partitionRingShuffleShardCache struct {
 
 // newPartitionRingShuffleShardCache creates a new partition ring shuffle shard cache.
 // If size <= 0 an unbounded map-based cache is used.
-// If size > 0, an LRU cache with the specified size is used.
+// If size > 0, a zero-alloc direct-mapped cache with the specified capacity is used.
 func newPartitionRingShuffleShardCache(size int) (*partitionRingShuffleShardCache, error) {
 	var cacheWithoutLookback shuffleShardCacheStorage[*PartitionRing]
 	var cacheWithLookback shuffleShardCacheStorage[cachedSubringWithLookback[*PartitionRing]]
 
 	if size > 0 {
-		var err error
-		cacheWithoutLookback, err = newLRUCacheStorage[*PartitionRing](size)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create without lookback cache: %w", err)
-		}
-		cacheWithLookback, err = newLRUCacheStorage[cachedSubringWithLookback[*PartitionRing]](size)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create with lookback cache: %w", err)
-		}
+		cacheWithoutLookback = newDirectMappedCacheStorage[*PartitionRing](size)
+		cacheWithLookback = newDirectMappedCacheStorage[cachedSubringWithLookback[*PartitionRing]](size)
 	} else {
 		cacheWithoutLookback = newMapCacheStorage[*PartitionRing]()
 		cacheWithLookback = newMapCacheStorage[cachedSubringWithLookback[*PartitionRing]]()
@@ -186,4 +178,77 @@ func (s *lruCacheStorage[V]) set(key subringCacheKey, value V) { //nolint:unused
 
 func (s *lruCacheStorage[V]) len() int { //nolint:unused
 	return s.cache.Len()
+}
+
+// directMappedCacheStorage is a fixed-capacity, zero-alloc direct-mapped cache.
+// On every set() the entry is placed at slots[hash(key)%N] (no allocation).
+// This eliminates the per-insertion list-node alloc of lruCacheStorage.
+// Eviction is implicit: a new entry silently overwrites a colliding slot.
+// The capacity must be a power of two.
+type directMappedCacheStorage[V any] struct {
+	mask  uint64
+	slots []directMappedSlot[V]
+}
+
+type directMappedSlot[V any] struct {
+	key   subringCacheKey
+	value V
+	valid bool
+}
+
+var _ shuffleShardCacheStorage[*PartitionRing] = (*directMappedCacheStorage[*PartitionRing])(nil)
+
+func newDirectMappedCacheStorage[V any](size int) *directMappedCacheStorage[V] {
+	// Round size up to the next power of two.
+	n := 1
+	for n < size {
+		n <<= 1
+	}
+	return &directMappedCacheStorage[V]{
+		mask:  uint64(n - 1),
+		slots: make([]directMappedSlot[V], n),
+	}
+}
+
+func hashSubringCacheKey(key subringCacheKey) uint64 {
+	// FNV-1a over the identifier bytes, then mix in shardSize and lookbackPeriod.
+	const (
+		fnvOffset = uint64(14695981039346656037)
+		fnvPrime  = uint64(1099511628211)
+	)
+	h := fnvOffset
+	for i := 0; i < len(key.identifier); i++ {
+		h ^= uint64(key.identifier[i])
+		h *= fnvPrime
+	}
+	h ^= uint64(key.shardSize)
+	h *= fnvPrime
+	h ^= uint64(key.lookbackPeriod)
+	h *= fnvPrime
+	return h
+}
+
+func (s *directMappedCacheStorage[V]) get(key subringCacheKey) (V, bool) { //nolint:unused
+	idx := hashSubringCacheKey(key) & s.mask
+	slot := &s.slots[idx]
+	if slot.valid && slot.key == key {
+		return slot.value, true
+	}
+	var zero V
+	return zero, false
+}
+
+func (s *directMappedCacheStorage[V]) set(key subringCacheKey, value V) { //nolint:unused
+	idx := hashSubringCacheKey(key) & s.mask
+	s.slots[idx] = directMappedSlot[V]{key: key, value: value, valid: true}
+}
+
+func (s *directMappedCacheStorage[V]) len() int { //nolint:unused
+	count := 0
+	for i := range s.slots {
+		if s.slots[i].valid {
+			count++
+		}
+	}
+	return count
 }
