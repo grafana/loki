@@ -1,0 +1,21 @@
+# metric_direction: lower_is_better
+iteration	commit	metric	delta	guard	guard-metric	status	description
+0	c5682e8cbb	113848	0.0	pass	-	baseline	initial state — shuffleShard partitions=32 baseline 113848 ns/op
+1	-	128850	+15002	pass	-	discard	add ringPartitionIDs parallel array (subring construction overhead > inner-loop savings)
+2	-	117052	+3204	pass	-	discard	replace result/exclude maps with bool arrays (extra heap allocs eat savings)
+3	-	120949	+7101	pass	-	discard	uint64 bitset fast path for result/exclude (no alloc savings; original maps already stack-allocated)
+4	74780cc727	98500	-15348	pass	-	keep	add ringPartitionIDs array + newSubring() — eliminates per-shard token sort and map build (13% improvement)
+5	4133843657	40000	-58500	pass	-	keep	uint64 bitset in newSubring filter loop (replaces 16384 map lookups — 65% from baseline)
+6	34c2bcaf27	36000	-4000	pass	-	keep	replace math/rand 607-element PRNG with splitmix64 (saves 6us init per call)
+7	89e8b3d14c	28317	-7683	pass	-	keep	compact subring: uint16 indices (8KB) replace subTokens+subPIDs (32KB) — 21% improvement, 75% less GC pressure
+8	1bfbc843e8	7152	-21165	pass	-	keep	lazy-init ringTokenIndices: defer 8KB alloc until first token access — 74.7% improvement, 76% less B/op
+9	c811e454fe	6204	-948	pass	-	keep	share parent desc in compact subrings; skip WithPartitions alloc — 13.3% improvement, 85% less B/op
+10	316dbea095	1082	-5122	pass	-	keep	precompute per-PID token counts: O(16K) loop → O(k=8) — 82.5% improvement
+11	4ad8cbca1e	970	-112	pass	-	keep	bitset fast path in shuffleShard: eliminate result/exclude map allocs — 10.4% improvement
+12	9a51631cbe	845	-125	pass	-	keep	default to bounded LRU(1024) cache — eliminates map-bucket realloc madvise — 13.4% improvement
+13	06ebee99cb	676	-169	pass	-	keep	256-bucket prefix-sum index narrows searchRingToken binary search from 14→6 comparisons — 20% improvement
+14	56fcf18b1b	627	-49	pass	-	keep	precompute activePartBits/pendingPartBits — eliminates inner-loop map lookups for lookbackPeriod=0 — 7.25% improvement
+15	872ddcf665	504	-123	pass	-	keep	increase tokenBuckets to 4096 buckets (top 12 bits) — narrows binary search from ~64 to ~4 tokens — 19.6% improvement
+16	b36ea921f6	456	-48	pass	-	keep	pidTokenCounts *[64]uint16 pointer — shrinks compact subring from 320→200 bytes, 37% less GC pressure — 9.5% improvement
+17	2bc82eef0c	352	-104	pass	-	keep	replace LRU cache with zero-alloc direct-mapped cache — eliminates per-insert list-node alloc — 22.8% improvement
+18	4732151fab	322	-30	pass	-	keep	increase tokenBuckets to 16384 buckets (top 14 bits) — O(1) token search — 8.5% improvement
