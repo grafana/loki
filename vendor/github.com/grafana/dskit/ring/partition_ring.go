@@ -71,7 +71,9 @@ type PartitionRing struct {
 	// pidTokenCounts holds the number of ring tokens per partition ID for PIDs 0-63.
 	// Only populated for root rings (parent == nil) as a precomputed lookup table that lets
 	// newSubring compute the subring token count in O(k) instead of O(total_tokens).
-	pidTokenCounts [64]uint16
+	// Stored as a pointer so compact subrings (parent != nil) don't pay 128 bytes for an
+	// unused array, reducing their allocation size by 37%.
+	pidTokenCounts *[64]uint16
 
 	// tokenBuckets is a 4097-entry prefix-sum table dividing the uint32 keyspace into 4096
 	// equal-width buckets by top 12 bits.  tokenBuckets[i] is the index of the first token
@@ -246,7 +248,7 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 
 	ringTokens, ringPartitionIDs := desc.tokensByPartition()
 
-	var pidTokenCounts [64]uint16
+	pidTokenCounts := new([64]uint16)
 	allPIDsFitBitset := true
 	for _, pid := range ringPartitionIDs {
 		if uint32(pid) >= 64 {
