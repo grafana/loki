@@ -936,6 +936,15 @@ networkPolicy:
     podSelector: {}
     # -- Specifies the namespace the discovery Pods are running in
     namespaceSelector: {}
+  egressDNS:
+    # -- Override the DNS egress ports opened by the network policy.
+    # Default ([]) keeps the in-chart defaults of 53/UDP and 53/TCP.
+    # On OpenShift the cluster DNS (dns-default) is backed by pods that
+    # listen on 5353, so set this to `- port: 5353; protocol: UDP` and
+    # `- port: 5353; protocol: TCP` (or include both 53 and 5353) to
+    # allow DNS resolution when network policies are enabled
+    # (grafana/loki#20009).
+    ports: []
   egressWorld:
     # -- Enable additional cilium egress rules to external world for write, read and backend.
     enabled: false

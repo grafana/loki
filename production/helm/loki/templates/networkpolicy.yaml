@@ -35,10 +35,14 @@ spec:
       {{- include "loki.selectorLabels" . | nindent 6 }}
   egress:
     - ports:
+        {{- with .Values.networkPolicy.egressDNS.ports }}
+        {{- toYaml . | nindent 8 }}
+        {{- else }}
         - port: 53
           protocol: UDP
         - port: 53
           protocol: TCP
+        {{- end }}
       to:
         - namespaceSelector: {}
 
