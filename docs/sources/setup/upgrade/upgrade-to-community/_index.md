@@ -41,14 +41,14 @@ Before you begin:
 
 The chart is now published to a different Helm repository and Open Container Initiative (OCI) registry.  The official Helm documentation now recommends using OCI registries as they implement unified storage, distribution, and improved security.
 
-Old Location - 6.x from the Loki repository:
+Old location for 6.x from the Loki repository:
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
 helm upgrade <RELEASE_NAME> grafana/loki -f values.yaml
 ```
 
-New Location - 7.x and later from the community repository:
+New location for 7.x and later from the community repository:
 
 ```bash
 helm repo add grafana-community https://grafana-community.github.io/helm-charts
@@ -56,7 +56,7 @@ helm repo update
 helm upgrade <RELEASE_NAME> grafana-community/loki -f values.yaml --version 13.1.2
 ```
 
-Or using OCI for 7.x and later:
+Or if you are using OCI for 7.x and later:
 
 ```bash
 helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki -f values.yaml --version 13.1.2
@@ -67,7 +67,7 @@ helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki -f 
 The following sections describe every breaking change between chart versions 6.55.0 and 13.x, grouped by the major version that introduced each change. Review each section and update your values file accordingly.
 
 {{< admonition type="caution" >}}
-Check the Loki Helm Chart [README](https://github.com/grafana-community/helm-charts/tree/main/charts/loki#upgrading) for the latest changes and upgrade information.  The Grafana Community is constantly improving the charts.
+Check the Loki Helm Chart [README](https://github.com/grafana-community/helm-charts/tree/main/charts/loki#upgrading) for the latest changes and upgrade information. The Grafana Community is constantly improving the charts.
 {{< /admonition >}}
 
 ### 6.x to 7.0: Kubernetes API cleanup
@@ -148,7 +148,7 @@ monitoring:
       # ...
 ```
 
-Also remove `monitoring.serviceMonitor.metricsInstance` if present. It referenced a Grafana Agent CRD that no longer exists.
+Also remove `monitoring.serviceMonitor.metricsInstance`, if present. It referenced a Grafana Agent CRD that no longer exists.
 
 Loki canary tenant authentication has moved from `monitoring.selfMonitoring.tenant` to the top-level `lokiCanary.tenant` section. If you were using canary tenant auth, update as follows:
 
@@ -269,7 +269,7 @@ If you are running `Distributed`, no change is needed.
 The persistence configuration for ephemeral volumes has been flattened across all components. The nested `persistence.ephemeralDataVolume` structure has been replaced with a `persistence.type` field.
 
 {{< admonition type="note" >}}
-If you are migrating directly from 6.55.0 and have never used the `ephemeralDataVolume` configuration introduced in the community chart, this change does not require action on your existing values. However, be aware of the new `persistence.type` field when configuring persistence for components like the compactor or bloom-builder.
+If you are migrating directly from 6.55.0 and have never used the `ephemeralDataVolume` configuration introduced in the community chart, this change doesn't require action on your existing values. However, be aware of the new `persistence.type` field when configuring persistence for components like the compactor or bloom-builder.
 {{< /admonition >}}
 
 If you adopted the `ephemeralDataVolume` pattern from any intermediate community chart version, update your values as follows:
