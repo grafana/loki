@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"math"
-	"math/rand"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,6 +11,19 @@ import (
 
 	shardUtil "github.com/grafana/dskit/ring/shard"
 )
+
+// splitmix64Step advances a splitmix64 PRNG state and returns the next uint32.
+// splitmix64 has a 64-bit state, period 2^64, and excellent statistical quality.
+// Used in shuffleShard to replace math/rand (which requires initializing a 607-element
+// state vector from the seed, costing ~6 µs per call).
+func splitmix64Step(state *uint64) uint32 {
+	*state += 0x9e3779b97f4a7c15
+	z := *state
+	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9
+	z = (z ^ (z >> 27)) * 0x94d049bb133111eb
+	z ^= z >> 31
+	return uint32(z >> 32)
+}
 
 var ErrNoActivePartitionFound = fmt.Errorf("no active partition found")
 
@@ -202,8 +214,9 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 	}
 
 	// Initialise the random generator used to select instances in the ring.
-	// There are no zones
-	random := rand.New(rand.NewSource(shardUtil.ShuffleShardSeed(identifier, "")))
+	// There are no zones.
+	// splitmix64 initialises from the seed in ~5 ns vs ~6 µs for math/rand's 607-element state.
+	rngState := uint64(shardUtil.ShuffleShardSeed(identifier, ""))
 
 	// To select one more instance while guaranteeing the "consistency" property,
 	// we do pick a random value from the generator and resolve uniqueness collisions
@@ -214,7 +227,7 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 	exclude := map[int32]struct{}{}
 
 	for len(result) < size {
-		start := searchToken(r.ringTokens, random.Uint32())
+		start := searchToken(r.ringTokens, splitmix64Step(&rngState))
 		iterations := 0
 		found := false
 
