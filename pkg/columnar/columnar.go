@@ -9,14 +9,20 @@
 // [github.com/grafana/loki/v3/pkg/dataobj].
 package columnar
 
-import "github.com/grafana/loki/v3/pkg/memory"
+import (
+	"github.com/grafana/loki/v3/pkg/columnar/types"
+	"github.com/grafana/loki/v3/pkg/memory"
+)
 
 // A Datum is a piece of data which either represents an [Array] or a [Scalar].
 type Datum interface {
 	isDatum() // Type marker method.
 
-	// Kind returns the Kind of value represented by the Datum.
-	Kind() Kind
+	// Kind returns the logical type kind of the Datum.
+	Kind() types.Kind
+
+	// Type returns the logical type of the Datum.
+	Type() types.Type
 }
 
 // An Array is a sequence of elements of the same data type.

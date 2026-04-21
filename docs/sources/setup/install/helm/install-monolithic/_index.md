@@ -20,6 +20,10 @@ As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champio
 With the move to the Grafana-community repository, the chart numbering has changed. Major version updates signal breaking changes in the chart. For more information, refer to the [README](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading).
 {{< /admonition >}}
 
+{{< admonition type="note" >}}
+As of the community Helm chart version 12.0.0, `SingleBinary` has been renamed to `Monolithic`. If you are using `SingleBinary` deployment mode, you have to explicitly set `deploymentMode: Monolithic` in your values file to avoid breaking changes.
+{{< /admonition >}}
+
 ## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).

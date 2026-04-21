@@ -300,8 +300,8 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 		Metrics: w.wireMetrics,
 		Conn:    conn,
 
-		// Allow for a backlog of 128 frames before backpressure is applied.
-		Buffer: 128,
+		// Allow for a backlog of 8 frames before backpressure is applied.
+		Buffer: 8,
 
 		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) error {
 			switch msg := msg.(type) {

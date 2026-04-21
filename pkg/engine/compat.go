@@ -60,6 +60,10 @@ type rowBuilder struct {
 	metadataBuilder *labels.Builder
 	parsedBuilder   *labels.Builder
 	parsedEmptyKeys []string
+	// errorLabelKeys tracks error label names (__error__, __error_details__) that were added
+	// to lbsBuilder. These are excluded from the stream grouping key but included in stream
+	// labels for display, matching classic Loki engine behavior.
+	errorLabelKeys []string
 }
 
 func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
@@ -136,11 +140,11 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 
 		// One of the parsed columns
 		case ident.ColumnType() == types.ColumnTypeParsed || (ident.ColumnType() == types.ColumnTypeGenerated &&
-			shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails):
+			(shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails)):
 			parsedCol := col.(*array.String)
 
 			isErrorColumn := ident.ColumnType() == types.ColumnTypeGenerated &&
-				shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails
+				(shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails)
 
 			forEachNotNullRowColValue(numRows, parsedCol, func(rowIdx int) {
 				parsedVal := parsedCol.Value(rowIdx)
@@ -151,6 +155,11 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 				b.rowBuilders[rowIdx].parsedBuilder.Set(shortName, parsedVal)
 				if !b.categorizeLabels {
 					b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
+					// Track error labels separately - they're included in stream labels for display
+					// but excluded from stream grouping key to match classic Loki behavior.
+					if isErrorColumn {
+						b.rowBuilders[rowIdx].errorLabelKeys = append(b.rowBuilders[rowIdx].errorLabelKeys, shortName)
+					}
 				}
 				if b.rowBuilders[rowIdx].metadataBuilder.Get(shortName) != "" {
 					b.rowBuilders[rowIdx].metadataBuilder.Del(shortName)
@@ -197,6 +206,28 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 			lbsString = lbs.String()
 		}
 
+		// Compute stream grouping key by excluding error labels.
+		// Error labels are included in stream labels for display but excluded from grouping
+		// so that entries with different error details stay in the same stream.
+		streamKey := lbsString
+		if len(b.rowBuilders[rowIdx].errorLabelKeys) > 0 {
+			keyBuilder := labels.NewScratchBuilder(lbs.Len())
+			lbs.Range(func(label labels.Label) {
+				for _, errKey := range b.rowBuilders[rowIdx].errorLabelKeys {
+					if label.Name == errKey {
+						return // skip error labels in grouping key
+					}
+				}
+				keyBuilder.Add(label.Name, label.Value)
+			})
+			// Also add empty parsed keys (excluding error labels)
+			for _, key := range b.rowBuilders[rowIdx].parsedEmptyKeys {
+				keyBuilder.Add(key, "")
+			}
+			keyBuilder.Sort()
+			streamKey = keyBuilder.Labels().String()
+		}
+
 		entry := logproto.Entry{
 			Timestamp:          ts,
 			Line:               line,
@@ -206,12 +237,11 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 		b.resetRowBuilder(rowIdx)
 
 		// Add entry to appropriate stream
-		key := lbsString
-		idx, ok := b.streams[key]
+		idx, ok := b.streams[streamKey]
 		if !ok {
 			idx = len(b.data)
-			b.streams[key] = idx
-			b.data = append(b.data, push.Stream{Labels: key})
+			b.streams[streamKey] = idx
+			b.data = append(b.data, push.Stream{Labels: lbsString})
 		}
 		b.data[idx].Entries = append(b.data[idx].Entries, entry)
 		b.count++
@@ -241,6 +271,7 @@ func (b *streamsResultBuilder) ensureRowBuilders(newLen int) {
 			metadataBuilder: labels.NewBuilder(labels.EmptyLabels()),
 			parsedBuilder:   labels.NewBuilder(labels.EmptyLabels()),
 			parsedEmptyKeys: make([]string, 0),
+			errorLabelKeys:  make([]string, 0),
 		}
 	}
 }
@@ -252,6 +283,7 @@ func (b *streamsResultBuilder) resetRowBuilder(i int) {
 	b.rowBuilders[i].metadataBuilder.Reset(labels.EmptyLabels())
 	b.rowBuilders[i].parsedBuilder.Reset(labels.EmptyLabels())
 	b.rowBuilders[i].parsedEmptyKeys = b.rowBuilders[i].parsedEmptyKeys[:0]
+	b.rowBuilders[i].errorLabelKeys = b.rowBuilders[i].errorLabelKeys[:0]
 }
 
 func forEachNotNullRowColValue(numRows int, col arrow.Array, f func(rowIdx int)) {

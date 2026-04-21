@@ -273,6 +273,7 @@ func (s *SpecIndexConfig) ToDocumentConfiguration() *datamodel.DocumentConfigura
 		AllowUnknownExtensionContentDetection: s.AllowUnknownExtensionContentDetection,
 		TransformSiblingRefs:                  s.TransformSiblingRefs,
 		MergeReferencedProperties:             s.MergeReferencedProperties,
+		ResolveNestedRefsWithDocumentContext:  s.ResolveNestedRefsWithDocumentContext,
 		PropertyMergeStrategy:                 strategy,
 		SkipExternalRefResolution:             s.SkipExternalRefResolution,
 		Logger:                                s.Logger,

@@ -14,7 +14,8 @@
     changelogPath='CHANGELOG.md',
     checkTemplate='./.github/workflows/check.yml',
     distMakeTargets=['dist', 'packages'],
-    distRunsOn='ubuntu-latest',
+    distOptionalTargets=[],
+    distRunsOn='ubuntu-x64',
     dryRun=false,
     dockerUsername='grafana',
     golangCiLintVersion='v2.3.0',
@@ -81,7 +82,7 @@
                GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
              }) else {},
       version: $.build.version + $.common.job.withNeeds(validationSteps),
-      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets, distRunsOn)
+      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets, distOptionalTargets, distRunsOn)
             + $.common.job.withNeeds(['version'])
             + $.common.job.withPermissions({
               contents: 'write',

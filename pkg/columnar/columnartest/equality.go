@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -56,21 +57,21 @@ func RequireArraysEqual(t testing.TB, expect, actual columnar.Array, mask memory
 	require.Equal(t, expect.Len(), actual.Len(), "length mismatch")
 
 	switch expect.Kind() {
-	case columnar.KindNull:
+	case types.KindNull:
 		requireNullArraysEqual(t, expect.(*columnar.Null), actual.(*columnar.Null), mask)
-	case columnar.KindBool:
+	case types.KindBool:
 		requireArraysEqual(t, expect.(*columnar.Bool), actual.(*columnar.Bool), mask)
-	case columnar.KindInt32:
+	case types.KindInt32:
 		requireArraysEqual(t, expect.(*columnar.Number[int32]), actual.(*columnar.Number[int32]), mask)
-	case columnar.KindInt64:
+	case types.KindInt64:
 		requireArraysEqual(t, expect.(*columnar.Number[int64]), actual.(*columnar.Number[int64]), mask)
-	case columnar.KindUint32:
+	case types.KindUint32:
 		requireArraysEqual(t, expect.(*columnar.Number[uint32]), actual.(*columnar.Number[uint32]), mask)
-	case columnar.KindUint64:
+	case types.KindUint64:
 		requireArraysEqual(t, expect.(*columnar.Number[uint64]), actual.(*columnar.Number[uint64]), mask)
-	case columnar.KindUTF8:
+	case types.KindUTF8:
 		requireArraysEqual(t, expect.(*columnar.UTF8), actual.(*columnar.UTF8), mask)
-	case columnar.KindStruct:
+	case types.KindStruct:
 		requireStructArraysEqual(t, expect.(*columnar.Struct), actual.(*columnar.Struct), mask)
 	}
 }

@@ -331,14 +331,26 @@ func recordBatchBytes(rec arrow.RecordBatch) int64 {
 func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
+	startRead := time.Now()
 	if err := pipeline.Open(ctx); err != nil {
 		return 0, err
 	}
+	readDuration := time.Since(startRead)
 
-	var totalRows int
+	var (
+		totalRows        int
+		totalComputeTime time.Duration
+		totalWriteTime   time.Duration
+	)
 
 	for {
+		startCompute := time.Now()
 		rec, err := pipeline.Read(ctx)
+		computeDuration := time.Since(startCompute)
+		if err == nil || errors.Is(err, executor.EOF) {
+			t.Metrics.passComputeSeconds.Observe(computeDuration.Seconds())
+			totalComputeTime += computeDuration
+		}
 		if err != nil && errors.Is(err, executor.EOF) {
 			break
 		} else if err != nil {
@@ -363,11 +375,20 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 				level.Warn(logger).Log("msg", "failed to send result", "err", err)
 			}
 		}
+		writeDuration := time.Since(startSend)
+		t.Metrics.passWriteSeconds.Observe(writeDuration.Seconds())
+		totalWriteTime += writeDuration
+
 		region.Record(xcap.TaskRecordsSent.Observe(1))
 		region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
 		region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(rec)))
-		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
+		region.Record(xcap.TaskSendDuration.Observe(writeDuration.Seconds()))
 	}
+
+	// Task-wide phase durations.
+	t.Metrics.taskReadSeconds.Observe(readDuration.Seconds())
+	t.Metrics.taskComputeSeconds.Observe(totalComputeTime.Seconds())
+	t.Metrics.taskWriteSeconds.Observe(totalWriteTime.Seconds())
 
 	return totalRows, nil
 }
