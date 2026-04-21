@@ -270,7 +270,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		"duration_full", durFull,
 	)
 
-	metadataCtx.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
+	metadataCtx.AddWarning("Query was executed using the next-generation Loki query engine.")
 	span.SetStatus(codes.Ok, "")
 	return builder.Build(stats, metadataCtx), nil
 }
