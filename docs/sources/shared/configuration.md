@@ -3430,9 +3430,8 @@ dataobj_tee:
   # CLI flag: -distributor.dataobj-tee.rate-batch-window
   [rate_batch_window: <duration> | default = 0s]
 
-# Timeout for sending a record to the in-memory dataobj channel before returning
-# backpressure to the caller. Default 5s matches the previous hardcoded value.
-# Set to 0 for no timeout.
+# Timeout for sending a record to the in-memory queue before returning
+# backpressure to the caller. Defaults to 5s. Set to 0 for no timeout.
 # CLI flag: -distributor.inmemory-dataobj-push-timeout
 [inmemory_dataobj_push_timeout: <duration> | default = 5s]
 ```
