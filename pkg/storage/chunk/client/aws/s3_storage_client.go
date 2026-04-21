@@ -532,6 +532,15 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 			Bucket:       aws.String(a.bucketFromKey(objectKey)),
 			Key:          aws.String(a.convertObjectKey(objectKey, true)),
 			StorageClass: types.StorageClass(a.cfg.StorageClass),
+			// Buckets with Object Lock enabled reject PutObject requests
+			// that lack either Content-MD5 or one of the x-amz-checksum-*
+			// headers with `InvalidRequest: Content-MD5 OR x-amz-checksum-
+			// HTTP header is required for Put Object requests with Object
+			// Lock parameters`. Ask the SDK to compute and attach a
+			// SHA-256 trailer so compliance buckets accept uploads
+			// without forcing operators to buffer every chunk for MD5
+			// (grafana/loki#20088).
+			ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
 		}
 
 		if a.sseConfig != nil {
