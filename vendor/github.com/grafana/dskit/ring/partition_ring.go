@@ -29,9 +29,9 @@ type PartitionRing struct {
 	// ringTokens is a sorted list of all tokens registered by all partitions.
 	ringTokens Tokens
 
-	// partitionByToken is a map where they key is a registered token and the value is ID of the partition
-	// that registered that token.
-	partitionByToken map[Token]int32
+	// ringPartitionIDs is parallel to ringTokens: ringPartitionIDs[i] is the partition ID owning ringTokens[i].
+	// This enables O(1) token-to-partition lookup without a map.
+	ringPartitionIDs []int32
 
 	// ownersByPartition is a map where the key is the partition ID and the value is a list of owner IDs.
 	ownersByPartition map[int32][]string
@@ -73,10 +73,12 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		return nil, fmt.Errorf("failed to create shuffle shard cache: %w", err)
 	}
 
+	ringTokens, ringPartitionIDs := desc.tokensByPartition()
+
 	return &PartitionRing{
 		desc:                  desc,
-		ringTokens:            desc.tokens(),
-		partitionByToken:      desc.partitionByToken(),
+		ringTokens:            ringTokens,
+		ringPartitionIDs:      ringPartitionIDs,
 		ownersByPartition:     desc.ownersByPartition(),
 		activePartitionsCount: desc.activePartitionsCount(),
 		shuffleShardCache:     shuffleShardCache,
@@ -100,12 +102,7 @@ func (r *PartitionRing) ActivePartitionForKey(key uint32) (int32, error) {
 			i %= len(r.ringTokens)
 		}
 
-		token := r.ringTokens[i]
-
-		partitionID, ok := r.partitionByToken[Token(token)]
-		if !ok {
-			return 0, ErrInconsistentTokensInfo
-		}
+		partitionID := r.ringPartitionIDs[i]
 
 		partition, ok := r.desc.Partitions[partitionID]
 		if !ok {
@@ -229,10 +226,7 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 				p %= tokensCount
 			}
 
-			pid, ok := r.partitionByToken[Token(r.ringTokens[p])]
-			if !ok {
-				return nil, ErrInconsistentTokensInfo
-			}
+			pid := r.ringPartitionIDs[p]
 
 			// Ensure the partition has not already been included or excluded.
 			if _, ok := result[pid]; ok {
@@ -285,7 +279,41 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 		}
 	}
 
-	return NewPartitionRingWithOptions(r.desc.WithPartitions(result), r.opts)
+	return r.newSubring(result)
+}
+
+// newSubring builds a subring containing only the selected partition IDs, reusing the parent
+// ring's pre-sorted ringTokens and ringPartitionIDs arrays to avoid re-sorting and re-building
+// the token-to-partition map.
+func (r *PartitionRing) newSubring(selected map[int32]struct{}) (*PartitionRing, error) {
+	subDesc := r.desc.WithPartitions(selected)
+
+	capacity := len(selected) * optimalTokensPerInstance
+	subTokens := make(Tokens, 0, capacity)
+	subPIDs := make([]int32, 0, capacity)
+
+	for i, tok := range r.ringTokens {
+		pid := r.ringPartitionIDs[i]
+		if _, ok := selected[pid]; ok {
+			subTokens = append(subTokens, tok)
+			subPIDs = append(subPIDs, pid)
+		}
+	}
+
+	shuffleShardCache, err := newPartitionRingShuffleShardCache(r.opts.ShuffleShardCacheSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create shuffle shard cache: %w", err)
+	}
+
+	return &PartitionRing{
+		desc:                  subDesc,
+		ringTokens:            subTokens,
+		ringPartitionIDs:      subPIDs,
+		ownersByPartition:     subDesc.ownersByPartition(),
+		activePartitionsCount: subDesc.activePartitionsCount(),
+		shuffleShardCache:     shuffleShardCache,
+		opts:                  r.opts,
+	}, nil
 }
 
 // PartitionsCount returns the number of partitions in the ring.

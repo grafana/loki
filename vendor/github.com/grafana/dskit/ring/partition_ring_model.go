@@ -80,6 +80,43 @@ func (m *PartitionRingDesc) tokens() Tokens {
 	return allTokens
 }
 
+// tokensByPartition returns sorted token and partition-ID arrays in one pass, avoiding the
+// intermediate map that partitionByToken() would require.
+func (m *PartitionRingDesc) tokensByPartition() (Tokens, []int32) {
+	type tokenPID struct {
+		tok uint32
+		pid int32
+	}
+
+	capacity := len(m.Partitions) * optimalTokensPerInstance
+	pairs := make([]tokenPID, 0, capacity)
+
+	for partitionID, partition := range m.Partitions {
+		for _, tok := range partition.Tokens {
+			pairs = append(pairs, tokenPID{tok, partitionID})
+		}
+	}
+
+	slices.SortFunc(pairs, func(a, b tokenPID) int {
+		if a.tok < b.tok {
+			return -1
+		}
+		if a.tok > b.tok {
+			return 1
+		}
+		return 0
+	})
+
+	ringTokens := make(Tokens, len(pairs))
+	ringPIDs := make([]int32, len(pairs))
+	for i, p := range pairs {
+		ringTokens[i] = p.tok
+		ringPIDs[i] = p.pid
+	}
+
+	return ringTokens, ringPIDs
+}
+
 // partitionByToken returns a map where they key is a registered token and the value is ID of the partition
 // that registered that token.
 func (m *PartitionRingDesc) partitionByToken() map[Token]int32 {
