@@ -296,6 +296,41 @@ func Test_ConnectionStringWithBlob(t *testing.T) {
 	require.Equal(t, *expect, bloburl.URL())
 }
 
+// TestParseConnectionString_SAS_HonoursSuffixAndProtocol pins the fix
+// for #20275. The SAS branch previously hard-coded the scheme and
+// suffix, discarding user-supplied DefaultEndpointsProtocol and
+// EndpointSuffix values.
+func TestParseConnectionString_SAS_HonoursSuffixAndProtocol(t *testing.T) {
+	cases := []struct {
+		name  string
+		conn  string
+		want  string
+	}{
+		{
+			name: "default suffix and protocol",
+			conn: "AccountName=myAccount;SharedAccessSignature=foo",
+			want: "https://myAccount.blob.core.windows.net/?foo",
+		},
+		{
+			name: "custom suffix only",
+			conn: "AccountName=myAccount;EndpointSuffix=core.example.com;SharedAccessSignature=foo",
+			want: "https://myAccount.blob.core.example.com/?foo",
+		},
+		{
+			name: "custom suffix and protocol",
+			conn: "AccountName=myAccount;DefaultEndpointsProtocol=http;EndpointSuffix=core.example.com;SharedAccessSignature=foo",
+			want: "http://myAccount.blob.core.example.com/?foo",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseConnectionString(tc.conn)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got.ServiceURL)
+		})
+	}
+}
+
 func Test_ConfigValidation(t *testing.T) {
 	t.Run("expected validation error if environment is not supported", func(t *testing.T) {
 		cfg := &BlobStorageConfig{

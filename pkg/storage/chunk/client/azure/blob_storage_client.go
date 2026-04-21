@@ -520,6 +520,20 @@ func (b *BlobStorage) getServicePrincipalToken(authFunctions authFunctions) (*ad
 func (b *BlobStorage) servicePrincipalTokenFromFederatedToken(resource string, newOAuthConfigFunc func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error), newServicePrincipalTokenFromFederatedTokenFunc func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, callbacks ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error)) (*adal.ServicePrincipalToken, error) {
 	activeDirectoryEndpoint := b.cfg.ActiveDirectoryEndpoint
 
+	// The Azure Workload Identity webhook sets AZURE_AUTHORITY_HOST to the
+	// correct AD endpoint for the sovereign cloud the pod runs in (for
+	// example https://login.microsoftonline.us/ on Azure Government).
+	// Prefer it over the environment-derived endpoint so federated token
+	// auth works in sovereign clouds without also requiring users to set
+	// `environment: AzureUSGovernment` in the Loki config. Matches how
+	// the webhook already communicates AZURE_CLIENT_ID, AZURE_TENANT_ID
+	// and AZURE_FEDERATED_TOKEN_FILE to workloads (#21219).
+	if activeDirectoryEndpoint == "" {
+		if authorityHost := os.Getenv("AZURE_AUTHORITY_HOST"); authorityHost != "" {
+			activeDirectoryEndpoint = authorityHost
+		}
+	}
+
 	if activeDirectoryEndpoint == "" {
 		environmentName := azurePublicCloud
 		if b.cfg.Environment != azureGlobal {
@@ -704,17 +718,11 @@ func parseConnectionString(connectionString string) (ParsedConnectionString, err
 		return ParsedConnectionString{}, errors.New("connection string missing AccountName")
 	}
 
-	accountKey, ok := connStrMap["AccountKey"]
-	if !ok {
-		sharedAccessSignature, ok := connStrMap["SharedAccessSignature"]
-		if !ok {
-			return ParsedConnectionString{}, errors.New("connection string missing AccountKey and SharedAccessSignature")
-		}
-		return ParsedConnectionString{
-			ServiceURL: fmt.Sprintf("%v://%v.blob.%v/?%v", defaultScheme, accountName, defaultSuffix, sharedAccessSignature),
-		}, nil
-	}
-
+	// DefaultEndpointsProtocol / EndpointSuffix are honoured for both auth
+	// modes. The SharedAccessSignature branch used to hard-code
+	// https://<account>.blob.core.windows.net/?<sas> and silently dropped
+	// the user-supplied suffix/protocol (#20275). Read them once, before
+	// the auth-mode split, so both paths agree.
 	protocol, ok := connStrMap["DefaultEndpointsProtocol"]
 	if !ok {
 		protocol = defaultScheme
@@ -723,6 +731,17 @@ func parseConnectionString(connectionString string) (ParsedConnectionString, err
 	suffix, ok := connStrMap["EndpointSuffix"]
 	if !ok {
 		suffix = defaultSuffix
+	}
+
+	accountKey, ok := connStrMap["AccountKey"]
+	if !ok {
+		sharedAccessSignature, ok := connStrMap["SharedAccessSignature"]
+		if !ok {
+			return ParsedConnectionString{}, errors.New("connection string missing AccountKey and SharedAccessSignature")
+		}
+		return ParsedConnectionString{
+			ServiceURL: fmt.Sprintf("%v://%v.blob.%v/?%v", protocol, accountName, suffix, sharedAccessSignature),
+		}, nil
 	}
 
 	if blobEndpoint, ok := connStrMap["BlobEndpoint"]; ok {
