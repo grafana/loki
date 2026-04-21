@@ -42,6 +42,9 @@ type PartitionRing struct {
 	// activePartitionsCount is a saved count of active partitions to avoid recomputing it.
 	activePartitionsCount int
 
+	// maxPartitionID is the maximum partition ID in the ring, used to select the fast path in shuffleShard.
+	maxPartitionID int32
+
 	// opts is used to propagate the options to sub rings when shuffle sharding.
 	opts PartitionRingOptions
 }
@@ -73,12 +76,20 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		return nil, fmt.Errorf("failed to create shuffle shard cache: %w", err)
 	}
 
+	var maxPID int32
+	for pid := range desc.Partitions {
+		if pid > maxPID {
+			maxPID = pid
+		}
+	}
+
 	return &PartitionRing{
 		desc:                  desc,
 		ringTokens:            desc.tokens(),
 		partitionByToken:      desc.partitionByToken(),
 		ownersByPartition:     desc.ownersByPartition(),
 		activePartitionsCount: desc.activePartitionsCount(),
+		maxPartitionID:        maxPID,
 		shuffleShardCache:     shuffleShardCache,
 		opts:                  opts,
 	}, nil
@@ -213,6 +224,89 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 	// (if any) continuing walking the ring.
 	tokensCount := len(r.ringTokens)
 
+	// Fast path: partition IDs fit in a uint64 bitset — zero heap allocations for tracking.
+	if r.maxPartitionID < 64 {
+		var resultBits, excludeBits uint64
+		var resultPIDs [64]int32
+		resultCount := 0
+
+		for resultCount < size {
+			start := searchToken(r.ringTokens, random.Uint32())
+			iterations := 0
+			found := false
+
+			for p := start; !found && iterations < tokensCount; p++ {
+				iterations++
+
+				// Wrap p around in the ring.
+				if p >= tokensCount {
+					p %= tokensCount
+				}
+
+				pid, ok := r.partitionByToken[Token(r.ringTokens[p])]
+				if !ok {
+					return nil, ErrInconsistentTokensInfo
+				}
+
+				// Ensure the partition has not already been included or excluded.
+				bit := uint64(1) << uint(pid)
+				if resultBits&bit != 0 || excludeBits&bit != 0 {
+					continue
+				}
+
+				part, ok := r.desc.Partitions[pid]
+				if !ok {
+					return nil, ErrInconsistentTokensInfo
+				}
+
+				// PENDING partitions should be skipped because they're not ready for read or write yet,
+				// and they don't need to be looked back.
+				if part.IsPending() {
+					excludeBits |= bit
+					continue
+				}
+
+				var (
+					withinLookbackPeriod = lookbackPeriod > 0 && part.GetStateTimestamp() >= lookbackUntil
+					shouldExtend         = withinLookbackPeriod
+					shouldInclude        = part.IsActive() || withinLookbackPeriod
+				)
+
+				// Either include or exclude the found partition.
+				if shouldInclude {
+					resultBits |= bit
+					resultPIDs[resultCount] = pid
+					resultCount++
+				} else {
+					excludeBits |= bit
+				}
+
+				// Extend the shard, if requested.
+				if shouldExtend {
+					size++
+				}
+
+				// We can stop searching for other partitions only if this partition was included
+				// and no extension was requested, which means it's the "stop partition" for this cycle.
+				if shouldInclude && !shouldExtend {
+					found = true
+				}
+			}
+
+			// If we iterated over all tokens, and no new partition has been found, we can stop looking for more partitions.
+			if !found {
+				break
+			}
+		}
+
+		result := make(map[int32]struct{}, resultCount)
+		for _, pid := range resultPIDs[:resultCount] {
+			result[pid] = struct{}{}
+		}
+		return NewPartitionRingWithOptions(r.desc.WithPartitions(result), r.opts)
+	}
+
+	// Slow path: partition IDs ≥ 64 require map-based tracking.
 	result := make(map[int32]struct{}, size)
 	exclude := map[int32]struct{}{}
 
@@ -242,22 +336,22 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 				continue
 			}
 
-			p, ok := r.desc.Partitions[pid]
+			part, ok := r.desc.Partitions[pid]
 			if !ok {
 				return nil, ErrInconsistentTokensInfo
 			}
 
 			// PENDING partitions should be skipped because they're not ready for read or write yet,
 			// and they don't need to be looked back.
-			if p.IsPending() {
+			if part.IsPending() {
 				exclude[pid] = struct{}{}
 				continue
 			}
 
 			var (
-				withinLookbackPeriod = lookbackPeriod > 0 && p.GetStateTimestamp() >= lookbackUntil
+				withinLookbackPeriod = lookbackPeriod > 0 && part.GetStateTimestamp() >= lookbackUntil
 				shouldExtend         = withinLookbackPeriod
-				shouldInclude        = p.IsActive() || withinLookbackPeriod
+				shouldInclude        = part.IsActive() || withinLookbackPeriod
 			)
 
 			// Either include or exclude the found partition.
