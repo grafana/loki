@@ -35,8 +35,6 @@ var SupportedStorageTypes = []string{
 	StorageTypeNoop,
 }
 
-var DeprecatedStorageTypes = []string{}
-
 var UnsupportedStorageTypes = []string{
 	StorageTypeAWSDynamo,
 	StorageTypeBigTable,

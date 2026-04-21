@@ -526,8 +526,6 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 		}
 
-	case util.StringsContain(types.DeprecatedStorageTypes, storeType):
-		level.Warn(logger).Log("msg", fmt.Sprintf("%s is deprecated. Please use one of the supported object stores: %s", storeType, strings.Join(types.SupportedStorageTypes, ", ")))
 	}
 
 	return nil, fmt.Errorf("unrecognized chunk client type %s, choose one of: %s", name, strings.Join(types.SupportedStorageTypes, ", "))

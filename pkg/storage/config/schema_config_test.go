@@ -239,34 +239,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 			},
 			err: nil,
 		},
-		"should fail if chunks prefix is missing on IndexType: aws-dynamo": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "aws-dynamo",
-						ObjectType: "aws-dynamo",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: grpc-store": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "grpc-store",
-						ObjectType: "grpc-store",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
 		"invalid schema with same from time configs": {
 			config: &SchemaConfig{
 				Configs: []PeriodConfig{

@@ -103,8 +103,7 @@ func validateSchemaValues(c *Config) []error {
 				errs = append(errs, fmt.Errorf("unrecognized `object_store` type `%s`, which also does not match any named_stores. Choose one of: %s. Or choose a named_store", cfg.ObjectType, strings.Join(bucket.SupportedBackends, ", ")))
 			}
 		} else if !util.StringsContain(types.TestingStorageTypes, cfg.ObjectType) &&
-			!util.StringsContain(types.SupportedStorageTypes, cfg.ObjectType) &&
-			!util.StringsContain(types.DeprecatedStorageTypes, cfg.ObjectType) {
+			!util.StringsContain(types.SupportedStorageTypes, cfg.ObjectType) {
 			if !c.StorageConfig.NamedStores.Exists(cfg.ObjectType) {
 				errs = append(errs, fmt.Errorf("unrecognized `object_store` type `%s`, which also does not match any named_stores. Choose one of: %s. Or choose a named_store", cfg.ObjectType, strings.Join(types.SupportedStorageTypes, ", ")))
 			}
