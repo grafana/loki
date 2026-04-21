@@ -520,6 +520,20 @@ func (b *BlobStorage) getServicePrincipalToken(authFunctions authFunctions) (*ad
 func (b *BlobStorage) servicePrincipalTokenFromFederatedToken(resource string, newOAuthConfigFunc func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error), newServicePrincipalTokenFromFederatedTokenFunc func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, callbacks ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error)) (*adal.ServicePrincipalToken, error) {
 	activeDirectoryEndpoint := b.cfg.ActiveDirectoryEndpoint
 
+	// The Azure Workload Identity webhook sets AZURE_AUTHORITY_HOST to the
+	// correct AD endpoint for the sovereign cloud the pod runs in (for
+	// example https://login.microsoftonline.us/ on Azure Government).
+	// Prefer it over the environment-derived endpoint so federated token
+	// auth works in sovereign clouds without also requiring users to set
+	// `environment: AzureUSGovernment` in the Loki config. Matches how
+	// the webhook already communicates AZURE_CLIENT_ID, AZURE_TENANT_ID
+	// and AZURE_FEDERATED_TOKEN_FILE to workloads (#21219).
+	if activeDirectoryEndpoint == "" {
+		if authorityHost := os.Getenv("AZURE_AUTHORITY_HOST"); authorityHost != "" {
+			activeDirectoryEndpoint = authorityHost
+		}
+	}
+
 	if activeDirectoryEndpoint == "" {
 		environmentName := azurePublicCloud
 		if b.cfg.Environment != azureGlobal {
