@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -614,15 +615,26 @@ pattern_rate_threshold: 0.0
 }
 
 func TestLimits_PolicyOverrideLimits(t *testing.T) {
+	boolPtr := func(v bool) *bool {
+		return &v
+	}
+
 	limits := &Limits{
+		RejectOldSamples: true,
 		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
 			"finance": {
 				MaxLocalStreamsPerUser:  100,
 				MaxGlobalStreamsPerUser: 1000,
+				RejectOldSamples:        boolPtr(false),
 			},
 			"ops": {
 				MaxLocalStreamsPerUser:  50,
 				MaxGlobalStreamsPerUser: 500,
+				RejectOldSamples:        boolPtr(true),
+			},
+			"inherited": {
+				MaxLocalStreamsPerUser:  25,
+				MaxGlobalStreamsPerUser: 250,
 			},
 		},
 	}
@@ -637,22 +649,27 @@ func TestLimits_PolicyOverrideLimits(t *testing.T) {
 	limit, ok := overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
 	require.True(t, ok)
 	require.Equal(t, 1000, limit)
+	require.False(t, overrides.PolicyRejectOldSamples("tenant1", "finance"))
 	require.Equal(t, 50, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "ops"))
 	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "ops")
 	require.True(t, ok)
 	require.Equal(t, 500, limit)
+	require.True(t, overrides.PolicyRejectOldSamples("tenant1", "ops"))
+	require.True(t, overrides.PolicyRejectOldSamples("tenant1", "inherited"))
 
 	// Test non-existent policy returns 0, false
 	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "nonexistent"))
 	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "nonexistent")
 	require.False(t, ok)
 	require.Equal(t, 0, limit)
+	require.True(t, overrides.PolicyRejectOldSamples("tenant1", "nonexistent"))
 
 	// Test empty policy returns 0, false
 	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", ""))
 	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "")
 	require.False(t, ok)
 	require.Equal(t, 0, limit)
+	require.True(t, overrides.PolicyRejectOldSamples("tenant1", ""))
 
 	// Test nil PolicyOverrideLimits returns 0, false
 	limits.PolicyOverrideLimits = nil
@@ -660,6 +677,57 @@ func TestLimits_PolicyOverrideLimits(t *testing.T) {
 	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
 	require.False(t, ok)
 	require.Equal(t, 0, limit)
+	require.True(t, overrides.PolicyRejectOldSamples("tenant1", "finance"))
+}
+
+func TestLimits_PolicyOverrideLimitsRejectOldSamplesRoundTrip(t *testing.T) {
+	inputYAML := `
+policy_override_limits:
+  finance:
+    max_streams_per_user: 100
+    max_global_streams_per_user: 1000
+    reject_old_samples: false
+  ops:
+    max_streams_per_user: 50
+    max_global_streams_per_user: 500
+    reject_old_samples: true
+`
+
+	var limits Limits
+	require.NoError(t, yaml.Unmarshal([]byte(inputYAML), &limits))
+	require.NotNil(t, limits.PolicyOverrideLimits["finance"].RejectOldSamples)
+	require.False(t, *limits.PolicyOverrideLimits["finance"].RejectOldSamples)
+	require.NotNil(t, limits.PolicyOverrideLimits["ops"].RejectOldSamples)
+	require.True(t, *limits.PolicyOverrideLimits["ops"].RejectOldSamples)
+
+	out, err := yaml.Marshal(limits)
+	require.NoError(t, err)
+	output := string(out)
+	require.Contains(t, output, "reject_old_samples: false")
+	require.Contains(t, output, "reject_old_samples: true")
+}
+
+func TestLimits_PolicyOverrideLimitsBackwardCompatibleMarshalUnmarshal(t *testing.T) {
+	inputYAML := `
+policy_override_limits:
+  finance:
+    max_streams_per_user: 100
+    max_global_streams_per_user: 1000
+  ops:
+    max_streams_per_user: 50
+    max_global_streams_per_user: 500
+`
+
+	var limits Limits
+	require.NoError(t, yaml.Unmarshal([]byte(inputYAML), &limits))
+	require.Nil(t, limits.PolicyOverrideLimits["finance"].RejectOldSamples)
+	require.Nil(t, limits.PolicyOverrideLimits["ops"].RejectOldSamples)
+
+	out, err := yaml.Marshal(limits)
+	require.NoError(t, err)
+	output := string(out)
+	require.NotContains(t, output, "\n    reject_old_samples:")
+	require.True(t, strings.Contains(output, "policy_override_limits:"))
 }
 
 func TestOTLPConfig(t *testing.T) {

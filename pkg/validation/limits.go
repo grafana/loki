@@ -799,6 +799,22 @@ func (o *Overrides) RejectOldSamples(userID string) bool {
 	return o.getOverridesForUser(userID).RejectOldSamples
 }
 
+// PolicyRejectOldSamples returns the old-sample rejection setting for a specific
+// policy. If no policy-specific override is configured, it falls back to the
+// tenant-level setting.
+func (o *Overrides) PolicyRejectOldSamples(userID, policy string) bool {
+	limits := o.getOverridesForUser(userID)
+	if policy == "" || len(limits.PolicyOverrideLimits) == 0 {
+		return limits.RejectOldSamples
+	}
+
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists && policyLimits.RejectOldSamples != nil {
+		return *policyLimits.RejectOldSamples
+	}
+
+	return limits.RejectOldSamples
+}
+
 // RejectOldSamplesMaxAge returns the age at which samples should be rejected.
 func (o *Overrides) RejectOldSamplesMaxAge(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).RejectOldSamplesMaxAge)
@@ -1474,8 +1490,9 @@ type OverwriteMarshalingStringMap struct {
 
 // PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
 type PolicyOverridableLimits struct {
-	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"max_streams_per_user for a specific policy. 0 means unlimited."`
-	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"max_global_streams_per_user for a specific policy. 0 means unlimited."`
+	MaxLocalStreamsPerUser  int   `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"max_streams_per_user for a specific policy. 0 means unlimited."`
+	MaxGlobalStreamsPerUser int   `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"max_global_streams_per_user for a specific policy. 0 means unlimited."`
+	RejectOldSamples        *bool `yaml:"reject_old_samples,omitempty" json:"reject_old_samples,omitempty" doc:"reject_old_samples for a specific policy. When unset, the tenant-level setting is used."`
 }
 
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {
