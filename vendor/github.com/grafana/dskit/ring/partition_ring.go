@@ -73,6 +73,10 @@ type PartitionRing struct {
 	// newSubring compute the subring token count in O(k) instead of O(total_tokens).
 	pidTokenCounts [64]uint16
 
+	// allPIDsFitBitset is true when every partition ID in desc is in [0, 63], enabling the
+	// zero-alloc bitset fast path in shuffleShard.
+	allPIDsFitBitset bool
+
 	// opts is used to propagate the options to sub rings when shuffle sharding.
 	opts PartitionRingOptions
 }
@@ -205,8 +209,11 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 	ringTokens, ringPartitionIDs := desc.tokensByPartition()
 
 	var pidTokenCounts [64]uint16
+	allPIDsFitBitset := true
 	for _, pid := range ringPartitionIDs {
-		if uint32(pid) < 64 {
+		if uint32(pid) >= 64 {
+			allPIDsFitBitset = false
+		} else {
 			pidTokenCounts[pid]++
 		}
 	}
@@ -219,6 +226,7 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		activePartitionsCount: desc.activePartitionsCount(),
 		shuffleShardCache:     shuffleShardCache,
 		pidTokenCounts:        pidTokenCounts,
+		allPIDsFitBitset:      allPIDsFitBitset,
 		opts:                  opts,
 	}, nil
 }
@@ -346,16 +354,71 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 		lookbackUntil = now.Add(-lookbackPeriod).Unix()
 	}
 
-	// Initialise the random generator used to select instances in the ring.
-	// There are no zones.
 	// splitmix64 initialises from the seed in ~5 ns vs ~6 µs for math/rand's 607-element state.
 	rngState := uint64(shardUtil.ShuffleShardSeed(identifier, ""))
-
-	// To select one more instance while guaranteeing the "consistency" property,
-	// we do pick a random value from the generator and resolve uniqueness collisions
-	// (if any) continuing walking the ring.
 	tokensCount := r.tokenLen()
 
+	// Bitset fast path: no map allocs when all PIDs fit in a uint64 (PIDs 0-63).
+	// Uses two uint64 bitsets instead of result/exclude maps, then calls newSubringFromBits
+	// to build the compact subring without ever constructing a map[int32]struct{}.
+	if r.allPIDsFitBitset && r.parent == nil && len(r.ringTokens) <= 65535 {
+		var resultBits, excludeBits uint64
+		resultCount := 0
+
+		for resultCount < size {
+			start := r.searchRingToken(splitmix64Step(&rngState))
+			iterations := 0
+			found := false
+
+			for p := start; !found && iterations < tokensCount; p++ {
+				iterations++
+				if p >= tokensCount {
+					p %= tokensCount
+				}
+
+				pid := r.ringPartitionIDs[p]
+				pidBit := uint64(1) << uint(pid)
+
+				if resultBits&pidBit != 0 || excludeBits&pidBit != 0 {
+					continue
+				}
+
+				part, ok := r.desc.Partitions[pid]
+				if !ok {
+					return nil, ErrInconsistentTokensInfo
+				}
+
+				if part.IsPending() {
+					excludeBits |= pidBit
+					continue
+				}
+
+				withinLookbackPeriod := lookbackPeriod > 0 && part.GetStateTimestamp() >= lookbackUntil
+				shouldInclude := part.IsActive() || withinLookbackPeriod
+
+				if shouldInclude {
+					resultBits |= pidBit
+					resultCount++
+				} else {
+					excludeBits |= pidBit
+				}
+				if withinLookbackPeriod {
+					size++
+				}
+				if shouldInclude && !withinLookbackPeriod {
+					found = true
+				}
+			}
+
+			if !found {
+				break
+			}
+		}
+
+		return r.newSubringFromBits(resultBits)
+	}
+
+	// Fallback: map-based approach for PIDs ≥ 64.
 	result := make(map[int32]struct{}, size)
 	exclude := map[int32]struct{}{}
 
@@ -550,6 +613,32 @@ func (r *PartitionRing) newSubring(selected map[int32]struct{}) (*PartitionRing,
 		ownersByPartition:     subDesc.ownersByPartition(),
 		activePartitionsCount: subDesc.activePartitionsCount(),
 		shuffleShardCache:     shuffleShardCache,
+		opts:                  r.opts,
+	}, nil
+}
+
+// newSubringFromBits builds a compact subring from a uint64 bitset of selected PIDs.
+// Zero-alloc fast path used by shuffleShard when allPIDsFitBitset is true: avoids
+// constructing a map[int32]struct{} entirely (saves 2 allocs vs newSubring).
+func (r *PartitionRing) newSubringFromBits(selectedBits uint64) (*PartitionRing, error) {
+	// Combined O(k) loop: count tokens and active partitions using precomputed pidTokenCounts.
+	tokenCount := 0
+	activeParts := 0
+	for b := selectedBits; b != 0; b &= b - 1 {
+		pid := int32(bits.TrailingZeros64(b))
+		tokenCount += int(r.pidTokenCounts[pid])
+		if part, ok := r.desc.Partitions[pid]; ok && part.IsActive() {
+			activeParts++
+		}
+	}
+
+	return &PartitionRing{
+		desc:                  r.desc,
+		parent:                r,
+		selectedBits:          selectedBits,
+		tokenCountVal:         tokenCount,
+		ownersByPartition:     r.ownersByPartition,
+		activePartitionsCount: activeParts,
 		opts:                  r.opts,
 	}, nil
 }
