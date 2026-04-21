@@ -20,7 +20,7 @@ services:
       - loki
 
   grafana:
-    image: grafana/grafana:12.4.3@sha256:2e986801428cd689c2358605289c90ab37d2b39e24808874971f54c99bcdc412
+    image: grafana/grafana:13.0.1@sha256:0f86bada30d65ef9d0183b90c1e2682ac92d53d95da8bed322b984ea78a4a73a
     ports:
       - "3000:3000"
     environment:
