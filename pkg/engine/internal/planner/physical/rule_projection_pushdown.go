@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -186,9 +187,17 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 			continue
 		}
 
-		// Only collect ambiguous columns to push to parse nodes
-		if !requestedKeys[colExpr.Ref.Column] {
-			requestedKeys[colExpr.Ref.Column] = true
+		// Strip the "_extracted" suffix before adding to requestedKeys.
+		// Column names like "cluster_extracted" are post-ColumnCompat names: ColumnCompat
+		// renames a logfmt-parsed field "cluster" to "cluster_extracted" when a stream label
+		// "cluster" already exists. But the logfmt tokenizer filters keys against requestedKeys
+		// BEFORE ColumnCompat runs, so it needs the original key name ("cluster"), not the
+		// renamed one ("cluster_extracted"). Passing "cluster_extracted" causes the tokenizer
+		// to skip the field → the column is never populated → the downstream filter matches
+		// nothing → 0 results.
+		key := strings.TrimSuffix(colExpr.Ref.Column, "_extracted")
+		if !requestedKeys[key] {
+			requestedKeys[key] = true
 		}
 	}
 
