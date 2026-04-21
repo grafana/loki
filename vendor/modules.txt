@@ -2485,7 +2485,7 @@ gotest.tools/internal/format
 gotest.tools/internal/source
 # gotest.tools/v3 v3.5.2
 ## explicit; go 1.17
-# k8s.io/apimachinery v0.35.3
+# k8s.io/apimachinery v0.35.4
 ## explicit; go 1.25.0
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
