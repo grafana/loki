@@ -740,3 +740,83 @@ func TestCreateOrUpdateLokiStack_WhenInvalidQueryTimeout_SetDegraded(t *testing.
 	require.Error(t, err)
 	require.Equal(t, degradedErr, err)
 }
+
+func TestCreateOrUpdateLokiStack_WhenAuthModeIsOIDC(t *testing.T) {
+	tests := []struct {
+		name      string
+		stack     *lokiv1.LokiStack
+		wantError bool
+		errMsg    string
+	}{
+		{
+			name: "valid - static mode with OIDC",
+			stack: &lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+						Authentication: []lokiv1.AuthenticationSpec{
+							{
+								TenantName: "test",
+								TenantID:   "test",
+								OIDC: &lokiv1.OIDCSpec{
+									IssuerURL: "https://example.com",
+									Secret: &lokiv1.TenantSecretSpec{
+										Name: "test-secret",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "valid - openshift-logging without OIDC",
+			stack: &lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "invalid - openshift-logging with OIDC",
+			stack: &lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+						Authentication: []lokiv1.AuthenticationSpec{
+							{
+								TenantName: "test",
+								TenantID:   "test",
+								OIDC: &lokiv1.OIDCSpec{
+									IssuerURL: "https://example.com",
+									Secret: &lokiv1.TenantSecretSpec{
+										Name: "test-secret",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantError: true,
+			errMsg:    "OIDC authentication is not supported in openshift-logging tenant",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateTenantsConfiguration(&tt.stack.Spec)
+			if tt.wantError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

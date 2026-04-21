@@ -49,6 +49,10 @@ func CreateOrUpdateLokiStack(
 		return nil, kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
+	if err := validateTenantsConfiguration(&stack.Spec); err != nil {
+		return nil, err
+	}
+
 	img := os.Getenv(manifests.EnvRelatedImageLoki)
 	if img == "" {
 		img = manifests.DefaultContainerImage
@@ -259,4 +263,21 @@ func isNamespacedResource(obj client.Object) bool {
 	default:
 		return true
 	}
+}
+
+func validateTenantsConfiguration(spec *lokiv1.LokiStackSpec) error {
+	if spec.Tenants == nil {
+		return nil
+	}
+
+	mode := spec.Tenants.Mode
+	if mode == lokiv1.OpenshiftLogging || mode == lokiv1.OpenshiftNetwork {
+		for _, auth := range spec.Tenants.Authentication {
+			if auth.OIDC != nil {
+				errMsg := fmt.Sprintf("OIDC authentication is not supported in %s tenant", mode)
+				return kverrors.New(errMsg)
+			}
+		}
+	}
+	return nil
 }
