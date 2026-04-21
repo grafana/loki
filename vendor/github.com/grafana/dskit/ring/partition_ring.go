@@ -33,10 +33,6 @@ type PartitionRing struct {
 	// that registered that token.
 	partitionByToken map[Token]int32
 
-	// ringPartitionIDs is a parallel array to ringTokens: ringPartitionIDs[i] is the partition ID
-	// that owns ringTokens[i]. This avoids map lookups in the shuffleShard hot path.
-	ringPartitionIDs []int32
-
 	// ownersByPartition is a map where the key is the partition ID and the value is a list of owner IDs.
 	ownersByPartition map[int32][]string
 
@@ -77,18 +73,10 @@ func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptio
 		return nil, fmt.Errorf("failed to create shuffle shard cache: %w", err)
 	}
 
-	tokens := desc.tokens()
-	pbt := desc.partitionByToken()
-	partitionIDs := make([]int32, len(tokens))
-	for i, tok := range tokens {
-		partitionIDs[i] = pbt[Token(tok)]
-	}
-
 	return &PartitionRing{
 		desc:                  desc,
-		ringTokens:            tokens,
-		partitionByToken:      pbt,
-		ringPartitionIDs:      partitionIDs,
+		ringTokens:            desc.tokens(),
+		partitionByToken:      desc.partitionByToken(),
 		ownersByPartition:     desc.ownersByPartition(),
 		activePartitionsCount: desc.activePartitionsCount(),
 		shuffleShardCache:     shuffleShardCache,
@@ -241,7 +229,10 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 				p %= tokensCount
 			}
 
-			pid := r.ringPartitionIDs[p]
+			pid, ok := r.partitionByToken[Token(r.ringTokens[p])]
+			if !ok {
+				return nil, ErrInconsistentTokensInfo
+			}
 
 			// Ensure the partition has not already been included or excluded.
 			if _, ok := result[pid]; ok {
