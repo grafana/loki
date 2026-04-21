@@ -288,15 +288,37 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 func (r *PartitionRing) newSubring(selected map[int32]struct{}) (*PartitionRing, error) {
 	subDesc := r.desc.WithPartitions(selected)
 
+	// Build a uint64 bitset for selected partition IDs when all IDs fit in 0..63.
+	// This replaces a map lookup per token with a single bit-test, saving ~3 ns × len(ringTokens).
+	var selectedBits uint64
+	allFitBitset := true
+	for pid := range selected {
+		if uint32(pid) >= 64 {
+			allFitBitset = false
+			break
+		}
+		selectedBits |= 1 << uint(pid)
+	}
+
 	capacity := len(selected) * optimalTokensPerInstance
 	subTokens := make(Tokens, 0, capacity)
 	subPIDs := make([]int32, 0, capacity)
 
-	for i, tok := range r.ringTokens {
-		pid := r.ringPartitionIDs[i]
-		if _, ok := selected[pid]; ok {
-			subTokens = append(subTokens, tok)
-			subPIDs = append(subPIDs, pid)
+	if allFitBitset {
+		for i, tok := range r.ringTokens {
+			pid := r.ringPartitionIDs[i]
+			if selectedBits>>uint(pid)&1 != 0 {
+				subTokens = append(subTokens, tok)
+				subPIDs = append(subPIDs, pid)
+			}
+		}
+	} else {
+		for i, tok := range r.ringTokens {
+			pid := r.ringPartitionIDs[i]
+			if _, ok := selected[pid]; ok {
+				subTokens = append(subTokens, tok)
+				subPIDs = append(subPIDs, pid)
+			}
 		}
 	}
 
