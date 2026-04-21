@@ -187,10 +187,16 @@ type PartitionRingOptions struct {
 	ShuffleShardCacheSize int
 }
 
+// DefaultShuffleShardCacheSize is the default maximum number of shuffle-shard results
+// cached per PartitionRing. A bounded LRU is used so the internal map never
+// grows without limit; unbounded growth causes repeated map-bucket reallocations
+// that dominate madvise/GC CPU cost in high-throughput workloads.
+const DefaultShuffleShardCacheSize = 1024
+
 // DefaultPartitionRingOptions returns the default options for creating a PartitionRing.
 func DefaultPartitionRingOptions() PartitionRingOptions {
 	return PartitionRingOptions{
-		ShuffleShardCacheSize: 0,
+		ShuffleShardCacheSize: DefaultShuffleShardCacheSize,
 	}
 }
 
