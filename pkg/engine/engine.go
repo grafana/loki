@@ -288,6 +288,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	durFull := time.Since(startTime)
 	logValues := []any{
 		"msg", "finished executing",
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"query", params.QueryString(),
 		"length", params.End().Sub(params.Start()).String(),
 		"step", params.Step().String(),
