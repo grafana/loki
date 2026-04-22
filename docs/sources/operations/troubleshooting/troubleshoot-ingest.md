@@ -793,6 +793,61 @@ Requests are timing out due to slow response times or network issues.
 - HTTP status: 504 Gateway Timeout (or client-side timeout)
 - Configurable per tenant: No
 
+### Error: Client canceled request (Code 499)
+
+**Error message:**
+
+`level=warn method=/logproto.Querier/GetChunkIDs duration=<duration> msg=gRPC err="rpc error: code = Code(499) desc = the request was cancelled by the client"`
+
+**Cause:**
+
+A downstream client (such as Grafana, a load balancer, or another Loki component) canceled a gRPC request before the server finished processing it. `Code(499)` is a non-standard gRPC status code derived from the HTTP 499 status ("Client Closed Request"), which Loki uses internally when it detects a Go `context.Canceled` error. Because it is not the standard gRPC `Canceled` code (code 1), the gRPC logging middleware logs it at `warn` level instead of `debug` level.
+
+The `method` field indicates which gRPC operation was interrupted. Common methods include `/logproto.Querier/GetChunkIDs`, `/logproto.Querier/Query`, and `/logproto.Querier/Series`. Although these are query-path operations, the error appears in ingester logs because ingesters serve gRPC read requests from queriers.
+
+Common triggers include:
+
+- A user cancels a running query in Grafana
+- A query timeout is reached in the query frontend, query scheduler, or a reverse proxy
+- The query frontend cancels redundant split or sharded sub-queries after it has enough results
+- A load balancer or ingress controller closes the connection due to its own timeout settings
+
+**Default configuration:**
+
+- Per-tenant query timeout: `query_timeout` in `limits_config` / `-querier.query-timeout` (default: 1m)
+- Loki server HTTP write timeout: `-server.http-server-write-timeout` (default: 30s)
+- Load balancer / reverse proxy timeout: depends on your infrastructure
+
+**Resolution:**
+
+* **Determine whether this is expected behavior.** Occasional Code(499) warnings are normal in production and indicate that a client disconnected before the server responded. These are safe to ignore if they occur infrequently.
+
+* **Investigate frequent occurrences.** If you see a high rate of Code(499) errors, check for:
+  - Queries that are too broad or slow, causing clients to time out
+  - Timeout mismatches between layers (for example, a load balancer timeout shorter than the Loki query timeout)
+  - Overloaded ingesters or queriers that cannot respond quickly enough
+
+* **Align timeouts across your stack.** Ensure that timeouts increase from outer layers inward so that Loki has time to respond before upstream components give up:
+
+  ```
+  Grafana timeout > Load balancer timeout > Query frontend timeout > Querier timeout
+  ```
+
+* **Check query performance.** Use Loki metrics to identify slow queries:
+
+   ```promql
+   histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[5m])) by (le, route))
+   ```
+
+* **Reduce log noise.** If the warnings are expected and you want to reduce log volume, increase the log level for the affected component to `error` using `-log.level=error`. Note that this suppresses all warn-level messages, not just Code(499) warnings.
+
+**Properties:**
+
+- Enforced by: gRPC logging middleware (dskit)
+- Retryable: N/A (the original client is no longer waiting for a response)
+- HTTP status: 499 (non-standard, client closed request)
+- Configurable per tenant: No
+
 ### Error: Service unavailable
 
 **Error message:**

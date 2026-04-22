@@ -3,7 +3,6 @@ package push
 import (
 	"compress/gzip"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,12 +16,11 @@ import (
 	"github.com/pierrec/lz4/v4"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlplabels"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/pkg/push"
@@ -37,11 +35,10 @@ const (
 	gzipContentEncoding = "gzip"
 	zstdContentEncoding = "zstd"
 	lz4ContentEncoding  = "lz4"
-	attrServiceName     = "service.name"
 
-	OTLPSeverityNumber = "severity_number"
-	OTLPSeverityText   = "severity_text"
-	OTLPEventName      = "event_name"
+	OTLPSeverityNumber = otlplabels.OTLPSeverityNumber
+	OTLPSeverityText   = otlplabels.OTLPSeverityText
+	OTLPEventName      = otlplabels.OTLPEventName
 
 	messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 )
@@ -165,59 +162,20 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		res := rls.At(i).Resource()
 		resAttrs := res.Attributes()
 
-		resourceAttributesAsStructuredMetadata := make(push.LabelsAdapter, 0, resAttrs.Len())
-		streamLabels := make(model.LabelSet, 30) // we have a default labels limit of 30 so just initialize the map of same size
+		resResult, err := otlplabels.ResourceAttrsToStreamLabels(resAttrs, otlpConfig, discoverServiceName)
+		if err != nil {
+			return nil, err
+		}
+
+		resourceAttributesAsStructuredMetadata := resResult.StructuredMetadata
+		streamLabels := resResult.StreamLabels
+
 		var pushedLabels model.LabelSet
 		if logServiceNameDiscovery {
-			pushedLabels = make(model.LabelSet, 30)
-		}
-
-		shouldDiscoverServiceName := len(discoverServiceName) > 0
-		hasServiceName := false
-		if v, ok := resAttrs.Get(attrServiceName); ok && v.AsString() != "" {
-			hasServiceName = true
-		}
-		var rangeErr error
-		resAttrs.Range(func(k string, v pcommon.Value) bool {
-			action := otlpConfig.ActionForResourceAttribute(k)
-			if action == Drop {
-				return true
+			pushedLabels = make(model.LabelSet, len(streamLabels))
+			for k, v := range streamLabels {
+				pushedLabels[k] = v
 			}
-
-			attributeAsLabels, err := attributeToLabels(k, v, "")
-			if err != nil {
-				rangeErr = err
-				return false
-			}
-			if action == IndexLabel {
-				for _, lbl := range attributeAsLabels {
-					streamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-					if logServiceNameDiscovery && pushedLabels != nil {
-						pushedLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-					}
-
-					if !hasServiceName && shouldDiscoverServiceName {
-						for _, labelName := range discoverServiceName {
-							if lbl.Name == labelName {
-								streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
-								hasServiceName = true
-								break
-							}
-						}
-					}
-				}
-			} else if action == StructuredMetadata {
-				resourceAttributesAsStructuredMetadata = append(resourceAttributesAsStructuredMetadata, attributeAsLabels...)
-			}
-
-			return true
-		})
-		if rangeErr != nil {
-			return nil, rangeErr
-		}
-
-		if !hasServiceName && shouldDiscoverServiceName {
-			streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(ServiceUnknown)
 		}
 
 		// this must be pushed to the end after log lines are also evaluated
@@ -285,9 +243,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser], resourceAttributesAsStructuredMetadata...)
 
 		for j := 0; j < sls.Len(); j++ {
-			scope := sls.At(j).Scope()
 			logs := sls.At(j).LogRecords()
-			scopeAttrs := scope.Attributes()
 
 			// it would be rare to have multiple scopes so if the entries slice is empty, pre-allocate it for the number of log entries
 			if cap(pushRequestsByStream[labelsStr].Entries) == 0 {
@@ -296,48 +252,11 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				pushRequestsByStream[labelsStr] = stream
 			}
 
-			// use fields and attributes from scope as structured metadata
-			scopeAttributesAsStructuredMetadata := make(push.LabelsAdapter, 0, scopeAttrs.Len()+3)
-			var rangeErr error
-			scopeAttrs.Range(func(k string, v pcommon.Value) bool {
-				action := otlpConfig.ActionForScopeAttribute(k)
-				if action == Drop {
-					return true
-				}
-
-				attributeAsLabels, err := attributeToLabels(k, v, "")
-				if err != nil {
-					rangeErr = err
-					return false
-				}
-				if action == StructuredMetadata {
-					scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, attributeAsLabels...)
-				}
-
-				return true
-			})
-			if rangeErr != nil {
-				return nil, rangeErr
+			scopeResult, err := otlplabels.ScopeAttrsToStructuredMetadata(sls, j, otlpConfig)
+			if err != nil {
+				return nil, err
 			}
-
-			if scopeName := scope.Name(); scopeName != "" {
-				scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, push.LabelAdapter{
-					Name:  "scope_name",
-					Value: scopeName,
-				})
-			}
-			if scopeVersion := scope.Version(); scopeVersion != "" {
-				scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, push.LabelAdapter{
-					Name:  "scope_version",
-					Value: scopeVersion,
-				})
-			}
-			if scopeDroppedAttributesCount := scope.DroppedAttributesCount(); scopeDroppedAttributesCount != 0 {
-				scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, push.LabelAdapter{
-					Name:  "scope_dropped_attributes_count",
-					Value: fmt.Sprintf("%d", scopeDroppedAttributesCount),
-				})
-			}
+			scopeAttributesAsStructuredMetadata := scopeResult.StructuredMetadata
 
 			scopeAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(scopeAttributesAsStructuredMetadata)
 			stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += int64(scopeAttributesAsStructuredMetadataSize)
@@ -481,176 +400,22 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.
 func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNameDiscovery bool, pushedLabels model.LabelSet) (model.LabelSet, push.Entry, error) {
-	// copy log attributes and all the fields from log(except log.Body) to structured metadata
-	logAttrs := log.Attributes()
-	structuredMetadata := make(push.LabelsAdapter, 0, logAttrs.Len()+8)
-	logLabels := make(model.LabelSet)
+	logResult, err := otlplabels.LogAttrsToLabels(log, otlpConfig)
+	if err != nil {
+		return nil, push.Entry{}, err
+	}
 
-	var rangeErr error
-	logAttrs.Range(func(k string, v pcommon.Value) bool {
-		action := otlpConfig.ActionForLogAttribute(k)
-		if action == Drop {
-			return true
+	if logServiceNameDiscovery && pushedLabels != nil {
+		for k, v := range logResult.IndexLabels {
+			pushedLabels[k] = v
 		}
-
-		// If the dedicated OTLP EventName field is set, skip any log attribute
-		// also named event_name to avoid duplicate entries. The first-class field
-		// takes precedence over the attribute.
-		if k == OTLPEventName && log.EventName() != "" {
-			return true
-		}
-
-		attributeAsLabels, err := attributeToLabels(k, v, "")
-		if err != nil {
-			rangeErr = err
-			return false
-		}
-		if action == StructuredMetadata {
-			structuredMetadata = append(structuredMetadata, attributeAsLabels...)
-		}
-
-		if action == IndexLabel {
-			for _, lbl := range attributeAsLabels {
-				logLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-				if logServiceNameDiscovery && pushedLabels != nil {
-					pushedLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-				}
-			}
-		}
-
-		return true
-	})
-	if rangeErr != nil {
-		return nil, push.Entry{}, rangeErr
 	}
 
-	// if log.Timestamp() is 0, we would have already stored log.ObservedTimestamp as log timestamp so no need to store again in structured metadata
-	if log.Timestamp() != 0 && log.ObservedTimestamp() != 0 {
-		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  "observed_timestamp",
-			Value: fmt.Sprintf("%d", log.ObservedTimestamp().AsTime().UnixNano()),
-		})
-	}
-
-	if severityNum := log.SeverityNumber(); severityNum != plog.SeverityNumberUnspecified {
-		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  OTLPSeverityNumber,
-			Value: fmt.Sprintf("%d", severityNum),
-		})
-	}
-	if severityText := log.SeverityText(); severityText != "" {
-		// Add severity_text as an index label if configured
-		if otlpConfig.SeverityTextAsLabel {
-			logLabels[model.LabelName(OTLPSeverityText)] = model.LabelValue(severityText)
-			if logServiceNameDiscovery && pushedLabels != nil {
-				pushedLabels[model.LabelName(OTLPSeverityText)] = model.LabelValue(severityText)
-			}
-		}
-
-		// Always add severity_text as structured metadata
-		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  OTLPSeverityText,
-			Value: severityText,
-		})
-	}
-
-	if droppedAttributesCount := log.DroppedAttributesCount(); droppedAttributesCount != 0 {
-		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  "dropped_attributes_count",
-			Value: fmt.Sprintf("%d", droppedAttributesCount),
-		})
-	}
-	if logRecordFlags := log.Flags(); logRecordFlags != 0 {
-		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  "flags",
-			Value: fmt.Sprintf("%d", logRecordFlags),
-		})
-	}
-
-	if traceID := log.TraceID(); !traceID.IsEmpty() {
-		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  "trace_id",
-			Value: hex.EncodeToString(traceID[:]),
-		})
-	}
-	if spanID := log.SpanID(); !spanID.IsEmpty() {
-		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  "span_id",
-			Value: hex.EncodeToString(spanID[:]),
-		})
-	}
-	if eventName := log.EventName(); eventName != "" {
-		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-			Name:  OTLPEventName,
-			Value: eventName,
-		})
-	}
-
-	return logLabels, push.Entry{
+	return logResult.IndexLabels, push.Entry{
 		Timestamp:          timestampFromLogRecord(log),
 		Line:               log.Body().AsString(),
-		StructuredMetadata: structuredMetadata,
+		StructuredMetadata: logResult.StructuredMetadata,
 	}, nil
-}
-
-func attributesToLabels(attrs pcommon.Map, prefix string) (push.LabelsAdapter, error) {
-	labelsAdapter := make(push.LabelsAdapter, 0, attrs.Len())
-	if attrs.Len() == 0 {
-		return labelsAdapter, nil
-	}
-
-	var rangeErr error
-	attrs.Range(func(k string, v pcommon.Value) bool {
-		lbls, err := attributeToLabels(k, v, prefix)
-		if err != nil {
-			rangeErr = err
-			return false
-		}
-		labelsAdapter = append(labelsAdapter, lbls...)
-		return true
-	})
-
-	return labelsAdapter, rangeErr
-}
-
-func attributeToLabels(k string, v pcommon.Value, prefix string) (push.LabelsAdapter, error) {
-	var labelsAdapter push.LabelsAdapter
-
-	keyWithPrefix := k
-	if prefix != "" {
-		keyWithPrefix = prefix + "_" + k
-	}
-
-	labelNamer := otlptranslator.LabelNamer{}
-	keyWithPrefix, err := labelNamer.Build(keyWithPrefix)
-	if err != nil {
-		return nil, fmt.Errorf("symbolizer lookup: %w", err)
-	}
-
-	typ := v.Type()
-	if typ == pcommon.ValueTypeMap {
-		mv := v.Map()
-		labelsAdapter = make(push.LabelsAdapter, 0, mv.Len())
-		var rangeErr error
-		mv.Range(func(k string, v pcommon.Value) bool {
-			lbls, err := attributeToLabels(k, v, keyWithPrefix)
-			if err != nil {
-				rangeErr = fmt.Errorf("symbolizer lookup: %w", err)
-				return false
-			}
-			labelsAdapter = append(labelsAdapter, lbls...)
-			return true
-		})
-		if rangeErr != nil {
-			return nil, rangeErr
-		}
-	} else {
-		labelsAdapter = push.LabelsAdapter{
-			push.LabelAdapter{Name: keyWithPrefix, Value: v.AsString()},
-		}
-	}
-
-	return labelsAdapter, nil
 }
 
 func timestampFromLogRecord(lr plog.LogRecord) time.Time {

@@ -384,6 +384,9 @@ type AnywhereCache struct {
 	// Id: The ID of the resource, including the project number, bucket name and
 	// anywhere cache ID.
 	Id string `json:"id,omitempty"`
+	// IngestOnWrite: Specifies whether objects are ingested into the cache upon
+	// write.
+	IngestOnWrite bool `json:"ingestOnWrite,omitempty"`
 	// Kind: The kind of item this is. For Anywhere Cache, this is always
 	// storage#anywhereCache.
 	Kind string `json:"kind,omitempty"`
@@ -3726,8 +3729,7 @@ type AnywhereCachesUpdateCall struct {
 	header_         http.Header
 }
 
-// Update: Updates the config(ttl and admissionPolicy) of an Anywhere Cache
-// instance.
+// Update: Updates the config of an Anywhere Cache instance.
 //
 // - anywhereCacheId: The ID of requested Anywhere Cache instance.
 // - bucket: Name of the parent bucket.
