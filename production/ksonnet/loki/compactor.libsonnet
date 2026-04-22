@@ -64,14 +64,12 @@
     k.util.serviceFor($.compactor_statefulset, $._config.service_ignored_labels)
   ,
 
-  local compactor_worker_enabled = $._config.enable_horizontally_scalable_compactor,
-
-  compactor_worker_args:: if compactor_worker_enabled then $._config.commonArgs {
+  compactor_worker_args:: if $._config.enable_horizontally_scalable_compactor then $._config.commonArgs {
     target: 'compactor',
     'compactor.horizontal-scaling-mode': 'worker',
   },
 
-  compactor_worker_container:: if !compactor_worker_enabled then {} else
+  compactor_worker_container:: if !$._config.enable_horizontally_scalable_compactor then {} else
     container.new('compactor-worker', $._images.compactor_worker) +
     container.withPorts($.util.defaultPorts) +
     container.withArgsMixin(k.util.mapToFlags($.compactor_worker_args)) +
@@ -84,7 +82,7 @@
     k.util.resourcesLimits('2', '1Gi') +
     container.withEnvMixin($._config.commonEnvs),
 
-  compactor_worker_deployment: if !compactor_worker_enabled then {} else
+  compactor_worker_deployment: if !$._config.enable_horizontally_scalable_compactor then {} else
     deployment.new('compactor-worker', 1, [$.compactor_worker_container]) +
     $.config_hash_mixin +
     k.util.configVolumeMount('loki', '/etc/loki/config') +
