@@ -4,4 +4,4 @@
 package internal // import "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal"
 
 // Version is the current release version of the OpenTelemetry OTLP over HTTP/protobuf logs exporter in use.
-const Version = "0.14.0"
+const Version = "0.19.0"

@@ -45,6 +45,15 @@ func newNoopClient() *client {
 
 var exporterN atomic.Int64
 
+var errInsecureEndpointWithTLS = errors.New("insecure HTTP endpoint cannot use TLS client configuration")
+
+// maxResponseBodySize is the maximum number of bytes to read from a response
+// body. It is set to 4 MiB per the OTLP specification recommendation to
+// mitigate excessive memory usage caused by a misconfigured or malicious
+// server. If exceeded, the response is treated as a not-retryable error.
+// This is a variable to allow tests to override it.
+var maxResponseBodySize int64 = 4 * 1024 * 1024
+
 // nextExporterID returns the next unique ID for an exporter.
 func nextExporterID() int64 {
 	const inc = 1
@@ -52,7 +61,11 @@ func nextExporterID() int64 {
 }
 
 // newHTTPClient creates a new HTTP log client.
-func newHTTPClient(cfg config) (*client, error) {
+func newHTTPClient(ctx context.Context, cfg config) (*client, error) {
+	if cfg.insecure.Value && cfg.tlsCfg.Value != nil {
+		return nil, errInsecureEndpointWithTLS
+	}
+
 	hc := cfg.httpClient
 	if hc == nil {
 		hc = &http.Client{
@@ -82,7 +95,7 @@ func newHTTPClient(cfg config) (*client, error) {
 		u.Scheme = "http"
 	}
 	// Body is set when this is cloned during upload.
-	req, err := http.NewRequest(http.MethodPost, u.String(), http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -165,6 +178,7 @@ func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs)
 		}
 
 		request.reset(iCtx)
+		// nolint:gosec // URL is constructed from validated OTLP endpoint configuration
 		resp, err := c.client.Do(request.Request)
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) && urlErr.Temporary() {
@@ -187,7 +201,11 @@ func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs)
 
 			// Read the partial success message, if any.
 			var respData bytes.Buffer
-			if _, err := io.Copy(&respData, resp.Body); err != nil {
+			if _, err := io.Copy(&respData, http.MaxBytesReader(nil, resp.Body, maxResponseBodySize)); err != nil {
+				var maxBytesErr *http.MaxBytesError
+				if errors.As(err, &maxBytesErr) {
+					return fmt.Errorf("response body too large: exceeded %d bytes", maxBytesErr.Limit)
+				}
 				return err
 			}
 			if respData.Len() == 0 {
@@ -218,7 +236,11 @@ func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs)
 		// message to be returned. It will help in
 		// debugging the actual issue.
 		var respData bytes.Buffer
-		if _, err := io.Copy(&respData, resp.Body); err != nil {
+		if _, err := io.Copy(&respData, http.MaxBytesReader(nil, resp.Body, maxResponseBodySize)); err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				return fmt.Errorf("response body too large: exceeded %d bytes", maxBytesErr.Limit)
+			}
 			return err
 		}
 		respStr := strings.TrimSpace(respData.String())
@@ -256,6 +278,7 @@ func (c *httpClient) newRequest(ctx context.Context, body []byte) (request, erro
 	case NoCompression:
 		r.ContentLength = int64(len(body))
 		req.bodyReader = bodyReader(body)
+		req.GetBody = bodyReaderErr(body)
 	case GzipCompression:
 		// Ensure the content length is not used.
 		r.ContentLength = -1
@@ -276,6 +299,7 @@ func (c *httpClient) newRequest(ctx context.Context, body []byte) (request, erro
 		}
 
 		req.bodyReader = bodyReader(b.Bytes())
+		req.GetBody = bodyReaderErr(body)
 	}
 
 	return req, nil
@@ -285,6 +309,13 @@ func (c *httpClient) newRequest(ctx context.Context, body []byte) (request, erro
 func bodyReader(buf []byte) func() io.ReadCloser {
 	return func() io.ReadCloser {
 		return io.NopCloser(bytes.NewReader(buf))
+	}
+}
+
+// bodyReaderErr returns a closure returning a new reader for buf.
+func bodyReaderErr(buf []byte) func() (io.ReadCloser, error) {
+	return func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(buf)), nil
 	}
 }
 
