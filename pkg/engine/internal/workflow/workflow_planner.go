@@ -161,13 +161,14 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 		skippedBytes uint64
 		cachedBytes  uint64
 	)
-	if cacheOpts.pruneEmptyCachedTasks && len(emptyResults) > 0 {
-		removed := eliminateTasks(p, emptyResults)
-		eliminatedCachedTasksTotal.WithLabelValues(eliminationReasonEmpty).Add(float64(removed))
-		tasksRemoved += removed
-	}
-	if cacheOpts.nonEmptyCachedTasksMaxBytes > 0 && len(nonEmptyResults) > 0 {
-		var nonEmptyUpToMaxSize []nonEmptyCachedTask
+
+	// Compute the non-empty tasks that fit within the size budget up front so
+	// that wireCachedSources can run before the empty-elimination pass.
+	// This is necessary to prevent cascade elimination from incorrectly removing
+	// tasks that have non-empty cache hits: the cascade check guards on
+	// len(task.CachedSources) > 0, which is only true after wireCachedSources runs.
+	var nonEmptyUpToMaxSize []nonEmptyCachedTask
+	if cacheOpts.nonEmptyCachedTasksMaxBytes > 0 {
 		for _, r := range nonEmptyResults {
 			size := uint64(len(r.buf))
 			if cachedBytes+size <= cacheOpts.nonEmptyCachedTasksMaxBytes {
@@ -185,19 +186,25 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 				"budget", humanize.Bytes(cacheOpts.nonEmptyCachedTasksMaxBytes),
 			)
 		}
+		// Wire CachedSources into parent tasks before the empty-elimination pass
+		// so that the cascade guard (len(task.CachedSources) > 0) correctly
+		// protects non-empty tasks whose children are all empty hits.
+		wireCachedSources(p, nonEmptyUpToMaxSize)
+	}
 
-		if len(nonEmptyUpToMaxSize) > 0 {
-			// Wire CachedSources into parent tasks BEFORE elimination so that
-			// eliminateTasksBatch's Sources-cleanup loop finds the stream already gone.
-			wireCachedSources(p, nonEmptyUpToMaxSize)
-			nonEmptyTasks := make([]*Task, len(nonEmptyUpToMaxSize))
-			for i, r := range nonEmptyUpToMaxSize {
-				nonEmptyTasks[i] = r.task
-			}
-			removed := eliminateTasks(p, nonEmptyTasks)
-			eliminatedCachedTasksTotal.WithLabelValues(eliminationReasonNonEmpty).Add(float64(removed))
-			tasksRemoved += removed
+	if cacheOpts.pruneEmptyCachedTasks && len(emptyResults) > 0 {
+		removed := eliminateTasks(p, emptyResults)
+		eliminatedCachedTasksTotal.WithLabelValues(eliminationReasonEmpty).Add(float64(removed))
+		tasksRemoved += removed
+	}
+	if len(nonEmptyUpToMaxSize) > 0 {
+		nonEmptyTasks := make([]*Task, len(nonEmptyUpToMaxSize))
+		for i, r := range nonEmptyUpToMaxSize {
+			nonEmptyTasks[i] = r.task
 		}
+		removed := eliminateTasks(p, nonEmptyTasks)
+		eliminatedCachedTasksTotal.WithLabelValues(eliminationReasonNonEmpty).Add(float64(removed))
+		tasksRemoved += removed
 	}
 	pruningDuration := time.Since(pruningStart)
 

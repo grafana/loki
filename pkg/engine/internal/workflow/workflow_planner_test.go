@@ -1127,6 +1127,108 @@ func Test_pruneCachedTasks(t *testing.T) {
 	}
 }
 
+// Test_pruneCachedTasks_cascadeProtection verifies that a task with a non-empty
+// cache hit is not lost when all of its children have empty cache hits.
+//
+// Graph: root → intermediate (non-empty hit) → [leaf_a (empty), leaf_b (empty)]
+//
+// Without the fix, the empty-elimination pass cascade-eliminates intermediate
+// (because its two children are both eliminated and CachedSources hasn't been
+// wired yet), so root never gets intermediate's cached result.
+// With the fix, wireCachedSources runs before the empty pass, so root's
+// CachedSources is populated before the cascade check runs.
+func Test_pruneCachedTasks_cascadeProtection(t *testing.T) {
+	const cacheName = physical.TaskCacheLogsScanRangeAggr
+
+	// Build minimal single-node fragment graphs so that Fragment.Root() returns
+	// the expected physical node type.
+	makeFragment := func(root physical.Node) *physical.Plan {
+		var g dag.Graph[physical.Node]
+		g.Add(root)
+		return physical.FromGraph(g)
+	}
+
+	// Physical nodes that serve as map keys for Sources/Sinks/CachedSources.
+	rootNode := &physical.VectorAggregation{}
+	intermNode := &physical.Cache{CacheName: cacheName, Key: "interm-key"}
+	leafANode := &physical.Cache{CacheName: cacheName, Key: "leaf-a-key"}
+	leafBNode := &physical.Cache{CacheName: cacheName, Key: "leaf-b-key"}
+
+	// Streams that connect the tasks.
+	streamAB := &Stream{ULID: ulid.Make()} // intermediate → root
+	streamA := &Stream{ULID: ulid.Make()}  // leaf_a → intermediate
+	streamB := &Stream{ULID: ulid.Make()}  // leaf_b → intermediate
+
+	taskRoot := &Task{
+		ULID:     ulid.Make(),
+		Fragment: makeFragment(rootNode),
+		Sources:  map[physical.Node][]*Stream{rootNode: {streamAB}},
+	}
+	taskInterm := &Task{
+		ULID:     ulid.Make(),
+		Fragment: makeFragment(intermNode),
+		Sources:  map[physical.Node][]*Stream{intermNode: {streamA, streamB}},
+		Sinks:    map[physical.Node][]*Stream{intermNode: {streamAB}},
+	}
+	taskLeafA := &Task{
+		ULID:     ulid.Make(),
+		Fragment: makeFragment(leafANode),
+		Sinks:    map[physical.Node][]*Stream{leafANode: {streamA}},
+	}
+	taskLeafB := &Task{
+		ULID:     ulid.Make(),
+		Fragment: makeFragment(leafBNode),
+		Sinks:    map[physical.Node][]*Stream{leafBNode: {streamB}},
+	}
+
+	// Assemble DAG: root ← intermediate ← [leaf_a, leaf_b]
+	var graphTasks dag.Graph[*Task]
+	graphTasks.Add(taskRoot)
+	graphTasks.Add(taskInterm)
+	graphTasks.Add(taskLeafA)
+	graphTasks.Add(taskLeafB)
+	require.NoError(t, graphTasks.AddEdge(dag.Edge[*Task]{Parent: taskRoot, Child: taskInterm}))
+	require.NoError(t, graphTasks.AddEdge(dag.Edge[*Task]{Parent: taskInterm, Child: taskLeafA}))
+	require.NoError(t, graphTasks.AddEdge(dag.Edge[*Task]{Parent: taskInterm, Child: taskLeafB}))
+
+	// Cache: intermediate → non-empty, leaf_a → empty, leaf_b → empty.
+	mc := newWorkflowMockCache()
+	mc.storeHashed(cache.HashKey(intermNode.Key), nonEmptyResultPayload())
+	mc.storeHashed(cache.HashKey(leafANode.Key), emptyResultPayload())
+	mc.storeHashed(cache.HashKey(leafBNode.Key), emptyResultPayload())
+
+	p := &planner{
+		graph: graphTasks,
+		streamWriters: map[*Stream]*Task{
+			streamAB: taskInterm,
+			streamA:  taskLeafA,
+			streamB:  taskLeafB,
+		},
+	}
+	cacheOpts := cacheParams{
+		enabled:                     true,
+		pruneEmptyCachedTasks:       true,
+		nonEmptyCachedTasksMaxBytes: math.MaxUint64,
+		registry: executor.NewTestTaskCacheRegistry(map[physical.TaskCacheName]cache.Cache{
+			cacheName: mc,
+		}),
+	}
+
+	require.NoError(t, pruneCachedTasks(p, cacheOpts, log.NewNopLogger()))
+
+	// Root and intermediate are the only tasks that should remain.
+	// leaf_a and leaf_b are eliminated (empty hits); intermediate is also
+	// eliminated but its result is wired into root's CachedSources.
+	require.Equal(t, 1, p.graph.Len(), "only root should remain")
+	roots := p.graph.Roots()
+	require.Len(t, roots, 1)
+	require.Equal(t, taskRoot, roots[0], "root must still be in graph")
+
+	// Root must have received intermediate's cached result.
+	require.NotEmpty(t, taskRoot.CachedSources, "root must have CachedSources wired")
+	require.Empty(t, taskRoot.Sources, "stream from intermediate must be gone from Sources")
+}
+
 // workflowMockCache is a simple in-memory cache.Cache for workflow planning tests.
 type workflowMockCache struct {
 	data map[string][]byte
