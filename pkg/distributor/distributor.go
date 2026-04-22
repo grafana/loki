@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	goruntime "runtime"
 	"runtime/pprof"
 	"slices"
 	"strconv"
@@ -219,6 +220,9 @@ type Distributor struct {
 	// Track the maximum number of inflight bytes in the last 1 minute.
 	inflightBytes *util_metric.MaxSampleCollector
 
+	// Used memory metric
+	usedMemoryGauge prometheus.Gauge
+
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
 	kafkaWriteBytesTotal   prometheus.Counter
@@ -411,6 +415,11 @@ func New(
 			"loki_distributor_max_inflight_bytes",
 			"The maximum number of inflight bytes in the last 1 minute.",
 		),
+		usedMemoryGauge: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_used_memory_bytes",
+			Help:      "Current used memory.",
+		}),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -567,6 +576,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	requestSize := int64(req.Size())
 	d.inflightBytes.Inc(requestSize)
 	defer d.inflightBytes.Inc(-requestSize)
+
+	d.setUsedMemoryGauge()
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -937,6 +948,12 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func (d *Distributor) setUsedMemoryGauge() {
+	m := &goruntime.MemStats{}
+	goruntime.ReadMemStats(m)
+	d.usedMemoryGauge.Set(float64(m.HeapAlloc))
 }
 
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.
