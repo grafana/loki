@@ -139,7 +139,7 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 
 	start := time.Now()
 
-	keyToTask, rootKeys, backends, taskCount := collectCacheKeys(p, cacheOpts.registry, logger)
+	keyToTask, backends, taskCount := collectCacheKeys(p, cacheOpts.registry, logger)
 
 	fetchStart := time.Now()
 	fetchCtx := context.Background()
@@ -148,7 +148,7 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 		fetchCtx, cancel = context.WithTimeout(fetchCtx, cacheOpts.pruneFetchTimeout)
 		defer cancel()
 	}
-	emptyResults, nonEmptyResults := classifyTasksByCacheHit(fetchCtx, keyToTask, rootKeys, backends, logger)
+	emptyResults, nonEmptyResults := classifyTasksByCacheHit(fetchCtx, keyToTask, backends, logger)
 	fetchDuration := time.Since(fetchStart)
 
 	// NOTE: tasks cannot be eliminated inside the walk or fetch loops since
@@ -224,20 +224,16 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 
 // collectCacheKeys walks the task graph and builds:
 //
-//   - keyToTask: all cache nodes in every task, keyed by (cache name → hashed key → task).
-//     Used for empty-hit classification: any empty cache hit safely guarantees zero output.
-//   - rootKeys: hashed keys of root-level cache nodes only (the cache that wraps the entire
-//     task output). Used for non-empty-hit classification so that parents receive task-level
-//     output (e.g. aggregated results), not raw sub-task data (e.g. DataObjScan rows).
+//   - keyToTask: root-level cache nodes for every task, keyed by (cache name → hashed key → task).
+//     Only root-level cache nodes are collected because a non-root empty hit is always also
+//     reported as a hit at the root level.
 //   - backends: resolved cache.Cache per cache name (nil = unavailable).
 func collectCacheKeys(p *planner, caches executor.TaskCacheRegistry, logger log.Logger) (
 	keyToTask map[physical.TaskCacheName]map[string]*Task,
-	rootKeys map[string]struct{},
 	backends map[physical.TaskCacheName]cache.Cache,
 	taskCount int,
 ) {
 	keyToTask = make(map[physical.TaskCacheName]map[string]*Task)
-	rootKeys = make(map[string]struct{})
 	backends = make(map[physical.TaskCacheName]cache.Cache)
 
 	for _, root := range p.graph.Roots() {
@@ -245,40 +241,34 @@ func collectCacheKeys(p *planner, caches executor.TaskCacheRegistry, logger log.
 			taskCount++
 
 			taskRoot, _ := task.Fragment.Root()
-
-			for n := range task.Fragment.Graph().Nodes() {
-				cacheNode, ok := n.(*physical.Cache)
-				if !ok {
-					continue
-				}
-				if _, resolved := backends[cacheNode.CacheName]; !resolved {
-					c, _, err := caches.GetForType(cacheNode.CacheName)
-					if err != nil {
-						level.Error(logger).Log(
-							"msg", "failed to resolve cache",
-							"cache_name", cacheNode.CacheName,
-							"err", err,
-						)
-					}
-					backends[cacheNode.CacheName] = c // store nil on failure to avoid repeated lookups
-				}
-
-				hashedKey := cache.HashKey(cacheNode.Key)
-
-				if keyToTask[cacheNode.CacheName] == nil {
-					keyToTask[cacheNode.CacheName] = make(map[string]*Task)
-				}
-				keyToTask[cacheNode.CacheName][hashedKey] = task
-
-				if cacheNode == taskRoot {
-					rootKeys[hashedKey] = struct{}{}
-				}
+			cacheNode, ok := taskRoot.(*physical.Cache)
+			if !ok {
+				return nil
 			}
+
+			if _, resolved := backends[cacheNode.CacheName]; !resolved {
+				c, _, err := caches.GetForType(cacheNode.CacheName)
+				if err != nil {
+					level.Error(logger).Log(
+						"msg", "failed to resolve cache",
+						"cache_name", cacheNode.CacheName,
+						"err", err,
+					)
+				}
+				backends[cacheNode.CacheName] = c // store nil on failure to avoid repeated lookups
+			}
+
+			hashedKey := cache.HashKey(cacheNode.Key)
+			if keyToTask[cacheNode.CacheName] == nil {
+				keyToTask[cacheNode.CacheName] = make(map[string]*Task)
+			}
+			keyToTask[cacheNode.CacheName][hashedKey] = task
+
 			return nil
 		}, dag.PreOrderWalk)
 	}
 
-	return keyToTask, rootKeys, backends, taskCount
+	return keyToTask, backends, taskCount
 }
 
 // nonEmptyCachedTask holds a task whose cached result is a non-empty hit along
@@ -288,29 +278,19 @@ type nonEmptyCachedTask struct {
 	buf  []byte // pre-fetched encoded cache entry
 }
 
-// classifyTasksByCacheHit fetches cache keys in batches per cache name and splits
-// the results into emptyResults (zero-record hits) and nonEmptyResults
-// (non-zero hits). A task is included in at most one category; once classified,
-// its remaining keys are skipped.
-//
-// keyToTask covers all cache nodes (used to detect empty results).
-// rootKeys is the set of hashed keys that belong to root-level cache nodes;
-// non-empty hits are only recorded for keys in rootKeys, ensuring that parents
-// receive task-level output rather than raw sub-task data.
+// classifyTasksByCacheHit fetches cache keys per cache name and splits
+// the results into emptyResults (zero-record hits) and nonEmptyResults (non-zero
+// hits). keyToTask must only contain root-level cache nodes so that parents
+// receive task-level output rather than raw within-task data.
 func classifyTasksByCacheHit(
 	ctx context.Context,
 	keyToTask map[physical.TaskCacheName]map[string]*Task,
-	rootKeys map[string]struct{},
 	backends map[physical.TaskCacheName]cache.Cache,
 	logger log.Logger,
 ) (
 	emptyResults []*Task,
 	nonEmptyResults []nonEmptyCachedTask,
 ) {
-	// prunedTasks tracks tasks already classified so a second Cache node for
-	// the same task does not produce a duplicate result.
-	prunedTasks := make(map[*Task]struct{})
-
 	for cacheName, keyMap := range keyToTask {
 		logger := log.With(logger, "cache_name", cacheName)
 		c := backends[cacheName]
@@ -319,13 +299,8 @@ func classifyTasksByCacheHit(
 			continue
 		}
 
-		// Skip keys whose task is already classified — another Cache node for
-		// the same task already produced a result.
 		keys := make([]string, 0, len(keyMap))
-		for k, task := range keyMap {
-			if _, pruned := prunedTasks[task]; pruned {
-				continue
-			}
+		for k := range keyMap {
 			keys = append(keys, k)
 		}
 
@@ -350,12 +325,8 @@ func classifyTasksByCacheHit(
 			}
 
 			if dec.Len() == 0 {
-				prunedTasks[task] = struct{}{}
 				emptyResults = append(emptyResults, task)
-			} else if _, isRoot := rootKeys[key]; isRoot {
-				// Only root cache hits can replace the task: they carry task-level
-				// output that parent tasks expect.
-				prunedTasks[task] = struct{}{}
+			} else {
 				nonEmptyResults = append(nonEmptyResults, nonEmptyCachedTask{
 					task: task,
 					buf:  bufs[i],
@@ -413,45 +384,6 @@ func wireCachedSources(p *planner, nonEmptyResults []nonEmptyCachedTask) {
 			return nil
 		}, dag.PreOrderWalk)
 	}
-}
-
-// eliminateTask removes task from the planner graph and cleans up all stream
-// references. Each sink stream of task is removed from the Sources maps of
-// parent tasks and from planner.streamWriters. Parents that reach zero sources
-// after the removal are also eliminated.
-func eliminateTask(p *planner, task *Task, reason string) (totalTasksRemoved int) {
-	parents := p.graph.Parents(task)
-
-	for _, sinkStreams := range task.Sinks {
-		for _, stream := range sinkStreams {
-			for _, parent := range parents {
-				for node, parentStreams := range parent.Sources {
-					parent.Sources[node] = slices.DeleteFunc(parentStreams,
-						func(s *Stream) bool { return s == stream })
-					if len(parent.Sources[node]) == 0 {
-						delete(parent.Sources, node)
-					}
-				}
-			}
-			delete(p.streamWriters, stream)
-		}
-	}
-
-	p.graph.Eliminate(task)
-	eliminatedCachedTasksTotal.WithLabelValues(reason).Inc()
-	totalTasksRemoved++
-
-	for _, parent := range parents {
-		if len(parent.Sources) == 0 && len(parent.CachedSources) == 0 {
-			// Eliminate the parent recursively so the ancestors of this
-			// task are removed if all their sources are empty as well.
-			// The CachedSources check prevents cascading through parents
-			// that still have cached inputs to read from.
-			totalTasksRemoved += eliminateTask(p, parent, reason)
-		}
-	}
-
-	return totalTasksRemoved
 }
 
 // eliminateTasks removes all tasks in initial (and any cascade parents) from the planner graph.
@@ -555,8 +487,7 @@ func eliminateTasks(p *planner, tasks []*Task) int {
 		tasksToRemove = append(tasksToRemove, task)
 	}
 	p.graph.EliminateBatch(tasksToRemove)
-
-	return len(tasks)
+	return len(tasksToRemove)
 }
 
 // injectTaskCaching wraps each cacheable task fragment with a Cache node.

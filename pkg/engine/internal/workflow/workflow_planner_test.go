@@ -963,34 +963,6 @@ func Test_pruneCachedTasks(t *testing.T) {
 └`,
 		},
 		{
-			// Task "a" DataObjScan-level cache returns empty → task "a" eliminated
-			// because zero scan rows guarantee zero rows from all operators above;
-			// root and task "b" remain.
-			name: "one task empty at scan",
-			payloads: map[string][]byte{
-				tasks[1][physical.TaskCacheDataObjScanResult]: emptyResultPayload(),
-			},
-			expected: `
-┌ Task 00000000000000000000000001
-│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
-│
-│ Batching batch_size=500
-│ └── VectorAggregation operation=sum group_by=()
-│         └── @source stream=00000000000000000000000003
-└
-┌ Task 00000000000000000000000002
-│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
-│
-│ Cache max_cacheable_size=1.0 MiB hashed_key=9888d9ec9f19e11e key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
-│ │   └── @sink stream=00000000000000000000000003
-│ └── Batching batch_size=500
-│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
-│         └── Cache max_cacheable_size=0 B hashed_key=57460db08f81adaf key= |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
-│             └── DataObjScan location=b streams=0 section_id=0 projections=()
-│                     └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
-└`,
-		},
-		{
 			// Task "a" returns empty, task "b" returns non-empty with pruneCachedTasks=true →
 			// both leaves eliminated; root gets @cachedSource buffers=1.
 			name: "cache one empty one non-empty",
@@ -1014,6 +986,15 @@ func Test_pruneCachedTasks(t *testing.T) {
 			name: "cache non-empty at scan",
 			payloads: map[string][]byte{
 				tasks[1][physical.TaskCacheDataObjScanResult]: nonEmptyResultPayload(),
+			},
+			expected: originalPlan,
+		},
+		{
+			// Scan-level cache empty should NOT eliminate the task: only root-level
+			// cache hits are checked. Plan is identical to the full base graph.
+			name: "cache empty at scan",
+			payloads: map[string][]byte{
+				tasks[1][physical.TaskCacheDataObjScanResult]: emptyResultPayload(),
 			},
 			expected: originalPlan,
 		},
