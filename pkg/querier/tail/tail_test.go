@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"gotest.tools/assert"
@@ -462,6 +463,39 @@ func flattenStreamsFromResponses(responses []*loghttp.TailResponse) []logproto.S
 	}
 
 	return result
+}
+
+// Regression test for #15031: close() must be idempotent so that duplicate
+// calls (e.g. from loop() on tailMaxDuration and from TailHandler() on client
+// disconnect) don't push tailsActive / tailedStreamsActive below zero.
+func TestTailerCloseIdempotent(t *testing.T) {
+	t.Parallel()
+
+	tailDisconnectedIngesters := func([]string) (map[string]logproto.Querier_TailClient, error) {
+		return map[string]logproto.Querier_TailClient{}, nil
+	}
+
+	metrics := NewMetrics(nil)
+	// Long tailMaxDuration prevents loop() from auto-closing during the test.
+	tailer := newTailer(
+		0,
+		map[string]logproto.Querier_TailClient{},
+		testutil.NewFakeStreamIterator(0, 0),
+		tailDisconnectedIngesters,
+		time.Hour,
+		throttle,
+		false,
+		metrics,
+		log.NewNopLogger(),
+	)
+
+	require.Equal(t, 1.0, prom_testutil.ToFloat64(metrics.tailsActive))
+
+	require.NoError(t, tailer.close())
+	require.NoError(t, tailer.close())
+
+	require.Equal(t, 0.0, prom_testutil.ToFloat64(metrics.tailsActive))
+	require.Equal(t, 0.0, prom_testutil.ToFloat64(metrics.tailedStreamsActive))
 }
 
 // compareStreams compares two slices of logproto.Stream
