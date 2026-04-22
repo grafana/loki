@@ -150,7 +150,7 @@
       automerge: false,
     },
     {
-      // Enable all other updates, and auto-merge minor and patch updates
+      // Enable patch updates, auto-merge; use 'chore' so they are excluded from the changelog
       matchFileNames: [
         '!operator/go.mod',
         '!operator/api/loki/go.mod',
@@ -159,14 +159,15 @@
       groupName: '{{packageName}}',
       enabled: true,
       matchUpdateTypes: [
-        'minor',
         'patch',
+        'minor',
       ],
+      semanticCommitType: 'chore',
       automerge: true,
       autoApprove: true,
     },
     {
-      // Enable all other updates, don't auto-merge major updates
+      // Enable major updates, don't auto-merge; use 'feat' so they appear as Feature in the changelog
       matchFileNames: [
         '!operator/go.mod',
         '!operator/api/loki/go.mod',
@@ -177,6 +178,7 @@
       matchUpdateTypes: [
         'major',
       ],
+      semanticCommitType: 'feat',
       automerge: false,
       autoApprove: false,
     },
@@ -224,6 +226,5 @@
   postUpdateOptions: [
     'gomodTidy',
   ],
-  semanticCommitType: 'fix',
   semanticCommitScope: 'deps',
 }
