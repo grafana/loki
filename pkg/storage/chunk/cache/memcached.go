@@ -22,6 +22,10 @@ import (
 type MemcachedConfig struct {
 	Expiration time.Duration `yaml:"expiration"`
 
+	// BatchSize is the number of keys fetched per worker request. When
+	// non-zero, Fetch splits keys into batches of this size and processes them
+	// in parallel. If the context is cancelled mid-flight, already-completed
+	// batches are returned as partial results and the rest are reported missed.
 	BatchSize   int `yaml:"batch_size"`
 	Parallelism int `yaml:"parallelism"`
 }
@@ -45,8 +49,9 @@ type Memcached struct {
 	wg      sync.WaitGroup
 	inputCh chan *work
 
-	// `closed` tracks if `inputCh` is closed.
-	// So that any writer goroutine wouldn't write to it after closing `intputCh`
+	// `closed` is closed by Stop() to signal that the cache is stopping.
+	// It is closed before inputCh so that senders can safely check it before
+	// attempting a send and avoid a "send on closed channel" panic.
 	closed chan struct{}
 
 	logger log.Logger
@@ -131,7 +136,13 @@ func memcacheStatusCode(err error) string {
 	}
 }
 
-// Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
+// Fetch gets keys from the cache. The keys that are found must be in the order
+// of the keys requested.
+//
+// When BatchSize is non-zero, Fetch submits keys in batches to a worker pool.
+// If the context is cancelled before all batches complete, Fetch returns
+// whatever results have been collected so far together with ctx.Err(). Keys
+// whose batch did not complete in time are reported as missed.
 func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
 	if c.cfg.BatchSize == 0 {
 		found, bufs, missed, err = c.fetch(ctx, keys)
@@ -168,57 +179,70 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 }
 
 func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
-	resultsCh := make(chan *result)
 	batchSize := c.cfg.BatchSize
+	numBatches := (len(keys) + batchSize - 1) / batchSize
 
-	go func() {
-		for i, j := 0, 0; i < len(keys); i += batchSize {
-			batchKeys := keys[i:min(i+batchSize, len(keys))]
-			select {
-			case <-c.closed:
-				return
-			default:
-				c.inputCh <- &work{
-					keys:     batchKeys,
-					ctx:      ctx,
-					resultCh: resultsCh,
-					batchID:  j,
-				}
-				j++
-			}
-		}
-	}()
+	// resultsCh is buffered to numBatches so workers can always deliver without
+	// blocking, even when we stop collecting early due to cancellation or Stop.
+	// This lets us submit batches synchronously: if inputCh is full we block
+	// until a worker picks up a batch (it can always send its result to the
+	// buffered resultsCh first), so there is no deadlock risk.
+	resultsCh := make(chan *result, numBatches)
 
-	// Read all values from this channel to avoid blocking upstream.
-	numResults := len(keys) / batchSize
-	if len(keys)%batchSize != 0 {
-		numResults++
-	}
-
-	// We need to order found by the input keys order.
-	results := make([]*result, numResults)
-	for i := 0; i < numResults; i++ {
-		// NOTE: Without this check, <-resultCh may wait forever as work is
-		// interrupted (by other goroutine by calling `Stop()`) and there may not be `numResults`
-		// values to read from `resultsCh` in that case.
-		// Also we do close(resultsCh) in the same goroutine so <-resultCh may never return.
+	var (
+		sent  int
+		abort bool
+	)
+	for i := 0; i < len(keys) && !abort; i += batchSize {
+		// Stop() closes c.closed before c.inputCh, so c.closed is always ready
+		// by the time inputCh is closed. The default branch (and its send to
+		// inputCh) is therefore never reached when inputCh is unsafe to use.
 		select {
 		case <-c.closed:
-			return
+			abort = true
+		case <-ctx.Done():
+			abort = true
+			err = ctx.Err()
 		default:
-			result := <-resultsCh
-			results[result.batchID] = result
+			c.inputCh <- &work{
+				keys:     keys[i:min(i+batchSize, len(keys))],
+				ctx:      ctx,
+				resultCh: resultsCh,
+				batchID:  sent,
+			}
+			sent++
 		}
 	}
-	close(resultsCh)
 
-	for _, result := range results {
-		found = append(found, result.found...)
-		bufs = append(bufs, result.bufs...)
-		missed = append(missed, result.missed...)
-		if result.err != nil {
-			err = result.err
+	// If Stop() was called, workers may not complete — return nothing.
+	select {
+	case <-c.closed:
+		return
+	default:
+	}
+
+	// Collect exactly as many results as were submitted,
+	// then aggregate in batch order to preserve input key ordering.
+	results := make([]*result, sent)
+	for i := 0; i < sent; i++ {
+		r := <-resultsCh
+		results[r.batchID] = r
+	}
+	for _, r := range results {
+		found = append(found, r.found...)
+		bufs = append(bufs, r.bufs...)
+		missed = append(missed, r.missed...)
+		if r.err != nil {
+			// NOTE: this will overwrite the error from the context if any.
+			// I considered using a multierror, but if there are many batches,
+			// this may result in too many errors for the likely same reason
+			err = r.err
 		}
+	}
+
+	if sent < numBatches {
+		// Keys in batches that were never submitted are all missed.
+		missed = append(missed, keys[sent*batchSize:]...)
 	}
 
 	return
@@ -248,8 +272,8 @@ func (c *Memcached) Stop() {
 		return
 	}
 
-	close(c.inputCh)
-	close(c.closed)
+	close(c.closed)  // signal senders to stop before closing inputCh
+	close(c.inputCh) // stop workers
 	c.wg.Wait()
 }
 

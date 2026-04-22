@@ -1,4 +1,4 @@
-package push
+package otlplabels
 
 import (
 	"testing"
@@ -131,14 +131,14 @@ log_attributes:
   - action: keep
     attributes:
       - fizz`),
-			expectedErr: errUnsupportedAction,
+			expectedErr: ErrUnsupportedAction,
 		},
 		{
 			name: "attributes and regex both not set should error",
 			yamlConfig: []byte(`
 log_attributes:
   - action: drop`),
-			expectedErr: errAttributesAndRegexNotSet,
+			expectedErr: ErrAttributesAndRegexNotSet,
 		},
 		{
 			name: "attributes and regex both being set should error",
@@ -148,7 +148,7 @@ log_attributes:
     regex: foo
     attributes:
       - fizz`),
-			expectedErr: errAttributesAndRegexBothSet,
+			expectedErr: ErrAttributesAndRegexBothSet,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -182,7 +182,7 @@ func TestOTLPConfig(t *testing.T) {
 			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
 			resAttrs: []attrAndExpAction{
 				{
-					attr:           attrServiceName,
+					attr:           AttrServiceName,
 					expectedAction: IndexLabel,
 				},
 				{
@@ -210,7 +210,7 @@ func TestOTLPConfig(t *testing.T) {
 					AttributesConfig: []AttributesConfig{
 						{
 							Action:     IndexLabel,
-							Attributes: []string{attrServiceName},
+							Attributes: []string{AttrServiceName},
 						},
 						{
 							Action: StructuredMetadata,
@@ -245,7 +245,7 @@ func TestOTLPConfig(t *testing.T) {
 			},
 			resAttrs: []attrAndExpAction{
 				{
-					attr:           attrServiceName,
+					attr:           AttrServiceName,
 					expectedAction: IndexLabel,
 				},
 				{
@@ -285,7 +285,7 @@ func TestOTLPConfig(t *testing.T) {
 					AttributesConfig: []AttributesConfig{
 						{
 							Action:     Drop,
-							Attributes: []string{attrServiceName},
+							Attributes: []string{AttrServiceName},
 						},
 						{
 							Action: IndexLabel,
@@ -316,7 +316,7 @@ func TestOTLPConfig(t *testing.T) {
 			},
 			resAttrs: []attrAndExpAction{
 				{
-					attr:           attrServiceName,
+					attr:           AttrServiceName,
 					expectedAction: Drop,
 				},
 				{
