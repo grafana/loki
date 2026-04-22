@@ -71,9 +71,8 @@ loki + gateway {
     namespace: 'loki',
     htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
 
-    // Use TSDB shipper (recommended). Disable boltdb-shipper defaults.
-    using_boltdb_shipper: false,
-    using_tsdb_shipper: true,
+    // Use TSDB shipper
+    using_tsdb_shipper: true
 
     // Pick one object storage backend: 's3', 'gcs', or 'azure'
     storage_backend: 's3',
