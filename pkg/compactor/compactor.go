@@ -212,9 +212,9 @@ func (c *Compactor) init(
 		return err
 	}
 
-	if c.cfg.RetentionEnabled {
+	if c.cfg.DeletionEnabled || c.cfg.RetentionEnabled {
 		if deleteStoreClient == nil {
-			return fmt.Errorf("delete store client not initialised when retention is enabled")
+			return fmt.Errorf("delete store client not initialised when deletion or retention is enabled")
 		}
 
 		if err := c.initDeletes(deleteStoreClient, indexUpdatePropagationMaxDelay, r, limits); err != nil {
@@ -236,7 +236,7 @@ func (c *Compactor) init(
 		var sc storeContainer
 		sc.indexStorageClient = storage.NewIndexStorageClient(objectClient, period.IndexTables.PathPrefix)
 
-		if c.cfg.RetentionEnabled {
+		if c.cfg.DeletionEnabled || c.cfg.RetentionEnabled {
 			var (
 				raw              client.ObjectClient
 				encoder          client.KeyEncoder
@@ -323,7 +323,7 @@ func (c *Compactor) init(
 	c.metrics = newMetrics(r)
 	c.tablesManager = newTablesManager(c.cfg, c.storeContainers, c.indexCompactors, c.schemaConfig, c.expirationChecker, c.metrics)
 
-	if c.cfg.RetentionEnabled {
+	if c.cfg.DeletionEnabled || c.cfg.RetentionEnabled {
 		if err := c.deleteRequestsManager.Init(c.tablesManager, r); err != nil {
 			return err
 		}
@@ -331,7 +331,7 @@ func (c *Compactor) init(
 
 	if c.cfg.HorizontalScalingMode == HorizontalScalingModeMain {
 		c.JobQueue = jobqueue.NewQueue(r)
-		if c.cfg.RetentionEnabled {
+		if c.cfg.DeletionEnabled || c.cfg.RetentionEnabled {
 			if err := c.JobQueue.RegisterBuilder(grpc.JOB_TYPE_DELETION, c.deleteRequestsManager.JobBuilder(), c.cfg.JobsConfig.Deletion.Timeout, c.cfg.JobsConfig.Deletion.MaxRetries, r); err != nil {
 				return err
 			}
@@ -380,7 +380,11 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 		return err
 	}
 
-	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
+	retentionExpiryChecker := retention.ExpirationChecker(retention.NeverExpiringExpirationChecker(limits))
+	if c.cfg.RetentionEnabled {
+		retentionExpiryChecker = retention.NewExpirationChecker(limits)
+	}
+	c.expirationChecker = newExpirationChecker(retentionExpiryChecker, c.deleteRequestsManager)
 	return nil
 }
 
@@ -448,7 +452,7 @@ func (c *Compactor) loop(ctx context.Context) error {
 		return nil
 	}
 
-	if c.cfg.RetentionEnabled {
+	if c.cfg.DeletionEnabled || c.cfg.RetentionEnabled {
 		if c.deleteRequestsStore != nil {
 			defer c.deleteRequestsStore.Stop()
 		}

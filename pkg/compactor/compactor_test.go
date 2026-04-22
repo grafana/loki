@@ -240,6 +240,61 @@ func Test_schemaPeriodForTable(t *testing.T) {
 	}
 }
 
+func TestConfig_DeletionEnabled(t *testing.T) {
+	tests := []struct {
+		name            string
+		deletionEnabled bool
+		retentionEnabled bool
+		deleteReqStore  string
+		expectErr       bool
+	}{
+		{
+			name:      "neither enabled, no store — ok",
+			expectErr: false,
+		},
+		{
+			name:            "deletion enabled without delete-request-store — error",
+			deletionEnabled: true,
+			expectErr:       true,
+		},
+		{
+			name:            "deletion enabled with delete-request-store — ok",
+			deletionEnabled: true,
+			deleteReqStore:  "filesystem",
+			expectErr:       false,
+		},
+		{
+			name:             "retention enabled with delete-request-store — ok",
+			retentionEnabled: true,
+			deleteReqStore:   "filesystem",
+			expectErr:        false,
+		},
+		{
+			name:             "both enabled with delete-request-store — ok",
+			deletionEnabled:  true,
+			retentionEnabled: true,
+			deleteReqStore:   "filesystem",
+			expectErr:        false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Config{}
+			flagext.DefaultValues(&cfg)
+			cfg.DeletionEnabled = tc.deletionEnabled
+			cfg.RetentionEnabled = tc.retentionEnabled
+			cfg.DeleteRequestStore = tc.deleteReqStore
+			err := cfg.Validate()
+			if tc.expectErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func Test_tableSort(t *testing.T) {
 	intervals := []string{
 		"index_19191",

@@ -2836,6 +2836,11 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.retention-enabled
 [retention_enabled: <boolean> | default = false]
 
+# Enables the log deletion API. When false, deletion is only available if
+# retention is also enabled.
+# CLI flag: -compactor.deletion-enabled
+[deletion_enabled: <boolean> | default = false]
+
 # Delay after which chunks will be fully deleted during retention.
 # CLI flag: -compactor.retention-delete-delay
 [retention_delete_delay: <duration> | default = 2h]
@@ -4648,8 +4653,8 @@ ruler_remote_write_sigv4_config:
 
 # Deletion mode. Can be one of 'disabled', 'filter-only', or
 # 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if
-# retention_enabled is true, then the log entry deletion API endpoints are
-# available.
+# deletion_enabled or retention_enabled is true, then the log entry deletion API
+# endpoints are available.
 # CLI flag: -compactor.deletion-mode
 [deletion_mode: <string> | default = "filter-and-delete"]
 

@@ -20,7 +20,7 @@ func NewWorkerManager(
 ) (services.Service, error) {
 	wm := jobqueue.NewWorkerManager(cfg.WorkerConfig, grpcClient, r)
 
-	if cfg.RetentionEnabled {
+	if cfg.DeletionEnabled || cfg.RetentionEnabled {
 		deletionJobRunner := initDeletionJobRunner(cfg.JobsConfig.Deletion.ChunkProcessingConcurrency, schemaConfig, chunkClients, r)
 		err := wm.RegisterJobRunner(grpc.JOB_TYPE_DELETION, deletionJobRunner)
 		if err != nil {

@@ -607,7 +607,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	volumeRangeHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.VolumeRange", t.Overrides)
 	seriesHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.Series", t.Overrides)
 
-	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
+	if t.supportIndexDeleteRequest() && (t.Cfg.CompactorConfig.DeletionEnabled || t.Cfg.CompactorConfig.RetentionEnabled) {
 		toMerge = append(
 			toMerge,
 			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
@@ -720,7 +720,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		queryrange.Instrument{Metrics: t.Metrics},
 		queryrange.Tracer{},
 	}
-	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
+	if t.supportIndexDeleteRequest() && (t.Cfg.CompactorConfig.DeletionEnabled || t.Cfg.CompactorConfig.RetentionEnabled) {
 		internalMiddlewares = append(
 			internalMiddlewares,
 			queryrangebase.CacheGenNumberContextSetterMiddleware(t.cacheGenerationLoader),
@@ -1152,7 +1152,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 		util_log.Logger,
 		t.Overrides,
 		t.Cfg.SchemaConfig,
-		t.cacheGenerationLoader, t.Cfg.CompactorConfig.RetentionEnabled,
+		t.cacheGenerationLoader, t.Cfg.CompactorConfig.DeletionEnabled || t.Cfg.CompactorConfig.RetentionEnabled,
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
 	)
@@ -1851,14 +1851,14 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	}
 
 	var deleteRequestStoreClient client.ObjectClient
-	if t.Cfg.CompactorConfig.RetentionEnabled {
+	if t.Cfg.CompactorConfig.DeletionEnabled || t.Cfg.CompactorConfig.RetentionEnabled {
 		if deleteStore := t.Cfg.CompactorConfig.DeleteRequestStore; deleteStore != "" {
 			deleteRequestStoreClient, err = storage.NewObjectClient(deleteStore, "delete-store", t.Cfg.StorageConfig, t.ClientMetrics)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create delete request store object client: %w", err)
 			}
 		} else {
-			return nil, fmt.Errorf("compactor.delete-request-store should be configured when retention is enabled")
+			return nil, fmt.Errorf("compactor.delete-request-store should be configured when deletion or retention is enabled")
 		}
 	}
 
@@ -1886,7 +1886,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		t.InternalServer.HTTP.PathPrefix(prefix).Handler(compactorHandler)
 	}
 
-	if t.Cfg.CompactorConfig.RetentionEnabled {
+	if t.Cfg.CompactorConfig.DeletionEnabled || t.Cfg.CompactorConfig.RetentionEnabled {
 		t.Server.HTTP.Path(constants.PathLokiDelete).Methods("PUT", "POST").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.AddDeleteRequestHandler))
 		t.Server.HTTP.Path(constants.PathLokiDelete).Methods("GET").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler))
 		t.Server.HTTP.Path(constants.PathLokiDelete).Methods("DELETE").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler))
@@ -2484,7 +2484,7 @@ func (t *Loki) getDataObjBucket(clientName string) (objstore.Bucket, error) {
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
-	if !t.supportIndexDeleteRequest() || !t.Cfg.CompactorConfig.RetentionEnabled {
+	if !t.supportIndexDeleteRequest() || (!t.Cfg.CompactorConfig.DeletionEnabled && !t.Cfg.CompactorConfig.RetentionEnabled) {
 		return deletion.NewNoOpDeleteRequestsClient(), nil
 	}
 

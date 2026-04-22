@@ -22,6 +22,7 @@ type Config struct {
 	CompactionInterval              time.Duration         `yaml:"compaction_interval"`
 	ApplyRetentionInterval          time.Duration         `yaml:"apply_retention_interval"`
 	RetentionEnabled                bool                  `yaml:"retention_enabled"`
+	DeletionEnabled                 bool                  `yaml:"deletion_enabled"`
 	RetentionDeleteDelay            time.Duration         `yaml:"retention_delete_delay"`
 	RetentionDeleteWorkCount        int                   `yaml:"retention_delete_worker_count"`
 	RetentionTableTimeout           time.Duration         `yaml:"retention_table_timeout"`
@@ -52,6 +53,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ApplyRetentionInterval, "compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
 	f.DurationVar(&cfg.RetentionDeleteDelay, "compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
 	f.BoolVar(&cfg.RetentionEnabled, "compactor.retention-enabled", false, "Activate custom (per-stream,per-tenant) retention.")
+	f.BoolVar(&cfg.DeletionEnabled, "compactor.deletion-enabled", false, "Enables the log deletion API. When false, deletion is only available if retention is also enabled.")
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.StringVar(&cfg.DeleteRequestStore, "compactor.delete-request-store", "", "Store used for managing delete requests.")
 	f.StringVar(&cfg.DeleteRequestStoreKeyPrefix, "compactor.delete-request-store.key-prefix", "index/", "Path prefix for storing delete requests.")
@@ -104,18 +106,9 @@ func (cfg *Config) Validate() error {
 		return errors.New("Replication factor must not be changed as it will not take effect")
 	}
 
-	if cfg.RetentionEnabled {
+	if cfg.DeletionEnabled || cfg.RetentionEnabled {
 		if cfg.DeleteRequestStore == "" {
-			return fmt.Errorf("compactor.delete-request-store should be configured when retention is enabled")
-		}
-
-		if cfg.ApplyRetentionInterval == 0 {
-			cfg.ApplyRetentionInterval = cfg.CompactionInterval
-		}
-
-		if cfg.ApplyRetentionInterval == cfg.CompactionInterval {
-			// add some jitter to avoid running retention and compaction at same time
-			cfg.ApplyRetentionInterval += min(10*time.Minute, cfg.ApplyRetentionInterval/2)
+			return fmt.Errorf("compactor.delete-request-store should be configured when deletion or retention is enabled")
 		}
 
 		if err := config.ValidatePathPrefix(cfg.DeleteRequestStoreKeyPrefix); err != nil {
@@ -124,6 +117,17 @@ func (cfg *Config) Validate() error {
 
 		if cfg.DeletionMarkerObjectStorePrefix != "" && !strings.HasSuffix(cfg.DeletionMarkerObjectStorePrefix, "/") {
 			return fmt.Errorf("deletion marker object store prefix must end with /")
+		}
+	}
+
+	if cfg.DeletionEnabled || cfg.RetentionEnabled {
+		if cfg.ApplyRetentionInterval == 0 {
+			cfg.ApplyRetentionInterval = cfg.CompactionInterval
+		}
+
+		if cfg.ApplyRetentionInterval == cfg.CompactionInterval {
+			// add some jitter to avoid running retention and compaction at same time
+			cfg.ApplyRetentionInterval += min(10*time.Minute, cfg.ApplyRetentionInterval/2)
 		}
 	}
 

@@ -106,7 +106,7 @@ func (c *tablesManager) start(ctx context.Context) {
 		}
 	}()
 
-	if c.cfg.RetentionEnabled {
+	if c.cfg.DeletionEnabled || c.cfg.RetentionEnabled {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
