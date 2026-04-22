@@ -226,4 +226,5 @@
   ],
   semanticCommitType: 'fix',
   semanticCommitScope: 'deps',
+  commitMessageAction: 'Update', // default is lower case
 }
