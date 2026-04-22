@@ -587,7 +587,6 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 		}
 
 		builder.CollectRecord(rec)
-		rec.Release()
 	}
 
 	duration := timer.ObserveDuration()
