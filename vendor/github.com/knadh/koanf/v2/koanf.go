@@ -434,15 +434,25 @@ func (ko *Koanf) Delim() string {
 
 func (ko *Koanf) merge(c map[string]any, opts *options) error {
 	ko.mu.Lock()
-	defer ko.mu.Unlock()
 
 	maps.IntfaceKeysToStrings(c)
 	if opts.merge != nil {
-		if err := opts.merge(c, ko.confMap); err != nil {
+		// Deep-copy confMap so the custom merge function can safely call
+		// ko.Get*() methods (which acquire a read lock) without deadlocking.
+		dest := maps.Copy(ko.confMap)
+
+		ko.mu.Unlock()
+		err := opts.merge(c, dest)
+		ko.mu.Lock()
+
+		if err != nil {
+			ko.mu.Unlock()
 			return err
 		}
+		ko.confMap = dest
 	} else if ko.conf.StrictMerge {
 		if err := maps.MergeStrict(c, ko.confMap); err != nil {
+			ko.mu.Unlock()
 			return err
 		}
 	} else {
@@ -453,6 +463,7 @@ func (ko *Koanf) merge(c map[string]any, opts *options) error {
 	ko.confMapFlat, ko.keyMap = maps.Flatten(ko.confMap, nil, ko.conf.Delim)
 	ko.keyMap = populateKeyParts(ko.keyMap, ko.conf.Delim)
 
+	ko.mu.Unlock()
 	return nil
 }
 

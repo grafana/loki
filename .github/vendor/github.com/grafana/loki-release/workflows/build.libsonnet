@@ -315,13 +315,12 @@ local runner = import 'runner.libsonnet',
       pr_created: '${{ steps.version.outputs.pr_created }}',
     }),
 
-  dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'], runsOn='ubuntu-latest')
+  dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'], optionalTargets=[], runsOn='ubuntu-x64')
     job.new(runsOn)
     + job.withPermissions({
       'id-token': 'write',
     })
     + job.withSteps([
-      common.cleanUpBuildCache,
       common.fetchReleaseRepo,
       common.fetchGcsCredentials,
       common.googleAuth,
@@ -373,6 +372,45 @@ local runner = import 'runner.libsonnet',
             make %s
           EOF
         ||| % [buildImage, buildImage, std.join(' ', makeTargets)]
+      ),
+
+      releaseStep('build optional artifacts')
+      + step.withContinueOnError()
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
+      + step.withEnv({
+        BUILD_IN_CONTAINER: false,
+        DRONE_TAG: '${{ needs.version.outputs.version }}',
+        IMAGE_TAG: '${{ needs.version.outputs.version }}',
+      })
+      + if std.length(optionalTargets) > 0 then step.withRun(
+        (
+          if useGCR then |||
+            gcloud auth configure-docker
+          ||| else ''
+        ) +
+        |||
+          cat <<EOF | docker run \
+            --interactive \
+            --env BUILD_IN_CONTAINER \
+            --env DRONE_TAG \
+            --env IMAGE_TAG \
+            --volume .:/src/loki \
+            --workdir /src/loki \
+            --entrypoint /bin/sh "%(image)s"
+            git config --global --add safe.directory /src/loki
+            if echo "%(image)s" | grep -q "golang"; then
+              /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
+            fi
+            make %(targets)s
+          EOF
+        ||| % {
+          image: buildImage,
+          targets: std.join(' ', optionalTargets),
+        }
+      ) else step.withRun(
+        |||
+          echo "Nothing to do"
+        |||
       ),
 
       step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0')  // v2

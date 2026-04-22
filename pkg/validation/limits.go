@@ -13,9 +13,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/sigv4"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 

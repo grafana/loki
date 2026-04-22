@@ -18,7 +18,7 @@ type WriteClient interface {
 	BatchWrite(context.Context, WriteBatch) error
 }
 
-// Client is a client for the storage of the index (e.g. DynamoDB or Bigtable).
+// Client is a client for the storage of the index (e.g. DynamoDB).
 type Client interface {
 	ReadClient
 	WriteClient

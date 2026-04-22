@@ -1,5 +1,5 @@
 # Build the manager binary. BUILD_IMAGE defaults to the same Go image as Dockerfile.
-ARG BUILD_IMAGE=golang:1.25.7
+ARG BUILD_IMAGE=golang:1.25.9
 
 FROM ${BUILD_IMAGE} AS builder
 

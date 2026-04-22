@@ -13,7 +13,7 @@ Single store BoltDB Shipper is a legacy storage option recommended for Loki 2.0 
 BoltDB Shipper lets you run Grafana Loki without any dependency on NoSQL stores for storing index.
 It locally stores the index in BoltDB files instead and keeps shipping those files to a shared object store i.e the same object store which is being used for storing chunks.
 It also keeps syncing BoltDB files from shared object store to a configured local directory for getting index entries created by other services of same Loki cluster.
-This helps run Loki with one less dependency and also saves costs in storage since object stores are likely to be much cheaper compared to cost of a hosted NoSQL store or running a self hosted instance of Cassandra.
+This helps run Loki with one less dependency and also saves costs in storage since object stores are likely to be much cheaper compared to cost of a hosted NoSQL store.
 
 {{< admonition type="note" >}}
 BoltDB shipper works best with 24h periodic index files. It is a requirement to have the index period set to 24h for either active or upcoming usage of boltdb-shipper.
