@@ -140,6 +140,8 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 	start := time.Now()
 
 	keyToTask, rootKeys, backends, taskCount := collectCacheKeys(p, cacheOpts.registry, logger)
+
+	fetchStart := time.Now()
 	fetchCtx := context.Background()
 	if cacheOpts.pruneFetchTimeout > 0 {
 		var cancel context.CancelFunc
@@ -147,10 +149,12 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 		defer cancel()
 	}
 	emptyResults, nonEmptyResults := classifyTasksByCacheHit(fetchCtx, keyToTask, rootKeys, backends, logger)
+	fetchDuration := time.Since(fetchStart)
 
 	// NOTE: tasks cannot be eliminated inside the walk or fetch loops since
 	// dag.Graph.Eliminate uses slices.DeleteFunc which zeroes the tail of the
 	// underlying slice, corrupting any live range slice.
+	prunningStart := time.Now()
 	var (
 		tasksRemoved int
 		tasksSkipped int
@@ -187,11 +191,12 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 			tasksRemoved += eliminateTask(p, info.task, eliminationReasonNonEmpty)
 		}
 	}
+	pruningDuration := time.Since(prunningStart)
 
 	// Log the number of tasks removed. Note that if removed_tasks is bigger than to_eliminate
 	// then, (removed_tasks-to_eliminate) parents were removed because all their children were removed.
 	if tasksRemoved > 0 {
-		level.Debug(logger).Log(
+		level.Info(logger).Log(
 			"msg", "pruned cached tasks from workflow",
 			"total_tasks", taskCount,
 			"removed_tasks", tasksRemoved,
@@ -200,6 +205,8 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 			"non_empty_hits", len(nonEmptyResults),
 			"non_empty_bytes", humanize.Bytes(cachedBytes),
 			"elapsed", time.Since(start),
+			"fetch_duration", fetchDuration,
+			"pruning_duration", pruningDuration,
 		)
 	}
 
