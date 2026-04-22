@@ -94,7 +94,7 @@ type MultiEvent []Event
 func (e MultiEvent) String() string {
 	var sb strings.Builder
 	for _, ev := range e {
-		sb.WriteString(fmt.Sprintf("%v\n", ev))
+		fmt.Fprintf(&sb, "%v\n", ev)
 	}
 	return sb.String()
 }

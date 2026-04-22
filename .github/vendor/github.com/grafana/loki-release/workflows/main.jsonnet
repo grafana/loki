@@ -15,7 +15,7 @@
     checkTemplate='./.github/workflows/check.yml',
     distMakeTargets=['dist', 'packages'],
     distOptionalTargets=[],
-    distRunsOn='ubuntu-latest',
+    distRunsOn='ubuntu-x64',
     dryRun=false,
     dockerUsername='grafana',
     golangCiLintVersion='v2.3.0',

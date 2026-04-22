@@ -9,7 +9,7 @@ on:
 
 jobs:
   weekly-release-pr:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     permissions:
       contents: "read"
       id-token: "write"
