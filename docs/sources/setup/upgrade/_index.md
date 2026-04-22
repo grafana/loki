@@ -37,6 +37,16 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Drop support for non-TSDB stores in jsonnet lib 
+
+With the removal of deprecated storage backends, the Loki jsonnet library is also cleaned up to reflect these changes. Affected configuration flags are:
+
+- `$._config.using_shipper_store` - any usages defaulted to `true`
+- `$._config.using_boltdb_shipper` - any usages defaulted to `false`
+- `$._config.using_tsdb_shipper` - any usages defaulted to `true`
+
+This change may update both command line arguments and the Loki config. If you've been using or overriding one of the three aforementioned configuration options, please remove them and replace them with the new defaults.
+
 ### Breaking change: Removal of deprecated storage backends
 
 We deprecated legacy storage backends in Loki 3.0 and now they are subsequently removed:
