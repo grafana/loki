@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/go-kit/log"
@@ -118,26 +119,28 @@ func TestMemcached_fetchKeysBatched_contextCancellation(t *testing.T) {
 	// With Parallelism=1, batches run sequentially. Each GetMulti call takes
 	// 10ms (simulated delay). A 25ms timeout allows the first two batches to
 	// complete (~20ms total) but cuts off the third (~30ms).
-	keys := []string{"k1", "k2", "k3", "k4", "k5", "k6"}
-	client := &delayedMockMemcache{mockMemcache: *newMockMemcache(), delay: 10 * time.Millisecond}
-	for _, k := range keys {
-		require.NoError(t, client.Set(&memcache.Item{Key: k, Value: []byte(k)}))
-	}
-	mc := cache.NewMemcached(cache.MemcachedConfig{
-		BatchSize:   2,
-		Parallelism: 1,
-	}, client, "test", nil, log.NewNopLogger(), "test")
-	defer mc.Stop()
+	synctest.Test(t, func(t *testing.T) {
+		keys := []string{"k1", "k2", "k3", "k4", "k5", "k6"}
+		client := &delayedMockMemcache{mockMemcache: *newMockMemcache(), delay: 10 * time.Millisecond}
+		for _, k := range keys {
+			require.NoError(t, client.Set(&memcache.Item{Key: k, Value: []byte(k)}))
+		}
+		mc := cache.NewMemcached(cache.MemcachedConfig{
+			BatchSize:   2,
+			Parallelism: 1,
+		}, client, "test", nil, log.NewNopLogger(), "test")
+		defer mc.Stop()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(t.Context(), 25*time.Millisecond)
+		defer cancel()
 
-	found, bufs, missed, err := mc.Fetch(ctx, keys)
+		found, bufs, missed, err := mc.Fetch(ctx, keys)
 
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.Len(t, bufs, len(found))
-	require.ElementsMatch(t, []string{"k1", "k2", "k3", "k4"}, found)
-	require.ElementsMatch(t, []string{"k5", "k6"}, missed)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Len(t, bufs, len(found))
+		require.ElementsMatch(t, []string{"k1", "k2", "k3", "k4"}, found)
+		require.ElementsMatch(t, []string{"k5", "k6"}, missed)
+	})
 }
 
 // mockMemcache whose calls fail 1/3rd of the time.
