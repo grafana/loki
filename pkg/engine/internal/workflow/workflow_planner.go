@@ -154,26 +154,28 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 	// NOTE: tasks cannot be eliminated inside the walk or fetch loops since
 	// dag.Graph.Eliminate uses slices.DeleteFunc which zeroes the tail of the
 	// underlying slice, corrupting any live range slice.
-	prunningStart := time.Now()
+	pruningStart := time.Now()
 	var (
 		tasksRemoved int
 		tasksSkipped int
+		skippedBytes uint64
 		cachedBytes  uint64
 	)
-	if cacheOpts.pruneEmptyCachedTasks {
-		for _, task := range emptyResults {
-			tasksRemoved += eliminateTask(p, task, eliminationReasonEmpty)
-		}
+	if cacheOpts.pruneEmptyCachedTasks && len(emptyResults) > 0 {
+		removed := eliminateTasks(p, emptyResults)
+		eliminatedCachedTasksTotal.WithLabelValues(eliminationReasonEmpty).Add(float64(removed))
+		tasksRemoved += removed
 	}
-	if cacheOpts.nonEmptyCachedTasksMaxBytes > 0 {
+	if cacheOpts.nonEmptyCachedTasksMaxBytes > 0 && len(nonEmptyResults) > 0 {
 		var nonEmptyUpToMaxSize []nonEmptyCachedTask
 		for _, r := range nonEmptyResults {
-			sz := uint64(len(r.buf))
-			if cachedBytes+sz <= cacheOpts.nonEmptyCachedTasksMaxBytes {
+			size := uint64(len(r.buf))
+			if cachedBytes+size <= cacheOpts.nonEmptyCachedTasksMaxBytes {
 				nonEmptyUpToMaxSize = append(nonEmptyUpToMaxSize, r)
-				cachedBytes += sz
+				cachedBytes += size
 			} else {
 				tasksSkipped++
+				skippedBytes += size
 			}
 		}
 		if tasksSkipped > 0 {
@@ -184,14 +186,20 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 			)
 		}
 
-		// Wire CachedSources into parent tasks BEFORE elimination so that
-		// eliminateTask's Sources-cleanup loop finds the stream already gone.
-		wireCachedSources(p, nonEmptyUpToMaxSize)
-		for _, info := range nonEmptyUpToMaxSize {
-			tasksRemoved += eliminateTask(p, info.task, eliminationReasonNonEmpty)
+		if len(nonEmptyUpToMaxSize) > 0 {
+			// Wire CachedSources into parent tasks BEFORE elimination so that
+			// eliminateTasksBatch's Sources-cleanup loop finds the stream already gone.
+			wireCachedSources(p, nonEmptyUpToMaxSize)
+			nonEmptyTasks := make([]*Task, len(nonEmptyUpToMaxSize))
+			for i, r := range nonEmptyUpToMaxSize {
+				nonEmptyTasks[i] = r.task
+			}
+			removed := eliminateTasks(p, nonEmptyTasks)
+			eliminatedCachedTasksTotal.WithLabelValues(eliminationReasonNonEmpty).Add(float64(removed))
+			tasksRemoved += removed
 		}
 	}
-	pruningDuration := time.Since(prunningStart)
+	pruningDuration := time.Since(pruningStart)
 
 	// Log the number of tasks removed. Note that if removed_tasks is bigger than to_eliminate
 	// then, (removed_tasks-to_eliminate) parents were removed because all their children were removed.
@@ -201,6 +209,7 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 			"total_tasks", taskCount,
 			"removed_tasks", tasksRemoved,
 			"skipped_tasks", tasksSkipped,
+			"skipped_bytes", humanize.Bytes(skippedBytes),
 			"empty_hits", len(emptyResults),
 			"non_empty_hits", len(nonEmptyResults),
 			"non_empty_bytes", humanize.Bytes(cachedBytes),
@@ -443,6 +452,111 @@ func eliminateTask(p *planner, task *Task, reason string) (totalTasksRemoved int
 	}
 
 	return totalTasksRemoved
+}
+
+// eliminateTasks removes all tasks in initial (and any cascade parents) from the planner graph.
+func eliminateTasks(p *planner, tasks []*Task) int {
+	allToEliminate := make(map[*Task]struct{}, len(tasks))
+	streamsToRemove := make(map[*Stream]struct{})
+
+	// These are some convenience methods to improve the legibility of the code
+	markForElimination := func(task *Task) {
+		allToEliminate[task] = struct{}{}
+		for _, sinkStreams := range task.Sinks {
+			for _, s := range sinkStreams {
+				streamsToRemove[s] = struct{}{}
+			}
+		}
+	}
+	isMarkedForElimination := func(task *Task) bool {
+		_, ok := allToEliminate[task]
+		return ok
+	}
+
+	// Collect the initial set of tasks and their streams.
+	for _, task := range tasks {
+		markForElimination(task)
+	}
+
+	// Iterate all parents across all levels of the DAG (BFS), collecting
+	// all that should be removed (no remaining source streams and no CachedSources)
+	parentsToCheck := make(map[*Task]struct{})
+	for task := range allToEliminate {
+		for _, parent := range p.graph.Parents(task) {
+			if !isMarkedForElimination(parent) {
+				parentsToCheck[parent] = struct{}{}
+			}
+		}
+	}
+	for len(parentsToCheck) > 0 { // While there are parents
+		nextLevel := make(map[*Task]struct{}, len(parentsToCheck))
+
+		for task := range parentsToCheck {
+			// Check how many sources are left.
+			remainingSources := 0
+			for _, streams := range task.Sources {
+				for _, s := range streams {
+					if _, removed := streamsToRemove[s]; !removed {
+						remainingSources++
+					}
+				}
+			}
+
+			// Only mark if there are no remaining sources or CachedSources left.
+			if remainingSources > 0 || len(task.CachedSources) > 0 {
+				continue
+			}
+			markForElimination(task)
+
+			// Add all parents (not marked for deletion already) to the next level of the BFS.
+			for _, gp := range p.graph.Parents(task) {
+				if !isMarkedForElimination(gp) {
+					nextLevel[gp] = struct{}{}
+				}
+			}
+		}
+
+		parentsToCheck = nextLevel
+	}
+
+	// We are done marking all tasks for deletion, now for all the parents that survived,
+	// clean the sources pointing to deleted tasks.
+	survivingParents := make(map[*Task]struct{})
+	for task := range allToEliminate {
+		for _, parent := range p.graph.Parents(task) {
+			if !isMarkedForElimination(parent) {
+				survivingParents[parent] = struct{}{}
+			}
+		}
+	}
+	for parent := range survivingParents {
+		for node, streams := range parent.Sources {
+			kept := streams[:0]
+			for _, s := range streams {
+				if _, removed := streamsToRemove[s]; removed {
+					continue
+				}
+				kept = append(kept, s)
+			}
+			if len(kept) == 0 {
+				delete(parent.Sources, node)
+			} else {
+				parent.Sources[node] = kept
+			}
+		}
+	}
+	for s := range streamsToRemove {
+		delete(p.streamWriters, s)
+	}
+
+	// Phase 4: update the DAG in a single batch operation.
+	tasksToRemove := make([]*Task, 0, len(allToEliminate))
+	for task := range allToEliminate {
+		tasksToRemove = append(tasksToRemove, task)
+	}
+	p.graph.EliminateBatch(tasksToRemove)
+
+	return len(tasks)
 }
 
 // injectTaskCaching wraps each cacheable task fragment with a Cache node.
