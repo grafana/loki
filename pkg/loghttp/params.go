@@ -186,12 +186,16 @@ func parseTimestamp(value string, def time.Time) (time.Time, error) {
 			// float) also lands here, and would be interpreted as
 			// 1.76e18 seconds -- far past year 2286 -- which causes
 			// downstream range expansion and can exhaust memory
-			// building the query plan. Reject values that are not
-			// representable as a time.Time in a sensible range.
-			// time.Time internally clamps to roughly year 2262 for
-			// nanosecond precision; 1e10 seconds is year 2286, which
-			// is well beyond any realistic Loki query horizon.
-			if math.IsNaN(t) || math.IsInf(t, 0) || t < 0 || t > 1e10 {
+			// building the query plan. Reject values outside a
+			// realistic Unix-seconds range. time.Time internally
+			// clamps to roughly year 2262 for nanosecond precision;
+			// 1e10 seconds is year 2286, which is well beyond any
+			// realistic Loki query horizon.
+			// NaN and +-Inf can't reach this branch: their string
+			// forms ("NaN", "+Inf", "-Inf") don't contain ".", and
+			// ParseFloat's overflow case returns a non-nil ErrRange,
+			// so err == nil here implies a finite value.
+			if t < 0 || t > 1e10 {
 				return time.Time{}, fmt.Errorf("timestamp %q is out of range", value)
 			}
 			s, ns := math.Modf(t)
