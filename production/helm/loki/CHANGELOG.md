@@ -13,6 +13,13 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 7.0.0
+
+- [BREAKING] The chart in this repository is now maintained for Grafana Enterprise Logs (GEL) users only. As of March 16, 2026, the Grafana Loki Helm chart for OSS users has moved to [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) (forked at chart version 6.55.0). OSS users are encouraged to migrate to the community-maintained chart.  That community chart is *not* the supported installation path for GEL as the Community chart has [removed support for GEL](https://github.com/grafana-community/helm-charts/pull/184).  See [#20705](https://github.com/grafana/loki/issues/20705) for details.
+- [CHANGE] Swap bundled minio subchart images from `minio/minio` to the Pigsty (`pgsty`) community fork (`docker.io/pgsty/minio:RELEASE.2026-03-14T12-00-00Z`, `docker.io/pgsty/mc:RELEASE.2026-03-13T08-57-32Z`) to mitigate an unresolved upstream MinIO CVE.
+- [CHANGE] Changed GEL version to 3.6.6 (updated `enterprise.version`, `enterprise.image.tag`, and chart `appVersion`).
+- [FEATURE] Update README chart migration notice from future tense to past tense
+
 ## 6.56.0
 
 - [FEATURE] Update README chart migration notice from future tense to past tense
