@@ -76,6 +76,10 @@ Supported clients should check the configuration options for max send message si
 With the move to the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts), the chart numbering has changed. Major version updates signal breaking changes in the chart. For more information, refer to the [README](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading).
 {{< /admonition >}}
 
+### Migrating from the Loki Repository Helm Chart to the Community Helm Chart
+
+If you are upgrading from the Helm chart previously hosted in the Loki repository (chart version 6.x) to the Grafana Community Helm chart (chart version 13.x), refer to the dedicated migration guide: [Upgrade to the Community Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-community/).
+
 ### Helm Chart 6.50.0 - Respect the global registry in the sidecar image
 
 If you prefixed the sidecar container with a private registry (`sidecar.image.repository`), this is no longer necessary and is deprecated as the global registry is used starting with Helm chart 6.46.1. Therefore please use `global.imageRegistry` or alternatively, `sidecar.image.registry` for more fine-grained control.
