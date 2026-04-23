@@ -6499,13 +6499,6 @@ The `storage_config` block configures one of many possible stores for both the i
 # defined in config.
 [gcs: <gcs_storage_config>]
 
-# Deprecated: Configures storing index in BoltDB. Required fields only required
-# when boltdb is present in the configuration.
-boltdb:
-  # Location of BoltDB index files.
-  # CLI flag: -boltdb.dir
-  [directory: <string> | default = ""]
-
 # Configures storing the chunks on the local file system. Required fields only
 # required when filesystem is present in the configuration.
 [filesystem: <local_storage_config>]
@@ -6513,12 +6506,6 @@ boltdb:
 # The swift_storage_config block configures the connection to OpenStack Object
 # Storage (Swift) object storage backend.
 [swift: <swift_storage_config>]
-
-# Deprecated:
-grpc_store:
-  # Hostname or IP of the gRPC store instance.
-  # CLI flag: -grpc-store.server-address
-  [server_address: <string> | default = ""]
 
 hedging:
   # If set to a non-zero value a second request will be issued at the provided

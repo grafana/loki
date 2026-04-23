@@ -1291,21 +1291,19 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		if err != nil {
 			return nil, err
 		}
-		tp := httputil.NewSingleHostReverseProxy(tailURL)
-
 		cfg, err := t.Cfg.Frontend.TLS.GetTLSConfig()
 		if err != nil {
 			return nil, err
 		}
 
-		tp.Transport = &http.Transport{
-			TLSClientConfig: cfg,
-		}
-
-		director := tp.Director
-		tp.Director = func(req *http.Request) {
-			director(req)
-			req.Host = tailURL.Host
+		tp := &httputil.ReverseProxy{
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.SetURL(tailURL)
+				pr.Out.Host = tailURL.Host
+			},
+			Transport: &http.Transport{
+				TLSClientConfig: cfg,
+			},
 		}
 
 		defaultHandler = httpMiddleware.Wrap(tp)

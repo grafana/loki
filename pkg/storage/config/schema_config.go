@@ -40,7 +40,6 @@ var (
 	errInvalidTablePeriod       = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
 	errInvalidTableName         = errors.New("invalid table name")
 	errConfigFileNotSet         = errors.New("schema config file needs to be set")
-	errConfigChunkPrefixNotSet  = errors.New("schema config for chunks is missing the 'prefix' setting")
 	errSchemaIncreasingFromTime = errors.New("from time in schemas must be distinct and in increasing order")
 
 	errCurrentBoltdbShipperNon24Hours  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
@@ -402,22 +401,6 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 	}
 }
 
-func validateChunks(cfg PeriodConfig) error {
-	objectStore := cfg.IndexType
-	if cfg.ObjectType != "" {
-		objectStore = cfg.ObjectType
-	}
-	switch objectStore {
-	case "aws-dynamo", "grpc-store":
-		if cfg.ChunkTables.Prefix == "" {
-			return errConfigChunkPrefixNotSet
-		}
-		return nil
-	default:
-		return nil
-	}
-}
-
 func (cfg *PeriodConfig) applyDefaults() {
 	if cfg.IndexTables.PathPrefix == "" {
 		cfg.IndexTables.PathPrefix = "index/"
@@ -462,11 +445,6 @@ func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 
 // Validate the period config.
 func (cfg PeriodConfig) validate() error {
-	validateError := validateChunks(cfg)
-	if validateError != nil {
-		return validateError
-	}
-
 	if cfg.IndexType == types.TSDBType && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
 		return errTSDBNon24HoursIndexPeriod
 	}

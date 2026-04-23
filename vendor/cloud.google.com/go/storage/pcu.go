@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"path"
 	"runtime"
 	"sort"
@@ -39,34 +40,38 @@ const (
 	defaultMaxDelay      = 5 * time.Second
 )
 
-// parallelUploadConfig holds configuration for Parallel Uploads.
+// ParallelUploadConfig holds configuration for Parallel Uploads.
 // Setting this config and EnableParallelUpload flag on Writer enables parallel uploads.
+// Supported exclusively for gRPC clients. If used with a JSON client, the
+// configuration is ignored and a standard upload is performed.
 //
 // **Note:** This feature is currently experimental and its API surface may change
 // in future releases. It is not yet recommended for production use.
-type parallelUploadConfig struct {
+type ParallelUploadConfig struct {
 
-	// partSize is the size of each part to be uploaded in parallel.
-	// Defaults to 16MiB. Must be a multiple of 256KiB and more than 5MiB.
-	partSize int
+	// PartSize is the size of each part to be uploaded in parallel.
+	// Defaults to 16MiB. If a value less than 5MiB is provided, it will be
+	// automatically increased to 5MiB. The value is automatically rounded up
+	// to the nearest multiple of 256KiB.
+	PartSize int
 
-	// maxConcurrency is the number of goroutines to use for uploading parts in parallel.
+	// MaxConcurrency is the number of goroutines to use for uploading parts in parallel.
 	// Defaults to a dynamic value based on the number of CPUs (min(4 + NumCPU/2, 16)).
-	maxConcurrency int
+	MaxConcurrency int
 }
 
-// defaults fills in values for the eventually-public configuration options.
-func (c *parallelUploadConfig) defaults() {
-	if c.partSize == 0 {
-		c.partSize = defaultPartSize
-	} else if c.partSize < minPartSize {
-		c.partSize = minPartSize
+// defaults fills in values for the configuration options.
+func (c *ParallelUploadConfig) defaults() {
+	if c.PartSize == 0 {
+		c.PartSize = defaultPartSize
+	} else if c.PartSize < minPartSize {
+		c.PartSize = minPartSize
 	}
 	// Use a heuristic for the number of workers: start with 4, add 1 for
 	// every 2 CPUs, but don't exceed a cap of 16. This provides a
 	// balance between parallelism and resource contention.
-	if c.maxConcurrency == 0 {
-		c.maxConcurrency = min(baseWorkers+(runtime.NumCPU()/2), maxWorkers)
+	if c.MaxConcurrency == 0 {
+		c.MaxConcurrency = min(baseWorkers+(runtime.NumCPU()/2), maxWorkers)
 	}
 }
 
@@ -95,7 +100,7 @@ type pcuState struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	w        *Writer
-	config   *parallelUploadConfig
+	config   *ParallelUploadConfig
 	settings *pcuSettings
 
 	mu sync.Mutex
@@ -109,6 +114,7 @@ type pcuState struct {
 	partNum         int
 	currentBuffer   []byte
 	bytesBuffered   int64
+	buffersAlloc    int
 
 	bufferCh    chan []byte
 	uploadCh    chan uploadTask
@@ -141,23 +147,40 @@ type uploadResult struct {
 	obj        *ObjectAttrs
 	handle     *ObjectHandle
 	err        error
+	size       int64
 }
 
 func (w *Writer) initPCU(ctx context.Context) error {
-	// TODO: Check if PCU is enabled on the Writer.
+	if !w.EnableParallelUpload {
+		return nil
+	}
+
+	if len(w.MD5) > 0 {
+		return errors.New("storage: MD5 checksums are not supported with parallel uploads")
+	}
 
 	// Sanity check: If these are nil, something has gone fundamentally wrong in the Writer lifecycle.
 	if w.o == nil || w.o.c == nil || w.o.bucket == "" {
 		return fmt.Errorf("upload requires a non-nil ObjectHandle with a bucket name and a client")
 	}
-	// TODO: Get the config from the Writer.
-	cfg := &parallelUploadConfig{}
+
+	if err := w.validateWriteAttrs(); err != nil {
+		return err
+	}
+	if w.o.gen != defaultGen {
+		return fmt.Errorf("storage: generation supported on Writer for appendable objects only, got %v", w.o.gen)
+	}
+
+	cfg := &w.ParallelUploadConfig
 	cfg.defaults()
 
 	// Ensure PartSize is a multiple of googleapi.MinUploadChunkSize.
-	cfg.partSize = gRPCChunkSize(cfg.partSize)
+	cfg.PartSize = gRPCChunkSize(cfg.PartSize)
 
-	s := newPCUSettings(cfg.maxConcurrency)
+	s := newPCUSettings(cfg.MaxConcurrency)
+
+	// Track PCU operations using client feature tracking header.
+	ctx = addFeatureAttributes(ctx, featurePCU)
 
 	pCtx, cancel := context.WithCancel(ctx)
 
@@ -168,7 +191,7 @@ func (w *Writer) initPCU(ctx context.Context) error {
 		config:          cfg,
 		settings:        s,
 		bufferCh:        make(chan []byte, s.bufferPoolSize),
-		uploadCh:        make(chan uploadTask, cfg.maxConcurrency), // Buffered to prevent worker starvation
+		uploadCh:        make(chan uploadTask, cfg.MaxConcurrency), // Buffered to prevent worker starvation.
 		resultCh:        make(chan uploadResult),
 		partMap:         make(map[int]*ObjectHandle),
 		intermediateMap: make(map[string]*ObjectHandle),
@@ -182,14 +205,10 @@ func (w *Writer) initPCU(ctx context.Context) error {
 			return c.Run(ctx)
 		},
 	}
-	// TODO: Assign the state to the Writer
+	w.pcu = state
 
-	for i := 0; i < s.bufferPoolSize; i++ {
-		state.bufferCh <- make([]byte, cfg.partSize)
-	}
-
-	state.workerWG.Add(cfg.maxConcurrency)
-	for i := 0; i < cfg.maxConcurrency; i++ {
+	state.workerWG.Add(cfg.MaxConcurrency)
+	for i := 0; i < cfg.MaxConcurrency; i++ {
 		go state.worker()
 	}
 
@@ -197,12 +216,10 @@ func (w *Writer) initPCU(ctx context.Context) error {
 	go state.resultCollector()
 
 	// Handle to get the first buffer.
-	select {
-	case <-state.ctx.Done():
-		return state.ctx.Err()
-	case state.currentBuffer = <-state.bufferCh:
-		state.bytesBuffered = 0
-	}
+	state.currentBuffer = make([]byte, cfg.PartSize)
+	state.buffersAlloc = 1
+	state.bytesBuffered = 0
+
 	state.started = true
 	return nil
 }
@@ -241,7 +258,7 @@ func (s *pcuState) worker() {
 				}
 				select {
 				// Always send a result to the collector if the context is not cancelled.
-				case s.resultCh <- uploadResult{partNumber: t.partNumber, obj: attrs, handle: handle, err: err}:
+				case s.resultCh <- uploadResult{partNumber: t.partNumber, obj: attrs, handle: handle, err: err, size: t.size}:
 				case <-s.ctx.Done():
 				}
 			}(task)
@@ -272,6 +289,7 @@ func (s *pcuState) uploadPart(task uploadTask) (*ObjectHandle, *ObjectAttrs, err
 
 func (s *pcuState) resultCollector() {
 	defer s.collectorWG.Done()
+	var cumulativeSize int64
 	for result := range s.resultCh {
 		if result.err != nil {
 			s.setError(result.err)
@@ -279,6 +297,9 @@ func (s *pcuState) resultCollector() {
 			s.mu.Lock()
 			s.partMap[result.partNumber] = result.handle
 			s.mu.Unlock()
+
+			cumulativeSize += result.size
+			s.w.progress(cumulativeSize)
 		} else {
 			// Both are nil: this is an impossible state that indicates a logical error.
 			// Setting an error to prevent silent data corruption.
@@ -329,6 +350,19 @@ func (s *pcuState) write(p []byte) (int, error) {
 				return total - len(p), s.ctx.Err()
 			case s.currentBuffer = <-s.bufferCh:
 				s.bytesBuffered = 0
+			default:
+				if s.buffersAlloc < s.settings.bufferPoolSize {
+					s.currentBuffer = make([]byte, s.config.PartSize)
+					s.buffersAlloc++
+					s.bytesBuffered = 0
+				} else {
+					select {
+					case <-s.ctx.Done():
+						return total - len(p), s.ctx.Err()
+					case s.currentBuffer = <-s.bufferCh:
+						s.bytesBuffered = 0
+					}
+				}
 			}
 		}
 
@@ -337,7 +371,7 @@ func (s *pcuState) write(p []byte) (int, error) {
 		p = p[n:]
 
 		// If the buffer is full, dispatch it to a worker.
-		if s.bytesBuffered == int64(s.config.partSize) {
+		if s.bytesBuffered == int64(s.config.PartSize) {
 			if err := s.flushCurrentBuffer(); err != nil {
 				return total - len(p), err
 			}
@@ -405,8 +439,10 @@ func (s *pcuState) close() error {
 		close(s.resultCh)
 		s.collectorWG.Wait()
 
-		// Cleanup is always attempted.
-		defer s.doCleanupFn(s)
+		// Cleanup is always attempted. We do it in the background to not block returning.
+		defer func() {
+			go s.doCleanupFn(s)
+		}()
 
 		s.mu.Lock()
 		err = s.firstErr
@@ -511,7 +547,7 @@ func (s *pcuState) composeParts() error {
 		finalComps = nextLevel
 	}
 
-	// Final Compose
+	// Final Compose.
 	composer := s.w.o.ComposerFrom(finalComps...)
 	composer.ObjectAttrs = s.w.ObjectAttrs
 	composer.KMSKeyName = s.w.ObjectAttrs.KMSKeyName
@@ -521,6 +557,12 @@ func (s *pcuState) composeParts() error {
 	if err != nil {
 		return err
 	}
+
+	// Perform client-side CRC32C validation if a user-provided checksum was specified.
+	if s.w.SendCRC32C && s.w.CRC32C != 0 && attrs.CRC32C != s.w.CRC32C {
+		return fmt.Errorf("storage: object was uploaded, but its CRC32C (%d) does not match the expected CRC32C (%d)", attrs.CRC32C, s.w.CRC32C)
+	}
+
 	s.w.obj = attrs
 	return nil
 }
@@ -533,17 +575,22 @@ func (s *pcuState) doCleanup() {
 	var wg sync.WaitGroup
 
 	// Semaphore to avoid spawning too many goroutines for deletion.
-	sem := make(chan struct{}, s.config.maxConcurrency)
+	sem := make(chan struct{}, s.config.MaxConcurrency)
 
 	runDelete := func(h *ObjectHandle) {
 		defer wg.Done()
 		sem <- struct{}{}
 		defer func() { <-sem }()
 
-		// Use WithoutCancel to ensure cleanup isn't killed by parent context cancellation
-		// Ignore cleanup errors here since its best effort and will rely on bucket
+		// Use WithoutCancel to ensure cleanup isn't killed by parent context cancellation.
+		// Wrap it in a timeout to prevent hanging indefinitely.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(s.ctx), 5*time.Minute)
+		defer cancel()
+		// Only log cleanup errors here since its best effort and will rely on bucket
 		// lifecycle policies if cleanup fails.
-		_ = s.deleteFn(context.WithoutCancel(s.ctx), h)
+		if err := s.deleteFn(cleanupCtx, h); err != nil {
+			log.Printf("storage: failed to delete temporary part %q during parallel upload cleanup: %v", h.object, err)
+		}
 	}
 
 	for _, h := range s.partMap {

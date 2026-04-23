@@ -7,105 +7,141 @@
     <a href="https://github.com/charmbracelet/ultraviolet/actions"><img src="https://github.com/charmbracelet/ultraviolet/actions/workflows/build.yml/badge.svg" alt="Build Status"></a>
 </p>
 
-Ultraviolet is a set of primitives for manipulating terminal emulators, with a focus on terminal user interfaces (TUIs). It provides a set of tools and abstractions for interaction that can handle user input and display dynamic, cell-based content. It’s the product of many years of research, development, collaboration and ingenuity.
+Ultraviolet is a set of primitives for building terminal user interfaces in Go.
+It provides cell-based rendering, cross-platform input handling, and a diffing
+renderer inspired by [ncurses](https://invisible-island.net/ncurses/)—without
+the need for `terminfo` or `termcap` databases.
 
-Ultraviolet is not a framework by design, however it can be used standalone to create powerful terminal applications. It’s in use in production and powers critical portions of [Bubble Tea v2][bbt] and [Lip Gloss v2][lg], and was instrumental in the development of [Crush][crush].
+Ultraviolet powers [Bubble Tea v2][bbt] and [Lip Gloss v2][lg]. It replaces the
+ad-hoc terminal primitives from earlier versions with a cohesive, imperative API
+that can also be used standalone.
 
-[crush]: https://github.com/charmbracelet/crush
 [bbt]: https://github.com/charmbracelet/bubbletea
 [lg]: https://github.com/charmbracelet/lipgloss
 
+## Install
+
+```bash
+go get github.com/charmbracelet/ultraviolet@latest
+```
+
+## Quick Start
+
+```go
+package main
+
+import (
+	"log"
+
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
+)
+
+func main() {
+	t := uv.DefaultTerminal()
+	scr := t.Screen()
+
+	scr.EnterAltScreen()
+
+	if err := t.Start(); err != nil {
+		log.Fatalf("failed to start terminal: %v", err)
+	}
+	defer t.Stop()
+
+	ctx := screen.NewContext(scr)
+	text := "Hello, World!"
+	textWidth := scr.StringWidth(text)
+
+	display := func() {
+		screen.Clear(scr)
+		bounds := scr.Bounds()
+		x := (bounds.Dx() - textWidth) / 2
+		y := bounds.Dy() / 2
+		ctx.DrawString(text, x, y)
+		scr.Render()
+		scr.Flush()
+	}
+
+	for ev := range t.Events() {
+		switch ev := ev.(type) {
+		case uv.WindowSizeEvent:
+			scr.Resize(ev.Width, ev.Height)
+			display()
+		case uv.KeyPressEvent:
+			if ev.MatchString("q", "ctrl+c") {
+				return
+			}
+		}
+	}
+}
+```
+
+## Architecture
+
+Ultraviolet is organized as a set of layered primitives:
+
+- **Terminal** — manages the application lifecycle: raw mode, input event loop,
+  start/stop. Create one with `DefaultTerminal()` or `NewTerminal(console, opts)`.
+
+- **TerminalScreen** — the screen state manager. Handles rendering, alternate
+  screen buffer, cursor, mouse modes, keyboard enhancements, bracketed paste,
+  window title, and more. Access it via `terminal.Screen()`.
+
+- **Screen** — a minimal interface (`Bounds`, `CellAt`, `SetCell`,
+  `WidthMethod`) implemented by `TerminalScreen`, `Buffer`, `Window`, and
+  `ScreenBuffer`. Write code against `Screen` to stay decoupled from the
+  terminal.
+
+- **Buffer / Window** — off-screen cell buffers. `Buffer` is a flat grid of
+  cells. `Window` adds parent/child relationships and shared-buffer views.
+  Both implement `Screen` and `Drawable`.
+
+- **screen package** — drawing helpers that operate on any `Screen`: a
+  `Context` for styled text rendering (`Print`, `DrawString`, etc.) and
+  utility functions like `Clear`, `Fill`, `Clone`.
+
+- **layout package** — a constraint-based layout solver built on the
+  [Cassowary algorithm][casso]. Partition screen space with `Len`, `Min`,
+  `Max`, `Percent`, `Ratio`, and `Fill` constraints.
+
+[casso]: https://en.wikipedia.org/wiki/Cassowary_(software)
+
 ## Features
 
-Ultraviolet is built with several core features in mind to make terminal
-application development easy and performant:
+- **Cell-based diffing renderer** — only redraws what changed. Optimizes
+  cursor movement, uses ECH/REP/ICH/DCH when available, and supports scroll
+  optimizations. Minimal bandwidth, critical for SSH.
 
-### 👺 The Cursed Renderer
+- **Universal input** — unified keyboard and mouse event handling across
+  platforms. Supports legacy encodings, Kitty keyboard protocol, SGR mouse,
+  and Windows Console input.
 
-The cell-based rendering model—called _The Cursed Render_—was inspired by the infamous
-[ncurses](https://invisible-island.net/ncurses/) library, which has been an
-essential part of terminal applications for decades. Ultraviolet takes this
-concept and modernizes it for the Go programming language, providing a more
-ergonomic and efficient way to work with terminal cells without the need for
-archaic technologies like `terminfo` or `termcap` databases.
+- **Inline and fullscreen** — works in both alternate screen (fullscreen) and
+  inline mode. Inline TUIs preserve terminal context and scrollback.
 
-Unlike ncurses, it supports both full-window and inline use-cases as we see inline TUIs as important in maintaining user context and flow.
+- **Cross-platform** — first-class support for Unix (termios + ANSI) and
+  Windows (Console API). Consistent behavior across terminal emulators.
 
-### 🏎️ High Speeds and Low Bandwidth
+- **Suspend/resume** — `Stop()` and `Start()` can be called repeatedly for
+  suspend/resume cycles, shelling out to editors, or process suspension
+  via `uv.Suspend()`.
 
-The built-in terminal renderer efficiently handles content updates by utilizing
-a powerful cell-based diffing algorithm that minimizes the amount of data
-written to the terminal using various ANSI escape sequences to accomplish this.
-This allows applications to update only the parts of the terminal that have
-changed, significantly improving performance and responsiveness.
+## Examples
 
-In practical terms, Ultraviolet optimizes for fast redraws that use minimal data transfer. This is very important locally and critically important over the network (for example, via SSH).
+See the [`examples/`](./examples/) directory for core examples and
+[`examples/advanced/`](./examples/advanced/) for more complex demos.
 
-### 💬 Universal Input
+## Tutorial
 
-Input handling in terminals can be complex, especially when dealing with
-multiple input sources, different platforms, and ancient terminal baggage.
-Ultraviolet simplifies this by providing a unified interface for handling user
-input, allowing developers to focus on building their applications without
-getting bogged down in the intricacies of terminal input handling.
+See [TUTORIAL.md](./TUTORIAL.md) for a step-by-step guide to building your
+first Ultraviolet application.
 
-### 🎮 Cross-Platform Compatibility
+> [!NOTE]
+> Ultraviolet is in active development. The API may change.
 
-Ultraviolet is designed to work seamlessly across different platforms and
-terminal emulators. It abstracts away the differences in terminal capabilities
-and provides a consistent API for developers to work with, ensuring that
-applications built with Ultraviolet will run smoothly on various systems.
+## Feedback
 
-On Windows, it uses the [Windows Console API](https://learn.microsoft.com/en-us/windows/console/console-functions) to
-provide a consistent experience, while on Unix-like systems, it relies on the
-standard Termios API along with ANSI escape sequences to manipulate the
-terminal.
-
-In short: Ultraviolet provides first-class support for both Unix and Windows-based systems.
-
-### 🧩 Extensible Architecture
-
-Ultraviolet is built with extensibility in mind, providing a solid API that can
-be embedded into other applications or used as a foundation for building custom
-terminal user interfaces. It allows developers to create their own components,
-styles, and behaviors, making it a versatile tool for building terminal
-applications.
-
-## FAQ
-
-### 🐈 What about other Charm libraries?
-
-Ultraviolet is not a replacement for existing libraries like [Bubble Tea](https://github.com/charmbracelet/bubbletea) or [Lip
-Gloss](https://github.com/charmbracelet/lipgloss). Instead, it serves as a
-foundation for the latest versions of both of these libraries and others like them, providing the
-underlying primitives and abstractions needed to build terminal user interfaces
-applications and frameworks.
-
-### 🛁 How is it different from Bubble Tea?
-
-Ultraviolet is a lower-level library that focuses on the core primitives of
-terminal manipulation, rendering, and input handling. It provides the building
-blocks for creating terminal applications, while Bubble Tea is a higher-level
-framework that builds on top of Ultraviolet to provide a more structured and
-opinionated way to build terminal user interfaces.
-
-### 💋 Is it a replacement for Lip Gloss?
-
-Simply put, no. Ultraviolet is not a replacement for Lip Gloss. Instead, it
-provides the underlying rendering capabilities that Lip Gloss can use to create
-styled terminal content. Lip Gloss is a higher-level library that builds on top
-of Ultraviolet by utilizing the cell-based rendering model to provide a
-simplified and ergonomic way to create styled terminal content and composition
-of terminal user interfaces.
-
-## ✏️ Tutorial
-
-You can find a simple tutorial on how to create a UV application that displays
-"Hello, World!" on the screen in the [TUTORIAL.md](./TUTORIAL.md) file.
-
-## Whatcha think?
-
-We’d love to hear your thoughts on this project. Feel free to drop us a note!
+We'd love to hear your thoughts on this project. Feel free to drop us a note!
 
 - [Twitter](https://twitter.com/charmcli)
 - [Discord](https://charm.land/discord)

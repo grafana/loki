@@ -93,8 +93,7 @@ func validateSchemaValues(c *Config) []error {
 	var errs []error
 	for _, cfg := range c.SchemaConfig.Configs {
 		if !util.StringsContain(types.TestingStorageTypes, cfg.IndexType) &&
-			!util.StringsContain(types.SupportedIndexTypes, cfg.IndexType) &&
-			!util.StringsContain(types.DeprecatedIndexTypes, cfg.IndexType) {
+			!util.StringsContain(types.SupportedIndexTypes, cfg.IndexType) {
 			errs = append(errs, fmt.Errorf("unrecognized `store` (index) type `%s`, choose one of: %s", cfg.IndexType, strings.Join(types.SupportedIndexTypes, ", ")))
 		}
 
@@ -103,8 +102,7 @@ func validateSchemaValues(c *Config) []error {
 				errs = append(errs, fmt.Errorf("unrecognized `object_store` type `%s`, which also does not match any named_stores. Choose one of: %s. Or choose a named_store", cfg.ObjectType, strings.Join(bucket.SupportedBackends, ", ")))
 			}
 		} else if !util.StringsContain(types.TestingStorageTypes, cfg.ObjectType) &&
-			!util.StringsContain(types.SupportedStorageTypes, cfg.ObjectType) &&
-			!util.StringsContain(types.DeprecatedStorageTypes, cfg.ObjectType) {
+			!util.StringsContain(types.SupportedStorageTypes, cfg.ObjectType) {
 			if !c.StorageConfig.NamedStores.Exists(cfg.ObjectType) {
 				errs = append(errs, fmt.Errorf("unrecognized `object_store` type `%s`, which also does not match any named_stores. Choose one of: %s. Or choose a named_store", cfg.ObjectType, strings.Join(types.SupportedStorageTypes, ", ")))
 			}

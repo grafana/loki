@@ -1,4 +1,4 @@
-package push
+package otlplabels
 
 import (
 	"encoding/json"
@@ -22,9 +22,9 @@ const (
 )
 
 var (
-	errUnsupportedAction         = fmt.Errorf("unsupported action, it must be one of: %s, %s, %s", Drop, IndexLabel, StructuredMetadata)
-	errAttributesAndRegexNotSet  = fmt.Errorf("attributes or regex must be set")
-	errAttributesAndRegexBothSet = fmt.Errorf("only one of attributes or regex must be set")
+	ErrUnsupportedAction         = fmt.Errorf("unsupported action, it must be one of: %s, %s, %s", Drop, IndexLabel, StructuredMetadata)
+	ErrAttributesAndRegexNotSet  = fmt.Errorf("attributes or regex must be set")
+	ErrAttributesAndRegexBothSet = fmt.Errorf("only one of attributes or regex must be set")
 )
 
 func DefaultOTLPConfig(cfg GlobalOTLPConfig) OTLPConfig {
@@ -142,15 +142,15 @@ func (c *AttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	}
 
 	if c.Action != IndexLabel && c.Action != StructuredMetadata && c.Action != Drop {
-		return errUnsupportedAction
+		return ErrUnsupportedAction
 	}
 
 	if len(c.Attributes) == 0 && c.Regex.Regexp == nil {
-		return errAttributesAndRegexNotSet
+		return ErrAttributesAndRegexNotSet
 	}
 
 	if len(c.Attributes) != 0 && c.Regex.Regexp != nil {
-		return errAttributesAndRegexBothSet
+		return ErrAttributesAndRegexBothSet
 	}
 
 	return nil

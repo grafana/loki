@@ -13,32 +13,14 @@ is then compressed and stored in chunks in object stores such as S3 or GCS, or
 even locally on the filesystem. A small index and highly compressed chunks
 simplifies the operation and significantly lowers the cost of Loki.
 
-Loki 2.8 introduced TSDB as a new mode for the Single Store and is now the recommended way to persist data in Loki.
+Loki 2.8 introduced TSDB as a new mode for the Single Store and is now the recommended way to persist data in Loki. This type only requires one store, the object store, for both the index and chunks.
 More detailed information about TSDB can be found under the [manage section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/).
 
-Loki 2.0 introduced an index mechanism named 'boltdb-shipper' and is what we now call [Single Store](#single-store).
-This type only requires one store, the object store, for both the index and chunks.
-More detailed information about 'boltdb-shipper' can be found under the [manage section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/).
+## Single Store TSDB (recommended)
 
-Prior to Loki 2.0, chunks and index data were stored in separate backends:
-object storage (or filesystem) for chunk data and NoSQL/Key-Value databases for index data. These "multistore" backends have been deprecated, as noted below.
+Single Store refers to using object storage as the storage medium for both the Loki index as well as its data ("chunks"). There is one supported mode:
 
-You can find more detailed information about all of the storage options in the [manage section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/).
-
-## Single Store
-
-Single Store refers to using object storage as the storage medium for both the Loki index as well as its data ("chunks"). There are two supported modes:
-
-### TSDB (recommended)
-
-Starting in Loki 2.8, the [TSDB index store](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper". TSDB is the recommended index store for Loki 2.8 and newer.
-
-### BoltDB (deprecated)
-
-Also known as "boltdb-shipper" during development (and is still the schema `store` name). The single store configurations for Loki utilize the chunk store for both chunks and the index, requiring just one store to run Loki. BoldDB is the recommended index store for Loki v2.0.0 through v2.7x.
-
-Performance is comparable to a dedicated index type while providing a much less expensive and less complicated deployment.
-When using Single Store, no extra [Chunk storage](#chunk-storage) and [Index storage](#index-storage) are necessary.
+Starting in Loki 2.8, the [TSDB index store](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) improves query performance, reduces TCO and has the same feature parity as the deprecated "boltdb-shipper". TSDB is the recommended index store for Loki 2.8 and newer.
 
 ### Supported storage backends
 
@@ -81,30 +63,16 @@ You can authenticate Blob Storage access by using a storage account name and key
 
 You may use any substitutable services, such as those that implement the S3 API like [MinIO](https://min.io/).
 
-## Index storage
-
-{{< admonition type="note" >}}
-This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
-### BoltDB (deprecated)
-
-BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) aims to support clustered deployments using `boltdb` as an index.
-
-{{< admonition type="note" >}}
-This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
 ## Schema Config
 
 Loki aims to be backwards compatible and over the course of its development has had many internal changes that facilitate better and more efficient storage/querying. Loki allows incrementally upgrading to these new storage _schemas_ and can query across them transparently. This makes upgrading a breeze.
-For instance, this is what it looks like when migrating from BoltDB with v11 schema to TSDB with v13 schema starting 2023-07-01:
+For instance, this is what it looks like when migrating from single-store BoltDB with v11 schema to single-store TSDB with v13 schema starting 2023-07-01:
 
 ```yaml
 schema_config:
   configs:
     - from: 2019-07-01
-      store: boltdb
+      store: boltdb-shipper
       object_store: filesystem
       schema: v11
       index:
@@ -152,7 +120,7 @@ It's that easy; you just created a new entry starting on the 20th.
 
 ## Retention
 
-Loki manages retention through the Compactor when using TSDB or the BoltDB Shipper. When retention is enabled, the Compactor identifies data that falls outside of the configured retention period, removes the corresponding index entries, and deletes the underlying chunk objects asynchronously.
+Loki manages retention through the Compactor when using TSDB. When retention is enabled, the Compactor identifies data that falls outside of the configured retention period, removes the corresponding index entries, and deletes the underlying chunk objects asynchronously.
 
 For object storage backends (S3, GCS, Azure Blob) Loki no longer relies solely on external time to live (TTL) or bucket lifecycle rules; these may still be used as an additional safeguard, but Loki itself performs retention-driven deletion when configured.
 

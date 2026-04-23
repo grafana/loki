@@ -1,6 +1,28 @@
 # Changes
 
 
+## [1.62.1](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.62.1) (2026-04-13)
+
+### Bug Fixes
+
+* Add retry logic for "http2: client connection lost" ([df22e9e](https://github.com/googleapis/google-cloud-go/commit/df22e9e38ea6de00d858ef00475ae286d3fc6834))
+
+* Remove redundant gRPC imports from grpc_dp_diag.go ([c5511e2](https://github.com/googleapis/google-cloud-go/commit/c5511e2101cefbf8b6e54193e39382e86b49d822))
+
+## [1.62.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.62.0) (2026-04-06)
+
+### Features
+
+* Integrate parallel uploads into storage writer (#14232) ([370e0ed](https://github.com/googleapis/google-cloud-go/commit/370e0ed14e4628ac9a8b9e6e9050d974ffb75e17))
+
+### Bug Fixes
+
+* Close HTTP2 response bodies to prevent flow-control leaks (#14324) ([b6bcfe8](https://github.com/googleapis/google-cloud-go/commit/b6bcfe8feb69afebe7a54a549097112bffcc7a27))
+
+### Documentation
+
+* Update `EnableParallelUpload` documentation in `writer.go` (#14328) ([22d0749](http://github.com/googleapis/google-cloud-go/commit/22d0749f8fdbeaa34f2a836b63510bd0c3def990))
+
 ## [1.61.3](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.61.3) (2026-03-13)
 
 ### Documentation
