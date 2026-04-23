@@ -8,7 +8,7 @@ set -e
 # needed for the make release-workflows target.
 #
 # Optional arguments (combinable): dist, lint, loki-release, loki-build-tools.
-# Environment: GOLANGCI_LINT_VERSION for lint (default v2.10.1); LYCHEE_VER; BUF_VER.
+# Environment: GOLANGCI_LINT_VERSION for lint (default v2.10.1); LYCHEE_VER; BUF_VER; HELM_VER; HELM_DOCS_VER.
 
 # Set default source directory to GitHub workspace if not provided
 SRC_DIR=${SRC_DIR:-${GITHUB_WORKSPACE}}
@@ -42,6 +42,8 @@ install_build_image_tools() {
     # Versions aligned with grafana/loki loki-build-image Dockerfile where applicable.
     LYCHEE_VER=${LYCHEE_VER:-0.7.0}
     BUF_VER=${BUF_VER:-v1.4.0}
+    HELM_VER=${HELM_VER:-v3.2.3}
+    HELM_DOCS_VER=${HELM_DOCS_VER:-v1.11.2}
 
     echo "Installing mixtool and goyacc"
     GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@16dc166166d91e93475b86b9355a4faed2400c18
@@ -52,16 +54,31 @@ install_build_image_tools() {
         x86_64)
             LYCHEE_ARCH=x86_64-unknown-linux-gnu
             BUF_ARCH=x86_64
+            HELM_ARCH=amd64
+            HELM_DOCS_BIN=helm-docs_Linux_x86_64
             ;;
         aarch64)
             LYCHEE_ARCH=aarch64-unknown-linux-gnu
             BUF_ARCH=aarch64
+            HELM_ARCH=arm64
+            HELM_DOCS_BIN=helm-docs_Linux_arm64
             ;;
         *)
-            echo "Unsupported machine for lychee/buf downloads: ${MACHINE}" >&2
+            echo "Unsupported machine for lychee/buf/helm downloads: ${MACHINE}" >&2
             exit 1
             ;;
     esac
+
+    echo "Installing helm ${HELM_VER}"
+    curl -fsSL "https://get.helm.sh/helm-${HELM_VER}-linux-${HELM_ARCH}.tar.gz" | tar zx -C /tmp
+    install -m 0755 "/tmp/linux-${HELM_ARCH}/helm" /usr/local/bin/helm
+    rm -rf "/tmp/linux-${HELM_ARCH}"
+
+    echo "Installing helm-docs ${HELM_DOCS_VER}"
+    (cd /tmp && curl -fsSL \
+        "https://github.com/norwoodj/helm-docs/releases/download/${HELM_DOCS_VER}/${HELM_DOCS_BIN}.tar.gz" | tar zx)
+    install -m 0755 /tmp/helm-docs /usr/local/bin/helm-docs
+    rm -f /tmp/helm-docs
 
     echo "Installing lychee ${LYCHEE_VER}"
     curl -fsSL -o /tmp/lychee.tgz \
