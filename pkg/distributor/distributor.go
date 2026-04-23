@@ -114,6 +114,8 @@ type Config struct {
 	KafkaConfig kafka.Config `yaml:"-"`
 
 	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
+
+	MemoryBasedLoadSheddingThresholdBytes uint64 `yaml:"memory_based_load_shedding_threshold_bytes"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -130,6 +132,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
+	fs.Uint64Var(&cfg.MemoryBasedLoadSheddingThresholdBytes, "distributor.memory-based-load-shedding-threshold-bytes", 0, "Threshold for memory usage above which requests will be load shed. Defaults to never load-shedding.")
 }
 
 func (cfg *Config) Validate() error {
@@ -221,7 +224,8 @@ type Distributor struct {
 	inflightBytes *util_metric.MaxSampleCollector
 
 	// Used memory metric
-	usedMemoryGauge prometheus.Gauge
+	usedMemoryGauge         prometheus.Gauge
+	loadShedRequestsCounter prometheus.Counter
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -420,6 +424,11 @@ func New(
 			Name:      "distributor_used_memory_bytes",
 			Help:      "Current used memory.",
 		}),
+		loadShedRequestsCounter: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_load_shed_requests_total",
+			Help:      "The total number of load shed requests.",
+		}),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -577,7 +586,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	d.inflightBytes.Inc(requestSize)
 	defer d.inflightBytes.Inc(-requestSize)
 
-	d.setUsedMemoryGauge()
+	if err := d.memoryBasedLoadShedIfNeeded(); err != nil {
+		return nil, err
+	}
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -950,10 +961,16 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 }
 
-func (d *Distributor) setUsedMemoryGauge() {
+func (d *Distributor) memoryBasedLoadShedIfNeeded() error {
 	m := &goruntime.MemStats{}
 	goruntime.ReadMemStats(m)
-	d.usedMemoryGauge.Set(float64(m.HeapAlloc))
+	heapUsed := m.HeapAlloc
+	d.usedMemoryGauge.Set(float64(heapUsed))
+	if d.cfg.MemoryBasedLoadSheddingThresholdBytes != 0 && heapUsed > d.cfg.MemoryBasedLoadSheddingThresholdBytes {
+		d.loadShedRequestsCounter.Inc()
+		return httpgrpc.Errorf(http.StatusServiceUnavailable, "ServiceUnavailable")
+	}
+	return nil
 }
 
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.
