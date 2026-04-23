@@ -274,3 +274,73 @@ func TestNewRulerStatefulSet_TopologySpreadConstraints(t *testing.T) {
 		},
 	}, ss.Spec.Template.Spec.TopologySpreadConstraints)
 }
+
+func TestNewRulerStatefulSet_WithRemoteWrite_WithPodNameEnvVar(t *testing.T) {
+	obj, err := BuildRuler(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+			Rules: &lokiv1.RulesSpec{
+				Enabled: true,
+			},
+		},
+		Ruler: Ruler{
+			Spec: &lokiv1.RulerConfigSpec{
+				RemoteWriteSpec: &lokiv1.RemoteWriteSpec{
+					Enabled: true,
+				},
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotEmpty(t, obj)
+
+	ss := obj[0].(*appsv1.StatefulSet)
+	require.Len(t, ss.Spec.Template.Spec.Containers, 1)
+
+	envVarFound := false
+	for _, env := range ss.Spec.Template.Spec.Containers[0].Env {
+		if env.Name == podNameEnvVarName {
+			envVarFound = true
+			require.NotNil(t, env.ValueFrom)
+			require.NotNil(t, env.ValueFrom.FieldRef)
+			require.Equal(t, "v1", env.ValueFrom.FieldRef.APIVersion)
+			require.Equal(t, "metadata.name", env.ValueFrom.FieldRef.FieldPath)
+			break
+		}
+	}
+	require.True(t, envVarFound)
+}
+
+func TestNewRulerStatefulSet_WithoutRemoteWrite_WithoutPodNameEnvVar(t *testing.T) {
+	obj, err := BuildRuler(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+			Rules: &lokiv1.RulesSpec{
+				Enabled: true,
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotEmpty(t, obj)
+
+	ss := obj[0].(*appsv1.StatefulSet)
+	require.Len(t, ss.Spec.Template.Spec.Containers, 1)
+
+	for _, env := range ss.Spec.Template.Spec.Containers[0].Env {
+		require.NotEqual(t, podNameEnvVarName, env.Name)
+	}
+}

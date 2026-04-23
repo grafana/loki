@@ -309,6 +309,14 @@ func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.Remot
 	c := &config.RemoteWriteConfig{
 		Enabled:       s.Enabled,
 		RefreshPeriod: string(s.RefreshPeriod),
+		RelabelConfigs: []config.RelabelConfig{
+			{
+				SourceLabels: []string{"__name__"}, // Use a dummy source label
+				TargetLabel:  "__replica__",
+				Replacement:  "${" + podNameEnvVarName + "}",
+				Action:       "replace",
+			},
+		},
 	}
 
 	if cls := s.ClientSpec; cls != nil {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 
+	"dario.cat/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -23,6 +24,10 @@ import (
 // BuildRuler returns a list of k8s objects for Loki Stack Ruler
 func BuildRuler(opts Options) ([]client.Object, error) {
 	statefulSet := NewRulerStatefulSet(opts)
+	if err := configureRemoteWriteEnvVars(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	if opts.Gates.HTTPEncryption {
 		if err := configureRulerHTTPServicePKI(statefulSet, opts); err != nil {
 			return nil, err
@@ -402,4 +407,32 @@ func NewRulerPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 			MinAvailable: &ma,
 		},
 	}
+}
+
+func configureRemoteWriteEnvVars(ps *corev1.PodSpec, opts Options) error {
+	if opts.Ruler.Spec == nil || opts.Ruler.Spec.RemoteWriteSpec == nil || !opts.Ruler.Spec.RemoteWriteSpec.Enabled {
+		return nil
+	}
+
+	temp := corev1.Container{
+		Env: []corev1.EnvVar{
+			{
+				Name: podNameEnvVarName,
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						APIVersion: "v1",
+						FieldPath:  "metadata.name",
+					},
+				},
+			},
+		},
+	}
+
+	for i, target := range ps.Containers {
+		if err := mergo.Merge(&target, temp, mergo.WithAppendSlice); err != nil {
+			return err
+		}
+		ps.Containers[i] = target
+	}
+	return nil
 }
