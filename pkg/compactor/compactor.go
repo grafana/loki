@@ -380,7 +380,7 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 		return err
 	}
 
-	retentionExpiryChecker := retention.ExpirationChecker(retention.NeverExpiringExpirationChecker(limits))
+	retentionExpiryChecker := retention.NeverExpiringExpirationChecker(limits)
 	if c.cfg.RetentionEnabled {
 		retentionExpiryChecker = retention.NewExpirationChecker(limits)
 	}
