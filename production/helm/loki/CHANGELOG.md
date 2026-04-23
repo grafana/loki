@@ -21,10 +21,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] Changed GEL version to 3.6.6 (updated `enterprise.version`, `enterprise.image.tag`, and chart `appVersion`).
 - [FEATURE] Update README chart migration notice from future tense to past tense
 
-## 6.56.0
-
-- [FEATURE] Update README chart migration notice from future tense to past tense
-
 ## 6.55.0
 
 - [CHANGE] Changed version of Grafana Loki to 3.6.7 and GEL version to 3.6.5
