@@ -1,10 +1,10 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@decfa8d4d77a2dbc10e71a0785591e1cbcea6b8b"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@808a3789820ac46c7909a9a6d6f5abc4711b874f"
     "with":
       "build_image": "grafana/loki-build-image:0.35.1"
       "golang_ci_lint_version": "v2.10.1"
-      "release_lib_ref": "decfa8d4d77a2dbc10e71a0785591e1cbcea6b8b"
+      "release_lib_ref": "808a3789820ac46c7909a9a6d6f5abc4711b874f"
       "skip_validation": false
       "use_github_app_token": true
 "name": "check"

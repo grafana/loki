@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+
 ## 7.0.0
 
 - [BREAKING] The chart in this repository is now maintained for Grafana Enterprise Logs (GEL) users only. As of March 16, 2026, the Grafana Loki Helm chart for OSS users has moved to [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) (forked at chart version 6.55.0). OSS users are encouraged to migrate to the community-maintained chart.  That community chart is *not* the supported installation path for GEL as the Community chart has [removed support for GEL](https://github.com/grafana-community/helm-charts/pull/184).  See [#20705](https://github.com/grafana/loki/issues/20705) for details.

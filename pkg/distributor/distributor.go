@@ -858,13 +858,13 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if d.cfg.KafkaEnabled {
+		subring := d.partitionRing.PartitionRing()
 		shardSize := d.validator.IngestionPartitionsTenantShardSize(tenantID)
-		var subring *ring.PartitionRing
-		if shardSize == 0 {
-			// Optimization - don't need to create shuffle shards in this case
-			subring = d.partitionRing.PartitionRing()
-		} else {
-			subring, err = d.partitionRing.PartitionRing().ShuffleShard(tenantID, shardSize)
+		// Do not shuffle shard if the shard size is 0. When the size is 0, it
+		// creates a shuffle shard which contains the complete set of partitions,
+		// which is the same as not shuffle sharding at all.
+		if shardSize > 0 {
+			subring, err = subring.ShuffleShard(tenantID, shardSize)
 			if err != nil {
 				return nil, err
 			}

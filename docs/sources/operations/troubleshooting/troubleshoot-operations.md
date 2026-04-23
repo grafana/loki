@@ -406,7 +406,7 @@ The schema configuration references an index type or object store type that Loki
 
 **Resolution:**
 
-- **Use a supported index type**: `tsdb` (recommended) or `boltdb-shipper`
+- **Use a supported index type**: `tsdb`
 
 - **Use a supported object store type**: `s3`, `gcs`, `azure`, `swift`, `filesystem`, `bos`
 
@@ -769,7 +769,7 @@ The specified storage backend type is not recognized. This typically occurs when
 
   ```yaml
   storage_config:
-    boltdb_shipper:
+    tsdb_shipper:
       shared_store: s3  # Must be one of the valid types
   ```
 
@@ -2345,43 +2345,6 @@ No index gateway instances are available in the ring to serve the tenant's reque
 - Retryable: Yes
 - HTTP status: 500 Internal Server Error
 - Configurable per tenant: Yes (via `index_gateway_shard_size` in `limits_config`)
-
-### Error: Index client not initialized
-
-**Error message:**
-
-```text
-index client is not initialized likely due to boltdb-shipper not being used
-```
-
-**Cause:**
-
-The index gateway was queried for operations that require the index client, but the client wasn't initialized because the boltdb-shipper store isn't configured.
-
-**Resolution:**
-
-- **Verify your schema config** uses the correct index store:
-
-  ```yaml
-  schema_config:
-    configs:
-      - from: 2024-01-01
-        store: tsdb
-        object_store: s3
-        schema: v13
-        index:
-          prefix: index_
-          period: 24h
-  ```
-
-- **Check if the operation requires boltdb-shipper** - some legacy operations may not be supported with TSDB.
-
-**Properties:**
-
-- Enforced by: Index gateway
-- Retryable: No (configuration/schema issue)
-- HTTP status: 500 Internal Server Error
-- Configurable per tenant: No
 
 ## Compactor and retention errors
 

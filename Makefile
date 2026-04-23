@@ -122,19 +122,19 @@ endef
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-45s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-.PHONY: all images check-generated-files logcli loki loki-debug loki-canary loki-canary-boringcrypto lint test clean yacc protos touch-protobuf-sources
+.PHONY: all images check-generated-files logcli loki loki-debug loki-canary loki-canary-boringcrypto lint test clean yacc protos
 .PHONY: format check-format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
-.PHONY: fluent-bit-image, fluent-bit-test
-.PHONY: fluentd-image, fluentd-test
+.PHONY: fluent-bit-image fluent-bit-test
+.PHONY: fluentd-image fluentd-test
 .PHONY: loki-image build-image build-image-push
-.PHONY: bigtable-backup, push-bigtable-backup
-.PHONY: benchmark-store, check-mod
+.PHONY: bigtable-backup push-bigtable-backup
+.PHONY: benchmark-store check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: doc check-doc
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
-.PHONY: k3d-loki k3d-enterprise-logs k3d-down
+.PHONY: dev-k3d-loki dev-k3d-enterprise-logs dev-k3d-down
 .PHONY: helm-test helm-lint
 
 #############
@@ -152,11 +152,11 @@ PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
 PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 
 # Yacc Files
-YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
+YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.y' -print)
 YACC_GOS := $(patsubst %.y,%.y.go,$(YACC_DEFS))
 
 # Ragel Files
-RAGEL_DEFS := $(shell find . $(DONT_FIND) -type f -name *.rl -print)
+RAGEL_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.rl' -print)
 RAGEL_GOS := $(patsubst %.rl,%.rl.go,$(RAGEL_DEFS))
 
 # Documentation source path
@@ -600,7 +600,7 @@ loki-canary-boringcrypto-image:
 
 # Helm test image
 helm-test-image: ## build the helm test docker image
-	$(OCI_BUIILD) -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
 helm-test-push: helm-test-image
 	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG)
 

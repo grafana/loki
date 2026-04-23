@@ -68,7 +68,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 
 - `<boolean>` : a boolean that can take the values `true` or `false`
 - `<int>` : A plain integer (for example, `0`, `1024`, `5000`) or a size in bytes with optional unit suffix (for example, `1024`, `256KB`, `64MB`, `4GB`). Supported units: `B`, `KB`, `MB`, `GB`, `TB`, `PB`, `EB`. 
-- `<duration>` : a duration with required unit suffix. Supported units: `ms`, `s`, `m`, `h`, `d`, `w`, `y `(for example, `30s`, `5m`, `1h`, `1d`, `1w`). Note: `0` is allowed without a unit. Some fields using Go's native duration type may also support `ns` and `us`/`µs` but not `d`, `w`, `y`.
+- `<duration>` : a duration with required unit suffix. Supported units depend on the field type. Prometheus duration fields support: 'ms', 's', 'm', 'h', 'd', 'w', 'y' (for example, '30s', '1m', '1h', '1d', '1w'). Go native duration fields support: 'ns', 'us', 'µs', 'ms', 's', 'm', 'h' but not 'd', 'w', 'y'. Note: '0' is allowed without a unit.
 - `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
 - `<labelvalue>` : a string of unicode characters
 - `<filename>` : a valid path relative to current working directory or an absolute path.
@@ -6499,13 +6499,6 @@ The `storage_config` block configures one of many possible stores for both the i
 # defined in config.
 [gcs: <gcs_storage_config>]
 
-# Deprecated: Configures storing index in BoltDB. Required fields only required
-# when boltdb is present in the configuration.
-boltdb:
-  # Location of BoltDB index files.
-  # CLI flag: -boltdb.dir
-  [directory: <string> | default = ""]
-
 # Configures storing the chunks on the local file system. Required fields only
 # required when filesystem is present in the configuration.
 [filesystem: <local_storage_config>]
@@ -6513,12 +6506,6 @@ boltdb:
 # The swift_storage_config block configures the connection to OpenStack Object
 # Storage (Swift) object storage backend.
 [swift: <swift_storage_config>]
-
-# Deprecated:
-grpc_store:
-  # Hostname or IP of the gRPC store instance.
-  # CLI flag: -grpc-store.server-address
-  [server_address: <string> | default = ""]
 
 hedging:
   # If set to a non-zero value a second request will be issued at the provided
