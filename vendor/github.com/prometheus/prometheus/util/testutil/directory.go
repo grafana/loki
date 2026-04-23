@@ -77,7 +77,7 @@ type (
 	}
 )
 
-func (nilCloser) Close() {
+func (c nilCloser) Close() {
 }
 
 func (c callbackCloser) Close() {

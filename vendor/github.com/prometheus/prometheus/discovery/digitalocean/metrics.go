@@ -24,9 +24,9 @@ type digitaloceanMetrics struct {
 }
 
 // Register implements discovery.DiscovererMetrics.
-func (*digitaloceanMetrics) Register() error {
+func (m *digitaloceanMetrics) Register() error {
 	return nil
 }
 
 // Unregister implements discovery.DiscovererMetrics.
-func (*digitaloceanMetrics) Unregister() {}
+func (m *digitaloceanMetrics) Unregister() {}

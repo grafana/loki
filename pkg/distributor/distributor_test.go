@@ -2079,7 +2079,6 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 		time.Sleep(i.succeedAfter)
 	}
 
-	labelNamer := otlptranslator.LabelNamer{}
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	for _, s := range in.Streams {
@@ -2088,10 +2087,7 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 				if strings.ContainsRune(sm.Value, utf8.RuneError) {
 					return nil, fmt.Errorf("sm value was not sanitized before being pushed to ignester, invalid utf 8 rune %d", utf8.RuneError)
 				}
-				name, err := labelNamer.Build(sm.Name)
-				if err != nil {
-					return nil, err
-				}
+				name := otlptranslator.NormalizeLabel(sm.Name)
 				if sm.Name != name {
 					return nil, fmt.Errorf("sm name was not sanitized before being sent to ingester, contained characters %s", sm.Name)
 

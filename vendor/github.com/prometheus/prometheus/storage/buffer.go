@@ -175,15 +175,15 @@ func (s fSample) F() float64 {
 	return s.f
 }
 
-func (fSample) H() *histogram.Histogram {
+func (s fSample) H() *histogram.Histogram {
 	panic("H() called for fSample")
 }
 
-func (fSample) FH() *histogram.FloatHistogram {
+func (s fSample) FH() *histogram.FloatHistogram {
 	panic("FH() called for fSample")
 }
 
-func (fSample) Type() chunkenc.ValueType {
+func (s fSample) Type() chunkenc.ValueType {
 	return chunkenc.ValFloat
 }
 
@@ -200,7 +200,7 @@ func (s hSample) T() int64 {
 	return s.t
 }
 
-func (hSample) F() float64 {
+func (s hSample) F() float64 {
 	panic("F() called for hSample")
 }
 
@@ -212,7 +212,7 @@ func (s hSample) FH() *histogram.FloatHistogram {
 	return s.h.ToFloat(nil)
 }
 
-func (hSample) Type() chunkenc.ValueType {
+func (s hSample) Type() chunkenc.ValueType {
 	return chunkenc.ValHistogram
 }
 
@@ -229,11 +229,11 @@ func (s fhSample) T() int64 {
 	return s.t
 }
 
-func (fhSample) F() float64 {
+func (s fhSample) F() float64 {
 	panic("F() called for fhSample")
 }
 
-func (fhSample) H() *histogram.Histogram {
+func (s fhSample) H() *histogram.Histogram {
 	panic("H() called for fhSample")
 }
 
@@ -241,7 +241,7 @@ func (s fhSample) FH() *histogram.FloatHistogram {
 	return s.fh
 }
 
-func (fhSample) Type() chunkenc.ValueType {
+func (s fhSample) Type() chunkenc.ValueType {
 	return chunkenc.ValFloatHistogram
 }
 

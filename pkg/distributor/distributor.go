@@ -628,7 +628,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
 
-			labelNamer := otlptranslator.LabelNamer{}
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours, policy, format); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
@@ -642,10 +641,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				normalizedBuilder := labels.NewBuilder(structuredMetadata)
 
 				for _, lbl := range entry.StructuredMetadata {
-					normalized, err = labelNamer.Build(lbl.Name)
-					if err != nil {
-						return err
-					}
+					normalized = otlptranslator.NormalizeLabel(lbl.Name)
 					if normalized != lbl.Name {
 						// Swap the name with the normalized one.
 						normalizedBuilder.Del(lbl.Name)

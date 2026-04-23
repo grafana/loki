@@ -153,10 +153,9 @@ type resourceSelector struct {
 }
 
 // AttachMetadataConfig is the configuration for attaching additional metadata
-// coming from namespaces or nodes on which the targets are scheduled.
+// coming from nodes on which the targets are scheduled.
 type AttachMetadataConfig struct {
-	Node      bool `yaml:"node"`
-	Namespace bool `yaml:"namespace"`
+	Node bool `yaml:"node"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -398,7 +397,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 					return e.Watch(ctx, options)
 				},
 			}
-			informer = d.newIndexedEndpointSlicesInformer(elw, &disv1.EndpointSlice{})
+			informer = d.newEndpointSlicesByNodeInformer(elw, &disv1.EndpointSlice{})
 
 			s := d.client.CoreV1().Services(namespace)
 			slw := &cache.ListWatch{
@@ -431,18 +430,12 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 				nodeInf = d.newNodeInformer(context.Background())
 				go nodeInf.Run(ctx.Done())
 			}
-			var namespaceInf cache.SharedInformer
-			if d.attachMetadata.Namespace {
-				namespaceInf = d.newNamespaceInformer(context.Background())
-				go namespaceInf.Run(ctx.Done())
-			}
 			eps := NewEndpointSlice(
 				d.logger.With("role", "endpointslice"),
 				informer,
 				d.mustNewSharedInformer(slw, &apiv1.Service{}, resyncDisabled),
 				d.mustNewSharedInformer(plw, &apiv1.Pod{}, resyncDisabled),
 				nodeInf,
-				namespaceInf,
 				d.metrics.eventCount,
 			)
 			d.discoverers = append(d.discoverers, eps)
@@ -496,19 +489,13 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 				nodeInf = d.newNodeInformer(ctx)
 				go nodeInf.Run(ctx.Done())
 			}
-			var namespaceInf cache.SharedInformer
-			if d.attachMetadata.Namespace {
-				namespaceInf = d.newNamespaceInformer(ctx)
-				go namespaceInf.Run(ctx.Done())
-			}
 
 			eps := NewEndpoints(
 				d.logger.With("role", "endpoint"),
-				d.newIndexedEndpointsInformer(elw),
+				d.newEndpointsByNodeInformer(elw),
 				d.mustNewSharedInformer(slw, &apiv1.Service{}, resyncDisabled),
 				d.mustNewSharedInformer(plw, &apiv1.Pod{}, resyncDisabled),
 				nodeInf,
-				namespaceInf,
 				d.metrics.eventCount,
 			)
 			d.discoverers = append(d.discoverers, eps)
@@ -521,11 +508,6 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 		if d.attachMetadata.Node {
 			nodeInformer = d.newNodeInformer(ctx)
 			go nodeInformer.Run(ctx.Done())
-		}
-		var namespaceInformer cache.SharedInformer
-		if d.attachMetadata.Namespace {
-			namespaceInformer = d.newNamespaceInformer(ctx)
-			go namespaceInformer.Run(ctx.Done())
 		}
 
 		for _, namespace := range namespaces {
@@ -544,21 +526,14 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 			}
 			pod := NewPod(
 				d.logger.With("role", "pod"),
-				d.newIndexedPodsInformer(plw),
+				d.newPodsByNodeInformer(plw),
 				nodeInformer,
-				namespaceInformer,
 				d.metrics.eventCount,
 			)
 			d.discoverers = append(d.discoverers, pod)
 			go pod.podInf.Run(ctx.Done())
 		}
 	case RoleService:
-		var namespaceInformer cache.SharedInformer
-		if d.attachMetadata.Namespace {
-			namespaceInformer = d.newNamespaceInformer(ctx)
-			go namespaceInformer.Run(ctx.Done())
-		}
-
 		for _, namespace := range namespaces {
 			s := d.client.CoreV1().Services(namespace)
 			slw := &cache.ListWatch{
@@ -575,21 +550,15 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 			}
 			svc := NewService(
 				d.logger.With("role", "service"),
-				d.newIndexedServicesInformer(slw),
-				namespaceInformer,
+				d.mustNewSharedInformer(slw, &apiv1.Service{}, resyncDisabled),
 				d.metrics.eventCount,
 			)
 			d.discoverers = append(d.discoverers, svc)
 			go svc.informer.Run(ctx.Done())
 		}
 	case RoleIngress:
-		var namespaceInformer cache.SharedInformer
-		if d.attachMetadata.Namespace {
-			namespaceInformer = d.newNamespaceInformer(ctx)
-			go namespaceInformer.Run(ctx.Done())
-		}
-
 		for _, namespace := range namespaces {
+			var informer cache.SharedInformer
 			i := d.client.NetworkingV1().Ingresses(namespace)
 			ilw := &cache.ListWatch{
 				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
@@ -603,10 +572,10 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 					return i.Watch(ctx, options)
 				},
 			}
+			informer = d.mustNewSharedInformer(ilw, &networkv1.Ingress{}, resyncDisabled)
 			ingress := NewIngress(
 				d.logger.With("role", "ingress"),
-				d.newIndexedIngressesInformer(ilw),
-				namespaceInformer,
+				informer,
 				d.metrics.eventCount,
 			)
 			d.discoverers = append(d.discoverers, ingress)
@@ -682,20 +651,7 @@ func (d *Discovery) newNodeInformer(ctx context.Context) cache.SharedInformer {
 	return d.mustNewSharedInformer(nlw, &apiv1.Node{}, resyncDisabled)
 }
 
-func (d *Discovery) newNamespaceInformer(ctx context.Context) cache.SharedInformer {
-	// We don't filter on NamespaceDiscovery.
-	nlw := &cache.ListWatch{
-		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-			return d.client.CoreV1().Namespaces().List(ctx, options)
-		},
-		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-			return d.client.CoreV1().Namespaces().Watch(ctx, options)
-		},
-	}
-	return d.mustNewSharedInformer(nlw, &apiv1.Namespace{}, resyncDisabled)
-}
-
-func (d *Discovery) newIndexedPodsInformer(plw *cache.ListWatch) cache.SharedIndexInformer {
+func (d *Discovery) newPodsByNodeInformer(plw *cache.ListWatch) cache.SharedIndexInformer {
 	indexers := make(map[string]cache.IndexFunc)
 	if d.attachMetadata.Node {
 		indexers[nodeIndex] = func(obj interface{}) ([]string, error) {
@@ -707,14 +663,10 @@ func (d *Discovery) newIndexedPodsInformer(plw *cache.ListWatch) cache.SharedInd
 		}
 	}
 
-	if d.attachMetadata.Namespace {
-		indexers[cache.NamespaceIndex] = cache.MetaNamespaceIndexFunc
-	}
-
 	return d.mustNewSharedIndexInformer(plw, &apiv1.Pod{}, resyncDisabled, indexers)
 }
 
-func (d *Discovery) newIndexedEndpointsInformer(plw *cache.ListWatch) cache.SharedIndexInformer {
+func (d *Discovery) newEndpointsByNodeInformer(plw *cache.ListWatch) cache.SharedIndexInformer {
 	indexers := make(map[string]cache.IndexFunc)
 	indexers[podIndex] = func(obj interface{}) ([]string, error) {
 		e, ok := obj.(*apiv1.Endpoints)
@@ -731,40 +683,37 @@ func (d *Discovery) newIndexedEndpointsInformer(plw *cache.ListWatch) cache.Shar
 		}
 		return pods, nil
 	}
+	if !d.attachMetadata.Node {
+		return d.mustNewSharedIndexInformer(plw, &apiv1.Endpoints{}, resyncDisabled, indexers)
+	}
 
-	if d.attachMetadata.Node {
-		indexers[nodeIndex] = func(obj interface{}) ([]string, error) {
-			e, ok := obj.(*apiv1.Endpoints)
-			if !ok {
-				return nil, errors.New("object is not endpoints")
-			}
-			var nodes []string
-			for _, target := range e.Subsets {
-				for _, addr := range target.Addresses {
-					if addr.TargetRef != nil {
-						switch addr.TargetRef.Kind {
-						case "Pod":
-							if addr.NodeName != nil {
-								nodes = append(nodes, *addr.NodeName)
-							}
-						case "Node":
-							nodes = append(nodes, addr.TargetRef.Name)
+	indexers[nodeIndex] = func(obj interface{}) ([]string, error) {
+		e, ok := obj.(*apiv1.Endpoints)
+		if !ok {
+			return nil, errors.New("object is not endpoints")
+		}
+		var nodes []string
+		for _, target := range e.Subsets {
+			for _, addr := range target.Addresses {
+				if addr.TargetRef != nil {
+					switch addr.TargetRef.Kind {
+					case "Pod":
+						if addr.NodeName != nil {
+							nodes = append(nodes, *addr.NodeName)
 						}
+					case "Node":
+						nodes = append(nodes, addr.TargetRef.Name)
 					}
 				}
 			}
-			return nodes, nil
 		}
-	}
-
-	if d.attachMetadata.Namespace {
-		indexers[cache.NamespaceIndex] = cache.MetaNamespaceIndexFunc
+		return nodes, nil
 	}
 
 	return d.mustNewSharedIndexInformer(plw, &apiv1.Endpoints{}, resyncDisabled, indexers)
 }
 
-func (d *Discovery) newIndexedEndpointSlicesInformer(plw *cache.ListWatch, object runtime.Object) cache.SharedIndexInformer {
+func (d *Discovery) newEndpointSlicesByNodeInformer(plw *cache.ListWatch, object runtime.Object) cache.SharedIndexInformer {
 	indexers := make(map[string]cache.IndexFunc)
 	indexers[serviceIndex] = func(obj interface{}) ([]string, error) {
 		e, ok := obj.(*disv1.EndpointSlice)
@@ -779,57 +728,34 @@ func (d *Discovery) newIndexedEndpointSlicesInformer(plw *cache.ListWatch, objec
 
 		return []string{namespacedName(e.Namespace, svcName)}, nil
 	}
-
-	if d.attachMetadata.Node {
-		indexers[nodeIndex] = func(obj interface{}) ([]string, error) {
-			e, ok := obj.(*disv1.EndpointSlice)
-			if !ok {
-				return nil, errors.New("object is not an endpointslice")
-			}
-
-			var nodes []string
-			for _, target := range e.Endpoints {
-				if target.TargetRef != nil {
-					switch target.TargetRef.Kind {
-					case "Pod":
-						if target.NodeName != nil {
-							nodes = append(nodes, *target.NodeName)
-						}
-					case "Node":
-						nodes = append(nodes, target.TargetRef.Name)
-					}
-				}
-			}
-
-			return nodes, nil
-		}
+	if !d.attachMetadata.Node {
+		return d.mustNewSharedIndexInformer(plw, object, resyncDisabled, indexers)
 	}
 
-	if d.attachMetadata.Namespace {
-		indexers[cache.NamespaceIndex] = cache.MetaNamespaceIndexFunc
+	indexers[nodeIndex] = func(obj interface{}) ([]string, error) {
+		e, ok := obj.(*disv1.EndpointSlice)
+		if !ok {
+			return nil, errors.New("object is not an endpointslice")
+		}
+
+		var nodes []string
+		for _, target := range e.Endpoints {
+			if target.TargetRef != nil {
+				switch target.TargetRef.Kind {
+				case "Pod":
+					if target.NodeName != nil {
+						nodes = append(nodes, *target.NodeName)
+					}
+				case "Node":
+					nodes = append(nodes, target.TargetRef.Name)
+				}
+			}
+		}
+
+		return nodes, nil
 	}
 
 	return d.mustNewSharedIndexInformer(plw, object, resyncDisabled, indexers)
-}
-
-func (d *Discovery) newIndexedServicesInformer(slw *cache.ListWatch) cache.SharedIndexInformer {
-	indexers := make(map[string]cache.IndexFunc)
-
-	if d.attachMetadata.Namespace {
-		indexers[cache.NamespaceIndex] = cache.MetaNamespaceIndexFunc
-	}
-
-	return d.mustNewSharedIndexInformer(slw, &apiv1.Service{}, resyncDisabled, indexers)
-}
-
-func (d *Discovery) newIndexedIngressesInformer(ilw *cache.ListWatch) cache.SharedIndexInformer {
-	indexers := make(map[string]cache.IndexFunc)
-
-	if d.attachMetadata.Namespace {
-		indexers[cache.NamespaceIndex] = cache.MetaNamespaceIndexFunc
-	}
-
-	return d.mustNewSharedIndexInformer(ilw, &networkv1.Ingress{}, resyncDisabled, indexers)
 }
 
 func (d *Discovery) informerWatchErrorHandler(r *cache.Reflector, err error) {
@@ -857,27 +783,20 @@ func (d *Discovery) mustNewSharedIndexInformer(lw cache.ListerWatcher, exampleOb
 	return informer
 }
 
-func addObjectAnnotationsAndLabels(labelSet model.LabelSet, objectMeta metav1.ObjectMeta, resource string) {
-	for k, v := range objectMeta.Labels {
-		ln := strutil.SanitizeLabelName(k)
-		labelSet[model.LabelName(metaLabelPrefix+resource+"_label_"+ln)] = lv(v)
-		labelSet[model.LabelName(metaLabelPrefix+resource+"_labelpresent_"+ln)] = presentValue
-	}
-	for k, v := range objectMeta.Annotations {
-		ln := strutil.SanitizeLabelName(k)
-		labelSet[model.LabelName(metaLabelPrefix+resource+"_annotation_"+ln)] = lv(v)
-		labelSet[model.LabelName(metaLabelPrefix+resource+"_annotationpresent_"+ln)] = presentValue
-	}
-}
-
 func addObjectMetaLabels(labelSet model.LabelSet, objectMeta metav1.ObjectMeta, role Role) {
 	labelSet[model.LabelName(metaLabelPrefix+string(role)+"_name")] = lv(objectMeta.Name)
-	addObjectAnnotationsAndLabels(labelSet, objectMeta, string(role))
-}
 
-func addNamespaceMetaLabels(labelSet model.LabelSet, objectMeta metav1.ObjectMeta) {
-	// Omitting the namespace name because should be already injected elsewhere.
-	addObjectAnnotationsAndLabels(labelSet, objectMeta, "namespace")
+	for k, v := range objectMeta.Labels {
+		ln := strutil.SanitizeLabelName(k)
+		labelSet[model.LabelName(metaLabelPrefix+string(role)+"_label_"+ln)] = lv(v)
+		labelSet[model.LabelName(metaLabelPrefix+string(role)+"_labelpresent_"+ln)] = presentValue
+	}
+
+	for k, v := range objectMeta.Annotations {
+		ln := strutil.SanitizeLabelName(k)
+		labelSet[model.LabelName(metaLabelPrefix+string(role)+"_annotation_"+ln)] = lv(v)
+		labelSet[model.LabelName(metaLabelPrefix+string(role)+"_annotationpresent_"+ln)] = presentValue
+	}
 }
 
 func namespacedName(namespace, name string) string {

@@ -254,10 +254,7 @@ func (n *Manager) targetUpdateLoop(tsets <-chan map[string][]*targetgroup.Group)
 			select {
 			case <-n.stopRequested:
 				return
-			case ts, ok := <-tsets:
-				if !ok {
-					break
-				}
+			case ts := <-tsets:
 				n.reload(ts)
 			}
 		}

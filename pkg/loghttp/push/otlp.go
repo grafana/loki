@@ -599,11 +599,7 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) (push.LabelsAda
 		keyWithPrefix = prefix + "_" + k
 	}
 
-	labelNamer := otlptranslator.LabelNamer{}
-	keyWithPrefix, err := labelNamer.Build(keyWithPrefix)
-	if err != nil {
-		return nil, fmt.Errorf("symbolizer lookup: %w", err)
-	}
+	keyWithPrefix = otlptranslator.NormalizeLabel(keyWithPrefix)
 
 	typ := v.Type()
 	if typ == pcommon.ValueTypeMap {

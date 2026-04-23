@@ -24,9 +24,9 @@ type lightsailMetrics struct {
 var _ discovery.DiscovererMetrics = (*lightsailMetrics)(nil)
 
 // Register implements discovery.DiscovererMetrics.
-func (*lightsailMetrics) Register() error {
+func (m *lightsailMetrics) Register() error {
 	return nil
 }
 
 // Unregister implements discovery.DiscovererMetrics.
-func (*lightsailMetrics) Unregister() {}
+func (m *lightsailMetrics) Unregister() {}

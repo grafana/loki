@@ -24,9 +24,9 @@ type gceMetrics struct {
 }
 
 // Register implements discovery.DiscovererMetrics.
-func (*gceMetrics) Register() error {
+func (m *gceMetrics) Register() error {
 	return nil
 }
 
 // Unregister implements discovery.DiscovererMetrics.
-func (*gceMetrics) Unregister() {}
+func (m *gceMetrics) Unregister() {}

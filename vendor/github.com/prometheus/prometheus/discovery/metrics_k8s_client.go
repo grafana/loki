@@ -176,27 +176,27 @@ func (f *clientGoWorkqueueMetricsProvider) RegisterWithK8sGoClient() {
 	workqueue.SetProvider(f)
 }
 
-func (*clientGoWorkqueueMetricsProvider) NewDepthMetric(name string) workqueue.GaugeMetric {
+func (f *clientGoWorkqueueMetricsProvider) NewDepthMetric(name string) workqueue.GaugeMetric {
 	return clientGoWorkqueueDepthMetricVec.WithLabelValues(name)
 }
 
-func (*clientGoWorkqueueMetricsProvider) NewAddsMetric(name string) workqueue.CounterMetric {
+func (f *clientGoWorkqueueMetricsProvider) NewAddsMetric(name string) workqueue.CounterMetric {
 	return clientGoWorkqueueAddsMetricVec.WithLabelValues(name)
 }
 
-func (*clientGoWorkqueueMetricsProvider) NewLatencyMetric(name string) workqueue.HistogramMetric {
+func (f *clientGoWorkqueueMetricsProvider) NewLatencyMetric(name string) workqueue.HistogramMetric {
 	return clientGoWorkqueueLatencyMetricVec.WithLabelValues(name)
 }
 
-func (*clientGoWorkqueueMetricsProvider) NewWorkDurationMetric(name string) workqueue.HistogramMetric {
+func (f *clientGoWorkqueueMetricsProvider) NewWorkDurationMetric(name string) workqueue.HistogramMetric {
 	return clientGoWorkqueueWorkDurationMetricVec.WithLabelValues(name)
 }
 
-func (*clientGoWorkqueueMetricsProvider) NewUnfinishedWorkSecondsMetric(name string) workqueue.SettableGaugeMetric {
+func (f *clientGoWorkqueueMetricsProvider) NewUnfinishedWorkSecondsMetric(name string) workqueue.SettableGaugeMetric {
 	return clientGoWorkqueueUnfinishedWorkSecondsMetricVec.WithLabelValues(name)
 }
 
-func (*clientGoWorkqueueMetricsProvider) NewLongestRunningProcessorSecondsMetric(name string) workqueue.SettableGaugeMetric {
+func (f *clientGoWorkqueueMetricsProvider) NewLongestRunningProcessorSecondsMetric(name string) workqueue.SettableGaugeMetric {
 	return clientGoWorkqueueLongestRunningProcessorMetricVec.WithLabelValues(name)
 }
 

@@ -105,7 +105,6 @@ func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) (labels.La
 		buf.Reset()
 	}
 
-	labelNamer := otlptranslator.LabelNamer{}
 	for _, symbol := range syms {
 		// First check if we have a normalized name for this symbol
 		s.mtx.RLock()
@@ -120,10 +119,7 @@ func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) (labels.La
 			name = s.lookup(symbol.Name)
 			// If we have a match for the symbol name, normalize it. Otherwise keep "" as the name.
 			if name != "" {
-				normalized, err := labelNamer.Build(name)
-				if err != nil {
-					return labels.EmptyLabels(), err
-				}
+				normalized := otlptranslator.NormalizeLabel(name)
 				s.mtx.Lock()
 				s.normalizedNames[symbol.Name] = normalized
 				s.mtx.Unlock()
