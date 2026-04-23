@@ -161,7 +161,12 @@ func (b *Builder) Tenant() string { return b.tenant }
 func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
 
 // Type returns the [dataobj.SectionType] of the logs builder.
-func (b *Builder) Type() dataobj.SectionType { return sectionType }
+func (b *Builder) Type() dataobj.SectionType {
+	if b.opts.SortOrder == SortSchemaASC {
+		return schemaSortSectionType
+	}
+	return sectionType
+}
 
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {

@@ -13,7 +13,7 @@ import (
 )
 
 // sortMergeIterator returns an iterator that performs a k-way merge of records from multiple logs sections.
-// It requires that the input sections are sorted sorted by the same order.
+// It requires that the input sections are sorted by the same order.
 func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
 	sequences := make([]*sectionSequence, 0, len(sections))
 	for _, s := range sections {
@@ -78,42 +78,19 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, sort lo
 		}), nil
 }
 
-// sortMergeIteratorWithSchema returns an iterator that performs a k-way merge
-// of records from multiple logs sections using schema-based sort order.
-// sortKeys maps streamID to its pre-computed sort key.
-func sortMergeIteratorWithSchema(ctx context.Context, sections []*dataobj.Section, sortKeys map[int64]string) (result.Seq[logs.Record], error) {
-	sequences := make([]*sectionSequence, 0, len(sections))
-	for _, s := range sections {
-		sec, err := logs.Open(ctx, s)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open logs section: %w", err)
-		}
-
-		ds, err := logs.MakeColumnarDataset(sec)
-		if err != nil {
-			return nil, fmt.Errorf("creating columnar dataset: %w", err)
-		}
-
-		columns, err := result.Collect(ds.ListColumns(ctx))
-		if err != nil {
-			return nil, err
-		}
-
-		r := dataset.NewRowReader(dataset.RowReaderOptions{
-			Dataset:  ds,
-			Columns:  columns,
-			Prefetch: true,
-		})
-		if err := r.Open(ctx); err != nil {
-			return nil, fmt.Errorf("opening dataset row reader: %w", err)
-		}
-
-		sequences = append(sequences, &sectionSequence{
-			section:         sec,
-			DatasetSequence: logs.NewDatasetSequence(r, 8<<10),
-		})
+// sortMergeIteratorWithSchema returns a k-way merge in schema key order.
+// All input sections must already be sorted by schema key
+func sortMergeIteratorWithSchema(
+	ctx context.Context, sections []*dataobj.Section, sortKeys map[int64]string,
+) (result.Seq[logs.Record], error) {
+	sequences, err := openSchemaMergeSequences(ctx, sections)
+	if err != nil {
+		return nil, err
 	}
+	return newSchemaMergeIterator(sequences, sortKeys), nil
+}
 
+func newSchemaMergeIterator(sequences []*sectionSequence, sortKeys map[int64]string) result.Seq[logs.Record] {
 	maxValue := result.Value(dataset.Row{
 		Index: math.MaxInt,
 		Values: []dataset.Value{
@@ -121,23 +98,18 @@ func sortMergeIteratorWithSchema(ctx context.Context, sections []*dataobj.Sectio
 			dataset.Int64Value(math.MinInt64), // Timestamp
 		},
 	})
-
 	tree := loser.New(sequences, maxValue, sectionSequenceAt, logs.CompareForSortSchema(sortKeys), sectionSequenceClose)
-
 	return result.Iter(
 		func(yield func(logs.Record) bool) error {
 			defer tree.Close()
 			for tree.Next() {
 				seq := tree.Winner()
-
 				row, err := sectionSequenceAt(seq).Value()
 				if err != nil {
 					return err
 				}
-
 				var record logs.Record
-				err = logs.DecodeRow(seq.section.Columns(), row, &record, nil)
-				if err != nil {
+				if err = logs.DecodeRow(seq.section.Columns(), row, &record, nil); err != nil {
 					return err
 				}
 				record.SortKey = sortKeys[record.StreamID]
@@ -146,7 +118,46 @@ func sortMergeIteratorWithSchema(ctx context.Context, sections []*dataobj.Sectio
 				}
 			}
 			return nil
-		}), nil
+		})
+}
+
+func openSchemaMergeSequences(ctx context.Context, sections []*dataobj.Section) ([]*sectionSequence, error) {
+	sequences := make([]*sectionSequence, 0, len(sections))
+	for _, s := range sections {
+		seq, err := newSectionSequence(ctx, s)
+		if err != nil {
+			return nil, err
+		}
+		sequences = append(sequences, seq)
+	}
+	return sequences, nil
+}
+
+func newSectionSequence(ctx context.Context, s *dataobj.Section) (*sectionSequence, error) {
+	sec, err := logs.Open(ctx, s)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open logs section: %w", err)
+	}
+	ds, err := logs.MakeColumnarDataset(sec)
+	if err != nil {
+		return nil, fmt.Errorf("creating columnar dataset: %w", err)
+	}
+	columns, err := result.Collect(ds.ListColumns(ctx))
+	if err != nil {
+		return nil, err
+	}
+	r := dataset.NewRowReader(dataset.RowReaderOptions{
+		Dataset:  ds,
+		Columns:  columns,
+		Prefetch: true,
+	})
+	if err := r.Open(ctx); err != nil {
+		return nil, fmt.Errorf("opening dataset row reader: %w", err)
+	}
+	return &sectionSequence{
+		section:         sec,
+		DatasetSequence: logs.NewDatasetSequence(r, 8<<10),
+	}, nil
 }
 
 type sectionSequence struct {

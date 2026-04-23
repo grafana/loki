@@ -157,7 +157,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 
 	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-order", sortStreamASC, "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")
 	f.BoolVar(&cfg.AppendOrderedEnabled, prefix+"append-ordered-enabled", true, "Skips intermediate stripe sorting and merging. Expects data to be sorted before appending.")
-	f.BoolVar(&cfg.DataobjUseSortSchema, prefix+"dataobj-use-sort-schema", true, "Experimental: When enabled, use the per-tenant sort_schema tenant config to determine sort order of data objects instead of dataobj-sort-order.")
+	f.BoolVar(&cfg.DataobjUseSortSchema, prefix+"dataobj-use-sort-schema", false, "Experimental: When enabled, use the per-tenant sort_schema tenant config to determine sort order of data objects instead of dataobj-sort-order.")
 }
 
 // Validate validates the BuilderConfig.
@@ -556,9 +556,6 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		)
 
 		if b.cfg.DataobjUseSortSchema {
-			// Prefer schema labels embedded in an existing section (written by a
-			// newer compactor). Fall back to the live tenant override so that old
-			// objects — which predate the SchemaLabels field — continue to work.
 			if len(sections) > 0 {
 				firstSec, err := logs.Open(ctx, sections[0])
 				if err != nil {
@@ -577,14 +574,14 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			}
 		}
 
-		if len(schemaLabels) > 0 {
+		if len(schemaLabels) > 0 && allSectionsSchemaSorted(sections) {
 			sortKeys, err := buildSortKeys(ctx, obj, tenant, schemaLabels)
 			if err != nil {
 				return nil, nil, fmt.Errorf("building sort keys for tenant %s: %w", tenant, err)
 			}
 			sortOrder = logs.SortSchemaASC
 			iter, iterErr = sortMergeIteratorWithSchema(ctx, sections, sortKeys)
-			level.Info(b.logger).Log("msg", "sort schema: sorting by schema", "tenant", tenant, "schema_labels", fmt.Sprintf("%v", schemaLabels))
+			level.Debug(b.logger).Log("msg", "sort schema: merge", "tenant", tenant, "schema_labels", fmt.Sprintf("%v", schemaLabels))
 		} else {
 			sortOrder = parseSortOrder(b.cfg.DataobjSortOrder)
 			iter, iterErr = sortMergeIterator(ctx, sections, sortOrder)
@@ -719,24 +716,38 @@ func buildSortKeys(ctx context.Context, obj *dataobj.Object, tenant string, sche
 			if err != nil {
 				return nil, err
 			}
-			sortKeys[stream.ID] = computeSortKey(stream.Labels, schemaLabels)
+			k, err := computeSortKey(stream.Labels, schemaLabels)
+			if err != nil {
+				return nil, err
+			}
+			sortKeys[stream.ID] = k
 		}
 	}
 	return sortKeys, nil
 }
 
+// allSectionsSchemaSorted checks whether every section was sorted using sort_schema
+func allSectionsSchemaSorted(sections []*dataobj.Section) bool {
+	for _, sec := range sections {
+		if !logs.IsSchemaSorted(sec) {
+			return false
+		}
+	}
+	return true
+}
+
 // computeSortKey builds a composite sort key from stream labels using FQN entries.
 // Each FQN must be "label:<name>" — validation.SortSchema.Validate() enforces this.
-func computeSortKey(ls labels.Labels, schemaLabels []string) string {
+func computeSortKey(ls labels.Labels, schemaLabels []string) (string, error) {
 	if len(schemaLabels) == 0 {
-		return ""
+		return "", nil
 	}
-	resolveLabel := func(fqn string) string {
+	resolveLabel := func(fqn string) (string, error) {
 		typ, name, ok := strings.Cut(fqn, ":")
 		if !ok || typ != "label" {
-			panic(fmt.Sprintf("computeSortKey: unexpected FQN %q — only \"label:<name>\" is supported", fqn))
+			return "", fmt.Errorf("computeSortKey: unexpected FQN %q — only \"label:<name>\" is supported", fqn)
 		}
-		return ls.Get(name)
+		return ls.Get(name), nil
 	}
 	if len(schemaLabels) == 1 {
 		return resolveLabel(schemaLabels[0])
@@ -746,7 +757,11 @@ func computeSortKey(ls labels.Labels, schemaLabels []string) string {
 		if i > 0 {
 			b.WriteByte(0)
 		}
-		b.WriteString(resolveLabel(fqn))
+		s, err := resolveLabel(fqn)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(s)
 	}
-	return b.String()
+	return b.String(), nil
 }

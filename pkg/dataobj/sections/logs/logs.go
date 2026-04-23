@@ -11,14 +11,32 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
+// schemaSortVersion is the section type version for logs sections written in
+// schema sort order. Must not equal columnar.FormatVersion (currently 2).
+// The bumped version lets callers detect the sort contract from the object
+// header alone, without opening the section.
+const schemaSortVersion uint32 = 3
+
 var sectionType = dataobj.SectionType{
 	Namespace: "github.com/grafana/loki",
 	Kind:      "logs",
 	Version:   columnar.FormatVersion,
 }
 
+var schemaSortSectionType = dataobj.SectionType{
+	Namespace: "github.com/grafana/loki",
+	Kind:      "logs",
+	Version:   schemaSortVersion,
+}
+
 // CheckSection returns true if section is a logs section.
 func CheckSection(section *dataobj.Section) bool { return sectionType.Equals(section.Type) }
+
+// IsSchemaSorted returns true if the section was written in schema sort order.
+// This check reads only the object-header metadata — no section I/O required.
+func IsSchemaSorted(section *dataobj.Section) bool {
+	return section.Type == schemaSortSectionType
+}
 
 // Section represents an opened logs section.
 type Section struct {
@@ -32,11 +50,12 @@ type Section struct {
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
-	} else if section.Type.Version != columnar.FormatVersion {
-		return nil, fmt.Errorf("unsupported section version: got=%d want=%d", section.Type.Version, columnar.FormatVersion)
+	}
+	if section.Type.Version != columnar.FormatVersion && section.Type.Version != schemaSortVersion {
+		return nil, fmt.Errorf("unsupported section version: got=%d", section.Type.Version)
 	}
 
-	dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)
+	dec, err := columnar.NewDecoder(section.Reader, columnar.FormatVersion)
 	if err != nil {
 		return nil, fmt.Errorf("creating decoder: %w", err)
 	}
