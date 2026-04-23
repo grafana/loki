@@ -152,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing, Observability
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2026-04-10T16:58:38Z"
+    createdAt: "2026-04-23T11:43:25Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -1578,7 +1578,7 @@ spec:
         path: remoteWrite.client.authorization
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:basic
-        - urn:alm:descriptor:com.tectonic.ui:select:header
+        - urn:alm:descriptor:com.tectonic.ui:select:bearer
       - description: Name of a secret in the namespace configured for authorization
           secrets.
         displayName: Authorization Secret Name
