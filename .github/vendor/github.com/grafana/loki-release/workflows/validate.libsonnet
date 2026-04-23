@@ -10,7 +10,7 @@ local setupValidationDeps = function(job) job {
     common.fixDubiousOwnership,
     step.new('install dependencies')
     + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
-    + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
+    + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release loki-build-tools'),
     step.new('install tar')
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.withRun(|||
