@@ -752,6 +752,62 @@ func Test_planWorkflow(t *testing.T) {
 
 }
 
+func Test_planWorkflow_ParallelizeWithTemplateSources_KeysSourcesToShardFragment(t *testing.T) {
+	var physicalGraph dag.Graph[physical.Node]
+
+	var (
+		vectorAgg = physicalGraph.Add(&physical.VectorAggregation{})
+
+		outerParallelize = physicalGraph.Add(&physical.Parallelize{})
+		merge            = physicalGraph.Add(&physical.Merge{})
+
+		innerParallelize = physicalGraph.Add(&physical.Parallelize{})
+		innerScanSet     = physicalGraph.Add(&physical.ScanSet{
+			Targets: []*physical.ScanTarget{
+				{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "inner-a"}},
+				{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "inner-b"}},
+			},
+		})
+		outerScanSet = physicalGraph.Add(&physical.ScanSet{
+			Targets: []*physical.ScanTarget{
+				{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "outer-a"}},
+				{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "outer-b"}},
+			},
+		})
+	)
+
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: outerParallelize})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: outerParallelize, Child: merge})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: merge, Child: innerParallelize})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: innerParallelize, Child: innerScanSet})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: merge, Child: outerScanSet})
+
+	physicalPlan := physical.FromGraph(physicalGraph)
+
+	graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
+	require.NoError(t, err)
+
+	var mergeTasks int
+	for _, root := range graph.Roots() {
+		_ = graph.Walk(root, func(task *Task) error {
+			fragmentRoot, err := task.Fragment.Root()
+			require.NoError(t, err)
+
+			if _, ok := fragmentRoot.(*physical.Merge); !ok {
+				return nil
+			}
+
+			mergeTasks++
+			require.Len(t, task.Sources, 1)
+			_, ok := task.Sources[fragmentRoot]
+			require.True(t, ok, "merge task sources must be keyed by its fragment root node")
+			return nil
+		}, dag.PreOrderWalk)
+	}
+
+	require.Equal(t, 2, mergeTasks)
+}
+
 // requireUniqueStreams asserts that for each stream found in g, that stream has
 // exactly one reader (from Task.Sources) and exactly one writer (from
 // Task.Sinks).

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -605,6 +606,7 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 		shardedPlan := templateTask.Fragment.Graph().Clone()
 		shardedPlan.Inject(shardableNode, shard)
 		shardedPlan.Eliminate(shardableNode)
+		shardTemplateSources := maps.Clone(templateTask.Sources)
 		// Without this next step, nodes other than the shardable node are reused between tasks.
 		// This causes an issue with time range clamping, where the clamped time range could
 		// accidentally be copied between tasks.
@@ -614,13 +616,13 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 		// only the RangeAggregation for that specific ScanTarget is also clamped.
 		visited := map[physical.Node]bool{}
 		for _, p := range shardedPlan.Parents(shard) {
-			cloneAllNodes(p, shardedPlan, templateTask, visited)
+			cloneAllNodes(p, shardedPlan, shardTemplateSources, visited)
 		}
 
 		// The sources of the template task need to be replaced with new unique
 		// streams.
-		shardSources := make(map[physical.Node][]*Stream, len(templateTask.Sources))
-		for node, templateStreams := range templateTask.Sources {
+		shardSources := make(map[physical.Node][]*Stream, len(shardTemplateSources))
+		for node, templateStreams := range shardTemplateSources {
 			shardStreams := make([]*Stream, 0, len(templateStreams))
 
 			for _, templateStream := range templateStreams {
@@ -681,23 +683,23 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 }
 
 // Recursively replaces a node and all of its parents in the graph with clones.
-func cloneAllNodes(node physical.Node, graph *dag.Graph[physical.Node], task *Task, visited map[physical.Node]bool) {
+func cloneAllNodes(node physical.Node, graph *dag.Graph[physical.Node], sources map[physical.Node][]*Stream, visited map[physical.Node]bool) {
 	if visited[node] {
 		return
 	}
 	clone := node.Clone()
-	_, ok := task.Sources[node]
+	_, ok := sources[node]
 	if ok {
-		tmp := task.Sources[node]
-		task.Sources[clone] = tmp
-		delete(task.Sources, node)
+		tmp := sources[node]
+		sources[clone] = tmp
+		delete(sources, node)
 	}
 	graph.Inject(node, clone)
 	graph.Eliminate(node)
 	visited[clone] = true
 	cloneParents := graph.Parents(clone)
 	for _, p := range cloneParents {
-		cloneAllNodes(p, graph, task, visited)
+		cloneAllNodes(p, graph, sources, visited)
 	}
 }
 
