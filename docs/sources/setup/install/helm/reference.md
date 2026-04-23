@@ -4027,7 +4027,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.6.7"
+    "tag": "3.6.6"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -4037,7 +4037,7 @@ null
     "affinity": {},
     "annotations": {},
     "apiUrl": "{{ include \"loki.address\" . }}",
-    "enabled": true,
+    "enabled": false,
     "env": [],
     "extraVolumeMounts": [],
     "extraVolumes": [],
@@ -4063,7 +4063,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.6.5"
+  "version": "3.6.6"
 }
 </pre>
 </td>
@@ -4174,7 +4174,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.6.7"
+"3.6.6"
 </pre>
 </td>
 		</tr>
@@ -4192,14 +4192,14 @@ null
 		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
-			<td>Configuration for `provisioner` target Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.</td>
+			<td>Configuration for `provisioner` target Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api. The provisioner is disabled by default because it requires an out-of-band admin token secret (created via GEL `tokengen`) referenced by `enterprise.adminToken.secret`. After creating that secret, set both `enterprise.adminToken.secret` and `enterprise.provisioner.enabled: true`. See production/helm/loki/docs/examples/enterprise/README.md for the full procedure.</td>
 			<td><pre lang="json">
 {
   "additionalTenants": [],
   "affinity": {},
   "annotations": {},
   "apiUrl": "{{ include \"loki.address\" . }}",
-  "enabled": true,
+  "enabled": false,
   "env": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
@@ -4268,7 +4268,7 @@ null
 			<td>bool</td>
 			<td>Whether the job should be part of the deployment</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -8230,6 +8230,16 @@ false
   ],
   "drivesPerNode": 2,
   "enabled": false,
+  "image": {
+    "pullPolicy": "IfNotPresent",
+    "repository": "docker.io/pgsty/minio",
+    "tag": "RELEASE.2026-03-14T12-00-00Z"
+  },
+  "mcImage": {
+    "pullPolicy": "IfNotPresent",
+    "repository": "docker.io/pgsty/mc",
+    "tag": "RELEASE.2026-03-13T08-57-32Z"
+  },
   "persistence": {
     "annotations": {},
     "size": "5Gi"
