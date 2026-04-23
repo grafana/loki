@@ -2,6 +2,8 @@ package metric
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"sync/atomic" //lint:ignore faillint we use new atomic types from sync/atomic.
 	"time"
 
@@ -20,6 +22,7 @@ type MaxSampleCollector struct {
 	secs        int
 	val, maxVal atomic.Int64
 	desc        *prometheus.Desc
+	mu          sync.Mutex
 }
 
 // NewMaxSampleCollector returns a new MaxSampleCollector for the metric name
@@ -31,8 +34,16 @@ func NewMaxSampleCollector(fqName, help string) *MaxSampleCollector {
 }
 
 // Inc adds the delta to the current value.
-func (c *MaxSampleCollector) Inc(delta int64) {
+func (c *MaxSampleCollector) Inc(delta int64, limit int64) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if delta > 0 && limit > 0 && c.val.Load()+delta > limit {
+		return errors.New("inflight bytes limit exceeded")
+	}
+
 	c.val.Add(delta)
+	return nil
 }
 
 // Describe implements [prometheus.Collector].

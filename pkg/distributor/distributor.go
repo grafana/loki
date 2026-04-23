@@ -116,6 +116,7 @@ type Config struct {
 	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
 
 	MemoryBasedLoadSheddingThresholdBytes uint64 `yaml:"memory_based_load_shedding_threshold_bytes"`
+	InflightBytesLoadSheddingThreshold    int64  `yaml:"inflight_bytes_load_shedding_threshold"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -133,6 +134,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
 	fs.Uint64Var(&cfg.MemoryBasedLoadSheddingThresholdBytes, "distributor.memory-based-load-shedding-threshold-bytes", 0, "Threshold for memory usage above which requests will be load shed. Defaults to never load-shedding.")
+	fs.Int64Var(&cfg.InflightBytesLoadSheddingThreshold, "distributor.inflight-bytes-load-shedding-threshold", 0, "Threshold for inflight bytes above which requests will be load shed. Defaults to never load-shedding.")
 }
 
 func (cfg *Config) Validate() error {
@@ -583,8 +585,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(req.Size())
-	d.inflightBytes.Inc(requestSize)
-	defer d.inflightBytes.Inc(-requestSize)
+	err := d.inflightBytes.Inc(requestSize, d.cfg.InflightBytesLoadSheddingThreshold)
+	if err != nil {
+		d.loadShedRequestsCounter.Inc()
+		return nil, httpgrpc.Errorf(http.StatusServiceUnavailable, "ServiceUnavailable")
+	}
+	defer d.inflightBytes.Inc(-requestSize, d.cfg.InflightBytesLoadSheddingThreshold)
 
 	if err := d.memoryBasedLoadShedIfNeeded(); err != nil {
 		return nil, err
