@@ -100,8 +100,6 @@ func TestCrossComponentValidation(t *testing.T) {
 		tc.base.CompactorConfig.WorkingDirectory = "tmp"
 		tc.base.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory = "tmp"
 		tc.base.StorageConfig.TSDBShipperConfig.CacheLocation = "tmp"
-		tc.base.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory = "tmp"
-		tc.base.StorageConfig.BoltDBShipperConfig.CacheLocation = "tmp"
 		err := tc.base.Validate()
 		if tc.err {
 			require.NotNil(t, err)

@@ -3,13 +3,11 @@ package storage
 import (
 	"context"
 	"fmt"
-	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"testing"
 	"time"
 
@@ -41,159 +39,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
-	start      = model.Time(1523750400000) // April 15, 2018
-	m          runtime.MemStats
-	ctx        = user.InjectOrgID(context.Background(), "fake")
-	cm         = NewClientMetrics()
-	chunkStore = getLocalStore("/tmp/benchmark/", cm)
+	start = model.Time(1523750400000) // April 15, 2018
+	ctx   = user.InjectOrgID(context.Background(), "fake")
+	cm    = NewClientMetrics()
 )
-
-// go test -bench=. -benchmem -memprofile memprofile.out -cpuprofile profile.out
-func Benchmark_store_SelectLogsRegexBackward(b *testing.B) {
-	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Selector:  `{foo="bar"} |~ "fuzz"`,
-		Limit:     1000,
-		Start:     time.Unix(0, start.UnixNano()),
-		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
-		Direction: logproto.BACKWARD,
-	})
-}
-
-func Benchmark_store_SelectLogsLogQLBackward(b *testing.B) {
-	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Selector:  `{foo="bar"} |= "test" != "toto" |= "fuzz"`,
-		Limit:     1000,
-		Start:     time.Unix(0, start.UnixNano()),
-		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
-		Direction: logproto.BACKWARD,
-	})
-}
-
-func Benchmark_store_SelectLogsRegexForward(b *testing.B) {
-	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Selector:  `{foo="bar"} |~ "fuzz"`,
-		Limit:     1000,
-		Start:     time.Unix(0, start.UnixNano()),
-		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
-		Direction: logproto.FORWARD,
-	})
-}
-
-func Benchmark_store_SelectLogsForward(b *testing.B) {
-	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Selector:  `{foo="bar"}`,
-		Limit:     1000,
-		Start:     time.Unix(0, start.UnixNano()),
-		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
-		Direction: logproto.FORWARD,
-	})
-}
-
-func Benchmark_store_SelectLogsBackward(b *testing.B) {
-	benchmarkStoreQuery(b, &logproto.QueryRequest{
-		Selector:  `{foo="bar"}`,
-		Limit:     1000,
-		Start:     time.Unix(0, start.UnixNano()),
-		End:       time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()),
-		Direction: logproto.BACKWARD,
-	})
-}
-
-// rm -Rf /tmp/benchmark/chunks/ /tmp/benchmark/index
-// go run  -mod=vendor ./pkg/storage/hack/main.go
-// go test -benchmem -run=^$ -mod=vendor  ./pkg/storage -bench=Benchmark_store_SelectSample   -memprofile memprofile.out -cpuprofile cpuprofile.out
-func Benchmark_store_SelectSample(b *testing.B) {
-	for _, test := range []string{
-		`count_over_time({foo="bar"}[5m])`,
-		`rate({foo="bar"}[5m])`,
-		`bytes_rate({foo="bar"}[5m])`,
-		`bytes_over_time({foo="bar"}[5m])`,
-	} {
-		b.Run(test, func(b *testing.B) {
-			sampleCount := 0
-			for i := 0; i < b.N; i++ {
-				iter, err := chunkStore.SelectSamples(ctx, logql.SelectSampleParams{
-					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil, nil),
-				})
-				if err != nil {
-					b.Fatal(err)
-				}
-
-				for iter.Next() {
-					_ = iter.At()
-					sampleCount++
-				}
-				iter.Close()
-			}
-			b.ReportMetric(float64(sampleCount)/float64(b.N), "samples/op")
-		})
-	}
-}
-
-func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
-	b.ReportAllocs()
-	// force to run gc 10x more often this can be useful to detect fast allocation vs leak.
-	// debug.SetGCPercent(10)
-	stop := make(chan struct{})
-	go func() {
-		_ = http.ListenAndServe(":6060", http.DefaultServeMux)
-	}()
-	go func() {
-		ticker := time.NewTicker(time.Millisecond)
-		for {
-			select {
-			case <-ticker.C:
-				// print and capture the max in use heap size
-				printHeap(b, false)
-			case <-stop:
-				ticker.Stop()
-				return
-			}
-		}
-	}()
-	for i := 0; i < b.N; i++ {
-		iter, err := chunkStore.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: query})
-		if err != nil {
-			b.Fatal(err)
-		}
-		res := []logproto.Entry{}
-		printHeap(b, true)
-		j := uint32(0)
-		for iter.Next() {
-			j++
-			printHeap(b, false)
-			res = append(res, iter.At())
-			// limit result like the querier would do.
-			if j == query.Limit {
-				break
-			}
-		}
-		iter.Close()
-		printHeap(b, true)
-		b.Log("line fetched", len(res))
-	}
-	close(stop)
-}
-
-var maxHeapInuse uint64
-
-func printHeap(b *testing.B, show bool) {
-	runtime.ReadMemStats(&m)
-	if m.HeapInuse > maxHeapInuse {
-		maxHeapInuse = m.HeapInuse
-	}
-	if show {
-		b.Logf("Benchmark %d maxHeapInuse: %d Mbytes\n", b.N, maxHeapInuse/1024/1024)
-		b.Logf("Benchmark %d currentHeapInuse: %d Mbytes\n", b.N, m.HeapInuse/1024/1024)
-	}
-}
 
 func getLocalStore(path string, cm ClientMetrics) Store {
 	limits, err := validation.NewOverrides(validation.Limits{
@@ -204,17 +59,16 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 	}
 
 	storeConfig := Config{
-		FSConfig: local.FSConfig{Directory: filepath.Join(path, "chunks")},
-		BoltDBShipperConfig: boltdb.IndexCfg{
-			Config: indexshipper.Config{
-				ActiveIndexDirectory:   filepath.Join(path, "index"),
-				CacheLocation:          filepath.Join(path, "cache"),
-				ResyncInterval:         1 * time.Minute,
-				IngesterDBRetainPeriod: 1 * time.Minute,
-				IngesterName:           "ingester-1",
-				Mode:                   indexshipper.ModeReadWrite,
-			},
-			BuildPerTenantIndex: false,
+		FSConfig: local.FSConfig{
+			Directory: filepath.Join(path, "chunks"),
+		},
+		TSDBShipperConfig: indexshipper.Config{
+			ActiveIndexDirectory:   filepath.Join(path, "index"),
+			CacheLocation:          filepath.Join(path, "cache"),
+			ResyncInterval:         1 * time.Minute,
+			IngesterDBRetainPeriod: 1 * time.Minute,
+			IngesterName:           "ingester-1",
+			Mode:                   indexshipper.ModeReadWrite,
 		},
 		MaxChunkBatchSize:  10,
 		IndexCacheValidity: 1 * time.Minute,
@@ -224,7 +78,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 		Configs: []config.PeriodConfig{
 			{
 				From:       config.DayTime{Time: start},
-				IndexType:  "boltdb-shipper",
+				IndexType:  "tsdb",
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{
@@ -1454,9 +1308,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 	secondStoreDate := parseDate("2019-01-02")
 
 	for name, indexes := range map[string][]string{
-		"botldb_boltdb": {types.IndexTypeBoltDB, types.IndexTypeBoltDB},
-		"botldb_tsdb":   {types.IndexTypeBoltDB, types.IndexTypeTSDB},
-		"tsdb_tsdb":     {types.IndexTypeTSDB, types.IndexTypeTSDB},
+		"tsdb_tsdb": {types.IndexTypeTSDB, types.IndexTypeTSDB},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tempDir := t.TempDir()
@@ -1468,9 +1320,8 @@ func TestStore_MultiPeriod(t *testing.T) {
 			shipperConfig.Mode = indexshipper.ModeReadWrite
 
 			cfg := Config{
-				FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-				BoltDBShipperConfig: boltdb.IndexCfg{Config: shipperConfig},
-				TSDBShipperConfig:   shipperConfig,
+				FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+				TSDBShipperConfig: shipperConfig,
 				NamedStores: NamedStores{
 					Filesystem: map[string]NamedFSConfig{
 						"named-store": {Directory: path.Join(tempDir, "named-store")},
@@ -1511,7 +1362,6 @@ func TestStore_MultiPeriod(t *testing.T) {
 				},
 			}
 
-			ResetBoltDBIndexClientsWithShipper()
 			store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 			require.NoError(t, err)
 
@@ -1549,15 +1399,6 @@ func TestStore_MultiPeriod(t *testing.T) {
 
 				addedChunkIDs[schemaConfig.ExternalKey(chk.ChunkRef)] = struct{}{}
 			}
-
-			// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
-			store.Stop()
-
-			ResetBoltDBIndexClientsWithShipper()
-			store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
-			require.NoError(t, err)
-
-			defer store.Stop()
 
 			// get all the chunks from both the stores
 			predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
@@ -1807,14 +1648,6 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
-	// config for BoltDB Shipper
-	boltdbShipperConfig := boltdb.IndexCfg{}
-	flagext.DefaultValues(&boltdbShipperConfig)
-	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "boltdb-index")
-	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
-	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
-	boltdbShipperConfig.IngesterName = ingesterName
-
 	// config for tsdb Shipper
 	tsdbShipperConfig := indexshipper.Config{}
 	flagext.DefaultValues(&tsdbShipperConfig)
@@ -1823,21 +1656,19 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
 	tsdbShipperConfig.IngesterName = ingesterName
 
-	// dates for activation of boltdb shippers
-	boltdbShipperStartDate := parseDate("2019-01-01")
-	tsdbStartDate := parseDate("2019-01-02")
+	oldStartDate := parseDate("2019-01-01")
+	newStartDate := parseDate("2019-01-02")
 
 	cfg := Config{
-		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-		BoltDBShipperConfig: boltdbShipperConfig,
-		TSDBShipperConfig:   tsdbShipperConfig,
+		FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "objects")},
+		TSDBShipperConfig: tsdbShipperConfig,
 	}
 
 	schemaConfig := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:       config.DayTime{Time: timeToModelTime(boltdbShipperStartDate)},
-				IndexType:  "boltdb-shipper",
+				From:       config.DayTime{Time: timeToModelTime(oldStartDate)},
+				IndexType:  "tsdb",
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v12",
 				IndexTables: config.IndexPeriodicTableConfig{
@@ -1849,10 +1680,10 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 				RowShards: 2,
 			},
 			{
-				From:       config.DayTime{Time: timeToModelTime(tsdbStartDate)},
+				From:       config.DayTime{Time: timeToModelTime(newStartDate)},
 				IndexType:  "tsdb",
 				ObjectType: types.StorageTypeFileSystem,
-				Schema:     "v12",
+				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PathPrefix: "index/",
 					PeriodicTableConfig: config.PeriodicTableConfig{
@@ -1863,7 +1694,6 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 		},
 	}
 
-	ResetBoltDBIndexClientsWithShipper()
 	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
 
@@ -1871,18 +1701,18 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	chunksToBuildForTimeRanges := []timeRange{
 		{
 			// chunk just for first store
-			tsdbStartDate.Add(-3 * time.Hour),
-			tsdbStartDate.Add(-2 * time.Hour),
+			newStartDate.Add(-3 * time.Hour),
+			newStartDate.Add(-2 * time.Hour),
 		},
 		{
 			// chunk overlapping both the stores
-			tsdbStartDate.Add(-time.Hour),
-			tsdbStartDate.Add(time.Hour),
+			newStartDate.Add(-time.Hour),
+			newStartDate.Add(time.Hour),
 		},
 		{
 			// chunk just for second store
-			tsdbStartDate.Add(2 * time.Hour),
-			tsdbStartDate.Add(3 * time.Hour),
+			newStartDate.Add(2 * time.Hour),
+			newStartDate.Add(3 * time.Hour),
 		},
 	}
 
@@ -1903,36 +1733,36 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 		addedChunkIDs[schemaConfig.ExternalKey(chk.ChunkRef)] = struct{}{}
 	}
 
-	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
+	// Stop() will write the indexes to disk
 	store.Stop()
-	ResetBoltDBIndexClientsWithShipper()
 
 	// there should be 2 index tables in the object storage
-	indexTables, err := os.ReadDir(filepath.Join(cfg.FSConfig.Directory, "index"))
+	indexDir := filepath.Join(cfg.FSConfig.Directory, "index")
+
+	indexTables, err := os.ReadDir(indexDir)
 	require.NoError(t, err)
 	require.Len(t, indexTables, 2)
 	require.Equal(t, "index_17897", indexTables[0].Name())
 	require.Equal(t, "index_17898", indexTables[1].Name())
 
 	// there should be just 1 file in each table in the object storage
-	boltdbFiles, err := os.ReadDir(filepath.Join(cfg.FSConfig.Directory, "index", indexTables[0].Name()))
+	tsdbFiles, err := os.ReadDir(filepath.Join(indexDir, indexTables[0].Name()))
 	require.NoError(t, err)
-	require.Len(t, boltdbFiles, 1)
-	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`%s-\d{19}-\d{10}\.gz`, ingesterName)), boltdbFiles[0].Name())
+	require.Len(t, tsdbFiles, 1)
+	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`\d{10}-%s-\d{19}\.tsdb\.gz`, ingesterName)), tsdbFiles[0].Name())
 
-	tsdbFiles, err := os.ReadDir(filepath.Join(cfg.FSConfig.Directory, "index", indexTables[1].Name()))
+	tsdbFiles, err = os.ReadDir(filepath.Join(indexDir, indexTables[1].Name()))
 	require.NoError(t, err)
 	require.Len(t, tsdbFiles, 1)
 	require.Regexp(t, regexp.MustCompile(fmt.Sprintf(`\d{10}-%s-\d{19}\.tsdb\.gz`, ingesterName)), tsdbFiles[0].Name())
 
 	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
-
 	defer store.Stop()
 
 	// get all the chunks from both the stores
 	predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), predicate, nil)
+	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(oldStartDate), timeToModelTime(newStartDate.Add(24*time.Hour)), predicate, nil)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {
@@ -1957,15 +1787,6 @@ func TestStore_SyncStopInteraction(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
-	// config for BoltDB Shipper
-	boltdbShipperConfig := boltdb.IndexCfg{}
-	flagext.DefaultValues(&boltdbShipperConfig)
-	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "boltdb-index")
-	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
-	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
-	boltdbShipperConfig.IngesterName = ingesterName
-	boltdbShipperConfig.ResyncInterval = time.Millisecond
-
 	// config for tsdb Shipper
 	tsdbShipperConfig := indexshipper.Config{}
 	flagext.DefaultValues(&tsdbShipperConfig)
@@ -1975,21 +1796,19 @@ func TestStore_SyncStopInteraction(t *testing.T) {
 	tsdbShipperConfig.IngesterName = ingesterName
 	tsdbShipperConfig.ResyncInterval = time.Millisecond
 
-	// dates for activation of boltdb shippers
-	boltdbShipperStartDate := parseDate("2019-01-01")
-	tsdbStartDate := parseDate("2019-01-02")
+	oldStartDate := parseDate("2019-01-01")
+	newStartDate := parseDate("2019-01-02")
 
 	cfg := Config{
-		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-		BoltDBShipperConfig: boltdbShipperConfig,
-		TSDBShipperConfig:   tsdbShipperConfig,
+		FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+		TSDBShipperConfig: tsdbShipperConfig,
 	}
 
 	schemaConfig := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:       config.DayTime{Time: timeToModelTime(boltdbShipperStartDate)},
-				IndexType:  "boltdb-shipper",
+				From:       config.DayTime{Time: timeToModelTime(oldStartDate)},
+				IndexType:  "tsdb",
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v12",
 				IndexTables: config.IndexPeriodicTableConfig{
@@ -2001,10 +1820,10 @@ func TestStore_SyncStopInteraction(t *testing.T) {
 				RowShards: 2,
 			},
 			{
-				From:       config.DayTime{Time: timeToModelTime(tsdbStartDate)},
+				From:       config.DayTime{Time: timeToModelTime(newStartDate)},
 				IndexType:  "tsdb",
 				ObjectType: types.StorageTypeFileSystem,
-				Schema:     "v12",
+				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PathPrefix: "index/",
 					PeriodicTableConfig: config.PeriodicTableConfig{
@@ -2023,10 +1842,6 @@ func TestStore_SyncStopInteraction(t *testing.T) {
 func TestQueryReferencingStructuredMetadata(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 	tempDir := t.TempDir()
-	// Reset the boltdb-shipper singleton so that this test's store uses tempDir
-	// rather than reusing a client created by a previous getLocalStore call
-	// (e.g. the package-level chunkStore).
-	ResetBoltDBIndexClientsWithShipper()
 	store := getLocalStore(tempDir, cm)
 
 	schemaCfg := store.(*LokiStore).schemaCfg
@@ -2088,10 +1903,8 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 		require.NoError(t, store.Put(ctx, []chunk.Chunk{c}))
 	}
 
-	// This is just a hack for the specific test case.
-	// Recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
+	// TODO(chaudum): Can this be removed?
 	store.Stop()
-	ResetBoltDBIndexClientsWithShipper()
 	store = getLocalStore(tempDir, cm)
 	t.Cleanup(store.Stop)
 

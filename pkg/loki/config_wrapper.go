@@ -113,10 +113,6 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return err
 		}
 
-		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterBoltdbShipperDefaults(r)
-		}
-
 		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
 			betterTSDBShipperDefaults(r)
 		}
@@ -124,7 +120,6 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyEmbeddedCacheConfig(r)
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
-		applyChunkRetain(r, &defaults)
 		if err := applyCommonQuerierWorkerGRPCConfig(r, &defaults); err != nil {
 			return err
 		}
@@ -140,12 +135,6 @@ func lastConfigFor(configs []config.PeriodConfig, predicate func(config.PeriodCo
 		}
 	}
 	return len(configs)
-}
-
-func lastBoltdbShipperConfig(configs []config.PeriodConfig) int {
-	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == types.IndexTypeBoltDB
-	})
 }
 
 func lastTSDBConfig(configs []config.PeriodConfig) int {
@@ -707,20 +696,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	return nil
 }
 
-func betterBoltdbShipperDefaults(cfg *ConfigWrapper) {
-	if cfg.Common.PathPrefix != "" {
-		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
-
-		if cfg.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory == "" {
-			cfg.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory = fmt.Sprintf("%s/boltdb-shipper-active", prefix)
-		}
-
-		if cfg.StorageConfig.BoltDBShipperConfig.CacheLocation == "" {
-			cfg.StorageConfig.BoltDBShipperConfig.CacheLocation = fmt.Sprintf("%s/boltdb-shipper-cache", prefix)
-		}
-	}
-}
-
 func betterTSDBShipperDefaults(cfg *ConfigWrapper) {
 	if cfg.Common.PathPrefix != "" {
 		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
@@ -793,23 +768,6 @@ func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 
 func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
-}
-
-// applyChunkRetain is used to set chunk retain based on having an index query cache configured
-// We retain chunks for at least as long as the index queries cache TTL. When an index entry is
-// cached, any chunks flushed after that won't be in the cached entry. To make sure their data is
-// available the RetainPeriod keeps them available in the ingesters live data. We want to retain them
-// for at least as long as the TTL on the index queries cache.
-func applyChunkRetain(cfg, defaults *ConfigWrapper) {
-	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
-		// Only apply this change if the active index period is for boltdb-shipper
-		p := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
-		if cfg.SchemaConfig.Configs[p].IndexType == types.IndexTypeBoltDB {
-			// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
-			// buffer to make sure the chunks are there until the index entries expire.
-			cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
-		}
-	}
 }
 
 func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {
