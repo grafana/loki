@@ -1202,13 +1202,13 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 	activePeriodicConfigIndex := config.ActivePeriodConfig(i.periodicConfigs)
 	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
-	if activePeriodicConfig.IndexType != types.BoltDBShipperType && activePeriodicConfig.IndexType != types.TSDBType {
+	if activePeriodicConfig.IndexType != types.IndexTypeBoltDB && activePeriodicConfig.IndexType != types.IndexTypeTSDB {
 		return 0
 	}
 
 	startTime := activePeriodicConfig.From
-	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.BoltDBShipperType ||
-		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.TSDBType) {
+	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.IndexTypeBoltDB ||
+		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.IndexTypeTSDB) {
 		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
 	}
 

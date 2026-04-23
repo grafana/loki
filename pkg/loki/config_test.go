@@ -31,7 +31,7 @@ func TestCrossComponentValidation(t *testing.T) {
 							From: config.DayTime{
 								Time: model.Now(),
 							},
-							IndexType:  types.TSDBType,
+							IndexType:  types.IndexTypeTSDB,
 							ObjectType: types.StorageTypeS3,
 							Schema:     "v11",
 							IndexTables: config.IndexPeriodicTableConfig{
@@ -55,7 +55,7 @@ func TestCrossComponentValidation(t *testing.T) {
 				SchemaConfig: config.SchemaConfig{
 					Configs: []config.PeriodConfig{
 						{
-							IndexType:  types.BoltDBShipperType,
+							IndexType:  types.IndexTypeBoltDB,
 							ObjectType: types.StorageTypeS3,
 							RowShards:  16,
 							Schema:     "v11",
@@ -69,7 +69,7 @@ func TestCrossComponentValidation(t *testing.T) {
 							},
 						},
 						{
-							IndexType:  types.BoltDBShipperType,
+							IndexType:  types.IndexTypeBoltDB,
 							ObjectType: types.StorageTypeS3,
 							RowShards:  17,
 							Schema:     "v11",

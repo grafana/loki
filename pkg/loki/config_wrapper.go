@@ -144,13 +144,13 @@ func lastConfigFor(configs []config.PeriodConfig, predicate func(config.PeriodCo
 
 func lastBoltdbShipperConfig(configs []config.PeriodConfig) int {
 	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == types.BoltDBShipperType
+		return p.IndexType == types.IndexTypeBoltDB
 	})
 }
 
 func lastTSDBConfig(configs []config.PeriodConfig) int {
 	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == types.TSDBType
+		return p.IndexType == types.IndexTypeTSDB
 	})
 }
 
@@ -804,7 +804,7 @@ func applyChunkRetain(cfg, defaults *ConfigWrapper) {
 	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
 		// Only apply this change if the active index period is for boltdb-shipper
 		p := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
-		if cfg.SchemaConfig.Configs[p].IndexType == types.BoltDBShipperType {
+		if cfg.SchemaConfig.Configs[p].IndexType == types.IndexTypeBoltDB {
 			// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
 			// buffer to make sure the chunks are there until the index entries expire.
 			cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute

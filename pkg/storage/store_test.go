@@ -1301,7 +1301,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	periodConfig := config.PeriodConfig{
 		From:       config.DayTime{Time: timeToModelTime(firstPeriodDate)},
-		IndexType:  types.TSDBType,
+		IndexType:  types.IndexTypeTSDB,
 		ObjectType: types.StorageTypeFileSystem,
 		Schema:     "v9",
 		IndexTables: config.IndexPeriodicTableConfig{
@@ -1375,7 +1375,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	// update schema with a new period that uses different index prefix
 	periodConfig2 := config.PeriodConfig{
 		From:       config.DayTime{Time: timeToModelTime(secondPeriodDate)},
-		IndexType:  types.TSDBType,
+		IndexType:  types.IndexTypeTSDB,
 		ObjectType: "named-store",
 		Schema:     "v11",
 		IndexTables: config.IndexPeriodicTableConfig{
@@ -1454,9 +1454,9 @@ func TestStore_MultiPeriod(t *testing.T) {
 	secondStoreDate := parseDate("2019-01-02")
 
 	for name, indexes := range map[string][]string{
-		"botldb_boltdb": {types.BoltDBShipperType, types.BoltDBShipperType},
-		"botldb_tsdb":   {types.BoltDBShipperType, types.TSDBType},
-		"tsdb_tsdb":     {types.TSDBType, types.TSDBType},
+		"botldb_boltdb": {types.IndexTypeBoltDB, types.IndexTypeBoltDB},
+		"botldb_tsdb":   {types.IndexTypeBoltDB, types.IndexTypeTSDB},
+		"tsdb_tsdb":     {types.IndexTypeTSDB, types.IndexTypeTSDB},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tempDir := t.TempDir()

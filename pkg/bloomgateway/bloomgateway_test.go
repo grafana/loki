@@ -76,7 +76,7 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 				Period: 24 * time.Hour,
 			},
 		},
-		IndexType:  types.TSDBType,
+		IndexType:  types.IndexTypeTSDB,
 		ObjectType: types.StorageTypeFileSystem,
 		Schema:     "v13",
 		RowShards:  16,

@@ -1029,7 +1029,7 @@ func (t *Loki) setupAsyncStore() error {
 
 	shipperConfigIdx := config.ActivePeriodConfig(t.Cfg.SchemaConfig.Configs)
 	iTy := t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType
-	if iTy != types.BoltDBShipperType && iTy != types.TSDBType {
+	if iTy != types.IndexTypeBoltDB && iTy != types.IndexTypeTSDB {
 		shipperConfigIdx++
 	}
 
@@ -1888,8 +1888,8 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
-	t.compactor.RegisterIndexCompactor(types.BoltDBShipperType, boltdbcompactor.NewIndexCompactor())
-	t.compactor.RegisterIndexCompactor(types.TSDBType, tsdb.NewIndexCompactor())
+	t.compactor.RegisterIndexCompactor(types.IndexTypeBoltDB, boltdbcompactor.NewIndexCompactor())
+	t.compactor.RegisterIndexCompactor(types.IndexTypeTSDB, tsdb.NewIndexCompactor())
 	prefix, compactorHandler := t.compactor.Handler()
 	t.Server.HTTP.PathPrefix(prefix).Handler(compactorHandler)
 
@@ -1935,7 +1935,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 
 	var indexClients []indexgateway.IndexClientWithRange
 	for i, period := range t.Cfg.SchemaConfig.Configs {
-		if period.IndexType != types.BoltDBShipperType {
+		if period.IndexType != types.IndexTypeBoltDB {
 			continue
 		}
 
@@ -2664,15 +2664,15 @@ func shipperMinIngesterQueryStoreDuration(maxChunkAge, querierUpdateDelay time.D
 func shipperResyncInterval(storageConfig storage.Config, schemaConfigs []config.PeriodConfig) time.Duration {
 	shipperConfigIdx := config.ActivePeriodConfig(schemaConfigs)
 	iTy := schemaConfigs[shipperConfigIdx].IndexType
-	if iTy != types.BoltDBShipperType && iTy != types.TSDBType {
+	if iTy != types.IndexTypeBoltDB && iTy != types.IndexTypeTSDB {
 		shipperConfigIdx++
 	}
 
 	var resyncInterval time.Duration
 	switch schemaConfigs[shipperConfigIdx].IndexType {
-	case types.BoltDBShipperType:
+	case types.IndexTypeBoltDB:
 		resyncInterval = storageConfig.BoltDBShipperConfig.ResyncInterval
-	case types.TSDBType:
+	case types.IndexTypeTSDB:
 		resyncInterval = storageConfig.TSDBShipperConfig.ResyncInterval
 	}
 

@@ -267,7 +267,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 
 	t.Run("IndexGateway client is enabled when running querier target", func(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Querier)
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.IndexTypeBoltDB
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -288,7 +288,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Read, func(cfg *Config) {
 			cfg.LegacyReadTarget = true
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.IndexTypeBoltDB
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
@@ -310,7 +310,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Read, func(cfg *Config) {
 			cfg.LegacyReadTarget = false
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.IndexTypeBoltDB
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
@@ -332,7 +332,7 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Backend, func(cfg *Config) {
 			cfg.LegacyReadTarget = false
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
+		cfg.SchemaConfig.Configs[0].IndexType = types.IndexTypeBoltDB
 		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
@@ -430,7 +430,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.SchemaConfig = config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				IndexType:  types.BoltDBShipperType,
+				IndexType:  types.IndexTypeBoltDB,
 				ObjectType: types.StorageTypeFileSystem,
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{

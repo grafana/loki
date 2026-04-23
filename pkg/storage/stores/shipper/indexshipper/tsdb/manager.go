@@ -283,7 +283,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 
 	if legacy {
 		// pass all TSDB tableRanges as the legacy WAL files are not period specific.
-		tableRanges = config.GetIndexStoreTableRanges(types.TSDBType, m.schemaCfg.Configs)
+		tableRanges = config.GetIndexStoreTableRanges(types.IndexTypeTSDB, m.schemaCfg.Configs)
 
 		// do not ship legacy WAL files.
 		// TSDBs built from these WAL files would get loaded on starting tsdbManager

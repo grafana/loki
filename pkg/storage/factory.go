@@ -376,7 +376,7 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 
 	case util.StringsContain(types.SupportedIndexTypes, periodCfg.IndexType):
 		switch periodCfg.IndexType {
-		case types.BoltDBShipperType:
+		case types.IndexTypeBoltDB:
 			if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
 				if indexGatewayClient != nil {
 					return indexGatewayClient, nil
@@ -412,7 +412,7 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 			boltdbIndexClientsWithShipper[periodCfg.From] = indexClient
 			return indexClient, nil
 
-		case types.TSDBType:
+		case types.IndexTypeTSDB:
 			// TODO(chaudum): Move TSDB index client creation into this code path
 			return nil, fmt.Errorf("code path not supported")
 		}
