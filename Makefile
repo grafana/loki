@@ -67,7 +67,7 @@ DEBUG_DYN_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
 
 # Image names
 IMAGE_PREFIX           ?= grafana
-BUILD_IMAGE            := $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_TAG)
+BUILD_IMAGE            := golang:$(GO_VERSION)
 LOKI_IMAGE             := $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
 CANARY_IMAGE           := $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 QUERY_TEE_IMAGE        := $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
@@ -96,6 +96,8 @@ BUILD_OCI_PUSH  := $(OCI_BUILD) $(OCI_PUSH_ARGS)
 # See https://docs.docker.com/docker-for-mac/osxfs-caching/#delegated
 MOUNT_FLAGS    := :delegated
 
+INSTALL_WORKFLOW_DEPS_ARGS ?=
+
 define run_in_container
 	@mkdir -p $(shell pwd)/.pkg $(shell pwd)/.cache
 	@echo ">>> Running make $@ in container ..."
@@ -110,12 +112,19 @@ define run_in_container
 				echo "-v $$ABS_GIT_DIR:/src/loki/.git$(MOUNT_FLAGS)"; \
 			fi; \
 		fi))
-	docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
-		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
+	@docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
+		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		-v /var/run/docker.sock:/var/run/docker.sock \
 		$(GIT_MOUNT) \
-		$(BUILD_IMAGE) -f Makefile $@;
+		--entrypoint /bin/sh \
+		-e SRC_DIR=/src/loki \
+		$(BUILD_IMAGE) \
+		-c \
+		"/src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh $(INSTALL_WORKFLOW_DEPS_ARGS) && \
+		cd /src/loki && \
+		make BUILD_IN_CONTAINER=false $@"
 endef
 
 # Adapted from https://www.thapaliya.com/en/writings/well-documented-makefiles/
@@ -278,6 +287,7 @@ MIXIN_PATH := production/loki-mixin
 MIXIN_OUT_PATH := production/loki-mixin-compiled
 MIXIN_OUT_PATH_SSD := production/loki-mixin-compiled-ssd
 
+loki-mixin: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 loki-mixin: ## compile the loki mixin
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -346,6 +356,7 @@ else
 LINT_FLAGS=--timeout=15m
 GOFLAGS=""
 endif
+lint: INSTALL_WORKFLOW_DEPS_ARGS := lint loki-release
 lint: ## run linters
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -410,6 +421,7 @@ clean: ## clean the generated files
 
 yacc: $(YACC_GOS)
 
+%.y.go: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 %.y.go: %.y
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -422,7 +434,7 @@ endif
 #########
 
 ragel: $(RAGEL_GOS)
-
+%.rl.go: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 %.rl.go: %.rl
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -436,6 +448,7 @@ endif
 
 protos: clean-protos $(PROTO_GOS)
 
+%.pb.go: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 %.pb.go: ALWAYS_BUILD
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -691,6 +704,8 @@ fmt-jsonnet:
 	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
 		xargs -n 1 -- jsonnetfmt -i
 
+
+fmt-proto: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 fmt-proto:
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -709,6 +724,7 @@ lint-scripts:
 # search for dead link in our documentation.
 # To avoid being rate limited by Github you can use an env variable GITHUB_TOKEN to pass a github token API.
 # see https://github.com/settings/tokens
+lint-markdown: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 lint-markdown:
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -817,7 +833,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
 	pushd $(CURDIR)/.github && jb update && popd
-	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) -V GO_VERSION=$(GO_VERSION) .github/release-workflows.jsonnet
+	jsonnet -SJ .github/vendor -m .github/workflows -V GO_VERSION=$(GO_VERSION) .github/release-workflows.jsonnet
 endif
 
 .PHONY: release-workflows-check
