@@ -629,10 +629,10 @@ loki:
 
 # -- Configuration for running Enterprise Loki
 enterprise:
-  # Enterprise features are enabled by default; a valid GEL license must be provided
-  # via `enterprise.license.contents` or `enterprise.useExternalLicense`/`enterprise.externalLicenseName`.
-  # Set to `false` to deploy open source Loki instead.
-  enabled: true
+  # Enterprise features are disabled by default.
+  # Set to `true` to deploy Grafana Enterprise Logs (GEL) with a valid license via
+  # `enterprise.license.contents` or `enterprise.useExternalLicense`/`enterprise.externalLicenseName`.
+  enabled: false
   # Default version of GEL to deploy
   version: 3.6.6
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
