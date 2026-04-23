@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 const (
