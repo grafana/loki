@@ -92,8 +92,8 @@ func buildBenchDataobj(tb testing.TB, tenants, streamsPerTenant, entriesPerStrea
 
 	// Deterministic so iteration-to-iteration variance is only from scheduling.
 	rng := rand.New(rand.NewSource(0xC0FFEE))
-	clusters := []string{"prod-us-east-1", "prod-us-west-2", "prod-eu-west-1", "prod-ap-south-1"}
-	namespaces := []string{"loki-prod", "loki-ops", "ingress", "observability", "billing", "platform"}
+	clusters := []string{"prod1", "prod2", "prod3", "prod4"}
+	namespaces := []string{"prod-ns", "ops-ns", "ingress", "observability", "test-billing", "platform"}
 	apps := []string{"distributor", "ingester", "querier", "compactor", "gateway", "frontend", "indexer", "ruler"}
 	envs := []string{"prod", "staging"}
 	const hex = "0123456789abcdef"
