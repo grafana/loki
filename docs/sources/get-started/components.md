@@ -224,13 +224,6 @@ set of tokens.
 This process is used to avoid flushing all chunks when shutting down, which is a
 slow process.
 
-### Filesystem support
-
-While ingesters do support writing to the filesystem through BoltDB, this only
-works in single-process mode as [queriers](#querier) need access to the same
-back-end store and BoltDB only allows one process to have a lock on the DB at a
-given time.
-
 ## Query frontend
 
 The **query frontend** is an **optional service** providing the querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
@@ -300,8 +293,7 @@ timestamp, label set, and log message.
 ## Index Gateway
 
 The **index gateway** service is responsible for handling and serving metadata queries.
-Metadata queries are queries that look up data from the index. The index gateway is only used by "shipper stores",
-such as [single store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) or [single store BoltDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/).
+Metadata queries are queries that look up data from the index. The index gateway is only used by [single store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/).
 
 The query frontend queries the index gateway for the log volume of queries so it can make a decision on how to shard the queries.
 The queriers query the index gateway for chunk references for a given query so they know which chunks to fetch and query.
@@ -311,9 +303,7 @@ In `ring` mode, index gateways use a consistent hash ring to distribute and shar
 
 ## Compactor
 
-The **compactor** service is used by "shipper stores", such as [single store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/)
-or [single store BoltDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/), to compact the multiple index files produced by the ingesters
-and shipped to object storage into single index files per day and tenant. This makes index lookups more efficient.
+The **compactor** service is used by [single store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/), to compact the multiple index files produced by the ingesters and shipped to object storage into single index files per day and tenant. This makes index lookups more efficient.
 
 To do so, the compactor downloads the files from object storage in a regular interval, merges them into a single one,
 uploads the newly created index, and cleans up the old files.

@@ -123,6 +123,7 @@ jobs:
           git checkout -b $branch
           git add -A
           git commit -s -m "$message"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/grafanabot/${INPUTS_REPO}.git
           git push -f --set-upstream origin $branch
           gh pr create --title "$message" \
                        --body "$body" \

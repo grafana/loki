@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -56,6 +57,14 @@ func (l *Client) ListAllUsers(_ context.Context) ([]string, error) {
 	for _, entry := range dirEntries {
 		// After resolving link, entry.Name() may be different than user, so keep original name.
 		user := entry.Name()
+
+		// Skip dotfiles and dot-directories (e.g. Kubernetes ConfigMap
+		// atomic-writer entries like "..data" or "..2022_*"). This runs
+		// before symlink resolution so we never os.Stat a dangling
+		// dot-symlink.
+		if strings.HasPrefix(user, ".") {
+			continue
+		}
 
 		var isDir bool
 
@@ -145,6 +154,14 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 	for _, entry := range dirEntries {
 		// After resolving link, entry.Name() may be different than namespace, so keep original name.
 		namespace := entry.Name()
+
+		// Skip dotfiles (e.g. vim ".alerts.yml.swp" swap files) and
+		// dot-directories (Kubernetes ConfigMap atomic-writer entries like
+		// "..data" or "..2022_*"). This runs before symlink resolution so
+		// we never os.Stat a dangling dot-symlink.
+		if strings.HasPrefix(namespace, ".") {
+			continue
+		}
 
 		var isDir bool
 

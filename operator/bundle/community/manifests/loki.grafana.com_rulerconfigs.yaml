@@ -487,7 +487,7 @@ spec:
                           write endpoint
                         enum:
                         - basic
-                        - header
+                        - bearer
                         type: string
                       authorizationSecretName:
                         description: Name of a secret in the namespace configured
@@ -1144,7 +1144,7 @@ spec:
                           write endpoint
                         enum:
                         - basic
-                        - header
+                        - bearer
                         type: string
                       authorizationSecretName:
                         description: Name of a secret in the namespace configured

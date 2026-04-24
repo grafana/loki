@@ -3,6 +3,7 @@ package consumer
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"time"
 
 	"github.com/grafana/dskit/ring"
@@ -13,6 +14,16 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
+// IngestMode determines how the consumer receives records.
+type IngestMode string
+
+const (
+	// IngestModeKafka reads records from a Kafka topic (default).
+	IngestModeKafka IngestMode = "kafka"
+	// IngestModeInMemory receives records via an in-process Go channel (no Kafka required).
+	IngestModeInMemory IngestMode = "inmemory"
+)
+
 type Config struct {
 	logsobj.BuilderConfig
 	LifecyclerConfig    ring.LifecyclerConfig   `yaml:"lifecycler,omitempty"`
@@ -20,6 +31,14 @@ type Config struct {
 	UploaderConfig      dataobj_uploader.Config `yaml:"uploader"`
 	IdleFlushTimeout    time.Duration           `yaml:"idle_flush_timeout"`
 	MaxBuilderAge       time.Duration           `yaml:"max_builder_age"`
+
+	// IngestMode controls how records are ingested. "kafka" (default) reads from
+	// a Kafka topic; "inmemory" uses an in-process channel (no Kafka needed).
+	IngestMode IngestMode `yaml:"ingest_mode"`
+
+	// ChannelSize is the capacity of the buffered channel used to pass records
+	// from the distributor to the consumer in inmemory mode.
+	ChannelSize int `yaml:"channel_size"`
 
 	// This is temporary until we move to kafkav2.
 	Topic string `yaml:"topic"`
@@ -35,8 +54,15 @@ func (cfg *Config) Validate() error {
 	if err := cfg.UploaderConfig.Validate(); err != nil {
 		return err
 	}
-	if cfg.Topic == "" {
-		return errors.New("topic is required")
+	switch cfg.IngestMode {
+	case IngestModeKafka, "": // empty defaults to kafka
+		if cfg.Topic == "" {
+			return errors.New("topic is required")
+		}
+	case IngestModeInMemory:
+		// topic not required in inmemory mode
+	default:
+		return fmt.Errorf("unknown ingest_mode %q: must be %q or %q", cfg.IngestMode, IngestModeKafka, IngestModeInMemory)
 	}
 	return nil
 }
@@ -50,6 +76,18 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix(prefix, f, util_log.Logger)
 	cfg.PartitionRingConfig.RegisterFlagsWithPrefix(prefix, f)
 	cfg.UploaderConfig.RegisterFlagsWithPrefix(prefix, f)
+	f.StringVar(
+		(*string)(&cfg.IngestMode),
+		prefix+"ingest-mode",
+		string(IngestModeKafka),
+		`How records are ingested: "kafka" reads from a Kafka topic; "inmemory" uses an in-process channel (experimental, single-node, no durability guarantees, each replica holds independent data).`,
+	)
+	f.IntVar(
+		&cfg.ChannelSize,
+		prefix+"channel-size",
+		10000,
+		`Internal buffer size for records for inmemory ingestion.`,
+	)
 	f.StringVar(
 		&cfg.Topic,
 		prefix+"topic",

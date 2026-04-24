@@ -84,7 +84,7 @@ storage_config:
 ```
 
 {{< admonition type="note" >}}
-Retention is only available if the index period is 24h. Single store TSDB and single store BoltDB require 24h index period.
+Retention is only available if the index period is 24h. Single store TSDB requires a 24h index period.
 {{< /admonition >}}
 
 `retention_enabled` should be set to true. Without this, the Compactor will only compact tables.

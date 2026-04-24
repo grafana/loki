@@ -30,7 +30,6 @@ For more information:
 ### ✅ Supported index stores
 
 - [Single Store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) index store which stores TSDB index files in the object store. This is the recommended index store for Loki 2.8 and newer.
-- [Single Store BoltDB (boltdb-shipper)](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) index store which stores boltdb index files in the object store. Recommended store for Loki 2.0 through 2.7.x.
 
 ### ✅ Supported and recommended chunks stores
 
@@ -55,7 +54,6 @@ When using S3 as object storage, the following permissions are needed:
 - `s3:ListBucket`
 - `s3:PutObject`
 - `s3:GetObject`
-- `s3:DeleteObject` (if running the Single Store (boltdb-shipper) compactor)
 
 Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
 

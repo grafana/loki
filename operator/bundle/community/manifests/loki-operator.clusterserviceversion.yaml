@@ -152,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing, Observability
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.10.1
-    createdAt: "2026-04-10T16:58:36Z"
+    createdAt: "2026-04-23T11:43:19Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -1558,7 +1558,7 @@ spec:
         path: remoteWrite.client.authorization
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:basic
-        - urn:alm:descriptor:com.tectonic.ui:select:header
+        - urn:alm:descriptor:com.tectonic.ui:select:bearer
       - description: Name of a secret in the namespace configured for authorization
           secrets.
         displayName: Authorization Secret Name

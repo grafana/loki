@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -820,7 +821,7 @@ func generateConsistentULIDs(gen *ulidGenerator, g dag.Graph[*Task]) {
 
 // Test_eliminateEmptyCachedTasks verifies that tasks whose cached result is
 // empty are removed from the workflow graph at plan time.
-func Test_eliminateEmptyCachedTasks(t *testing.T) {
+func Test_pruneCachedTasks(t *testing.T) {
 	// Create a physical plan:
 	//    VectorAggregation --> Parallelize --> RangeAggr --> ScanSet{DataAbjScan(A), DataAbjScan(B)}
 	// That will translate into three tasks:
@@ -861,8 +862,9 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 		taskCacheMaxSizeBytes: 1 << 20,
 		// dataObjScanMaxSizeBytes=0: DataObjScan Cache nodes are still injected
 		// (with max_cacheable_size=0 B) so their keys can be used for elimination.
-		dataObjScanMaxSizeBytes: 0,
-		pruneEmptyCachedTasks:   true,
+		dataObjScanMaxSizeBytes:     0,
+		pruneEmptyCachedTasks:       true,
+		nonEmptyCachedTasksMaxBytes: math.MaxUint64,
 	}
 
 	// Extract raw cache keys for every task in graph traversal order.
@@ -903,9 +905,12 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 	originalPlan := strings.TrimSpace(Sprint(&Workflow{graph: baseGraph}))
 
 	for _, tc := range []struct {
-		name     string
-		payloads map[string][]byte // raw cache key → payload; absent keys = cache miss
-		expected string            // expected Sprint output after elimination
+		name              string
+		payloads          map[string][]byte // raw cache key → payload; absent keys = cache miss
+		maxNonEmptyBytes  *uint64           // nil = use cacheP default (math.MaxUint64)
+		pruneFetchTimeout time.Duration     // 0 = no timeout
+		cacheOverride     cache.Cache       // if non-nil, used instead of building from payloads
+		expected          string            // expected Sprint output after elimination
 	}{
 		{
 			// All cache keys miss → no elimination; plan is identical to baseGraph.
@@ -914,13 +919,21 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 			expected: originalPlan,
 		},
 		{
-			// All task-level cache keys return non-empty → no elimination; plan is identical to baseGraph.
+			// Both task-level cache keys return non-empty with pruneCachedTasks=true →
+			// both leaves eliminated; root gets @cachedSource buffers=2.
 			name: "cache non-empty",
 			payloads: map[string][]byte{
 				tasks[1][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
 				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
 			},
-			expected: originalPlan,
+			expected: `
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         └── @cachedSource buffers=2 size=18 B
+└`,
 		},
 		{
 			// Task "a" task-level cache returns empty → task "a" eliminated;
@@ -950,13 +963,91 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 └`,
 		},
 		{
-			// Task "a" DataObjScan-level cache returns empty → task "a" eliminated
-			// because zero scan rows guarantee zero rows from all operators above;
-			// root and task "b" remain.
-			name: "one task empty at scan",
+			// Task "a" returns empty, task "b" returns non-empty with pruneCachedTasks=true →
+			// both leaves eliminated; root gets @cachedSource buffers=1.
+			name: "cache one empty one non-empty",
+			payloads: map[string][]byte{
+				tasks[1][physical.TaskCacheLogsScanRangeAggr]: emptyResultPayload(),
+				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
+			},
+			expected: `
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         └── @cachedSource buffers=1 size=9 B
+└`,
+		},
+		{
+			// Scan-level cache non-empty should NOT eliminate the task: the parent
+			// expects task-level (aggregated) results, not raw scan data.
+			// Plan is identical to the full base graph.
+			name: "cache non-empty at scan",
+			payloads: map[string][]byte{
+				tasks[1][physical.TaskCacheDataObjScanResult]: nonEmptyResultPayload(),
+			},
+			expected: originalPlan,
+		},
+		{
+			// Scan-level cache empty should NOT eliminate the task: only root-level
+			// cache hits are checked. Plan is identical to the full base graph.
+			name: "cache empty at scan",
 			payloads: map[string][]byte{
 				tasks[1][physical.TaskCacheDataObjScanResult]: emptyResultPayload(),
 			},
+			expected: originalPlan,
+		},
+		{
+			// Task "a" is a cache miss → stays as network stream source.
+			// Task "b" is non-empty with pruneCachedTasks=true → eliminated; root gets @cachedSource keys=1.
+			// Root shows both @source (task "a" stream) and @cachedSource (task "b" result).
+			name: "cache one miss one non-empty",
+			payloads: map[string][]byte{
+				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
+			},
+			expected: `
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Batching batch_size=500
+│ └── VectorAggregation operation=sum group_by=()
+│         ├── @source stream=00000000000000000000000003
+│         └── @cachedSource buffers=1 size=9 B
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ Cache max_cacheable_size=1.0 MiB hashed_key=502e8c56ecf762f4 key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│ │   └── @sink stream=00000000000000000000000003
+│ └── Batching batch_size=500
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         └── Cache max_cacheable_size=0 B hashed_key=4a6082f4d1b54ead key= |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│             └── DataObjScan location=a streams=0 section_id=0 projections=()
+│                     └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+└`,
+		},
+		{
+			// Both task-level caches return empty → both leaves eliminated; the root
+			// is cascade-eliminated because all its sources are gone.
+			name: "both tasks empty",
+			payloads: map[string][]byte{
+				tasks[1][physical.TaskCacheLogsScanRangeAggr]: emptyResultPayload(),
+				tasks[2][physical.TaskCacheLogsScanRangeAggr]: emptyResultPayload(),
+			},
+			expected: "Empty",
+		},
+		{
+			// Fetch times out mid-flight: task "a" is returned as a partial result
+			// (empty hit) before the deadline; task "b" is missed. Task "a" is still
+			// eliminated from the partial result; task "b" stays scheduled.
+			name: "fetch timeout with partial results",
+			cacheOverride: func() cache.Cache {
+				mc := newWorkflowMockCache()
+				mc.storeHashed(cache.HashKey(tasks[1][physical.TaskCacheLogsScanRangeAggr]), emptyResultPayload())
+				return &timeoutMockCache{workflowMockCache: *mc}
+			}(),
+			pruneFetchTimeout: time.Second,
 			expected: `
 ┌ Task 00000000000000000000000001
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
@@ -978,21 +1069,43 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 └`,
 		},
 		{
-			// Both task-level caches return empty → both leaves eliminated; the root
-			// is cascade-eliminated because all its sources are gone.
-			name: "both tasks empty",
+			// maxNonEmptyBytes=0 disables non-empty pruning even when both tasks hit.
+			// Neither leaf is eliminated; plan is identical to baseGraph.
+			name: "non-empty pruning disabled when max size is 0",
 			payloads: map[string][]byte{
-				tasks[1][physical.TaskCacheLogsScanRangeAggr]: emptyResultPayload(),
-				tasks[2][physical.TaskCacheLogsScanRangeAggr]: emptyResultPayload(),
+				tasks[1][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
+				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
 			},
-			expected: "Empty",
+			maxNonEmptyBytes: ptr[uint64](0),
+			expected:         originalPlan,
+		},
+		{
+			// Budget (5 B) is smaller than a single cached result (9 B) → the result
+			// is skipped by the greedy bin-packing loop; the task stays scheduled.
+			name: "non-empty result skipped when it exceeds size budget",
+			payloads: map[string][]byte{
+				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
+			},
+			maxNonEmptyBytes: ptr[uint64](5),
+			expected:         originalPlan,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ulidGen := ulidGenerator{}
 
 			p := cacheP
-			if len(tc.payloads) > 0 {
+			if tc.maxNonEmptyBytes != nil {
+				p.nonEmptyCachedTasksMaxBytes = *tc.maxNonEmptyBytes
+			}
+			if tc.pruneFetchTimeout != 0 {
+				p.pruneFetchTimeout = tc.pruneFetchTimeout
+			}
+			if tc.cacheOverride != nil {
+				p.registry = executor.NewTestTaskCacheRegistry(map[physical.TaskCacheName]cache.Cache{
+					physical.TaskCacheLogsScanRangeAggr: tc.cacheOverride,
+					physical.TaskCacheDataObjScanResult: tc.cacheOverride,
+				})
+			} else if len(tc.payloads) > 0 {
 				mc := newWorkflowMockCache()
 				for rawKey, payload := range tc.payloads {
 					mc.storeHashed(cache.HashKey(rawKey), payload)
@@ -1012,6 +1125,108 @@ func Test_eliminateEmptyCachedTasks(t *testing.T) {
 			require.Equal(t, strings.TrimSpace(tc.expected), strings.TrimSpace(actualOutput))
 		})
 	}
+}
+
+// Test_pruneCachedTasks_cascadeProtection verifies that a task with a non-empty
+// cache hit is not lost when all of its children have empty cache hits.
+//
+// Graph: root → intermediate (non-empty hit) → [leaf_a (empty), leaf_b (empty)]
+//
+// Without the fix, the empty-elimination pass cascade-eliminates intermediate
+// (because its two children are both eliminated and CachedSources hasn't been
+// wired yet), so root never gets intermediate's cached result.
+// With the fix, wireCachedSources runs before the empty pass, so root's
+// CachedSources is populated before the cascade check runs.
+func Test_pruneCachedTasks_cascadeProtection(t *testing.T) {
+	const cacheName = physical.TaskCacheLogsScanRangeAggr
+
+	// Build minimal single-node fragment graphs so that Fragment.Root() returns
+	// the expected physical node type.
+	makeFragment := func(root physical.Node) *physical.Plan {
+		var g dag.Graph[physical.Node]
+		g.Add(root)
+		return physical.FromGraph(g)
+	}
+
+	// Physical nodes that serve as map keys for Sources/Sinks/CachedSources.
+	rootNode := &physical.VectorAggregation{}
+	intermNode := &physical.Cache{CacheName: cacheName, Key: "interm-key"}
+	leafANode := &physical.Cache{CacheName: cacheName, Key: "leaf-a-key"}
+	leafBNode := &physical.Cache{CacheName: cacheName, Key: "leaf-b-key"}
+
+	// Streams that connect the tasks.
+	streamAB := &Stream{ULID: ulid.Make()} // intermediate → root
+	streamA := &Stream{ULID: ulid.Make()}  // leaf_a → intermediate
+	streamB := &Stream{ULID: ulid.Make()}  // leaf_b → intermediate
+
+	taskRoot := &Task{
+		ULID:     ulid.Make(),
+		Fragment: makeFragment(rootNode),
+		Sources:  map[physical.Node][]*Stream{rootNode: {streamAB}},
+	}
+	taskInterm := &Task{
+		ULID:     ulid.Make(),
+		Fragment: makeFragment(intermNode),
+		Sources:  map[physical.Node][]*Stream{intermNode: {streamA, streamB}},
+		Sinks:    map[physical.Node][]*Stream{intermNode: {streamAB}},
+	}
+	taskLeafA := &Task{
+		ULID:     ulid.Make(),
+		Fragment: makeFragment(leafANode),
+		Sinks:    map[physical.Node][]*Stream{leafANode: {streamA}},
+	}
+	taskLeafB := &Task{
+		ULID:     ulid.Make(),
+		Fragment: makeFragment(leafBNode),
+		Sinks:    map[physical.Node][]*Stream{leafBNode: {streamB}},
+	}
+
+	// Assemble DAG: root ← intermediate ← [leaf_a, leaf_b]
+	var graphTasks dag.Graph[*Task]
+	graphTasks.Add(taskRoot)
+	graphTasks.Add(taskInterm)
+	graphTasks.Add(taskLeafA)
+	graphTasks.Add(taskLeafB)
+	require.NoError(t, graphTasks.AddEdge(dag.Edge[*Task]{Parent: taskRoot, Child: taskInterm}))
+	require.NoError(t, graphTasks.AddEdge(dag.Edge[*Task]{Parent: taskInterm, Child: taskLeafA}))
+	require.NoError(t, graphTasks.AddEdge(dag.Edge[*Task]{Parent: taskInterm, Child: taskLeafB}))
+
+	// Cache: intermediate → non-empty, leaf_a → empty, leaf_b → empty.
+	mc := newWorkflowMockCache()
+	mc.storeHashed(cache.HashKey(intermNode.Key), nonEmptyResultPayload())
+	mc.storeHashed(cache.HashKey(leafANode.Key), emptyResultPayload())
+	mc.storeHashed(cache.HashKey(leafBNode.Key), emptyResultPayload())
+
+	p := &planner{
+		graph: graphTasks,
+		streamWriters: map[*Stream]*Task{
+			streamAB: taskInterm,
+			streamA:  taskLeafA,
+			streamB:  taskLeafB,
+		},
+	}
+	cacheOpts := cacheParams{
+		enabled:                     true,
+		pruneEmptyCachedTasks:       true,
+		nonEmptyCachedTasksMaxBytes: math.MaxUint64,
+		registry: executor.NewTestTaskCacheRegistry(map[physical.TaskCacheName]cache.Cache{
+			cacheName: mc,
+		}),
+	}
+
+	require.NoError(t, pruneCachedTasks(p, cacheOpts, log.NewNopLogger()))
+
+	// Root and intermediate are the only tasks that should remain.
+	// leaf_a and leaf_b are eliminated (empty hits); intermediate is also
+	// eliminated but its result is wired into root's CachedSources.
+	require.Equal(t, 1, p.graph.Len(), "only root should remain")
+	roots := p.graph.Roots()
+	require.Len(t, roots, 1)
+	require.Equal(t, taskRoot, roots[0], "root must still be in graph")
+
+	// Root must have received intermediate's cached result.
+	require.NotEmpty(t, taskRoot.CachedSources, "root must have CachedSources wired")
+	require.Empty(t, taskRoot.Sources, "stream from intermediate must be gone from Sources")
 }
 
 // workflowMockCache is a simple in-memory cache.Cache for workflow planning tests.
@@ -1049,6 +1264,22 @@ func (m *workflowMockCache) Fetch(_ context.Context, keys []string) (found []str
 func (m *workflowMockCache) Stop() {}
 
 func (m *workflowMockCache) GetCacheType() stats.CacheType { return stats.TaskResultCache }
+
+// timeoutMockCache wraps workflowMockCache and always returns context.DeadlineExceeded
+// alongside whatever results were found, simulating a cache backend that times out
+// mid-flight after returning partial results.
+type timeoutMockCache struct {
+	workflowMockCache
+}
+
+func (m *timeoutMockCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+	found, bufs, missing, _ = m.workflowMockCache.Fetch(ctx, keys)
+	err = context.DeadlineExceeded
+	return
+}
+
+// ptr returns a pointer to v. Used to set optional test-case fields inline.
+func ptr[T any](v T) *T { return &v }
 
 // emptyResultPayload returns a zero-length buffer which is treated as an empty cached result.
 func emptyResultPayload() []byte { return []byte{} }

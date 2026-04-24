@@ -428,7 +428,7 @@ func summarizeObservations(capture *Capture) *observations {
 				TaskDrainRecordsReceived.Key(),
 				TaskBatchingRecordsReceived.Key(), TaskBatchingRowsReceived.Key(),
 				TaskBatchingBatchesProduced.Key(), TaskBatchingRowsWritten.Key(),
-				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
+				TaskExternalSourcesCount.Key(), TaskCachedSourcesCount.Key(), TaskExternalSinksCount.Key(),
 				// task cache stats
 				TaskCacheHits.Key(), TaskCacheMisses.Key(),
 				TaskCacheBatches.Key(), TaskCacheRows.Key(), TaskCacheBytes.Key(),
@@ -469,7 +469,7 @@ func summarizeObservations(capture *Capture) *observations {
 				TaskDrainRecordsReceived.Key(),
 				TaskBatchingRecordsReceived.Key(), TaskBatchingRowsReceived.Key(),
 				TaskBatchingBatchesProduced.Key(), TaskBatchingRowsWritten.Key(),
-				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
+				TaskExternalSourcesCount.Key(), TaskCachedSourcesCount.Key(), TaskExternalSinksCount.Key(),
 				// task cache stats
 				TaskCacheHits.Key(), TaskCacheMisses.Key(),
 				TaskCacheBatches.Key(), TaskCacheRows.Key(), TaskCacheBytes.Key(),

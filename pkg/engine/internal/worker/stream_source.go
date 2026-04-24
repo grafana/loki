@@ -3,11 +3,18 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/dustin/go-humanize"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // streamSource handles incoming data for a stream, forwarding it to a bound
@@ -87,4 +94,65 @@ func (src *streamSource) Close() {
 
 		close(src.closed)
 	})
+}
+
+// drainCachedSources decodes pre-fetched cache buffers from srcs and writes
+// the resulting records to input. Decode errors are propagated via
+// [nodeSource.Fail]. When all buffers are exhausted, the goroutine's reference
+// on input is released with [nodeSource.Add](-1).
+//
+// drainCachedSources is intended to run in a separate goroutine. The caller
+// must have already called input.Add(1) before spawning.
+func drainCachedSources(ctx context.Context, input *nodeSource, srcs workflow.CachedSources, logger log.Logger) {
+	defer input.Add(-1)
+
+	var (
+		totalBatches int64
+		totalRows    int64
+		totalBytes   int64
+	)
+
+	for _, buf := range srcs {
+		totalBytes += int64(len(buf))
+
+		dec, err := executor.NewCacheEntryDecoder(buf)
+		if err != nil {
+			level.Error(logger).Log("msg", "cached source decode failed", "err", err)
+			input.Fail(fmt.Errorf("cached source: decode failed: %w", err))
+			return
+		}
+		for {
+			rec, err := dec.Next()
+			if errors.Is(err, executor.EOF) {
+				break
+			}
+			if err != nil {
+				level.Error(logger).Log("msg", "cached source decode failed", "err", err)
+				input.Fail(fmt.Errorf("cached source: decode failed: %w", err))
+				return
+			}
+			if rec == nil {
+				continue
+			}
+			totalBatches++
+			totalRows += rec.NumRows()
+			if err := input.Write(ctx, rec); err != nil {
+				// Context canceled or nodeSource closed — stop quietly.
+				level.Error(logger).Log("msg", "cached source write interrupted", "err", err)
+				return
+			}
+		}
+	}
+
+	region := xcap.RegionFromContext(ctx)
+	region.Record(xcap.TaskCacheBatches.Observe(totalBatches))
+	region.Record(xcap.TaskCacheRows.Observe(totalRows))
+	region.Record(xcap.TaskCacheBytes.Observe(totalBytes))
+
+	level.Debug(logger).Log(
+		"msg", "cached sources exhausted",
+		"batches", totalBatches,
+		"rows", totalRows,
+		"bytes", humanize.Bytes(uint64(totalBytes)),
+	)
 }

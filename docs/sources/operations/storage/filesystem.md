@@ -24,7 +24,7 @@ See [multi-tenancy](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/mult
 
 ## Pros
 
-Very simple, no additional software required to use Loki when paired with the BoltDB index store.
+Very simple, no additional software required to use Loki when paired with the TSDB index store.
 
 Great for low volume applications, proof of concepts, and just playing around with Loki.
 

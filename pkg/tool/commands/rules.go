@@ -109,22 +109,23 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 		Command("delete", "Delete a rulegroup from the ruler.").
 		Action(r.deleteRuleGroup)
 	loadRulesCmd := rulesCmd.
-		Command("load", "load a set of rules to a designated loki endpoint").
+		Command("load", "Load a set of rules to a designated loki endpoint").
 		Action(r.loadRules)
 	diffRulesCmd := rulesCmd.
-		Command("diff", "diff a set of rules to a designated loki endpoint").
+		Command("diff", "Diff a set of rules to a designated loki endpoint").
 		Action(r.diffRules)
 	syncRulesCmd := rulesCmd.
-		Command("sync", "sync a set of rules to a designated loki endpoint").
+		Command("sync", "Sync a set of rules to a designated loki endpoint").
 		Action(r.syncRules)
 	prepareCmd := rulesCmd.
-		Command("prepare", "modifies a set of rules by including an specific label in aggregations.").
+		Command("prepare", "Modifies a set of rules by including an specific label in aggregations.").
 		Action(r.prepare)
-	lintCmd := rulesCmd.
-		Command("lint", "formats a set of rule files. It reorders keys alphabetically, uses 4 spaces as indentantion, and formats PromQL expressions to a single line.").
-		Action(r.lint)
+	formatCmd := rulesCmd.
+		Command("format", "Formats a set of rule files. It reorders keys alphabetically, uses 4 spaces as indentantion, and formats PromQL expressions to a single line. `lint` is an alias for `format` and is deprecated.").
+		Alias("lint").
+		Action(r.format)
 	checkCmd := rulesCmd.
-		Command("check", "runs various best practice checks against rules.").
+		Command("check", "Runs various best practice checks against rules.").
 		Action(r.checkRecordingRuleNames)
 
 	// Require Loki cluster address and tentant ID on all these commands
@@ -216,14 +217,14 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 	prepareCmd.Flag("label", "label to include as part of the aggregations.").Default(defaultPrepareAggregationLabel).Short('l').StringVar(&r.AggregationLabel)
 	prepareCmd.Flag("label-excluded-rule-groups", "Comma separated list of rule group names to exclude when including the configured label to aggregations.").StringVar(&r.AggregationLabelExcludedRuleGroups)
 
-	// Lint Command
-	lintCmd.Arg("rule-files", "The rule files to format.").ExistingFilesVar(&r.RuleFilesList)
-	lintCmd.Flag("rule-files", "The rule files to format. Flag can be reused to load multiple files.").StringVar(&r.RuleFiles)
-	lintCmd.Flag(
+	// Format Command
+	formatCmd.Arg("rule-files", "The rule files to format.").ExistingFilesVar(&r.RuleFilesList)
+	formatCmd.Flag("rule-files", "The rule files to format. Flag can be reused to load multiple files.").StringVar(&r.RuleFiles)
+	formatCmd.Flag(
 		"rule-dirs",
 		"Comma separated list of paths to directories containing rules yaml files. Each file in a directory with a .yml or .yaml suffix will be parsed.",
 	).StringVar(&r.RuleFilesPath)
-	lintCmd.Flag("dry-run", "Performs a trial run that doesn't make any changes and (mostly) produces the same outpupt as a real run.").Short('n').BoolVar(&r.LintDryRun)
+	formatCmd.Flag("dry-run", "Performs a trial run that doesn't make any changes and (mostly) produces the same outpupt as a real run.").Short('n').BoolVar(&r.LintDryRun)
 
 	// Check Command
 	checkCmd.Arg("rule-files", "The rule files to check.").ExistingFilesVar(&r.RuleFilesList)
@@ -670,7 +671,7 @@ func (r *RuleCommand) prepare(_ *kingpin.ParseContext) error {
 	return nil
 }
 
-func (r *RuleCommand) lint(_ *kingpin.ParseContext) error {
+func (r *RuleCommand) format(_ *kingpin.ParseContext) error {
 	err := r.setupFiles()
 	if err != nil {
 		return errors.Wrap(err, "prepare operation unsuccessful, unable to load rules files")

@@ -1980,7 +1980,7 @@ spec:
         path: remoteWrite.client.authorization
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:basic
-        - urn:alm:descriptor:com.tectonic.ui:select:header
+        - urn:alm:descriptor:com.tectonic.ui:select:bearer
       - description: Name of a secret in the namespace configured for authorization
           secrets.
         displayName: Authorization Secret Name
@@ -2424,7 +2424,7 @@ spec:
         path: remoteWrite.client.authorization
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:basic
-        - urn:alm:descriptor:com.tectonic.ui:select:header
+        - urn:alm:descriptor:com.tectonic.ui:select:bearer
       - description: Name of a secret in the namespace configured for authorization
           secrets.
         displayName: Authorization Secret Name

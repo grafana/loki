@@ -68,7 +68,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 
 - `<boolean>` : a boolean that can take the values `true` or `false`
 - `<int>` : A plain integer (for example, `0`, `1024`, `5000`) or a size in bytes with optional unit suffix (for example, `1024`, `256KB`, `64MB`, `4GB`). Supported units: `B`, `KB`, `MB`, `GB`, `TB`, `PB`, `EB`. 
-- `<duration>` : a duration with required unit suffix. Supported units: `ms`, `s`, `m`, `h`, `d`, `w`, `y `(for example, `30s`, `5m`, `1h`, `1d`, `1w`). Note: `0` is allowed without a unit. Some fields using Go's native duration type may also support `ns` and `us`/`µs` but not `d`, `w`, `y`.
+- `<duration>` : a duration with required unit suffix. Supported units depend on the field type. Prometheus duration fields support: 'ms', 's', 'm', 'h', 'd', 'w', 'y' (for example, '30s', '1m', '1h', '1d', '1w'). Go native duration fields support: 'ns', 'us', 'µs', 'ms', 's', 'm', 'h' but not 'd', 'w', 'y'. Note: '0' is allowed without a unit.
 - `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
 - `<labelvalue>` : a string of unicode characters
 - `<filename>` : a valid path relative to current working directory or an absolute path.
@@ -368,6 +368,18 @@ query_engine:
     # time and prunes tasks whose cached result is known to be empty.
     # CLI flag: -query-engine.task-results-cache.prune-empty-cached-tasks
     [prune_empty_cached_tasks: <boolean> | default = false]
+
+    # Experimental: Maximum total size of non-empty cached task results embedded
+    # in task assignments. Results that would exceed the budget are skipped
+    # (smaller results that fit are still included). 0 disables non-empty task
+    # pruning.
+    # CLI flag: -query-engine.task-results-cache.prune-cached-tasks-max-size
+    [prune_cached_tasks_max_size: <int> | default = 0B]
+
+    # Experimental: Timeout for cache fetch operations during cached-task
+    # pruning at plan time. 0 disables the timeout.
+    # CLI flag: -query-engine.task-results-cache.prune-cached-tasks-fetch-timeout
+    [prune_cached_tasks_fetch_timeout: <duration> | default = 1s]
 
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.
@@ -1509,6 +1521,16 @@ dataobj:
     # it. Defaults to 1 hour.
     # CLI flag: -dataobj-consumer.max-builder-age
     [max_builder_age: <duration> | default = 1h]
+
+    # How records are ingested: "kafka" reads from a Kafka topic; "inmemory"
+    # uses an in-process channel (experimental, single-node, no durability
+    # guarantees, each replica holds independent data).
+    # CLI flag: -dataobj-consumer.ingest-mode
+    [ingest_mode: <string> | default = "kafka"]
+
+    # Internal buffer size for records for inmemory ingestion.
+    # CLI flag: -dataobj-consumer.channel-size
+    [channel_size: <int> | default = 10000]
 
     # The name of the Kafka topic.
     # CLI flag: -dataobj-consumer.topic
@@ -3324,6 +3346,11 @@ dataobj_tee:
   # to 0 to disable batching.
   # CLI flag: -distributor.dataobj-tee.rate-batch-window
   [rate_batch_window: <duration> | default = 0s]
+
+# Timeout for sending a record to the in-memory queue before returning
+# backpressure to the caller. Defaults to 5s. Set to 0 for no timeout.
+# CLI flag: -distributor.inmemory-dataobj-push-timeout
+[inmemory_dataobj_push_timeout: <duration> | default = 5s]
 ```
 
 ### etcd
