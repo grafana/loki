@@ -18,7 +18,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go-v2 v1.41.6
-	github.com/aws/aws-sdk-go-v2/config v1.32.14
+	github.com/aws/aws-sdk-go-v2/config v1.32.16
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.15
 	github.com/baidubce/bce-sdk-go v0.9.265
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
@@ -116,7 +116,7 @@ require (
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/gogo/googleapis v1.4.1
 	github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
-	github.com/grafana/loki/pkg/push v0.4.0
+	github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/joshdk/go-junit v1.0.0
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
@@ -336,7 +336,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.22 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.22 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.22 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.22 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.16 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.0 // indirect

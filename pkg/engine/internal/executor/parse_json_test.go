@@ -261,7 +261,7 @@ func TestBuildJSONColumns(t *testing.T) {
 		lineCol := inputRecord.Column(0).(*array.String)
 		requestedKeys := []string{"app", "level", "nested_key"}
 
-		headers, columns := buildJSONColumns(lineCol, requestedKeys)
+		headers, columns := buildJSONColumns(inputRecord, lineCol, requestedKeys)
 
 		// Create a record from the parsed columns for easy comparison
 		fields := make([]arrow.Field, len(headers))
@@ -294,7 +294,7 @@ func TestBuildJSONColumns(t *testing.T) {
 
 		lineCol := inputRecord.Column(0).(*array.String)
 
-		headers, columns := buildJSONColumns(lineCol, nil)
+		headers, columns := buildJSONColumns(inputRecord, lineCol, nil)
 
 		// Create a record from the parsed columns
 		fields := make([]arrow.Field, len(headers))

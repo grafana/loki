@@ -143,7 +143,7 @@
       automerge: false,
     },
     {
-      // Disable all updates for pkg/push/go.mod
+      // Disable all updates for pkg/push/go.mod (deps of the submodule).
       matchFileNames: ['pkg/push/go.mod'],
       enabled: false,
       autoApprove: false,
@@ -203,6 +203,14 @@
       digest: {
         enabled: true,
       },
+    },
+    {
+      // Last: do not bump github.com/grafana/loki/pkg/push in any go.mod (overrides broader enable rules).
+      matchManagers: ['gomod'],
+      matchPackageNames: ['github.com/grafana/loki/pkg/push'],
+      enabled: false,
+      autoApprove: false,
+      automerge: false,
     },
   ],
   digest: {

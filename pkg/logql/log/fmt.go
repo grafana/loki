@@ -119,7 +119,7 @@ var (
 	}
 )
 
-func addLineAndTimestampFunctions(currLine func() string, currTimestamp func() int64) map[string]interface{} {
+func AddLineAndTimestampFunctions(currLine func() string, currTimestamp func() int64) map[string]interface{} {
 	functions := make(map[string]interface{}, len(functionMap)+2)
 	for k, v := range functionMap {
 		functions[k] = v
@@ -203,7 +203,7 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 		buf: bytes.NewBuffer(make([]byte, 4096)),
 	}
 
-	functions := addLineAndTimestampFunctions(func() string {
+	functions := AddLineAndTimestampFunctions(func() string {
 		return unsafeGetString(lf.currentLine)
 	}, func() int64 {
 		return lf.currentTs
@@ -367,7 +367,7 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 		buf: bytes.NewBuffer(make([]byte, 1024)),
 	}
 
-	functions := addLineAndTimestampFunctions(func() string {
+	functions := AddLineAndTimestampFunctions(func() string {
 		return unsafeGetString(lf.currentLine)
 	}, func() int64 {
 		return lf.currentTs
