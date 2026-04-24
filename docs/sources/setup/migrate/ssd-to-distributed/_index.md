@@ -388,7 +388,7 @@ The final stage of the migration involves transitioning all traffic to the distr
     kubectl get pods -n loki
     ```
 
-You should see all distributed components running and the SSD compontents have now been removed.
+You should see all distributed components running and the SSD components have now been removed.
 
 ## What's next?
 
