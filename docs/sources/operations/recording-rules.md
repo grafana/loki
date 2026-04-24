@@ -33,7 +33,7 @@ on disk and are loaded into memory.
 
 {{< admonition type="note" >}}
 WALs are loaded one at a time upon start-up. This is a current limitation of the Loki ruler.
-For this reason, it is adviseable that the number of rule groups serviced by a ruler be kept to a reasonable size, since
+For this reason, it is advisable that the number of rule groups serviced by a ruler be kept to a reasonable size, since
 _no rule evaluation occurs while WAL replay is in progress (this includes alerting rules)_.
 {{< /admonition >}}
 
