@@ -217,7 +217,7 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 	prepareCmd.Flag("label", "label to include as part of the aggregations.").Default(defaultPrepareAggregationLabel).Short('l').StringVar(&r.AggregationLabel)
 	prepareCmd.Flag("label-excluded-rule-groups", "Comma separated list of rule group names to exclude when including the configured label to aggregations.").StringVar(&r.AggregationLabelExcludedRuleGroups)
 
-	// Lint Command
+	// Format Command
 	formatCmd.Arg("rule-files", "The rule files to format.").ExistingFilesVar(&r.RuleFilesList)
 	formatCmd.Flag("rule-files", "The rule files to format. Flag can be reused to load multiple files.").StringVar(&r.RuleFiles)
 	formatCmd.Flag(
