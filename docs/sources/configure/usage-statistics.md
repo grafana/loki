@@ -18,7 +18,7 @@ Loki reports aggregate operational metadata, including:
 - Aggregate product metrics, such as ingestion, query throughput, and chunk flush statistics.
 - Storage and compactor configuration metadata, such as schema, storage backend type, and retention settings.
 
-Loki does not report log payloads, label values, tenant identifiers, or query strings.
+Loki does not report log payloads, label values, tenant identifiers, or query strings. You can view the code in [stats.go](https://github.com/grafana/loki/blob/main/pkg/analytics/stats.go)
 
 ## Disable usage statistics reporting
 
