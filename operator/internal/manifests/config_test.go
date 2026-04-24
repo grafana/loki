@@ -1408,3 +1408,56 @@ func TestConfigOptions_Shipper(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigOptions_RemoteWrite_RendersReplicaLabelInYAML(t *testing.T) {
+	opts := randomConfigOptions()
+	opts.Stack.Rules = &lokiv1.RulesSpec{
+		Enabled: true,
+	}
+
+	opts.Ruler = Ruler{
+		Spec: &lokiv1.RulerConfigSpec{
+			RemoteWriteSpec: &lokiv1.RemoteWriteSpec{
+				Enabled:       true,
+				RefreshPeriod: "1m",
+				ClientSpec: &lokiv1.RemoteWriteClientSpec{
+					Name:                    "test-remote-write",
+					URL:                     "http://prometheus:9090/api/v1/write",
+					AuthorizationType:       lokiv1.BasicAuthorization,
+					AuthorizationSecretName: "test-secret",
+					RelabelConfigs: []lokiv1.RelabelConfig{
+						{
+							SourceLabels: []string{"user_label"},
+							Action:       "keep",
+							Regex:        ".*",
+						},
+					},
+				},
+			},
+		},
+		Secret: &RulerSecret{
+			Username: "user",
+			Password: "pass",
+		},
+	}
+
+	cfgOpts := ConfigOptions(opts)
+
+	// Render to YAML
+	cfg, _, err := config.Build(cfgOpts)
+	require.NoError(t, err)
+
+	expRelabelConfigs := `write_relabel_configs:
+        -
+          source_labels: ["user_label"]
+          regex: .*
+          action: keep
+          separator: ""
+        -
+          action: replace
+          separator: ""
+          replacement: ${POD_NAME}
+          target_label: __replica__`
+
+	require.Contains(t, string(cfg), expRelabelConfigs)
+}
