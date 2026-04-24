@@ -306,40 +306,6 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 	}
 }
 
-// mockTenantLimitsWithDefaults allows us to simulate different tenants having different limits
-// and also acts as Overrides to provide default limits
-type mockTenantLimitsWithDefaults struct {
-	tenantLimits  map[string]*validation.Limits
-	defaultLimits *validation.Limits
-}
-
-func (m *mockTenantLimitsWithDefaults) TenantLimits(userID string) *validation.Limits {
-	// Return per-tenant limits if they exist, otherwise return defaults
-	if limits, ok := m.tenantLimits[userID]; ok {
-		return limits
-	}
-	// For the test scenarios, we want to simulate that some tenants get defaults
-	// through the TenantLimits interface rather than through Overrides
-	if len(m.tenantLimits) == 0 {
-		// Case 1: No runtime config at all, return defaults
-		return m.defaultLimits
-	}
-	// Case 2: Runtime config exists but not for this tenant, return defaults
-	return m.defaultLimits
-}
-
-func (m *mockTenantLimitsWithDefaults) AllByUserID() map[string]*validation.Limits {
-	return m.tenantLimits
-}
-
-func (m *mockTenantLimitsWithDefaults) DefaultLimits() *validation.Limits {
-	return m.defaultLimits
-}
-
-func (m *mockTenantLimitsWithDefaults) AllowStructuredMetadata(_ string) bool {
-	return false
-}
-
 func TestDrilldownConfig(t *testing.T) {
 	testCases := []struct {
 		name                string
