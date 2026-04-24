@@ -27,7 +27,7 @@ cat my.log | promtail --stdin --dry-run --client.url http://127.0.0.1:3100/loki/
 
 ## Inspecting a config file
 
-Promtail can validate and syntatically check your `config` file for a valid configuration.
+Promtail can validate and syntactically check your `config` file for a valid configuration.
 This can be used to check for errors and inconsistency in your config file and help prevent deploying invalid configurations.
 
 In check syntax mode, promtail will just validate the config file and then exit:

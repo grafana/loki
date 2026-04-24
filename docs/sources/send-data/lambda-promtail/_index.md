@@ -9,7 +9,7 @@ weight:  700
 
 # Lambda Promtail client
 
-Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/lambda-promtail/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config](../promtail/configuration/#loki_push_api).
+Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping CloudWatch, CloudTrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/lambda-promtail/blob/main/tools/lambda-promtail) which processes CloudWatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config](../promtail/configuration/#loki_push_api).
 
 ## Deployment
 
@@ -22,7 +22,7 @@ For both deployment types there are a few values that must be defined:
 
 The Terraform deployment also takes in an array of log group and bucket names, and can take arrays for VPC subnets and security groups.
 
-There's also a flag to keep the log stream label when propagating the logs from Cloudwatch, which defaults to false. This can be helpful when the cardinality is too large, such as the case of a log stream per lambda invocation.
+There's also a flag to keep the log stream label when propagating the logs from CloudWatch, which defaults to false. This can be helpful when the cardinality is too large, such as the case of a log stream per lambda invocation.
 
 Additionally, an environment variable can be configured to add extra labels to the logs streamed by lambda-promtail.
 These extra labels will take the form `__extra_<name>=<value>`.
@@ -35,7 +35,7 @@ In an effort to make deployment of lambda-promtail as simple as possible, we've 
 
 Terraform:
 ```
-## use cloudwatch log group
+## use CloudWatch log group
 terraform apply -var "lambda_promtail_image=<repo:tag>" -var "write_address=https://logs-prod-us-central1.grafana.net/loki/api/v1/push" -var "password=<password>" -var "username=<user>" -var 'log_group_names=["/aws/lambda/log-group-1", "/aws/lambda/log-group-2"]' -var 'bucket_names=["bucket-a", "bucket-b"]' -var 'batch_size=131072'
 ```
 
@@ -58,7 +58,7 @@ To add extra labels add `-var 'extra_labels="name1,value1,name2,value2"'`.
 
 To add tenant id add `-var "tenant_id=value"`.
 
-Note that the creation of a subscription filter on Cloudwatch in the provided Terraform file only accepts an array of log group names.
+Note that the creation of a subscription filter on CloudWatch in the provided Terraform file only accepts an array of log group names.
 It does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so.
 Or, have lambda-promtail write to Promtail and use [pipeline stages](/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/drop/).
 
@@ -93,14 +93,14 @@ If using CloudFormation to write your infrastructure code, you should consider t
 
 This workflow is intended to be an effective approach for monitoring ephemeral jobs such as those run on AWS Lambda which are otherwise hard/impossible to monitor via one of the other Loki [clients](../).
 
-Ephemeral jobs can quite easily run afoul of cardinality best practices. During high request load, an AWS lambda function might balloon in concurrency, creating many log streams in Cloudwatch. For this reason lambda-promtail defaults to **not** keeping the log stream value as a label when propagating the logs to Loki. This is only possible because new versions of Loki no longer have an ingestion ordering constraint on logs within a single stream.
+Ephemeral jobs can quite easily run afoul of cardinality best practices. During high request load, an AWS lambda function might balloon in concurrency, creating many log streams in CloudWatch. For this reason lambda-promtail defaults to **not** keeping the log stream value as a label when propagating the logs to Loki. This is only possible because new versions of Loki no longer have an ingestion ordering constraint on logs within a single stream.
 
 ### Proof of concept Loki deployments
 
-For those using Cloudwatch and wishing to test out Loki in a low-risk way, this workflow allows piping Cloudwatch logs to Loki regardless of the event source (EC2, Kubernetes, Lambda, ECS, etc) without setting up a set of Promtail daemons across their infrastructure. However, running Promtail as a daemon on your infrastructure is the best-practice deployment strategy in the long term for flexibility, reliability, performance, and cost.
+For those using CloudWatch and wishing to test out Loki in a low-risk way, this workflow allows piping CloudWatch logs to Loki regardless of the event source (EC2, Kubernetes, Lambda, ECS, etc) without setting up a set of Promtail daemons across their infrastructure. However, running Promtail as a daemon on your infrastructure is the best-practice deployment strategy in the long term for flexibility, reliability, performance, and cost.
 
 {{< admonition type="note" >}}
-Propagating logs from Cloudwatch to Loki means you'll still need to _pay_ for Cloudwatch.
+Propagating logs from CloudWatch to Loki means you'll still need to _pay_ for CloudWatch.
 {{< /admonition >}}
 
 ### VPC Flow logs
@@ -113,14 +113,14 @@ One thing to be aware of with this is that the default flow log format doesn't h
 
 This workflow allows ingesting AWS Application/Network Load Balancer logs stored on S3 to Loki.
 
-### Cloudtrail logs
+### CloudTrail logs
 
-This workflow allows ingesting AWS Cloudtrail logs stored on S3 to Loki.
+This workflow allows ingesting AWS CloudTrail logs stored on S3 to Loki.
 
-### Cloudfront logs
-Cloudfront logs can be either batched or streamed in real time to Loki:
-+ Logging can be activated on a Cloudfront distribution with an S3 bucket as the destination. In this case, the workflow is the same as for other services (VPC Flow logs, Loadbalancer logs, Cloudtrail logs).
-+ Cloudfront [real-time logs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html) can be sent to a Kinesis data stream. The data stream can be mapped to be an [event source](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html) for lambda-promtail to deliver the logs to Loki.
+### CloudFront logs
+CloudFront logs can be either batched or streamed in real time to Loki:
++ Logging can be activated on a CloudFront distribution with an S3 bucket as the destination. In this case, the workflow is the same as for other services (VPC Flow logs, Loadbalancer logs, CloudTrail logs).
++ CloudFront [real-time logs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html) can be sent to a Kinesis data stream. The data stream can be mapped to be an [event source](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html) for lambda-promtail to deliver the logs to Loki.
 
 ### Triggering Lambda-Promtail via SQS
 For AWS services supporting sending messages to SQS (for example, S3 with an S3 Notification to SQS), events can be processed through an [SQS queue using a lambda trigger](https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html) instead of directly configuring the source service to trigger lambda. Lambda-promtail will retrieve the nested events from the SQS messages' body and process them as if them came directly from the source service.
@@ -153,9 +153,9 @@ aws cloudformation create-stack \
 
 Incoming logs can have seven special labels assigned to them which can be used in [relabeling](../promtail/configuration/#relabel_configs) or later stages in a Promtail [pipeline](../promtail/pipelines/):
 
-- `__aws_log_type`: Where this log came from (Cloudwatch, Kinesis or S3).
-- `__aws_cloudwatch_log_group`: The associated Cloudwatch Log Group for this log.
-- `__aws_cloudwatch_log_stream`: The associated Cloudwatch Log Stream for this log (if `KEEP_STREAM=true`).
+- `__aws_log_type`: Where this log came from (CloudWatch, Kinesis or S3).
+- `__aws_cloudwatch_log_group`: The associated CloudWatch Log Group for this log.
+- `__aws_cloudwatch_log_stream`: The associated CloudWatch Log Stream for this log (if `KEEP_STREAM=true`).
 - `__aws_cloudwatch_owner`: The AWS ID of the owner of this event.
 - `__aws_kinesis_event_source_arn`: The Kinesis event source ARN.
 - `__aws_s3_log_lb`: The name of the loadbalancer.
@@ -294,11 +294,11 @@ This lambda will flush logs when the batch size hits the default value of `13107
 
 ### Templating/Deployment
 
-The current CloudFormation template is rudimentary. If you need to add vpc configs, extra log groups to monitor, subnet declarations, etc, you'll need to edit the template manually. If you need to subscribe to more than one Cloudwatch Log Group you'll also need to copy paste that section of the template for each group.
+The current CloudFormation template is rudimentary. If you need to add vpc configs, extra log groups to monitor, subnet declarations, etc, you'll need to edit the template manually. If you need to subscribe to more than one CloudWatch Log Group you'll also need to copy paste that section of the template for each group.
 
 The Terraform file is a bit more fleshed out, and can be configured to take in an array of log group and bucket names, as well as vpc configuration.
 
-The provided Terraform and CloudFormation files are meant to cover the default use case, and more complex deployments will likely require some modification and extenstion of the provided files.
+The provided Terraform and CloudFormation files are meant to cover the default use case, and more complex deployments will likely require some modification and extension of the provided files.
 
 ## Example Promtail Config
 
@@ -329,7 +329,7 @@ scrape_configs:
     relabel_configs:
       - source_labels: ['__aws_log_type']
         target_label: 'log_type'
-      # Maps the cloudwatch log group into a label called `log_group` for use in Loki.
+      # Maps the CloudWatch log group into a label called `log_group` for use in Loki.
       - source_labels: ['__aws_cloudwatch_log_group']
         target_label: 'log_group'
       # Maps the loadbalancer name into a label called `loadbalancer_name` for use in Loki.
@@ -343,9 +343,9 @@ scrape_configs:
 
 However, these may only be active for a very short while. This creates a problem for combining these short-lived log streams in Loki because timestamps may not strictly increase across multiple log streams. The other obvious route is creating labels based on log streams, which is also undesirable because it leads to cardinality problems via many low-throughput log streams.
 
-Instead we can pipeline Cloudwatch logs to a set of Promtails, which can mitigate these problem in two ways:
+Instead we can pipeline CloudWatch logs to a set of Promtails, which can mitigate these problem in two ways:
 
-1) Using Promtail's push api along with the `use_incoming_timestamp: false` config, we let Promtail determine the timestamp based on when it ingests the logs, not the timestamp assigned by cloudwatch. Obviously, this means that we lose the origin timestamp because Promtail now assigns it, but this is a relatively small difference in a real time ingestion system like this.
-2) In conjunction with (1), Promtail can coalesce logs across  Cloudwatch log streams because it's no longer susceptible to out-of-order errors when combining multiple sources (lambda invocations).
+1) Using Promtail's push api along with the `use_incoming_timestamp: false` config, we let Promtail determine the timestamp based on when it ingests the logs, not the timestamp assigned by CloudWatch. Obviously, this means that we lose the origin timestamp because Promtail now assigns it, but this is a relatively small difference in a real time ingestion system like this.
+2) In conjunction with (1), Promtail can coalesce logs across  CloudWatch log streams because it's no longer susceptible to out-of-order errors when combining multiple sources (lambda invocations).
 
 One important aspect to keep in mind when running with a set of Promtails behind a load balancer is that we're effectively moving the cardinality problems from the  number of log streams -> number of Promtails. If you have not configured Loki to [accept out-of-order writes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#accept-out-of-order-writes), you'll need to assign a Promtail-specific label on each Promtail so that you don't run into out-of-order errors when the Promtails send data for the same log groups to Loki. This can easily be done via a configuration like `--client.external-labels=promtail=${HOSTNAME}` passed to Promtail.

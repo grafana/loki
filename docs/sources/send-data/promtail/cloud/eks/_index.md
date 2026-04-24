@@ -174,7 +174,7 @@ extraScrapeConfigs:
         target_label: 'hostname'
 ```
 
-> Feel free to change the [relabel_configs][relabel_configs] to match what you would use in your own environnement.
+> Feel free to change the [relabel_configs][relabel_configs] to match what you would use in your own environment.
 
 Now we need to add a volume for accessing systemd logs:
 

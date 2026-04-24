@@ -22,7 +22,7 @@ This method requires three arguments:
 | `minSize` | minimum batch size in bytes |
 | `maxSize` | maximum batch size in bytes |
 
-**Javascript example code fragment:**
+**JavaScript example code fragment:**
 
 ```javascript
 import loki from 'k6/x/loki';
@@ -44,7 +44,7 @@ The first argument of the method is the desired amount of streams per batch.
 Instead of using a fixed amount of streams in each call, you can randomize the
 value to simulate a more realistic scenario.
 
-**Javascript example code fragment:**
+**JavaScript example code fragment:**
 
 ```javascript
 function randomInt(min, max) {
@@ -105,7 +105,7 @@ However, you can specify the
 cardinality (quantity of distinct label values) using the `cardinality` argument
 in the `Config` constructor.
 
-**Javascript example code fragment:**
+**JavaScript example code fragment:**
 ```javascript
 import loki from 'k6/x/loki';
 
@@ -136,7 +136,7 @@ configuration accepts values of 0.0 to 1.0.
 
 The default value is 0.9.
 
-**Javascript example code fragment:**
+**JavaScript example code fragment:**
 ```javascript
 import loki from 'k6/x/loki';
 
