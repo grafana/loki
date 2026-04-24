@@ -26,6 +26,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
+const (
+	eliminationReasonEmpty    = "empty"
+	eliminationReasonNonEmpty = "non_empty"
+)
+
 var (
 	tracer = otel.Tracer("pkg/engine/internal/workflow")
 
@@ -34,10 +39,10 @@ var (
 		Help: "Total number of tasks preemptively canceled by short circuiting.",
 	})
 
-	eliminatedCachedTasksTotal = promauto.NewCounter(prometheus.CounterOpts{
+	eliminatedCachedTasksTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "loki_engine_v2_task_cached_eliminated_total",
-		Help: "Total number of tasks eliminated before execution because their cached result was empty.",
-	})
+		Help: "Total number of tasks eliminated before execution due to a cache hit.",
+	}, []string{"reason"})
 )
 
 // Options configures a [Workflow].
@@ -84,9 +89,19 @@ type Options struct {
 	// result are eliminated at plan time before any work is dispatched.
 	PruneEmptyCachedTasks bool
 
+	// NonEmptyCachedTasksMaxSize is the maximum total encoded size in bytes of
+	// non-empty cached task buffers that may be embedded in task assignments.
+	// Results that exceed the remaining budget are skipped; smaller results that
+	// still fit continue to be included. 0 disables non-empty task pruning entirely.
+	NonEmptyCachedTasksMaxSize uint64
+
 	// TaskCacheRegistry is the registry of cache backends used at plan time to
 	// prune tasks whose cached result is known to be empty.
 	TaskCacheRegistry executor.TaskCacheRegistry
+
+	// PruneCachedTasksFetchTimeout is the timeout applied to each cache Fetch
+	// call during task pruning at plan time. 0 means no timeout.
+	PruneCachedTasksFetchTimeout time.Duration
 }
 
 var _ fmt.Stringer = (*Workflow)(nil)
@@ -128,12 +143,14 @@ type Workflow struct {
 // The provided Runner will be used for Workflow execution.
 func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
 	graph, err := planWorkflow(opts.Tenant, plan, cacheParams{
-		enabled:                 opts.CacheEnabled,
-		taskCacheMaxSizeBytes:   opts.MaxTaskCacheSize,
-		dataObjScanMaxSizeBytes: opts.MaxDataObjScanCacheSize,
-		compression:             opts.CacheCompression,
-		registry:                opts.TaskCacheRegistry,
-		pruneEmptyCachedTasks:   opts.PruneEmptyCachedTasks,
+		enabled:                     opts.CacheEnabled,
+		taskCacheMaxSizeBytes:       opts.MaxTaskCacheSize,
+		dataObjScanMaxSizeBytes:     opts.MaxDataObjScanCacheSize,
+		compression:                 opts.CacheCompression,
+		registry:                    opts.TaskCacheRegistry,
+		pruneEmptyCachedTasks:       opts.PruneEmptyCachedTasks,
+		nonEmptyCachedTasksMaxBytes: opts.NonEmptyCachedTasksMaxSize,
+		pruneFetchTimeout:           opts.PruneCachedTasksFetchTimeout,
 	}, logger)
 	if err != nil {
 		return nil, err

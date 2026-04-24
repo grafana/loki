@@ -100,6 +100,8 @@ type TaskCacheConfig struct {
 	TaskResultMaxCacheableSize        flagext.Bytes `yaml:"task_result_max_cacheable_size" category:"experimental"`
 	DataObjScanResultMaxCacheableSize flagext.Bytes `yaml:"dataobjscan_result_max_cacheable_size" category:"experimental"`
 	PruneEmptyCachedTasks             bool          `yaml:"prune_empty_cached_tasks" category:"experimental"`
+	PruneCachedTasksMaxSize           flagext.Bytes `yaml:"prune_cached_tasks_max_size" category:"experimental"`
+	PruneCachedTasksFetchTimeout      time.Duration `yaml:"prune_cached_tasks_fetch_timeout" category:"experimental"`
 }
 
 // RegisterFlagsWithPrefix registers flags for TaskCacheConfig with the given prefix.
@@ -111,6 +113,12 @@ func (cfg *TaskCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 		"Experimental: Maximum size for a DataObjScan result to be cacheable. 0 means only empty responses are cached.")
 	f.BoolVar(&cfg.PruneEmptyCachedTasks, prefix+"prune-empty-cached-tasks", false,
 		"Experimental: When enabled, the scheduler checks cached results at plan time and prunes tasks whose cached result is known to be empty.")
+	f.Var(&cfg.PruneCachedTasksMaxSize, prefix+"prune-cached-tasks-max-size",
+		"Experimental: Maximum total size of non-empty cached task results embedded in task assignments. "+
+			"Results that would exceed the budget are skipped (smaller results that fit are still included). "+
+			"0 disables non-empty task pruning.")
+	f.DurationVar(&cfg.PruneCachedTasksFetchTimeout, prefix+"prune-cached-tasks-fetch-timeout", time.Second,
+		"Experimental: Timeout for cache fetch operations during cached-task pruning at plan time. 0 disables the timeout.")
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -512,12 +520,14 @@ func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.
 		MaxRunningScanTasks:  maxRunningScanTasks,
 		MaxRunningOtherTasks: 0,
 
-		CacheEnabled:            cacheEnabled,
-		MaxTaskCacheSize:        uint64(e.cfg.Executor.TaskResultsCache.TaskResultMaxCacheableSize),
-		MaxDataObjScanCacheSize: uint64(e.cfg.Executor.TaskResultsCache.DataObjScanResultMaxCacheableSize),
-		CacheCompression:        e.cfg.Executor.TaskResultsCache.Compression,
-		PruneEmptyCachedTasks:   e.cfg.Executor.TaskResultsCache.PruneEmptyCachedTasks,
-		TaskCacheRegistry:       e.taskCaches,
+		CacheEnabled:                 cacheEnabled,
+		MaxTaskCacheSize:             uint64(e.cfg.Executor.TaskResultsCache.TaskResultMaxCacheableSize),
+		MaxDataObjScanCacheSize:      uint64(e.cfg.Executor.TaskResultsCache.DataObjScanResultMaxCacheableSize),
+		CacheCompression:             e.cfg.Executor.TaskResultsCache.Compression,
+		PruneEmptyCachedTasks:        e.cfg.Executor.TaskResultsCache.PruneEmptyCachedTasks,
+		NonEmptyCachedTasksMaxSize:   uint64(e.cfg.Executor.TaskResultsCache.PruneCachedTasksMaxSize),
+		PruneCachedTasksFetchTimeout: e.cfg.Executor.TaskResultsCache.PruneCachedTasksFetchTimeout,
+		TaskCacheRegistry:            e.taskCaches,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),

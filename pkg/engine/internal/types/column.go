@@ -41,6 +41,10 @@ const (
 	MetadataKeyColumnDataType = "column_datatype"
 )
 
+const (
+	ColumnFullNameTimestamp = "timestamp_ns.builtin.timestamp"
+)
+
 // Names of error columns
 const (
 	ColumnNameError        = "__error__"
@@ -50,6 +54,8 @@ const (
 // Error types.
 const (
 	LogfmtParserErrorType     = "LogfmtParserErr"
+	LabelfmtParserErrorType   = "LabelfmtParserErr"
+	LinefmtParserErrorType    = "LinefmtParserErr"
 	JSONParserErrorType       = "JSONParserErr"
 	SampleExtractionErrorType = "SampleExtractionErr"
 )

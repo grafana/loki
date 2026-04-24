@@ -50,8 +50,21 @@ func (m *mockBucket) Get(_ context.Context, name string) (io.ReadCloser, error) 
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
-func (m *mockBucket) GetRange(_ context.Context, _ string, _, _ int64) (io.ReadCloser, error) {
-	return nil, nil
+func (m *mockBucket) GetRange(_ context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	data, exists := m.uploads[name]
+	if !exists {
+		return nil, errors.New("object not found")
+	}
+	if off < 0 || off > int64(len(data)) {
+		return nil, errors.New("offset out of range")
+	}
+	end := off + length
+	if end > int64(len(data)) {
+		end = int64(len(data))
+	}
+	return io.NopCloser(bytes.NewReader(data[off:end])), nil
 }
 
 func (m *mockBucket) Upload(_ context.Context, name string, r io.Reader) error {
@@ -69,12 +82,37 @@ func (m *mockBucket) Iter(_ context.Context, _ string, _ func(string) error, _ .
 	return nil
 }
 func (m *mockBucket) Name() string { return "mock" }
-func (m *mockBucket) Attributes(_ context.Context, _ string) (objstore.ObjectAttributes, error) {
-	return objstore.ObjectAttributes{}, nil
+func (m *mockBucket) Attributes(_ context.Context, name string) (objstore.ObjectAttributes, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	data, exists := m.uploads[name]
+	if !exists {
+		return objstore.ObjectAttributes{}, errors.New("object not found")
+	}
+	return objstore.ObjectAttributes{Size: int64(len(data))}, nil
 }
 
-func (m *mockBucket) GetAndReplace(_ context.Context, name string, _ func(io.ReadCloser) (io.ReadCloser, error)) error {
-	return m.Upload(context.Background(), name, io.NopCloser(bytes.NewReader([]byte{})))
+func (m *mockBucket) GetAndReplace(_ context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
+	m.mu.Lock()
+	var existing io.ReadCloser
+	if data, ok := m.uploads[name]; ok {
+		existing = io.NopCloser(bytes.NewReader(data))
+	}
+	m.mu.Unlock()
+
+	newRC, err := fn(existing)
+	if err != nil {
+		return err
+	}
+	defer newRC.Close()
+	data, err := io.ReadAll(newRC)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.uploads[name] = data
+	m.mu.Unlock()
+	return nil
 }
 
 func (m *mockBucket) IsAccessDeniedErr(_ error) bool {

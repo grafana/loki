@@ -141,12 +141,15 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 	// Count external sources and sinks for observability.
 	// This is useful to know which tasks are scan tasks (no sources)
-	var countSources, countSinks int
+	var countSources, countCachedSources, countSinks int
 	for _, streams := range job.Task.Sources {
 		countSources += len(streams)
 	}
 	for _, streams := range job.Task.Sinks {
 		countSinks += len(streams)
+	}
+	for _, streams := range job.Task.CachedSources {
+		countCachedSources += len(streams)
 	}
 
 	startTime := time.Now()
@@ -154,6 +157,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		"msg", "starting task",
 		"plan", physical.PrintAsTree(job.Task.Fragment),
 		"external_sources", countSources,
+		"cached_sources", countCachedSources,
 		"external_sinks", countSinks,
 	)
 
@@ -165,21 +169,30 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		StreamFilterer: t.StreamFilterer,
 		TaskCaches:     t.TaskCaches,
 
-		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
+		GetExternalInputs: func(fnCtx context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
-			if len(streams) == 0 {
+			nodeCachedSrcs := job.Task.CachedSources[node]
+
+			if len(streams) == 0 && len(nodeCachedSrcs) == 0 {
 				return nil
 			}
 
-			// Create a single nodeSource for all streams. Having streams
-			// forward to a node source allows for backpressure to be applied
-			// based on the number of nodeSource (typically 1) rather than the
-			// number of source streams (unbounded).
+			level.Debug(logger).Log(
+				"msg", "getting external inputs for node",
+				"node", node.ID(),
+				"node_type", node.Type(),
+				"external_sources", len(streams),
+				"cached_sources", len(nodeCachedSrcs),
+			)
+
+			// Create a single nodeSource for all inputs (live streams and/or
+			// cached sources). A single pipeline avoids "got N inputs" errors
+			// from operators that expect exactly one upstream.
 			//
-			// Binding the [streamSource] to the input in the loop below
-			// increases the reference count. As sources are closed, the
-			// reference count decreases. Once the reference count reaches 0,
-			// the nodeSource is closed, and reads return EOF.
+			// Binding a [streamSource] increases the reference count; each
+			// source decrements it when done. Spawning drainCachedSources also
+			// increments the count once and decrements it on return. When the
+			// count reaches zero, the nodeSource closes automatically.
 			input := new(nodeSource)
 
 			var errs []error
@@ -207,8 +220,14 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 				// Since we're returning an error pipeline, we need to close
 				// input so that writing to any already bound streams doesn't
 				// block.
+				level.Error(logger).Log("msg", "failed to bind external sources", "errors", errors.Join(errs...))
 				input.Close()
 				return []executor.Pipeline{errorPipeline(errs)}
+			}
+
+			if len(nodeCachedSrcs) > 0 {
+				input.Add(1)
+				go drainCachedSources(fnCtx, input, nodeCachedSrcs, logger)
 			}
 
 			return []executor.Pipeline{executor.NewObservedPipeline("nodeSource", nil, input)}
@@ -226,6 +245,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer span.End()
 
 	span.Record(xcap.TaskExternalSourcesCount.Observe(int64(countSources)))
+	span.Record(xcap.TaskCachedSourcesCount.Observe(int64(countCachedSources)))
 	span.Record(xcap.TaskExternalSinksCount.Observe(int64(countSinks)))
 
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
