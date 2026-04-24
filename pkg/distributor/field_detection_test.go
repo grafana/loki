@@ -31,7 +31,7 @@ func Test_DetectLogLevels(t *testing.T) {
 
 	t.Run("log level detection disabled", func(t *testing.T) {
 		limits, ingester := setup(false)
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`}, false, false, false)
 		_, err := distributors[0].Push(ctx, writeReq)
@@ -43,7 +43,7 @@ func Test_DetectLogLevels(t *testing.T) {
 
 	t.Run("log level detection enabled but level cannot be detected", func(t *testing.T) {
 		limits, ingester := setup(true)
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`}, false, false, false)
 		_, err := distributors[0].Push(ctx, writeReq)
@@ -62,6 +62,7 @@ func Test_DetectLogLevels(t *testing.T) {
 				5,
 				limits,
 				func(_ string) (ring_client.PoolClient, error) { return ingester, nil },
+				nil,
 			)
 
 			writeReq := makeWriteRequestWithLabelsWithLevel(1, 10, []string{`{foo="bar"}`}, level)
@@ -80,7 +81,7 @@ func Test_DetectLogLevels(t *testing.T) {
 
 	t.Run("log level detection enabled but log level already present in stream", func(t *testing.T) {
 		limits, ingester := setup(true)
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar", level="debug"}`}, false, false, false)
 		_, err := distributors[0].Push(ctx, writeReq)
@@ -95,7 +96,7 @@ func Test_DetectLogLevels(t *testing.T) {
 
 	t.Run("log level detection enabled but log level already present as structured metadata", func(t *testing.T) {
 		limits, ingester := setup(true)
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`}, false, false, false)
 		writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
@@ -122,7 +123,7 @@ func Test_DetectLogLevels(t *testing.T) {
 
 	t.Run("detected_level structured metadata takes precedence over other level detection methods", func(t *testing.T) {
 		limits, ingester := setup(true)
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 		// Create a write request with multiple potential level sources:
 		// 1. A JSON log line with level=error
@@ -187,7 +188,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		for _, tc := range testCases {
 			// Create a fresh setup for each test case
 			limits, ingester := setup(true)
-			distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+			distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 			writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`}, false, false, false)
 			writeReq.Streams[0].Entries[0].Line = `test log`
@@ -227,7 +228,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		for _, tc := range testCases {
 			// Create a fresh setup for each test case
 			limits, ingester := setup(true)
-			distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+			distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 			writeReq := makeWriteRequestWithLabels(1, 10, []string{tc.streamLabel}, false, false, false)
 			writeReq.Streams[0].Entries[0].Line = `log message without level`
@@ -246,7 +247,7 @@ func Test_DetectLogLevels(t *testing.T) {
 
 	t.Run("indexed OTEL severity takes precedence over structured metadata or log line", func(t *testing.T) {
 		limits, ingester := setup(true)
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 		writeReq := makeWriteRequestWithLabels(2, 10, []string{`{foo="bar", SeverityText="debug"}`}, false, false, false)
 		writeReq.Streams[0].Entries[0].Line = `{"msg":"this is a test message", "level":"error"}`

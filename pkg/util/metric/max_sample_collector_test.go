@@ -16,7 +16,7 @@ func TestMaxSampleCollector(t *testing.T) {
 	require.Equal(t, expected, c.samples)
 	// Inc should update the current value, but not samples, since the
 	// timer hasn't fired.
-	c.Inc(1, 0)
+	c.Inc(1)
 	require.Equal(t, int64(1), c.val.Load())
 	require.Equal(t, int64(0), c.maxVal.Load())
 	require.Equal(t, expected, c.samples)
@@ -33,7 +33,7 @@ func TestMaxSampleCollector(t *testing.T) {
 	require.Equal(t, int64(1), c.val.Load())
 	require.Equal(t, int64(1), c.maxVal.Load())
 	// Inc one last time, and call the iterFunc.
-	c.Inc(2, 0)
+	c.Inc(2)
 	require.Equal(t, int64(3), c.val.Load())
 	require.Equal(t, int64(1), c.maxVal.Load())
 	require.NoError(t, c.iterFunc(t.Context()))

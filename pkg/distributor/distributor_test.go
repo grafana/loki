@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/loki/v3/pkg/util/requestlimiter"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/c2h5oh/datasize"
@@ -126,7 +127,7 @@ func TestDistributor(t *testing.T) {
 			limits.IngestionBurstSizeMB = ingestionRateLimitMB
 			limits.MaxLineSize = loki_flagext.ByteSize(tc.maxLineSize)
 
-			distributors, _ := prepare(t, 1, 5, limits, nil)
+			distributors, _ := prepare(t, 1, 5, limits, nil, nil)
 
 			var request logproto.PushRequest
 			for i := 0; i < tc.streams; i++ {
@@ -421,7 +422,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			ing := &mockIngester{}
-			distributors, _ := prepare(t, 1, 3, testData.limits, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
+			distributors, _ := prepare(t, 1, 3, testData.limits, func(_ string) (ring_client.PoolClient, error) { return ing, nil }, nil)
 			_, err := distributors[0].Push(ctx, testData.push)
 			assert.NoError(t, err)
 			topVal := ing.Peek()
@@ -441,7 +442,7 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 		validation.GlobalPolicy: {"env"},
 	}
 
-	distributors, _ := prepare(t, 1, 5, limits, nil)
+	distributors, _ := prepare(t, 1, 5, limits, nil, nil)
 
 	// request with all required labels.
 	lbs := labels.FromMap(map[string]string{"app": "foo", "env": "prod", "cluster": "cluster1", "namespace": "ns1"})
@@ -476,7 +477,7 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	// makeWriteRequest only contains a `{foo="bar"}` label.
 	req := makeWriteRequest(100, 100) // 100 lines of 100 bytes each
 	limits.EnforcedLabels = []string{"app", "env"}
-	distributors, _ := prepare(t, 1, 3, limits, nil)
+	distributors, _ := prepare(t, 1, 3, limits, nil, nil)
 
 	// reset metrics in case they were set from a previous test.
 	validation.DiscardedBytes.Reset()
@@ -503,7 +504,7 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 
 	// no enforced labels, so no errors.
 	limits.EnforcedLabels = []string{}
-	distributors, _ = prepare(t, 1, 3, limits, nil)
+	distributors, _ = prepare(t, 1, 3, limits, nil, nil)
 	_, err = distributors[0].Push(ctx, req)
 	require.NoError(t, err)
 
@@ -513,7 +514,7 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 
 	// enforced labels are configured but the stream is an aggregated metric, so no errors.
 	limits.EnforcedLabels = []string{"app", "env"}
-	distributors, _ = prepare(t, 1, 3, limits, nil)
+	distributors, _ = prepare(t, 1, 3, limits, nil, nil)
 
 	req = makeWriteRequestWithLabels(100, 100, []string{`{__aggregated_metric__="foo"}`}, false, false, false)
 	_, err = distributors[0].Push(ctx, req)
@@ -528,7 +529,7 @@ func TestDistributorPushConcurrently(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 
-	distributors, ingesters := prepare(t, 1, 5, limits, nil)
+	distributors, ingesters := prepare(t, 1, 5, limits, nil, nil)
 
 	numReq := 1
 	var wg sync.WaitGroup
@@ -582,7 +583,7 @@ func TestDistributorPushErrors(t *testing.T) {
 	flagext.DefaultValues(limits)
 
 	t.Run("with RF=3 a single push can fail", func(t *testing.T) {
-		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+		distributors, ingesters := prepare(t, 1, 3, limits, nil, nil)
 		ingesters[0].failAfter = 5 * time.Millisecond
 		ingesters[1].succeedAfter = 10 * time.Millisecond
 		ingesters[2].succeedAfter = 15 * time.Millisecond
@@ -598,7 +599,7 @@ func TestDistributorPushErrors(t *testing.T) {
 		require.Equal(t, 0, len(ingesters[0].pushed))
 	})
 	t.Run("with RF=3 two push failures result in error", func(t *testing.T) {
-		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+		distributors, ingesters := prepare(t, 1, 3, limits, nil, nil)
 		ingesters[0].failAfter = 5 * time.Millisecond
 		ingesters[1].succeedAfter = 10 * time.Millisecond
 		ingesters[2].failAfter = 15 * time.Millisecond
@@ -624,7 +625,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: true,
 		}
-		distributors, _ := prepare(t, 1, 0, limits, nil)
+		distributors, _ := prepare(t, 1, 0, limits, nil, nil)
 		for _, d := range distributors {
 			d.cfg.KafkaEnabled = true
 			d.cfg.IngesterEnabled = false
@@ -641,7 +642,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
-		distributors, _ := prepare(t, 1, 0, limits, nil)
+		distributors, _ := prepare(t, 1, 0, limits, nil, nil)
 		for _, d := range distributors {
 			d.cfg.KafkaEnabled = true
 			d.cfg.IngesterEnabled = false
@@ -660,7 +661,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
-		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+		distributors, ingesters := prepare(t, 1, 3, limits, nil, nil)
 		ingesters[0].succeedAfter = 5 * time.Millisecond
 		ingesters[1].succeedAfter = 10 * time.Millisecond
 		ingesters[2].succeedAfter = 15 * time.Millisecond
@@ -715,7 +716,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 				kafkaWriter := &mockKafkaProducer{
 					failOnWrite: false,
 				}
-				distributors, _ := prepare(t, 1, test.numIngesters, limits, nil)
+				distributors, _ := prepare(t, 1, test.numIngesters, limits, nil, nil)
 				for _, d := range distributors {
 					d.cfg.KafkaEnabled = true
 					d.cfg.IngesterEnabled = false
@@ -756,7 +757,7 @@ func Test_SortLabelsOnPush(t *testing.T) {
 		limits := &validation.Limits{}
 		flagext.DefaultValues(limits)
 		ingester := &mockIngester{}
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 		request := makeWriteRequest(10, 10)
 		request.Streams[0].Labels = `{buzz="f", service_name="foo", a="b"}`
@@ -779,7 +780,7 @@ func Test_TruncateLogLines(t *testing.T) {
 
 	t.Run("it truncates lines to MaxLineSize when MaxLineSizeTruncate is true", func(t *testing.T) {
 		limits, ingester := setup()
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
 		require.NoError(t, err)
@@ -792,7 +793,7 @@ func Test_TruncateLogLines(t *testing.T) {
 		limits.MaxLineSize = 8
 		limits.MaxLineSizeTruncateIdentifier = "[...]"
 
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
 		require.NoError(t, err)
@@ -813,7 +814,7 @@ func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
 
 	t.Run("it discards invalid entries and discards resulting empty streams completely", func(t *testing.T) {
 		limits, ingester := setup()
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
 		require.Equal(t, err, httpgrpc.Errorf(http.StatusBadRequest, "%s", fmt.Sprintf(validation.LineTooLongErrorMsg, 5, "{foo=\"bar\"}", 10)))
@@ -823,7 +824,7 @@ func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
 
 	t.Run("it returns unprocessable entity error if the streams is empty", func(t *testing.T) {
 		limits, ingester := setup()
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil }, nil)
 
 		_, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 1, []string{}, false, false, false))
 		require.Equal(t, err, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg))
@@ -1347,7 +1348,7 @@ func BenchmarkShardStream(b *testing.B) {
 func Benchmark_SortLabelsOnPush(b *testing.B) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
+	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil, nil)
 	d := distributors[0]
 	request := makeWriteRequest(10, 10)
 	streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
@@ -1389,7 +1390,7 @@ func TestParseStreamLabels(t *testing.T) {
 		},
 	} {
 		limits := tc.generateLimits()
-		distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
+		distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil, nil)
 		d := distributors[0]
 
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
@@ -1420,7 +1421,7 @@ func Benchmark_Push(b *testing.B) {
 	limits.RejectOldSamples = true
 	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
 	limits.CreationGracePeriod = model.Duration(24 * time.Hour)
-	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
+	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil, nil)
 	b.ResetTimer()
 	b.ReportAllocs()
 
@@ -1648,7 +1649,7 @@ func Benchmark_PushWithLineTruncation(b *testing.B) {
 	limits.MaxLineSizeTruncate = true
 	limits.MaxLineSize = 50
 
-	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
+	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil, nil)
 	request := makeWriteRequest(100000, 100)
 
 	b.ResetTimer()
@@ -1722,7 +1723,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			limits.IngestionRateMB = testData.ingestionRateMB
 			limits.IngestionBurstSizeMB = testData.ingestionBurstSizeMB
 
-			distributors, _ := prepare(t, testData.distributors, 5, limits, nil)
+			distributors, _ := prepare(t, testData.distributors, 5, limits, nil, nil)
 			for _, push := range testData.pushes {
 				request := makeWriteRequest(1, push.bytes)
 				response, err := distributors[0].Push(ctx, request)
@@ -1784,7 +1785,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			limits.BlockIngestionUntil = flagext.Time(tc.blockUntil)
 			limits.BlockIngestionStatusCode = tc.blockStatusCode
 
-			distributors, _ := prepare(t, 1, 5, limits, nil)
+			distributors, _ := prepare(t, 1, 5, limits, nil, nil)
 			request := makeWriteRequest(1, 1024)
 			response, err := distributors[0].Push(ctx, request)
 
@@ -1883,7 +1884,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 				}
 			}
 
-			distributors, _ := prepare(t, 1, 3, limits, nil)
+			distributors, _ := prepare(t, 1, 3, limits, nil, nil)
 			request := makeWriteRequestWithLabels(1, 1024, []string{tc.labels}, false, false, false)
 			response, err := distributors[0].Push(ctx, request)
 
@@ -1898,7 +1899,11 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 	}
 }
 
-func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
+func prepare(
+	t *testing.T, numDistributors, numIngesters int, limits *validation.Limits,
+	factory func(addr string) (ring_client.PoolClient, error),
+	configTransformer func(config *Config),
+) ([]*Distributor, []mockIngester) {
 	t.Helper()
 
 	ingesters := make([]mockIngester, numIngesters)
@@ -2004,6 +2009,10 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 
 		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
 		limitsFrontendCfg := limits_frontend_client.Config{}
+
+		if configTransformer != nil {
+			configTransformer(&distributorConfig)
+		}
 
 		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, nil, log.NewNopLogger())
 		require.NoError(t, err)
@@ -2268,7 +2277,7 @@ func TestDistributorTee(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 	limits.RejectOldSamples = false
-	distributors, _ := prepare(t, 1, 3, limits, nil)
+	distributors, _ := prepare(t, 1, 3, limits, nil, nil)
 
 	tee := mockTee{}
 	distributors[0].tee = &tee
@@ -2289,7 +2298,7 @@ func TestDistributorTeeFailure(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 	limits.RejectOldSamples = false
-	distributors, _ := prepare(t, 1, 3, limits, nil)
+	distributors, _ := prepare(t, 1, 3, limits, nil, nil)
 
 	expectedErr := errors.New("tee failure")
 	tee := &mockFailingTee{err: expectedErr}
@@ -2340,7 +2349,7 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 			20,
 		},
 	} {
-		distributors, _ := prepare(t, 1, 5, limits, nil)
+		distributors, _ := prepare(t, 1, 5, limits, nil, nil)
 
 		var request logproto.PushRequest
 		request.Streams = append(request.Streams, tc.req.Streams[0])
@@ -2361,7 +2370,7 @@ func BenchmarkDistributor_PushWithPolicies(b *testing.B) {
 	b.Run("push without policies", func(b *testing.B) {
 		limits := baselineLimits
 		limits.PolicyStreamMapping = make(validation.PolicyStreamMapping)
-		distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil)
+		distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil, nil)
 		req := makeWriteRequestWithLabels(10, 10, []string{lbs}, false, false, false)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -2382,7 +2391,7 @@ func BenchmarkDistributor_PushWithPolicies(b *testing.B) {
 			}
 
 			req := makeWriteRequestWithLabels(10, 10, []string{lbs}, false, false, false)
-			distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil)
+			distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil, nil)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				distributors[0].Push(ctx, req) //nolint:errcheck
@@ -2403,7 +2412,7 @@ func BenchmarkDistributor_PushWithPolicies(b *testing.B) {
 			}
 
 			req := makeWriteRequestWithLabels(10, 10, []string{lbs}, false, false, false)
-			distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil)
+			distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil, nil)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				distributors[0].Push(ctx, req) //nolint:errcheck
@@ -2723,7 +2732,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 
 			validationLimits := &validation.Limits{}
 			flagext.DefaultValues(validationLimits)
-			distributors, _ := prepare(t, 1, 3, validationLimits, nil)
+			distributors, _ := prepare(t, 1, 3, validationLimits, nil, nil)
 			d := distributors[0]
 			d.cfg.IngestLimitsEnabled = test.ingestLimitsEnabled
 			d.cfg.IngestLimitsDryRunEnabled = test.ingestLimitsDryRunEnabled
@@ -2851,7 +2860,7 @@ func TestMemoryBasedLoadShedding(t *testing.T) {
 		t.Run(test.testName, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			distributors, _ := prepare(t, 1, 5, limits, nil)
+			distributors, _ := prepare(t, 1, 5, limits, nil, nil)
 			d := distributors[0]
 			d.cfg.MemoryBasedLoadSheddingThresholdBytes = test.thresholdBytes
 
@@ -2896,9 +2905,14 @@ func TestInflightBytesLoadShedding(t *testing.T) {
 		t.Run(test.testName, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			distributors, _ := prepare(t, 1, 5, limits, nil)
+			distributors, _ := prepare(t, 1, 5, limits, nil,
+				func(config *Config) {
+					config.RequestSizeLimiter = requestlimiter.Config{
+						MaxInflightBytes: test.thresholdBytes,
+						MaxWait:          time.Second,
+					}
+				})
 			d := distributors[0]
-			d.cfg.InflightBytesLoadSheddingThreshold = test.thresholdBytes
 
 			tenantID, err := tenant.TenantID(ctx)
 			require.NoError(t, err)

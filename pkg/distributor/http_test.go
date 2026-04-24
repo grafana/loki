@@ -27,7 +27,7 @@ func TestDistributorRingHandler(t *testing.T) {
 	flagext.DefaultValues(limits)
 
 	runServer := func() *httptest.Server {
-		distributors, _ := prepare(t, 1, 3, limits, nil)
+		distributors, _ := prepare(t, 1, 3, limits, nil, nil)
 
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			distributors[0].ServeHTTP(w, r)
@@ -70,7 +70,7 @@ func TestRequestParserWrapping(t *testing.T) {
 		limits := &validation.Limits{}
 		flagext.DefaultValues(limits)
 		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
+		distributors, _ := prepare(t, 1, 3, limits, nil, nil)
 
 		var called bool
 		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
@@ -94,7 +94,7 @@ func TestRequestParserWrapping(t *testing.T) {
 		limits := &validation.Limits{}
 		flagext.DefaultValues(limits)
 		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
+		distributors, _ := prepare(t, 1, 3, limits, nil, nil)
 
 		var called bool
 		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
@@ -120,7 +120,7 @@ func TestRequestParserWrapping(t *testing.T) {
 		limits := &validation.Limits{}
 		flagext.DefaultValues(limits)
 		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
+		distributors, _ := prepare(t, 1, 3, limits, nil, nil)
 
 		ctx := user.InjectOrgID(context.Background(), "test-user")
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
@@ -142,7 +142,7 @@ func TestRequestParserWrapping(t *testing.T) {
 		limits := &validation.Limits{}
 		flagext.DefaultValues(limits)
 		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
+		distributors, _ := prepare(t, 1, 3, limits, nil, nil)
 
 		ctx := user.InjectOrgID(context.Background(), "test-user")
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)

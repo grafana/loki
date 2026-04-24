@@ -57,6 +57,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_metric "github.com/grafana/loki/v3/pkg/util/metric"
+	"github.com/grafana/loki/v3/pkg/util/requestlimiter"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -115,8 +116,8 @@ type Config struct {
 
 	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
 
-	MemoryBasedLoadSheddingThresholdBytes uint64 `yaml:"memory_based_load_shedding_threshold_bytes"`
-	InflightBytesLoadSheddingThreshold    int64  `yaml:"inflight_bytes_load_shedding_threshold"`
+	MemoryBasedLoadSheddingThresholdBytes uint64                `yaml:"memory_based_load_shedding_threshold_bytes"`
+	RequestSizeLimiter                    requestlimiter.Config `yaml:"request_size_limiter,omitempty"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -126,6 +127,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DataObjTeeConfig.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
+	cfg.RequestSizeLimiter.RegisterFlagsWithPrefix("distributor", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.Int64Var(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
@@ -134,7 +136,6 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
 	fs.Uint64Var(&cfg.MemoryBasedLoadSheddingThresholdBytes, "distributor.memory-based-load-shedding-threshold-bytes", 0, "Threshold for memory usage above which requests will be load shed. Defaults to never load-shedding.")
-	fs.Int64Var(&cfg.InflightBytesLoadSheddingThreshold, "distributor.inflight-bytes-load-shedding-threshold", 0, "Threshold for inflight bytes above which requests will be load shed. Defaults to never load-shedding.")
 }
 
 func (cfg *Config) Validate() error {
@@ -223,7 +224,8 @@ type Distributor struct {
 	numMetadataPartitions int
 
 	// Track the maximum number of inflight bytes in the last 1 minute.
-	inflightBytes *util_metric.MaxSampleCollector
+	inflightBytes      *util_metric.MaxSampleCollector
+	requestSizeLimiter requestlimiter.RequestLimiter
 
 	// Used memory metric
 	usedMemoryGauge         prometheus.Gauge
@@ -345,6 +347,11 @@ func New(
 		}
 	}
 
+	inflightBytes := util_metric.NewMaxSampleCollector(
+		"loki_distributor_max_inflight_bytes",
+		"The maximum number of inflight bytes in the last 1 minute.",
+	)
+
 	d := &Distributor{
 		cfg:                   cfg,
 		ingesterCfg:           ingesterCfg,
@@ -417,10 +424,8 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
-		inflightBytes: util_metric.NewMaxSampleCollector(
-			"loki_distributor_max_inflight_bytes",
-			"The maximum number of inflight bytes in the last 1 minute.",
-		),
+		inflightBytes:         inflightBytes,
+		requestSizeLimiter:    requestlimiter.New(cfg.RequestSizeLimiter, inflightBytes),
 		usedMemoryGauge: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_used_memory_bytes",
@@ -584,20 +589,20 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // Push a set of streams.
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
-	requestSize := int64(req.Size())
-	err := d.inflightBytes.Inc(requestSize, d.cfg.InflightBytesLoadSheddingThreshold)
+	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
-		d.loadShedRequestsCounter.Inc()
-		return nil, httpgrpc.Errorf(http.StatusServiceUnavailable, "ServiceUnavailable")
-	}
-	defer d.inflightBytes.Inc(-requestSize, d.cfg.InflightBytesLoadSheddingThreshold)
-
-	if err := d.memoryBasedLoadShedIfNeeded(); err != nil {
 		return nil, err
 	}
 
-	tenantID, err := tenant.TenantID(ctx)
+	cleanup, err := d.requestSizeLimiter.Limit(ctx, int64(req.Size()))
 	if err != nil {
+		d.loadShedRequestsCounter.Inc()
+		d.writeFailuresManager.Log(tenantID, errors.Wrap(err, "load shed by request size limiter"))
+		return nil, httpgrpc.Errorf(http.StatusServiceUnavailable, "ServiceUnavailable")
+	}
+	defer cleanup()
+
+	if err := d.memoryBasedLoadShedIfNeeded(); err != nil {
 		return nil, err
 	}
 
