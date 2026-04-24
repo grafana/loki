@@ -134,7 +134,10 @@ func collectWithoutGroupingColumns(record arrow.RecordBatch, grouping physical.G
 func isGroupingCandidate(columnType types.ColumnType) bool {
 	return columnType == types.ColumnTypeLabel ||
 		columnType == types.ColumnTypeMetadata ||
-		columnType == types.ColumnTypeParsed
+		columnType == types.ColumnTypeParsed ||
+		// aggregation node downstream of another aggregation node may
+		// receive grouping keys with ambiguous type.
+		columnType == types.ColumnTypeAmbiguous
 }
 
 func identMatchesGrouping(grouping []physical.ColumnExpression, ident *semconv.Identifier) (bool, error) {
