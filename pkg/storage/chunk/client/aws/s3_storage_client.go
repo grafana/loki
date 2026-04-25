@@ -307,9 +307,11 @@ func s3ClientConfigFunc(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (
 					endpoint = fmt.Sprintf("%s://%s", awsURL.Scheme, awsURL.Host)
 				case "s3":
 					// s3://<key>:<secret>@s3.us-east-0.amazonaws.com/<bucketname>
-					// In case of an s3:// URL, we want to be backwards compatible and always assume insecure http,
-					// even though it would probably more correct to check cfg.Insecure.
-					endpoint = fmt.Sprintf("http://%s", awsURL.Host)
+					if cfg.Insecure {
+						endpoint = fmt.Sprintf("http://%s", awsURL.Host)
+					} else {
+						endpoint = fmt.Sprintf("https://%s", awsURL.Host)
+					}
 				}
 				opts.BaseEndpoint = aws.String(endpoint)
 			} else {
