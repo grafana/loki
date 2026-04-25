@@ -305,12 +305,7 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 	// Call interceptor with all records if configured
 	if c.recordsInterceptor != nil {
 		if err := c.recordsInterceptor(ctx, records); err != nil {
-			// If interceptor fails, return error for all records
-			results := make(kgo.ProduceResults, len(records))
-			for i, record := range records {
-				results[i] = kgo.ProduceResult{Record: record, Err: err}
-			}
-			return results
+			return produceResultsForErr(records, err)
 		}
 	}
 
@@ -365,11 +360,24 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 	// Wait for a response or until the context has done.
 	select {
 	case <-ctx.Done():
-		return kgo.ProduceResults{{Err: context.Cause(ctx)}}
+		return produceResultsForErr(records, context.Cause(ctx))
 	case <-done:
 		// Once we're done, it's guaranteed that no more results will be appended, so we can safely return it.
 		return res
 	}
+}
+
+// produceResultsForErr returns a [kgo.ProduceResults] that contains all records and
+// the error.
+func produceResultsForErr(records []*kgo.Record, err error) kgo.ProduceResults {
+	results := make(kgo.ProduceResults, 0, len(records))
+	for _, record := range records {
+		results = append(results, kgo.ProduceResult{
+			Record: record,
+			Err:    err,
+		})
+	}
+	return results
 }
 
 func produceErrReason(err error) string {
