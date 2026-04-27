@@ -236,6 +236,7 @@ func NewInMemory(cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scra
 		flushCommitter,
 		cfg.IdleFlushTimeout,
 		cfg.MaxBuilderAge,
+		IngestModeInMemory,
 		logger,
 		wrapped,
 	)
@@ -383,6 +384,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		flushCommitter,
 		cfg.IdleFlushTimeout,
 		cfg.MaxBuilderAge,
+		IngestModeKafka,
 		logger,
 		wrapped,
 	)
