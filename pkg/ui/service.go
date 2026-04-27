@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io/fs"
 	"net"
 	"net/http"
 	"strings"
@@ -31,7 +30,6 @@ type Service struct {
 	ring          *ring.Ring
 	localNodeName string
 	router        *mux.Router
-	uiFS          fs.FS
 
 	client    *http.Client
 	localAddr string
