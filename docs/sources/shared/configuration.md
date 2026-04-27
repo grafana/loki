@@ -1187,8 +1187,8 @@ kafka_config:
     # CLI flag: -kafka.writer.client-id
     [client_id: <string> | default = ""]
 
-  # The SASL username for authentication to Kafka using the PLAIN mechanism.
-  # Both username and password must be set.
+  # The SASL username for authentication to Kafka. Both username and password
+  # must be set.
   # CLI flag: -kafka.sasl-username
   [sasl_username: <string> | default = ""]
 
