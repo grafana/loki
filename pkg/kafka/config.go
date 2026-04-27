@@ -105,7 +105,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.DialTimeout, prefix+".dial-timeout", 2*time.Second, "The maximum time allowed to open a connection to a Kafka broker.")
 	f.DurationVar(&cfg.WriteTimeout, prefix+".write-timeout", 10*time.Second, "How long to wait for an incoming write request to be successfully committed to the Kafka backend.")
 
-	f.StringVar(&cfg.SASLUsername, prefix+".sasl-username", "", "The SASL username for authentication to Kafka using the PLAIN mechanism. Both username and password must be set.")
+	f.StringVar(&cfg.SASLUsername, prefix+".sasl-username", "", "The SASL username for authentication to Kafka. Both username and password must be set.")
 	f.Var(&cfg.SASLPassword, prefix+".sasl-password", "The SASL password for authentication to Kafka. Both username and password must be set.")
 	f.StringVar(&cfg.SASLMechanism, prefix+".sasl-mechanism", SASLMechanismPlain, `The SASL mechanism for authentication to Kafka. Supported values: "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512".`)
 
