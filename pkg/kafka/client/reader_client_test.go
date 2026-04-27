@@ -25,41 +25,35 @@ func TestNewReaderClient(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "valid config",
+			name: "PLAIN: valid credentials",
 			config: kafka.Config{
-				Topic:        "abcd",
-				SASLUsername: "user",
-				SASLPassword: flagext.SecretWithValue("password"),
-				ReaderConfig: kafka.ClientConfig{
-					Address:  addr,
-					ClientID: "reader",
-				},
+				Topic:         "abcd",
+				SASLUsername:  "user",
+				SASLPassword:  flagext.SecretWithValue("password"),
+				SASLMechanism: kafka.SASLMechanismPlain,
+				ReaderConfig:  kafka.ClientConfig{Address: addr, ClientID: "reader"},
 			},
 			wantErr: false,
 		},
 		{
-			name: "wrong password",
+			name: "PLAIN: wrong password",
 			config: kafka.Config{
-				ReaderConfig: kafka.ClientConfig{
-					Address:  addr,
-					ClientID: "reader",
-				},
-				Topic:        "abcd",
-				SASLUsername: "user",
-				SASLPassword: flagext.SecretWithValue("wrong wrong wrong"),
+				Topic:         "abcd",
+				SASLUsername:  "user",
+				SASLPassword:  flagext.SecretWithValue("wrong wrong wrong"),
+				SASLMechanism: kafka.SASLMechanismPlain,
+				ReaderConfig:  kafka.ClientConfig{Address: addr, ClientID: "reader"},
 			},
 			wantErr: true,
 		},
 		{
-			name: "wrong username",
+			name: "PLAIN: wrong username",
 			config: kafka.Config{
-				ReaderConfig: kafka.ClientConfig{
-					Address:  addr,
-					ClientID: "reader",
-				},
-				Topic:        "abcd",
-				SASLUsername: "wrong wrong wrong",
-				SASLPassword: flagext.SecretWithValue("password"),
+				Topic:         "abcd",
+				SASLUsername:  "wrong wrong wrong",
+				SASLPassword:  flagext.SecretWithValue("password"),
+				SASLMechanism: kafka.SASLMechanismPlain,
+				ReaderConfig:  kafka.ClientConfig{Address: addr, ClientID: "reader"},
 			},
 			wantErr: true,
 		},
@@ -68,6 +62,57 @@ func TestNewReaderClient(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client, err := NewReaderClient("test-client", tt.config, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
+
+			err = client.Ping(context.Background())
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestNewReaderClientSCRAMAuthentication(t *testing.T) {
+	tests := []struct {
+		name           string
+		mechanism      string
+		kfakeMechanism string
+		wantErr        bool
+	}{
+		{
+			name:           "SCRAM-SHA-256: valid credentials",
+			mechanism:      kafka.SASLMechanismScramSHA256,
+			kfakeMechanism: "SCRAM-SHA-256",
+			wantErr:        false,
+		},
+		{
+			name:           "SCRAM-SHA-512: valid credentials",
+			mechanism:      kafka.SASLMechanismScramSHA512,
+			kfakeMechanism: "SCRAM-SHA-512",
+			wantErr:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, addr := testkafka.CreateClusterWithoutCustomConsumerGroupsSupport(
+				t, 1, "test",
+				kfake.EnableSASL(),
+				kfake.Superuser(tt.kfakeMechanism, "user", "password"),
+			)
+
+			cfg := kafka.Config{
+				Topic:         "abcd",
+				SASLUsername:  "user",
+				SASLPassword:  flagext.SecretWithValue("password"),
+				SASLMechanism: tt.mechanism,
+				ReaderConfig:  kafka.ClientConfig{Address: addr, ClientID: "reader"},
+			}
+
+			client, err := NewReaderClient("test-client", cfg, log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(t, err)
+			t.Cleanup(client.Close)
 
 			err = client.Ping(context.Background())
 			if tt.wantErr {
