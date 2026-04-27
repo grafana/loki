@@ -143,8 +143,8 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		Ingester: ResourceRequirements{
 			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("1500m"),
-				corev1.ResourceMemory: resource.MustParse("6Gi"),
+				corev1.ResourceCPU:    resource.MustParse("1"),
+				corev1.ResourceMemory: resource.MustParse("5.25Gi"),
 			},
 		},
 		Distributor: corev1.ResourceRequirements{
@@ -200,8 +200,8 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		Ingester: ResourceRequirements{
 			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("3"),
-				corev1.ResourceMemory: resource.MustParse("14Gi"),
+				corev1.ResourceCPU:    resource.MustParse("2500m"),
+				corev1.ResourceMemory: resource.MustParse("13Gi"),
 			},
 		},
 		Distributor: corev1.ResourceRequirements{
