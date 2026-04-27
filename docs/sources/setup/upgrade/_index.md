@@ -74,6 +74,23 @@ The following changes affect rolling back to Loki 3.x:
 
 A `logfmt` parser with label extraction expressions, for example `| logfmt foo, bar`, sets an empty label for a name that the log line does not contain. Loki used to set the empty label even when an earlier stage extracting or setting labels, for example `| json`, had already extracted a value with that name, so the empty value replaced the extracted value. Loki now keeps the value of the earlier stage.
 
+### New Kafka configuration parameter: `sasl_mechanism`
+
+The Kafka configuration block has a new optional parameter `sasl_mechanism` to control which SASL authentication mechanism is used when connecting to Kafka brokers.
+
+Supported values: `PLAIN` (default), `SCRAM-SHA-256`, `SCRAM-SHA-512`.
+
+The default value is `PLAIN`, preserving backward compatibility with existing deployments. No action is required unless your broker requires SCRAM-SHA-256 or SCRAM-SHA-512.
+
+```yaml
+kafka:
+  sasl_username: my-user
+  sasl_password: ${KAFKA_PASSWORD}
+  sasl_mechanism: SCRAM-SHA-256  # or SCRAM-SHA-512; defaults to PLAIN
+```
+
+Equivalently, use the CLI flag `-kafka.sasl-mechanism`.
+
 ### `max_query_bytes_read` counts the data that split metric queries read again
 
 The query-frontend splits a metric range query by time. Each split of a range aggregation, for example `count_over_time({app="foo"}[1h])`, also reads the range vector interval before it, so the splits read some data more than once. The `max_query_bytes_read` estimate now includes this data, also for the full query range that a client sends in the `X-Loki-Query-Limits-Context` header. Metric queries with a long range vector, for example `[1h]` or `[6h]`, can now exceed the limit when they did not before.
