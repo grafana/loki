@@ -113,7 +113,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.APIVersionsMaxVersion, prefix+".api-versions-max-version", DefaultAPIVersionsMaxVersion, apiVersionsMaxVersionUsage)
 	f.IntVar(&cfg.MaxDecompressBatchBytes, prefix+".max-decompress-batch-bytes", DefaultMaxDecompressBatchBytes, maxDecompressBatchBytesUsage)
 
-	f.StringVar(&cfg.SASLUsername, prefix+".sasl-username", "", "The SASL username for authentication to Kafka using the PLAIN mechanism. Both username and password must be set.")
+	f.StringVar(&cfg.SASLUsername, prefix+".sasl-username", "", "The SASL username for authentication to Kafka. Both username and password must be set.")
 	f.Var(&cfg.SASLPassword, prefix+".sasl-password", "The SASL password for authentication to Kafka. Both username and password must be set.")
 	f.StringVar(&cfg.SASLMechanism, prefix+".sasl-mechanism", SASLMechanismPlain, `The SASL mechanism for authentication to Kafka. Supported values: "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512".`)
 
