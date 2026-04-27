@@ -55,6 +55,7 @@ const (
 
 	rulerContainerName = "loki-ruler"
 
+	// podNameEnvVarName is the environment variable used in loki-config.yaml to expand into the pod name
 	podNameEnvVarName = "POD_NAME"
 
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
