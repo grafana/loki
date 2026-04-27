@@ -2902,6 +2902,43 @@ Only one of the Simple Authentication and Security Layer (SASL) username or pass
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
 
+### Error: Unsupported SASL mechanism
+
+**Error message:**
+
+```text
+UNSUPPORTED_SASL_MECHANISM: The broker does not support the requested SASL mechanism.
+```
+
+**Cause:**
+
+Loki attempted to authenticate with a SASL mechanism that the Kafka broker does not support.
+This typically occurs when the broker is configured with only SCRAM-SHA-256 or SCRAM-SHA-512
+(common on managed Kafka services such as AWS MSK or Confluent Cloud) while Loki is configured
+to use the `PLAIN` mechanism (the default).
+
+**Resolution:**
+
+Set the `sasl_mechanism` configuration parameter to match the mechanism required by the broker:
+
+```yaml
+kafka:
+  sasl_username: my-user
+  sasl_password: ${KAFKA_PASSWORD}
+  sasl_mechanism: SCRAM-SHA-256  # or SCRAM-SHA-512, or PLAIN (default)
+```
+
+Equivalently, use the CLI flag `-kafka.sasl-mechanism`.
+
+Supported values: `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512`.
+
+**Properties:**
+
+- Enforced by: Kafka broker during SASL handshake
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
 ### Error: Kafka enabled in distributor but not in ingester
 
 **Error message:**

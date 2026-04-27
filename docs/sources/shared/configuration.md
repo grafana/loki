@@ -1192,10 +1192,15 @@ kafka_config:
   # CLI flag: -kafka.sasl-username
   [sasl_username: <string> | default = ""]
 
-  # The SASL password for authentication to Kafka using the PLAIN mechanism.
-  # Both username and password must be set.
+  # The SASL password for authentication to Kafka. Both username and password
+  # must be set.
   # CLI flag: -kafka.sasl-password
   [sasl_password: <string> | default = ""]
+
+  # The SASL mechanism for authentication to Kafka. Supported values: "PLAIN",
+  # "SCRAM-SHA-256", "SCRAM-SHA-512".
+  # CLI flag: -kafka.sasl-mechanism
+  [sasl_mechanism: <string> | default = "PLAIN"]
 
   # The consumer group used by the consumer to track the last consumed offset.
   # The consumer group must be different for each ingester zone.When empty, Loki
