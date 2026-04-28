@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -182,6 +183,39 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			require.Equal(t, err.Error(), test.expectedErr.Error())
 		})
 	}
+}
+
+func TestEngine_BlockedQueries_ConcurrentAccess(t *testing.T) {
+	shared := []*validation.BlockedQuery{
+		{
+			Pattern: "", // empty → triggers the in-place mutation
+			Types:   []string{QueryTypeMetric},
+		},
+	}
+
+	limits := &fakeLimits{
+		maxSeries:      10,
+		blockedQueries: shared,
+	}
+	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), limits, log.NewNopLogger())
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	queryStr := `topk(1,rate(({app=~"foo|bar"})[1m]))`
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			params, err := NewLiteralParams(queryStr, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			require.NoError(t, err)
+			q := eng.Query(params)
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			_, _ = q.Exec(ctx)
+		}()
+	}
+
+	wg.Wait()
 }
 
 func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
