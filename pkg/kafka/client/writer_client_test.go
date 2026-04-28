@@ -128,6 +128,8 @@ func TestNewWriterClientSCRAMAuthentication(t *testing.T) {
 		})
 	}
 
+}
+
 func TestProducer(t *testing.T) {
 	t.Run("on context canceled", func(t *testing.T) {
 		_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
