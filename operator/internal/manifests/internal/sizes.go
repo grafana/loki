@@ -200,8 +200,8 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		Ingester: ResourceRequirements{
 			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("2500m"),
-				corev1.ResourceMemory: resource.MustParse("13Gi"),
+				corev1.ResourceCPU:    resource.MustParse("2.5"),
+				corev1.ResourceMemory: resource.MustParse("13.25Gi"),
 			},
 		},
 		Distributor: corev1.ResourceRequirements{
