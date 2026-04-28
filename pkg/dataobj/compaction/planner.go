@@ -1,12 +1,8 @@
 package planner
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,8 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	compactionpb "github.com/grafana/loki/v3/pkg/dataobj/compaction/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -36,9 +30,6 @@ const (
 	// minFillPercent is the minimum fill percentage for an output object.
 	// Objects below this threshold are candidates for merging during optimization.
 	minFillPercent int64 = 70
-
-	// compactionWindowDuration is the duration of each compaction window.
-	compactionWindowDuration = 2 * time.Hour
 
 	// maxParallelIndexReads is the maximum number of indexes to read in parallel.
 	maxParallelIndexReads = 8
@@ -164,157 +155,6 @@ type IndexStreamResult struct {
 	Streams               []StreamInfo
 	LeftoverBeforeStreams []LeftoverStreamInfo
 	LeftoverAfterStreams  []LeftoverStreamInfo
-}
-
-func (s *Planner) buildPlan(ctx context.Context) error {
-	now := time.Now()
-	windowStart := now.Truncate(compactionWindowDuration).Add(-compactionWindowDuration)
-	windowEnd := windowStart.Add(compactionWindowDuration)
-
-	level.Debug(util_log.Logger).Log("msg", "Building compaction plan",
-		"compaction_window_start", windowStart, "compaction_window_end", windowEnd)
-
-	// Step 1: Find all indexes that overlap with the compaction window
-	indexesToCompact, err := s.findIndexesToCompact(ctx, windowStart, windowEnd)
-	if err != nil {
-		return err
-	}
-	if len(indexesToCompact) == 0 {
-		level.Debug(util_log.Logger).Log("msg", "no indexes to compact")
-		return nil
-	}
-
-	// Step 2: Check if enough time has passed since the oldest object was created
-	ready, err := s.checkCompactionReadiness(ctx, indexesToCompact, now)
-	if err != nil {
-		return err
-	}
-	if !ready {
-		level.Info(util_log.Logger).Log("msg", "not enough time has passed to compact",
-			"compaction_window_start", windowStart, "compaction_window_end", windowEnd)
-		return nil
-	}
-
-	// Step 3: Build plans for each tenant and aggregate leftover streams
-	tenantPlans, leftoverPlan, err := s.buildPlanFromIndexes(ctx, indexesToCompact, windowStart, windowEnd)
-	if err != nil {
-		return err
-	}
-
-	// Log tenant plan results
-	for tenant, plan := range tenantPlans {
-		level.Info(util_log.Logger).Log("msg", "Compaction plan built for tenant", "tenant", tenant,
-			"output_objects", countObjects(plan.OutputObjects), "output_objects_size", plan.TotalUncompressedSize)
-	}
-
-	if leftoverPlan != nil {
-		level.Info(util_log.Logger).Log("msg", "compaction plan for leftover data built",
-			"before_objects", len(leftoverPlan.BeforeWindow), "before_objects_size", leftoverPlan.BeforeWindowSize,
-			"after_objects", len(leftoverPlan.AfterWindow), "after_objects_size", leftoverPlan.AfterWindowSize)
-	}
-
-	return nil
-}
-
-// findIndexesToCompact scans ToC files and returns unique indexes that overlap with the compaction window.
-func (s *Planner) findIndexesToCompact(ctx context.Context, windowStart, windowEnd time.Time) ([]IndexInfo, error) {
-	tocs, err := s.listToCs(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list ToCs: %w", err)
-	}
-
-	// Sort ToCs in descending order (newest first)
-	sort.Slice(tocs, func(i, j int) bool {
-		return tocs[i] > tocs[j]
-	})
-
-	type tenantIndex struct {
-		tenant, path string
-	}
-	seen := make(map[tenantIndex]struct{}) // tenant/path -> seen
-	var indexes []IndexInfo
-
-	for _, toc := range tocs {
-		level.Info(util_log.Logger).Log("msg", "Processing ToC", "toc", toc)
-
-		obj, err := s.readToCObject(ctx, toc)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read ToC %s: %w", toc, err)
-		}
-
-		for result := range indexpointers.Iter(ctx, obj) {
-			ptr, err := result.Value()
-			if err != nil {
-				return nil, fmt.Errorf("failed to iterate ToC %s: %w", toc, err)
-			}
-
-			key := tenantIndex{
-				tenant: ptr.Tenant,
-				path:   ptr.Path,
-			}
-			if _, ok := seen[key]; ok {
-				continue
-			}
-
-			minTime := ptr.StartTs.UTC()
-			maxTime := ptr.EndTs.UTC()
-
-			// Skip indexes outside the compaction window
-			if maxTime.Before(windowStart) || minTime.After(windowEnd) {
-				continue
-			}
-
-			indexes = append(indexes, IndexInfo{
-				Path:   ptr.Path,
-				Tenant: ptr.Tenant,
-			})
-			seen[key] = struct{}{}
-		}
-	}
-
-	return indexes, nil
-}
-
-// readToCObject reads and parses a ToC object from storage.
-func (s *Planner) readToCObject(ctx context.Context, tocPath string) (*dataobj.Object, error) {
-	objReader, err := s.bucket.Get(ctx, tocPath)
-	if err != nil {
-		return nil, err
-	}
-	defer objReader.Close()
-
-	objectBytes, err := io.ReadAll(objReader)
-	if err != nil {
-		return nil, err
-	}
-
-	return dataobj.FromReaderAt(bytes.NewReader(objectBytes), int64(len(objectBytes)))
-}
-
-// checkCompactionReadiness verifies that enough time has passed since the oldest index was created.
-// Returns true if compaction can proceed.
-func (s *Planner) checkCompactionReadiness(ctx context.Context, indexes []IndexInfo, now time.Time) (bool, error) {
-	requiredOldestTimestamp := now.Add(-compactionWindowDuration)
-	oldestTimestamp := now
-
-	for _, index := range indexes {
-		attrs, err := s.bucket.Attributes(ctx, index.Path)
-		if err != nil {
-			return false, fmt.Errorf("failed to get attributes for index %s: %w", index.Path, err)
-		}
-		lastModified := attrs.LastModified.UTC()
-
-		if oldestTimestamp.After(lastModified) {
-			oldestTimestamp = lastModified
-		}
-
-		// Early exit: we found an old enough object
-		if oldestTimestamp.Before(requiredOldestTimestamp) {
-			return true, nil
-		}
-	}
-
-	return oldestTimestamp.Before(requiredOldestTimestamp), nil
 }
 
 // buildPlanFromIndexes builds compaction plans for each tenant and aggregates leftover streams.
@@ -643,33 +483,6 @@ func (s *Planner) planLeftovers(beforeStreams, afterStreams []*LeftoverStreamGro
 		AfterWindow:      afterObjects,
 		AfterWindowSize:  afterSize,
 	}
-}
-
-// listToCs lists all ToC files in storage.
-func (s *Planner) listToCs(ctx context.Context) ([]string, error) {
-	var tocs []string
-
-	err := s.bucket.Iter(ctx, metastore.TocPrefix, func(name string) error {
-		if !strings.HasSuffix(name, ".toc") {
-			return nil
-		}
-		tocs = append(tocs, name)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return tocs, nil
-}
-
-// countObjects returns the total number of output objects that will be created.
-func countObjects(outputObjects []*compactionpb.SingleTenantObjectSource) int32 {
-	var total int32
-	for _, obj := range outputObjects {
-		total += obj.NumOutputObjects
-	}
-	return total
 }
 
 // prorateSize calculates a prorated size based on the ratio of a partial duration
