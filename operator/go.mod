@@ -223,5 +223,3 @@ replace github.com/grafana/loki/operator/api/loki => ./api/loki
 // merged upstream yet.
 // See: https://github.com/grafana/loki/blob/main/go.mod#L477-L479
 replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20251126142931-6f9f62ab6f86
-
-replace github.com/grafana/loki/pkg/push => ../pkg/push
