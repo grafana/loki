@@ -83,7 +83,7 @@ func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logge
 		client:         client,
 		overrides:      overrides,
 		logger:         logger,
-		insightsLogger: log.With(util_log.Logger, "msg", "request timings", "insight", "true", "source", "loki_ruler", "rule_name"),
+		insightsLogger: log.With(util_log.Logger, "msg", "request timings", "insight", "true", "source", "loki_ruler"),
 		metrics:        newMetrics(registerer),
 	}, nil
 }
@@ -288,7 +288,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 	if err != nil {
 		return nil, err
 	}
-	level.Info(r.insightsLogger).Log(ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(query))
+	level.Info(r.insightsLogger).Log("rule_name", ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(query))
 	return dr, err
 }
 
