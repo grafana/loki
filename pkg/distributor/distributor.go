@@ -324,7 +324,7 @@ func New(
 				resolver,
 				ingestLimits,
 				overrides,
-				kafkaClient,
+				kafkaWriter,
 				logger,
 				registerer,
 			)
