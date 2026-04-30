@@ -31,7 +31,6 @@ import (
 const (
 	maxCasRetries              = 10          // max retries in CAS operation
 	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
-	notifyMsgQueueSize         = 1024        // size of buffered channels to handle memberlist messages
 	watchPrefixBufferSize      = 128         // size of buffered channel for the WatchPrefix function
 )
 
@@ -135,17 +134,18 @@ func (c *Client) awaitKVRunningOrStopping(ctx context.Context) error {
 // KVConfig is a config for memberlist.KV
 type KVConfig struct {
 	// Memberlist options.
-	NodeName            string        `yaml:"node_name" category:"advanced"`
-	RandomizeNodeName   bool          `yaml:"randomize_node_name" category:"advanced"`
-	StreamTimeout       time.Duration `yaml:"stream_timeout" category:"advanced"`
-	RetransmitMult      int           `yaml:"retransmit_factor" category:"advanced"`
-	PushPullInterval    time.Duration `yaml:"pull_push_interval" category:"advanced"`
-	GossipInterval      time.Duration `yaml:"gossip_interval" category:"advanced"`
-	GossipNodes         int           `yaml:"gossip_nodes" category:"advanced"`
-	GossipToTheDeadTime time.Duration `yaml:"gossip_to_dead_nodes_time" category:"advanced"`
-	DeadNodeReclaimTime time.Duration `yaml:"dead_node_reclaim_time" category:"advanced"`
-	EnableCompression   bool          `yaml:"compression_enabled" category:"advanced"`
-	NotifyInterval      time.Duration `yaml:"notify_interval" category:"advanced"`
+	NodeName                  string        `yaml:"node_name" category:"advanced"`
+	RandomizeNodeName         bool          `yaml:"randomize_node_name" category:"advanced"`
+	StreamTimeout             time.Duration `yaml:"stream_timeout" category:"advanced"`
+	RetransmitMult            int           `yaml:"retransmit_factor" category:"advanced"`
+	PushPullInterval          time.Duration `yaml:"pull_push_interval" category:"advanced"`
+	GossipInterval            time.Duration `yaml:"gossip_interval" category:"advanced"`
+	GossipNodes               int           `yaml:"gossip_nodes" category:"advanced"`
+	GossipToTheDeadTime       time.Duration `yaml:"gossip_to_dead_nodes_time" category:"advanced"`
+	DeadNodeReclaimTime       time.Duration `yaml:"dead_node_reclaim_time" category:"advanced"`
+	EnableCompression         bool          `yaml:"compression_enabled" category:"advanced"`
+	NotifyInterval            time.Duration `yaml:"notify_interval" category:"advanced"`
+	ReceivedMessagesQueueSize int           `yaml:"received_messages_queue_size" category:"advanced"`
 
 	// ip:port to advertise other cluster members. Used for NAT traversal
 	AdvertiseAddr string `yaml:"advertise_addr"`
@@ -196,6 +196,9 @@ type KVConfig struct {
 	// This useful to override it in tests.
 	discoverMembersBackoff backoff.Config `yaml:"-"`
 
+	// probeInterval overrides the default probe interval when non-zero. This is useful for testing.
+	probeInterval time.Duration `yaml:"-"`
+
 	// Hooks used for testing.
 	beforeJoinMembersOnStartupHook func(_ context.Context)
 }
@@ -229,6 +232,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.IntVar(&cfg.MessageHistoryBufferBytes, prefix+"memberlist.message-history-buffer-bytes", 0, "How much space to use for keeping received and sent messages in memory for troubleshooting (two buffers). 0 to disable.")
 	f.BoolVar(&cfg.EnableCompression, prefix+"memberlist.compression-enabled", mlDefaults.EnableCompression, "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.")
 	f.DurationVar(&cfg.NotifyInterval, prefix+"memberlist.notify-interval", 0, "How frequently to notify watchers when a key changes. Can reduce CPU activity in large memberlist deployments. 0 to notify without delay.")
+	f.IntVar(&cfg.ReceivedMessagesQueueSize, prefix+"memberlist.received-messages-queue-size", mlDefaults.HandoffQueueDepth, "Size of the internal queue for messages received from other nodes. Increasing this value may help to avoid dropping messages when the node is processing a large number of messages from other nodes.")
 	f.StringVar(&cfg.AdvertiseAddr, prefix+"memberlist.advertise-addr", mlDefaults.AdvertiseAddr, "Gossip address to advertise to other members in the cluster. Used for NAT traversal.")
 	f.IntVar(&cfg.AdvertisePort, prefix+"memberlist.advertise-port", mlDefaults.AdvertisePort, "Gossip port to advertise to other members in the cluster. Used for NAT traversal.")
 	f.StringVar(&cfg.ClusterLabel, prefix+"memberlist.cluster-label", mlDefaults.Label, "The cluster label is an optional string to include in outbound packets and gossip streams. Other members in the memberlist cluster will discard any message whose label doesn't match the configured one, unless the 'cluster-label-verification-disabled' configuration option is set to true.")
@@ -253,6 +257,9 @@ func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet) {
 
 // Validate validates the KV configuration.
 func (cfg *KVConfig) Validate() error {
+	if cfg.ReceivedMessagesQueueSize <= 0 {
+		return fmt.Errorf("memberlist received messages queue size must be greater than 0")
+	}
 	return cfg.ZoneAwareRouting.Validate()
 }
 
@@ -486,6 +493,7 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	mlCfg.GossipToTheDeadTime = m.cfg.GossipToTheDeadTime
 	mlCfg.DeadNodeReclaimTime = m.cfg.DeadNodeReclaimTime
 	mlCfg.EnableCompression = m.cfg.EnableCompression
+	mlCfg.HandoffQueueDepth = m.cfg.ReceivedMessagesQueueSize
 
 	mlCfg.AdvertiseAddr = m.cfg.AdvertiseAddr
 	mlCfg.AdvertisePort = m.cfg.AdvertisePort
@@ -510,8 +518,13 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	// For our use cases, we don't need a very fast detection of dead nodes. Since we use a TCP transport
 	// and we open a new TCP connection for each packet, we prefer to reduce the probe frequency and increase
 	// the timeout compared to defaults.
-	mlCfg.ProbeInterval = 5 * time.Second // Probe a random node every this interval. This setting is also the total timeout for the direct + indirect probes.
-	mlCfg.ProbeTimeout = 2 * time.Second  // Timeout for the direct probe.
+	if m.cfg.probeInterval > 0 {
+		mlCfg.ProbeInterval = m.cfg.probeInterval
+		mlCfg.ProbeTimeout = m.cfg.probeInterval / 2
+	} else {
+		mlCfg.ProbeInterval = 5 * time.Second // Probe a random node every this interval. This setting is also the total timeout for the direct + indirect probes.
+		mlCfg.ProbeTimeout = 2 * time.Second  // Timeout for the direct probe.
+	}
 
 	// Since we use a custom transport based on TCP, having TCP-based fallbacks doesn't give us any benefit.
 	// On the contrary, if we keep TCP pings enabled, each node will effectively run 2x pings against a dead
@@ -1461,7 +1474,7 @@ func (m *KV) getKeyWorkerChannel(key string) chan<- valueUpdate {
 	ch := m.workersChannels[key]
 	if ch == nil {
 		// spawn a key associated worker goroutine to process updates in background
-		ch = make(chan valueUpdate, notifyMsgQueueSize)
+		ch = make(chan valueUpdate, m.cfg.ReceivedMessagesQueueSize)
 		go m.processValueUpdate(ch, key)
 
 		m.workersChannels[key] = ch
