@@ -935,12 +935,22 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	select {
 	case err := <-tracker.err:
-		return nil, err
+		return nil, trackerErrToStatusErr(err)
 	case <-tracker.done:
 		return &logproto.PushResponse{}, validationErr
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// TODO(grobinson): Figure out how to clean this up, this is a quick fix to ensure
+// we return the correct status codes for various errors. All status codes returned
+// should be retryable in the OTEL spec.
+func trackerErrToStatusErr(err error) error {
+	if errors.Is(err, kgo.ErrMaxBuffered) {
+		return httpgrpc.Error(503, "service unavailable")
+	}
+	return err
 }
 
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.
