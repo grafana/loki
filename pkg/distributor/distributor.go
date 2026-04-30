@@ -948,7 +948,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 // should be retryable in the OTEL spec.
 func trackerErrToStatusErr(err error) error {
 	if errors.Is(err, kgo.ErrMaxBuffered) {
-		return httpgrpc.Error(503, "service unavailable")
+		return httpgrpc.Error(http.StatusServiceUnavailable, "service unavailable")
 	}
 	return err
 }
