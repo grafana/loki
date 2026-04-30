@@ -796,7 +796,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjConsumerPartitionRing, t.initDataObjConsumerPartitionRing)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
-	mm.RegisterModule(ScratchStore, t.initScratchStore)
+	mm.RegisterModule(ScratchStore, t.initScratchStore, modules.UserInvisibleModule)
+	mm.RegisterModule(InMemoryKafka, t.initKafka, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -848,6 +849,7 @@ func (t *Loki) setupModuleManager() error {
 		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UI},
 		DataObjIndexBuilder:          {ScratchStore, Server, UIRing},
 		ScratchStore:                 {},
+		InMemoryKafka:                {},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},
@@ -858,6 +860,16 @@ func (t *Loki) setupModuleManager() error {
 
 	if t.Cfg.IngestLimits.Enabled {
 		deps[All] = append(deps[All], IngestLimits, IngestLimitsFrontend)
+	}
+
+	if t.Cfg.DataObj.Enabled {
+		if t.Cfg.isTarget(All) {
+			deps[DataObjConsumer] = append(deps[DataObjConsumer], InMemoryKafka)
+			deps[DataObjConsumerRing] = append(deps[DataObjConsumerRing], InMemoryKafka)
+			deps[DataObjConsumerPartitionRing] = append(deps[DataObjConsumerPartitionRing], InMemoryKafka)
+			deps[DataObjIndexBuilder] = append(deps[DataObjIndexBuilder], InMemoryKafka)
+		}
+		deps[All] = append(deps[All], DataObjConsumer, DataObjIndexBuilder)
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

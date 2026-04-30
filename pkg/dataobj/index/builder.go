@@ -121,8 +121,24 @@ func NewIndexBuilder(
 	scratchStore scratch.Store,
 	reg prometheus.Registerer,
 ) (*Builder, error) {
+	// builderReg is used for index-builder–specific metrics (loki_index_builder_*,
+	// loki_indexobj_*, loki_index_calculator_*). The "topic" label gives operators
+	// an easy way to identify which Kafka topic this builder is consuming.
 	builderReg := prometheus.WrapRegistererWith(prometheus.Labels{
 		"topic":     kafkaCfg.Topic,
+		"component": "index_builder",
+	}, reg)
+
+	// sharedBuilderReg is used for metrics whose names are shared with the
+	// dataobj consumer (loki_dataobj_encoding_*, loki_dataobj_logs_*, …).
+	// Those metrics are registered via indexobj.Builder.RegisterMetrics and
+	// include columnar.Metrics which already adds a "section" const-label.
+	// The consumer wraps its registerer with {partition, component}, so we
+	// must use the same label *names* here (only the values differ) to keep
+	// the Prometheus dimHash identical and avoid a registration conflict when
+	// both components register to the same prometheus.Registerer.
+	sharedBuilderReg := prometheus.WrapRegistererWith(prometheus.Labels{
+		"partition": "all", // index builder handles all partitions; use sentinel
 		"component": "index_builder",
 	}, reg)
 
@@ -145,7 +161,7 @@ func NewIndexBuilder(
 
 	indexStorageBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
 
-	if err := builder.RegisterMetrics(builderReg); err != nil {
+	if err := builder.RegisterMetrics(sharedBuilderReg); err != nil {
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 

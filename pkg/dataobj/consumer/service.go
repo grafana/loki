@@ -153,6 +153,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	s.flusher = newFlusher(sorter, uploader, logger, reg)
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
 		"partition": strconv.Itoa(int(partitionID)),
+		"component": "dataobj-consumer",
 	}, reg)
 	builder, err := builderFactory.NewBuilder(wrapped)
 	if err != nil {

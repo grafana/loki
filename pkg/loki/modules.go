@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
+	"github.com/chaudum/go-kaff/broker"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/dns"
@@ -36,8 +37,6 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
@@ -51,6 +50,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -155,6 +155,7 @@ const (
 	DataObjConsumerPartitionRing = "dataobj-consumer-partition-ring"
 	DataObjIndexBuilder          = "dataobj-index-builder"
 	ScratchStore                 = "scratch-store"
+	InMemoryKafka                = "kafka"
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
 	All                          = "all"
@@ -2451,6 +2452,39 @@ func (t *Loki) initScratchStore() (services.Service, error) {
 
 	t.scratchStore = scratch.ObserveStore(metrics, store)
 	return services.NewIdleService(nil, nil), nil
+}
+
+func (t *Loki) initKafka() (services.Service, error) {
+	b, err := broker.New(broker.Config{
+		ListenAddr:           "127.0.0.1:9092",
+		AutoCreateTopics:     true,
+		DefaultNumPartitions: 4,
+		Logger:               nil,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := b.Start(); err != nil {
+		return nil, err
+	}
+
+	return services.NewBasicService(
+		func(_ context.Context) error {
+			fmt.Println("====================== STARTING ===")
+			return nil
+		},
+		func(ctx context.Context) error {
+			fmt.Println("====================== RUNNING ===")
+			<-ctx.Done()
+			return nil
+		},
+		func(_ error) error {
+			fmt.Println("====================== STOPPING ===")
+			b.Stop()
+			return nil
+		},
+	), nil
 }
 
 func (t *Loki) getDataObjBucket(clientName string) (objstore.Bucket, error) {

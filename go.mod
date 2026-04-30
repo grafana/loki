@@ -131,7 +131,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.3
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
 	github.com/tjhop/slog-gokit v0.2.0
-	github.com/twmb/franz-go v1.20.7
+	github.com/twmb/franz-go v1.21.0
 	github.com/twmb/franz-go/pkg/kadm v1.17.2
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20250603004440-37eecbb8927f
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1
@@ -178,6 +178,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
+	github.com/chaudum/go-kaff v0.0.0-00010101000000-000000000000 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/containerd/containerd/v2 v2.0.7 // indirect
@@ -468,3 +469,5 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.4.0
 
 replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250728171719-b5d3b766d1b0
+
+replace github.com/chaudum/go-kaff => ../../chaudum/go-kaff

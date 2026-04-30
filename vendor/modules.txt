@@ -539,6 +539,12 @@ github.com/charmbracelet/x/termios
 # github.com/charmbracelet/x/windows v0.2.2
 ## explicit; go 1.23.0
 github.com/charmbracelet/x/windows
+# github.com/chaudum/go-kaff v0.0.0-00010101000000-000000000000 => ../../chaudum/go-kaff
+## explicit; go 1.25.0
+github.com/chaudum/go-kaff/broker
+github.com/chaudum/go-kaff/codec
+github.com/chaudum/go-kaff/handler
+github.com/chaudum/go-kaff/store
 # github.com/clipperhouse/displaywidth v0.11.0
 ## explicit; go 1.18
 github.com/clipperhouse/displaywidth
@@ -1713,12 +1719,13 @@ github.com/tklauser/go-sysconf
 # github.com/tklauser/numcpus v0.11.0
 ## explicit; go 1.24.0
 github.com/tklauser/numcpus
-# github.com/twmb/franz-go v1.20.7
-## explicit; go 1.24.0
+# github.com/twmb/franz-go v1.21.0
+## explicit; go 1.25.0
 github.com/twmb/franz-go/pkg/kbin
 github.com/twmb/franz-go/pkg/kerr
 github.com/twmb/franz-go/pkg/kgo
 github.com/twmb/franz-go/pkg/kgo/internal/sticky
+github.com/twmb/franz-go/pkg/kgo/internal/xsync
 github.com/twmb/franz-go/pkg/kversion
 github.com/twmb/franz-go/pkg/sasl
 github.com/twmb/franz-go/pkg/sasl/plain
@@ -2628,3 +2635,4 @@ zombiezen.com/go/sqlite/sqlitex
 # github.com/grafana/loki/pkg/push => ./pkg/push
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.4.0
 # github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250728171719-b5d3b766d1b0
+# github.com/chaudum/go-kaff => ../../chaudum/go-kaff
