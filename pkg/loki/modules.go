@@ -2455,14 +2455,38 @@ func (t *Loki) initScratchStore() (services.Service, error) {
 }
 
 func (t *Loki) initKafka() (services.Service, error) {
+	numPartitions := int32(t.Cfg.KafkaConfig.AutoCreateTopicDefaultPartitions)
+	if numPartitions <= 0 {
+		numPartitions = 1
+	}
+
 	b, err := broker.New(broker.Config{
 		ListenAddr:           "127.0.0.1:9092",
 		AutoCreateTopics:     true,
-		DefaultNumPartitions: 4,
+		DefaultNumPartitions: numPartitions,
+		MaxBytesPerPartition: 1 << 30, // 1GiB
 		Logger:               nil,
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Create all topics before starting the broker so that they are immediately
+	// available to clients. The broker is started here (rather than in the
+	// BasicService starting hook) because Kafka clients connect during module
+	// initialisation, before services are running.
+	if err := b.CreateTopic(t.Cfg.KafkaConfig.Topic, broker.TopicConfig{NumPartitions: numPartitions}); err != nil {
+		return nil, fmt.Errorf("creating kafka topic %q: %w", t.Cfg.KafkaConfig.Topic, err)
+	}
+
+	// Create topic for metastore events
+	if err := b.CreateTopic(metastore.EventsTopic, broker.TopicConfig{NumPartitions: 1}); err != nil {
+		return nil, fmt.Errorf("creating kafka topic %q: %w", metastore.EventsTopic, err)
+	}
+
+	// Create topic for ingest limits service
+	if err := b.CreateTopic(t.Cfg.IngestLimits.Topic, broker.TopicConfig{NumPartitions: 1}); err != nil {
+		return nil, fmt.Errorf("creating kafka topic %q: %w", t.Cfg.IngestLimits.Topic, err)
 	}
 
 	if err := b.Start(); err != nil {
@@ -2470,17 +2494,12 @@ func (t *Loki) initKafka() (services.Service, error) {
 	}
 
 	return services.NewBasicService(
-		func(_ context.Context) error {
-			fmt.Println("====================== STARTING ===")
-			return nil
-		},
+		nil,
 		func(ctx context.Context) error {
-			fmt.Println("====================== RUNNING ===")
 			<-ctx.Done()
 			return nil
 		},
 		func(_ error) error {
-			fmt.Println("====================== STOPPING ===")
 			b.Stop()
 			return nil
 		},

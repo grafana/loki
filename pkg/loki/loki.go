@@ -862,14 +862,18 @@ func (t *Loki) setupModuleManager() error {
 		deps[All] = append(deps[All], IngestLimits, IngestLimitsFrontend)
 	}
 
-	if t.Cfg.DataObj.Enabled {
-		if t.Cfg.isTarget(All) {
-			deps[DataObjConsumer] = append(deps[DataObjConsumer], InMemoryKafka)
-			deps[DataObjConsumerRing] = append(deps[DataObjConsumerRing], InMemoryKafka)
-			deps[DataObjConsumerPartitionRing] = append(deps[DataObjConsumerPartitionRing], InMemoryKafka)
-			deps[DataObjIndexBuilder] = append(deps[DataObjIndexBuilder], InMemoryKafka)
-		}
+	if t.Cfg.DataObj.Enabled && t.Cfg.isTarget(All) {
+		deps[DataObjConsumer] = append(deps[DataObjConsumer], InMemoryKafka)
+		deps[DataObjConsumerRing] = append(deps[DataObjConsumerRing], InMemoryKafka)
+		deps[DataObjConsumerPartitionRing] = append(deps[DataObjConsumerPartitionRing], InMemoryKafka)
+		deps[DataObjIndexBuilder] = append(deps[DataObjIndexBuilder], InMemoryKafka)
 		deps[All] = append(deps[All], DataObjConsumer, DataObjIndexBuilder)
+	}
+
+	// The Ingester uses Kafka for partition-based ingestion. It must not
+	// start before the in-memory broker is up and the topic exists.
+	if t.Cfg.Ingester.KafkaIngestion.Enabled && t.Cfg.isTarget(All) {
+		deps[Ingester] = append(deps[Ingester], InMemoryKafka)
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

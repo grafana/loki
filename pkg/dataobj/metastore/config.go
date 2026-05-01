@@ -5,6 +5,10 @@ import (
 	fmt "fmt"
 )
 
+// EventsTopic is the Kafka topic used to exchange ObjectWrittenEvents between
+// the dataobj consumer (producer) and the index builder (consumer).
+const EventsTopic = "loki.metastore-events"
+
 // Config is the configuration block for the metastore settings.
 type Config struct {
 	IndexStoragePrefix string `yaml:"index_storage_prefix" experimental:"true"`

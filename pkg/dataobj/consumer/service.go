@@ -65,9 +65,9 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	// from distributors, as the code that consumes these records from also
 	// needs to be able to produce metastore events.
 	metastoreEventsCfg := kafkaCfg
-	metastoreEventsCfg.Topic = "loki.metastore-events"
+	metastoreEventsCfg.Topic = metastore.EventsTopic
 	metastoreEventsCfg.AutoCreateTopicDefaultPartitions = 1
-	metastoreEvents, err := client.NewWriterClient("loki.metastore-events", metastoreEventsCfg, 50, logger, reg)
+	metastoreEvents, err := client.NewWriterClient(metastore.EventsTopic, metastoreEventsCfg, 50, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client for metastore events topic: %w", err)
 	}

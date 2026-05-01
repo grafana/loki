@@ -121,6 +121,10 @@ func NewIndexBuilder(
 	scratchStore scratch.Store,
 	reg prometheus.Registerer,
 ) (*Builder, error) {
+	// The index builder always consumes ObjectWrittenEvents from the dedicated
+	// metastore events topic, regardless of the global ingest topic name.
+	kafkaCfg.Topic = metastore.EventsTopic
+
 	// builderReg is used for index-builder–specific metrics (loki_index_builder_*,
 	// loki_indexobj_*, loki_index_calculator_*). The "topic" label gives operators
 	// an easy way to identify which Kafka topic this builder is consuming.

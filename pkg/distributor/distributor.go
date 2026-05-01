@@ -271,6 +271,7 @@ func New(
 		limitsFrontendClientFactory,
 		logger,
 	)
+
 	limitsFrontendClient := newIngestLimitsFrontendRingClient(
 		limitsFrontendRing,
 		limitsFrontendClientPool,

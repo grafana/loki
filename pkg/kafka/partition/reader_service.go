@@ -256,7 +256,12 @@ func (s *ReaderService) fetchUntilLagSatisfied(
 		// Send a direct request to the Kafka backend to fetch the partition start offset.
 		partitionStartOffset, err := s.offsetManager.PartitionOffset(ctx, s.partitionID, KafkaStartOffset)
 		if err != nil {
-			level.Warn(logger).Log("msg", "partition reader failed to fetch partition start offset", "err", err)
+			level.Warn(logger).Log(
+				"msg", "partition reader failed to fetch partition start offset",
+				"topic", s.offsetManager.Topic(),
+				"partition", s.partitionID,
+				"err", err,
+			)
 			b.Wait()
 			continue
 		}
