@@ -88,7 +88,7 @@ jobs:
           private-key: ${{ env.PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
       - name: "pull code to release"
-        uses: "actions/checkout@v5"
+        uses: "actions/checkout@v6"
         with:
           persist-credentials: false
           path: "release"

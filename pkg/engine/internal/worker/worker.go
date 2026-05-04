@@ -90,24 +90,6 @@ type Config struct {
 	TaskCaches executor.TaskCacheRegistry
 }
 
-// readyRequest is a message sent from a thread to notify the worker that it's
-// ready for a task.
-type readyRequest struct {
-	// Response is the channel to send assigned tasks to. Response must be a
-	// buffered channel with at least one slot.
-	Response chan readyResponse
-}
-
-// readyResponse is the response for a readyRequest.
-type readyResponse struct {
-	Job *threadJob
-
-	// Error is set if the task failed to be assigned, including when the
-	// connection to a chosen scheduler has been lost. Threads should use this
-	// to request a new task.
-	Error error
-}
-
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
 // executes them. Task results are forwarded along streams, which are received
 // by other [Worker] instances or the scheduler.
@@ -300,8 +282,8 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 		Metrics: w.wireMetrics,
 		Conn:    conn,
 
-		// Allow for a backlog of 128 frames before backpressure is applied.
-		Buffer: 128,
+		// Allow for a backlog of 8 frames before backpressure is applied.
+		Buffer: 8,
 
 		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) error {
 			switch msg := msg.(type) {

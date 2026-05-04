@@ -37,7 +37,34 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-#### Distributor Max Receive Limits for uncompressed bytes
+### Breaking change: Drop support for non-TSDB stores in jsonnet lib 
+
+With the removal of deprecated storage backends, the Loki jsonnet library is also cleaned up to reflect these changes. Affected configuration flags are:
+
+- `$._config.using_shipper_store` - any usages defaulted to `true`
+- `$._config.using_boltdb_shipper` - any usages defaulted to `false`
+- `$._config.using_tsdb_shipper` - any usages defaulted to `true`
+
+This change may update both command line arguments and the Loki config. If you've been using or overriding one of the three aforementioned configuration options, please remove them and replace them with the new defaults.
+
+### Breaking change: Removal of deprecated storage backends
+
+We deprecated legacy storage backends in Loki 3.0 and now they are subsequently removed:
+- Google BigTable (for chunks and indexes)
+- Apache Cassandra (for chunks and indexes)
+- Amazon DynamoDB (for indexes)
+- gRPC Store (for chunks and indexes)
+- BoltDB (for indexes)
+
+Loki will fail to start if a deprecated and removed storage backend is referenced in the schema or storage configuration. You must not upgrade if you still use one of the above mentioned backends.
+
+Please refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/) for more information about how to evolve your schema.
+
+If the latest entry of your schema config is older than retention period of your data, then it is safe to remove any old entries from the `schema_config.configs` when upgrading.
+
+With the legacy backends removed, also the `table-manager` target and `table_manager` configuration block are removed, as they are not needed any more. If you have a `table_manager` configuration block in your `config.yaml` you can savely remove it completely.
+
+### Distributor Max Receive Limits for uncompressed bytes
 
 The next Loki release introduces a new configuration option (i.e. `-distibutor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
 
@@ -48,6 +75,10 @@ Supported clients should check the configuration options for max send message si
 {{< admonition type="note" >}}
 With the move to the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts), the chart numbering has changed. Major version updates signal breaking changes in the chart. For more information, refer to the [README](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading).
 {{< /admonition >}}
+
+### Migrating from the Loki Repository Helm Chart to the Community Helm Chart
+
+If you are upgrading from the Helm chart previously hosted in the Loki repository (chart version 6.x) to the Grafana Community Helm chart (chart version 13.x), refer to the dedicated migration guide: [Upgrade to the Community Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-community/).
 
 ### Helm Chart 6.50.0 - Respect the global registry in the sidecar image
 

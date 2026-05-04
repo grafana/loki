@@ -1,6 +1,7 @@
 package columnar
 
 import (
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -12,8 +13,11 @@ type UTF8Scalar struct {
 
 var _ Scalar = (*UTF8Scalar)(nil)
 
-// Kind implements [Datum] and returns [KindUTF8].
-func (s *UTF8Scalar) Kind() Kind { return KindUTF8 }
+// Kind implements [Datum] and returns [types.KindUTF8].
+func (s *UTF8Scalar) Kind() types.Kind { return types.KindUTF8 }
+
+// Type returns a [*types.UTF8].
+func (s *UTF8Scalar) Type() types.Type { return utf8Type }
 
 // IsNull implements [Scalar] and returns s.Null.
 func (s *UTF8Scalar) IsNull() bool { return s.Null }
@@ -125,8 +129,11 @@ func (arr *UTF8) Size() int {
 // element at that position is valid (not null).
 func (arr *UTF8) Validity() memory.Bitmap { return arr.validity }
 
-// Kind returns the kind of Array being represented.
-func (arr *UTF8) Kind() Kind { return KindUTF8 }
+// Kind implements [Datum] and returns [types.KindUTF8].
+func (arr *UTF8) Kind() types.Kind { return types.KindUTF8 }
+
+// Type returns a [*types.UTF8].
+func (arr *UTF8) Type() types.Type { return utf8Type }
 
 // Slice returns a slice of arr from i to j.
 //

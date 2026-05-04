@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -51,6 +50,10 @@ type Options struct {
 	//
 	// This is disabled by default.
 	UseTerminfoKeys bool
+
+	// Logger is an optional logger for tracing terminal I/O operations.
+	// If nil, no logging is performed.
+	Logger Logger
 }
 
 // DefaultOptions returns the default [Terminal] options.
@@ -64,16 +67,15 @@ func DefaultOptions() *Options {
 
 // Terminal represents an interactive terminal application.
 type Terminal struct {
-	con    Console
-	opts   *Options
-	scr    *TerminalScreen
-	pr     pollReader
-	buf    []byte
-	evc    chan Event
-	errg   errgroup.Group
-	winch  chan os.Signal
-	donec  chan struct{}
-	logger Logger
+	con   Console
+	opts  *Options
+	scr   *TerminalScreen
+	pr    pollReader
+	buf   []byte
+	evc   chan Event
+	errg  errgroup.Group
+	winch chan os.Signal
+	donec chan struct{}
 }
 
 // DefaultTerminal creates a new [Terminal] instance using the default standard
@@ -124,13 +126,34 @@ func NewTerminal(con Console, opts *Options) *Terminal {
 	// These channels never close during the terminal's lifetime.
 	t.evc = make(chan Event)
 	t.winch = make(chan os.Signal, 1) // buffered to avoid missing signals
+	if opts.Logger != nil {
+		t.scr.rend.SetLogger(opts.Logger)
+	}
 	return t
 }
 
-// SetLogger sets the terminal's logger for tracing I/O operations.
-func (t *Terminal) SetLogger(logger Logger) {
-	t.logger = logger
-	t.scr.rend.SetLogger(logger)
+// GetSize returns the current size of the terminal in characters and pixels.
+func (t *Terminal) GetSize() (width, height int, err error) {
+	w, h, err := t.con.GetSize()
+	if err != nil {
+		return 0, 0, fmt.Errorf("getting terminal size: %w", err)
+	}
+	return int(w), int(h), nil
+}
+
+// GetWinsize returns the current size of the terminal as a [Winsize] struct.
+// This includes both character dimensions (columns and rows) and pixel
+// dimensions (xpixel and ypixel).
+//
+// Note that this only returns the pixel dimensions on Unix-like systems that
+// support the TIOCGWINSZ ioctl. On other platforms, the pixel dimensions may
+// be zero or not available.
+func (t *Terminal) GetWinsize() (*Winsize, error) {
+	ws, err := t.con.GetWinsize()
+	if err != nil {
+		return nil, fmt.Errorf("getting terminal winsize: %w", err)
+	}
+	return ws, nil
 }
 
 // Screen returns the terminal's screen.
@@ -156,8 +179,8 @@ func (t *Terminal) Start() error {
 	if evs.lookup {
 		evs.table = buildKeysTable(t.opts.LegacyKeyEncoding, t.con.Getenv("TERM"), t.opts.UseTerminfoKeys)
 	}
-	if t.logger != nil {
-		evs.setLogger(t.logger)
+	if t.opts.Logger != nil {
+		evs.setLogger(t.opts.Logger)
 	}
 	bufc := make(chan []byte)
 	t.donec = make(chan struct{})
@@ -266,9 +289,7 @@ func (t *Terminal) Start() error {
 	})
 
 	// Restore any previous screen state.
-	if err := t.scr.Restore(); err != nil {
-		return fmt.Errorf("failed to restore terminal screen: %w", err)
-	}
+	t.scr.Restore()
 	if err := t.scr.Flush(); err != nil {
 		return fmt.Errorf("failed to flush terminal screen: %w", err)
 	}
@@ -285,22 +306,27 @@ func (t *Terminal) Wait() error {
 	return nil
 }
 
-// Stop stops the terminal event loop. This is a non-blocking call. Use
-// [Terminal.Wait] to wait for the terminal to exit.
+// Stop stops the terminal event loop. It is safe to call Stop without a
+// prior [Terminal.Start], and safe to call Stop multiple times in a row.
+// After Stop returns, [Terminal.Start] may be called again to resume.
 func (t *Terminal) Stop() error {
-	sync.OnceFunc(func() {
-		close(t.donec)
-	})
-	signal.Stop(t.winch)
+	if t.donec != nil {
+		select {
+		case <-t.donec:
+			// Already closed.
+		default:
+			close(t.donec)
+		}
+	}
+	if t.winch != nil {
+		signal.Stop(t.winch)
+	}
 	if t.pr != nil {
 		t.pr.Cancel()
 		_ = t.pr.Close()
+		t.pr = nil
 	}
-	if err := t.scr.Reset(); err != nil {
-		_ = t.scr.Flush()
-		_ = t.con.Restore()
-		return fmt.Errorf("failed to reset terminal screen: %w", err)
-	}
+	t.scr.Reset()
 	if err := t.scr.Flush(); err != nil {
 		_ = t.con.Restore()
 		return fmt.Errorf("failed to flush terminal screen: %w", err)

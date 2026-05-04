@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/regexp"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -19,7 +20,7 @@ import (
 //   - If a value in the haystack is null, the result for that value is null.
 //   - If the regexp is null, the result is null.
 func RegexpMatch(alloc *memory.Allocator, haystack columnar.Datum, regexp *regexp.Regexp, selection memory.Bitmap) (columnar.Datum, error) {
-	if haystack.Kind() != columnar.KindUTF8 {
+	if haystack.Kind() != types.KindUTF8 {
 		return nil, fmt.Errorf("haystack must be UTF-8; got %s", haystack.Kind())
 	}
 
@@ -81,7 +82,7 @@ func regexpMatchSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, regexp *r
 //   - If a value in the haystack is null, the result for that value is null.
 //   - If the needle is null, the result is null.
 func SubstrInsensitive(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
-	if haystack.Kind() != columnar.KindUTF8 || needle.Kind() != columnar.KindUTF8 {
+	if haystack.Kind() != types.KindUTF8 || needle.Kind() != types.KindUTF8 {
 		return nil, fmt.Errorf("haystack and needle must both be UTF-8; got %s and %s", haystack.Kind(), needle.Kind())
 	}
 
@@ -153,7 +154,7 @@ func substrInsensitiveSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, nee
 //   - If a value in the haystack is null, the result for that value is null.
 //   - If the needle is null, the result is null.
 func Substr(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
-	if haystack.Kind() != columnar.KindUTF8 || needle.Kind() != columnar.KindUTF8 {
+	if haystack.Kind() != types.KindUTF8 || needle.Kind() != types.KindUTF8 {
 		return nil, fmt.Errorf("haystack and needle must both be UTF-8; got %s and %s", haystack.Kind(), needle.Kind())
 	}
 

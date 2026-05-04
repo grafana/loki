@@ -26,6 +26,10 @@ type nodeSource struct {
 
 	closed  chan struct{}
 	records chan arrow.RecordBatch
+
+	// failErr is set by Fail before the source is closed. Read returns it
+	// instead of executor.EOF when the source was closed due to a failure.
+	failErr atomic.Pointer[error]
 }
 
 var _ executor.Pipeline = (*nodeSource)(nil)
@@ -50,6 +54,9 @@ func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-src.closed:
+		if ep := src.failErr.Load(); ep != nil {
+			return nil, *ep
+		}
 		return nil, executor.EOF
 	case rec := <-src.records:
 		return rec, nil
@@ -90,6 +97,17 @@ func (src *nodeSource) Add(delta int64) {
 	} else if newValue < 0 {
 		panic("negative stream count")
 	}
+}
+
+// Fail marks the source as failed with err and closes it. Future Read calls
+// will return err instead of [executor.EOF]. err must not be nil.
+func (src *nodeSource) Fail(err error) {
+	if err == nil {
+		// This panic is required because if nil is passed, Read will return (nil, nil) which breaks the Read contract.
+		panic("nodeSource.Fail called with nil error")
+	}
+	src.failErr.Store(&err)
+	src.Close()
 }
 
 // Close closes the source. All future Reads and Write calls will return

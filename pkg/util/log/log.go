@@ -65,9 +65,6 @@ type prometheusLogger struct {
 	logMessages         *prometheus.CounterVec
 	internalLogMessages *prometheus.CounterVec
 	logFlushes          prometheus.Histogram
-
-	useBufferedLogger bool
-	useSyncLogger     bool
 }
 
 // LevelHandler returns an http handler function that returns the current log level.

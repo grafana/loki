@@ -83,6 +83,30 @@ func TestNewWriterClient(t *testing.T) {
 	}
 }
 
+func TestProducer(t *testing.T) {
+	t.Run("on context canceled", func(t *testing.T) {
+		_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
+		client, err := NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+		require.NoError(t, err)
+
+		producer := NewProducer("test-producer", client, 1024*1024, prometheus.NewRegistry())
+
+		// Force a canceled context.
+		cancelCtx, cancel := context.WithCancel(t.Context())
+		cancel()
+		rec1 := &kgo.Record{Key: []byte("key1"), Value: []byte("value1")}
+		rec2 := &kgo.Record{Key: []byte("key2"), Value: []byte("value2")}
+		results := producer.ProduceSync(cancelCtx, []*kgo.Record{rec1, rec2})
+		require.Len(t, results, 2)
+
+		// Each result should contain a "context canceled" error.
+		require.Equal(t, rec1, results[0].Record)
+		require.EqualError(t, results[0].Err, "context canceled")
+		require.Equal(t, rec2, results[1].Record)
+		require.EqualError(t, results[1].Err, "context canceled")
+	})
+}
+
 func TestProducerWithInterceptor(t *testing.T) {
 	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
 

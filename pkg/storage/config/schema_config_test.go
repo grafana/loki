@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
@@ -238,104 +237,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 				},
 			},
 			err: nil,
-		},
-		"should fail if chunks prefix is missing on IndexType: aws-dynamo": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "aws-dynamo",
-						ObjectType: "aws-dynamo",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: cassandra": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "cassandra",
-						ObjectType: "cassandra",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: bigtable-hashed": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "bigtable-hashed",
-						ObjectType: "bigtable-hashed",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: gcp": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "gcp",
-						ObjectType: "gcp",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: gcp-columnkey": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "gcp-columnkey",
-						ObjectType: "gcp-columnkey",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: bigtable": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "bigtable",
-						ObjectType: "bigtable",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: grpc-store": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "grpc-store",
-						ObjectType: "grpc-store",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
 		},
 		"invalid schema with same from time configs": {
 			config: &SchemaConfig{
@@ -1050,18 +951,6 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 				RowShards: 2,
 			},
 			{
-				From:       DayTime{Time: now.Add(10 * 24 * time.Hour)},
-				IndexType:  types.StorageTypeBigTable,
-				ObjectType: types.StorageTypeFileSystem,
-				Schema:     "v11",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					}},
-				RowShards: 2,
-			},
-			{
 				From:       DayTime{Time: now.Add(5 * 24 * time.Hour)},
 				IndexType:  types.TSDBType,
 				ObjectType: types.StorageTypeFileSystem,
@@ -1091,38 +980,17 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 
 	require.Equal(t, TableRanges{
 		{
-			Start:        schemaConfig.Configs[3].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			End:          schemaConfig.Configs[4].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[3],
-		},
-	}, GetIndexStoreTableRanges(types.StorageTypeBigTable, schemaConfig.Configs))
-
-	require.Equal(t, TableRanges{
-		{
 			Start:        schemaConfig.Configs[2].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
 			End:          schemaConfig.Configs[3].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
 			PeriodConfig: &schemaConfig.Configs[2],
 		},
 		{
-			Start:        schemaConfig.Configs[4].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			Start:        schemaConfig.Configs[3].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
 			End:          model.Time(math.MaxInt64).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[4],
+			PeriodConfig: &schemaConfig.Configs[3],
 		},
 	}, GetIndexStoreTableRanges(types.TSDBType, schemaConfig.Configs))
 }
-
-const (
-	fixedTimestamp = model.Time(1557654321000)
-	userID         = "userID"
-)
-
-var (
-	labelsForDummyChunks = labels.New(
-		labels.Label{Name: model.MetricNameLabel, Value: "foo"},
-		labels.Label{Name: "bar", Value: "baz"},
-		labels.Label{Name: "toms", Value: "code"},
-	)
-)
 
 func TestChunkKeys(t *testing.T) {
 	for _, tc := range []struct {

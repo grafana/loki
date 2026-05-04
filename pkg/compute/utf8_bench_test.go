@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/compute"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -64,7 +65,7 @@ func makeUTF8ArrayForRegexp(tb testing.TB, alloc *memory.Allocator, size int) co
 	for i := 0; i < size; i++ {
 		values[i] = strings[i%len(strings)]
 	}
-	return columnartest.Array(tb, columnar.KindUTF8, alloc, values...)
+	return columnartest.Array(tb, types.KindUTF8, alloc, values...)
 }
 
 func makeUTF8ArrayForSubstr(tb testing.TB, alloc *memory.Allocator, size int) columnar.Datum {
@@ -80,5 +81,5 @@ func makeUTF8ArrayForSubstr(tb testing.TB, alloc *memory.Allocator, size int) co
 	for i := 0; i < size; i++ {
 		values[i] = strings[i%len(strings)]
 	}
-	return columnartest.Array(tb, columnar.KindUTF8, alloc, values...)
+	return columnartest.Array(tb, types.KindUTF8, alloc, values...)
 }

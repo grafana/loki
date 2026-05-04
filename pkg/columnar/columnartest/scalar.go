@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 )
 
 // Scalar returns a scalar value representing the given kind.
@@ -13,32 +14,32 @@ import (
 // value must either be nil (meaning a null scalar value) or a type which can
 // directly be converted to kind:
 //
-//   - nil for [columnar.KindNull]
-//   - bool for [columnar.KindBool]
-//   - int32 for [columnar.KindInt32]
-//   - int64 for [columnar.KindInt64]
-//   - uint32 for [columnar.KindUint32]
-//   - uint64 for [columnar.KindUint64]
-//   - string or a byte slice for [columnar.KindUTF8]
+//   - nil for [types.KindNull]
+//   - bool for [types.KindBool]
+//   - int32 for [types.KindInt32]
+//   - int64 for [types.KindInt64]
+//   - uint32 for [types.KindUint32]
+//   - uint64 for [types.KindUint64]
+//   - string or a byte slice for [types.KindUTF8]
 //
 // If value cannot be represented as the kind provided, Scalar fails t.
-func Scalar(t testing.TB, kind columnar.Kind, value any) columnar.Scalar {
+func Scalar(t testing.TB, kind types.Kind, value any) columnar.Scalar {
 	t.Helper()
 
 	switch kind {
-	case columnar.KindNull:
+	case types.KindNull:
 		return scalarNull(t, value)
-	case columnar.KindBool:
+	case types.KindBool:
 		return scalarBool(t, value)
-	case columnar.KindInt32:
+	case types.KindInt32:
 		return scalarNumber[int32](t, value)
-	case columnar.KindInt64:
+	case types.KindInt64:
 		return scalarNumber[int64](t, value)
-	case columnar.KindUint32:
+	case types.KindUint32:
 		return scalarNumber[uint32](t, value)
-	case columnar.KindUint64:
+	case types.KindUint64:
 		return scalarNumber[uint64](t, value)
-	case columnar.KindUTF8:
+	case types.KindUTF8:
 		return scalarUTF8(t, value)
 	default:
 		require.FailNow(t, "unsupported kind", "kind %s is currently not supported", kind)
