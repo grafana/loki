@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
@@ -14,17 +16,20 @@ import (
 // Flush writes are done via [Builder.Flush], which encodes all accumulated
 // rows and writes them to the provided [dataobj.SectionWriter].
 type Builder struct {
-	tenant string
-	encode SectionEncoder
+	metrics *Metrics
+	tenant  string
+	encode  SectionEncoder
 
 	rows []Posting
 }
 
 // NewBuilder creates a new Builder.
 // encode is the [SectionEncoder] to use for encoding rows.
-func NewBuilder(encode SectionEncoder) *Builder {
+// metrics may be nil to disable instrumentation.
+func NewBuilder(metrics *Metrics, encode SectionEncoder) *Builder {
 	return &Builder{
-		encode: encode,
+		metrics: metrics,
+		encode:  encode,
 	}
 }
 
@@ -85,6 +90,11 @@ func (b *Builder) Reset() {
 func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	if len(b.rows) == 0 {
 		return 0, nil
+	}
+
+	if b.metrics != nil {
+		timer := prometheus.NewTimer(b.metrics.encodeSeconds)
+		defer timer.ObserveDuration()
 	}
 
 	// Sort rows by [Kind, ColumnName, LabelValue, MinTimestamp, MaxTimestamp] (lexicographic).

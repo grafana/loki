@@ -17,7 +17,7 @@ var defaultEncoder = ColumnarSectionEncoder(0, 0)
 
 // TestBuilder_Empty verifies that an empty builder produces no sections.
 func TestBuilder_Empty(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 	require.Zero(t, b.EstimatedSize(), "empty builder should have zero size")
 	// An empty builder writes 0 bytes; the dataobj builder would fail to flush
 	// without any data. This verifies the postings builder is truly empty.
@@ -26,7 +26,7 @@ func TestBuilder_Empty(t *testing.T) {
 
 // TestBuilder_LabelPostingRoundTrip verifies a label posting round-trips correctly.
 func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	bitmap := makeBitmap(t, 3, 7, 15)
 	input := Posting{
@@ -64,7 +64,7 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 
 // TestBuilder_BloomPostingRoundTrip verifies a bloom posting round-trips correctly.
 func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	bitmap := makeBitmap(t, 0, 2, 8)
 	bloomFilter := []byte{0xDE, 0xAD, 0xBE, 0xEF}
@@ -102,7 +102,7 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 
 // TestBuilder_MixedPostings verifies both Bloom and Label postings work together.
 func TestBuilder_MixedPostings(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	bloom := Posting{
 		Kind:           KindBloom,
@@ -145,7 +145,7 @@ func TestBuilder_MixedPostings(t *testing.T) {
 
 // TestBuilder_SortOrder verifies the sort order: [Kind, ColumnName, LabelValue, MinTimestamp].
 func TestBuilder_SortOrder(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 
@@ -201,7 +201,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 
 // TestBuilder_NullableHandling verifies nullable column correctness.
 func TestBuilder_NullableHandling(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 
@@ -237,7 +237,7 @@ func TestBuilder_NullableHandling(t *testing.T) {
 
 // TestBuilder_BitmapCorrectness verifies that stream ID bitmaps are LSB-encoded correctly.
 func TestBuilder_BitmapCorrectness(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	// Build bitmap with stream IDs 0, 3, 7.
 	// Byte 0: bit 0 = 1 (stream 0), bit 3 = 1 (stream 3), bit 7 = 1 (stream 7).
@@ -288,7 +288,7 @@ func TestBuilder_BitmapCorrectness(t *testing.T) {
 // TestBuilder_BitmapNormalization verifies that bitmaps of different sizes are
 // padded to the same length.
 func TestBuilder_BitmapNormalization(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	short := []byte{0x01}            // 1 byte
 	long := []byte{0x01, 0x02, 0x03} // 3 bytes
@@ -332,7 +332,7 @@ func TestBuilder_BitmapNormalization(t *testing.T) {
 func TestBuilder_SectionSplitting(t *testing.T) {
 	// Use a very small page size to force splitting across multiple pages.
 	smallEncoder := ColumnarSectionEncoder(100, 2)
-	b := NewBuilder(smallEncoder)
+	b := NewBuilder(nil, smallEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 	for i := range 6 {
@@ -360,7 +360,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 
 // TestBuilder_AllBloom verifies that a builder with only Bloom postings works.
 func TestBuilder_AllBloom(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 	for i := range 3 {
@@ -387,7 +387,7 @@ func TestBuilder_AllBloom(t *testing.T) {
 
 // TestBuilder_AllLabel verifies that a builder with only Label postings works.
 func TestBuilder_AllLabel(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 	for i := range 3 {
@@ -415,7 +415,7 @@ func TestBuilder_AllLabel(t *testing.T) {
 
 // TestBuilder_FlushResetsBuilder verifies that a flush resets the builder.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 	b.Append(Posting{Kind: KindLabel, ColumnName: "col", LabelValue: "v", StreamIDBitmap: makeBitmap(t, 0)})
 
 	obj, closer := flushToObject(t, b)
@@ -429,7 +429,7 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 
 // TestBuilder_Type verifies that the section type is correct.
 func TestBuilder_Type(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 	require.Equal(t, sectionType, b.Type())
 }
 
@@ -451,7 +451,7 @@ func TestCheckSection(t *testing.T) {
 }
 
 func TestRowReader_SmallBuffer(t *testing.T) {
-	b := NewBuilder(defaultEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	bitmapBytes := makeBitmap(t, 0)
 	// Append 5 rows.
