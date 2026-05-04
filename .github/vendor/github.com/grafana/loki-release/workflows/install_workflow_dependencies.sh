@@ -49,9 +49,10 @@ install_build_image_tools() {
     HELM_VER=${HELM_VER:-v3.2.3}
     HELM_DOCS_VER=${HELM_DOCS_VER:-v1.11.2}
 
-    echo "Installing mixtool and goyacc"
+    echo "Installing mixtool and goyacc, and goimports"
     GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@16dc166166d91e93475b86b9355a4faed2400c18
     GO111MODULE=on go install golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69
+     GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.38.0
 
     MACHINE=$(uname -m)
     case "${MACHINE}" in
