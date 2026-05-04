@@ -58,6 +58,17 @@ func NewQueue(
 	metrics *Metrics,
 	storeMetrics storage.ClientMetrics,
 ) (*Queue, error) {
+	return newQueue(logger, cfg, limits, metrics, storeMetrics, 5*time.Minute, 1*time.Hour)
+}
+
+func newQueue(
+	logger log.Logger,
+	cfg Config,
+	limits Limits,
+	metrics *Metrics,
+	storeMetrics storage.ClientMetrics,
+	activeUsersCleanupInterval, activeUsersInactiveTimeout time.Duration,
+) (*Queue, error) {
 	// Configure the filesystem client if we are storing tasks on disk.
 	var diskClient client.ObjectClient
 	if cfg.StoreTasksOnDisk {
@@ -73,8 +84,10 @@ func NewQueue(
 
 	tasksQueue := queue.NewRequestQueue(cfg.MaxQueuedTasksPerTenant, 0, limits, metrics)
 
-	// Clean metrics for inactive users: do not have added tasks to the queue in the last 1 hour
-	activeUsers := util.NewActiveUsersCleanupService(5*time.Minute, 1*time.Hour, func(user string) {
+	// Clean metrics for inactive users: do not have touched the queue in the last activeUsersInactiveTimeout.
+	// Both Enqueue and Dequeue/Release refresh the user's timestamp so that an in-flight backlog being drained
+	// by builders keeps the gauge series alive even when no new tasks are enqueued for a while.
+	activeUsers := util.NewActiveUsersCleanupService(activeUsersCleanupInterval, activeUsersInactiveTimeout, func(user string) {
 		metrics.Cleanup(user)
 	})
 
@@ -203,6 +216,7 @@ func (q *Queue) Dequeue(ctx context.Context, last Index, consumerID string) (*pr
 
 	if !q.cfg.StoreTasksOnDisk {
 		val := item.(metaWithTask)
+		q.activeUsers.UpdateUserTimestamp(val.task.Tenant, time.Now())
 		return val.task, val.metadata, idx, nil
 	}
 
@@ -213,6 +227,7 @@ func (q *Queue) Dequeue(ctx context.Context, last Index, consumerID string) (*pr
 		return nil, nil, idx, err
 	}
 
+	q.activeUsers.UpdateUserTimestamp(task.Tenant, time.Now())
 	return task, meta.metadata, idx, nil
 }
 
@@ -224,6 +239,8 @@ func (q *Queue) Release(task *protos.ProtoTask) {
 		// Task doesn't exist, so it's not in the FS
 		return
 	}
+
+	q.activeUsers.UpdateUserTimestamp(task.Tenant, time.Now())
 
 	if !q.cfg.StoreTasksOnDisk {
 		return
