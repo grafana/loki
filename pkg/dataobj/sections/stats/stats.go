@@ -14,7 +14,7 @@ import (
 var sectionType = dataobj.SectionType{
 	Namespace: "github.com/grafana/loki",
 	Kind:      "stats",
-	Version:   1,
+	Version:   columnar.FormatVersion,
 }
 
 // ColumnType identifies the type of a column in the stats section.

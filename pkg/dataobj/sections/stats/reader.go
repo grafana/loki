@@ -20,12 +20,11 @@ type Section struct {
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
-	}
-	if section.Type.Version != 1 {
-		return nil, fmt.Errorf("unsupported section schema version: got=%d want=1", section.Type.Version)
+	} else if section.Type.Version != columnar.FormatVersion {
+		return nil, fmt.Errorf("unsupported section version: got=%d want=%d", section.Type.Version, columnar.FormatVersion)
 	}
 
-	dec, err := columnar.NewDecoder(section.Reader, columnar.FormatVersion)
+	dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)
 	if err != nil {
 		return nil, fmt.Errorf("creating decoder: %w", err)
 	}

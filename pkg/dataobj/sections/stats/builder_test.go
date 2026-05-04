@@ -371,5 +371,5 @@ func TestOpen_WrongVersion(t *testing.T) {
 	}
 	_, err := Open(context.Background(), wrongVersion)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "unsupported section schema version")
+	require.Contains(t, err.Error(), "unsupported section version")
 }
