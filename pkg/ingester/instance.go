@@ -194,35 +194,6 @@ func newInstance(
 	return i, err
 }
 
-// consumeChunk manually adds a chunk that was received during ingester chunk
-// transfer.
-func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *logproto.Chunk) error {
-	fp := i.getHashForLabels(ls)
-
-	s, _, _ := i.streams.LoadOrStoreNewByFP(fp,
-		func() (*stream, error) {
-			s, err := i.createStreamByFP(ctx, ls, fp)
-			s.chunkMtx.Lock() // Lock before return, because we have defer that unlocks it.
-			if err != nil {
-				return nil, err
-			}
-			return s, nil
-		},
-		func(s *stream) error {
-			s.chunkMtx.Lock()
-			return nil
-		},
-	)
-	defer s.chunkMtx.Unlock()
-
-	err := s.consumeChunk(ctx, chunk)
-	if err == nil {
-		i.metrics.memoryChunks.Inc()
-	}
-
-	return err
-}
-
 // Push will iterate over the given streams present in the PushRequest and attempt to store them.
 //
 // Although multiple streams are part of the PushRequest, the returned error only reflects what

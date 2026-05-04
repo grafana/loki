@@ -100,7 +100,6 @@ type KafkaReader struct {
 	client                   *kgo.Client
 	topic                    string
 	partitionID              int32
-	consumerGroup            string
 	metrics                  *ReaderMetrics
 	phase                    string
 	partitionStateMu         sync.RWMutex

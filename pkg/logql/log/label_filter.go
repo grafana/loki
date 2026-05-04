@@ -290,7 +290,6 @@ type NumericLabelFilter struct {
 	Name  string
 	Value float64
 	Type  LabelFilterType
-	err   error
 }
 
 // NewNumericLabelFilter creates a new label filterer which parses float64 string representation (5.2)

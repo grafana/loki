@@ -68,9 +68,6 @@ type Push struct {
 	// auth
 	username, password string
 
-	// Will add these label to the logs pushed to loki
-	labelName, labelValue, streamName, streamValue string
-
 	// push retry and backoff
 	backoff *backoff.Config
 
