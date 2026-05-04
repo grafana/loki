@@ -42,37 +42,37 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 	}
 
 	// Build fixed column builders (indices 0-6).
-	objectPathBuilder, err := binaryColumnBuilder(colObjectPath, ColumnTypeObjectPath, pageSizeHint, pageMaxRowCount)
+	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, pageSizeHint, pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating object_path column: %w", err)
 	}
 
-	sectionIndexBuilder, err := numberColumnBuilder(colSectionIndex, ColumnTypeSectionIndex, pageSizeHint, pageMaxRowCount)
+	sectionIndexBuilder, err := numberColumnBuilder(ColumnTypeSectionIndex, pageSizeHint, pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating section_index column: %w", err)
 	}
 
-	sortSchemaBuilder, err := binaryColumnBuilder(colSortSchema, ColumnTypeSortSchema, pageSizeHint, pageMaxRowCount)
+	sortSchemaBuilder, err := binaryColumnBuilder(ColumnTypeSortSchema, pageSizeHint, pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating sort_schema column: %w", err)
 	}
 
-	minTimestampBuilder, err := numberColumnBuilder(colMinTimestamp, ColumnTypeMinTimestamp, pageSizeHint, pageMaxRowCount)
+	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, pageSizeHint, pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating min_timestamp column: %w", err)
 	}
 
-	maxTimestampBuilder, err := numberColumnBuilder(colMaxTimestamp, ColumnTypeMaxTimestamp, pageSizeHint, pageMaxRowCount)
+	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, pageSizeHint, pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating max_timestamp column: %w", err)
 	}
 
-	rowCountBuilder, err := numberColumnBuilder(colRowCount, ColumnTypeRowCount, pageSizeHint, pageMaxRowCount)
+	rowCountBuilder, err := numberColumnBuilder(ColumnTypeRowCount, pageSizeHint, pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating row_count column: %w", err)
 	}
 
-	uncompressedSizeBuilder, err := numberColumnBuilder(colUncompressedSize, ColumnTypeUncompressedSize, pageSizeHint, pageMaxRowCount)
+	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, pageSizeHint, pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating uncompressed_size column: %w", err)
 	}
@@ -152,9 +152,10 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 	return nil
 }
 
-// binaryColumnBuilder creates a column builder for BINARY/PLAIN/ZSTD columns with a given tag and logical type.
-func binaryColumnBuilder(tag string, logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
-	return dataset.NewColumnBuilder(tag, dataset.BuilderOptions{
+// binaryColumnBuilder creates a column builder for BINARY/PLAIN/ZSTD columns. The
+// builder tag and logical type are both derived from the [ColumnType].
+func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
+	return dataset.NewColumnBuilder(logicalType.String(), dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
@@ -166,9 +167,10 @@ func binaryColumnBuilder(tag string, logicalType ColumnType, pageSize, pageRowCo
 	})
 }
 
-// numberColumnBuilder creates a column builder for INT64/DELTA/NONE columns with a given tag and logical type.
-func numberColumnBuilder(tag string, logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
-	return dataset.NewColumnBuilder(tag, dataset.BuilderOptions{
+// numberColumnBuilder creates a column builder for INT64/DELTA/NONE columns. The
+// builder tag and logical type are both derived from the [ColumnType].
+func numberColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
+	return dataset.NewColumnBuilder(logicalType.String(), dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{

@@ -9,17 +9,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
-// columnName constants for each column in the stats section.
-const (
-	colObjectPath       = "object_path"
-	colSectionIndex     = "section_index"
-	colSortSchema       = "sort_schema"
-	colMinTimestamp     = "min_timestamp"
-	colMaxTimestamp     = "max_timestamp"
-	colRowCount         = "row_count"
-	colUncompressedSize = "uncompressed_size"
-)
-
 // Builder accumulates [Stat] rows and encodes them into a section via a
 // [dataobj.SectionWriter].
 //

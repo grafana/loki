@@ -8,20 +8,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
-// columnName constants for each column in the postings section.
-const (
-	colKind             = "kind"
-	colObjectPath       = "object_path"
-	colSectionIndex     = "section_index"
-	colColumnName       = "column_name"
-	colLabelValue       = "label_value"
-	colBloomFilter      = "bloom_filter"
-	colStreamIDBitmap   = "stream_id_bitmap"
-	colUncompressedSize = "uncompressed_size"
-	colMinTimestamp     = "min_timestamp"
-	colMaxTimestamp     = "max_timestamp"
-)
-
 // Builder accumulates [Posting] rows and encodes them into a section via a
 // [dataobj.SectionWriter].
 //

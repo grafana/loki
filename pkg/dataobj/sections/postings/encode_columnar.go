@@ -28,7 +28,7 @@ func columnarEncode(rows []Posting, enc *columnar.Encoder, pageSizeHint, pageMax
 	// available for INT64 in the dataset package. With sorted rows (blooms first,
 	// then labels), deltas are almost all zeros — ZSTD compresses these runs very
 	// well, unlike delta encodings on our other int64 cols
-	kindBuilder, err := dataset.NewColumnBuilder(colKind, dataset.BuilderOptions{
+	kindBuilder, err := dataset.NewColumnBuilder(ColumnTypeKind.String(), dataset.BuilderOptions{
 		PageSizeHint:    pageSizeHint,
 		PageMaxRowCount: pageMaxRowCount,
 		Type: dataset.ColumnType{
@@ -62,7 +62,7 @@ func columnarEncode(rows []Posting, enc *columnar.Encoder, pageSizeHint, pageMax
 		return fmt.Errorf("creating label_value column: %w", err)
 	}
 
-	bloomFilterBuilder, err := dataset.NewColumnBuilder(colBloomFilter, dataset.BuilderOptions{
+	bloomFilterBuilder, err := dataset.NewColumnBuilder(ColumnTypeBloomFilter.String(), dataset.BuilderOptions{
 		PageSizeHint:    pageSizeHint,
 		PageMaxRowCount: pageMaxRowCount,
 		Type: dataset.ColumnType{
