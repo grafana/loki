@@ -1522,16 +1522,6 @@ dataobj:
     # CLI flag: -dataobj-consumer.max-builder-age
     [max_builder_age: <duration> | default = 1h]
 
-    # How records are ingested: "kafka" reads from a Kafka topic; "inmemory"
-    # uses an in-process channel (experimental, single-node, no durability
-    # guarantees, each replica holds independent data).
-    # CLI flag: -dataobj-consumer.ingest-mode
-    [ingest_mode: <string> | default = "kafka"]
-
-    # Internal buffer size for records for inmemory ingestion.
-    # CLI flag: -dataobj-consumer.channel-size
-    [channel_size: <int> | default = 10000]
-
     # The name of the Kafka topic.
     # CLI flag: -dataobj-consumer.topic
     [topic: <string> | default = ""]
@@ -3346,11 +3336,6 @@ dataobj_tee:
   # to 0 to disable batching.
   # CLI flag: -distributor.dataobj-tee.rate-batch-window
   [rate_batch_window: <duration> | default = 0s]
-
-# Timeout for sending a record to the in-memory queue before returning
-# backpressure to the caller. Defaults to 5s. Set to 0 for no timeout.
-# CLI flag: -distributor.inmemory-dataobj-push-timeout
-[inmemory_dataobj_push_timeout: <duration> | default = 5s]
 ```
 
 ### etcd
