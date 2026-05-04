@@ -243,6 +243,13 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		builder:        c.indexobjBuilder,
 	}
 
+	// Lock-free steps run without builderMtx held, so they must not touch the
+	// shared builder. We pass them a context with builder=nil to turn any
+	// accidental access into an immediate nil-pointer panic instead of a
+	// silent data race.
+	lockFreeContext := *calculationContext
+	lockFreeContext.builder = nil
+
 	calculationSteps := getLogsCalculationSteps()
 
 	// Track cumulative duration per calculation step across all batches + flush.
@@ -283,10 +290,14 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 				continue
 			}
 			start := time.Now()
-			if err := calculation.ProcessBatch(ctx, calculationContext, logsBuf[:n]); err != nil {
+			if err := calculation.ProcessBatch(ctx, &lockFreeContext, logsBuf[:n]); err != nil {
 				return fmt.Errorf("failed to process batch: %w", err)
 			}
 			stepDurations[i] += time.Since(start)
+		}
+
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
 		// Second pass: run steps that require exclusive access to the shared

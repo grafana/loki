@@ -66,11 +66,16 @@ func BenchmarkCalculator_Calculate(b *testing.B) {
 }
 
 var benchCalculatorConfig = logsobj.BuilderBaseConfig{
-	TargetPageSize:          128 * 1024,
-	TargetObjectSize:        1 << 28, // 256 MiB, large enough for all tenants
-	BufferSize:              2 << 20,
+	TargetPageSize:   128 * 1024,
+	TargetObjectSize: 1 << 28, // 256 MiB, large enough for all tenants
+	BufferSize:       2 << 20,
+	// TargetSectionSize is set to 1 byte so the index builder rolls a new
+	// section as soon as anything is written. This forces many small index
+	// sections, which exercises the parallel flush path in Calculate (each
+	// section flush contends on builderMtx) and is what makes this benchmark
+	// sensitive to lock-contention regressions. Matches calculate_test.go.
 	SectionStripeMergeLimit: 2,
-	TargetSectionSize:       1, // matches calculate_test.go
+	TargetSectionSize:       1,
 }
 
 // buildBenchDataobj builds a synthetic object shaped to produce multiple logs
