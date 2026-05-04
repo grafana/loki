@@ -5,7 +5,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "e84a48a07aefb6ed6eddceb8dde9f53eb2ed27b6"
+  RELEASE_LIB_REF: "ed258c5fc91b2354636263bdbd16a4ba141ded27"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:

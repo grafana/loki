@@ -30,6 +30,10 @@ install_dist_dependencies() {
 
     # Install RPM build tools
     apt-get install -y rpm
+
+    # Install gox and zip for loki `dist` target
+    GO111MODULE=on go install github.com/mitchellh/gox@9f71238
+    apt-get install -qy zip
 }
 
 install_lint_dependencies() {

@@ -8,7 +8,7 @@ env:
   DRY_RUN: false
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "e84a48a07aefb6ed6eddceb8dde9f53eb2ed27b6"
+  RELEASE_LIB_REF: "ed258c5fc91b2354636263bdbd16a4ba141ded27"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
@@ -19,11 +19,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@e84a48a07aefb6ed6eddceb8dde9f53eb2ed27b6"
+    uses: "grafana/loki-release/.github/workflows/check.yml@ed258c5fc91b2354636263bdbd16a4ba141ded27"
     with:
       build_image: "golang:1.26.2"
       golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "e84a48a07aefb6ed6eddceb8dde9f53eb2ed27b6"
+      release_lib_ref: "ed258c5fc91b2354636263bdbd16a4ba141ded27"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
