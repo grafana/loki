@@ -322,7 +322,11 @@ GOX = gox $(GO_FLAGS) -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 
 SKIP_ARM ?= false
+dist: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 dist: clean
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(run_in_container)
+else
 ifeq ($(SKIP_ARM),true)
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
@@ -336,6 +340,7 @@ else
 endif
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
+endif
 
 packages: dist
 	@tools/packaging/nfpm.sh
