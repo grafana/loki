@@ -5,19 +5,16 @@ var SupportedIndexTypes = []string{
 	TSDBType,
 }
 
-var DeprecatedIndexTypes = []string{
+var UnsupportedIndexTypes = []string{
 	StorageTypeAWS,
 	StorageTypeAWSDynamo,
-	StorageTypeBoltDB,
-	StorageTypeCassandra,
-	StorageTypeGrpc,
-}
-
-var UnsupportedIndexTypes = []string{
 	StorageTypeBigTable,
 	StorageTypeBigTableHashed,
+	StorageTypeBoltDB,
+	StorageTypeCassandra,
 	StorageTypeGCP,
 	StorageTypeGCPColumnKey,
+	StorageTypeGrpc,
 }
 
 var SupportedStorageTypes = []string{
@@ -35,17 +32,15 @@ var SupportedStorageTypes = []string{
 	StorageTypeNoop,
 }
 
-var DeprecatedStorageTypes = []string{
-	StorageTypeAWSDynamo,
-	StorageTypeCassandra,
-	StorageTypeGrpc,
-}
-
 var UnsupportedStorageTypes = []string{
+	StorageTypeAWSDynamo,
 	StorageTypeBigTable,
 	StorageTypeBigTableHashed,
+	StorageTypeBoltDB,
+	StorageTypeCassandra,
 	StorageTypeGCP,
 	StorageTypeGCPColumnKey,
+	StorageTypeGrpc,
 }
 
 var TestingStorageTypes = []string{

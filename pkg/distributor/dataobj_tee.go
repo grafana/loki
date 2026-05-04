@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
@@ -68,7 +67,7 @@ type DataObjTee struct {
 	limitsClient *ingestLimits
 	rateBatcher  *rateBatcher // nil if batching is disabled
 	limits       Limits
-	kafkaClient  *kgo.Client
+	kafkaClient  KafkaProducer
 	resolver     *segmentationPartitionResolver
 	logger       log.Logger
 
@@ -86,7 +85,7 @@ func NewDataObjTee(
 	resolver *segmentationPartitionResolver,
 	limitsClient *ingestLimits,
 	limits Limits,
-	kafkaClient *kgo.Client,
+	kafkaClient KafkaProducer,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*DataObjTee, error) {
@@ -221,7 +220,7 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmen
 		return
 	}
 
-	results := t.kafkaClient.ProduceSync(ctx, records...)
+	results := t.kafkaClient.ProduceSync(ctx, records)
 	if err := results.FirstErr(); err != nil {
 		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
 		t.streamFailures.Inc()

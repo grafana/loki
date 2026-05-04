@@ -285,12 +285,18 @@ func (c *protobufCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 		return nil, fmt.Errorf("failed to marshal sinks: %w", err)
 	}
 
+	cachedSources, err := c.cachedSourcesFromPb(t.CachedSources, fragment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal cached sources: %w", err)
+	}
+
 	return &workflow.Task{
-		ULID:     ulid.ULID(t.Ulid),
-		TenantID: t.TenantId,
-		Fragment: fragment,
-		Sources:  sources,
-		Sinks:    sinks,
+		ULID:          ulid.ULID(t.Ulid),
+		TenantID:      t.TenantId,
+		Fragment:      fragment,
+		Sources:       sources,
+		Sinks:         sinks,
+		CachedSources: cachedSources,
 		MaxTimeRange: physical.TimeRange{
 			Start: t.MaxTimeRange.Start,
 			End:   t.MaxTimeRange.End,
@@ -400,6 +406,34 @@ func (c *protobufCodec) nodeStreamMapFromPbNodeStreamList(pbMap map[string]*wire
 		result[node] = streams
 	}
 
+	return result, nil
+}
+
+func (c *protobufCodec) cachedSourcesFromPb(pbMap map[string]*wirepb.CachedSources, fragment *physical.Plan) (map[physical.Node]workflow.CachedSources, error) {
+	if len(pbMap) == 0 {
+		return nil, nil
+	}
+
+	nodeByID := make(map[ulid.ULID]physical.Node)
+	for node := range fragment.Graph().Nodes() {
+		nodeByID[node.ID()] = node
+	}
+
+	result := make(map[physical.Node]workflow.CachedSources, len(pbMap))
+	for nodeIDStr, cs := range pbMap {
+		nodeID, err := ulid.Parse(nodeIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cached-source node ID %q: %w", nodeIDStr, err)
+		}
+		node, ok := nodeByID[nodeID]
+		if !ok {
+			return nil, fmt.Errorf("cached-source node ID %q not found in fragment", nodeIDStr)
+		}
+		if cs == nil {
+			return nil, fmt.Errorf("cached-source entry for node ID %q is nil", nodeIDStr)
+		}
+		result[node] = cs.CachedSource
+	}
 	return result, nil
 }
 
@@ -581,12 +615,15 @@ func (c *protobufCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) 
 		return nil, fmt.Errorf("failed to unmarshal sinks: %w", err)
 	}
 
+	cachedSources := c.cachedSourcesToPb(from.CachedSources)
+
 	return &wirepb.Task{
-		Ulid:     protoUlid.ULID(from.ULID),
-		TenantId: from.TenantID,
-		Fragment: fragment,
-		Sources:  sources,
-		Sinks:    sinks,
+		Ulid:          protoUlid.ULID(from.ULID),
+		TenantId:      from.TenantID,
+		Fragment:      fragment,
+		Sources:       sources,
+		Sinks:         sinks,
+		CachedSources: cachedSources,
 		MaxTimeRange: &physicalpb.TimeRange{
 			Start: from.MaxTimeRange.Start,
 			End:   from.MaxTimeRange.End,
@@ -675,4 +712,15 @@ func (c *protobufCodec) nodeStreamMapToPbNodeStreamList(nodeMap map[physical.Nod
 	}
 
 	return result, nil
+}
+
+func (c *protobufCodec) cachedSourcesToPb(srcs map[physical.Node]workflow.CachedSources) map[string]*wirepb.CachedSources {
+	if len(srcs) == 0 {
+		return nil
+	}
+	result := make(map[string]*wirepb.CachedSources, len(srcs))
+	for node, cs := range srcs {
+		result[node.ID().String()] = &wirepb.CachedSources{CachedSource: cs}
+	}
+	return result
 }

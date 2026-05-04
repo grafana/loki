@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -954,4 +955,60 @@ func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, expectedRows, actualRows)
 	})
+}
+
+func TestNewProjectPipeline_LabelFmtRenameDropsSourceColumn(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
+		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
+		semconv.FieldFromFQN("utf8.label.bar", false),
+	}, nil)
+
+	ts := time.Unix(1700000000, 0).UTC()
+	rows := arrowtest.Rows{
+		{
+			"utf8.builtin.message":           "rename bar to foo",
+			"timestamp_ns.builtin.timestamp": ts,
+			"utf8.label.bar":                 "dev",
+		},
+	}
+
+	input := NewArrowtestPipeline(schema, rows)
+	parseExpr := &physical.VariadicExpr{
+		Op: types.VariadicOpParseLabelfmt,
+		Expressions: []physical.Expression{
+			&physical.ColumnExpr{Ref: semconv.ColumnIdentMessage.ColumnRef()},
+			physical.NewLiteral([]string{}),
+			physical.NewLiteral([]log.LabelFmt{
+				{Name: "foo", Value: "bar", Rename: true},
+			}),
+		},
+	}
+
+	proj := &physical.Projection{
+		Expressions: []physical.Expression{parseExpr},
+		All:         true,
+		Expand:      true,
+	}
+
+	pipeline, err := NewProjectPipeline(input, proj, newExpressionEvaluator())
+	require.NoError(t, err)
+	record, err := pipeline.Read(t.Context())
+	require.NoError(t, err)
+
+	fieldNames := make([]string, 0, len(record.Schema().Fields()))
+	for _, field := range record.Schema().Fields() {
+		fieldNames = append(fieldNames, field.Name)
+	}
+	require.NotContains(t, fieldNames, "utf8.label.bar")
+
+	actualRows, err := arrowtest.RecordRows(record)
+	require.NoError(t, err)
+	require.Equal(t, arrowtest.Rows{
+		{
+			"utf8.builtin.message":           "rename bar to foo",
+			"timestamp_ns.builtin.timestamp": ts,
+			"utf8.label.foo":                 "dev",
+		},
+	}, actualRows)
 }

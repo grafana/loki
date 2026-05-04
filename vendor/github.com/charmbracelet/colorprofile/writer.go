@@ -40,9 +40,11 @@ func (w *Writer) Write(p []byte) (int, error) {
 	case w.Profile == TrueColor:
 		return w.Forward.Write(p) //nolint:wrapcheck
 	case w.Profile <= NoTTY:
-		return io.WriteString(w.Forward, ansi.Strip(string(p))) //nolint:wrapcheck
+		_, err := io.WriteString(w.Forward, ansi.Strip(string(p)))
+		return len(p), err
 	case w.Profile == ASCII, w.Profile == ANSI, w.Profile == ANSI256:
-		return w.downsample(p)
+		_, err := w.downsample(p)
+		return len(p), err
 	default:
 		return 0, fmt.Errorf("invalid profile: %v", w.Profile)
 	}

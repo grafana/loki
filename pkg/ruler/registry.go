@@ -320,6 +320,9 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 			clt.SigV4Config.SecretKey = v.SecretKey
 			clt.SigV4Config.Profile = v.Profile
 			clt.SigV4Config.RoleARN = v.RoleARN
+			clt.SigV4Config.ExternalID = v.ExternalID
+			clt.SigV4Config.UseFIPSSTSEndpoint = v.UseFIPSSTSEndpoint
+			clt.SigV4Config.ServiceName = v.ServiceName
 		}
 
 		if v := r.overrides.RulerRemoteWriteConfig(tenant, id); v != nil {

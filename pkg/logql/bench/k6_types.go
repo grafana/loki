@@ -35,7 +35,7 @@ func ConvertTestCaseToK6(tc TestCase, tenantID int, length time.Duration, buffer
 	if tc.QueryDesc != "" {
 		name = fmt.Sprintf("%s - %s", tc.Source, tc.QueryDesc)
 	}
-	if kind == "log" {
+	if kind == kindLog {
 		name = fmt.Sprintf("%s [%s]", name, directionLabel(tc.Direction))
 	}
 

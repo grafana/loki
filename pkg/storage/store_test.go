@@ -48,7 +48,7 @@ import (
 )
 
 var (
-	start      = model.Time(1523750400000)
+	start      = model.Time(1523750400000) // April 15, 2018
 	m          runtime.MemStats
 	ctx        = user.InjectOrgID(context.Background(), "fake")
 	cm         = NewClientMetrics()
@@ -204,22 +204,34 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 	}
 
 	storeConfig := Config{
-		BoltDBConfig:      local.BoltDBConfig{Directory: filepath.Join(path, "index")},
-		FSConfig:          local.FSConfig{Directory: filepath.Join(path, "chunks")},
-		MaxChunkBatchSize: 10,
+		FSConfig: local.FSConfig{Directory: filepath.Join(path, "chunks")},
+		BoltDBShipperConfig: boltdb.IndexCfg{
+			Config: indexshipper.Config{
+				ActiveIndexDirectory:   filepath.Join(path, "index"),
+				CacheLocation:          filepath.Join(path, "cache"),
+				ResyncInterval:         1 * time.Minute,
+				IngesterDBRetainPeriod: 1 * time.Minute,
+				IngesterName:           "ingester-1",
+				Mode:                   indexshipper.ModeReadWrite,
+			},
+			BuildPerTenantIndex: false,
+		},
+		MaxChunkBatchSize:  10,
+		IndexCacheValidity: 1 * time.Minute,
 	}
 
 	schemaConfig := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
 				From:       config.DayTime{Time: start},
-				IndexType:  "boltdb",
+				IndexType:  "boltdb-shipper",
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
-						Period: time.Hour * 168,
+						Period: time.Hour * 24,
 					}},
 				RowShards: 16,
 			},
@@ -2011,6 +2023,10 @@ func TestStore_SyncStopInteraction(t *testing.T) {
 func TestQueryReferencingStructuredMetadata(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 	tempDir := t.TempDir()
+	// Reset the boltdb-shipper singleton so that this test's store uses tempDir
+	// rather than reusing a client created by a previous getLocalStore call
+	// (e.g. the package-level chunkStore).
+	ResetBoltDBIndexClientsWithShipper()
 	store := getLocalStore(tempDir, cm)
 
 	schemaCfg := store.(*LokiStore).schemaCfg
@@ -2070,7 +2086,17 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 			panic(err)
 		}
 		require.NoError(t, store.Put(ctx, []chunk.Chunk{c}))
+	}
 
+	// This is just a hack for the specific test case.
+	// Recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
+	store.Stop()
+	ResetBoltDBIndexClientsWithShipper()
+	store = getLocalStore(tempDir, cm)
+	t.Cleanup(store.Stop)
+
+	for _, withStructuredMetadata := range []bool{true, false} {
+		stream := fmt.Sprintf(`{sm="%v"}`, withStructuredMetadata)
 		// verify the data by querying it
 		it, err := store.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  stream,

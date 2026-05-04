@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -84,7 +83,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
@@ -102,8 +100,6 @@ import (
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
-
-const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
@@ -132,7 +128,6 @@ const (
 	QueryEngineScheduler         = "query-engine-scheduler"
 	QueryEngineWorker            = "query-engine-worker"
 	Store                        = "store"
-	TableManager                 = "table-manager"
 	RulerStorage                 = "ruler-storage"
 	Ruler                        = "ruler"
 	RuleEvaluator                = "rule-evaluator"
@@ -358,6 +353,15 @@ func (t *Loki) initDistributor() (services.Service, error) {
 
 	if t.Cfg.Distributor.KafkaEnabled && !t.Cfg.Ingester.KafkaIngestion.Enabled {
 		return nil, errors.New("kafka is enabled in distributor but not in ingester")
+	}
+
+	// In inmemory mode, wire the in-process tee before creating the distributor.
+	// DataObjTeeConfig.Enabled stays false so distributor.New() creates no internal Kafka tee.
+	if t.Cfg.DataObj.Enabled && t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory {
+		reg := prometheus.DefaultRegisterer
+		logger := log.With(util_log.Logger, "component", "inmemory-dataobj-tee")
+		inmemTee := distributor.NewInMemoryDataObjTee(t.dataObjConsumer.RecordsChannel(), reg, logger, t.Cfg.Distributor.InMemoryPushTimeout)
+		t.Tee = distributor.WrapTee(t.Tee, inmemTee)
 	}
 
 	// Add ingestion policy interceptors to ingester client
@@ -868,47 +872,6 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 	), nil
 }
 
-func (t *Loki) initTableManager() (services.Service, error) {
-	level.Warn(util_log.Logger).Log("msg", "table manager is deprecated. Consider migrating to tsdb index which relies on a compactor instead.")
-
-	err := t.Cfg.SchemaConfig.Load()
-	if err != nil {
-		return nil, err
-	}
-
-	// Assume the newest config is the one to use
-	lastConfig := &t.Cfg.SchemaConfig.Configs[len(t.Cfg.SchemaConfig.Configs)-1]
-
-	if (t.Cfg.TableManager.ChunkTables.WriteScale.Enabled ||
-		t.Cfg.TableManager.IndexTables.WriteScale.Enabled ||
-		t.Cfg.TableManager.ChunkTables.InactiveWriteScale.Enabled ||
-		t.Cfg.TableManager.IndexTables.InactiveWriteScale.Enabled ||
-		t.Cfg.TableManager.ChunkTables.ReadScale.Enabled ||
-		t.Cfg.TableManager.IndexTables.ReadScale.Enabled ||
-		t.Cfg.TableManager.ChunkTables.InactiveReadScale.Enabled ||
-		t.Cfg.TableManager.IndexTables.InactiveReadScale.Enabled) &&
-		t.Cfg.StorageConfig.AWSStorageConfig.Metrics.URL == "" {
-		level.Error(util_log.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
-		os.Exit(1)
-	}
-
-	reg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, "table-manager", *lastConfig, t.Cfg.StorageConfig, t.ClientMetrics, reg, util_log.Logger)
-	if err != nil {
-		return nil, err
-	}
-
-	bucketClient, err := storage.NewBucketClient(t.Cfg.StorageConfig)
-	util_log.CheckFatal("initializing bucket client", err, util_log.Logger)
-
-	t.tableManager, err = index.NewTableManager(t.Cfg.TableManager, t.Cfg.SchemaConfig, maxChunkAgeForTableManager, tableClient, bucketClient, nil, prometheus.DefaultRegisterer, util_log.Logger)
-	if err != nil {
-		return nil, err
-	}
-
-	return t.tableManager, nil
-}
-
 func (t *Loki) initStore() (services.Service, error) {
 	// Set configs pertaining to object storage based indices
 	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
@@ -1337,21 +1300,19 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		if err != nil {
 			return nil, err
 		}
-		tp := httputil.NewSingleHostReverseProxy(tailURL)
-
 		cfg, err := t.Cfg.Frontend.TLS.GetTLSConfig()
 		if err != nil {
 			return nil, err
 		}
 
-		tp.Transport = &http.Transport{
-			TLSClientConfig: cfg,
-		}
-
-		director := tp.Director
-		tp.Director = func(req *http.Request) {
-			director(req)
-			req.Host = tailURL.Host
+		tp := &httputil.ReverseProxy{
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.SetURL(tailURL)
+				pr.Out.Host = tailURL.Host
+			},
+			Transport: &http.Transport{
+				TLSClientConfig: cfg,
+			},
 		}
 
 		defaultHandler = httpMiddleware.Wrap(tp)
@@ -2427,6 +2388,34 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		return nil, err
 	}
 
+	if t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory {
+		level.Warn(util_log.Logger).Log("msg", "inmemory ingest mode is experimental — no durability guarantees, single-replica only; each replica holds independent data")
+		level.Info(util_log.Logger).Log("msg", "initializing inmemory dataobj consumer")
+		svc, err := consumer.NewInMemory(
+			t.Cfg.DataObj.Consumer,
+			t.Cfg.DataObj.Metastore,
+			store,
+			t.scratchStore,
+			prometheus.DefaultRegisterer,
+			util_log.Logger,
+		)
+		if err != nil {
+			return nil, err
+		}
+		t.dataObjConsumer = svc
+
+		// Register the flush endpoint for inmemory mode (testing/operational use).
+		httpMiddleware := middleware.Merge(
+			serverutil.RecoveryHTTPMiddleware,
+		)
+		t.Server.HTTP.
+			Methods(http.MethodPost).
+			Path("/dataobj-consumer/flush").
+			Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.FlushHandler)))
+
+		return svc, nil
+	}
+
 	t.Cfg.DataObj.Consumer.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
@@ -2463,6 +2452,10 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 
 func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled {
+		return nil, nil
+	}
+	if t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory {
+		level.Info(util_log.Logger).Log("msg", "skipping dataobj index builder in inmemory mode; label queries will use full dataobj scan")
 		return nil, nil
 	}
 	store, err := t.getDataObjBucket("dataobj-index-builder")

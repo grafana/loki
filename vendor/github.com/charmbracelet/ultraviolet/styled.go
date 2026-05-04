@@ -203,6 +203,12 @@ func printString[T []byte | string](
 		// Advance the state and data
 		state = newState
 		str = str[n:]
+
+		if y >= bounds.Max.Y {
+			// We've reached the bottom of the bounds, stop processing further
+			// lines.
+			break
+		}
 	}
 
 	// Make sure to set the last cell if it's not empty.

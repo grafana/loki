@@ -63,10 +63,6 @@ func (p *Peer) Serve(ctx context.Context) error {
 }
 
 func (p *Peer) lazyInit() {
-	if p.outgoing != nil {
-		return
-	}
-
 	p.initOnce.Do(func() {
 		p.done = make(chan struct{})
 		p.incoming = make(chan MessageFrame, p.Buffer)
