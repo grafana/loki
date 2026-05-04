@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -208,4 +211,61 @@ type fakeLimits struct{}
 
 func (f fakeLimits) MaxConsumers(_ string, _ int) int {
 	return 0 // Unlimited
+}
+
+// TestQueueLengthMetricStaysNonNegativeWhileDraining is a regression test for the
+// scenario where a tenant's bloom build backlog is drained by builders for longer
+// than the active-users inactivity timeout without any new enqueues.
+//
+// Previously the cleanup ticker would DeleteLabelValues the per-tenant queue_length
+// gauge series mid-drain (because UpdateUserTimestamp was only called from Enqueue),
+// after which subsequent Dequeue() calls would lazily recreate the series at zero
+// and decrement it into negative values. See https://github.com/grafana/loki/issues/19490.
+func TestQueueLengthMetricStaysNonNegativeWhileDraining(t *testing.T) {
+	const (
+		cleanupInterval = 10 * time.Millisecond
+		inactiveTimeout = 50 * time.Millisecond
+		dequeueInterval = 30 * time.Millisecond
+		numTasks        = 5
+	)
+
+	reg := prometheus.NewPedanticRegistry()
+	queueMetrics := NewMetrics(reg, "test", "queue")
+	clientMetrics := storage.NewClientMetrics()
+	defer clientMetrics.Unregister()
+
+	cfg := Config{MaxQueuedTasksPerTenant: 1000}
+	q, err := newQueue(log.NewNopLogger(), cfg, fakeLimits{}, queueMetrics, clientMetrics, cleanupInterval, inactiveTimeout)
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), q))
+	t.Cleanup(func() { _ = services.StopAndAwaitTerminated(context.Background(), q) })
+
+	const consumer = "fakeConsumer"
+	q.RegisterConsumerConnection(consumer)
+	defer q.UnregisterConsumerConnection(consumer)
+
+	for _, task := range createTasks(numTasks) {
+		require.NoError(t, q.Enqueue(task.ProtoTask, task.taskMeta, nil))
+	}
+
+	idx := StartIndex
+	for i := 0; i < numTasks; i++ {
+		time.Sleep(dequeueInterval)
+		var task *protos.ProtoTask
+		task, _, idx, err = q.Dequeue(context.Background(), idx, consumer)
+		require.NoError(t, err)
+		require.NotNil(t, task)
+		q.Release(task)
+	}
+
+	// numTasks * dequeueInterval == 150ms, well past inactiveTimeout (50ms), so the
+	// cleanup ticker (10ms) had many opportunities to purge "fakeTenant". With the
+	// fix in place each Dequeue/Release refreshes the timestamp, so the gauge series
+	// for the tenant is preserved and ends at exactly zero after the drain.
+	expected := `# HELP test_queue_queue_length Number of queries in the queue.
+# TYPE test_queue_queue_length gauge
+test_queue_queue_length{user="fakeTenant"} 0
+`
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expected), "test_queue_queue_length"))
 }
