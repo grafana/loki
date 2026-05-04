@@ -106,17 +106,13 @@ func columnarEncode(rows []Posting, enc *columnar.Encoder, pageSizeHint, pageMax
 		_ = sectionIndexBuilder.Append(i, dataset.Int64Value(r.SectionIndex))
 		_ = columnNameBuilder.Append(i, dataset.BinaryValue([]byte(r.ColumnName)))
 
-		// label_value: null for bloom postings.
-		if r.Kind == KindBloom {
-			_ = labelValueBuilder.Append(i, dataset.Value{}) // null
-		} else {
+		// label_value: null (omit append) for bloom postings.
+		if r.Kind != KindBloom {
 			_ = labelValueBuilder.Append(i, dataset.BinaryValue([]byte(r.LabelValue)))
 		}
 
-		// bloom_filter: null for label postings.
-		if r.BloomFilter == nil {
-			_ = bloomFilterBuilder.Append(i, dataset.Value{}) // null
-		} else {
+		// bloom_filter: null (omit append) for label postings.
+		if r.BloomFilter != nil {
 			_ = bloomFilterBuilder.Append(i, dataset.BinaryValue(r.BloomFilter))
 		}
 

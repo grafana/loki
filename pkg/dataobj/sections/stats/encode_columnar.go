@@ -97,13 +97,10 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 		_ = rowCountBuilder.Append(i, dataset.Int64Value(r.RowCount))
 		_ = uncompressedSizeBuilder.Append(i, dataset.Int64Value(r.UncompressedSize))
 
-		// Dynamic label columns: append value or null if absent.
+		// Dynamic label columns: append value, or omit (null) when absent.
 		for j, key := range labelKeys {
-			val, ok := r.Labels[key]
-			if ok {
+			if val, ok := r.Labels[key]; ok {
 				_ = labelBuilders[j].Append(i, dataset.BinaryValue([]byte(val)))
-			} else {
-				_ = labelBuilders[j].Append(i, dataset.Value{}) // null
 			}
 		}
 	}
