@@ -143,6 +143,10 @@ func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder
 // AppendStat records a per-sort-key aggregate for a data object section.
 func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
+	b.metrics.appendsTotal.Inc()
+
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
 
 	tenantStats := b.getStatsBuilderForTenant(tenantID)
 	preAppendSizeEstimate := tenantStats.EstimatedSize()
@@ -180,6 +184,10 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 func (b *Builder) AppendLabelPosting(tenantID, objectPath string, sectionIdx int64,
 	columnName string, labelValue string, streamIDBitmap []byte,
 	uncompressedSize int64, minTs, maxTs time.Time) error {
+	b.metrics.appendsTotal.Inc()
+
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
 
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
 	preAppendSizeEstimate := tenantPostings.EstimatedSize()
@@ -219,6 +227,10 @@ func (b *Builder) AppendLabelPosting(tenantID, objectPath string, sectionIdx int
 func (b *Builder) AppendBloomPosting(tenantID, objectPath string, sectionIdx int64,
 	columnName string, bloomFilter []byte, streamIDBitmap []byte,
 	uncompressedSize int64, minTs, maxTs time.Time) error {
+	b.metrics.appendsTotal.Inc()
+
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
 
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
 	preAppendSizeEstimate := tenantPostings.EstimatedSize()
