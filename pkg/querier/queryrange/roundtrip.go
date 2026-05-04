@@ -18,7 +18,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -585,25 +584,6 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 	default:
 		return r.next.Do(ctx, req)
 	}
-}
-
-// transformRegexQuery backport the old regexp params into the v1 query format
-func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax.LogSelectorExpr, error) {
-	regexp := req.Form.Get("regexp")
-	if regexp != "" {
-		filterExpr, err := syntax.AddFilterExpr(expr, logqllog.LineMatchRegexp, "", regexp)
-		if err != nil {
-			return nil, err
-		}
-		params := req.URL.Query()
-		params.Set("query", filterExpr.String())
-		req.URL.RawQuery = params.Encode()
-		// force the form and query to be parsed again.
-		req.Form = nil
-		req.PostForm = nil
-		return filterExpr, nil
-	}
-	return expr, nil
 }
 
 const (
