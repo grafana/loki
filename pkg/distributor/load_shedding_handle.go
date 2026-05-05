@@ -32,8 +32,8 @@ func (h *LoadSheddingHandle) Handle(ctx context.Context, _ *tap.Info) (context.C
 	now := time.Now().UnixNano()
 	lastUpdate := h.lastUpdateNanos.Load()
 
-	// Update heap stats at most once per second
-	if now-lastUpdate >= int64(time.Second) {
+	// Update heap stats at most once per configured cache duration
+	if now-lastUpdate >= int64(h.d.cfg.MemoryBasedLoadSheddingCacheDuration) {
 		// Try to claim the update slot
 		if h.lastUpdateNanos.CompareAndSwap(lastUpdate, now) {
 			m := &goruntime.MemStats{}

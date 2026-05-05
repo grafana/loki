@@ -116,6 +116,7 @@ type Config struct {
 	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
 
 	MemoryBasedLoadSheddingThresholdBytes uint64                `yaml:"memory_based_load_shedding_threshold_bytes"`
+	MemoryBasedLoadSheddingCacheDuration  time.Duration         `yaml:"memory_based_load_shedding_cache_duration"`
 	RequestSizeLimiter                    requestlimiter.Config `yaml:"request_size_limiter,omitempty"`
 }
 
@@ -135,6 +136,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
 	fs.Uint64Var(&cfg.MemoryBasedLoadSheddingThresholdBytes, "distributor.memory-based-load-shedding-threshold-bytes", 0, "Threshold for memory usage above which requests will be load shed. Defaults to never load-shedding.")
+	fs.DurationVar(&cfg.MemoryBasedLoadSheddingCacheDuration, "distributor.memory-based-load-shedding-cache-duration", time.Second, "Duration to cache heap memory stats before refreshing. Defaults to 1s.")
 }
 
 func (cfg *Config) Validate() error {
