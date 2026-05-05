@@ -132,7 +132,7 @@ func newPrometheusLogger(l dslog.Level, format string, reg prometheus.Registerer
 
 	logFlushes := promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
-		Name:      "log_flushes",
+		Name:      "internal_log_flushes",
 		Help:      "Histogram of log flushes using the line-buffered logger.",
 		Buckets:   prometheus.ExponentialBuckets(1, 2, int(math.Log2(float64(logEntries)))+1),
 	})
