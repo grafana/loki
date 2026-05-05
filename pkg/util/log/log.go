@@ -62,7 +62,6 @@ func Flush() error {
 type prometheusLogger struct {
 	baseLogger          log.Logger
 	logger              log.Logger
-	logMessages         *prometheus.CounterVec
 	internalLogMessages *prometheus.CounterVec
 	logFlushes          prometheus.Histogram
 }
@@ -125,16 +124,12 @@ func newPrometheusLogger(l dslog.Level, format string, reg prometheus.Registerer
 		flushTimeout         = 100 * time.Millisecond // flush the buffer after 100ms regardless of how full it is, to prevent losing many logs in case of ungraceful termination
 	)
 
-	logMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "log_messages_total",
-		Help:      "DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by Loki itself.",
-	}, []string{"level"})
 	internalLogMessages := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "internal_log_messages_total",
 		Help:      "Total number of log messages created by Loki itself.",
 	}, []string{"level"})
+
 	logFlushes := promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "log_flushes",
@@ -163,7 +158,6 @@ func newPrometheusLogger(l dslog.Level, format string, reg prometheus.Registerer
 	plogger = &prometheusLogger{
 		baseLogger:          baseLogger,
 		logger:              logger,
-		logMessages:         logMessages,
 		internalLogMessages: internalLogMessages,
 		logFlushes:          logFlushes,
 	}
@@ -175,7 +169,6 @@ func newPrometheusLogger(l dslog.Level, format string, reg prometheus.Registerer
 		level.ErrorValue(),
 	}
 	for _, level := range supportedLevels {
-		plogger.logMessages.WithLabelValues(level.String())
 		plogger.internalLogMessages.WithLabelValues(level.String())
 	}
 
@@ -198,7 +191,6 @@ func (pl *prometheusLogger) Log(kv ...interface{}) error {
 			break
 		}
 	}
-	pl.logMessages.WithLabelValues(l).Inc()
 	pl.internalLogMessages.WithLabelValues(l).Inc()
 	return nil
 }
