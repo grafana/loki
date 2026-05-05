@@ -20,20 +20,30 @@ type LoadSheddingHandle struct {
 	lastUpdateNanos atomic.Int64
 }
 
-// NewLoadSheddingHandle creates a new LoadSheddingHandle with the given distributor.
-func NewLoadSheddingHandle(d *Distributor) *LoadSheddingHandle {
-	return &LoadSheddingHandle{
-		d: d,
-	}
+// NewLoadSheddingHandle creates a new LoadSheddingHandle. The distributor must be set via SetDistributor
+// before Handle is called.
+func NewLoadSheddingHandle() *LoadSheddingHandle {
+	return &LoadSheddingHandle{}
+}
+
+// SetDistributor sets the distributor for the load shedding handle.
+// This must be called exactly once before Handle is called.
+func (h *LoadSheddingHandle) SetDistributor(d *Distributor) {
+	h.d = d
 }
 
 // Handle implements tap.ServerInHandle.
 func (h *LoadSheddingHandle) Handle(ctx context.Context, _ *tap.Info) (context.Context, error) {
+	if h.d == nil {
+		return ctx, httpgrpc.Errorf(http.StatusInternalServerError, "load shedding handle misconfigured: SetDistributor not called")
+	}
+
 	now := time.Now().UnixNano()
 	lastUpdate := h.lastUpdateNanos.Load()
 
 	// Update heap stats at most once per configured cache duration
-	if now-lastUpdate >= int64(h.d.cfg.MemoryBasedLoadSheddingCacheDuration) {
+	cacheDuration := h.d.cfg.MemoryBasedLoadSheddingCacheDuration
+	if now-lastUpdate >= int64(cacheDuration) {
 		// Try to claim the update slot
 		if h.lastUpdateNanos.CompareAndSwap(lastUpdate, now) {
 			m := &goruntime.MemStats{}

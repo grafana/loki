@@ -411,6 +411,7 @@ type Loki struct {
 	tenantConfigs                       *runtime.TenantConfigs
 	TenantLimits                        validation.TenantLimits
 	distributor                         *distributor.Distributor
+	loadSheddingHandle                  *distributor.LoadSheddingHandle
 	ingestLimits                        *limits.Service
 	ingestLimitsRing                    *ring.Ring
 	ingestLimitsFrontend                *limits_frontend.Frontend
@@ -477,6 +478,13 @@ func New(cfg Config) (*Loki, error) {
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
 	loki.setupGRPCRecoveryMiddleware()
+
+	// Initialize distributor's load shedding handle before module manager setup (which creates the server)
+	if cfg.isTarget(Distributor) && !cfg.isTarget(All) && !cfg.isTarget(Write) && !cfg.isTarget(Ingester) {
+		loki.loadSheddingHandle = distributor.NewLoadSheddingHandle()
+		loki.Cfg.Server.GRPCTapHandles = append(loki.Cfg.Server.GRPCTapHandles, loki.loadSheddingHandle.Handle)
+	}
+
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}

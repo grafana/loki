@@ -397,8 +397,10 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	// EXCEPT when running with `-target=all` or `-target=` contains `ingester`
 	if !t.Cfg.isTarget(All) && !t.Cfg.isTarget(Write) && !t.Cfg.isTarget(Ingester) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
-		loadSheddingHandle := distributor.NewLoadSheddingHandle(t.distributor)
-		t.Cfg.Server.GRPCTapHandles = append(t.Cfg.Server.GRPCTapHandles, loadSheddingHandle.Handle)
+		if t.loadSheddingHandle == nil {
+			return nil, errors.New("load shedding handle is not initialized")
+		}
+		t.loadSheddingHandle.SetDistributor(t.distributor)
 	}
 
 	httpPushHandlerMiddleware := middleware.Merge(

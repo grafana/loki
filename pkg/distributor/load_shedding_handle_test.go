@@ -49,7 +49,8 @@ func TestLoadSheddingHandle_LoadShedding(t *testing.T) {
 				usedMemoryGauge:         prometheus.NewGauge(prometheus.GaugeOpts{}),
 				loadShedRequestsCounter: prometheus.NewCounter(prometheus.CounterOpts{}),
 			}
-			h := NewLoadSheddingHandle(d)
+			h := NewLoadSheddingHandle()
+			h.SetDistributor(d)
 
 			_, err := h.Handle(ctx, info)
 			if test.shouldLoadShed {
@@ -75,7 +76,8 @@ func TestLoadSheddingHandle_Caching(t *testing.T) {
 		usedMemoryGauge:         prometheus.NewGauge(prometheus.GaugeOpts{}),
 		loadShedRequestsCounter: prometheus.NewCounter(prometheus.CounterOpts{}),
 	}
-	h := NewLoadSheddingHandle(d)
+	h := NewLoadSheddingHandle()
+	h.SetDistributor(d)
 
 	// Before first call - should be no cached values
 	used0 := h.cachedHeapUsed.Load()
@@ -113,7 +115,8 @@ func TestLoadSheddingHandle_ThreadSafety(t *testing.T) {
 		usedMemoryGauge:         prometheus.NewGauge(prometheus.GaugeOpts{}),
 		loadShedRequestsCounter: prometheus.NewCounter(prometheus.CounterOpts{}),
 	}
-	h := NewLoadSheddingHandle(d)
+	h := NewLoadSheddingHandle()
+	h.SetDistributor(d)
 
 	// Run many concurrent calls
 	const numGoroutines = 100
@@ -134,4 +137,16 @@ func TestLoadSheddingHandle_ThreadSafety(t *testing.T) {
 		err := <-errChan
 		require.NoError(t, err)
 	}
+}
+
+func TestLoadSheddingHandle_NilDistributor(t *testing.T) {
+	ctx := context.Background()
+	info := &tap.Info{}
+
+	h := NewLoadSheddingHandle()
+
+	// Should return error when distributor is nil (misconfiguration)
+	_, err := h.Handle(ctx, info)
+	require.Error(t, err)
+	require.Equal(t, httpgrpc.Errorf(http.StatusInternalServerError, "load shedding handle misconfigured: SetDistributor not called"), err)
 }
