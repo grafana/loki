@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	goruntime "runtime"
 	"runtime/pprof"
 	"slices"
 	"strconv"
@@ -602,10 +601,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 	defer cleanup()
 
-	if err := d.memoryBasedLoadShedIfNeeded(); err != nil {
-		return nil, err
-	}
-
 	start := time.Now()
 	defer d.waitSimulatedLatency(ctx, tenantID, start)
 
@@ -970,18 +965,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-}
-
-func (d *Distributor) memoryBasedLoadShedIfNeeded() error {
-	m := &goruntime.MemStats{}
-	goruntime.ReadMemStats(m)
-	heapUsed := m.HeapAlloc
-	d.usedMemoryGauge.Set(float64(heapUsed))
-	if d.cfg.MemoryBasedLoadSheddingThresholdBytes != 0 && heapUsed > d.cfg.MemoryBasedLoadSheddingThresholdBytes {
-		d.loadShedRequestsCounter.Inc()
-		return httpgrpc.Errorf(http.StatusServiceUnavailable, "ServiceUnavailable")
-	}
-	return nil
 }
 
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.
