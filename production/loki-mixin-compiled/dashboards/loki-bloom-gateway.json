@@ -140,7 +140,7 @@
                      "uid": "${datasource}"
                   },
                   "editorMode": "code",
-                  "expr": "sum(rate(loki_bloom_gateway_filtered_chunks_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_requested_chunks_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))",
+                  "expr": "sum(rate(loki_bloom_gateway_filtered_chunks_sum{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_requested_chunks_sum{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))",
                   "hide": false,
                   "instant": false,
                   "legendFormat": "Chunks",
@@ -154,7 +154,7 @@
                   },
                   "editorMode": "code",
                   "exemplar": false,
-                  "expr": "sum(rate(loki_bloom_gateway_filtered_series_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_requested_series_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))",
+                  "expr": "sum(rate(loki_bloom_gateway_filtered_series_sum{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_requested_series_sum{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval]))",
                   "hide": false,
                   "instant": false,
                   "legendFormat": "Series",
@@ -236,7 +236,7 @@
                   },
                   "editorMode": "code",
                   "exemplar": false,
-                  "expr": "sum(increase(loki_bloom_gateway_filtered_chunks_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_requested_chunks_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))",
+                  "expr": "sum(increase(loki_bloom_gateway_filtered_chunks_sum{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_requested_chunks_sum{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))",
                   "instant": true,
                   "legendFormat": "Chunks",
                   "range": false,
@@ -249,7 +249,7 @@
                   },
                   "editorMode": "code",
                   "exemplar": false,
-                  "expr": "sum(increase(loki_bloom_gateway_filtered_series_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_requested_series_sum{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))",
+                  "expr": "sum(increase(loki_bloom_gateway_filtered_series_sum{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_requested_series_sum{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__range]))",
                   "hide": false,
                   "instant": true,
                   "legendFormat": "Series",
@@ -381,7 +381,7 @@
                      "uid": "${datasource}"
                   },
                   "editorMode": "code",
-                  "expr": "kube_statefulset_status_replicas_ready{cluster=\"$cluster\", namespace=\"$namespace\", statefulset=\"bloom-gateway\"}",
+                  "expr": "kube_statefulset_status_replicas_ready{cluster=~\"$cluster\", namespace=\"$namespace\", statefulset=\"bloom-gateway\"}",
                   "hide": false,
                   "instant": false,
                   "legendFormat": "Ready",
@@ -394,7 +394,7 @@
                      "uid": "${datasource}"
                   },
                   "editorMode": "code",
-                  "expr": "kube_statefulset_replicas{cluster=\"$cluster\", namespace=\"$namespace\", statefulset=\"bloom-gateway\"}",
+                  "expr": "kube_statefulset_replicas{cluster=~\"$cluster\", namespace=\"$namespace\", statefulset=\"bloom-gateway\"}",
                   "hide": false,
                   "instant": false,
                   "legendFormat": "Desired",
@@ -509,7 +509,7 @@
                      "uid": "${datasource}"
                   },
                   "editorMode": "code",
-                  "expr": "sum(rate(loki_bloom_gateway_querier_chunks_filtered_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_chunks_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
+                  "expr": "sum(rate(loki_bloom_gateway_querier_chunks_filtered_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_chunks_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
                   "instant": false,
                   "legendFormat": "Chunks",
                   "range": true,
@@ -522,7 +522,7 @@
                   },
                   "editorMode": "code",
                   "exemplar": false,
-                  "expr": "sum(rate(loki_bloom_gateway_querier_series_filtered_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_series_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
+                  "expr": "sum(rate(loki_bloom_gateway_querier_series_filtered_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_series_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
                   "hide": false,
                   "instant": false,
                   "legendFormat": "Series",
@@ -604,7 +604,7 @@
                   },
                   "editorMode": "code",
                   "exemplar": false,
-                  "expr": "sum(increase(loki_bloom_gateway_querier_chunks_filtered_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_querier_chunks_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))",
+                  "expr": "sum(increase(loki_bloom_gateway_querier_chunks_filtered_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_querier_chunks_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))",
                   "instant": true,
                   "legendFormat": "Chunks",
                   "range": false,
@@ -617,7 +617,7 @@
                   },
                   "editorMode": "code",
                   "exemplar": false,
-                  "expr": "sum(increase(loki_bloom_gateway_querier_series_filtered_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_querier_series_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))",
+                  "expr": "sum(increase(loki_bloom_gateway_querier_series_filtered_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))\n/\nsum(increase(loki_bloom_gateway_querier_series_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__range]))",
                   "hide": false,
                   "instant": true,
                   "legendFormat": "Series",
@@ -722,7 +722,7 @@
                      "uid": "${datasource}"
                   },
                   "editorMode": "code",
-                  "expr": "(\n    max by (pod, reason) (kube_pod_container_status_last_terminated_reason{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"})\n    * on (pod) group_left\n    sum by (pod) (increase(kube_pod_container_status_restarts_total{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))\n) > 0",
+                  "expr": "(\n    max by (pod, reason) (kube_pod_container_status_last_terminated_reason{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"})\n    * on (pod) group_left\n    sum by (pod) (increase(kube_pod_container_status_restarts_total{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))\n) > 0",
                   "hide": false,
                   "instant": false,
                   "interval": "",
@@ -838,7 +838,7 @@
                      "uid": "${datasource}"
                   },
                   "editorMode": "code",
-                  "expr": "(\n    sum(rate(loki_index_gateway_prefilter_chunks_sum{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval])) by (route)\n    -\n    sum(rate(loki_index_gateway_postfilter_chunks_sum{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval])) by (route)\n)\n/\nsum(rate(loki_index_gateway_prefilter_chunks_sum{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval])) by (route)",
+                  "expr": "(\n    sum(rate(loki_index_gateway_prefilter_chunks_sum{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval])) by (route)\n    -\n    sum(rate(loki_index_gateway_postfilter_chunks_sum{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval])) by (route)\n)\n/\nsum(rate(loki_index_gateway_prefilter_chunks_sum{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval])) by (route)",
                   "instant": false,
                   "legendFormat": "chunks {{ route}}",
                   "range": true,
@@ -953,7 +953,7 @@
                   },
                   "editorMode": "code",
                   "exemplar": false,
-                  "expr": "sum(rate(loki_bloom_gateway_querier_series_skipped_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_series_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
+                  "expr": "sum(rate(loki_bloom_gateway_querier_series_skipped_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_series_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
                   "hide": false,
                   "instant": false,
                   "legendFormat": "series",
@@ -967,7 +967,7 @@
                   },
                   "editorMode": "code",
                   "exemplar": false,
-                  "expr": "sum(rate(loki_bloom_gateway_querier_chunks_skipped_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_chunks_total{cluster=\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
+                  "expr": "sum(rate(loki_bloom_gateway_querier_chunks_skipped_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))\n/\nsum(rate(loki_bloom_gateway_querier_chunks_total{cluster=~\"$cluster\", job=\"$namespace/index-gateway\"}[$__rate_interval]))",
                   "hide": false,
                   "instant": false,
                   "legendFormat": "chunks",
@@ -1078,7 +1078,7 @@
                            "uid": "000000134"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=~\"(found|skipped|missed)\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"requested\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_bloom_recorder_chunks_total{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\", type=~\"(found|skipped|missed)\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_chunks_total{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"requested\"}[$__rate_interval]))",
                         "instant": false,
                         "legendFormat": "__auto",
                         "range": true,
@@ -1090,7 +1090,7 @@
                            "uid": "000000134"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"filtered\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"requested\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_bloom_recorder_chunks_total{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"filtered\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_chunks_total{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"requested\"}[$__rate_interval]))",
                         "hide": true,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -1193,7 +1193,7 @@
                            "uid": "000000134"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"filtered\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_chunks_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"found\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_bloom_recorder_chunks_total{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"filtered\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_chunks_total{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"found\"}[$__rate_interval]))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -1294,7 +1294,7 @@
                            "uid": "000000134"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_recorder_series_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=~\"(found|skipped|missed)\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_series_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"requested\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_bloom_recorder_series_total{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\", type=~\"(found|skipped|missed)\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_series_total{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"requested\"}[$__rate_interval]))",
                         "instant": false,
                         "legendFormat": "__auto",
                         "range": true,
@@ -1396,7 +1396,7 @@
                            "uid": "000000134"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_recorder_series_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"filtered\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_series_total{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"found\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_bloom_recorder_series_total{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"filtered\"}[$__rate_interval])) by (type)\n/ on () group_left\nsum(rate(loki_bloom_recorder_series_total{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\", type=\"found\"}[$__rate_interval]))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -1457,7 +1457,7 @@
                            "uid": "${loki_datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"level=error\" or \"panic:\" | logfmt",
+                        "expr": "{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"level=error\" or \"panic:\" | logfmt",
                         "queryType": "range",
                         "refId": "A"
                      },
@@ -1467,7 +1467,7 @@
                            "uid": "${loki_datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"level=warn\" | logfmt",
+                        "expr": "{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"level=warn\" | logfmt",
                         "queryType": "range",
                         "refId": "B"
                      }
@@ -1612,7 +1612,7 @@
                            "uid": "${loki_datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (level) (count_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |~ \"level=(warn|error)\" | logfmt [$__auto]))",
+                        "expr": "sum by (level) (count_over_time({cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |~ \"level=(warn|error)\" | logfmt [$__auto]))",
                         "queryType": "range",
                         "refId": "A"
                      },
@@ -1622,7 +1622,7 @@
                            "uid": "${loki_datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum (count_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"panic:\" | logfmt [$__auto]))",
+                        "expr": "sum (count_over_time({cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"panic:\" | logfmt [$__auto]))",
                         "queryType": "range",
                         "refId": "B"
                      }
@@ -2126,7 +2126,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (pod) (rate(go_gc_cycles_total_gc_cycles_total{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
+                        "expr": "sum by (pod) (rate(go_gc_cycles_total_gc_cycles_total{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -2333,7 +2333,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.99, sum(rate(go_gc_pauses_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])) by (le))",
+                        "expr": "histogram_quantile(0.99, sum(rate(go_gc_pauses_seconds_bucket{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])) by (le))",
                         "hide": false,
                         "legendFormat": "__auto",
                         "range": true,
@@ -2345,7 +2345,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.90, sum(rate(go_gc_pauses_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])) by (le))",
+                        "expr": "histogram_quantile(0.90, sum(rate(go_gc_pauses_seconds_bucket{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])) by (le))",
                         "hide": false,
                         "legendFormat": "__auto",
                         "range": true,
@@ -2819,7 +2819,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (status_code) (\n    rate(loki_request_duration_seconds_count{cluster=\"$cluster\",job=\"$namespace/bloom-gateway\", route=\"/logproto.BloomGateway/FilterChunkRefs\"}[$__rate_interval])\n)",
+                        "expr": "sum by (status_code) (\n    rate(loki_request_duration_seconds_count{cluster=~\"$cluster\",job=\"$namespace/bloom-gateway\", route=\"/logproto.BloomGateway/FilterChunkRefs\"}[$__rate_interval])\n)",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -3305,7 +3305,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (user) (loki_bloom_gateway_queue_length{cluster=\"$cluster\", namespace=\"$namespace\"})",
+                        "expr": "sum by (user) (loki_bloom_gateway_queue_length{cluster=~\"$cluster\", namespace=\"$namespace\"})",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{user}}",
@@ -3403,7 +3403,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.99, sum by (le) (rate(loki_bloom_gateway_queue_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])))",
+                        "expr": "histogram_quantile(0.99, sum by (le) (rate(loki_bloom_gateway_queue_duration_seconds_bucket{cluster=~\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "p99",
@@ -3416,7 +3416,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.50, sum by (le) (rate(loki_bloom_gateway_queue_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])))",
+                        "expr": "histogram_quantile(0.50, sum by (le) (rate(loki_bloom_gateway_queue_duration_seconds_bucket{cluster=~\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "p50",
@@ -3527,7 +3527,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (quantile) (loki_bloom_gateway_inflight_tasks{cluster=\"$cluster\", namespace=\"$namespace\", quantile=\"0.99\"})",
+                        "expr": "sum by (quantile) (loki_bloom_gateway_inflight_tasks{cluster=~\"$cluster\", namespace=\"$namespace\", quantile=\"0.99\"})",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -3643,7 +3643,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_bloom_gateway_process_duration_seconds_bucket{cluster=\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_bloom_gateway_process_duration_seconds_bucket{cluster=~\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
                         "instant": false,
                         "legendFormat": "{{status}}-p99",
                         "range": true,
@@ -3655,7 +3655,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.95, sum(rate(loki_bloom_gateway_process_duration_seconds_bucket{cluster=\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
+                        "expr": "histogram_quantile(0.95, sum(rate(loki_bloom_gateway_process_duration_seconds_bucket{cluster=~\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{status}}-p95",
@@ -3668,7 +3668,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.90, sum(rate(loki_bloom_gateway_process_duration_seconds_bucket{cluster=\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
+                        "expr": "histogram_quantile(0.90, sum(rate(loki_bloom_gateway_process_duration_seconds_bucket{cluster=~\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{status}}-p90",
@@ -3769,7 +3769,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_bloom_gateway_block_query_latency_seconds_bucket{cluster=\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_bloom_gateway_block_query_latency_seconds_bucket{cluster=~\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
                         "instant": false,
                         "legendFormat": "{{status}}-p99",
                         "range": true,
@@ -3781,7 +3781,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.95, sum(rate(loki_bloom_gateway_block_query_latency_seconds_bucket{cluster=\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
+                        "expr": "histogram_quantile(0.95, sum(rate(loki_bloom_gateway_block_query_latency_seconds_bucket{cluster=~\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{status}}-p95",
@@ -3794,7 +3794,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.90, sum(rate(loki_bloom_gateway_block_query_latency_seconds_bucket{cluster=\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
+                        "expr": "histogram_quantile(0.90, sum(rate(loki_bloom_gateway_block_query_latency_seconds_bucket{cluster=~\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (le, status))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{status}}-p90",
@@ -3894,7 +3894,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_gateway_tasks_dequeued_total{cluster=\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_bloom_gateway_tasks_dequeued_total{cluster=~\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval]))",
                         "instant": false,
                         "legendFormat": "dequeued",
                         "range": true,
@@ -3906,7 +3906,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (status) (rate(loki_bloom_gateway_tasks_processed_total{cluster=\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval]))",
+                        "expr": "sum by (status) (rate(loki_bloom_gateway_tasks_processed_total{cluster=~\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval]))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "processed {{status}}",
@@ -4007,7 +4007,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_gateway_process_duration_seconds_count{cluster=\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (status)",
+                        "expr": "sum(rate(loki_bloom_gateway_process_duration_seconds_count{cluster=~\"$cluster\",namespace=\"$namespace\",container=\"bloom-gateway\"}[$__rate_interval])) by (status)",
                         "instant": false,
                         "legendFormat": "{{status}}",
                         "range": true,
@@ -4151,7 +4151,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(loki_embeddedcache_memory_bytes{cluster=\"$cluster\", namespace=\"$namespace\", cache=\"bloom-blocks-cache\", container=\"bloom-gateway\"}) by (pod)",
+                        "expr": "sum(loki_embeddedcache_memory_bytes{cluster=~\"$cluster\", namespace=\"$namespace\", cache=\"bloom-blocks-cache\", container=\"bloom-gateway\"}) by (pod)",
                         "hide": true,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -4164,7 +4164,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(loki_bloom_blocks_cache_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}) by (pod)",
+                        "expr": "sum(loki_bloom_blocks_cache_usage_bytes{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}) by (pod)",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -4311,7 +4311,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(loki_bloom_blocks_cache_entries{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"})",
+                        "expr": "sum(loki_bloom_blocks_cache_entries{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"})",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "Items",
@@ -4324,7 +4324,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_blocks_cache_added_total{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_bloom_blocks_cache_added_total{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "Added",
@@ -4337,7 +4337,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_blocks_cache_evicted_total{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])) by (reason)",
+                        "expr": "sum(rate(loki_bloom_blocks_cache_evicted_total{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])) by (reason)",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "Evicted ({{reason}})",
@@ -4350,7 +4350,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_blocks_cache_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_bloom_blocks_cache_usage_bytes{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
                         "hide": true,
                         "instant": false,
                         "legendFormat": "Size",
@@ -4483,7 +4483,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (status) (\n    rate(loki_bloom_blocks_cache_fetched_total{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])\n)\n/ ignoring(status) group_left\nsum (\n    rate(loki_bloom_blocks_cache_fetched_total{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])\n)",
+                        "expr": "sum by (status) (\n    rate(loki_bloom_blocks_cache_fetched_total{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])\n)\n/ ignoring(status) group_left\nsum (\n    rate(loki_bloom_blocks_cache_fetched_total{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])\n)",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -4597,7 +4597,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(loki_embeddedcache_memory_bytes{cluster=\"$cluster\", namespace=\"$namespace\", cache=\"bloom-blocks-cache\", container=\"bloom-gateway\"})\n/\nsum(loki_embeddedcache_entries{cluster=\"$cluster\", namespace=\"$namespace\", cache=\"bloom-blocks-cache\", container=\"bloom-gateway\"})",
+                        "expr": "sum(loki_embeddedcache_memory_bytes{cluster=~\"$cluster\", namespace=\"$namespace\", cache=\"bloom-blocks-cache\", container=\"bloom-gateway\"})\n/\nsum(loki_embeddedcache_entries{cluster=~\"$cluster\", namespace=\"$namespace\", cache=\"bloom-blocks-cache\", container=\"bloom-gateway\"})",
                         "instant": false,
                         "legendFormat": "Size",
                         "range": true,
@@ -4609,7 +4609,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(loki_bloom_blocks_cache_usage_bytes{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"})\n/\nsum(loki_bloom_blocks_cache_entries{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"})",
+                        "expr": "sum(loki_bloom_blocks_cache_usage_bytes{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"})\n/\nsum(loki_bloom_blocks_cache_entries{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"})",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "Size",
@@ -4723,7 +4723,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_store_metas_fetched_sum{cluster=\"$cluster\",namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_bloom_store_metas_fetched_sum{cluster=~\"$cluster\",namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "metas fetch rate",
@@ -4736,7 +4736,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum(rate(loki_bloom_store_blocks_fetched_sum{cluster=\"$cluster\",namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_bloom_store_blocks_fetched_sum{cluster=~\"$cluster\",namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "blocks fetch rate",
@@ -4749,7 +4749,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.9, sum(rate(loki_bloom_store_blocks_fetched_size_bytes_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (le))",
+                        "expr": "histogram_quantile(0.9, sum(rate(loki_bloom_store_blocks_fetched_size_bytes_bucket{cluster=~\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (le))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "p90 blocks size",
@@ -4762,7 +4762,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.9, sum(rate(loki_bloom_store_metas_fetched_size_bytes_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (le))",
+                        "expr": "histogram_quantile(0.9, sum(rate(loki_bloom_store_metas_fetched_size_bytes_bucket{cluster=~\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (le))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "p90 metas size",
@@ -4775,7 +4775,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(1.0, sum(rate(loki_bloom_store_metas_fetched_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (le))",
+                        "expr": "histogram_quantile(1.0, sum(rate(loki_bloom_store_metas_fetched_bucket{cluster=~\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (le))",
                         "hide": true,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -4788,7 +4788,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.95, sum(rate(loki_bloom_store_metas_fetched_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (le))",
+                        "expr": "histogram_quantile(0.95, sum(rate(loki_bloom_store_metas_fetched_bucket{cluster=~\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (le))",
                         "hide": true,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -4801,7 +4801,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.5, sum(rate(loki_bloom_store_metas_fetched_bucket{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (le))",
+                        "expr": "histogram_quantile(0.5, sum(rate(loki_bloom_store_metas_fetched_bucket{cluster=~\"$cluster\", namespace=\"$namespace\"}[$__rate_interval])) by (le))",
                         "hide": true,
                         "instant": false,
                         "legendFormat": "__auto",
@@ -4915,7 +4915,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (job)(rate(loki_bloom_store_download_queue_size_sum{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
+                        "expr": "sum by (job)(rate(loki_bloom_store_download_queue_size_sum{cluster=~\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval]))",
                         "hide": false,
                         "instant": false,
                         "interval": "",
@@ -5087,7 +5087,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (status_code, operation) (rate(loki_gcs_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
+                        "expr": "sum by (status_code, operation) (rate(loki_gcs_request_duration_seconds_count{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
                         "instant": false,
                         "legendFormat": "{{operation}} {{status_code}}",
                         "range": true,
@@ -5184,7 +5184,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "{{operation}} p99",
                         "range": true,
@@ -5196,7 +5196,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p90",
@@ -5209,7 +5209,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p50",
@@ -5336,7 +5336,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (status_code, operation) (rate(loki_s3_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
+                        "expr": "sum by (status_code, operation) (rate(loki_s3_request_duration_seconds_count{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
                         "instant": false,
                         "legendFormat": "{{operation}} {{status_code}}",
                         "range": true,
@@ -5433,7 +5433,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "{{operation}} p99",
                         "range": true,
@@ -5445,7 +5445,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p90",
@@ -5458,7 +5458,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p50",
@@ -5585,7 +5585,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (status_code, operation) (rate(loki_azure_blob_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
+                        "expr": "sum by (status_code, operation) (rate(loki_azure_blob_request_duration_seconds_count{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
                         "instant": false,
                         "legendFormat": "{{operation}} {{status_code}}",
                         "range": true,
@@ -5682,7 +5682,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "{{operation}} p99",
                         "range": true,
@@ -5694,7 +5694,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p90",
@@ -5707,7 +5707,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p50",
@@ -5804,7 +5804,7 @@
                         },
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "increase(loki_bloom_gateway_dequeue_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval])",
+                        "expr": "increase(loki_bloom_gateway_dequeue_duration_seconds_bucket{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval])",
                         "format": "heatmap",
                         "instant": false,
                         "legendFormat": "__auto",
@@ -5885,7 +5885,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "increase(loki_bloom_gateway_tasks_dequeued_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval])",
+                        "expr": "increase(loki_bloom_gateway_tasks_dequeued_bucket{cluster=~\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval])",
                         "format": "heatmap",
                         "hide": false,
                         "instant": false,
@@ -5928,16 +5928,17 @@
                "type": "datasource"
             },
             {
-               "allValue": null,
+               "allValue": ".+",
                "current": {
-                  "text": "prod",
-                  "value": "prod"
+                  "selected": true,
+                  "text": "All",
+                  "value": "$__all"
                },
                "datasource": "$datasource",
                "hide": 0,
-               "includeAll": false,
+               "includeAll": true,
                "label": "cluster",
-               "multi": false,
+               "multi": true,
                "name": "cluster",
                "options": [ ],
                "query": "label_values(loki_build_info, cluster)",

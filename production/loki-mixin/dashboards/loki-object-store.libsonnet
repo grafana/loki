@@ -3,7 +3,7 @@ local row = grafana.row;
 
 {
   grafanaDashboards+:: if !$._config.thanos.enabled then {} else {
-    local cluster_namespace_matcher = 'cluster="$cluster", namespace=~"$namespace"',
+    local cluster_namespace_matcher = 'cluster=~"$cluster", namespace=~"$namespace"',
     local dashboard = (
       (import 'dashboard-utils.libsonnet') + {
         _config+:: $._config,

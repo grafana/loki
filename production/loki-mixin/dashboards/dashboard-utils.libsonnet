@@ -27,7 +27,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         },
       },
 
-      addCluster(multi=false)::
+      addCluster(multi=true)::
         if multi then
           self.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
         else
@@ -86,6 +86,50 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
   namespaceMatcher()::
     $._config.per_cluster_label + '=~"$cluster", ' + $._config.per_namespace_label + '=~"$namespace"',
+
+  // replaceClusterMatchers normalizes cluster matchers in queries imported from
+  // exported dashboard JSON.
+  replaceClusterMatchers(expr, showMultiCluster=true)::
+    if showMultiCluster then
+      std.strReplace(
+        std.strReplace(
+          std.strReplace(
+            expr,
+            'cluster=~"$cluster"',
+            $._config.per_cluster_label + '=~"$cluster"'
+          ),
+          'cluster="$cluster"',
+          $._config.per_cluster_label + '=~"$cluster"'
+        ),
+        'cluster_job',
+        $._config.per_cluster_label + '_job'
+      )
+    else
+      std.strReplace(
+        std.strReplace(
+          std.strReplace(
+            std.strReplace(
+              std.strReplace(
+                std.strReplace(
+                  expr,
+                  'cluster="$cluster", ',
+                  ''
+                ),
+                'cluster=~"$cluster", ',
+                ''
+              ),
+              ', cluster="$cluster"',
+              ''
+            ),
+            ', cluster=~"$cluster"',
+            ''
+          ),
+          'cluster="$cluster",',
+          ''
+        ),
+        'cluster=~"$cluster",',
+        ''
+      ),
 
   logPanel(title, selector, datasource='$loki_datasource'):: {
     title: title,

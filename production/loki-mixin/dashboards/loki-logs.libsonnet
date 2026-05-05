@@ -7,7 +7,7 @@ local template = import 'grafonnet/template.libsonnet';
     template.new(
       'container',
       '$datasource',
-      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '="$cluster", ' + $._config.per_namespace_label + '="$namespace"}, container)',
+      'label_values(kube_pod_container_info{' + $._config.per_cluster_label + '=~"$cluster", ' + $._config.per_namespace_label + '="$namespace"}, container)',
       sort=1,
       multi=true,
     ),
@@ -45,9 +45,7 @@ local template = import 'grafonnet/template.libsonnet';
                           p {
                             targets: [
                               e {
-                                expr: if dashboards['loki-logs.json'].showMultiCluster
-                                then std.strReplace(super.expr, 'cluster="$cluster"', $._config.per_cluster_label + '="$cluster"')
-                                else std.strReplace(super.expr, 'cluster="$cluster", ', ''),
+                                expr: $.replaceClusterMatchers(super.expr, dashboards['loki-logs.json'].showMultiCluster),
                               }
                               for e in p.targets
                             ],

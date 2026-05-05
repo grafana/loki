@@ -64,7 +64,7 @@
                   },
                   "targets": [
                      {
-                        "expr": "sum by(operation) (rate(loki_objstore_bucket_operations_total{cluster=\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval]))",
+                        "expr": "sum by(operation) (rate(loki_objstore_bucket_operations_total{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "{{operation}}",
                         "legendLink": null
@@ -111,7 +111,7 @@
                   },
                   "targets": [
                      {
-                        "expr": "sum by(operation) (rate(loki_objstore_bucket_operation_failures_total{cluster=\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval])) > 0",
+                        "expr": "sum by(operation) (rate(loki_objstore_bucket_operation_failures_total{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval])) > 0",
                         "format": "time_series",
                         "legendFormat": "{{operation}}",
                         "legendLink": null
@@ -158,7 +158,7 @@
                   },
                   "targets": [
                      {
-                        "expr": "sum by (method, status_code) (rate(loki_objstore_bucket_transport_requests_total{cluster=\"$cluster\", namespace=~\"$namespace\", status_code!~\"2..\"}[$__rate_interval])) > 0",
+                        "expr": "sum by (method, status_code) (rate(loki_objstore_bucket_transport_requests_total{cluster=~\"$cluster\", namespace=~\"$namespace\", status_code!~\"2..\"}[$__rate_interval])) > 0",
                         "format": "time_series",
                         "legendFormat": "{{method}} - {{status_code}}",
                         "legendLink": null
@@ -219,19 +219,19 @@
                   },
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"get\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"get\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "99th Percentile",
                         "refId": "A"
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"get\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"get\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "50th Percentile",
                         "refId": "B"
                      },
                      {
-                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"get\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"get\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"get\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"get\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "Average",
                         "refId": "C"
@@ -297,19 +297,19 @@
                   },
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"get_range\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"get_range\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "99th Percentile",
                         "refId": "A"
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"get_range\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"get_range\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "50th Percentile",
                         "refId": "B"
                      },
                      {
-                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"get_range\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"get_range\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"get_range\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"get_range\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "Average",
                         "refId": "C"
@@ -375,19 +375,19 @@
                   },
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"exists\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"exists\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "99th Percentile",
                         "refId": "A"
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"exists\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"exists\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "50th Percentile",
                         "refId": "B"
                      },
                      {
-                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"exists\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"exists\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"exists\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"exists\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "Average",
                         "refId": "C"
@@ -466,19 +466,19 @@
                   },
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"attributes\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"attributes\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "99th Percentile",
                         "refId": "A"
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"attributes\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"attributes\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "50th Percentile",
                         "refId": "B"
                      },
                      {
-                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"attributes\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"attributes\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"attributes\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"attributes\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "Average",
                         "refId": "C"
@@ -544,19 +544,19 @@
                   },
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"upload\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"upload\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "99th Percentile",
                         "refId": "A"
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"upload\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"upload\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "50th Percentile",
                         "refId": "B"
                      },
                      {
-                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"upload\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"upload\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"upload\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"upload\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "Average",
                         "refId": "C"
@@ -622,19 +622,19 @@
                   },
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"delete\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"delete\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "99th Percentile",
                         "refId": "A"
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"delete\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.50, sum(rate(loki_objstore_bucket_operation_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"delete\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "50th Percentile",
                         "refId": "B"
                      },
                      {
-                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"delete\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=\"$cluster\", namespace=~\"$namespace\",operation=\"delete\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_objstore_bucket_operation_duration_seconds_sum{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"delete\"}[$__rate_interval])) * 1e3 / sum(rate(loki_objstore_bucket_operation_duration_seconds_count{cluster=~\"$cluster\", namespace=~\"$namespace\",operation=\"delete\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "Average",
                         "refId": "C"
@@ -693,16 +693,17 @@
                "type": "datasource"
             },
             {
-               "allValue": null,
+               "allValue": ".+",
                "current": {
-                  "text": "prod",
-                  "value": "prod"
+                  "selected": true,
+                  "text": "All",
+                  "value": "$__all"
                },
                "datasource": "$datasource",
                "hide": 0,
-               "includeAll": false,
+               "includeAll": true,
                "label": "cluster",
-               "multi": false,
+               "multi": true,
                "name": "cluster",
                "options": [ ],
                "query": "label_values(loki_build_info, cluster)",
