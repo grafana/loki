@@ -265,7 +265,9 @@ func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context, opts ...MRDO
 	for _, opt := range opts {
 		opt.apply(params)
 	}
-
+	if params.minConnections > 1 || params.maxConnections > 1 {
+		spanCtx = addFeatureAttributes(spanCtx, featureMultistreamInMRD)
+	}
 	// This call will return the *MultiRangeDownloader with the .impl field set.
 	return o.c.tc.NewMultiRangeDownloader(spanCtx, params, storageOpts...)
 }

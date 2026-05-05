@@ -100,6 +100,22 @@ func (s *Service) cancelDelayedDownscale(w http.ResponseWriter, r *http.Request)
 	s.respondWithCurrentPartitionState(w, r)
 }
 
+// FlushHandler triggers an immediate flush of any in-flight builders.
+// Used in testing and operational tooling to force data into object storage
+// without waiting for idle or max-age timeouts.
+func (s *Service) FlushHandler(w http.ResponseWriter, r *http.Request) {
+	if s.processor == nil || s.State() != services.Running {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if err := s.processor.Flush(r.Context()); err != nil {
+		level.Error(s.logger).Log("msg", "flush failed", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Service) respondWithCurrentPartitionState(w http.ResponseWriter, r *http.Request) {
 	state, stateTimestamp, err := s.partitionInstanceLifecycler.GetPartitionState(r.Context())
 	if err != nil {

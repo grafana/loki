@@ -369,6 +369,7 @@ type CopyObjectArgs struct {
 	ContentCrc32cFlag bool
 	ObjectExpires     int
 	ContentCrc64ECMA  string
+	SrcVersionId      string
 	// please set other header/params of http request By Option
 	// alternative Options please refer to service/bos/api/option.go
 }

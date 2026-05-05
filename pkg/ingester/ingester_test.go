@@ -633,7 +633,7 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "bigtable",
+					IndexType: "boltdb",
 				},
 			},
 		},

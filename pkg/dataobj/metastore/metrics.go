@@ -1,8 +1,6 @@
 package metastore
 
 import (
-	"time"
-
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -88,24 +86,6 @@ func (p *tocMetrics) unregister(reg prometheus.Registerer) {
 
 func (p *tocMetrics) incTableOfContentsWrites(status status) {
 	p.tocWriteFailures.WithLabelValues(string(status)).Inc()
-}
-
-func (p *tocMetrics) observeMetastoreReplay(recordTimestamp time.Time) {
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.tocReplayTime.Observe(time.Since(recordTimestamp).Seconds())
-	}
-}
-
-func (p *tocMetrics) observeMetastoreEncoding(recordTimestamp time.Time) {
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.tocEncodingTime.Observe(time.Since(recordTimestamp).Seconds())
-	}
-}
-
-func (p *tocMetrics) observeMetastoreProcessing(recordTimestamp time.Time) {
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.tocProcessingTime.Observe(time.Since(recordTimestamp).Seconds())
-	}
 }
 
 type ObjectMetastoreMetrics struct {

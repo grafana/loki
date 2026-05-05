@@ -105,18 +105,6 @@ func (p *builderMetrics) register(reg prometheus.Registerer) error {
 	return nil
 }
 
-func (p *builderMetrics) unregister(reg prometheus.Registerer) {
-	collectors := []prometheus.Collector{
-		p.commitFailures,
-		p.commitsTotal,
-		p.processingDelay,
-	}
-
-	for _, collector := range collectors {
-		reg.Unregister(collector)
-	}
-}
-
 func (p *builderMetrics) incCommitFailures() {
 	p.commitFailures.Inc()
 }
@@ -194,20 +182,6 @@ func (m *indexerMetrics) register(reg prometheus.Registerer) error {
 		}
 	}
 	return nil
-}
-
-func (m *indexerMetrics) unregister(reg prometheus.Registerer) {
-	collectors := []prometheus.Collector{
-		m.totalRequests,
-		m.totalBuilds,
-		m.buildTimeSeconds,
-		m.queueDepth,
-		m.endToEndProcessingTime,
-	}
-
-	for _, collector := range collectors {
-		reg.Unregister(collector)
-	}
 }
 
 func (m *indexerMetrics) incRequests() {

@@ -10,7 +10,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
@@ -533,14 +532,3 @@ type runnerTask struct {
 	task    *Task
 	handler TaskEventHandler
 }
-
-type noopPipeline struct{}
-
-func (noopPipeline) Open(context.Context) error { return nil }
-
-func (noopPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	<-ctx.Done()
-	return nil, ctx.Err()
-}
-
-func (noopPipeline) Close() {}

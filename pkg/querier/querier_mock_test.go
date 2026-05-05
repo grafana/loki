@@ -6,10 +6,7 @@ import (
 	"fmt"
 	"math"
 	"time"
-
-	"github.com/grafana/loki/pkg/push"
-
-	
+        "github.com/grafana/loki/pkg/push"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -31,7 +28,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -40,7 +36,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // querierClientMock is a mockable version of QuerierClient, used in querier
@@ -572,20 +567,6 @@ func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 	return iter.NewStreamIterator(mockStream(from, quantity))
 }
 
-// mockLogfmtStreamIterator returns an iterator with 1 stream and quantity entries,
-// where entries timestamp and line string are constructed as sequential numbers
-// starting at from, and the line is in logfmt format with the fields message, count and fake
-func mockLogfmtStreamIterator(from int, quantity int) iter.EntryIterator {
-	return iter.NewStreamIterator(mockLogfmtStream(from, quantity))
-}
-
-// mockLogfmtStreamIterator returns an iterator with 1 stream and quantity entries,
-// where entries timestamp and line string are constructed as sequential numbers
-// starting at from, and the line is in logfmt format with the fields message, count and fake
-func mockLogfmtStreamIteratorWithStructuredMetadata(from int, quantity int) iter.EntryIterator {
-	return iter.NewStreamIterator(mockLogfmtStreamWithStructuredMetadata(from, quantity))
-}
-
 // mockSampleIterator returns an iterator with 1 stream and quantity entries,
 // where entries timestamp and line string are constructed as sequential numbers
 // starting at from
@@ -612,99 +593,6 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 	return logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
-	}
-}
-
-func mockLogfmtStream(from int, quantity int) logproto.Stream {
-	return mockLogfmtStreamWithLabels(from, quantity, `{type="test", name="foo"}`)
-}
-
-func mockLogfmtStreamWithLabels(_ int, quantity int, lbls string) logproto.Stream {
-	entries := make([]logproto.Entry, 0, quantity)
-	streamLabels, err := syntax.ParseLabels(lbls)
-	if err != nil {
-		streamLabels = labels.EmptyLabels()
-	}
-
-	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
-	logFmtParser := log.NewLogfmtParser(false, false)
-
-	// used for detected fields queries which are always BACKWARD
-	for i := quantity; i > 0; i-- {
-		line := fmt.Sprintf(
-			`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t name=bar`,
-			i,
-			i,
-			(i * 10),
-			(i * 256),
-			float32(i*10.0),
-			(i%2 == 0))
-
-		entry := logproto.Entry{
-			Timestamp: time.Unix(int64(i), 0),
-			Line:      line,
-		}
-		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
-		if logfmtSuccess {
-			entry.Parsed = logproto.FromLabelsToLabelAdapters(lblBuilder.LabelsResult().Parsed())
-		}
-		entries = append(entries, entry)
-	}
-
-	return logproto.Stream{
-		Entries: entries,
-		Labels:  lblBuilder.LabelsResult().String(),
-	}
-}
-
-func mockLogfmtStreamWithStructuredMetadata(from int, quantity int) logproto.Stream {
-	return mockLogfmtStreamWithLabelsAndStructuredMetadata(from, quantity, `{type="test"}`)
-}
-
-func mockLogfmtStreamWithLabelsAndStructuredMetadata(
-	from int,
-	quantity int,
-	lbls string,
-) logproto.Stream {
-	var entries []logproto.Entry
-	metadata := push.LabelsAdapter{
-		{
-			Name:  "constant",
-			Value: "constant",
-		},
-	}
-
-	for i := from; i < from+quantity; i++ {
-		metadata = append(metadata, push.LabelAdapter{
-			Name:  "variable",
-			Value: fmt.Sprintf("value%d", i),
-		})
-	}
-
-	streamLabels, err := syntax.ParseLabels(lbls)
-	if err != nil {
-		streamLabels = labels.EmptyLabels()
-	}
-
-	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
-	logFmtParser := log.NewLogfmtParser(false, false)
-
-	for i := quantity; i > 0; i-- {
-		line := fmt.Sprintf(`message="line %d" count=%d fake=true`, i, i)
-		entry := logproto.Entry{
-			Timestamp:          time.Unix(int64(i), 0),
-			Line:               line,
-			StructuredMetadata: metadata,
-		}
-		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
-		if logfmtSuccess {
-			entry.Parsed = logproto.FromLabelsToLabelAdapters(lblBuilder.LabelsResult().Parsed())
-		}
-		entries = append(entries, entry)
-	}
-	return logproto.Stream{
-		Labels:  lbls,
-		Entries: entries,
 	}
 }
 
@@ -810,10 +698,6 @@ type engineMock struct {
 	util.ExtendedMock
 }
 
-func newEngineMock() *engineMock {
-	return &engineMock{}
-}
-
 func (e *engineMock) Query(p logql.Params) logql.Query {
 	args := e.Called(p)
 	return args.Get(0).(logql.Query)
@@ -826,30 +710,6 @@ type queryMock struct {
 
 func (q queryMock) Exec(_ context.Context) (logqlmodel.Result, error) {
 	return q.result, q.err
-}
-
-// mockPatternQuerier implements pattern.PatterQuerier interface for testing
-type mockPatternQuerier struct {
-	mock.Mock
-}
-
-func newMockPatternQuerier() *mockPatternQuerier {
-	return &mockPatternQuerier{}
-}
-
-func (m *mockPatternQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
-	args := m.Called(ctx, req)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*logproto.QueryPatternsResponse), args.Error(1)
-}
-
-// Helper types and functions for pattern tests
-type patternSample struct {
-	pattern   string
-	timestamp int64
-	value     int64
 }
 
 // newMockEngineWithPatterns creates a mock engine that returns patterns when queried
@@ -878,49 +738,6 @@ func newMockEngineWithPatterns(patterns []string) logql.Engine {
 	engine.On("Query", mock.Anything).Return(&queryMock{result: result, err: nil})
 
 	return engine
-}
-
-// newMockEngineWithPatternsAndTimestamps creates a mock engine that returns patterns with specific timestamps
-func newMockEngineWithPatternsAndTimestamps(patternSamples []patternSample) logql.Engine {
-	engine := &engineMock{}
-
-	// Create a result with the patterns
-	matrix := promql.Matrix{}
-	for _, ps := range patternSamples {
-		matrix = append(matrix, promql.Series{
-			Metric: labels.New(
-				labels.Label{Name: "service_name", Value: "test-service"},
-				labels.Label{Name: "decoded_pattern", Value: ps.pattern},
-			),
-			Floats: []promql.FPoint{
-				{T: ps.timestamp, F: float64(ps.value)},
-			},
-		})
-	}
-
-	result := logqlmodel.Result{
-		Data: matrix,
-	}
-
-	// Mock the Query method to return a query that returns our result
-	engine.On("Query", mock.Anything).Return(&queryMock{result: result, err: nil})
-
-	return engine
-}
-
-type mockTenantLimits map[string]*validation.Limits
-
-func (tl mockTenantLimits) TenantLimits(userID string) *validation.Limits {
-	limits, ok := tl[userID]
-	if !ok {
-		return &validation.Limits{}
-	}
-
-	return limits
-}
-
-func (tl mockTenantLimits) AllByUserID() map[string]*validation.Limits {
-	return tl
 }
 
 type mockDeleteGettter struct {

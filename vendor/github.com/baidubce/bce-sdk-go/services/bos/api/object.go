@@ -364,6 +364,9 @@ func CopyObject(cli bce.Client, bucket, object, source string, args *CopyObjectA
 	if len(source) == 0 {
 		return nil, bce.NewBceClientError("copy source should not be null")
 	}
+	if len(args.SrcVersionId) > 0 {
+		source = source + "?versionId=" + args.SrcVersionId
+	}
 	req.SetHeader(http.BCE_COPY_SOURCE, util.UriEncode(source, false))
 	if ctx == nil {
 		ctx = newDefaultBosContext()

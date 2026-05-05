@@ -6,6 +6,8 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // regexpParser parses log lines using a compiled regular expression with named capture groups.
@@ -57,15 +59,15 @@ func (r *regexpParser) process(line string) (map[string]string, error) {
 	return result, nil
 }
 
-func buildRegexpColumns(input *array.String, pattern string) ([]string, []arrow.Array) {
+func buildRegexpColumns(input arrow.RecordBatch, sourceCol *array.String, pattern string) ([]string, []arrow.Array) {
 	parser, err := newRegexpParser(pattern)
 	if err != nil {
-		return buildErrorColumns(input, "RegexpParseErr", err.Error())
+		return buildErrorColumns(sourceCol, "RegexpParseErr", err.Error())
 	}
 
-	parseFunc := func(line string) (map[string]string, error) {
+	parseFunc := func(_ arrow.RecordBatch, line string) (map[string]string, error) {
 		return parser.process(line)
 	}
 
-	return buildColumns(input, nil, parseFunc, "RegexpParseErr")
+	return buildColumns(input, sourceCol, nil, parseFunc, types.VariadicOpParseRegexp, "RegexpParseErr")
 }

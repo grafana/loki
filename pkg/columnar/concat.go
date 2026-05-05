@@ -3,6 +3,7 @@ package columnar
 import (
 	"fmt"
 
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -22,21 +23,21 @@ func Concat(alloc *memory.Allocator, in []Array) (Array, error) {
 	}
 
 	switch kind {
-	case KindNull:
+	case types.KindNull:
 		return concatNull(alloc, in)
-	case KindBool:
+	case types.KindBool:
 		return concatBool(alloc, in)
-	case KindInt32:
+	case types.KindInt32:
 		return concatNumber[int32](alloc, in)
-	case KindInt64:
+	case types.KindInt64:
 		return concatNumber[int64](alloc, in)
-	case KindUint32:
+	case types.KindUint32:
 		return concatNumber[uint32](alloc, in)
-	case KindUint64:
+	case types.KindUint64:
 		return concatNumber[uint64](alloc, in)
-	case KindUTF8:
+	case types.KindUTF8:
 		return concatUTF8(alloc, in)
-	case KindStruct:
+	case types.KindStruct:
 		return concatStruct(alloc, in)
 	default:
 		return nil, fmt.Errorf("unsupported array kind %s", kind)

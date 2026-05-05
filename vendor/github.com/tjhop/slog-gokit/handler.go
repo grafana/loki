@@ -12,12 +12,19 @@ var _ slog.Handler = (*GoKitHandler)(nil)
 
 var defaultGoKitLogger = log.NewLogfmtLogger(os.Stderr)
 
+// Pay boxing cost once at package init, save 2 heap escapes per Handle() call.
+var (
+	timeKey any = slog.TimeKey
+	msgKey  any = slog.MessageKey
+)
+
 // GoKitHandler implements the slog.Handler interface. It holds an internal
 // go-kit logger that is used to perform the true logging.
 type GoKitHandler struct {
 	level        slog.Leveler
 	logger       log.Logger
-	preformatted []any // pre-flattened key-value pairs, ready to pass directly to logger.Log()
+	levelLoggers *levelLoggerCache // pre-built leveled loggers
+	preformatted []any             // pre-flattened key-value pairs, ready to pass directly to logger.Log()
 	group        string
 }
 
@@ -38,16 +45,16 @@ func NewGoKitHandler(logger log.Logger, level slog.Leveler) slog.Handler {
 		level = &slog.LevelVar{} // Info level by default.
 	}
 
-	return &GoKitHandler{logger: logger, level: level}
+	return &GoKitHandler{
+		logger:       logger,
+		level:        level,
+		levelLoggers: newLevelCache(logger),
+	}
 }
 
 // Enabled returns true if the internal slog.Leveler is enabled for the
 // provided log level. It implements slog.Handler.
 func (h *GoKitHandler) Enabled(_ context.Context, level slog.Level) bool {
-	if h.level == nil {
-		h.level = &slog.LevelVar{} // Info level by default.
-	}
-
 	return level >= h.level.Level()
 }
 
@@ -56,11 +63,7 @@ func (h *GoKitHandler) Enabled(_ context.Context, level slog.Level) bool {
 // are formatted and added to the log call as individual key/value pairs. It
 // implements slog.Handler.
 func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
-	if h.logger == nil {
-		h.logger = defaultGoKitLogger
-	}
-
-	logger := goKitLevelFunc(h.logger, record.Level)
+	logger := h.levelLoggers.get(record.Level)
 
 	// Pre-compute slice capacity. h.preformatted is already flattened to []any
 	// key-value pairs at WithAttrs time, so len(h.preformatted) is the exact
@@ -76,9 +79,9 @@ func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
 	capacity := 4 + len(h.preformatted) + (3 * record.NumAttrs())
 	pairs := make([]any, 0, capacity)
 	if !record.Time.IsZero() {
-		pairs = append(pairs, slog.TimeKey, record.Time)
+		pairs = append(pairs, timeKey, record.Time)
 	}
-	pairs = append(pairs, slog.MessageKey, record.Message)
+	pairs = append(pairs, msgKey, record.Message)
 
 	// Bulk-append pre-flattened attrs, group prefixes were resolved at
 	// WithAttrs() call.
@@ -112,6 +115,7 @@ func (h *GoKitHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &GoKitHandler{
 		logger:       h.logger,
 		level:        h.level,
+		levelLoggers: h.levelLoggers,
 		preformatted: pairs,
 		group:        h.group,
 	}
@@ -132,6 +136,7 @@ func (h *GoKitHandler) WithGroup(name string) slog.Handler {
 	return &GoKitHandler{
 		logger:       h.logger,
 		level:        h.level,
+		levelLoggers: h.levelLoggers,
 		preformatted: h.preformatted,
 		group:        g,
 	}

@@ -14,7 +14,6 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/gogo/status"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
@@ -28,7 +27,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -400,20 +398,6 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 		return nil, err
 	}
 	return res, nil
-}
-
-// TODO(owen-d): this was copied from ingester_querier.go -- move it to a shared pkg
-// isUnimplementedCallError tells if the GRPC error is a gRPC error with code Unimplemented.
-func isUnimplementedCallError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	s, ok := status.FromError(err)
-	if !ok {
-		return false
-	}
-	return (s.Code() == codes.Unimplemented)
 }
 
 func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {

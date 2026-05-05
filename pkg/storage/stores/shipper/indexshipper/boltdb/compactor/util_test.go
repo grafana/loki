@@ -3,8 +3,10 @@ package compactor
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/testutil"
 	shipper_util "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -46,7 +49,7 @@ var (
 		Configs: []config.PeriodConfig{
 			{
 				From:       dayFromTime(start),
-				IndexType:  "boltdb",
+				IndexType:  "boltdb-shipper",
 				ObjectType: "filesystem",
 				Schema:     "v9",
 				IndexTables: config.IndexPeriodicTableConfig{
@@ -59,7 +62,7 @@ var (
 			},
 			{
 				From:       dayFromTime(start.Add(25 * time.Hour)),
-				IndexType:  "boltdb",
+				IndexType:  "boltdb-shipper",
 				ObjectType: "filesystem",
 				Schema:     "v10",
 				IndexTables: config.IndexPeriodicTableConfig{
@@ -72,7 +75,7 @@ var (
 			},
 			{
 				From:       dayFromTime(start.Add(73 * time.Hour)),
-				IndexType:  "boltdb",
+				IndexType:  "boltdb-shipper",
 				ObjectType: "filesystem",
 				Schema:     "v11",
 				IndexTables: config.IndexPeriodicTableConfig{
@@ -85,7 +88,7 @@ var (
 			},
 			{
 				From:       dayFromTime(start.Add(100 * time.Hour)),
-				IndexType:  "boltdb",
+				IndexType:  "boltdb-shipper",
 				ObjectType: "filesystem",
 				Schema:     "v12",
 				IndexTables: config.IndexPeriodicTableConfig{
@@ -150,13 +153,41 @@ type table struct {
 func (t *testStore) indexTables() []table {
 	t.t.Helper()
 	res := []table{}
-	dirEntries, err := os.ReadDir(t.indexDir)
-	require.NoError(t.t, err)
-	for _, entry := range dirEntries {
-		db, err := shipper_util.SafeOpenBoltdbFile(filepath.Join(t.indexDir, entry.Name()))
+
+	// This change is temporary and only required while boltdb storage has been removed,
+	// but boltdb-shipper is still available, and this test was updated to work with boltdb-shipper.
+	// boltdb-shipper uploads compressed (gzip) index files to the object store
+	// under <chunkDir>/index/<tableName>/<uploader>-<dbName>.gz. After
+	// store.Stop() the local active boltdb files may have been removed, so we
+	// read the uploaded index files, decompress them into a temp location and
+	// open them as boltdb databases.
+	decompressDir := t.t.TempDir()
+	err := filepath.Walk(filepath.Join(t.chunkDir, "index"), func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if info == nil || info.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(info.Name(), ".gz") {
+			return nil
+		}
+		// The table name is the parent directory name, e.g. "index_19770".
+		tableName := filepath.Base(filepath.Dir(path))
+		decompressed := filepath.Join(decompressDir, strings.TrimSuffix(info.Name(), ".gz"))
+		gt, ok := t.t.(*testing.T)
+		require.True(t.t, ok, "indexTables requires *testing.T")
+		testutil.DecompressFile(gt, path, decompressed)
+		db, err := shipper_util.SafeOpenBoltdbFile(decompressed)
 		require.NoError(t.t, err)
-		res = append(res, table{name: entry.Name(), DB: db})
-	}
+		res = append(res, table{name: tableName, DB: db})
+		return nil
+	})
+	require.NoError(t.t, err)
+
 	return res
 }
 
@@ -203,39 +234,40 @@ func (t *testStore) GetChunks(userID string, from, through model.Time, metric la
 
 func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore {
 	t.Helper()
+	// Reset the boltdb-shipper singleton so each test gets a client bound
+	// to its own tempDir rather than reusing one from a previous test.
+	storage.ResetBoltDBIndexClientsWithShipper()
 	servercfg := &ww.Config{}
 	require.Nil(t, servercfg.LogLevel.Set("debug"))
 	util_log.InitLogger(servercfg, nil, false)
 	workdir := t.TempDir()
-	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")
 	err := chunk_util.EnsureDirectory(indexDir)
 	require.Nil(t, err)
 
-	chunkDir := filepath.Join(workdir, "chunk_test")
-	err = chunk_util.EnsureDirectory(indexDir)
-	require.Nil(t, err)
+	objectStoreDir := filepath.Join(workdir, "objectstorage")
+	err = chunk_util.EnsureDirectory(objectStoreDir)
 	require.Nil(t, err)
 
-	defer func() {
-	}()
+	cacheDir := filepath.Join(workdir, "cache")
+	err = chunk_util.EnsureDirectory(cacheDir)
+	require.Nil(t, err)
+
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, schemaCfg.Validate())
 
 	cfg := storage.Config{
-		BoltDBConfig: local.BoltDBConfig{
-			Directory: indexDir,
-		},
 		FSConfig: local.FSConfig{
-			Directory: chunkDir,
+			Directory: objectStoreDir,
 		},
 		MaxParallelGetChunk: 150,
 
 		BoltDBShipperConfig: boltdb.IndexCfg{
 			Config: indexshipper.Config{
 				ActiveIndexDirectory: indexDir,
+				CacheLocation:        cacheDir,
 				ResyncInterval:       1 * time.Millisecond,
 				IngesterName:         "foo",
 				Mode:                 indexshipper.ModeReadWrite,
@@ -247,7 +279,7 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 	require.NoError(t, err)
 	return &testStore{
 		indexDir:      indexDir,
-		chunkDir:      chunkDir,
+		chunkDir:      objectStoreDir,
 		t:             t,
 		Store:         store,
 		schemaCfg:     schemaCfg,

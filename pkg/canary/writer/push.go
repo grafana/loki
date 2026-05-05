@@ -57,9 +57,6 @@ type Push struct {
 
 	// push retry and backoff
 	backoff *backoff.Config
-
-	// cfg for sending logs in batches
-	logBatchSize int
 }
 
 // `NewPush` creates an instance of `EntryWriter` which writes logs directly to the given `lokiAddr`

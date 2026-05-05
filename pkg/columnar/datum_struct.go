@@ -1,6 +1,9 @@
 package columnar
 
-import "github.com/grafana/loki/v3/pkg/memory"
+import (
+	"github.com/grafana/loki/v3/pkg/columnar/types"
+	"github.com/grafana/loki/v3/pkg/memory"
+)
 
 // Struct is an [Array] of struct values. Each struct contains a fixed set of
 // named fields, where each field is itself an Array of equal length.
@@ -10,6 +13,7 @@ type Struct struct {
 	length    int
 	validity  memory.Bitmap
 	nullCount int
+	typ       types.Type
 }
 
 var _ Array = (*Struct)(nil)
@@ -38,16 +42,30 @@ func (s *Struct) init() {
 	if len(s.schema.columns) != len(s.fields) {
 		panic("number of columns does not match number of fields")
 	}
+
+	typ := &types.Struct{
+		Fields:   make([]types.StructField, 0, len(s.fields)),
+		Nullable: true,
+	}
+
 	for i, f := range s.fields {
 		if f.Len() != s.length {
 			panic("field " + s.schema.Column(i).Name + " length does not match struct length")
 		}
+		typ.Fields = append(typ.Fields, types.StructField{
+			Name: s.schema.columns[i].Name,
+			Type: f.Type(),
+		})
 	}
 	s.nullCount = s.validity.ClearCount()
+	s.typ = typ
 }
 
-// Kind returns [KindStruct].
-func (s *Struct) Kind() Kind { return KindStruct }
+// Kind implements [Datum] and returns [types.KindStruct].
+func (s *Struct) Kind() types.Kind { return types.KindStruct }
+
+// Type returns a [*types.Struct].
+func (s *Struct) Type() types.Type { return s.typ }
 
 // Len returns the number of rows in the struct.
 func (s *Struct) Len() int { return s.length }

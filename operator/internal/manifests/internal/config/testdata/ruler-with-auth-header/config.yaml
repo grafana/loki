@@ -186,10 +186,6 @@ ruler:
     min_age: 5m
     max_age: 4h
   rule_path: /tmp/loki
-  storage:
-    type: local
-    local:
-      directory: /tmp/rules
   ring:
     kvstore:
       store: memberlist
@@ -205,6 +201,10 @@ server:
   http_server_read_timeout: 30s
   http_server_write_timeout: 10m0s
   log_level: info
+ruler_storage:
+  backend: local
+  local:
+    directory: /tmp/rules
 storage_config:
   use_thanos_objstore: true
   boltdb_shipper:
