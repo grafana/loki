@@ -224,8 +224,8 @@ type Distributor struct {
 	numMetadataPartitions int
 
 	// Track the maximum number of inflight bytes in the last 1 minute.
-	inflightBytes      *util_metric.MaxSampleCollector
-	requestSizeLimiter requestlimiter.RequestLimiter
+	inflightBytes  *util_metric.MaxSampleCollector
+	requestLimiter requestlimiter.RequestLimiter
 
 	// Used memory metric
 	usedMemoryGauge         prometheus.Gauge
@@ -425,7 +425,7 @@ func New(
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
 		inflightBytes:         inflightBytes,
-		requestSizeLimiter:    requestlimiter.New(cfg.RequestSizeLimiter, inflightBytes),
+		requestLimiter:        requestlimiter.New(cfg.RequestSizeLimiter, inflightBytes),
 		usedMemoryGauge: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_used_memory_bytes",
@@ -594,7 +594,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return nil, err
 	}
 
-	cleanup, err := d.requestSizeLimiter.Limit(ctx, int64(req.Size()))
+	cleanup, err := d.requestLimiter.Limit(ctx, int64(req.Size()))
 	if err != nil {
 		d.loadShedRequestsCounter.Inc()
 		d.writeFailuresManager.Log(tenantID, errors.Wrap(err, "load shed by request size limiter"))
