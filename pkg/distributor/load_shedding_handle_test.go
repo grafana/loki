@@ -8,8 +8,13 @@ import (
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/tap"
+
+	util_metric "github.com/grafana/loki/v3/pkg/util/metric"
+	"github.com/grafana/loki/v3/pkg/util/requestlimiter"
 )
 
 func TestLoadSheddingHandle_LoadShedding(t *testing.T) {
@@ -48,6 +53,7 @@ func TestLoadSheddingHandle_LoadShedding(t *testing.T) {
 				cfg:                     cfg,
 				usedMemoryGauge:         prometheus.NewGauge(prometheus.GaugeOpts{}),
 				loadShedRequestsCounter: prometheus.NewCounter(prometheus.CounterOpts{}),
+				inflightBytes:           util_metric.NewMaxSampleCollector("", ""),
 			}
 			h := NewLoadSheddingHandle()
 			h.SetDistributor(d)
@@ -75,6 +81,7 @@ func TestLoadSheddingHandle_Caching(t *testing.T) {
 		cfg:                     cfg,
 		usedMemoryGauge:         prometheus.NewGauge(prometheus.GaugeOpts{}),
 		loadShedRequestsCounter: prometheus.NewCounter(prometheus.CounterOpts{}),
+		inflightBytes:           util_metric.NewMaxSampleCollector("", ""),
 	}
 	h := NewLoadSheddingHandle()
 	h.SetDistributor(d)
@@ -114,6 +121,7 @@ func TestLoadSheddingHandle_ThreadSafety(t *testing.T) {
 		cfg:                     cfg,
 		usedMemoryGauge:         prometheus.NewGauge(prometheus.GaugeOpts{}),
 		loadShedRequestsCounter: prometheus.NewCounter(prometheus.CounterOpts{}),
+		inflightBytes:           util_metric.NewMaxSampleCollector("", ""),
 	}
 	h := NewLoadSheddingHandle()
 	h.SetDistributor(d)
@@ -149,4 +157,133 @@ func TestLoadSheddingHandle_NilDistributor(t *testing.T) {
 	_, err := h.Handle(ctx, info)
 	require.Error(t, err)
 	require.Equal(t, httpgrpc.Errorf(http.StatusInternalServerError, "load shedding handle misconfigured: SetDistributor not called"), err)
+}
+
+func TestLoadSheddingHandle_InflightBytesLoadShedding(t *testing.T) {
+	ctx := context.Background()
+	info := &tap.Info{}
+
+	tests := []struct {
+		testName       string
+		thresholdBytes int64
+		shouldLoadShed bool
+	}{
+		{
+			testName:       "zero threshold does not load shed",
+			thresholdBytes: 0,
+			shouldLoadShed: false,
+		},
+		{
+			testName:       "small threshold does load shed",
+			thresholdBytes: 1,
+			shouldLoadShed: true,
+		},
+		{
+			testName:       "large threshold does not load shed",
+			thresholdBytes: 1 << 50,
+			shouldLoadShed: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.testName, func(t *testing.T) {
+			cfg := Config{
+				MaxRecvMsgSize: 100 << 20, // 100MB default
+				RequestSizeLimiter: requestlimiter.Config{
+					MaxInflightBytes: test.thresholdBytes,
+					MaxWait:          10 * time.Millisecond,
+				},
+			}
+			d := &Distributor{
+				cfg:                     cfg,
+				usedMemoryGauge:         prometheus.NewGauge(prometheus.GaugeOpts{}),
+				loadShedRequestsCounter: prometheus.NewCounter(prometheus.CounterOpts{}),
+				inflightBytes:           util_metric.NewMaxSampleCollector("", ""),
+			}
+			h := NewLoadSheddingHandle()
+			h.SetDistributor(d)
+
+			_, err := h.Handle(ctx, info)
+			if test.shouldLoadShed {
+				require.Error(t, err)
+				require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, "ServiceUnavailable"), err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestLoadSheddingHandle_ContentLengthEstimation(t *testing.T) {
+	ctx := context.Background()
+
+	// MaxInflightBytes sits between 5*contentLength (500) and MaxRecvMsgSize (1000),
+	// so the estimated size determines whether the request is shed.
+	const maxRecvMsgSize = 1000
+	const maxInflightBytes = 750
+
+	newDistributor := func() *Distributor {
+		return &Distributor{
+			cfg: Config{
+				MaxRecvMsgSize: maxRecvMsgSize,
+				RequestSizeLimiter: requestlimiter.Config{
+					MaxInflightBytes: maxInflightBytes,
+					MaxWait:          10 * time.Millisecond,
+				},
+			},
+			usedMemoryGauge:           prometheus.NewGauge(prometheus.GaugeOpts{}),
+			loadShedRequestsCounter:   prometheus.NewCounter(prometheus.CounterOpts{}),
+			contentLengthPresentCount: prometheus.NewCounter(prometheus.CounterOpts{}),
+			inflightBytes:             util_metric.NewMaxSampleCollector("", ""),
+		}
+	}
+
+	tests := []struct {
+		testName             string
+		header               metadata.MD
+		shouldLoadShed       bool
+		expectedCounterValue float64
+	}{
+		{
+			testName:             "no content-length uses MaxRecvMsgSize",
+			header:               metadata.MD{},
+			shouldLoadShed:       true,
+			expectedCounterValue: 0,
+		},
+		{
+			testName:             "valid content-length uses 5x estimate",
+			header:               metadata.MD{"content-length": []string{"100"}},
+			shouldLoadShed:       false,
+			expectedCounterValue: 1,
+		},
+		{
+			testName:             "non-numeric content-length falls back to MaxRecvMsgSize",
+			header:               metadata.MD{"content-length": []string{"not-a-number"}},
+			shouldLoadShed:       true,
+			expectedCounterValue: 0,
+		},
+		{
+			testName:             "multiple content-length values falls back to MaxRecvMsgSize",
+			header:               metadata.MD{"content-length": []string{"100", "200"}},
+			shouldLoadShed:       true,
+			expectedCounterValue: 0,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.testName, func(t *testing.T) {
+			d := newDistributor()
+			h := NewLoadSheddingHandle()
+			h.SetDistributor(d)
+
+			_, err := h.Handle(ctx, &tap.Info{Header: test.header})
+			if test.shouldLoadShed {
+				require.Error(t, err)
+				require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, "ServiceUnavailable"), err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, test.expectedCounterValue, testutil.ToFloat64(d.contentLengthPresentCount))
+		})
+	}
 }

@@ -225,12 +225,12 @@ type Distributor struct {
 	numMetadataPartitions int
 
 	// Track the maximum number of inflight bytes in the last 1 minute.
-	inflightBytes  *util_metric.MaxSampleCollector
-	requestLimiter requestlimiter.RequestLimiter
+	inflightBytes *util_metric.MaxSampleCollector
 
 	// Used memory metric
-	usedMemoryGauge         prometheus.Gauge
-	loadShedRequestsCounter prometheus.Counter
+	usedMemoryGauge           prometheus.Gauge
+	loadShedRequestsCounter   prometheus.Counter
+	contentLengthPresentCount prometheus.Counter
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -426,7 +426,6 @@ func New(
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
 		inflightBytes:         inflightBytes,
-		requestLimiter:        requestlimiter.New(cfg.RequestSizeLimiter, inflightBytes),
 		usedMemoryGauge: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_used_memory_bytes",
@@ -436,6 +435,11 @@ func New(
 			Namespace: constants.Loki,
 			Name:      "distributor_load_shed_requests_total",
 			Help:      "The total number of load shed requests.",
+		}),
+		contentLengthPresentCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_content_length_present_total",
+			Help:      "Total number of requests the distributor has received that had a content length header.",
 		}),
 	}
 
@@ -594,14 +598,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	if err != nil {
 		return nil, err
 	}
-
-	cleanup, err := d.requestLimiter.Limit(ctx, int64(req.Size()))
-	if err != nil {
-		d.loadShedRequestsCounter.Inc()
-		d.writeFailuresManager.Log(tenantID, errors.Wrap(err, "load shed by request size limiter"))
-		return nil, httpgrpc.Errorf(http.StatusServiceUnavailable, "ServiceUnavailable")
-	}
-	defer cleanup()
 
 	start := time.Now()
 	defer d.waitSimulatedLatency(ctx, tenantID, start)

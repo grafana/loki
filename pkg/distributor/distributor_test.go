@@ -14,8 +14,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/loki/v3/pkg/util/requestlimiter"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/c2h5oh/datasize"
@@ -2829,56 +2827,6 @@ func TestConfig_Validate(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expectedMaxDecompressedSize, tt.cfg.MaxDecompressedSize)
-			}
-		})
-	}
-}
-
-func TestInflightBytesLoadShedding(t *testing.T) {
-	tests := []struct {
-		testName       string
-		thresholdBytes int64
-		shouldLoadShed bool
-	}{
-		{
-			testName:       "zero threshold does not load shed",
-			thresholdBytes: 0,
-			shouldLoadShed: false,
-		},
-		{
-			testName:       "small threshold does load shed",
-			thresholdBytes: 1,
-			shouldLoadShed: true,
-		},
-		{
-			testName:       "large threshold does not load shed",
-			thresholdBytes: 1 << 50,
-			shouldLoadShed: false,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.testName, func(t *testing.T) {
-			limits := &validation.Limits{}
-			flagext.DefaultValues(limits)
-			distributors, _ := prepare(t, 1, 5, limits, nil,
-				func(config *Config) {
-					config.RequestSizeLimiter = requestlimiter.Config{
-						MaxInflightBytes: test.thresholdBytes,
-						MaxWait:          time.Second,
-					}
-				})
-			d := distributors[0]
-
-			tenantID, err := tenant.TenantID(ctx)
-			require.NoError(t, err)
-			req := makeWriteRequest(1, 10)
-			resp, err := d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
-			if test.shouldLoadShed {
-				require.Error(t, err)
-				require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, "ServiceUnavailable"), err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, success, resp)
 			}
 		})
 	}
