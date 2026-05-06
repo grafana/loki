@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -2455,15 +2456,21 @@ func (t *Loki) initScratchStore() (services.Service, error) {
 }
 
 func (t *Loki) initKafka() (services.Service, error) {
-	numPartitions := int32(t.Cfg.KafkaConfig.AutoCreateTopicDefaultPartitions)
-	if numPartitions <= 0 {
-		numPartitions = 1
+	_, ok := os.LookupEnv("LOKI_USE_INMEMORY_KAFKA")
+	if !ok {
+		return services.NewIdleService(func(_ context.Context) error {
+			fmt.Println("starting")
+			return nil
+		}, func(_ error) error {
+			fmt.Println("stopping")
+			return nil
+		}), nil
 	}
 
 	b, err := broker.New(broker.Config{
 		ListenAddr:           "127.0.0.1:9092",
 		AutoCreateTopics:     true,
-		DefaultNumPartitions: numPartitions,
+		DefaultNumPartitions: 1,
 		MaxBytesPerPartition: 1 << 30, // 1GiB
 		Logger:               nil,
 	})
@@ -2475,7 +2482,7 @@ func (t *Loki) initKafka() (services.Service, error) {
 	// available to clients. The broker is started here (rather than in the
 	// BasicService starting hook) because Kafka clients connect during module
 	// initialisation, before services are running.
-	if err := b.CreateTopic(t.Cfg.KafkaConfig.Topic, broker.TopicConfig{NumPartitions: numPartitions}); err != nil {
+	if err := b.CreateTopic(t.Cfg.KafkaConfig.Topic, broker.TopicConfig{NumPartitions: 1}); err != nil {
 		return nil, fmt.Errorf("creating kafka topic %q: %w", t.Cfg.KafkaConfig.Topic, err)
 	}
 

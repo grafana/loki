@@ -122,7 +122,7 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		maxOffset = max(maxOffset, record.Offset)
 	}
 
-	level.Debug(kc.logger).Log("msg", "consuming records", "min_offset", minOffset, "max_offset", maxOffset)
+	// level.Debug(kc.logger).Log("msg", "consuming records", "min_offset", minOffset, "max_offset", maxOffset)
 
 	type recordWithIndex struct {
 		record partition.Record

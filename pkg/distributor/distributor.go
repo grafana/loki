@@ -309,6 +309,7 @@ func New(
 			kafka_client.WithRecordsInterceptor(validation.IngestionPoliciesKafkaProducerInterceptor),
 		)
 
+		// TODO: Should be outside if cfg.KafkaEnabled
 		if cfg.DataObjTeeConfig.Enabled {
 			resolver := newSegmentationPartitionResolver(
 				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
@@ -871,7 +872,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			}
 		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
-		level.Info(d.logger).Log("msg", "sendStreamsToKafka", "streams", len(streams))
 		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)
 	}
 

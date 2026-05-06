@@ -250,7 +250,6 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 }
 
 func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
-	level.Info(p.logger).Log("msg", "observeRecord", "time", now)
 	p.metrics.records.Inc()
 	p.metrics.receivedBytes.Add(float64(len(rec.Value)))
 	p.metrics.setLastOffset(rec.Offset)

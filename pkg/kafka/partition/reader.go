@@ -177,6 +177,7 @@ func (r *KafkaReader) SetPartitionState(state string) {
 func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, error) {
 	start := time.Now()
 	fetches := r.client.PollRecords(ctx, maxPollRecords)
+
 	r.metrics.fetchWaitDuration.Observe(time.Since(start).Seconds())
 
 	// Capture current partition state once for consistent metric labeling
