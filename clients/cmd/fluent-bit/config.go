@@ -12,8 +12,8 @@ import (
 	"github.com/grafana/dskit/log"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/clients/pkg/logentry/logql"
 	"github.com/grafana/loki/v3/clients/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	lokiflag "github.com/grafana/loki/v3/pkg/util/flagext"
 )
@@ -51,6 +51,23 @@ type config struct {
 	lineFormat           format
 	dropSingleKey        bool
 	labelMap             map[string]interface{}
+}
+
+// externalLabelsFromFluentBitLabelsOption parses the fluent-bit plugin Labels option
+// (LogQL stream selector) into ExternalLabels. Empty labels uses the default {job="fluent-bit"}.
+func externalLabelsFromFluentBitLabelsOption(labels string) (lokiflag.LabelSet, error) {
+	if labels == "" {
+		labels = `{job="fluent-bit"}`
+	}
+	matchers, err := syntax.ParseMatchers(labels, true)
+	if err != nil {
+		return lokiflag.LabelSet{}, err
+	}
+	labelSet := make(model.LabelSet)
+	for _, m := range matchers {
+		labelSet[model.LabelName(m.Name)] = model.LabelValue(m.Value)
+	}
+	return lokiflag.LabelSet{LabelSet: labelSet}, nil
 }
 
 func parseConfig(cfg ConfigGetter) (*config, error) {
@@ -133,19 +150,11 @@ func parseConfig(cfg ConfigGetter) (*config, error) {
 		res.clientConfig.BackoffConfig.MaxRetries = maxRetriesValue
 	}
 
-	labels := cfg.Get("Labels")
-	if labels == "" {
-		labels = `{job="fluent-bit"}`
-	}
-	matchers, err := logql.ParseMatchers(labels)
+	extLabels, err := externalLabelsFromFluentBitLabelsOption(cfg.Get("Labels"))
 	if err != nil {
 		return nil, err
 	}
-	labelSet := make(model.LabelSet)
-	for _, m := range matchers {
-		labelSet[model.LabelName(m.Name)] = model.LabelValue(m.Value)
-	}
-	res.clientConfig.ExternalLabels = lokiflag.LabelSet{LabelSet: labelSet}
+	res.clientConfig.ExternalLabels = extLabels
 
 	logLevel := cfg.Get("LogLevel")
 	if logLevel == "" {
