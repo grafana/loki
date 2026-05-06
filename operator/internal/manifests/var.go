@@ -53,6 +53,8 @@ const (
 	dataDirectory         = "/tmp/loki"
 	rulesStorageDirectory = "/tmp/rules"
 
+	ingesterTokensFilePath = dataDirectory + "/ring-tokens"
+
 	rulerContainerName = "loki-ruler"
 
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
