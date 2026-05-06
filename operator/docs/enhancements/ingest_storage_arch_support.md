@@ -84,7 +84,7 @@ When distributors (producers) want to write they hash the stream-labels and use 
 
 The partition ring also supports shuffle sharding for tenant isolation -- instead of spreading a tenant's data across all partitions, each tenant can be assigned a small subset of partitions.
 
-Kafka Topic Partition Count: Loki can set partition count automatically, but Kafka 4.x no longer allows the number of partitions to be changed dynamically. This means the Kafka administrator must either pre-create the topic with the desired partition count or configure them afterwards before Loki starts. The partition count determines the maximum number of ingesters, this is a prerequisite that in principle the operator will not be able to automate and should be documented.
+Kafka Topic Partition Count: Loki can set partition count automatically, but Kafka 4.x no longer allows the number of partitions to be changed dynamically. This means the Kafka administrator must either pre-create the topic with the desired partition count or configure them afterwards before Loki starts. The partition count determines the maximum number of ingesters, this is a prerequisite that in principle the operator will not be able to automate and should be documented. Note that Loki has no mechanism to handle Kafka reducing the number of partitions — if a partition that Loki is actively using is removed, writes and consumption for that partition will fail.
 
 ##### Write Path
 
