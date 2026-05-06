@@ -577,8 +577,6 @@ func (wf *Workflow) mergeResults(results stats.Result) {
 }
 
 type wrappedPipeline struct {
-	initOnce sync.Once
-
 	inner   executor.Pipeline
 	onClose func()
 }

@@ -13,7 +13,6 @@ import (
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
@@ -114,10 +113,6 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 		return nil
 	})
 	return
-}
-
-func calculateBlockDirectorySize(entry *cache.Entry[string, BlockDirectory]) uint64 {
-	return uint64(entry.Value.Size())
 }
 
 // NewBlockDirectory creates a new BlockDirectory. Must exist on disk.

@@ -269,10 +269,6 @@ func (d *deletionManifestBuilder) buildObjectKey(filename string) string {
 	return path.Join(fmt.Sprint(d.creationTime.UnixNano()), filename)
 }
 
-func (d *deletionManifestBuilder) path() string {
-	return fmt.Sprint(d.creationTime.UnixNano())
-}
-
 func storageHasValidManifest(ctx context.Context, deletionManifestStoreClient client.ObjectClient) (bool, error) {
 	// List all directories in the deletion store
 	_, commonPrefixes, err := deletionManifestStoreClient.List(ctx, "", "/")

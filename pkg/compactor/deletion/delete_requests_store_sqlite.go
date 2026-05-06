@@ -287,36 +287,6 @@ func (ds *deleteRequestsStoreSQLite) addDeleteRequestWithID(ctx context.Context,
 	return ds.sqliteStore.Exec(ctx, true, sqlQueries...)
 }
 
-func (ds *deleteRequestsStoreSQLite) generateID(ctx context.Context, req deletionproto.DeleteRequest) (string, error) {
-	requestID := generateUniqueID(req.UserID, req.Query)
-
-	for {
-		count := 0
-		if err := ds.sqliteStore.Exec(ctx, false, sqlQuery{
-			query: sqlSelectRequestByID,
-			execOpts: &sqlitex.ExecOptions{
-				Args: []any{
-					requestID,
-					req.UserID,
-				},
-				ResultFunc: func(_ *sqlite.Stmt) error {
-					count++
-					return nil
-				},
-			},
-		}); err != nil {
-			return "", err
-		}
-		if count == 0 {
-			return requestID, nil
-		}
-
-		// we have a collision here, lets recreate a new requestID and check for collision
-		time.Sleep(time.Millisecond)
-		requestID = generateUniqueID(req.UserID, req.Query)
-	}
-}
-
 func (ds *deleteRequestsStoreSQLite) RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error {
 	return ds.sqliteStore.Exec(ctx, true, sqlQuery{
 		query: sqlDeleteShards,

@@ -150,6 +150,11 @@ type UploadInfo struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMD5       string
+	ChecksumSHA512    string
+	ChecksumXXHash64  string
+	ChecksumXXHash3   string
+	ChecksumXXHash128 string
 	ChecksumMode      string
 }
 
@@ -227,6 +232,11 @@ type ObjectInfo struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMD5       string
+	ChecksumSHA512    string
+	ChecksumXXHash64  string
+	ChecksumXXHash3   string
+	ChecksumXXHash128 string
 	ChecksumAlgorithm string
 	ChecksumMode      string `xml:"ChecksumType"`
 
