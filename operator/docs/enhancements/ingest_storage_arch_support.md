@@ -89,6 +89,7 @@ Kafka Topic Partition Count: Loki can set partition count automatically, but Kaf
 ##### Write Path
 
 In the classical architecture, a distributor would write to a set of ingesters organized in a hash ring. A distributor determined the ingesters it should write to by hashing the stream-labels in a log stream and then consulting the ingester ring. Once a quorum of ingesters confirms the write, the distributor moves on. Ingesters then collect log entries and eventually flush them to object storage as chunks with TSDB index entries. If an ingester dies, the ingester ring detects it via heartbeat timeout and the remaining ingesters take over its token ranges. If not enough ingesters remain to form a quorum, ingestion will stop. Distributors are independent from each other but have to sync with ingesters. Ingesters are independent of each other.
+Ingesters are able to enforce per-tenant limits since they receive streams directly from distributors.
 The classical architecture ensured no data was lost via replication, a distributor would write to multiple ingesters.
 
 On the ingest storage architecture, each ingester joins both the classical ingester ring (for liveness and query routing) and the new partition ring (for Kafka partition assignment).
@@ -96,6 +97,7 @@ So in the new architecture, the distributors (producers) write records (one or m
 Once Kafka confirms persistence of the record, the distributor acknowledges the write back to the client.
 Ingesters (consumers) read records from their partition and periodically commit their offset back to Kafka under their own consumer group. On startup, an ingester fetches the last committed offset for its consumer group and resumes consumption from that point, allowing seamless recovery after restarts or replacements.
 Ingesters collect log entries and eventually flush them to object storage as chunks with TSDB index entries. The TSDB index format remains the same as in the classical architecture.
+In the new architecture Ingesters are no longer in the write path. To enforce per-tenant ingestion limits, Loki introduces an optional `ingest-limits` component that the distributor queries before accepting writes. Without it, limits like maximum active streams per tenant are not enforced at ingestion time.
 In the ingest storage architecture, replication is ensured through Kafka. When a write happens, Kafka replicates it to the other brokers. Ingesters will always start reading from the last committed offset. The compactor remains a necessary component for index compaction and retention.
 
 Summary Table:
@@ -103,6 +105,7 @@ Summary Table:
 | Aspect | Classic Architecture | Ingest Storage Architecture |
 | ------ | -------------------- | --------------------------- |
 | **Write acknowledgment** | After quorum of ingesters confirm | After Kafka brokers confirm persistence |
+| **Per-tenant limits enforcement** | Ingesters enforce limits | Requires optional `ingest-limits` component |
 | **Write replication** | Loki replicates to replication-factor ingesters | Kafka replicates internally |
 | **Ingester failure impact** | Write availability at risk | No write disruption |
 | **Scaling ingesters** | Complex (state transfer / hand-off) | Simple (assign some traffic to the new Kafka partitions) |
