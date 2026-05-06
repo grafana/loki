@@ -28,6 +28,12 @@ type columnValuesCalculation struct {
 
 func (c *columnValuesCalculation) Name() string { return "column_values" }
 
+// ProcessBatchNeedsBuilderLock reports whether ProcessBatch mutates the shared
+// builder. Column values only mutate step-local bloom builders, bitmaps and
+// timestamp trackers during ProcessBatch; shared-builder writes happen in
+// Flush, so no lock is required for ProcessBatch.
+func (c *columnValuesCalculation) ProcessBatchNeedsBuilderLock() bool { return false }
+
 func (c *columnValuesCalculation) Prepare(_ context.Context, _ *dataobj.Section, stats logs.Stats) error {
 	c.columnBloomBuilders = make(map[string]*bloom.BloomFilter)
 	c.columnIndexes = make(map[string]int64)
