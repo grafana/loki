@@ -1,4 +1,4 @@
-// Copyright 2016 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -41,7 +42,7 @@ type Node struct {
 	logger   *slog.Logger
 	informer cache.SharedInformer
 	store    cache.Store
-	queue    *workqueue.Type
+	queue    *workqueue.Typed[string]
 }
 
 // NewNode returns a new node discovery.
@@ -58,19 +59,21 @@ func NewNode(l *slog.Logger, inf cache.SharedInformer, eventCount *prometheus.Co
 		logger:   l,
 		informer: inf,
 		store:    inf.GetStore(),
-		queue:    workqueue.NewNamed(RoleNode.String()),
+		queue: workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[string]{
+			Name: RoleNode.String(),
+		}),
 	}
 
 	_, err := n.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(o interface{}) {
+		AddFunc: func(o any) {
 			nodeAddCount.Inc()
 			n.enqueue(o)
 		},
-		DeleteFunc: func(o interface{}) {
+		DeleteFunc: func(o any) {
 			nodeDeleteCount.Inc()
 			n.enqueue(o)
 		},
-		UpdateFunc: func(_, o interface{}) {
+		UpdateFunc: func(_, o any) {
 			nodeUpdateCount.Inc()
 			n.enqueue(o)
 		},
@@ -81,7 +84,7 @@ func NewNode(l *slog.Logger, inf cache.SharedInformer, eventCount *prometheus.Co
 	return n
 }
 
-func (n *Node) enqueue(obj interface{}) {
+func (n *Node) enqueue(obj any) {
 	key, err := nodeName(obj)
 	if err != nil {
 		return
@@ -111,12 +114,11 @@ func (n *Node) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 }
 
 func (n *Node) process(ctx context.Context, ch chan<- []*targetgroup.Group) bool {
-	keyObj, quit := n.queue.Get()
+	key, quit := n.queue.Get()
 	if quit {
 		return false
 	}
-	defer n.queue.Done(keyObj)
-	key := keyObj.(string)
+	defer n.queue.Done(key)
 
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -140,7 +142,7 @@ func (n *Node) process(ctx context.Context, ch chan<- []*targetgroup.Group) bool
 	return true
 }
 
-func convertToNode(o interface{}) (*apiv1.Node, error) {
+func convertToNode(o any) (*apiv1.Node, error) {
 	node, ok := o.(*apiv1.Node)
 	if ok {
 		return node, nil
@@ -159,6 +161,7 @@ func nodeSourceFromName(name string) string {
 
 const (
 	nodeProviderIDLabel = metaLabelPrefix + "node_provider_id"
+	nodeConditionPrefix = metaLabelPrefix + "node_condition_"
 	nodeAddressPrefix   = metaLabelPrefix + "node_address_"
 )
 
@@ -167,6 +170,13 @@ func nodeLabels(n *apiv1.Node) model.LabelSet {
 	ls := make(model.LabelSet)
 
 	ls[nodeProviderIDLabel] = lv(n.Spec.ProviderID)
+
+	// Export all node conditions as individual meta labels
+	for _, condition := range n.Status.Conditions {
+		conditionType := strings.ToLower(string(condition.Type))
+		labelName := nodeConditionPrefix + strutil.SanitizeLabelName(conditionType)
+		ls[model.LabelName(labelName)] = lv(strings.ToLower(string(condition.Status)))
+	}
 
 	addObjectMetaLabels(ls, n.ObjectMeta, RoleNode)
 

@@ -1,6 +1,9 @@
 package monitors
 
 import (
+	"encoding/json"
+	"strconv"
+
 	"github.com/gophercloud/gophercloud/v2"
 	"github.com/gophercloud/gophercloud/v2/pagination"
 )
@@ -61,7 +64,7 @@ type Monitor struct {
 	HTTPMethod string `json:"http_method"`
 
 	// The HTTP version that the monitor uses for requests.
-	HTTPVersion string `json:"http_version"`
+	HTTPVersion string `json:"-"`
 
 	// The HTTP path of the request sent by the monitor to test the health of a
 	// member. Must be a string beginning with a forward slash (/).
@@ -94,6 +97,26 @@ type Monitor struct {
 	// Tags is a list of resource tags. Tags are arbitrarily defined strings
 	// attached to the resource. New in version 2.5
 	Tags []string `json:"tags"`
+}
+
+func (r *Monitor) UnmarshalJSON(b []byte) error {
+	type tmp Monitor
+	var s struct {
+		tmp
+		HTTPVersion float64 `json:"http_version"`
+	}
+
+	err := json.Unmarshal(b, &s)
+	if err != nil {
+		return err
+	}
+
+	*r = Monitor(s.tmp)
+	if s.HTTPVersion != 0 {
+		r.HTTPVersion = strconv.FormatFloat(s.HTTPVersion, 'f', 1, 64)
+	}
+
+	return nil
 }
 
 // MonitorPage is the page returned by a pager when traversing over a

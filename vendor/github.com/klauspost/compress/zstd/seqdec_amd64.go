@@ -1,5 +1,4 @@
 //go:build amd64 && !appengine && !noasm && gc
-// +build amd64,!appengine,!noasm,gc
 
 package zstd
 
@@ -79,10 +78,7 @@ func (s *sequenceDecs) decodeSyncSimple(hist []byte) (bool, error) {
 
 	br := s.br
 
-	maxBlockSize := maxCompressedBlockSize
-	if s.windowSize < maxBlockSize {
-		maxBlockSize = s.windowSize
-	}
+	maxBlockSize := min(s.windowSize, maxCompressedBlockSize)
 
 	ctx := decodeSyncAsmContext{
 		llTable:     s.litLengths.fse.dt[:maxTablesize],
@@ -237,10 +233,7 @@ func sequenceDecs_decode_56_bmi2(s *sequenceDecs, br *bitReader, ctx *decodeAsmC
 func (s *sequenceDecs) decode(seqs []seqVals) error {
 	br := s.br
 
-	maxBlockSize := maxCompressedBlockSize
-	if s.windowSize < maxBlockSize {
-		maxBlockSize = s.windowSize
-	}
+	maxBlockSize := min(s.windowSize, maxCompressedBlockSize)
 
 	ctx := decodeAsmContext{
 		llTable:   s.litLengths.fse.dt[:maxTablesize],

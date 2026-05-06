@@ -142,21 +142,40 @@ func (me *monitoringExporter) exportTimeSeries(ctx context.Context, rm *otelmetr
 
 	name := fmt.Sprintf("projects/%s", me.projectID)
 
-	errs := []error{err}
+	var wg sync.WaitGroup
+	errs := make(chan error, len(tss)/sendBatchSize+1)
+	if err != nil {
+		errs <- err
+	}
+
 	for i := 0; i < len(tss); i += sendBatchSize {
 		j := i + sendBatchSize
-		if j >= len(tss) {
+		if j > len(tss) {
 			j = len(tss)
 		}
 
-		req := &monitoringpb.CreateTimeSeriesRequest{
-			Name:       name,
-			TimeSeries: tss[i:j],
-		}
-		errs = append(errs, me.client.CreateServiceTimeSeries(ctx, req))
+		wg.Add(1)
+		go func(i, j int) {
+			defer wg.Done()
+			req := &monitoringpb.CreateTimeSeriesRequest{
+				Name:       name,
+				TimeSeries: tss[i:j],
+			}
+			if err := me.client.CreateServiceTimeSeries(ctx, req); err != nil {
+				errs <- err
+			}
+		}(i, j)
 	}
 
-	return errors.Join(errs...)
+	wg.Wait()
+	close(errs)
+
+	var allErrors []error
+	for err := range errs {
+		allErrors = append(allErrors, err)
+	}
+
+	return errors.Join(allErrors...)
 }
 
 // recordToMetricAndMonitoredResourcePbs converts data from records to Metric and Monitored resource proto type for Cloud Monitoring.

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -22,9 +22,9 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/telemetry"
 )
 
-var _ processor.Metrics = (*Processor)(nil)
+var _ processor.Metrics = (*deltaToCumulativeProcessor)(nil)
 
-type Processor struct {
+type deltaToCumulativeProcessor struct {
 	next consumer.Metrics
 	cfg  Config
 
@@ -34,15 +34,15 @@ type Processor struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	stale *xsync.MapOf[identity.Stream, time.Time]
+	stale *xsync.Map[identity.Stream, time.Time]
 	tel   telemetry.Metrics
 }
 
-func newProcessor(cfg *Config, tel telemetry.Metrics, next consumer.Metrics) *Processor {
+func newProcessor(cfg *Config, tel telemetry.Metrics, next consumer.Metrics) *deltaToCumulativeProcessor {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	limit := maps.Limit(int64(cfg.MaxStreams))
-	proc := Processor{
+	proc := deltaToCumulativeProcessor{
 		next: next,
 		cfg:  *cfg,
 		last: state{
@@ -55,7 +55,7 @@ func newProcessor(cfg *Config, tel telemetry.Metrics, next consumer.Metrics) *Pr
 		ctx:    ctx,
 		cancel: cancel,
 
-		stale: xsync.NewMapOf[identity.Stream, time.Time](),
+		stale: xsync.NewMap[identity.Stream, time.Time](),
 		tel:   tel,
 	}
 
@@ -71,7 +71,7 @@ type vals struct {
 	expo *mutex[pmetric.ExponentialHistogramDataPoint]
 }
 
-func (p *Processor) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
+func (p *deltaToCumulativeProcessor) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
 	now := time.Now()
 
 	const (
@@ -184,7 +184,7 @@ func (p *Processor) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) erro
 	return p.next.ConsumeMetrics(ctx, md)
 }
 
-func (p *Processor) Start(_ context.Context, _ component.Host) error {
+func (p *deltaToCumulativeProcessor) Start(_ context.Context, _ component.Host) error {
 	if p.cfg.MaxStale != 0 {
 		// delete stale streams once per minute
 		go func() {
@@ -213,12 +213,12 @@ func (p *Processor) Start(_ context.Context, _ component.Host) error {
 	return nil
 }
 
-func (p *Processor) Shutdown(_ context.Context) error {
+func (p *deltaToCumulativeProcessor) Shutdown(_ context.Context) error {
 	p.cancel()
 	return nil
 }
 
-func (p *Processor) Capabilities() consumer.Capabilities {
+func (*deltaToCumulativeProcessor) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: true}
 }
 

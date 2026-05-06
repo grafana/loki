@@ -143,10 +143,7 @@ encodeLoop:
 				// and have to do special offset treatment.
 				startLimit := nextEmit + 1
 
-				sMin := s - e.maxMatchOff
-				if sMin < 0 {
-					sMin = 0
-				}
+				sMin := max(s-e.maxMatchOff, 0)
 				for repIndex > sMin && start > startLimit && src[repIndex-1] == src[start-1] && seq.matchLen < maxMatchLength-zstdMinMatch {
 					repIndex--
 					start--
@@ -223,10 +220,7 @@ encodeLoop:
 		l := e.matchlen(s+4, t+4, src) + 4
 
 		// Extend backwards
-		tMin := s - e.maxMatchOff
-		if tMin < 0 {
-			tMin = 0
-		}
+		tMin := max(s-e.maxMatchOff, 0)
 		for t > tMin && s > nextEmit && src[t-1] == src[s-1] && l < maxMatchLength {
 			s--
 			t--
@@ -387,10 +381,7 @@ encodeLoop:
 				// and have to do special offset treatment.
 				startLimit := nextEmit + 1
 
-				sMin := s - e.maxMatchOff
-				if sMin < 0 {
-					sMin = 0
-				}
+				sMin := max(s-e.maxMatchOff, 0)
 				for repIndex > sMin && start > startLimit && src[repIndex-1] == src[start-1] {
 					repIndex--
 					start--
@@ -469,10 +460,7 @@ encodeLoop:
 		l := e.matchlen(s+4, t+4, src) + 4
 
 		// Extend backwards
-		tMin := s - e.maxMatchOff
-		if tMin < 0 {
-			tMin = 0
-		}
+		tMin := max(s-e.maxMatchOff, 0)
 		for t > tMin && s > nextEmit && src[t-1] == src[s-1] {
 			s--
 			t--
@@ -655,10 +643,7 @@ encodeLoop:
 				// and have to do special offset treatment.
 				startLimit := nextEmit + 1
 
-				sMin := s - e.maxMatchOff
-				if sMin < 0 {
-					sMin = 0
-				}
+				sMin := max(s-e.maxMatchOff, 0)
 				for repIndex > sMin && start > startLimit && src[repIndex-1] == src[start-1] && seq.matchLen < maxMatchLength-zstdMinMatch {
 					repIndex--
 					start--
@@ -735,10 +720,7 @@ encodeLoop:
 		l := e.matchlen(s+4, t+4, src) + 4
 
 		// Extend backwards
-		tMin := s - e.maxMatchOff
-		if tMin < 0 {
-			tMin = 0
-		}
+		tMin := max(s-e.maxMatchOff, 0)
 		for t > tMin && s > nextEmit && src[t-1] == src[s-1] && l < maxMatchLength {
 			s--
 			t--
@@ -823,9 +805,11 @@ func (e *fastEncoderDict) Reset(d *dict, singleBlock bool) {
 	}
 
 	// Init or copy dict table
-	if len(e.dictTable) != len(e.table) || d.id != e.lastDictID {
+	if len(e.dictTable) != len(e.table) || d != e.lastDict {
 		if len(e.dictTable) != len(e.table) {
 			e.dictTable = make([]tableEntry, len(e.table))
+		} else {
+			clear(e.dictTable)
 		}
 		if true {
 			end := e.maxMatchOff + int32(len(d.content)) - 8
@@ -845,7 +829,7 @@ func (e *fastEncoderDict) Reset(d *dict, singleBlock bool) {
 				}
 			}
 		}
-		e.lastDictID = d.id
+		e.lastDict = d
 		e.allDirty = true
 	}
 

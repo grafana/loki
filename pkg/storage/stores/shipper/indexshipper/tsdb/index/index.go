@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	stderrors "errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -34,7 +35,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 
 	"github.com/grafana/dskit/multierror"
@@ -1261,10 +1261,10 @@ func NewFileReader(path string) (*Reader, error) {
 	}
 	r, err := newReader(RealByteSlice(f.Bytes()), f)
 	if err != nil {
-		return nil, tsdb_errors.NewMulti(
+		return nil, stderrors.Join(
 			err,
 			f.Close(),
-		).Err()
+		)
 	}
 
 	return r, nil

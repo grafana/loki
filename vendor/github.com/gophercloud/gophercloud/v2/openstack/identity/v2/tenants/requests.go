@@ -7,6 +7,12 @@ import (
 	"github.com/gophercloud/gophercloud/v2/pagination"
 )
 
+// ListOptsBuilder allows extensions to add additional parameters to the
+// List request.
+type ListOptsBuilder interface {
+	ToTenantListQuery() (string, error)
+}
+
 // ListOpts filters the Tenants that are returned by the List call.
 type ListOpts struct {
 	// Marker is the ID of the last Tenant on the previous page.
@@ -16,15 +22,21 @@ type ListOpts struct {
 	Limit int `q:"limit"`
 }
 
+// ToTenantListQuery formats a ListOpts into a query string.
+func (opts ListOpts) ToTenantListQuery() (string, error) {
+	q, err := gophercloud.BuildQueryString(opts)
+	return q.String(), err
+}
+
 // List enumerates the Tenants to which the current token has access.
-func List(client *gophercloud.ServiceClient, opts *ListOpts) pagination.Pager {
+func List(client *gophercloud.ServiceClient, opts ListOptsBuilder) pagination.Pager {
 	url := listURL(client)
 	if opts != nil {
-		q, err := gophercloud.BuildQueryString(opts)
+		query, err := opts.ToTenantListQuery()
 		if err != nil {
 			return pagination.Pager{Err: err}
 		}
-		url += q.String()
+		url += query
 	}
 	return pagination.NewPager(client, url, func(r pagination.PageResult) pagination.Page {
 		return TenantPage{pagination.LinkedPageBase{PageResult: r}}

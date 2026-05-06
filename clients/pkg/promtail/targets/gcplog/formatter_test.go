@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
+
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -34,7 +36,7 @@ func TestFormat(t *testing.T) {
 			labels: model.LabelSet{
 				"jobname": "pubsub-test",
 			},
-			relabel: []*relabel.Config{
+			relabel: testutils.ValidateRelabelConfig(t, []*relabel.Config{
 				{
 					SourceLabels: model.LabelNames{"__gcp_resource_labels_backend_service_name"},
 					Separator:    ";",
@@ -67,7 +69,7 @@ func TestFormat(t *testing.T) {
 					Action:       "replace",
 					Replacement:  "$1",
 				},
-			},
+			}),
 			useIncomingTimestamp: true,
 			expected: api.Entry{
 				Labels: model.LabelSet{

@@ -926,6 +926,8 @@ type ReceiveSettings struct {
 	// be treated as if it were DefaultReceiveSettings.MaxOutstandingBytes. If
 	// the value is negative, then there will be no limit on the number of bytes
 	// for unprocessed messages.
+	// This defaults to 1e9 or 1 GB. For machines that have less memory available,
+	// it is recommended to decrease this value so as to not run into OOM issues.
 	MaxOutstandingBytes int
 
 	// UseLegacyFlowControl disables enforcing flow control settings at the Cloud

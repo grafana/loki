@@ -318,7 +318,9 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 				labelMap[string(k)] = string(v)
 			}
 
-			processedLabels, keep := relabel.Process(labels.FromMap(labelMap), s.relabelConfig...)
+			lb := labels.NewBuilder(labels.FromMap(labelMap))
+			keep := relabel.ProcessBuilder(lb, s.relabelConfig...)
+			processedLabels := lb.Labels()
 
 			var labels = make(model.LabelSet)
 			for k, v := range processedLabels.Map() {

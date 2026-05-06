@@ -198,7 +198,7 @@ type TapConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m TapConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -716,7 +716,7 @@ type MatchPredicateMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m MatchPredicateMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -850,7 +850,7 @@ type HttpHeadersMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpHeadersMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -997,7 +997,7 @@ type HttpGenericBodyMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpGenericBodyMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1232,7 +1232,7 @@ type OutputConfigMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m OutputConfigMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1568,7 +1568,7 @@ type OutputSinkMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m OutputSinkMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1668,7 +1668,7 @@ type StreamingAdminSinkMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m StreamingAdminSinkMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1810,7 +1810,7 @@ type BufferedAdminSinkMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m BufferedAdminSinkMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1923,7 +1923,7 @@ type FilePerTapSinkMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m FilePerTapSinkMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2065,7 +2065,7 @@ type StreamingGrpcSinkMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m StreamingGrpcSinkMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2212,7 +2212,7 @@ type MatchPredicate_MatchSetMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m MatchPredicate_MatchSetMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -2380,7 +2380,7 @@ type HttpGenericBodyMatch_GenericTextMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m HttpGenericBodyMatch_GenericTextMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

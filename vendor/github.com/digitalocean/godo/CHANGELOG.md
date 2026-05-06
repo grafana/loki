@@ -1,5 +1,120 @@
 # Change Log
 
+## [1.178.0] - 2026-03-16
+
+- #969 - @d-honeybadger - add support for DOKS SSO toggles
+- #968 - @Rachana888 - Add DI get GPUModelConfig
+- #967 - @Rachana888 - Add DI sizes/pricing
+- #966 - @Rachana888 - add DI token management operations (CreateToken, ListTokens, RevokeToken)
+- #964 - @Rachana888 - Add List operation for Dedicated Inference Accelerators
+- #963 - @Rachana888 - Add List operation for Dedicated Inference
+- #962 - @Rachana888 - Add Dedicated Inference Delete operation
+- #961 - @Rachana888 - Add Dedicated Inference Update operation
+- #958 - @Rachana888 - Add Dedicated Inference Create and Get operations
+
+## [1.177.0] - 2026-03-11
+
+- #959 - @blesswinsamuel - Add ListEvents, CancelEvent, and GetEventLogs APIs for App Platform
+- #960 - @ZachEddy - apps: Add secure_header.remove_header to app spec definition
+
+## [1.176.0] - 2026-02-26
+
+- #953 - @kamleshsahu - Add dbaas metrics client
+
+## [1.175.0] - 2026-02-12
+
+- #952 - @bentranter - security: add cspm scanning functionality for public preview
+- #951 - @v-amanjain-afk - Add performance tier in nfs model
+
+## [1.174.0] - 2026-02-09
+
+- #946 - @blesswinsamuel - apps: Update app spec to support InactivitySleep configuration
+- #949 - @lprasanth-nadiminti - Add DOSettings with ServiceCnames support for database clusters
+- #945 - @v-amanjain-afk - switch performance tier of nfs share
+- #947 - @ZachEddy - apps: Add secure header app spec field to godo
+
+## [1.173.0] - 2026-01-22
+
+- #942 - @anup-deka - Fix data type
+- #941 - @v-amanjain-afk - removed deprecated region from nfs api
+
+## [1.172.0] - 2026-01-13
+
+- #932 - @fumblehool - APPS-12654: Add CancelJobInvocation API
+- #939 - @anup-deka - Rebranding GenAI to Gradient AI
+- #914 - @brianteeman - Typo cannnot/cannot
+
+## [1.171.0] - 2025-12-17
+
+- #936 - @dillonledoux - Add fields to AgentCreateRequest for Gradient Agents
+
+## [1.170.0] - 2025-12-09
+
+- #933 - @do-joe - Nfs struct exposes Host and MountPath
+
+## [1.169.0] - 2025-11-13
+
+- #928 - @do-joe - Fix GetLogsink API Response Parsing to Match Actual API Behavior
+
+## [1.168.0] - 2025-11-06
+
+- #926 - @niket-dujari - added provision for attach and detach share
+- #927 - @m3co-code - CON-12804 - add GPU related DOKS cluster plugin options
+- #924 - @llDrLove - CON-12995 Add GPU node pool resources to node pool template response
+
+## [1.167.0] - 2025-10-18
+
+- #921 - @sreeram-venkitesh - MNFS-164: Added NFS resize and snapshot APIs
+
+## [1.166.0] - 2025-10-13
+
+- #912 - @sreeram-venkitesh - MNFS-164: Added NFS APIs
+- #913 - @fyzanshaik - Add ListAssociatedResourcesForDeletion for Droplets
+- #909 - @jvasilevsky - LBAAS-3995: add project ID to nat gateway
+
+## [1.165.1] - 2025-09-24
+
+- #906 - @do-joe - Fix Database Logsink API Response Parsing and TLS Field Marshaling
+- #904 - @SSharma-10 - Godo automate release
+- #900 - @fumblehool - APPS-12013: Add APIs for cron job
+- #905 - @harshmaru7 - new release test
+- #902 - @SSharma-10 - added comment for ListAgentVersions
+
+## [1.164.0] - 2025-09-10
+
+- #897 - @DO-rrao - List remote route | removed id field from remote route
+- #894 - @DO-rrao - GenAI : Implement Indexing Jobs Operations
+- #893 - @DO-rrao - GenAI - added changes for ListIndexingJobs for a Knowledge Base
+- #891 - @imaskm - Added prefix update method
+
+## [1.163.0] - 2025-08-14
+
+- #889 - @bhardwajRahul - Enable Support for Kafka Schema Registry in Godo
+
+## [1.162.0] - 2025-08-07
+
+- #875 - @dependabot[bot] - Bump golang.org/x/oauth2 from 0.23.0 to 0.27.0
+- #885 - @SSharma-10 - Added support for Valkey Configuration
+- #876 - @SSharma-10 - Added GenAI Additional Operations
+
+## [1.161.0] - 2025-07-28
+
+- #883 - @ElanHasson - Add GitHub Actions workflow to generate CHANGELOG.md and update godo version
+- #879 - @ElanHasson - APPS - Add Autoscale succeeded alert support
+- #880 - @DO-rrao - [APICLI-2889] removed SET partner routes for partner attachment
+
+## [v1.160.0] - 2025-07-24
+
+- #877 - @m3co-code - impl new doks cluster options
+
+## [v1.159.0] - 2025-07-17
+
+- #871 - @ShivaniKumar1 - Add VPC Integration
+
+## [v1.158.0] - 2025-07-15
+
+- #869 - @kishlay-singh-DO - Function Route Endpoints
+
 ## [v1.157.0] - 2025-07-08
 
 - #866 - @ssaengs - fix: appHealth incorrectly keyed.
