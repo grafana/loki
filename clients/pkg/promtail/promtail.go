@@ -1,6 +1,7 @@
 package promtail
 
 import (
+	"crypto/sha3"
 	"errors"
 	"fmt"
 	"os"
@@ -8,8 +9,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"golang.org/x/crypto/sha3"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

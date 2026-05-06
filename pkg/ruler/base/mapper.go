@@ -1,6 +1,8 @@
 package base
 
 import (
+	sha30 "crypto/sha3"
+	"hash"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -10,7 +12,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/spf13/afero"
-	"golang.org/x/crypto/sha3"
 	"gopkg.in/yaml.v3"
 )
 
@@ -148,8 +149,8 @@ func (m *mapper) writeRuleGroupsIfNewer(groups []rulefmt.RuleGroup, filename str
 		if err != nil {
 			return false, err
 		}
-		newHash := sha3.New256()
-		currentHash := sha3.New256()
+		newHash := hash.Hash(sha30.New256())
+		currentHash := hash.Hash(sha30.New256())
 
 		newHash.Write(d)
 		currentHash.Write(current)

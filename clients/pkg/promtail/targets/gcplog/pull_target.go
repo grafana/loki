@@ -2,11 +2,13 @@ package gcplog
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
 
-	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/pubsub/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -86,7 +88,7 @@ func newPullTarget(
 		ctx:           ctx,
 		cancel:        cancel,
 		ps:            ps,
-		sub:           ps.SubscriptionInProject(config.Subscription, config.ProjectID),
+		sub:           ps.Subscriber(fmt.Sprintf("projects/%s/subscriptions/%s", config.ProjectID, config.Subscription)),
 		backoff:       backoff.New(ctx, defaultBackoff),
 		msgs:          make(chan *pubsub.Message),
 	}
@@ -111,6 +113,10 @@ func (t *pullTarget) run() error {
 		case m := <-t.msgs:
 			entry, err := parseGCPLogsEntry(m.Data, t.config.Labels, labels.EmptyLabels(), t.config.UseIncomingTimestamp, t.config.UseFullLine, t.relabelConfig)
 			if err != nil {
+				if errors.Is(err, errEntryDropped) {
+					m.Ack()
+					break
+				}
 				level.Error(t.logger).Log("event", "error formating log entry", "cause", err)
 				m.Ack()
 				break
