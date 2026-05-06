@@ -34,17 +34,16 @@ func (rt *Router) handleProduce(hdr RequestHeader, r *codec.Reader, w *codec.Wri
 		r.ReadNullableString()
 	}
 
-	acks := r.ReadInt16()
-	_ = acks // go-kaff always acknowledges immediately (Acks is ignored)
-	r.ReadInt32() // TimeoutMillis — ignored (no replication to wait on)
+	_ = r.ReadInt16() // always acknowledge immediately (Acks is ignored)
+	_ = r.ReadInt32() // TimeoutMillis — ignored (no replication to wait on)
 
 	// ── Parse and append topics/partitions ────────────────────────────────────
 
 	type partResult struct {
-		partitionID    int32
-		errorCode      int16
-		baseOffset     int64
-		logAppendTime  int64
+		partitionID   int32
+		errorCode     int16
+		baseOffset    int64
+		logAppendTime int64
 	}
 	type topicResult struct {
 		name       string
