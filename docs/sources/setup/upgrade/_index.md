@@ -97,14 +97,7 @@ Please refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/op
 
 If the latest entry of your schema config is older than retention period of your data, then it is safe to remove any old entries from the `schema_config.configs` when upgrading.
 
-<<<<<<< HEAD
 With the legacy backends removed, also the `table-manager` target and `table_manager` configuration block are removed, as they are not needed any more. If you have a `table_manager` configuration block in your `config.yaml` you can safely remove it completely.
-=======
-<<<<<<< HEAD
-With the legacy backends removed, also the `table-manager` target and `table_manager` configuration block are removed, as they are not needed any more. If you have a `table_manager` configuration block in your `config.yaml` you can savely remove it completely.
-=======
->>>>>>> 42d4484e94 (fixup: Add upgrade notes)
->>>>>>> 8b15c32dc9 (fixup: Add upgrade notes)
 
 ### Distributor Max Receive Limits for uncompressed bytes
 
