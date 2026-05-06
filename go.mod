@@ -1,8 +1,6 @@
 module github.com/grafana/loki/v3
 
-go 1.25.0
-
-toolchain go1.25.8
+go 1.26.2
 
 require (
 	cloud.google.com/go/bigtable v1.40.1
