@@ -2,14 +2,19 @@ package postings
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 // checkBit returns true if bit n is set in the LSB-encoded bitmap data.
@@ -36,7 +41,7 @@ func TestBuilder_Empty(t *testing.T) {
 func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	ts := time.Unix(0, 1000)
+	ts := time.Unix(0, 1000).UTC()
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 3, Timestamp: ts, UncompressedSize: 4096})
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 7, Timestamp: ts, UncompressedSize: 0})
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 15, Timestamp: ts, UncompressedSize: 0})
@@ -44,32 +49,42 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 1)
+	rows, tbl := readAllRows(t, sections[0])
+	require.Len(t, rows, 1)
 
-	p := got[0]
-	require.Equal(t, KindLabel, p.Kind)
-	require.Equal(t, "/tenant/abc/obj1", p.ObjectPath)
-	require.Equal(t, int64(0), p.SectionIndex)
-	require.Equal(t, "env", p.ColumnName)
-	require.Equal(t, "value1", p.LabelValue)
-	require.Nil(t, p.BloomFilter)
-	require.Equal(t, int64(4096), p.UncompressedSize)
-	require.Equal(t, int64(1000), p.MinTimestamp)
-	require.Equal(t, int64(1000), p.MaxTimestamp)
+	// stream_id_bitmap.binary is intentionally omitted here; verified below via extractBinaryColumn + checkBit.
+	expected := arrowtest.Rows{
+		{
+			"kind.int64":              int64(KindLabel),
+			"object_path.utf8":        "/tenant/abc/obj1",
+			"section_index.int64":     int64(0),
+			"column_name.utf8":        "env",
+			"label_value.utf8":        "value1",
+			"bloom_filter.binary":     nil,
+			"uncompressed_size.int64": int64(4096),
+			"min_timestamp.timestamp": ts,
+			"max_timestamp.timestamp": ts,
+		},
+	}
 
+	strictRows := stripOpaqueBinaryColumns(rows, "stream_id_bitmap.binary")
+	strictExpected := stripOpaqueBinaryColumns(expected, "stream_id_bitmap.binary")
+	require.Equal(t, strictExpected, strictRows)
+
+	// Extract and verify the bitmap separately since it's opaque
+	bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
 	// Verify stream IDs 3, 7, 15 are set in the bitmap.
-	require.True(t, checkBit(p.StreamIDBitmap, 3), "bit 3 should be set")
-	require.True(t, checkBit(p.StreamIDBitmap, 7), "bit 7 should be set")
-	require.True(t, checkBit(p.StreamIDBitmap, 15), "bit 15 should be set")
-	require.False(t, checkBit(p.StreamIDBitmap, 0), "bit 0 should not be set")
+	require.True(t, checkBit(bitmaps[0], 3), "bit 3 should be set")
+	require.True(t, checkBit(bitmaps[0], 7), "bit 7 should be set")
+	require.True(t, checkBit(bitmaps[0], 15), "bit 15 should be set")
+	require.False(t, checkBit(bitmaps[0], 0), "bit 0 should not be set")
 }
 
 // TestBuilder_BloomPostingRoundTrip verifies a bloom posting round-trips correctly.
 func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	ts := time.Unix(0, 500)
+	ts := time.Unix(0, 500).UTC()
 	b.PrepareBloomColumn("/tenant/abc/obj2", 1, "service_name", 100)
 	err := b.ObserveBloomPosting(BloomObservation{ObjectPath: "/tenant/abc/obj2", SectionIndex: 1, ColumnName: "service_name", Value: "my-service", StreamID: 0, Timestamp: ts, UncompressedSize: 8192})
 	require.NoError(t, err)
@@ -81,54 +96,66 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 1)
+	rows, tbl := readAllRows(t, sections[0])
+	require.Len(t, rows, 1)
 
-	p := got[0]
-	require.Equal(t, KindBloom, p.Kind)
-	require.Equal(t, "/tenant/abc/obj2", p.ObjectPath)
-	require.Equal(t, int64(1), p.SectionIndex)
-	require.Equal(t, "service_name", p.ColumnName)
-	require.Empty(t, p.LabelValue)
-	require.NotNil(t, p.BloomFilter, "Bloom posting should have non-nil BloomFilter")
-	require.Equal(t, int64(8192), p.UncompressedSize)
-	require.Equal(t, int64(500), p.MinTimestamp)
-	require.Equal(t, int64(500), p.MaxTimestamp)
+	bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
+	bloomFilters := extractBinaryColumn(t, tbl, "bloom_filter.binary")
+
+	// stream_id_bitmap.binary and bloom_filter.binary are intentionally omitted here; verified below via extractBinaryColumn.
+	expected := arrowtest.Rows{
+		{
+			"kind.int64":              int64(KindBloom),
+			"object_path.utf8":        "/tenant/abc/obj2",
+			"section_index.int64":     int64(1),
+			"column_name.utf8":        "service_name",
+			"label_value.utf8":        nil,
+			"bloom_filter.binary":     bloomFilters[0], // Use actual bloom from test
+			"uncompressed_size.int64": int64(8192),
+			"min_timestamp.timestamp": ts,
+			"max_timestamp.timestamp": ts,
+		},
+	}
+
+	strictRows := stripOpaqueBinaryColumns(rows, "stream_id_bitmap.binary", "bloom_filter.binary")
+	strictExpected := stripOpaqueBinaryColumns(expected, "stream_id_bitmap.binary", "bloom_filter.binary")
+	require.Equal(t, strictExpected, strictRows)
+
+	// Verify bloom filter is non-nil
+	require.NotNil(t, bloomFilters[0], "Bloom posting should have non-nil BloomFilter")
 
 	// Verify stream IDs 0, 2, 8 are set.
-	require.True(t, checkBit(p.StreamIDBitmap, 0), "bit 0 should be set")
-	require.True(t, checkBit(p.StreamIDBitmap, 2), "bit 2 should be set")
-	require.True(t, checkBit(p.StreamIDBitmap, 8), "bit 8 should be set")
-	require.False(t, checkBit(p.StreamIDBitmap, 1), "bit 1 should not be set")
+	require.True(t, checkBit(bitmaps[0], 0), "bit 0 should be set")
+	require.True(t, checkBit(bitmaps[0], 2), "bit 2 should be set")
+	require.True(t, checkBit(bitmaps[0], 8), "bit 8 should be set")
+	require.False(t, checkBit(bitmaps[0], 1), "bit 1 should not be set")
 }
 
 // TestBuilder_MixedPostings verifies both Bloom and Label postings work together.
 func TestBuilder_MixedPostings(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	ts := time.Unix(0, 100)
+	ts := time.Unix(0, 100).UTC()
+	ts2 := time.Unix(0, 300).UTC()
 	b.PrepareBloomColumn("/obj1", 0, "col_a", 10)
 	err := b.ObserveBloomPosting(BloomObservation{ObjectPath: "/obj1", SectionIndex: 0, ColumnName: "col_a", Value: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 	require.NoError(t, err)
 
-	ts2 := time.Unix(0, 300)
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj2", SectionIndex: 0, ColumnName: "col_b", LabelValue: "myval", StreamID: 1, Timestamp: ts2, UncompressedSize: 0})
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj2", SectionIndex: 0, ColumnName: "col_b", LabelValue: "myval", StreamID: 3, Timestamp: ts2, UncompressedSize: 0})
 
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 2)
+	rows, _ := readAllRows(t, sections[0])
+	require.Len(t, rows, 2)
 
 	// Bloom (KindBloom=0) sorts before Label (KindLabel=1).
-	require.Equal(t, KindBloom, got[0].Kind)
-	require.Empty(t, got[0].LabelValue)
-	require.NotNil(t, got[0].BloomFilter)
+	require.Equal(t, int64(KindBloom), rows[0]["kind.int64"])
+	require.Equal(t, nil, rows[0]["label_value.utf8"])
 
-	require.Equal(t, KindLabel, got[1].Kind)
-	require.NotEmpty(t, got[1].LabelValue)
-	require.Nil(t, got[1].BloomFilter)
+	require.Equal(t, int64(KindLabel), rows[1]["kind.int64"])
+	require.NotNil(t, rows[1]["label_value.utf8"])
 }
 
 // TestBuilder_SortOrder verifies the sort order: bloom entries before label entries,
@@ -137,11 +164,9 @@ func TestBuilder_MixedPostings(t *testing.T) {
 func TestBuilder_SortOrder(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	ts := time.Unix(0, 50)
-
 	// Prepare and add bloom entries.
 	b.PrepareBloomColumn("", 0, "col_a", 10)
-	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col_a", Value: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
+	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col_a", Value: "v", StreamID: 0, Timestamp: time.Unix(0, 50), UncompressedSize: 0})
 
 	b.PrepareBloomColumn("", 0, "col_b", 10)
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col_b", Value: "v", StreamID: 0, Timestamp: time.Unix(0, 10), UncompressedSize: 0})
@@ -154,36 +179,36 @@ func TestBuilder_SortOrder(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 4) // 2 bloom + 2 label (alpha aggregated into 1, beta into 1)
+	rows, _ := readAllRows(t, sections[0])
+	require.Len(t, rows, 4) // 2 bloom + 2 label (alpha aggregated into 1, beta into 1)
 
 	// Expected order:
 	// 0: KindBloom, col_a
 	// 1: KindBloom, col_b
 	// 2: KindLabel, col_a, alpha (aggregated)
 	// 3: KindLabel, col_a, beta (aggregated)
-	require.Equal(t, KindBloom, got[0].Kind)
-	require.Equal(t, "col_a", got[0].ColumnName)
-	require.Empty(t, got[0].LabelValue)
+	require.Equal(t, int64(KindBloom), rows[0]["kind.int64"])
+	require.Equal(t, "col_a", rows[0]["column_name.utf8"])
+	require.Equal(t, nil, rows[0]["label_value.utf8"])
 
-	require.Equal(t, KindBloom, got[1].Kind)
-	require.Equal(t, "col_b", got[1].ColumnName)
-	require.Empty(t, got[1].LabelValue)
+	require.Equal(t, int64(KindBloom), rows[1]["kind.int64"])
+	require.Equal(t, "col_b", rows[1]["column_name.utf8"])
+	require.Equal(t, nil, rows[1]["label_value.utf8"])
 
-	require.Equal(t, KindLabel, got[2].Kind)
-	require.Equal(t, "col_a", got[2].ColumnName)
-	require.Equal(t, "alpha", got[2].LabelValue)
+	require.Equal(t, int64(KindLabel), rows[2]["kind.int64"])
+	require.Equal(t, "col_a", rows[2]["column_name.utf8"])
+	require.Equal(t, "alpha", rows[2]["label_value.utf8"])
 
-	require.Equal(t, KindLabel, got[3].Kind)
-	require.Equal(t, "col_a", got[3].ColumnName)
-	require.Equal(t, "beta", got[3].LabelValue)
+	require.Equal(t, int64(KindLabel), rows[3]["kind.int64"])
+	require.Equal(t, "col_a", rows[3]["column_name.utf8"])
+	require.Equal(t, "beta", rows[3]["label_value.utf8"])
 }
 
 // TestBuilder_NullableHandling verifies nullable column correctness.
 func TestBuilder_NullableHandling(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	ts := time.Unix(0, 0)
+	ts := time.Unix(0, 0).UTC()
 
 	b.PrepareBloomColumn("", 0, "col", 10)
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", Value: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
@@ -193,27 +218,27 @@ func TestBuilder_NullableHandling(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 2)
+	rows, _ := readAllRows(t, sections[0])
+	require.Len(t, rows, 2)
 
-	// Bloom posting: label_value is empty, bloom_filter is non-null
-	bloom := got[0]
-	require.Equal(t, KindBloom, bloom.Kind)
-	require.Empty(t, bloom.LabelValue, "Bloom posting should have empty LabelValue")
-	require.NotNil(t, bloom.BloomFilter, "Bloom posting should have non-nil BloomFilter")
+	// Bloom posting: label_value is nil, bloom_filter is non-null
+	bloom := rows[0]
+	require.Equal(t, int64(KindBloom), bloom["kind.int64"])
+	require.Nil(t, bloom["label_value.utf8"], "Bloom posting should have nil LabelValue")
+	require.NotNil(t, bloom["bloom_filter.binary"], "Bloom posting should have non-nil BloomFilter")
 
-	// Label posting: bloom_filter is null, label_value is non-empty
-	label := got[1]
-	require.Equal(t, KindLabel, label.Kind)
-	require.NotEmpty(t, label.LabelValue, "Label posting should have non-empty LabelValue")
-	require.Nil(t, label.BloomFilter, "Label posting should have nil BloomFilter")
+	// Label posting: bloom_filter is null, label_value is non-nil
+	label := rows[1]
+	require.Equal(t, int64(KindLabel), label["kind.int64"])
+	require.NotNil(t, label["label_value.utf8"], "Label posting should have non-nil LabelValue")
+	require.Nil(t, label["bloom_filter.binary"], "Label posting should have nil BloomFilter")
 }
 
 // TestBuilder_BitmapCorrectness verifies that stream ID bitmaps are LSB-encoded correctly.
 func TestBuilder_BitmapCorrectness(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	ts := time.Unix(0, 0)
+	ts := time.Unix(0, 0).UTC()
 	b.PrepareBloomColumn("", 0, "col", 10)
 	// Observe stream IDs 0, 3, 7.
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", Value: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
@@ -223,21 +248,21 @@ func TestBuilder_BitmapCorrectness(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 1)
+	rows, tbl := readAllRows(t, sections[0])
+	require.Len(t, rows, 1)
+
+	bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
+	require.NotEmpty(t, bitmaps[0])
 
 	// Verify LSB encoding: bit N at byte N/8, position N%8.
-	bitmap := got[0].StreamIDBitmap
-	require.NotEmpty(t, bitmap)
-
-	require.True(t, checkBit(bitmap, 0), "bit 0 should be set")
-	require.False(t, checkBit(bitmap, 1), "bit 1 should not be set")
-	require.False(t, checkBit(bitmap, 2), "bit 2 should not be set")
-	require.True(t, checkBit(bitmap, 3), "bit 3 should be set")
-	require.False(t, checkBit(bitmap, 4), "bit 4 should not be set")
-	require.False(t, checkBit(bitmap, 5), "bit 5 should not be set")
-	require.False(t, checkBit(bitmap, 6), "bit 6 should not be set")
-	require.True(t, checkBit(bitmap, 7), "bit 7 should be set")
+	require.True(t, checkBit(bitmaps[0], 0), "bit 0 should be set")
+	require.False(t, checkBit(bitmaps[0], 1), "bit 1 should not be set")
+	require.False(t, checkBit(bitmaps[0], 2), "bit 2 should not be set")
+	require.True(t, checkBit(bitmaps[0], 3), "bit 3 should be set")
+	require.False(t, checkBit(bitmaps[0], 4), "bit 4 should not be set")
+	require.False(t, checkBit(bitmaps[0], 5), "bit 5 should not be set")
+	require.False(t, checkBit(bitmaps[0], 6), "bit 6 should not be set")
+	require.True(t, checkBit(bitmaps[0], 7), "bit 7 should be set")
 }
 
 // TestBuilder_BitmapNormalization verifies that bitmaps of different sizes are
@@ -245,7 +270,7 @@ func TestBuilder_BitmapCorrectness(t *testing.T) {
 func TestBuilder_BitmapNormalization(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	ts := time.Unix(0, 0)
+	ts := time.Unix(0, 0).UTC()
 	// "a": stream ID 0 → 1-byte bitmap
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", LabelValue: "a", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 	// "b": stream ID 23 → 3-byte bitmap
@@ -254,12 +279,13 @@ func TestBuilder_BitmapNormalization(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 2)
+	rows, tbl := readAllRows(t, sections[0])
+	require.Len(t, rows, 2)
 
+	bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
 	// All bitmaps should be the same length (3 bytes, the maximum for stream ID 23).
-	require.Len(t, got[0].StreamIDBitmap, 3, "short bitmap should be padded to max length")
-	require.Len(t, got[1].StreamIDBitmap, 3, "long bitmap should remain at max length")
+	require.Len(t, bitmaps[0], 3, "short bitmap should be padded to max length")
+	require.Len(t, bitmaps[1], 3, "long bitmap should remain at max length")
 }
 
 // TestBuilder_SectionSplitting verifies that a small targetSectionSize causes
@@ -268,7 +294,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 	// Use a very small page size to force splitting across multiple pages.
 	b := NewBuilder(nil, 100, 2)
 
-	ts := time.Unix(0, 0)
+	ts := time.Unix(0, 0).UTC()
 	for i := range 6 {
 		b.ObserveLabelPosting(LabelObservation{ColumnName: "col", LabelValue: fmt.Sprintf("val%d", i), Timestamp: ts})
 	}
@@ -277,15 +303,15 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 	require.Len(t, sections, 1, "all postings go in one section")
 
 	// Collect all rows.
-	allPostings := readAllPostings(t, sections[0])
-	require.Len(t, allPostings, 6)
+	rows, _ := readAllRows(t, sections[0])
+	require.Len(t, rows, 6)
 }
 
 // TestBuilder_AllBloom verifies that a builder with only Bloom postings works.
 func TestBuilder_AllBloom(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	ts := time.Unix(0, 0)
+	ts := time.Unix(0, 0).UTC()
 	for i := range 3 {
 		colName := fmt.Sprintf("col%d", i)
 		b.PrepareBloomColumn("", 0, colName, 10)
@@ -295,12 +321,12 @@ func TestBuilder_AllBloom(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 3)
-	for _, p := range got {
-		require.Equal(t, KindBloom, p.Kind)
-		require.Empty(t, p.LabelValue)
-		require.NotNil(t, p.BloomFilter)
+	rows, _ := readAllRows(t, sections[0])
+	require.Len(t, rows, 3)
+	for _, row := range rows {
+		require.Equal(t, int64(KindBloom), row["kind.int64"])
+		require.Nil(t, row["label_value.utf8"])
+		require.NotNil(t, row["bloom_filter.binary"])
 	}
 }
 
@@ -308,7 +334,7 @@ func TestBuilder_AllBloom(t *testing.T) {
 func TestBuilder_AllLabel(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	ts := time.Unix(0, 0)
+	ts := time.Unix(0, 0).UTC()
 	for i := range 3 {
 		lv := fmt.Sprintf("val%d", i)
 		b.ObserveLabelPosting(LabelObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", LabelValue: lv, StreamID: 0, Timestamp: ts, UncompressedSize: 0})
@@ -317,12 +343,12 @@ func TestBuilder_AllLabel(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 3)
-	for _, p := range got {
-		require.Equal(t, KindLabel, p.Kind)
-		require.NotEmpty(t, p.LabelValue)
-		require.Nil(t, p.BloomFilter)
+	rows, _ := readAllRows(t, sections[0])
+	require.Len(t, rows, 3)
+	for _, row := range rows {
+		require.Equal(t, int64(KindLabel), row["kind.int64"])
+		require.NotNil(t, row["label_value.utf8"])
+		require.Nil(t, row["bloom_filter.binary"])
 	}
 }
 
@@ -366,11 +392,9 @@ func TestCheckSection(t *testing.T) {
 	})
 }
 
-func TestRowReader_SmallBuffer(t *testing.T) {
+func TestReader_SmallBatchSize(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
-
 	ts := time.Unix(0, 0)
-	// Append 5 rows with distinct label values.
 	for i := range 5 {
 		b.ObserveLabelPosting(LabelObservation{ColumnName: "col", LabelValue: fmt.Sprintf("val%d", i), Timestamp: ts})
 	}
@@ -378,16 +402,28 @@ func TestRowReader_SmallBuffer(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	rr := NewRowReader(sections[0])
-	defer rr.Close()
+	r := NewReader(ReaderOptions{
+		Columns:   sections[0].Columns(),
+		Allocator: memory.DefaultAllocator,
+	})
+	require.NoError(t, r.Open(context.Background()))
+	t.Cleanup(func() { _ = r.Close() })
 
-	require.NoError(t, rr.Open(context.Background()))
-
-	// Read with a buffer smaller than the section row count.
-	buf := make([]Posting, 2)
-	n, err := rr.Read(context.Background(), buf)
-	require.NoError(t, err)
-	require.Equal(t, 2, n, "should read exactly len(buf) rows")
+	// Read in batches of 2 and accumulate rows to verify streaming behavior.
+	var totalRows int64
+	for {
+		batch, err := r.Read(context.Background(), 2)
+		if batch != nil {
+			require.LessOrEqual(t, batch.NumRows(), int64(2), "batch should not exceed batchSize")
+			totalRows += batch.NumRows()
+			batch.Release()
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+	}
+	require.Equal(t, int64(5), totalRows, "should read all 5 rows across batches")
 }
 
 // TestBuilder_ObserveLabelPosting verifies that multiple stream IDs for the
@@ -395,9 +431,9 @@ func TestRowReader_SmallBuffer(t *testing.T) {
 func TestBuilder_ObserveLabelPosting(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	minTs := time.Unix(0, 100)
-	midTs := time.Unix(0, 200)
-	maxTs := time.Unix(0, 300)
+	minTs := time.Unix(0, 100).UTC()
+	midTs := time.Unix(0, 200).UTC()
+	maxTs := time.Unix(0, 300).UTC()
 
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: minTs, UncompressedSize: 100})
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 5, Timestamp: midTs, UncompressedSize: 200})
@@ -406,23 +442,36 @@ func TestBuilder_ObserveLabelPosting(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 1, "three observations for same key should aggregate to one posting")
+	rows, tbl := readAllRows(t, sections[0])
+	require.Len(t, rows, 1, "three observations for same key should aggregate to one posting")
 
-	p := got[0]
-	require.Equal(t, KindLabel, p.Kind)
-	require.Equal(t, "env", p.ColumnName)
-	require.Equal(t, "prod", p.LabelValue)
-	require.Equal(t, int64(600), p.UncompressedSize, "sizes should be summed")
-	require.Equal(t, minTs.UnixNano(), p.MinTimestamp)
-	require.Equal(t, maxTs.UnixNano(), p.MaxTimestamp)
+	bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
+
+	// stream_id_bitmap.binary is intentionally omitted here; verified below via extractBinaryColumn + checkBit.
+	expected := arrowtest.Rows{
+		{
+			"kind.int64":              int64(KindLabel),
+			"object_path.utf8":        "/obj",
+			"section_index.int64":     int64(0),
+			"column_name.utf8":        "env",
+			"label_value.utf8":        "prod",
+			"bloom_filter.binary":     nil,
+			"uncompressed_size.int64": int64(600),
+			"min_timestamp.timestamp": minTs,
+			"max_timestamp.timestamp": maxTs,
+		},
+	}
+
+	strictRows := stripOpaqueBinaryColumns(rows, "stream_id_bitmap.binary")
+	strictExpected := stripOpaqueBinaryColumns(expected, "stream_id_bitmap.binary")
+	require.Equal(t, strictExpected, strictRows)
 
 	// Verify stream IDs 1, 5, 10 are set.
-	require.True(t, checkBit(p.StreamIDBitmap, 1))
-	require.True(t, checkBit(p.StreamIDBitmap, 5))
-	require.True(t, checkBit(p.StreamIDBitmap, 10))
-	require.False(t, checkBit(p.StreamIDBitmap, 0))
-	require.False(t, checkBit(p.StreamIDBitmap, 2))
+	require.True(t, checkBit(bitmaps[0], 1))
+	require.True(t, checkBit(bitmaps[0], 5))
+	require.True(t, checkBit(bitmaps[0], 10))
+	require.False(t, checkBit(bitmaps[0], 0))
+	require.False(t, checkBit(bitmaps[0], 2))
 }
 
 // TestBuilder_ObserveBloomPosting verifies bloom observation: prepare, observe, check membership and bitmap.
@@ -454,19 +503,21 @@ func TestBuilder_ObserveBloomPosting(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 1)
+	rows, tbl := readAllRows(t, sections[0])
+	require.Len(t, rows, 1)
 
-	p := got[0]
-	require.Equal(t, KindBloom, p.Kind)
-	require.Equal(t, "service_name", p.ColumnName)
-	require.NotNil(t, p.BloomFilter)
+	bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
+
+	row := rows[0]
+	require.Equal(t, int64(KindBloom), row["kind.int64"])
+	require.Equal(t, "service_name", row["column_name.utf8"])
+	require.NotNil(t, row["bloom_filter.binary"])
 
 	// Verify stream IDs 0, 1, 2 are set in the bitmap.
-	require.True(t, checkBit(p.StreamIDBitmap, 0))
-	require.True(t, checkBit(p.StreamIDBitmap, 1))
-	require.True(t, checkBit(p.StreamIDBitmap, 2))
-	require.False(t, checkBit(p.StreamIDBitmap, 3))
+	require.True(t, checkBit(bitmaps[0], 0))
+	require.True(t, checkBit(bitmaps[0], 1))
+	require.True(t, checkBit(bitmaps[0], 2))
+	require.False(t, checkBit(bitmaps[0], 3))
 }
 
 // TestBuilder_MixedObservations verifies bloom and label observations produce
@@ -474,7 +525,7 @@ func TestBuilder_ObserveBloomPosting(t *testing.T) {
 func TestBuilder_MixedObservations(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	ts := time.Unix(0, 100)
+	ts := time.Unix(0, 100).UTC()
 
 	// Add label first (out of order relative to expected output).
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "col_b", LabelValue: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
@@ -486,12 +537,12 @@ func TestBuilder_MixedObservations(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 2)
+	rows, _ := readAllRows(t, sections[0])
+	require.Len(t, rows, 2)
 
 	// Bloom should be first regardless of observation order.
-	require.Equal(t, KindBloom, got[0].Kind, "bloom should sort before label")
-	require.Equal(t, KindLabel, got[1].Kind)
+	require.Equal(t, int64(KindBloom), rows[0]["kind.int64"], "bloom should sort before label")
+	require.Equal(t, int64(KindLabel), rows[1]["kind.int64"])
 }
 
 // TestBuilder_ObserveBloomUnprepared verifies that observing an unprepared bloom
@@ -511,7 +562,7 @@ func TestBuilder_ObserveBloomUnprepared(t *testing.T) {
 func TestBuilder_MultipleObjectContexts(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
-	ts := time.Unix(0, 0)
+	ts := time.Unix(0, 0).UTC()
 
 	// Same column/label, different object paths.
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj1", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 0, Timestamp: ts, UncompressedSize: 100})
@@ -523,8 +574,10 @@ func TestBuilder_MultipleObjectContexts(t *testing.T) {
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	got := readAllPostings(t, sections[0])
-	require.Len(t, got, 3, "different (objectPath, sectionIndex) should produce distinct postings")
+	rows, tbl := readAllRows(t, sections[0])
+	require.Len(t, rows, 3, "different (objectPath, sectionIndex) should produce distinct postings")
+
+	bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
 
 	// Collect all (objectPath, sectionIndex) pairs from results.
 	type key struct {
@@ -532,8 +585,8 @@ func TestBuilder_MultipleObjectContexts(t *testing.T) {
 		secID int64
 	}
 	seen := make(map[key]bool)
-	for _, p := range got {
-		k := key{p.ObjectPath, p.SectionIndex}
+	for _, row := range rows {
+		k := key{row["object_path.utf8"].(string), row["section_index.int64"].(int64)}
 		require.False(t, seen[k], "duplicate (objectPath, sectionIndex) found")
 		seen[k] = true
 	}
@@ -543,17 +596,21 @@ func TestBuilder_MultipleObjectContexts(t *testing.T) {
 	require.True(t, seen[key{"/obj1", 1}])
 
 	// Each posting should only have the stream IDs for that context.
-	for _, p := range got {
+	for i, row := range rows {
+		path := row["object_path.utf8"].(string)
+		secIdx := row["section_index.int64"].(int64)
+		usize := row["uncompressed_size.int64"].(int64)
+
 		switch {
-		case p.ObjectPath == "/obj1" && p.SectionIndex == 0:
-			require.True(t, checkBit(p.StreamIDBitmap, 0), "obj1/0 should have stream 0")
-			require.Equal(t, int64(100), p.UncompressedSize)
-		case p.ObjectPath == "/obj2" && p.SectionIndex == 0:
-			require.True(t, checkBit(p.StreamIDBitmap, 1), "obj2/0 should have stream 1")
-			require.Equal(t, int64(200), p.UncompressedSize)
-		case p.ObjectPath == "/obj1" && p.SectionIndex == 1:
-			require.True(t, checkBit(p.StreamIDBitmap, 2), "obj1/1 should have stream 2")
-			require.Equal(t, int64(300), p.UncompressedSize)
+		case path == "/obj1" && secIdx == 0:
+			require.True(t, checkBit(bitmaps[i], 0), "obj1/0 should have stream 0")
+			require.Equal(t, int64(100), usize)
+		case path == "/obj2" && secIdx == 0:
+			require.True(t, checkBit(bitmaps[i], 1), "obj2/0 should have stream 1")
+			require.Equal(t, int64(200), usize)
+		case path == "/obj1" && secIdx == 1:
+			require.True(t, checkBit(bitmaps[i], 2), "obj1/1 should have stream 2")
+			require.Equal(t, int64(300), usize)
 		}
 	}
 }
@@ -620,23 +677,85 @@ func flushAndOpenSections(t *testing.T, b *Builder) []*Section {
 	return sections
 }
 
-// readAllPostings reads all postings from a section.
-func readAllPostings(t *testing.T, sec *Section) []Posting {
-	t.Helper()
-	rr := NewRowReader(sec)
-	defer rr.Close()
-
-	require.NoError(t, rr.Open(context.Background()))
-
-	var all []Posting
-	buf := make([]Posting, 100)
+// readTable drains a Reader into an arrow.Table, mirroring streams/reader_test.go.
+func readTable(ctx context.Context, r *Reader) (arrow.Table, error) {
+	var recs []arrow.RecordBatch
 	for {
-		n, err := rr.Read(context.Background(), buf)
-		all = append(all, buf[:n]...)
-		if err == io.EOF {
-			break
+		rec, err := r.Read(ctx, 128)
+		if rec != nil && rec.NumRows() > 0 {
+			recs = append(recs, rec)
 		}
-		require.NoError(t, err)
+		if err != nil && errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, err
+		}
 	}
-	return all
+	if len(recs) == 0 {
+		return nil, io.EOF
+	}
+	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
+}
+
+// readAllRows opens all columns from sec, reads them via the new columnar
+// Reader, and returns both the row maps and the underlying table (needed for
+// extractBinaryColumn calls on opaque columns).
+func readAllRows(t *testing.T, sec *Section) (arrowtest.Rows, arrow.Table) {
+	t.Helper()
+	r := NewReader(ReaderOptions{
+		Columns:   sec.Columns(),
+		Allocator: memory.DefaultAllocator,
+	})
+	require.NoError(t, r.Open(context.Background()))
+	t.Cleanup(func() { _ = r.Close() })
+
+	tbl, err := readTable(context.Background(), r)
+	require.NoError(t, err)
+
+	rows, err := arrowtest.TableRows(memory.DefaultAllocator, tbl)
+	require.NoError(t, err)
+	return rows, tbl
+}
+
+// stripOpaqueBinaryColumns returns a copy of rows with the named keys removed
+// from every row map. Use when the test intent is structural (e.g., "bit N is
+// set") rather than byte-exact, with those columns asserted separately.
+func stripOpaqueBinaryColumns(rows arrowtest.Rows, keys ...string) arrowtest.Rows {
+	out := make(arrowtest.Rows, len(rows))
+	for i, row := range rows {
+		cp := make(arrowtest.Row, len(row))
+		for k, v := range row {
+			cp[k] = v
+		}
+		for _, k := range keys {
+			delete(cp, k)
+		}
+		out[i] = cp
+	}
+	return out
+}
+
+// extractBinaryColumn extracts a named Binary arrow column from a table as
+// [][]byte, copying bytes out of arrow-owned memory.
+func extractBinaryColumn(t *testing.T, table arrow.Table, field string) [][]byte {
+	t.Helper()
+	idx := table.Schema().FieldIndices(field)
+	require.Len(t, idx, 1, "field %q not found in schema", field)
+	col := table.Column(idx[0])
+	var out [][]byte
+	for _, chunk := range col.Data().Chunks() {
+		bin, ok := chunk.(*array.Binary)
+		require.True(t, ok, "field %q is not a Binary column", field)
+		for i := 0; i < bin.Len(); i++ {
+			if bin.IsNull(i) {
+				out = append(out, nil)
+				continue
+			}
+			src := bin.Value(i)
+			cp := make([]byte, len(src))
+			copy(cp, src)
+			out = append(out, cp)
+		}
+	}
+	return out
 }

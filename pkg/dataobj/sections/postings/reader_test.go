@@ -29,8 +29,8 @@ func TestReader_ReadBeforeOpen(t *testing.T) {
 func TestReader_RoundTrip(t *testing.T) {
 	// Build a tiny postings section with one label entry, read it back.
 	b := postings.NewBuilder(nil, 0, 0)
-	ts := time.Unix(0, 0)
-	b.ObserveLabelPosting("/obj", 0, "env", "prod", 1, ts, 100)
+	ts := time.Unix(0, 0).UTC()
+	b.ObserveLabelPosting(postings.LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: ts, UncompressedSize: 100})
 
 	objBuilder := dataobj.NewBuilder(nil)
 	require.NoError(t, objBuilder.Append(b))
