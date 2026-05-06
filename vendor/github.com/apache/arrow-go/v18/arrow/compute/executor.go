@@ -581,7 +581,12 @@ func (s *scalarExecutor) WrapResults(ctx context.Context, out <-chan Datum, hasC
 
 func (s *scalarExecutor) executeSpans(data chan<- Datum) (err error) {
 	defer func() {
-		err = errors.Join(err, s.kernel.Cleanup())
+		// Clean up per-invocation kernel state using ctx.State rather than
+		// the shared kernel.Data field, which races when multiple goroutines
+		// execute the same kernel concurrently.
+		if sk, ok := s.kernel.(*exec.ScalarKernel); ok && sk.CleanupFn != nil && s.ctx.State != nil {
+			err = errors.Join(err, sk.CleanupFn(s.ctx.State))
+		}
 	}()
 
 	var (
