@@ -408,14 +408,15 @@ type Tokens []TokenInfo
 
 // Tokenizer represents a JSONPath tokenizer.
 type Tokenizer struct {
-    input             string
-    pos               int
-    line              int
-    column            int
-    tokens            []TokenInfo
-    stack             []Token
-    illegalWhitespace bool
-    config            config.Config
+    input              string
+    pos                int
+    line               int
+    column             int
+    tokens             []TokenInfo
+    stack              []Token
+    illegalWhitespace  bool
+    config             config.Config
+    bracketFilterState []bool // lazy-init: nil until first BRACKET_LEFT; tracks filter context per bracket depth
 }
 
 // NewTokenizer creates a new JSONPath tokenizer for the given input string.
@@ -488,6 +489,10 @@ func (t *Tokenizer) Tokenize() Tokens {
             t.addToken(ARRAY_SLICE, 1, "")
         case ch == '?':
             t.addToken(FILTER, 1, "")
+            // Mark current bracket as filter context
+            if len(t.bracketFilterState) > 0 {
+                t.bracketFilterState[len(t.bracketFilterState)-1] = true
+            }
         case ch == '(':
             t.addToken(PAREN_LEFT, 1, "")
             t.stack = append(t.stack, PAREN_LEFT)
@@ -501,10 +506,21 @@ func (t *Tokenizer) Tokenize() Tokens {
         case ch == '[':
             t.addToken(BRACKET_LEFT, 1, "")
             t.stack = append(t.stack, BRACKET_LEFT)
+            // Lazy-init bracketFilterState on first bracket
+            if t.bracketFilterState == nil {
+                t.bracketFilterState = make([]bool, 0, 4)
+            }
+            // Inherit parent filter state: if parent is in filter context, so is this bracket
+            inFilter := len(t.bracketFilterState) > 0 && t.bracketFilterState[len(t.bracketFilterState)-1]
+            t.bracketFilterState = append(t.bracketFilterState, inFilter)
         case ch == ']':
             if len(t.stack) > 0 && t.stack[len(t.stack)-1] == BRACKET_LEFT {
                 t.addToken(BRACKET_RIGHT, 1, "")
                 t.stack = t.stack[:len(t.stack)-1]
+                // Pop bracket filter state
+                if len(t.bracketFilterState) > 0 {
+                    t.bracketFilterState = t.bracketFilterState[:len(t.bracketFilterState)-1]
+                }
             } else {
                 t.addToken(ILLEGAL, 1, "unmatched closing bracket")
             }
@@ -581,9 +597,19 @@ func (t *Tokenizer) Tokenize() Tokens {
         case isDigit(ch):
             t.scanNumber()
         case isLiteralChar(ch):
-            t.scanLiteral()
+            if t.config.JSONPathPlusEnabled() && t.isInsideBracket() && !t.isInFilterContext() {
+                t.scanUnquotedBracketString()
+            } else {
+                t.scanLiteral()
+            }
         default:
-            t.addToken(ILLEGAL, 1, string(ch))
+            // JSONPath Plus: handle special characters inside brackets as unquoted strings
+            // e.g., application/vnd.api+json where / and + would otherwise be ILLEGAL
+            if t.config.JSONPathPlusEnabled() && t.isInsideBracket() && !t.isInFilterContext() && isUnquotedBracketStartChar(ch) {
+                t.scanUnquotedBracketString()
+            } else {
+                t.addToken(ILLEGAL, 1, string(ch))
+            }
         }
         t.pos++
         t.column++
@@ -611,8 +637,6 @@ func (t *Tokenizer) scanString(quote rune) {
     var literal strings.Builder
 illegal:
     for i := start; i < len(t.input); i++ {
-        b := literal.String()
-        _ = b
         if t.input[i] == byte(quote) {
             t.addToken(STRING_LITERAL, len(t.input[start:i])+2, literal.String())
             t.pos = i
@@ -684,6 +708,15 @@ func (t *Tokenizer) scanNumber() {
                 t.column += i - start
                 return
             }
+            // Peek ahead: if '.' is NOT followed by a digit, it's a CHILD separator,
+            // not a decimal point. Stop the number scan here.
+            if i+1 >= len(t.input) || !isDigit(t.input[i+1]) {
+                literal := t.input[start:i]
+                t.addToken(tokenType, len(literal), literal)
+                t.pos = i - 1
+                t.column += i - start - 1
+                return
+            }
             tokenType = FLOAT
             dotSeen = true
             continue
@@ -716,7 +749,7 @@ func (t *Tokenizer) scanNumber() {
                 // no leading zero
                 tokenType = ILLEGAL
             } else if len(literal) > 2 && literal[0] == '-' && literal[1] == '0' && !dotSeen {
-                // no trailing dot
+                // no negative zero without fraction
                 tokenType = ILLEGAL
             } else if len(literal) > 0 && literal[len(literal)-1] == '.' {
                 // no trailing dot
@@ -828,6 +861,48 @@ func (t *Tokenizer) peek() byte {
     return 0
 }
 
+// isInsideBracket returns true if the tokenizer is currently inside a bracket pair.
+// Nil-safe: returns false when bracketFilterState has not been initialized.
+func (t *Tokenizer) isInsideBracket() bool {
+    return len(t.bracketFilterState) > 0
+}
+
+// isInFilterContext returns true if the current bracket context is a filter expression.
+func (t *Tokenizer) isInFilterContext() bool {
+    return len(t.bracketFilterState) > 0 && t.bracketFilterState[len(t.bracketFilterState)-1]
+}
+
+// scanUnquotedBracketString scans an unquoted string inside brackets (JSONPath Plus extension).
+// Handles values like: get, post, application/vnd.api+json, default, etc.
+// Zero-allocation: uses direct substring of t.input, matching scanLiteral's pattern.
+func (t *Tokenizer) scanUnquotedBracketString() {
+    start := t.pos
+    end := start
+    for end < len(t.input) {
+        ch := t.input[end]
+        if ch == ']' || ch == ',' || ch == '[' || ch == '\'' || ch == '"' || ch == '?' {
+            break
+        }
+        if isSpace(ch) {
+            break
+        }
+        end++
+    }
+    // Trim trailing whitespace by adjusting end index
+    trimEnd := end
+    for trimEnd > start && isSpace(t.input[trimEnd-1]) {
+        trimEnd--
+    }
+    if trimEnd <= start {
+        t.addToken(ILLEGAL, 1, string(t.input[t.pos]))
+        return
+    }
+    literal := t.input[start:trimEnd]
+    t.addToken(STRING_LITERAL, len(literal), literal)
+    t.pos = end - 1
+    t.column += end - start - 1
+}
+
 func isDigit(ch byte) bool {
     return '0' <= ch && ch <= '9'
 }
@@ -839,6 +914,15 @@ func isLiteralChar(ch byte) bool {
 
 func isSpace(ch byte) bool {
     return ch == ' ' || ch == '\t' || ch == '\r'
+}
+
+// isUnquotedBracketStartChar returns true if ch can start an unquoted bracket string
+// but is not already handled by other cases (digits, literal chars, quotes, etc.).
+// Note: + is NOT included here because $[+1] must remain ILLEGAL per RFC 9535.
+// Characters like + that appear mid-value (e.g., application/vnd.api+json) are handled
+// by scanUnquotedBracketString which scans until a delimiter is found.
+func isUnquotedBracketStartChar(ch byte) bool {
+    return ch == '/' || ch == '%' || ch == '#'
 }
 
 // contextVariableKeywords maps context variable names to their token types.

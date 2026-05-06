@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
@@ -31,7 +32,7 @@ var (
 )
 
 func NewResourceLogs() *ResourceLogs {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &ResourceLogs{}
 	}
 	return protoPoolResourceLogs.Get().(*ResourceLogs)
@@ -42,7 +43,7 @@ func DeleteResourceLogs(orig *ResourceLogs, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}

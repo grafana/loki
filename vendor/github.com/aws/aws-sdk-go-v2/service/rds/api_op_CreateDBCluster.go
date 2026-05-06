@@ -30,6 +30,11 @@ import (
 // source. For more information about Multi-AZ DB clusters, see [Multi-AZ DB cluster deployments]in the Amazon RDS
 // User Guide.
 //
+// You can use the WithExpressConfiguration parameter to create an Aurora DB
+// Cluster with express configuration and create cluster in seconds. Express
+// configuration provides a cluster with a writer instance and feature specific
+// values set to all other input parameters of this API.
+//
 // [CreateDBInstance]: https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBInstance.html
 // [What is Amazon Aurora?]: https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/CHAP_AuroraOverview.html
 // [Multi-AZ DB cluster deployments]: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/multi-az-db-clusters-concepts.html
@@ -863,6 +868,13 @@ type CreateDBClusterInput struct {
 	//
 	// Valid for Cluster Type: Aurora DB clusters and Multi-AZ DB clusters
 	VpcSecurityGroupIds []string
+
+	// Specifies to create an Aurora DB Cluster with express configuration in seconds.
+	// Express configuration provides a cluster with a writer instance and feature
+	// specific values set to all other input parameters of this API.
+	//
+	// Valid for Cluster Type: Aurora DB clusters
+	WithExpressConfiguration *bool
 
 	// Used by the SDK's PresignURL autofill customization to specify the region the
 	// of the client's request.

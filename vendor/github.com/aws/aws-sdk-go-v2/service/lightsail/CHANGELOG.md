@@ -1,3 +1,20 @@
+# v1.51.0 (2026-03-23)
+
+* **Feature**: Add support for tagging of ContactMethod resource type
+
+# v1.50.14 (2026-03-13)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.50.13 (2026-03-03)
+
+* **Dependency Update**: Bump minimum Go version to 1.24
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.50.12 (2026-02-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.50.11 (2026-01-09)
 
 * **Dependency Update**: Updated to the latest SDK module versions

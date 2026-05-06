@@ -27,7 +27,7 @@ import (
 // TODO: Instead of using the same metrics for all notifiers,
 // should we have separate metrics for each discovery.NewManager?
 var (
-	sdMetrics map[string]discovery.DiscovererMetrics
+	sdMetrics *discovery.SDMetrics
 
 	srvDNSregexp = regexp.MustCompile(`^_.+._.+`)
 )

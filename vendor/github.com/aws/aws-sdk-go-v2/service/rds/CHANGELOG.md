@@ -1,3 +1,16 @@
+# v1.117.0 (2026-03-24)
+
+* **Feature**: Adds support in Aurora PostgreSQL serverless databases for express configuration based creation through WithExpressConfiguration in CreateDbCluster API, and for restoring clusters using RestoreDBClusterToPointInTime and RestoreDBClusterFromSnapshot APIs.
+
+# v1.116.3 (2026-03-13)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.116.2 (2026-03-03)
+
+* **Dependency Update**: Bump minimum Go version to 1.24
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.116.1 (2026-02-23)
 
 * **Dependency Update**: Updated to the latest SDK module versions

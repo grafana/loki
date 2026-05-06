@@ -24,6 +24,8 @@ const (
 	AppLogTypeRun AppLogType = "RUN"
 	// AppLogTypeRunRestarted represents logs of crashed/restarted instances during runtime.
 	AppLogTypeRunRestarted AppLogType = "RUN_RESTARTED"
+	// AppLogTypeAutoscaleEvent represents logs of an autoscaling event.
+	AppLogTypeAutoscaleEvent AppLogType = "AUTOSCALE_EVENT"
 )
 
 // AppsService is an interface for interfacing with the App Platform endpoints
@@ -81,6 +83,11 @@ type AppsService interface {
 	GetJobInvocation(ctx context.Context, appID string, jobInvocationId string, opts *GetJobInvocationOptions) (*JobInvocation, *Response, error)
 	GetJobInvocationLogs(ctx context.Context, appID, jobInvocationId string, opts *GetJobInvocationLogsOptions) (*AppLogs, *Response, error)
 	CancelJobInvocation(ctx context.Context, appID, jobInvocationID string, opts *CancelJobInvocationOptions) (*JobInvocation, *Response, error)
+
+	ListEvents(ctx context.Context, appID string, opts *ListEventsOptions) ([]*Event, *Response, error)
+	GetEvent(ctx context.Context, appID, eventID string) (*Event, *Response, error)
+	CancelEvent(ctx context.Context, appID, eventID string) (*Event, *Response, error)
+	GetEventLogs(ctx context.Context, appID, eventID string, opts *GetEventLogsOptions) (*AppLogs, *Response, error)
 }
 
 // AppLogs represent app logs.
@@ -135,6 +142,22 @@ type ListJobInvocationsOptions struct {
 
 type CancelJobInvocationOptions struct {
 	JobName string `url:"job_name,omitempty"`
+}
+
+// ListEventsOptions specifies the optional parameters to the ListEvents method.
+type ListEventsOptions struct {
+	Page    int `url:"page,omitempty"`
+	PerPage int `url:"per_page,omitempty"`
+	// EventTypes filters events by type (e.g. DEPLOYMENT, AUTOSCALING).
+	EventTypes []string `url:"event_types,omitempty"`
+	// DeploymentTypes filters deployment events by deployment cause type.
+	DeploymentTypes []string `url:"deployment_types,omitempty"`
+}
+
+// GetEventLogsOptions specifies the optional parameters to the GetEventLogs method.
+type GetEventLogsOptions struct {
+	Follow    bool
+	TailLines int
 }
 
 // DeploymentCreateRequest represents a request to create a deployment.
@@ -197,6 +220,16 @@ type jobInvocationsRoot struct {
 	JobInvocations []*JobInvocation `json:"job_invocations"`
 	Links          *Links           `json:"links"`
 	Meta           *Meta            `json:"meta"`
+}
+
+type eventRoot struct {
+	Event *Event `json:"event,omitempty"`
+}
+
+type eventsRoot struct {
+	Events []*Event `json:"events"`
+	Links  *Links   `json:"links"`
+	Meta   *Meta    `json:"meta"`
 }
 
 type appTierRoot struct {
@@ -544,6 +577,96 @@ func (s *AppsServiceOp) CancelJobInvocation(ctx context.Context, appID string, j
 		return nil, resp, err
 	}
 	return root.JobInvocation, resp, nil
+}
+
+// ListEvents lists all events for a given app.
+func (s *AppsServiceOp) ListEvents(ctx context.Context, appID string, opts *ListEventsOptions) ([]*Event, *Response, error) {
+	path := fmt.Sprintf("%s/%s/events", appsBasePath, appID)
+
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(eventsRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+	return root.Events, resp, nil
+}
+
+// GetEvent retrieves a single event for an app.
+func (s *AppsServiceOp) GetEvent(ctx context.Context, appID, eventID string) (*Event, *Response, error) {
+	url := fmt.Sprintf("%s/%s/events/%s", appsBasePath, appID, eventID)
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(eventRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Event, resp, nil
+}
+
+// CancelEvent cancels an in-progress autoscaling event.
+func (s *AppsServiceOp) CancelEvent(ctx context.Context, appID, eventID string) (*Event, *Response, error) {
+	url := fmt.Sprintf("%s/%s/events/%s/cancel", appsBasePath, appID, eventID)
+
+	req, err := s.client.NewRequest(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(eventRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Event, resp, nil
+}
+
+// GetEventLogs retrieves logs for an autoscaling event.
+func (s *AppsServiceOp) GetEventLogs(ctx context.Context, appID, eventID string, opts *GetEventLogsOptions) (*AppLogs, *Response, error) {
+	url := fmt.Sprintf("%s/%s/events/%s/logs?type=%s", appsBasePath, appID, eventID, AppLogTypeAutoscaleEvent)
+
+	if opts != nil {
+		if opts.Follow {
+			url += fmt.Sprintf("&follow=%t", opts.Follow)
+		}
+		if opts.TailLines > 0 {
+			url += fmt.Sprintf("&tail_lines=%d", opts.TailLines)
+		}
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	logs := new(AppLogs)
+	resp, err := s.client.Do(ctx, req, logs)
+	if err != nil {
+		return nil, resp, err
+	}
+	return logs, resp, nil
 }
 
 // GetLogs retrieves app logs.

@@ -17,6 +17,16 @@ import (
 // configuration. If you don't specify a security group, the new DB cluster is
 // associated with the default security group.
 //
+// You can use the EnableVPCNetworking and EnableInternetAccessGateway parameters
+// together to restore an Aurora PostgreSQL cluster without VPC networking and with
+// internet-based connectivity. These two parameters must always be specified
+// together. Set EnableVPCNetworking to false to disable the VPC network interface
+// (ENI) for the cluster. EnableInternetAccessGateway enables internet-based
+// connectivity through an internet access gateway. IAM database authentication is
+// required and must be enabled using EnableIAMDatabaseAuthentication . Once the
+// cluster is restored, you need to modify the DB cluster to update
+// MasterUserAuthenticationType to iam-db-auth .
+//
 // This operation only restores the DB cluster, not the DB instances for that DB
 // cluster. You must invoke the CreateDBInstance operation to create DB instances
 // for the restored DB cluster, specifying the identifier of the restored DB
@@ -244,8 +254,30 @@ type RestoreDBClusterFromSnapshotInput struct {
 	// [IAM database authentication for MariaDB, MySQL, and PostgreSQL]: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html
 	EnableIAMDatabaseAuthentication *bool
 
+	// Specifies that the restored DB cluster should use internet-based connectivity
+	// through an internet access gateway. This allows clients to connect to the
+	// cluster over the internet without requiring a VPC.
+	//
+	// This parameter must be used together with EnableVPCNetworking set to false .
+	// When both parameters are specified, IAM database authentication is required. You
+	// must also specify EnableIAMDatabaseAuthentication .
+	//
+	// Valid for Cluster Type: Aurora PostgreSQL clusters
+	EnableInternetAccessGateway *bool
+
 	// Specifies whether to turn on Performance Insights for the DB cluster.
 	EnablePerformanceInsights *bool
+
+	// Specifies whether to enable VPC networking for the restored DB cluster. Set
+	// this parameter to false to create a cluster without the VPC network interface
+	// (ENI).
+	//
+	// This parameter must be used together with EnableInternetAccessGateway . When
+	// both parameters are specified, IAM database authentication is required. You must
+	// also specify EnableIAMDatabaseAuthentication .
+	//
+	// Valid for Cluster Type: Aurora PostgreSQL clusters
+	EnableVPCNetworking *bool
 
 	// The life cycle type for this DB cluster.
 	//

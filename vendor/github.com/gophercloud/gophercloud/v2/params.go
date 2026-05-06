@@ -109,7 +109,7 @@ func BuildRequestBody(opts any, parent string) (map[string]any, error) {
 					}
 					xorFieldIsZero = isZero(xorField)
 				}
-				if !(zero != xorFieldIsZero) {
+				if zero == xorFieldIsZero {
 					err := ErrMissingInput{}
 					err.Argument = fmt.Sprintf("%s/%s", f.Name, xorTag)
 					err.Info = fmt.Sprintf("Exactly one of %s and %s must be provided", f.Name, xorTag)
@@ -219,12 +219,12 @@ func BuildRequestBody(opts any, parent string) (map[string]any, error) {
 			optsMaps[i] = b
 		}
 		if parent == "" {
-			return nil, fmt.Errorf("Parent is required when passing an array or a slice.")
+			return nil, fmt.Errorf("parent is required when passing an array or a slice")
 		}
 		return map[string]any{parent: optsMaps}, nil
 	}
 	// Return an error if we can't work with the underlying type of 'opts'
-	return nil, fmt.Errorf("Options type is not a struct, a slice, or an array.")
+	return nil, fmt.Errorf("options type is not a struct, a slice, or an array")
 }
 
 // EnabledState is a convenience type, mostly used in Create and Update
@@ -429,7 +429,7 @@ func BuildQueryString(opts any) (*url.URL, error) {
 				} else {
 					// if the field has a 'required' tag, it can't have a zero-value
 					if requiredTag := f.Tag.Get("required"); requiredTag == "true" {
-						return &url.URL{}, fmt.Errorf("Required query parameter [%s] not set.", f.Name)
+						return &url.URL{}, fmt.Errorf("required query parameter [%s] not set", f.Name)
 					}
 				}
 			}
@@ -438,7 +438,7 @@ func BuildQueryString(opts any) (*url.URL, error) {
 		return &url.URL{RawQuery: params.Encode()}, nil
 	}
 	// Return an error if the underlying type of 'opts' isn't a struct.
-	return nil, fmt.Errorf("Options type is not a struct.")
+	return nil, fmt.Errorf("options type is not a struct")
 }
 
 /*
@@ -509,7 +509,7 @@ func BuildHeaders(opts any) (map[string]string, error) {
 				} else {
 					// if the field has a 'required' tag, it can't have a zero-value
 					if requiredTag := f.Tag.Get("required"); requiredTag == "true" {
-						return optsMap, fmt.Errorf("Required header [%s] not set.", f.Name)
+						return optsMap, fmt.Errorf("required header [%s] not set", f.Name)
 					}
 				}
 			}
@@ -518,7 +518,7 @@ func BuildHeaders(opts any) (map[string]string, error) {
 		return optsMap, nil
 	}
 	// Return an error if the underlying type of 'opts' isn't a struct.
-	return optsMap, fmt.Errorf("Options type is not a struct.")
+	return optsMap, fmt.Errorf("options type is not a struct")
 }
 
 // IDSliceToQueryString takes a slice of elements and converts them into a query

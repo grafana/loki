@@ -10097,6 +10097,55 @@ func awsAwsjson11_deserializeDocumentCapacityProviderStrategyItem(v **types.Capa
 	return nil
 }
 
+func awsAwsjson11_deserializeDocumentCapacityReservationRequest(v **types.CapacityReservationRequest, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.CapacityReservationRequest
+	if *v == nil {
+		sv = &types.CapacityReservationRequest{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "reservationGroupArn":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected String to be of type string, got %T instead", value)
+				}
+				sv.ReservationGroupArn = ptr.String(jtv)
+			}
+
+		case "reservationPreference":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected CapacityReservationPreference to be of type string, got %T instead", value)
+				}
+				sv.ReservationPreference = types.CapacityReservationPreference(jtv)
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
 func awsAwsjson11_deserializeDocumentClientException(v **types.ClientException, value interface{}) error {
 	if v == nil {
 		return fmt.Errorf("unexpected nil of type %T", v)
@@ -15125,6 +15174,11 @@ func awsAwsjson11_deserializeDocumentInstanceLaunchTemplate(v **types.InstanceLa
 				sv.CapacityOptionType = types.CapacityOptionType(jtv)
 			}
 
+		case "capacityReservations":
+			if err := awsAwsjson11_deserializeDocumentCapacityReservationRequest(&sv.CapacityReservations, value); err != nil {
+				return err
+			}
+
 		case "ec2InstanceProfileArn":
 			if value != nil {
 				jtv, ok := value.(string)
@@ -15141,6 +15195,15 @@ func awsAwsjson11_deserializeDocumentInstanceLaunchTemplate(v **types.InstanceLa
 					return fmt.Errorf("expected BoxedBoolean to be of type *bool, got %T instead", value)
 				}
 				sv.FipsEnabled = ptr.Bool(jtv)
+			}
+
+		case "instanceMetadataTagsPropagation":
+			if value != nil {
+				jtv, ok := value.(bool)
+				if !ok {
+					return fmt.Errorf("expected BoxedBoolean to be of type *bool, got %T instead", value)
+				}
+				sv.InstanceMetadataTagsPropagation = ptr.Bool(jtv)
 			}
 
 		case "instanceRequirements":
