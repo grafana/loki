@@ -85,7 +85,7 @@ func Test_externalLabelsFromFluentBitLabelsOption(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.True(t, got.Equal(tt.want.LabelSet), "LabelSet = %v, want %v", got.LabelSet, tt.want.LabelSet)
+			require.Equal(t, tt.want.LabelSet, got.LabelSet)
 		})
 	}
 }
