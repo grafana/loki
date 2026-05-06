@@ -867,6 +867,8 @@ func (t *Loki) setupModuleManager() error {
 		deps[DataObjConsumerRing] = append(deps[DataObjConsumerRing], InMemoryKafka)
 		deps[DataObjConsumerPartitionRing] = append(deps[DataObjConsumerPartitionRing], InMemoryKafka)
 		deps[DataObjIndexBuilder] = append(deps[DataObjIndexBuilder], InMemoryKafka)
+		deps[Distributor] = append(deps[Distributor], InMemoryKafka)
+		deps[Ingester] = append(deps[Ingester], InMemoryKafka)
 		deps[All] = append(deps[All], DataObjConsumer, DataObjIndexBuilder)
 	}
 
