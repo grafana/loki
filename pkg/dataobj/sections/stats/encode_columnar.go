@@ -152,10 +152,9 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 	return nil
 }
 
-// binaryColumnBuilder creates a column builder for BINARY/PLAIN/ZSTD columns. The
-// builder tag and logical type are both derived from the [ColumnType].
+// binaryColumnBuilder creates a column builder for a fixed BINARY/PLAIN/ZSTD column.
 func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
-	return dataset.NewColumnBuilder(logicalType.String(), dataset.BuilderOptions{
+	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
@@ -167,10 +166,9 @@ func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*d
 	})
 }
 
-// numberColumnBuilder creates a column builder for INT64/DELTA/NONE columns. The
-// builder tag and logical type are both derived from the [ColumnType].
+// numberColumnBuilder creates a column builder for a fixed INT64/DELTA/NONE column.
 func numberColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
-	return dataset.NewColumnBuilder(logicalType.String(), dataset.BuilderOptions{
+	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
