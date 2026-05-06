@@ -48,7 +48,6 @@ func makeTestCalcContext(builder *indexobj.Builder) *logsCalculationContext {
 	}
 }
 
-
 func flushAndReadAllStatsTable(t *testing.T, builder *indexobj.Builder) arrowtest.Rows {
 	t.Helper()
 	obj, closer, err := builder.Flush()
@@ -134,36 +133,36 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 
 	// Sorted order: "" < "svcA" < "svcB"
 	require.Equal(t, arrowtest.Row{
-		"object_path.utf8":         "test/path/obj1",
-		"section_index.int64":      int64(0),
-		"sort_schema.utf8":         "service_name",
-		"service_name.label.utf8":  "",
-		"min_timestamp.timestamp":  time.Unix(50, 0).UTC(),
-		"max_timestamp.timestamp":  time.Unix(50, 0).UTC(),
-		"row_count.int64":          int64(1),
-		"uncompressed_size.int64":  int64(len(line4)),
+		"object_path.utf8":        "test/path/obj1",
+		"section_index.int64":     int64(0),
+		"sort_schema.utf8":        "service_name",
+		"service_name.label.utf8": "",
+		"min_timestamp.timestamp": time.Unix(50, 0).UTC(),
+		"max_timestamp.timestamp": time.Unix(50, 0).UTC(),
+		"row_count.int64":         int64(1),
+		"uncompressed_size.int64": int64(len(line4)),
 	}, actual[0])
 
 	require.Equal(t, arrowtest.Row{
-		"object_path.utf8":         "test/path/obj1",
-		"section_index.int64":      int64(0),
-		"sort_schema.utf8":         "service_name",
-		"service_name.label.utf8":  "svcA",
-		"min_timestamp.timestamp":  ts1,
-		"max_timestamp.timestamp":  ts2,
-		"row_count.int64":          int64(2),
-		"uncompressed_size.int64":  int64(len(line1) + len(line2)),
+		"object_path.utf8":        "test/path/obj1",
+		"section_index.int64":     int64(0),
+		"sort_schema.utf8":        "service_name",
+		"service_name.label.utf8": "svcA",
+		"min_timestamp.timestamp": ts1,
+		"max_timestamp.timestamp": ts2,
+		"row_count.int64":         int64(2),
+		"uncompressed_size.int64": int64(len(line1) + len(line2)),
 	}, actual[1])
 
 	require.Equal(t, arrowtest.Row{
-		"object_path.utf8":         "test/path/obj1",
-		"section_index.int64":      int64(0),
-		"sort_schema.utf8":         "service_name",
-		"service_name.label.utf8":  "svcB",
-		"min_timestamp.timestamp":  ts3,
-		"max_timestamp.timestamp":  ts3,
-		"row_count.int64":          int64(1),
-		"uncompressed_size.int64":  int64(len(line3)),
+		"object_path.utf8":        "test/path/obj1",
+		"section_index.int64":     int64(0),
+		"sort_schema.utf8":        "service_name",
+		"service_name.label.utf8": "svcB",
+		"min_timestamp.timestamp": ts3,
+		"max_timestamp.timestamp": ts3,
+		"row_count.int64":         int64(1),
+		"uncompressed_size.int64": int64(len(line3)),
 	}, actual[2])
 }
 
@@ -186,14 +185,14 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 
 	// Verify metadata fields are set correctly.
 	require.Equal(t, arrowtest.Row{
-		"object_path.utf8":         "test/path/obj1",
-		"section_index.int64":      int64(0),
-		"sort_schema.utf8":         "service_name",
-		"service_name.label.utf8":  "svcA",
-		"min_timestamp.timestamp":  ts,
-		"max_timestamp.timestamp":  ts,
-		"row_count.int64":          int64(1),
-		"uncompressed_size.int64":  int64(len([]byte("msg"))),
+		"object_path.utf8":        "test/path/obj1",
+		"section_index.int64":     int64(0),
+		"sort_schema.utf8":        "service_name",
+		"service_name.label.utf8": "svcA",
+		"min_timestamp.timestamp": ts,
+		"max_timestamp.timestamp": ts,
+		"row_count.int64":         int64(1),
+		"uncompressed_size.int64": int64(len([]byte("msg"))),
 	}, actual[0])
 }
 

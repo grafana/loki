@@ -154,8 +154,6 @@ func extractBinaryColumn(t *testing.T, table arrow.Table, field string) [][]byte
 	return out
 }
 
-
-
 func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	calcCtx := makeTestCalcContext(builder)

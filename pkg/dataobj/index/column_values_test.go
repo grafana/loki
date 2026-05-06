@@ -233,8 +233,8 @@ func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 	// With the bloom aggregator, an unobserved but prepared column uses sentinel values:
 	// MinTimestamp = math.MaxInt64 and MaxTimestamp = math.MinInt64.
 	// These are stored and read back as time.Time values.
-	sentinelMinTimestamp := time.Unix(0, math.MaxInt64).UTC()  // unobserved min starts at max possible
-	sentinelMaxTimestamp := time.Unix(0, math.MinInt64).UTC()  // unobserved max starts at min possible
+	sentinelMinTimestamp := time.Unix(0, math.MaxInt64).UTC() // unobserved min starts at max possible
+	sentinelMaxTimestamp := time.Unix(0, math.MinInt64).UTC() // unobserved max starts at min possible
 	require.Equal(t, sentinelMinTimestamp, row["min_timestamp.timestamp"], "no records means sentinel max int64 for min timestamp")
 	require.Equal(t, sentinelMaxTimestamp, row["max_timestamp.timestamp"], "no records means sentinel min int64 for max timestamp")
 	require.Equal(t, int64(0), row["uncompressed_size.int64"], "no records means zero size")
