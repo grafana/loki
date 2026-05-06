@@ -2,13 +2,19 @@ package stats
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 // defaultEncoder is a SectionEncoder using default page sizes for testing.
@@ -26,10 +32,31 @@ func buildObject(t *testing.T, b *Builder) (*dataobj.Object, io.Closer) {
 	return obj, closer
 }
 
-// readAllStatsFromObject opens all stats sections in the object and reads all Stat rows.
-func readAllStatsFromObject(t *testing.T, obj *dataobj.Object) []Stat {
+// readTable drains a Reader into an arrow.Table, mirroring streams/reader_test.go.
+func readTable(ctx context.Context, r *Reader) (arrow.Table, error) {
+	var recs []arrow.RecordBatch
+	for {
+		rec, err := r.Read(ctx, 128)
+		if rec != nil && rec.NumRows() > 0 {
+			recs = append(recs, rec)
+		}
+		if err != nil && errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+	}
+	if len(recs) == 0 {
+		return nil, io.EOF
+	}
+	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
+}
+
+// readAllRowsFromObject opens every stats section in obj and concatenates
+// all rows in obj.Sections() order (stable).
+func readAllRowsFromObject(t *testing.T, obj *dataobj.Object) arrowtest.Rows {
 	t.Helper()
-	var all []Stat
+	var all arrowtest.Rows
 	for _, s := range obj.Sections() {
 		if !CheckSection(s) {
 			continue
@@ -37,19 +64,22 @@ func readAllStatsFromObject(t *testing.T, obj *dataobj.Object) []Stat {
 		sec, err := Open(context.Background(), s)
 		require.NoError(t, err)
 
-		rr := NewRowReader(sec)
-		defer rr.Close()
-		require.NoError(t, rr.Open(context.Background()))
+		r := NewReader(ReaderOptions{
+			Columns:   sec.Columns(),
+			Allocator: memory.DefaultAllocator,
+		})
+		require.NoError(t, r.Open(context.Background()))
+		t.Cleanup(func() { _ = r.Close() })
 
-		buf := make([]Stat, 100)
-		for {
-			n, err := rr.Read(context.Background(), buf)
-			all = append(all, buf[:n]...)
-			if err == io.EOF {
-				break
-			}
-			require.NoError(t, err)
+		tbl, err := readTable(context.Background(), r)
+		if errors.Is(err, io.EOF) {
+			continue
 		}
+		require.NoError(t, err)
+
+		rows, err := arrowtest.TableRows(memory.DefaultAllocator, tbl)
+		require.NoError(t, err)
+		all = append(all, rows...)
 	}
 	return all
 }
@@ -105,24 +135,41 @@ func TestBuilder_RoundTrip(t *testing.T) {
 	obj, closer := buildObject(t, b)
 	t.Cleanup(func() { _ = closer.Close() })
 
-	got := readAllStatsFromObject(t, obj)
-	require.Len(t, got, 3)
-
+	actual := readAllRowsFromObject(t, obj)
 	// Sort order: bar < baz < foo
-	require.Equal(t, "bar", got[0].Labels["service_name"])
-	require.Equal(t, "baz", got[1].Labels["service_name"])
-	require.Equal(t, "foo", got[2].Labels["service_name"])
-
-	// Verify all fields for the "foo" stat (last after sort).
-	fooStat := got[2]
-	require.Equal(t, "/tenant/abc/obj1", fooStat.ObjectPath)
-	require.Equal(t, int64(0), fooStat.SectionIndex)
-	require.Equal(t, "service_name", fooStat.SortSchema)
-	require.Equal(t, map[string]string{"service_name": "foo"}, fooStat.Labels)
-	require.Equal(t, int64(1000), fooStat.MinTimestamp)
-	require.Equal(t, int64(2000), fooStat.MaxTimestamp)
-	require.Equal(t, int64(100), fooStat.RowCount)
-	require.Equal(t, int64(8192), fooStat.UncompressedSize)
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        "/tenant/abc/obj2",
+			"section_index.int64":     int64(1),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 500).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 1500).UTC(),
+			"row_count.int64":         int64(50),
+			"uncompressed_size.int64": int64(4096),
+			"service_name.label.utf8": "bar",
+		},
+		{
+			"object_path.utf8":        "/tenant/abc/obj3",
+			"section_index.int64":     int64(2),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 3000).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 4000).UTC(),
+			"row_count.int64":         int64(200),
+			"uncompressed_size.int64": int64(16384),
+			"service_name.label.utf8": "baz",
+		},
+		{
+			"object_path.utf8":        "/tenant/abc/obj1",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 1000).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 2000).UTC(),
+			"row_count.int64":         int64(100),
+			"uncompressed_size.int64": int64(8192),
+			"service_name.label.utf8": "foo",
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_SortOrder verifies the sort order: label values in sort-schema order,
@@ -140,20 +187,61 @@ func TestBuilder_SortOrder(t *testing.T) {
 	obj, closer := buildObject(t, b)
 	t.Cleanup(func() { _ = closer.Close() })
 
-	got := readAllStatsFromObject(t, obj)
-	require.Len(t, got, 5)
-
+	actual := readAllRowsFromObject(t, obj)
 	// Verify sort order: alpha(100), alpha(200), alpha(300), beta(200), gamma(50).
-	require.Equal(t, "alpha", got[0].Labels["service_name"])
-	require.Equal(t, int64(100), got[0].MinTimestamp)
-	require.Equal(t, "alpha", got[1].Labels["service_name"])
-	require.Equal(t, int64(200), got[1].MinTimestamp)
-	require.Equal(t, "alpha", got[2].Labels["service_name"])
-	require.Equal(t, int64(300), got[2].MinTimestamp)
-	require.Equal(t, "beta", got[3].Labels["service_name"])
-	require.Equal(t, int64(200), got[3].MinTimestamp)
-	require.Equal(t, "gamma", got[4].Labels["service_name"])
-	require.Equal(t, int64(50), got[4].MinTimestamp)
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "alpha",
+		},
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "alpha",
+		},
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "alpha",
+		},
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "beta",
+		},
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 50).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "gamma",
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_AllSameServiceName verifies that rows with identical service_name
@@ -169,13 +257,41 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 	obj, closer := buildObject(t, b)
 	t.Cleanup(func() { _ = closer.Close() })
 
-	got := readAllStatsFromObject(t, obj)
-	require.Len(t, got, 3)
-
+	actual := readAllRowsFromObject(t, obj)
 	// Sort is by MinTimestamp within the same service_name.
-	require.Equal(t, int64(100), got[0].MinTimestamp)
-	require.Equal(t, int64(200), got[1].MinTimestamp)
-	require.Equal(t, int64(300), got[2].MinTimestamp)
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        "a",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "svc",
+		},
+		{
+			"object_path.utf8":        "b",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "svc",
+		},
+		{
+			"object_path.utf8":        "c",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "svc",
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_MissingServiceName verifies rows with empty/missing label values sort before non-empty ones.
@@ -188,12 +304,31 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 	obj, closer := buildObject(t, b)
 	t.Cleanup(func() { _ = closer.Close() })
 
-	got := readAllStatsFromObject(t, obj)
-	require.Len(t, got, 2)
-
+	actual := readAllRowsFromObject(t, obj)
 	// Empty string sorts before "svc".
-	require.Equal(t, "", got[0].Labels["service_name"])
-	require.Equal(t, "svc", got[1].Labels["service_name"])
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        "obj1",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "",
+		},
+		{
+			"object_path.utf8":        "obj2",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "svc",
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_SectionSplitting verifies the mid-accumulation flush pattern using dataobj.Builder:
@@ -246,8 +381,8 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 	require.Len(t, statsSections, 2, "expected 2 stats sections after two flushes")
 
 	// Collect all rows from both sections.
-	got := readAllStatsFromObject(t, obj)
-	require.Len(t, got, 6)
+	actual := readAllRowsFromObject(t, obj)
+	require.Len(t, actual, 6)
 }
 
 // TestBuilder_LargeValues verifies large label and path values round-trip correctly.
@@ -272,18 +407,24 @@ func TestBuilder_LargeValues(t *testing.T) {
 	obj, closer := buildObject(t, b)
 	t.Cleanup(func() { _ = closer.Close() })
 
-	got := readAllStatsFromObject(t, obj)
-	require.Len(t, got, 1)
+	actual := readAllRowsFromObject(t, obj)
+	require.Len(t, actual, 1)
 
-	stat := got[0]
-	require.Equal(t, longPath, stat.ObjectPath)
-	require.Equal(t, longSchema, stat.SortSchema)
-	require.Equal(t, longLabel, stat.Labels[longSchema])
-	require.Equal(t, int64(99), stat.SectionIndex)
-	require.Equal(t, int64(1_000_000), stat.MinTimestamp)
-	require.Equal(t, int64(2_000_000), stat.MaxTimestamp)
-	require.Equal(t, int64(99999), stat.RowCount)
-	require.Equal(t, int64(1_000_000_000), stat.UncompressedSize)
+	// Build the expected label column name dynamically
+	labelColName := longSchema + ".label.utf8"
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        longPath,
+			"section_index.int64":     int64(99),
+			"sort_schema.utf8":        longSchema,
+			"min_timestamp.timestamp": time.Unix(0, 1_000_000).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 2_000_000).UTC(),
+			"row_count.int64":         int64(99999),
+			"uncompressed_size.int64": int64(1_000_000_000),
+			labelColName:              longLabel,
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_ResetAndReuse verifies that Reset clears all rows and the builder can be reused.
@@ -304,9 +445,20 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 	obj, closer := buildObject(t, b)
 	t.Cleanup(func() { _ = closer.Close() })
 
-	got := readAllStatsFromObject(t, obj)
-	require.Len(t, got, 1)
-	require.Equal(t, "second", got[0].Labels["service_name"])
+	actual := readAllRowsFromObject(t, obj)
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "second",
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_EstimatedSize verifies EstimatedSize returns non-zero after appending.
