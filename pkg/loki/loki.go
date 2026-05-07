@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/modules"
@@ -461,6 +462,9 @@ type Loki struct {
 	Metrics *server.Metrics
 
 	UsageTracker push.UsageTracker
+
+	// RuleEvaluatorClientMiddleware optionally wraps the httpgrpc.HTTPClient used for remote rule evaluation.
+	RuleEvaluatorClientMiddleware func(httpgrpc.HTTPClient) httpgrpc.HTTPClient
 
 	metastoreMetrics *metastore.ObjectMetastoreMetrics
 }

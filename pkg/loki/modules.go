@@ -1710,6 +1710,9 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 		if e != nil {
 			return nil, fmt.Errorf("failed to dial query frontend for remote rule evaluation: %w", err)
 		}
+		if t.RuleEvaluatorClientMiddleware != nil {
+			qfClient = t.RuleEvaluatorClientMiddleware(qfClient)
+		}
 
 		evaluator, err = ruler.NewRemoteEvaluator(qfClient, t.Overrides, logger, prometheus.DefaultRegisterer)
 	default:
