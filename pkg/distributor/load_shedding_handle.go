@@ -64,8 +64,8 @@ func (h *LoadSheddingHandle) Handle(ctx context.Context, info *tap.Info) (contex
 	}
 
 	// Calculate estimated request size
-	estimatedRequestSize := h.d.cfg.MaxRecvMsgSize
-	contentLength := info.Header.Get("Content-Length")
+	estimatedRequestSize := 1_000_000
+	contentLength := info.Header.Get("X-Decompressed-Content-Length")
 	if len(contentLength) == 1 {
 		contentLengthBytes, err := strconv.Atoi(contentLength[0])
 		if err == nil {
