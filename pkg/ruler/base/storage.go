@@ -144,19 +144,19 @@ func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.
 // default PromQL parser. This replaces direct use of newDefaultFileLoader(),
 // whose parser field is unexported and nil by default, causing panics.
 type defaultFileLoader struct {
-	p        parser.Parser
-	parseLog *slog.Logger
+	p          parser.Parser
+	noopLogger *slog.Logger
 }
 
 func newDefaultFileLoader() defaultFileLoader {
 	return defaultFileLoader{
-		p:        parser.NewParser(parser.Options{}),
-		parseLog: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		p:          parser.NewParser(parser.Options{}),
+		noopLogger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 }
 
 func (fl defaultFileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
-	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, fl.p, fl.parseLog)
+	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, fl.p, fl.noopLogger)
 }
 
 func (fl defaultFileLoader) Parse(query string) (parser.Expr, error) {

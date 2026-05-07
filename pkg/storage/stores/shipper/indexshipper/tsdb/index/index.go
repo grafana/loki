@@ -17,7 +17,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	stderrors "errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -1261,10 +1260,10 @@ func NewFileReader(path string) (*Reader, error) {
 	}
 	r, err := newReader(RealByteSlice(f.Bytes()), f)
 	if err != nil {
-		return nil, stderrors.Join(
+		return nil, multierror.New(
 			err,
 			f.Close(),
-		)
+		).Err()
 	}
 
 	return r, nil

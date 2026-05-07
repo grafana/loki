@@ -89,8 +89,8 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 type testFileLoader struct{}
 
 func (testFileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
-	parseLog := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, parser.NewParser(parser.Options{}), parseLog)
+	noopLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, parser.NewParser(parser.Options{}), noopLogger)
 }
 
 func (testFileLoader) Parse(query string) (parser.Expr, error) {
