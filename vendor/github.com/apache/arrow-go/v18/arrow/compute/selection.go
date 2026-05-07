@@ -26,7 +26,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/compute/exec"
 	"github.com/apache/arrow-go/v18/arrow/compute/internal/kernels"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -375,37 +374,19 @@ func selectMapImpl(fn exec.ArrayKernelExec) exec.ArrayKernelExec {
 		childIndices := out.Children[0].MakeArray()
 		defer childIndices.Release()
 
-		// Maps have a single struct child containing the keys and items
-		// We need to take from both the keys and items arrays
-		takenKeys, err := TakeArrayOpts(ctx.Ctx, values.Keys(), childIndices, kernels.TakeOptions{BoundsCheck: false})
+		// Take the entire struct child as a unit, preserving all field metadata
+		// (including Nullable flags and validity bitmaps).  This matches the C++
+		// reference implementation which calls Take on typed_values.values() whole.
+		structChild := array.MakeFromData(values.Data().(*array.Data).Children()[0])
+		defer structChild.Release()
+
+		takenStruct, err := TakeArrayOpts(ctx.Ctx, structChild, childIndices, kernels.TakeOptions{BoundsCheck: false})
 		if err != nil {
 			return err
 		}
-		defer takenKeys.Release()
+		defer takenStruct.Release()
 
-		takenItems, err := TakeArrayOpts(ctx.Ctx, values.Items(), childIndices, kernels.TakeOptions{BoundsCheck: false})
-		if err != nil {
-			return err
-		}
-		defer takenItems.Release()
-
-		// Build the struct child array with the taken keys and items
-		// Maps have a single struct child with "key" and "value" fields
-		structType := arrow.StructOf(
-			arrow.Field{Name: "key", Type: values.Keys().DataType()},
-			arrow.Field{Name: "value", Type: values.Items().DataType()},
-		)
-
-		// Create struct data with taken keys and items as children
-		structData := array.NewData(
-			structType,
-			int(childIndices.Len()),
-			[]*memory.Buffer{nil},
-			[]arrow.ArrayData{takenKeys.Data(), takenItems.Data()},
-			0, 0)
-		defer structData.Release()
-
-		out.Children[0].TakeOwnership(structData)
+		out.Children[0].TakeOwnership(takenStruct.Data())
 		return nil
 	}
 }

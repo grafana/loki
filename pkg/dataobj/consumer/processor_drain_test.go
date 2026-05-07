@@ -24,7 +24,7 @@ func TestProcessor_Stopping_Drain(t *testing.T) {
 		fc := &mockFlushCommitter{}
 		ch := make(chan *kgo.Record, 10)
 
-		proc := newProcessor(builder, ch, fc, time.Hour, time.Hour, logger, reg)
+		proc := newProcessor(builder, ch, fc, time.Hour, time.Hour, IngestModeInMemory, logger, reg)
 
 		err := proc.stopping(nil)
 		require.NoError(t, err)
@@ -46,7 +46,7 @@ func TestProcessor_Stopping_Drain(t *testing.T) {
 			ch <- newTestRecord(t, "tenant1", now.Add(time.Duration(i)*time.Second))
 		}
 
-		proc := newProcessor(builder, ch, fc, time.Hour, time.Hour, logger, reg)
+		proc := newProcessor(builder, ch, fc, time.Hour, time.Hour, IngestModeInMemory, logger, reg)
 
 		err := proc.stopping(nil)
 		require.NoError(t, err)

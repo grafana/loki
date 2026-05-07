@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -40,6 +39,17 @@ const (
 	// How much stack space to allocate for unescaping JSON strings; if a string longer
 	// than this needs to be escaped, it will result in a heap allocation
 	unescapeStackBufSize = 64
+)
+
+// Volume HTTP defaults and validation duplicated here so pkg/loghttp stays free of
+// pkg/storage/stores/index/seriesvolume (AGPL). Keep in sync with that package's
+// DefaultLimit, DefaultAggregateBy, and ValidateAggregateBy.
+const (
+	defaultVolumeLimit       = 100
+	defaultVolumeAggregateBy = "series"
+
+	volumeAggregateByLabels = "labels"
+	volumeAggregateBySeries = "series"
 )
 
 // QueryResponse represents the http json response to a Loki range and instant query
@@ -567,10 +577,10 @@ func NewVolumeRangeQueryWithDefaults(matchers string) *logproto.VolumeRequest {
 		From:         from,
 		Through:      through,
 		Matchers:     matchers,
-		Limit:        seriesvolume.DefaultLimit,
+		Limit:        defaultVolumeLimit,
 		Step:         step,
 		TargetLabels: nil,
-		AggregateBy:  seriesvolume.DefaultAggregateBy,
+		AggregateBy:  defaultVolumeAggregateBy,
 	}
 }
 
@@ -720,13 +730,13 @@ func targetLabels(r *http.Request) []string {
 }
 
 func volumeLimit(r *http.Request) error {
-	l, err := parseInt(r.Form.Get("limit"), seriesvolume.DefaultLimit)
+	l, err := parseInt(r.Form.Get("limit"), defaultVolumeLimit)
 	if err != nil {
 		return err
 	}
 
 	if l == 0 {
-		r.Form.Set("limit", fmt.Sprint(seriesvolume.DefaultLimit))
+		r.Form.Set("limit", fmt.Sprint(defaultVolumeLimit))
 		return nil
 	}
 
@@ -737,13 +747,22 @@ func volumeLimit(r *http.Request) error {
 	return nil
 }
 
+func validateVolumeAggregateBy(aggregateBy string) bool {
+	switch aggregateBy {
+	case volumeAggregateByLabels, volumeAggregateBySeries:
+		return true
+	default:
+		return false
+	}
+}
+
 func volumeAggregateBy(r *http.Request) (string, error) {
 	l := r.Form.Get("aggregateBy")
 	if l == "" {
-		return seriesvolume.DefaultAggregateBy, nil
+		return defaultVolumeAggregateBy, nil
 	}
 
-	if seriesvolume.ValidateAggregateBy(l) {
+	if validateVolumeAggregateBy(l) {
 		return l, nil
 	}
 

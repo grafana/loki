@@ -42,7 +42,7 @@ func TestStatsExtractor_NewEngineWarningDetection(t *testing.T) {
 					}
 				},
 				"warnings": [
-					"Query was executed using the new experimental query engine and dataobj storage."
+					"Query was executed using the next-generation Loki query engine."
 				]
 			}`,
 			expectedUsed:       true,
@@ -137,7 +137,7 @@ func TestStatsExtractor_NewEngineWarningDetection(t *testing.T) {
 				},
 				"warnings": [
 					"Query processing took longer than expected",
-					"Query was executed using the new experimental query engine and dataobj storage.",
+					"Query was executed using the next-generation Loki query engine.",
 					"Large dataset detected"
 				]
 			}`,
@@ -219,7 +219,7 @@ func TestStatsExtractor_CheckForNewEngineWarning(t *testing.T) {
 	}{
 		{
 			name:     "exact match",
-			warnings: []string{"Query was executed using the new experimental query engine and dataobj storage."},
+			warnings: []string{"Query was executed using the next-generation Loki query engine."},
 			expected: true,
 		},
 		{
@@ -240,8 +240,8 @@ func TestStatsExtractor_CheckForNewEngineWarning(t *testing.T) {
 		{
 			name: "partial match should not count",
 			warnings: []string{
-				"Query was executed using the new engine",
-				"experimental query engine and dataobj storage",
+				"Query was executed using",
+				"the next-generation Loki query engine.",
 			},
 			expected: false,
 		},
@@ -249,7 +249,7 @@ func TestStatsExtractor_CheckForNewEngineWarning(t *testing.T) {
 			name: "multiple warnings with match",
 			warnings: []string{
 				"Warning 1",
-				"Query was executed using the new experimental query engine and dataobj storage.",
+				"Query was executed using the next-generation Loki query engine.",
 				"Warning 3",
 			},
 			expected: true,
@@ -257,7 +257,7 @@ func TestStatsExtractor_CheckForNewEngineWarning(t *testing.T) {
 		{
 			name: "case sensitive check",
 			warnings: []string{
-				"query was executed using the new experimental query engine and dataobj storage.",
+				"query was executed using the next-generation loki query engine.",
 			},
 			expected: false, // Should be case sensitive
 		},

@@ -502,6 +502,11 @@ func (c *Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketNam
 			ChecksumSHA1:      part.ChecksumSHA1,
 			ChecksumSHA256:    part.ChecksumSHA256,
 			ChecksumCRC64NVME: part.ChecksumCRC64NVME,
+			ChecksumMD5:       part.ChecksumMD5,
+			ChecksumSHA512:    part.ChecksumSHA512,
+			ChecksumXXHash64:  part.ChecksumXXHash64,
+			ChecksumXXHash3:   part.ChecksumXXHash3,
+			ChecksumXXHash128: part.ChecksumXXHash128,
 		})
 	}
 

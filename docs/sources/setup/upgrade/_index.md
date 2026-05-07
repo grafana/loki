@@ -37,6 +37,11 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Rename and remove metrics
+
+- The deprecated metric `loki_log_messages_total` is removed in favor of `loki_internal_log_messages_total`.
+- The metric `loki_log_flushes` is renamed to `loki_internal_log_flushes` to be consistent with `loki_internal_log_messages_total`.
+
 ### Breaking change: Drop support for non-TSDB stores in jsonnet lib 
 
 With the removal of deprecated storage backends, the Loki jsonnet library is also cleaned up to reflect these changes. Affected configuration flags are:
