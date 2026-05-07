@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"google.golang.org/grpc/tap"
 
@@ -72,6 +73,9 @@ func (h *LoadSheddingHandle) Handle(ctx context.Context, info *tap.Info) (contex
 			h.d.contentLengthPresentCount.Inc()
 			estimatedRequestSize = 5 * contentLengthBytes // 5 is an estimate of compression factor from my testing
 		}
+	} else {
+		// FIXME temp logging
+		level.Info(h.d.logger).Log("msg", "X-Decompressed-Content-Length header not present", "headers", info.Header)
 	}
 
 	// Load shed based on inflight bytes if necessary
