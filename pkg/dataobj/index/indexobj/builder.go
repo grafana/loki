@@ -192,10 +192,13 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 // (bitmap normalization, bloom filter construction). The builderFull flag
 // provides back-pressure via TargetObjectSize.
 func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObservation) error {
+	// Postings are observed per (record × stream label), so this method runs in
+	// a hot loop that fires hundreds of thousands of times per logs section.
+	// Per-call prometheus.NewTimer / Histogram.Observe / sizeEstimate.Set were
+	// designed for the previous per-posting Append API and are too expensive at
+	// this granularity. We keep the cheap atomic counter and account for size
+	// growth via the aggregator delta only.
 	b.metrics.appendsTotal.Inc()
-
-	timer := prometheus.NewTimer(b.metrics.appendTime)
-	defer timer.ObserveDuration()
 
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
 	preSize := tenantPostings.EstimatedSize()
@@ -204,8 +207,7 @@ func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObserva
 
 	postSize := tenantPostings.EstimatedSize()
 	b.unflushedSizeEstimate += postSize - preSize
-
-	b.currentSizeEstimate = b.estimatedSize()
+	b.currentSizeEstimate += postSize - preSize
 	b.state = builderStateDirty
 	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
@@ -226,10 +228,9 @@ func (b *Builder) PrepareBloomColumn(tenantID, objectPath string, sectionIdx int
 // PrepareBloomColumn. The aggregated postings are flushed when
 // [Builder.Flush] is called.
 func (b *Builder) ObserveBloomPosting(tenantID string, obs postings.BloomObservation) error {
+	// See ObserveLabelPosting for why metrics.appendTime / sizeEstimate.Set are
+	// not updated per observation.
 	b.metrics.appendsTotal.Inc()
-
-	timer := prometheus.NewTimer(b.metrics.appendTime)
-	defer timer.ObserveDuration()
 
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
 	preSize := tenantPostings.EstimatedSize()
@@ -240,8 +241,7 @@ func (b *Builder) ObserveBloomPosting(tenantID string, obs postings.BloomObserva
 
 	postSize := tenantPostings.EstimatedSize()
 	b.unflushedSizeEstimate += postSize - preSize
-
-	b.currentSizeEstimate = b.estimatedSize()
+	b.currentSizeEstimate += postSize - preSize
 	b.state = builderStateDirty
 	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
