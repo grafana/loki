@@ -223,13 +223,132 @@ The Kafka partition 3 still exists but no ingester consumes from it. Any unconsu
 
 ### API Extensions
 
+The new API extensions are:
+
+- The addition of the IngestLimits component to `LokiTemplateSpec`.
+- The new `IngestStorage` struct, to hold all the configuration concerning the new architecture.
+
+#### New Component: `IngestLimits`
+
+```go
+type LokiTemplateSpec struct {
+	IngestLimits *LokiComponentSpec `json:"ingestLimits,omitempty"`
+}
+```
+
+#### New Field on `LokiStackSpec`
+
+```go
+type LokiStackSpec struct {
+	// IngestStorage defines the ingest storage architecture configuration.
+	// When not set, the classical architecture is used.
+	// When set, distributors write to Kafka and ingesters consume from it.
+	IngestStorage *IngestStorageSpec `json:"ingestStorage,omitempty"`
+}
+```
+
+#### `IngestStorageSpec`
+
+Currently only Kafka configuration, but this level of nesting allows future extensions (e.g., DataObj configuration) to be added as siblings without restructuring the API.
+
+```go
+type IngestStorageSpec struct {
+	// Kafka defines the connection configuration for a Kafka-compatible ingest storage backend
+	Kafka KafkaSpec `json:"kafka"`
+}
+```
+
+#### `KafkaSpec`
+
+```go
+type KafkaSpec struct {
+	// Topic is the Kafka topic name used for log ingestion.
+	// Defaults to "loki".
+	Topic string `json:"topic,omitempty"`
+
+	// Secret for Kafka connection and authentication.
+	// Name of a secret in the same namespace as the LokiStack custom resource.
+	Secret KafkaSecretSpec `json:"secret"`
+
+	// TLS configuration for the Kafka connection.
+	TLS *TLSSpec `json:"tls,omitempty"`
+}
+```
+
+The `TLS` field reuses the existing `TLSSpec` type which provides:
+
+- `CA *ValueReference` — CA certificate to verify the broker
+- `Certificate *ValueReference` — client certificate for mTLS authentication
+- `PrivateKey *SecretReference` — client private key for mTLS authentication
+
+#### `KafkaSecretSpec`
+
+```go
+type KafkaSecretSpec struct {
+	// Name of a secret in the same namespace as the LokiStack custom resource.
+	Name string `json:"name"`
+}
+```
+
+The referenced secret can contain the following keys:
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `readerAddress` | Always | Broker addresses for consumers (host:port, comma-separated) |
+| `writerAddress` | Always | Broker addresses for producers (host:port, comma-separated) |
+| `saslMechanism` | For SASL | One of `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512` |
+| `username` | For SASL | SASL username |
+| `password` | For SASL | SASL password |
+
+Authentication mode is inferred from the secret contents and TLS spec:
+
+- **No auth**: Secret contains only `readerAddress` and `writerAddress`
+- **SASL**: Secret additionally contains `saslMechanism`, `username`, and `password`
+- **mTLS**: Secret contains only addresses; `tls.certificate` and `tls.privateKey` are set in the spec
+
+#### Example CR
+
+```yaml
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: lokistack-dev
+spec:
+  size: 1x.demo
+  storage:
+    schemas:
+    - version: v13
+      effectiveDate: 2023-10-15
+    secret:
+      name: storage-secret
+      type: s3
+  ingestStorage:
+    kafka:
+      topic: loki-logs
+      secret:
+        name: kafka-credentials
+      tls:
+        ca:
+          key: ca.crt
+          secretName: my-cluster-cluster-ca-cert
+---
+# Kafka credentials secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kafka-credentials
+type: Opaque
+stringData:
+  readerAddress: my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093
+  writerAddress: my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093
+  saslMechanism: SCRAM-SHA-512
+  username: loki-user
+  password: secret-password
+```
 
 ### Implementation Details/Notes/Constraints [optional]
 
-
-
 ### Risks and Mitigations
-
 
 ## Design Details
 
@@ -239,8 +358,6 @@ The Kafka partition 3 still exists but no ingester consumes from it. Any unconsu
 
 ## Implementation History
 
-
 ## Drawbacks
-
 
 ## Alternatives
