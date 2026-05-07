@@ -153,69 +153,9 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 			}
 			valueArr := valueVec.(*array.Float64)
 
-			// extract all the columns that are used for grouping
-			var arrays []*array.String
-			var groupingFields []arrow.Field
-
-			if v.grouping.Without {
-				// Grouping without a lable set. Exclude lables from that set.
-				schema := record.Schema()
-				for i, field := range schema.Fields() {
-					ident, err := v.identCache.ParseFQN(field.Name)
-					if err != nil {
-						return nil, err
-					}
-
-					if ident.ColumnType() == types.ColumnTypeLabel ||
-						ident.ColumnType() == types.ColumnTypeMetadata ||
-						ident.ColumnType() == types.ColumnTypeParsed {
-						found := false
-						for _, g := range v.grouping.Columns {
-							colExpr, ok := g.(*physical.ColumnExpr)
-							if !ok {
-								return nil, fmt.Errorf("unknown column expression %v", g)
-							}
-
-							// Match ambiguous columns only by name
-							if colExpr.Ref.Type == types.ColumnTypeAmbiguous && colExpr.Ref.Column == ident.ShortName() {
-								found = true
-								break
-							}
-
-							// Match all other columns by name and type
-							if colExpr.Ref.Column == ident.ShortName() && colExpr.Ref.Type == ident.ColumnType() {
-								found = true
-								break
-							}
-						}
-						if !found {
-							arrays = append(arrays, record.Column(i).(*array.String))
-							groupingFields = append(groupingFields, field)
-						}
-					}
-				}
-			} else {
-				// Gouping by a label set. Take only labels from that set.
-				for _, columnExpr := range v.grouping.Columns {
-					vec, err := v.evaluator.evalForGrouping(columnExpr, record)
-					if err != nil {
-						return nil, err
-					}
-
-					if vec.DataType().ID() != types.Arrow.String.ID() {
-						return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
-					}
-
-					arr := vec.(*array.String)
-					arrays = append(arrays, arr)
-
-					colExpr, ok := columnExpr.(*physical.ColumnExpr)
-					if !ok {
-						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
-					}
-					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
-					groupingFields = append(groupingFields, semconv.FieldFromIdent(ident, true))
-				}
+			arrays, groupingFields, err := collectGroupingColumns(record, v.grouping, v.evaluator, v.identCache)
+			if err != nil {
+				return nil, err
 			}
 
 			v.aggregator.AddLabels(groupingFields)

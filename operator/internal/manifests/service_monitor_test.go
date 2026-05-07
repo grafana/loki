@@ -725,3 +725,81 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceMonitorEndpointSlices(t *testing.T) {
+	featureGates := configv1.FeatureGates{
+		BuiltInCertManagement:      configv1.BuiltInCertManagement{Enabled: true},
+		ServiceMonitors:            true,
+		ServiceMonitorTLSEndpoints: true,
+	}
+
+	opts := Options{
+		Name:      "test",
+		Namespace: "test",
+		Image:     "test",
+		Gates:     featureGates,
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Distributor: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ingester: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Querier: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				QueryFrontend: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	}
+
+	serviceMonitors := []struct {
+		name    string
+		monitor *monitoringv1.ServiceMonitor
+	}{
+		{
+			"Distributor", NewDistributorServiceMonitor(opts),
+		},
+		{
+			"Ingester", NewIngesterServiceMonitor(opts),
+		},
+		{
+			"Querier", NewQuerierServiceMonitor(opts),
+		},
+		{
+			"QueryFrontend", NewQueryFrontendServiceMonitor(opts),
+		},
+		{
+			"Compactor", NewCompactorServiceMonitor(opts),
+		},
+		{
+			"Gateway", NewGatewayServiceMonitor(opts),
+		},
+		{
+			"IndexGateway", NewIndexGatewayServiceMonitor(opts),
+		},
+		{
+			"Ruler", NewRulerServiceMonitor(opts),
+		},
+	}
+
+	for _, sm := range serviceMonitors {
+		t.Run(sm.name, func(t *testing.T) {
+			require.NotNil(t, sm.monitor.Spec.ServiceDiscoveryRole)
+			require.Equal(t, monitoringv1.ServiceDiscoveryRole("EndpointSlice"), *sm.monitor.Spec.ServiceDiscoveryRole)
+		})
+	}
+}

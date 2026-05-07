@@ -495,11 +495,6 @@ func metaRefs(metas []Meta) []MetaRef {
 	return refs
 }
 
-func requireEqualMetas(t *testing.T, expected []Meta, actual []MetaRef) {
-	require.Equal(t, len(expected), len(actual))
-	require.ElementsMatch(t, metaRefs(expected), actual)
-}
-
 func requireCachedMetas(t *testing.T, expected []Meta, actual map[string][]byte) {
 	require.Equal(t, len(expected), len(actual))
 	for _, meta := range expected {

@@ -546,8 +546,6 @@ func main() {
             message := batch.Column(1).(*array.String).Value(i)
             println(timestamp, message)
         }
-
-        batch.Release()
     }
 }
 ```

@@ -10,7 +10,7 @@ jobs:
       contents: read
       id-token: write
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     timeout-minutes: 15
     steps:
       - name: Checkout Code

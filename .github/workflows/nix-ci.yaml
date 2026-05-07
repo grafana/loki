@@ -13,7 +13,7 @@ on:
       - .github/workflows/nix-ci.yaml
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     permissions:
       contents: "read"
       id-token: "write"
@@ -27,7 +27,7 @@ jobs:
           nix_path: nixpkgs=channel:nixos-unstable
       - run: nix run --print-build-logs .#lint
   packages:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     permissions:
       contents: "read"
       id-token: "write"

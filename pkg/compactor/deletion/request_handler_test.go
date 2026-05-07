@@ -402,35 +402,3 @@ func toTime(t string) model.Time {
 	modelTime, _ := util.ParseTime(t)
 	return model.Time(modelTime)
 }
-
-func verifyRequestSplits(t *testing.T, from, to model.Time, shardInterval time.Duration, reqs []deleteRequest) {
-	numExpectedRequests := 3
-	shardAlignedStart := model.TimeFromUnixNano(time.Unix(0, from.UnixNano()-from.UnixNano()%shardInterval.Nanoseconds()).UnixNano())
-	if !from.Equal(shardAlignedStart) {
-		numExpectedRequests++
-	}
-
-	require.Len(t, reqs, numExpectedRequests)
-	for i := 0; i < numExpectedRequests; i++ {
-		if i == 0 {
-			// start of first request should be same as the start time in original request
-			require.Equal(t, from, reqs[i].StartTime)
-			// end of first request should be shard interval aligned start + shardInterval
-			expectedEnd := shardAlignedStart.Add(shardInterval)
-			if expectedEnd.After(to) {
-				expectedEnd = to
-			}
-			require.Equal(t, expectedEnd, reqs[i].EndTime)
-		} else {
-			// start of this request should be equal to end of last request
-			require.Equal(t, reqs[i-1].EndTime, reqs[i].StartTime)
-			// if this is not last request then end of this split should be start + interval
-			// if this is last request then end should be equal end of original request
-			expectedEnd := reqs[i].StartTime.Add(shardInterval)
-			if i == numExpectedRequests-1 {
-				expectedEnd = to
-			}
-			require.Equal(t, expectedEnd, reqs[i].EndTime)
-		}
-	}
-}
