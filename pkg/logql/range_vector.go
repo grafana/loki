@@ -512,7 +512,6 @@ type streamRangeVectorIterator struct {
 	r                                    *syntax.RangeAggregationExpr
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
-	agg                                  BatchRangeVectorAggregator
 }
 
 func (r *streamRangeVectorIterator) Next() bool {

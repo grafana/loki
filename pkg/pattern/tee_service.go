@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
@@ -45,7 +44,6 @@ type TeeService struct {
 
 	flushQueue chan clientRequest
 
-	bufferPool   *pool.Pool
 	buffersMutex *sync.Mutex
 	buffers      map[string][]distributor.KeyedStream
 }

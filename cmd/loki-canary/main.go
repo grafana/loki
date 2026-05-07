@@ -42,7 +42,7 @@ func main() {
 	lName := flag.String("labelname", "name", "The label name for this instance of loki-canary to use in the log selector")
 	lVal := flag.String("labelvalue", "loki-canary", "The unique label value for this instance of loki-canary to use in the log selector")
 	sName := flag.String("streamname", "stream", "The stream name for this instance of loki-canary to use in the log selector")
-	sValue := flag.String("streamvalue", "stdout", "The unique stream value for this instance of loki-canary to use in the log selector")
+	sValue := flag.String("streamvalue", "", `The unique stream value for this instance of loki-canary to use in the log selector (defaults to "stdout", or "push" when -push=true)`)
 	port := flag.Int("port", 3500, "Port which loki-canary should expose metrics")
 	addr := flag.String("addr", "", "The Loki server URL:Port, e.g. loki:3100")
 	push := flag.Bool("push", false, "Push the logs directly to given Loki address")
@@ -95,6 +95,13 @@ func main() {
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 
 	flag.Parse()
+
+	if *sValue == "" {
+		*sValue = "stdout"
+		if *push {
+			*sValue = "push"
+		}
+	}
 
 	if *printVersion {
 		fmt.Println(version.Print("loki-canary"))

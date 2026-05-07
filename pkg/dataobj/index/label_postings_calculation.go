@@ -33,6 +33,11 @@ type labelPosting struct {
 
 func (c *labelPostingsCalculation) Name() string { return "label_postings" }
 
+// ProcessBatchNeedsBuilderLock reports whether ProcessBatch mutates the shared
+// builder. Label postings only mutate step-local postings maps during
+// ProcessBatch; shared-builder writes happen in Flush, so no lock is required.
+func (c *labelPostingsCalculation) ProcessBatchNeedsBuilderLock() bool { return false }
+
 func (c *labelPostingsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
 	c.postingsByKey = make(map[postingKey]*labelPosting)
 	c.maxStreamID = 0
