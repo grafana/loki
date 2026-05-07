@@ -1,1 +1,0 @@
-/Users/twhitney/Library/CloudStorage/GoogleDrive-trevorjwhitney@gmail.com/My Drive/Obsidian/grafana/planning/specs/2026-05-05-remove-postings-stats-row-readers-design.md
