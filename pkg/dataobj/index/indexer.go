@@ -87,7 +87,7 @@ func newSerialIndexer(
 		calculator:         calculator,
 		objectBucket:       objectBucket,
 		indexStorageBucket: indexStorageBucket,
-		tocStorageBucket:   objstore.NewPrefixedBucket(indexStorageBucket, metastore.TocPrefix),
+		tocStorageBucket:   objstore.NewPrefixedBucket(indexStorageBucket, metastore.TocBucketPrefix),
 		builderMetrics:     builderMetrics,
 		indexerMetrics:     indexerMetrics,
 		logger:             logger,

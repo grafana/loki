@@ -27,13 +27,12 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
-
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -41,15 +40,16 @@ import (
 const (
 	metastoreWindowSize = 12 * time.Hour
 
-	// TocPrefix is the prefix under which ToC files are stored in the object storage.
-	TocPrefix = "tocs/"
+	// TocBucketPrefix is the prefix under which ToC files are stored in the object storage.
+	TocBucketPrefix = "tocs"
 )
 
 var tracer = otel.Tracer("pkg/dataobj/metastore")
 
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
-	bucket      objstore.Bucket
+	indexBucket objstore.Bucket
+	tocBucket   objstore.Bucket
 	parallelism int
 	logger      log.Logger
 	metrics     *ObjectMetastoreMetrics
@@ -153,10 +153,11 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 	if cfg.IndexStoragePrefix != "" {
 		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
 	}
-	b = bucket.NewXCapBucket(b)
+	tocBucket := objstore.NewPrefixedBucket(b, TocBucketPrefix)
 
 	store := &ObjectMetastore{
-		bucket:      b,
+		indexBucket: bucket.NewXCapBucket(b),
+		tocBucket:   bucket.NewXCapBucket(tocBucket),
 		parallelism: 64,
 		logger:      logger,
 		metrics:     metrics,
@@ -351,7 +352,7 @@ func (m *ObjectMetastore) listObjectsFromTables(ctx context.Context, tablePaths 
 			objects[i], err = m.listObjects(ctx, path, sStart, sEnd)
 			// If the metastore object is not found, it means it's outside of any existing window
 			// and we can safely ignore it.
-			if err != nil && !m.bucket.IsObjNotFoundErr(err) {
+			if err != nil && !m.indexBucket.IsObjNotFoundErr(err) {
 				return fmt.Errorf("listing objects from metastore %s: %w", path, err)
 			}
 			return nil
@@ -374,7 +375,7 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 
 	for _, path := range paths {
 		g.Go(func() error {
-			object, err := dataobj.FromBucket(ctx, m.bucket, path, 0)
+			object, err := dataobj.FromBucket(ctx, m.indexBucket, path, 0)
 			if err != nil {
 				return fmt.Errorf("getting object from bucket: %w", err)
 			}
@@ -418,7 +419,7 @@ func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *
 
 func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, sEnd *scalar.Timestamp) ([]IndexEntry, error) {
 	var buf bytes.Buffer
-	objectReader, err := m.bucket.Get(ctx, path)
+	objectReader, err := m.tocBucket.Get(ctx, path)
 	if err != nil {
 		return nil, err
 	}
@@ -619,7 +620,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one selector is required")
 	}
 
-	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes)
+	idxObj, err := dataobj.FromBucket(ctx, m.indexBucket, req.IndexPath, req.PrefetchBytes)
 	if err != nil {
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}

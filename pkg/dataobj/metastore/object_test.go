@@ -272,7 +272,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	metastoreTocWriter := newTestTocWriter(bucket)
 	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 	require.NoError(t, err)
 
@@ -411,7 +411,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	metastoreTocWriter := newTestTocWriter(bucket)
 	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 	require.NoError(t, err)
 
@@ -543,7 +543,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	metastoreTocWriter := newTestTocWriter(bucket)
 	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 	require.NoError(t, err)
 
@@ -785,7 +785,8 @@ func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, tim
 
 	mstore := newTestObjectMetastore(builder.bucket)
 	defer func() {
-		require.NoError(t, mstore.bucket.Close())
+		require.NoError(t, mstore.indexBucket.Close())
+		require.NoError(t, mstore.tocBucket.Close())
 	}()
 
 	ctx := user.InjectOrgID(context.Background(), tenant)
@@ -810,7 +811,8 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
 
-	meta := NewTableOfContentsWriter(bucket, logger)
+	tocBucket := objstore.NewPrefixedBucket(bucket, "index/v0/"+TocBucketPrefix)
+	meta := newTestTocWriterWithLogger(tocBucket, logger)
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, logger)
@@ -825,6 +827,18 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 	}
 }
 
-func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
-	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
+func newTestTocWriter(baseBucket objstore.Bucket) *TableOfContentsWriter {
+	tocBucket := objstore.NewPrefixedBucket(baseBucket, "index/v0/"+TocBucketPrefix)
+	return newTestTocWriterWithLogger(tocBucket, log.NewNopLogger())
+}
+
+func newTestTocWriterWithLogger(tocBucket objstore.Bucket, logger log.Logger) *TableOfContentsWriter {
+	return NewTableOfContentsWriter(tocBucket, logger)
+}
+
+func newTestObjectMetastore(baseBucket objstore.Bucket) *ObjectMetastore {
+	cfg := Config{
+		IndexStoragePrefix: "index/v0",
+	}
+	return NewObjectMetastore(baseBucket, cfg, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
 }

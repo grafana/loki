@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -16,7 +15,7 @@ func BenchmarkWriteMetastores(b *testing.B) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	toc := newTestTocWriter(bucket)
 
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
@@ -56,7 +55,7 @@ func TestWriteMetastores(t *testing.T) {
 	tenantID := "test-tenant"
 
 	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
-	toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	toc := newTestTocWriter(bucket)
 
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)

@@ -49,7 +49,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 		objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
 		require.NoError(b, objUploader.RegisterMetrics(prometheus.DefaultRegisterer))
 
-		metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+		metastoreTocWriter := newTestTocWriter(bucket)
 
 		// Calculate how many streams per index file
 		streamsPerIndex := len(testStreams) / bm.indexFilesNum
@@ -229,7 +229,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			path, err := objUploader.Upload(context.Background(), obj)
 			require.NoError(b, err)
 
-			metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+			metastoreTocWriter := newTestTocWriter(bucket)
 			err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 			require.NoError(b, err)
 
