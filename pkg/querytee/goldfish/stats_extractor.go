@@ -227,7 +227,7 @@ func (e *StatsExtractor) CompareStats(cellA, cellB goldfish.QueryStats) map[stri
 
 // checkForNewEngineWarning checks if the warnings contain the new engine warning
 func (e *StatsExtractor) checkForNewEngineWarning(warnings []string) bool {
-	const newEngineWarning = "Query was executed using the new experimental query engine and dataobj storage."
+	const newEngineWarning = "Query was executed using the next-generation Loki query engine."
 
 	for _, warning := range warnings {
 		if warning == newEngineWarning {
