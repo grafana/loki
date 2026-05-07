@@ -3,7 +3,6 @@ package postings
 import (
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -53,17 +52,18 @@ func (b *Builder) PrepareBloomColumn(objectPath string, sectionIndex int64, colu
 	b.blooms.PrepareColumn(objectPath, sectionIndex, columnName, estimatedCardinality)
 }
 
-// ObserveLabelPosting records a label posting observation. Multiple observations
-// for the same (objectPath, sectionIndex, columnName, labelValue) key are
-// aggregated into a single posting.
-func (b *Builder) ObserveLabelPosting(objectPath string, sectionIndex int64, columnName, labelValue string, streamID int64, ts time.Time, uncompressedSize int64) {
-	b.labels.Observe(objectPath, sectionIndex, columnName, labelValue, streamID, ts, uncompressedSize)
+// ObserveLabelPosting records a label posting observation. Multiple
+// observations for the same
+// (ObjectPath, SectionIndex, ColumnName, LabelValue) key are aggregated into a
+// single posting.
+func (b *Builder) ObserveLabelPosting(obs LabelObservation) {
+	b.labels.Observe(obs)
 }
 
 // ObserveBloomPosting records a bloom posting observation. Returns an error if
 // the column has not been prepared via PrepareBloomColumn.
-func (b *Builder) ObserveBloomPosting(objectPath string, sectionIndex int64, columnName, value string, streamID int64, ts time.Time, uncompressedSize int64) error {
-	return b.blooms.Observe(objectPath, sectionIndex, columnName, value, streamID, ts, uncompressedSize)
+func (b *Builder) ObserveBloomPosting(obs BloomObservation) error {
+	return b.blooms.Observe(obs)
 }
 
 // BloomBytes returns the marshaled bloom filter bytes for a specific column.

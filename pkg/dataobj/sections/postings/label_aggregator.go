@@ -1,8 +1,6 @@
 package postings
 
 import (
-	"time"
-
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -52,51 +50,51 @@ func newLabelAggregator() *labelAggregator {
 }
 
 // Observe records a single observation of a label posting.
-func (a *labelAggregator) Observe(objectPath string, sectionIndex int64, columnName, labelValue string, streamID int64, ts time.Time, uncompressedSize int64) {
+func (a *labelAggregator) Observe(obs LabelObservation) {
 	key := labelPostingKey{
-		objectPath:   objectPath,
-		sectionIndex: sectionIndex,
-		columnName:   columnName,
-		labelValue:   labelValue,
+		objectPath:   obs.ObjectPath,
+		sectionIndex: obs.SectionIndex,
+		columnName:   obs.ColumnName,
+		labelValue:   obs.LabelValue,
 	}
+
+	tsNano := obs.Timestamp.UnixNano()
 
 	entry, ok := a.entries[key]
 	if !ok {
 		entry = &labelPostingEntry{
-			ObjectPath:   objectPath,
-			SectionIndex: sectionIndex,
-			ColumnName:   columnName,
-			LabelValue:   labelValue,
+			ObjectPath:   obs.ObjectPath,
+			SectionIndex: obs.SectionIndex,
+			ColumnName:   obs.ColumnName,
+			LabelValue:   obs.LabelValue,
 			bitmap:       memory.NewBitmap(nil, 0),
-			MinTimestamp: ts.UnixNano(),
-			MaxTimestamp: ts.UnixNano(),
+			MinTimestamp: tsNano,
+			MaxTimestamp: tsNano,
 		}
 		a.entries[key] = entry
 
 		// Track size for new entry: 5 int64 fields + string sizes
-		a.estimatedSize += 5*8 + len(objectPath) + len(columnName) + len(labelValue)
+		a.estimatedSize += 5*8 + len(obs.ObjectPath) + len(obs.ColumnName) + len(obs.LabelValue)
 	}
 
 	// Grow bitmap if needed and set the bit for this stream ID.
-	if int(streamID) >= entry.bitmap.Len() {
+	if int(obs.StreamID) >= entry.bitmap.Len() {
 		prevLen := entry.bitmap.Len()
-		entry.bitmap.Resize(int(streamID) + 1)
+		entry.bitmap.Resize(int(obs.StreamID) + 1)
 		// Track bitmap growth in estimated size.
 		newBytes := (entry.bitmap.Len() + 7) / 8
 		oldBytes := (prevLen + 7) / 8
 		a.estimatedSize += newBytes - oldBytes
 	}
-	entry.bitmap.Set(int(streamID), true)
+	entry.bitmap.Set(int(obs.StreamID), true)
 
-	tsNano := ts.UnixNano()
 	if tsNano < entry.MinTimestamp {
 		entry.MinTimestamp = tsNano
 	}
 	if tsNano > entry.MaxTimestamp {
 		entry.MaxTimestamp = tsNano
 	}
-	entry.UncompressedSize += uncompressedSize
-
+	entry.UncompressedSize += obs.UncompressedSize
 }
 
 // Entries returns all aggregated entries. Bitmap normalization (padding to

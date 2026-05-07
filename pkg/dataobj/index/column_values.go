@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
 // created for and scoped to each logs section
@@ -53,11 +54,15 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 			if _, ok := c.columnIndexes[md.Name]; !ok {
 				return
 			}
-			batchErr = calcCtx.builder.ObserveBloomPosting(
-				calcCtx.tenantID, calcCtx.objectPath, calcCtx.sectionIdx,
-				md.Name, md.Value, log.StreamID,
-				int64(len(log.Line)), log.Timestamp,
-			)
+			batchErr = calcCtx.builder.ObserveBloomPosting(calcCtx.tenantID, postings.BloomObservation{
+				ObjectPath:       calcCtx.objectPath,
+				SectionIndex:     calcCtx.sectionIdx,
+				ColumnName:       md.Name,
+				Value:            md.Value,
+				StreamID:         log.StreamID,
+				Timestamp:        log.Timestamp,
+				UncompressedSize: int64(len(log.Line)),
+			})
 		})
 	}
 	return batchErr

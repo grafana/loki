@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
 // created for and scoped to each logs section
@@ -35,11 +36,15 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 			if batchErr != nil {
 				return
 			}
-			batchErr = calcCtx.builder.ObserveLabelPosting(
-				calcCtx.tenantID, calcCtx.objectPath, calcCtx.sectionIdx,
-				lbl.Name, lbl.Value, log.StreamID,
-				int64(len(log.Line)), log.Timestamp,
-			)
+			batchErr = calcCtx.builder.ObserveLabelPosting(calcCtx.tenantID, postings.LabelObservation{
+				ObjectPath:       calcCtx.objectPath,
+				SectionIndex:     calcCtx.sectionIdx,
+				ColumnName:       lbl.Name,
+				LabelValue:       lbl.Value,
+				StreamID:         log.StreamID,
+				Timestamp:        log.Timestamp,
+				UncompressedSize: int64(len(log.Line)),
+			})
 		})
 	}
 	return batchErr

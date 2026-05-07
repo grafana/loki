@@ -3,7 +3,6 @@ package postings
 import (
 	"fmt"
 	"math"
-	"time"
 
 	"github.com/bits-and-blooms/bloom/v3"
 
@@ -99,39 +98,39 @@ func (a *bloomAggregator) PrepareColumn(objectPath string, sectionIndex int64, c
 
 // Observe records a single observation for a bloom column. Returns an error if
 // the column has not been prepared via PrepareColumn.
-func (a *bloomAggregator) Observe(objectPath string, sectionIndex int64, columnName, value string, streamID int64, ts time.Time, uncompressedSize int64) error {
+func (a *bloomAggregator) Observe(obs BloomObservation) error {
 	key := bloomPostingKey{
-		objectPath:   objectPath,
-		sectionIndex: sectionIndex,
-		columnName:   columnName,
+		objectPath:   obs.ObjectPath,
+		sectionIndex: obs.SectionIndex,
+		columnName:   obs.ColumnName,
 	}
 
 	entry, ok := a.entries[key]
 	if !ok {
-		return fmt.Errorf("bloom column not prepared: objectPath=%q sectionIndex=%d columnName=%q", objectPath, sectionIndex, columnName)
+		return fmt.Errorf("bloom column not prepared: objectPath=%q sectionIndex=%d columnName=%q", obs.ObjectPath, obs.SectionIndex, obs.ColumnName)
 	}
 
-	entry.bloomFilter.Add([]byte(value))
+	entry.bloomFilter.Add([]byte(obs.Value))
 
 	// Grow bitmap if needed and set the bit for this stream ID.
-	if int(streamID) >= entry.bitmap.Len() {
+	if int(obs.StreamID) >= entry.bitmap.Len() {
 		prevLen := entry.bitmap.Len()
-		entry.bitmap.Resize(int(streamID) + 1)
+		entry.bitmap.Resize(int(obs.StreamID) + 1)
 		// Track bitmap growth in estimated size.
 		newBytes := (entry.bitmap.Len() + 7) / 8
 		oldBytes := (prevLen + 7) / 8
 		a.estimatedSize += newBytes - oldBytes
 	}
-	entry.bitmap.Set(int(streamID), true)
+	entry.bitmap.Set(int(obs.StreamID), true)
 
-	tsNano := ts.UnixNano()
+	tsNano := obs.Timestamp.UnixNano()
 	if tsNano < entry.MinTimestamp {
 		entry.MinTimestamp = tsNano
 	}
 	if tsNano > entry.MaxTimestamp {
 		entry.MaxTimestamp = tsNano
 	}
-	entry.UncompressedSize += uncompressedSize
+	entry.UncompressedSize += obs.UncompressedSize
 
 	return nil
 }

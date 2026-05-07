@@ -180,16 +180,18 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 	return nil
 }
 
-// ObserveLabelPosting records a label-based posting observation for a data object column.
-// Multiple observations for the same (objectPath, sectionIdx, columnName, labelValue) are aggregated internally.
-// The aggregated postings are flushed when [Builder.Flush] is called.
+// ObserveLabelPosting records a label-based posting observation for a data
+// object column. Multiple observations sharing the same
+// (ObjectPath, SectionIndex, ColumnName, LabelValue) key in obs are
+// aggregated internally. The aggregated postings are flushed when
+// [Builder.Flush] is called.
 //
-// Unlike other section types (stats, pointers), postings are NOT flushed mid-stream
-// when they exceed TargetSectionSize. The aggregation model requires all observations
-// for a section to be present before encoding (bitmap normalization, bloom filter
-// construction). The builderFull flag provides back-pressure via TargetObjectSize.
-func (b *Builder) ObserveLabelPosting(tenantID, objectPath string, sectionIdx int64,
-	columnName, labelValue string, streamID, uncompressedSize int64, ts time.Time) error {
+// Unlike other section types (stats, pointers), postings are NOT flushed
+// mid-stream when they exceed TargetSectionSize. The aggregation model
+// requires all observations for a section to be present before encoding
+// (bitmap normalization, bloom filter construction). The builderFull flag
+// provides back-pressure via TargetObjectSize.
+func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObservation) error {
 	b.metrics.appendsTotal.Inc()
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -198,7 +200,7 @@ func (b *Builder) ObserveLabelPosting(tenantID, objectPath string, sectionIdx in
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
 	preSize := tenantPostings.EstimatedSize()
 
-	tenantPostings.ObserveLabelPosting(objectPath, sectionIdx, columnName, labelValue, streamID, ts, uncompressedSize)
+	tenantPostings.ObserveLabelPosting(obs)
 
 	postSize := tenantPostings.EstimatedSize()
 	b.unflushedSizeEstimate += postSize - preSize
@@ -219,11 +221,11 @@ func (b *Builder) PrepareBloomColumn(tenantID, objectPath string, sectionIdx int
 	tenantPostings.PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality)
 }
 
-// ObserveBloomPosting records a bloom-filter posting observation for a data object column.
-// Returns an error if the column has not been prepared via PrepareBloomColumn.
-// The aggregated postings are flushed when [Builder.Flush] is called.
-func (b *Builder) ObserveBloomPosting(tenantID, objectPath string, sectionIdx int64,
-	columnName, value string, streamID, uncompressedSize int64, ts time.Time) error {
+// ObserveBloomPosting records a bloom-filter posting observation for a data
+// object column. Returns an error if the column has not been prepared via
+// PrepareBloomColumn. The aggregated postings are flushed when
+// [Builder.Flush] is called.
+func (b *Builder) ObserveBloomPosting(tenantID string, obs postings.BloomObservation) error {
 	b.metrics.appendsTotal.Inc()
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -232,7 +234,7 @@ func (b *Builder) ObserveBloomPosting(tenantID, objectPath string, sectionIdx in
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
 	preSize := tenantPostings.EstimatedSize()
 
-	if err := tenantPostings.ObserveBloomPosting(objectPath, sectionIdx, columnName, value, streamID, ts, uncompressedSize); err != nil {
+	if err := tenantPostings.ObserveBloomPosting(obs); err != nil {
 		return err
 	}
 
