@@ -58,6 +58,7 @@ type serialIndexer struct {
 	calculator         calculator
 	objectBucket       objstore.Bucket
 	indexStorageBucket objstore.Bucket
+	tocStorageBucket   objstore.Bucket
 	builderMetrics     *builderMetrics
 	indexerMetrics     *indexerMetrics
 	logger             log.Logger
@@ -86,6 +87,7 @@ func newSerialIndexer(
 		calculator:         calculator,
 		objectBucket:       objectBucket,
 		indexStorageBucket: indexStorageBucket,
+		tocStorageBucket:   objstore.NewPrefixedBucket(indexStorageBucket, metastore.TocPrefix),
 		builderMetrics:     builderMetrics,
 		indexerMetrics:     indexerMetrics,
 		logger:             logger,
@@ -460,7 +462,7 @@ func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (strin
 		return "", fmt.Errorf("failed to upload index: %w", err)
 	}
 
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(si.indexStorageBucket, si.logger)
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(si.tocStorageBucket, si.logger)
 	if err := metastoreTocWriter.WriteEntry(ctx, key, tenantTimeRanges); err != nil {
 		return "", fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}
