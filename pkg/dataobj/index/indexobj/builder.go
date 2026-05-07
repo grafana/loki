@@ -52,6 +52,15 @@ type Builder struct {
 	stats         map[string]*stats.Builder         // The key is the TenantID.
 	postings      map[string]*postings.Builder      // The key is the TenantID.
 
+	// Hot-path cache for the postings builder. Postings are observed per
+	// (record × stream label), so getPostingsBuilderForTenant runs in a tight
+	// loop. The Calculate pipeline holds builderMtx for the entire ProcessBatch
+	// of a single tenant, so consecutive observations always target the same
+	// tenant; caching the resolved pointer lets the inner loop skip the map
+	// lookup. Invalidated on Reset.
+	lastPostingsTenant  string
+	lastPostingsBuilder *postings.Builder
+
 	// Optimization to avoid recalculating the size by asking all tenants for their estimated size.
 	unflushedSizeEstimate int
 
@@ -132,12 +141,18 @@ func (b *Builder) getStatsBuilderForTenant(tenantID string) *stats.Builder {
 }
 
 func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder {
-	if _, ok := b.postings[tenantID]; !ok {
-		pb := postings.NewBuilder(b.metrics.postings, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+	if b.lastPostingsBuilder != nil && b.lastPostingsTenant == tenantID {
+		return b.lastPostingsBuilder
+	}
+	pb, ok := b.postings[tenantID]
+	if !ok {
+		pb = postings.NewBuilder(b.metrics.postings, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 		pb.SetTenant(tenantID)
 		b.postings[tenantID] = pb
 	}
-	return b.postings[tenantID]
+	b.lastPostingsTenant = tenantID
+	b.lastPostingsBuilder = pb
+	return pb
 }
 
 // AppendStat records a per-sort-key aggregate for a data object section.
@@ -558,6 +573,8 @@ func (b *Builder) Reset() {
 	clear(b.indexPointers)
 	b.stats = make(map[string]*stats.Builder)
 	b.postings = make(map[string]*postings.Builder)
+	b.lastPostingsTenant = ""
+	b.lastPostingsBuilder = nil
 
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
