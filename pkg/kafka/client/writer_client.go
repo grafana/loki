@@ -344,8 +344,9 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 	for _, record := range records {
 		totalSize += int64(len(record.Value))
 	}
-	// The records exceed what is left of the limit, we must fail them.
+
 	if c.maxBufferedBytes > 0 && c.bufferedBytes.Add(totalSize) > c.maxBufferedBytes {
+		// The records exceed what is left of the limit, we must fail them.
 		for _, record := range records {
 			// onProduceDone will dec the counter.
 			onProduceDone(record, kgo.ErrMaxBuffered)
