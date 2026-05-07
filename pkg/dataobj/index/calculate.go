@@ -257,8 +257,10 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 
 	// Lock the builder during Prepare because some calculations (e.g.,
 	// columnValuesCalculation) mutate shared builder state via
-	// PrepareBloomColumn. The builder is not goroutine-safe, and multiple
-	// processLogsSection goroutines may run concurrently for the same tenant.
+	// PrepareBloomColumn. The Calculate method dispatches one goroutine per
+	// logs section (see g.Go in Calculate), so two processLogsSection calls
+	// for sections of the same tenant within one data object run
+	// concurrently against the same per-tenant postings builder.
 	c.builderMtx.Lock()
 	for _, calculation := range calculationSteps {
 		if err := calculation.Prepare(ctx, calculationContext, section, stats); err != nil {
