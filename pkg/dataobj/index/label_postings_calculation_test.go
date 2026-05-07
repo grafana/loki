@@ -76,8 +76,11 @@ func flushAndReadAllPostingsTable(t *testing.T, builder *indexobj.Builder) posti
 }
 
 // findRow returns the index of the first row where every (k,v) in match is
-// satisfied (using == on the values arrowtest.RecordRows produces: int64,
-// string, []byte, time.Time). Returns -1 if not found.
+// satisfied using == on the values arrowtest.TableRows produces. Returns -1
+// if not found.
+//
+// Match values must be comparable types (int64, string, time.Time). Do NOT
+// pass []byte values — interface == comparison on []byte panics at runtime.
 func findRow(rows arrowtest.Rows, match map[string]any) int {
 	for i, row := range rows {
 		ok := true
