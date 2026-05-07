@@ -3,6 +3,7 @@ package stats
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -26,6 +27,12 @@ func NewMetrics() *Metrics {
 			Subsystem: "dataobj",
 			Name:      "stats_encode_seconds",
 			Help:      "The number of seconds it takes to encode the stats section.",
+
+			// Native histogram only; classic buckets are disabled to avoid the
+			// fixed cardinality cost.
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 	}
 }

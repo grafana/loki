@@ -3,6 +3,7 @@ package postings
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -26,6 +27,12 @@ func NewMetrics() *Metrics {
 			Subsystem: "dataobj",
 			Name:      "postings_encode_seconds",
 			Help:      "The number of seconds it takes to encode the postings section.",
+
+			// Native histogram only; classic buckets are disabled to avoid the
+			// fixed cardinality cost.
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 	}
 }

@@ -72,9 +72,12 @@ func (b *Builder) Reset() {
 
 // compareStats returns true if a should sort before b, using the sort order:
 // label values in sort schema order, then MinTimestamp, then MaxTimestamp.
+//
+// Iterates the SortSchema with [strings.SplitSeq] so the function does not
+// allocate per comparison; sort.SliceStable invokes this O(n log n) times per
+// flush, so avoiding the allocation matters at high row counts.
 func compareStats(a, b Stat) bool {
-	keys := strings.Split(a.SortSchema, ",")
-	for _, key := range keys {
+	for key := range strings.SplitSeq(a.SortSchema, ",") {
 		va, vb := a.Labels[key], b.Labels[key]
 		if va != vb {
 			return va < vb
