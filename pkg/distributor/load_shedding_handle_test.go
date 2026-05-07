@@ -1,11 +1,13 @@
 package distributor
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -51,6 +53,7 @@ func TestLoadSheddingHandle_LoadShedding(t *testing.T) {
 			}
 			d := &Distributor{
 				cfg:                     cfg,
+				logger:                  log.NewNopLogger(),
 				usedMemoryGauge:         prometheus.NewGauge(prometheus.GaugeOpts{}),
 				loadShedRequestsCounter: prometheus.NewCounter(prometheus.CounterOpts{}),
 				inflightBytes:           util_metric.NewMaxSampleCollector("", ""),
@@ -79,6 +82,7 @@ func TestLoadSheddingHandle_Caching(t *testing.T) {
 	}
 	d := &Distributor{
 		cfg:                     cfg,
+		logger:                  log.NewNopLogger(),
 		usedMemoryGauge:         prometheus.NewGauge(prometheus.GaugeOpts{}),
 		loadShedRequestsCounter: prometheus.NewCounter(prometheus.CounterOpts{}),
 		inflightBytes:           util_metric.NewMaxSampleCollector("", ""),
@@ -119,6 +123,7 @@ func TestLoadSheddingHandle_ThreadSafety(t *testing.T) {
 	}
 	d := &Distributor{
 		cfg:                     cfg,
+		logger:                  log.NewNopLogger(),
 		usedMemoryGauge:         prometheus.NewGauge(prometheus.GaugeOpts{}),
 		loadShedRequestsCounter: prometheus.NewCounter(prometheus.CounterOpts{}),
 		inflightBytes:           util_metric.NewMaxSampleCollector("", ""),
@@ -196,6 +201,7 @@ func TestLoadSheddingHandle_InflightBytesLoadShedding(t *testing.T) {
 			}
 			d := &Distributor{
 				cfg:                     cfg,
+				logger:                  log.NewNopLogger(),
 				usedMemoryGauge:         prometheus.NewGauge(prometheus.GaugeOpts{}),
 				loadShedRequestsCounter: prometheus.NewCounter(prometheus.CounterOpts{}),
 				inflightBytes:           util_metric.NewMaxSampleCollector("", ""),
@@ -217,62 +223,63 @@ func TestLoadSheddingHandle_InflightBytesLoadShedding(t *testing.T) {
 func TestLoadSheddingHandle_ContentLengthEstimation(t *testing.T) {
 	ctx := context.Background()
 
-	// MaxInflightBytes sits between 5*contentLength (500) and MaxRecvMsgSize (1000),
+	// MaxInflightBytes sits between 5*contentLength (500) and the default estimate (1_000_000),
 	// so the estimated size determines whether the request is shed.
-	const maxRecvMsgSize = 1000
 	const maxInflightBytes = 750
-
-	newDistributor := func() *Distributor {
-		return &Distributor{
-			cfg: Config{
-				MaxRecvMsgSize: maxRecvMsgSize,
-				RequestSizeLimiter: requestlimiter.Config{
-					MaxInflightBytes: maxInflightBytes,
-					MaxWait:          10 * time.Millisecond,
-				},
-			},
-			usedMemoryGauge:           prometheus.NewGauge(prometheus.GaugeOpts{}),
-			loadShedRequestsCounter:   prometheus.NewCounter(prometheus.CounterOpts{}),
-			contentLengthPresentCount: prometheus.NewCounter(prometheus.CounterOpts{}),
-			inflightBytes:             util_metric.NewMaxSampleCollector("", ""),
-		}
-	}
 
 	tests := []struct {
 		testName             string
 		header               metadata.MD
 		shouldLoadShed       bool
 		expectedCounterValue float64
+		expectedLog          string
 	}{
 		{
-			testName:             "no content-length uses MaxRecvMsgSize",
-			header:               metadata.MD{},
+			testName:             "no X-Decompressed-Content-Length uses default estimate",
+			header:               metadata.MD{"foo": []string{"bar"}},
 			shouldLoadShed:       true,
 			expectedCounterValue: 0,
+			expectedLog:          "level=info msg=\"X-Decompressed-Content-Length header not present - map[foo:[bar]]\"\n",
 		},
 		{
-			testName:             "valid content-length uses 5x estimate",
-			header:               metadata.MD{"content-length": []string{"100"}},
+			testName:             "valid X-Decompressed-Content-Length uses 5x estimate",
+			header:               metadata.MD{"x-decompressed-content-length": []string{"100"}},
 			shouldLoadShed:       false,
 			expectedCounterValue: 1,
+			expectedLog:          "",
 		},
 		{
-			testName:             "non-numeric content-length falls back to MaxRecvMsgSize",
-			header:               metadata.MD{"content-length": []string{"not-a-number"}},
+			testName:             "non-numeric X-Decompressed-Content-Length uses default estimate",
+			header:               metadata.MD{"x-decompressed-content-length": []string{"not-a-number"}},
 			shouldLoadShed:       true,
 			expectedCounterValue: 0,
+			expectedLog:          "",
 		},
 		{
-			testName:             "multiple content-length values falls back to MaxRecvMsgSize",
-			header:               metadata.MD{"content-length": []string{"100", "200"}},
+			testName:             "multiple X-Decompressed-Content-Length values uses default estimate",
+			header:               metadata.MD{"x-decompressed-content-length": []string{"100", "200"}},
 			shouldLoadShed:       true,
 			expectedCounterValue: 0,
+			expectedLog:          "level=info msg=\"X-Decompressed-Content-Length header not present - map[x-decompressed-content-length:[100 200]]\"\n",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.testName, func(t *testing.T) {
-			d := newDistributor()
+			var logBuf bytes.Buffer
+			d := &Distributor{
+				cfg: Config{
+					RequestSizeLimiter: requestlimiter.Config{
+						MaxInflightBytes: maxInflightBytes,
+						MaxWait:          10 * time.Millisecond,
+					},
+				},
+				logger:                    log.NewLogfmtLogger(&logBuf),
+				usedMemoryGauge:           prometheus.NewGauge(prometheus.GaugeOpts{}),
+				loadShedRequestsCounter:   prometheus.NewCounter(prometheus.CounterOpts{}),
+				contentLengthPresentCount: prometheus.NewCounter(prometheus.CounterOpts{}),
+				inflightBytes:             util_metric.NewMaxSampleCollector("", ""),
+			}
 			h := NewLoadSheddingHandle()
 			h.SetDistributor(d)
 
@@ -284,6 +291,11 @@ func TestLoadSheddingHandle_ContentLengthEstimation(t *testing.T) {
 				require.NoError(t, err)
 			}
 			require.Equal(t, test.expectedCounterValue, testutil.ToFloat64(d.contentLengthPresentCount))
+			if test.expectedLog != "" {
+				require.Equal(t, test.expectedLog, logBuf.String())
+			} else {
+				require.Empty(t, logBuf.String())
+			}
 		})
 	}
 }

@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	goruntime "runtime"
 	"strconv"
@@ -71,11 +72,11 @@ func (h *LoadSheddingHandle) Handle(ctx context.Context, info *tap.Info) (contex
 		contentLengthBytes, err := strconv.Atoi(contentLength[0])
 		if err == nil {
 			h.d.contentLengthPresentCount.Inc()
-			estimatedRequestSize = 5 * contentLengthBytes // 5 is an estimate of compression factor from my testing
+			estimatedRequestSize = contentLengthBytes
 		}
 	} else {
 		// FIXME temp logging
-		level.Info(h.d.logger).Log("msg", "X-Decompressed-Content-Length header not present", "headers", info.Header)
+		level.Info(h.d.logger).Log("msg", fmt.Sprintf("X-Decompressed-Content-Length header not present - %v", info.Header))
 	}
 
 	// Load shed based on inflight bytes if necessary
