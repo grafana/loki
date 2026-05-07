@@ -104,7 +104,6 @@ const (
 	KindLabel PostingKind = 1
 )
 
-
 // Section represents an opened postings section.
 type Section struct {
 	inner   *columnar.Section
