@@ -132,6 +132,9 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	newConf := cfg.String()
 	hash := sha3.Sum256([]byte(newConf))
 	level.Info(p.logger).Log("msg", "Reloading configuration file", "sha3sum", fmt.Sprintf("%x", hash))
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("error validating config: %w", err)
+	}
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
@@ -139,9 +142,6 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		p.client.Stop()
 	}
 
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("error validating config: %w", err)
-	}
 	cfg.Setup(p.logger)
 	if cfg.LimitsConfig.ReadlineRateEnabled {
 		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
