@@ -16,6 +16,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
+// errEntryDropped is returned when a log entry is dropped by relabeling rules.
+var errEntryDropped = errors.New("entry dropped by relabeling")
+
 type azureMonitorResourceLogs struct {
 	Records []json.RawMessage `json:"records"`
 }
@@ -143,6 +146,9 @@ func (e *messageParser) processRecords(labelSet model.LabelSet, relabels []*rela
 	result := make([]api.Entry, 0, len(records))
 	for _, m := range records {
 		entry, err := e.parseRecord(m, labelSet, relabels, useIncomingTimestamp, messageTime)
+		if errors.Is(err, errEntryDropped) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -170,6 +176,9 @@ func (e *messageParser) parseRecord(record []byte, labelSet model.LabelSet, rela
 	}
 
 	logLabels := e.getLabels(logRecord, relabelConfig)
+	if logLabels == nil {
+		return api.Entry{}, errEntryDropped
+	}
 	ts := e.getTime(messageTime, useIncomingTimestamp, logRecord)
 
 	return api.Entry{
