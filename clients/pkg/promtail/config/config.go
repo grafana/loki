@@ -89,16 +89,16 @@ func (c Config) String() string {
 }
 
 func (c *Config) Validate() error {
-	var errors []error
+	errors := multierror.New()
 	for i := range c.ScrapeConfig {
 		for j := range c.ScrapeConfig[i].RelabelConfigs {
 			err := c.ScrapeConfig[i].RelabelConfigs[j].Validate(model.UTF8Validation)
 			if err != nil {
-				errors = append(errors, fmt.Errorf("ScrapeConfig[%d].RelabelConfigs[%d]: %w", i, j, err))
+				errors.Add(fmt.Errorf("ScrapeConfig[%d].RelabelConfigs[%d]: %w", i, j, err))
 			}
 		}
 	}
-	return multierror.New(errors...).Err()
+	return errors.Error()
 }
 
 func (c *Config) Setup(l log.Logger) {
