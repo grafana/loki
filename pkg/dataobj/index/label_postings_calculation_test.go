@@ -15,21 +15,24 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
-// readAllPostingsForTenant reads all postings from the builder for a given tenant.
-func readAllPostingsForTenant(t *testing.T, builder *indexobj.Builder, tenantID string) []postings.Posting {
+// flushAndReadAllPostings flushes the builder and reads all postings from the resulting object.
+func flushAndReadAllPostings(t *testing.T, builder *indexobj.Builder) []postings.Posting {
 	t.Helper()
-	pb := builder.PostingsBuilderForTenant(tenantID)
-	if pb == nil {
-		return nil
-	}
-	sections, err := pb.Flush(context.Background())
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
 
 	var allPostings []postings.Posting
-	for _, sec := range sections {
-		rr, err := postings.NewRowReader(&sec)
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err := postings.Open(context.Background(), s)
 		require.NoError(t, err)
+
+		rr := postings.NewRowReader(sec)
 		defer rr.Close()
+		require.NoError(t, rr.Open(context.Background()))
 
 		buf := make([]postings.Posting, 64)
 		for {
@@ -76,7 +79,7 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	allPostings := flushAndReadAllPostings(t, builder)
 
 	// We expect 4 label postings: service_name=svcA, service_name=svcB, env=prod, env=dev.
 	require.Len(t, allPostings, 4)
@@ -124,7 +127,7 @@ func TestLabelPostingsCalculation_BitmapsNormalized(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	allPostings := flushAndReadAllPostings(t, builder)
 	// 4 postings: service_name=svcA, service_name=svcB, env=prod, env=dev
 	require.Len(t, allPostings, 4)
 
@@ -176,7 +179,7 @@ func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	allPostings := flushAndReadAllPostings(t, builder)
 	// 2 postings: service_name=svcA, env=prod (both from stream 1).
 	require.Len(t, allPostings, 2)
 
@@ -198,9 +201,9 @@ func TestLabelPostingsCalculation_EmptyBatch(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, nil))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	// No data → no postings builder created.
-	pb := builder.PostingsBuilderForTenant("tenant-1")
-	require.Nil(t, pb, "expected no postings builder for empty batch")
+	// No data → builder is empty, Flush returns ErrBuilderEmpty.
+	_, _, err := builder.Flush()
+	require.ErrorIs(t, err, indexobj.ErrBuilderEmpty, "expected builder to be empty after empty batch")
 }
 
 func TestLabelPostingsCalculation_MultipleBatches(t *testing.T) {
@@ -220,7 +223,7 @@ func TestLabelPostingsCalculation_MultipleBatches(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch2))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	allPostings := flushAndReadAllPostings(t, builder)
 	// 4 postings: service_name=svcA, service_name=svcB, env=prod, env=dev
 	require.Len(t, allPostings, 4)
 

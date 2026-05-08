@@ -1,111 +1,252 @@
 package stats
 
 import (
-	"context"
+	"errors"
 	"fmt"
-	"io"
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
-// ColumnarEncoder encodes Stat rows using the existing columnar primitives.
-// This is an alternative to DatasetEncoder for use without the new dataset API.
-func ColumnarEncoder(_ context.Context, rows []Stat) (Section, error) {
-	var alloc memory.Allocator
-	buildAlloc := memory.NewAllocator(&alloc)
-	defer buildAlloc.Free()
+// ColumnarSectionEncoder returns a [SectionEncoder] that encodes [Stat] rows
+// using [dataset.ColumnBuilder]s backed by a [columnar.Encoder].
+//
+// pageSizeHint and pageMaxRowCount control the page splitting behaviour of the
+// underlying column builders.
+func ColumnarSectionEncoder(pageSizeHint int, pageMaxRowCount int) SectionEncoder {
+	return func(rows []Stat, enc *columnar.Encoder) error {
+		return columnarEncode(rows, enc, pageSizeHint, pageMaxRowCount)
+	}
+}
 
-	objectPathBuilder := columnar.NewUTF8Builder(buildAlloc)
-	sectionIndexBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
-	sortSchemaBuilder := columnar.NewUTF8Builder(buildAlloc)
-	minTSBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
-	maxTSBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
-	rowCountBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
-	uncompressedSizeBuilder := columnar.NewNumberBuilder[int64](buildAlloc)
+// columnarEncode implements the core encoding logic.
+func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRowCount int) error {
+	if len(rows) == 0 {
+		return nil
+	}
 
-	// Determine dynamic label columns from the sort schema of the first row.
+	// Parse label keys from SortSchema. All rows within a section share the
+	// same SortSchema (guaranteed by the builder being per-tenant and the
+	// calculation pipeline producing rows with a config-driven schema).
+	sortSchema := rows[0].SortSchema
 	var labelKeys []string
-	if len(rows) > 0 {
-		labelKeys = strings.Split(rows[0].SortSchema, ",")
-		// Filter out empty strings (e.g. when SortSchema is "")
-		filtered := labelKeys[:0]
-		for _, k := range labelKeys {
+	if sortSchema != "" {
+		parts := strings.Split(sortSchema, ",")
+		for _, k := range parts {
 			if k != "" {
-				filtered = append(filtered, k)
+				labelKeys = append(labelKeys, k)
 			}
 		}
-		labelKeys = filtered
 	}
 
-	// Build a builder for each label key.
-	labelBuilders := make(map[string]*columnar.UTF8Builder, len(labelKeys))
-	for _, key := range labelKeys {
-		labelBuilders[key] = columnar.NewUTF8Builder(buildAlloc)
+	// Build fixed column builders (indices 0-6).
+	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, pageSizeHint, pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating object_path column: %w", err)
 	}
 
-	for _, r := range rows {
-		objectPathBuilder.AppendValue([]byte(r.ObjectPath))
-		sectionIndexBuilder.AppendValue(r.SectionIndex)
-		sortSchemaBuilder.AppendValue([]byte(r.SortSchema))
-		for _, key := range labelKeys {
-			labelBuilders[key].AppendValue([]byte(r.Labels[key]))
+	sectionIndexBuilder, err := numberColumnBuilder(ColumnTypeSectionIndex, pageSizeHint, pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating section_index column: %w", err)
+	}
+
+	sortSchemaBuilder, err := binaryColumnBuilder(ColumnTypeSortSchema, pageSizeHint, pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating sort_schema column: %w", err)
+	}
+
+	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, pageSizeHint, pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating min_timestamp column: %w", err)
+	}
+
+	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, pageSizeHint, pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating max_timestamp column: %w", err)
+	}
+
+	rowCountBuilder, err := numberColumnBuilder(ColumnTypeRowCount, pageSizeHint, pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating row_count column: %w", err)
+	}
+
+	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, pageSizeHint, pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating uncompressed_size column: %w", err)
+	}
+
+	// Build dynamic label column builders (indices 7+), one per label key in sort-schema order.
+	labelBuilders := make([]*dataset.ColumnBuilder, len(labelKeys))
+	for i, key := range labelKeys {
+		lb, err := labelColumnBuilder(key, pageSizeHint, pageMaxRowCount)
+		if err != nil {
+			return fmt.Errorf("creating label column %q: %w", key, err)
 		}
-		minTSBuilder.AppendValue(r.MinTimestamp)
-		maxTSBuilder.AppendValue(r.MaxTimestamp)
-		rowCountBuilder.AppendValue(r.RowCount)
-		uncompressedSizeBuilder.AppendValue(r.UncompressedSize)
+		labelBuilders[i] = lb
 	}
 
-	// Column order: fixed prefix, dynamic label columns, fixed suffix.
-	// object_path, section_index, sort_schema, <label columns>, min_timestamp, max_timestamp, row_count, uncompressed_size
-	columnOrder := []string{
-		colObjectPath, colSectionIndex, colSortSchema,
-	}
-	columnOrder = append(columnOrder, labelKeys...)
-	columnOrder = append(columnOrder, colMinTimestamp, colMaxTimestamp, colRowCount, colUncompressedSize)
+	// Populate column builders row by row.
+	for i, r := range rows {
+		_ = objectPathBuilder.Append(i, dataset.BinaryValue([]byte(r.ObjectPath)))
+		_ = sectionIndexBuilder.Append(i, dataset.Int64Value(r.SectionIndex))
+		_ = sortSchemaBuilder.Append(i, dataset.BinaryValue([]byte(r.SortSchema)))
+		_ = minTimestampBuilder.Append(i, dataset.Int64Value(r.MinTimestamp))
+		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(r.MaxTimestamp))
+		_ = rowCountBuilder.Append(i, dataset.Int64Value(r.RowCount))
+		_ = uncompressedSizeBuilder.Append(i, dataset.Int64Value(r.UncompressedSize))
 
-	// Build the columns map with fixed columns plus dynamic label columns.
-	columns := map[string]columnar.Array{
-		colObjectPath:       objectPathBuilder.Build(),
-		colSectionIndex:     sectionIndexBuilder.Build(),
-		colSortSchema:       sortSchemaBuilder.Build(),
-		colMinTimestamp:     minTSBuilder.Build(),
-		colMaxTimestamp:     maxTSBuilder.Build(),
-		colRowCount:         rowCountBuilder.Build(),
-		colUncompressedSize: uncompressedSizeBuilder.Build(),
-	}
-	for _, key := range labelKeys {
-		columns[key] = labelBuilders[key].Build()
-	}
-
-	return Section{
-		ColumnNames: columnOrder,
-		RowCount:    len(rows),
-		OpenColumn: func(name string) (ColumnReader, error) {
-			arr, ok := columns[name]
-			if !ok {
-				return nil, fmt.Errorf("column %q not found", name)
+		// Dynamic label columns: append value, or omit (null) when absent.
+		for j, key := range labelKeys {
+			if val, ok := r.Labels[key]; ok {
+				_ = labelBuilders[j].Append(i, dataset.BinaryValue([]byte(val)))
 			}
-			return &sliceColumnReader{arr: arr}, nil
+		}
+	}
+
+	// Set sort info: sort_schema (index 2), then dynamic label columns (indices 7+),
+	// then min_timestamp (index 3), then max_timestamp (index 4).
+	// Fixed column indices: object_path=0, section_index=1, sort_schema=2,
+	// min_timestamp=3, max_timestamp=4, row_count=5, uncompressed_size=6.
+	// Label columns: 7, 8, ...
+	columnSorts := make([]*datasetmd.SortInfo_ColumnSort, 0, 1+len(labelKeys)+2)
+	columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
+		ColumnIndex: 2, // sort_schema
+		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+	})
+	for i := range labelKeys {
+		columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
+			ColumnIndex: uint32(7 + i),
+			Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+		})
+	}
+	columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
+		ColumnIndex: 3, // min_timestamp
+		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+	})
+	columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
+		ColumnIndex: 4, // max_timestamp
+		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+	})
+	enc.SetSortInfo(&datasetmd.SortInfo{ColumnSorts: columnSorts})
+
+	// Encode fixed columns.
+	errs := make([]error, 0, 7+len(labelKeys))
+	errs = append(errs, encodeColumn(enc, ColumnTypeObjectPath, objectPathBuilder))
+	errs = append(errs, encodeColumn(enc, ColumnTypeSectionIndex, sectionIndexBuilder))
+	errs = append(errs, encodeColumn(enc, ColumnTypeSortSchema, sortSchemaBuilder))
+	errs = append(errs, encodeColumn(enc, ColumnTypeMinTimestamp, minTimestampBuilder))
+	errs = append(errs, encodeColumn(enc, ColumnTypeMaxTimestamp, maxTimestampBuilder))
+	errs = append(errs, encodeColumn(enc, ColumnTypeRowCount, rowCountBuilder))
+	errs = append(errs, encodeColumn(enc, ColumnTypeUncompressedSize, uncompressedSizeBuilder))
+
+	// Encode dynamic label columns.
+	for i, lb := range labelBuilders {
+		errs = append(errs, encodeLabelColumn(enc, labelKeys[i], lb))
+	}
+
+	if err := errors.Join(errs...); err != nil {
+		return fmt.Errorf("encoding columns: %w", err)
+	}
+	return nil
+}
+
+// binaryColumnBuilder creates a column builder for BINARY/PLAIN/ZSTD columns. The
+// builder tag and logical type are both derived from the [ColumnType].
+func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
+	return dataset.NewColumnBuilder(logicalType.String(), dataset.BuilderOptions{
+		PageSizeHint:    pageSize,
+		PageMaxRowCount: pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Logical:  logicalType.String(),
 		},
-	}, nil
+		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+	})
 }
 
-// sliceColumnReader wraps a single columnar.Array as a ColumnReader.
-// Returns the full array on the first Read call, then io.EOF.
-type sliceColumnReader struct {
-	arr  columnar.Array
-	read bool
+// numberColumnBuilder creates a column builder for INT64/DELTA/NONE columns. The
+// builder tag and logical type are both derived from the [ColumnType].
+func numberColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
+	return dataset.NewColumnBuilder(logicalType.String(), dataset.BuilderOptions{
+		PageSizeHint:    pageSize,
+		PageMaxRowCount: pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Logical:  logicalType.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
+		Compression: datasetmd.COMPRESSION_TYPE_NONE,
+	})
 }
 
-func (r *sliceColumnReader) Read(_ context.Context, _ int) (columnar.Array, error) {
-	if r.read {
-		return nil, io.EOF
+// labelColumnBuilder creates a column builder for a dynamic label column (BINARY/PLAIN/ZSTD).
+// The tag is the label name; the logical type is ColumnTypeLabel.
+func labelColumnBuilder(labelName string, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
+	return dataset.NewColumnBuilder(labelName, dataset.BuilderOptions{
+		PageSizeHint:    pageSize,
+		PageMaxRowCount: pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypeLabel.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+	})
+}
+
+// encodeColumn flushes a builder and writes all its pages to enc.
+func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset.ColumnBuilder) error {
+	column, err := builder.Flush()
+	if err != nil {
+		return fmt.Errorf("flushing %s column: %w", columnType, err)
 	}
-	r.read = true
-	return r.arr, nil
+
+	columnEnc, err := enc.OpenColumn(column.ColumnDesc())
+	if err != nil {
+		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
+	}
+	defer func() {
+		_ = columnEnc.Discard()
+	}()
+	if len(column.Pages) == 0 {
+		return nil
+	}
+
+	for _, page := range column.Pages {
+		if err := columnEnc.AppendPage(page); err != nil {
+			return fmt.Errorf("appending %s page: %w", columnType, err)
+		}
+	}
+
+	return columnEnc.Commit()
 }
 
-func (r *sliceColumnReader) Close() error { return nil }
+// encodeLabelColumn flushes a dynamic label column builder and writes all its pages to enc.
+func encodeLabelColumn(enc *columnar.Encoder, labelName string, builder *dataset.ColumnBuilder) error {
+	column, err := builder.Flush()
+	if err != nil {
+		return fmt.Errorf("flushing label %q column: %w", labelName, err)
+	}
+
+	columnEnc, err := enc.OpenColumn(column.ColumnDesc())
+	if err != nil {
+		return fmt.Errorf("opening label %q column encoder: %w", labelName, err)
+	}
+	defer func() {
+		_ = columnEnc.Discard()
+	}()
+	if len(column.Pages) == 0 {
+		return nil
+	}
+
+	for _, page := range column.Pages {
+		if err := columnEnc.AppendPage(page); err != nil {
+			return fmt.Errorf("appending label %q page: %w", labelName, err)
+		}
+	}
+
+	return columnEnc.Commit()
+}

@@ -124,7 +124,7 @@ func (b *Builder) getIndexPointerBuilderForTenant(tenantID string) *indexpointer
 
 func (b *Builder) getStatsBuilderForTenant(tenantID string) *stats.Builder {
 	if _, ok := b.stats[tenantID]; !ok {
-		sb := stats.NewBuilder(int(b.cfg.TargetSectionSize), stats.ColumnarEncoder)
+		sb := stats.NewBuilder(b.metrics.stats, stats.ColumnarSectionEncoder(int(b.cfg.TargetPageSize), b.cfg.MaxPageRows))
 		sb.SetTenant(tenantID)
 		b.stats[tenantID] = sb
 	}
@@ -133,7 +133,7 @@ func (b *Builder) getStatsBuilderForTenant(tenantID string) *stats.Builder {
 
 func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder {
 	if _, ok := b.postings[tenantID]; !ok {
-		pb := postings.NewBuilder(int(b.cfg.TargetSectionSize), postings.ColumnarEncoder)
+		pb := postings.NewBuilder(b.metrics.postings, postings.ColumnarSectionEncoder(int(b.cfg.TargetPageSize), b.cfg.MaxPageRows))
 		pb.SetTenant(tenantID)
 		b.postings[tenantID] = pb
 	}
@@ -143,8 +143,13 @@ func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder
 // AppendStat records a per-sort-key aggregate for a data object section.
 func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
+	b.metrics.appendsTotal.Inc()
+
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
 
 	tenantStats := b.getStatsBuilderForTenant(tenantID)
+	preAppendSizeEstimate := tenantStats.EstimatedSize()
 
 	tenantStats.Append(stats.Stat{
 		ObjectPath:       objectPath,
@@ -157,7 +162,21 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 		UncompressedSize: uncompressedSize,
 	})
 
-	// TODO: set b.state = builderStateDirty when we implement flush.
+	postAppendSizeEstimate := tenantStats.EstimatedSize()
+	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
+
+	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantStats); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
+	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
+		b.builderFull = true
+	}
+
 	return nil
 }
 
@@ -165,8 +184,13 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 func (b *Builder) AppendLabelPosting(tenantID, objectPath string, sectionIdx int64,
 	columnName string, labelValue string, streamIDBitmap []byte,
 	uncompressedSize int64, minTs, maxTs time.Time) error {
+	b.metrics.appendsTotal.Inc()
+
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
 
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
+	preAppendSizeEstimate := tenantPostings.EstimatedSize()
 
 	tenantPostings.Append(postings.Posting{
 		Kind:             postings.KindLabel,
@@ -181,7 +205,21 @@ func (b *Builder) AppendLabelPosting(tenantID, objectPath string, sectionIdx int
 		MaxTimestamp:     maxTs.UnixNano(),
 	})
 
-	// TODO: set b.state = builderStateDirty when we implement flush.
+	postAppendSizeEstimate := tenantPostings.EstimatedSize()
+	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
+
+	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPostings); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
+	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
+		b.builderFull = true
+	}
+
 	return nil
 }
 
@@ -189,8 +227,13 @@ func (b *Builder) AppendLabelPosting(tenantID, objectPath string, sectionIdx int
 func (b *Builder) AppendBloomPosting(tenantID, objectPath string, sectionIdx int64,
 	columnName string, bloomFilter []byte, streamIDBitmap []byte,
 	uncompressedSize int64, minTs, maxTs time.Time) error {
+	b.metrics.appendsTotal.Inc()
+
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
 
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
+	preAppendSizeEstimate := tenantPostings.EstimatedSize()
 
 	tenantPostings.Append(postings.Posting{
 		Kind:             postings.KindBloom,
@@ -204,7 +247,21 @@ func (b *Builder) AppendBloomPosting(tenantID, objectPath string, sectionIdx int
 		MaxTimestamp:     maxTs.UnixNano(),
 	})
 
-	// TODO: set b.state = builderStateDirty when we implement flush.
+	postAppendSizeEstimate := tenantPostings.EstimatedSize()
+	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
+
+	if postAppendSizeEstimate > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPostings); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
+	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
+		b.builderFull = true
+	}
+
 	return nil
 }
 
@@ -448,12 +505,15 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 		}
 	}
 
-	// Stats and postings builders - reset only (no-op flush until serialization lands)
 	for _, tenantStats := range b.stats {
-		tenantStats.Reset()
+		if tenantStats.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantStats))
+		}
 	}
 	for _, tenantPostings := range b.postings {
-		tenantPostings.Reset()
+		if tenantPostings.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantPostings))
+		}
 	}
 
 	if err := errors.Join(flushErrors...); err != nil {
@@ -537,18 +597,4 @@ func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
 // UnregisterMetrics unregisters metrics about builder from reg.
 func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
 	b.metrics.Unregister(reg)
-}
-
-// StatsBuilderForTenant returns the stats builder for the given tenant. If no
-// stats have been appended for this tenant, nil is returned.
-// This is intended for testing only.
-func (b *Builder) StatsBuilderForTenant(tenantID string) *stats.Builder {
-	return b.stats[tenantID]
-}
-
-// PostingsBuilderForTenant returns the postings builder for the given tenant. If no
-// postings have been appended for this tenant, nil is returned.
-// This is intended for testing only.
-func (b *Builder) PostingsBuilderForTenant(tenantID string) *postings.Builder {
-	return b.postings[tenantID]
 }
