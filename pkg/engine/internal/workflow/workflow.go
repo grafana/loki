@@ -47,8 +47,9 @@ var (
 
 // Options configures a [Workflow].
 type Options struct {
-	Tenant string   // Tenant ID associated with the workflow.
-	Actor  []string // Optional path to the actor that is generating the workflow.
+	ID     ulid.ULID // Optional ID for the workflow. One will be generated if not provided.
+	Tenant string    // Tenant ID associated with the workflow.
+	Actor  []string  // Optional path to the actor that is generating the workflow.
 
 	// MaxRunningScanTasks specifies the maximum number of scan tasks that may
 	// run concurrently within a single workflow. 0 means no limit.
@@ -231,8 +232,13 @@ func injectResultsStream(tenantID string, graph *dag.Graph[*Task]) (*Stream, err
 
 // init initializes the workflow.
 func (wf *Workflow) init(ctx context.Context) error {
+	id := wf.opts.ID
+	if id.IsZero() {
+		id = ulid.Make()
+	}
+
 	wf.manifest = &Manifest{
-		ID:     ulid.Make(),
+		ID:     id,
 		Tenant: wf.opts.Tenant,
 		Actor:  wf.opts.Actor,
 

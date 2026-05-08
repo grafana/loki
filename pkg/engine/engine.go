@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/http"
 	gotrace "runtime/trace"
 	"strings"
 	"time"
@@ -14,8 +13,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -210,21 +207,24 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// This pain point will eventually go away as remaining usages of
 	// [logql.Engine] disappear.
 
-	// Starts the execution capture for the query.
-	// All recorded observations will be captured to it.
-	ctx, capture := xcap.NewCapture(ctx, nil)
-	defer capture.End()
-	startTime := time.Now()
+	cacheEnabled := cache.IsCacheConfigured(e.cfg.Executor.TaskResultsCache.CacheConfig) && !params.CachingOptions().Disabled
+
+	ctx = e.buildContext(ctx)
+	logger := util_log.WithContext(ctx, e.logger)
+	logger = log.With(logger, "engine", "v2")
+	logger = injectQueryTags(ctx, logger)
+
+	q, ctx, err := e.newQuery(ctx, logger, logqlQueryType(params.GetExpression()), cacheEnabled)
+	if err != nil {
+		return logqlmodel.Result{}, err
+	}
+	defer q.Close()
+
+	logger = q.Logger()
+	level.Info(logger).Log("msg", "starting query", "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","))
 
 	ctx, task := gotrace.NewTask(ctx, "Engine.Execute")
 	defer task.End()
-
-	tenantID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return logqlmodel.Result{}, httpgrpc.Error(http.StatusBadRequest, err.Error())
-	}
-
-	cacheEnabled := cache.IsCacheConfigured(e.cfg.Executor.TaskResultsCache.CacheConfig) && !params.CachingOptions().Disabled
 
 	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.Execute",
 		trace.WithAttributes(
@@ -240,25 +240,18 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	)
 	defer span.End()
 
-	ctx = e.buildContext(ctx)
-	logger := util_log.WithContext(ctx, e.logger)
-	logger = log.With(logger, "engine", "v2")
-	logger = injectQueryTags(ctx, logger)
-
-	level.Info(logger).Log("msg", "starting query", "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","))
-
-	logicalPlan, durLogicalPlanning, err := e.buildLogicalPlan(ctx, logger, params)
+	logicalPlan, durLogicalPlanning, err := e.buildLogicalPlan(ctx, q, params)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
-		span.SetStatus(codes.Error, "failed to create logical plan")
+		q.RecordError(ctx, errors.New("failed to create logical plan"))
 		return logqlmodel.Result{}, ErrNotSupported
 	}
 	gotrace.Log(ctx, "logical_planning", "done")
 
-	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan, cacheEnabled)
+	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, q, params, logicalPlan, cacheEnabled)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to create physical plan")
+		q.RecordError(ctx, errors.New("failed to create physical plan"))
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 	gotrace.Log(ctx, "physical_planning", "done")
@@ -266,10 +259,12 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// Enable admission lanes only for log queries
 	useAdmissionLanes := !isMetricQuery(params.GetExpression())
 
-	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan, useAdmissionLanes, cacheEnabled)
+	start := time.Now()
+	wf, err := q.Prepare(ctx, physicalPlan, useAdmissionLanes)
+	durWorkflowPlanning := time.Since(start)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to create execution plan")
+		q.RecordError(ctx, errors.New("failed to create execution plan"))
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 	defer wf.Close()
@@ -280,7 +275,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		level.Error(logger).Log("msg", "failed to execute query", "err", err)
 
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to execute query")
+		q.RecordError(ctx, errors.New("failed to execute query"))
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
 	defer pipeline.Close()
@@ -289,11 +284,11 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "error during query execution")
+		q.RecordError(ctx, errors.New("error during query execution"))
 		return logqlmodel.Result{}, err
 	}
 
-	durFull := time.Since(startTime)
+	durFull := time.Since(q.startTime)
 	logValues := []any{
 		"msg", "finished executing",
 		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
@@ -311,25 +306,32 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 
 	// Close the pipeline to calculate the stats.
 	pipeline.Close()
-
 	span.SetStatus(codes.Ok, "")
 
 	// explicitly call End() before exporting even though we have a defer above.
 	// It is safe to call End() multiple times.
 	span.End()
-	capture.End()
+	q.capture.End()
 
-	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
+	logValues = append(logValues, xcap.SummaryLogValues(q.capture)...)
 	level.Info(logger).Log(
 		logValues...,
 	)
 
 	// TODO: capture and report queue time
 	md := metadata.FromContext(ctx)
-	stats := capture.ToStatsSummary(durFull, 0, builder.Len())
+	stats := q.capture.ToStatsSummary(durFull, 0, builder.Len())
 	result := builder.Build(stats, md)
 
 	return result, nil
+}
+
+func logqlQueryType(expr syntax.Expr) string {
+	_, ok := expr.(syntax.SampleExpr)
+	if ok {
+		return "metrics"
+	}
+	return "logs"
 }
 
 // buildContext initializes a request-scoped context prior to execution.
@@ -363,7 +365,7 @@ func isMetricQuery(expr syntax.Expr) bool {
 }
 
 // buildLogicalPlan builds a logical plan from the given params.
-func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params logql.Params) (*logical.Plan, time.Duration, error) {
+func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Params) (*logical.Plan, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
 
@@ -378,19 +380,19 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 
 	logicalPlan, err := logical.BuildPlanWithDeletes(ctx, params, deleteReqs)
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
-		span.RecordError(err)
+		level.Warn(q.Logger()).Log("msg", "failed to create logical plan", "err", err)
+		q.RecordError(ctx, err)
 		return nil, 0, ErrNotSupported
 	}
 
 	if err := logical.Optimize(logicalPlan); err != nil {
-		level.Warn(logger).Log("msg", "failed to optimize logical plan", "err", err)
-		span.RecordError(err)
+		level.Warn(q.Logger()).Log("msg", "failed to optimize logical plan", "err", err)
+		q.RecordError(ctx, err)
 		return nil, 0, ErrNotSupported
 	}
 
 	duration := timer.ObserveDuration()
-	level.Info(logger).Log(
+	level.Info(q.Logger()).Log(
 		"msg", "finished logical planning",
 		"plan", logicalPlan.String(),
 		"duration", duration.String(),
@@ -406,11 +408,11 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
-func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan, taskCacheEnabled bool) (*physical.Plan, time.Duration, error) {
+func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.Params, logicalPlan *logical.Plan, taskCacheEnabled bool) (*physical.Plan, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID, logger, taskCacheEnabled))
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, q.TenantID(), q.Logger(), taskCacheEnabled))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -419,33 +421,33 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 
 	// Get the tenant's MaxQuerySeries limit and pass it to the planner context if enforcement is enabled
 	if e.cfg.EnforceQuerySeriesLimit {
-		plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(ctx, tenantID))
+		plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(ctx, q.TenantID()))
 	}
 
 	planner := physical.NewPlanner(plannerCtx, catalog)
 	physicalPlan, err := planner.Build(logicalPlan)
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
-		span.RecordError(err)
+		level.Warn(q.Logger()).Log("msg", "failed to create physical plan", "err", err)
+		q.RecordError(ctx, err)
 		return nil, 0, ErrNotSupported
 	}
 
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
-		span.RecordError(err)
+		level.Warn(q.Logger()).Log("msg", "failed to optimize physical plan", "err", err)
+		q.RecordError(ctx, err)
 		return nil, 0, ErrNotSupported
 	}
 
 	physicalPlan, err = physical.WrapWithBatching(physicalPlan, e.cfg.Executor.BatchSize)
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed to wrap physical plan with batching", "err", err)
-		span.RecordError(err)
+		level.Warn(q.Logger()).Log("msg", "failed to wrap physical plan with batching", "err", err)
+		q.RecordError(ctx, err)
 		return nil, 0, ErrNotSupported
 	}
 
 	duration := timer.ObserveDuration()
-	level.Info(logger).Log(
+	level.Info(q.Logger()).Log(
 		"msg", "finished physical planning",
 		"plan", physical.PrintAsTree(physicalPlan),
 		"duration", duration.String(),
