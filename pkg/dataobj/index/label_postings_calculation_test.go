@@ -62,7 +62,7 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	calcCtx := makeTestCalcContext(builder)
 	calc := &labelPostingsCalculation{}
 
-	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
 
 	ts1 := time.Unix(100, 0).UTC()
 	ts2 := time.Unix(200, 0).UTC()
@@ -117,7 +117,7 @@ func TestLabelPostingsCalculation_BitmapsNormalized(t *testing.T) {
 	calcCtx := makeTestCalcContext(builder)
 	calc := &labelPostingsCalculation{}
 
-	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
 
 	// Stream 1 = svcA/prod, Stream 2 = svcB/dev (from makeTestStreamLabels).
 	batch := []logs.Record{
@@ -164,7 +164,7 @@ func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 	calcCtx := makeTestCalcContext(builder)
 	calc := &labelPostingsCalculation{}
 
-	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
 
 	ts1 := time.Unix(10, 0).UTC()
 	ts2 := time.Unix(20, 0).UTC()
@@ -197,7 +197,7 @@ func TestLabelPostingsCalculation_EmptyBatch(t *testing.T) {
 	calcCtx := makeTestCalcContext(builder)
 	calc := &labelPostingsCalculation{}
 
-	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, nil))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
@@ -211,7 +211,7 @@ func TestLabelPostingsCalculation_MultipleBatches(t *testing.T) {
 	calcCtx := makeTestCalcContext(builder)
 	calc := &labelPostingsCalculation{}
 
-	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}))
 
 	batch1 := []logs.Record{
 		{StreamID: 1, Timestamp: time.Unix(1, 0).UTC(), Line: []byte("a")},
@@ -291,7 +291,7 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 				}
 				calc := &labelPostingsCalculation{}
 
-				if err := calc.Prepare(context.Background(), nil, logs.Stats{}); err != nil {
+				if err := calc.Prepare(context.Background(), calcCtx, nil, logs.Stats{}); err != nil {
 					b.Fatal(err)
 				}
 				if err := calc.ProcessBatch(context.Background(), calcCtx, batch); err != nil {

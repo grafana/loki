@@ -79,7 +79,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
 
-	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
+	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
 	ts1 := time.Unix(100, 0).UTC()
 	ts2 := time.Unix(200, 0).UTC()
@@ -127,7 +127,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
 
-	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
+	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
 	ts := time.Unix(500, 0).UTC()
 	batch := []logs.Record{
@@ -152,7 +152,7 @@ func TestStatsCalculation_MissingServiceName(t *testing.T) {
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
 
-	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
+	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
 	batch := []logs.Record{
 		{StreamID: 3, Timestamp: time.Unix(1, 0).UTC(), Line: []byte("no svc")},
@@ -170,7 +170,7 @@ func TestStatsCalculation_MultipleBatches(t *testing.T) {
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
 
-	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
+	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
 	// First batch.
 	batch1 := []logs.Record{
@@ -207,7 +207,7 @@ func TestStatsCalculation_EmptyBatch(t *testing.T) {
 	ctx := makeTestCalcContext(builder)
 	calc := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
 
-	require.NoError(t, calc.Prepare(context.Background(), nil, logs.Stats{}))
+	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, nil))
 	require.NoError(t, calc.Flush(context.Background(), ctx))
 

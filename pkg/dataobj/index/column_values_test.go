@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -58,7 +59,7 @@ func TestColumnValuesCalculation_BloomPostingAppended(t *testing.T) {
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id", "span_id"})
-	require.NoError(t, calc.Prepare(context.Background(), nil, stat))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, stat))
 
 	ts1 := time.Unix(10, 0).UTC()
 	ts2 := time.Unix(20, 0).UTC()
@@ -132,7 +133,7 @@ func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
-	require.NoError(t, calc.Prepare(context.Background(), nil, stat))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, stat))
 
 	ts1 := time.Unix(10, 0).UTC()
 	ts2 := time.Unix(20, 0).UTC()
@@ -184,7 +185,7 @@ func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
-	require.NoError(t, calc.Prepare(context.Background(), nil, stat))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, stat))
 
 	// Only stream 1 has trace_id metadata; stream 2 does not.
 	batch := []logs.Record{
@@ -222,7 +223,7 @@ func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
-	require.NoError(t, calc.Prepare(context.Background(), nil, stat))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, stat))
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, nil))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
@@ -238,9 +239,10 @@ func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 		}
 	}
 	require.NotNil(t, tracePosting, "expected bloom posting for trace_id even with empty batch")
-	zeroTs := time.Time{}.UnixNano()
-	require.Equal(t, zeroTs, tracePosting.MinTimestamp, "no records means Go zero-value timestamp")
-	require.Equal(t, zeroTs, tracePosting.MaxTimestamp, "no records means Go zero-value timestamp")
+	// With the bloom aggregator, an unobserved but prepared column uses sentinel values:
+	// MinTimestamp = math.MaxInt64 and MaxTimestamp = math.MinInt64.
+	require.Equal(t, int64(math.MaxInt64), tracePosting.MinTimestamp, "no records means sentinel max int64 for min timestamp")
+	require.Equal(t, int64(math.MinInt64), tracePosting.MaxTimestamp, "no records means sentinel min int64 for max timestamp")
 	require.Equal(t, int64(0), tracePosting.UncompressedSize, "no records means zero size")
 }
 
@@ -256,7 +258,7 @@ func TestColumnValuesCalculation_MultipleBatches(t *testing.T) {
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
-	require.NoError(t, calc.Prepare(context.Background(), nil, stat))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, stat))
 
 	ts1 := time.Unix(10, 0).UTC()
 	ts2 := time.Unix(30, 0).UTC()
