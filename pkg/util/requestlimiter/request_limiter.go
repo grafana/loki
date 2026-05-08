@@ -31,7 +31,7 @@ type InflightBytesRequestLimiter struct {
 
 func New(cfg Config, maxSampleCollector *metric.MaxSampleCollector) RequestLimiter {
 	if cfg.MaxInflightBytes == 0 {
-		return NoopRequestLimiter{}
+		return NoopRequestLimiter{maxSampleCollector: maxSampleCollector}
 	}
 	return &InflightBytesRequestLimiter{
 		cfg:                cfg,
@@ -54,8 +54,13 @@ func (r *InflightBytesRequestLimiter) Limit(ctx context.Context, requestSize int
 	}, nil
 }
 
-type NoopRequestLimiter struct{}
+type NoopRequestLimiter struct {
+	maxSampleCollector *metric.MaxSampleCollector
+}
 
-func (n NoopRequestLimiter) Limit(_ context.Context, _ int64) (func(), error) {
-	return func() {}, nil
+func (n NoopRequestLimiter) Limit(_ context.Context, requestSize int64) (func(), error) {
+	n.maxSampleCollector.Inc(requestSize)
+	return func() {
+		n.maxSampleCollector.Inc(-requestSize)
+	}, nil
 }
