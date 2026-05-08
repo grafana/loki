@@ -279,6 +279,9 @@ func (s *Store) ChunksDownloadDuration() time.Duration {
 func (s *Summary) Merge(m Summary) {
 	s.Splits += m.Splits
 	s.Shards += m.Shards
+	if m.EstimatedQueryBytes > s.EstimatedQueryBytes {
+		s.EstimatedQueryBytes = m.EstimatedQueryBytes
+	}
 }
 
 func (q *Querier) Merge(m Querier) {
