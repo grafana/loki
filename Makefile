@@ -143,7 +143,6 @@ help: ## Display this help
 .PHONY: fluent-bit-image fluent-bit-test
 .PHONY: fluentd-image fluentd-test
 .PHONY: loki-image build-image build-image-push
-.PHONY: bigtable-backup push-bigtable-backup
 .PHONY: benchmark-store check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: doc check-doc
@@ -583,20 +582,6 @@ logstash-push-test-logs:
 logstash-env:
 	 docker run -v  `pwd`/clients/cmd/logstash:/home/logstash/ -it --rm --entrypoint /bin/sh \
 		 $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
-
-########################
-# Bigtable Backup Tool #
-########################
-
-BIGTABLE_BACKUP_TOOL_FOLDER = ./tools/bigtable-backup
-BIGTABLE_BACKUP_TOOL_TAG ?= $(IMAGE_TAG)
-
-bigtable-backup:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(BIGTABLE_BACKUP_TOOL_FOLDER)
-	$(OCI_TAG) $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(IMAGE_PREFIX)/loki-bigtable-backup:$(BIGTABLE_BACKUP_TOOL_TAG)
-
-push-bigtable-backup: bigtable-backup
-	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-bigtable-backup:$(BIGTABLE_BACKUP_TOOL_TAG)
 
 ##########
 # Images #
