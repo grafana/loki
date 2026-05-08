@@ -51,6 +51,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	rateservice_client "github.com/grafana/loki/v3/pkg/rateservice/client"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -228,6 +229,10 @@ type Distributor struct {
 	kafkaWriteBytesTotal   prometheus.Counter
 	kafkaWriteLatency      prometheus.Histogram
 	kafkaRecordsPerRequest prometheus.Histogram
+
+	rateBatcher *rateBatcherV2
+	rateFetcher *rateFetcherV2
+	rateStoreV2 *rateStoreV2
 }
 
 // New a distributor creates.
@@ -247,6 +252,7 @@ func New(
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
 	dataObjConsumerPartitionRing ring.PartitionRingReader,
+	rateServiceClientCfg rateservice_client.Config,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -415,7 +421,16 @@ func New(
 			"loki_distributor_max_inflight_bytes",
 			"The maximum number of inflight bytes in the last 1 minute.",
 		),
+		rateStoreV2: newRateStoreV2(),
 	}
+
+	rateServiceClientCfg.Address = "127.0.0.1:9096"
+	rateServiceClient, err := rateservice_client.NewClient(rateServiceClientCfg)
+	if err != nil {
+		return nil, err
+	}
+	d.rateBatcher = newRateBatcherV2(rateServiceClient, 15*time.Second, logger, registerer)
+	d.rateFetcher = newRateFetcherV2(rateServiceClient, 15*time.Second, d.rateStoreV2, logger, registerer)
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
@@ -458,6 +473,8 @@ func New(
 	_ = registerer.Register(d.inflightBytes)
 	servs = append(servs, d.inflightBytes)
 	servs = append(servs, d.ingesterClients, rs)
+	servs = append(servs, d.rateBatcher)
+	servs = append(servs, d.rateFetcher)
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
 		return nil, errors.Wrap(err, "services manager")
@@ -878,6 +895,13 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
 		go d.sendStreamsToKafka(ctx, tenantID, streams, &tracker, subring)
 	}
+
+	d.rateBatcher.Add(
+		fmt.Sprintf("tenant:%s", tenantID),
+		"total",
+		uint64(totalEntriesSize),
+		uint64(time.Now().Unix()),
+	)
 
 	if d.cfg.IngesterEnabled {
 		streamTrackers := make([]streamTracker, len(streams))

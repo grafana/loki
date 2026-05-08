@@ -37,6 +37,8 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/rateservice"
+	rateserviceproto "github.com/grafana/loki/v3/pkg/rateservice/proto"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
@@ -154,6 +156,7 @@ const (
 	DataObjConsumerRing          = "dataobj-consumer-ring"
 	DataObjConsumerPartitionRing = "dataobj-consumer-partition-ring"
 	DataObjIndexBuilder          = "dataobj-index-builder"
+	RateService                  = "rate-service"
 	ScratchStore                 = "scratch-store"
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
@@ -392,6 +395,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.ingestLimitsFrontendRing,
 		t.Cfg.IngestLimits.NumPartitions,
 		t.dataObjConsumerPartitionRing,
+		t.Cfg.RateServiceClient,
 		logger,
 	)
 	if err != nil {
@@ -453,6 +457,21 @@ func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
 	}
 
 	return t.ingestLimitsRing, nil
+}
+
+func (t *Loki) initRateService() (services.Service, error) {
+	if !t.Cfg.RateService.Enabled {
+		return nil, nil
+	}
+	t.rateService = rateservice.NewService(
+		t.Cfg.RateService,
+		prometheus.DefaultRegisterer,
+		util_log.Logger,
+	)
+
+	rateserviceproto.RegisterRateServiceServer(t.Server.GRPC, t.rateService)
+
+	return t.rateService, nil
 }
 
 func (t *Loki) initIngestLimits() (services.Service, error) {
@@ -2451,6 +2470,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
+	return nil, nil
 	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}

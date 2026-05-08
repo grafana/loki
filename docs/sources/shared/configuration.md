@@ -1613,6 +1613,19 @@ dataobj:
   # CLI flag: -dataobj.enabled
   [enabled: <boolean> | default = false]
 
+rate_service:
+  # Enable the rates service.
+  # CLI flag: -rate-service.enabled
+  [enabled: <boolean> | default = false]
+
+  # The time window over which samples are collected.
+  # CLI flag: -rate-service.window
+  [window: <duration> | default = 5m]
+
+  # The size of each bucket, smaller buckets means better estimates.
+  # CLI flag: -rate-service.bucket-size
+  [bucket_size: <duration> | default = 15s]
+
 ingest_limits:
   # Enable the ingest limits service.
   # CLI flag: -ingest-limits.enabled
