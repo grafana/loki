@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/drone/envsubst"
@@ -40,7 +40,8 @@ func dJSON(y []byte) Source {
 // YAML returns a Source that opens the supplied `.yaml` file and loads it.
 // When expandEnvVars is true, variables in the supplied '.yaml\ file are expanded
 // using https://pkg.go.dev/github.com/drone/envsubst?tab=overview
-func YAML(f string, expandEnvVars bool, strict bool) Source {
+// An optional transform is applied to the raw bytes after env expansion and before decoding.
+func YAML(f string, expandEnvVars bool, strict bool, transform ...func([]byte) ([]byte, error)) Source {
 	return func(dst Cloneable) error {
 		y, err := os.ReadFile(f)
 		if err != nil {
@@ -52,6 +53,12 @@ func YAML(f string, expandEnvVars bool, strict bool) Source {
 				return err
 			}
 			y = []byte(s)
+		}
+		if len(transform) > 0 && transform[0] != nil {
+			y, err = transform[0](y)
+			if err != nil {
+				return err
+			}
 		}
 		if strict {
 			err = dYAMLStrict(y)(dst)
@@ -77,40 +84,38 @@ func dYAML(y []byte) Source {
 	}
 }
 
+// FindConfigFileFromArgs extracts the config file path and expand-env flag from
+// args. Only these two flags are registered, so any other flags in args are
+// intentionally skipped: the goal is solely to locate the config file before
+// full flag parsing begins, not to validate or interpret the full flag set.
+// Unknown flags are therefore not an error here; they will be caught later
+// during normal flag parsing.
+func FindConfigFileFromArgs(args []string, name string) (configFile string, expandEnv bool) {
+	fs := flag.NewFlagSet("find-config-file", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&configFile, name, "", "")
+	fs.BoolVar(&expandEnv, "config.expand-env", false, "")
+
+	remaining := args
+	for len(remaining) > 0 {
+		// Parse as many flags as possible, then skip over the first unrecognised arg.
+		if err := fs.Parse(remaining); err == nil {
+			break
+		}
+		remaining = remaining[1:]
+	}
+	return
+}
+
 func ConfigFileLoader(args []string, name string, strict bool) Source {
 	return func(dst Cloneable) error {
-		freshFlags := flag.NewFlagSet("config-file-loader", flag.ContinueOnError)
-
-		// Ensure we register flags on a copy of the config so as to not mutate it while
-		// parsing out the config file location.
-		dst.Clone().RegisterFlags(freshFlags)
-
-		usage := freshFlags.Usage
-		freshFlags.Usage = func() { /* don't do anything by default, we will print usage ourselves, but only when requested. */ }
-
-		err := freshFlags.Parse(args)
-		if err == flag.ErrHelp {
-			// print available parameters to stdout, so that users can grep/less it easily
-			freshFlags.SetOutput(os.Stdout)
-			usage()
-			os.Exit(2)
-		} else if err != nil {
-			fmt.Fprintln(freshFlags.Output(), "Run with -help to get list of available parameters")
-			os.Exit(2)
-		}
-
-		f := freshFlags.Lookup(name)
-		if f == nil || f.Value.String() == "" {
+		configFile, expandEnv := FindConfigFileFromArgs(args, name)
+		if configFile == "" {
 			return nil
 		}
 
-		for _, val := range strings.Split(f.Value.String(), ",") {
+		for _, val := range strings.Split(configFile, ",") {
 			val := strings.TrimSpace(val)
-			expandEnv := false
-			expandEnvFlag := freshFlags.Lookup("config.expand-env")
-			if expandEnvFlag != nil {
-				expandEnv, _ = strconv.ParseBool(expandEnvFlag.Value.String()) // Can ignore error as false returned
-			}
 			if _, err := os.Stat(val); err == nil {
 				err := YAML(val, expandEnv, strict)(dst)
 				if err != nil && !expandEnv {
@@ -119,6 +124,6 @@ func ConfigFileLoader(args []string, name string, strict bool) Source {
 				return err
 			}
 		}
-		return fmt.Errorf("%s does not exist, set %s for custom config path", f.Value.String(), name)
+		return fmt.Errorf("%s does not exist, set %s for custom config path", configFile, name)
 	}
 }
