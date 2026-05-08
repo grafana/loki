@@ -38,10 +38,9 @@ func dJSON(y []byte) Source {
 }
 
 // YAML returns a Source that opens the supplied `.yaml` file and loads it.
-// When expandEnvVars is true, variables in the supplied '.yaml\ file are expanded
+// When expandEnvVars is true, variables in the supplied '.yaml' file are expanded
 // using https://pkg.go.dev/github.com/drone/envsubst?tab=overview
-// An optional transform is applied to the raw bytes after env expansion and before decoding.
-func YAML(f string, expandEnvVars bool, strict bool, transform ...func([]byte) ([]byte, error)) Source {
+func YAML(f string, expandEnvVars bool, strict bool) Source {
 	return func(dst Cloneable) error {
 		y, err := os.ReadFile(f)
 		if err != nil {
@@ -53,12 +52,6 @@ func YAML(f string, expandEnvVars bool, strict bool, transform ...func([]byte) (
 				return err
 			}
 			y = []byte(s)
-		}
-		if len(transform) > 0 && transform[0] != nil {
-			y, err = transform[0](y)
-			if err != nil {
-				return err
-			}
 		}
 		if strict {
 			err = dYAMLStrict(y)(dst)
