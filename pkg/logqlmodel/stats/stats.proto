@@ -106,6 +106,10 @@ message Summary {
   int64 totalPostFilterLines = 11 [(gogoproto.jsontag) = "totalPostFilterLines"];
   // Total bytes processed of metadata.
   int64 totalStructuredMetadataBytesProcessed = 12 [(gogoproto.jsontag) = "totalStructuredMetadataBytesProcessed"];
+  // Estimated bytes for this query reported by index stats before chunk reads.
+  // This is useful to identify haystack-sized queries when index filtering makes
+  // totalBytesProcessed appear much smaller.
+  int64 estimatedQueryBytes = 13 [(gogoproto.jsontag) = "estimatedQueryBytes,omitempty"];
 }
 
 // Statistics from Index queries

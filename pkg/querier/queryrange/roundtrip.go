@@ -1351,6 +1351,7 @@ func sharedIndexTripperware(
 ) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		middlewares := []base.Middleware{
+			IndexStatsContextCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, split, metrics.SplitByMetrics),
