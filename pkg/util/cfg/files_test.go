@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/flagext"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,7 +48,7 @@ func TestConfigFileLoader(t *testing.T) {
 		var dst Data
 		err := ConfigFileLoader([]string{"-server.port", "9090"}, "config.file", true)(&dst)
 		require.NoError(t, err)
-		assert.Equal(t, 0, dst.Server.Port) // untouched
+		require.Equal(t, 0, dst.Server.Port) // untouched
 	})
 
 	t.Run("loads values from config file", func(t *testing.T) {
@@ -57,7 +56,7 @@ func TestConfigFileLoader(t *testing.T) {
 		var dst Data
 		err := ConfigFileLoader([]string{"-config.file", path}, "config.file", false)(&dst)
 		require.NoError(t, err)
-		assert.Equal(t, 1234, dst.Server.Port)
+		require.Equal(t, 1234, dst.Server.Port)
 	})
 
 	t.Run("strict mode rejects unknown fields", func(t *testing.T) {
@@ -72,7 +71,7 @@ func TestConfigFileLoader(t *testing.T) {
 		var dst Data
 		err := ConfigFileLoader([]string{"-config.file", path}, "config.file", false)(&dst)
 		require.NoError(t, err)
-		assert.Equal(t, 5678, dst.Server.Port)
+		require.Equal(t, 5678, dst.Server.Port)
 	})
 
 	t.Run("expands environment variables when config.expand-env is set", func(t *testing.T) {
@@ -81,7 +80,7 @@ func TestConfigFileLoader(t *testing.T) {
 		var dst Data
 		err := ConfigFileLoader([]string{"-config.file", path, "-config.expand-env=true"}, "config.file", false)(&dst)
 		require.NoError(t, err)
-		assert.Equal(t, 4321, dst.Server.Port)
+		require.Equal(t, 4321, dst.Server.Port)
 	})
 
 	t.Run("comma-separated paths: uses first existing file", func(t *testing.T) {
@@ -89,7 +88,7 @@ func TestConfigFileLoader(t *testing.T) {
 		var dst Data
 		err := ConfigFileLoader([]string{"-config.file", "/does/not/exist," + path}, "config.file", false)(&dst)
 		require.NoError(t, err)
-		assert.Equal(t, 7777, dst.Server.Port)
+		require.Equal(t, 7777, dst.Server.Port)
 	})
 
 	t.Run("returns error when no path in the list exists", func(t *testing.T) {
@@ -103,7 +102,7 @@ func TestConfigFileLoader(t *testing.T) {
 		var dst Data
 		err := ConfigFileLoader([]string{"-config.file", path, "-enterprise.only.flag", "value"}, "config.file", false)(&dst)
 		require.NoError(t, err)
-		assert.Equal(t, 2222, dst.Server.Port)
+		require.Equal(t, 2222, dst.Server.Port)
 	})
 
 	t.Run("unknown flag with value before config.file is skipped correctly", func(t *testing.T) {
@@ -111,7 +110,7 @@ func TestConfigFileLoader(t *testing.T) {
 		var dst Data
 		err := ConfigFileLoader([]string{"-target", "ingester", "-config.file", path}, "config.file", false)(&dst)
 		require.NoError(t, err)
-		assert.Equal(t, 3333, dst.Server.Port)
+		require.Equal(t, 3333, dst.Server.Port)
 	})
 
 	t.Run("unknown flag with value between config.file and config.expand-env is skipped correctly", func(t *testing.T) {
@@ -120,7 +119,7 @@ func TestConfigFileLoader(t *testing.T) {
 		var dst Data
 		err := ConfigFileLoader([]string{"-config.file", path, "-target", "ingester", "-config.expand-env=true"}, "config.file", false)(&dst)
 		require.NoError(t, err)
-		assert.Equal(t, 4444, dst.Server.Port)
+		require.Equal(t, 4444, dst.Server.Port)
 	})
 
 	t.Run("malformed flag syntax does not cause infinite loop", func(t *testing.T) {
@@ -128,6 +127,6 @@ func TestConfigFileLoader(t *testing.T) {
 		var dst Data
 		err := ConfigFileLoader([]string{"---foo", "-config.file", path}, "config.file", false)(&dst)
 		require.NoError(t, err)
-		assert.Equal(t, 5555, dst.Server.Port)
+		require.Equal(t, 5555, dst.Server.Port)
 	})
 }

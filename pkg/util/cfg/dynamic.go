@@ -15,21 +15,21 @@ type DynamicCloneable interface {
 // and strict controls whether unknown YAML fields are rejected.
 type FileLoader func(args []string, name string, strict bool) Source
 
-// DynamicUnmarshal handles populating a config based on the following precedence:
+// DynamicUnmarshal populates a config from defaults, config file, and CLI flags.
+// See DynamicUnmarshalWithLoader for details on precedence and behaviour.
+func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet) error {
+	return DynamicUnmarshalWithLoader(dst, args, fs, ConfigFileLoader)
+}
+
+// DynamicUnmarshalWithLoader handles populating a config and additionally accepts a custom FileLoader
+// that overrides how the config file is located and decoded when required.
+//
+// Config is populated with the following precedence:
 // 1. Defaults provided by the `RegisterFlags` interface
 // 2. Sections populated by dynamic logic. Configs passed to this function must implement ApplyDynamicConfig()
 // 3. Any config options specified directly in the config file
 // 4. Any config options specified on the command line.
-//
-// An optional fileLoader overrides how the config file is located and decoded on both
-// passes. If omitted, ConfigFileLoader is used.
-func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet, fileLoader ...FileLoader) error {
-	loader := FileLoader(func(args []string, name string, strict bool) Source {
-		return ConfigFileLoader(args, name, strict)
-	})
-	if len(fileLoader) > 0 {
-		loader = fileLoader[0]
-	}
+func DynamicUnmarshalWithLoader(dst DynamicCloneable, args []string, fs *flag.FlagSet, loader FileLoader) error {
 	return Unmarshal(dst,
 		// First populate the config with defaults including flags from the command line
 		Defaults(fs),
