@@ -97,7 +97,8 @@ type queryData struct {
 	match      []string // used in `series` query
 	label      string   // used in `labels` query
 
-	recorded bool
+	recorded            bool
+	estimatedQueryBytes int64
 }
 
 func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
@@ -128,6 +129,8 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			logger := spanlogger.FromContext(ctx, util_log.Logger)
 			start := time.Now()
+			ctxValue := ctx.Value(ctxKey)
+			data, _ := ctxValue.(*queryData)
 
 			// start a new statistics context to be used by middleware, which we will merge with the response's statistics
 			middlewareStats, statsCtx := stats.NewContext(ctx)
@@ -190,6 +193,9 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &stats.Result{} // TODO: support stats in proto
 					totalEntries = 1
 					queryType = queryTypeStats
+					if data != nil && r.Response != nil && int64(r.Response.Bytes) > data.estimatedQueryBytes {
+						data.estimatedQueryBytes = int64(r.Response.Bytes)
+					}
 				case *ShardsResponse:
 					responseStats = &r.Response.Statistics
 					queryType = queryTypeShards
@@ -211,6 +217,10 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			}
 
 			if responseStats != nil {
+				if data != nil && data.estimatedQueryBytes > 0 && (queryType == queryTypeLog || queryType == queryTypeMetric) {
+					responseStats.Summary.EstimatedQueryBytes = data.estimatedQueryBytes
+				}
+
 				// merge the response's statistics with the stats collected by the middleware
 				responseStats.Merge(middlewareStats.Result(time.Since(start), 0, totalEntries))
 
@@ -219,8 +229,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				responseStats.ComputeSummary(time.Since(start), 0, totalEntries)
 				logger.LogKV(responseStats.KVList()...)
 			}
-			ctxValue := ctx.Value(ctxKey)
-			if data, ok := ctxValue.(*queryData); ok {
+			if data != nil {
 				data.recorded = true
 				data.statistics = responseStats
 				data.result = res

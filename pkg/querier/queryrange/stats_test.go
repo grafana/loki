@@ -199,3 +199,32 @@ func Test_StatsUpdateResult(t *testing.T) {
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, resp.(*LokiResponse).Statistics.Summary.ExecTime, (20 * time.Millisecond).Seconds())
 }
+
+func TestStatsCollectorMiddleware_PropagatesEstimatedQueryBytesFromIndexStats(t *testing.T) {
+	data := &queryData{}
+	ctx := context.WithValue(context.Background(), ctxKey, data)
+	mw := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		switch req.(type) {
+		case *logproto.IndexStatsRequest:
+			return &IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{
+					Bytes: 1024,
+				},
+			}, nil
+		case *LokiRequest:
+			return &LokiResponse{}, nil
+		default:
+			return nil, fmt.Errorf("unexpected request type %T", req)
+		}
+	}))
+
+	_, err := mw.Do(ctx, &logproto.IndexStatsRequest{})
+	require.NoError(t, err)
+	require.Equal(t, int64(1024), data.estimatedQueryBytes)
+
+	resp, err := mw.Do(ctx, &LokiRequest{Query: "foo", StartTs: time.Now()})
+	require.NoError(t, err)
+	lokiResp, ok := resp.(*LokiResponse)
+	require.True(t, ok)
+	require.Equal(t, int64(1024), lokiResp.Statistics.Summary.EstimatedQueryBytes)
+}
