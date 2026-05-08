@@ -934,3 +934,56 @@ func (a *authority) resourceWatchStateForTesting(rType ResourceType, resourceNam
 
 	return state, err
 }
+
+// resourceStats returns a snapshot of the current state of all resources watched
+// by this authority. The return value is a nested map where:
+//   - The outer map's key is the resource type name (e.g., "ListenerResource").
+//   - The inner map's key is the cache state of the resource (e.g., "requested",
+//     "acked", "nacked", "does_not_exist").
+//   - The inner map's value is the total count of resources in that specific state.
+func (a *authority) resourceStats() map[string]map[string]int {
+	ret := make(chan map[string]map[string]int, 1)
+	op := func(context.Context) {
+		summary := make(map[string]map[string]int)
+		for rType, resourceMap := range a.resources {
+			typeName := rType.TypeName
+			if _, ok := summary[typeName]; !ok {
+				summary[typeName] = make(map[string]int)
+			}
+			for _, state := range resourceMap {
+				s := cacheState(state)
+				summary[typeName][s]++
+			}
+		}
+
+		ret <- summary
+	}
+	a.xdsClientSerializer.ScheduleOr(op, func() {
+		ret <- nil
+	})
+
+	return <-ret
+}
+
+// cacheState determines the metrics label string for a given resource state.
+func cacheState(r *resourceState) string {
+	switch r.md.Status {
+	case xdsresource.ServiceStatusRequested:
+		return "requested"
+	case xdsresource.ServiceStatusNotExist:
+		return "does_not_exist"
+	case xdsresource.ServiceStatusACKed:
+		return "acked"
+	case xdsresource.ServiceStatusNACKed:
+		// If the status is NACKed, it means the *latest* update failed.
+		// However, if 'r.cache' is not nil, it means we are still holding onto
+		// a previously ACKed version of the resource.
+		if r.cache != nil {
+			return "nacked_but_cached"
+		}
+		return "nacked"
+	default:
+		// Fallback for initialization states
+		return "requested"
+	}
+}
