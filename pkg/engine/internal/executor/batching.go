@@ -39,6 +39,10 @@ func NewBatchingPipeline(inner Pipeline, batchSize int64) Pipeline {
 	}
 }
 
+func (p *batchingPipeline) Unwrap() Pipeline {
+	return p.inner
+}
+
 // Open implements Pipeline.
 func (p *batchingPipeline) Open(ctx context.Context) error {
 	return p.inner.Open(ctx)
