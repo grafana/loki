@@ -11,6 +11,7 @@ tracking-link:
   - https://redhat.atlassian.net/browse/LOG-7377
 see-also:
   - Initial working LokiStack + Kafka PoC:  https://github.com/grafana/loki/compare/main...JoaoBraveCoding:loki:LOG-7377-poc
+  - API Implementation + Strimzi resources: https://github.com/grafana/loki/compare/main...JoaoBraveCoding:loki:LOG-7377-api
 replaces:
   - 
 superseded-by:
@@ -71,7 +72,7 @@ Some important Kafka concepts to better understand this enhancement are:
 
 #### Classical Architecture VS Ingest Storage Architecture
 
-In this section we will briefly compare the two architectures to better understand the differences both in the write path and in the read path. However first we will introduce the partition ring concept which is essential to understand the new architecture.
+In this section we will briefly compare the two architectures to better understand the differences both in the write path and in the read path. However, first we will introduce the partition ring concept which is essential to understand the new architecture.
 
 ##### Partition Ring
 
@@ -80,7 +81,7 @@ In the new ingest storage architecture there is a new membership ring called par
 - On a single zone deployment: each ingester maps to a single partition using their hostname. E.g `ingester-0 --> partition 0`
 - On multi zone deployments: ingesters in different zones map to the same partition, using their hostname. E.g `ingester-zone-a-0, ingester-zone-b-0, ingester-zone-c-0 --> partition 0`. All zone ingesters for the same partition consume from it independently, each using their own Kafka consumer group, and each committing offsets at their own pace.
 
-When distributors (producers) want to write they hash the stream-labels and use the partition ring to find the active partition for that hash. Once they know which partition they should write to distributors set the `Partition` field in the record and send the record to Kafka. Note that by setting the `Partition` field Loki is actively controlling how information is distributed instead of relying on Kafka.
+When distributors (producers) want to write they hash the stream-labels and use the partition ring to find the active partition for that hash. Once they know which partition they should write to, distributors set the `Partition` field in the record and send the record to Kafka. Note that by setting the `Partition` field Loki is actively controlling how information is distributed instead of relying on Kafka.
 
 The partition ring also supports shuffle sharding for tenant isolation -- instead of spreading a tenant's data across all partitions, each tenant can be assigned a small subset of partitions.
 
@@ -97,7 +98,7 @@ So in the new architecture, the distributors (producers) write records (one or m
 Once Kafka confirms persistence of the record, the distributor acknowledges the write back to the client.
 Ingesters (consumers) read records from their partition and periodically commit their offset back to Kafka under their own consumer group. On startup, an ingester fetches the last committed offset for its consumer group and resumes consumption from that point, allowing seamless recovery after restarts or replacements.
 Ingesters collect log entries and eventually flush them to object storage as chunks with TSDB index entries. The TSDB index format remains the same as in the classical architecture.
-In the new architecture Ingesters are no longer in the write path. To enforce per-tenant ingestion limits, Loki introduces an optional `ingest-limits` component that the distributor queries before accepting writes. Without it, limits like maximum active streams per tenant are not enforced at ingestion time.
+In the new architecture, ingesters are no longer in the write path. To enforce per-tenant ingestion limits, Loki introduces an optional `ingest-limits` component that the distributor queries before accepting writes. Without it, limits like maximum active streams per tenant are not enforced at ingestion time.
 In the ingest storage architecture, replication is ensured through Kafka. When a write happens, Kafka replicates it to the other brokers. Ingesters will always start reading from the last committed offset. The compactor remains a necessary component for index compaction and retention.
 
 Summary Table:
@@ -125,6 +126,9 @@ In the ingest storage architecture, each Kafka record represents one or more log
 The distributor determines the target partition by hashing the stream-labels. It then sets the partition number directly on the Kafka record, so Kafka honors the explicit partition and ignores the key. The tenant ID is set as the key purely as metadata.
 
 If a single stream exceeds the maximum record size (`producer_max_record_size_bytes`, ~15MB by default), it is automatically split into multiple records, each containing a subset of entries but sharing the same labels and hash.
+
+Records are sent to Kafka uncompressed. Loki does not configure producer-side compression, although the client it uses supports it.
+Kafka-side compression can be used independently to mitigate this.
 
 ##### Read Path
 
@@ -348,7 +352,29 @@ stringData:
 
 ### Implementation Details/Notes/Constraints [optional]
 
+#### Upstream Loki Kafka Client Limitations
+
+We identified two significant limitations in upstream Loki's Kafka client:
+
+1. **No TLS support**: The Kafka client does not call `kgo.DialTLSConfig()`, meaning it cannot connect to TLS-enabled Kafka listeners. All connections are plaintext. This prevents the operator from using Strimzi/AMQ Streams TLS listeners or mTLS authentication.
+
+2. **SASL/PLAIN only**: The client hardcodes `plain.Plain(...)` for SASL authentication. It does not support SCRAM-SHA-256, SCRAM-SHA-512, or OAUTHBEARER. Since Strimzi/AMQ Streams does not offer SASL/PLAIN as a listener authentication type we can only connect to Strimzi using no authentication. Upstream issue: [grafana/loki#21712](https://github.com/grafana/loki/issues/21712).
+
+#### Observability and Dashboards
+
+The operator deploys Prometheus recording rules and alerting rules for Loki components. The ingest storage architecture changes the write path and the read path, which may affect existing dashboard panels and alerts. Specifically:
+
+Investigation needs to be done to fully understand how to observe the new system and how the operator can customize the dashboards deployed depending on the architecture mode selected.
+
 ### Risks and Mitigations
+
+- Increase in resource requirements with the addition of Kafka
+  - A Strimzi cluster with 3 replicas with 1x.Demo was consuming 0.1 CPU and 1.8Gi. Further benchmarking needs to happen to better determine the impact
+- No backpressure from ingester consumption lag
+  - In the ingest storage architecture, the distributor writes to Kafka and has no awareness of whether ingesters are keeping up with consumption. If ingesters fall behind, records accumulate in Kafka - there is no mechanism to reject or throttle writes based on consumer lag.
+- Misconfiguration of the Kafka cluster
+  - We should write extensive documentation to support proper configuration
+  - If Kafka is temporarily unavailable, each distributor can buffer up to `producer_max_buffered_bytes` (default: 1GB) of unacknowledged records before it starts rejecting new writes.
 
 ## Design Details
 
@@ -357,6 +383,9 @@ stringData:
 - If we have a running Loki cluster what is the recommendation for migrating it to the Ingest Storage Architecture? Shall we use dual-write capabilities or simply flip the switch?
 
 ## Implementation History
+
+- Initial working LokiStack + Kafka PoC:  https://github.com/grafana/loki/compare/main...JoaoBraveCoding:loki:LOG-7377-poc
+- API Implementation + Strimzi resources: https://github.com/grafana/loki/compare/main...JoaoBraveCoding:loki:LOG-7377-api
 
 ## Drawbacks
 
