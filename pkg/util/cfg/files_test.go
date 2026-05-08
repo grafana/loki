@@ -105,4 +105,29 @@ func TestConfigFileLoader(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 2222, dst.Server.Port)
 	})
+
+	t.Run("unknown flag with value before config.file is skipped correctly", func(t *testing.T) {
+		path := writeConfigFile(t, "server:\n  port: 3333\n")
+		var dst Data
+		err := ConfigFileLoader([]string{"-target", "ingester", "-config.file", path}, "config.file", false)(&dst)
+		require.NoError(t, err)
+		assert.Equal(t, 3333, dst.Server.Port)
+	})
+
+	t.Run("unknown flag with value between config.file and config.expand-env is skipped correctly", func(t *testing.T) {
+		t.Setenv("TEST_PORT", "4444")
+		path := writeConfigFile(t, "server:\n  port: ${TEST_PORT}\n")
+		var dst Data
+		err := ConfigFileLoader([]string{"-config.file", path, "-target", "ingester", "-config.expand-env=true"}, "config.file", false)(&dst)
+		require.NoError(t, err)
+		assert.Equal(t, 4444, dst.Server.Port)
+	})
+
+	t.Run("malformed flag syntax does not cause infinite loop", func(t *testing.T) {
+		path := writeConfigFile(t, "server:\n  port: 5555\n")
+		var dst Data
+		err := ConfigFileLoader([]string{"---foo", "-config.file", path}, "config.file", false)(&dst)
+		require.NoError(t, err)
+		assert.Equal(t, 5555, dst.Server.Port)
+	})
 }

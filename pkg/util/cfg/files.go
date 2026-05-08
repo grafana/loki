@@ -98,11 +98,28 @@ func FindConfigFileFromArgs(args []string, name string) (configFile string, expa
 
 	remaining := args
 	for len(remaining) > 0 {
-		// Parse as many flags as possible, then skip over the first unrecognised arg.
+		// Parse as many flags as possible. On error, fs.Args() returns the unparsed
+		// remainder starting after the unknown flag name (Go's flag package advances
+		// past the flag name before checking whether it is known). If that next element
+		// looks like a value rather than a flag (does not start with "-"), skip it too,
+		// so that a flag-value pair like "-target ingester" does not leave a bare
+		// "ingester" that stops the parser.
+		//
+		// Exception: malformed flag syntax (e.g. "---foo", "-=val") causes Go's parser
+		// to return an error WITHOUT advancing, so fs.Args() equals remaining. In that
+		// case force-advance by one to avoid an infinite loop, then apply the same
+		// value-skip in case the malformed flag also has a trailing value token.
+		before := remaining
 		if err := fs.Parse(remaining); err == nil {
 			break
 		}
-		remaining = remaining[1:]
+		remaining = fs.Args()
+		if len(remaining) == len(before) {
+			remaining = remaining[1:]
+		}
+		if len(remaining) > 0 && !strings.HasPrefix(remaining[0], "-") {
+			remaining = remaining[1:]
+		}
 	}
 	return
 }
