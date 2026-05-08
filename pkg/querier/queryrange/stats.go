@@ -7,11 +7,13 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/middleware"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
@@ -99,6 +101,68 @@ type queryData struct {
 
 	recorded            bool
 	estimatedQueryBytes int64
+	indexStatsMu        sync.Mutex
+	indexStatsBytesSeen map[indexStatsRequestKey]struct{}
+}
+
+type indexStatsRequestKey struct {
+	from     model.Time
+	through  model.Time
+	matchers string
+}
+
+func (d *queryData) recordEstimatedQueryBytes(req *logproto.IndexStatsRequest, responseBytes uint64) {
+	if d == nil || req == nil || responseBytes == 0 {
+		return
+	}
+
+	d.indexStatsMu.Lock()
+	defer d.indexStatsMu.Unlock()
+
+	if d.indexStatsBytesSeen == nil {
+		d.indexStatsBytesSeen = make(map[indexStatsRequestKey]struct{})
+	}
+
+	key := indexStatsRequestKey{
+		from:     req.From,
+		through:  req.Through,
+		matchers: req.Matchers,
+	}
+
+	if _, seen := d.indexStatsBytesSeen[key]; seen {
+		return
+	}
+
+	d.indexStatsBytesSeen[key] = struct{}{}
+	d.estimatedQueryBytes += int64(responseBytes)
+}
+
+func IndexStatsContextCollectorMiddleware() queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			resp, err := next.Do(ctx, req)
+			if err != nil {
+				return resp, err
+			}
+
+			indexStatsReq, ok := req.(*logproto.IndexStatsRequest)
+			if !ok {
+				return resp, nil
+			}
+
+			indexStatsResp, ok := resp.(*IndexStatsResponse)
+			if !ok || indexStatsResp == nil || indexStatsResp.Response == nil {
+				return resp, nil
+			}
+
+			data, _ := ctx.Value(ctxKey).(*queryData)
+			if data != nil {
+				data.recordEstimatedQueryBytes(indexStatsReq, indexStatsResp.Response.Bytes)
+			}
+
+			return resp, nil
+		})
+	})
 }
 
 func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
@@ -193,8 +257,10 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &stats.Result{} // TODO: support stats in proto
 					totalEntries = 1
 					queryType = queryTypeStats
-					if data != nil && r.Response != nil && int64(r.Response.Bytes) > data.estimatedQueryBytes {
-						data.estimatedQueryBytes = int64(r.Response.Bytes)
+					if data != nil && r.Response != nil {
+						if indexStatsReq, ok := req.(*logproto.IndexStatsRequest); ok {
+							data.recordEstimatedQueryBytes(indexStatsReq, r.Response.Bytes)
+						}
 					}
 				case *ShardsResponse:
 					responseStats = &r.Response.Statistics
@@ -217,7 +283,8 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			}
 
 			if responseStats != nil {
-				if data != nil && data.estimatedQueryBytes > 0 && (queryType == queryTypeLog || queryType == queryTypeMetric) {
+				if data != nil && data.estimatedQueryBytes > responseStats.Summary.EstimatedQueryBytes &&
+					(queryType == queryTypeLog || queryType == queryTypeMetric) {
 					responseStats.Summary.EstimatedQueryBytes = data.estimatedQueryBytes
 				}
 

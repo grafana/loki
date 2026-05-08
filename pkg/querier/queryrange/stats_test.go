@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -218,13 +219,108 @@ func TestStatsCollectorMiddleware_PropagatesEstimatedQueryBytesFromIndexStats(t 
 		}
 	}))
 
-	_, err := mw.Do(ctx, &logproto.IndexStatsRequest{})
+	req := &logproto.IndexStatsRequest{
+		From:     model.Time(100),
+		Through:  model.Time(200),
+		Matchers: `{foo="bar"}`,
+	}
+
+	_, err := mw.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, int64(1024), data.estimatedQueryBytes)
+
+	_, err = mw.Do(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, int64(1024), data.estimatedQueryBytes)
+
+	_, err = mw.Do(ctx, &logproto.IndexStatsRequest{
+		From:     model.Time(100),
+		Through:  model.Time(200),
+		Matchers: `{baz="qux"}`,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(2048), data.estimatedQueryBytes)
 
 	resp, err := mw.Do(ctx, &LokiRequest{Query: "foo", StartTs: time.Now()})
 	require.NoError(t, err)
 	lokiResp, ok := resp.(*LokiResponse)
 	require.True(t, ok)
-	require.Equal(t, int64(1024), lokiResp.Statistics.Summary.EstimatedQueryBytes)
+	require.Equal(t, int64(2048), lokiResp.Statistics.Summary.EstimatedQueryBytes)
+}
+
+func TestStatsCollectorMiddleware_DoesNotOverwriteLargerEstimatedQueryBytes(t *testing.T) {
+	data := &queryData{
+		estimatedQueryBytes: 1024,
+	}
+	ctx := context.WithValue(context.Background(), ctxKey, data)
+	mw := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		switch req.(type) {
+		case *LokiRequest:
+			return &LokiResponse{
+				Statistics: stats.Result{
+					Summary: stats.Summary{
+						EstimatedQueryBytes: 4096,
+					},
+				},
+			}, nil
+		default:
+			return nil, fmt.Errorf("unexpected request type %T", req)
+		}
+	}))
+
+	resp, err := mw.Do(ctx, &LokiRequest{Query: "foo", StartTs: time.Now()})
+	require.NoError(t, err)
+	lokiResp, ok := resp.(*LokiResponse)
+	require.True(t, ok)
+	require.Equal(t, int64(4096), lokiResp.Statistics.Summary.EstimatedQueryBytes)
+}
+
+func TestIndexStatsContextCollectorMiddleware_DedupesAcrossCollectorPaths(t *testing.T) {
+	data := &queryData{}
+	ctx := context.WithValue(context.Background(), ctxKey, data)
+	indexReq := &logproto.IndexStatsRequest{
+		From:     model.Time(100),
+		Through:  model.Time(200),
+		Matchers: `{foo="bar"}`,
+	}
+
+	mw := queryrangebase.MergeMiddlewares(
+		StatsCollectorMiddleware(),
+		IndexStatsContextCollectorMiddleware(),
+	).Wrap(queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		switch req.(type) {
+		case *logproto.IndexStatsRequest:
+			return &IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{
+					Bytes: 1024,
+				},
+			}, nil
+		case *LokiRequest:
+			return &LokiResponse{}, nil
+		default:
+			return nil, fmt.Errorf("unexpected request type %T", req)
+		}
+	}))
+
+	_, err := mw.Do(ctx, indexReq)
+	require.NoError(t, err)
+	require.Equal(t, int64(1024), data.estimatedQueryBytes)
+
+	_, err = mw.Do(ctx, &logproto.IndexStatsRequest{
+		From:     model.Time(100),
+		Through:  model.Time(200),
+		Matchers: `{bar="baz"}`,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(2048), data.estimatedQueryBytes)
+
+	_, err = mw.Do(ctx, indexReq)
+	require.NoError(t, err)
+	require.Equal(t, int64(2048), data.estimatedQueryBytes)
+
+	resp, err := mw.Do(ctx, &LokiRequest{Query: "foo", StartTs: time.Now()})
+	require.NoError(t, err)
+	lokiResp, ok := resp.(*LokiResponse)
+	require.True(t, ok)
+	require.Equal(t, int64(2048), lokiResp.Statistics.Summary.EstimatedQueryBytes)
 }
