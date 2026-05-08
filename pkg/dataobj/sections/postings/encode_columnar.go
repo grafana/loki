@@ -22,7 +22,7 @@ func columnarEncode(bloomEntries []*bloomPostingEntry, labelEntries []*labelPost
 	// available for INT64 in the dataset package. With sorted rows (blooms first,
 	// then labels), deltas are almost all zeros — ZSTD compresses these runs very
 	// well, unlike delta encodings on our other int64 cols
-	kindBuilder, err := dataset.NewColumnBuilder(ColumnTypeKind.String(), dataset.BuilderOptions{
+	kindBuilder, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSizeHint,
 		PageMaxRowCount: pageMaxRowCount,
 		Type: dataset.ColumnType{
@@ -56,7 +56,7 @@ func columnarEncode(bloomEntries []*bloomPostingEntry, labelEntries []*labelPost
 		return fmt.Errorf("creating label_value column: %w", err)
 	}
 
-	bloomFilterBuilder, err := dataset.NewColumnBuilder(ColumnTypeBloomFilter.String(), dataset.BuilderOptions{
+	bloomFilterBuilder, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSizeHint,
 		PageMaxRowCount: pageMaxRowCount,
 		Type: dataset.ColumnType{
@@ -184,8 +184,12 @@ func columnarEncode(bloomEntries []*bloomPostingEntry, labelEntries []*labelPost
 }
 
 // binaryColumnBuilder creates a column builder for BINARY/PLAIN/ZSTD columns.
+//
+// Tag is empty: postings columns are all fixed (one column per Logical type),
+// so Logical alone uniquely identifies the column. Setting Tag would duplicate
+// it. Matches the convention used by streams.Reader for fixed columns.
 func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
-	return dataset.NewColumnBuilder(logicalType.String(), dataset.BuilderOptions{
+	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
@@ -198,8 +202,10 @@ func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*d
 }
 
 // numberColumnBuilder creates a column builder for INT64/DELTA/NONE columns.
+//
+// Tag is empty: see [binaryColumnBuilder] rationale.
 func numberColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
-	return dataset.NewColumnBuilder(logicalType.String(), dataset.BuilderOptions{
+	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{

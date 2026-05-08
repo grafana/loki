@@ -104,26 +104,6 @@ const (
 	KindLabel PostingKind = 1
 )
 
-// Posting represents a single row in the postings section.
-type Posting struct {
-	Kind             PostingKind
-	ObjectPath       string
-	SectionIndex     int64
-	ColumnName       string
-	LabelValue       string // empty for Bloom postings
-	BloomFilter      []byte // nil for Label postings
-	StreamIDBitmap   []byte // always present
-	UncompressedSize int64
-	MinTimestamp     int64
-	MaxTimestamp     int64
-}
-
-// Size returns an estimate of the encoded size of this posting in bytes.
-func (p Posting) Size() int {
-	// 5 int64 columns (kind, section_index, uncompressed_size, min_timestamp, max_timestamp) × 8 bytes
-	return 5*8 + len(p.ObjectPath) + len(p.ColumnName) + len(p.LabelValue) + len(p.BloomFilter) + len(p.StreamIDBitmap)
-}
-
 // Section represents an opened postings section.
 type Section struct {
 	inner   *columnar.Section
@@ -188,7 +168,7 @@ func (s *Section) Columns() []*Column { return s.columns }
 // A Column represents one of the columns in the postings section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //
-// Data in columns can be read by using a [RowReader].
+// Data in columns can be read by using a [Reader].
 type Column struct {
 	Section *Section   // Section that contains the column.
 	Name    string     // Optional name of the column.
