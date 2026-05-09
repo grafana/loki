@@ -59,10 +59,6 @@ type Reader struct {
 	tenantID        string
 	httpClient      *http.Client
 	queryTimeout    time.Duration
-	sName           string
-	sValue          string
-	lName           string
-	lVal            string
 	backoff         *backoff.Backoff
 	nextQuery       time.Time
 	backoffMtx      sync.RWMutex
@@ -74,7 +70,6 @@ type Reader struct {
 	shuttingDown    bool
 	done            chan struct{}
 	queryAppend     string
-	labels          string
 	labelSelector   string
 }
 
@@ -171,10 +166,6 @@ func NewReader(writer io.Writer,
 		tenantID:        tenantID,
 		queryTimeout:    queryTimeout,
 		httpClient:      httpClient,
-		sName:           streamName,
-		sValue:          streamValue,
-		lName:           labelName,
-		lVal:            labelVal,
 		nextQuery:       next,
 		backoff:         bkoff,
 		interval:        interval,
@@ -184,7 +175,6 @@ func NewReader(writer io.Writer,
 		done:            make(chan struct{}),
 		shuttingDown:    false,
 		queryAppend:     queryAppend,
-		labels:          labels,
 		labelSelector:   labelSel,
 	}
 
