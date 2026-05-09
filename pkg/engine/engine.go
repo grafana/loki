@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -220,7 +219,11 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	}
 	defer q.Close()
 
+	// We save the pre-query logger so we can pass it to buildPhysicalPlan,
+	// which creates a subquery.
+	engineLogger := logger
 	logger = q.Logger()
+
 	level.Info(logger).Log("msg", "starting query", "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","))
 
 	ctx, task := gotrace.NewTask(ctx, "Engine.Execute")
@@ -248,7 +251,8 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	}
 	gotrace.Log(ctx, "logical_planning", "done")
 
-	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, q, params, logicalPlan, cacheEnabled)
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, q, engineLogger, cacheEnabled))
+	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, q, params, catalog, logicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		q.RecordError(ctx, errors.New("failed to create physical plan"))
@@ -408,11 +412,9 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Pa
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
-func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.Params, logicalPlan *logical.Plan, taskCacheEnabled bool) (*physical.Plan, time.Duration, error) {
+func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.Params, catalog *physical.MetastoreCatalog, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
-
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, q.TenantID(), q.Logger(), taskCacheEnabled))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -457,36 +459,43 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 	return physicalPlan, duration, nil
 }
 
-func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string, logger log.Logger, cacheEnabled bool) physical.MetastoreSectionsResolver {
+func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, logger log.Logger, cacheEnabled bool) physical.MetastoreSectionsResolver {
 	planner := physical.NewMetastorePlanner(e.metastore, e.cfg.Executor.BatchSize)
 	logger = log.With(logger, "subcomponent", "metastore")
+
+	if parent != nil {
+		logger = log.With(logger, "parent_query_id", parent.ID())
+	}
+
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
-		ctx, span := xcap.StartSpan(ctx, tracer, "engine.metastoreResolver")
-		defer span.End()
+		q, ctx, err := e.newQuery(ctx, logger, "index", cacheEnabled)
+		if err != nil {
+			return nil, fmt.Errorf("creating index query: %w", err)
+		}
+		defer q.Close()
 
 		plan, err := planner.Plan(ctx, selector, predicates, start, end)
 		if err != nil {
-			return nil, fmt.Errorf("metastore: build plan: %w", err)
+			return nil, fmt.Errorf("index query: build plan: %w", err)
 		}
 
 		// Disable admission lanes for metastore queries
 		useAdmissionLanes := false
-
-		wf, _, err := e.buildWorkflow(ctx, tenantID, logger, plan, useAdmissionLanes, cacheEnabled)
+		wf, err := q.Prepare(ctx, plan, useAdmissionLanes)
 		if err != nil {
-			return nil, fmt.Errorf("metastore: build workflow: %w", err)
+			return nil, fmt.Errorf("index query: build workflow: %w", err)
 		}
 		defer wf.Close()
 
 		pipeline, err := wf.Run(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("metastore: run workflow: %w", err)
+			return nil, fmt.Errorf("index query: run workflow: %w", err)
 		}
 		reader := executor.TranslateEOF(pipeline)
 		defer reader.Close()
 
 		if err := reader.Open(ctx); err != nil {
-			return nil, fmt.Errorf("metastore: open pipeline: %w", err)
+			return nil, fmt.Errorf("index query: open pipeline: %w", err)
 		}
 
 		resp, err := e.metastore.CollectSections(ctx, metastore.CollectSectionsRequest{
@@ -495,68 +504,11 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string,
 			Reader: reader,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("metastore: collect sections: %w", err)
+			return nil, fmt.Errorf("index query: collect sections: %w", err)
 		}
 
-		// close to report the stats
-		reader.Close()
 		return resp.SectionsResponse.Sections, nil
 	}
-}
-
-// buildWorkflow builds a workflow from the given physical plan.
-func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan, useAdmissionLanes bool, cacheEnabled bool) (*workflow.Workflow, time.Duration, error) {
-	span := trace.SpanFromContext(ctx)
-	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
-
-	maxRunningScanTasks := 0
-	// Set max running tasks limits on when admission lanes are enabled
-	if useAdmissionLanes {
-		maxRunningScanTasks = e.limits.MaxScanTaskParallelism(tenantID)
-	}
-
-	opts := workflow.Options{
-		Tenant: tenantID,
-		Actor:  httpreq.ExtractActorPath(ctx),
-
-		MaxRunningScanTasks:  maxRunningScanTasks,
-		MaxRunningOtherTasks: 0,
-
-		CacheEnabled:                 cacheEnabled,
-		MaxTaskCacheSize:             uint64(e.cfg.Executor.TaskResultsCache.TaskResultMaxCacheableSize),
-		MaxDataObjScanCacheSize:      uint64(e.cfg.Executor.TaskResultsCache.DataObjScanResultMaxCacheableSize),
-		CacheCompression:             e.cfg.Executor.TaskResultsCache.Compression,
-		PruneEmptyCachedTasks:        e.cfg.Executor.TaskResultsCache.PruneEmptyCachedTasks,
-		NonEmptyCachedTasksMaxSize:   uint64(e.cfg.Executor.TaskResultsCache.PruneCachedTasksMaxSize),
-		PruneCachedTasksFetchTimeout: e.cfg.Executor.TaskResultsCache.PruneCachedTasksFetchTimeout,
-		TaskCacheRegistry:            e.taskCaches,
-
-		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
-		DebugStreams: e.limits.DebugEngineStreams(tenantID),
-	}
-	wf, err := workflow.New(opts, logger, e.scheduler.inner, physicalPlan)
-	if err != nil {
-		level.Warn(logger).Log("msg", "failed to create workflow", "err", err)
-		span.RecordError(err)
-		return nil, 0, ErrNotSupported
-	}
-
-	duration := timer.ObserveDuration()
-
-	// The execution plan can be way more verbose than the physical plan, so we
-	// only log it at debug level.
-	level.Debug(logger).Log(
-		"msg", "generated execution plan",
-		"plan", workflow.Sprint(wf),
-	)
-	level.Info(logger).Log(
-		"msg", "finished execution planning",
-		"duration", duration.String(),
-		"tasks", wf.Len(),
-	)
-
-	span.AddEvent("finished execution planning", trace.WithAttributes(attribute.Stringer("duration", duration)))
-	return wf, duration, nil
 }
 
 // collectResult processes the results of the execution plan.
