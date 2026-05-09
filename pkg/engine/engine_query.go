@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
@@ -28,12 +28,18 @@ type query struct {
 	queryType string
 	useCache  bool
 
-	tenantID string
+	tenantID  string
+	userAgent string
+	actorPath string
 
-	startTime time.Time
+	startTime  time.Time
+	finishTime time.Time
 
 	capture    *xcap.Capture
 	rootRegion *xcap.Region
+
+	failed      bool
+	failureType string
 }
 
 func (e *Engine) newQuery(ctx context.Context, logger log.Logger, queryType string, useCache bool) (*query, context.Context, error) {
@@ -49,6 +55,9 @@ func (e *Engine) newQuery(ctx context.Context, logger log.Logger, queryType stri
 		logger:    log.With(logger, "query_id", id),
 		queryType: queryType,
 		useCache:  useCache,
+
+		userAgent: httpreq.ExtractHeader(ctx, "User-Agent"),
+		actorPath: httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader),
 
 		startTime: startTime,
 
@@ -83,10 +92,20 @@ func (q *query) TenantID() string { return q.tenantID }
 // ID returns the unique identifier of the query.
 func (q *query) ID() ulid.ULID { return q.id }
 
+// Duration returns the current duration of the query.
+func (q *query) Duration() time.Duration {
+	if q.finishTime.IsZero() {
+		return time.Since(q.startTime)
+	}
+	return q.finishTime.Sub(q.startTime)
+}
+
 // Prepare constucts a workflow from the given physical plan. The returned
 // workflow must be closed to release resources.
 func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLanes bool) (*workflow.Workflow, error) {
-	span := trace.SpanFromContext(ctx)
+	ctx, span := xcap.StartSpan(ctx, tracer, "query.Prepare")
+	defer span.End()
+
 	timer := prometheus.NewTimer(q.engine.metrics.workflowPlanning)
 
 	var maxRunningScanTasks int
@@ -122,20 +141,21 @@ func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLa
 	}
 
 	duration := timer.ObserveDuration()
+	span.Record(statPrepareDuration.Observe(int64(duration)))
 
 	// The execution plan can be way more verbose than the physical plan, so we
 	// only log it at debug level.
 	level.Debug(q.logger).Log(
-		"msg", "generated execution plan",
+		"msg", "execution-plan-detail",
 		"plan", workflow.Sprint(wf),
 	)
 	level.Info(q.logger).Log(
-		"msg", "finished execution planning",
-		"duration", duration.String(),
+		"msg", "execution-plan-summary",
+		"duration_ms", duration.Milliseconds(),
 		"tasks", wf.Len(),
 	)
 
-	span.AddEvent("finished execution planning", trace.WithAttributes(attribute.Stringer("duration", duration)))
+	span.SetStatus(codes.Ok, "")
 	return wf, nil
 }
 
@@ -145,14 +165,99 @@ func (q *query) RecordError(ctx context.Context, err error) {
 	span.RecordError(err)
 	span.SetStatus(codes.Error, err.Error())
 
-	// TODO(rfratto): save somewhere else?
+	switch {
+	case errors.Is(err, context.Canceled):
+		q.failureType = "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		q.failureType = "timeout"
+	default:
+		q.failureType = "fail"
+	}
+	q.failed = true
 }
 
 // Close finalizes the query and logs a summary line about the query's
 // execution.
 func (q *query) Close() {
-	// TODO(rfratto): emit summary. This depends on having stats for known major
-	// phases about queries that we reference here.
+	if !q.finishTime.IsZero() {
+		// Already closed.
+		return
+	}
+
+	q.finishTime = time.Now()
 	q.rootRegion.End()
 	q.capture.End()
+
+	status := "success"
+	if q.failed {
+		status = q.failureType
+	}
+
+	var (
+		logicalPlanDuration, _  = q.capture.Value(statLogicalPlanDuration).Int64()
+		physicalPlanDuration, _ = q.capture.Value(statPhysicalPlanDuration).Int64()
+		prepareDuration, _      = q.capture.Value(statPrepareDuration).Int64()
+		executeDuration, _      = q.capture.Value(statExecutionDuration).Int64()
+
+		otherDuration = calculateResidual(q.finishTime.Sub(q.startTime), logicalPlanDuration, physicalPlanDuration, prepareDuration, executeDuration)
+	)
+
+	q.logger.Log(
+		"msg", "query-summary",
+
+		"user_agent", q.userAgent,
+		"actor_path", q.actorPath,
+		"query_type", q.queryType,
+
+		"submitted_at", q.startTime.Format(time.RFC3339Nano),
+		"completed_at", q.finishTime.Format(time.RFC3339Nano),
+		"duration_ms", q.finishTime.Sub(q.startTime).Milliseconds(),
+
+		"status", status,
+
+		// "duration_cache_check_ms", "", // See comment on query_result_cache_hit for why this is disabled.
+		"duration_logical_plan_ms", time.Duration(logicalPlanDuration).Milliseconds(),
+		"duration_physical_plan_ms", time.Duration(physicalPlanDuration).Milliseconds(),
+		"duration_prepare_ms", time.Duration(prepareDuration).Milliseconds(),
+		"duration_execute_ms", time.Duration(executeDuration).Milliseconds(),
+		"duration_other_ms", otherDuration.Milliseconds(),
+
+		"dominant_phase", calculateDominantPhase(map[string]time.Duration{
+			"logical":  time.Duration(logicalPlanDuration),
+			"physical": time.Duration(physicalPlanDuration),
+			"prepare":  time.Duration(prepareDuration),
+			"execute":  time.Duration(executeDuration),
+			"other":    otherDuration,
+		}),
+
+		// TODO(rfratto): Move caching logic into the engine so we can track
+		// cache hits/misses/latency.
+		"query_result_cache_hit", "false",
+	)
+}
+
+// calculateResidual finds the amount of time in dur that is not accounted for
+// in the given stats.
+//
+// Each stat must be an int64 value.
+func calculateResidual(dur time.Duration, stats ...int64) time.Duration {
+	var total time.Duration
+	for _, s := range stats {
+		total += time.Duration(s)
+	}
+	return dur - total
+}
+
+func calculateDominantPhase(phases map[string]time.Duration) string {
+	var (
+		maxPhase    string
+		maxDuration time.Duration
+	)
+	for phase, duration := range phases {
+		if duration > maxDuration {
+			maxPhase = phase
+			maxDuration = duration
+		}
+	}
+	return maxPhase
 }
