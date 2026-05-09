@@ -203,3 +203,34 @@ func (c *Capture) UnmarshalBinary(data []byte) error {
 
 	return nil
 }
+
+// Value computes the value of a statistic from the capture, rolling up from all
+// regions. If the statistic is not present in any region, Value returns nil.
+func (c *Capture) Value(stat Statistic) *AggregatedObservation {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	key := stat.Key()
+	var rolled *AggregatedObservation
+
+	for _, region := range c.regions {
+		region.mu.RLock()
+		obs, ok := region.observations[key]
+		if !ok {
+			region.mu.RUnlock()
+			continue
+		}
+		if rolled == nil {
+			rolled = &AggregatedObservation{
+				Statistic: obs.Statistic,
+				Value:     obs.Value,
+				Count:     obs.Count,
+			}
+		} else {
+			rolled.Merge(obs)
+		}
+		region.mu.RUnlock()
+	}
+
+	return rolled
+}
