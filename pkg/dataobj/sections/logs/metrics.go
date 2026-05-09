@@ -25,7 +25,7 @@ func NewMetrics() *Metrics {
 		columnar: columnar.NewMetrics(sectionType),
 
 		encodeSeconds: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki_dataobj",
+			Namespace: "dataobj",
 			Subsystem: "logs",
 			Name:      "encode_seconds",
 
@@ -38,7 +38,7 @@ func NewMetrics() *Metrics {
 		}),
 
 		appendsTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "loki_dataobj",
+			Namespace: "dataobj",
 			Subsystem: "logs",
 			Name:      "appends_total",
 
@@ -46,7 +46,7 @@ func NewMetrics() *Metrics {
 		}),
 
 		recordCount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki_dataobj",
+			Namespace: "dataobj",
 			Subsystem: "logs",
 			Name:      "records_count",
 

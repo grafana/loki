@@ -27,7 +27,7 @@ func NewMetrics() *Metrics {
 		columnar: columnar.NewMetrics(sectionType),
 
 		encodeSeconds: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki_dataobj",
+			Namespace: "dataobj",
 			Subsystem: "streams",
 			Name:      "encode_seconds",
 
@@ -40,7 +40,7 @@ func NewMetrics() *Metrics {
 		}),
 
 		recordsTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "loki_dataobj",
+			Namespace: "dataobj",
 			Subsystem: "streams",
 			Name:      "records_total",
 
@@ -48,7 +48,7 @@ func NewMetrics() *Metrics {
 		}),
 
 		streamCount: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki_dataobj",
+			Namespace: "dataobj",
 			Subsystem: "streams",
 			Name:      "stream_count",
 
@@ -56,7 +56,7 @@ func NewMetrics() *Metrics {
 		}),
 
 		minTimestamp: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki_dataobj",
+			Namespace: "dataobj",
 			Subsystem: "streams",
 			Name:      "min_timestamp",
 
@@ -64,7 +64,7 @@ func NewMetrics() *Metrics {
 		}),
 
 		maxTimestamp: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki_dataobj",
+			Namespace: "dataobj",
 			Subsystem: "streams",
 			Name:      "max_timestamp",
 

@@ -366,7 +366,9 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
 		"partition": strconv.Itoa(int(partitionID)),
 	}, reg)
-	builder, err := builderFactory.NewBuilder(wrapped)
+	builder, err := builderFactory.NewBuilder(
+		prometheus.WrapRegistererWithPrefix("loki_dataobj_consumer_", wrapped),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
 	}
