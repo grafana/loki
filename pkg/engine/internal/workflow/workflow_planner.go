@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // planner is responsible for constructing the Task graph held by a [Workflow].
@@ -44,7 +45,11 @@ type cacheParams struct {
 //
 // planWorkflow returns an error if the provided physical plan does not
 // have exactly one root node, or if the physical plan cannot be partitioned.
-func planWorkflow(tenantID string, plan *physical.Plan, cacheOpts cacheParams, logger log.Logger) (dag.Graph[*Task], error) {
+//
+// The provided context is used only for recording planning-time observations
+// into the xcap region (if any) carried by ctx. Cancellation of ctx does not
+// abort planning.
+func planWorkflow(ctx context.Context, tenantID string, plan *physical.Plan, cacheOpts cacheParams, logger log.Logger) (dag.Graph[*Task], error) {
 	root, err := plan.Root()
 	if err != nil {
 		return dag.Graph[*Task]{}, err
@@ -89,7 +94,7 @@ func planWorkflow(tenantID string, plan *physical.Plan, cacheOpts cacheParams, l
 		if err := injectDataObjScanCaching(tenantID, planner.graph, cacheOpts.dataObjScanMaxSizeBytes, cacheOpts.compression); err != nil {
 			return dag.Graph[*Task]{}, fmt.Errorf("injecting DataObjScan caching: %w", err)
 		}
-		if err := pruneCachedTasks(planner, cacheOpts, logger); err != nil {
+		if err := pruneCachedTasks(ctx, planner, cacheOpts, logger); err != nil {
 			return dag.Graph[*Task]{}, fmt.Errorf("pruning cached tasks: %w", err)
 		}
 	}
@@ -132,10 +137,12 @@ func optimize(t *Task) {
 // also being eliminated, preventing orphaned tasks with dangling Sink streams.
 //
 // Cache fetch errors are non-fatal: the batch is skipped and an error is logged.
-func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) error {
+func pruneCachedTasks(ctx context.Context, p *planner, cacheOpts cacheParams, logger log.Logger) error {
 	if !cacheOpts.pruneEmptyCachedTasks && cacheOpts.nonEmptyCachedTasksMaxBytes == 0 {
 		return nil
 	}
+
+	region := xcap.RegionFromContext(ctx)
 
 	start := time.Now()
 
@@ -150,6 +157,12 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 	}
 	emptyResults, nonEmptyResults := classifyTasksByCacheHit(fetchCtx, keyToTask, backends, logger)
 	fetchDuration := time.Since(fetchStart)
+
+	// Cache-hit counts are recorded regardless of whether the corresponding
+	// tasks end up pruned: they describe the cache lookup result, not the
+	// eventual workflow shape.
+	region.Record(StatNegativeCacheHits.Observe(int64(len(emptyResults))))
+	region.Record(StatPositiveCacheHits.Observe(int64(len(nonEmptyResults))))
 
 	// NOTE: tasks cannot be eliminated inside the walk or fetch loops since
 	// dag.Graph.Eliminate uses slices.DeleteFunc which zeroes the tail of the
@@ -207,6 +220,8 @@ func pruneCachedTasks(p *planner, cacheOpts cacheParams, logger log.Logger) erro
 		tasksRemoved += removed
 	}
 	pruningDuration := time.Since(pruningStart)
+
+	region.Record(StatPrunedTasks.Observe(int64(tasksRemoved)))
 
 	// Log the number of tasks removed. Note that if removed_tasks is bigger than to_eliminate
 	// then, (removed_tasks-to_eliminate) parents were removed because all their children were removed.

@@ -17,7 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -136,7 +135,7 @@ type Workflow struct {
 	capture      *xcap.Capture
 	parentRegion *xcap.Region
 
-	span trace.Span
+	span *xcap.Span
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -152,8 +151,8 @@ type Workflow struct {
 // cannot be partitioned into a Workflow.
 //
 // The provided Runner will be used for Workflow execution.
-func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
-	graph, err := planWorkflow(opts.Tenant, plan, cacheParams{
+func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
+	graph, err := planWorkflow(ctx, opts.Tenant, plan, cacheParams{
 		enabled:                     opts.CacheEnabled,
 		taskCacheMaxSizeBytes:       opts.MaxTaskCacheSize,
 		dataObjScanMaxSizeBytes:     opts.MaxDataObjScanCacheSize,
@@ -197,7 +196,10 @@ func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*
 		taskStates:   make(map[*Task]TaskState),
 		streamStates: make(map[*Stream]StreamState),
 	}
-	if err := wf.init(context.Background()); err != nil {
+	// Detach cancellation from the caller's ctx so a cancellation of the
+	// planning context does not abort the manifest registration, but keep
+	// the xcap region attached for observation recording.
+	if err := wf.init(context.WithoutCancel(ctx)); err != nil {
 		wf.Close()
 		return nil, err
 	}
@@ -379,7 +381,8 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 
 			region.Record(xcap.StatTaskAdmissionWaitDuration.Observe(time.Since(start).Seconds()))
 
-			if err := wf.runner.Start(ctx, tasks[offset:offset+batchSize]...); err != nil {
+			batch := tasks[offset : offset+batchSize]
+			if err := wf.runner.Start(ctx, batch...); err != nil {
 				return fmt.Errorf("failed to start tasks: %w", err)
 			}
 		}

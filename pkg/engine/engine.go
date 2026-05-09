@@ -24,6 +24,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
+	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -645,6 +647,24 @@ func printExecutionSummary(q *query, duration time.Duration) {
 		readBatchDuration, _    = q.capture.Value(statReadBatchDuration).Int64()
 		processBatchDuration, _ = q.capture.Value(statProcessBatchDuration).Int64()
 		otherDuration           = calculateResidual(duration, readBatchDuration, processBatchDuration)
+
+		tasksPruned           = xcap.Value[int64](q.capture, workflow.StatPrunedTasks)
+		tasksPlanned          = xcap.Value[int64](q.capture, scheduler.StatPlannedTasks)
+		tasksQueued           = xcap.Value[int64](q.capture, scheduler.StatQueuedTasks)
+		tasksAssigned         = xcap.Value[int64](q.capture, scheduler.StatAssignedTasks)
+		tasksExecuted         = xcap.Value[int64](q.capture, scheduler.StatExecutedTasks)
+		tasksFailed           = xcap.Value[int64](q.capture, scheduler.StatFailedTasks)
+		tasksCanceledPending  = xcap.Value[int64](q.capture, scheduler.StatCanceledPendingTasks)
+		tasksCanceledQueued   = xcap.Value[int64](q.capture, scheduler.StatCanceledQueuedTasks)
+		tasksCanceledAssigned = xcap.Value[int64](q.capture, scheduler.StatCanceledAssignedTasks)
+		tasksTotal            = tasksPruned + tasksPlanned
+		totalTasksCanceled    = tasksCanceledPending + tasksCanceledQueued + tasksCanceledAssigned
+
+		// tasksExecuted, tasksFailed, and totalTasksCanceled tracks the number
+		// of tasks that reached a terminal state. The remainder from
+		// tasksPlanned determines the number of tasks where information got
+		// lost.
+		tasksUnkownStatus = (tasksPlanned - tasksExecuted - tasksFailed - totalTasksCanceled)
 	)
 
 	level.Info(q.Logger()).Log(
@@ -663,5 +683,22 @@ func printExecutionSummary(q *query, duration time.Duration) {
 			"process_batch": time.Duration(processBatchDuration),
 			"other":         otherDuration,
 		}),
+
+		// Cache information
+		"task_neg_result_cache_hits", xcap.Value[int64](q.capture, workflow.StatNegativeCacheHits),
+		"task_pos_result_cache_hits", xcap.Value[int64](q.capture, workflow.StatPositiveCacheHits),
+
+		// Task fan-out
+		"tasks_total", tasksTotal,
+		"tasks_pruned", tasksPruned,
+		"tasks_planned", tasksPlanned,
+		"tasks_queued", tasksQueued,
+		"tasks_assigned", tasksAssigned,
+		"tasks_executed", tasksExecuted,
+		"tasks_failed", tasksFailed,
+		"tasks_canceled_pending", tasksCanceledPending,
+		"tasks_canceled_queued", tasksCanceledQueued,
+		"tasks_canceled_assigned", tasksCanceledAssigned,
+		"tasks_unknown_status", tasksUnkownStatus,
 	)
 }

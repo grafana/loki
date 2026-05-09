@@ -287,15 +287,22 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 			owner.Unassign(task)
 		}
 
-		if task.status.State == workflow.TaskStateCompleted && !task.assignTime.IsZero() {
-			// The execution time of the task is the duration from when it was
-			// first assigned to when we received the completion status.
-			//
-			// We skip the observation when assignTime is zero, which can happen
-			// when a task completes before we can process the assignment. If we
-			// didn't skip these, we'd record an observation of the maximum
-			// time.Duration value (290 years).
-			s.metrics.taskExecSeconds.Observe(time.Since(task.assignTime).Seconds())
+		switch task.status.State {
+		case workflow.TaskStateCompleted:
+			task.wfRegion.Record(StatExecutedTasks.Observe(1))
+
+			if !task.assignTime.IsZero() {
+				// The execution time of the task is the duration from when it
+				// was first assigned to when we received the completion status.
+				//
+				// We skip the observation when assignTime is zero, which can
+				// happen when a task completes before we can process the
+				// assignment. If we didn't skip these, we'd record an
+				// observation of the maximum time.Duration value (290 years).
+				s.metrics.taskExecSeconds.Observe(time.Since(task.assignTime).Seconds())
+			}
+		case workflow.TaskStateFailed:
+			task.wfRegion.Record(StatFailedTasks.Observe(1))
 		}
 
 		// Notify the handler about the change.
@@ -385,6 +392,10 @@ func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason
 
 		if changed, _ := task.setState(s.metrics, newStatus); !changed {
 			continue
+		}
+
+		if newStatus.State == workflow.TaskStateFailed {
+			task.wfRegion.Record(StatFailedTasks.Observe(1))
 		}
 
 		// We only need to inform the handler about the change. There's nothing
@@ -605,6 +616,7 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		s.metrics.taskQueueSeconds.Observe(queueDuration)
 
 		if t.wfRegion != nil {
+			t.wfRegion.Record(StatAssignedTasks.Observe(1))
 			t.wfRegion.Record(xcap.StatTaskMaxQueueDuration.Observe(queueDuration))
 
 			// Record time from task creation until this task assignment.
@@ -722,7 +734,7 @@ func (s *Scheduler) DialFrom(ctx context.Context, from net.Addr) (wire.Conn, err
 
 // RegisterManifest registers a manifest to use with the scheduler, recording
 // all streams and task inside of it for use.
-func (s *Scheduler) RegisterManifest(_ context.Context, manifest *workflow.Manifest) error {
+func (s *Scheduler) RegisterManifest(ctx context.Context, manifest *workflow.Manifest) error {
 	scope, err := s.registerManifestScope(manifest)
 	if err != nil {
 		return err
@@ -824,6 +836,8 @@ NextTask:
 	// atomically update our internal state.
 	maps.Copy(s.streams, manifestStreams)
 	maps.Copy(s.tasks, manifestTasks)
+
+	xcap.RegionFromContext(ctx).Record(StatPlannedTasks.Observe(int64(len(manifestTasks))))
 	return nil
 }
 
@@ -1023,6 +1037,7 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 	tc.Inject(ctx, propagation.HeaderCarrier(metadata))
 
 	wfRegion := xcap.RegionFromContext(ctx)
+	wfRegion.Record(StatQueuedTasks.Observe(int64(len(tasks))))
 
 	for _, t := range trackedTasks {
 		if t.metadata == nil {
@@ -1125,12 +1140,20 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 
 	var errs []error
 
+	var (
+		obsCanceledPending  = StatCanceledPendingTasks.Observe(1)
+		obsCanceledQueued   = StatCanceledQueuedTasks.Observe(1)
+		obsCanceledAssigned = StatCanceledAssignedTasks.Observe(1)
+	)
+
 	for _, taskToCancel := range tasks {
 		registered, exist := s.tasks[taskToCancel.ULID]
 		if !exist {
 			errs = append(errs, fmt.Errorf("task %s not found", taskToCancel.ULID))
 			continue
 		}
+		region := registered.wfRegion
+		prevState := registered.status.State
 
 		if changed, _ := registered.setState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); changed {
 			// If the task has an owner, we'll inform it that the task has been
@@ -1140,6 +1163,24 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			if owner := registered.owner; owner != nil {
 				owner.Unassign(registered)
 				_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
+			}
+
+			// Record the cancellation against the state the task was in at the
+			// time it was canceled.
+			//
+			// TaskStateCreated maps to the "pending" stat: from the scheduler's
+			// perspective, a task that has been registered via RegisterManifest
+			// but not yet handed off to the queue via Start is pending
+			// execution. The workflow.TaskStatePending value is a stronger
+			// condition (the task is enqueued and waiting for a worker), which
+			// is what we report as "queued".
+			switch prevState {
+			case workflow.TaskStateCreated:
+				region.Record(obsCanceledPending)
+			case workflow.TaskStatePending:
+				region.Record(obsCanceledQueued)
+			case workflow.TaskStateRunning:
+				region.Record(obsCanceledAssigned)
 			}
 
 			// Inform the owner about the change.

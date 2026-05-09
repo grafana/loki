@@ -133,7 +133,7 @@ func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLa
 		DebugTasks:   q.engine.limits.DebugEngineTasks(q.tenantID),
 		DebugStreams: q.engine.limits.DebugEngineStreams(q.tenantID),
 	}
-	wf, err := workflow.New(opts, q.logger, q.engine.scheduler.inner, plan)
+	wf, err := workflow.New(ctx, opts, q.logger, q.engine.scheduler.inner, plan)
 	if err != nil {
 		level.Warn(q.logger).Log("msg", "failed to create workflow", "err", err)
 		q.RecordError(ctx, err)

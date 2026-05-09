@@ -234,3 +234,28 @@ func (c *Capture) Value(stat Statistic) *AggregatedObservation {
 
 	return rolled
 }
+
+// Value gets a typed value from a capture. If the statistic it not present in
+// any region from the capture, or the statistic is not of type T, Value returns
+// the zero value for T.
+//
+// Use [TryValue] if you need to distinguish between a missing statistic and a
+// zero value.
+func Value[T any](c *Capture, stat Statistic) T {
+	v, _ := TryValue[T](c, stat)
+	return v
+}
+
+// TryValue gets a typed value from a capture, returning both the value and a
+// boolean indicating whether the statistic was present in the capture and
+// matching type T.
+func TryValue[T any](c *Capture, stat Statistic) (T, bool) {
+	rolled := c.Value(stat)
+	if rolled == nil {
+		var zero T
+		return zero, false
+	}
+
+	val, ok := rolled.Value.(T)
+	return val, ok
+}
