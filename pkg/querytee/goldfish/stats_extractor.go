@@ -35,6 +35,12 @@ func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64
 	// Extract statistics from the response
 	queryStats := e.extractQueryStats(queryResp.Data.Statistics, duration)
 
+	// Override TotalEntriesReturned with the actual count from the parsed response data.
+	// The stats-based value (stats.Summary.TotalEntriesReturned) is an internal Loki execution
+	// metric that can differ between cells due to different splits, shards, or engine versions,
+	// even when the actual query results are identical.
+	queryStats.TotalEntriesReturned = countResponseEntries(queryResp)
+
 	// Generate response hash for integrity checking (without storing sensitive data)
 	responseHash := e.generateResponseHash(queryResp)
 
@@ -59,6 +65,32 @@ func (e *StatsExtractor) extractQueryStats(statsResult stats.Result, _ int64) go
 		TotalEntriesReturned: statsResult.Summary.TotalEntriesReturned,
 		Splits:               statsResult.Summary.Splits,
 		Shards:               statsResult.Summary.Shards,
+	}
+}
+
+// countResponseEntries counts the actual number of result entries from the parsed response data.
+// This is more reliable than stats.Summary.TotalEntriesReturned, which is an internal execution
+// metric that can vary between backends for the same result set.
+func countResponseEntries(resp loghttp.QueryResponse) int64 {
+	switch result := resp.Data.Result.(type) {
+	case loghttp.Streams:
+		var count int64
+		for _, stream := range result {
+			count += int64(len(stream.Entries))
+		}
+		return count
+	case loghttp.Vector:
+		return int64(len(result))
+	case loghttp.Matrix:
+		var count int64
+		for _, series := range result {
+			count += int64(len(series.Values)) + int64(len(series.Histograms))
+		}
+		return count
+	case loghttp.Scalar:
+		return 1
+	default:
+		return 0
 	}
 }
 
