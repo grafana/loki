@@ -1,6 +1,5 @@
 /*
- *
- * Copyright 2018 gRPC authors.
+ * Copyright 2026 gRPC authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +15,11 @@
  *
  */
 
-package grpc
+// Package internal contains code internal to the clusterimpl package.
+package internal
 
-// Version is the current grpc version.
-const Version = "1.81.0"
+import "crypto/x509"
+
+// X509SystemCertPoolFunc is used for overriding the system cert pool for
+// tests.
+var X509SystemCertPoolFunc = x509.SystemCertPool
