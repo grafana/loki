@@ -84,10 +84,15 @@ func newQueue(
 
 	tasksQueue := queue.NewRequestQueue(cfg.MaxQueuedTasksPerTenant, 0, limits, metrics)
 
-	// Clean metrics for inactive users: do not have touched the queue in the last activeUsersInactiveTimeout.
-	// Both Enqueue and Dequeue/Release refresh the user's timestamp so that an in-flight backlog being drained
-	// by builders keeps the gauge series alive even when no new tasks are enqueued for a while.
-	activeUsers := util.NewActiveUsersCleanupService(activeUsersCleanupInterval, activeUsersInactiveTimeout, func(user string) {
+	// Re-register the user when the queue is non-empty: PurgeInactiveUsers has already
+	// removed it from its tracking map by the time this callback runs, so without this
+	// the metrics would never be cleaned up once the backlog drains.
+	var activeUsers *util.ActiveUsersCleanupService
+	activeUsers = util.NewActiveUsersCleanupService(activeUsersCleanupInterval, activeUsersInactiveTimeout, func(user string) {
+		if tasksQueue.GetUserQueueLength(user) > 0 {
+			activeUsers.UpdateUserTimestamp(user, time.Now())
+			return
+		}
 		metrics.Cleanup(user)
 	})
 
@@ -216,7 +221,6 @@ func (q *Queue) Dequeue(ctx context.Context, last Index, consumerID string) (*pr
 
 	if !q.cfg.StoreTasksOnDisk {
 		val := item.(metaWithTask)
-		q.activeUsers.UpdateUserTimestamp(val.task.Tenant, time.Now())
 		return val.task, val.metadata, idx, nil
 	}
 
@@ -227,7 +231,6 @@ func (q *Queue) Dequeue(ctx context.Context, last Index, consumerID string) (*pr
 		return nil, nil, idx, err
 	}
 
-	q.activeUsers.UpdateUserTimestamp(task.Tenant, time.Now())
 	return task, meta.metadata, idx, nil
 }
 
@@ -239,8 +242,6 @@ func (q *Queue) Release(task *protos.ProtoTask) {
 		// Task doesn't exist, so it's not in the FS
 		return
 	}
-
-	q.activeUsers.UpdateUserTimestamp(task.Tenant, time.Now())
 
 	if !q.cfg.StoreTasksOnDisk {
 		return

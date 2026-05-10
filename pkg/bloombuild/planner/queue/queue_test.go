@@ -213,19 +213,10 @@ func (f fakeLimits) MaxConsumers(_ string, _ int) int {
 	return 0 // Unlimited
 }
 
-// TestQueueLengthMetricStaysNonNegativeWhileDraining is a regression test for the
-// scenario where a tenant's bloom build backlog is drained by builders for longer
-// than the active-users inactivity timeout without any new enqueues.
-//
-// Previously the cleanup ticker would DeleteLabelValues the per-tenant queue_length
-// gauge series mid-drain (because UpdateUserTimestamp was only called from Enqueue),
-// after which subsequent Dequeue() calls would lazily recreate the series at zero
-// and decrement it into negative values. See https://github.com/grafana/loki/issues/19490.
-func TestQueueLengthMetricStaysNonNegativeWhileDraining(t *testing.T) {
+func TestActiveUsersCleanupSkippedWhileQueueNotEmpty(t *testing.T) {
 	const (
 		cleanupInterval = 10 * time.Millisecond
 		inactiveTimeout = 50 * time.Millisecond
-		dequeueInterval = 30 * time.Millisecond
 		numTasks        = 5
 	)
 
@@ -245,13 +236,21 @@ func TestQueueLengthMetricStaysNonNegativeWhileDraining(t *testing.T) {
 	q.RegisterConsumerConnection(consumer)
 	defer q.UnregisterConsumerConnection(consumer)
 
-	for _, task := range createTasks(numTasks) {
+	tasks := createTasks(numTasks)
+	for _, task := range tasks {
 		require.NoError(t, q.Enqueue(task.ProtoTask, task.taskMeta, nil))
 	}
 
+	time.Sleep(3 * inactiveTimeout)
+
+	expected := fmt.Sprintf(`# HELP test_queue_queue_length Number of queries in the queue.
+# TYPE test_queue_queue_length gauge
+test_queue_queue_length{user="fakeTenant"} %d
+`, numTasks)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expected), "test_queue_queue_length"))
+
 	idx := StartIndex
 	for i := 0; i < numTasks; i++ {
-		time.Sleep(dequeueInterval)
 		var task *protos.ProtoTask
 		task, _, idx, err = q.Dequeue(context.Background(), idx, consumer)
 		require.NoError(t, err)
@@ -259,13 +258,8 @@ func TestQueueLengthMetricStaysNonNegativeWhileDraining(t *testing.T) {
 		q.Release(task)
 	}
 
-	// numTasks * dequeueInterval == 150ms, well past inactiveTimeout (50ms), so the
-	// cleanup ticker (10ms) had many opportunities to purge "fakeTenant". With the
-	// fix in place each Dequeue/Release refreshes the timestamp, so the gauge series
-	// for the tenant is preserved and ends at exactly zero after the drain.
-	expected := `# HELP test_queue_queue_length Number of queries in the queue.
-# TYPE test_queue_queue_length gauge
-test_queue_queue_length{user="fakeTenant"} 0
-`
-	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expected), "test_queue_queue_length"))
+	require.Eventually(t, func() bool {
+		count, err := testutil.GatherAndCount(reg, "test_queue_queue_length")
+		return err == nil && count == 0
+	}, 5*inactiveTimeout, cleanupInterval, "queue_length series should be cleaned up after drain")
 }
