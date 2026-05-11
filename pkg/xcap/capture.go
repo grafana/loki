@@ -140,6 +140,28 @@ func (c *Capture) LinkParent(parent *Region) {
 	}
 }
 
+// Merge incorporates all regions from src into c. If parent is non-nil, the
+// root regions of src are re-parented onto it before being added to c,
+// preserving the parent/child relationships when src's data is presented as
+// part of c's hierarchy.
+//
+// Regions are shared by reference between c and src after Merge returns.
+//
+// Merge is a no-op if c or src is nil, or if c has already been ended.
+func (c *Capture) Merge(parent *Region, src *Capture) {
+	if c == nil || src == nil {
+		return
+	}
+
+	if parent != nil {
+		src.LinkParent(parent)
+	}
+
+	for _, region := range src.Regions() {
+		c.AddRegion(region)
+	}
+}
+
 // getAllStatistics returns statistics used across all regions
 // in this capture.
 func (c *Capture) getAllStatistics() map[StatisticKey]Statistic {

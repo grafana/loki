@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -302,8 +303,8 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	span.End()
 	q.Close()
 
-	// TODO(rfratto): capture and report queue time
-	stats := q.capture.ToStatsSummary(q.Duration(), 0, builder.Len())
+	totalQueueTime := xcap.Value[int64](q.capture, schedulerstat.TaskQueueDuration)
+	stats := q.capture.ToStatsSummary(q.Duration(), time.Duration(totalQueueTime), builder.Len())
 	result := builder.Build(stats, metadata.FromContext(ctx))
 	return result, nil
 }

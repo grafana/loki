@@ -38,6 +38,19 @@ type task struct {
 	// non-terminal task.
 	interrupted bool
 
+	// capture holds individual task information from any source:
+	//
+	//   - The scheduler records its own per-task observations (e.g., timing
+	//     between state transitions) into capture.
+	//   - Worker-supplied captures are merged into this capture when their
+	//     TaskStatusMessages arrive, so workflow consumers see a single
+	//     unified capture per task.
+	//
+	// capture is distinct from wfRegion: wfRegion is used for workflow-level
+	// aggregate counters (e.g., StatPlannedTasks), while capture is the
+	// container for per-task data.
+	capture *xcap.Capture
+
 	// wfRegion is the region associated with the parent workflow of this task.
 	wfRegion        *xcap.Region
 	runtimeTraceCtx context.Context

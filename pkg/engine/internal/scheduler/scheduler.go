@@ -309,11 +309,20 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 			task.wfRegion.Record(StatFailedTasks.Observe(1))
 		}
 
+		// Terminal states may include a capture from the worker; if so, we want
+		// to roll these up into our own per-task capture to give the event
+		// handler full visibility into the task's execution.
+		notifyStatus := msg.Status
+		if notifyStatus.State.Terminal() {
+			task.capture.Merge(nil, notifyStatus.Capture)
+			notifyStatus.Capture = task.capture
+		}
+
 		// Notify the handler about the change.
 		n.AddTaskEvent(taskNotification{
 			Handler:   task.handler,
 			Task:      task.inner,
-			NewStatus: msg.Status,
+			NewStatus: notifyStatus,
 		})
 	}
 	return nil
@@ -390,20 +399,20 @@ func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason
 		wasInterrupted := task.interrupted
 		worker.Unassign(task)
 
-		var newStatus workflow.TaskStatus
+		// Even though the worker disconnected we still have some stats about
+		// the task that the handler may be interested in.
+		newStatus := workflow.TaskStatus{Capture: task.capture}
 		switch {
 		case wasInterrupted:
-			// Cancellation had already been requested for this task. Honor
-			// that intent regardless of whether the worker disconnected
-			// cleanly or with an error.
-			newStatus = workflow.TaskStatus{State: workflow.TaskStateCancelled}
+			// Cancellation had already been requested for this task. Honor that
+			// intent regardless of whether the worker disconnected cleanly or
+			// with an error.
+			newStatus.State = workflow.TaskStateCancelled
 		case reason != nil:
-			newStatus = workflow.TaskStatus{
-				State: workflow.TaskStateFailed,
-				Error: reason,
-			}
+			newStatus.State = workflow.TaskStateFailed
+			newStatus.Error = reason
 		default:
-			newStatus = workflow.TaskStatus{State: workflow.TaskStateCancelled}
+			newStatus.State = workflow.TaskStateCancelled
 		}
 
 		if changed, _ := task.setState(s.metrics, newStatus); !changed {
@@ -834,11 +843,17 @@ NextTask:
 			}
 		}
 
+		// We create a fresh [xcap.Capture] for each task to generate per-task
+		// observations. This will be merged with a capture received by the
+		// worker upon receiving a terminal state.
+		_, taskCapture := xcap.NewCapture(ctx, nil)
+
 		manifestTasks[taskToAdd.ULID] = &task{
 			createTime: time.Now(),
 			scope:      scope,
 			inner:      taskToAdd,
 			handler:    manifest.TaskEventHandler,
+			capture:    taskCapture,
 		}
 	}
 
@@ -1222,11 +1237,15 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 				region.Record(obsCanceledQueued)
 			}
 
-			// Inform the owner about the change.
+			// Inform the owner about the change. Attach the per-task capture so
+			// the workflow consumer can read scheduler-side observations even for
+			// tasks that never reached a worker.
+			notifyStatus := registered.status
+			notifyStatus.Capture = registered.capture
 			n.AddTaskEvent(taskNotification{
 				Handler:   registered.handler,
 				Task:      taskToCancel,
-				NewStatus: registered.status,
+				NewStatus: notifyStatus,
 			})
 		}
 

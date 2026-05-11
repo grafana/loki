@@ -119,6 +119,101 @@ func TestCapture_AddRegion(t *testing.T) {
 	}
 }
 
+func TestCapture_Merge(t *testing.T) {
+	t.Run("merges all regions from src into dst", func(t *testing.T) {
+		ctxDst, dst := NewCapture(context.Background(), nil)
+		ctxSrc, src := NewCapture(context.Background(), nil)
+
+		_, _ = StartRegion(ctxDst, "dst-region")
+		_, _ = StartRegion(ctxSrc, "src-region-1")
+		_, _ = StartRegion(ctxSrc, "src-region-2")
+
+		dst.Merge(nil, src)
+
+		regions := dst.Regions()
+		got := make([]string, 0, len(regions))
+		for _, r := range regions {
+			got = append(got, r.name)
+		}
+		require.ElementsMatch(t, []string{"dst-region", "src-region-1", "src-region-2"}, got)
+	})
+
+	t.Run("re-parents src root regions when parent is provided", func(t *testing.T) {
+		ctxDst, dst := NewCapture(context.Background(), nil)
+		_, dstParent := StartRegion(ctxDst, "dst-parent")
+
+		ctxSrc, src := NewCapture(context.Background(), nil)
+		_, srcRoot := StartRegion(ctxSrc, "src-root")
+
+		require.True(t, srcRoot.parentID.IsZero(), "src root should have no parent before merge")
+
+		dst.Merge(dstParent, src)
+
+		require.Equal(t, dstParent.id, srcRoot.parentID, "src root should be re-parented onto dstParent")
+	})
+
+	t.Run("does not change parent for src non-root regions", func(t *testing.T) {
+		ctxDst, dst := NewCapture(context.Background(), nil)
+		_, dstParent := StartRegion(ctxDst, "dst-parent")
+
+		ctxSrc, src := NewCapture(context.Background(), nil)
+		ctxSrcRoot, srcRoot := StartRegion(ctxSrc, "src-root")
+		_, srcChild := StartRegion(ctxSrcRoot, "src-child")
+
+		require.Equal(t, srcRoot.id, srcChild.parentID, "src-child should be parented to src-root before merge")
+
+		dst.Merge(dstParent, src)
+
+		require.Equal(t, dstParent.id, srcRoot.parentID, "src-root should be re-parented onto dstParent")
+		require.Equal(t, srcRoot.id, srcChild.parentID, "src-child should keep its original parent (src-root)")
+	})
+
+	t.Run("observations roll up across merged regions", func(t *testing.T) {
+		stat := NewStatisticInt64("merged.value", AggregationTypeSum)
+
+		ctxDst, dst := NewCapture(context.Background(), nil)
+		_, dstRegion := StartRegion(ctxDst, "dst-region")
+		dstRegion.Record(stat.Observe(10))
+		dstRegion.End()
+
+		ctxSrc, src := NewCapture(context.Background(), nil)
+		_, srcRegion := StartRegion(ctxSrc, "src-region")
+		srcRegion.Record(stat.Observe(7))
+		srcRegion.End()
+
+		dst.Merge(nil, src)
+
+		value, ok := TryValue[int64](dst, stat)
+		require.True(t, ok)
+		require.Equal(t, int64(17), value, "dst should observe sum of both captures' regions after merge")
+	})
+
+	t.Run("nil src is a no-op", func(t *testing.T) {
+		ctxDst, dst := NewCapture(context.Background(), nil)
+		_, _ = StartRegion(ctxDst, "dst-region")
+
+		require.NotPanics(t, func() { dst.Merge(nil, nil) })
+		require.Len(t, dst.Regions(), 1)
+	})
+
+	t.Run("nil receiver is a no-op", func(t *testing.T) {
+		_, src := NewCapture(context.Background(), nil)
+		var dst *Capture
+		require.NotPanics(t, func() { dst.Merge(nil, src) })
+	})
+
+	t.Run("merge into ended capture does not add regions", func(t *testing.T) {
+		_, dst := NewCapture(context.Background(), nil)
+		dst.End()
+
+		ctxSrc, src := NewCapture(context.Background(), nil)
+		_, _ = StartRegion(ctxSrc, "src-region")
+
+		dst.Merge(nil, src)
+		require.Empty(t, dst.Regions(), "ended dst should not absorb new regions")
+	})
+}
+
 func TestCapture_Value(t *testing.T) {
 	tests := []struct {
 		name      string
