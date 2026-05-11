@@ -1,4 +1,4 @@
-# This file should contain a list fo deleted config options.
+# This file should contain a list of deleted config options.
 #
 # The syntax for this file is the same as the syntax for deprecated-config.yaml.
 
@@ -19,16 +19,49 @@ frontend_worker:
 
 common:
   storage:
-    s3: &s3_deletes
+    s3:
       sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
     filesystem:
       admin_api_directory: "Removed in 3.5.0. This field is no longer supported or recognized by Loki."
 
 ruler:
   storage:
-    s3: *s3_deletes
+    s3:
+      sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
+
+schema_config:
+  configs:
+    store:
+      _values:
+        [
+          "aws",
+          "aws-dynamo",
+          "gcp",
+          "gcp-columnkey",
+          "bigtable",
+          "bigtable-hashed",
+          "cassandra",
+          "grpc",
+        ]
+      _msg: "Use tsdb or boltdb-shipper instead."
+    object_store:
+      _values:
+        [
+          "aws-dynamo",
+          "gcp",
+          "gcp-columnkey",
+          "bigtable",
+          "bigtable-hashed",
+          "cassandra",
+          "grpc",
+        ]
+      _msg: "Use a different supported object storage instead."
 
 storage_config:
+  bigtable: "Support for Bigtable is removed."
+  cassandra: "Support for Cassandra is removed."
+  boltdb: "Support for BoltDB is removed."
+  grpc_store: "Support for gRPC store is removed."
   boltdb_shipper:
     shared_store: "object_store setting in the period_config will be used to configure the store for the index."
     shared_store_key_prefix: "Path prefix for storing the index can now be configured by setting path_prefix under index key in period_config."
@@ -36,8 +69,11 @@ storage_config:
   tsdb_shipper:
     shared_store: "object_store setting in the period_config will be used to configure the store for the index."
     shared_store_key_prefix: "Path prefix for storing the index can now be configured by setting path_prefix under index key in period_config."
-  aws: *s3_deletes
-  s3: *s3_deletes
+  aws:
+    sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
+    dynamodb: "Support for DynamoDB is removed."
+  s3:
+    sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
 
 compactor:
   deletion_mode: "Use global or per-tenant deletion_mode configuration from limits_config."
