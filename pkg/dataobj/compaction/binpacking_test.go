@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"hash/fnv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,16 +31,9 @@ func newMockSizerWithHash(id string, size int64, hash uint64) *mockSizer {
 
 // hashID computes a stable 64-bit FNV-1a hash of a string for tests.
 func hashID(s string) uint64 {
-	const (
-		offset64 uint64 = 14695981039346656037
-		prime64  uint64 = 1099511628211
-	)
-	h := offset64
-	for i := 0; i < len(s); i++ {
-		h ^= uint64(s[i])
-		h *= prime64
-	}
-	return h
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(s))
+	return h.Sum64()
 }
 
 // Helper to get total size of bins
@@ -334,6 +328,11 @@ func TestMergeUnderfilledBins(t *testing.T) {
 	})
 }
 
+// TestBinPack_Deterministic verifies that BinPack's initial group sort
+// (size desc, LabelsHash asc) produces identical bins across input shuffles.
+// The 12 groups in this fixture pack to exactly 3 bins at 100% fill, which
+// causes mergeUnderfilledBins to fast-path out — determinism of the
+// merge-step sorts is covered separately by TestMergeUnderfilledBins_Deterministic.
 func TestBinPack_Deterministic(t *testing.T) {
 	// Build 12 equal-size groups whose total comfortably exceeds one bin so
 	// BinPack must distribute them across multiple bins. Each group has a
@@ -381,6 +380,63 @@ func TestBinPack_Deterministic(t *testing.T) {
 				binsA[i].Groups[j].GetLabelsHash(),
 				binsB[i].Groups[j].GetLabelsHash(),
 				"bin %d position %d differs across shuffles", i, j)
+		}
+	}
+}
+
+func TestMergeUnderfilledBins_Deterministic(t *testing.T) {
+	// Five hand-crafted underfilled bins. Three pairs of equal-size bins
+	// exercise the outer-sort tiebreaker (A/B/C at 25%, D/E at 50%); after
+	// the first merge consumes one of the 50% bins, the remaining bins still
+	// contain a tie (B & C at 25%), exercising the inner re-sort tiebreaker.
+	//
+	// minDesiredSize = targetUncompressedSize * 70 / 100 = 70%.
+	// All input bins are below 70% → every bin is underfilled.
+
+	const q = targetUncompressedSize / 100 // 1% of target, used as size unit
+
+	// Use newMockSizerWithHash so we control the tiebreaker key exactly.
+	makeBins := func() []BinPackResult[*mockSizer] {
+		a := newMockSizerWithHash("a", 25*q, 10)
+		b := newMockSizerWithHash("b", 25*q, 20)
+		c := newMockSizerWithHash("c", 25*q, 30)
+		d := newMockSizerWithHash("d", 50*q, 40)
+		e := newMockSizerWithHash("e", 50*q, 50)
+		return []BinPackResult[*mockSizer]{
+			{Groups: []*mockSizer{a}, Size: 25 * q},
+			{Groups: []*mockSizer{b}, Size: 25 * q},
+			{Groups: []*mockSizer{c}, Size: 25 * q},
+			{Groups: []*mockSizer{d}, Size: 50 * q},
+			{Groups: []*mockSizer{e}, Size: 50 * q},
+		}
+	}
+
+	// Two distinct permutations of the same 5 bins.
+	permute := func(bins []BinPackResult[*mockSizer], order []int) []BinPackResult[*mockSizer] {
+		out := make([]BinPackResult[*mockSizer], len(order))
+		for dst, src := range order {
+			out[dst] = bins[src]
+		}
+		return out
+	}
+
+	orderA := []int{0, 1, 2, 3, 4}
+	orderB := []int{4, 2, 0, 3, 1}
+
+	resultA := mergeUnderfilledBins(permute(makeBins(), orderA))
+	resultB := mergeUnderfilledBins(permute(makeBins(), orderB))
+
+	require.Equal(t, len(resultA), len(resultB), "bin count differs across input permutations")
+	for i := range resultA {
+		require.Equal(t, resultA[i].Size, resultB[i].Size,
+			"bin %d size differs across permutations", i)
+		require.Equal(t, len(resultA[i].Groups), len(resultB[i].Groups),
+			"bin %d group count differs across permutations", i)
+		for j := range resultA[i].Groups {
+			require.Equal(t, resultA[i].Groups[j].id, resultB[i].Groups[j].id,
+				"bin %d position %d differs across permutations", i, j)
+			require.Equal(t, resultA[i].Groups[j].GetLabelsHash(), resultB[i].Groups[j].GetLabelsHash(),
+				"bin %d position %d hash differs across permutations", i, j)
 		}
 	}
 }
