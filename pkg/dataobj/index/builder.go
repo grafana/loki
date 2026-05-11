@@ -93,7 +93,6 @@ type Builder struct {
 
 	// Kafka client and topic/partition info
 	client kafkaClient
-	topic  string
 
 	// Indexer handles all index building
 	indexer indexer

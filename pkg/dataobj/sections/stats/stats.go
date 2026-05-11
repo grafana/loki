@@ -4,17 +4,79 @@
 package stats
 
 import (
-	"context"
+	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // sectionType identifies stats sections in a data object (unexported, matching existing convention).
 var sectionType = dataobj.SectionType{
 	Namespace: "github.com/grafana/loki",
 	Kind:      "stats",
-	Version:   1,
+	Version:   columnar.FormatVersion,
+}
+
+// ColumnType identifies the type of a column in the stats section.
+type ColumnType int
+
+const (
+	ColumnTypeInvalid          ColumnType = iota // ColumnTypeInvalid is an invalid column type.
+	ColumnTypeObjectPath                         // "object_path"
+	ColumnTypeSectionIndex                       // "section_index"
+	ColumnTypeSortSchema                         // "sort_schema"
+	ColumnTypeMinTimestamp                       // "min_timestamp"
+	ColumnTypeMaxTimestamp                       // "max_timestamp"
+	ColumnTypeRowCount                           // "row_count"
+	ColumnTypeUncompressedSize                   // "uncompressed_size"
+	ColumnTypeLabel                              // "label" — dynamic; tag carries label name
+)
+
+var columnTypeNames = map[ColumnType]string{
+	ColumnTypeInvalid:          "invalid",
+	ColumnTypeObjectPath:       "object_path",
+	ColumnTypeSectionIndex:     "section_index",
+	ColumnTypeSortSchema:       "sort_schema",
+	ColumnTypeMinTimestamp:     "min_timestamp",
+	ColumnTypeMaxTimestamp:     "max_timestamp",
+	ColumnTypeRowCount:         "row_count",
+	ColumnTypeUncompressedSize: "uncompressed_size",
+	ColumnTypeLabel:            "label",
+}
+
+// ParseColumnType parses a [ColumnType] from a string. The expected string
+// format is the same as what's returned by [ColumnType.String].
+func ParseColumnType(text string) (ColumnType, error) {
+	switch text {
+	case "invalid":
+		return ColumnTypeInvalid, nil
+	case "object_path":
+		return ColumnTypeObjectPath, nil
+	case "section_index":
+		return ColumnTypeSectionIndex, nil
+	case "sort_schema":
+		return ColumnTypeSortSchema, nil
+	case "min_timestamp":
+		return ColumnTypeMinTimestamp, nil
+	case "max_timestamp":
+		return ColumnTypeMaxTimestamp, nil
+	case "row_count":
+		return ColumnTypeRowCount, nil
+	case "uncompressed_size":
+		return ColumnTypeUncompressedSize, nil
+	case "label":
+		return ColumnTypeLabel, nil
+	}
+	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
+}
+
+// String returns the human-readable name of [ct].
+func (ct ColumnType) String() string {
+	text, ok := columnTypeNames[ct]
+	if !ok {
+		return fmt.Sprintf("ColumnType(%d)", ct)
+	}
+	return text
 }
 
 // CheckSection returns true if the section is a stats section.
@@ -34,22 +96,5 @@ type Stat struct {
 	UncompressedSize int64
 }
 
-// ColumnReader reads batches of columnar values from a single column.
-type ColumnReader interface {
-	// Read reads up to count values. Returns columnar.Array and any error.
-	// Returns io.EOF when no more data is available.
-	Read(ctx context.Context, count int) (columnar.Array, error)
-	Close() error
-}
-
-// Section holds encoded column data for one flushed stats section.
-type Section struct {
-	ColumnNames []string
-	RowCount    int
-	// OpenColumn returns a ColumnReader for the named column.
-	// Returns an error if the column is not found.
-	OpenColumn func(name string) (ColumnReader, error)
-}
-
-// SectionEncoder encodes a batch of sorted Stat rows into a Section.
-type SectionEncoder func(ctx context.Context, rows []Stat) (Section, error)
+// SectionEncoder encodes a batch of sorted Stat rows into a columnar encoder.
+type SectionEncoder func(rows []Stat, enc *columnar.Encoder) error

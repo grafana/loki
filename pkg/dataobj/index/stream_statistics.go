@@ -13,7 +13,12 @@ type streamStatisticsCalculation struct{}
 
 func (c *streamStatisticsCalculation) Name() string { return "stream_statistics" }
 
-func (c *streamStatisticsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
+// ProcessBatchNeedsBuilderLock reports whether ProcessBatch mutates the shared
+// builder. Stream statistics calls builder.ObserveLogLine per row, so it must
+// run under the builder lock.
+func (c *streamStatisticsCalculation) ProcessBatchNeedsBuilderLock() bool { return true }
+
+func (c *streamStatisticsCalculation) Prepare(_ context.Context, _ *logsCalculationContext, _ *dataobj.Section, _ logs.Stats) error {
 	return nil
 }
 

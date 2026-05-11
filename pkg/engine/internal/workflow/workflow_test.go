@@ -10,7 +10,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
@@ -82,7 +81,7 @@ func Test(t *testing.T) {
 		require.NotNil(t, rs.Listener, "results stream should have a listener")
 
 		// Check to make sure all known tasks have been given to the runner.
-		for _, task := range wf.allTasks() {
+		for _, task := range wf.AllTasks() {
 			_, exist := fr.tasks[task.ULID]
 			require.True(t, exist, "workflow should give all tasks to runner (task %s is missing)", task.ULID)
 		}
@@ -330,7 +329,7 @@ func TestAdmissionControl(t *testing.T) {
 		require.Equal(t, opts.MaxRunningScanTasks+1, len(wf.taskStates), "expected all tasks up to batch to be enqueued") // 32 scan tasks + 1 other task
 
 		// Simulate scan tasks being completed
-		for _, task := range wf.allTasks() {
+		for _, task := range wf.AllTasks() {
 			if !isScanTask(task) {
 				continue
 			}
@@ -471,9 +470,7 @@ func (f *fakeRunner) Start(ctx context.Context, tasks ...*Task) error {
 
 	for _, task := range tasks {
 		f.tasksMtx.Lock()
-		var (
-			rt, exist = f.tasks[task.ULID]
-		)
+		rt, exist := f.tasks[task.ULID]
 		f.tasksMtx.Unlock()
 
 		if !exist {
@@ -496,9 +493,7 @@ func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
 
 	for _, task := range tasks {
 		f.tasksMtx.RLock()
-		var (
-			rt, exist = f.tasks[task.ULID]
-		)
+		rt, exist := f.tasks[task.ULID]
 		f.tasksMtx.RUnlock()
 
 		if !exist {
@@ -533,14 +528,3 @@ type runnerTask struct {
 	task    *Task
 	handler TaskEventHandler
 }
-
-type noopPipeline struct{}
-
-func (noopPipeline) Open(context.Context) error { return nil }
-
-func (noopPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	<-ctx.Done()
-	return nil, ctx.Err()
-}
-
-func (noopPipeline) Close() {}

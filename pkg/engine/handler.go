@@ -575,7 +575,7 @@ func emptyResult(ctx context.Context, params logql.Params) (logqlmodel.Result, e
 	}
 
 	md := metadata.FromContext(ctx)
-	md.AddWarning("Query was executed using the new experimental query engine.")
+	md.AddWarning("Query was executed using the next-generation Loki query engine.")
 
 	return logqlmodel.Result{
 		Data:     data,

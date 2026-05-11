@@ -10,7 +10,7 @@ local setupValidationDeps = function(job) job {
     common.fixDubiousOwnership,
     step.new('install dependencies')
     + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
-    + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
+    + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release loki-build-tools'),
     step.new('install tar')
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.withRun(|||
@@ -183,14 +183,17 @@ local validationJob = _validationJob(false);
 
   lintFiles: setupValidationDeps(
     validationJob
+    + job.withEnv({
+      GIT_TARGET_BRANCH: '${{ vars.GIT_TARGET_BRANCH }}',
+    })
     + job.withSteps(
       [
         validationMakeStep('lint scripts', 'lint-scripts'),
         step.new('check format')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.withRun(|||
-          git fetch origin
-          make check-format
+          git fetch https://github.com/grafana/loki.git main:refs/remotes/origin/${GIT_TARGET_BRANCH:-main}
+          GIT_TARGET_BRANCH="${GIT_TARGET_BRANCH:-main}" make check-format
         |||)
         + step.withWorkingDirectory('release'),
       ]
