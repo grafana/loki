@@ -10,13 +10,36 @@ import (
 type mockSizer struct {
 	size int64
 	id   string
+	hash uint64
 }
 
-func (m *mockSizer) GetSize() int64 { return m.size }
+func (m *mockSizer) GetSize() int64        { return m.size }
+func (m *mockSizer) GetLabelsHash() uint64 { return m.hash }
 
-// Helper to create mock sizers
+// newMockSizer creates a mock sizer. The hash defaults to a stable FNV-style hash
+// of the id so existing tests get a deterministic tiebreaker without rewrites.
 func newMockSizer(id string, size int64) *mockSizer {
-	return &mockSizer{id: id, size: size}
+	return &mockSizer{id: id, size: size, hash: hashID(id)}
+}
+
+// newMockSizerWithHash creates a mock sizer with an explicit hash, used by
+// determinism tests where the hash must be controlled directly.
+func newMockSizerWithHash(id string, size int64, hash uint64) *mockSizer {
+	return &mockSizer{id: id, size: size, hash: hash}
+}
+
+// hashID computes a stable 64-bit FNV-1a hash of a string for tests.
+func hashID(s string) uint64 {
+	const (
+		offset64 uint64 = 14695981039346656037
+		prime64  uint64 = 1099511628211
+	)
+	h := offset64
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= prime64
+	}
+	return h
 }
 
 // Helper to get total size of bins
@@ -309,4 +332,55 @@ func TestMergeUnderfilledBins(t *testing.T) {
 
 		require.Equal(t, inputCount, outputCount)
 	})
+}
+
+func TestBinPack_Deterministic(t *testing.T) {
+	// Build 12 equal-size groups whose total comfortably exceeds one bin so
+	// BinPack must distribute them across multiple bins. Each group has a
+	// distinct LabelsHash so the tiebreaker is well-defined.
+	const groupSize = targetUncompressedSize / 4 // 25% each → 3 groups per bin
+	const numGroups = 12
+
+	makeGroups := func() []*mockSizer {
+		groups := make([]*mockSizer, numGroups)
+		for i := 0; i < numGroups; i++ {
+			groups[i] = newMockSizerWithHash(
+				/* id */ "g"+string(rune('a'+i)),
+				/* size */ groupSize,
+				/* hash */ uint64(i+1),
+			)
+		}
+		return groups
+	}
+
+	// Two different deterministic permutations of the same input.
+	shuffleA := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+	shuffleB := []int{11, 7, 3, 9, 0, 5, 2, 10, 4, 8, 1, 6}
+
+	apply := func(order []int) []*mockSizer {
+		src := makeGroups()
+		out := make([]*mockSizer, len(order))
+		for dst, srcIdx := range order {
+			out[dst] = src[srcIdx]
+		}
+		return out
+	}
+
+	binsA := BinPack(apply(shuffleA))
+	binsB := BinPack(apply(shuffleB))
+
+	require.Equal(t, len(binsA), len(binsB), "different bin counts across shuffles")
+
+	for i := range binsA {
+		require.Equal(t, binsA[i].Size, binsB[i].Size,
+			"bin %d size differs across shuffles", i)
+		require.Equal(t, len(binsA[i].Groups), len(binsB[i].Groups),
+			"bin %d group count differs across shuffles", i)
+		for j := range binsA[i].Groups {
+			require.Equal(t,
+				binsA[i].Groups[j].GetLabelsHash(),
+				binsB[i].Groups[j].GetLabelsHash(),
+				"bin %d position %d differs across shuffles", i, j)
+		}
+	}
 }

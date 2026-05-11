@@ -95,10 +95,17 @@ type StreamGroup struct {
 	Streams []*compactionpb.Stream
 	// TotalUncompressedSize is the sum of uncompressed sizes across all streams.
 	TotalUncompressedSize int64
+	// LabelsHash is the stable hash of the stream labels. Used as a deterministic
+	// tiebreaker by the bin-packing algorithm so equal-size groups produce identical
+	// bin assignments across runs.
+	LabelsHash uint64
 }
 
 // GetSize implements Sizer interface for bin-packing.
 func (g *StreamGroup) GetSize() int64 { return g.TotalUncompressedSize }
+
+// GetLabelsHash implements Sizer interface for bin-packing.
+func (g *StreamGroup) GetLabelsHash() uint64 { return g.LabelsHash }
 
 // StreamInfo represents aggregated stream information from an index object.
 type StreamInfo struct {
@@ -126,10 +133,17 @@ type LeftoverPlan struct {
 type LeftoverStreamGroup struct {
 	Streams               []*compactionpb.TenantStream
 	TotalUncompressedSize int64
+	// LabelsHash is the stable hash of the stream labels. Used as a deterministic
+	// tiebreaker by the bin-packing algorithm so equal-size groups produce identical
+	// bin assignments across runs.
+	LabelsHash uint64
 }
 
 // GetSize implements Sizer interface for bin-packing.
 func (g *LeftoverStreamGroup) GetSize() int64 { return g.TotalUncompressedSize }
+
+// GetLabelsHash implements Sizer interface for bin-packing.
+func (g *LeftoverStreamGroup) GetLabelsHash() uint64 { return g.LabelsHash }
 
 // LeftoverStreamInfo represents a stream's leftover data outside the compaction window.
 type LeftoverStreamInfo struct {
@@ -294,7 +308,7 @@ func (s *Planner) collectStreams(ctx context.Context, tenant string, indexes []I
 			for _, info := range result.LeftoverBeforeStreams {
 				group, ok := leftoverBeforeMap[info.LabelsHash]
 				if !ok {
-					group = &LeftoverStreamGroup{}
+					group = &LeftoverStreamGroup{LabelsHash: info.LabelsHash}
 					leftoverBeforeMap[info.LabelsHash] = group
 				}
 				group.Streams = append(group.Streams, &info.TenantStream)
@@ -305,7 +319,7 @@ func (s *Planner) collectStreams(ctx context.Context, tenant string, indexes []I
 			for _, info := range result.LeftoverAfterStreams {
 				group, ok := leftoverAfterMap[info.LabelsHash]
 				if !ok {
-					group = &LeftoverStreamGroup{}
+					group = &LeftoverStreamGroup{LabelsHash: info.LabelsHash}
 					leftoverAfterMap[info.LabelsHash] = group
 				}
 				group.Streams = append(group.Streams, &info.TenantStream)
@@ -316,7 +330,7 @@ func (s *Planner) collectStreams(ctx context.Context, tenant string, indexes []I
 			for _, info := range result.Streams {
 				group, ok := streamGroupMap[info.LabelsHash]
 				if !ok {
-					group = &StreamGroup{}
+					group = &StreamGroup{LabelsHash: info.LabelsHash}
 					streamGroupMap[info.LabelsHash] = group
 				}
 				group.Streams = append(group.Streams, &info.Stream)

@@ -2,16 +2,29 @@ package planner
 
 import "sort"
 
-// Sizer is an interface for items that have a size.
-// Used by generic bin-packing algorithm.
+// Sizer is an interface for items that have a size and a stable tiebreaker hash.
+// Used by the generic bin-packing algorithm. GetLabelsHash returns a stable per-item
+// identifier used as a secondary sort key to guarantee deterministic bin assignment
+// when multiple items share the same size.
 type Sizer interface {
 	GetSize() int64
+	GetLabelsHash() uint64
 }
 
 // BinPackResult represents a bin containing groups and their total size.
 type BinPackResult[G Sizer] struct {
 	Groups []G
 	Size   int64
+}
+
+// binTiebreaker returns a stable secondary sort key for a bin. Bins are ordered
+// deterministically by their first group's LabelsHash; the first group is well-
+// defined because BinPack inserts groups in a deterministic order.
+func binTiebreaker[G Sizer](b BinPackResult[G]) uint64 {
+	if len(b.Groups) == 0 {
+		return 0
+	}
+	return b.Groups[0].GetLabelsHash()
 }
 
 // BinPack performs best-fit decreasing bin packing with overflow and merging.
@@ -28,9 +41,15 @@ func BinPack[G Sizer](groups []G) []BinPackResult[G] {
 		return nil
 	}
 
-	// Sort by size descending for better packing
+	// Sort by size descending, then by LabelsHash ascending as a stable tiebreaker.
+	// The tiebreaker is required so equal-size groups produce identical bin assignments
+	// across runs (the marker-based recovery model assumes deterministic plans).
 	sort.Slice(groups, func(i, j int) bool {
-		return groups[i].GetSize() > groups[j].GetSize()
+		si, sj := groups[i].GetSize(), groups[j].GetSize()
+		if si != sj {
+			return si > sj
+		}
+		return groups[i].GetLabelsHash() < groups[j].GetLabelsHash()
 	})
 
 	var totalUncompressedSize int64
@@ -150,9 +169,13 @@ func mergeUnderfilledBins[G Sizer](bins []BinPackResult[G]) []BinPackResult[G] {
 	minDesiredSize := targetUncompressedSize * minFillPercent / 100
 	maxAllowedSize := targetUncompressedSize * maxOutputMultiple
 
-	// Sort by size (smallest first) to process under-filled bins first
+	// Sort by size ascending with a stable LabelsHash tiebreaker so equal-size bins
+	// have a deterministic order.
 	sort.Slice(bins, func(i, j int) bool {
-		return bins[i].Size < bins[j].Size
+		if bins[i].Size != bins[j].Size {
+			return bins[i].Size < bins[j].Size
+		}
+		return binTiebreaker(bins[i]) < binTiebreaker(bins[j])
 	})
 
 	// Use write index to compact the slice as we merge
@@ -201,11 +224,14 @@ func mergeUnderfilledBins[G Sizer](bins []BinPackResult[G]) []BinPackResult[G] {
 			bins[bestMergeIdx] = bins[len(bins)-1]
 			bins = bins[:len(bins)-1]
 
-			// Re-sort remaining unprocessed bins
+			// Re-sort remaining unprocessed bins with the same stable tiebreaker.
 			if bestMergeIdx < len(bins) {
 				remaining := bins[readIdx+1:]
 				sort.Slice(remaining, func(i, j int) bool {
-					return remaining[i].Size < remaining[j].Size
+					if remaining[i].Size != remaining[j].Size {
+						return remaining[i].Size < remaining[j].Size
+					}
+					return binTiebreaker(remaining[i]) < binTiebreaker(remaining[j])
 				})
 			}
 
