@@ -130,16 +130,13 @@ func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error
 	return &physical.RangeAggregation{
 		NodeID: nodeID,
 
-		Grouping:           grouping,
-		Operation:          operation,
-		Start:              n.Start,
-		End:                n.End,
-		Step:               n.Step,
-		Range:              n.Range,
-		MaxQuerySeries:     int(n.MaxQuerySeries),
-		InstantTimeUpdated: n.InstantTimeUpdated,
-		InstantOrigEnd:     n.InstantOrigEnd,
-		InstantOrigRange:   n.InstantOrigRange,
+		Grouping:       grouping,
+		Operation:      operation,
+		Start:          n.Start,
+		End:            n.End,
+		Step:           n.Step,
+		Range:          n.Range,
+		MaxQuerySeries: int(n.MaxQuerySeries),
 	}, nil
 }
 

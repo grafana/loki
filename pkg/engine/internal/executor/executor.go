@@ -413,21 +413,11 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		return emptyPipeline()
 	}
 
-	planStart := plan.Start
-	planEnd := plan.End
-	planRange := plan.Range
-	if plan.InstantTimeUpdated {
-		// For instant queries, we may clamp the time range in such a way that the new time window doesn't overlap with
-		// the original window. In that case we need to use the original window when calculating the range aggregation.
-		planStart = plan.InstantOrigEnd
-		planEnd = plan.InstantOrigEnd
-		planRange = plan.InstantOrigRange
-	}
 	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
 		grouping:       plan.Grouping,
-		startTs:        planStart,
-		endTs:          planEnd,
-		rangeInterval:  planRange,
+		startTs:        plan.Start,
+		endTs:          plan.End,
+		rangeInterval:  plan.Range,
 		step:           plan.Step,
 		operation:      plan.Operation,
 		maxQuerySeries: plan.MaxQuerySeries,

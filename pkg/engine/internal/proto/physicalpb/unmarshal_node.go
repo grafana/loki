@@ -184,16 +184,13 @@ func (n *AggregateRange) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = AggregateRange{
-		Grouping:           grouping,
-		Operation:          op,
-		Start:              rangeAgg.Start,
-		End:                rangeAgg.End,
-		Step:               rangeAgg.Step,
-		Range:              rangeAgg.Range,
-		MaxQuerySeries:     int32(rangeAgg.MaxQuerySeries),
-		InstantTimeUpdated: rangeAgg.InstantTimeUpdated,
-		InstantOrigEnd:     rangeAgg.InstantOrigEnd,
-		InstantOrigRange:   rangeAgg.InstantOrigRange,
+		Grouping:       grouping,
+		Operation:      op,
+		Start:          rangeAgg.Start,
+		End:            rangeAgg.End,
+		Step:           rangeAgg.Step,
+		Range:          rangeAgg.Range,
+		MaxQuerySeries: int32(rangeAgg.MaxQuerySeries),
 	}
 
 	return nil

@@ -83,17 +83,6 @@ message AggregateRange {
 
   // Maximum number of unique series allowed (0 means no limit).
   int32 max_query_series = 8;
-
-  bool instant_time_updated = 9;
-
-  google.protobuf.Timestamp instant_orig_end = 10 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-  google.protobuf.Duration instant_orig_range = 11 [
-    (gogoproto.stdduration) = true,
-    (gogoproto.nullable) = false
-  ];
 }
 
 // Grouping represents the grouping by/without label(s) for vector aggregators

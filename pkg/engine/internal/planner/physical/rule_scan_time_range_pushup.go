@@ -23,19 +23,16 @@ func (r *scanTimeRangePushup) apply(root Node) bool {
 	// propagate time range to target parent nodes.
 	changed := false
 	for _, n := range nodes {
-		dataObjScan, ok := n.(*DataObjScan)
-		if ok {
-			applied := r.applyToTargets(dataObjScan, dataObjScan.MaxTimeRange)
+		switch scan := n.(type) {
+		case *DataObjScan:
+			applied := r.applyToTargets(scan, scan.MaxTimeRange)
 			if applied {
 				changed = true
 			}
-		} else {
-			pointersScan, ok := n.(*PointersScan)
-			if ok {
-				applied := r.applyToTargets(pointersScan, pointersScan.MaxTimeRange())
-				if applied {
-					changed = true
-				}
+		case *PointersScan:
+			applied := r.applyToTargets(scan, scan.MaxTimeRange())
+			if applied {
+				changed = true
 			}
 		}
 	}
@@ -47,23 +44,7 @@ func (r *scanTimeRangePushup) applyToTargets(node Node, timeRange TimeRange) boo
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
-		if node.Step == 0 { // instant query
-			if node.End.Compare(timeRange.End) > 0 && node.End.Add(-1*node.Range).Compare(timeRange.End) < 0 { // node range overlaps the scan range
-				// keep track of the unmodified values for later
-				node.InstantTimeUpdated = true
-				node.InstantOrigEnd = node.End
-				node.InstantOrigRange = node.Range
-				// reduce the node range and clamp to the scan range end
-				node.Range = node.Range - (node.End.Sub(timeRange.End))
-				node.Start = timeRange.End.UTC()
-				node.End = timeRange.End.UTC()
-				// if the node range is longer than the scan range, just use the scan range
-				if node.End.Add(-1*node.Range).Compare(timeRange.Start) < 0 {
-					node.Range = node.End.Sub(timeRange.Start)
-				}
-				changed = true
-			}
-		} else {
+		if node.Step != 0 { // only apply optimization to range queries
 			trSteppedStart := time.UnixMilli((timeRange.Start.UnixMilli() / node.Step.Milliseconds()) * node.Step.Milliseconds()).UTC()
 
 			endPlusRange := timeRange.End.Add(node.Range)
