@@ -6,6 +6,4 @@ type Grouping struct {
 	Without bool        // The grouping mode
 }
 
-var (
-	NoGrouping = Grouping{Without: true}
-)
+var NoGrouping = Grouping{Without: false}

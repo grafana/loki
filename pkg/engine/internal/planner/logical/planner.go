@@ -696,10 +696,7 @@ func convertGrouping(g *syntax.Grouping) Grouping {
 	var columns []ColumnRef
 
 	if g == nil {
-		return Grouping{
-			Columns: columns,
-			Without: true,
-		}
+		return NoGrouping
 	}
 
 	if g.Groups != nil {

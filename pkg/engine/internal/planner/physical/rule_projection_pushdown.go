@@ -34,7 +34,7 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 		if node.Grouping.Without {
 			return changed
 		}
-		// [Source] RangeAggregation requires partitionBy columns & timestamp.
+		// RangeAggregation requires partitionBy columns for "by" queries.
 		projections = append(projections, node.Grouping.Columns...)
 		// Always project timestamp column. Timestamp values are required to perform range aggregation.
 		projections = append(projections, &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}})
