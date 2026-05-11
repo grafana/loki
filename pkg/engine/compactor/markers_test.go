@@ -179,6 +179,60 @@ func TestListMarkers_SkipsMalformed(t *testing.T) {
 	}
 }
 
+func TestDeleteMarker_RemovesExisting(t *testing.T) {
+	bkt := objstore.NewInMemBucket()
+	_, content := sampleMarker(t)
+	path := MarkerPath(DefaultInFlightPrefix, "29", time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC), 1)
+
+	if _, err := WriteMarker(context.Background(), bkt, path, content); err != nil {
+		t.Fatalf("WriteMarker: %v", err)
+	}
+	if err := DeleteMarker(context.Background(), bkt, path); err != nil {
+		t.Fatalf("DeleteMarker: %v", err)
+	}
+
+	if _, err := bkt.Get(context.Background(), path); err == nil {
+		t.Fatalf("expected NotFound after delete; marker still present")
+	} else if !bkt.IsObjNotFoundErr(err) {
+		t.Fatalf("expected NotFound, got %v", err)
+	}
+}
+
+func TestDeleteMarker_IdempotentOnMissing(t *testing.T) {
+	bkt := objstore.NewInMemBucket()
+	path := MarkerPath(DefaultInFlightPrefix, "29", time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC), 1)
+	if err := DeleteMarker(context.Background(), bkt, path); err != nil {
+		t.Fatalf("DeleteMarker on missing path should be nil, got %v", err)
+	}
+}
+
+func TestDeleteMarker_RoundTrip_RemovesFromList(t *testing.T) {
+	bkt := objstore.NewInMemBucket()
+	_, content := sampleMarker(t)
+	path := MarkerPath(DefaultInFlightPrefix, "29", time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC), 1)
+
+	if _, err := WriteMarker(context.Background(), bkt, path, content); err != nil {
+		t.Fatalf("WriteMarker: %v", err)
+	}
+	got, err := ListMarkers(context.Background(), bkt, DefaultInFlightPrefix)
+	if err != nil {
+		t.Fatalf("ListMarkers: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 marker, got %d", len(got))
+	}
+	if err := DeleteMarker(context.Background(), bkt, path); err != nil {
+		t.Fatalf("DeleteMarker: %v", err)
+	}
+	got, err = ListMarkers(context.Background(), bkt, DefaultInFlightPrefix)
+	if err != nil {
+		t.Fatalf("ListMarkers post-delete: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 markers post-delete, got %d", len(got))
+	}
+}
+
 func TestWriteMarker_RaceLoss_DifferentContent(t *testing.T) {
 	bkt := objstore.NewInMemBucket()
 	_, contentA := sampleMarker(t)

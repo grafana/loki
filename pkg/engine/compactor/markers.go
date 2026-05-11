@@ -148,6 +148,18 @@ func ListMarkers(ctx context.Context, bucket objstore.Bucket, prefix string) ([]
 	return markers, nil
 }
 
+// DeleteMarker removes the marker at path. NotFound is treated as success
+// (idempotent): it is normal for two coordinator replicas to both attempt
+// deletion at the end of a workflow, and idempotent delete is also part of
+// the force-cleanup path for stale markers.
+func DeleteMarker(ctx context.Context, bucket objstore.Bucket, path string) error {
+	err := bucket.Delete(ctx, path)
+	if err == nil || bucket.IsObjNotFoundErr(err) {
+		return nil
+	}
+	return fmt.Errorf("delete marker %q: %w", path, err)
+}
+
 // parseMarker decodes a marker file's bytes. Missing fields decode to zero
 // values; callers that care about completeness (e.g., empty WorkflowID)
 // should validate after parsing.
