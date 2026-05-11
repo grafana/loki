@@ -1605,6 +1605,28 @@ dataobj:
     # CLI flag: -dataobj-metastore.partition-ratio
     [partition_ratio: <int> | default = 10]
 
+  compaction:
+    # Experimental: Enable the dataobj compactor target.
+    # CLI flag: -dataobj.compaction.enabled
+    [enabled: <boolean> | default = false]
+
+    # Experimental: Per-workflow cap on concurrent CompactionMerge tasks.
+    # Currently unused; reserved for the engine scheduler's compaction admission
+    # lane added in a follow-up change.
+    # CLI flag: -dataobj.compaction.max-running-compaction-tasks
+    [max_running_compaction_tasks: <int> | default = 16]
+
+    scheduler:
+      # Experimental: host:port the embedded compaction scheduler advertises to
+      # compaction workers. Empty string keeps the scheduler in-process-only.
+      # CLI flag: -dataobj.compaction.scheduler.advertise-addr
+      [advertise_addr: <string> | default = ""]
+
+      # Experimental: HTTP path the embedded compaction scheduler listens on for
+      # worker frame traffic.
+      # CLI flag: -dataobj.compaction.scheduler.endpoint
+      [endpoint: <string> | default = "/api/v2/compaction-frame"]
+
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]
