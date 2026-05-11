@@ -8,10 +8,16 @@
 package compactor
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"io"
 	"strconv"
 	"time"
+
+	"github.com/thanos-io/objstore"
 )
 
 // DefaultInFlightPrefix is the bucket prefix under which workflow markers
@@ -43,4 +49,56 @@ type Marker struct {
 func MarkerPath(prefix, tenant string, window time.Time, planVersion int) string {
 	h := sha256.Sum256([]byte(tenant + window.UTC().Format(time.RFC3339) + strconv.Itoa(planVersion)))
 	return prefix + hex.EncodeToString(h[:]) + ".json"
+}
+
+// WriteMarker creates a workflow marker at path using bucket.GetAndReplace.
+//
+// Race semantics:
+//
+//   - On GCS / filesystem (atomic conditional-PUT backends), exactly one
+//     concurrent caller wins and observes created=true; losers either observe
+//     created=false (when their GetAndReplace's initial Get sees the
+//     winner's content) or surface a precondition error from GetAndReplace
+//     (the rarer case where two callers both saw nil at Get time and one's
+//     conditional PUT on a non-existent object fails). Both outcomes are
+//     acceptable; the caller treats both as "another coordinator is handling
+//     this workflow".
+//   - On S3 (current thanos-io/objstore provider), the conditional
+//     precondition is not enforced for new objects (see spec § "No
+//     coordinator leader election"). Two concurrent callers may both observe
+//     created=true. The overall design (deterministic output paths,
+//     idempotent ToC swap) tolerates this; this function does not attempt to
+//     compensate for it.
+//
+// Soft idempotency: when the existing object's content equals the proposed
+// content, WriteMarker returns (false, nil) — we did not create it, but no
+// error: an exact byte-for-byte duplicate is the same workflow being
+// (re)written. This is informational; callers may ignore the bool.
+//
+// The callback returns the existing bytes unchanged on race-loss so that
+// backends performing an unconditional PUT inside GetAndReplace (in-mem,
+// filesystem) write a no-op identical body, and so backends with optimistic
+// concurrency (GCS) match against the existing generation rather than
+// against "must not exist".
+func WriteMarker(ctx context.Context, bucket objstore.Bucket, path string, content []byte) (created bool, err error) {
+	err = bucket.GetAndReplace(ctx, path, func(existing io.ReadCloser) (io.ReadCloser, error) {
+		if existing == nil {
+			created = true
+			return io.NopCloser(bytes.NewReader(content)), nil
+		}
+		defer existing.Close()
+		existingBytes, readErr := io.ReadAll(existing)
+		if readErr != nil {
+			return nil, fmt.Errorf("read existing marker: %w", readErr)
+		}
+		// Race-loss (or soft idempotency): another writer beat us, or wrote
+		// the same content. Either way, created stays false. Return the
+		// existing bytes unchanged so the surrounding GetAndReplace performs
+		// no logical mutation.
+		return io.NopCloser(bytes.NewReader(existingBytes)), nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("write marker %q: %w", path, err)
+	}
+	return created, nil
 }
