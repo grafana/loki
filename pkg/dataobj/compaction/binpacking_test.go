@@ -376,10 +376,12 @@ func TestBinPack_Deterministic(t *testing.T) {
 		require.Equal(t, len(binsA[i].Groups), len(binsB[i].Groups),
 			"bin %d group count differs across shuffles", i)
 		for j := range binsA[i].Groups {
+			require.Equal(t, binsA[i].Groups[j].id, binsB[i].Groups[j].id,
+				"bin %d position %d id differs across shuffles", i, j)
 			require.Equal(t,
 				binsA[i].Groups[j].GetLabelsHash(),
 				binsB[i].Groups[j].GetLabelsHash(),
-				"bin %d position %d differs across shuffles", i, j)
+				"bin %d position %d hash differs across shuffles", i, j)
 		}
 	}
 }
