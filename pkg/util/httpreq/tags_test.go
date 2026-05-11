@@ -197,8 +197,8 @@ func TestAppendQueryTagsHeader(t *testing.T) {
 			AppendQueryTagsHeader(header, test.additional)
 
 			got := header.Get(string(QueryTagsHTTPHeader))
-			assert.Equal(t, test.expected, got)
-			assert.Equal(t, test.expectedKV, TagsToKeyValues(got))
+			require.Equal(t, test.expected, got)
+			require.Equal(t, test.expectedKV, TagsToKeyValues(got))
 		})
 	}
 }
