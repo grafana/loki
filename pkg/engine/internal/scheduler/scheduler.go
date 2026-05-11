@@ -279,19 +279,20 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 		return fmt.Errorf("task %s not found", msg.ID)
 	}
 
-	changed, err := task.setState(s.metrics, msg.Status)
+	changed, err := task.SetState(s.metrics, msg.Status)
 	if err != nil {
 		return err
 	} else if changed {
-		if owner := task.owner; owner != nil && task.status.State.Terminal() {
+		newState := msg.Status.State
+		if owner := task.owner; owner != nil && newState.Terminal() {
 			owner.Unassign(task)
 		}
 
-		switch task.status.State {
+		switch newState {
 		case workflow.TaskStateCompleted:
 			task.wfRegion.Record(StatExecutedTasks.Observe(1))
 
-			if !task.assignTime.IsZero() {
+			if assignTime := task.AssignTime(); !assignTime.IsZero() {
 				// The execution time of the task is the duration from when it
 				// was first assigned to when we received the completion status.
 				//
@@ -299,7 +300,7 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 				// happen when a task completes before we can process the
 				// assignment. If we didn't skip these, we'd record an
 				// observation of the maximum time.Duration value (290 years).
-				s.metrics.taskExecSeconds.Observe(time.Since(task.assignTime).Seconds())
+				s.metrics.taskExecSeconds.Observe(time.Since(assignTime).Seconds())
 			}
 		case workflow.TaskStateCancelled:
 			// The worker has confirmed cancellation of a previously assigned
@@ -313,7 +314,7 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 		// to roll these up into our own per-task capture to give the event
 		// handler full visibility into the task's execution.
 		notifyStatus := msg.Status
-		if notifyStatus.State.Terminal() {
+		if newState.Terminal() {
 			task.capture.Merge(nil, notifyStatus.Capture)
 			notifyStatus.Capture = task.capture
 		}
@@ -396,7 +397,7 @@ func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason
 	defer s.assignMut.Unlock()
 
 	for _, task := range worker.Assigned() {
-		wasInterrupted := task.interrupted
+		wasInterrupted := task.Interrupted()
 		worker.Unassign(task)
 
 		// Even though the worker disconnected we still have some stats about
@@ -415,7 +416,7 @@ func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason
 			newStatus.State = workflow.TaskStateCancelled
 		}
 
-		if changed, _ := task.setState(s.metrics, newStatus); !changed {
+		if changed, _ := task.SetState(s.metrics, newStatus); !changed {
 			continue
 		}
 
@@ -500,12 +501,24 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 
 		level.Debug(s.logger).Log("msg", "assigning task", "id", assignment.msg.Task.ULID, "conn", worker.RemoteAddr())
 
-		// TODO(rfratto): allow assignment timeout to be configurable.
-		sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		err := worker.SendMessage(sendCtx, assignment.msg)
-		cancel()
+		// TryAssign holds the task's mut for the duration of the send so a
+		// fast-responding worker can't race with the post-assignment
+		// bookkeeping in finalizeAssignment. On success it also records the
+		// assignment timestamp on the task before releasing mut.
+		err := assignment.t.TryAssign(func() error {
+			// TODO(rfratto): allow assignment timeout to be configurable.
+			sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
 
-		if err != nil {
+			return worker.SendMessage(sendCtx, assignment.msg)
+		})
+
+		if err != nil && errors.Is(err, errUnassignable) {
+			// Task is already in a terminal state or has been interrupted,
+			// so we can skip the send and move on to the next task.
+			continue
+		} else if err != nil {
+			// Generic error.
 			s.requeueTask(assignment.t, assignment.pos)
 
 			// if its 429, remove from ready workers and fire subscribe request.
@@ -529,7 +542,6 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 		gotrace.Log(assignment.t.runtimeTraceCtx, "task_assigned", assignment.t.inner.ULID.String()+" -> "+worker.RemoteAddr().String())
 
 		s.finalizeAssignment(ctx, assignment.t, worker, assignment.msg.StreamStates)
-
 	}
 }
 
@@ -605,7 +617,7 @@ func (s *Scheduler) requeueTask(t *task, pos fair.Position) {
 	s.assignMut.Lock()
 	defer s.assignMut.Unlock()
 
-	if t.status.State.Terminal() {
+	if t.State().Terminal() {
 		return
 	}
 
@@ -640,17 +652,17 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		s.resourcesMut.Lock()
 		defer s.resourcesMut.Unlock()
 
-		if t.status.State.Terminal() || t.interrupted {
-			// Either the task already reached a terminal state or a
-			// cancellation is pending via [Scheduler.Cancel]. In both cases,
-			// the worker should be told not to bother starting it.
+		if t.State().Terminal() {
+			// The task reached a terminal state between TryAssign and now. The
+			// worker may still have the assignment, so we tell it to not
+			// bother.
 			pendingMsgs = append(pendingMsgs, pendingMessage{peer: worker, msg: wire.TaskCancelMessage{ID: t.inner.ULID}})
 			return
 		}
 
 		worker.Assign(t)
-		t.assignTime = time.Now()
-		queueDuration := t.assignTime.Sub(t.queueTime).Seconds()
+		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
+		queueDuration := assignTime.Sub(t.QueueTime()).Seconds()
 		s.metrics.taskQueueSeconds.Observe(queueDuration)
 
 		if t.wfRegion != nil {
@@ -658,7 +670,7 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 			t.wfRegion.Record(xcap.StatTaskMaxQueueDuration.Observe(queueDuration))
 
 			// Record time from task creation until this task assignment.
-			assignmentTailDuration := t.assignTime.Sub(t.createTime).Seconds()
+			assignmentTailDuration := assignTime.Sub(t.createTime).Seconds()
 			t.wfRegion.Record(xcap.StatTaskAssignmentTailDuration.Observe(assignmentTailDuration))
 		}
 
@@ -953,7 +965,7 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 		// Immediately clean up our own resources.
 		s.deleteTask(registered)
 
-		if changed, _ := registered.setState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); !changed {
+		if changed, _ := registered.SetState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); !changed {
 			// Ignore if the task couldn't move into the canceled state, which
 			// indicates it's already in a terminal state.
 			continue
@@ -971,7 +983,7 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 		n.AddTaskEvent(taskNotification{
 			Handler:   registered.handler,
 			Task:      taskToRemove,
-			NewStatus: registered.status,
+			NewStatus: registered.Status(),
 		})
 	}
 
@@ -1134,11 +1146,11 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 		// Ignore tasks that aren't in the initial state (created). This
 		// prevents us from rejecting tasks which were preemptively canceled by
 		// callers.
-		if got, want := task.status.State, workflow.TaskStateCreated; got != want {
+		if task.State() != workflow.TaskStateCreated {
 			continue
 		}
 
-		task.queueTime = time.Now()
+		task.MarkQueued()
 		if err := s.taskQueue.Push(task.scope, task); err != nil {
 			level.Error(s.logger).Log("msg", "failed to enqueue task; task will not be executed", "id", task.inner.ULID, "err", err)
 		}
@@ -1157,7 +1169,7 @@ func (s *Scheduler) markPending(ctx context.Context, tasks []*task) {
 	defer s.resourcesMut.Unlock()
 
 	for _, task := range tasks {
-		if changed, _ := task.setState(s.metrics, workflow.TaskStatus{State: workflow.TaskStatePending}); !changed {
+		if changed, _ := task.SetState(s.metrics, workflow.TaskStatus{State: workflow.TaskStatePending}); !changed {
 			// If the state change failed, the task either got canceled or
 			// picked up by a worker in between enqueueing it and calling this
 			// method.
@@ -1168,7 +1180,7 @@ func (s *Scheduler) markPending(ctx context.Context, tasks []*task) {
 		n.AddTaskEvent(taskNotification{
 			Handler:   task.handler,
 			Task:      task.inner,
-			NewStatus: task.status,
+			NewStatus: task.Status(),
 		})
 	}
 }
@@ -1203,24 +1215,25 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 		// Already in a terminal state — nothing to do for the task itself, but
 		// fall through to the sink-stream cleanup below so a redundant Cancel
 		// still closes any associated streams.
-		if registered.status.State.Terminal() {
+		prevState := registered.State()
+		if prevState.Terminal() {
 			s.closeTaskSinks(ctx, &n, registered)
 			continue
 		}
 
 		region := registered.wfRegion
-		prevState := registered.status.State
 
-		if owner := registered.owner; owner != nil && !registered.interrupted {
+		if owner := registered.owner; owner != nil && registered.MarkInterrupted() {
 			// The task is currently running on a worker. We don't want to
 			// transition the task's state here so we can let the worker send
 			// final stats before acknowledging cancellation.
 			//
 			// The confirmation of cancellation will come in via
-			// handleTaskStatus.
-			registered.interrupted = true
+			// handleTaskStatus. MarkInterrupted makes the cancel message
+			// at most once: a redundant Cancel for an already-interrupted task
+			// is a no-op.
 			_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
-		} else if changed, _ := registered.setState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); changed {
+		} else if changed, _ := registered.SetState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); changed {
 			// No worker is executing this task, so we transition the state
 			// directly as the scheduler is the source of truth.
 			//
@@ -1240,7 +1253,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			// Inform the owner about the change. Attach the per-task capture so
 			// the workflow consumer can read scheduler-side observations even for
 			// tasks that never reached a worker.
-			notifyStatus := registered.status
+			notifyStatus := registered.Status()
 			notifyStatus.Capture = registered.capture
 			n.AddTaskEvent(taskNotification{
 				Handler:   registered.handler,

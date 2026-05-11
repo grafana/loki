@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
@@ -12,31 +13,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// task wraps a [workflow.Task] with its handler.
+var errUnassignable = fmt.Errorf("task is in a terminal state or has been interrupted")
+
+// task wraps a [workflow.Task] with its handler and scheduler-side state.
 type task struct {
 	createTime time.Time // Time when task was created.
-	assignTime time.Time // Time when task was assigned to a worker.
-	queueTime  time.Time // Time when task was enqueued.
+	inner      *workflow.Task
+	handler    workflow.TaskEventHandler
+	scope      fair.Scope // Queue scope this task belongs to.
 
-	inner   *workflow.Task
-	handler workflow.TaskEventHandler
-	scope   fair.Scope // Queue scope this task belongs to.
-
-	// metadata holds additional metadata associated with the task.
-	// This can be used to stortracing and other information that
-	// should be propagated to workers.
-	metadata http.Header
-
-	owner  *workerConn
-	status workflow.TaskStatus
-
-	// interrupted reports whether cancellation has been requested for this
-	// task but the worker has not yet confirmed (i.e., the task has not yet
-	// reached a terminal state).
-	//
-	// Set by [Scheduler.Cancel] when requesting cancellation for an assigned
-	// non-terminal task.
-	interrupted bool
+	mut         sync.RWMutex
+	status      workflow.TaskStatus
+	queueTime   time.Time // Time when task was enqueued.
+	assignTime  time.Time // Time when task was assigned to a worker.
+	interrupted bool      // Cancellation requested but not yet confirmed.
 
 	// capture holds individual task information from any source:
 	//
@@ -51,9 +41,13 @@ type task struct {
 	// container for per-task data.
 	capture *xcap.Capture
 
-	// wfRegion is the region associated with the parent workflow of this task.
+	// Set once by [Scheduler.Start] and read thereafter.
+	metadata        http.Header
 	wfRegion        *xcap.Region
 	runtimeTraceCtx context.Context
+
+	// Protected by [Scheduler.resourcesMut].
+	owner *workerConn
 }
 
 var validTaskTransitions = map[workflow.TaskState][]workflow.TaskState{
@@ -66,12 +60,60 @@ var validTaskTransitions = map[workflow.TaskState][]workflow.TaskState{
 	workflow.TaskStateFailed:    {}, // Terminal state, can't transition
 }
 
-// setState updates the state of the task. setState returns an error if the
+// State returns the task's current [workflow.TaskState].
+func (t *task) State() workflow.TaskState {
+	t.mut.RLock()
+	defer t.mut.RUnlock()
+	return t.status.State
+}
+
+// Status returns a snapshot of the task's current [workflow.TaskStatus].
+// The returned status's Capture field is shared by reference; callers should
+// not mutate it.
+func (t *task) Status() workflow.TaskStatus {
+	t.mut.RLock()
+	defer t.mut.RUnlock()
+	return t.status
+}
+
+// Interrupted reports whether [Scheduler.Cancel] has requested cancellation
+// of this task while it was assigned to a worker. See [task.MarkInterrupted].
+func (t *task) Interrupted() bool {
+	t.mut.RLock()
+	defer t.mut.RUnlock()
+	return t.interrupted
+}
+
+// AssignTime returns the time at which [task.TryAssign] successfully sent
+// the task's assignment to a worker, or the zero time if no successful send
+// has occurred.
+func (t *task) AssignTime() time.Time {
+	t.mut.RLock()
+	defer t.mut.RUnlock()
+	return t.assignTime
+}
+
+// QueueTime returns the time at which [task.MarkQueued] was called, or the
+// zero time if the task was never queued.
+func (t *task) QueueTime() time.Time {
+	t.mut.RLock()
+	defer t.mut.RUnlock()
+	return t.queueTime
+}
+
+// SetState updates the state of the task. SetState returns an error if the
 // transition is invalid.
 //
 // Returns true if the state was updated, false otherwise (such as if the task
 // is already in the desired state).
-func (t *task) setState(m *metrics, newStatus workflow.TaskStatus) (bool, error) {
+func (t *task) SetState(m *metrics, newStatus workflow.TaskStatus) (bool, error) {
+	t.mut.Lock()
+	defer t.mut.Unlock()
+	return t.setStateLocked(m, newStatus)
+}
+
+// setStateLocked implements the logic of [SetState]. Callers must hold t.mut.
+func (t *task) setStateLocked(m *metrics, newStatus workflow.TaskStatus) (bool, error) {
 	oldState, newState := t.status.State, newStatus.State
 
 	switch {
@@ -95,5 +137,49 @@ func (t *task) setState(m *metrics, newStatus workflow.TaskStatus) (bool, error)
 		m.tasksTotal.WithLabelValues(newState.String()).Inc()
 		return true, nil
 	}
+}
 
+// MarkQueued records that the task has been enqueued for assignment by
+// setting queueTime to the current time.
+func (t *task) MarkQueued() {
+	t.mut.Lock()
+	defer t.mut.Unlock()
+	t.queueTime = time.Now()
+}
+
+// MarkInterrupted records that cancellation has been requested for this task.
+func (t *task) MarkInterrupted() bool {
+	t.mut.Lock()
+	defer t.mut.Unlock()
+
+	if t.interrupted {
+		return false
+	}
+	t.interrupted = true
+	return true
+}
+
+// TryAssign calls doAssign, holding a mutex on the task to prevent concurrent
+// modification to t's state.
+//
+// If doAssign returns nil, the assign time is recorded and TryAssign returns
+// nil. Otherwise, TryAssign returns the error from doAssign without making any
+// changes.
+//
+// If the task is in a terminal state or has been interrupted, TryAssign
+// returns [errUnassignable] without calling doAssign.
+func (t *task) TryAssign(doAssign func() error) error {
+	t.mut.Lock()
+	defer t.mut.Unlock()
+
+	if t.status.State.Terminal() || t.interrupted {
+		return errUnassignable
+	}
+
+	if err := doAssign(); err != nil {
+		return err
+	}
+
+	t.assignTime = time.Now()
+	return nil
 }
