@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"iter"
+	"strconv"
 )
 
 // A Sections is a slice of [Section].
@@ -56,8 +57,16 @@ type SectionType struct {
 	Version uint32
 }
 
+// Equals returns true if o has the same namespace and kind as ty. The Version
+// field is not checked.
+func (ty SectionType) Equals(o SectionType) bool {
+	return ty.Namespace == o.Namespace && ty.Kind == o.Kind
+}
+
 func (ty SectionType) String() string {
-	return ty.Namespace + "/" + ty.Kind
+	base := ty.Namespace + "/" + ty.Kind
+	base += "@v" + strconv.FormatUint(uint64(ty.Version), 10)
+	return base
 }
 
 // SectionReader is a low-level interface to read data ranges and metadata from

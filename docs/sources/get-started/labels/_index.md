@@ -44,7 +44,7 @@ Loki automatically tries to populate a default `service_name` label while ingest
 - Grafana Cloud Application Observability
 
 {{< admonition type="note" >}}
-If you are already applying a `service_name`, Loki will use that value.
+If you are already applying a `service_name`, Loki will use that value. For example, if you are using the Kubernetes monitoring Helm Chart, the Alloy configuration applies a `service_name` by default.
 {{< /admonition >}}
 
 Loki will attempt to create the `service_name` label by looking for the following labels in this order:
@@ -89,19 +89,19 @@ By default, the following resource attributes will be stored as labels, with per
 - service.name
 - service.namespace
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Because Loki has a default limit of 15 index labels, we recommend storing only select resource attributes as labels. Although the default config selects more than 15 Resource Attributes, some are mutually exclusive.
-{{% /admonition %}}
+{{< /admonition >}}
 
 {{< admonition type="tip" >}}
-For Grafana Cloud Logs, see the [current OpenTelemetry guidance](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#logs).
+For Grafana Cloud Logs, see the [current OpenTelemetry guidance](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#logs). The Faro specific attributes `app_id`, `kind`, and `app_key` are promoted to labels for Grafana Cloud Logs but not Loki.
 {{< /admonition >}}
 
 The default list of resource attributes to store as labels can be configured using `default_resource_attributes_as_index_labels` under the [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). You can set global limits using [limits_config.otlp_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config). If you are using Grafana Cloud, contact support to configure this setting.
 
 {{< admonition type="caution" >}}
 Because of the potential for high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/), `k8s.pod.name` and `service.instance.id` are no longer recommended as default labels. But because removing these resource attributes from the default labels would be a breaking change for existing users, they have not yet been deprecated as default labels. If you are a new user of Grafana Loki, we recommend that you modify your Alloy or OpenTelemetry Collector configuration to convert `k8s.pod.name` and `service.instance.id` from index labels to structured metadata.
-For sample configurations, refer to [Remove default labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/remove-default-labels).
+For sample configurations, refer to [Modify default labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/modify-default-labels).
 {{< /admonition >}}
 
 ## Labeling is iterative
@@ -239,98 +239,6 @@ loki.write "local_loki" {
 }
 ```
 
-### Promtail example
-
-Here is an example of a Promtail configuration to send logs to Loki:
-
-```yaml
-scrape_configs:
-- job_name: system
-  pipeline_stages:
-  static_configs:
-  - targets:
-     - localhost
-    labels:
-     job: syslog
-     __path__: /var/log/syslog
-```
-
-This config will tail one file and assign one label: `job=syslog`. This will create one stream in Loki.
-
-You could query it like this:
-
-```bash
-{job="syslog"}
-```
-
-Now let’s expand the example a little:
-
-```yaml
-scrape_configs:
-- job_name: system
-  pipeline_stages:
-  static_configs:
-  - targets:
-     - localhost
-    labels:
-     job: syslog
-     __path__: /var/log/syslog
-- job_name: apache
-  pipeline_stages:
-  static_configs:
-  - targets:
-     - localhost
-    labels:
-     job: apache
-     __path__: /var/log/apache.log
-```
-
-Now we are tailing two files. Each file gets just one label with one value, so Loki will now be storing two streams.
-
-We can query these streams in a few ways:
-
-```nohighlight
-{job="apache"} <- show me logs where the job label is apache
-{job="syslog"} <- show me logs where the job label is syslog
-{job=~"apache|syslog"} <- show me logs where the job is apache **OR** syslog
-```
-
-In that last example, we used a regex label matcher to view log streams that use the job label with one of two possible values. Now consider how an additional label could also be used:
-
-```yaml
-scrape_configs:
-- job_name: system
-  pipeline_stages:
-  static_configs:
-  - targets:
-     - localhost
-    labels:
-     job: syslog
-     env: dev
-     __path__: /var/log/syslog
-- job_name: apache
-  pipeline_stages:
-  static_configs:
-  - targets:
-     - localhost
-    labels:
-     job: apache
-     env: dev
-     __path__: /var/log/apache.log
-```
-
-Now instead of a regex, we could do this:
-
-```nohighlight
-{env="dev"} <- will return all logs with env=dev, in this case this includes both log streams
-```
-
-Hopefully, now you are starting to see the power of labels. By using a single label, you can query many streams. By combining several different labels, you can create very flexible log queries.
-
-Labels are the index to Loki log data. They are used to find the compressed log content, which is stored separately as chunks. Every unique combination of labels and values defines a stream and logs for a stream are batched up, compressed, and stored as chunks.
-
-For Loki to be efficient and cost-effective, we have to use labels responsibly. The next section will explore this in more detail.
-
 ### Cardinality examples
 
 The two previous examples use statically defined labels with a single value; however, there are ways to dynamically define labels. Let's take a look using the Apache log and a massive regex you could use to parse such a log line:
@@ -342,21 +250,21 @@ The two previous examples use statically defined labels with a single value; how
 ```yaml
 - job_name: system
   pipeline_stages:
-     - regex:
-       expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status_code>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
-   - labels:
-       action:
-       status_code:
+    - regex:
+        expression: "^(?P<ip>\\S+) (?P<identd>\\S+) (?P<user>\\S+) \\[(?P<timestamp>[\\w:/]+\\s[+\\-]\\d{4})\\] \"(?P<action>\\S+)\\s?(?P<path>\\S+)?\\s?(?P<protocol>\\S+)?\" (?P<status_code>\\d{3}|-) (?P<size>\\d+|-)\\s?\"?(?P<referer>[^\"]*)\"?\\s?\"?(?P<useragent>[^\"]*)?\"?$"
+    - labels:
+        action:
+        status_code:
   static_configs:
-  - targets:
-     - localhost
-    labels:
-     job: apache
-     env: dev
-     __path__: /var/log/apache.log
+    - targets:
+        - localhost
+      labels:
+        job: apache
+        env: dev
+        __path__: /var/log/apache.log
 ```
 
-This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows use for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the [Promtail pipelines](../../send-data/promtail/pipelines/) documentation.
+This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows use for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the Alloy [`loki.process`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/) documentation.
 
 From that regex, we will be using two of the capture groups to dynamically set two labels based on content from the log line itself:
 

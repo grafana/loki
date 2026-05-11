@@ -961,14 +961,6 @@ func decodeVector(iter *jsoniter.Iterator) (*VectorExpr, error) {
 	return expr, nil
 }
 
-func decodeMatchers(iter *jsoniter.Iterator) (LogSelectorExpr, error) {
-	return decodeLogSelector(iter)
-}
-
-func decodePipeline(iter *jsoniter.Iterator) (LogSelectorExpr, error) {
-	return decodeLogSelector(iter)
-}
-
 func decodeVariants(iter *jsoniter.Iterator) (VariantsExpr, error) {
 	var e MultiVariantExpr
 

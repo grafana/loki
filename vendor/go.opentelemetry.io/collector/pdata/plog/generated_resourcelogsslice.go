@@ -11,7 +11,6 @@ import (
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
 )
 
 // ResourceLogsSlice logically represents a slice of ResourceLogs.
@@ -22,20 +21,19 @@ import (
 // Must use NewResourceLogsSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ResourceLogsSlice struct {
-	orig  *[]*otlplogs.ResourceLogs
+	orig  *[]*internal.ResourceLogs
 	state *internal.State
 }
 
-func newResourceLogsSlice(orig *[]*otlplogs.ResourceLogs, state *internal.State) ResourceLogsSlice {
+func newResourceLogsSlice(orig *[]*internal.ResourceLogs, state *internal.State) ResourceLogsSlice {
 	return ResourceLogsSlice{orig: orig, state: state}
 }
 
-// NewResourceLogsSlice creates a ResourceLogsSlice with 0 elements.
+// NewResourceLogsSlice creates a ResourceLogsSliceWrapper with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewResourceLogsSlice() ResourceLogsSlice {
-	orig := []*otlplogs.ResourceLogs(nil)
-	state := internal.StateMutable
-	return newResourceLogsSlice(&orig, &state)
+	orig := []*internal.ResourceLogs(nil)
+	return newResourceLogsSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -91,7 +89,7 @@ func (es ResourceLogsSlice) EnsureCapacity(newCap int) {
 		return
 	}
 
-	newOrig := make([]*otlplogs.ResourceLogs, len(*es.orig), newCap)
+	newOrig := make([]*internal.ResourceLogs, len(*es.orig), newCap)
 	copy(newOrig, *es.orig)
 	*es.orig = newOrig
 }
@@ -100,7 +98,7 @@ func (es ResourceLogsSlice) EnsureCapacity(newCap int) {
 // It returns the newly added ResourceLogs.
 func (es ResourceLogsSlice) AppendEmpty() ResourceLogs {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, &otlplogs.ResourceLogs{})
+	*es.orig = append(*es.orig, internal.NewResourceLogs())
 	return es.At(es.Len() - 1)
 }
 
@@ -129,7 +127,9 @@ func (es ResourceLogsSlice) RemoveIf(f func(ResourceLogs) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
+			internal.DeleteResourceLogs((*es.orig)[i], true)
 			(*es.orig)[i] = nil
+
 			continue
 		}
 		if newLen == i {
@@ -138,6 +138,7 @@ func (es ResourceLogsSlice) RemoveIf(f func(ResourceLogs) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
+		// Cannot delete here since we just move the data(or pointer to data) to a different position in the slice.
 		(*es.orig)[i] = nil
 		newLen++
 	}
@@ -147,7 +148,10 @@ func (es ResourceLogsSlice) RemoveIf(f func(ResourceLogs) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es ResourceLogsSlice) CopyTo(dest ResourceLogsSlice) {
 	dest.state.AssertMutable()
-	*dest.orig = internal.CopyOrigResourceLogsSlice(*dest.orig, *es.orig)
+	if es.orig == dest.orig {
+		return
+	}
+	*dest.orig = internal.CopyResourceLogsPtrSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the ResourceLogs elements within ResourceLogsSlice given the

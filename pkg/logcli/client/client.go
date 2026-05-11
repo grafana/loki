@@ -94,6 +94,7 @@ type DefaultClient struct {
 	BackoffConfig    BackoffConfig
 	Compression      bool
 	EnvironmentProxy bool
+	CustomHeaders    []string
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -254,7 +255,11 @@ func (c *DefaultClient) GetDetectedFields(
 	qsb.SetInt("line_limit", int64(lineLimit))
 	qsb.SetInt("start", start.UnixNano())
 	qsb.SetInt("end", end.UnixNano())
-	qsb.SetString("step", step.String())
+	// The step is optional, so we only set it if provided,
+	// otherwise we leverage the API defaults.
+	if step != 0 {
+		qsb.SetString("step", step.String())
+	}
 
 	var err error
 	var r loghttp.DetectedFieldsResponse
@@ -388,10 +393,8 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 	backoff := backoff.New(context.Background(), bkcfg)
 
-	for {
-		if !backoff.Ongoing() {
-			break
-		}
+	for backoff.Ongoing() {
+
 		resp, err = client.Do(req)
 		if err != nil {
 			log.Println("error sending request", err)
@@ -400,7 +403,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		}
 		if resp.StatusCode/100 != 2 {
 			buf, _ := io.ReadAll(resp.Body) // nolint
-			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.Retries-backoff.NumRetries())
+			log.Printf("error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.Retries-backoff.NumRetries())
 			if err := resp.Body.Close(); err != nil {
 				log.Println("error closing body", err)
 			}
@@ -491,10 +494,8 @@ func (c *DefaultClient) doPostRequest(path, query string, quiet bool) error {
 	}
 	backoff := backoff.New(context.Background(), bkcfg)
 
-	for {
-		if !backoff.Ongoing() {
-			break
-		}
+	for backoff.Ongoing() {
+
 		resp, err = client.Do(req)
 		if err != nil {
 			log.Println("error sending request", err)
@@ -592,10 +593,8 @@ func (c *DefaultClient) doDeleteRequest(path, query string, quiet bool) error {
 	}
 	backoff := backoff.New(context.Background(), bkcfg)
 
-	for {
-		if !backoff.Ongoing() {
-			break
-		}
+	for backoff.Ongoing() {
+
 		resp, err = client.Do(req)
 		if err != nil {
 			log.Println("error sending request", err)
@@ -652,6 +651,22 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 
 	if c.QueryTags != "" {
 		h.Set(HTTPQueryTags, c.QueryTags)
+	}
+
+	// Add custom headers
+	if c.CustomHeaders != nil {
+		for _, header := range c.CustomHeaders {
+			parts := strings.SplitN(header, ":", 2)
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid header format: %q. Expected format: 'Header-Name: value'", header)
+			}
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			if key == "" {
+				return nil, fmt.Errorf("header name cannot be empty in header: %q", header)
+			}
+			h.Set(key, value)
+		}
 	}
 
 	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {
@@ -724,7 +739,7 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 			return nil, err
 		}
 		buf, _ := io.ReadAll(resp.Body) // nolint
-		return nil, fmt.Errorf("Error response from server: %s (%v)", string(buf), err)
+		return nil, fmt.Errorf("error response from server: %s (%v)", string(buf), err)
 	}
 
 	return conn, nil

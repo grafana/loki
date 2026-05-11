@@ -18,32 +18,31 @@ import (
 //
 // Must use NewByteSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
-type ByteSlice internal.ByteSlice
+type ByteSlice internal.ByteSliceWrapper
 
 func (ms ByteSlice) getOrig() *[]byte {
-	return internal.GetOrigByteSlice(internal.ByteSlice(ms))
+	return internal.GetByteSliceOrig(internal.ByteSliceWrapper(ms))
 }
 
 func (ms ByteSlice) getState() *internal.State {
-	return internal.GetByteSliceState(internal.ByteSlice(ms))
+	return internal.GetByteSliceState(internal.ByteSliceWrapper(ms))
 }
 
 // NewByteSlice creates a new empty ByteSlice.
 func NewByteSlice() ByteSlice {
 	orig := []byte(nil)
-	state := internal.StateMutable
-	return ByteSlice(internal.NewByteSlice(&orig, &state))
+	return ByteSlice(internal.NewByteSliceWrapper(&orig, internal.NewState()))
 }
 
 // AsRaw returns a copy of the []byte slice.
 func (ms ByteSlice) AsRaw() []byte {
-	return internal.CopyOrigByteSlice(nil, *ms.getOrig())
+	return copyByteSlice(nil, *ms.getOrig())
 }
 
 // FromRaw copies raw []byte into the slice ByteSlice.
 func (ms ByteSlice) FromRaw(val []byte) {
 	ms.getState().AssertMutable()
-	*ms.getOrig() = internal.CopyOrigByteSlice(*ms.getOrig(), val)
+	*ms.getOrig() = copyByteSlice(*ms.getOrig(), val)
 }
 
 // Len returns length of the []byte slice value.
@@ -128,13 +127,42 @@ func (ms ByteSlice) MoveAndAppendTo(dest ByteSlice) {
 	*ms.getOrig() = nil
 }
 
+// RemoveIf calls f sequentially for each element present in the slice.
+// If f returns true, the element is removed from the slice.
+func (ms ByteSlice) RemoveIf(f func(byte) bool) {
+	ms.getState().AssertMutable()
+	newLen := 0
+	for i := 0; i < len(*ms.getOrig()); i++ {
+		if f((*ms.getOrig())[i]) {
+			continue
+		}
+		if newLen == i {
+			// Nothing to move, element is at the right place.
+			newLen++
+			continue
+		}
+		(*ms.getOrig())[newLen] = (*ms.getOrig())[i]
+		var zero byte
+		(*ms.getOrig())[i] = zero
+		newLen++
+	}
+	*ms.getOrig() = (*ms.getOrig())[:newLen]
+}
+
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms ByteSlice) CopyTo(dest ByteSlice) {
 	dest.getState().AssertMutable()
-	*dest.getOrig() = internal.CopyOrigByteSlice(*dest.getOrig(), *ms.getOrig())
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
+	*dest.getOrig() = copyByteSlice(*dest.getOrig(), *ms.getOrig())
 }
 
 // Equal checks equality with another ByteSlice
 func (ms ByteSlice) Equal(val ByteSlice) bool {
 	return slices.Equal(*ms.getOrig(), *val.getOrig())
+}
+
+func copyByteSlice(dst, src []byte) []byte {
+	return append(dst[:0], src...)
 }

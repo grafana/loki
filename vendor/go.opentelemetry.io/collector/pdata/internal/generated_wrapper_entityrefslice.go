@@ -6,79 +6,24 @@
 
 package internal
 
-import (
-	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type EntityRefSlice struct {
-	orig  *[]*otlpcommon.EntityRef
+type EntityRefSliceWrapper struct {
+	orig  *[]*EntityRef
 	state *State
 }
 
-func GetOrigEntityRefSlice(ms EntityRefSlice) *[]*otlpcommon.EntityRef {
+func GetEntityRefSliceOrig(ms EntityRefSliceWrapper) *[]*EntityRef {
 	return ms.orig
 }
 
-func GetEntityRefSliceState(ms EntityRefSlice) *State {
+func GetEntityRefSliceState(ms EntityRefSliceWrapper) *State {
 	return ms.state
 }
 
-func NewEntityRefSlice(orig *[]*otlpcommon.EntityRef, state *State) EntityRefSlice {
-	return EntityRefSlice{orig: orig, state: state}
+func NewEntityRefSliceWrapper(orig *[]*EntityRef, state *State) EntityRefSliceWrapper {
+	return EntityRefSliceWrapper{orig: orig, state: state}
 }
 
-func GenerateTestEntityRefSlice() EntityRefSlice {
-	orig := GenerateOrigTestEntityRefSlice()
-	state := StateMutable
-	return NewEntityRefSlice(&orig, &state)
-}
-
-func CopyOrigEntityRefSlice(dest, src []*otlpcommon.EntityRef) []*otlpcommon.EntityRef {
-	var newDest []*otlpcommon.EntityRef
-	if cap(dest) < len(src) {
-		newDest = make([]*otlpcommon.EntityRef, len(src))
-		// Copy old pointers to re-use.
-		copy(newDest, dest)
-		// Add new pointers for missing elements from len(dest) to len(srt).
-		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpcommon.EntityRef{}
-		}
-	} else {
-		newDest = dest[:len(src)]
-		// Cleanup the rest of the elements so GC can free the memory.
-		// This can happen when len(src) < len(dest) < cap(dest).
-		for i := len(src); i < len(dest); i++ {
-			dest[i] = nil
-		}
-		// Add new pointers for missing elements.
-		// This can happen when len(dest) < len(src) < cap(dest).
-		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpcommon.EntityRef{}
-		}
-	}
-	for i := range src {
-		CopyOrigEntityRef(newDest[i], src[i])
-	}
-	return newDest
-}
-
-func GenerateOrigTestEntityRefSlice() []*otlpcommon.EntityRef {
-	orig := make([]*otlpcommon.EntityRef, 7)
-	for i := 0; i < 7; i++ {
-		orig[i] = &otlpcommon.EntityRef{}
-		FillOrigTestEntityRef(orig[i])
-	}
-	return orig
-}
-
-// UnmarshalJSONOrigEntityRefSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigEntityRefSlice(iter *json.Iterator) []*otlpcommon.EntityRef {
-	var orig []*otlpcommon.EntityRef
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, &otlpcommon.EntityRef{})
-		UnmarshalJSONOrigEntityRef(orig[len(orig)-1], iter)
-		return true
-	})
-	return orig
+func GenTestEntityRefSliceWrapper() EntityRefSliceWrapper {
+	orig := GenTestEntityRefPtrSlice()
+	return NewEntityRefSliceWrapper(&orig, NewState())
 }

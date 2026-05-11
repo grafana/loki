@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
+	dskit_log "github.com/grafana/dskit/log"
+	dskit_server "github.com/grafana/dskit/server"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
 
@@ -26,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logcli/volume"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	_ "github.com/grafana/loki/v3/pkg/util/build"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -35,6 +38,7 @@ var (
 		Default("false").
 		Short('q').
 		Bool()
+	logLevel   = app.Flag("log.level", "Log level").Default("error").Enum("error", "warning", "info", "debug")
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
 	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").
 			Default("default").
@@ -357,6 +361,10 @@ func main() {
 
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
 
+	var dLevel dskit_log.Level
+	_ = dLevel.Set(*logLevel)
+	util_log.InitLogger(&dskit_server.Config{LogLevel: dLevel}, nil, true)
+
 	if cpuProfile != nil && *cpuProfile != "" {
 		cpuFile, err := os.Create(*cpuProfile)
 		if err != nil {
@@ -585,6 +593,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("proxy-url", "The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.").Default("").Envar("LOKI_HTTP_PROXY_URL").StringVar(&client.ProxyURL)
 	app.Flag("compress", "Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.").Default("false").Envar("LOKI_HTTP_COMPRESSION").BoolVar(&client.Compression)
 	app.Flag("envproxy", "Use ProxyFromEnvironment to use net/http ProxyFromEnvironment configuration, eg HTTP_PROXY").Default("false").Envar("LOKI_ENV_PROXY").BoolVar(&client.EnvironmentProxy)
+	app.Flag("header", "Add custom HTTP headers to requests. Can be specified multiple times. Format: 'Header-Name: value'").StringsVar(&client.CustomHeaders)
 
 	return client
 }

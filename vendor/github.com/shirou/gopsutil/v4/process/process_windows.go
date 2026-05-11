@@ -699,6 +699,7 @@ func (p *Process) OpenFilesWithContext(ctx context.Context) ([]OpenFilesStat, er
 	if err != nil {
 		return nil, err
 	}
+	defer windows.CloseHandle(process)
 
 	buffer := make([]byte, 1024)
 	var size uint32
@@ -747,9 +748,10 @@ func (p *Process) OpenFilesWithContext(ctx context.Context) ([]OpenFilesStat, er
 		}
 
 		var fileName string
-		ch := make(chan struct{})
+		ch := make(chan struct{}, 1)
 
 		go func() {
+			defer close(ch)
 			var buf [syscall.MAX_LONG_PATH]uint16
 			n, err := windows.GetFinalPathNameByHandle(windows.Handle(file), &buf[0], syscall.MAX_LONG_PATH, 0)
 			if err != nil {
@@ -956,7 +958,7 @@ func getProcessMemoryInfo(h windows.Handle, mem *PROCESS_MEMORY_COUNTERS) (err e
 			err = syscall.EINVAL
 		}
 	}
-	return
+	return err
 }
 
 type SYSTEM_TIMES struct { //nolint:revive //FIXME

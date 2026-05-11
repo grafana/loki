@@ -46,18 +46,16 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 
 	for _, tc := range []struct {
 		name          string
-		deleteRequest deleteRequest
+		deleteRequest deletionproto.DeleteRequest
 		expectedResp  resp
 	}{
 		{
 			name: "whole chunk deleted",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    user1,
-					StartTime: now.Add(-3 * time.Hour),
-					EndTime:   now.Add(-time.Hour),
-					Query:     lbl,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     lbl,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -65,13 +63,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "whole chunk deleted with line filter present",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    user1,
-					StartTime: now.Add(-3 * time.Hour),
-					EndTime:   now.Add(-time.Hour),
-					Query:     lblWithLineFilter,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     lblWithLineFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -86,13 +82,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "whole chunk deleted with structured metadata filter present",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    user1,
-					StartTime: now.Add(-3 * time.Hour),
-					EndTime:   now.Add(-time.Hour),
-					Query:     lblWithStructuredMetadataFilter,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     lblWithStructuredMetadataFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -107,13 +101,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "whole chunk deleted with line and structured metadata filter present",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    user1,
-					StartTime: now.Add(-3 * time.Hour),
-					EndTime:   now.Add(-time.Hour),
-					Query:     lblWithLineAndStructuredMetadataFilter,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     lblWithLineAndStructuredMetadataFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -128,13 +120,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted from beginning",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    user1,
-					StartTime: now.Add(-3 * time.Hour),
-					EndTime:   now.Add(-2 * time.Hour),
-					Query:     lbl,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-2 * time.Hour),
+				Query:     lbl,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -149,13 +139,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted from end",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    user1,
-					StartTime: now.Add(-2 * time.Hour),
-					EndTime:   now,
-					Query:     lbl,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-2 * time.Hour),
+				EndTime:   now,
+				Query:     lbl,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -170,13 +158,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted from end with filter",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    user1,
-					StartTime: now.Add(-2 * time.Hour),
-					EndTime:   now,
-					Query:     lblWithLineFilter,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-2 * time.Hour),
+				EndTime:   now,
+				Query:     lblWithLineFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -191,13 +177,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted from end with structured metadata filter present",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    user1,
-					StartTime: now.Add(-2 * time.Hour),
-					EndTime:   now,
-					Query:     lblWithStructuredMetadataFilter,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-2 * time.Hour),
+				EndTime:   now,
+				Query:     lblWithStructuredMetadataFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -212,13 +196,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted from end with line and structured metadata filter present",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    user1,
-					StartTime: now.Add(-2 * time.Hour),
-					EndTime:   now,
-					Query:     lblWithLineAndStructuredMetadataFilter,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-2 * time.Hour),
+				EndTime:   now,
+				Query:     lblWithLineAndStructuredMetadataFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -233,13 +215,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "chunk deleted in the middle",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    user1,
-					StartTime: now.Add(-(2*time.Hour + 30*time.Minute)),
-					EndTime:   now.Add(-(time.Hour + 30*time.Minute)),
-					Query:     lbl,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-(2*time.Hour + 30*time.Minute)),
+				EndTime:   now.Add(-(time.Hour + 30*time.Minute)),
+				Query:     lbl,
 			},
 			expectedResp: resp{
 				isDeleted: true,
@@ -254,13 +234,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "delete request out of range",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    user1,
-					StartTime: now.Add(-12 * time.Hour),
-					EndTime:   now.Add(-10 * time.Hour),
-					Query:     lbl,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     lbl,
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -268,13 +246,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "request not matching due to matchers",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    "user1",
-					StartTime: now.Add(-3 * time.Hour),
-					EndTime:   now.Add(-time.Hour),
-					Query:     `{foo1="bar"}`,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    "user1",
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     `{foo1="bar"}`,
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -282,13 +258,11 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 		{
 			name: "request for a different user",
-			deleteRequest: deleteRequest{
-				DeleteRequest: deletionproto.DeleteRequest{
-					UserID:    "user2",
-					StartTime: now.Add(-3 * time.Hour),
-					EndTime:   now.Add(-time.Hour),
-					Query:     lbl,
-				},
+			deleteRequest: deletionproto.DeleteRequest{
+				UserID:    "user2",
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     lbl,
 			},
 			expectedResp: resp{
 				isDeleted: false,
@@ -296,9 +270,10 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.NoError(t, tc.deleteRequest.SetQuery(tc.deleteRequest.Query))
-			tc.deleteRequest.TotalLinesDeletedMetric = newDeleteRequestsManagerMetrics(nil).deletedLinesTotal
-			isExpired, filterFunc := tc.deleteRequest.GetChunkFilter([]byte(user1), mustParseLabel(lbl), chunkEntry)
+			deleteRequest, err := newDeleteRequest(tc.deleteRequest, newDeleteRequestsManagerMetrics(nil).deletedLinesTotal)
+			require.NoError(t, err)
+
+			isExpired, filterFunc := deleteRequest.GetChunkFilter([]byte(user1), mustParseLabel(lbl), chunkEntry)
 			require.Equal(t, tc.expectedResp.isDeleted, isExpired)
 			if tc.expectedResp.expectedFilter == nil {
 				require.Nil(t, filterFunc)
@@ -336,15 +311,12 @@ func mustParseLabel(input string) labels.Labels {
 
 func TestDeleteRequest_FilterFunction(t *testing.T) {
 	t.Run("one line matching with line filter", func(t *testing.T) {
-		dr := deleteRequest{
-			DeleteRequest: deletionproto.DeleteRequest{
-				Query:     `{foo="bar"} |= "some"`,
-				StartTime: 0,
-				EndTime:   math.MaxInt64,
-			},
-			DeletedLines:            0,
-			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
-		}
+		dr, err := newDeleteRequest(deletionproto.DeleteRequest{
+			Query:     `{foo="bar"} |= "some"`,
+			StartTime: 0,
+			EndTime:   math.MaxInt64,
+		}, newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal)
+		require.NoError(t, err)
 
 		lblStr := lblFooBar
 		lbls := mustParseLabel(lblStr)
@@ -356,20 +328,17 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.True(t, f(time.Now(), `some line`, labels.EmptyLabels()))
 		require.False(t, f(time.Now(), "", labels.EmptyLabels()))
 		require.False(t, f(time.Now(), "other line", labels.EmptyLabels()))
-		require.Equal(t, int32(1), dr.DeletedLines)
+		require.Equal(t, int32(1), dr.DeletedLines.Load())
 		require.Equal(t, float64(1), testutil.ToFloat64(dr.TotalLinesDeletedMetric))
 	})
 
 	t.Run("one line matching with structured metadata filter", func(t *testing.T) {
-		dr := deleteRequest{
-			DeleteRequest: deletionproto.DeleteRequest{
-				Query:     `{foo="bar"} | ping="pong"`,
-				StartTime: 0,
-				EndTime:   math.MaxInt64,
-			},
-			DeletedLines:            0,
-			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
-		}
+		dr, err := newDeleteRequest(deletionproto.DeleteRequest{
+			Query:     `{foo="bar"} | ping="pong"`,
+			StartTime: 0,
+			EndTime:   math.MaxInt64,
+		}, newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal)
+		require.NoError(t, err)
 
 		lblStr := lblFooBar
 		lbls := mustParseLabel(lblStr)
@@ -381,20 +350,17 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.True(t, f(time.Now(), `some line`, labels.FromStrings(lblPing, lblPong)))
 		require.False(t, f(time.Now(), "", labels.EmptyLabels()))
 		require.False(t, f(time.Now(), "some line", labels.EmptyLabels()))
-		require.Equal(t, int32(1), dr.DeletedLines)
+		require.Equal(t, int32(1), dr.DeletedLines.Load())
 		require.Equal(t, float64(1), testutil.ToFloat64(dr.TotalLinesDeletedMetric))
 	})
 
 	t.Run("one line matching with line and structured metadata filter", func(t *testing.T) {
-		dr := deleteRequest{
-			DeleteRequest: deletionproto.DeleteRequest{
-				Query:     `{foo="bar"} | ping="pong" |= "some"`,
-				StartTime: 0,
-				EndTime:   math.MaxInt64,
-			},
-			DeletedLines:            0,
-			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
-		}
+		dr, err := newDeleteRequest(deletionproto.DeleteRequest{
+			Query:     `{foo="bar"} | ping="pong" |= "some"`,
+			StartTime: 0,
+			EndTime:   math.MaxInt64,
+		}, newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal)
+		require.NoError(t, err)
 
 		lblStr := lblFooBar
 		lbls := mustParseLabel(lblStr)
@@ -407,19 +373,16 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.False(t, f(time.Now(), "", labels.EmptyLabels()))
 		require.False(t, f(time.Now(), "some line", labels.EmptyLabels()))
 		require.False(t, f(time.Now(), "other line", labels.FromStrings(lblPing, lblPong)))
-		require.Equal(t, int32(1), dr.DeletedLines)
+		require.Equal(t, int32(1), dr.DeletedLines.Load())
 		require.Equal(t, float64(1), testutil.ToFloat64(dr.TotalLinesDeletedMetric))
 	})
 
 	t.Run("labels not matching", func(t *testing.T) {
-		dr := deleteRequest{
-			DeleteRequest: deletionproto.DeleteRequest{
-				Query:  `{foo="bar"} |= "some"`,
-				UserID: "tenant1",
-			},
-			DeletedLines:            0,
-			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
-		}
+		dr, err := newDeleteRequest(deletionproto.DeleteRequest{
+			Query:  `{foo="bar"} |= "some"`,
+			UserID: "tenant1",
+		}, newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal)
+		require.NoError(t, err)
 
 		lblStr := `{foo2="buzz"}`
 		lbls := mustParseLabel(lblStr)
@@ -431,22 +394,19 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.False(t, f(time.Time{}, "", labels.EmptyLabels()))
 		require.False(t, f(time.Time{}, "other line", labels.EmptyLabels()))
 		require.False(t, f(time.Time{}, "some line", labels.EmptyLabels()))
-		require.Equal(t, int32(0), dr.DeletedLines)
+		require.Equal(t, int32(0), dr.DeletedLines.Load())
 		// testutil.ToFloat64 panics when there are 0 metrics
 		require.Panics(t, func() { testutil.ToFloat64(dr.TotalLinesDeletedMetric) })
 	})
 
 	t.Run("no line filter", func(t *testing.T) {
 		now := model.Now()
-		dr := deleteRequest{
-			DeleteRequest: deletionproto.DeleteRequest{
-				Query:     `{namespace="default"}`,
-				StartTime: now.Add(-time.Hour),
-				EndTime:   now,
-			},
-			DeletedLines:            0,
-			TotalLinesDeletedMetric: newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal,
-		}
+		dr, err := newDeleteRequest(deletionproto.DeleteRequest{
+			Query:     `{namespace="default"}`,
+			StartTime: now.Add(-time.Hour),
+			EndTime:   now,
+		}, newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()).deletedLinesTotal)
+		require.NoError(t, err)
 
 		lblStr := `{namespace="default"}`
 		lbls := mustParseLabel(lblStr)
@@ -460,7 +420,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.False(t, f(now.Time().Add(-2*time.Hour), `some line`, labels.EmptyLabels()))
 		require.True(t, f(now.Time(), "other line", labels.EmptyLabels()))
 
-		require.Equal(t, int32(0), dr.DeletedLines)
+		require.Equal(t, int32(0), dr.DeletedLines.Load())
 		// testutil.ToFloat64 panics when there are 0 metrics
 		require.Panics(t, func() { testutil.ToFloat64(dr.TotalLinesDeletedMetric) })
 	})

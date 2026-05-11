@@ -22,18 +22,18 @@ metadata:
     {{- end }}
   annotations:
     {{- toYaml .service.annotations | nindent 4 }}
-  namespace: {{ $.ctx.Release.Namespace | quote }}
+  namespace: {{ include "loki.namespace" $.ctx | quote }}
 spec:
   type: ClusterIP
   clusterIP: None
   ports:
     - name: memcached-client
       port: {{ .port }}
-      targetPort: {{ .port }}
+      targetPort: client
     {{ if $.ctx.Values.memcachedExporter.enabled -}}
     - name: http-metrics
       port: 9150
-      targetPort: 9150
+      targetPort: http-metrics
     {{ end }}
   selector:
     {{- include "loki.selectorLabels" $.ctx | nindent 4 }}

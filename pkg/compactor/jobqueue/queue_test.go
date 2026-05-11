@@ -54,6 +54,10 @@ func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_
 	<-ctx.Done()
 }
 
+func (m *mockBuilder) JobsLeft() int {
+	return len(m.jobsToBuild) - int(m.jobsSucceeded.Load())
+}
+
 func setupGRPC(t *testing.T, q *Queue) (*grpc.ClientConn, func()) {
 	buffer := 101024 * 1024
 	lis := bufconn.Listen(buffer)
@@ -87,11 +91,11 @@ func TestQueue_RegisterBuilder(t *testing.T) {
 	builder := &mockBuilder{}
 
 	// Register builder successfully
-	err := q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder, jobTimeout, jobRetries)
+	err := q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder, jobTimeout, jobRetries, nil)
 	require.NoError(t, err)
 
 	// Try to register same builder type again
-	err = q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder, jobTimeout, jobRetries)
+	err = q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder, jobTimeout, jobRetries, nil)
 	require.ErrorIs(t, err, ErrJobTypeAlreadyRegistered)
 }
 
@@ -114,7 +118,7 @@ func TestQueue_Loop(t *testing.T) {
 		jobsToBuild: jobs,
 	}
 
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder, jobTimeout, jobRetries))
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder, jobTimeout, jobRetries, nil))
 	go q.Start(context.Background())
 
 	// Dequeue the job
@@ -185,7 +189,7 @@ func TestQueue_Loop(t *testing.T) {
 
 func TestQueue_ReportJobResult(t *testing.T) {
 	q := newQueue(time.Second, nil)
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries))
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries, nil))
 
 	// Create a test job
 	job := &compactor_grpc.Job{
@@ -251,7 +255,7 @@ func TestQueue_ReportJobResult(t *testing.T) {
 func TestQueue_JobTimeout(t *testing.T) {
 	q := newQueue(50*time.Millisecond, nil)
 	// Short job timeout for testing
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, 100*time.Millisecond, jobRetries))
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, 100*time.Millisecond, jobRetries, nil))
 
 	// Create a test job
 	job := &compactor_grpc.Job{
@@ -290,7 +294,7 @@ func TestQueue_JobTimeout(t *testing.T) {
 func TestQueue_Close(t *testing.T) {
 	q := NewQueue(nil)
 
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries))
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries, nil))
 
 	wg := sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())

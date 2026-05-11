@@ -5,7 +5,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
+  RELEASE_LIB_REF: "48ee065d8d1e3f1a3a28cb1e5ecf5cb85211a019"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -25,7 +25,7 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -44,6 +44,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -150,7 +151,7 @@ jobs:
     permissions:
       contents: "write"
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -247,7 +248,7 @@ jobs:
     - "createRelease"
     permissions:
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -301,7 +302,7 @@ jobs:
     - "createRelease"
     permissions:
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -351,7 +352,7 @@ jobs:
     permissions:
       contents: "write"
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -406,7 +407,7 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"

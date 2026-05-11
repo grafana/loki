@@ -1043,7 +1043,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 
 			for _, deleteRequests := range mgr.currentBatch.deleteRequestsToProcess {
 				for _, dr := range deleteRequests.requests {
-					require.EqualValues(t, 0, dr.DeletedLines)
+					require.EqualValues(t, 0, dr.DeletedLines.Load())
 				}
 			}
 
@@ -1432,10 +1432,9 @@ type removeReqDetails struct {
 
 type mockDeleteRequestsStore struct {
 	DeleteRequestsStore
-	deleteRequests           []deletionproto.DeleteRequest
-	addReq                   storeAddReqDetails
-	addErr                   error
-	returnZeroDeleteRequests bool
+	deleteRequests []deletionproto.DeleteRequest
+	addReq         storeAddReqDetails
+	addErr         error
 
 	removeReqs removeReqDetails
 	removeErr  error
@@ -1499,7 +1498,7 @@ func (m *mockDeleteRequestsStore) GetDeleteRequest(_ context.Context, userID, re
 	return m.getResult[0], m.getErr
 }
 
-func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string, forQuerytimeFiltering bool) ([]deletionproto.DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string, forQuerytimeFiltering bool, _ *TimeRange) ([]deletionproto.DeleteRequest, error) {
 	m.getAllUser = userID
 	m.getAllRequestedForQuerytimeFiltering = forQuerytimeFiltering
 	return m.getAllResult, m.getAllErr

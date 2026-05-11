@@ -1146,6 +1146,38 @@ a secret. This mode is only supported for certain object storage types in certai
 </tr></tbody>
 </table>
 
+## GatewaySpec { #loki-grafana-com-v1-GatewaySpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
+</p>
+<div>
+<p>GatewaySpec defines the configuration specific to Gateway server</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>tls</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-TLSSpec">
+TLSSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>TLS defines the TLS configuration for the Gateway server.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## HashRingSpec { #loki-grafana-com-v1-HashRingSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
@@ -1782,6 +1814,12 @@ PodStatusMap
 </tr><tr><td><p>&#34;FailedComponents&#34;</p></td>
 <td><p>ReasonFailedComponents when all/some LokiStack components fail to roll out.</p>
 </td>
+</tr><tr><td><p>&#34;InsufficientIngesterReplicas&#34;</p></td>
+<td><p>ReasonInsufficientIngesterReplicas when the ingester replicas are less than or equal to the replication factor. Which causes log ingestion to stop when ingester pods get restarted.</p>
+</td>
+</tr><tr><td><p>&#34;InvalidGatewayTLSConfig&#34;</p></td>
+<td><p>ReasonInvalidGatewayTLSConfig when the referenced TLS Secret or ConfigMap is invalid or missing required keys.</p>
+</td>
 </tr><tr><td><p>&#34;InvalidGatewayTenantConfigMap&#34;</p></td>
 <td><p>ReasonInvalidGatewayTenantConfigMap when the format of the configmap is invalid.</p>
 </td>
@@ -1812,6 +1850,9 @@ with the select cluster size.</p>
 </td>
 </tr><tr><td><p>&#34;MissingGatewayOpenShiftBaseDomain&#34;</p></td>
 <td><p>ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.</p>
+</td>
+</tr><tr><td><p>&#34;MissingGatewayTLSConfig&#34;</p></td>
+<td><p>ReasonMissingGatewayTLSConfig when the referenced TLS Secret or ConfigMap for the gateway is missing.</p>
 </td>
 </tr><tr><td><p>&#34;MissingGatewayTenantConfigMap&#34;</p></td>
 <td><p>ReasonMissingGatewayTenantConfigMap when the required tenant configmap
@@ -2123,6 +2164,22 @@ TenantsSpec
 <p>Tenants defines the per-tenant authentication and authorization spec for the lokistack-gateway component.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>networkPolicies</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPoliciesSpec">
+NetworkPoliciesSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+When enabled, the operator creates NetworkPolicies to control ingress/egress between
+Loki components and related services.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -2169,6 +2226,20 @@ LokiStackStorageStatus
 <em>(Optional)</em>
 <p>Storage provides summary of all changes that have occurred
 to the storage configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>networkPolicyRuleSet</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPolicyRuleSet">
+NetworkPolicyRuleSet
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.</p>
 </td>
 </tr>
 <tr>
@@ -2515,6 +2586,66 @@ for the memberlist.</p>
 </tr><tr><td><p>&#34;static&#34;</p></td>
 <td><p>Static mode asserts the Authorization Spec&rsquo;s Roles and RoleBindings
 using an in-process OpenPolicyAgent Rego authorizer.</p>
+</td>
+</tr></tbody>
+</table>
+
+## NetworkPoliciesSpec { #loki-grafana-com-v1-NetworkPoliciesSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
+</p>
+<div>
+<p>NetworkPoliciesSpec defines the configuration for NetworkPolicies.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ruleSet</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPolicyRuleSet">
+NetworkPolicyRuleSet
+</a>
+</em>
+</td>
+<td>
+<p>RuleSet determines which of the pre-defined sets of NetworkPolicy rules is used for this LokiStack.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## NetworkPolicyRuleSet { #loki-grafana-com-v1-NetworkPolicyRuleSet }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>, <a href="#loki-grafana-com-v1-NetworkPoliciesSpec">NetworkPoliciesSpec</a>)
+</p>
+<div>
+<p>NetworkPolicyRuleSet is the type of network policy rule set to use</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;None&#34;</p></td>
+<td><p>The NetworkPolicyRuleSetNone rule-set contains no network policies, effectively removing all network policies created by the operator.</p>
+</td>
+</tr><tr><td><p>&#34;RestrictIngressEgress&#34;</p></td>
+<td><p>The NetworkPolicyRuleSetRestrictIngressEgress rule-set creates NetworkPolicies allowing the following:</p>
+<ul>
+<li>queries and log ingestion through the gateway</li>
+<li>access to object storage for Loki components requiring this</li>
+<li>communication between LokiStack components</li>
+</ul>
 </td>
 </tr></tbody>
 </table>
@@ -3109,17 +3240,18 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 <tbody>
 <tr>
 <td>
-<code>disableRecommendedAttributes</code><br/>
+<code>enableConsoleLabels</code><br/>
 <em>
 bool
 </em>
 </td>
 <td>
 <em>(Optional)</em>
-<p>DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.</p>
-<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the stream labels. This requires an update
-to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.</p>
-<p>The recommended attributes are:</p>
+<p>EnableConsoleLabels can be used to add a set of additional stream labels to the OTLP input. These labels are
+currently used by the logs console in OpenShift.</p>
+<p>This is not different from manually adding some or all of the attributes to the set of stream labels using the
+normal OTLP configuration.</p>
+<p>The additional attributes which are converted to stream labels are:</p>
 <ul>
 <li>k8s.container.name</li>
 <li>k8s.cronjob.name</li>
@@ -3134,8 +3266,6 @@ to queries that relied on these attributes as stream labels, as they will no lon
 <li>kubernetes.pod_name</li>
 <li>service.name</li>
 </ul>
-<p>This option is supposed to be combined with a custom attribute configuration listing the stream labels that
-should continue to exist.</p>
 <p>See also: <a href="https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes">https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes</a></p>
 </td>
 </tr>
@@ -4695,6 +4825,46 @@ the same namespace as the LokiStack object is in is used.</p>
 </tbody>
 </table>
 
+## SecretReference { #loki-grafana-com-v1-SecretReference }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TLSSpec">TLSSpec</a>)
+</p>
+<div>
+<p>SecretReference encodes a reference to a single key in a Secret in the same namespace.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>key</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Key contains the name of the key inside the referenced Secret.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>secretName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>SecretName contains the name of the Secret containing the referenced value.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## StorageSchemaEffectiveDate { #loki-grafana-com-v1-StorageSchemaEffectiveDate }
 (<code>string</code> alias)
 <p>
@@ -4766,6 +4936,63 @@ SubjectKind
 <td><p>User represents a subject that is a user.</p>
 </td>
 </tr></tbody>
+</table>
+
+## TLSSpec { #loki-grafana-com-v1-TLSSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-GatewaySpec">GatewaySpec</a>)
+</p>
+<div>
+<p>TLSSpec contains options for TLS connections.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ca</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ValueReference">
+ValueReference
+</a>
+</em>
+</td>
+<td>
+<p>CA can be used to specify a custom list of trusted certificate authorities.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>certificate</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ValueReference">
+ValueReference
+</a>
+</em>
+</td>
+<td>
+<p>Certificate points to the server certificate to use.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>privateKey</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-SecretReference">
+SecretReference
+</a>
+</em>
+</td>
+<td>
+<p>PrivateKey points to the private key of the server certificate.</p>
+</td>
+</tr>
+</tbody>
 </table>
 
 ## TenantSecretSpec { #loki-grafana-com-v1-TenantSecretSpec }
@@ -4867,6 +5094,84 @@ OpenshiftTenantSpec
 <td>
 <em>(Optional)</em>
 <p>Openshift defines the configuration specific to Openshift modes.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>disableIngress</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DisableIngress disables automatic creation of external access resources (Route / Ingress).
+When true, no Route or Ingress will be created for the gateway.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>gateway</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-GatewaySpec">
+GatewaySpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Gateway defines the configuration specific to Gateway server</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## ValueReference { #loki-grafana-com-v1-ValueReference }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TLSSpec">TLSSpec</a>)
+</p>
+<div>
+<p>ValueReference encodes a reference to a single field in either a ConfigMap or Secret in the same namespace.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>key</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name of the key used to get the value in either the referenced ConfigMap or Secret.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>configMapName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>ConfigMapName contains the name of the ConfigMap containing the referenced value.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>secretName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>SecretName contains the name of the Secret containing the referenced value.</p>
 </td>
 </tr>
 </tbody>

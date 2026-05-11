@@ -115,18 +115,18 @@ func mergeShardErrs(e1, e2 error) error {
 
 // Error returns an error indicating the name of the request that failed, the
 // number of separate errors, and the first error.
-func (e *ShardErrors) Error() string {
-	if len(e.Errs) == 0 {
+func (se *ShardErrors) Error() string {
+	if len(se.Errs) == 0 {
 		return "INVALID: ShardErrors contains no errors!"
 	}
-	return fmt.Sprintf("request %s has %d separate shard errors, first: %s", e.Name, len(e.Errs), e.Errs[0].Err)
+	return fmt.Sprintf("request %s has %d separate shard errors, first: %s", se.Name, len(se.Errs), se.Errs[0].Err)
 }
 
 // Unwrap returns the underlying errors.
-func (e *ShardErrors) Unwrap() []error {
-	unwrapped := make([]error, 0, len(e.Errs))
+func (se *ShardErrors) Unwrap() []error {
+	unwrapped := make([]error, 0, len(se.Errs))
 
-	for _, shardErr := range e.Errs {
+	for _, shardErr := range se.Errs {
 		unwrapped = append(unwrapped, shardErr.Err)
 	}
 

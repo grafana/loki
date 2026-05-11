@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/detected"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
@@ -286,6 +287,32 @@ func (q *MultiTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeReq
 	}
 
 	merged := seriesvolume.Merge(responses, req.Limit)
+	return merged, nil
+}
+
+func (q *MultiTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		return q.Querier.Patterns(ctx, req)
+	}
+
+	responses := make([]*logproto.QueryPatternsResponse, len(tenantIDs))
+	for i, id := range tenantIDs {
+		singleContext := user.InjectOrgID(ctx, id)
+		resp, err := q.Querier.Patterns(singleContext, req)
+		if err != nil {
+			return nil, err
+		}
+
+		responses[i] = resp
+	}
+
+	// Merge pattern responses from all tenants
+	merged := pattern.MergePatternResponses(responses)
 	return merged, nil
 }
 

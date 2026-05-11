@@ -37,6 +37,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/querylimits"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -61,7 +62,6 @@ type limits struct {
 	// Use pointers so nil value can indicate if the value was set.
 	splitDuration       *time.Duration
 	maxQueryParallelism *int
-	maxQueryBytesRead   *int
 }
 
 func (l limits) QuerySplitDuration(user string) time.Duration {
@@ -281,7 +281,30 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	ctx, sp := tracer.Start(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.End()
 
-	expr, err := syntax.ParseExpr(r.GetQuery())
+	queryLimitCtx := querylimits.ExtractQueryLimitsContextFromContext(ctx)
+	fullCtxBytes := uint64(0)
+	if queryLimitCtx != nil && queryLimitCtx.Expr != "" && !queryLimitCtx.From.IsZero() && !queryLimitCtx.To.IsZero() {
+		var err error
+		fullCtxBytes, err = q.getBytesForQueryAndRange(ctx, queryLimitCtx.Expr, queryLimitCtx.From, queryLimitCtx.To)
+		if err != nil {
+			return 0, nil
+		}
+	}
+
+	queryBytes, err := q.getBytesForQueryAndRange(ctx, r.GetQuery(), r.GetStart(), r.GetEnd())
+	if err != nil {
+		return 0, nil
+	}
+
+	if fullCtxBytes > queryBytes {
+		return fullCtxBytes, nil
+	}
+
+	return queryBytes, nil
+}
+
+func (q *querySizeLimiter) getBytesForQueryAndRange(ctx context.Context, query string, from, to time.Time) (uint64, error) {
+	expr, err := syntax.ParseExpr(query)
 	if err != nil {
 		return 0, err
 	}
@@ -294,7 +317,16 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	// TODO: Set concurrency dynamically as in shardResolverForConf?
 	start := time.Now()
 	const maxConcurrentIndexReq = 10
-	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
+	matcherStats, err := getStatsForMatchers(
+		ctx,
+		q.logger,
+		q.statsHandler,
+		model.Time(from.UnixMilli()),
+		model.Time(to.UnixMilli()),
+		matcherGroups,
+		maxConcurrentIndexReq,
+		q.maxLookBackPeriod,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -670,7 +702,7 @@ func WeightedParallelism(
 		dur := through.Sub(from)
 
 		if i+1 < len(configs) && configs[i+1].From.Time.Before(end) {
-			dur = configs[i+1].From.Time.Sub(from)
+			dur = configs[i+1].From.Sub(from)
 		}
 		if ty := configs[i].IndexType; ty == types.TSDBType {
 			tsdbDur += dur

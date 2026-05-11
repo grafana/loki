@@ -2,6 +2,8 @@ package local
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path"
 	"testing"
@@ -9,9 +11,9 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
-	promRules "github.com/prometheus/prometheus/rules"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )
@@ -64,9 +66,29 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 	err = os.Symlink(namespace1, path.Join(dir, user1, namespace2))
 	require.NoError(t, err)
 
+	// Dotfile with content the rulefmt loader rejects (valid YAML, wrong
+	// shape for a rule group). Before the fix, this file would be handed
+	// to the loader and fail parsing, aborting the entire listing. After
+	// the fix, its name is enough to skip it.
+	err = os.WriteFile(path.Join(dir, user1, ".alerts.yml.swp"), []byte("groups: not-a-list"), 0777)
+	require.NoError(t, err)
+
+	// Broken dot-symlink pointing at a non-existent target. If the
+	// dotfile check runs AFTER os.Stat, the stat call will fail on the
+	// dangling target and the whole listing errors out. If the check
+	// runs BEFORE stat (as intended), this entry is silently skipped.
+	err = os.Symlink("/does/not/exist", path.Join(dir, user1, ".linktonowhere"))
+	require.NoError(t, err)
+
+	// Kubernetes ConfigMap atomic-writer style internal directory at the
+	// rules root. Before the fix, ListAllUsers would treat this as a
+	// tenant ID. After the fix, ListAllUsers skips it.
+	err = os.Mkdir(path.Join(dir, "..2022_03_15_14_00_00.000000000"), 0755)
+	require.NoError(t, err)
+
 	client, err := NewLocalRulesClient(Config{
 		Directory: dir,
-	}, promRules.FileLoader{})
+	}, testFileLoader{})
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -82,4 +104,21 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 		require.Equal(t, rulespb.ToProto(u, namespace1, ruleGroups.Groups[0]), actual[0])
 		require.Equal(t, rulespb.ToProto(u, namespace2, ruleGroups.Groups[0]), actual[1])
 	}
+
+	// The K8s-style dotdir at the rules root must not appear as a tenant.
+	// The map must contain exactly user1 and user2.
+	require.Len(t, userMap, 2)
+	_, dotdirLeaked := userMap["..2022_03_15_14_00_00.000000000"]
+	require.False(t, dotdirLeaked, "dot-directory at rules root was not filtered by ListAllUsers")
+}
+
+type testFileLoader struct{}
+
+func (testFileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
+	parseLog := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, parser.NewParser(parser.Options{}), parseLog)
+}
+
+func (testFileLoader) Parse(query string) (parser.Expr, error) {
+	return parser.NewParser(parser.Options{}).ParseExpr(query)
 }

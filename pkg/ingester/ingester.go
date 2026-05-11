@@ -63,6 +63,7 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/wal"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -133,6 +134,8 @@ type Config struct {
 
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
 
+	DelegateStreamLimits bool `yaml:"delegate_stream_limits_enabled" doc:"description=When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled."`
+
 	KafkaIngestion KafkaIngestionConfig `yaml:"kafka_ingestion,omitempty"`
 }
 
@@ -163,6 +166,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
+	f.BoolVar(&cfg.DelegateStreamLimits, "ingester.delegate-stream-limits-enabled", false, "When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled.")
 }
 
 func (cfg *Config) Validate() error {
@@ -365,7 +369,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
 	if i.cfg.KafkaIngestion.Enabled {
-		i.ingestPartitionID, err = partitionring.ExtractIngesterPartitionID(cfg.LifecyclerConfig.ID)
+		i.ingestPartitionID, err = partitionring.ExtractPartitionID(cfg.LifecyclerConfig.ID)
 		if err != nil {
 			return nil, fmt.Errorf("calculating ingester partition ID: %w", err)
 		}
@@ -391,6 +395,8 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers),
 			logger,
 			registerer,
+			i.partitionRingLifecycler,
+			partition.WithHeaderToContextExtractor(validation.IngestionPoliciesKafkaHeadersToContext),
 		)
 		if err != nil {
 			return nil, err
@@ -458,7 +464,7 @@ func (i *Ingester) setupAutoForget() {
 
 	go func() {
 		ctx := context.Background()
-		err := i.Service.AwaitRunning(ctx)
+		err := i.AwaitRunning(ctx)
 		if err != nil {
 			level.Error(i.logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
 			return
@@ -997,6 +1003,11 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	if err != nil {
 		return nil, err
 	} else if i.readonly {
+		return nil, ErrReadOnly
+	}
+
+	// Check if disk is too full and throttle writes if needed
+	if i.wal.IsDiskThrottled() {
 		return nil, ErrReadOnly
 	}
 

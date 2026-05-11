@@ -13,9 +13,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/sigv4"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
@@ -64,6 +64,25 @@ const (
 	defaultBloomTaskTargetChunkSize   = "20GB"
 
 	defaultBlockedIngestionStatusCode = 260 // 260 is a custom status code to indicate blocked ingestion
+)
+
+var (
+	DefaultAllowedLevelFields = []string{
+		"level",
+		"LEVEL",
+		"Level",
+		"log.level",
+		"severity",
+		"SEVERITY",
+		"Severity",
+		"SeverityText",
+		"lvl",
+		"LVL",
+		"Lvl",
+		"severity_text",
+		"Severity_Text",
+		"SEVERITY_TEXT",
+	}
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -129,17 +148,18 @@ type Limits struct {
 	QueryTimeout               model.Duration   `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration               model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MetadataQuerySplitDuration       model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
-	RecentMetadataQuerySplitDuration model.Duration   `yaml:"split_recent_metadata_queries_by_interval" json:"split_recent_metadata_queries_by_interval"`
-	RecentMetadataQueryWindow        model.Duration   `yaml:"recent_metadata_query_window" json:"recent_metadata_query_window"`
-	InstantMetricQuerySplitDuration  model.Duration   `yaml:"split_instant_metric_queries_by_interval" json:"split_instant_metric_queries_by_interval"`
-	IngesterQuerySplitDuration       model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
-	MinShardingLookback              model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
-	MaxQueryBytesRead                flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
-	MaxQuerierBytesRead              flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
-	VolumeEnabled                    bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
-	VolumeMaxSeries                  int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
+	QuerySplitDuration                   model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MetadataQuerySplitDuration           model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
+	RecentMetadataQuerySplitDuration     model.Duration   `yaml:"split_recent_metadata_queries_by_interval" json:"split_recent_metadata_queries_by_interval"`
+	RecentMetadataQueryWindow            model.Duration   `yaml:"recent_metadata_query_window" json:"recent_metadata_query_window"`
+	InstantMetricQuerySplitDuration      model.Duration   `yaml:"split_instant_metric_queries_by_interval" json:"split_instant_metric_queries_by_interval"`
+	EngineResultsCacheTimeBucketInterval model.Duration   `yaml:"engine_results_cache_time_bucket_interval" json:"engine_results_cache_time_bucket_interval"`
+	IngesterQuerySplitDuration           model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
+	MinShardingLookback                  model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead                    flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
+	MaxQuerierBytesRead                  flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
+	VolumeEnabled                        bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
+	VolumeMaxSeries                      int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
@@ -209,7 +229,8 @@ type Limits struct {
 	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
 	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
 
-	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
+	IndexGatewayShardSize   int     `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
+	IndexGatewayMaxCapacity float64 `yaml:"index_gateway_max_capacity" json:"index_gateway_max_capacity"`
 
 	BloomGatewayEnabled bool `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
 
@@ -230,7 +251,7 @@ type Limits struct {
 	AllowStructuredMetadata           bool                  `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize      `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
 	MaxStructuredMetadataEntriesCount int                   `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
-	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
+	OTLPConfig                        *push.OTLPConfig      `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
 	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental" doc:"description=Block ingestion for policy until the configured date. The policy '*' is the global policy, which is applied to all streams not matching a policy and can be overridden by other policies. The time should be in RFC3339 format. The policy is based on the policy_stream_mapping configuration."`
@@ -240,13 +261,20 @@ type Limits struct {
 	PolicyEnforcedLabels      map[string][]string           `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. The policy '*' is the global policy, which is applied to all streams and can be extended by other policies. Example:\n policy_enforced_labels: \n  policy1: \n    - label1 \n    - label2 \n  policy2: \n    - label3 \n    - label4\n  '*':\n    - label5"`
 	PolicyStreamMapping       PolicyStreamMapping           `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
 
+	// DefaultPolicyStreamMapping contains the default policy stream mappings that are merged with per-tenant mappings.
+	// This field is not exposed in YAML/JSON as it's set programmatically.
+	DefaultPolicyStreamMapping PolicyStreamMapping `yaml:"-" json:"-"`
+
+	// PolicyOverrideLimits contains per-policy overrides for stream count limits.
+	PolicyOverrideLimits map[string]PolicyOverridableLimits `yaml:"policy_override_limits" json:"policy_override_limits" doc:"hidden"`
+
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
 	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
 
-	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"hidden"`
-	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"hidden"`
-	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"hidden"`
+	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"description=Default list of JSON fields to tokenize for pattern detection. It is recommend to append to or delete from the defaults rather than replacing them."`
+	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"description=List of additional JSON fields to tokenize for pattern detection."`
+	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"description=List of JSON fields to excluded from the defaults to tokenize for pattern detection."`
 	MetricAggregationEnabled                    bool                         `yaml:"metric_aggregation_enabled"                       json:"metric_aggregation_enabled"`
 	PatternPersistenceEnabled                   bool                         `yaml:"pattern_persistence_enabled"                      json:"pattern_persistence_enabled"`
 	PatternPersistenceGranularity               model.Duration               `yaml:"pattern_persistence_granularity"                  json:"pattern_persistence_granularity"`
@@ -257,10 +285,68 @@ type Limits struct {
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
 	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
 	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
+
+	// Per tenant limits for the v2 execution engine
+
+	MaxScanTaskParallelism int  `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
+	DebugEngineTasks       bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
+	DebugEngineStreams     bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
+
+	// Data-objects sort schema
+	SortSchema SortSchema `yaml:"sort_schema,omitempty" json:"sort_schema,omitempty" doc:"hidden"`
 }
 
 type FieldDetectorConfig struct {
 	Fields map[string][]string `yaml:"fields,omitempty" json:"fields,omitempty"`
+}
+
+// SortSchemaTimestampName is the reserved name for the timestamp entry in a sort schema.
+const SortSchemaTimestampName = "__timestamp__"
+
+// SortSchemaEntry is one element in a per-tenant sort schema.
+// Name is the label name to sort by. SortSchemaTimestampName is reserved and must not appear
+// in the schema — the timestamp is always implicitly the final sort key.
+type SortSchemaEntry struct {
+	Name string `yaml:"name" json:"name"`
+}
+
+// SortSchema is an ordered list of sort schema entries for a tenant.
+// The timestamp is always implicitly appended as the final sort key and must not be listed.
+// An empty schema means "use DefaultSortSchema".
+// Example: [{Name: "service_name"}]
+type SortSchema []SortSchemaEntry
+
+// DefaultSortSchema is the broad default schema used when no tenant-specific schema is configured.
+var DefaultSortSchema = SortSchema{
+	{Name: "service_name"},
+}
+
+// Validate checks that the sort schema is well-formed.
+// An empty schema is valid (callers fall back to DefaultSortSchema).
+func (s SortSchema) Validate() error {
+	seen := make(map[string]struct{}, len(s))
+	for i, e := range s {
+		if e.Name == "" {
+			return fmt.Errorf("sort_schema entry %d has an empty name", i)
+		}
+		if e.Name == SortSchemaTimestampName {
+			return fmt.Errorf("sort_schema must not include %q — the timestamp is always the implicit last sort key", SortSchemaTimestampName)
+		}
+		if _, dup := seen[e.Name]; dup {
+			return fmt.Errorf("sort_schema entry %q is duplicated", e.Name)
+		}
+		seen[e.Name] = struct{}{}
+	}
+	return nil
+}
+
+// LabelNames returns the ordered label names in the schema.
+func (s SortSchema) LabelNames() []string {
+	names := make([]string, 0, len(s))
+	for _, e := range s {
+		names = append(names, e.Name)
+	}
+	return names
 }
 
 type StreamRetention struct {
@@ -284,7 +370,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&l.IngestionBurstSizeMB, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB. The burst size refers to the per-distributor local rate limiter even in the case of the 'global' strategy, and should be set at least to the maximum logs size expected in a single push request.")
 
 	_ = l.MaxLineSize.Set("256KB")
-	f.Var(&l.MaxLineSize, "distributor.max-line-size", "Maximum line size on ingestion path. Example: 256kb. Any log line exceeding this limit will be discarded unless `distributor.max-line-size-truncate` is set which in case it is truncated instead of discarding it completely. There is no limit when unset or set to 0.")
+	f.Var(&l.MaxLineSize, "distributor.max-line-size", "Maximum line size on ingestion path. Example: 256kb. Any log line exceeding this limit will be discarded unless `distributor.max-line-size-truncate` is set, in which case it is truncated rather than discarded completely. There is no limit when set to 0.")
 	f.BoolVar(&l.MaxLineSizeTruncate, "distributor.max-line-size-truncate", false, "Whether to truncate lines that exceed max_line_size.")
 	f.StringVar(&l.MaxLineSizeTruncateIdentifier, "distributor.max-line-size-truncate-identifier", "", "Identifier that is added at the end of a truncated log line.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names.")
@@ -309,7 +395,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
 	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
-	l.LogLevelFields = []string{"level", "LEVEL", "Level", "Severity", "severity", "SEVERITY", "lvl", "LVL", "Lvl", "severity_text", "Severity_Text", "SEVERITY_TEXT"}
+	l.LogLevelFields = make([]string, len(DefaultAllowedLevelFields))
+	copy(l.LogLevelFields, DefaultAllowedLevelFields)
 	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
 	f.IntVar(&l.LogLevelFromJSONMaxDepth, "validation.log-level-from-json-max-depth", 2, "Maximum depth to search for log level fields in JSON logs. A value of 0 or less means unlimited depth. Default is 2 which searches the first 2 levels of the JSON object.")
 
@@ -398,6 +485,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.QuerySplitDuration, "querier.split-queries-by-interval", "Split queries by a time interval and execute in parallel. The value 0 disables splitting by time. This also determines how cache keys are chosen when result caching is enabled.")
 	_ = l.InstantMetricQuerySplitDuration.Set("1h")
 	f.Var(&l.InstantMetricQuerySplitDuration, "querier.split-instant-metric-queries-by-interval", "Split instant metric queries by a time interval and execute in parallel. The value 0 disables splitting instant metric queries by time. This also determines how cache keys are chosen when instant metric query result caching is enabled.")
+	_ = l.EngineResultsCacheTimeBucketInterval.Set("24h")
+	f.Var(&l.EngineResultsCacheTimeBucketInterval, "querier.engine-results-cache-time-bucket-interval", "Time bucket interval used for cache key generation in the Thor (V2) query engine. Queries starting within the same bucket share the same cache key.")
 
 	_ = l.MetadataQuerySplitDuration.Set("24h")
 	f.Var(&l.MetadataQuerySplitDuration, "querier.split-metadata-queries-by-interval", "Split metadata queries by a time interval and execute in parallel. The value 0 disables splitting metadata queries by time. This also determines how cache keys are chosen when label/series result caching is enabled.")
@@ -416,6 +505,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
+	f.Float64Var(&l.IndexGatewayMaxCapacity, "index-gateway.max-capacity", 1.0, "Experimental. Defines a fraction (between 0.0 and 1.0) of the total index gateways available for a each tenant. A value of 0.0 has the same effect as 1.0, meaning all available index gateways. This setting only applies to simple mode.")
 
 	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Experimental. Whether to use the bloom gateway component in the read path to filter chunks.")
 
@@ -496,12 +586,25 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		false,
 		"Enable experimental support for running multiple query variants over the same underlying data. For example, running both a rate() and count_over_time() query over the same range selector.",
 	)
+
+	f.IntVar(&l.MaxScanTaskParallelism, "limits.max-scan-task-parallelism", 0, "Experimental: Controls the amount of scan tasks that can be running in parallel in the new query engine. The default of 0 means unlimited parallelism and all tasks will be scheduled at once.")
+	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
+	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
 func (l *Limits) SetGlobalOTLPConfig(cfg push.GlobalOTLPConfig) {
 	l.GlobalOTLPConfig = cfg
+	if l.OTLPConfig == nil {
+		l.OTLPConfig = &push.OTLPConfig{}
+	}
 	l.OTLPConfig.ApplyGlobalOTLPConfig(cfg)
+}
+
+// SetDefaultPolicyStreamMapping sets DefaultPolicyStreamMapping which is used while unmarshaling per-tenant policy stream mappings to use the default mappings.
+func (l *Limits) SetDefaultPolicyStreamMapping(cfg PolicyStreamMapping) error {
+	l.DefaultPolicyStreamMapping = cfg
+	return l.PolicyStreamMapping.ApplyDefaultPolicyStreamMappings(cfg)
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -520,14 +623,25 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		if err := yaml.Unmarshal(b, (*plain)(l)); err != nil {
 			return errors.Wrap(err, "cloning limits (unmarshaling)")
 		}
+		// set the otlp config to nil, which would help to detect later if it was set in the tenant override
+		l.OTLPConfig = nil
 	}
 	if err := unmarshal((*plain)(l)); err != nil {
 		return err
 	}
 
 	if defaultLimits != nil {
-		// apply relevant bits from global otlp config
-		l.OTLPConfig.ApplyGlobalOTLPConfig(defaultLimits.GlobalOTLPConfig)
+		if l.OTLPConfig == nil {
+			// no change in per-tenant OTLP config, copy the existing default config
+			l.OTLPConfig = defaultLimits.OTLPConfig
+		} else {
+			// apply relevant bits from global otlp config
+			l.OTLPConfig.ApplyGlobalOTLPConfig(defaultLimits.GlobalOTLPConfig)
+		}
+		// apply default policy stream mappings
+		if err := l.PolicyStreamMapping.ApplyDefaultPolicyStreamMappings(defaultLimits.DefaultPolicyStreamMapping); err != nil {
+			return errors.Wrap(err, "applying default policy stream mappings")
+		}
 	}
 	return nil
 }
@@ -572,8 +686,10 @@ func (l *Limits) Validate() error {
 		l.MaxQueryCapacity = 1
 	}
 
-	if err := l.OTLPConfig.Validate(); err != nil {
-		return err
+	if l.OTLPConfig != nil {
+		if err := l.OTLPConfig.Validate(); err != nil {
+			return err
+		}
 	}
 
 	if _, err := logql.ParseShardVersion(l.TSDBShardingStrategy); err != nil {
@@ -586,6 +702,15 @@ func (l *Limits) Validate() error {
 
 	if l.TSDBMaxBytesPerShard <= 0 {
 		return errors.New("querier.tsdb-max-bytes-per-shard must be greater than 0")
+	}
+
+	if time.Duration(l.EngineResultsCacheTimeBucketInterval) < time.Minute {
+		return fmt.Errorf("engine_results_cache_time_bucket_interval must be >= 1m, got %s",
+			l.EngineResultsCacheTimeBucketInterval)
+	}
+
+	if err := l.SortSchema.Validate(); err != nil {
+		return fmt.Errorf("sort_schema: %w", err)
 	}
 
 	return nil
@@ -695,10 +820,45 @@ func (o *Overrides) MaxLocalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxLocalStreamsPerUser
 }
 
+// PolicyMaxLocalStreamsPerUser returns the maximum number of streams a user is allowed to store
+// in a single ingester for a specific policy. Returns 0 if no policy-specific override is set.
+func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) int {
+	if policy == "" {
+		return 0
+	}
+	limits := o.getOverridesForUser(userID)
+	if len(limits.PolicyOverrideLimits) == 0 {
+		return 0
+	}
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return policyLimits.MaxLocalStreamsPerUser
+	}
+	return 0
+}
+
 // MaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
 // across the cluster.
 func (o *Overrides) MaxGlobalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalStreamsPerUser
+}
+
+// PolicyMaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
+// across the cluster for a specific policy.
+// Returns 0 and false if the policy does not have a custom stream limit override.
+// Returns the custom stream limit override and true if it exists.
+func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool) {
+	if policy == "" {
+		return 0, false
+	}
+	limits := o.getOverridesForUser(userID)
+	if len(limits.PolicyOverrideLimits) == 0 {
+		return 0, false
+	}
+
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return policyLimits.MaxGlobalStreamsPerUser, true
+	}
+	return 0, false
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
@@ -789,6 +949,11 @@ func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 // InstantMetricQuerySplitDuration returns the tenant specific instant metric queries splitby interval applied in the query frontend.
 func (o *Overrides) InstantMetricQuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).InstantMetricQuerySplitDuration)
+}
+
+// EngineResultsCacheTimeBucketInterval returns the time bucket interval used for cache key generation in the Thor (V2) query engine.
+func (o *Overrides) EngineResultsCacheTimeBucketInterval(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).EngineResultsCacheTimeBucketInterval)
 }
 
 // MetadataQuerySplitDuration returns the tenant specific metadata splitby interval applied in the query frontend.
@@ -1088,6 +1253,10 @@ func (o *Overrides) IndexGatewayShardSize(userID string) int {
 	return o.getOverridesForUser(userID).IndexGatewayShardSize
 }
 
+func (o *Overrides) IndexGatewayMaxCapacity(userID string) float64 {
+	return o.getOverridesForUser(userID).IndexGatewayMaxCapacity
+}
+
 func (o *Overrides) BloomGatewayEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomGatewayEnabled
 }
@@ -1149,7 +1318,13 @@ func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
 }
 
 func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
-	return o.getOverridesForUser(userID).OTLPConfig
+	otlpConfig := o.getOverridesForUser(userID).OTLPConfig
+	if otlpConfig == nil {
+		// this should never happen other than tests but putting it here just to avoid panic
+		otlpConfig = &push.OTLPConfig{}
+	}
+
+	return *otlpConfig
 }
 
 func (o *Overrides) BlockIngestionUntil(userID string) time.Time {
@@ -1269,6 +1444,18 @@ func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
 }
 
+func (o *Overrides) MaxScanTaskParallelism(userID string) int {
+	return o.getOverridesForUser(userID).MaxScanTaskParallelism
+}
+
+func (o *Overrides) DebugEngineTasks(userID string) bool {
+	return o.getOverridesForUser(userID).DebugEngineTasks
+}
+
+func (o *Overrides) DebugEngineStreams(userID string) bool {
+	return o.getOverridesForUser(userID).DebugEngineStreams
+}
+
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.TenantLimits(userID)
@@ -1285,6 +1472,12 @@ type OverwriteMarshalingStringMap struct {
 	m map[string]string
 }
 
+// PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
+type PolicyOverridableLimits struct {
+	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"max_streams_per_user for a specific policy. 0 means unlimited."`
+	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"max_global_streams_per_user for a specific policy. 0 means unlimited."`
+}
+
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {
 	return OverwriteMarshalingStringMap{m: m}
 }
@@ -1293,7 +1486,7 @@ func (sm *OverwriteMarshalingStringMap) Map() map[string]string {
 	return sm.m
 }
 
-// MarshalJSON explicitly uses the the type receiver and not pointer receiver
+// MarshalJSON explicitly uses the type receiver and not pointer receiver
 // or it won't be called
 func (sm OverwriteMarshalingStringMap) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sm.m)
@@ -1309,7 +1502,7 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalJSON(val []byte) error {
 	return nil
 }
 
-// MarshalYAML explicitly uses the the type receiver and not pointer receiver
+// MarshalYAML explicitly uses the type receiver and not pointer receiver
 // or it won't be called
 func (sm OverwriteMarshalingStringMap) MarshalYAML() (interface{}, error) {
 	return sm.m, nil
@@ -1329,4 +1522,13 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}
 
 func (o *Overrides) SimulatedPushLatency(userID string) time.Duration {
 	return o.getOverridesForUser(userID).SimulatedPushLatency
+}
+
+// SortSchema returns the per-tenant sort schema. Falls back to DefaultSortSchema if not set.
+func (o *Overrides) SortSchema(userID string) SortSchema {
+	s := o.getOverridesForUser(userID).SortSchema
+	if len(s) == 0 {
+		return DefaultSortSchema
+	}
+	return s
 }

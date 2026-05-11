@@ -12,6 +12,8 @@ var (
 	_ encoding.TextUnmarshaler = &Options{}
 )
 
+type Stringish interface{ string | []byte }
+
 // Options represents a Kitty Graphics Protocol options.
 type Options struct {
 	// Common options.
@@ -73,6 +75,10 @@ type Options struct {
 	// must be a multiple of 4, and up to [MaxChunkSize] bytes. Each chunk must
 	// have the m=1 option except for the last chunk which must have m=0.
 	Chunk bool
+
+	// ChunkFormatter is the function used to format each chunk when
+	// [Options.Chunk] is true. If nil, the chunks are sent as is.
+	ChunkFormatter func(chunk string) string
 
 	// Display options.
 
@@ -272,7 +278,7 @@ func (o *Options) Options() (opts []string) {
 		opts = append(opts, fmt.Sprintf("a=%c", o.Action))
 	}
 
-	return
+	return opts // complex function with multiple returns
 }
 
 // String returns the string representation of the options.

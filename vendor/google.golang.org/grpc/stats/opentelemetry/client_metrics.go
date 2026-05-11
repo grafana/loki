@@ -54,7 +54,7 @@ func (h *clientMetricsHandler) initializeMetrics() {
 		metrics = DefaultMetrics()
 	}
 
-	h.clientMetrics.attemptStarted = createInt64Counter(metrics.Metrics(), "grpc.client.attempt.started", meter, otelmetric.WithUnit("attempt"), otelmetric.WithDescription("Number of client call attempts started."))
+	h.clientMetrics.attemptStarted = createInt64Counter(metrics.Metrics(), "grpc.client.attempt.started", meter, otelmetric.WithUnit("{attempt}"), otelmetric.WithDescription("Number of client call attempts started."))
 	h.clientMetrics.attemptDuration = createFloat64Histogram(metrics.Metrics(), "grpc.client.attempt.duration", meter, otelmetric.WithUnit("s"), otelmetric.WithDescription("End-to-end time taken to complete a client call attempt."), otelmetric.WithExplicitBucketBoundaries(DefaultLatencyBounds...))
 	h.clientMetrics.attemptSentTotalCompressedMessageSize = createInt64Histogram(metrics.Metrics(), "grpc.client.attempt.sent_total_compressed_message_size", meter, otelmetric.WithUnit("By"), otelmetric.WithDescription("Compressed message bytes sent per client call attempt."), otelmetric.WithExplicitBucketBoundaries(DefaultSizeBounds...))
 	h.clientMetrics.attemptRcvdTotalCompressedMessageSize = createInt64Histogram(metrics.Metrics(), "grpc.client.attempt.rcvd_total_compressed_message_size", meter, otelmetric.WithUnit("By"), otelmetric.WithDescription("Compressed message bytes received per call attempt."), otelmetric.WithExplicitBucketBoundaries(DefaultSizeBounds...))
@@ -72,9 +72,6 @@ func (h *clientMetricsHandler) initializeMetrics() {
 func getOrCreateCallInfo(ctx context.Context, cc *grpc.ClientConn, method string, opts ...grpc.CallOption) (context.Context, *callInfo) {
 	ci := getCallInfo(ctx)
 	if ci == nil {
-		if logger.V(2) {
-			logger.Info("Creating new CallInfo since its not present in context")
-		}
 		ci = &callInfo{
 			target: cc.CanonicalTarget(),
 			method: determineMethod(method, opts...),
@@ -137,11 +134,18 @@ func (h *clientMetricsHandler) streamInterceptor(ctx context.Context, desc *grpc
 // perCallMetrics records per call metrics for both unary and stream calls.
 func (h *clientMetricsHandler) perCallMetrics(ctx context.Context, err error, startTime time.Time, ci *callInfo) {
 	callLatency := float64(time.Since(startTime)) / float64(time.Second)
-	attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(
+	attributes := []otelattribute.KeyValue{
 		otelattribute.String("grpc.method", ci.method),
 		otelattribute.String("grpc.target", ci.target),
 		otelattribute.String("grpc.status", canonicalString(status.Code(err))),
-	))
+	}
+	for _, o := range h.options.MetricsOptions.OptionalLabels {
+		if o == "grpc.client.call.custom" {
+			label := estats.CustomLabelFromContext(ctx)
+			attributes = append(attributes, otelattribute.String(o, label))
+		}
+	}
+	attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(attributes...))
 	h.clientMetrics.callDuration.Record(ctx, callLatency, attrs)
 }
 
@@ -177,7 +181,8 @@ func (h *clientMetricsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInf
 			// executes on the callpath that this OpenTelemetry component
 			// currently supports.
 			TelemetryLabels: map[string]string{
-				"grpc.lb.locality": "",
+				"grpc.lb.locality":        "",
+				"grpc.lb.backend_service": "",
 			},
 		}
 		ctx = istats.SetLabels(ctx, labels)
@@ -209,10 +214,18 @@ func (h *clientMetricsHandler) processRPCEvent(ctx context.Context, s stats.RPCS
 			return
 		}
 
-		attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(
+		attributes := []otelattribute.KeyValue{
 			otelattribute.String("grpc.method", ci.method),
 			otelattribute.String("grpc.target", ci.target),
-		))
+		}
+		for _, o := range h.options.MetricsOptions.OptionalLabels {
+			if o == "grpc.client.call.custom" {
+				label := estats.CustomLabelFromContext(ctx)
+				attributes = append(attributes, otelattribute.String(o, label))
+			}
+		}
+
+		attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(attributes...))
 		h.clientMetrics.attemptStarted.Add(ctx, 1, attrs)
 	case *stats.OutPayload:
 		atomic.AddInt64(&ai.sentCompressedBytes, int64(st.CompressedLength))
@@ -266,6 +279,9 @@ func (h *clientMetricsHandler) processRPCEnd(ctx context.Context, ai *attemptInf
 		// CSM Plugin Option layer by adding an optional labels API.
 		if val, ok := ai.xdsLabels[o]; ok {
 			attributes = append(attributes, otelattribute.String(o, val))
+		} else if o == "grpc.client.call.custom" {
+			label := estats.CustomLabelFromContext(ctx)
+			attributes = append(attributes, otelattribute.String(o, label))
 		}
 	}
 

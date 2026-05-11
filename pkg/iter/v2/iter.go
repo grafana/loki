@@ -3,6 +3,7 @@ package v2
 import (
 	"context"
 	"io"
+	"iter"
 )
 
 type PeekIter[T any] struct {
@@ -200,7 +201,7 @@ type FilterIter[T any] struct {
 
 func (i *FilterIter[T]) Next() bool {
 	hasNext := i.Iterator.Next()
-	for hasNext && !i.match(i.Iterator.At()) {
+	for hasNext && !i.match(i.At()) {
 		hasNext = i.Iterator.Next()
 	}
 	return hasNext
@@ -244,4 +245,20 @@ func (i *CloseIter[T]) Close() error {
 		return i.Close()
 	}
 	return nil
+}
+
+// Batches yields successive sub-slices of s each of length <= size.
+// If size <= 0 the entire slice is yielded as one batch.
+func Batches[T any](s []T, size int) iter.Seq[[]T] {
+	return func(yield func([]T) bool) {
+		if size <= 0 || size >= len(s) {
+			yield(s)
+			return
+		}
+		for i := 0; i < len(s); i += size {
+			if !yield(s[i:min(i+size, len(s))]) {
+				return
+			}
+		}
+	}
 }

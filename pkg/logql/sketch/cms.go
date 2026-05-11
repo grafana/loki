@@ -117,7 +117,7 @@ func (s *CountMinSketch) Count(event []byte) float64 {
 // The sketches must have the same dimensions.
 func (s *CountMinSketch) Merge(from *CountMinSketch) error {
 	if s.Depth != from.Depth || s.Width != from.Width {
-		return fmt.Errorf("Can't merge different sketches with different dimensions")
+		return fmt.Errorf("can't merge different sketches with different dimensions")
 	}
 
 	for i, l := range from.Counters {

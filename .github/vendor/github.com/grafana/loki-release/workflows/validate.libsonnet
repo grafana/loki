@@ -10,7 +10,7 @@ local setupValidationDeps = function(job) job {
     common.fixDubiousOwnership,
     step.new('install dependencies')
     + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
-    + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
+    + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release loki-build-tools'),
     step.new('install tar')
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.withRun(|||
@@ -86,7 +86,7 @@ local validationJob = _validationJob(false);
                   step.new('test ${{ matrix.package }}')
                   + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                   + step.withRun(|||
-                    gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./${MATRIX_PACKAGE}/...
+                    gotestsum -- -tags=assert -covermode=atomic -coverprofile=coverage.txt -p=4 ./${MATRIX_PACKAGE}/...
                   |||)
                   + step.withWorkingDirectory('release'),
                 ]),
@@ -170,7 +170,7 @@ local validationJob = _validationJob(false);
     + job.withSteps(
       [
         common.checkout,
-        step.new('golangci-lint', 'golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5')
+        step.new('golangci-lint', 'golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',
@@ -183,14 +183,17 @@ local validationJob = _validationJob(false);
 
   lintFiles: setupValidationDeps(
     validationJob
+    + job.withEnv({
+      GIT_TARGET_BRANCH: '${{ vars.GIT_TARGET_BRANCH }}',
+    })
     + job.withSteps(
       [
         validationMakeStep('lint scripts', 'lint-scripts'),
         step.new('check format')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.withRun(|||
-          git fetch origin
-          make check-format
+          git fetch https://github.com/grafana/loki.git main:refs/remotes/origin/${GIT_TARGET_BRANCH:-main}
+          GIT_TARGET_BRANCH="${GIT_TARGET_BRANCH:-main}" make check-format
         |||)
         + step.withWorkingDirectory('release'),
       ]

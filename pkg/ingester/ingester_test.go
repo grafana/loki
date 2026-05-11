@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net"
@@ -26,7 +27,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -515,6 +515,14 @@ func (s *mockStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }
 
+func (s *mockStore) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (s *mockStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
+}
+
 func (s *mockStore) Volume(_ context.Context, _ string, _, _ model.Time, limit int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
@@ -625,7 +633,7 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "bigtable",
+					IndexType: "boltdb",
 				},
 			},
 		},
@@ -1717,6 +1725,10 @@ func (r *readRingMock) InstancesWithTokensInZoneCount(_ string) int {
 
 func (r *readRingMock) ZonesCount() int {
 	return 1
+}
+
+func (r *readRingMock) Zones() []string {
+	return []string{"zone1"}
 }
 
 func (r *readRingMock) HealthyInstancesInZoneCount() int {

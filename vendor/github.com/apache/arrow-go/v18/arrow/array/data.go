@@ -17,10 +17,11 @@
 package array
 
 import (
-	"hash/maphash"
 	"math/bits"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/apache/arrow-go/v18/internal/utils/maphash"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
@@ -147,7 +148,9 @@ func (d *Data) Release() {
 		}
 
 		for _, b := range d.childData {
-			b.Release()
+			if b != nil {
+				b.Release()
+			}
 		}
 
 		if d.dictionary != nil {
@@ -264,7 +267,7 @@ func NewSliceData(data arrow.ArrayData, i, j int64) arrow.ArrayData {
 	return o
 }
 
-func Hash(h *maphash.Hash, data arrow.ArrayData) {
+func Hash(h *maphash.MapHash, data arrow.ArrayData) {
 	a := data.(*Data)
 
 	h.Write((*[bits.UintSize / 8]byte)(unsafe.Pointer(&a.length))[:])

@@ -80,6 +80,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				nil,
 				nil,
 				retentionHours,
+				noPolicy,
 			)
 
 			_, err := s.Push(context.Background(), []logproto.Entry{
@@ -133,6 +134,7 @@ func TestPushDeduplication(t *testing.T) {
 		nil,
 		nil,
 		retentionHours,
+		noPolicy,
 	)
 
 	written, err := s.Push(context.Background(), []logproto.Entry{
@@ -192,6 +194,7 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 		manager,
 		runtimeCfg,
 		retentionHours,
+		noPolicy,
 	)
 
 	_, err = s.Push(context.Background(), []logproto.Entry{
@@ -237,6 +240,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		nil,
 		nil,
 		retentionHours,
+		noPolicy,
 	)
 
 	// counter should be 2 now since the first line will be deduped
@@ -344,6 +348,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 		nil,
 		nil,
 		retentionHours,
+		noPolicy,
 	)
 	s.highestTs = time.Now()
 
@@ -382,6 +387,7 @@ func TestUnorderedPush(t *testing.T) {
 		nil,
 		nil,
 		retentionHours,
+		noPolicy,
 	)
 
 	for _, x := range []struct {
@@ -484,6 +490,7 @@ func TestPushRateLimit(t *testing.T) {
 		nil,
 		nil,
 		retentionHours,
+		noPolicy,
 	)
 
 	entries := []logproto.Entry{
@@ -524,6 +531,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		nil,
 		nil,
 		retentionHours,
+		noPolicy,
 	)
 
 	entries := []logproto.Entry{
@@ -563,6 +571,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		nil,
 		nil,
 		retentionHours,
+		noPolicy,
 	)
 
 	base := time.Now()
@@ -613,7 +622,7 @@ func Benchmark_PushStream(b *testing.B) {
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	chunkfmt, headfmt := defaultChunkFormat(b)
 	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
-	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours)
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
 	expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, &fakeTailServer{}, 10)

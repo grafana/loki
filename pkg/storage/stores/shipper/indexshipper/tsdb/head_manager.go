@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/prometheus/util/compression"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -109,6 +110,8 @@ type HeadManager struct {
 	shards                 int
 	activeHeads, prevHeads *tenantHeads
 
+	chunkFilter chunk.RequestChunkFilterer
+
 	Index
 
 	wg     sync.WaitGroup
@@ -142,7 +145,11 @@ func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics
 			indices = append(indices, m.activeHeads)
 		}
 
-		return NewMultiIndex(IndexSlice(indices)), nil
+		idx := NewMultiIndex(IndexSlice(indices))
+		if m.chunkFilter != nil {
+			idx.SetChunkFilterer(m.chunkFilter)
+		}
+		return idx, nil
 	})
 
 	return m
@@ -247,12 +254,16 @@ func (m *HeadManager) Stop() error {
 	return m.buildTSDBFromHead(m.activeHeads)
 }
 
+func (m *HeadManager) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	m.chunkFilter = chunkFilter
+}
+
 func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chks index.ChunkMetas) error {
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
 	// We must create a copy of the labels here to avoid mutating the existing
 	// labels when writing across index buckets.
 	b := labels.NewBuilder(ls)
-	b.Del(labels.MetricName)
+	b.Del(model.MetricNameLabel)
 	ls = b.Labels()
 
 	m.mtx.RLock()
@@ -769,7 +780,7 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 
 }
 
-func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil

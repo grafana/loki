@@ -3,18 +3,14 @@
 
 package plog // import "go.opentelemetry.io/collector/pdata/plog"
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal"
-)
-
 // MarkReadOnly marks the Logs as shared so that no further modifications can be done on it.
 func (ms Logs) MarkReadOnly() {
-	internal.SetLogsState(internal.Logs(ms), internal.StateReadOnly)
+	ms.getState().MarkReadOnly()
 }
 
 // IsReadOnly returns true if this Logs instance is read-only.
 func (ms Logs) IsReadOnly() bool {
-	return *ms.getState() == internal.StateReadOnly
+	return ms.getState().IsReadOnly()
 }
 
 // LogRecordCount calculates the total number of log records.

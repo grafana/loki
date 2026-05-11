@@ -10,7 +10,6 @@ import (
 	"iter"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
 
 // ExemplarSlice logically represents a slice of Exemplar.
@@ -21,20 +20,19 @@ import (
 // Must use NewExemplarSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ExemplarSlice struct {
-	orig  *[]otlpmetrics.Exemplar
+	orig  *[]internal.Exemplar
 	state *internal.State
 }
 
-func newExemplarSlice(orig *[]otlpmetrics.Exemplar, state *internal.State) ExemplarSlice {
+func newExemplarSlice(orig *[]internal.Exemplar, state *internal.State) ExemplarSlice {
 	return ExemplarSlice{orig: orig, state: state}
 }
 
-// NewExemplarSlice creates a ExemplarSlice with 0 elements.
+// NewExemplarSlice creates a ExemplarSliceWrapper with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewExemplarSlice() ExemplarSlice {
-	orig := []otlpmetrics.Exemplar(nil)
-	state := internal.StateMutable
-	return newExemplarSlice(&orig, &state)
+	orig := []internal.Exemplar(nil)
+	return newExemplarSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -90,7 +88,7 @@ func (es ExemplarSlice) EnsureCapacity(newCap int) {
 		return
 	}
 
-	newOrig := make([]otlpmetrics.Exemplar, len(*es.orig), newCap)
+	newOrig := make([]internal.Exemplar, len(*es.orig), newCap)
 	copy(newOrig, *es.orig)
 	*es.orig = newOrig
 }
@@ -99,7 +97,7 @@ func (es ExemplarSlice) EnsureCapacity(newCap int) {
 // It returns the newly added Exemplar.
 func (es ExemplarSlice) AppendEmpty() Exemplar {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, otlpmetrics.Exemplar{})
+	*es.orig = append(*es.orig, internal.Exemplar{})
 	return es.At(es.Len() - 1)
 }
 
@@ -128,7 +126,7 @@ func (es ExemplarSlice) RemoveIf(f func(Exemplar) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
-			(*es.orig)[i] = otlpmetrics.Exemplar{}
+			internal.DeleteExemplar(&(*es.orig)[i], false)
 			continue
 		}
 		if newLen == i {
@@ -137,7 +135,7 @@ func (es ExemplarSlice) RemoveIf(f func(Exemplar) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
-		(*es.orig)[i] = otlpmetrics.Exemplar{}
+		(*es.orig)[i].Reset()
 		newLen++
 	}
 	*es.orig = (*es.orig)[:newLen]
@@ -146,5 +144,8 @@ func (es ExemplarSlice) RemoveIf(f func(Exemplar) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es ExemplarSlice) CopyTo(dest ExemplarSlice) {
 	dest.state.AssertMutable()
-	*dest.orig = internal.CopyOrigExemplarSlice(*dest.orig, *es.orig)
+	if es.orig == dest.orig {
+		return
+	}
+	*dest.orig = internal.CopyExemplarSlice(*dest.orig, *es.orig)
 }

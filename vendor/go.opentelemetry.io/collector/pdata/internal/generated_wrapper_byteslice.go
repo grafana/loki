@@ -6,51 +6,28 @@
 
 package internal
 
-import (
-	"encoding/base64"
-
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type ByteSlice struct {
+type ByteSliceWrapper struct {
 	orig  *[]byte
 	state *State
 }
 
-func GetOrigByteSlice(ms ByteSlice) *[]byte {
+func GetByteSliceOrig(ms ByteSliceWrapper) *[]byte {
 	return ms.orig
 }
 
-func GetByteSliceState(ms ByteSlice) *State {
+func GetByteSliceState(ms ByteSliceWrapper) *State {
 	return ms.state
 }
 
-func NewByteSlice(orig *[]byte, state *State) ByteSlice {
-	return ByteSlice{orig: orig, state: state}
+func NewByteSliceWrapper(orig *[]byte, state *State) ByteSliceWrapper {
+	return ByteSliceWrapper{orig: orig, state: state}
 }
 
-func GenerateTestByteSlice() ByteSlice {
-	orig := GenerateOrigTestByteSlice()
-	state := StateMutable
-	return NewByteSlice(&orig, &state)
+func GenTestByteSliceWrapper() ByteSliceWrapper {
+	orig := []byte{1, 2, 3}
+	return NewByteSliceWrapper(&orig, NewState())
 }
 
-func CopyOrigByteSlice(dst, src []byte) []byte {
-	return append(dst[:0], src...)
-}
-
-func GenerateOrigTestByteSlice() []byte {
+func GenTestByteSlice() []byte {
 	return []byte{1, 2, 3}
-}
-
-// UnmarshalJSONOrigByteSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigByteSlice(iter *json.Iterator) []byte {
-	buf := iter.ReadStringAsSlice()
-	orig := make([]byte, base64.StdEncoding.DecodedLen(len(buf)))
-	n, err := base64.StdEncoding.Decode(orig, buf)
-	if err != nil {
-		iter.ReportError("base64.Decode", err.Error())
-	}
-	orig = orig[:n]
-	return orig
 }

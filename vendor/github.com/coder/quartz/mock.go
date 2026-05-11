@@ -6,14 +6,28 @@ import (
 	"fmt"
 	"slices"
 	"sync"
-	"testing"
 	"time"
 )
+
+// TestingT is the minimal interface required from a testing framework for the Mock.
+type TestingT interface {
+	Helper()
+
+	Log(...any)
+	Logf(string, ...any)
+	Error(...any)
+	Errorf(string, ...any)
+	Fatal(...any)
+	Fatalf(string, ...any)
+
+	Cleanup(func())
+}
 
 // Mock is the testing implementation of Clock.  It tracks a time that monotonically increases
 // during a test, triggering any timers or tickers automatically.
 type Mock struct {
-	tb       testing.TB
+	tb       TestingT
+	logger   Logger
 	mu       sync.Mutex
 	testOver bool
 
@@ -54,6 +68,9 @@ func (m *Mock) TickerFunc(ctx context.Context, d time.Duration, f func() error, 
 	return t
 }
 
+// NewTicker creates a mocked ticker attached to this Mock. Note that it will cease sending ticks on its channel at the
+// end of the test, to avoid leaking any goroutines. Ticks are suppressed even if the mock clock is advanced after the
+// test completes. Best practice is to only manipulate the mock time in the main goroutine of the test.
 func (m *Mock) NewTicker(d time.Duration, tags ...string) *Ticker {
 	if d <= 0 {
 		panic("NewTicker called with negative or zero duration")
@@ -63,17 +80,7 @@ func (m *Mock) NewTicker(d time.Duration, tags ...string) *Ticker {
 	c := newCall(clockFunctionNewTicker, tags, withDuration(d))
 	m.matchCallLocked(c)
 	defer close(c.complete)
-	// 1 element buffer follows standard library implementation
-	ticks := make(chan time.Time, 1)
-	t := &Ticker{
-		C:    ticks,
-		c:    ticks,
-		d:    d,
-		nxt:  m.cur.Add(d),
-		mock: m,
-	}
-	m.addEventLocked(t)
-	return t
+	return newMockTickerLocked(m, d)
 }
 
 func (m *Mock) NewTimer(d time.Duration, tags ...string) *Timer {
@@ -82,7 +89,7 @@ func (m *Mock) NewTimer(d time.Duration, tags ...string) *Timer {
 	c := newCall(clockFunctionNewTimer, tags, withDuration(d))
 	defer close(c.complete)
 	m.matchCallLocked(c)
-	ch := make(chan time.Time, 1)
+	ch := make(chan time.Time)
 	t := &Timer{
 		C:    ch,
 		c:    ch,
@@ -199,7 +206,7 @@ func (m *Mock) matchCallLocked(c *apiCall) {
 		}
 	}
 	if !m.testOver {
-		m.tb.Logf("Mock Clock - %s call, matched %d traps", c, len(traps))
+		m.logger.Logf("Mock Clock - %s call, matched %d traps", c, len(traps))
 	}
 	if len(traps) == 0 {
 		return
@@ -221,7 +228,7 @@ func (m *Mock) matchCallLocked(c *apiCall) {
 // If multiple timers or tickers trigger simultaneously, they are all run on separate
 // go routines.
 type AdvanceWaiter struct {
-	tb testing.TB
+	tb TestingT
 	ch chan struct{}
 }
 
@@ -265,7 +272,7 @@ func (m *Mock) Advance(d time.Duration) AdvanceWaiter {
 	w := AdvanceWaiter{tb: m.tb, ch: make(chan struct{})}
 	m.mu.Lock()
 	if !m.testOver {
-		m.tb.Logf("Mock Clock - Advance(%s)", d)
+		m.logger.Logf("Mock Clock - Advance(%s)", d)
 	}
 	fin := m.cur.Add(d)
 	// nextTime.IsZero implies no events scheduled.
@@ -276,8 +283,8 @@ func (m *Mock) Advance(d time.Duration) AdvanceWaiter {
 		return w
 	}
 	if fin.After(m.nextTime) {
-		m.tb.Errorf(fmt.Sprintf("cannot advance %s which is beyond next timer/ticker event in %s",
-			d.String(), m.nextTime.Sub(m.cur)))
+		m.tb.Errorf("cannot advance %s which is beyond next timer/ticker event in %s",
+			d.String(), m.nextTime.Sub(m.cur))
 		m.mu.Unlock()
 		close(w.ch)
 		return w
@@ -315,7 +322,7 @@ func (m *Mock) Set(t time.Time) AdvanceWaiter {
 	w := AdvanceWaiter{tb: m.tb, ch: make(chan struct{})}
 	m.mu.Lock()
 	if !m.testOver {
-		m.tb.Logf("Mock Clock - Set(%s)", t)
+		m.logger.Logf("Mock Clock - Set(%s)", t)
 	}
 	if t.Before(m.cur) {
 		defer close(w.ch)
@@ -354,7 +361,7 @@ func (m *Mock) Set(t time.Time) AdvanceWaiter {
 func (m *Mock) AdvanceNext() (time.Duration, AdvanceWaiter) {
 	m.mu.Lock()
 	if !m.testOver {
-		m.tb.Logf("Mock Clock - AdvanceNext()")
+		m.logger.Logf("Mock Clock - AdvanceNext()")
 	}
 	m.tb.Helper()
 	w := AdvanceWaiter{tb: m.tb, ch: make(chan struct{})}
@@ -445,7 +452,7 @@ func (m *Mock) newTrap(fn clockFunction, tags []string) *Trap {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.testOver {
-		m.tb.Logf("Mock Clock - Trap %s(..., %v)", fn, tags)
+		m.logger.Logf("Mock Clock - Trap %s(..., %v)", fn, tags)
 	}
 	tr := &Trap{
 		fn:    fn,
@@ -458,23 +465,36 @@ func (m *Mock) newTrap(fn clockFunction, tags []string) *Trap {
 	return tr
 }
 
+// WithLogger replaces the default testing logger with a custom one.
+//
+// This can be used to discard log messages with:
+//
+//	quartz.NewMock(t).WithLogger(quartz.NoOpLogger)
+func (m *Mock) WithLogger(l Logger) *Mock {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.logger = l
+	return m
+}
+
 // NewMock creates a new Mock with the time set to midnight UTC on Jan 1, 2024.
 // You may re-set the time earlier than this, but only before timers or tickers
 // are created.
-func NewMock(tb testing.TB) *Mock {
+func NewMock(tb TestingT) *Mock {
 	cur, err := time.Parse(time.RFC3339, "2024-01-01T00:00:00Z")
 	if err != nil {
 		panic(err)
 	}
 	m := &Mock{
-		tb:  tb,
-		cur: cur,
+		tb:     tb,
+		logger: tb,
+		cur:    cur,
 	}
 	tb.Cleanup(func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		m.testOver = true
-		tb.Logf("Mock Clock - test cleanup; will no longer log clock events")
+		m.logger.Logf("Mock Clock - test cleanup; will no longer log clock events")
 	})
 	return m
 }
@@ -661,7 +681,7 @@ type Call struct {
 	Duration time.Duration
 	Tags     []string
 
-	tb      testing.TB
+	tb      TestingT
 	apiCall *apiCall
 	trap    *Trap
 }
@@ -731,6 +751,10 @@ type Trap struct {
 	unreleasedCalls int
 }
 
+func (t *Trap) String() string {
+	return fmt.Sprintf("Trap %s(..., %v)", t.fn.String(), t.tags)
+}
+
 func (t *Trap) catch(c *apiCall) {
 	select {
 	case t.calls <- c:
@@ -754,9 +778,15 @@ func (t *Trap) matches(c *apiCall) bool {
 func (t *Trap) Close() {
 	t.mock.mu.Lock()
 	defer t.mock.mu.Unlock()
+	select {
+	case <-t.done:
+		t.mock.tb.Logf("%s already Closed()", t)
+		return // already closed
+	default:
+	}
 	if t.unreleasedCalls != 0 {
 		t.mock.tb.Helper()
-		t.mock.tb.Errorf("trap Closed() with %d unreleased calls", t.unreleasedCalls)
+		t.mock.tb.Errorf("%s Closed() with %d unreleased calls", t, t.unreleasedCalls)
 	}
 	for i, tr := range t.mock.traps {
 		if t == tr {
@@ -802,7 +832,20 @@ func (t *Trap) MustWait(ctx context.Context) *Call {
 	t.mock.tb.Helper()
 	c, err := t.Wait(ctx)
 	if err != nil {
-		t.mock.tb.Fatalf("context expired while waiting for trap: %s", err.Error())
+		t.mock.tb.Fatalf("context expired while waiting for %s: %s", t, err.Error())
 	}
 	return c
 }
+
+type Logger interface {
+	Log(args ...any)
+	Logf(format string, args ...any)
+}
+
+// NoOpLogger is a Logger that discards all log messages.
+var NoOpLogger Logger = noOpLogger{}
+
+type noOpLogger struct{}
+
+func (noOpLogger) Log(args ...any)                 {}
+func (noOpLogger) Logf(format string, args ...any) {}

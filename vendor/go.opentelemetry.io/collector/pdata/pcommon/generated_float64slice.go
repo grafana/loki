@@ -18,32 +18,31 @@ import (
 //
 // Must use NewFloat64Slice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
-type Float64Slice internal.Float64Slice
+type Float64Slice internal.Float64SliceWrapper
 
 func (ms Float64Slice) getOrig() *[]float64 {
-	return internal.GetOrigFloat64Slice(internal.Float64Slice(ms))
+	return internal.GetFloat64SliceOrig(internal.Float64SliceWrapper(ms))
 }
 
 func (ms Float64Slice) getState() *internal.State {
-	return internal.GetFloat64SliceState(internal.Float64Slice(ms))
+	return internal.GetFloat64SliceState(internal.Float64SliceWrapper(ms))
 }
 
 // NewFloat64Slice creates a new empty Float64Slice.
 func NewFloat64Slice() Float64Slice {
 	orig := []float64(nil)
-	state := internal.StateMutable
-	return Float64Slice(internal.NewFloat64Slice(&orig, &state))
+	return Float64Slice(internal.NewFloat64SliceWrapper(&orig, internal.NewState()))
 }
 
 // AsRaw returns a copy of the []float64 slice.
 func (ms Float64Slice) AsRaw() []float64 {
-	return internal.CopyOrigFloat64Slice(nil, *ms.getOrig())
+	return copyFloat64Slice(nil, *ms.getOrig())
 }
 
 // FromRaw copies raw []float64 into the slice Float64Slice.
 func (ms Float64Slice) FromRaw(val []float64) {
 	ms.getState().AssertMutable()
-	*ms.getOrig() = internal.CopyOrigFloat64Slice(*ms.getOrig(), val)
+	*ms.getOrig() = copyFloat64Slice(*ms.getOrig(), val)
 }
 
 // Len returns length of the []float64 slice value.
@@ -128,13 +127,42 @@ func (ms Float64Slice) MoveAndAppendTo(dest Float64Slice) {
 	*ms.getOrig() = nil
 }
 
+// RemoveIf calls f sequentially for each element present in the slice.
+// If f returns true, the element is removed from the slice.
+func (ms Float64Slice) RemoveIf(f func(float64) bool) {
+	ms.getState().AssertMutable()
+	newLen := 0
+	for i := 0; i < len(*ms.getOrig()); i++ {
+		if f((*ms.getOrig())[i]) {
+			continue
+		}
+		if newLen == i {
+			// Nothing to move, element is at the right place.
+			newLen++
+			continue
+		}
+		(*ms.getOrig())[newLen] = (*ms.getOrig())[i]
+		var zero float64
+		(*ms.getOrig())[i] = zero
+		newLen++
+	}
+	*ms.getOrig() = (*ms.getOrig())[:newLen]
+}
+
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms Float64Slice) CopyTo(dest Float64Slice) {
 	dest.getState().AssertMutable()
-	*dest.getOrig() = internal.CopyOrigFloat64Slice(*dest.getOrig(), *ms.getOrig())
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
+	*dest.getOrig() = copyFloat64Slice(*dest.getOrig(), *ms.getOrig())
 }
 
 // Equal checks equality with another Float64Slice
 func (ms Float64Slice) Equal(val Float64Slice) bool {
 	return slices.Equal(*ms.getOrig(), *val.getOrig())
+}
+
+func copyFloat64Slice(dst, src []float64) []float64 {
+	return append(dst[:0], src...)
 }

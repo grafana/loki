@@ -15,7 +15,7 @@ apiVersion: {{ include "loki.pdb.apiVersion" $.ctx }}
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "loki.resourceName" (dict "ctx" $.ctx "component" $.component "suffix" .suffix) }}
-  namespace: {{ $.ctx.Release.Namespace }}
+  namespace: {{ include "loki.namespace" $.ctx }}
   labels:
     {{- include "loki.selectorLabels" $.ctx | nindent 4 }}
     app.kubernetes.io/component: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"

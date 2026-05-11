@@ -36,10 +36,6 @@ func (*Process) NumCtxSwitchesWithContext(_ context.Context) (*NumCtxSwitchesSta
 	return nil, common.ErrNotImplementedError
 }
 
-func (*Process) NumFDsWithContext(_ context.Context) (int32, error) {
-	return 0, common.ErrNotImplementedError
-}
-
 func (*Process) CPUAffinityWithContext(_ context.Context) ([]int32, error) {
 	return nil, common.ErrNotImplementedError
 }
@@ -71,6 +67,6 @@ func (*Process) EnvironWithContext(_ context.Context) ([]string, error) {
 func parseKinfoProc(buf []byte) (KinfoProc, error) {
 	var k KinfoProc
 	br := bytes.NewReader(buf)
-	err := common.Read(br, binary.LittleEndian, &k)
+	err := binary.Read(br, binary.LittleEndian, &k)
 	return k, err
 }

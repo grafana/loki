@@ -29,13 +29,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
+
+	pushtypes "github.com/grafana/loki/pkg/push"
 )
 
 var ErrEntriesExist = errors.New("duplicate push - entries already exist")
 
 type line struct {
-	ts      time.Time
-	content string
+	ts                 time.Time
+	content            string
+	structuredMetadata pushtypes.LabelsAdapter
 }
 
 type stream struct {
@@ -117,6 +120,7 @@ func newStream(
 	writeFailures *writefailures.Manager,
 	configs *runtime.TenantConfigs,
 	retentionHours string,
+	policy string,
 ) *stream {
 	hashNoShard, _ := ls.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
@@ -139,24 +143,8 @@ func newStream(
 
 		configs:        configs,
 		retentionHours: retentionHours,
+		policy:         policy,
 	}
-}
-
-// consumeChunk manually adds a chunk to the stream that was received during
-// ingester chunk transfer.
-// Must hold chunkMtx
-// DEPRECATED: chunk transfers are no longer suggested and remain for compatibility.
-func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
-	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
-	if err != nil {
-		return err
-	}
-
-	s.chunks = append(s.chunks, chunkDesc{
-		chunk: c,
-	})
-	s.metrics.chunksCreatedTotal.Inc()
-	return nil
 }
 
 // setChunks is used during checkpoint recovery
@@ -367,6 +355,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		s.entryCt++
 		s.lastLine.ts = entries[i].Timestamp
 		s.lastLine.content = entries[i].Line
+		s.lastLine.structuredMetadata = entries[i].StructuredMetadata
 		if s.highestTs.Before(entries[i].Timestamp) {
 			s.highestTs = entries[i].Timestamp
 		}
@@ -415,7 +404,9 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		//
 		// NOTE: it's still possible for duplicates to be appended if a stream is
 		// deleted from inactivity.
-		if entries[i].Timestamp.Equal(lastLine.ts) && entries[i].Line == lastLine.content {
+		if entries[i].Timestamp.Equal(lastLine.ts) &&
+			entries[i].Line == lastLine.content &&
+			labelsEqual(entries[i].StructuredMetadata, lastLine.structuredMetadata) {
 			continue
 		}
 
@@ -445,6 +436,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line
+		lastLine.structuredMetadata = entries[i].StructuredMetadata
 		if highestTs.Before(entries[i].Timestamp) {
 			highestTs = entries[i].Timestamp
 		}
@@ -666,4 +658,18 @@ func headBlockType(chunkfmt byte, unorderedWrites bool) chunkenc.HeadBlockFmt {
 		}
 	}
 	return chunkenc.OrderedHeadBlockFmt
+}
+
+func labelsEqual(a, b pushtypes.LabelsAdapter) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Value != b[i].Value {
+			return false
+		}
+	}
+
+	return true
 }

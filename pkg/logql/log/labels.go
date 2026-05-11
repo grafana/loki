@@ -269,6 +269,11 @@ func (b *LabelsBuilder) HasErrorDetails() bool {
 	return b.errDetails != ""
 }
 
+// HasInCategory returns whether the builder has the given key in the specified category.
+func (b *LabelsBuilder) HasInCategory(key string, category LabelCategory) bool {
+	return labelsContain(b.add[category], key)
+}
+
 // BaseHas returns the base labels have the given key
 func (b *LabelsBuilder) BaseHas(key string) bool {
 	return b.base.Has(key)
@@ -592,7 +597,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// Get all labels at once and sort them
 	b.buf = b.UnsortedLabels(b.buf)
 	lbls := labels.New(b.buf...)
-	hash := b.hasher.Hash(lbls)
+	hash := b.Hash(lbls)
 
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
@@ -644,7 +649,7 @@ func findLabelValue(labels []labels.Label, name string) (string, bool) {
 
 func (b *BaseLabelsBuilder) toUncategorizedResult(buf []labels.Label) LabelsResult {
 	lbls := labels.New(buf...)
-	hash := b.hasher.Hash(lbls)
+	hash := b.Hash(lbls)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}

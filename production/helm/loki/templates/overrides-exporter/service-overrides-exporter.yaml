@@ -4,7 +4,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "loki.overridesExporterFullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.overridesExporterLabels" . | nindent 4 }}
     {{- with .Values.overridesExporter.serviceLabels }}

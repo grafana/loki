@@ -37,7 +37,7 @@ Here's how to get started with your code contribution:
 > Note: this clones and builds the docker containers specified in `docker-compose.yml`, to understand more about
 > the infrastructure that will be started you can check the `docker-compose.yml`. You also have the possiblity
 > to specify the redis image that will be pulled with the env variable `CLIENT_LIBS_TEST_IMAGE`.
-> By default the docker image that will be pulled and started is `redislabs/client-libs-test:rs-7.4.0-v2`.
+> By default the docker image that will be pulled and started is `redislabs/client-libs-test:8.2.1-pre`.
 > If you want to test with newer Redis version, using a newer version of `redislabs/client-libs-test` should work out of the box.
 
 4.  While developing, make sure the tests pass by running `make test` (if you have the docker containers running, `make test.ci` may be sufficient).

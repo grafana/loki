@@ -105,6 +105,7 @@ func TestSampledQueryJSONMarshaling(t *testing.T) {
 		CellATraceLink:   strPtr("https://grafana.com/explore?trace-a"),
 		CellBTraceLink:   strPtr("https://grafana.com/explore?trace-b"),
 		ComparisonStatus: "mismatch",
+		MismatchCause:    "stream_entry_count_mismatch",
 	}
 
 	// Marshal to JSON
@@ -112,7 +113,7 @@ func TestSampledQueryJSONMarshaling(t *testing.T) {
 	require.NoError(t, err)
 
 	// Parse the JSON to verify structure
-	var result map[string]interface{}
+	var result map[string]any
 	err = json.Unmarshal(jsonData, &result)
 	require.NoError(t, err)
 
@@ -122,6 +123,7 @@ func TestSampledQueryJSONMarshaling(t *testing.T) {
 	require.Equal(t, "{job=\"test\"}", result["query"])
 	require.Equal(t, "range", result["queryType"])
 	require.Equal(t, "mismatch", result["comparisonStatus"])
+	require.Equal(t, "stream_entry_count_mismatch", result["mismatchCause"])
 
 	// Verify performance stats are flattened
 	require.Equal(t, float64(100), result["cellAExecTimeMs"])

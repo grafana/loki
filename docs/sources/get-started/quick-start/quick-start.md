@@ -17,7 +17,7 @@ killercoda:
       - regexp: evaluate-loki-([^-]+)-
         replacement: evaluate-loki_${1}_
   title: Loki Quickstart Demo
-  description: This sandbox provides an online enviroment for testing the Loki quickstart demo.
+  description: This sandbox provides an online environment for testing the Loki quickstart demo.
   details:
     intro:
       foreground: setup.sh
@@ -29,7 +29,7 @@ killercoda:
 
 # Quickstart to run Loki locally
 
-If you want to experiment with Loki, you can run Loki locally using the Docker Compose file that ships with Loki. It runs Loki in a [monolithic deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) mode and includes a sample application to generate logs.
+If you want to experiment with Loki, you can run Loki locally using the Docker Compose file that ships with Loki. It runs Loki in the [simple scalable deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) mode and includes a sample application to generate logs.
 
 The Docker Compose configuration runs the following components, each in its own container:
 

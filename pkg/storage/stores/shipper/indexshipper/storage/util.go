@@ -62,8 +62,10 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 		return err
 	}
 	defer func() {
-		err := os.Remove(tmpName)
-		if err != nil {
+		if err := ftmp.Close(); err != nil {
+			level.Warn(logger).Log("msg", "failed to close file", "file", tmpName)
+		}
+		if err := os.Remove(tmpName); err != nil {
 			level.Warn(logger).Log("msg", "failed to delete temp file from index download", "err", err)
 		}
 	}()
@@ -83,7 +85,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 	}
 	defer func() {
 		if err := tmpReader.Close(); err != nil {
-			level.Warn(logger).Log("msg", "failed to close file", "file", destination+"-tmp")
+			level.Warn(logger).Log("msg", "failed to close file", "file", tmpName)
 		}
 	}()
 

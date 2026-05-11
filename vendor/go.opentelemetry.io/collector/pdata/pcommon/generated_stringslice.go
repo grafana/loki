@@ -18,32 +18,31 @@ import (
 //
 // Must use NewStringSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
-type StringSlice internal.StringSlice
+type StringSlice internal.StringSliceWrapper
 
 func (ms StringSlice) getOrig() *[]string {
-	return internal.GetOrigStringSlice(internal.StringSlice(ms))
+	return internal.GetStringSliceOrig(internal.StringSliceWrapper(ms))
 }
 
 func (ms StringSlice) getState() *internal.State {
-	return internal.GetStringSliceState(internal.StringSlice(ms))
+	return internal.GetStringSliceState(internal.StringSliceWrapper(ms))
 }
 
 // NewStringSlice creates a new empty StringSlice.
 func NewStringSlice() StringSlice {
 	orig := []string(nil)
-	state := internal.StateMutable
-	return StringSlice(internal.NewStringSlice(&orig, &state))
+	return StringSlice(internal.NewStringSliceWrapper(&orig, internal.NewState()))
 }
 
 // AsRaw returns a copy of the []string slice.
 func (ms StringSlice) AsRaw() []string {
-	return internal.CopyOrigStringSlice(nil, *ms.getOrig())
+	return copyStringSlice(nil, *ms.getOrig())
 }
 
 // FromRaw copies raw []string into the slice StringSlice.
 func (ms StringSlice) FromRaw(val []string) {
 	ms.getState().AssertMutable()
-	*ms.getOrig() = internal.CopyOrigStringSlice(*ms.getOrig(), val)
+	*ms.getOrig() = copyStringSlice(*ms.getOrig(), val)
 }
 
 // Len returns length of the []string slice value.
@@ -128,13 +127,42 @@ func (ms StringSlice) MoveAndAppendTo(dest StringSlice) {
 	*ms.getOrig() = nil
 }
 
+// RemoveIf calls f sequentially for each element present in the slice.
+// If f returns true, the element is removed from the slice.
+func (ms StringSlice) RemoveIf(f func(string) bool) {
+	ms.getState().AssertMutable()
+	newLen := 0
+	for i := 0; i < len(*ms.getOrig()); i++ {
+		if f((*ms.getOrig())[i]) {
+			continue
+		}
+		if newLen == i {
+			// Nothing to move, element is at the right place.
+			newLen++
+			continue
+		}
+		(*ms.getOrig())[newLen] = (*ms.getOrig())[i]
+		var zero string
+		(*ms.getOrig())[i] = zero
+		newLen++
+	}
+	*ms.getOrig() = (*ms.getOrig())[:newLen]
+}
+
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms StringSlice) CopyTo(dest StringSlice) {
 	dest.getState().AssertMutable()
-	*dest.getOrig() = internal.CopyOrigStringSlice(*dest.getOrig(), *ms.getOrig())
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
+	*dest.getOrig() = copyStringSlice(*dest.getOrig(), *ms.getOrig())
 }
 
 // Equal checks equality with another StringSlice
 func (ms StringSlice) Equal(val StringSlice) bool {
 	return slices.Equal(*ms.getOrig(), *val.getOrig())
+}
+
+func copyStringSlice(dst, src []string) []string {
+	return append(dst[:0], src...)
 }

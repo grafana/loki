@@ -18,6 +18,7 @@ package bce
 
 import (
 	"fmt"
+	"net/http"
 	"reflect"
 	"runtime"
 	"time"
@@ -27,7 +28,7 @@ import (
 
 // Constants and default values for the package bce
 const (
-	SDK_VERSION                          = "0.9.238"
+	SDK_VERSION                          = "0.9.265"
 	URI_PREFIX                           = "/" // now support uri without prefix "v1" so just set root path
 	DEFAULT_DOMAIN                       = "baidubce.com"
 	DEFAULT_PROTOCOL                     = "http"
@@ -66,6 +67,7 @@ type BceClientConfiguration struct {
 	BackupEndpoint        string
 	RedirectDisabled      bool
 	DisableKeepAlives     bool
+	NoVerifySSL           bool
 	DialTimeout           *time.Duration // timeout of building a connection
 	KeepAlive             *time.Duration // the interval between keep-alive probes for an active connection
 	ReadTimeout           *time.Duration // read timeout of net.Conn
@@ -74,6 +76,9 @@ type BceClientConfiguration struct {
 	IdleConnectionTimeout *time.Duration // http.Transport.IdleConnTimeout
 	ResponseHeaderTimeout *time.Duration // http.Transport.ResponseHeaderTimeout
 	HTTPClientTimeout     *time.Duration // http.Client.Timeout
+	HTTPClient            *http.Client   // customized http client
+	UploadRatelimit       *int64         // the limit of upload rate, unit:KB/s
+	DownloadRatelimit     *int64         // the limit of download rate, unit:KB/s
 }
 
 func (c *BceClientConfiguration) String() string {

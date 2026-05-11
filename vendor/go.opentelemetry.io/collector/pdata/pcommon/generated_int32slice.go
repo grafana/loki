@@ -18,32 +18,31 @@ import (
 //
 // Must use NewInt32Slice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
-type Int32Slice internal.Int32Slice
+type Int32Slice internal.Int32SliceWrapper
 
 func (ms Int32Slice) getOrig() *[]int32 {
-	return internal.GetOrigInt32Slice(internal.Int32Slice(ms))
+	return internal.GetInt32SliceOrig(internal.Int32SliceWrapper(ms))
 }
 
 func (ms Int32Slice) getState() *internal.State {
-	return internal.GetInt32SliceState(internal.Int32Slice(ms))
+	return internal.GetInt32SliceState(internal.Int32SliceWrapper(ms))
 }
 
 // NewInt32Slice creates a new empty Int32Slice.
 func NewInt32Slice() Int32Slice {
 	orig := []int32(nil)
-	state := internal.StateMutable
-	return Int32Slice(internal.NewInt32Slice(&orig, &state))
+	return Int32Slice(internal.NewInt32SliceWrapper(&orig, internal.NewState()))
 }
 
 // AsRaw returns a copy of the []int32 slice.
 func (ms Int32Slice) AsRaw() []int32 {
-	return internal.CopyOrigInt32Slice(nil, *ms.getOrig())
+	return copyInt32Slice(nil, *ms.getOrig())
 }
 
 // FromRaw copies raw []int32 into the slice Int32Slice.
 func (ms Int32Slice) FromRaw(val []int32) {
 	ms.getState().AssertMutable()
-	*ms.getOrig() = internal.CopyOrigInt32Slice(*ms.getOrig(), val)
+	*ms.getOrig() = copyInt32Slice(*ms.getOrig(), val)
 }
 
 // Len returns length of the []int32 slice value.
@@ -128,13 +127,42 @@ func (ms Int32Slice) MoveAndAppendTo(dest Int32Slice) {
 	*ms.getOrig() = nil
 }
 
+// RemoveIf calls f sequentially for each element present in the slice.
+// If f returns true, the element is removed from the slice.
+func (ms Int32Slice) RemoveIf(f func(int32) bool) {
+	ms.getState().AssertMutable()
+	newLen := 0
+	for i := 0; i < len(*ms.getOrig()); i++ {
+		if f((*ms.getOrig())[i]) {
+			continue
+		}
+		if newLen == i {
+			// Nothing to move, element is at the right place.
+			newLen++
+			continue
+		}
+		(*ms.getOrig())[newLen] = (*ms.getOrig())[i]
+		var zero int32
+		(*ms.getOrig())[i] = zero
+		newLen++
+	}
+	*ms.getOrig() = (*ms.getOrig())[:newLen]
+}
+
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms Int32Slice) CopyTo(dest Int32Slice) {
 	dest.getState().AssertMutable()
-	*dest.getOrig() = internal.CopyOrigInt32Slice(*dest.getOrig(), *ms.getOrig())
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
+	*dest.getOrig() = copyInt32Slice(*dest.getOrig(), *ms.getOrig())
 }
 
 // Equal checks equality with another Int32Slice
 func (ms Int32Slice) Equal(val Int32Slice) bool {
 	return slices.Equal(*ms.getOrig(), *val.getOrig())
+}
+
+func copyInt32Slice(dst, src []int32) []int32 {
+	return append(dst[:0], src...)
 }

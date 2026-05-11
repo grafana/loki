@@ -683,24 +683,6 @@ func (fake *FakeBuilder) WithOptionsReturnsOnCall(i int, result1 k8s.Builder) {
 func (fake *FakeBuilder) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
-	fake.buildMutex.RLock()
-	defer fake.buildMutex.RUnlock()
-	fake.completeMutex.RLock()
-	defer fake.completeMutex.RUnlock()
-	fake.forMutex.RLock()
-	defer fake.forMutex.RUnlock()
-	fake.namedMutex.RLock()
-	defer fake.namedMutex.RUnlock()
-	fake.ownsMutex.RLock()
-	defer fake.ownsMutex.RUnlock()
-	fake.watchesMutex.RLock()
-	defer fake.watchesMutex.RUnlock()
-	fake.withEventFilterMutex.RLock()
-	defer fake.withEventFilterMutex.RUnlock()
-	fake.withLogConstructorMutex.RLock()
-	defer fake.withLogConstructorMutex.RUnlock()
-	fake.withOptionsMutex.RLock()
-	defer fake.withOptionsMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value

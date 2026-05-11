@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	indexshipper_storage "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	shipperutil "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -69,7 +68,7 @@ func DownloadIndexFile(ctx context.Context, cfg Config, cloudIndexPath string, o
 		localFileName = strings.TrimSuffix(localFileName, path.Ext(localFileName))
 	}
 	localFilePath := path.Join(cfg.WorkingDir, localFileName)
-	if err := shipperutil.DownloadFileFromStorage(localFilePath, decompress, false, logger, func() (io.ReadCloser, error) {
+	if err := indexshipper_storage.DownloadFileFromStorage(localFilePath, decompress, false, logger, func() (io.ReadCloser, error) {
 		r, _, err := objClient.GetObject(ctx, cloudIndexPath)
 		return r, err
 	}); err != nil {

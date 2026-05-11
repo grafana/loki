@@ -57,8 +57,11 @@ var queryTests = []struct {
 			],
 			"stats" : {
 				"index": {
+					"bloomFilterTime": 0,
+					"chunkRefsLookupTime": 0,
 					"postFilterChunks": 0,
 					"totalChunks": 0,
+					"totalStreams": 0,
 					"usedBloomFilters": false,
 					"shardsDuration": 0
 				},
@@ -70,6 +73,7 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
+						"queryUsedV2Engine": false,
 				 		"pipelineWrapperFilteredLines": 0,
 						"chunk" :{
 							"compressedBytes": 0,
@@ -94,7 +98,9 @@ var queryTests = []struct {
 							"prePredicateDecompressedRows": 0,
 							"prePredicateDecompressedBytes": 0,
 							"prePredicateDecompressedStructuredMetadataBytes": 0,
-							"totalRowsAvailable": 0
+							"totalPageDownloadTime": 0,
+							"totalRowsAvailable": 0,
+							"wireBytesTransferred": 0
 						}
 					},
 					"totalBatches": 0,
@@ -103,6 +109,7 @@ var queryTests = []struct {
 					"totalReached": 0
 				},
 				"querier": {
+					"querierExecTime": 0,
 					"store": {
 						"chunksDownloadTime": 0,
 						"congestionControlLatency": 0,
@@ -110,7 +117,8 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
-				                "pipelineWrapperFilteredLines": 0,
+						"queryUsedV2Engine": false,
+		                "pipelineWrapperFilteredLines": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
@@ -134,7 +142,9 @@ var queryTests = []struct {
 							"prePredicateDecompressedRows": 0,
 							"prePredicateDecompressedBytes": 0,
 							"prePredicateDecompressedStructuredMetadataBytes": 0,
-							"totalRowsAvailable": 0
+							"totalPageDownloadTime": 0,
+							"totalRowsAvailable": 0,
+							"wireBytesTransferred": 0
 						}
 					}
 				},
@@ -210,6 +220,26 @@ var queryTests = []struct {
 						"queryLengthServed": 0
 					},
 					"result": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0,
+						"queryLengthServed": 0
+					},
+					"logResult": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0,
+						"queryLengthServed": 0
+					},
+					"taskResult": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
 						"entriesStored": 0,

@@ -12,6 +12,18 @@ weight: 100
 
 This Helm Chart installation deploys Grafana Loki in [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) within a Kubernetes cluster.
 
+{{< admonition type="note" >}}
+As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champions and the Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the chart against the Grafana-community repo.
+{{< /admonition >}}
+
+{{< admonition type="tip" >}}
+With the move to the Grafana-community repository, the chart numbering has changed. Major version updates signal breaking changes in the chart. For more information, refer to the [README](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading).
+{{< /admonition >}}
+
+{{< admonition type="note" >}}
+As of the community Helm chart version 12.0.0, `SingleBinary` has been renamed to `Monolithic`. If you are using `SingleBinary` deployment mode, you have to explicitly set `deploymentMode: Monolithic` in your values file to avoid breaking changes.
+{{< /admonition >}}
+
 ## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
@@ -31,7 +43,8 @@ Deploying the Helm chart with a single replica deploys the following components:
 - Loki (1 replica)
 - Loki Canary (1 DaemonSet)
 - Loki Gateway (1 NGINX replica)
-- Loki Chunk and Result Cache (1 DaemonSet)
+- Chunks cache (1 StatefulSet)
+- Results cache (1 StatefulSet)
 - Minio (optional, if `minio.enabled=true`)
 
 Create the configuration file `values.yaml`:
@@ -54,7 +67,7 @@ loki:
           prefix: loki_index_
           period: 24h
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
@@ -91,7 +104,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
@@ -105,7 +120,8 @@ Deploying the Helm chart with multiple replicas deploys the following components
 - Loki (3 replicas)
 - Loki Canary (1 DaemonSet)
 - Loki Gateway (1 NGINX replica)
-- Loki Chunk and Result Cache (1 DaemonSet)
+- Chunks cache (1 StatefulSet)
+- Results cache (1 StatefulSet)
 - Minio (optional, if `minio.enabled=true`)
 
 Create the configuration file `values.yaml`:
@@ -128,7 +144,7 @@ loki:
           prefix: loki_index_
           period: 24h
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
@@ -165,7 +181,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
@@ -174,10 +192,10 @@ In this configuration, we need to make sure to update the `commonConfig.replicat
 
 ## Deploying the Helm chart for development and testing
 
-1. Add [Grafana's chart repository](https://github.com/grafana/helm-charts) to Helm:
+1. Add the [Grafana Community chart repository](https://github.com/grafana-community/helm-charts) to Helm:
 
    ```bash
-   helm repo add grafana https://grafana.github.io/helm-charts
+   helm repo add grafana-community https://grafana-community.github.io/helm-charts
    ```
 
 1. Update the chart repository:
@@ -189,16 +207,16 @@ In this configuration, we need to make sure to update the `commonConfig.replicat
 1. Deploy Loki using the configuration file `values.yaml`:
 
    ```bash
-    helm install loki grafana/loki -f values.yaml
+    helm install loki grafana-community/loki -f values.yaml
     ```
 1. Install or upgrade the Loki deployment.
      - To install:
         ```bash
-       helm install --values values.yaml loki grafana/loki
+       helm install --values values.yaml loki grafana-community/loki
        ```
     - To upgrade:
        ```bash
-       helm upgrade --values values.yaml loki grafana/loki
+       helm upgrade --values values.yaml loki grafana-community/loki
        ```
        
 1. Verify that Loki is running:
@@ -235,7 +253,7 @@ loki:
       bucketnames: <Your AWS bucket for chunk, for exaxmple,  `aws-loki-dev-chunk`>
       s3forcepathstyle: false
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
@@ -244,9 +262,9 @@ loki:
   storage:
     type: s3
     bucketNames:
-        chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
-        ruler: <Your AWS bucket for ruler, for example, `aws-loki-dev-ruler`>
-        admin: <Your AWS bucket for admin, for example, `aws-loki-dev-admin`>
+      chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
+      ruler: <Your AWS bucket for ruler, for example, `aws-loki-dev-ruler`>
+      admin: <Your AWS bucket for admin, for example, `aws-loki-dev-admin`>
     s3:
       # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
@@ -303,7 +321,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
@@ -387,7 +407,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0

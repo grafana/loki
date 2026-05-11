@@ -3,7 +3,7 @@ package index
 import "bytes"
 
 // QueryFilter wraps a callback to ensure the results are filtered correctly;
-// useful for the cache and Bigtable backend, which only ever fetches the whole
+// useful for the cache backend, which only ever fetches the whole
 // row.
 func QueryFilter(callback QueryPagesCallback) QueryPagesCallback {
 	return func(query Query, batch ReadBatchResult) bool {
@@ -33,7 +33,7 @@ type filteringBatchIter struct {
 
 func (f *filteringBatchIter) Next() bool {
 	for f.ReadBatchIterator.Next() {
-		rangeValue, value := f.ReadBatchIterator.RangeValue(), f.ReadBatchIterator.Value()
+		rangeValue, value := f.RangeValue(), f.Value()
 
 		if len(f.query.RangeValuePrefix) != 0 && !bytes.HasPrefix(rangeValue, f.query.RangeValuePrefix) {
 			continue

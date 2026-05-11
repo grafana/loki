@@ -7,6 +7,10 @@
 # Files output by tests
 /bin
 
+# Coverage files
+coverage.out
+coverage.html
+
 # Local testing
 .envrc
 *.FAIL

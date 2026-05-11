@@ -1,0 +1,48 @@
+version: "2"
+linters:
+  enable:
+    - bodyclose
+    # - exhaustive
+    # - goconst
+    # - godot
+    # - godox
+    # - gomoddirectives
+    - goprintffuncname
+    # - gosec
+    - misspell
+    # - nakedret
+    # - nestif
+    # - nilerr
+    - noctx
+    - nolintlint
+    # - prealloc
+    # - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - tparallel
+    # - unconvert
+    # - unparam
+    - whitespace
+    # - wrapcheck
+  disable:
+    - errcheck
+    - ineffassign
+    - unused
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+    rules:
+      - text: '(slog|log)\.\w+'
+        linters:
+          - noctx
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax

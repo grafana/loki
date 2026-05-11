@@ -209,7 +209,7 @@ func (s *LokiStore) init() error {
 
 		periodEndTime := config.DayTime{Time: math.MaxInt64}
 		if i < len(s.schemaCfg.Configs)-1 {
-			periodEndTime = config.DayTime{Time: s.schemaCfg.Configs[i+1].From.Time.Add(-time.Millisecond)}
+			periodEndTime = config.DayTime{Time: s.schemaCfg.Configs[i+1].From.Add(-time.Millisecond)}
 		}
 		w, idx, stop, err := s.storeForPeriod(p, p.GetIndexTableNumberRange(periodEndTime), chunkClient, f)
 		if err != nil {
@@ -233,21 +233,10 @@ func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (client.Client, 
 		objectStoreType = p.IndexType
 	}
 
-	var cc congestion.Controller
-	ccCfg := s.cfg.CongestionControl
-
-	if ccCfg.Enabled {
-		cc = s.congestionControllerFactory(
-			ccCfg,
-			s.logger,
-			congestion.NewMetrics(fmt.Sprintf("%s-%s", objectStoreType, p.From.String()), ccCfg),
-		)
-	}
-
 	component := "chunk-store-" + p.From.String()
 	chunkClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": component}, s.registerer)
-	chunks, err := NewChunkClient(objectStoreType, component, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics, s.logger)
+	chunks, err := NewChunkClient(objectStoreType, component, s.cfg, s.schemaCfg, p, chunkClientReg, s.clientMetrics, s.logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating object client")
 	}
@@ -349,7 +338,7 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, model.Time, model.Time
 	}
 
 	matchers := expr.Matchers()
-	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
+	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs")
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -459,7 +448,7 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 	// we allow this to select all series in the time range.
 	if req.Selector == "" {
 		from, through = util.RoundToMilliseconds(req.Start, req.End)
-		nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
+		nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs")
 		if err != nil {
 			return nil, err
 		}
@@ -475,7 +464,7 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 			return nil, err
 		}
 	}
-	series, err := s.Store.GetSeries(ctx, userID, from, through, matchers...)
+	series, err := s.GetSeries(ctx, userID, from, through, matchers...)
 	if err != nil {
 		return nil, err
 	}

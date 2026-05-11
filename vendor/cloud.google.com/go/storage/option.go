@@ -39,9 +39,11 @@ func init() {
 	// initialize experimental options
 	storageinternal.WithMetricExporter = withMetricExporter
 	storageinternal.WithMetricInterval = withMetricInterval
+	storageinternal.WithMeterProvider = withMeterProvider
 	storageinternal.WithReadStallTimeout = withReadStallTimeout
 	storageinternal.WithGRPCBidiReads = withGRPCBidiReads
 	storageinternal.WithZonalBucketAPIs = withZonalBucketAPIs
+	storageinternal.WithDirectConnectivityEnforced = withDirectConnectivityEnforced
 }
 
 // getDynamicReadReqIncreaseRateFromEnv returns the value set in the env variable.
@@ -81,10 +83,12 @@ type storageConfig struct {
 	disableClientMetrics   bool
 	metricExporter         *metric.Exporter
 	metricInterval         time.Duration
+	meterProvider          *metric.MeterProvider
 	manualReader           *metric.ManualReader
 	readStallTimeoutConfig *experimental.ReadStallTimeoutConfig
 	grpcBidiReads          bool
 	grpcAppendableUploads  bool
+	grpcDirectPathEnforced bool
 }
 
 // newStorageConfig generates a new storageConfig with all the given
@@ -103,6 +107,18 @@ func newStorageConfig(opts ...option.ClientOption) storageConfig {
 type storageClientOption interface {
 	option.ClientOption
 	ApplyStorageOpt(*storageConfig)
+}
+
+func withDirectConnectivityEnforced() option.ClientOption {
+	return &withDirectPathEnforced{}
+}
+
+type withDirectPathEnforced struct {
+	internaloption.EmbeddableAdapter
+}
+
+func (w *withDirectPathEnforced) ApplyStorageOpt(c *storageConfig) {
+	c.grpcDirectPathEnforced = true
 }
 
 // WithJSONReads is an option that may be passed to [NewClient].
@@ -201,6 +217,20 @@ type withTestMetricReaderConfig struct {
 	internaloption.EmbeddableAdapter
 	// reader override
 	metricReader *metric.ManualReader
+}
+
+type withMeterProviderConfig struct {
+	internaloption.EmbeddableAdapter
+	// meter provider override
+	meterProvider *metric.MeterProvider
+}
+
+func withMeterProvider(provider *metric.MeterProvider) option.ClientOption {
+	return &withMeterProviderConfig{meterProvider: provider}
+}
+
+func (w *withMeterProviderConfig) ApplyStorageOpt(c *storageConfig) {
+	c.meterProvider = w.meterProvider
 }
 
 func withTestMetricReader(ex *metric.ManualReader) option.ClientOption {

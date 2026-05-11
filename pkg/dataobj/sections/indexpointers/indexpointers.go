@@ -5,20 +5,21 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/indexpointersmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 var sectionType = dataobj.SectionType{
 	Namespace: "github.com/grafana/loki",
 	Kind:      "indexpointers",
+	Version:   columnar.FormatVersion,
 }
 
 // CheckSection returns true if section is a indexpointers section.
-func CheckSection(section *dataobj.Section) bool { return section.Type == sectionType }
+func CheckSection(section *dataobj.Section) bool { return sectionType.Equals(section.Type) }
 
 // Section represents an opened indexpointers section.
 type Section struct {
-	reader  dataobj.SectionReader
+	inner   *columnar.Section
 	columns []*Column
 }
 
@@ -27,36 +28,43 @@ type Section struct {
 // canceled.
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
-		return nil, fmt.Errorf("section is not a indexpointers section")
+		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
+	} else if section.Type.Version != columnar.FormatVersion {
+		return nil, fmt.Errorf("unsupported section version: got=%d want=%d", section.Type.Version, columnar.FormatVersion)
 	}
 
-	sec := &Section{reader: section.Reader}
-	if err := sec.init(ctx); err != nil {
+	dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)
+	if err != nil {
+		return nil, fmt.Errorf("creating decoder: %w", err)
+	}
+
+	columnarSection, err := columnar.Open(ctx, section.Tenant, dec)
+	if err != nil {
+		return nil, fmt.Errorf("opening columnar section: %w", err)
+	}
+
+	sec := &Section{inner: columnarSection}
+	if err := sec.init(); err != nil {
 		return nil, fmt.Errorf("intializing section: %w", err)
 	}
 	return sec, nil
 }
 
-func (s *Section) init(ctx context.Context) error {
-	dec := newDecoder(s.reader)
-	metadata, err := dec.Metadata(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to decode metadata: %w", err)
-	}
-
-	for _, col := range metadata.GetColumns() {
-		colType, ok := convertColumnType(col.Type)
-		if !ok {
-			// Skip over unrecognized columns.
+func (s *Section) init() error {
+	for _, col := range s.inner.Columns() {
+		colType, err := ParseColumnType(col.Type.Logical)
+		if err != nil {
+			// Skip over unrecognized columns; probably come from a newer
+			// version of the code.
 			continue
 		}
 
 		s.columns = append(s.columns, &Column{
 			Section: s,
-			Name:    col.Info.Name,
+			Name:    col.Tag,
 			Type:    colType,
 
-			desc: col,
+			inner: col,
 		})
 	}
 
@@ -87,6 +95,23 @@ var columnTypeNames = map[ColumnType]string{
 	ColumnTypeMaxTimestamp: "max_timestamp",
 }
 
+// ParseColumnType parses a [ColumnType] from a string. The expected string
+// format is same same as the return value of [ColumnType.String].
+func ParseColumnType(text string) (ColumnType, error) {
+	switch text {
+	case "invalid":
+		return ColumnTypeInvalid, nil
+	case "path":
+		return ColumnTypePath, nil
+	case "min_timestamp":
+		return ColumnTypeMinTimestamp, nil
+	case "max_timestamp":
+		return ColumnTypeMaxTimestamp, nil
+	}
+
+	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
+}
+
 // String returns the human-readable name of ct.
 func (ct ColumnType) String() string {
 	text, ok := columnTypeNames[ct]
@@ -105,19 +130,5 @@ type Column struct {
 	Name    string
 	Type    ColumnType
 
-	desc *indexpointersmd.ColumnDesc // Column description used for further decoding and reading.
-}
-
-func convertColumnType(protoType indexpointersmd.ColumnType) (ColumnType, bool) {
-	switch protoType {
-	case indexpointersmd.COLUMN_TYPE_UNSPECIFIED:
-		return ColumnTypeInvalid, true
-	case indexpointersmd.COLUMN_TYPE_PATH:
-		return ColumnTypePath, true
-	case indexpointersmd.COLUMN_TYPE_MIN_TIMESTAMP:
-		return ColumnTypeMinTimestamp, true
-	case indexpointersmd.COLUMN_TYPE_MAX_TIMESTAMP:
-		return ColumnTypeMaxTimestamp, true
-	}
-	return ColumnTypeInvalid, false
+	inner *columnar.Column
 }

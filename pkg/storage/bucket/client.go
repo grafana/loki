@@ -1,13 +1,16 @@
 package bucket
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/oss"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
@@ -60,9 +64,21 @@ var (
 	// added to track the status codes by method
 	bucketRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "objstore_bucket_transport_requests_total",
 			Help:      "Total number of HTTP transport requests made to the bucket backend by status code and method.",
+		},
+		[]string{"status_code", "method"},
+	)
+	bucketRequestsDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "objstore_bucket_transport_hedged_requests_duration_seconds",
+			Help:                            "Time spent doing requests to the bucket backend after request hedging.",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 		},
 		[]string{"status_code", "method"},
 	)
@@ -70,6 +86,7 @@ var (
 
 func init() {
 	prometheus.MustRegister(bucketRequestsTotal)
+	prometheus.MustRegister(bucketRequestsDuration)
 	metrics = objstore.BucketMetrics(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "")
 }
 
@@ -221,6 +238,8 @@ func NewClient(ctx context.Context, backend string, cfg Config, name string, log
 		client = NewPrefixedBucketClient(client, cfg.StoragePrefix)
 	}
 
+	client = newSizedGetAndReplaceBucket(client)
+
 	instrumentedClient := objstoretracing.WrapWithTraces(objstore.WrapWith(client, metrics))
 
 	// Wrap the client with any provided middleware
@@ -245,12 +264,57 @@ func instrumentTransport() func(http.RoundTripper) http.RoundTripper {
 }
 
 func (i *instrumentedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	start := time.Now()
+
 	resp, err := i.next.RoundTrip(req)
 	if err != nil {
 		return resp, err
 	}
 
 	// Record status code and method metrics
-	bucketRequestsTotal.WithLabelValues(strconv.Itoa(resp.StatusCode), req.Method).Inc()
+	statusCode := strconv.Itoa(resp.StatusCode)
+	bucketRequestsTotal.WithLabelValues(statusCode, req.Method).Inc()
+	bucketRequestsDuration.WithLabelValues(statusCode, req.Method).Observe(time.Since(start).Seconds())
+
 	return resp, nil
+}
+
+// sizedGetAndReplaceBucket wraps a Bucket and guarantees that the io.ReadCloser
+// returned by GetAndReplace callbacks always has a size known to
+// objstore.TryToGetSize. Without this, callers that return opaque ReadClosers
+// (such as io.NopCloser-wrapped readers) cause the S3 backend to fall into the
+// putObjectMultipartStreamNoLength code path in minio-go, which reconstructs
+// PutObjectOptions before CompleteMultipartUpload and silently drops
+// customHeaders — including the If-Match conditional write header set by
+// GetAndReplace. The result is that stale writes are accepted by S3 even when
+// the object's ETag has already changed, breaking the optimistic-concurrency
+// guarantee that GetAndReplace is supposed to provide.
+//
+// The fix buffers the reader when its size cannot be determined upfront.
+// GetAndReplace is only used for small metadata objects (e.g. ToC files), so
+// the buffering cost is negligible.
+type sizedGetAndReplaceBucket struct {
+	objstore.Bucket
+}
+
+func newSizedGetAndReplaceBucket(bkt objstore.Bucket) objstore.Bucket {
+	return &sizedGetAndReplaceBucket{Bucket: bkt}
+}
+
+func (b *sizedGetAndReplaceBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
+	return b.Bucket.GetAndReplace(ctx, name, func(existing io.ReadCloser) (io.ReadCloser, error) {
+		rc, err := fn(existing)
+		if err != nil || rc == nil {
+			return rc, err
+		}
+		if _, sizeErr := objstore.TryToGetSize(rc); sizeErr == nil {
+			return rc, nil
+		}
+		data, readErr := io.ReadAll(rc)
+		_ = rc.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		return objstore.NopCloserWithSize(bytes.NewReader(data)), nil
+	})
 }

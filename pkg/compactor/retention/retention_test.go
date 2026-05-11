@@ -2,15 +2,11 @@ package retention
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -170,12 +167,15 @@ func Test_Retention(t *testing.T) {
 			workDir := filepath.Join(t.TempDir(), "retention")
 			// must not fail the process because deletion must be retried
 			chunkClient := newMockChunkClient(true)
-			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, backoff.Config{MaxRetries: 2}, nil)
+			markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: workDir})
+			require.NoError(t, err)
+
+			sweep, err := NewSweeper(markerStorageClient, chunkClient, 10, 0, backoff.Config{MaxRetries: 2}, nil)
 			require.NoError(t, err)
 			sweep.Start()
 			defer sweep.Stop()
 
-			marker, err := NewMarker(workDir, expiration, time.Hour, nil, prometheus.NewRegistry())
+			marker, err := NewMarker(markerStorageClient, expiration, time.Hour, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
 				_, _, err := marker.FindAndMarkChunksForDeletion(context.Background(), table.name, "", table, util_log.Logger)
@@ -219,7 +219,11 @@ func Test_Sweeper_deleteChunk(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			workDir := filepath.Join(t.TempDir(), "retention")
 			chunkClient := newMockChunkClient(true)
-			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, backoff.Config{MaxRetries: data.maxRetries}, nil)
+
+			markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: workDir})
+			require.NoError(t, err)
+
+			sweep, err := NewSweeper(markerStorageClient, chunkClient, 10, 0, backoff.Config{MaxRetries: data.maxRetries}, nil)
 			require.NoError(t, err)
 
 			err = sweep.deleteChunk(context.Background(), []byte(chunkID))
@@ -283,7 +287,7 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 		blockSize  = 256 * 1024
 	)
 	labelsBuilder := labels.NewBuilder(lbs)
-	labelsBuilder.Set(labels.MetricName, "logs")
+	labelsBuilder.Set(model.MetricNameLabel, "logs")
 	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
@@ -302,49 +306,6 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	c := chunk.NewChunk(userID, fp, metric, chunkenc.NewFacade(chunkEnc, blockSize, targetSize), from, through)
 	require.NoError(t, c.Encode())
 	return c
-}
-
-func labelsSeriesID(ls labels.Labels) []byte {
-	h := sha256.Sum256([]byte(labelsString(ls)))
-	return encodeBase64Bytes(h[:])
-}
-
-func encodeBase64Bytes(bytes []byte) []byte {
-	encodedLen := base64.RawStdEncoding.EncodedLen(len(bytes))
-	encoded := make([]byte, encodedLen)
-	base64.RawStdEncoding.Encode(encoded, bytes)
-	return encoded
-}
-
-// Backwards-compatible with model.Metric.String()
-func labelsString(ls labels.Labels) string {
-	metricName := ls.Get(labels.MetricName)
-	if metricName != "" && ls.Len() == 1 {
-		return metricName
-	}
-	var b strings.Builder
-	b.Grow(1000)
-
-	b.WriteString(metricName)
-	b.WriteByte('{')
-	i := 0
-	ls.Range(func(l labels.Label) {
-		if l.Name == labels.MetricName {
-			return
-		}
-		if i > 0 {
-			b.WriteByte(',')
-			b.WriteByte(' ')
-		}
-		b.WriteString(l.Name)
-		b.WriteByte('=')
-		var buf [1000]byte
-		b.Write(strconv.AppendQuote(buf[:0], l.Value))
-		i++
-	})
-	b.WriteByte('}')
-
-	return b.String()
 }
 
 func TestChunkRewriter(t *testing.T) {
@@ -1132,41 +1093,34 @@ func TestMigrateMarkers(t *testing.T) {
 	t.Run("nothing to migrate", func(t *testing.T) {
 		workDir := t.TempDir()
 		dst := path.Join(workDir, "store-1_2023-10-19")
-		require.NoError(t, CopyMarkers(workDir, dst))
-		require.NoDirExists(t, path.Join(workDir, dst, MarkersFolder))
+
+		markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dst})
+		require.NoError(t, err)
+
+		require.NoError(t, CopyMarkers(workDir, markerStorageClient, ""))
 	})
 
 	t.Run("migrate markers dir", func(t *testing.T) {
 		workDir := t.TempDir()
 		dst := path.Join(workDir, "store-1_2023-10-19")
-		require.NoError(t, os.Mkdir(path.Join(workDir, MarkersFolder), 0755))
 
 		markers := []string{"foo", "bar", "buzz"}
 		for _, marker := range markers {
-			err := os.WriteFile(path.Join(workDir, MarkersFolder, marker), []byte(marker), 0o666)
+			err := os.WriteFile(path.Join(workDir, marker), []byte(marker), 0o666)
 			require.NoError(t, err)
 		}
 
-		require.NoError(t, CopyMarkers(workDir, dst))
-		targetDir := path.Join(dst, MarkersFolder)
-		require.DirExists(t, targetDir)
+		markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dst})
+		require.NoError(t, err)
+
+		require.NoError(t, CopyMarkers(workDir, markerStorageClient, ""))
+		require.DirExists(t, dst)
 		for _, marker := range markers {
-			require.FileExists(t, path.Join(targetDir, marker))
-			b, err := os.ReadFile(path.Join(targetDir, marker))
+			require.FileExists(t, path.Join(dst, marker))
+			b, err := os.ReadFile(path.Join(dst, marker))
 			require.NoError(t, err)
 			require.Equal(t, marker, string(b))
 		}
-	})
-
-	t.Run("file named markers should not be migrated", func(t *testing.T) {
-		workDir := t.TempDir()
-		dst := path.Join(workDir, "store-1_2023-10-19")
-		f, err := os.Create(path.Join(workDir, MarkersFolder))
-		require.NoError(t, err)
-		defer f.Close()
-
-		require.NoError(t, CopyMarkers(workDir, dst))
-		require.NoDirExists(t, path.Join(dst, MarkersFolder))
 	})
 }
 

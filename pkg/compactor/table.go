@@ -15,6 +15,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -165,9 +167,12 @@ func (t *table) compact() error {
 		indexSetsMtx.Lock()
 		defer indexSetsMtx.Unlock()
 
-		var err error
-		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
-		return t.indexSets[userID], err
+		indexSet, err := newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
+		if err != nil {
+			return nil, err
+		}
+		t.indexSets[userID] = indexSet
+		return indexSet, nil
 	}, t.periodConfig)
 
 	return tableCompactor.CompactTable()
@@ -260,10 +265,35 @@ func (t *table) openCompactedIndexForUpdates(idxSet *indexSet) error {
 }
 
 // applyStorageUpdates applies storage updates for a single stream of a user
-func (t *table) applyStorageUpdates(userID, labelsStr string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []deletion.Chunk) error {
+func (t *table) applyStorageUpdates(userID, labelsStr string, rebuiltChunks map[string]deletion.Chunk, chunksToDeIndex []string) error {
+	labels, err := syntax.ParseLabels(labelsStr)
+	if err != nil {
+		return err
+	}
+
 	is, ok := t.indexSets[userID]
 	if !ok {
-		return nil
+		// Index for the user does not exist, likely removed by retention/deletion without line filter.
+		// Mark all the rebuilt chunks for deletion.
+		level.Info(util_log.Logger).Log("msg", "user index not found, removing the newly built chunks", "table_name", t.name, "userID", userID)
+		chunksToDelete := make([]string, 0, len(rebuiltChunks))
+		cfg := config.SchemaConfig{Configs: []config.PeriodConfig{t.periodConfig}}
+
+		for _, newChunk := range rebuiltChunks {
+			if newChunk == nil {
+				continue
+			}
+			chunkID := cfg.ExternalKey(logproto.ChunkRef{
+				Fingerprint: newChunk.GetFingerprint(),
+				UserID:      userID,
+				From:        newChunk.GetFrom(),
+				Through:     newChunk.GetThrough(),
+				Checksum:    newChunk.GetChecksum(),
+			})
+			chunksToDelete = append(chunksToDelete, chunkID)
+		}
+
+		return t.tableMarker.MarkChunksForDeletion(t.name, chunksToDelete)
 	}
 
 	// compactedIndex is only set in indexSet when files have been compacted,
@@ -274,8 +304,44 @@ func (t *table) applyStorageUpdates(userID, labelsStr string, chunksToDelete []s
 		}
 	}
 
-	if err := is.applyUpdates(labelsStr, chunksToDelete, chunksToDeIndex, chunksToIndex); err != nil {
+	chunksNotIndexed, err := is.applyUpdates(labels, rebuiltChunks, chunksToDeIndex)
+	if err != nil {
 		return err
+	}
+	// build the list of source chunks to delete
+	chunksToDelete := make([]string, 0, len(rebuiltChunks)+len(chunksNotIndexed))
+	for chunkID := range rebuiltChunks {
+		chunksToDelete = append(chunksToDelete, chunkID)
+	}
+
+	// Remove the newly built chunks which were not indexed due to their source chunks missing from the current index.
+	// Source chunks could be deleted by retention or delete requests without line filters.
+	// However, since storage updates are supposed to be idempotent, see if the chunk was already indexed in previous attempts which also already removed the source chunk.
+	cfg := config.SchemaConfig{Configs: []config.PeriodConfig{t.periodConfig}}
+	for _, chk := range chunksNotIndexed {
+		chunkRef := logproto.ChunkRef{
+			Fingerprint: chk.GetFingerprint(),
+			UserID:      userID,
+			From:        chk.GetFrom(),
+			Through:     chk.GetThrough(),
+			Checksum:    chk.GetChecksum(),
+		}
+		chunkExists, err := is.chunkExists(labels, chunkRef)
+		if err != nil {
+			return err
+		}
+
+		if chunkExists {
+			continue
+		}
+		chunkID := cfg.ExternalKey(logproto.ChunkRef{
+			Fingerprint: chk.GetFingerprint(),
+			UserID:      userID,
+			From:        chk.GetFrom(),
+			Through:     chk.GetThrough(),
+			Checksum:    chk.GetChecksum(),
+		})
+		chunksToDelete = append(chunksToDelete, chunkID)
 	}
 
 	return t.tableMarker.MarkChunksForDeletion(t.name, chunksToDelete)

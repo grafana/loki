@@ -47,7 +47,7 @@ update_yaml_node "${chart_file}" .version "${new_chart_version}"
 
 sed --in-place \
   --regexp-extended \
-  "s/(.*\<AUTOMATED_UPDATES_LOCATOR\>.*)/\1\n\n## ${new_chart_version}\n\n- \[CHANGE\] Changed version of Grafana Loki to ${latest_loki_tag}/g" production/helm/loki/CHANGELOG.md
+  "s/## Unreleased/## Unreleased\n\n## ${new_chart_version}\n\n- \[CHANGE\] Changed version of Grafana Loki to ${latest_loki_tag}/g" production/helm/loki/CHANGELOG.md
 
 make TTY='' helm-docs
 

@@ -6,68 +6,24 @@
 
 package internal
 
-import (
-	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type Slice struct {
-	orig  *[]otlpcommon.AnyValue
+type SliceWrapper struct {
+	orig  *[]AnyValue
 	state *State
 }
 
-func GetOrigSlice(ms Slice) *[]otlpcommon.AnyValue {
+func GetSliceOrig(ms SliceWrapper) *[]AnyValue {
 	return ms.orig
 }
 
-func GetSliceState(ms Slice) *State {
+func GetSliceState(ms SliceWrapper) *State {
 	return ms.state
 }
 
-func NewSlice(orig *[]otlpcommon.AnyValue, state *State) Slice {
-	return Slice{orig: orig, state: state}
+func NewSliceWrapper(orig *[]AnyValue, state *State) SliceWrapper {
+	return SliceWrapper{orig: orig, state: state}
 }
 
-func GenerateTestSlice() Slice {
-	orig := GenerateOrigTestAnyValueSlice()
-	state := StateMutable
-	return NewSlice(&orig, &state)
-}
-
-func CopyOrigAnyValueSlice(dest, src []otlpcommon.AnyValue) []otlpcommon.AnyValue {
-	var newDest []otlpcommon.AnyValue
-	if cap(dest) < len(src) {
-		newDest = make([]otlpcommon.AnyValue, len(src))
-	} else {
-		newDest = dest[:len(src)]
-		// Cleanup the rest of the elements so GC can free the memory.
-		// This can happen when len(src) < len(dest) < cap(dest).
-		for i := len(src); i < len(dest); i++ {
-			dest[i] = otlpcommon.AnyValue{}
-		}
-	}
-	for i := range src {
-		CopyOrigAnyValue(&newDest[i], &src[i])
-	}
-	return newDest
-}
-
-func GenerateOrigTestAnyValueSlice() []otlpcommon.AnyValue {
-	orig := make([]otlpcommon.AnyValue, 7)
-	for i := 0; i < 7; i++ {
-		orig[i] = otlpcommon.AnyValue{}
-		FillOrigTestAnyValue(&orig[i])
-	}
-	return orig
-}
-
-// UnmarshalJSONOrigAnyValueSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigAnyValueSlice(iter *json.Iterator) []otlpcommon.AnyValue {
-	var orig []otlpcommon.AnyValue
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, otlpcommon.AnyValue{})
-		UnmarshalJSONOrigAnyValue(&orig[len(orig)-1], iter)
-		return true
-	})
-	return orig
+func GenTestSliceWrapper() SliceWrapper {
+	orig := GenTestAnyValueSlice()
+	return NewSliceWrapper(&orig, NewState())
 }

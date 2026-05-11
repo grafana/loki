@@ -11,30 +11,18 @@ import (
 
 func Test_snapshot(t *testing.T) {
 	store := scratch.NewMemory()
-	sections := []sectionInfo{
+	regions := []sectionRegion{
 		{
-			Type:     SectionType{},
-			Data:     store.Put([]byte("example data 1")),
-			Metadata: store.Put([]byte("example metadata 1")),
-
-			DataSize:     len("example data 1"),
-			MetadataSize: len("example metadata 1"),
+			Handle: store.Put([]byte("example data 1")),
+			Size:   len("example data 1"),
 		},
 		{
-			Type:     SectionType{},
-			Data:     store.Put([]byte("example data 2")),
-			Metadata: store.Put([]byte("example metadata 2")),
-
-			DataSize:     len("example data 2"),
-			MetadataSize: len("example metadata 2"),
+			Handle: store.Put([]byte("example data 2")),
+			Size:   len("example data 2"),
 		},
 		{
-			Type:     SectionType{},
-			Data:     store.Put([]byte("example data 3")),
-			Metadata: store.Put([]byte("example metadata 3")),
-
-			DataSize:     len("example data 3"),
-			MetadataSize: len("example metadata 3"),
+			Handle: store.Put([]byte("example data 3")),
+			Size:   len("example data 3"),
 		},
 	}
 
@@ -43,7 +31,7 @@ func Test_snapshot(t *testing.T) {
 		tailer = []byte("example tailer")
 	)
 
-	snapshot, err := newSnapshot(store, header, sections, tailer)
+	snapshot, err := newSnapshot(store, header, regions, tailer)
 	require.NoError(t, err)
 
 	t.Run("full region", func(t *testing.T) {
@@ -53,20 +41,12 @@ func Test_snapshot(t *testing.T) {
 		require.Equal(t, len(headerData), n)
 		require.Equal(t, header, headerData)
 
-		// Test reading the first section's data region completely
+		// Test reading the first region completely
 		sectionData := make([]byte, 14)           // "example data 1" is 14 bytes
 		n, err = snapshot.ReadAt(sectionData, 14) // offset after header
 		require.NoError(t, err)
 		require.Equal(t, 14, n)
 		require.Equal(t, "example data 1", string(sectionData))
-	})
-
-	t.Run("full section", func(t *testing.T) {
-		fullSectionData := make([]byte, sections[0].DataSize)
-		n, err := snapshot.ReadAt(fullSectionData, int64(sections[0].DataSize))
-		require.NoError(t, err)
-		require.Equal(t, sections[0].DataSize, n)
-		require.Equal(t, "example data 1", string(fullSectionData))
 	})
 
 	t.Run("partial region (start)", func(t *testing.T) {
@@ -76,7 +56,6 @@ func Test_snapshot(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, len(expect), n)
 		require.Equal(t, expect, string(partialData))
-
 	})
 
 	t.Run("partial region (middle)", func(t *testing.T) {
@@ -91,7 +70,7 @@ func Test_snapshot(t *testing.T) {
 	})
 
 	t.Run("multiple regions", func(t *testing.T) {
-		expected := "example data 1example metadata 1"
+		expected := "example data 1example data 2"
 
 		// Test reading two entire sections.
 		data := make([]byte, len(expected))
@@ -118,9 +97,9 @@ func Test_snapshot(t *testing.T) {
 
 	t.Run("full range", func(t *testing.T) {
 		expect := "example header" +
-			"example data 1" + "example metadata 1" +
-			"example data 2" + "example metadata 2" +
-			"example data 3" + "example metadata 3" +
+			"example data 1" +
+			"example data 2" +
+			"example data 3" +
 			"example tailer"
 
 		// Test reading the entire range with ReadAt.
@@ -140,9 +119,9 @@ func Test_snapshot(t *testing.T) {
 		// the contract of [io.ReaderAt].
 
 		expect := "example header" +
-			"example data 1" + "example metadata 1" +
-			"example data 2" + "example metadata 2" +
-			"example data 3" + "example metadata 3" +
+			"example data 1" +
+			"example data 2" +
+			"example data 3" +
 			"example tailer"
 
 		totalSize := snapshot.Size()
@@ -187,8 +166,7 @@ func Test_snapshot(t *testing.T) {
 
 	require.NoError(t, snapshot.Close())
 
-	for _, section := range sections {
-		require.ErrorAs(t, store.Remove(section.Data), new(scratch.HandleNotFoundError), "section should be deleted after closing a snapshot")
-		require.ErrorAs(t, store.Remove(section.Metadata), new(scratch.HandleNotFoundError), "section should be deleted after closing a snapshot")
+	for _, region := range regions {
+		require.ErrorAs(t, store.Remove(region.Handle), new(scratch.HandleNotFoundError), "region handle should be deleted after closing a snapshot")
 	}
 }

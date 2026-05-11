@@ -11,8 +11,191 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
-[//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
-- [BUGFIX] Fix missing s3 field in lokiStorageConfig templated value.
+## Unreleased
+
+
+## 7.0.0
+
+- [BREAKING] The chart in this repository is now maintained for Grafana Enterprise Logs (GEL) users only. As of March 16, 2026, the Grafana Loki Helm chart for OSS users has moved to [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) (forked at chart version 6.55.0). OSS users are encouraged to migrate to the community-maintained chart.  That community chart is *not* the supported installation path for GEL as the Community chart has [removed support for GEL](https://github.com/grafana-community/helm-charts/pull/184).  See [#20705](https://github.com/grafana/loki/issues/20705) for details.
+- [CHANGE] Swap bundled minio subchart images from `minio/minio` to the Pigsty (`pgsty`) community fork (`docker.io/pgsty/minio:RELEASE.2026-03-14T12-00-00Z`, `docker.io/pgsty/mc:RELEASE.2026-03-13T08-57-32Z`) to mitigate an unresolved upstream MinIO CVE.
+- [CHANGE] Changed GEL version to 3.6.6 (updated `enterprise.version`, `enterprise.image.tag`, and chart `appVersion`).
+- [FEATURE] Update README chart migration notice from future tense to past tense
+
+## 6.55.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.7 and GEL version to 3.6.5
+
+## 6.54.0
+
+**NOTE:** Effective [March 16, 2026](https://github.com/grafana/loki/issues/20705), the Grafana Loki Helm chart will be forked to the new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts). 
+
+- [FEATURE] Add common labels to all resources [#20269](https://github.com/grafana/loki/pull/20269)
+- [FEATURE] Memcached: allow to override CPU in the auto-computed resource mode  [#20767](https://github.com/grafana/loki/pull/20767)
+- [ENHANCEMENT] Add the ability to customize write, read and backend workloads PDB maxUnavailable [#16871](https://github.com/grafana/loki/pull/16871)
+- [BUGFIX] Make the loki-sc-rules sidecar container compatible with the most recent versions of k8s-sidecar. [#20164](https://github.com/grafana/loki/pull/20164)
+- [BUGFIX] Fix incorrect syntax in loki-egress-dns CiliumNetworkPolicy manifest [#20221](https://github.com/grafana/loki/pull/20221)
+- [BUGFIX] Correctly pass arguments for kubectl in statefulset/pvc-recreation job. [#20556](https://github.com/grafana/loki/pull/20556)
+- [BUGFIX] Ignore dots in the image repository after first path segment when detecting image registry [#20695](https://github.com/grafana/loki/pull/20695)
+- [BUGFIX] Add support for `DISABLE_X509_STRICT_VERIFICATION` environment variable in sidecar containers. [#20818](https://github.com/grafana/loki/pull/20818).
+- [BUGFIX] Apply `trafficDistribution` setting to SingleBinary service template. [#20894](https://github.com/grafana/loki/pull/20894)
+
+## 6.53.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.5
+
+## 6.52.0
+
+- [BREAKING] DEPRECATION NOTICE - The simple scalable mode (SSD) is deprecated and will be removed in a future version of the Loki Helm charts.  
+- [BUGFIX] Updated Loki and GEL versions in values.yaml file. [#20548](https://github.com/grafana/loki/pull/20548).
+
+## 6.51.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.4
+
+## 6.50.0
+
+- [ENHANCEMENT] Add configurable `startupProbe` to compactor [#20072](https://github.com/grafana/loki/pull/20072).
+- [ENHANCEMENT] Add configurable `startupProbe` to distributor [#20073](https://github.com/grafana/loki/pull/20073).
+- [ENHANCEMENT] Add guards to the `readinessProbe` of the `gateway` container in the `enterprise-gateway` pods, in case the value is empty. Makes it possible to configure livenessProbe and startupProbe in the gateway container in the enterprise-gateway pods [#20074](https://github.com/grafana/loki/pull/20074)
+- [ENHANCEMENT] Add a configurable `startupProbe` to the index-gateway container in the index-gateway pods [#20075](https://github.com/grafana/loki/pull/20075)
+- [ENHANCEMENT] Add configurable `startupProbe` to ingester [#20076](https://github.com/grafana/loki/pull/20076)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to loki-canary [#20079](https://github.com/grafana/loki/pull/20079)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to pattern-ingester [#20080](https://github.com/grafana/loki/pull/20080)
+- [ENHANCEMENT] Add configurable `startupProbe` to querier [#20081](https://github.com/grafana/loki/pull/20081) 
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to query-frontend [#20082](https://github.com/grafana/loki/pull/20082) 
+- [ENHANCEMENT] Add configurable `startupProbe` to query-scheduler [#20083](https://github.com/grafana/loki/pull/20083) 
+- [ENHANCEMENT] Add configurable `startupProbe` to table-manager [#20084](https://github.com/grafana/loki/pull/20084)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to ruler [#20085](https://github.com/grafana/loki/pull/20085) 
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the write pods [#20087](https://github.com/grafana/loki/pull/20087) 
+- [BUGFIX] Fix rendering of `dnsConfig` for `backend`, `read`, `write`, `single-binary` and `table-manager`. [#20013](https://github.com/grafana/loki/pull/20013)
+- [BUGFIX] Respect global registry in sidecar image [#19347](https://github.com/grafana/loki/pull/19347).
+- [BUGFIX] Fix typos in comments in Values for health probes [#20078](https://github.com/grafana/loki/pull/20078)
+- [BUGFIX] Fix ingester-b volumeAttributesClassName templating [#20188] (https://github.com/grafana/loki/pull/20188)
+- [BUGFIX] Apply quotation marks to schema date in single-binary-values.yaml example.   [#20252](https://github.com/grafana/loki/pull/20252)
+
+## 6.49.0
+
+- [CHANGE] Updated version of Grafana Loki to 3.6.3
+- [CHANGE] Updated version of Rollout Operator to 0.38.2
+
+## 6.48.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.2
+
+## 6.47.0
+
+- [ENHANCEMENT] Use fsGroupChangePolicy=OnRootMismatch on loki to speed up pod starts [#13942](https://github.com/grafana/loki/pull/13942)
+- [ENHANCEMENT] Added `trafficDistribution` configuration option to backend, compactor, distributor, gateway, index-gateway, ingester, querier, query-frontend, query-scheduler,read and write services to enable same-zone traffic routing. [#19558](https://github.com/grafana/loki/pull/19558)
+- [ENHANCEMENT] Add support for configuring `volumeAttributesClassName` for `volumeClaimTemplates`. [#19719](https://github.com/grafana/loki/pull/19719)
+- [BUGFIX] Add startupProbe to read pod [#19708](https://github.com/grafana/loki/pull/19708)
+- [BUGFIX] Don't fail for missing bucket name, if minio is enabled. [#19745](https://github.com/grafana/loki/pull/19745)
+- [BUGFIX] Do not mark loki.storage.bucketNames.chunks as required, if minio is used. [#19871](https://github.com/grafana/loki/pull/19871)
+- [BUGFIX] Don't mark loki.storage.bucketNames.chunks as required, if an s3 url is provided. [#19873](https://github.com/grafana/loki/pull/19873)
+- [BUGFIX] do not mark loki.storage.bucketNames.ruler as required, if rulerConfig.storage.type is local. [#19882](https://github.com/grafana/loki/pull/19882)
+
+## 6.46.0
+
+- [CHANGE] `nameOverride` now passed through Helm template function. [#19590](https://github.com/grafana/loki/pull/19590)
+- [FEATURE] Add configurable `singleBinary.topologySpreadConstraints`. [#19534](https://github.com/grafana/loki/pull/19534)
+- [FEATURE] Add load balancer port to query-frontend service. [#19462](https://github.com/grafana/loki/pull/19462)
+- [FEATURE] Make loki-canary readinessProbe configurable via values.yaml. [#19328](https://github.com/grafana/loki/pull/19328)
+- [BUGFIX] Don't fail for missing bucket name, if local disk is used. [#19675](https://github.com/grafana/loki/pull/19675)
+
+## 6.45.2
+
+- [BUGFIX] Fix incorrect GEL version in the chart and reference.
+
+## 6.45.1
+
+- [CHANGE] Changed one missed version of Grafana Loki to 3.5.7.
+
+## 6.45.0
+- [CHANGE] Remove unused `storageClass` field from compactor persistence configuration. Storage class should be configured per-claim in the `claims` array instead.[#19443](https://github.com/grafana/loki/pull/19443)
+- [ENHANCEMENT] Update default readiness probe values to match operator [#19529](https://github.com/grafana/loki/pull/19529)
+- [ENHANCEMENT] Allow configuration of alert rule severalties and thresholds[#13730](https://github.com/grafana/loki/pull/13730)
+- [ENHANCEMENT] Add the ability to specify index-gateway container lifecycle. [#19573](https://github.com/grafana/loki/pull/19573)
+- [BUGFIX]  Move bucketName validations into the config helpers.[#19051](https://github.com/grafana/loki/pull/19051)
+- [BUGFIX] Standardize global image registry to match other Grafana charts [#19246](https://github.com/grafana/loki/pull/19246)
+- [BUGFIX] Fix wrong context passed to loki.namespace helper from table manager servicemonitor. [#19544](https://github.com/grafana/loki/pull/19544)
+
+## 6.44.0
+
+- [DEPRECATION] The Loki Helm chart uses MinIO as an object store. MinIO will be removed from the Helm Charts in a future release.  See [this issue](https://github.com/minio/minio/issues/21647) for more information.  The Loki team is still investigating alternatives to replace MinIO.
+- [CHANGE] Changed version of Grafana Loki to 3.5.7.
+- [FEATURE] Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217).
+- [BUGFIX] Add single-binary component to the podSelector. [#19229](https://github.com/grafana/loki/pull/19229).
+- [ENHANCEMENT] Added `trafficDistribution` configuration option to backend, compactor, distributor, gateway, index-gateway, ingester, querier, query-frontend, query-scheduler,read and write services to enable same-zone traffic routing. #19557
+
+## 6.43.0
+
+- [BREAKING]  **Loki UI has been completely removed from the Helm chart.**  The experimental Loki UI has been moved to a [Grafana Plugin] (https://github.com/grafana/loki-operational-ui). Enabling the UI in the Helm chart will now only enable the APIs needed by the plugin, and will host them on the querier. The gateway will now forward all UI requests to the queriers. Users who previously had `loki.ui.enabled: true` should remove this configuration and migrate to the Grafana Loki plugin for UI functionality. [#19390](https://github.com/grafana/loki/pull/19390)
+- [FEATURE] Use named ports for memcached services targetports. [#18990](https://github.com/grafana/loki/pull/18990)
+- [FEATURE] Add support for adding custom annotations to alerting rules, similar to how additionalRuleLabels already works. [#19193](https://github.com/grafana/loki/pull/19193)
+- [ENHANCEMENT] Add configurable `startupProbe` to the exporter container in the memcached pods [#19165](https://github.com/grafana/loki/pull/19165)
+- [ENHANCEMENT] Add configurable `startupProbe` to `startupProbethe memcached container in the memcached pods [#19166](https://github.com/grafana/loki/pull/19166)
+- [BUGFIX] Update loki-helm-test image tag to latest commit [#19227](https://github.com/grafana/loki/pull/19227)
+- [BUGFIX] Update querier, read, and single binary target definitions for UI enablement. [#19461](https://github.com/grafana/loki/pull/19461)
+
+## 6.42.0
+
+**NOTE:** While the Loki chart does not currently use these CRDs, we wanted to note this requirement for the [rollout-operator](https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator#upgrade-of-grafana-rollout-operator).
+Starting with v0.33.0 of the rollout-operator chart, the rollout-operator webhooks are enabled. See https://github.com/grafana/rollout-operator/#webhooks.
+Before upgrading to this version, make sure that the CustomResourceDefinitions (CRDs) in the crds directory are applied to your cluster. Manually applying these CRDs is only required if upgrading from a chart <= v0.32.0.
+
+- [BUGFIX] Use strings instead of integers for ports in CiliumNetworkPolicies [#19252](https://github.com/grafana/loki/pull/19252)
+- [FEATURE] Add replicas to loki-canary deployment [#190095](https://github.com/grafana/loki/pull/19095)
+- [FEATURE] Allow changing the retentionPolicy for the singleBinary StatefulSet [#19097](https://github.com/grafana/loki/pull/19097)
+- [FEATURE]: Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217)
+
+## 6.41.1
+
+- [CHANGE] Changed version of Grafana Loki to 3.5.5.
+
+## 6.41.0
+
+- [BUGFIX] Explicitly set registry for k8s-sidecar image [#19233](<https://github.com/grafana/loki/pull/19233>]
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for the nginx container in the gateway pods. [#18545](https://github.com/grafana/loki/pull/18545)
+
+## 6.40.0
+
+- [FEATURE] Add configurable `livenessProbe` and `startupProbe` to single binary StatefulSet. [#19072](https://github.com/grafana/loki/pull/19072)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the backend pods. [#18548](https://github.com/grafana/loki/pull/18548)
+- [BUGFIX] Un-deprecate all features in `monitoring` block except grafana-agent-operator [#19012](https://github.com/grafana/loki/pull/19012)
+- [BUGFIX] Use UDP/53 for DNS egress instead of named port [#19073](https://github.com/grafana/loki/pull/19073)
+
+## 6.39.0
+
+- [FEATURE] add more specificity to affinity and topology spread constraints [#19061](https://github.com/grafana/loki/pull/19061)
+- [ENHANCEMENT] Expand `extraObjects` to have more flexibility in templating [#13252](https://github.com/grafana/loki/pull/13252)
+- [ENHANCEMENT] add missing dnsConfig to `admin-api`, `bloom-builder`, `bloom-gateway`, `bloom-planner`, `compactor`, `distributor`, `index-gateway`, `ingester`, `memcached`, `overrides-exporter`, `pattern-ingester`, and `query-scheduler`. [#18903](https://github.com/grafana/loki/pull/18903)
+- [BUGFIX] Ensure the GEL admin-api resources are not created when using SimpleScalable deployment mode [#13655](https://github.com/grafana/loki/pull/13655)
+- [BUGFIX] Stop scrapping zonal ingester metrics twice when using ServiceMonitor. [#19000](https://github.com/grafana/loki/pull/19000)
+- [BUGFIX] Add init container configuration for backend, bloom builder, distributor, query-frontend, query-scheduler, read, write. [#18709](https://github.com/grafana/loki/pull/18709)
+
+## 6.38.0
+
+**NOTE:** While the Loki chart does not currently use these CRDs, we wanted to note this requirement for the [rollout-operator](https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator#upgrade-of-grafana-rollout-operator).
+Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs) in the `crds` directory are applied to your cluster. Manually applying these CRDs is only required if upgrading from a chart <= v0.32.0.
+
+- un-deprecate all features in `monitoring` block except grafana-agent-operator [#19001](https://github.com/grafana/loki/pull/19001)
+- [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
+- [FEATURE] Allow enabling user namespaces [#18661](https://github.com/grafana/loki/pull/18661)
+- [FEATURE] Allow configuring service types. [#18708](https://github.com/grafana/loki/pull/18708)
+- [ENHANCEMENT] Add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
+- [BUGFIX] Use gateway container port as nginx server port [#18774](https://github.com/grafana/loki/pull/18774)
+
+## 6.37.0
+
+- [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-gateway. [#18551](https://github.com/grafana/loki/pull/18551)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for loki in bloom-builder. [#18549](<https://github.com/grafana/loki/pull/1854>
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-planner. [#18552](https://github.com/grafana/loki/pull/18552)
+- [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
+- [BUGFIX] Revert Thanos object store configuration from ruler storage config to fix compatibility issues with RuleStoreConfig that caused parsing errors during Helm upgrades.
+
+## 6.36.1
+
+- [BUGFIX] Fix missing s3 field in lokiStorageConfig templated value.[#18791](https://github.com/grafana/loki/pull/18791)
 
 ## 6.36.0
 
@@ -24,6 +207,8 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] `enterprise.adminToken.secret` now refers to an externally-created secret name (required when `enterprise.provisioner.enabled` is true). [#18803](https://github.com/grafana/loki/pull/18803)
 - [ENHANCEMENT] Add validation to ensure `enterprise.adminToken.secret` is set when provisioner is enabled. [#18803](https://github.com/grafana/loki/pull/18803)
 - [BUGFIX] Websocket related proxy_set_header to locations back to resolve high CPU usage. [#18800](https://github.com/grafana/loki/pull/18800). **CAUTION**: Any customized proxy_set_header configuration are moved from `gateway.nginxConfig.httpSnippet` to `gateway.nginxConfig.locationSnippet`. Users that using different authentication methods (e.g. `mTLS`) in the gateway should check their configuration and update it accordingly.
+
+- [FEATURE] Allow configuring service types. [#18708](https://github.com/grafana/loki/pull/18708)
 
 ## 6.35.1
 
@@ -55,7 +240,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the backend pods. [#18547](https://github.com/grafana/loki/pull/18547)
 - [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
 - [BUGFIX] Create missing RBAC for the rules sidecar when RBAC is namespaced [#16776](https://github.com/grafana/loki/pull/16776)
-- [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true [#17680](https://github.com/grafana/loki/pull/17680) 
+- [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true [#17680](https://github.com/grafana/loki/pull/17680)
 
 ## 6.33.0
 
@@ -69,7 +254,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Set `use_thanos_objstore` to `true` in `storage_config` when `loki.storage.use_thanos_objstore` value is set to `true`. [#17024](https://github.com/grafana/loki/pull/17024)
 - [BUGFIX] Loki chart fails to render proper YAML when add more than one extra manifest. [#12911](https://github.com/grafana/loki/pull/12911)
 - [BUGFIX] Add release namespace metadata to HorizontalPodAutoscaling that lack it. [#18453](https://github.com/grafana/loki/pull/18453)
-- [BUGFIX] Move loki-sc-rules container from first location in `containers` to second to avoid it being selected as the default for `kubectl logs` or `kubectl exec`.  [#17937](https://github.com/grafana/loki/pull/17937)
+- [BUGFIX] Move loki-sc-rules container from first location in `containers` to second to avoid it being selected as the default for `kubectl logs` or `kubectl exec`. [#17937](https://github.com/grafana/loki/pull/17937)
 
 ## 6.32.0
 
@@ -111,15 +296,14 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Fixed statement logic to enable annotations for deployment-gateway, deployment-read, and statefulset-write
 - [BUGFIX] Fix `extraArgs`, `extraVolumes`, `extraVolumeMounts` global values.
 - [FEATURE] Add config support for external memcache cluster by setting the following config:
-    memcached:
-        enabled: false # <- setting false here
-    resultsCache:
-        addresses: 'my-resultsCache-memcached-address' # <- setting results cache address here
-    chunksCache:
-        addresses: 'my-chunksCache-memcached-address' # <- setting chunks cache address here
+  memcached:
+  enabled: false # <- setting false here
+  resultsCache:
+  addresses: 'my-resultsCache-memcached-address' # <- setting results cache address here
+  chunksCache:
+  addresses: 'my-chunksCache-memcached-address' # <- setting chunks cache address here
 
 ## 6.29.0
-
 
 - [FEATURE] Added support to copy the following headers into X-Query-Tags as key/value pairs:, X-Grafana-User, X-Dashboard-Uid, X-Dashboard-Title, X-Panel-Id, X-Panel-Title, X-Rule-Uid, X-Rule-Name, X-Rule-Folder, X-Rule-Version, X-Rule-Source, X-Rule-Type
 - [BUGFIX] Inadvertent merge() accumulation of podLabels on various resources
@@ -308,7 +492,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.4.2
 
-- [BUGFIX] Fixed helm helper functions to include missing `loki.hpa.apiVersion`  #12716
+- [BUGFIX] Fixed helm helper functions to include missing `loki.hpa.apiVersion` #12716
 
 ## 6.4.1
 
@@ -973,5 +1157,5 @@ Entries should include a reference to the pull request that introduced the chang
 ## 3.0.0
 
 - [CHANGE] Loki helm chart was moved to this location in the Loki repo. The chart now supports both
-[single binary](https://github.com/grafana/helm-charts/tree/main/charts/loki) and [simple scalable](https://github.com/grafana/helm-charts/tree/main/charts/loki-simple-scalable) deployment modes. For changes prior to version 3.0.0, please
-look in the respective deprectated [single binary](https://github.com/grafana/helm-charts/tree/main/charts/loki) and [simple scalable](https://github.com/grafana/helm-charts/blob/main/charts/loki-simple-scalable/CHANGELOG.md) charts.
+  [single binary](https://github.com/grafana/helm-charts/tree/main/charts/loki) and [simple scalable](https://github.com/grafana/helm-charts/tree/main/charts/loki-simple-scalable) deployment modes. For changes prior to version 3.0.0, please
+  look in the respective deprectated [single binary](https://github.com/grafana/helm-charts/tree/main/charts/loki) and [simple scalable](https://github.com/grafana/helm-charts/blob/main/charts/loki-simple-scalable/CHANGELOG.md) charts.

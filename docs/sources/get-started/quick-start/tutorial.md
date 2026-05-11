@@ -19,6 +19,7 @@ This quickstart guide will walk you through deploying Loki in single binary mode
 {{< figure max-width="100%" src="/media/docs/loki/getting-started-loki-stack-3.png" caption="Loki stack" alt="Loki stack" >}}
 
 The Loki stack consists of the following components:
+
 * **Alloy**: [Grafana Alloy](https://grafana.com/docs/alloy/latest/) is an open source telemetry collector for metrics, logs, traces, and continuous profiles. In this quickstart guide Grafana Alloy has been configured to tail logs from all Docker containers and forward them to Loki.
 * **Loki**: A log aggregation system to store the collected logs. For more information on what Loki is, see the [Loki overview](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/overview/).
 * **Grafana**: [Grafana](https://grafana.com/docs/grafana/latest/) is an open-source platform for monitoring and observability. Grafana will be used to query and visualize the logs stored in Loki.
@@ -27,6 +28,7 @@ The Loki stack consists of the following components:
 ## Before you begin
 
 Before you start, you need to have the following installed on your local system:
+
 - Install [Docker](https://docs.docker.com/install)
 - Install [Docker Compose](https://docs.docker.com/compose/install)
 
@@ -72,6 +74,7 @@ This quickstart assumes you are running Linux or MacOS. Windows users can follow
      ```bash
      docker compose up -d
      ```
+
       After running the command, you should see a similar output:
 
       ```console
@@ -107,6 +110,7 @@ We will not cover the rest of the Grafana Logs Drilldown features in this quicks
 ## Collect logs from a sample application
 
 Currently, the Loki stack is collecting logs about itself. To provide a more realistic example, you can deploy a sample application that generates logs. The sample application is called **The Carnivorous Greenhouse**, a microservices application that allows users to login and simulate a greenhouse with carnivorous plants to monitor. The application consists of seven services:
+
 - **User Service:** Manages user data and authentication for the application. Such as creating users and logging in.
 - **Plant Service:** Manages the creation of new plants and updates other services when a new plant is created.
 - **Simulation Service:** Generates sensor data for each plant.
@@ -126,6 +130,7 @@ To deploy the sample application, follow these steps:
      ```bash
      docker compose -f greenhouse/docker-compose-micro.yml up -d --build  
      ```
+
      {{< admonition type="note" >}}
      This may take a few minutes to complete since the images for the sample application need to be built. Go grab a coffee and come back.
      {{< /admonition >}}
@@ -145,13 +150,14 @@ To deploy the sample application, follow these steps:
 2. To verify the sample application is running, open a browser and navigate to [http://localhost:5005](http://localhost:5005). You should see the login page for the Carnivorous Greenhouse application.
 
    Now that the sample application is running, run some actions in the application to generate logs. Here is a list of actions:
-   1.  **Create a user:** Click **Sign Up** and create a new user. Add a username and password and click **Sign Up**.
-   2.  **Login:** Use the username and password you created to login. Add the username and password and click **Login**.
-   3.  **Create a plant:** Once logged in, give your plant a name, select a plant type and click **Add Plant**. Do this a few times if you like.
+
+   1. **Create a user:** Click **Sign Up** and create a new user. Add a username and password and click **Sign Up**.
+   2. **Login:** Use the username and password you created to login. Add the username and password and click **Login**.
+   3. **Create a plant:** Once logged in, give your plant a name, select a plant type and click **Add Plant**. Do this a few times if you like.
 
   Your greenhouse should look something like this:
 
-  {{< figure max-width="100%" src="/media/docs/loki/get-started-greenhouse.png" caption="Greenhouse Dashboard" alt="Greenhouse Dashboard" >}} 
+  {{< figure max-width="100%" src="/media/docs/loki/get-started-greenhouse.png" caption="Greenhouse Dashboard" alt="Greenhouse Dashboard" >}}
 
   Now that you have generated some logs, you can return to the Grafana Logs Drilldown page [http://localhost:3000/drilldown](http://localhost:3000/drilldown). You should see seven new services such as `greenhouse-main_app-1`, `greenhouse-plant_service-1`, `greenhouse-user_service-1`, etc.
 <!-- INTERACTIVE page step3.md END -->
@@ -220,7 +226,9 @@ Loki by design does not force log lines into a specific schema format. Whether y
 ```bash
 ts=2025-02-21 16:09:42,176 level=INFO line=97 msg="192.168.65.1 - - [21/Feb/2025 16:09:42] "GET /static/style.css HTTP/1.1" 304 -"
 ```
+
 To break this down:
+
 - `ts=2025-02-21 16:09:42,176` is the timestamp of the log line.
 - `level=INFO` is the log level.
 - `line=97` is the line number in the code.
@@ -255,7 +263,7 @@ This query will return all the logs from the `greenhouse-plant_service-1` contai
 <!-- INTERACTIVE copy END -->
 This query will return all the logs from the `greenhouse-plant_service-1` container that have a `level` attribute of `ERROR` and a `line` attribute of `58`.
 
-LogQL also supports metrics queries. Metrics are useful for abstracting the raw log data aggregating attributes into numeric values. This allows you to utilise more visualization options in Grafana as well as generate alerts on your logs. 
+LogQL also supports metrics queries. Metrics are useful for abstracting the raw log data aggregating attributes into numeric values. This allows you to utilize more visualization options in Grafana as well as generate alerts on your logs.
 
 For example, you can use a metric query to count the number of logs per second that have a specific attribute:
 <!-- INTERACTIVE copy START -->
@@ -263,12 +271,12 @@ For example, you can use a metric query to count the number of logs per second t
 sum(rate({container="greenhouse-plant_service-1"} | logfmt | level="ERROR" [$__auto]))
 ```
 <!-- INTERACTIVE copy END -->
-It worth changing the visualization from `lines` to `bars` to visualize the error rate over time since the error count is quite low. 
+It worth changing the visualization from `lines` to `bars` to visualize the error rate over time since the error count is quite low.
 
 Another example is to get the top 10 services producing the highest rate of errors:
 <!-- INTERACTIVE copy START -->
 ```logql
-topk(10,sum(rate({level="error"} | logfmt [5m])) by (service_name))
+topk(10, sum(rate({env="production"} | logfmt | level="ERROR" [5m])) by (service_name))
 ```
 <!-- INTERACTIVE copy END -->
 {{< admonition type="note" >}}
@@ -289,12 +297,12 @@ This is made possible by the `service_name` label and the `env` label that we ha
 
 ## A look under the hood
 
-At this point you will have a running Loki stack and a sample application generating logs. You have also queried Loki using Grafana Logs Drilldown and Grafana Explore. 
+At this point you will have a running Loki stack and a sample application generating logs. You have also queried Loki using Grafana Logs Drilldown and Grafana Explore.
 In this next section we will take a look under the hood to understand how the Loki stack has been configured to collect logs, the Loki configuration file, and how the Loki data source has been configured in Grafana.
 
 ### Grafana Alloy configuration
 
-Grafana Alloy is collecting logs from all the Docker containers and forwarding them to Loki. 
+Grafana Alloy is collecting logs from all the Docker containers and forwarding them to Loki.
 It needs a configuration file to know which logs to collect and where to forward them to. Within the `loki-fundamentals` directory, you will find a file called `config.alloy`:
 
 ```alloy
@@ -346,11 +354,13 @@ livedebugging {
   enabled = true
 }
 ```
+
 This configuration file can be viewed visually via the Alloy UI at [http://localhost:12345/graph](http://localhost:12345/graph).
 
 {{< figure max-width="100%" src="/media/docs/loki/getting-started-alloy-ui.png" caption="Alloy UI" alt="Alloy UI" >}}
 
 In this view you can see the components of the Alloy configuration file and how they are connected:
+
 * **discovery.docker**: This component queries the metadata of the Docker environment via the Docker socket and discovers new containers, as well as providing metadata about the containers.
 * **discovery.relabel**: This component converts a metadata (`__meta_docker_container_name`) label into a Loki label (`container`).
 * **loki.source.docker**: This component collects logs from the discovered containers and forwards them to the next component. It requests the metadata from the `discovery.docker` component and applies the relabeling rules from the `discovery.relabel` component.
@@ -359,7 +369,7 @@ In this view you can see the components of the Alloy configuration file and how 
 
 ### View Logs in realtime
 
-Grafana Alloy provides a built-in real time log viewer. This allows you to view current log entries and how they are being transformed via specific components of the pipeline. 
+Grafana Alloy provides a built-in real time log viewer. This allows you to view current log entries and how they are being transformed via specific components of the pipeline.
 To view live debugging mode open a browser tab and navigate to: [http://localhost:12345/debug/loki.process.getting_started](http://localhost:12345/debug/loki.process.getting_started).
 <!-- INTERACTIVE page step6.md END -->
 <!-- INTERACTIVE page step7.md START -->
@@ -429,7 +439,9 @@ compactor:
   delete_request_store: filesystem
   retention_enabled: true
 ```
+
 To summarize the configuration file:
+
 * **auth_enabled**: This is set to `false`, meaning Loki does not need a [tenant ID](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) for ingest or query. Note that this is not recommended for production environments. When deploying the Loki Helm chart, this is set to `true` by default.
 * **server**: Defines the ports Loki listens on, the log level, and the maximum number of concurrent gRPC streams.
 * **common**:  Defines the common configuration for Loki. This includes the instance address, storage configuration, replication factor, and ring configuration.
@@ -449,14 +461,15 @@ The above configuration file is a basic configuration file for Loki. For more ad
 
 ### Grafana Loki Data source
 
-The final piece of the puzzle is the Grafana Loki data source. This is used by Grafana to connect to Loki and query the logs. Grafana has multiple ways to define a data source;
+The final piece of the puzzle is the Grafana Loki data source. This is used by Grafana to connect to Loki and query the logs. Grafana has multiple ways to define a data source:
+
 * **Direct**: This is where you define the data source in the Grafana UI.
 * **Provisioning**: This is where you define the data source in a configuration file and have Grafana automatically create the data source.
 * **API**: This is where you use the Grafana API to create the data source.
 
 In this case we are using the provisioning method. Instead of mounting the Grafana configuration directory, we have defined the data source in this portion of the `docker-compose.yml` file:
 
-```yaml 
+```yaml
   grafana:
     image: grafana/grafana:latest
     environment:
@@ -467,9 +480,9 @@ In this case we are using the provisioning method. Instead of mounting the Grafa
     ports:
       - 3000:3000/tcp
     entrypoint:
-       - sh
-       - -euc
-       - |
+      - sh
+      - -euc
+      - |
          mkdir -p /etc/grafana/provisioning/datasources
          cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
          apiVersion: 1
@@ -488,8 +501,8 @@ In this case we are using the provisioning method. Instead of mounting the Grafa
     networks:
       - loki
 ```
-Within the entrypoint section of the `docker-compose.yml` file, we have defined a file called `run.sh` this runs on startup and creates the data source configuration file `ds.yaml` in the Grafana provisioning directory. 
-This file defines the Loki data source and tells Grafana to use it. Since Loki is running in the same Docker network as Grafana, we can use the service name `loki` as the URL.
+
+The entrypoint overrides the default startup command to first create the datasource provisioning file `ds.yaml`, which configures Loki as the default datasource. It then calls `/run.sh`, the default Grafana startup script included in the `grafana/grafana` Docker image, which starts the Grafana server. Since Loki is running in the same Docker network as Grafana, the datasource URL uses the service name `loki`.
 
 <!-- INTERACTIVE page step8.md END -->
 
@@ -499,10 +512,12 @@ This file defines the Loki data source and tells Grafana to use it. Since Loki i
 
 {{< docs/ignore >}}
 ### Back to docs
+
 Head back to where you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/get-started/quick-start/).
 {{< /docs/ignore >}}
 
 You have completed the Loki Quickstart demo. So where to go next? Here are a few suggestions:
+
 * **Deploy:** Loki can be deployed in multiple ways. For production use cases we recommend deploying Loki via the [Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/).
 * **Send Logs:** In this example we used Grafana Alloy to collect and send logs to Loki. However there are many other methods you can use depending upon your needs. For more information see [send data](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/).
 * **Query Logs:** LogQL is an extensive query language for logs and contains many tools to improve log retrival and generate insights. For more information see the [Query section](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).

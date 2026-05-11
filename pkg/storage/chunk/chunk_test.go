@@ -17,7 +17,7 @@ import (
 const userID = "userID"
 
 var labelsForDummyChunks = labels.New(
-	labels.Label{Name: labels.MetricName, Value: "foo"},
+	labels.Label{Name: model.MetricNameLabel, Value: "foo"},
 	labels.Label{Name: "bar", Value: "baz"},
 	labels.Label{Name: "toms", Value: "code"},
 )
@@ -62,7 +62,7 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) Ch
 func TestChunkCodec(t *testing.T) {
 	dummy := dummyChunkFor(model.Now(), labelsForDummyChunks)
 	decodeContext := NewDecodeContext()
-	key := fmt.Sprintf("%s/%x:%x:%x:%x", dummy.ChunkRef.UserID, dummy.ChunkRef.Fingerprint, int64(dummy.ChunkRef.From), int64(dummy.ChunkRef.Through), dummy.ChunkRef.Checksum)
+	key := fmt.Sprintf("%s/%x:%x:%x:%x", dummy.UserID, dummy.Fingerprint, int64(dummy.From), int64(dummy.Through), dummy.Checksum)
 
 	for i, c := range []struct {
 		chunk Chunk

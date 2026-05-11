@@ -10,15 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/common/model"
-
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
-)
-
-const (
-	daySeconds = int64(24 * time.Hour / time.Second)
 )
 
 // regexp for finding the trailing index bucket number at the end of table name
@@ -40,13 +34,6 @@ func extractTableNumberFromName(tableName string) (int64, error) {
 
 	return tableNumber, nil
 }
-func getActiveTableNumber() int64 {
-	return getTableNumberForTime(model.Now())
-}
-
-func getTableNumberForTime(t model.Time) int64 {
-	return t.Unix() / daySeconds
-}
 
 func GetPeriodConfigForTableNumber(table string, periodicConfigs []config.PeriodConfig) (config.PeriodConfig, config.TableRange, string, error) {
 	tableNo, err := extractTableNumberFromName(table)
@@ -61,7 +48,7 @@ func GetPeriodConfigForTableNumber(table string, periodicConfigs []config.Period
 
 		periodEndTime := config.DayTime{Time: math.MaxInt64}
 		if i < len(periodicConfigs)-1 {
-			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
+			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Add(-time.Millisecond)}
 		}
 
 		tableName := fmt.Sprintf("%s%s", periodCfg.IndexTables.Prefix, strconv.Itoa(int(tableNo)))

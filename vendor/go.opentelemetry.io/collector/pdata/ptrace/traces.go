@@ -3,18 +3,14 @@
 
 package ptrace // import "go.opentelemetry.io/collector/pdata/ptrace"
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal"
-)
-
 // MarkReadOnly marks the Traces as shared so that no further modifications can be done on it.
 func (ms Traces) MarkReadOnly() {
-	internal.SetTracesState(internal.Traces(ms), internal.StateReadOnly)
+	ms.getState().MarkReadOnly()
 }
 
 // IsReadOnly returns true if this Traces instance is read-only.
 func (ms Traces) IsReadOnly() bool {
-	return *ms.getState() == internal.StateReadOnly
+	return ms.getState().IsReadOnly()
 }
 
 // SpanCount calculates the total number of spans.

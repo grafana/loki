@@ -91,6 +91,19 @@ func (b *Builder) DropChunk(streamID string, chk index.ChunkMeta) (bool, error) 
 	return chunkFound, nil
 }
 
+func (b *Builder) HasChunk(streamID string, chk index.ChunkMeta) (bool, error) {
+	if !b.chunksFinalized {
+		return false, fmt.Errorf("checking chunk existence is only allowed on finalized chunks")
+	}
+
+	s, ok := b.streams[streamID]
+	if !ok {
+		return false, nil
+	}
+
+	return s.chunks.HasChunk(chk), nil
+}
+
 func (b *Builder) Build(
 	ctx context.Context,
 	scratchDir string,

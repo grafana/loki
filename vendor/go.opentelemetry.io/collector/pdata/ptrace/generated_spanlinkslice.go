@@ -11,7 +11,6 @@ import (
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
 )
 
 // SpanLinkSlice logically represents a slice of SpanLink.
@@ -22,20 +21,19 @@ import (
 // Must use NewSpanLinkSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type SpanLinkSlice struct {
-	orig  *[]*otlptrace.Span_Link
+	orig  *[]*internal.SpanLink
 	state *internal.State
 }
 
-func newSpanLinkSlice(orig *[]*otlptrace.Span_Link, state *internal.State) SpanLinkSlice {
+func newSpanLinkSlice(orig *[]*internal.SpanLink, state *internal.State) SpanLinkSlice {
 	return SpanLinkSlice{orig: orig, state: state}
 }
 
-// NewSpanLinkSlice creates a SpanLinkSlice with 0 elements.
+// NewSpanLinkSlice creates a SpanLinkSliceWrapper with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewSpanLinkSlice() SpanLinkSlice {
-	orig := []*otlptrace.Span_Link(nil)
-	state := internal.StateMutable
-	return newSpanLinkSlice(&orig, &state)
+	orig := []*internal.SpanLink(nil)
+	return newSpanLinkSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -91,7 +89,7 @@ func (es SpanLinkSlice) EnsureCapacity(newCap int) {
 		return
 	}
 
-	newOrig := make([]*otlptrace.Span_Link, len(*es.orig), newCap)
+	newOrig := make([]*internal.SpanLink, len(*es.orig), newCap)
 	copy(newOrig, *es.orig)
 	*es.orig = newOrig
 }
@@ -100,7 +98,7 @@ func (es SpanLinkSlice) EnsureCapacity(newCap int) {
 // It returns the newly added SpanLink.
 func (es SpanLinkSlice) AppendEmpty() SpanLink {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, &otlptrace.Span_Link{})
+	*es.orig = append(*es.orig, internal.NewSpanLink())
 	return es.At(es.Len() - 1)
 }
 
@@ -129,7 +127,9 @@ func (es SpanLinkSlice) RemoveIf(f func(SpanLink) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
+			internal.DeleteSpanLink((*es.orig)[i], true)
 			(*es.orig)[i] = nil
+
 			continue
 		}
 		if newLen == i {
@@ -138,6 +138,7 @@ func (es SpanLinkSlice) RemoveIf(f func(SpanLink) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
+		// Cannot delete here since we just move the data(or pointer to data) to a different position in the slice.
 		(*es.orig)[i] = nil
 		newLen++
 	}
@@ -147,7 +148,10 @@ func (es SpanLinkSlice) RemoveIf(f func(SpanLink) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es SpanLinkSlice) CopyTo(dest SpanLinkSlice) {
 	dest.state.AssertMutable()
-	*dest.orig = internal.CopyOrigSpan_LinkSlice(*dest.orig, *es.orig)
+	if es.orig == dest.orig {
+		return
+	}
+	*dest.orig = internal.CopySpanLinkPtrSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the SpanLink elements within SpanLinkSlice given the

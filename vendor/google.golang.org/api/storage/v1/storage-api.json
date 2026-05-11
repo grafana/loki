@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"31383438373536343936353833383831333836\"",
+  "etag": "\"3136383236333536383830353031333435373432\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -521,7 +521,7 @@
           ]
         },
         "update": {
-          "description": "Updates the config(ttl and admissionPolicy) of an Anywhere Cache instance.",
+          "description": "Updates the config of an Anywhere Cache instance.",
           "httpMethod": "PATCH",
           "id": "storage.anywhereCaches.update",
           "parameterOrder": [
@@ -1082,6 +1082,11 @@
               ],
               "location": "query",
               "type": "string"
+            },
+            "returnPartialSuccess": {
+              "description": "If true, return a list of bucket resource names for buckets that are in unreachable locations.",
+              "location": "query",
+              "type": "boolean"
             },
             "softDeleted": {
               "description": "If true, only soft-deleted bucket versions will be returned. The default is false. For more information, see [Soft Delete](https://cloud.google.com/storage/docs/soft-delete).",
@@ -1773,6 +1778,50 @@
             }
           },
           "path": "b/{bucket}/folders/{folder}",
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "deleteRecursive": {
+          "description": "Deletes a folder recursively. Only applicable to buckets with hierarchical namespace enabled.",
+          "httpMethod": "POST",
+          "id": "storage.folders.deleteRecursive",
+          "parameterOrder": [
+            "bucket",
+            "folder"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the folder resides.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "folder": {
+              "description": "Name of a folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "ifMetagenerationMatch": {
+              "description": "If set, only deletes the folder if its metageneration matches this value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationNotMatch": {
+              "description": "If set, only deletes the folder if its metageneration does not match this value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/folders/{folder}/deleteRecursive",
+          "response": {
+            "$ref": "GoogleLongrunningOperation"
+          },
           "scopes": [
             "https://www.googleapis.com/auth/cloud-platform",
             "https://www.googleapis.com/auth/devstorage.full_control",
@@ -2774,6 +2823,12 @@
               "location": "query",
               "type": "string"
             },
+            "dropContextGroups": {
+              "description": "Specifies which groups of Object Contexts from the source object(s) should be dropped from the destination object.",
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
             "ifGenerationMatch": {
               "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
               "format": "int64",
@@ -3744,6 +3799,12 @@
               "location": "query",
               "type": "string"
             },
+            "dropContextGroups": {
+              "description": "Specifies which groups of Object Contexts from the source object should be dropped from the destination object.",
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
             "ifGenerationMatch": {
               "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
               "format": "int64",
@@ -4544,7 +4605,7 @@
       }
     }
   },
-  "revision": "20250718",
+  "revision": "20260408",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -4588,6 +4649,10 @@
         "id": {
           "description": "The ID of the resource, including the project number, bucket name and anywhere cache ID.",
           "type": "string"
+        },
+        "ingestOnWrite": {
+          "description": "Specifies whether objects are ingested into the cache upon write.",
+          "type": "boolean"
         },
         "kind": {
           "default": "storage#anywhereCache",
@@ -5385,6 +5450,13 @@
         "nextPageToken": {
           "description": "The continuation token, used to page through large result sets. Provide this value in a subsequent request to return the next page of results.",
           "type": "string"
+        },
+        "unreachable": {
+          "description": "The list of bucket resource names that could not be reached during the listing operation.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "type": "object"
@@ -5400,6 +5472,16 @@
         "copySourceAcl": {
           "description": "If true, copies the source object's ACL; otherwise, uses the bucket's default object ACL. The default is false.",
           "type": "boolean"
+        },
+        "createdAfterTime": {
+          "description": "Restores only the objects that were created after this time.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "createdBeforeTime": {
+          "description": "Restores only the objects that were created before this time.",
+          "format": "date-time",
+          "type": "string"
         },
         "matchGlobs": {
           "description": "Restores only the objects matching any of the specified glob(s). If this parameter is not specified, all objects will be restored within the specified time range.",
@@ -5478,6 +5560,10 @@
       "description": "A Compose request.",
       "id": "ComposeRequest",
       "properties": {
+        "deleteSourceObjects": {
+          "description": "If true, the source objects will be deleted.",
+          "type": "boolean"
+        },
         "destination": {
           "$ref": "Object",
           "description": "Properties of the resulting object."
@@ -6427,6 +6513,10 @@
             }
           },
           "type": "object"
+        },
+        "destinationKmsKeyName": {
+          "description": "Resource name of a Cloud KMS key, of the form projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key. If set, is used to encrypt all objects in the destination bucket.",
+          "type": "string"
         },
         "destinationLocation": {
           "description": "The new location the bucket will be relocated to.",

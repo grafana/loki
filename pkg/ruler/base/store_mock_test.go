@@ -129,28 +129,6 @@ var (
 			},
 		},
 	}
-
-	mockSpecialCharRules = map[string]rulespb.RuleGroupList{
-		"user1": {
-			&rulespb.RuleGroupDesc{
-				Name:      ")(_+?/|group1+/?",
-				Namespace: ")(_+?/|namespace1+/?",
-				User:      "user1",
-				Rules: []*rulespb.RuleDesc{
-					{
-						Record: "UP_RULE",
-						Expr:   "up",
-					},
-					{
-						Alert: "UP_ALERT",
-						Expr:  "up < 1",
-					},
-				},
-				Interval: interval,
-				Limit:    limit,
-			},
-		},
-	}
 )
 
 func newMockRuleStore(rules map[string]rulespb.RuleGroupList) *mockRuleStore {

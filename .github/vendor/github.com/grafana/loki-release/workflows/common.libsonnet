@@ -29,9 +29,12 @@
     withTimeoutMinutes: function(timeout) {
       'timeout-minutes': timeout,
     },
+    withContinueOnError: function() {
+      'continue-on-error': true,
+    },
   },
   job: {
-    new: function(runsOn='ubuntu-latest') {
+    new: function(runsOn='ubuntu-x64') {
       'runs-on': runsOn,
     },
     with: function(with) {
@@ -104,6 +107,7 @@
   setupNode: $.step.new('setup node', 'actions/setup-node@v4')
              + $.step.with({
                'node-version': 20,
+               'package-manager-cache': false,
              }),
 
   makeTarget: function(target) 'make %s' % target,

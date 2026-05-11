@@ -13,10 +13,9 @@ import (
 	"github.com/grafana/dskit/user"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	common_sigv4 "github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/relabel"
-	prom_sigv4 "github.com/prometheus/sigv4"
+	"github.com/prometheus/sigv4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -212,7 +211,7 @@ func newFakeLimitsBackwardCompat() fakeLimits {
 				},
 			},
 			sigV4ConfigTenant: {
-				RulerRemoteWriteSigV4Config: &common_sigv4.SigV4Config{
+				RulerRemoteWriteSigV4Config: &sigv4.SigV4Config{
 					Region: sigV4TenantRegion,
 				},
 			},
@@ -269,8 +268,10 @@ func newFakeLimits() fakeLimits {
 								Action:       "drop",
 							},
 							{
-								Regex:  regexCluster,
-								Action: "labeldrop",
+								Regex:       regexCluster,
+								Action:      "labeldrop",
+								Separator:   relabel.DefaultRelabelConfig.Separator,
+								Replacement: relabel.DefaultRelabelConfig.Replacement,
 							},
 						},
 					},
@@ -287,7 +288,7 @@ func newFakeLimits() fakeLimits {
 			sigV4ConfigTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
 					remote1: {
-						SigV4Config: &prom_sigv4.SigV4Config{
+						SigV4Config: &sigv4.SigV4Config{
 							Region: sigV4TenantRegion,
 						},
 					},
@@ -343,7 +344,7 @@ func setupSigV4Registry(t *testing.T, cfg Config, limits fakeLimits) *walRegistr
 	// Remove the basic auth config and replace with sigv4
 	for id, clt := range reg.config.RemoteWrite.Clients {
 		clt.HTTPClientConfig.BasicAuth = nil
-		clt.SigV4Config = &prom_sigv4.SigV4Config{
+		clt.SigV4Config = &sigv4.SigV4Config{
 			Region: sigV4GlobalRegion,
 		}
 		reg.config.RemoteWrite.Clients[id] = clt
@@ -860,8 +861,12 @@ func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
 	tenantCfg, err := reg.getTenantConfig(nilRelabelsTenant)
 	require.NoError(t, err)
 
-	// if there are no relabel configs defined for the tenant, it should not override
-	assert.Equal(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, reg.config.RemoteWrite.Client.WriteRelabelConfigs)
+	// set NameValidationScheme on expected configs
+	expectedConfigs := reg.config.RemoteWrite.Client.WriteRelabelConfigs
+	for _, rc := range expectedConfigs {
+		rc.NameValidationScheme = model.UTF8Validation
+	}
+	assert.Equal(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, expectedConfigs)
 
 	reg = setupRegistry(t, cfg, newFakeLimits())
 
@@ -877,6 +882,13 @@ func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
 	expected := [][]*relabel.Config{
 		reg.config.RemoteWrite.Clients[remote1].WriteRelabelConfigs,
 		reg.config.RemoteWrite.Clients[remote2].WriteRelabelConfigs,
+	}
+
+	// set NameValidationScheme on expected configs
+	for _, configs := range expected {
+		for _, rc := range configs {
+			rc.NameValidationScheme = model.UTF8Validation
+		}
 	}
 
 	assert.ElementsMatch(t, actual, expected, "WriteRelabelConfigs do not match")

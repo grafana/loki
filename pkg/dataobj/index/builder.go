@@ -1,22 +1,16 @@
 package index
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
-	"slices"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -25,23 +19,44 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-type Config struct {
-	indexobj.BuilderConfig `yaml:",inline"`
-	EventsPerIndex         int `yaml:"events_per_index" experimental:"true"`
+var ErrPartitionRevoked = errors.New("partition revoked")
+
+type triggerType string
+
+const (
+	triggerTypeAppend  triggerType = "append"
+	triggerTypeMaxIdle triggerType = "max-idle"
+	triggerTypeMaxAge  triggerType = "max-age"
+)
+
+func (tt triggerType) String() string {
+	switch tt {
+	case triggerTypeAppend:
+		return "append"
+	case triggerTypeMaxIdle:
+		return "max-idle"
+	case triggerTypeMaxAge:
+		return "max-age"
+	default:
+		return "unknown"
+	}
 }
 
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("dataobj-index-builder.", f)
+type bufferedEvent struct {
+	event  metastore.ObjectWrittenEvent
+	record *kgo.Record
 }
 
-func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.BuilderConfig.RegisterFlagsWithPrefix(prefix, f)
-	f.IntVar(&cfg.EventsPerIndex, prefix+"events-per-index", 32, "Experimental: The number of events to batch before building an index")
+type partitionState struct {
+	events       []bufferedEvent
+	lastActivity time.Time
+	isProcessing bool
 }
 
 type downloadedObject struct {
@@ -51,8 +66,24 @@ type downloadedObject struct {
 }
 
 const (
-	indexConsumerGroup = "metastore-event-reader"
+	defaultIndexConsumerGroup = "index-builder"
 )
+
+// An interface for the methods needed from a calculator. Useful for testing.
+type calculator interface {
+	Calculate(context.Context, log.Logger, *dataobj.Object, string) error
+	Flush() (*dataobj.Object, io.Closer, error)
+	TimeRanges() []multitenancy.TimeRange
+	Reset()
+	IsFull() bool
+}
+
+// An interface for the methods needed from a kafka client. Useful for testing.
+type kafkaClient interface {
+	PollRecords(context.Context, int) kgo.Fetches
+	CommitRecords(context.Context, ...*kgo.Record) error
+	Close()
+}
 
 type Builder struct {
 	services.Service
@@ -61,29 +92,23 @@ type Builder struct {
 	mCfg metastore.Config
 
 	// Kafka client and topic/partition info
-	client *kgo.Client
-	topic  string
+	client kafkaClient
 
-	// Processing pipeline
-	downloadQueue     chan metastore.ObjectWrittenEvent
-	downloadedObjects chan downloadedObject
-	calculator        *Calculator
+	// Indexer handles all index building
+	indexer indexer
 
-	bufferedEvents map[string][]metastore.ObjectWrittenEvent
+	// Partition management only
+	partitionStates map[int32]*partitionState
+	flushTicker     *time.Ticker
 
-	// Builder initialization
-	builderCfg   indexobj.BuilderConfig
-	bucket       objstore.Bucket
-	scratchStore scratch.Store
-
-	// Metrics
-	metrics *indexBuilderMetrics
+	// Only kafka commit functionality
+	metrics *builderMetrics
 
 	// Control and coordination
-	ctx    context.Context
-	cancel context.CancelCauseFunc
-	wg     sync.WaitGroup
-	logger log.Logger
+	wg                 sync.WaitGroup
+	logger             log.Logger
+	partitionsMutex    sync.Mutex
+	activeCalculations map[int32]context.CancelCauseFunc
 }
 
 func NewIndexBuilder(
@@ -96,8 +121,64 @@ func NewIndexBuilder(
 	scratchStore scratch.Store,
 	reg prometheus.Registerer,
 ) (*Builder, error) {
+	builderReg := prometheus.WrapRegistererWith(prometheus.Labels{
+		"topic":     kafkaCfg.Topic,
+		"component": "index_builder",
+	}, reg)
+
+	builderMetrics := newBuilderMetrics()
+	if err := builderMetrics.register(builderReg); err != nil {
+		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
+	}
+
+	indexerMetrics := newIndexerMetrics()
+	if err := indexerMetrics.register(builderReg); err != nil {
+		return nil, fmt.Errorf("failed to register indexer metrics: %w", err)
+	}
+
+	// Create index building dependencies
+	builder, err := indexobj.NewBuilder(cfg.BuilderBaseConfig, scratchStore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create index builder: %w", err)
+	}
+	calculator := NewCalculator(builder)
+
+	indexStorageBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
+
+	if err := builder.RegisterMetrics(builderReg); err != nil {
+		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
+	}
+
+	if err := calculator.RegisterMetrics(builderReg); err != nil {
+		return nil, fmt.Errorf("failed to register metrics for calculator: %w", err)
+	}
+
+	s := &Builder{
+		cfg:                cfg,
+		mCfg:               mCfg,
+		logger:             logger,
+		metrics:            builderMetrics,
+		partitionStates:    make(map[int32]*partitionState),
+		activeCalculations: make(map[int32]context.CancelCauseFunc),
+	}
+
+	// Create self-contained indexer
+	s.indexer = newSerialIndexer(
+		calculator,
+		bucket,
+		indexStorageBucket,
+		builderMetrics,
+		indexerMetrics,
+		logger,
+		indexerConfig{QueueSize: 64},
+	)
+
+	consumerGroup := defaultIndexConsumerGroup
+	if kafkaCfg.ConsumerGroup != "" {
+		consumerGroup = kafkaCfg.ConsumerGroup
+	}
+
 	kafkaCfg.AutoCreateTopicEnabled = true
-	kafkaCfg.AutoCreateTopicDefaultPartitions = 64
 	eventConsumerClient, err := client.NewReaderClient(
 		"index_builder",
 		kafkaCfg,
@@ -106,258 +187,328 @@ func NewIndexBuilder(
 		kgo.ConsumeTopics(kafkaCfg.Topic),
 		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),
-		kgo.ConsumerGroup(indexConsumerGroup),
+		kgo.ConsumerGroup(consumerGroup),
+		kgo.Balancers(kgo.RoundRobinBalancer()),
 		kgo.RebalanceTimeout(5*time.Minute),
 		kgo.DisableAutoCommit(),
+		kgo.OnPartitionsAssigned(s.handlePartitionsAssigned),
+		kgo.OnPartitionsRevoked(s.handlePartitionsRevoked),
+		kgo.OnPartitionsLost(s.handlePartitionsLost),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka consumer client: %w", err)
 	}
+	s.client = eventConsumerClient
 
-	reg = prometheus.WrapRegistererWith(prometheus.Labels{
-		"topic":     kafkaCfg.Topic,
-		"component": "index_builder",
-	}, reg)
-
-	metrics := newIndexBuilderMetrics()
-	if err := metrics.register(reg); err != nil {
-		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
-	}
-
-	builder, err := indexobj.NewBuilder(cfg.BuilderConfig, scratchStore)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create index builder: %w", err)
-	}
-	calculator := NewCalculator(builder)
-
-	if err := builder.RegisterMetrics(reg); err != nil {
-		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
-	}
-
-	// Set up queues to download the next object (I/O bound) while processing the current one (CPU bound) in order to maximize throughput.
-	// Setting the channel buffer sizes caps the total memory usage by only keeping up to 3 objects in memory at a time: One being processed, one fully downloaded and one being downloaded from the queue.
-	downloadQueue := make(chan metastore.ObjectWrittenEvent, cfg.EventsPerIndex)
-	downloadedObjects := make(chan downloadedObject, 1)
-
-	s := &Builder{
-		cfg:               cfg,
-		mCfg:              mCfg,
-		client:            eventConsumerClient,
-		logger:            logger,
-		bucket:            bucket,
-		downloadedObjects: downloadedObjects,
-		downloadQueue:     downloadQueue,
-		metrics:           metrics,
-		calculator:        calculator,
-		bufferedEvents:    make(map[string][]metastore.ObjectWrittenEvent),
-	}
-
-	s.Service = services.NewBasicService(nil, s.run, s.stopping)
+	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 
 	return s, nil
 }
 
-func (p *Builder) run(ctx context.Context) error {
-	p.ctx, p.cancel = context.WithCancelCause(ctx)
+func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
 
-	p.wg.Add(1)
-	go func() {
-		// Download worker
-		defer p.wg.Done()
-		for event := range p.downloadQueue {
-			objLogger := log.With(p.logger, "object_path", event.ObjectPath)
-			downloadStart := time.Now()
-
-			objectReader, err := p.bucket.Get(p.ctx, event.ObjectPath)
-			if err != nil {
-				p.downloadedObjects <- downloadedObject{
-					event: event,
-					err:   fmt.Errorf("failed to fetch object from storage: %w", err),
-				}
-				continue
-			}
-
-			object, err := io.ReadAll(objectReader)
-			_ = objectReader.Close()
-			if err != nil {
-				p.downloadedObjects <- downloadedObject{
-					event: event,
-					err:   fmt.Errorf("failed to read object: %w", err),
-				}
-				continue
-			}
-			level.Info(objLogger).Log("msg", "downloaded object", "duration", time.Since(downloadStart), "size_mb", float64(len(object))/1024/1024, "avg_speed_mbps", float64(len(object))/time.Since(downloadStart).Seconds()/1024/1024)
-			p.downloadedObjects <- downloadedObject{
-				event:       event,
-				objectBytes: &object,
+	for _, partitions := range topics {
+		for _, partition := range partitions {
+			p.partitionStates[partition] = &partitionState{
+				events:       make([]bufferedEvent, 0),
+				lastActivity: time.Now(),
+				isProcessing: false,
 			}
 		}
-	}()
+	}
+}
+
+// This is not thread-safe
+func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	for _, partitions := range topics {
+		for _, partition := range partitions {
+			// Delete partition metrics to prevent cardinality growth
+			p.metrics.deletePartitionMetrics(partition)
+
+			delete(p.partitionStates, partition)
+
+			// Cancel any active calculations
+			if cancel, exists := p.activeCalculations[partition]; exists {
+				cancel(ErrPartitionRevoked)
+				delete(p.activeCalculations, partition)
+			}
+		}
+	}
+}
+
+func (p *Builder) handlePartitionsLost(ctx context.Context, client *kgo.Client, topics map[string][]int32) {
+	p.handlePartitionsRevoked(ctx, client, topics)
+}
+
+func (p *Builder) starting(ctx context.Context) error {
+	// Start indexer service first
+	if err := services.StartAndAwaitRunning(ctx, p.indexer); err != nil {
+		return fmt.Errorf("failed to start indexer service: %w", err)
+	}
+
+	// Start flush worker if configured
+	if p.cfg.FlushInterval > 0 {
+		p.flushTicker = time.NewTicker(p.cfg.FlushInterval)
+		p.wg.Go(func() {
+			defer p.flushTicker.Stop()
+
+			for {
+				select {
+				case <-p.flushTicker.C:
+					p.checkAndFlushPartitions(ctx)
+				case <-ctx.Done():
+					return
+				}
+			}
+		})
+	}
 
 	level.Info(p.logger).Log("msg", "started index builder service")
+	return nil
+}
+
+func (p *Builder) running(ctx context.Context) error {
+	// Main Kafka processing loop
 	for {
-		fetches := p.client.PollRecords(ctx, -1)
-		if fetches.IsClientClosed() || ctx.Err() != nil {
+		select {
+		case <-ctx.Done():
 			return ctx.Err()
+		default:
 		}
-		if errs := fetches.Errors(); len(errs) > 0 {
-			level.Error(p.logger).Log("msg", "error fetching records", "err", errs)
-			continue
+
+		fetches := p.client.PollRecords(ctx, -1)
+		if err := fetches.Err0(); err != nil {
+			if errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
+				return err
+			}
+			// Some other error occurred. We will check it in
+			// [processFetchTopicPartition] instead.
 		}
 		if fetches.Empty() {
 			continue
 		}
-		fetches.EachPartition(func(ftp kgo.FetchTopicPartition) {
-			// TODO(benclive): Verify if we need to return re-poll ASAP or if sequential processing is good enough.
-			for _, record := range ftp.Records {
-				p.processRecord(record)
+		fetches.EachPartition(func(fetch kgo.FetchTopicPartition) {
+			if err := fetch.Err; err != nil {
+				level.Error(p.logger).Log("msg", "failed to fetch records for topic partition", "topic", fetch.Topic, "partition", fetch.Partition, "err", err.Error())
+				return
+			}
+			for _, record := range fetch.Records {
+				p.processRecord(ctx, record)
 			}
 		})
 	}
 }
 
 func (p *Builder) stopping(failureCase error) error {
-	close(p.downloadQueue)
-	p.cancel(failureCase)
+	// Stop indexer service first - this handles calculation cleanup via context cancelation.
+	ctx := context.TODO()
+	if err := services.StopAndAwaitTerminated(ctx, p.indexer); err != nil {
+		level.Error(p.logger).Log("msg", "failed to stop indexer", "err", err)
+	}
+
+	// Stop other components
+	if p.flushTicker != nil {
+		p.flushTicker.Stop()
+	}
 	p.wg.Wait()
-	close(p.downloadedObjects)
 	p.client.Close()
-	return nil
+	return failureCase
 }
 
-func (p *Builder) processRecord(record *kgo.Record) {
+// processRecord processes a single record. It is not safe for concurrent use.
+func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
+	calculationCtx, eventsToIndex := p.appendRecord(ctx, record)
+	if len(eventsToIndex) == 0 {
+		return
+	}
+	p.buildAndCommitIndex(calculationCtx, eventsToIndex, record.Partition, triggerTypeAppend)
+}
+
+// Appends a record and returns a slice of buffered events to index. The slice will be empty if no indexing is required.
+func (p *Builder) appendRecord(ctx context.Context, record *kgo.Record) (context.Context, []bufferedEvent) {
 	event := &metastore.ObjectWrittenEvent{}
 	if err := event.Unmarshal(record.Value); err != nil {
 		level.Error(p.logger).Log("msg", "failed to unmarshal metastore event", "err", err)
+		return nil, nil
+	}
+
+	bufferedEvt := &bufferedEvent{
+		event:  *event,
+		record: record,
+	}
+
+	return p.bufferAndTryProcess(ctx, record.Partition, bufferedEvt, triggerTypeAppend)
+}
+
+func (p *Builder) cleanupPartition(partition int32) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	// Cancel active calculation for this partition
+	if cancel, exists := p.activeCalculations[partition]; exists {
+		cancel(nil)
+		delete(p.activeCalculations, partition)
+	}
+
+	if state, ok := p.partitionStates[partition]; ok {
+		// Clear processed events and reset processing flag
+		state.isProcessing = false
+		state.lastActivity = time.Now()
+	}
+}
+
+func (p *Builder) markEventsCompleted(partition int32, eventsProcessed int) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	state, ok := p.partitionStates[partition]
+	if !ok {
 		return
 	}
-	p.bufferedEvents[event.Tenant] = append(p.bufferedEvents[event.Tenant], *event)
-	level.Info(p.logger).Log("msg", "buffered new event for tenant", "count", len(p.bufferedEvents[event.Tenant]), "tenant", event.Tenant)
+	state.events = state.events[eventsProcessed:]
+}
 
-	if len(p.bufferedEvents[event.Tenant]) >= p.cfg.EventsPerIndex {
-		if !slices.Contains(p.mCfg.Storage.EnabledTenantIDs, event.Tenant) {
-			// TODO(benclive): Remove this check once builders handle multi-tenancy when building indexes.
-			level.Info(p.logger).Log("msg", "skipping index build for disabled tenant", "tenant", event.Tenant)
-			p.bufferedEvents[event.Tenant] = p.bufferedEvents[event.Tenant][:0]
+// Check for partitions that either haven't received new events for MaxIdleTime
+// or have buffered events older than MaxAge.
+// Flush those partitions.
+func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
+	p.partitionsMutex.Lock()
+	partitionsToFlush := make(map[int32]triggerType)
+	for partition, state := range p.partitionStates {
+		// Don't flush anything that's currently processing
+		if state.isProcessing {
+			continue
+		}
+
+		// Flush partitions which haven't received new events for MaxIdleTime
+		if time.Since(state.lastActivity) >= p.cfg.MaxIdleTime {
+			partitionsToFlush[partition] = triggerTypeMaxIdle
+			continue
+		}
+
+		// Flush partitions with events older than MaxAge
+		recordTime := time.Now()
+		if len(state.events) > 0 {
+			earliestWriteTime, err := time.Parse(time.RFC3339, state.events[0].event.WriteTime)
+			if err != nil {
+				level.Warn(p.logger).Log("msg", "failed to parse write time", "err", err)
+			} else {
+				if time.Since(earliestWriteTime) >= p.cfg.MaxAge {
+					partitionsToFlush[partition] = triggerTypeMaxAge
+					continue
+				}
+				recordTime = earliestWriteTime
+			}
+		}
+
+		// If we don't choose to flush a partition, set processing delay based on the
+		// earliest event time in the buffer (or current time if there are no events).
+		// This is to avoid leaving partitions with no recent activity with high processing delay metrics.
+		p.metrics.setProcessingDelay(partition, recordTime)
+	}
+	p.partitionsMutex.Unlock()
+
+	for partition, triggerType := range partitionsToFlush {
+		p.flushPartition(ctx, partition, triggerType)
+	}
+}
+
+func (p *Builder) flushPartition(ctx context.Context, partition int32, triggerType triggerType) {
+	calculationCtx, eventsToFlush := p.bufferAndTryProcess(ctx, partition, nil, triggerType)
+	if len(eventsToFlush) == 0 {
+		return
+	}
+
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		level.Info(p.logger).Log("msg", "flushing partition",
+			"partition", partition, "events", len(eventsToFlush), "trigger", triggerType)
+
+		p.buildAndCommitIndex(calculationCtx, eventsToFlush, partition, triggerType)
+	}()
+}
+
+func (p *Builder) buildAndCommitIndex(ctx context.Context, events []bufferedEvent, partition int32, triggerType triggerType) {
+	defer p.cleanupPartition(partition)
+
+	// Submit to indexer service and wait for completion
+	records, err := p.indexer.submitBuild(ctx, events, partition, triggerType)
+	if err != nil {
+		if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
+			level.Debug(p.logger).Log("msg", "partition revoked, aborting index build", "partition", partition, "trigger", triggerType)
 			return
 		}
-		err := p.buildIndex(p.bufferedEvents[event.Tenant][:len(p.bufferedEvents[event.Tenant])])
-		if err != nil {
-			// TODO(benclive): Improve error handling for failed index builds.
-			panic(err)
-		}
+		level.Error(p.logger).Log("msg", "failed to build index", "partition", partition, "err", err, "trigger", triggerType)
+		return
+	}
 
-		if err := p.commitRecords(record); err != nil {
-			level.Warn(p.logger).Log("msg", "failed to commit records", "err", err)
+	// Commit the records
+	if err := p.commitRecords(ctx, records); err != nil {
+		if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
+			level.Debug(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", partition, "trigger", triggerType)
 			return
 		}
-		p.bufferedEvents[event.Tenant] = p.bufferedEvents[event.Tenant][:0]
+		level.Error(p.logger).Log("msg", "failed to commit records", "partition", partition, "err", err, "trigger", triggerType)
+		return
 	}
+
+	p.markEventsCompleted(partition, len(records))
 }
 
-func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
-	indexStorageBucket := objstore.NewPrefixedBucket(p.bucket, p.mCfg.Storage.IndexStoragePrefix)
-	level.Info(p.logger).Log("msg", "building index", "events", len(events), "tenant", events[0].Tenant)
-	start := time.Now()
+// bufferAndTryProcess is the unified method that handles both buffering and processing decisions
+func (p *Builder) bufferAndTryProcess(ctx context.Context, partition int32, newEvent *bufferedEvent, trigger triggerType) (context.Context, []bufferedEvent) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
 
-	// Observe processing delay
-	writeTime, err := time.Parse(time.RFC3339, events[0].WriteTime)
-	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to parse write time", "err", err)
-		return err
-	}
-	p.metrics.observeProcessingDelay(writeTime)
-
-	// Trigger the downloads
-	for _, event := range events {
-		p.downloadQueue <- event
+	state, exists := p.partitionStates[partition]
+	if !exists {
+		return nil, nil
 	}
 
-	// Process the results as they are downloaded
-	processingErrors := multierror.New()
-	for i := 0; i < len(events); i++ {
-		obj := <-p.downloadedObjects
-		objLogger := log.With(p.logger, "object_path", obj.event.ObjectPath)
-		level.Info(objLogger).Log("msg", "processing object")
-
-		if obj.err != nil {
-			processingErrors.Add(fmt.Errorf("failed to download object: %w", obj.err))
-			continue
-		}
-
-		reader, err := dataobj.FromReaderAt(bytes.NewReader(*obj.objectBytes), int64(len(*obj.objectBytes)))
-		if err != nil {
-			processingErrors.Add(fmt.Errorf("failed to read object: %w", err))
-			continue
-		}
-
-		if err := p.calculator.Calculate(p.ctx, objLogger, reader, obj.event.ObjectPath); err != nil {
-			processingErrors.Add(fmt.Errorf("failed to calculate index: %w", err))
-			continue
-		}
+	// Add new event to buffer if provided (normal processing case)
+	if newEvent != nil {
+		state.events = append(state.events, *newEvent)
+		state.lastActivity = time.Now()
+		level.Debug(p.logger).Log("msg", "buffered new event for partition", "count", len(state.events), "partition", partition, "trigger", trigger)
 	}
 
-	if processingErrors.Err() != nil {
-		return processingErrors.Err()
+	// Check if we can start processing
+	if state.isProcessing || len(state.events) == 0 {
+		return nil, nil
 	}
 
-	minTime, maxTime := p.calculator.TimeRange()
-	obj, closer, err := p.calculator.Flush()
-	if err != nil {
-		return fmt.Errorf("failed to flush builder: %w", err)
-	}
-	defer closer.Close()
-
-	key, err := ObjectKey(p.ctx, events[0].Tenant, obj)
-	if err != nil {
-		return fmt.Errorf("failed to generate object key: %w", err)
+	// Check trigger-specific requirements
+	if trigger == triggerTypeAppend && len(state.events) < p.cfg.EventsPerIndex {
+		return nil, nil
 	}
 
-	reader, err := obj.Reader(p.ctx)
-	if err != nil {
-		return fmt.Errorf("failed to read object: %w", err)
-	}
-	defer reader.Close()
+	// Atomically mark as processing and extract events
+	state.isProcessing = true
+	eventsToProcess := make([]bufferedEvent, len(state.events))
+	copy(eventsToProcess, state.events)
 
-	if err := indexStorageBucket.Upload(p.ctx, key, reader); err != nil {
-		return fmt.Errorf("failed to upload index: %w", err)
-	}
+	// Set up cancellation context with proper coordination
+	calculationCtx, cancel := context.WithCancelCause(ctx)
+	p.activeCalculations[partition] = cancel
 
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, indexStorageBucket, events[0].Tenant, p.logger)
-	if minTime.IsZero() || maxTime.IsZero() {
-		return errors.New("failed to get min/max timestamps")
-	}
-	if err := metastoreTocWriter.WriteEntry(p.ctx, key, minTime, maxTime); err != nil {
-		return fmt.Errorf("failed to update metastore: %w", err)
-	}
+	level.Debug(p.logger).Log("msg", "started processing partition",
+		"partition", partition, "events", len(eventsToProcess), "trigger", trigger)
 
-	level.Info(p.logger).Log("msg", "finished building index", "tenant", events[0].Tenant, "events", len(events), "size", obj.Size(), "duration", time.Since(start))
-	return nil
+	return calculationCtx, eventsToProcess
 }
 
-// ObjectKey determines the key in object storage to upload the object to, based on our path scheme.
-func ObjectKey(ctx context.Context, tenantID string, object *dataobj.Object) (string, error) {
-	h := sha256.New224()
-
-	reader, err := object.Reader(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer reader.Close()
-
-	if _, err := io.Copy(h, reader); err != nil {
-		return "", err
+func (p *Builder) commitRecords(ctx context.Context, records []*kgo.Record) error {
+	if len(records) == 0 {
+		return nil
 	}
 
-	var sumBytes [sha256.Size224]byte
-	sum := h.Sum(sumBytes[:])
-	sumStr := hex.EncodeToString(sum[:])
-
-	return fmt.Sprintf("tenant-%s/indexes/%s/%s", tenantID, sumStr[:2], sumStr[2:]), nil
-}
-
-func (p *Builder) commitRecords(record *kgo.Record) error {
-	backoff := backoff.New(p.ctx, backoff.Config{
+	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 10 * time.Second,
 		MaxRetries: 20,
@@ -367,11 +518,11 @@ func (p *Builder) commitRecords(record *kgo.Record) error {
 	backoff.Reset()
 	for backoff.Ongoing() {
 		p.metrics.incCommitsTotal()
-		err := p.client.CommitRecords(p.ctx, record)
+		err := p.client.CommitRecords(ctx, records...)
 		if err == nil {
 			return nil
 		}
-		level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
+		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "count", len(records))
 		p.metrics.incCommitFailures()
 		lastErr = err
 		backoff.Wait()

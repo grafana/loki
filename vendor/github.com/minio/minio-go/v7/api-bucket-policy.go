@@ -26,7 +26,16 @@ import (
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
 
-// SetBucketPolicy sets the access permissions on an existing bucket.
+// SetBucketPolicy sets the access permissions policy on an existing bucket.
+// The policy should be a valid JSON string that conforms to the IAM policy format.
+// If policy is an empty string, the existing bucket policy will be removed.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - policy: JSON policy string (empty string to remove existing policy)
+//
+// Returns an error if the operation fails.
 func (c *Client) SetBucketPolicy(ctx context.Context, bucketName, policy string) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -95,7 +104,14 @@ func (c *Client) removeBucketPolicy(ctx context.Context, bucketName string) erro
 	return nil
 }
 
-// GetBucketPolicy returns the current policy
+// GetBucketPolicy retrieves the access permissions policy for the bucket.
+// If no bucket policy exists, returns an empty string with no error.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//
+// Returns the policy as a JSON string or an error if the operation fails.
 func (c *Client) GetBucketPolicy(ctx context.Context, bucketName string) (string, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {

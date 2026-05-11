@@ -4,7 +4,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ template "enterprise-logs.provisionerFullname" . }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "enterprise-logs.provisionerLabels" . | nindent 4 }}
     {{- with .Values.enterprise.provisioner.labels }}
@@ -35,6 +35,9 @@ spec:
       {{- with .Values.enterprise.provisioner.priorityClassName }}
       priorityClassName: {{ . }}
       {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.enterprise.provisioner.hostUsers) }}
+      hostUsers: {{ .Values.enterprise.provisioner.hostUsers }}
+      {{- end }}
       securityContext:
         {{- toYaml .Values.enterprise.provisioner.securityContext | nindent 8 }}
       {{- with .Values.imagePullSecrets }}
@@ -50,8 +53,9 @@ spec:
             - -exuc
             - |
               echo "================================================================================"
-              echo "Starting provisioner. Tokens will be displayed below."
-              echo "Copy these tokens and create secrets manually for each tenant."
+              echo "Starting provisioner. Any configured tenants will be provisioned below."
+              echo "If you need to manually provision a tenant, see the following documentation: "
+              echo "https://github.com/grafana/loki/blob/main/production/helm/loki/docs/examples/enterprise/README.md"
               echo "================================================================================"
               {{- range .Values.enterprise.provisioner.additionalTenants }}
               echo "\nProvisioning tenant: {{ .name }}..."
@@ -75,7 +79,7 @@ spec:
                 -token=self-monitoring
               {{- end }}
               echo "\n================================================================================"
-              echo "Provisioning complete. Please create secrets using the tokens above."
+              echo "Provisioning complete."
               echo "================================================================================"
           volumeMounts:
             {{- with .Values.enterprise.provisioner.extraVolumeMounts }}
@@ -91,7 +95,7 @@ spec:
           securityContext: {{- toYaml .Values.enterprise.provisioner.containerSecurityContext | nindent 12 }}
       {{- with .Values.enterprise.provisioner.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.enterprise.provisioner.nodeSelector }}
       nodeSelector:

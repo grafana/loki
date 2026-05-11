@@ -3,6 +3,7 @@ package tsdb
 import (
 	"sync"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -33,14 +34,14 @@ type PoolChunkRefs struct {
 	pool sync.Pool
 }
 
-func (p *PoolChunkRefs) Get() []ChunkRef {
+func (p *PoolChunkRefs) Get() []logproto.ChunkRefWithSizingInfo {
 	if xs := p.pool.Get(); xs != nil {
-		return xs.([]ChunkRef)
+		return xs.([]logproto.ChunkRefWithSizingInfo)
 	}
-	return make([]ChunkRef, 0, 1<<10)
+	return make([]logproto.ChunkRefWithSizingInfo, 0, 1<<10)
 }
 
-func (p *PoolChunkRefs) Put(xs []ChunkRef) {
+func (p *PoolChunkRefs) Put(xs []logproto.ChunkRefWithSizingInfo) {
 	xs = xs[:0]
 	//nolint:staticcheck
 	p.pool.Put(xs)

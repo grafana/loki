@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
@@ -14,31 +15,6 @@ import (
 type Series struct {
 	Labels      labels.Labels
 	Fingerprint model.Fingerprint
-}
-
-type ChunkRef struct {
-	User        string
-	Fingerprint model.Fingerprint
-	Start, End  model.Time
-	Checksum    uint32
-}
-
-// Compares by (Fp, Start, End, checksum)
-// Assumes User is equivalent
-func (r ChunkRef) Less(x ChunkRef) bool {
-	if r.Fingerprint != x.Fingerprint {
-		return r.Fingerprint < x.Fingerprint
-	}
-
-	if r.Start != x.Start {
-		return r.Start < x.Start
-	}
-
-	if r.End != x.End {
-		return r.End < x.End
-	}
-
-	return r.Checksum < x.Checksum
 }
 
 type shouldIncludeChunk func(index.ChunkMeta) bool
@@ -58,7 +34,7 @@ type Index interface {
 	// the requested shard. If it is nil, TSDB will return all results,
 	// regardless of shard.
 	// Note: any shard used must be a valid factor of two, meaning `0_of_2` and `3_of_4` are fine, but `0_of_3` is not.
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error)
 	// Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
 	Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error)
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
@@ -71,7 +47,7 @@ type NoopIndex struct{}
 
 func (NoopIndex) Close() error                    { return nil }
 func (NoopIndex) Bounds() (_, through model.Time) { return }
-func (NoopIndex) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ []ChunkRef, _ index.FingerprintFilter, _ ...*labels.Matcher) ([]ChunkRef, error) {
+func (NoopIndex) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ []logproto.ChunkRefWithSizingInfo, _ index.FingerprintFilter, _ ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
 	return nil, nil
 }
 

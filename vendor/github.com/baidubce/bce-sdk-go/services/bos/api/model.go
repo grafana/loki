@@ -59,7 +59,8 @@ type ObjectSummaryType struct {
 	StorageClass string    `json:"storageClass"`
 	Owner        OwnerType `json:"owner"`
 	VersionId    string    `json:"versionId,omitempty"`
-	IsLatest     int       `json:"isLatest,omitempty"`
+	IsLatest     bool      `json:"isLatest,omitempty"`
+	DeleteMarker bool      `json:"deleteMarker,omitempty"`
 }
 
 type PrefixType struct {
@@ -106,10 +107,26 @@ type AclRefererType struct {
 	StringEquals []string `json:"stringEquals,omitempty"`
 }
 
+type AclTimeCond struct {
+	DateLessThan          string `json:"dateLessThan,omitempty"`
+	DateLessThanEquals    string `json:"dateLessThanEquals,omitempty"`
+	DateGreaterThan       string `json:"dateGreaterThan,omitempty"`
+	DateGreaterThanEquals string `json:"dateGreaterThanEquals,omitempty"`
+}
+
+type AclUserAgentType struct {
+	StringLike   []string `json:"stringLike,omitempty"`
+	StringEquals []string `json:"stringEquals,omitempty"`
+}
+
 type AclCondType struct {
-	IpAddress []string       `json:"ipAddress,omitempty"`
-	Referer   AclRefererType `json:"referer,omitempty"`
-	VpcId     []string       `json:"vpcId,omitempty"`
+	IpAddress       []string         `json:"ipAddress,omitempty"`
+	NotIpAddress    []string         `json:"notIpAddress,omitempty"`
+	Referer         AclRefererType   `json:"referer,omitempty"`
+	SecureTransport bool             `json:"secureTransport,omitempty"`
+	CurrentTime     AclTimeCond      `json:"currentTime,omitempty"`
+	UserAgent       AclUserAgentType `json:"userAgent,omitempty"`
+	VpcId           []string         `json:"vpcId,omitempty"`
 }
 
 // GrantType defines the grant struct in ACL setting
@@ -151,9 +168,16 @@ type LifecycleConditionTimeType struct {
 	DateGreaterThan string `json:"dateGreaterThan"`
 }
 
+type LifecycleObjectSizeType struct {
+	MinSize int64 `json:"minSize,omitempty"`
+	MaxSize int64 `json:"maxSize,omitempty"`
+}
+
 // LifecycleConditionType defines the structure of condition
 type LifecycleConditionType struct {
-	Time LifecycleConditionTimeType `json:"time"`
+	Time       LifecycleConditionTimeType `json:"time,omitempty"`
+	ObjectSize LifecycleObjectSizeType    `json:"objectSize,omitempty"`
+	Tag        map[string]string          `json:"tag,omitempty"`
 }
 
 // LifecycleActionType defines the structure of lifecycle action
@@ -162,13 +186,20 @@ type LifecycleActionType struct {
 	StorageClass string `json:"storageClass,omitempty"`
 }
 
+type lifecycleNotRule struct {
+	Resource string            `json:"resource,omitempty"`
+	Tag      map[string]string `json:"tag,omitempty"`
+}
+
 // LifecycleRuleType defines the structure of a single lifecycle rule
 type LifecycleRuleType struct {
-	Id        string                 `json:"id"`
-	Status    string                 `json:"status"`
-	Resource  []string               `json:"resource"`
-	Condition LifecycleConditionType `json:"condition"`
-	Action    LifecycleActionType    `json:"action"`
+	Id                        string                 `json:"id"`
+	Status                    string                 `json:"status"`
+	Resource                  []string               `json:"resource"`
+	Condition                 LifecycleConditionType `json:"condition"`
+	Action                    LifecycleActionType    `json:"action"`
+	ExpiredObjectDeleteMarker string                 `json:"ExpiredObjectDeleteMarker,omitempty"`
+	Not                       lifecycleNotRule       `json:"not,omitempty"`
 }
 
 // GetBucketLifecycleResult defines the lifecycle argument structure for putting
@@ -285,6 +316,7 @@ type PutObjectArgs struct {
 	ContentCrc32       string
 	StorageClass       string
 	Process            string
+	CannedAcl          string
 	ObjectTagging      string
 	TrafficLimit       int64
 	ContentCrc32c      string
@@ -293,8 +325,26 @@ type PutObjectArgs struct {
 	ContentEncoding    string
 	ForbidOverwrite    bool
 	Encryption         SSEHeaders
+	ContentCrc64ECMA   string
+	IfMatch            string
+	IfNoneMatch        string
 	// please set other header/params of http request By Option
 	// alternative Options please refer to service/bos/api/option.go
+}
+
+type OptionsObjectArgs struct {
+	Origin         string
+	RequestMethod  string
+	RequestHeaders []string
+}
+
+type OptionsObjectResult struct {
+	AllowCredentials bool
+	AllowHeaders     []string
+	AllowMethods     []string
+	AllowOrigin      string
+	ExposeHeaders    []string
+	MaxAge           int
 }
 
 type PostObjectArgs struct {
@@ -312,11 +362,14 @@ type CopyObjectArgs struct {
 	IfModifiedSince   string
 	IfUnmodifiedSince string
 	TrafficLimit      int64
+	CannedAcl         string
 	TaggingDirective  string
 	ObjectTagging     string
 	ContentCrc32c     string
 	ContentCrc32cFlag bool
 	ObjectExpires     int
+	ContentCrc64ECMA  string
+	SrcVersionId      string
 	// please set other header/params of http request By Option
 	// alternative Options please refer to service/bos/api/option.go
 }
@@ -333,6 +386,7 @@ type MultiCopyObjectArgs struct {
 	GrantFullControl  []string
 	ObjectExpires     int
 	UserMeta          map[string]string
+	ContentCrc64ECMA  string
 }
 
 type CallbackResult struct {
@@ -346,6 +400,7 @@ type PutObjectResult struct {
 	StorageClass         string         `json:"-"`
 	VersionId            string         `json:"-"`
 	ServerSideEncryption string         `json:"-"`
+	ContentCrc64ECMA     string         `json:"-"`
 }
 
 type PostObjectResult struct {
@@ -359,6 +414,9 @@ type CopyObjectResult struct {
 	LastModified string `json:"lastModified"`
 	ETag         string `json:"eTag"`
 	VersionId    string `json:"versionId"`
+	Code         string `json:"code,omitempty"`
+	Message      string `json:"message,omitempty"`
+	RequestId    string `json:"requestId,omitempty"`
 }
 
 type ObjectMeta struct {
@@ -386,13 +444,23 @@ type ObjectMeta struct {
 	Encryption         SSEHeaders
 	RetentionDate      string
 	objectTagCount     int64
+	ContentCrc64ECMA   string
+	ContentLanguage    string
+}
+
+type GetObjectArgs struct {
+	Params            map[string]string // responseXXX query/ bce header
+	Ranges            []int64
+	IfMatch           string
+	IfNoneMatch       string
+	IfModifiedSince   string // example: Fri, 25 Dec 2025 17:11:53 GMT
+	IfUnModifiedSince string // example: Fri, 25 Dec 2025 17:11:53 GMT
 }
 
 // GetObjectResult defines the result data of the get object api.
 type GetObjectResult struct {
 	ObjectMeta
-	ContentLanguage string
-	Body            io.ReadCloser
+	Body io.ReadCloser
 }
 
 // GetObjectMetaResult defines the result data of the get object meta api.
@@ -491,6 +559,7 @@ type AppendObjectArgs struct {
 	ContentCrc32cFlag  bool
 	ObjectExpires      int
 	ContentEncoding    string
+	ContentCrc64ECMA   string
 }
 
 // AppendObjectResult defines the result data structure for appending object.
@@ -500,6 +569,7 @@ type AppendObjectResult struct {
 	ContentCrc32     string
 	ETag             string
 	ContentCrc32c    string
+	ContentCrc64ECMA string
 }
 
 // DeleteObjectArgs defines the input args structure for a single object.
@@ -538,6 +608,8 @@ type InitiateMultipartUploadArgs struct {
 	GrantFullControl   []string
 	ObjectExpires      int
 	ContentEncoding    string
+	IfMatch            string
+	IfNoneMatch        string
 }
 
 // InitiateMultipartUploadResult defines the result structure to initiate a multipart upload.
@@ -555,6 +627,7 @@ type UploadPartArgs struct {
 	TrafficLimit      int64
 	ContentCrc32c     string
 	ContentCrc32cFlag bool
+	ContentCrc64ECMA  string
 }
 
 // UploadPartCopyArgs defines the optional arguments of UploadPartCopy.
@@ -567,6 +640,7 @@ type UploadPartCopyArgs struct {
 	TrafficLimit      int64
 	ContentCrc32c     string
 	ContentCrc32cFlag bool
+	ContentCrc64ECMA  string
 }
 
 type PutSymlinkArgs struct {
@@ -574,6 +648,7 @@ type PutSymlinkArgs struct {
 	StorageClass    string
 	UserMeta        map[string]string
 	SymlinkBucket   string
+	ContentType     string
 }
 
 // UploadInfoType defines an uploaded part info structure.
@@ -591,17 +666,21 @@ type CompleteMultipartUploadArgs struct {
 	ContentCrc32c     string            `json:"-"`
 	ContentCrc32cFlag bool              `json:"-"`
 	ObjectExpires     int               `json:"-"`
+	ContentCrc64ECMA  string            `json:"-"`
+	IfMatch           string            `json:"-"`
+	IfNoneMatch       string            `json:"-"`
 }
 
 // CompleteMultipartUploadResult defines the result structure of CompleteMultipartUpload.
 type CompleteMultipartUploadResult struct {
-	Location      string `json:"location"`
-	Bucket        string `json:"bucket"`
-	Key           string `json:"key"`
-	ETag          string `json:"eTag"`
-	ContentCrc32  string `json:"-"`
-	ContentCrc32c string `json:"-"`
-	VersionId     string `json:"-"`
+	Location         string `json:"location"`
+	Bucket           string `json:"bucket"`
+	Key              string `json:"key"`
+	ETag             string `json:"eTag"`
+	ContentCrc32     string `json:"-"`
+	ContentCrc32c    string `json:"-"`
+	VersionId        string `json:"-"`
+	ContentCrc64ECMA string `json:"-"`
 }
 
 // ListPartsArgs defines the input optional arguments of listing parts information.
@@ -678,20 +757,39 @@ type PutBucketNotificationReq struct {
 	Notifications []PutBucketNotificationSt `json:"notifications"`
 }
 
+type EncryptionKey struct {
+	Key string `json:"key"`
+}
+
 type PutBucketNotificationSt struct {
-	Id        string                        `json:"id"`
-	Name      string                        `json:"name"`
-	AppId     string                        `json:"appId"`
-	Status    string                        `json:"status"`
-	Resources []string                      `json:"resources"`
-	Events    []string                      `json:"events"`
-	Apps      []PutBucketNotificationAppsSt `json:"apps"`
+	Id          string                        `json:"id"`
+	Name        string                        `json:"name"`
+	AppId       string                        `json:"appId"`
+	Status      string                        `json:"status"`
+	Encryption  EncryptionKey                 `json:"encryption"`
+	Resources   []string                      `json:"resources"`
+	Events      []string                      `json:"events"`
+	Apps        []PutBucketNotificationAppsSt `json:"apps"`
+	ContentType NotificationContentTypeSt     `json:"contentType,omitempty"`
+	Quota       NotificationQuotaSt           `json:"quota,omitempty"`
+}
+
+type NotificationQuotaSt struct {
+	QuotaDay int64   `json:"quotaDay,omitempty"`
+	QuotaSec float64 `json:"quotaSec,omitempty"`
 }
 
 type PutBucketNotificationAppsSt struct {
 	Id       string `json:"id"`
 	EventUrl string `json:"eventUrl"`
 	XVars    string `json:"xVars"`
+	Cfc      string `json:"cfc"`
+	XParams  string `json:"xParams"`
+}
+
+type NotificationContentTypeSt struct {
+	Extensions []string `json:"extensions,omitempty"`
+	MimeTypes  []string `json:"mimeTypes,omitempty"`
 }
 
 type MirrorConfigurationRule struct {
@@ -741,6 +839,17 @@ type BucketTag struct {
 type BosContext struct {
 	PathStyleEnable bool
 	Ctx             context.Context // for each request
+	ApiVersion      string          // "v1", "v2"
+	EnableCalcMd5   bool
+}
+
+func newDefaultBosContext() *BosContext {
+	return &BosContext{
+		PathStyleEnable: false,
+		Ctx:             context.Background(),
+		ApiVersion:      API_VERSION_V1,
+		EnableCalcMd5:   true,
+	}
 }
 
 type PutObjectTagArgs struct {

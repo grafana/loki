@@ -3,6 +3,7 @@ package bench
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	objectclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
@@ -34,33 +36,46 @@ const (
 )
 
 type ChunkStore struct {
-	store     *storage.LokiStore
-	periodCfg config.PeriodConfig
-	chunks    map[string]*chunkenc.MemChunk
-	tenantID  string
+	store         *storage.LokiStore
+	periodCfg     config.PeriodConfig
+	chunks        map[string]*chunkenc.MemChunk
+	tenantID      string
+	clientMetrics storage.ClientMetrics
 }
 
 func NewChunkStore(dir, tenantID string) (*ChunkStore, error) {
-	// Create store-specific directory
-	storeDir := filepath.Join(dir, "chunks")
-	if err := os.MkdirAll(storeDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create directory %s: %w", storeDir, err)
+	return NewChunkStoreWithRegisterer(dir, tenantID, prometheus.DefaultRegisterer)
+}
+
+func NewChunkStoreWithRegisterer(dir, tenantID string, reg prometheus.Registerer) (*ChunkStore, error) {
+	storageDir := filepath.Join(dir, storageDir)
+	workingDir := filepath.Join(dir, workingDir)
+
+	tsdbShipperDir := filepath.Join(workingDir, "tsdb-shipper-active")
+	if err := os.MkdirAll(tsdbShipperDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create index directory %s: %w", tsdbShipperDir, err)
 	}
-	indexDir := filepath.Join(storeDir, "index")
-	if err := os.MkdirAll(indexDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create index directory %s: %w", indexDir, err)
+	cacheDir := filepath.Join(workingDir, "cache")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create index directory %s: %w", cacheDir, err)
 	}
+
 	storeConfig := storage.Config{
 		MaxChunkBatchSize: 50,
 		TSDBShipperConfig: indexshipper.Config{
-			ActiveIndexDirectory: indexDir,
+			ActiveIndexDirectory: tsdbShipperDir,
 			Mode:                 indexshipper.ModeReadWrite,
 			IngesterName:         "test",
-			CacheLocation:        filepath.Join(storeDir, "index_cache"),
+			CacheLocation:        cacheDir,
 			ResyncInterval:       5 * time.Minute,
 			CacheTTL:             24 * time.Hour,
 		},
-		FSConfig: local.FSConfig{Directory: storeDir},
+		FSConfig: local.FSConfig{Directory: storageDir},
+	}
+	if *storageLatency > 0 {
+		storeConfig.ObjectClientDecorator = func(c objectclient.ObjectClient) objectclient.ObjectClient {
+			return newLatencyObjectClient(c, *storageLatency)
+		}
 	}
 	period := config.PeriodConfig{
 		From:       config.DayTime{Time: model.Earliest},
@@ -68,6 +83,7 @@ func NewChunkStore(dir, tenantID string) (*ChunkStore, error) {
 		ObjectType: "filesystem",
 		Schema:     "v13",
 		IndexTables: config.IndexPeriodicTableConfig{
+			PathPrefix: "index/",
 			PeriodicTableConfig: config.PeriodicTableConfig{
 				Prefix: "index_",
 				Period: time.Hour * 24,
@@ -85,15 +101,16 @@ func NewChunkStore(dir, tenantID string) (*ChunkStore, error) {
 	flagext.DefaultValues(&limits)
 	overrides, _ := validation.NewOverrides(limits, nil)
 
-	store, err := storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, overrides, cm, prometheus.DefaultRegisterer, util_log.Logger, "cortex")
+	store, err := storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, overrides, cm, reg, util_log.Logger, "cortex")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
 	return &ChunkStore{
-		store:     store,
-		periodCfg: period,
-		tenantID:  tenantID,
-		chunks:    make(map[string]*chunkenc.MemChunk),
+		store:         store,
+		periodCfg:     period,
+		tenantID:      tenantID,
+		chunks:        make(map[string]*chunkenc.MemChunk),
+		clientMetrics: cm,
 	}, nil
 }
 
@@ -135,7 +152,7 @@ func (s *ChunkStore) flushChunk(ctx context.Context, memChunk *chunkenc.MemChunk
 		return err
 	}
 	labelsBuilder := labels.NewBuilder(lbs)
-	labelsBuilder.Set(labels.MetricName, "logs")
+	labelsBuilder.Set(model.MetricNameLabel, "logs")
 	metric := labelsBuilder.Labels()
 	fp := client.Fingerprint(lbs)
 
@@ -166,5 +183,47 @@ func (s *ChunkStore) Close() error {
 	}
 	clear(s.chunks)
 	s.store.Stop()
+	// Unregister metrics to avoid conflicts in tests
+	s.clientMetrics.Unregister()
 	return nil
+}
+
+// latencyObjectClient wraps an ObjectClient and injects a configurable delay
+// before each read operation to simulate object storage latency (e.g. S3/GCS).
+type latencyObjectClient struct {
+	objectclient.ObjectClient
+	latency time.Duration
+}
+
+func newLatencyObjectClient(c objectclient.ObjectClient, latency time.Duration) *latencyObjectClient {
+	return &latencyObjectClient{ObjectClient: c, latency: latency}
+}
+
+func (c *latencyObjectClient) delay() {
+	time.Sleep(c.latency)
+}
+
+func (c *latencyObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
+	c.delay()
+	return c.ObjectClient.GetObject(ctx, objectKey)
+}
+
+func (c *latencyObjectClient) GetObjectRange(ctx context.Context, objectKey string, off, length int64) (io.ReadCloser, error) {
+	c.delay()
+	return c.ObjectClient.GetObjectRange(ctx, objectKey, off, length)
+}
+
+func (c *latencyObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	c.delay()
+	return c.ObjectClient.ObjectExists(ctx, objectKey)
+}
+
+func (c *latencyObjectClient) GetAttributes(ctx context.Context, objectKey string) (objectclient.ObjectAttributes, error) {
+	c.delay()
+	return c.ObjectClient.GetAttributes(ctx, objectKey)
+}
+
+func (c *latencyObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]objectclient.StorageObject, []objectclient.StorageCommonPrefix, error) {
+	c.delay()
+	return c.ObjectClient.List(ctx, prefix, delimiter)
 }

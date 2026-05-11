@@ -132,7 +132,7 @@ func (c *CustomTokenIdentity) RetrieveWithCredContext(cc *CredContext) (value Va
 
 	r := AssumeRoleWithCustomTokenResponse{}
 	if err = xml.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return
+		return value, err
 	}
 
 	cr := r.Result.Credentials

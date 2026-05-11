@@ -59,6 +59,31 @@ The following sections describe how to use APIs exposed by the library,
 highlighting the use cases with code examples to demonstrate how they are used
 in practice.
 
+### Struct Tags
+
+When using Go structs to define the schema of parquet files, struct fields may
+include a `parquet` tag to configure properties of the parquet column such as
+its name, compression, encoding, and logical type. The first value in the tag
+sets the column name, and additional comma-separated values set options.
+
+```go
+type Record struct {
+    ID        int64     `parquet:"id,delta"`
+    Name      string    `parquet:"name,dict,zstd"`
+    Timestamp int64     `parquet:"timestamp,timestamp(microsecond)"`
+    Score     float64   `parquet:"score,split"`
+    Tags      []string  `parquet:"tags,list"`
+    Optional  *string   `parquet:"optional,optional"`
+}
+```
+
+Map keys and values can be configured with the `parquet-key` and `parquet-value`
+tags, and list elements with the `parquet-element` tag.
+
+For the full reference of supported tags, type constraints, and examples, see
+the [`SchemaOf`](https://pkg.go.dev/github.com/parquet-go/parquet-go#SchemaOf)
+documentation.
+
 ### Writing Parquet Files: [parquet.GenericWriter[T]](https://pkg.go.dev/github.com/parquet-go/parquet-go#GenericWriter)
 
 A parquet file is a collection of rows sharing the same schema, arranged in
@@ -555,6 +580,40 @@ between `os.File` instances are optimized using `copy_file_range(2)` (on linux).
 
 See [parquet.PageBufferPool](https://pkg.go.dev/github.com/parquet-go/parquet-go#PageBufferPool)
 for the full interface documentation.
+
+#### D. Parallel Column Writes
+
+For applications that need to maximize throughput when writing large columnar datasets, the library supports writing columns in parallel. This is especially useful when each column can be prepared independently and written concurrently, leveraging multiple CPU cores.
+
+You can use Go's goroutines to write to each column's `ColumnWriter` in parallel. Each column's values can be written using `WriteRowValues`, and the column must be closed after writing. It is the application's responsibility to ensure that all columns receive the same number of rows, as mismatched row counts will result in malformed files.
+
+Example:
+
+```go
+columns   = writer.ColumnWriters()
+var (
+    wg        sync.WaitGroup
+    errs      = make([]error, len(columns))
+    rowCounts = make([]int, len(columns))
+)
+for i, col := range columns {
+    wg.Add(1)
+    go func(i int, col parquet.ColumnWriter) {
+        defer wg.Done()
+        n, err := col.WriteRowValues(values[i]) // values[i] is []parquet.Value for column i
+        if err != nil {
+            errs[i] = err
+            return
+        }
+        rowCounts[i] = n
+        errs[i] = col.Close()
+    }(i, col)
+}
+wg.Wait()
+// Check errs and rowCounts for consistency
+```
+
+This approach can significantly reduce the time required to write wide tables or large datasets, especially on multi-core systems. However, you should ensure proper error handling and synchronization, as shown above.
 
 ## Maintenance
 

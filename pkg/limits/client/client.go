@@ -95,7 +95,7 @@ func NewClient(cfg Config, addr string) (*Client, error) {
 	}, nil
 }
 
-// getInterceptors returns the gRPC interceptors for the given ClientConfig.
+// getGRPCInterceptors returns the gRPC interceptors for the given ClientConfig.
 func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var (
 		unaryInterceptors  []grpc.UnaryClientInterceptor

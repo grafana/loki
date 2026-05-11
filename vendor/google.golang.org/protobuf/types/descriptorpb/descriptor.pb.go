@@ -69,6 +69,8 @@ const (
 	// comparison.
 	Edition_EDITION_2023 Edition = 1000
 	Edition_EDITION_2024 Edition = 1001
+	// A placeholder edition for developing and testing unscheduled features.
+	Edition_EDITION_UNSTABLE Edition = 9999
 	// Placeholder editions for testing feature resolution.  These should not be
 	// used or relied on outside of tests.
 	Edition_EDITION_1_TEST_ONLY     Edition = 1
@@ -91,6 +93,7 @@ var (
 		999:        "EDITION_PROTO3",
 		1000:       "EDITION_2023",
 		1001:       "EDITION_2024",
+		9999:       "EDITION_UNSTABLE",
 		1:          "EDITION_1_TEST_ONLY",
 		2:          "EDITION_2_TEST_ONLY",
 		99997:      "EDITION_99997_TEST_ONLY",
@@ -105,6 +108,7 @@ var (
 		"EDITION_PROTO3":          999,
 		"EDITION_2023":            1000,
 		"EDITION_2024":            1001,
+		"EDITION_UNSTABLE":        9999,
 		"EDITION_1_TEST_ONLY":     1,
 		"EDITION_2_TEST_ONLY":     2,
 		"EDITION_99997_TEST_ONLY": 99997,
@@ -2873,7 +2877,10 @@ type FieldOptions struct {
 	// for accessors, or it will be completely ignored; in the very least, this
 	// is a formalization for deprecating fields.
 	Deprecated *bool `protobuf:"varint,3,opt,name=deprecated,def=0" json:"deprecated,omitempty"`
+	// DEPRECATED. DO NOT USE!
 	// For Google-internal migration only. Do not use.
+	//
+	// Deprecated: Marked as deprecated in google/protobuf/descriptor.proto.
 	Weak *bool `protobuf:"varint,10,opt,name=weak,def=0" json:"weak,omitempty"`
 	// Indicate that the field value should not be printed out when using debug
 	// formats, e.g. when the field contains sensitive credentials.
@@ -2977,6 +2984,7 @@ func (x *FieldOptions) GetDeprecated() bool {
 	return Default_FieldOptions_Deprecated
 }
 
+// Deprecated: Marked as deprecated in google/protobuf/descriptor.proto.
 func (x *FieldOptions) GetWeak() bool {
 	if x != nil && x.Weak != nil {
 		return *x.Weak
@@ -4789,11 +4797,11 @@ const file_google_protobuf_descriptor_proto_rawDesc = "" +
 	"\x18EnumValueDescriptorProto\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\x05R\x06number\x12;\n" +
-	"\aoptions\x18\x03 \x01(\v2!.google.protobuf.EnumValueOptionsR\aoptions\"\xa7\x01\n" +
+	"\aoptions\x18\x03 \x01(\v2!.google.protobuf.EnumValueOptionsR\aoptions\"\xb5\x01\n" +
 	"\x16ServiceDescriptorProto\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12>\n" +
 	"\x06method\x18\x02 \x03(\v2&.google.protobuf.MethodDescriptorProtoR\x06method\x129\n" +
-	"\aoptions\x18\x03 \x01(\v2\x1f.google.protobuf.ServiceOptionsR\aoptions\"\x89\x02\n" +
+	"\aoptions\x18\x03 \x01(\v2\x1f.google.protobuf.ServiceOptionsR\aoptionsJ\x04\b\x04\x10\x05R\x06stream\"\x89\x02\n" +
 	"\x15MethodDescriptorProto\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
@@ -4843,7 +4851,7 @@ const file_google_protobuf_descriptor_proto_rawDesc = "" +
 	"&deprecated_legacy_json_field_conflicts\x18\v \x01(\bB\x02\x18\x01R\"deprecatedLegacyJsonFieldConflicts\x127\n" +
 	"\bfeatures\x18\f \x01(\v2\x1b.google.protobuf.FeatureSetR\bfeatures\x12X\n" +
 	"\x14uninterpreted_option\x18\xe7\a \x03(\v2$.google.protobuf.UninterpretedOptionR\x13uninterpretedOption*\t\b\xe8\a\x10\x80\x80\x80\x80\x02J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
-	"\"\x9d\r\n" +
+	"\"\xa1\r\n" +
 	"\fFieldOptions\x12A\n" +
 	"\x05ctype\x18\x01 \x01(\x0e2#.google.protobuf.FieldOptions.CType:\x06STRINGR\x05ctype\x12\x16\n" +
 	"\x06packed\x18\x02 \x01(\bR\x06packed\x12G\n" +
@@ -4852,9 +4860,9 @@ const file_google_protobuf_descriptor_proto_rawDesc = "" +
 	"\x0funverified_lazy\x18\x0f \x01(\b:\x05falseR\x0eunverifiedLazy\x12%\n" +
 	"\n" +
 	"deprecated\x18\x03 \x01(\b:\x05falseR\n" +
-	"deprecated\x12\x19\n" +
+	"deprecated\x12\x1d\n" +
 	"\x04weak\x18\n" +
-	" \x01(\b:\x05falseR\x04weak\x12(\n" +
+	" \x01(\b:\x05falseB\x02\x18\x01R\x04weak\x12(\n" +
 	"\fdebug_redact\x18\x10 \x01(\b:\x05falseR\vdebugRedact\x12K\n" +
 	"\tretention\x18\x11 \x01(\x0e2-.google.protobuf.FieldOptions.OptionRetentionR\tretention\x12H\n" +
 	"\atargets\x18\x13 \x03(\x0e2..google.protobuf.FieldOptions.OptionTargetTypeR\atargets\x12W\n" +
@@ -5029,14 +5037,15 @@ const file_google_protobuf_descriptor_proto_rawDesc = "" +
 	"\bSemantic\x12\b\n" +
 	"\x04NONE\x10\x00\x12\a\n" +
 	"\x03SET\x10\x01\x12\t\n" +
-	"\x05ALIAS\x10\x02*\xa7\x02\n" +
+	"\x05ALIAS\x10\x02*\xbe\x02\n" +
 	"\aEdition\x12\x13\n" +
 	"\x0fEDITION_UNKNOWN\x10\x00\x12\x13\n" +
 	"\x0eEDITION_LEGACY\x10\x84\a\x12\x13\n" +
 	"\x0eEDITION_PROTO2\x10\xe6\a\x12\x13\n" +
 	"\x0eEDITION_PROTO3\x10\xe7\a\x12\x11\n" +
 	"\fEDITION_2023\x10\xe8\a\x12\x11\n" +
-	"\fEDITION_2024\x10\xe9\a\x12\x17\n" +
+	"\fEDITION_2024\x10\xe9\a\x12\x15\n" +
+	"\x10EDITION_UNSTABLE\x10\x8fN\x12\x17\n" +
 	"\x13EDITION_1_TEST_ONLY\x10\x01\x12\x17\n" +
 	"\x13EDITION_2_TEST_ONLY\x10\x02\x12\x1d\n" +
 	"\x17EDITION_99997_TEST_ONLY\x10\x9d\x8d\x06\x12\x1d\n" +

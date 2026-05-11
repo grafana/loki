@@ -2,12 +2,18 @@ package redis
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/redis/go-redis/v9/internal/otel"
 )
 
 type StreamCmdable interface {
 	XAdd(ctx context.Context, a *XAddArgs) *StringCmd
+	XAckDel(ctx context.Context, stream string, group string, mode string, ids ...string) *SliceCmd
 	XDel(ctx context.Context, stream string, ids ...string) *IntCmd
+	XDelEx(ctx context.Context, stream string, mode string, ids ...string) *SliceCmd
 	XLen(ctx context.Context, stream string) *IntCmd
 	XRange(ctx context.Context, stream, start, stop string) *XMessageSliceCmd
 	XRangeN(ctx context.Context, stream, start, stop string, count int64) *XMessageSliceCmd
@@ -31,12 +37,17 @@ type StreamCmdable interface {
 	XAutoClaimJustID(ctx context.Context, a *XAutoClaimArgs) *XAutoClaimJustIDCmd
 	XTrimMaxLen(ctx context.Context, key string, maxLen int64) *IntCmd
 	XTrimMaxLenApprox(ctx context.Context, key string, maxLen, limit int64) *IntCmd
+	XTrimMaxLenMode(ctx context.Context, key string, maxLen int64, mode string) *IntCmd
+	XTrimMaxLenApproxMode(ctx context.Context, key string, maxLen, limit int64, mode string) *IntCmd
 	XTrimMinID(ctx context.Context, key string, minID string) *IntCmd
 	XTrimMinIDApprox(ctx context.Context, key string, minID string, limit int64) *IntCmd
+	XTrimMinIDMode(ctx context.Context, key string, minID string, mode string) *IntCmd
+	XTrimMinIDApproxMode(ctx context.Context, key string, minID string, limit int64, mode string) *IntCmd
 	XInfoGroups(ctx context.Context, key string) *XInfoGroupsCmd
 	XInfoStream(ctx context.Context, key string) *XInfoStreamCmd
 	XInfoStreamFull(ctx context.Context, key string, count int) *XInfoStreamFullCmd
 	XInfoConsumers(ctx context.Context, key string, group string) *XInfoConsumersCmd
+	XCfgSet(ctx context.Context, a *XCfgSetArgs) *StatusCmd
 }
 
 // XAddArgs accepts values in the following formats:
@@ -46,41 +57,69 @@ type StreamCmdable interface {
 //
 // Note that map will not preserve the order of key-value pairs.
 // MaxLen/MaxLenApprox and MinID are in conflict, only one of them can be used.
+//
+// For idempotent production (at-most-once production):
+//   - ProducerID: A unique identifier for the producer (required for both IDMP and IDMPAUTO)
+//   - IdempotentID: A unique identifier for the message (used with IDMP)
+//   - IdempotentAuto: If true, Redis will auto-generate an idempotent ID based on message content (IDMPAUTO)
+//
+// ProducerID and IdempotentID are mutually exclusive with IdempotentAuto.
+// When using idempotent production, ID must be "*" or empty.
 type XAddArgs struct {
 	Stream     string
 	NoMkStream bool
 	MaxLen     int64 // MAXLEN N
 	MinID      string
 	// Approx causes MaxLen and MinID to use "~" matcher (instead of "=").
-	Approx bool
-	Limit  int64
-	ID     string
-	Values interface{}
+	Approx         bool
+	Limit          int64
+	Mode           string
+	ID             string
+	Values         interface{}
+	ProducerID     string // Producer ID for idempotent production (IDMP or IDMPAUTO)
+	IdempotentID   string // Idempotent ID for IDMP
+	IdempotentAuto bool   // Use IDMPAUTO to auto-generate idempotent ID based on content
 }
 
 func (c cmdable) XAdd(ctx context.Context, a *XAddArgs) *StringCmd {
-	args := make([]interface{}, 0, 11)
+	args := make([]interface{}, 0, 15)
 	args = append(args, "xadd", a.Stream)
 	if a.NoMkStream {
 		args = append(args, "nomkstream")
 	}
+
+	if a.Mode != "" {
+		args = append(args, a.Mode)
+	}
+
+	if a.ProducerID != "" {
+		if a.IdempotentAuto {
+			// IDMPAUTO pid
+			args = append(args, "idmpauto", a.ProducerID)
+		} else if a.IdempotentID != "" {
+			// IDMP pid iid
+			args = append(args, "idmp", a.ProducerID, a.IdempotentID)
+		}
+	}
+
 	switch {
 	case a.MaxLen > 0:
 		if a.Approx {
 			args = append(args, "maxlen", "~", a.MaxLen)
 		} else {
-			args = append(args, "maxlen", a.MaxLen)
+			args = append(args, "maxlen", "=", a.MaxLen)
 		}
 	case a.MinID != "":
 		if a.Approx {
 			args = append(args, "minid", "~", a.MinID)
 		} else {
-			args = append(args, "minid", a.MinID)
+			args = append(args, "minid", "=", a.MinID)
 		}
 	}
 	if a.Limit > 0 {
 		args = append(args, "limit", a.Limit)
 	}
+
 	if a.ID != "" {
 		args = append(args, a.ID)
 	} else {
@@ -93,12 +132,32 @@ func (c cmdable) XAdd(ctx context.Context, a *XAddArgs) *StringCmd {
 	return cmd
 }
 
+func (c cmdable) XAckDel(ctx context.Context, stream string, group string, mode string, ids ...string) *SliceCmd {
+	args := []interface{}{"xackdel", stream, group, mode, "ids", len(ids)}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	cmd := NewSliceCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
 func (c cmdable) XDel(ctx context.Context, stream string, ids ...string) *IntCmd {
 	args := []interface{}{"xdel", stream}
 	for _, id := range ids {
 		args = append(args, id)
 	}
 	cmd := NewIntCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) XDelEx(ctx context.Context, stream string, mode string, ids ...string) *SliceCmd {
+	args := []interface{}{"xdelex", stream, mode, "ids", len(ids)}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	cmd := NewSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -231,6 +290,7 @@ type XReadGroupArgs struct {
 	Count    int64
 	Block    time.Duration
 	NoAck    bool
+	Claim    time.Duration // Claim idle pending entries older than this duration
 }
 
 func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSliceCmd {
@@ -250,6 +310,10 @@ func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSlic
 		args = append(args, "noack")
 		keyPos++
 	}
+	if a.Claim > 0 {
+		args = append(args, "claim", int64(a.Claim/time.Millisecond))
+		keyPos += 2
+	}
 	args = append(args, "streams")
 	keyPos++
 	for _, s := range a.Streams {
@@ -262,6 +326,26 @@ func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSlic
 	}
 	cmd.SetFirstKeyPos(keyPos)
 	_ = c(ctx, cmd)
+
+	// Record stream lag for each message (if command succeeded)
+	if cmd.Err() == nil {
+		streams := cmd.Val()
+		for _, stream := range streams {
+			for _, msg := range stream.Messages {
+				// Parse message ID to extract timestamp (format: "millisecondsTime-sequenceNumber")
+				if parts := strings.SplitN(msg.ID, "-", 2); len(parts) == 2 {
+					if timestampMs, err := strconv.ParseInt(parts[0], 10, 64); err == nil {
+						// Calculate lag (time since message was created)
+						messageTime := time.Unix(0, timestampMs*int64(time.Millisecond))
+						lag := time.Since(messageTime)
+						// Record lag metric
+						otel.RecordStreamLag(ctx, lag, nil, stream.Stream, a.Group, a.Consumer)
+					}
+				}
+			}
+		}
+	}
+
 	return cmd
 }
 
@@ -375,6 +459,8 @@ func xClaimArgs(a *XClaimArgs) []interface{} {
 	return args
 }
 
+// TODO: refactor xTrim, xTrimMode and the wrappers over the functions
+
 // xTrim If approx is true, add the "~" parameter, otherwise it is the default "=" (redis default).
 // example:
 //
@@ -390,6 +476,8 @@ func (c cmdable) xTrim(
 	args = append(args, "xtrim", key, strategy)
 	if approx {
 		args = append(args, "~")
+	} else {
+		args = append(args, "=")
 	}
 	args = append(args, threshold)
 	if limit > 0 {
@@ -416,6 +504,44 @@ func (c cmdable) XTrimMinID(ctx context.Context, key string, minID string) *IntC
 
 func (c cmdable) XTrimMinIDApprox(ctx context.Context, key string, minID string, limit int64) *IntCmd {
 	return c.xTrim(ctx, key, "minid", true, minID, limit)
+}
+
+func (c cmdable) xTrimMode(
+	ctx context.Context, key, strategy string,
+	approx bool, threshold interface{}, limit int64,
+	mode string,
+) *IntCmd {
+	args := make([]interface{}, 0, 7)
+	args = append(args, "xtrim", key, strategy)
+	if approx {
+		args = append(args, "~")
+	} else {
+		args = append(args, "=")
+	}
+	args = append(args, threshold)
+	if limit > 0 {
+		args = append(args, "limit", limit)
+	}
+	args = append(args, mode)
+	cmd := NewIntCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) XTrimMaxLenMode(ctx context.Context, key string, maxLen int64, mode string) *IntCmd {
+	return c.xTrimMode(ctx, key, "maxlen", false, maxLen, 0, mode)
+}
+
+func (c cmdable) XTrimMaxLenApproxMode(ctx context.Context, key string, maxLen, limit int64, mode string) *IntCmd {
+	return c.xTrimMode(ctx, key, "maxlen", true, maxLen, limit, mode)
+}
+
+func (c cmdable) XTrimMinIDMode(ctx context.Context, key string, minID string, mode string) *IntCmd {
+	return c.xTrimMode(ctx, key, "minid", false, minID, 0, mode)
+}
+
+func (c cmdable) XTrimMinIDApproxMode(ctx context.Context, key string, minID string, limit int64, mode string) *IntCmd {
+	return c.xTrimMode(ctx, key, "minid", true, minID, limit, mode)
 }
 
 func (c cmdable) XInfoConsumers(ctx context.Context, key string, group string) *XInfoConsumersCmd {
@@ -445,6 +571,31 @@ func (c cmdable) XInfoStreamFull(ctx context.Context, key string, count int) *XI
 		args = append(args, "count", count)
 	}
 	cmd := NewXInfoStreamFullCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// XCfgSetArgs represents the arguments for the XCFGSET command.
+// Duration is the duration, in seconds, that Redis keeps each idempotent ID.
+// MaxSize is the maximum number of most recent idempotent IDs that Redis keeps for each producer ID.
+type XCfgSetArgs struct {
+	Stream   string
+	Duration int64
+	MaxSize  int64
+}
+
+// XCfgSet sets the idempotent production configuration for a stream.
+// XCFGSET key [IDMP-DURATION duration] [IDMP-MAXSIZE maxsize]
+func (c cmdable) XCfgSet(ctx context.Context, a *XCfgSetArgs) *StatusCmd {
+	args := make([]interface{}, 0, 6)
+	args = append(args, "xcfgset", a.Stream)
+	if a.Duration > 0 {
+		args = append(args, "idmp-duration", a.Duration)
+	}
+	if a.MaxSize > 0 {
+		args = append(args, "idmp-maxsize", a.MaxSize)
+	}
+	cmd := NewStatusCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }

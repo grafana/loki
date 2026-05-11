@@ -290,7 +290,6 @@ type NumericLabelFilter struct {
 	Name  string
 	Value float64
 	Type  LabelFilterType
-	err   error
 }
 
 // NewNumericLabelFilter creates a new label filterer which parses float64 string representation (5.2)
@@ -393,7 +392,12 @@ type LineFilterLabelFilter struct {
 func (s *LineFilterLabelFilter) String() string {
 	if unwrappedFilter, ok := s.Filter.(regexpFilter); ok {
 		rStr := unwrappedFilter.String()
-		str := fmt.Sprintf("%s%s`%s`", s.Matcher.Name, s.Matcher.Type, rStr)
+		if strings.Contains(rStr, "`") {
+			rStr = strconv.Quote(rStr)
+		} else {
+			rStr = fmt.Sprintf("`%s`", rStr)
+		}
+		str := fmt.Sprintf("%s%s%s", s.Name, s.Type, rStr)
 		return str
 	}
 	return s.Matcher.String()

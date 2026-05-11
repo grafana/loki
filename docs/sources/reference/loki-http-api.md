@@ -34,6 +34,10 @@ A [list of clients](../../send-data/) can be found in the clients documentation.
 Requests sent to the query endpoints must use valid LogQL syntax. For more information, see the [LogQL](../../query/) section of the documentation.
 {{< /admonition >}}
 
+{{< admonition type="tip" >}}
+For Python examples of these endpoints, see [Query Loki with Python](../python-client-examples/).
+{{< /admonition >}}
+
 These HTTP endpoints are exposed by the `querier`, `query-frontend`, `read`, and `all` components:
 
 - [`GET /loki/api/v1/query`](#query-logs-at-a-single-point-in-time)
@@ -275,7 +279,7 @@ For information on how to configure Loki, refer to the [OTel Collector topic](ht
 
 <!-- vale Google.Will = NO -->
 {{< admonition type="note" >}}
-When configuring the OpenTelemetry Collector, you must use `endpoint: http://<loki-addr>:3100/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
+When configuring the OpenTelemetry Collector, you must use `endpoint: http://<LOKI_ADDR>/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
 {{< /admonition >}}
 <!-- vale Google.Will = YES -->
 
@@ -451,7 +455,7 @@ To query against your hosted log tenant in Grafana Cloud, use the **User** and *
 
 ```bash
 curl -u "User:$API_TOKEN" \
-  -G -s "<URL-PROVIDED-IN-LOKI-DATA-SOURCE-SETTINGS>/loki/api/v1/query" \
+  -G -s "<URL_PROVIDED_IN_LOKI_DATA_SOURCE_SETTINGS>/loki/api/v1/query" \
   --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
 
@@ -1007,6 +1011,144 @@ The result is a list of patterns detected in the logs, with the number of sample
 The pattern format is the same as the [LogQL](../../query/) pattern filter and parser and can be used in queries for filtering matching logs.
 Each sample is a tuple of timestamp (second) and count.
 
+## Detected fields
+
+```bash
+GET /loki/api/v1/detected_fields
+POST /loki/api/v1/detected_fields
+```
+
+The `/loki/api/v1/detected_fields` endpoint returns fields that Loki has detected in log lines matching the given stream selector, along with the inferred type, estimated cardinality, and the parser that was used to extract the field.
+This endpoint is useful for discovering the structure of your logs without running a full log query.
+
+URL query parameters:
+
+- `query`: The [LogQL](../../query/) stream selector to match. Example: `{app="myapp", environment="dev"}`. This parameter is required.
+- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is optional. If omitted, it defaults to `end - since`.
+- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is optional. If omitted, it defaults to the current server time.
+- `since=<duration>`: Relative time range (for example, `1h`, `5m`). This parameter is optional and is used when `start` is omitted to compute `start = end - since`. If both `start` and `since` are omitted, `since` defaults to `1h`.
+- `step=<duration string or float number of seconds>`: Step between sample windows. This parameter is optional.
+- `line_limit=<integer>`: Maximum number of log lines to scan per shard. Defaults to 100. This parameter is optional.
+- `limit=<integer>`: Maximum number of fields to return. Defaults to 1000. The query parameter `field_limit` is also accepted as an alias for backwards compatibility. This parameter is optional.
+
+You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header.
+
+Response format:
+
+```bash
+{
+  "fields": [
+    {
+      "label": <string>,
+      "type": <string|int|float|boolean|duration|bytes>,
+      "cardinality": <integer>,
+      "parsers": [<string>],
+      "jsonPath": <string, optional>,
+      "sketch": <object, optional>
+    }
+  ],
+  "limit": <integer>
+}
+```
+
+### Examples
+
+This example cURL command
+
+```bash
+curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/detected_fields" \
+  --data-urlencode 'query={app="myapp"}' \
+  --data-urlencode 'start=1609459200000000000' \
+  --data-urlencode 'end=1609462800000000000' | jq
+```
+
+gave this response:
+
+```json
+{
+  "fields": [
+    {
+      "label": "level",
+      "type": "string",
+      "cardinality": 3,
+      "parsers": ["logfmt"]
+    },
+    {
+      "label": "duration",
+      "type": "duration",
+      "cardinality": 152,
+      "parsers": ["logfmt"]
+    },
+    {
+      "label": "status",
+      "type": "int",
+      "cardinality": 5,
+      "parsers": ["logfmt"]
+    }
+  ],
+  "limit": 1000
+}
+```
+
+## Detected field values
+
+```bash
+GET /loki/api/v1/detected_field/{name}/values
+POST /loki/api/v1/detected_field/{name}/values
+```
+
+The `/loki/api/v1/detected_field/{name}/values` endpoint returns the values observed for a specific detected field matching the given stream selector.
+`{name}` is the name of the field to retrieve values for.
+
+URL query parameters:
+
+- `query`: The [LogQL](../../query/) stream selector to match. Example: `{app="myapp", environment="dev"}`. This parameter is required.
+- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is optional. If omitted, it defaults to `end - since`.
+- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is optional. If omitted, it defaults to the current server time.
+- `since=<duration>`: Relative time range (for example, `1h`, `5m`). This parameter is optional and is used when `start` is omitted to compute `start = end - since`. If both `start` and `since` are omitted, `since` defaults to `1h`.
+- `step=<duration string or float number of seconds>`: Step between sample windows. This parameter is optional.
+- `line_limit=<integer>`: Maximum number of log lines to scan per shard. Defaults to 100. This parameter is optional.
+- `limit=<integer>`: Maximum number of values to return. Defaults to 1000. The query parameter `field_limit` is also accepted as an alias. This parameter is optional.
+
+You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header.
+
+Response format:
+
+```bash
+{
+  "values": [
+    <string>,
+    ...
+  ],
+  "limit": <integer>
+}
+```
+
+### Examples
+
+This example cURL command
+
+```bash
+curl -H 'X-Scope-OrgID: <TENANT_ID>' -G -s "http://localhost:3100/loki/api/v1/detected_field/level/values" \
+  --data-urlencode 'query={app="myapp"}' \
+  --data-urlencode 'start=1609459200000000000' \
+  --data-urlencode 'end=1609462800000000000' | jq
+```
+
+gave this response:
+
+```json
+{
+  "values": [
+    "debug",
+    "info",
+    "warn",
+    "error"
+  ],
+  "limit": 1000
+}
+```
+
 ## Stream logs
 
 ```bash
@@ -1234,32 +1376,32 @@ List all rules configured for the authenticated tenant. This endpoint returns a 
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 - name: <string>
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 <namespace2>:
 - name: <string>
   interval: <duration;optional>
   rules:
   - alert: <string>
-      expr: <string>
-      for: <duration>
-      annotations:
+    expr: <string>
+    for: <duration>
+    annotations:
       <annotation_name>: <string>
-      labels:
+    labels:
       <label_name>: <string>
 ```
 
@@ -1384,7 +1526,7 @@ PUT /loki/api/v1/delete
 Create a new delete request for the authenticated tenant.
 The [log entry deletion](../../operations/storage/logs-deletion/) documentation has configuration details.
 
-Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
+Log entry deletion is supported _only_ when TSDB is configured for the index store.
 
 Query parameters:
 
@@ -1424,7 +1566,7 @@ GET /loki/api/v1/delete
 List the existing delete requests for the authenticated tenant.
 The [log entry deletion](../../operations/storage/logs-deletion/) documentation has configuration details.
 
-Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
+Log entry deletion is supported _only_ when TSDB is configured for the index store.
 
 List the existing delete requests using the following API:
 
@@ -1434,14 +1576,19 @@ GET /loki/api/v1/delete
 
 This endpoint returns both processed and unprocessed deletion requests. It does not list canceled requests, as those requests will have been removed from storage.
 
+Query parameters:
+
+- `start=<rfc3339 | unix_seconds_timestamp>`: Optional. A timestamp that identifies the start of the time range. Only deletion requests that overlap with this time range will be returned. Must be provided together with `end`.
+- `end=<rfc3339 | unix_seconds_timestamp>`: Optional. A timestamp that identifies the end of the time range. Only deletion requests that overlap with this time range will be returned. Must be provided together with `start`.
+
 #### Examples
 
 Example cURL command:
 
 ```bash
 curl -X GET \
-  <compactor_addr>/loki/api/v1/delete \
-  -H 'X-Scope-OrgID: <orgid>'
+  <COMPACTOR_ADDR>/loki/api/v1/delete \
+  -H 'X-Scope-OrgID: <ORG_ID>'
 ```
 
 The same example deletion request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable. The token must be for an access policy with `logs:delete` scope for the tenant specified in the user field.
@@ -1449,7 +1596,7 @@ The same example deletion request for Grafana Enterprise Logs uses Basic Authent
 ```bash
 curl -u "Tenant1:$API_TOKEN" \
   -X GET \
-  <compactor_addr>/loki/api/v1/delete
+  <COMPACTOR_ADDR>/loki/api/v1/delete
 ```
 
 ### Request cancellation of a delete request
@@ -1463,7 +1610,7 @@ The [log entry deletion](../../operations/storage/logs-deletion/) documentation 
 
 Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
 
-Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
+Log entry deletion is supported _only_ when TSDB is configured for the index store.
 
 Cancel a delete request using this compactor endpoint:
 
@@ -1487,8 +1634,8 @@ Example cURL command:
 
 ```bash
 curl -X DELETE \
-  '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>' \
-  -H 'X-Scope-OrgID: <tenant-id>'
+  '<COMPACTOR_ADDR>/loki/api/v1/delete?request_id=<REQUEST_ID>' \
+  -H 'X-Scope-OrgID: <TENANT_ID>'
 ```
 
 The same example deletion cancellation request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable. The token must be for an access policy with `logs:delete` scope for the tenant specified in the user field.
@@ -1496,7 +1643,7 @@ The same example deletion cancellation request for Grafana Enterprise Logs uses 
 ```bash
 curl -u "Tenant1:$API_TOKEN" \
   -X DELETE \
-  '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>'
+  '<COMPACTOR_ADDR>/loki/api/v1/delete?request_id=<REQUEST_ID>'
 ```
 
 ## Format a LogQL query

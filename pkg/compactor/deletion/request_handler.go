@@ -105,6 +105,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	)
 
 	dm.metrics.deleteRequestsReceivedTotal.WithLabelValues(userID).Inc()
+	w.Header().Set("X-Delete-Request-ID", requestID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -144,7 +145,27 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 	}
 
 	forQuerytimeFiltering := r.URL.Query().Get(ForQuerytimeFilteringQueryParam) == "true"
-	deleteRequests, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering)
+
+	// optional time range overlap filtering
+	var timeRange *TimeRange
+	if sp, ep := r.URL.Query().Get("start"), r.URL.Query().Get("end"); sp != "" && ep != "" {
+		st, err := parseTime(sp)
+		if err != nil {
+			http.Error(w, "invalid start time: require unix seconds or RFC3339 format", http.StatusBadRequest)
+		}
+
+		et, err := parseTime(ep)
+		if err != nil {
+			http.Error(w, "invalid end time: require unix seconds or RFC3339 format", http.StatusBadRequest)
+		}
+
+		timeRange = &TimeRange{
+			Start: model.Time(st),
+			End:   model.Time(et),
+		}
+	}
+
+	deleteRequests, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering, timeRange)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -279,16 +300,6 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func filterProcessed(reqs []deleteRequest) []deleteRequest {
-	var unprocessed []deleteRequest
-	for _, r := range reqs {
-		if r.Status == deletionproto.StatusReceived {
-			unprocessed = append(unprocessed, r)
-		}
-	}
-	return unprocessed
 }
 
 // GetCacheGenerationNumberHandler handles requests for a user's cache generation number

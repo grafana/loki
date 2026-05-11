@@ -54,7 +54,7 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 
 	switch p := p.(type) {
 	case dataset.EqualPredicate:
-		info := p.Column.ColumnInfo()
+		info := p.Column.ColumnDesc()
 		if info.Statistics == nil || info.Statistics.CardinalityCount == 0 {
 			return getBaseSelectivity(p)
 		}
@@ -75,7 +75,7 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 		return selectivityScore(matchingRows / float64(info.RowsCount))
 
 	case dataset.InPredicate:
-		info := p.Column.ColumnInfo()
+		info := p.Column.ColumnDesc()
 		if info.Statistics == nil || info.Statistics.CardinalityCount == 0 {
 			return getBaseSelectivity(p)
 		}
@@ -106,7 +106,7 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 
 	case dataset.GreaterThanPredicate:
 		var (
-			info               = p.Column.ColumnInfo()
+			info               = p.Column.ColumnDesc()
 			minValue, maxValue dataset.Value
 		)
 
@@ -131,7 +131,7 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 
 	case dataset.LessThanPredicate:
 		var (
-			info               = p.Column.ColumnInfo()
+			info               = p.Column.ColumnDesc()
 			minValue, maxValue dataset.Value
 		)
 
@@ -205,15 +205,15 @@ func getRowEvaluationCost(p dataset.Predicate) int64 {
 	dataset.WalkPredicate(p, func(p dataset.Predicate) bool {
 		switch p := p.(type) {
 		case dataset.EqualPredicate:
-			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
+			columnSizes[p.Column] = int64(p.Column.ColumnDesc().UncompressedSize)
 		case dataset.InPredicate:
-			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
+			columnSizes[p.Column] = int64(p.Column.ColumnDesc().UncompressedSize)
 		case dataset.GreaterThanPredicate:
-			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
+			columnSizes[p.Column] = int64(p.Column.ColumnDesc().UncompressedSize)
 		case dataset.LessThanPredicate:
-			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
+			columnSizes[p.Column] = int64(p.Column.ColumnDesc().UncompressedSize)
 		case dataset.FuncPredicate:
-			columnSizes[p.Column] = int64(p.Column.ColumnInfo().UncompressedSize)
+			columnSizes[p.Column] = int64(p.Column.ColumnDesc().UncompressedSize)
 		}
 		return true
 	})

@@ -14,7 +14,6 @@ type HeapIterator[T any] struct {
 
 	zero  T // zero value of T
 	cache T
-	ok    bool
 }
 
 func NewHeapIterForSeriesWithBloom(queriers ...iter.PeekIterator[*SeriesWithBlooms]) *HeapIterator[*SeriesWithBlooms] {

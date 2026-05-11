@@ -11,7 +11,6 @@ import (
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
 
 // MetricSlice logically represents a slice of Metric.
@@ -22,20 +21,19 @@ import (
 // Must use NewMetricSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type MetricSlice struct {
-	orig  *[]*otlpmetrics.Metric
+	orig  *[]*internal.Metric
 	state *internal.State
 }
 
-func newMetricSlice(orig *[]*otlpmetrics.Metric, state *internal.State) MetricSlice {
+func newMetricSlice(orig *[]*internal.Metric, state *internal.State) MetricSlice {
 	return MetricSlice{orig: orig, state: state}
 }
 
-// NewMetricSlice creates a MetricSlice with 0 elements.
+// NewMetricSlice creates a MetricSliceWrapper with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewMetricSlice() MetricSlice {
-	orig := []*otlpmetrics.Metric(nil)
-	state := internal.StateMutable
-	return newMetricSlice(&orig, &state)
+	orig := []*internal.Metric(nil)
+	return newMetricSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -91,7 +89,7 @@ func (es MetricSlice) EnsureCapacity(newCap int) {
 		return
 	}
 
-	newOrig := make([]*otlpmetrics.Metric, len(*es.orig), newCap)
+	newOrig := make([]*internal.Metric, len(*es.orig), newCap)
 	copy(newOrig, *es.orig)
 	*es.orig = newOrig
 }
@@ -100,7 +98,7 @@ func (es MetricSlice) EnsureCapacity(newCap int) {
 // It returns the newly added Metric.
 func (es MetricSlice) AppendEmpty() Metric {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, &otlpmetrics.Metric{})
+	*es.orig = append(*es.orig, internal.NewMetric())
 	return es.At(es.Len() - 1)
 }
 
@@ -129,7 +127,9 @@ func (es MetricSlice) RemoveIf(f func(Metric) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
+			internal.DeleteMetric((*es.orig)[i], true)
 			(*es.orig)[i] = nil
+
 			continue
 		}
 		if newLen == i {
@@ -138,6 +138,7 @@ func (es MetricSlice) RemoveIf(f func(Metric) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
+		// Cannot delete here since we just move the data(or pointer to data) to a different position in the slice.
 		(*es.orig)[i] = nil
 		newLen++
 	}
@@ -147,7 +148,10 @@ func (es MetricSlice) RemoveIf(f func(Metric) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es MetricSlice) CopyTo(dest MetricSlice) {
 	dest.state.AssertMutable()
-	*dest.orig = internal.CopyOrigMetricSlice(*dest.orig, *es.orig)
+	if es.orig == dest.orig {
+		return
+	}
+	*dest.orig = internal.CopyMetricPtrSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the Metric elements within MetricSlice given the

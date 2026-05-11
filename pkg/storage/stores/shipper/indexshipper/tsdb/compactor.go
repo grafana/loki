@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -115,21 +116,30 @@ func (t *tableCompactor) CompactTable() error {
 
 		return nil
 	})
-	if err != nil {
-		return err
-	}
 
+	// Register cleanup before checking error to prevent FD leaks when
+	// ForEachJob partially succeeds: some goroutines may have already
+	// opened Index objects (holding mmap file descriptors) before another
+	// goroutine's failure cancels the group.
 	defer func() {
 		for i, idx := range multiTenantIndices {
-			if err := idx.Close(); err != nil {
-				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to close multi-tenant source index file", "path", downloadPaths[i], "err", err)
+			if idx != nil {
+				if err := idx.Close(); err != nil {
+					level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to close multi-tenant source index file", "path", downloadPaths[i], "err", err)
+				}
 			}
 
-			if err := os.Remove(downloadPaths[i]); err != nil {
-				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadPaths[i], "err", err)
+			if downloadPaths[i] != "" {
+				if err := os.Remove(downloadPaths[i]); err != nil {
+					level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadPaths[i], "err", err)
+				}
 			}
 		}
 	}()
+
+	if err != nil {
+		return err
+	}
 
 	var multiTenantIndex Index = NoopIndex{}
 	if len(multiTenantIndices) > 0 {
@@ -205,6 +215,42 @@ func (t *tableCompactor) CompactTable() error {
 	return nil
 }
 
+// processSourceIndex processes a single source index file by downloading it,
+// reading its series, and adding them to the builder. The file is closed and removed
+// using defer statements to ensure cleanup happens even if errors occur.
+func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sourceIndexSet compactor.IndexSet, builder *Builder) error {
+	path, err := sourceIndexSet.GetSourceFile(sourceIndex)
+	if err != nil {
+		return err
+	}
+
+	// Ensure the downloaded file is removed when this function returns
+	defer func() {
+		if removeErr := os.Remove(path); removeErr != nil {
+			level.Error(sourceIndexSet.GetLogger()).Log("msg", "error removing source index file", "err", removeErr)
+		}
+	}()
+
+	indexFile, err := OpenShippableTSDB(path)
+	if err != nil {
+		return err
+	}
+
+	// Ensure file is closed when this function returns
+	defer func() {
+		if closeErr := indexFile.Close(); closeErr != nil {
+			level.Error(sourceIndexSet.GetLogger()).Log("msg", "failed to close index file", "err", closeErr)
+		}
+	}()
+
+	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
+		builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
+		return false
+	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+
+	return err
+}
+
 // setupBuilder creates a Builder for a single user.
 // It combines the users index from multiTenantIndexes and its existing compacted index(es)
 func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index) (*Builder, error) {
@@ -224,33 +270,7 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 
 	// download all the existing compacted indexes and add them to the builder
 	for _, sourceIndex := range sourceIndexes {
-		path, err := sourceIndexSet.GetSourceFile(sourceIndex)
-		if err != nil {
-			return nil, err
-		}
-
-		defer func() {
-			if err := os.Remove(path); err != nil {
-				level.Error(sourceIndexSet.GetLogger()).Log("msg", "error removing source index file", "err", err)
-			}
-		}()
-
-		indexFile, err := OpenShippableTSDB(path)
-		if err != nil {
-			return nil, err
-		}
-
-		defer func() {
-			if err := indexFile.Close(); err != nil {
-				level.Error(sourceIndexSet.GetLogger()).Log("msg", "failed to close index file", "err", err)
-			}
-		}()
-
-		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
-			builder.AddSeries(lbls.Copy(), fp, chks)
-			return false
-		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
-		if err != nil {
+		if err := processSourceIndex(ctx, sourceIndex, sourceIndexSet, builder); err != nil {
 			return nil, err
 		}
 	}
@@ -340,7 +360,7 @@ func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labe
 
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
 	b := labels.NewBuilder(lbls)
-	b.Del(labels.MetricName)
+	b.Del(model.MetricNameLabel)
 	ls := b.Labels().String()
 
 	c.indexChunks[ls] = append(c.indexChunks[ls], tsdbindex.ChunkMeta{
@@ -365,20 +385,49 @@ func (c *compactedIndex) CleanupSeries(_ []byte, lbls labels.Labels) error {
 	return nil
 }
 
-func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error {
+// RemoveChunk notes details of the chunk to remove. Returns true/false for existence of the chunk.
+func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) (bool, error) {
 	chk, err := chunk.ParseExternalKey(string(userID), chunkID)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	seriesID := labels.String()
+	chunkMeta := tsdbindex.ChunkMeta{
+		Checksum: chk.Checksum,
+		MinTime:  int64(from),
+		MaxTime:  int64(through),
+	}
+	hasChunk, err := c.builder.HasChunk(seriesID, chunkMeta)
+	if err != nil {
+		return false, err
+	}
+	if !hasChunk {
+		return false, nil
+	}
+
 	c.deleteChunks[seriesID] = append(c.deleteChunks[seriesID], tsdbindex.ChunkMeta{
 		Checksum: chk.Checksum,
 		MinTime:  int64(from),
 		MaxTime:  int64(through),
 	})
 
-	return nil
+	return true, nil
+}
+
+func (c *compactedIndex) ChunkExists(_ []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
+	seriesID := lbls.String()
+	chunkMeta := tsdbindex.ChunkMeta{
+		Checksum: chunkRef.Checksum,
+		MinTime:  int64(chunkRef.From),
+		MaxTime:  int64(chunkRef.Through),
+	}
+	hasChunk, err := c.builder.HasChunk(seriesID, chunkMeta)
+	if err != nil {
+		return false, err
+	}
+
+	return hasChunk, nil
 }
 
 func (c *compactedIndex) Cleanup() {}
@@ -412,7 +461,7 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 	// cleanup any empty streams due to chunk removals above
 	for seriesID, stream := range c.builder.streams {
 		if len(stream.chunks) == 0 {
-			delete(c.indexChunks, seriesID)
+			delete(c.builder.streams, seriesID)
 		}
 	}
 

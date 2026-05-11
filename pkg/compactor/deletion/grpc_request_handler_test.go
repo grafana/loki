@@ -33,7 +33,7 @@ func server(t *testing.T, h *GRPCRequestHandler) (compactor_client_grpc.Compacto
 	compactor_client_grpc.RegisterCompactorServer(baseServer, h)
 	go func() {
 		if err := baseServer.Serve(lis); err != nil {
-			t.Logf("Failed to serve: %v", err)
+			require.NoError(t, err)
 		}
 	}()
 
@@ -45,8 +45,8 @@ func server(t *testing.T, h *GRPCRequestHandler) (compactor_client_grpc.Compacto
 	require.NoError(t, err)
 
 	closer := func() {
-		require.NoError(t, lis.Close())
 		baseServer.GracefulStop()
+		require.NoError(t, lis.Close())
 	}
 
 	client := compactor_client_grpc.NewCompactorClient(conn)

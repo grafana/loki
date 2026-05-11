@@ -183,10 +183,9 @@ func NewCluster(opts ...Opt) (*Cluster, error) {
 			bsIdx: len(c.bs),
 		}
 		c.bs = append(c.bs, b)
-		go b.listen()
+		defer func() { go b.listen() }()
 	}
 	c.controller = c.bs[len(c.bs)-1]
-	go c.run()
 
 	seedTopics := make(map[string]int32)
 	for _, sts := range cfg.seedTopics {
@@ -201,6 +200,9 @@ func NewCluster(opts ...Opt) (*Cluster, error) {
 	for t, p := range seedTopics {
 		c.data.mkt(t, int(p), -1, nil)
 	}
+
+	go c.run()
+
 	return c, nil
 }
 
@@ -440,7 +442,7 @@ outer:
 // Control is a function to call on any client request the cluster handles.
 //
 // If the control function returns true, then either the response is written
-// back to the client or, if there the control function returns an error, the
+// back to the client or, if the control function returns an error, the
 // client connection is closed. If both returns are nil, then the cluster will
 // loop continuing to read from the client and the client will likely have a
 // read timeout at some point.
@@ -465,7 +467,7 @@ func (c *Cluster) Control(fn func(kmsg.Request) (kmsg.Response, error, bool)) {
 // handles.
 //
 // If the control function returns true, then either the response is written
-// back to the client or, if there the control function returns an error, the
+// back to the client or, if the control function returns an error, the
 // client connection is closed. If both returns are nil, then the cluster will
 // loop continuing to read from the client and the client will likely have a
 // read timeout at some point.
@@ -978,6 +980,20 @@ func (c *Cluster) CoordinatorFor(key string) int32 {
 	return n
 }
 
+// LeaderFor returns the node ID of the topic partition. If the partition
+// does not exist, this returns -1.
+func (c *Cluster) LeaderFor(topic string, partition int32) int32 {
+	n := int32(-1)
+	c.admin(func() {
+		pd, ok := c.data.tps.getp(topic, partition)
+		if !ok {
+			return
+		}
+		n = pd.leader.node
+	})
+	return n
+}
+
 // RehashCoordinators simulates group and transacational ID coordinators moving
 // around. All group and transactional IDs are rekeyed. This forces clients to
 // reload coordinators.
@@ -1080,5 +1096,18 @@ func (c *Cluster) shufflePartitionsLocked() {
 		}
 		p.leader = leader
 		p.epoch++
+	})
+}
+
+// SetFollowers sets the node IDs of brokers that can also serve fetch requests
+// for a partition. Setting followers to an empty or nil slice reverts to the
+// default of only the leader being able to serve fetch requests.
+func (c *Cluster) SetFollowers(topic string, partition int32, followers []int32) {
+	c.admin(func() {
+		pd, ok := c.data.tps.getp(topic, partition)
+		if !ok {
+			return
+		}
+		pd.followers = append([]int32(nil), followers...)
 	})
 }

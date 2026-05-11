@@ -11,7 +11,6 @@ import (
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
 )
 
 // SpanSlice logically represents a slice of Span.
@@ -22,20 +21,19 @@ import (
 // Must use NewSpanSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type SpanSlice struct {
-	orig  *[]*otlptrace.Span
+	orig  *[]*internal.Span
 	state *internal.State
 }
 
-func newSpanSlice(orig *[]*otlptrace.Span, state *internal.State) SpanSlice {
+func newSpanSlice(orig *[]*internal.Span, state *internal.State) SpanSlice {
 	return SpanSlice{orig: orig, state: state}
 }
 
-// NewSpanSlice creates a SpanSlice with 0 elements.
+// NewSpanSlice creates a SpanSliceWrapper with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewSpanSlice() SpanSlice {
-	orig := []*otlptrace.Span(nil)
-	state := internal.StateMutable
-	return newSpanSlice(&orig, &state)
+	orig := []*internal.Span(nil)
+	return newSpanSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -91,7 +89,7 @@ func (es SpanSlice) EnsureCapacity(newCap int) {
 		return
 	}
 
-	newOrig := make([]*otlptrace.Span, len(*es.orig), newCap)
+	newOrig := make([]*internal.Span, len(*es.orig), newCap)
 	copy(newOrig, *es.orig)
 	*es.orig = newOrig
 }
@@ -100,7 +98,7 @@ func (es SpanSlice) EnsureCapacity(newCap int) {
 // It returns the newly added Span.
 func (es SpanSlice) AppendEmpty() Span {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, &otlptrace.Span{})
+	*es.orig = append(*es.orig, internal.NewSpan())
 	return es.At(es.Len() - 1)
 }
 
@@ -129,7 +127,9 @@ func (es SpanSlice) RemoveIf(f func(Span) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
+			internal.DeleteSpan((*es.orig)[i], true)
 			(*es.orig)[i] = nil
+
 			continue
 		}
 		if newLen == i {
@@ -138,6 +138,7 @@ func (es SpanSlice) RemoveIf(f func(Span) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
+		// Cannot delete here since we just move the data(or pointer to data) to a different position in the slice.
 		(*es.orig)[i] = nil
 		newLen++
 	}
@@ -147,7 +148,10 @@ func (es SpanSlice) RemoveIf(f func(Span) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es SpanSlice) CopyTo(dest SpanSlice) {
 	dest.state.AssertMutable()
-	*dest.orig = internal.CopyOrigSpanSlice(*dest.orig, *es.orig)
+	if es.orig == dest.orig {
+		return
+	}
+	*dest.orig = internal.CopySpanPtrSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the Span elements within SpanSlice given the

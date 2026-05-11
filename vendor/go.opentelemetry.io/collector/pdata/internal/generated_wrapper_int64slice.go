@@ -6,47 +6,28 @@
 
 package internal
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type Int64Slice struct {
+type Int64SliceWrapper struct {
 	orig  *[]int64
 	state *State
 }
 
-func GetOrigInt64Slice(ms Int64Slice) *[]int64 {
+func GetInt64SliceOrig(ms Int64SliceWrapper) *[]int64 {
 	return ms.orig
 }
 
-func GetInt64SliceState(ms Int64Slice) *State {
+func GetInt64SliceState(ms Int64SliceWrapper) *State {
 	return ms.state
 }
 
-func NewInt64Slice(orig *[]int64, state *State) Int64Slice {
-	return Int64Slice{orig: orig, state: state}
+func NewInt64SliceWrapper(orig *[]int64, state *State) Int64SliceWrapper {
+	return Int64SliceWrapper{orig: orig, state: state}
 }
 
-func GenerateTestInt64Slice() Int64Slice {
-	orig := GenerateOrigTestInt64Slice()
-	state := StateMutable
-	return NewInt64Slice(&orig, &state)
+func GenTestInt64SliceWrapper() Int64SliceWrapper {
+	orig := []int64{1, 2, 3}
+	return NewInt64SliceWrapper(&orig, NewState())
 }
 
-func CopyOrigInt64Slice(dst, src []int64) []int64 {
-	return append(dst[:0], src...)
-}
-
-func GenerateOrigTestInt64Slice() []int64 {
+func GenTestInt64Slice() []int64 {
 	return []int64{1, 2, 3}
-}
-
-// UnmarshalJSONOrigInt64Slice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigInt64Slice(iter *json.Iterator) []int64 {
-	var orig []int64
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, iter.ReadInt64())
-		return true
-	})
-	return orig
 }

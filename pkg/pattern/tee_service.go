@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
@@ -45,7 +44,6 @@ type TeeService struct {
 
 	flushQueue chan clientRequest
 
-	bufferPool   *pool.Pool
 	buffersMutex *sync.Mutex
 	buffers      map[string][]distributor.KeyedStream
 }
@@ -419,7 +417,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 }
 
 // Duplicate Implements distributor.Tee which is used to tee distributor requests to pattern ingesters.
-func (ts *TeeService) Duplicate(tenant string, streams []distributor.KeyedStream) {
+func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []distributor.KeyedStream, _ *distributor.PushTracker) {
 	if !ts.cfg.Enabled {
 		return
 	}
@@ -446,4 +444,8 @@ func (ts *TeeService) Duplicate(tenant string, streams []distributor.KeyedStream
 		ts.buffers[tenant] = append(ts.buffers[tenant], stream)
 		ts.buffersMutex.Unlock()
 	}
+}
+
+func (ts *TeeService) Register(_ context.Context, _ string, _ []distributor.KeyedStream, _ *distributor.PushTracker) {
+	// we don't register pending streams to avoid blocking the distributor due to pattern ingesters.
 }

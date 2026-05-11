@@ -44,13 +44,13 @@ func Setup() (loki.Config, services.Service, string, error) {
 		return c.Config, nil, "", fmt.Errorf("failed to ensure directory %s: %w", dir, err)
 	}
 
-	c.Config.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	c.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	util_log.InitLogger(&c.Server, prometheus.DefaultRegisterer, false)
 
-	c.Config.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory = filepath.Join(dir, "tsdb-active")
-	c.Config.StorageConfig.TSDBShipperConfig.CacheLocation = filepath.Join(dir, "tsdb-cache")
+	c.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory = filepath.Join(dir, "tsdb-active")
+	c.StorageConfig.TSDBShipperConfig.CacheLocation = filepath.Join(dir, "tsdb-cache")
 
-	svc, err := moduleManager(&c.Config.Server)
+	svc, err := moduleManager(&c.Server)
 	if err != nil {
 		return c.Config, nil, "", err
 	}

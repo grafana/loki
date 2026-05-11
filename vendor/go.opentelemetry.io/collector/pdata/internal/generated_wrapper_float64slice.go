@@ -6,47 +6,28 @@
 
 package internal
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
-type Float64Slice struct {
+type Float64SliceWrapper struct {
 	orig  *[]float64
 	state *State
 }
 
-func GetOrigFloat64Slice(ms Float64Slice) *[]float64 {
+func GetFloat64SliceOrig(ms Float64SliceWrapper) *[]float64 {
 	return ms.orig
 }
 
-func GetFloat64SliceState(ms Float64Slice) *State {
+func GetFloat64SliceState(ms Float64SliceWrapper) *State {
 	return ms.state
 }
 
-func NewFloat64Slice(orig *[]float64, state *State) Float64Slice {
-	return Float64Slice{orig: orig, state: state}
+func NewFloat64SliceWrapper(orig *[]float64, state *State) Float64SliceWrapper {
+	return Float64SliceWrapper{orig: orig, state: state}
 }
 
-func GenerateTestFloat64Slice() Float64Slice {
-	orig := GenerateOrigTestFloat64Slice()
-	state := StateMutable
-	return NewFloat64Slice(&orig, &state)
+func GenTestFloat64SliceWrapper() Float64SliceWrapper {
+	orig := []float64{1.1, 2.2, 3.3}
+	return NewFloat64SliceWrapper(&orig, NewState())
 }
 
-func CopyOrigFloat64Slice(dst, src []float64) []float64 {
-	return append(dst[:0], src...)
-}
-
-func GenerateOrigTestFloat64Slice() []float64 {
+func GenTestFloat64Slice() []float64 {
 	return []float64{1.1, 2.2, 3.3}
-}
-
-// UnmarshalJSONOrigFloat64Slice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigFloat64Slice(iter *json.Iterator) []float64 {
-	var orig []float64
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, iter.ReadFloat64())
-		return true
-	})
-	return orig
 }

@@ -102,47 +102,47 @@ func (ns *NamedStores) Exists(name string) bool {
 func (ns *NamedStores) OverrideConfig(storeCfg *Config, namedStore string) error {
 	storeType, ok := ns.LookupStoreType(namedStore)
 	if !ok {
-		return fmt.Errorf("Unrecognized named storage config %s", namedStore)
+		return fmt.Errorf("unrecognized named storage config %s", namedStore)
 	}
 
 	switch storeType {
 	case GCS:
 		nsCfg, ok := ns.GCS[namedStore]
 		if !ok {
-			return fmt.Errorf("Unrecognized named gcs storage config %s", namedStore)
+			return fmt.Errorf("unrecognized named gcs storage config %s", namedStore)
 		}
 
 		storeCfg.GCS = (gcs.Config)(nsCfg)
 	case S3:
 		nsCfg, ok := ns.S3[namedStore]
 		if !ok {
-			return fmt.Errorf("Unrecognized named s3 storage config %s", namedStore)
+			return fmt.Errorf("unrecognized named s3 storage config %s", namedStore)
 		}
 
 		storeCfg.S3 = (s3.Config)(nsCfg)
 	case Filesystem:
 		nsCfg, ok := ns.Filesystem[namedStore]
 		if !ok {
-			return fmt.Errorf("Unrecognized named filesystem storage config %s", namedStore)
+			return fmt.Errorf("unrecognized named filesystem storage config %s", namedStore)
 		}
 
 		storeCfg.Filesystem = (filesystem.Config)(nsCfg)
 	case Azure:
 		nsCfg, ok := ns.Azure[namedStore]
 		if !ok {
-			return fmt.Errorf("Unrecognized named azure storage config %s", namedStore)
+			return fmt.Errorf("unrecognized named azure storage config %s", namedStore)
 		}
 
 		storeCfg.Azure = (azure.Config)(nsCfg)
 	case Swift:
 		nsCfg, ok := ns.Swift[namedStore]
 		if !ok {
-			return fmt.Errorf("Unrecognized named swift storage config %s", namedStore)
+			return fmt.Errorf("unrecognized named swift storage config %s", namedStore)
 		}
 
 		storeCfg.Swift = (swift.Config)(nsCfg)
 	default:
-		return fmt.Errorf("Unrecognized named storage type: %s", storeType)
+		return fmt.Errorf("unrecognized named storage type: %s", storeType)
 	}
 
 	return nil

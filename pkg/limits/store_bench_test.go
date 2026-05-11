@@ -45,7 +45,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 	}
 
 	for _, bm := range benchmarks {
-		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions, prometheus.NewRegistry())
+		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions, &mockLimits{}, prometheus.NewRegistry())
 		require.NoError(b, err)
 		b.Run(fmt.Sprintf("%s_create", bm.name), func(b *testing.B) {
 			now := time.Now()
@@ -62,7 +62,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				_, _, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
+				_, _, _, err := s.UpdateCond(tenant, metadata, updateTime)
 				require.NoError(b, err)
 			}
 		})
@@ -82,12 +82,12 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 					TotalSize:  1500,
 				}}
 
-				_, _, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
+				_, _, _, err := s.UpdateCond(tenant, metadata, updateTime)
 				require.NoError(b, err)
 			}
 		})
 
-		s, err = newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions, prometheus.NewRegistry())
+		s, err = newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, bm.numPartitions, &mockLimits{}, prometheus.NewRegistry())
 		require.NoError(b, err)
 
 		// Run parallel benchmark
@@ -106,7 +106,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					_, _, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
+					_, _, _, err := s.UpdateCond(tenant, metadata, updateTime)
 					require.NoError(b, err)
 					i++
 				}
@@ -128,7 +128,7 @@ func BenchmarkUsageStore_Store(b *testing.B) {
 						TotalSize:  1500,
 					}}
 
-					_, _, _, err := s.UpdateCond(tenant, metadata, updateTime, nil)
+					_, _, _, err := s.UpdateCond(tenant, metadata, updateTime)
 					require.NoError(b, err)
 					i++
 				}

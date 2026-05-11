@@ -255,7 +255,7 @@ func (v BlobSignatureValues) SignWithUserDelegation(userDelegationCredential *Us
 		signature: signature,
 	}
 
-	//User delegation SAS specific parameters
+	// User delegation SAS specific parameters
 	p.signedOID = *udk.SignedOID
 	p.signedTID = *udk.SignedTID
 	p.signedStart = *udk.SignedStart
@@ -272,7 +272,7 @@ func getCanonicalName(account string, containerName string, blobName string, dir
 	// Blob:      "/blob/account/containername/blobname"
 	elements := []string{"/blob/", account, "/", containerName}
 	if blobName != "" {
-		elements = append(elements, "/", strings.Replace(blobName, "\\", "/", -1))
+		elements = append(elements, "/", strings.ReplaceAll(blobName, "\\", "/"))
 	} else if directoryName != "" {
 		elements = append(elements, "/", directoryName)
 	}

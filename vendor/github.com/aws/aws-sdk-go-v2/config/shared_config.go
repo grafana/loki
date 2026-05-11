@@ -6,15 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config/internal/ini"
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
-	"github.com/aws/aws-sdk-go-v2/internal/ini"
 	"github.com/aws/aws-sdk-go-v2/internal/shareddefaults"
 	"github.com/aws/smithy-go/logging"
 	smithyrequestcompression "github.com/aws/smithy-go/private/requestcompression"
@@ -123,6 +122,10 @@ const (
 	responseChecksumValidationKey = "response_checksum_validation"
 	checksumWhenSupported         = "when_supported"
 	checksumWhenRequired          = "when_required"
+
+	authSchemePreferenceKey = "auth_scheme_preference"
+
+	loginSessionKey = "login_session"
 )
 
 // defaultSharedConfigProfile allows for swapping the default profile for testing
@@ -357,6 +360,12 @@ type SharedConfig struct {
 
 	// ResponseChecksumValidation indicates if the response checksum should be validated
 	ResponseChecksumValidation aws.ResponseChecksumValidation
+
+	// Priority list of preferred auth scheme names (e.g. sigv4a).
+	AuthSchemePreference []string
+
+	// Session ARN from an `aws login` session.
+	LoginSession string
 }
 
 func (c SharedConfig) getDefaultsMode(ctx context.Context) (value aws.DefaultsMode, ok bool, err error) {
@@ -492,7 +501,7 @@ func (c SharedConfig) getCustomCABundle(context.Context) (io.Reader, bool, error
 		return nil, false, nil
 	}
 
-	b, err := ioutil.ReadFile(c.CustomCABundle)
+	b, err := os.ReadFile(c.CustomCABundle)
 	if err != nil {
 		return nil, false, err
 	}
@@ -890,6 +899,10 @@ func mergeSections(dst *ini.Sections, src ini.Sections) error {
 			ssoRegionKey,
 			ssoRoleNameKey,
 			ssoStartURLKey,
+
+			authSchemePreferenceKey,
+
+			loginSessionKey,
 		}
 		for i := range stringKeys {
 			if err := mergeStringKey(&srcSection, &dstSection, sectionName, stringKeys[i]); err != nil {
@@ -1165,6 +1178,10 @@ func (c *SharedConfig) setFromIniSection(profile string, section ini.Section) er
 	}
 
 	updateString(&c.ServicesSectionName, section, servicesSectionKey)
+
+	c.AuthSchemePreference = toAuthSchemePreferenceList(section.String(authSchemePreferenceKey))
+
+	updateString(&c.LoginSession, section, loginSessionKey)
 
 	return nil
 }
@@ -1677,4 +1694,11 @@ func updateUseFIPSEndpoint(dst *aws.FIPSEndpointState, section ini.Section, key 
 	}
 
 	return
+}
+
+func (c SharedConfig) getAuthSchemePreference() ([]string, bool) {
+	if len(c.AuthSchemePreference) > 0 {
+		return c.AuthSchemePreference, true
+	}
+	return nil, false
 }

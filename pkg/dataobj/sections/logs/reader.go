@@ -7,16 +7,21 @@ import (
 	_ "io" // Used for documenting io.EOF.
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
+	columnarv2 "github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+var tracer = otel.Tracer("pkg/dataobj/sections/logs")
 
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
@@ -30,12 +35,6 @@ type ReaderOptions struct {
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
-
-	// PageCacheSize is the total size of additional pages to prefetch into the
-	// reader that the reader may read on future calls. Pages are prefetched any
-	// time a new page is required up to this size. Setting to 0 disables
-	// prefetching additional pages.
-	PageCacheSize int
 }
 
 // Validate returns an error if the opts is not valid. ReaderOptions are only
@@ -120,13 +119,20 @@ type Reader struct {
 	schema *arrow.Schema // Set on [Reader.Reset].
 
 	ready bool
-	inner *dataset.Reader
-	buf   []dataset.Row
-	stats dataset.ReaderStats
+	inner *columnar.ReaderAdapter
+
+	alloc *memoryv2.Allocator
+
+	// readSpan for recording observations, it is created once during init
+	// and is passed down via context so that inner readers can record
+	// observations to it.
+	readSpan trace.Span
 }
 
+var errReaderNotOpen = errors.New("reader not opened")
+
 // NewReader creates a new Reader from the provided options. Options are not
-// validated until the first call to [Reader.Read].
+// validated until the first call to [Reader.Open].
 func NewReader(opts ReaderOptions) *Reader {
 	var r Reader
 	r.Reset(opts)
@@ -141,6 +147,23 @@ func NewReader(opts ReaderOptions) *Reader {
 //
 // The returned Schema must not be modified.
 func (r *Reader) Schema() *arrow.Schema { return r.schema }
+
+// Open initializes Reader resources.
+//
+// Open must be called before [Reader.Read]. Open is safe to call multiple
+// times.
+func (r *Reader) Open(ctx context.Context) error {
+	if r.ready {
+		return nil
+	}
+
+	if err := r.init(ctx); err != nil {
+		_ = r.Close()
+		return fmt.Errorf("initializing Reader: %w", err)
+	}
+
+	return nil
+}
 
 // Read reads the batch of rows from the section, returning them as an Arrow
 // record.
@@ -159,66 +182,37 @@ func (r *Reader) Schema() *arrow.Schema { return r.schema }
 //
 // When a record is returned, it will match the schema specified by
 // [Reader.Schema]. These records must always be released after use.
-func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) {
+func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
-		err := r.init(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("initializing Reader: %w", err)
-		}
+		return nil, errReaderNotOpen
 	}
 
-	r.buf = slicegrow.GrowToCap(r.buf, batchSize)
-	r.buf = r.buf[:batchSize]
+	if r.readSpan == nil {
+		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "logs.Reader.Read")
+	} else {
+		// inject span into context for inner readers to record observations.
+		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
+	}
 
-	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
-	defer builder.Release()
+	defer r.alloc.Reclaim()
 
-	n, readErr := r.inner.Read(dataset.WithStats(ctx, &r.stats), r.buf)
-	for rowIndex := range n {
-		row := r.buf[rowIndex]
-
-		for columnIndex, val := range row.Values {
-			if columnIndex >= len(r.opts.Columns) {
-				// Ignore columns that are not in projection list.
-				continue
-			}
-
-			columnBuilder := builder.Field(columnIndex)
-
-			if val.IsNil() {
-				columnBuilder.AppendNull()
-				continue
-			}
-
-			// Append non-null values. We switch on [ColumnType] here so it's easier
-			// to follow the mapping of ColumnType to Arrow type. The mappings here
-			// should align with both [columnToField] (for Arrow type) and
-			// [Builder.encodeTo] (for dataset type).
-			//
-			// Passing our byte slices to [array.StringBuilder.BinaryBuilder.Append] are safe; it
-			// will copy the contents of the value and we can reuse the buffer on the
-			// next call to [dataset.Reader.Read].
-			columnType := r.opts.Columns[columnIndex].Type
-			switch columnType {
-			case ColumnTypeInvalid:
-				columnBuilder.AppendNull() // Unsupported column
-			case ColumnTypeStreamID: // Appends IDs as int64
-				columnBuilder.(*array.Int64Builder).Append(val.Int64())
-			case ColumnTypeTimestamp: // Values are nanosecond timestamps as int64
-				columnBuilder.(*array.TimestampBuilder).Append(arrow.Timestamp(val.Int64()))
-			case ColumnTypeMetadata, ColumnTypeMessage: // Appends metadata and log lines as byte arrays
-				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.ByteArray())
-			default:
-				// We'll only hit this if we added a new column type but forgot to
-				// support reading it.
-				return nil, fmt.Errorf("unsupported column type %s for column %d", columnType, columnIndex)
-			}
+	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
+	if len(r.opts.Columns) < int(rb.NumCols()) {
+		// Ignore columns that are not in projection list.
+		arrs := make([]columnarv2.Array, len(r.opts.Columns))
+		for i := range arrs {
+			arrs[i] = rb.Column(int64(i))
 		}
+		rb = columnarv2.NewRecordBatch(nil, rb.NumRows(), arrs)
+	}
+	result, err := arrowconv.ToRecordBatch(rb, r.schema)
+	if err != nil {
+		return nil, fmt.Errorf("convert columnar.RecordBatch to arrow.RecordBatch: %w", err)
 	}
 
 	// We only return readErr after processing n so that we properly handle n>0
 	// while also getting an error such as io.EOF.
-	return builder.NewRecord(), readErr
+	return result, readErr
 }
 
 func (r *Reader) init(ctx context.Context) error {
@@ -228,6 +222,9 @@ func (r *Reader) init(ctx context.Context) error {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
 
+	ctx, span := xcap.StartSpan(ctx, tracer, "logs.Reader.Open")
+	defer span.End()
+
 	// Compose dataset using projected columns and any additional columns
 	// used for evaluating predicates.
 	//
@@ -235,7 +232,16 @@ func (r *Reader) init(ctx context.Context) error {
 	// easy filtering of Row Values with index >= len(r.opts.Columns).
 	cols := appendMissingColumns(r.opts.Columns, predicateColumns(r.opts.Predicates))
 
-	dset, err := newColumnsDataset(cols)
+	var innerSection *columnar.Section
+	innerColumns := make([]*columnar.Column, len(cols))
+	for i, column := range cols {
+		if innerSection == nil {
+			innerSection = column.Section.inner
+		}
+		innerColumns[i] = column.inner
+	}
+
+	dset, err := columnar.MakeDataset(innerSection, innerColumns)
 	if err != nil {
 		return fmt.Errorf("creating dataset: %w", err)
 	} else if len(dset.Columns()) != len(cols) {
@@ -252,19 +258,19 @@ func (r *Reader) init(ctx context.Context) error {
 		return fmt.Errorf("mapping predicates: %w", err)
 	}
 
-	// TODO(ashwanth): remove when global stats are updated by the executor.
-	r.stats.LinkGlobalStats(stats.FromContext(ctx))
-
-	innerOptions := dataset.ReaderOptions{
-		Dataset:         dset,
-		Columns:         dset.Columns(),
-		Predicates:      orderPredicates(preds),
-		TargetCacheSize: r.opts.PageCacheSize,
+	innerOptions := dataset.RowReaderOptions{
+		Dataset:    dset,
+		Columns:    dset.Columns(),
+		Predicates: orderPredicates(preds),
+		Prefetch:   true,
 	}
 	if r.inner == nil {
-		r.inner = dataset.NewReader(innerOptions)
+		r.inner = columnar.NewReaderAdapter(innerOptions)
 	} else {
 		r.inner.Reset(innerOptions)
+	}
+	if err := r.inner.Open(ctx); err != nil {
+		return fmt.Errorf("opening reader: %w", err)
 	}
 
 	r.ready = true
@@ -341,13 +347,13 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 		}
 
 		var valueSet dataset.ValueSet
-		switch col.ColumnInfo().Type {
-		case datasetmd.VALUE_TYPE_INT64:
+		switch col.ColumnDesc().Type.Physical {
+		case datasetmd.PHYSICAL_TYPE_INT64:
 			valueSet = dataset.NewInt64ValueSet(vals)
-		case datasetmd.VALUE_TYPE_UINT64:
+		case datasetmd.PHYSICAL_TYPE_UINT64:
 			valueSet = dataset.NewUint64ValueSet(vals)
-		case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-			valueSet = dataset.NewByteArrayValueSet(vals)
+		case datasetmd.PHYSICAL_TYPE_BINARY:
+			valueSet = dataset.NewBinaryValueSet(vals)
 		default:
 			panic("InPredicate not implemented for datatype")
 		}
@@ -397,7 +403,7 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 	}
 }
 
-func mustConvertType(dtype arrow.DataType) datasetmd.ValueType {
+func mustConvertType(dtype arrow.DataType) datasetmd.PhysicalType {
 	toType, ok := arrowconv.DatasetType(dtype)
 	if !ok {
 		panic(fmt.Sprintf("unsupported dataset type %s", dtype))
@@ -408,29 +414,35 @@ func mustConvertType(dtype arrow.DataType) datasetmd.ValueType {
 // Reset discards any state and resets r with a new set of optiosn. This
 // permits reusing a Reader rather than allocating a new one.
 func (r *Reader) Reset(opts ReaderOptions) {
+	if r.alloc == nil {
+		r.alloc = memoryv2.NewAllocator(nil)
+	} else {
+		r.alloc.Reset()
+	}
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
-	r.stats.Reset()
+	r.readSpan = nil
 
 	r.ready = false
 
 	if r.inner != nil {
 		// Close our inner reader so it releases resources immediately. It'll be
-		// fully reset on the next call to [Reader.init].
+		// fully reset on the next call to [Reader.Open].
 		_ = r.inner.Close()
 	}
-}
-
-func (r *Reader) Stats() *dataset.ReaderStats {
-	return &r.stats
 }
 
 // Close closes the Reader and releases any resources it holds. Closed Readers
 // can be reused by calling [Reader.Reset].
 func (r *Reader) Close() error {
+	if r.readSpan != nil {
+		r.readSpan.End()
+	}
+
 	if r.inner != nil {
 		return r.inner.Close()
 	}
+
 	return nil
 }
 

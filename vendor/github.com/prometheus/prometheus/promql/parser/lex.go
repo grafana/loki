@@ -1,4 +1,4 @@
-// Copyright 2015 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -129,18 +129,24 @@ var key = map[string]ItemType{
 
 	// Keywords.
 	"offset":      OFFSET,
+	"smoothed":    SMOOTHED,
+	"anchored":    ANCHORED,
 	"by":          BY,
 	"without":     WITHOUT,
 	"on":          ON,
 	"ignoring":    IGNORING,
 	"group_left":  GROUP_LEFT,
 	"group_right": GROUP_RIGHT,
+	"fill":        FILL,
+	"fill_left":   FILL_LEFT,
+	"fill_right":  FILL_RIGHT,
 	"bool":        BOOL,
 
 	// Preprocessors.
 	"start": START,
 	"end":   END,
 	"step":  STEP,
+	"range": RANGE,
 }
 
 var histogramDesc = map[string]ItemType{
@@ -183,20 +189,23 @@ var ItemTypeStr = map[ItemType]string{
 	TIMES:         "x",
 	SPACE:         "<space>",
 
-	SUB:       "-",
-	ADD:       "+",
-	MUL:       "*",
-	MOD:       "%",
-	DIV:       "/",
-	EQLC:      "==",
-	NEQ:       "!=",
-	LTE:       "<=",
-	LSS:       "<",
-	GTE:       ">=",
-	GTR:       ">",
-	EQL_REGEX: "=~",
-	NEQ_REGEX: "!~",
-	POW:       "^",
+	SUB:        "-",
+	ADD:        "+",
+	MUL:        "*",
+	MOD:        "%",
+	DIV:        "/",
+	EQLC:       "==",
+	NEQ:        "!=",
+	LTE:        "<=",
+	LSS:        "<",
+	GTE:        ">=",
+	GTR:        ">",
+	TRIM_UPPER: "</",
+	TRIM_LOWER: ">/",
+	EQL_REGEX:  "=~",
+	NEQ_REGEX:  "!~",
+	POW:        "^",
+	AT:         "@",
 }
 
 func init() {
@@ -207,6 +216,27 @@ func init() {
 	// Special numbers.
 	key["inf"] = NUMBER
 	key["nan"] = NUMBER
+}
+
+// Keywords returns all keyword strings recognised by the PromQL lexer,
+// including aggregation operators, modifier keywords, histogram descriptor
+// keys, and counter-reset hint values.
+func Keywords() []string {
+	seen := make(map[string]struct{})
+	for s := range key {
+		seen[s] = struct{}{}
+	}
+	for s := range histogramDesc {
+		seen[s] = struct{}{}
+	}
+	for s := range counterResetHints {
+		seen[s] = struct{}{}
+	}
+	result := make([]string, 0, len(seen))
+	for s := range seen {
+		result = append(result, s)
+	}
+	return result
 }
 
 func (i ItemType) String() string {
@@ -347,7 +377,7 @@ func (l *Lexer) acceptRun(valid string) {
 
 // errorf returns an error token and terminates the scan by passing
 // back a nil pointer that will be the next state, terminating l.NextItem.
-func (l *Lexer) errorf(format string, args ...interface{}) stateFn {
+func (l *Lexer) errorf(format string, args ...any) stateFn {
 	*l.itemp = Item{ERROR, l.start, fmt.Sprintf(format, args...)}
 	l.scannedItem = true
 
@@ -439,6 +469,9 @@ func lexStatements(l *Lexer) stateFn {
 		if t := l.peek(); t == '=' {
 			l.next()
 			l.emit(LTE)
+		} else if t := l.peek(); t == '/' {
+			l.next()
+			l.emit(TRIM_UPPER)
 		} else {
 			l.emit(LSS)
 		}
@@ -446,6 +479,9 @@ func lexStatements(l *Lexer) stateFn {
 		if t := l.peek(); t == '=' {
 			l.next()
 			l.emit(GTE)
+		} else if t := l.peek(); t == '/' {
+			l.next()
+			l.emit(TRIM_LOWER)
 		} else {
 			l.emit(GTR)
 		}
@@ -912,6 +948,9 @@ func (l *Lexer) scanDurationKeyword() bool {
 			case "step":
 				l.emit(STEP)
 				return true
+			case "range":
+				l.emit(RANGE)
+				return true
 			case "min":
 				l.emit(MIN)
 				return true
@@ -1076,6 +1115,17 @@ Loop:
 			word := l.input[l.start:l.pos]
 			switch kw, ok := key[strings.ToLower(word)]; {
 			case ok:
+				// For fill/fill_left/fill_right, only treat as keyword if followed by '('
+				// This allows using these as metric names (e.g., "fill + fill").
+				// This could be done for other keywords as well, but for the new fill
+				// modifiers this is especially important so we don't break any existing
+				// queries.
+				if kw == FILL || kw == FILL_LEFT || kw == FILL_RIGHT {
+					if !l.peekFollowedByLeftParen() {
+						l.emit(IDENTIFIER)
+						break Loop
+					}
+				}
 				l.emit(kw)
 			case !strings.Contains(word, ":"):
 				l.emit(IDENTIFIER)
@@ -1089,6 +1139,23 @@ Loop:
 		return lexValueSequence
 	}
 	return lexStatements
+}
+
+// peekFollowedByLeftParen checks if the next non-whitespace character is '('.
+// This is used for context-sensitive keywords like fill/fill_left/fill_right
+// that should only be treated as keywords when followed by '('.
+func (l *Lexer) peekFollowedByLeftParen() bool {
+	pos := l.pos
+	for {
+		if int(pos) >= len(l.input) {
+			return false
+		}
+		r, w := utf8.DecodeRuneInString(l.input[pos:])
+		if !isSpace(r) {
+			return r == '('
+		}
+		pos += posrange.Pos(w)
+	}
 }
 
 func isSpace(r rune) bool {
@@ -1172,7 +1239,7 @@ func lexDurationExpr(l *Lexer) stateFn {
 	case r == ',':
 		l.emit(COMMA)
 		return lexDurationExpr
-	case r == 's' || r == 'S' || r == 'm' || r == 'M':
+	case r == 's' || r == 'S' || r == 'm' || r == 'M' || r == 'r' || r == 'R':
 		if l.scanDurationKeyword() {
 			return lexDurationExpr
 		}
@@ -1184,4 +1251,35 @@ func lexDurationExpr(l *Lexer) stateFn {
 	default:
 		return l.errorf("unexpected character in duration expression: %q", r)
 	}
+}
+
+// findPrevRightParen finds the previous right parenthesis.
+// Use in case when the parser had to read ahead to the find the next right
+// parenthesis to decide whether to continue and lost track of the previous right
+// parenthesis position.
+// Only use when outside string literals as those can have runes made up of
+// multiple bytes, which would break the position calculation.
+// Falls back to the input start position on any problem.
+// https://github.com/prometheus/prometheus/issues/16053
+func (l *Lexer) findPrevRightParen(fallbackPos posrange.Pos) posrange.Pos {
+	// Early return on:
+	// - invalid fallback position,
+	// - not enough space for second right parenthesis,
+	// - last read position is after the end, since then we stopped due to the
+	//   end of the input, not a parenthesis, or if last position doesn't hold
+	//   right parenthesis,
+	// - last position doesn't hold right parenthesis.
+	if fallbackPos <= 0 || fallbackPos > posrange.Pos(len(l.input)) || l.lastPos <= 0 || l.lastPos >= posrange.Pos(len(l.input)) || l.input[l.lastPos] != ')' {
+		return fallbackPos
+	}
+	for i := l.lastPos - 1; i > 0; i-- {
+		switch {
+		case l.input[i] == ')':
+			return i + 1
+		case isSpace(rune(l.input[i])):
+		default:
+			return fallbackPos
+		}
+	}
+	return fallbackPos
 }
