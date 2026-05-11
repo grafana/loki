@@ -1,4 +1,12 @@
-package logsobj
+// Package sortmerge provides a k-way merge iterator over dataobj logs sections.
+//
+// It is a small primitive shared between the dataobj consumer (which uses it
+// to merge sorted sections during a flush) and the dataobj-compactor executor
+// (which uses it to merge sorted sections from multiple source data objects).
+//
+// The iterator emits records with their original (per-source) StreamIDs.
+// StreamID rewriting is the caller's responsibility.
+package sortmerge
 
 import (
 	"context"
@@ -12,9 +20,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
-// sortMergeIterator returns an iterator that performs a k-way merge of records from multiple logs sections.
-// It requires that the input sections are sorted sorted by the same order.
-func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
+// Iterator returns an iterator that performs a k-way merge of records from
+// multiple logs sections. It requires that the input sections are sorted
+// according to sort.
+func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
 	sequences := make([]*sectionSequence, 0, len(sections))
 	for _, s := range sections {
 		sec, err := logs.Open(ctx, s)

@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -540,7 +541,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		lb.Reset()
 		lb.SetTenant(tenant)
 
-		iter, err := sortMergeIterator(ctx, sections, sort)
+		iter, err := sortmerge.Iterator(ctx, sections, sort)
 		if err != nil {
 			return nil, nil, fmt.Errorf("creating sort iterator: %w", err)
 		}
