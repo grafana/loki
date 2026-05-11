@@ -40,7 +40,7 @@ func (f *fakeMetastore) GetIndexes(_ context.Context, _ metastore.GetIndexesRequ
 	return metastore.GetIndexesResponse{Indexes: f.indexes}, nil
 }
 
-func (f *fakeMetastore) CollectSections(ctx context.Context, req metastore.CollectSectionsRequest) (metastore.CollectSectionsResponse, error) {
+func (f *fakeMetastore) CollectSections(_ context.Context, _ metastore.CollectSectionsRequest) (metastore.CollectSectionsResponse, error) {
 	return metastore.CollectSectionsResponse{SectionsResponse: metastore.SectionsResponse{Sections: []*metastore.DataobjSectionDescriptor{
 		{
 			SectionKey: metastore.SectionKey{
@@ -193,7 +193,7 @@ func TestEngine_LimitedQueryPlansContributeTimeRanges(t *testing.T) {
 			require.NoError(t, err)
 
 			// Verify the plan contains a TopK node
-			require.Equal(t, tt.expectTopK, containsTopK(physicalPlan))
+			require.Equal(t, tt.expectTopK, containsTopK(t, physicalPlan))
 			if !tt.expectTopK {
 				return
 			}
@@ -222,15 +222,16 @@ func TestEngine_LimitedQueryPlansContributeTimeRanges(t *testing.T) {
 	}
 }
 
-func containsTopK(fragment *physical.Plan) bool {
+func containsTopK(t *testing.T, fragment *physical.Plan) bool {
 	containsTopK := false
 	for _, root := range fragment.Roots() {
-		fragment.DFSWalk(root, func(n physical.Node) error {
+		err := fragment.DFSWalk(root, func(n physical.Node) error {
 			if n.Type() == physical.NodeTypeTopK {
 				containsTopK = true
 			}
 			return nil
 		}, dag.PreOrderWalk)
+		require.NoError(t, err)
 	}
 	return containsTopK
 }
