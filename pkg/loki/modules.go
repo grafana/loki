@@ -2488,6 +2488,15 @@ func (t *Loki) initDataObjCompactor() (services.Service, error) {
 		return nil, nil
 	}
 
+	// Defense-in-depth: the top-level Config.Validate() gate is wrapped
+	// inside an `if c.Ingester.KafkaIngestion.Enabled` check, so a
+	// compactor-only deployment (no Kafka ingestion) skips compaction
+	// config validation entirely. Validate explicitly here so invalid
+	// values are caught before service construction.
+	if err := t.Cfg.DataObj.Compaction.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
+	}
+
 	logger := log.With(util_log.Logger, "component", "dataobj-compactor")
 
 	c, err := enginecompactor.New(t.Cfg.DataObj.Compaction, logger)
@@ -2513,6 +2522,12 @@ func (t *Loki) initDataObjCompactor() (services.Service, error) {
 		c.Scheduler().RegisterSchedulerServer(t.Server.HTTP)
 	}
 
+	// Return the Compactor wrapper rather than c.Scheduler().Service():
+	// the wrapper's BasicService runs the coordinator polling loop in
+	// running() (a no-op stub today; real loop arrives in a follow-up
+	// change). Mirroring initV2QueryEngineScheduler's pattern of
+	// returning the inner service directly would prevent the
+	// coordinator loop from ever running.
 	t.dataObjCompactor = c
 	return c, nil
 }

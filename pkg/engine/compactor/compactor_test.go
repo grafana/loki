@@ -81,3 +81,20 @@ func TestConfig_Validate_EnabledRejectsBadValues(t *testing.T) {
 		require.NoError(t, cfg.Validate())
 	})
 }
+
+// TestNew_InvalidAdvertiseAddr exercises the constructor error path
+// when an unparseable advertise address is supplied. Pins the error
+// wrapping in resolveAdvertiseAddr.
+func TestNew_InvalidAdvertiseAddr(t *testing.T) {
+	cfg := Config{
+		Enabled: true,
+		Scheduler: SchedulerConfig{
+			AdvertiseAddr: "not-a-valid-host:port:::",
+			Endpoint:      defaultEndpoint,
+		},
+	}
+	_, err := New(cfg, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "resolve scheduler advertise address",
+		"error must mention the resolution step for operator clarity, got: %v", err)
+}

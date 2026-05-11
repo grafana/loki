@@ -94,6 +94,11 @@ func (c *Compactor) stopping(runErr error) error {
 	if runErr != nil {
 		level.Warn(c.logger).Log("msg", "dataobj compactor stopping after run error", "err", runErr)
 	}
+	// TODO: the dskit stopping() callback signature doesn't accept a
+	// context, so we use Background(). Once the coordinator polling loop
+	// is doing real work, revisit adding an upper bound (e.g., a derived
+	// context with a configurable shutdown deadline) so a stuck scheduler
+	// can't wedge Loki shutdown indefinitely.
 	if err := services.StopAndAwaitTerminated(context.Background(), c.scheduler.Service()); err != nil {
 		level.Warn(c.logger).Log("msg", "stop dataobj compaction scheduler", "err", err)
 		return fmt.Errorf("dataobj compactor: stop scheduler: %w", err)

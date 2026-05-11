@@ -26,8 +26,11 @@ type Config struct {
 
 	// MaxRunningCompactionTasks caps how many CompactionMerge tasks a
 	// single workflow may run concurrently within the engine scheduler's
-	// compaction admission lane. Currently unused; reserved for the engine
-	// scheduler's compaction admission lane added in a follow-up change.
+	// taskTypeCompaction admission lane. Currently unused; reserved for
+	// the engine scheduler's compaction admission lane added in a
+	// follow-up change. The semantic of zero (unlimited vs. blocked) is
+	// intentionally undefined at scaffold time; the follow-up change that
+	// consumes this field will define and document it.
 	MaxRunningCompactionTasks int `yaml:"max_running_compaction_tasks"`
 
 	// Scheduler holds the scheduler-side knobs: advertise_addr and
