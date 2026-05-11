@@ -299,8 +299,9 @@ func TestAdmissionControl(t *testing.T) {
 		opts := Options{
 			Tenant: "tenant",
 
-			MaxRunningScanTasks:  32, // less than numScanTasks
-			MaxRunningOtherTasks: 0,  // unlimited
+			MaxRunningScanTasks:       32, // less than numScanTasks
+			MaxRunningOtherTasks:      0,  // unlimited
+			MaxRunningCompactionTasks: 0,  // unlimited; lane is dormant
 		}
 		wf, err := New(opts, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
