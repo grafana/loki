@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -101,4 +102,59 @@ func WriteMarker(ctx context.Context, bucket objstore.Bucket, path string, conte
 		return false, fmt.Errorf("write marker %q: %w", path, err)
 	}
 	return created, nil
+}
+
+// ListMarkers enumerates all parseable Marker objects under prefix using
+// bucket.Iter, fetching and JSON-decoding each entry. Use
+// DefaultInFlightPrefix for the standard coordinator path.
+//
+// Entries that fail to parse (corrupt JSON, manually-placed garbage) are
+// silently skipped — the coordinator's recovery loop must remain robust to
+// stray files, and a single bad object should not block recovery for all
+// other in-flight workflows. The caller observing a missing workflow is
+// expected to fall back to state-poll; an unparseable marker is
+// operationally equivalent to a missing marker.
+//
+// Entries deleted between LIST and GET (a normal race against
+// DeleteMarker) are likewise skipped.
+//
+// Order is unspecified.
+func ListMarkers(ctx context.Context, bucket objstore.Bucket, prefix string) ([]Marker, error) {
+	var markers []Marker
+	err := bucket.Iter(ctx, prefix, func(name string) error {
+		rc, getErr := bucket.Get(ctx, name)
+		if getErr != nil {
+			if bucket.IsObjNotFoundErr(getErr) {
+				return nil
+			}
+			return fmt.Errorf("get %q: %w", name, getErr)
+		}
+		defer rc.Close()
+		body, readErr := io.ReadAll(rc)
+		if readErr != nil {
+			return fmt.Errorf("read %q: %w", name, readErr)
+		}
+		m, parseErr := parseMarker(body)
+		if parseErr != nil {
+			// Skip unparseable entries: see function doc.
+			return nil
+		}
+		markers = append(markers, m)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list markers under %q: %w", prefix, err)
+	}
+	return markers, nil
+}
+
+// parseMarker decodes a marker file's bytes. Missing fields decode to zero
+// values; callers that care about completeness (e.g., empty WorkflowID)
+// should validate after parsing.
+func parseMarker(body []byte) (Marker, error) {
+	var m Marker
+	if err := json.Unmarshal(body, &m); err != nil {
+		return Marker{}, err
+	}
+	return m, nil
 }

@@ -73,6 +73,112 @@ func TestWriteMarker_SoftIdempotency_IdenticalContent(t *testing.T) {
 	}
 }
 
+func TestListMarkers_Empty(t *testing.T) {
+	bkt := objstore.NewInMemBucket()
+	got, err := ListMarkers(context.Background(), bkt, DefaultInFlightPrefix)
+	if err != nil {
+		t.Fatalf("ListMarkers: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 markers in empty bucket, got %d", len(got))
+	}
+}
+
+func TestListMarkers_RoundTrip(t *testing.T) {
+	bkt := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
+
+	want := []Marker{
+		{
+			WorkflowID:          "wf-29-v1",
+			Tenant:              "29",
+			Window:              window,
+			PlanVersion:         1,
+			StartedAt:           time.Date(2026, 5, 8, 10, 0, 0, 0, time.UTC),
+			ExpectedLogObjects:  10,
+			ExpectedIndexObject: "tenants/29/objects/a.dataobj",
+		},
+		{
+			WorkflowID:          "wf-30-v1",
+			Tenant:              "30",
+			Window:              window,
+			PlanVersion:         1,
+			StartedAt:           time.Date(2026, 5, 8, 10, 5, 0, 0, time.UTC),
+			ExpectedLogObjects:  20,
+			ExpectedIndexObject: "tenants/30/objects/b.dataobj",
+		},
+	}
+	for _, m := range want {
+		b, err := json.Marshal(m)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		path := MarkerPath(DefaultInFlightPrefix, m.Tenant, m.Window, m.PlanVersion)
+		if _, err := WriteMarker(context.Background(), bkt, path, b); err != nil {
+			t.Fatalf("WriteMarker: %v", err)
+		}
+	}
+
+	got, err := ListMarkers(context.Background(), bkt, DefaultInFlightPrefix)
+	if err != nil {
+		t.Fatalf("ListMarkers: %v", err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("len mismatch: got %d want %d (%+v)", len(got), len(want), got)
+	}
+
+	byID := map[string]Marker{}
+	for _, m := range got {
+		byID[m.WorkflowID] = m
+	}
+	for _, w := range want {
+		g, ok := byID[w.WorkflowID]
+		if !ok {
+			t.Fatalf("missing workflow %q", w.WorkflowID)
+		}
+		if g.Tenant != w.Tenant ||
+			!g.Window.Equal(w.Window) ||
+			g.PlanVersion != w.PlanVersion ||
+			!g.StartedAt.Equal(w.StartedAt) ||
+			g.ExpectedLogObjects != w.ExpectedLogObjects ||
+			g.ExpectedIndexObject != w.ExpectedIndexObject {
+			t.Fatalf("marker round-trip mismatch:\n got=%+v\nwant=%+v", g, w)
+		}
+	}
+}
+
+func TestListMarkers_SkipsMalformed(t *testing.T) {
+	bkt := objstore.NewInMemBucket()
+
+	good := Marker{
+		WorkflowID:          "wf-good",
+		Tenant:              "29",
+		Window:              time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC),
+		PlanVersion:         1,
+		StartedAt:           time.Date(2026, 5, 8, 10, 0, 0, 0, time.UTC),
+		ExpectedLogObjects:  1,
+		ExpectedIndexObject: "tenants/29/objects/g.dataobj",
+	}
+	gb, err := json.Marshal(good)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := bkt.Upload(context.Background(), DefaultInFlightPrefix+"good.json", bytes.NewReader(gb)); err != nil {
+		t.Fatalf("upload good: %v", err)
+	}
+	if err := bkt.Upload(context.Background(), DefaultInFlightPrefix+"bad.json", bytes.NewReader([]byte("not-json"))); err != nil {
+		t.Fatalf("upload bad: %v", err)
+	}
+
+	got, err := ListMarkers(context.Background(), bkt, DefaultInFlightPrefix)
+	if err != nil {
+		t.Fatalf("ListMarkers should not fail when one entry is malformed: %v", err)
+	}
+	if len(got) != 1 || got[0].WorkflowID != "wf-good" {
+		t.Fatalf("expected exactly one good marker, got %+v", got)
+	}
+}
+
 func TestWriteMarker_RaceLoss_DifferentContent(t *testing.T) {
 	bkt := objstore.NewInMemBucket()
 	_, contentA := sampleMarker(t)
