@@ -17,7 +17,7 @@ import (
 func TestCompactor_BootShutdown(t *testing.T) {
 	cfg := Config{
 		Enabled: true,
-		Scheduler: CompactorConfig{
+		Scheduler: SchedulerConfig{
 			Endpoint: defaultEndpoint,
 			// AdvertiseAddr left empty -> scheduler runs in-process only.
 		},
@@ -55,7 +55,7 @@ func TestConfig_Validate_EnabledRejectsBadValues(t *testing.T) {
 		cfg := Config{
 			Enabled:                   true,
 			MaxRunningCompactionTasks: -1,
-			Scheduler:                 CompactorConfig{Endpoint: defaultEndpoint},
+			Scheduler:                 SchedulerConfig{Endpoint: defaultEndpoint},
 		}
 		err := cfg.Validate()
 		require.Error(t, err)
@@ -65,7 +65,7 @@ func TestConfig_Validate_EnabledRejectsBadValues(t *testing.T) {
 	t.Run("empty scheduler endpoint", func(t *testing.T) {
 		cfg := Config{
 			Enabled:   true,
-			Scheduler: CompactorConfig{Endpoint: ""},
+			Scheduler: SchedulerConfig{Endpoint: ""},
 		}
 		err := cfg.Validate()
 		require.Error(t, err)
@@ -76,7 +76,7 @@ func TestConfig_Validate_EnabledRejectsBadValues(t *testing.T) {
 		cfg := Config{
 			Enabled:                   true,
 			MaxRunningCompactionTasks: 16,
-			Scheduler:                 CompactorConfig{Endpoint: defaultEndpoint},
+			Scheduler:                 SchedulerConfig{Endpoint: defaultEndpoint},
 		}
 		require.NoError(t, cfg.Validate())
 	})

@@ -33,12 +33,12 @@ type Config struct {
 	// Scheduler holds the scheduler-side knobs: advertise_addr and
 	// endpoint for the embedded engine.Scheduler instance. See
 	// pkg/engine/scheduler.go for the underlying SchedulerParams.
-	Scheduler CompactorConfig `yaml:"scheduler"`
+	Scheduler SchedulerConfig `yaml:"scheduler"`
 }
 
-// CompactorConfig holds the scheduler-side parameters that get passed
+// SchedulerConfig holds the scheduler-side parameters that get passed
 // to engine.NewScheduler when the compactor target boots.
-type CompactorConfig struct {
+type SchedulerConfig struct {
 	// AdvertiseAddr is the host:port the embedded scheduler advertises to
 	// remote workers. Empty string keeps the scheduler in-process-only
 	// (no HTTP listener registered).
