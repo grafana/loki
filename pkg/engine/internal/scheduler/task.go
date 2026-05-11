@@ -30,6 +30,14 @@ type task struct {
 	owner  *workerConn
 	status workflow.TaskStatus
 
+	// interrupted reports whether cancellation has been requested for this
+	// task but the worker has not yet confirmed (i.e., the task has not yet
+	// reached a terminal state).
+	//
+	// Set by [Scheduler.Cancel] when requesting cancellation for an assigned
+	// non-terminal task.
+	interrupted bool
+
 	// wfRegion is the region associated with the parent workflow of this task.
 	wfRegion        *xcap.Region
 	runtimeTraceCtx context.Context
