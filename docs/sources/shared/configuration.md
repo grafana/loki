@@ -92,9 +92,16 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
-# if true. If false, the OrgID will always be set to 'fake'.
+# if true. If false, the OrgID will always be set to the value of
+# -auth.no-auth-tenant.
 # CLI flag: -auth.enabled
 [auth_enabled: <boolean> | default = true]
+
+# Tenant ID to use when auth is disabled. Defaults to 'fake' for backwards
+# compatibility. Safe to change on a fresh cluster; on an existing cluster, data
+# stored under the old tenant path must be migrated first (see cmd/migrate).
+# CLI flag: -auth.no-auth-tenant
+[no_auth_tenant: <string> | default = "fake"]
 
 # The amount of virtual memory in bytes to reserve as ballast in order to
 # optimize garbage collection. Larger ballasts result in fewer garbage

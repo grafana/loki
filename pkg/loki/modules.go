@@ -206,7 +206,7 @@ func (t *Loki) initServer() (services.Service, error) {
 	h := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !t.Cfg.AuthEnabled {
-				next.ServeHTTP(w, r.WithContext(user.InjectOrgID(r.Context(), "fake")))
+				next.ServeHTTP(w, r.WithContext(user.InjectOrgID(r.Context(), t.Cfg.NoAuthTenant)))
 				return
 			}
 

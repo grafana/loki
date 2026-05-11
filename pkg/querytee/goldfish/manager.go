@@ -522,7 +522,7 @@ func CaptureResponse(resp *http.Response, duration time.Duration, traceID, spanI
 func extractTenant(r *http.Request) string {
 	tenant := r.Header.Get("X-Scope-OrgID")
 	if tenant == "" {
-		return "fake"
+		return unknown
 	}
 	return tenant
 }
