@@ -3744,13 +3744,6 @@ func incValue(val int64) generator {
 	}
 }
 
-// nolint
-func inverse(g generator) generator {
-	return func(i int64) logData {
-		return g(-i)
-	}
-}
-
 func TestJoinSampleVector_LogsDrilldownBehavior(t *testing.T) {
 	t.Parallel()
 

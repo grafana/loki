@@ -19,6 +19,9 @@
 // Package metrics defines all metrics that can be produced by an xDS client.
 // All calls to the MetricsRecorder by the xDS client will contain a struct
 // from this package passed by pointer.
+//
+// For definitions of these metrics and their labels, see gRFC A78:
+// https://github.com/grpc/proposal/blob/master/A78-grpc-metrics-wrr-xds.md
 package metrics
 
 // ResourceUpdateValid is a metric to report a valid resource update from
@@ -39,4 +42,23 @@ type ResourceUpdateInvalid struct {
 // management server.
 type ServerFailure struct {
 	ServerURI string
+}
+
+// XDSClientConnected reports the connectivity state of the ADS stream.
+// Per gRFC A78, Value is 1 if connected, and 0 otherwise.
+// This metric provides the labels grpc.target and grpc.xds.server.
+type XDSClientConnected struct {
+	ServerURI string
+	Value     int64
+}
+
+// XDSClientResourceStats reports the current cache states of xDS resources.
+// For label definitions, see gRFC A78.
+// This metric provides the labels grpc.target, grpc.xds.authority,
+// grpc.xds.cache_state, and grpc.xds.resource_type.
+type XDSClientResourceStats struct {
+	Authority    string
+	ResourceType string
+	CacheState   string
+	Count        int64
 }

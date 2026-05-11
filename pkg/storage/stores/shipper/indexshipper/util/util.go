@@ -13,7 +13,6 @@ import (
 )
 
 const maxStackSize = 8 * 1024
-const sep = "\xff"
 
 func BuildIndexFileName(tableName, uploader, dbName string) string {
 	// Files are stored with <uploader>-<db-name>

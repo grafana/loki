@@ -224,3 +224,209 @@ func TestVectorAggregationPipeline_MissingGroupingColumn(t *testing.T) {
 	require.Equal(t, len(expect), len(result), "absent grouping column must not split series into separate streams")
 	require.ElementsMatch(t, expect, result)
 }
+
+// TestVectorAggregationPipeline_WithoutGroupsByShortName verifies that "without"
+// grouping works correctly when columns across records or multiple columns within
+// a record have the same short name but different FQNs.
+//
+// Take the following records with the same short name "status" column:
+//
+//	Record 1: `utf8.label.status`
+//	Record 2: `utf8.metadata.status`
+//	Record 3: both `utf8.label.status` and `utf8.metadata.status`
+//
+// These should be considered as `utf8.ambiguous.status` when grouping.
+// For record 3, [NewCoalesce] is used to resolve precedence between the two columns.
+func TestVectorAggregationPipeline_WithoutGroupsByShortName(t *testing.T) {
+	const (
+		fqnEnv            = "utf8.label.env"
+		fqnService        = "utf8.label.service"
+		fqnLabelStatus    = "utf8.label.status"
+		fqnMetadataStatus = "utf8.metadata.status"
+	)
+
+	ts := time.Unix(20, 0).UTC()
+
+	schemaA := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colVal, false),
+		semconv.FieldFromFQN(fqnService, true),
+		semconv.FieldFromFQN(fqnLabelStatus, true),
+		semconv.FieldFromFQN(fqnEnv, true),
+	}, nil)
+
+	schemaB := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colVal, false),
+		semconv.FieldFromFQN(fqnEnv, true),
+		semconv.FieldFromFQN(fqnService, true),
+		semconv.FieldFromFQN(fqnMetadataStatus, true),
+	}, nil)
+
+	schemaC := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colVal, false),
+		semconv.FieldFromFQN(fqnMetadataStatus, true),
+		semconv.FieldFromFQN(fqnService, true),
+		semconv.FieldFromFQN(fqnLabelStatus, true),
+		semconv.FieldFromFQN(fqnEnv, true),
+	}, nil)
+
+	rowsA := arrowtest.Rows{
+		{colTs: ts, colVal: float64(1), fqnService: nil, fqnLabelStatus: "200", fqnEnv: "prod"},
+		{colTs: ts, colVal: float64(3), fqnService: "api", fqnLabelStatus: "500", fqnEnv: "prod"},
+	}
+
+	rowsB := arrowtest.Rows{
+		{colTs: ts, colVal: float64(2), fqnEnv: "prod", fqnService: nil, fqnMetadataStatus: "200"},
+		{colTs: ts, colVal: float64(4), fqnEnv: "prod", fqnService: "api", fqnMetadataStatus: "500"},
+	}
+
+	rowsC := arrowtest.Rows{
+		{colTs: ts, colVal: float64(5), fqnMetadataStatus: "200", fqnService: nil, fqnLabelStatus: nil, fqnEnv: "prod"},
+		{colTs: ts, colVal: float64(6), fqnMetadataStatus: nil, fqnService: "api", fqnLabelStatus: "500", fqnEnv: "prod"},
+	}
+
+	opts := vectorAggregationOptions{
+		grouping: physical.Grouping{
+			Columns: []physical.ColumnExpression{
+				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeAmbiguous}},
+			},
+			Without: true,
+		},
+		operation:      types.VectorAggregationTypeSum,
+		maxQuerySeries: 0,
+	}
+
+	inputA := NewArrowtestPipeline(schemaA, rowsA)
+	inputB := NewArrowtestPipeline(schemaB, rowsB)
+	inputC := NewArrowtestPipeline(schemaC, rowsC)
+
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{inputA, inputB, inputC}, newExpressionEvaluator(), opts)
+	require.NoError(t, err)
+	defer pipeline.Close()
+
+	record, err := pipeline.Read(t.Context())
+	require.NoError(t, err)
+
+	result, err := arrowtest.RecordRows(record)
+	require.NoError(t, err)
+
+	expect := arrowtest.Rows{
+		{
+			colTs:                    ts,
+			colVal:                   float64(8), // 1 + 2 + 5
+			"utf8.ambiguous.service": nil,
+			"utf8.ambiguous.status":  "200",
+		},
+		{
+			colTs:                    ts,
+			colVal:                   float64(13), // 3 + 4 + 6
+			"utf8.ambiguous.service": "api",
+			"utf8.ambiguous.status":  "500",
+		},
+	}
+
+	require.Equal(t, len(expect), len(result), "same logical label values must aggregate together across records and physical types in without() grouping")
+	require.ElementsMatch(t, expect, result)
+}
+
+// TestVectorAggregationPipeline_WithoutSortsColumns verifies that "without" grouping
+// works correctly when columns are in different order across records.
+// They should be sorted by short name before calling the aggregator.
+func TestVectorAggregationPipeline_WithoutSortsColumns(t *testing.T) {
+	const (
+		fqnEnv         = "utf8.label.env"
+		fqnService     = "utf8.label.service"
+		fqnLabelStatus = "utf8.label.status"
+	)
+
+	ts := time.Unix(20, 0).UTC()
+
+	schemaA := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colVal, false),
+		semconv.FieldFromFQN(fqnService, true),
+		semconv.FieldFromFQN(fqnLabelStatus, true),
+		semconv.FieldFromFQN(fqnEnv, true),
+	}, nil)
+
+	schemaB := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colVal, false),
+		semconv.FieldFromFQN(fqnEnv, true),
+		semconv.FieldFromFQN(fqnLabelStatus, true),
+		semconv.FieldFromFQN(fqnService, true),
+	}, nil)
+
+	schemaC := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colVal, false),
+		semconv.FieldFromFQN(fqnLabelStatus, true),
+		semconv.FieldFromFQN(fqnEnv, true),
+	}, nil)
+
+	rowsA := arrowtest.Rows{
+		{colTs: ts, colVal: float64(1), fqnService: nil, fqnLabelStatus: "200", fqnEnv: "prod"},
+		{colTs: ts, colVal: float64(10), fqnService: "api", fqnLabelStatus: "500", fqnEnv: "prod"},
+	}
+
+	rowsB := arrowtest.Rows{
+		{colTs: ts, colVal: float64(2), fqnEnv: "prod", fqnLabelStatus: "200", fqnService: nil},
+		{colTs: ts, colVal: float64(20), fqnEnv: "prod", fqnLabelStatus: "500", fqnService: "api"},
+	}
+
+	rowsC := arrowtest.Rows{
+		{colTs: ts, colVal: float64(3), fqnLabelStatus: "200", fqnEnv: "prod"},
+		{colTs: ts, colVal: float64(30), fqnLabelStatus: "503", fqnEnv: "prod"},
+	}
+
+	opts := vectorAggregationOptions{
+		grouping: physical.Grouping{
+			Columns: []physical.ColumnExpression{
+				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeAmbiguous}},
+			},
+			Without: true,
+		},
+		operation:      types.VectorAggregationTypeSum,
+		maxQuerySeries: 0,
+	}
+
+	inputA := NewArrowtestPipeline(schemaA, rowsA)
+	inputB := NewArrowtestPipeline(schemaB, rowsB)
+	inputC := NewArrowtestPipeline(schemaC, rowsC)
+
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{inputA, inputB, inputC}, newExpressionEvaluator(), opts)
+	require.NoError(t, err)
+	defer pipeline.Close()
+
+	record, err := pipeline.Read(t.Context())
+	require.NoError(t, err)
+
+	result, err := arrowtest.RecordRows(record)
+	require.NoError(t, err)
+
+	expect := arrowtest.Rows{
+		{
+			colTs:                    ts,
+			colVal:                   float64(6), // 1 + 2 + 3
+			"utf8.ambiguous.service": nil,
+			"utf8.ambiguous.status":  "200",
+		},
+		{
+			colTs:                    ts,
+			colVal:                   float64(30), // 10 + 20
+			"utf8.ambiguous.service": "api",
+			"utf8.ambiguous.status":  "500",
+		},
+		{
+			colTs:                    ts,
+			colVal:                   float64(30),
+			"utf8.ambiguous.service": nil,
+			"utf8.ambiguous.status":  "503",
+		},
+	}
+
+	require.Equal(t, len(expect), len(result), "retained logical label order must be canonical and missing columns must merge with null values in without() grouping")
+	require.ElementsMatch(t, expect, result)
+}

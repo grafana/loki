@@ -147,23 +147,6 @@ func newStream(
 	}
 }
 
-// consumeChunk manually adds a chunk to the stream that was received during
-// ingester chunk transfer.
-// Must hold chunkMtx
-// DEPRECATED: chunk transfers are no longer suggested and remain for compatibility.
-func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
-	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
-	if err != nil {
-		return err
-	}
-
-	s.chunks = append(s.chunks, chunkDesc{
-		chunk: c,
-	})
-	s.metrics.chunksCreatedTotal.Inc()
-	return nil
-}
-
 // setChunks is used during checkpoint recovery
 func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err error) {
 	s.chunkMtx.Lock()

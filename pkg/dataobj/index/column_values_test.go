@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -58,7 +59,7 @@ func TestColumnValuesCalculation_BloomPostingAppended(t *testing.T) {
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id", "span_id"})
-	require.NoError(t, calc.Prepare(context.Background(), nil, stat))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, stat))
 
 	ts1 := time.Unix(10, 0).UTC()
 	ts2 := time.Unix(20, 0).UTC()
@@ -93,31 +94,28 @@ func TestColumnValuesCalculation_BloomPostingAppended(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	tbl := flushAndReadAllPostingsTable(t, builder)
 
 	// We expect 2 bloom postings: one for trace_id, one for span_id.
-	var tracePosting, spanPosting *postings.Posting
-	for i := range allPostings {
-		if allPostings[i].Kind == postings.KindBloom {
-			switch allPostings[i].ColumnName {
-			case "trace_id":
-				tracePosting = &allPostings[i]
-			case "span_id":
-				spanPosting = &allPostings[i]
-			}
-		}
-	}
+	i := findRow(tbl.rows, map[string]any{
+		"kind.int64":       int64(postings.KindBloom),
+		"column_name.utf8": "trace_id",
+	})
+	require.NotEqual(t, -1, i, "expected bloom posting for trace_id")
 
-	require.NotNil(t, tracePosting, "expected bloom posting for trace_id")
-	require.NotNil(t, spanPosting, "expected bloom posting for span_id")
+	j := findRow(tbl.rows, map[string]any{
+		"kind.int64":       int64(postings.KindBloom),
+		"column_name.utf8": "span_id",
+	})
+	require.NotEqual(t, -1, j, "expected bloom posting for span_id")
 
 	// Bloom filter bytes should be non-empty.
-	require.NotEmpty(t, tracePosting.BloomFilter, "expected non-empty bloom filter for trace_id")
-	require.NotEmpty(t, spanPosting.BloomFilter, "expected non-empty bloom filter for span_id")
+	require.NotEmpty(t, tbl.opaque["bloom_filter.binary"][i], "expected non-empty bloom filter for trace_id")
+	require.NotEmpty(t, tbl.opaque["bloom_filter.binary"][j], "expected non-empty bloom filter for span_id")
 
 	// Stream ID bitmap should be non-empty.
-	require.NotEmpty(t, tracePosting.StreamIDBitmap, "expected non-empty stream bitmap for trace_id")
-	require.NotEmpty(t, spanPosting.StreamIDBitmap, "expected non-empty stream bitmap for span_id")
+	require.NotEmpty(t, tbl.opaque["stream_id_bitmap.binary"][i], "expected non-empty stream bitmap for trace_id")
+	require.NotEmpty(t, tbl.opaque["stream_id_bitmap.binary"][j], "expected non-empty stream bitmap for span_id")
 }
 
 func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
@@ -132,7 +130,7 @@ func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
-	require.NoError(t, calc.Prepare(context.Background(), nil, stat))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, stat))
 
 	ts1 := time.Unix(10, 0).UTC()
 	ts2 := time.Unix(20, 0).UTC()
@@ -151,25 +149,23 @@ func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	tbl := flushAndReadAllPostingsTable(t, builder)
 
-	var tracePosting *postings.Posting
-	for i := range allPostings {
-		if allPostings[i].Kind == postings.KindBloom && allPostings[i].ColumnName == "trace_id" {
-			tracePosting = &allPostings[i]
-			break
-		}
-	}
-	require.NotNil(t, tracePosting, "expected bloom posting for trace_id")
+	i := findRow(tbl.rows, map[string]any{
+		"kind.int64":       int64(postings.KindBloom),
+		"column_name.utf8": "trace_id",
+	})
+	require.NotEqual(t, -1, i, "expected bloom posting for trace_id")
 
+	row := tbl.rows[i]
 	// Timestamps: min=ts1 (10s), max=ts3 (30s) — ts3 is the latest, proving the
 	// third record's timestamp was tracked.
-	require.Equal(t, ts1.UnixNano(), tracePosting.MinTimestamp)
-	require.Equal(t, ts3.UnixNano(), tracePosting.MaxTimestamp)
+	require.Equal(t, ts1.UTC(), row["min_timestamp.timestamp"])
+	require.Equal(t, ts3.UTC(), row["max_timestamp.timestamp"])
 
 	// Size: sum of line lengths for records that have trace_id metadata.
 	expectedSize := int64(len(line1) + len(line2) + len(line3))
-	require.Equal(t, expectedSize, tracePosting.UncompressedSize)
+	require.Equal(t, expectedSize, row["uncompressed_size.int64"])
 }
 
 func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
@@ -184,7 +180,7 @@ func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
-	require.NoError(t, calc.Prepare(context.Background(), nil, stat))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, stat))
 
 	// Only stream 1 has trace_id metadata; stream 2 does not.
 	batch := []logs.Record{
@@ -195,19 +191,16 @@ func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	tbl := flushAndReadAllPostingsTable(t, builder)
 
-	var tracePosting *postings.Posting
-	for i := range allPostings {
-		if allPostings[i].Kind == postings.KindBloom && allPostings[i].ColumnName == "trace_id" {
-			tracePosting = &allPostings[i]
-			break
-		}
-	}
-	require.NotNil(t, tracePosting, "expected bloom posting for trace_id")
+	i := findRow(tbl.rows, map[string]any{
+		"kind.int64":       int64(postings.KindBloom),
+		"column_name.utf8": "trace_id",
+	})
+	require.NotEqual(t, -1, i, "expected bloom posting for trace_id")
 
 	// Bitmap should have bit 1 set (stream ID 1 has trace_id).
-	require.NotEmpty(t, tracePosting.StreamIDBitmap)
+	require.NotEmpty(t, tbl.opaque["stream_id_bitmap.binary"][i])
 }
 
 func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
@@ -222,26 +215,29 @@ func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
-	require.NoError(t, calc.Prepare(context.Background(), nil, stat))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, stat))
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, nil))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
 	// The column was registered during Prepare, so Flush still appends a bloom
 	// posting for trace_id — but with empty data since no records were processed.
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	tbl := flushAndReadAllPostingsTable(t, builder)
 
-	var tracePosting *postings.Posting
-	for i := range allPostings {
-		if allPostings[i].Kind == postings.KindBloom && allPostings[i].ColumnName == "trace_id" {
-			tracePosting = &allPostings[i]
-			break
-		}
-	}
-	require.NotNil(t, tracePosting, "expected bloom posting for trace_id even with empty batch")
-	zeroTs := time.Time{}.UnixNano()
-	require.Equal(t, zeroTs, tracePosting.MinTimestamp, "no records means Go zero-value timestamp")
-	require.Equal(t, zeroTs, tracePosting.MaxTimestamp, "no records means Go zero-value timestamp")
-	require.Equal(t, int64(0), tracePosting.UncompressedSize, "no records means zero size")
+	i := findRow(tbl.rows, map[string]any{
+		"kind.int64":       int64(postings.KindBloom),
+		"column_name.utf8": "trace_id",
+	})
+	require.NotEqual(t, -1, i, "expected bloom posting for trace_id even with empty batch")
+
+	row := tbl.rows[i]
+	// With the bloom aggregator, an unobserved but prepared column uses sentinel values:
+	// MinTimestamp = math.MaxInt64 and MaxTimestamp = math.MinInt64.
+	// These are stored and read back as time.Time values.
+	sentinelMinTimestamp := time.Unix(0, math.MaxInt64).UTC() // unobserved min starts at max possible
+	sentinelMaxTimestamp := time.Unix(0, math.MinInt64).UTC() // unobserved max starts at min possible
+	require.Equal(t, sentinelMinTimestamp, row["min_timestamp.timestamp"], "no records means sentinel max int64 for min timestamp")
+	require.Equal(t, sentinelMaxTimestamp, row["max_timestamp.timestamp"], "no records means sentinel min int64 for max timestamp")
+	require.Equal(t, int64(0), row["uncompressed_size.int64"], "no records means zero size")
 }
 
 func TestColumnValuesCalculation_MultipleBatches(t *testing.T) {
@@ -256,7 +252,7 @@ func TestColumnValuesCalculation_MultipleBatches(t *testing.T) {
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
-	require.NoError(t, calc.Prepare(context.Background(), nil, stat))
+	require.NoError(t, calc.Prepare(context.Background(), calcCtx, nil, stat))
 
 	ts1 := time.Unix(10, 0).UTC()
 	ts2 := time.Unix(30, 0).UTC()
@@ -272,22 +268,20 @@ func TestColumnValuesCalculation_MultipleBatches(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch2))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx))
 
-	allPostings := readAllPostingsForTenant(t, builder, "tenant-1")
+	tbl := flushAndReadAllPostingsTable(t, builder)
 
-	var tracePosting *postings.Posting
-	for i := range allPostings {
-		if allPostings[i].Kind == postings.KindBloom && allPostings[i].ColumnName == "trace_id" {
-			tracePosting = &allPostings[i]
-			break
-		}
-	}
-	require.NotNil(t, tracePosting, "expected bloom posting for trace_id")
+	i := findRow(tbl.rows, map[string]any{
+		"kind.int64":       int64(postings.KindBloom),
+		"column_name.utf8": "trace_id",
+	})
+	require.NotEqual(t, -1, i, "expected bloom posting for trace_id")
 
+	row := tbl.rows[i]
 	// Timestamps should span both batches.
-	require.Equal(t, ts1.UnixNano(), tracePosting.MinTimestamp)
-	require.Equal(t, ts2.UnixNano(), tracePosting.MaxTimestamp)
+	require.Equal(t, ts1.UTC(), row["min_timestamp.timestamp"])
+	require.Equal(t, ts2.UTC(), row["max_timestamp.timestamp"])
 
 	// Size: both lines.
 	expectedSize := int64(len("first") + len("second"))
-	require.Equal(t, expectedSize, tracePosting.UncompressedSize)
+	require.Equal(t, expectedSize, row["uncompressed_size.int64"])
 }

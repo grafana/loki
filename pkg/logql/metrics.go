@@ -248,6 +248,10 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_chunk_refs_lookup_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.ChunkRefsLookupTime),
 	}...)
 
+	if stats.Summary.EstimatedQueryBytes > 0 {
+		logValues = append(logValues, "estimated_query_bytes", util.HumanizeBytes(uint64(stats.Summary.EstimatedQueryBytes)))
+	}
+
 	if r, ok := result.(CountMinSketchVector); ok {
 		cardinalityEstimate := r.F.HyperLogLog.Estimate()
 		logValues = append(logValues, "cardinality_estimate", cardinalityEstimate)

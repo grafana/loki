@@ -13,6 +13,14 @@ type taskType string
 const (
 	taskTypeScan  taskType = "scan"
 	taskTypeOther taskType = "other"
+
+	// taskTypeCompaction is reserved for tasks whose fragments contain
+	// dataobj-compaction nodes. The lane is wired through admissionControl
+	// and dispatchTasks but currently dormant: typeFor does not yet
+	// classify any task as taskTypeCompaction. The lane activates once
+	// dataobj-compaction physical-plan node types are introduced and
+	// typeFor is extended to recognize them.
+	taskTypeCompaction taskType = "compaction"
 )
 
 type admissionLane struct {
@@ -35,27 +43,32 @@ type admissionControl struct {
 	mapping map[taskType]*admissionLane
 }
 
-func newAdmissionControl(maxScanTasks, maxOtherTasks int64) *admissionControl {
+func newAdmissionControl(maxScanTasks, maxOtherTasks, maxCompactionTasks int64) *admissionControl {
 	if maxScanTasks < 1 {
 		maxScanTasks = math.MaxInt64
 	}
 	if maxOtherTasks < 1 {
 		maxOtherTasks = math.MaxInt64
 	}
+	if maxCompactionTasks < 1 {
+		maxCompactionTasks = math.MaxInt64
+	}
 
 	return &admissionControl{
 		mapping: map[taskType]*admissionLane{
-			taskTypeScan:  newAdmissionLane(taskTypeScan, maxScanTasks),
-			taskTypeOther: newAdmissionLane(taskTypeOther, maxOtherTasks),
+			taskTypeScan:       newAdmissionLane(taskTypeScan, maxScanTasks),
+			taskTypeOther:      newAdmissionLane(taskTypeOther, maxOtherTasks),
+			taskTypeCompaction: newAdmissionLane(taskTypeCompaction, maxCompactionTasks),
 		},
 	}
 }
 
-// groupByBucket categorizes a slice of tasks into groups based on their characteristics (scan, other, ...).
+// groupByType categorizes a slice of tasks into groups based on their characteristics (scan, other, compaction).
 func (ac *admissionControl) groupByType(tasks []*Task) map[taskType][]*Task {
 	groups := map[taskType][]*Task{
-		taskTypeScan:  make([]*Task, 0, len(tasks)),
-		taskTypeOther: make([]*Task, 0, len(tasks)),
+		taskTypeScan:       make([]*Task, 0, len(tasks)),
+		taskTypeOther:      make([]*Task, 0, len(tasks)),
+		taskTypeCompaction: make([]*Task, 0, len(tasks)),
 	}
 
 	for _, t := range tasks {
@@ -66,6 +79,12 @@ func (ac *admissionControl) groupByType(tasks []*Task) map[taskType][]*Task {
 	return groups
 }
 
+// typeFor classifies a task by inspecting its fragment.
+//
+// The taskTypeCompaction return is intentionally absent: it will be
+// added once dataobj-compaction physical-plan node types are introduced
+// and this function is extended to recognize them. Until then the third
+// lane is dormant.
 func (ac *admissionControl) typeFor(task *Task) taskType {
 	if isScanTask(task) {
 		return taskTypeScan

@@ -143,7 +143,6 @@ type setLookupState interface {
 
 func execIsIn(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
 	state := ctx.State.(setLookupState)
-	ctx.Kernel.(*exec.ScalarKernel).Data = state
 	in := batch.Values[0]
 
 	if !arrow.TypeEqual(in.Type(), state.ValueType()) {
