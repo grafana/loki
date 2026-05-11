@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -31,7 +32,7 @@ type task struct {
 	// capture holds individual task information from any source:
 	//
 	//   - The scheduler records its own per-task observations (e.g., timing
-	//     between state transitions) into capture.
+	//     between state transitions) into capture via region.
 	//   - Worker-supplied captures are merged into this capture when their
 	//     TaskStatusMessages arrive, so workflow consumers see a single
 	//     unified capture per task.
@@ -40,6 +41,11 @@ type task struct {
 	// aggregate counters (e.g., StatPlannedTasks), while capture is the
 	// container for per-task data.
 	capture *xcap.Capture
+
+	// region is the scheduler-owned region within capture. All scheduler-side
+	// per-task observations are recorded against this region. Worker-supplied
+	// regions are merged into capture but kept distinct from this one.
+	region *xcap.Region
 
 	// Set once by [Scheduler.Start] and read thereafter.
 	metadata        http.Header
@@ -182,4 +188,35 @@ func (t *task) TryAssign(doAssign func() error) error {
 
 	t.assignTime = time.Now()
 	return nil
+}
+
+// RecordTerminalObservations records the scheduler-side per-task duration
+// observations for a task that has just reached a terminal state and ends
+// the scheduler region within the task's capture.
+//
+// The recorded durations partition the task's total lifetime:
+//
+//   - [schedulerstat.TaskQueueDuration] is recorded if the task was enqueued
+//     but never assigned to a worker (covering pre-assignment cancellations
+//     of queued tasks). Tasks that were assigned have their queue duration
+//     recorded earlier, at assignment time.
+//   - [schedulerstat.TaskExecutionDuration] is recorded for any task that
+//     was assigned to a worker.
+//   - [schedulerstat.TaskTotalDuration] is always recorded.
+//
+// RecordTerminalObservations must only be called once per task and only when
+// the task has reached a terminal state.
+func (t *task) RecordTerminalObservations(now time.Time) {
+	t.mut.RLock()
+	queueTime, assignTime := t.queueTime, t.assignTime
+	t.mut.RUnlock()
+
+	if !queueTime.IsZero() && assignTime.IsZero() {
+		t.region.Record(schedulerstat.TaskQueueDuration.Observe(now.Sub(queueTime).Nanoseconds()))
+	}
+	if !assignTime.IsZero() {
+		t.region.Record(schedulerstat.TaskExecutionDuration.Observe(now.Sub(assignTime).Nanoseconds()))
+	}
+	t.region.Record(schedulerstat.TaskTotalDuration.Observe(now.Sub(t.createTime).Nanoseconds()))
+	t.region.End()
 }

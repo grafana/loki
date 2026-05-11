@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
@@ -414,6 +415,12 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	t.Metrics.taskReadSeconds.Observe(readDuration.Seconds())
 	t.Metrics.taskComputeSeconds.Observe(totalComputeTime.Seconds())
 	t.Metrics.taskWriteSeconds.Observe(totalWriteTime.Seconds())
+
+	// Record execution sub-phase durations on the task region so the workflow
+	// can include them in the per-task summary log.
+	region.Record(workerstat.TaskExecutionOpenDuration.Observe(readDuration.Nanoseconds()))
+	region.Record(workerstat.TaskExecutionReadDuration.Observe(totalComputeTime.Nanoseconds()))
+	region.Record(workerstat.TaskExecutionSendDuration.Observe(totalWriteTime.Nanoseconds()))
 
 	return totalRows, nil
 }

@@ -530,6 +530,9 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 	wf.tasksMut.RUnlock()
 
 	wf.cancelTasks(ctx, tasksToCancel)
+
+	// Print the summary at the very end to track full end-to-end task time.
+	wf.printTaskSummary(task, oldState, newStatus)
 }
 
 func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task, newStatus TaskStatus) {

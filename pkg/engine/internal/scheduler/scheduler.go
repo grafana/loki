@@ -22,6 +22,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -315,6 +316,7 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 		// handler full visibility into the task's execution.
 		notifyStatus := msg.Status
 		if newState.Terminal() {
+			task.RecordTerminalObservations(time.Now())
 			task.capture.Merge(nil, notifyStatus.Capture)
 			notifyStatus.Capture = task.capture
 		}
@@ -435,6 +437,8 @@ func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason
 		case workflow.TaskStateFailed:
 			task.wfRegion.Record(StatFailedTasks.Observe(1))
 		}
+
+		task.RecordTerminalObservations(time.Now())
 
 		// We only need to inform the handler about the change. There's nothing
 		// to send to the owner of the task since worker has disconnected.
@@ -662,12 +666,13 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 
 		worker.Assign(t)
 		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
-		queueDuration := assignTime.Sub(t.QueueTime()).Seconds()
-		s.metrics.taskQueueSeconds.Observe(queueDuration)
+		queueDuration := assignTime.Sub(t.QueueTime())
+		s.metrics.taskQueueSeconds.Observe(queueDuration.Seconds())
+		t.region.Record(schedulerstat.TaskQueueDuration.Observe(queueDuration.Nanoseconds()))
 
 		if t.wfRegion != nil {
 			t.wfRegion.Record(StatAssignedTasks.Observe(1))
-			t.wfRegion.Record(xcap.StatTaskMaxQueueDuration.Observe(queueDuration))
+			t.wfRegion.Record(xcap.StatTaskMaxQueueDuration.Observe(queueDuration.Seconds()))
 
 			// Record time from task creation until this task assignment.
 			assignmentTailDuration := assignTime.Sub(t.createTime).Seconds()
@@ -858,7 +863,12 @@ NextTask:
 		// We create a fresh [xcap.Capture] for each task to generate per-task
 		// observations. This will be merged with a capture received by the
 		// worker upon receiving a terminal state.
-		_, taskCapture := xcap.NewCapture(ctx, nil)
+		//
+		// The scheduler region holds scheduler-side observations about this
+		// specific task; worker-supplied regions are merged into the capture
+		// alongside it.
+		captureCtx, taskCapture := xcap.NewCapture(ctx, nil)
+		_, taskRegion := xcap.StartRegion(captureCtx, "scheduler")
 
 		manifestTasks[taskToAdd.ULID] = &task{
 			createTime: time.Now(),
@@ -866,6 +876,7 @@ NextTask:
 			inner:      taskToAdd,
 			handler:    manifest.TaskEventHandler,
 			capture:    taskCapture,
+			region:     taskRegion,
 		}
 	}
 
@@ -979,11 +990,18 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 			_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 		}
 
-		// Inform the owner about the change.
+		registered.RecordTerminalObservations(time.Now())
+
+		// Inform the owner about the change. Attach the per-task capture so
+		// the workflow consumer can read scheduler-side observations; once we
+		// flip the state here, any later status message from a still-running
+		// worker would be ignored as a no-op transition.
+		notifyStatus := registered.Status()
+		notifyStatus.Capture = registered.capture
 		n.AddTaskEvent(taskNotification{
 			Handler:   registered.handler,
 			Task:      taskToRemove,
-			NewStatus: registered.Status(),
+			NewStatus: notifyStatus,
 		})
 	}
 
@@ -1151,6 +1169,7 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 		}
 
 		task.MarkQueued()
+		task.region.Record(schedulerstat.TaskStagingDuration.Observe(task.QueueTime().Sub(task.createTime).Nanoseconds()))
 		if err := s.taskQueue.Push(task.scope, task); err != nil {
 			level.Error(s.logger).Log("msg", "failed to enqueue task; task will not be executed", "id", task.inner.ULID, "err", err)
 		}
@@ -1249,6 +1268,8 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			case workflow.TaskStatePending:
 				region.Record(obsCanceledQueued)
 			}
+
+			registered.RecordTerminalObservations(time.Now())
 
 			// Inform the owner about the change. Attach the per-task capture so
 			// the workflow consumer can read scheduler-side observations even for
