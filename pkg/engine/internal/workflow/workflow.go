@@ -227,7 +227,7 @@ func (wf *Workflow) init(ctx context.Context) error {
 		Actor:  wf.opts.Actor,
 
 		Streams: wf.allStreams(),
-		Tasks:   wf.allTasks(),
+		Tasks:   wf.AllTasks(),
 
 		StreamEventHandler: wf.onStreamChange,
 		TaskEventHandler:   wf.onTaskChange,
@@ -397,7 +397,7 @@ func (wf *Workflow) allStreams() []*Stream {
 	return result
 }
 
-func (wf *Workflow) allTasks() []*Task {
+func (wf *Workflow) AllTasks() []*Task {
 	var tasks []*Task
 
 	for _, root := range wf.graph.Roots() {

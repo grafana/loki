@@ -11,6 +11,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
+var _ WrappedPipeline = (*batchingPipeline)(nil)
+
 // batchingPipeline wraps a [Pipeline] and accumulates records from it into
 // larger batches of at most batchSize rows, performing schema reconciliation
 // across records with different schemas via [arrowagg.Records].
