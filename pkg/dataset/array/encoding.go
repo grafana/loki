@@ -22,6 +22,12 @@ type (
 	// If the data type is nullable, then the first child Array holds validity
 	// data.
 	EncodingBool struct{}
+
+	// EncodingPlain holds fixed-width values without any compression.
+	//
+	// If the data type is nullable, then the first child Array holds validity
+	// data.
+	EncodingPlain struct{}
 )
 
 // Kind returns [EncodingKindBool].
@@ -29,8 +35,14 @@ func (enc *EncodingBool) Kind() EncodingKind {
 	return EncodingKindBool
 }
 
+// Kind returns [EncodingKindPlain].
+func (enc *EncodingPlain) Kind() EncodingKind {
+	return EncodingKindPlain
+}
+
 //
 // Sealed marker implementations.
 //
 
-func (enc *EncodingBool) isEncoding() {}
+func (enc *EncodingBool) isEncoding()  {}
+func (enc *EncodingPlain) isEncoding() {}

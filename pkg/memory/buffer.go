@@ -125,6 +125,18 @@ func (buf *Buffer[T]) Clear() {
 	clear(buf.data)
 }
 
+// BytesTrimmed returns the bytes backing buf without any padding beyond the
+// buffer's length. The returned slice has length len(buf.Data()) *
+// unsafe.Sizeof(T).
+//
+// The returned memory is shared with buf, not a copy.
+func (buf *Buffer[T]) BytesTrimmed() []byte {
+	if buf.data == nil {
+		return nil
+	}
+	return unsafecast.Slice[T, byte](buf.data)
+}
+
 // Serialize returns the serializable form of the underlying byte array
 // representing buf, padded to 64-bytes. Padded bytes will be set to zero.
 //
