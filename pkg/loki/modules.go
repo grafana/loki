@@ -155,7 +155,7 @@ const (
 	DataObjConsumerRing          = "dataobj-consumer-ring"
 	DataObjConsumerPartitionRing = "dataobj-consumer-partition-ring"
 	DataObjIndexBuilder          = "dataobj-index-builder"
-	DataObjCompactor             = "dataobj-compactor"
+	DataObjCompactionPlanner     = "dataobj-compaction-planner"
 	ScratchStore                 = "scratch-store"
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
@@ -2480,24 +2480,16 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 	return t.dataObjIndexBuilder, err
 }
 
-func (t *Loki) initDataObjCompactor() (services.Service, error) {
+func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled || !t.Cfg.DataObj.Compaction.Enabled {
-		// Default config keeps both gates off; the dataobj-compactor
-		// target is fully opt-in. Returning nil, nil makes this a no-op
-		// module - Loki initializes nothing and starts no goroutines.
 		return nil, nil
 	}
 
-	// Defense-in-depth: the top-level Config.Validate() gate is wrapped
-	// inside an `if c.Ingester.KafkaIngestion.Enabled` check, so a
-	// compactor-only deployment (no Kafka ingestion) skips compaction
-	// config validation entirely. Validate explicitly here so invalid
-	// values are caught before service construction.
 	if err := t.Cfg.DataObj.Compaction.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
 	}
 
-	logger := log.With(util_log.Logger, "component", "dataobj-compactor")
+	logger := log.With(util_log.Logger, "component", "dataobj-compaction-planner")
 
 	c, err := enginecompactor.New(t.Cfg.DataObj.Compaction, logger)
 	if err != nil {
@@ -2528,7 +2520,7 @@ func (t *Loki) initDataObjCompactor() (services.Service, error) {
 	// change). Mirroring initV2QueryEngineScheduler's pattern of
 	// returning the inner service directly would prevent the
 	// coordinator loop from ever running.
-	t.dataObjCompactor = c
+	t.dataObjCompactionPlanner = c
 	return c, nil
 }
 

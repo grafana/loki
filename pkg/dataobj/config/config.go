@@ -13,7 +13,7 @@ type Config struct {
 	Consumer  consumer.Config  `yaml:"consumer"`
 	Index     index.Config     `yaml:"index"`
 	Metastore metastore.Config `yaml:"metastore"`
-	// Compaction is the dataobj-compactor target's configuration.
+	// Compaction is the dataobj-compaction-planner target's configuration.
 	// Disabled by default; setting Compaction.Enabled = true in addition
 	// to the top-level Enabled flag opts the deployment in.
 	Compaction compactor.Config `yaml:"compaction"`

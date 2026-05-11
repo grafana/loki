@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCompactor_BootShutdown boots the scaffold with an in-process-only
+// TestPlanner_BootShutdown boots the scaffold with an in-process-only
 // scheduler (empty AdvertiseAddr), waits for it to reach Running, then
 // stops it. It must transition cleanly with no error.
-func TestCompactor_BootShutdown(t *testing.T) {
+func TestPlanner_BootShutdown(t *testing.T) {
 	cfg := Config{
 		Enabled: true,
 		Scheduler: SchedulerConfig{
@@ -49,7 +49,8 @@ func TestConfig_Validate_DisabledIsNoop(t *testing.T) {
 }
 
 // TestConfig_Validate_EnabledRejectsBadValues captures the validation
-// surface that gets exercised when the operator turns the compactor on.
+// surface that gets exercised when the operator turns the compaction
+// planner on.
 func TestConfig_Validate_EnabledRejectsBadValues(t *testing.T) {
 	t.Run("negative max_running_compaction_tasks", func(t *testing.T) {
 		cfg := Config{

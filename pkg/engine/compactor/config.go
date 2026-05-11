@@ -1,12 +1,14 @@
-// Package compactor contains the data-object compactor service skeleton.
+// Package compactor contains the dataobj compaction planner service
+// skeleton. The planner is one role in the broader dataobj compaction
+// system; the worker target is added in a follow-up change.
 //
-// The compactor is opt-in: it runs only when started with
-// -target=dataobj-compactor AND the dataobj.enabled and
+// The compaction planner is opt-in: it runs only when started with
+// -target=dataobj-compaction-planner AND the dataobj.enabled and
 // dataobj.compaction.enabled config flags are both true. The default
 // configuration leaves both gates off; nothing in this package runs in
 // the default Loki binary.
 //
-// This file is the scaffold for the dataobj compactor. The real coordinator
+// This file is the scaffold for the compaction planner. The real coordinator
 // polling loop, marker management, planner integration, and physical-plan
 // node types are added in subsequent changes.
 package compactor
@@ -16,12 +18,14 @@ import (
 	"flag"
 )
 
-// Config is the top-level configuration for the dataobj compactor target.
+// Config is the top-level configuration for the dataobj compaction
+// planner target.
 // A follow-up commit wires it into the dataobj config tree at
 // pkg/dataobj/config/config.go as the `compaction` field.
 type Config struct {
-	// Enabled toggles the compactor. When false, the dataobj-compactor
-	// module is a no-op even if the target is selected.
+	// Enabled toggles the compaction planner. When false, the
+	// dataobj-compaction-planner module is a no-op even if the target is
+	// selected.
 	Enabled bool `yaml:"enabled"`
 
 	// MaxRunningCompactionTasks caps how many CompactionMerge tasks a
@@ -40,7 +44,7 @@ type Config struct {
 }
 
 // SchedulerConfig holds the scheduler-side parameters that get passed
-// to engine.NewScheduler when the compactor target boots.
+// to engine.NewScheduler when the compaction planner target boots.
 type SchedulerConfig struct {
 	// AdvertiseAddr is the host:port the embedded scheduler advertises to
 	// remote workers. Empty string keeps the scheduler in-process-only
@@ -71,7 +75,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // prefix as the flag-name prefix.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, prefix+"enabled", false,
-		"Experimental: Enable the dataobj compactor target.")
+		"Experimental: Enable the dataobj compaction planner target.")
 	f.IntVar(&cfg.MaxRunningCompactionTasks, prefix+"max-running-compaction-tasks",
 		defaultMaxRunningCompactionTasks,
 		"Experimental: Per-workflow cap on concurrent CompactionMerge tasks. Currently unused; reserved for the engine scheduler's compaction admission lane added in a follow-up change.")
@@ -81,7 +85,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 }
 
-// Validate returns nil while the compactor is disabled. When enabled it
+// Validate returns nil while the compaction planner is disabled. When enabled it
 // performs basic shape checks; deeper validation lands alongside the real
 // coordinator in a follow-up change.
 func (cfg *Config) Validate() error {

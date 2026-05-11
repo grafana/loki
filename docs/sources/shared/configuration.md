@@ -1606,7 +1606,7 @@ dataobj:
     [partition_ratio: <int> | default = 10]
 
   compaction:
-    # Experimental: Enable the dataobj compactor target.
+    # Experimental: Enable the dataobj compaction planner target.
     # CLI flag: -dataobj.compaction.enabled
     [enabled: <boolean> | default = false]
 

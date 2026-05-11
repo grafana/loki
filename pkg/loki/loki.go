@@ -447,7 +447,7 @@ type Loki struct {
 	dataObjConsumerPartitionRing        *ring.PartitionInstanceRing
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
 	dataObjIndexBuilder                 *dataobjindex.Builder
-	dataObjCompactor                    *enginecompactor.Compactor
+	dataObjCompactionPlanner            *enginecompactor.Planner
 	scratchStore                        scratch.Store
 	queryEngineV2                       *engine.Engine
 	queryEngineV2Scheduler              *engine.Scheduler
@@ -807,7 +807,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjConsumerPartitionRing, t.initDataObjConsumerPartitionRing)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
-	mm.RegisterModule(DataObjCompactor, t.initDataObjCompactor)
+	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner)
 	mm.RegisterModule(ScratchStore, t.initScratchStore)
 
 	mm.RegisterModule(All, nil)
@@ -859,7 +859,7 @@ func (t *Loki) setupModuleManager() error {
 		DataObjConsumerPartitionRing: {MemberlistKV, Server, Ring},
 		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UI},
 		DataObjIndexBuilder:          {ScratchStore, Server, UIRing},
-		DataObjCompactor:             {Server, UIRing},
+		DataObjCompactionPlanner:     {Server, UIRing},
 		ScratchStore:                 {},
 
 		Read:    {QueryFrontend, Querier},
