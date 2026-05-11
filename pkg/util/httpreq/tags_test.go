@@ -144,6 +144,65 @@ func Test_testToKeyValues(t *testing.T) {
 	}
 }
 
+func TestAppendQueryTagsHeader(t *testing.T) {
+	tests := []struct {
+		name       string
+		existing   string
+		additional string
+		expected   string
+		expectedKV []any
+	}{
+		{
+			name:       "sets tags when header is empty",
+			additional: "goldfish_correlation_id=test-uuid",
+			expected:   "goldfish_correlation_id=test-uuid",
+			expectedKV: []any{
+				"goldfish_correlation_id",
+				"test-uuid",
+			},
+		},
+		{
+			name:       "preserves existing tags when appending",
+			existing:   "Source=logvolhist",
+			additional: "goldfish_correlation_id=test-uuid",
+			expected:   "Source=logvolhist,goldfish_correlation_id=test-uuid",
+			expectedKV: []any{
+				"source",
+				"logvolhist",
+				"goldfish_correlation_id",
+				"test-uuid",
+			},
+		},
+		{
+			name:       "sanitizes existing and appended tags",
+			existing:   "Source=log+volhist",
+			additional: "goldfish_correlation_id=test/uuid",
+			expected:   "Source=log_volhist,goldfish_correlation_id=test_uuid",
+			expectedKV: []any{
+				"source",
+				"log_volhist",
+				"goldfish_correlation_id",
+				"test_uuid",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			header := make(http.Header)
+			if test.existing != "" {
+				header.Set(string(QueryTagsHTTPHeader), test.existing)
+			}
+
+			AppendQueryTagsHeader(header, test.additional)
+
+			got := header.Get(string(QueryTagsHTTPHeader))
+			assert.Equal(t, test.expected, got)
+			assert.Equal(t, test.expectedKV, TagsToKeyValues(got))
+		})
+	}
+}
+
 func TestIsLogsDrilldownRequest(t *testing.T) {
 	tests := []struct {
 		name      string
