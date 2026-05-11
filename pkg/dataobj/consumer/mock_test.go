@@ -1,139 +1,19 @@
 package consumer
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
 	"time"
 
-	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
-
-// A mockBucket mocks an [objstore.Bucket].
-type mockBucket struct {
-	uploads map[string][]byte
-	mu      sync.Mutex
-}
-
-func newMockBucket() *mockBucket {
-	return &mockBucket{
-		uploads: make(map[string][]byte),
-	}
-}
-
-func (m *mockBucket) Close() error                             { return nil }
-func (m *mockBucket) Delete(_ context.Context, _ string) error { return nil }
-func (m *mockBucket) Exists(_ context.Context, name string) (bool, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	_, exists := m.uploads[name]
-	return exists, nil
-}
-
-func (m *mockBucket) Get(_ context.Context, name string) (io.ReadCloser, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	data, exists := m.uploads[name]
-	if !exists {
-		return nil, errors.New("object not found")
-	}
-	return io.NopCloser(bytes.NewReader(data)), nil
-}
-
-func (m *mockBucket) GetRange(_ context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	data, exists := m.uploads[name]
-	if !exists {
-		return nil, errors.New("object not found")
-	}
-	if off < 0 || off > int64(len(data)) {
-		return nil, errors.New("offset out of range")
-	}
-	end := off + length
-	if end > int64(len(data)) {
-		end = int64(len(data))
-	}
-	return io.NopCloser(bytes.NewReader(data[off:end])), nil
-}
-
-func (m *mockBucket) Upload(_ context.Context, name string, r io.Reader) error {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return err
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.uploads[name] = data
-	return nil
-}
-
-func (m *mockBucket) Iter(_ context.Context, _ string, _ func(string) error, _ ...objstore.IterOption) error {
-	return nil
-}
-func (m *mockBucket) Name() string { return "mock" }
-func (m *mockBucket) Attributes(_ context.Context, name string) (objstore.ObjectAttributes, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	data, exists := m.uploads[name]
-	if !exists {
-		return objstore.ObjectAttributes{}, errors.New("object not found")
-	}
-	return objstore.ObjectAttributes{Size: int64(len(data))}, nil
-}
-
-func (m *mockBucket) GetAndReplace(_ context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
-	m.mu.Lock()
-	var existing io.ReadCloser
-	if data, ok := m.uploads[name]; ok {
-		existing = io.NopCloser(bytes.NewReader(data))
-	}
-	m.mu.Unlock()
-
-	newRC, err := fn(existing)
-	if err != nil {
-		return err
-	}
-	defer newRC.Close()
-	data, err := io.ReadAll(newRC)
-	if err != nil {
-		return err
-	}
-	m.mu.Lock()
-	m.uploads[name] = data
-	m.mu.Unlock()
-	return nil
-}
-
-func (m *mockBucket) IsAccessDeniedErr(_ error) bool {
-	return false
-}
-
-func (m *mockBucket) IsObjNotFoundErr(err error) bool {
-	return err != nil && err.Error() == "object not found"
-}
-
-func (m *mockBucket) IterWithAttributes(_ context.Context, _ string, _ func(objstore.IterObjectAttributes) error, _ ...objstore.IterOption) error {
-	return nil
-}
-
-func (m *mockBucket) Provider() objstore.ObjProvider {
-	return objstore.ObjProvider("MOCK")
-}
-
-func (m *mockBucket) SupportedIterOptions() []objstore.IterOptionType {
-	return nil
-}
 
 // mockBuilder mocks a [logsobj.Builder].
 type mockBuilder struct {
@@ -268,28 +148,4 @@ func (m *mockUploader) Upload(_ context.Context, obj *dataobj.Object) (string, e
 	defer m.mtx.Unlock()
 	m.uploaded = append(m.uploaded, obj)
 	return fmt.Sprintf("object_%03d", len(m.uploaded)), nil
-}
-
-type recordedTocEntry struct {
-	DataObjectPath string
-	MinTimestamp   time.Time
-	MaxTimestamp   time.Time
-}
-
-// A recordingTocWriter wraps a [metastore.TableOfContentsWriter] and records
-// all entries written to it.
-type recordingTocWriter struct {
-	entries []recordedTocEntry
-	*metastore.TableOfContentsWriter
-}
-
-func (m *recordingTocWriter) WriteEntry(ctx context.Context, dataobjPath string, timeRanges []multitenancy.TimeRange) error {
-	for _, timeRange := range timeRanges {
-		m.entries = append(m.entries, recordedTocEntry{
-			DataObjectPath: dataobjPath,
-			MinTimestamp:   timeRange.MinTime,
-			MaxTimestamp:   timeRange.MaxTime,
-		})
-	}
-	return m.TableOfContentsWriter.WriteEntry(ctx, dataobjPath, timeRanges)
 }

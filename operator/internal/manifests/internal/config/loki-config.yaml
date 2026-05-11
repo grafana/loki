@@ -342,6 +342,10 @@ schema_config:
       {{- end}}
     {{- end }}
 {{ if .Ruler.Enabled }}
+ruler_storage:
+  backend: local
+  local:
+    directory: {{ .Ruler.RulesStorageDirectory }}
 ruler:
   enable_api: true
   enable_sharding: true
@@ -535,10 +539,6 @@ ruler:
     min_age: 5m
     max_age: 4h
   rule_path: {{ .StorageDirectory }}
-  storage:
-    type: local
-    local:
-      directory: {{ .Ruler.RulesStorageDirectory }}
   ring:
     kvstore:
       store: memberlist

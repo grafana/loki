@@ -392,7 +392,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 			}
 		},
 		"warnings": [
-			"Query was executed using the new experimental query engine and dataobj storage."
+			"Query was executed using the next-generation Loki query engine."
 		]
 	}`)
 

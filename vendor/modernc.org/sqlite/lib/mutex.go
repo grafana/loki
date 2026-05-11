@@ -253,7 +253,7 @@ func mutexTry(tls *libc.TLS, m uintptr) int32 {
 	// Non-recursive mutex
 	if !(*mutex)(unsafe.Pointer(m)).recursive {
 		if (*mutex)(unsafe.Pointer(m)).TryLock() {
-			(*mutex)(unsafe.Pointer(m)).id = tls.ID
+			atomic.StoreInt32(&(*mutex)(unsafe.Pointer(m)).id, tls.ID)
 			return SQLITE_OK
 		}
 

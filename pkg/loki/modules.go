@@ -2690,13 +2690,3 @@ func (dh ignoreSignalHandler) Loop() {
 func (dh ignoreSignalHandler) Stop() {
 	close(dh)
 }
-
-func schemaHasBoltDBShipperConfig(scfg config.SchemaConfig) bool {
-	for _, cfg := range scfg.Configs {
-		if cfg.IndexType == types.BoltDBShipperType {
-			return true
-		}
-	}
-
-	return false
-}
