@@ -210,7 +210,6 @@ func TestEngine_LimitedQueryPlansContributeTimeRanges(t *testing.T) {
 
 				// For each leaf task fragment, confirm it unwraps to a ContributingTimeRangeChangedNotifier
 				pipeline := executor.Run(context.Background(), executor.Config{BatchSize: 128}, task.Fragment, log.NewNopLogger())
-				require.NoError(t, err)
 				defer pipeline.Close()
 
 				unwrapped := executor.Unwrap(pipeline)
