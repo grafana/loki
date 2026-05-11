@@ -30,6 +30,25 @@ type (
 		// data types.
 		Validity Spec
 	}
+
+	// SpecBinary holds raw binary data without any compression.
+	//
+	// The first child Spec determines how to encode offset information, where
+	// the half-open range (offsets[i], offsets[i+1]] specifies where the
+	// offsets where element i.
+	//
+	// If the data type is nullable, then the last child Spec describes how to
+	// encode validity data.
+	SpecBinary struct {
+		// Spec for how to encode offset information, where the half-open range
+		// (offsets[i], offsets[i+1]] specifies where the offsets where element
+		// i.
+		Offsets Spec
+
+		// Spec for how to encode validity data. Must only be set for nullable
+		// data types.
+		Validity Spec
+	}
 )
 
 // Kind returns [EncodingKindBool].
@@ -42,9 +61,15 @@ func (spec *SpecPlain) Kind() EncodingKind {
 	return EncodingKindPlain
 }
 
+// Kind returns [EncodingKindBinary].
+func (spec *SpecBinary) Kind() EncodingKind {
+	return EncodingKindBinary
+}
+
 //
 // Sealed marker implementations.
 //
 
-func (spec *SpecBool) isSpec()  {}
-func (spec *SpecPlain) isSpec() {}
+func (spec *SpecBool) isSpec()   {}
+func (spec *SpecPlain) isSpec()  {}
+func (spec *SpecBinary) isSpec() {}
