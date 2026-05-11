@@ -240,7 +240,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 		planner := newTestPlanner(mockReader)
 		indexes := []IndexInfo{{Path: "index1", Tenant: "tenant1"}}
 
-		plans, leftoverPlan, err := planner.buildPlanFromIndexes(ctx, indexes, windowStart, windowEnd)
+		plans, leftoverPlan, err := planner.Plan(ctx, indexes, windowStart, windowEnd)
 
 		require.NoError(t, err)
 		require.Len(t, plans, 1)
@@ -293,7 +293,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 			{Path: "index2", Tenant: "tenant1"},
 		}
 
-		plans, _, err := planner.buildPlanFromIndexes(ctx, indexes, windowStart, windowEnd)
+		plans, _, err := planner.Plan(ctx, indexes, windowStart, windowEnd)
 
 		require.NoError(t, err)
 		require.Len(t, plans, 1)
@@ -346,7 +346,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 			{Path: "index2", Tenant: "tenant2"},
 		}
 
-		plans, _, err := planner.buildPlanFromIndexes(ctx, indexes, windowStart, windowEnd)
+		plans, _, err := planner.Plan(ctx, indexes, windowStart, windowEnd)
 
 		require.NoError(t, err)
 		require.Len(t, plans, 2)
@@ -401,7 +401,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 		planner := newTestPlanner(mockReader)
 		indexes := []IndexInfo{{Path: "index1", Tenant: "tenant1"}}
 
-		plans, leftoverPlan, err := planner.buildPlanFromIndexes(ctx, indexes, windowStart, windowEnd)
+		plans, leftoverPlan, err := planner.Plan(ctx, indexes, windowStart, windowEnd)
 
 		require.NoError(t, err)
 		require.Len(t, plans, 1)
@@ -456,7 +456,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 			{Path: "index2", Tenant: "tenant2"},
 		}
 
-		_, leftoverPlan, err := planner.buildPlanFromIndexes(ctx, indexes, windowStart, windowEnd)
+		_, leftoverPlan, err := planner.Plan(ctx, indexes, windowStart, windowEnd)
 
 		require.NoError(t, err)
 		require.NotNil(t, leftoverPlan)

@@ -171,8 +171,12 @@ type IndexStreamResult struct {
 	LeftoverAfterStreams  []LeftoverStreamInfo
 }
 
-// buildPlanFromIndexes builds compaction plans for each tenant and aggregates leftover streams.
-func (s *Planner) buildPlanFromIndexes(ctx context.Context, indexes []IndexInfo, windowStart, windowEnd time.Time) (map[string]*CompactionPlan, *LeftoverPlan, error) {
+// Plan builds compaction plans for each tenant and aggregates leftover streams.
+// It is the entry point used by the compactor coordinator: given the indexes
+// covering a (tenant, window) and the window bounds, it returns one
+// CompactionPlan per tenant plus an aggregated LeftoverPlan for data falling
+// outside the window.
+func (s *Planner) Plan(ctx context.Context, indexes []IndexInfo, windowStart, windowEnd time.Time) (map[string]*CompactionPlan, *LeftoverPlan, error) {
 	// Group indexes by tenant
 	indexesByTenant := make(map[string][]IndexInfo)
 	for _, index := range indexes {
