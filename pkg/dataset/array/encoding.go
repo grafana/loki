@@ -37,6 +37,16 @@ type (
 	// If the data type is nullable, then the last child Array holds validity
 	// data.
 	EncodingBinary struct{}
+
+	// EncodingBitpacked holds bitpacked unsigned integer values split into
+	// fixed-size blocks. Each block is independently packed using the minimum
+	// number of bits needed for the largest value in that block.
+	//
+	// The first child Array holds per-block bit widths. If the data type is
+	// nullable, then the last child Array holds validity data.
+	EncodingBitpacked struct {
+		BlockSize int // Number of rows per block. The last block may have fewer rows.
+	}
 )
 
 // Kind returns [EncodingKindBool].
@@ -54,10 +64,16 @@ func (enc *EncodingBinary) Kind() EncodingKind {
 	return EncodingKindBinary
 }
 
+// Kind returns [EncodingKindBitpacked].
+func (enc *EncodingBitpacked) Kind() EncodingKind {
+	return EncodingKindBitpacked
+}
+
 //
 // Sealed marker implementations.
 //
 
-func (enc *EncodingBool) isEncoding()   {}
-func (enc *EncodingPlain) isEncoding()  {}
-func (enc *EncodingBinary) isEncoding() {}
+func (enc *EncodingBool) isEncoding()      {}
+func (enc *EncodingPlain) isEncoding()     {}
+func (enc *EncodingBinary) isEncoding()    {}
+func (enc *EncodingBitpacked) isEncoding() {}
