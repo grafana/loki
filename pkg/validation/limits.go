@@ -219,9 +219,6 @@ type Limits struct {
 	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
 	PerTenantOverridePeriod model.Duration `yaml:"per_tenant_override_period" json:"per_tenant_override_period"`
 
-	// Deprecated
-	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes" doc:"deprecated|description=Use deletion_mode per tenant configuration instead."`
-
 	ShardStreams shardstreams.Config `yaml:"shard_streams" json:"shard_streams" doc:"description=Define streams sharding behavior."`
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
@@ -670,10 +667,6 @@ func (l *Limits) Validate() error {
 
 	if _, err := deletionmode.ParseMode(l.DeletionMode); err != nil {
 		return err
-	}
-
-	if l.CompactorDeletionEnabled {
-		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
 	}
 
 	if l.MaxQueryCapacity < 0 {

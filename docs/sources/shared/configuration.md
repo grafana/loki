@@ -4735,9 +4735,6 @@ ruler_remote_write_sigv4_config:
 # CLI flag: -limits.per-user-override-period
 [per_tenant_override_period: <duration> | default = 10s]
 
-# Deprecated: Use deletion_mode per tenant configuration instead.
-[allow_deletes: <boolean>]
-
 # Define streams sharding behavior.
 shard_streams:
   # Automatically shard streams to keep them under the per-stream rate limit.

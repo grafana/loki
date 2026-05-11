@@ -86,3 +86,4 @@ chunk_store_config:
 limits_config:
   ruler_evaluation_delay_duration: "This setting is removed."
   enforce_metric_name: "This setting is removed."
+  allow_deletes: "Use deletion_mode per tenant configuration instead."

@@ -65,7 +65,7 @@ storage_config:
   bigtable: # DEPRECATED
     project: "my-project"
   cassandra: # DEPRECATED
-    addresses: 'a.b.c.d:9042'
+    addresses: "a.b.c.d:9042"
   boltdb: # DEPRECATED
     directory: /tmp/loki/boltdb
   grpc_store: # DEPRECATED
@@ -136,4 +136,3 @@ limits_config:
     region: "wherever"
   per_tenant_override_config: ./overrides.yaml # DEPRECATED
   per_tenant_override_period: 5s # DEPRECATED
-  allow_deletes: true # DEPRECATED
