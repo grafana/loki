@@ -62,13 +62,13 @@ groups:
         label_replace(
           label_replace(
             rate(container_cpu_usage_seconds_total{
-              container!="",
-              pod=~"lokistack-.*-ingester-.*"
+              container="loki-ingester",
+              pod=~".*-ingester-.*"
             }[5m]),
             "stack_name",
             "$1",
             "pod",
-            "lokistack-(.*)-ingester-.*"
+            "(.*)-ingester-.*"
           ),
           "stack_namespace",
           "$1",
@@ -83,13 +83,13 @@ groups:
         label_replace(
           label_replace(
             container_memory_working_set_bytes{
-              container!="",
-              pod=~"lokistack-.*-ingester-.*"
+              container="loki-ingester",
+              pod=~".*-ingester-.*"
             },
             "stack_name",
             "$1",
             "pod",
-            "lokistack-(.*)-ingester-.*"
+            "(.*)-ingester-.*"
           ),
           "stack_namespace",
           "$1",
@@ -106,22 +106,22 @@ groups:
             (
               rate(loki_distributor_bytes_received_total{
                 container="loki-distributor",
-                pod=~"lokistack-.*-distributor-.*"
+                pod=~".*-distributor-.*"
               }[5m])
               -
               (rate(loki_discarded_bytes_total{
                 container="loki-distributor",
-                pod=~"lokistack-.*-distributor-.*"
+                pod=~".*-distributor-.*"
               }[5m]) or
                rate(loki_distributor_bytes_received_total{
                  container="loki-distributor",
-                 pod=~"lokistack-.*-distributor-.*"
+                 pod=~".*-distributor-.*"
                }[5m]) * 0)
             ) / (1024 * 1024),
             "stack_name",
             "$1",
             "pod",
-            "lokistack-(.*)-distributor-.*"
+            "(.*)-distributor-.*"
           ),
           "stack_namespace",
           "$1",
