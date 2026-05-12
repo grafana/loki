@@ -368,9 +368,11 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `{env="prod"} | line_format "{.cluster}"`,
+			expected:  true,
 		},
 		{
 			statement: `{env="prod"} | label_format cluster="us"`,
+			expected:  true,
 		},
 		{
 			statement: `{env="prod"} |= "metric.go" | retry > 2`,
@@ -783,9 +785,10 @@ RETURN %12
 	t.Run("preserves operation order with filters before and after projection with parse operation", func(t *testing.T) {
 		// A map of parse statement => generated
 		parsers := map[string]string{
-			`json`:                     `PARSE_JSON(builtin.message, [], false, false)`,
-			`logfmt`:                   `PARSE_LOGFMT(builtin.message, [], false, false)`,
-			`regexp "(?P<level>\\w+)"`: `PARSE_REGEXP(builtin.message, "(?P<level>\w+)")`,
+			`json`:                       `PARSE_JSON(builtin.message, [], false, false)`,
+			`logfmt`:                     `PARSE_LOGFMT(builtin.message, [], false, false)`,
+			`regexp "(?P<level>\\w+)"`:   `PARSE_REGEXP(builtin.message, "(?P<level>\w+)")`,
+			`line_format "{{.message}}"`: `PARSE_LINEFMT(builtin.message, [], "{{.message}}")`,
 		}
 
 		for parser, statement := range parsers {

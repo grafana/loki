@@ -168,6 +168,7 @@ func RecordRangeAndInstantQueryMetrics(
 
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"query", query,
 		"query_hash", hashedQuery,
 		"query_type", queryType,
@@ -246,6 +247,10 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_bloom_filter_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.BloomFilterTime),
 		"index_chunk_refs_lookup_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.ChunkRefsLookupTime),
 	}...)
+
+	if stats.Summary.EstimatedQueryBytes > 0 {
+		logValues = append(logValues, "estimated_query_bytes", util.HumanizeBytes(uint64(stats.Summary.EstimatedQueryBytes)))
+	}
 
 	if r, ok := result.(CountMinSketchVector); ok {
 		cardinalityEstimate := r.F.HyperLogLog.Estimate()
@@ -350,6 +355,7 @@ func RecordLabelQueryMetrics(
 	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"splits", stats.Summary.Splits,
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
@@ -407,6 +413,7 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"splits", stats.Summary.Splits,
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
@@ -454,6 +461,7 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
 		"start_delta", time.Since(start),
@@ -500,6 +508,7 @@ func RecordShardsQueryMetrics(
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"start", start.Format(time.RFC3339Nano),
 		"end", end.Format(time.RFC3339Nano),
 		"start_delta", time.Since(start),
@@ -543,6 +552,7 @@ func RecordVolumeQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"start", start.Format(time.RFC3339Nano),
@@ -584,6 +594,7 @@ func RecordDetectedFieldsQueryMetrics(ctx context.Context, log log.Logger, start
 	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"start", start.Format(time.RFC3339Nano),
@@ -724,6 +735,7 @@ func RecordDetectedLabelsQueryMetrics(ctx context.Context, log log.Logger, start
 		"api", "detected_labels",
 		"latency", latencyType,
 		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"start", start.Format(time.RFC3339Nano),

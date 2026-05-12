@@ -20,7 +20,6 @@ var objectsMtime = time.Now().Local()
 
 type mockObjectClient struct {
 	client.ObjectClient
-	storageObjects []client.StorageObject
 	errResp        error
 	listCallsCount int
 	listDelay      time.Duration

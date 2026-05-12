@@ -152,8 +152,8 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	assert.NotEmpty(t, sample.CellAResponseHash)
 	assert.NotEmpty(t, sample.CellBResponseHash)
 	// Verify engine tracking fields are populated
-	assert.False(t, sample.CellAUsedNewEngine) // No new engine warning in response
-	assert.False(t, sample.CellBUsedNewEngine) // No new engine warning in response
+	assert.False(t, sample.CellAUsedNewEngine) // No v2 engine flag in stats
+	assert.False(t, sample.CellBUsedNewEngine) // No v2 engine flag in stats
 
 	// Check the comparison result
 	result := storage.results[0]
@@ -368,7 +368,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
-	// Cell A response with new engine warning
+	// Cell A response with the v2 engine flag in query stats
 	responseBodyA := []byte(`{
 		"status": "success",
 		"data": {
@@ -388,15 +388,17 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 					"totalEntriesReturned": 1,
 					"splits": 1,
 					"shards": 1
+				},
+				"querier": {
+					"store": {
+						"queryUsedV2Engine": true
+					}
 				}
 			}
-		},
-		"warnings": [
-			"Query was executed using the new experimental query engine and dataobj storage."
-		]
+		}
 	}`)
 
-	// Cell B response without new engine warning
+	// Cell B response without the v2 engine flag
 	responseBodyB := []byte(`{
 		"status": "success",
 		"data": {

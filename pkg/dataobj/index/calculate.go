@@ -26,10 +26,20 @@ type logsIndexCalculation interface {
 	// Name returns a short identifier for this calculation step, used for metrics labels.
 	Name() string
 	// Prepare is called before the first batch of logs is processed in order to initialize any state.
-	Prepare(ctx context.Context, section *dataobj.Section, stats logs.Stats) error
+	Prepare(ctx context.Context, calcCtx *logsCalculationContext, section *dataobj.Section, stats logs.Stats) error
 	// ProcessBatch is called for each batch of logs records.
-	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
+	//
+	// If ProcessBatchNeedsBuilderLock returns true, implementations can assume
+	// to have exclusive access to the builder via the calculation context and
+	// must not retain references to it after the call returns. If false, the
+	// implementation MUST NOT touch the shared builder during ProcessBatch;
+	// all shared-state mutation must be deferred to Flush.
 	ProcessBatch(ctx context.Context, context *logsCalculationContext, batch []logs.Record) error
+	// ProcessBatchNeedsBuilderLock reports whether ProcessBatch mutates the
+	// shared builder. When false, ProcessBatch is safe to run concurrently
+	// with other sections' lock-free ProcessBatch calls (each section has its
+	// own calculation-step state, so there is no cross-section sharing).
+	ProcessBatchNeedsBuilderLock() bool
 	// Flush is called after all logs in a section have been processed.
 	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
 	Flush(ctx context.Context, context *logsCalculationContext) error
@@ -233,16 +243,32 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		builder:        c.indexobjBuilder,
 	}
 
+	// Lock-free steps run without builderMtx held, so they must not touch the
+	// shared builder. We pass them a context with builder=nil to turn any
+	// accidental access into an immediate nil-pointer panic instead of a
+	// silent data race.
+	lockFreeContext := *calculationContext
+	lockFreeContext.builder = nil
+
 	calculationSteps := getLogsCalculationSteps()
 
 	// Track cumulative duration per calculation step across all batches + flush.
 	stepDurations := make([]time.Duration, len(calculationSteps))
 
+	// Lock the builder during Prepare because some calculations (e.g.,
+	// columnValuesCalculation) mutate shared builder state via
+	// PrepareBloomColumn. The Calculate method dispatches one goroutine per
+	// logs section (see g.Go in Calculate), so two processLogsSection calls
+	// for sections of the same tenant within one data object run
+	// concurrently against the same per-tenant postings builder.
+	c.builderMtx.Lock()
 	for _, calculation := range calculationSteps {
-		if err := calculation.Prepare(ctx, section, stats); err != nil {
+		if err := calculation.Prepare(ctx, calculationContext, section, stats); err != nil {
+			c.builderMtx.Unlock()
 			return fmt.Errorf("failed to prepare calculation: %w", err)
 		}
 	}
+	c.builderMtx.Unlock()
 
 	// TODO(benclive): Switch to a columnar reader instead of row based
 	rowReader := logs.NewRowReader(logsSection)
@@ -263,8 +289,33 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		}
 
 		cnt += n
+
+		// First pass: run lock-free steps. Each calculation-step instance is
+		// owned by this section goroutine (see getLogsCalculationSteps above),
+		// and these steps do not touch the shared builder until Flush, so no
+		// locking is required here.
+		for i, calculation := range calculationSteps {
+			if calculation.ProcessBatchNeedsBuilderLock() {
+				continue
+			}
+			start := time.Now()
+			if err := calculation.ProcessBatch(ctx, &lockFreeContext, logsBuf[:n]); err != nil {
+				return fmt.Errorf("failed to process batch: %w", err)
+			}
+			stepDurations[i] += time.Since(start)
+		}
+
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		// Second pass: run steps that require exclusive access to the shared
+		// builder under builderMtx.
 		c.builderMtx.Lock()
 		for i, calculation := range calculationSteps {
+			if !calculation.ProcessBatchNeedsBuilderLock() {
+				continue
+			}
 			start := time.Now()
 			if err := calculation.ProcessBatch(ctx, calculationContext, logsBuf[:n]); err != nil {
 				c.builderMtx.Unlock()

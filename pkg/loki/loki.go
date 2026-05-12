@@ -41,6 +41,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/engine"
+	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
@@ -66,7 +67,6 @@ import (
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/tracing"
 	"github.com/grafana/loki/v3/pkg/ui"
@@ -112,7 +112,6 @@ type Config struct {
 	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
 	LimitsConfig        validation.Limits          `yaml:"limits_config"`
 	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
-	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
@@ -153,7 +152,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"The default value 'all' runs Loki in single binary mode. "+
 			"The value 'read' is an alias to run only read-path related components such as the querier and query-frontend, but all in the same process. "+
 			"The value 'write' is an alias to run only write-path related components such as the distributor and compactor, but all in the same process. "+
-			"Supported values: all, compactor, distributor, ingester, querier, query-scheduler, ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write. "+
 			"A full list of available targets can be printed when running Loki with the '-list-targets' command line flag. ",
 	)
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true,
@@ -215,7 +213,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.ChunkStoreConfig.RegisterFlags(f)
 	c.SchemaConfig.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
-	c.TableManager.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
 	c.RulerStorage.RegisterFlags(f)
@@ -298,9 +295,6 @@ func (c *Config) Validate() error {
 	}
 	if err := c.QueryScheduler.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_scheduler config"))
-	}
-	if err := c.TableManager.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid table_manager config"))
 	}
 	if err := c.Ruler.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ruler config"))
@@ -432,7 +426,6 @@ type Loki struct {
 	Store                               storage.Store
 	BloomStore                          bloomshipper.Store
 	bloomGatewayClient                  bloomgateway.Client
-	tableManager                        *index.TableManager
 	frontend                            Frontend
 	ruler                               *base_ruler.Ruler
 	ruleEvaluator                       ruler.Evaluator
@@ -454,6 +447,7 @@ type Loki struct {
 	dataObjConsumerPartitionRing        *ring.PartitionInstanceRing
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
 	dataObjIndexBuilder                 *dataobjindex.Builder
+	dataObjCompactionPlanner            *enginecompactor.Planner
 	scratchStore                        scratch.Store
 	queryEngineV2                       *engine.Engine
 	queryEngineV2Scheduler              *engine.Scheduler
@@ -701,7 +695,9 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 
 		// Ingester has a special check that makes sure that it was able to register into the ring,
 		// and that all other ring entries are OK too.
-		if t.Ingester != nil {
+		// In inmemory dataobj mode the write path bypasses the ingester entirely, so skip this gate.
+		inMemoryDataObjMode := t.Cfg.DataObj.Enabled && t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory
+		if t.Ingester != nil && !inMemoryDataObjMode {
 			if err := t.Ingester.CheckReady(r.Context()); err != nil {
 				http.Error(w, fmt.Sprintf("Ingester not ready: %s", err), http.StatusServiceUnavailable)
 				return
@@ -743,6 +739,13 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 			}
 		}
 
+		if t.dataObjConsumer != nil {
+			if err := t.dataObjConsumer.CheckReady(r.Context()); err != nil {
+				http.Error(w, fmt.Sprintf("DataObj Consumer not ready: %s", err), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
 		http.Error(w, "ready", http.StatusOK)
 	}
 }
@@ -780,7 +783,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
-	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(BloomStore, t.initBloomStore, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomPlanner, t.initBloomPlanner)
@@ -805,6 +807,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjConsumerPartitionRing, t.initDataObjConsumerPartitionRing)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
+	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner)
 	mm.RegisterModule(ScratchStore, t.initScratchStore)
 
 	mm.RegisterModule(All, nil)
@@ -837,7 +840,6 @@ func (t *Loki) setupModuleManager() error {
 		QueryEngineScheduler:         {Server, Overrides, TenantConfigs, Analytics},
 		Ruler:                        {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics, UIRing},
 		RuleEvaluator:                {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
-		TableManager:                 {Server, Analytics, UIRing},
 		Compactor:                    {Server, Overrides, MemberlistKV, Analytics, UIRing},
 		IndexGateway:                 {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics, UIRing},
 		BloomGateway:                 {Server, BloomStore, Analytics, UIRing},
@@ -857,6 +859,7 @@ func (t *Loki) setupModuleManager() error {
 		DataObjConsumerPartitionRing: {MemberlistKV, Server, Ring},
 		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UI, Overrides},
 		DataObjIndexBuilder:          {ScratchStore, Server, UIRing},
+		DataObjCompactionPlanner:     {Server, UIRing},
 		ScratchStore:                 {},
 
 		Read:    {QueryFrontend, Querier},
@@ -868,6 +871,14 @@ func (t *Loki) setupModuleManager() error {
 
 	if t.Cfg.IngestLimits.Enabled {
 		deps[All] = append(deps[All], IngestLimits, IngestLimitsFrontend)
+	}
+
+	if t.Cfg.DataObj.Enabled {
+		deps[All] = append(deps[All], DataObjConsumer, DataObjIndexBuilder)
+		if t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory {
+			// DataObjConsumer must be initialized before Distributor so that
+			deps[Distributor] = append(deps[Distributor], DataObjConsumer)
+		}
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

@@ -39,7 +39,7 @@ func TestFlusher_Flush(t *testing.T) {
 		}))
 		f := newFlusher(testSorter, testUploader, log.NewNopLogger(), reg)
 		// Flush the builder we created earlier.
-		objectPath, err := f.Flush(testCtx, testBuilder, "test_sync")
+		objectPath, err := f.Flush(testCtx, testBuilder, flushReasonBuilderFull)
 		require.NoError(t, err)
 		require.Equal(t, "object_001", objectPath)
 		// Check that the dataobj was flushed and uploaded.
@@ -47,7 +47,9 @@ func TestFlusher_Flush(t *testing.T) {
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 	# HELP loki_dataobj_consumer_flushes_total Total number of flushes.
 	# TYPE loki_dataobj_consumer_flushes_total counter
-	loki_dataobj_consumer_flushes_total{reason="test_sync"} 1
+	loki_dataobj_consumer_flushes_total{reason="builder_full"} 1
+	loki_dataobj_consumer_flushes_total{reason="idle"} 0
+	loki_dataobj_consumer_flushes_total{reason="max_age"} 0
 	# HELP loki_dataobj_consumer_flush_failures_total Total number of failed flushes.
 	# TYPE loki_dataobj_consumer_flush_failures_total counter
 	loki_dataobj_consumer_flush_failures_total 0
@@ -66,13 +68,15 @@ func TestFlusher_Flush(t *testing.T) {
 			return "", errors.New("mock error")
 		}
 		// Flush the builder we created earlier.
-		objectPath, err := f.Flush(testCtx, testBuilder, "test_sync")
+		objectPath, err := f.Flush(testCtx, testBuilder, flushReasonBuilderFull)
 		require.EqualError(t, err, "mock error")
 		require.Equal(t, "", objectPath)
 		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP loki_dataobj_consumer_flushes_total Total number of flushes.
 		# TYPE loki_dataobj_consumer_flushes_total counter
-		loki_dataobj_consumer_flushes_total{reason="test_sync"} 1
+		loki_dataobj_consumer_flushes_total{reason="builder_full"} 1
+		loki_dataobj_consumer_flushes_total{reason="idle"} 0
+		loki_dataobj_consumer_flushes_total{reason="max_age"} 0
 		# HELP loki_dataobj_consumer_flush_failures_total Total number of failed flushes.
 		# TYPE loki_dataobj_consumer_flush_failures_total counter
 		loki_dataobj_consumer_flush_failures_total 1

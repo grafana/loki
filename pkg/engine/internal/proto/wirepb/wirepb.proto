@@ -202,11 +202,21 @@ message Task {
   // as metadata to control execution (such as cancelling ongoing tasks based
   // on their maximum time range).
   loki.physical.TimeRange max_time_range = 6;
+
+  // cached_source defines a set of already processed arrow batches ready to be consumed by the physical node.
+  // The key is the node ID string representation.
+  // The arrow batches are retrieved from the task result cache by the scheduler and passed to the workers here.
+  map<string, CachedSources> cached_sources = 7;
 }
 
 // StreamList is a list of streams, used in Task's sources and sinks maps.
 message StreamList {
   repeated Stream streams = 1;
+}
+
+// Each element is the pre-fetched encoded Arrow record batch set for one eliminated child task.
+message CachedSources {
+  repeated bytes cachedSource = 1;
 }
 
 // Stream is an abstract representation of how data flows across task boundaries.

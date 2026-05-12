@@ -2,7 +2,7 @@ name: Verify release workflow updates
 on: [pull_request]
 jobs:
   check-release-changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     permissions:
       contents: "read"
       id-token: "write"
@@ -14,7 +14,7 @@ jobs:
       - name: setup go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24.9"
+          go-version: "1.26.2"
       - name: setup jsonnet
         run: |
           go install github.com/google/go-jsonnet/cmd/jsonnet@v0.20.0

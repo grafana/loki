@@ -3,6 +3,7 @@ package cache_test
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/grafana/gomemcache/memcache"
 )
@@ -37,4 +38,21 @@ func (m *mockMemcache) Set(item *memcache.Item) error {
 	defer m.Unlock()
 	m.contents[item.Key] = item.Value
 	return nil
+}
+
+// delayedMockMemcache introduces a fixed delay before each GetMulti call,
+// simulating a slow memcached server. If the context is cancelled during the
+// delay it returns immediately with ctx.Err().
+type delayedMockMemcache struct {
+	mockMemcache
+	delay time.Duration
+}
+
+func (m *delayedMockMemcache) GetMulti(ctx context.Context, keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(m.delay):
+		return m.mockMemcache.GetMulti(ctx, keys)
+	}
 }

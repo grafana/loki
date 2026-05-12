@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
@@ -238,34 +237,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 				},
 			},
 			err: nil,
-		},
-		"should fail if chunks prefix is missing on IndexType: aws-dynamo": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "aws-dynamo",
-						ObjectType: "aws-dynamo",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: grpc-store": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "grpc-store",
-						ObjectType: "grpc-store",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
 		},
 		"invalid schema with same from time configs": {
 			config: &SchemaConfig{
@@ -1020,19 +991,6 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 		},
 	}, GetIndexStoreTableRanges(types.TSDBType, schemaConfig.Configs))
 }
-
-const (
-	fixedTimestamp = model.Time(1557654321000)
-	userID         = "userID"
-)
-
-var (
-	labelsForDummyChunks = labels.New(
-		labels.Label{Name: model.MetricNameLabel, Value: "foo"},
-		labels.Label{Name: "bar", Value: "baz"},
-		labels.Label{Name: "toms", Value: "code"},
-	)
-)
 
 func TestChunkKeys(t *testing.T) {
 	for _, tc := range []struct {

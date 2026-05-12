@@ -398,6 +398,10 @@ func (b *RunEndEncodedBuilder) AppendNulls(n int) {
 	}
 }
 
+func (b *RunEndEncodedBuilder) UnsafeAppendBoolToBitmap(v bool) {
+	panic("Calling UnsafeAppendBoolToBitmap on a run-end encoded array is semantically undefined.")
+}
+
 func (b *RunEndEncodedBuilder) NullN() int {
 	return UnknownNullCount
 }

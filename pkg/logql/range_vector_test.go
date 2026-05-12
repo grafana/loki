@@ -62,10 +62,6 @@ func newSample(t time.Time, v float64, metric labels.Labels) promql.Sample {
 	return promql.Sample{Metric: metric, T: t.UnixMilli(), F: v}
 }
 
-func newPoint(t time.Time, v float64) promql.FPoint {
-	return promql.FPoint{T: t.UnixMilli(), F: v}
-}
-
 func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 	// no overlap test case.
 	buildStreamingIt := func() (RangeVectorIterator, error) {
