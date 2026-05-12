@@ -574,14 +574,13 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			}
 		}
 
-		if len(schemaLabels) > 0 && allSectionsSchemaSorted(sections) {
+		if len(schemaLabels) > 0 {
 			sortKeys, err := buildSortKeys(ctx, obj, tenant, schemaLabels)
 			if err != nil {
 				return nil, nil, fmt.Errorf("building sort keys for tenant %s: %w", tenant, err)
 			}
 			sortOrder = logs.SortSchemaASC
-			iter, iterErr = sortMergeIteratorWithSchema(ctx, sections, sortKeys)
-			level.Debug(b.logger).Log("msg", "sort schema: merge", "tenant", tenant, "schema_labels", fmt.Sprintf("%v", schemaLabels))
+			iter, iterErr = sortedSchemaIter(ctx, sections, sortKeys, parseSortOrder(b.cfg.DataobjSortOrder))
 		} else {
 			sortOrder = parseSortOrder(b.cfg.DataobjSortOrder)
 			iter, iterErr = sortMergeIterator(ctx, sections, sortOrder)
@@ -724,16 +723,6 @@ func buildSortKeys(ctx context.Context, obj *dataobj.Object, tenant string, sche
 		}
 	}
 	return sortKeys, nil
-}
-
-// allSectionsSchemaSorted checks whether every section was sorted using sort_schema
-func allSectionsSchemaSorted(sections []*dataobj.Section) bool {
-	for _, sec := range sections {
-		if !logs.IsSchemaSorted(sec) {
-			return false
-		}
-	}
-	return true
 }
 
 // computeSortKey builds a composite sort key from stream labels using FQN entries.

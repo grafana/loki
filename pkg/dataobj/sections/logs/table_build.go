@@ -84,6 +84,10 @@ func sortRecords(records []Record, sortOrder SortOrder) {
 	})
 }
 
+// SortRecords sorts records in place by sortOrder. For SortSchemaASC each
+// record's SortKey must be set before calling.
+func SortRecords(records []Record, sortOrder SortOrder) { sortRecords(records, sortOrder) }
+
 func equalRecords(a, b Record) bool {
 	if a.StreamID != b.StreamID {
 		return false
