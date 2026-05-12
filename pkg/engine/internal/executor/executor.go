@@ -148,6 +148,9 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeBatching(ctx, n, inputs))
 	case *physical.Cache:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeCache(ctx, n, inputs))
+	case *physical.IndexConsolidate:
+		// STUB — see index_consolidate_stub.go. Replaced by A12.
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexConsolidateStub(ctx, n))
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
 	case *physical.CompactionMerge:
