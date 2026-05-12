@@ -118,15 +118,6 @@ func DefaultLokiStackSpec(size lokiv1.LokiStackSizeType) *lokiv1.LokiStackSpec {
 	return (&defaults).DeepCopy()
 }
 
-// GetDefaultReplicasForSize returns the default replica counts for a given size
-func GetDefaultReplicasForSize(size lokiv1.LokiStackSizeType) *lokiv1.LokiTemplateSpec {
-	sizeDefaults, exists := internal.StackSizeTable[size]
-	if !exists || sizeDefaults.Template == nil {
-		return nil
-	}
-	return sizeDefaults.Template
-}
-
 // ApplyDefaultSettings manipulates the options to conform to
 // build specifications
 func ApplyDefaultSettings(opts *Options) error {

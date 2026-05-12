@@ -190,8 +190,8 @@ func getGlobalIngestionRateLimit(stack *lokiv1.LokiStack) int32 {
 func getCustomReplicas(stack *lokiv1.LokiStack) map[string]int32 {
 	customReplicas := make(map[string]int32)
 
-	sizeDefaults := manifests.GetDefaultReplicasForSize(stack.Spec.Size)
-	if sizeDefaults == nil {
+	defaults := manifests.DefaultLokiStackSpec(stack.Spec.Size)
+	if defaults == nil || defaults.Template == nil {
 		return customReplicas
 	}
 
@@ -204,14 +204,14 @@ func getCustomReplicas(stack *lokiv1.LokiStack) map[string]int32 {
 			}
 		}
 
-		checkComponent("distributor", stack.Spec.Template.Distributor, sizeDefaults.Distributor)
-		checkComponent("ingester", stack.Spec.Template.Ingester, sizeDefaults.Ingester)
-		checkComponent("querier", stack.Spec.Template.Querier, sizeDefaults.Querier)
-		checkComponent("query-frontend", stack.Spec.Template.QueryFrontend, sizeDefaults.QueryFrontend)
-		checkComponent("compactor", stack.Spec.Template.Compactor, sizeDefaults.Compactor)
-		checkComponent("index-gateway", stack.Spec.Template.IndexGateway, sizeDefaults.IndexGateway)
-		checkComponent("gateway", stack.Spec.Template.Gateway, sizeDefaults.Gateway)
-		checkComponent("ruler", stack.Spec.Template.Ruler, sizeDefaults.Ruler)
+		checkComponent("distributor", stack.Spec.Template.Distributor, defaults.Template.Distributor)
+		checkComponent("ingester", stack.Spec.Template.Ingester, defaults.Template.Ingester)
+		checkComponent("querier", stack.Spec.Template.Querier, defaults.Template.Querier)
+		checkComponent("query-frontend", stack.Spec.Template.QueryFrontend, defaults.Template.QueryFrontend)
+		checkComponent("compactor", stack.Spec.Template.Compactor, defaults.Template.Compactor)
+		checkComponent("index-gateway", stack.Spec.Template.IndexGateway, defaults.Template.IndexGateway)
+		checkComponent("gateway", stack.Spec.Template.Gateway, defaults.Template.Gateway)
+		checkComponent("ruler", stack.Spec.Template.Ruler, defaults.Template.Ruler)
 	}
 	return customReplicas
 }
