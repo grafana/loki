@@ -47,6 +47,8 @@ func NewWriter(alloc *memory.Allocator, spec Spec, typ types.Type) (Writer, erro
 		return newBinaryWriter(alloc, spec, typ)
 	case EncodingKindBitpacked:
 		return newBitpackedWriter(alloc, spec, typ)
+	case EncodingKindZstd:
+		return newZstdWriter(alloc, spec, typ)
 
 	default:
 		return nil, fmt.Errorf("unsupported encoding kind %q", spec.Kind())
@@ -99,6 +101,8 @@ func NewReader(alloc *memory.Allocator, arr Array, source buffer.Source) (Reader
 		return newBinaryReader(alloc, arr, source)
 	case EncodingKindBitpacked:
 		return newBitpackedReader(alloc, arr, source)
+	case EncodingKindZstd:
+		return newZstdReader(alloc, arr, source)
 
 	default:
 		return nil, fmt.Errorf("unsupported encoding kind %q", arr.Encoding.Kind())
