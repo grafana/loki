@@ -37,6 +37,12 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Configure deletes on compactor
+
+The configuration option `-compactor.allow-deletes` has been removed. Instead, use the the per-tenant `deletion_mode` option instead.
+This is configured in the `limits_config` and can be one of `disabled`, `filter-only`, or `filter-and-delete`.
+When set to `filter-only` or `filter-and-delete`, and `retention_enabled` is set to true, then the log entry deletion API endpoints are available.
+
 ### Breaking change: Rename and remove metrics
 
 - The deprecated metric `loki_log_messages_total` is removed in favor of `loki_internal_log_messages_total`.

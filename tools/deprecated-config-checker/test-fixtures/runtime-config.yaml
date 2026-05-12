@@ -6,7 +6,7 @@ overrides:
     ruler_evaluation_delay_duration: 1m # DELETED
     ruler_remote_write_url: "push.123abc.net" # DEPRECATED
     ruler_remote_write_timeout: 1m # DEPRECATED
-    ruler_remote_write_headers: [ "foo", "bar" ] # DEPRECATED
+    ruler_remote_write_headers: ["foo", "bar"] # DEPRECATED
     ruler_remote_write_relabel_configs: "foo" # DEPRECATED
     ruler_remote_write_queue_capacity: 10 # DEPRECATED
     ruler_remote_write_queue_min_shards: 10 # DEPRECATED
@@ -20,7 +20,7 @@ overrides:
       region: "wherever"
     per_tenant_override_config: ./overrides.yaml # DEPRECATED
     per_tenant_override_period: 5s # DEPRECATED
-    allow_deletes: true # DEPRECATED
+    allow_deletes: true # REMOVED
   "bar": *tenant_overrides
 
 multi_kv_config:
