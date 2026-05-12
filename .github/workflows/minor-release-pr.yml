@@ -21,7 +21,7 @@ jobs:
       pull-requests: "write"
     uses: "grafana/loki-release/.github/workflows/check.yml@48ee065d8d1e3f1a3a28cb1e5ecf5cb85211a019"
     with:
-      build_image: "golang:1.26.2"
+      build_image: "golang:1.26.3"
       golang_ci_lint_version: "v2.10.1"
       release_lib_ref: "48ee065d8d1e3f1a3a28cb1e5ecf5cb85211a019"
       skip_validation: false
@@ -177,10 +177,10 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.2"
+          --entrypoint /bin/sh "golang:1.26.3"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
-          if echo "golang:1.26.2" | grep -q "golang"; then
+          if echo "golang:1.26.3" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist packages
@@ -201,9 +201,9 @@ jobs:
           --env IMAGE_TAG \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.2"
+          --entrypoint /bin/sh "golang:1.26.3"
           git config --global --add safe.directory /src/loki
-          if echo "golang:1.26.2" | grep -q "golang"; then
+          if echo "golang:1.26.3" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist/loki-linux-riscv64
@@ -819,7 +819,7 @@ jobs:
         build-args: |
           IMAGE_TAG=${{ needs.version.outputs.version }}
           GOARCH=${{ steps.platform.outputs.platform_short }}
-          BUILD_IMAGE=golang:1.26.2
+          BUILD_IMAGE=golang:1.26.3
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
         outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
