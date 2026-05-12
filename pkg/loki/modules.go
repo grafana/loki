@@ -156,6 +156,7 @@ const (
 	DataObjConsumerPartitionRing = "dataobj-consumer-partition-ring"
 	DataObjIndexBuilder          = "dataobj-index-builder"
 	DataObjCompactionPlanner     = "dataobj-compaction-planner"
+	DataObjCompactorWorker       = "dataobj-compactor-worker"
 	ScratchStore                 = "scratch-store"
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
@@ -2522,6 +2523,55 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	// coordinator loop from ever running.
 	t.dataObjCompactionPlanner = c
 	return c, nil
+}
+
+func (t *Loki) initDataObjCompactorWorker() (services.Service, error) {
+	if !t.Cfg.DataObj.Enabled || !t.Cfg.DataObj.Compaction.Enabled {
+		return nil, nil
+	}
+
+	if err := t.Cfg.DataObj.Compaction.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
+	}
+
+	logger := log.With(util_log.Logger, "component", "dataobj-compactor-worker")
+
+	store, err := t.getDataObjBucket("dataobj-compactor-worker")
+	if err != nil {
+		return nil, err
+	}
+
+	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+
+	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
+		Config:     t.Cfg.DataObj.Compaction.Worker,
+		Bucket:     store,
+		Metastore:  ms,
+		Logger:     logger,
+		Registerer: prometheus.DefaultRegisterer,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := w.Inner().RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
+		return nil, err
+	}
+	w.Inner().Service().AddListener(services.NewListener(
+		nil, nil, nil,
+		func(_ services.State) { w.Inner().UnregisterMetrics(prometheus.DefaultRegisterer) },
+		func(_ services.State, _ error) { w.Inner().UnregisterMetrics(prometheus.DefaultRegisterer) },
+	))
+
+	// Only register the HTTP frame handler when the user provided an
+	// advertise address (i.e., the worker is reachable for cross-worker
+	// frames). Outbound-only mode does not need a router registration.
+	if t.Cfg.DataObj.Compaction.Worker.AdvertiseAddr != "" {
+		w.Inner().RegisterWorkerServer(t.Server.HTTP)
+	}
+
+	t.dataObjCompactorWorker = w
+	return w, nil
 }
 
 func (t *Loki) initScratchStore() (services.Service, error) {
