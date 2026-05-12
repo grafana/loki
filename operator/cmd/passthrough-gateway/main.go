@@ -18,7 +18,7 @@ func main() {
 	logger := log.NewLogger("lokistack-gateway")
 
 	cfg := &passthroughgateway.Config{}
-	f := flag.NewFlagSet("lokistack-gateway", flag.ExitOnError)
+	f := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	cfg.RegisterFlags(f)
 
 	if err := f.Parse(os.Args[1:]); err != nil {
@@ -31,7 +31,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger.Info("starting lokistack gateway",
+	logger.Info("starting gateway",
 		"listen-addr", cfg.ListenAddr,
 		"admin-addr", cfg.AdminAddr,
 		"loki-distributor-endpoint", cfg.Loki.DistributorEndpoint,

@@ -26,7 +26,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			prometheus.HistogramOpts{
 				Name:    "lokistack_gateway_request_duration_seconds",
 				Help:    "Duration of requests processed by the LokiStack gateway.",
-				Buckets: prometheus.DefBuckets,
+				Buckets: []float64{.1, 1, 5, 9, 15, 30, 60, 120, 300},
 			},
 			[]string{"method", "route"},
 		),

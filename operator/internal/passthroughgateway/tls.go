@@ -141,7 +141,7 @@ func parseClientAuthType(authType string) (tls.ClientAuthType, error) {
 	}
 	auth, ok := tlsClientAuthTypes[authType]
 	if !ok {
-		return 0, kverrors.New("unknown client auth type", "type", authType)
+		return 0, fmt.Errorf("unknown client auth type: %s", authType)
 	}
 	return auth, nil
 }
@@ -153,7 +153,7 @@ func buildTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
 	if cfg.MinVersion != "" {
 		minVersion, err := parseTLSVersion(cfg.MinVersion)
 		if err != nil {
-			return nil, fmt.Errorf("invalid min TLS version: %w", err)
+			return nil, fmt.Errorf("invalid minimum TLS version: %w", err)
 		}
 		tlsConfig.MinVersion = minVersion
 	}
@@ -161,7 +161,7 @@ func buildTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
 	if cfg.MaxVersion != "" {
 		maxVersion, err := parseTLSVersion(cfg.MaxVersion)
 		if err != nil {
-			return nil, fmt.Errorf("invalid max TLS version: %w", err)
+			return nil, fmt.Errorf("invalid maximum TLS version: %w", err)
 		}
 		tlsConfig.MaxVersion = maxVersion
 	}

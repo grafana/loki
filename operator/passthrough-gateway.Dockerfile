@@ -1,11 +1,10 @@
 # Build the passthrough-gateway binary
-FROM golang:1.25.7 as builder
+FROM golang:1.25.10 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
 COPY api/ api/
-COPY go.mod go.mod
-COPY go.sum go.sum
+COPY go.mod go.sum ./
 # cache deps before building and copying source so that we don't need to re-download as much
 # and so that source changes don't invalidate our downloaded layer
 RUN go mod download

@@ -120,7 +120,7 @@ func (r *LokiRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 // InstrumentedHandler wraps an http.Handler with metrics instrumentation.
-func InstrumentedHandler(handler http.Handler, metrics *Metrics) http.Handler {
+func instrumentedHandler(handler http.Handler, metrics *Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		metrics.RequestsInFlight.Inc()
 		defer metrics.RequestsInFlight.Dec()
