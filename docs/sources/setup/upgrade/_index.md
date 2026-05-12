@@ -90,6 +90,14 @@ The next Loki release introduces a new configuration option (i.e. `-distibutor.m
 
 Supported clients should check the configuration options for max send message size if applicable.
 
+### Ruler WAL directory now honors `common.path_prefix`
+
+The default `-ruler.wal.dir` (`ruler-wal`) is now composed against `common.path_prefix` when one is set, matching the behavior of the other path-bearing defaults already rewritten by Loki: `-ruler.rule-path`, `-ingester.wal-dir`, `-compactor.working-directory`, and `-bloom.shipper.working-directory`. Previously the ruler WAL stayed at the cwd-relative `ruler-wal`, which fails on `mkdir` in read-only-rootfs containers (#7377).
+
+Deployments that set `common.path_prefix` but did not explicitly set `-ruler.wal.dir` will see the ruler create a new WAL directory at `<path_prefix>/ruler-wal` after the upgrade. The previous cwd-relative `ruler-wal` directory is not migrated; any un-remote-written recording-rule samples buffered there are dropped on first restart.
+
+To preserve the previous location, set `-ruler.wal.dir` explicitly to the old path (e.g. `ruler-wal` or its absolute equivalent) in your config before upgrading. Deployments that already set `-ruler.wal.dir` explicitly are unaffected.
+
 ## Helm Chart Upgrades
 
 {{< admonition type="note" >}}
