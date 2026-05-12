@@ -268,3 +268,19 @@ func YamlMarshalerHookFunc() mapstructure.DecodeHookFuncValue {
 		return from.Interface(), nil
 	}
 }
+
+// StringTextUnredactedHookFunc returns a DecodeHookFuncValue that extracts the underlying
+// unredacted string from custom string types that implement encoding.TextMarshaler.
+func StringTextUnredactedHookFunc() mapstructure.DecodeHookFuncValue {
+	return func(from, _ reflect.Value) (any, error) {
+		// If the underlying kind is a string, and it implements TextMarshaler
+		// (which obfuscated types like configopaque.String usually do).
+		if from.Kind() == reflect.String {
+			if _, ok := from.Interface().(encoding.TextMarshaler); ok {
+				// Extract the raw string via reflection, bypassing any custom methods.
+				return from.String(), nil
+			}
+		}
+		return from.Interface(), nil
+	}
+}

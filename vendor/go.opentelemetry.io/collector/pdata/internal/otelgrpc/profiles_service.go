@@ -57,7 +57,7 @@ func RegisterProfilesServiceServer(s *grpc.Server, srv ProfilesServiceServer) {
 //
 //nolint:revive
 func profilesServiceExportHandler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	in := new(internal.ExportProfilesServiceRequest)
+	in := internal.NewExportProfilesServiceRequest()
 	if err := dec(in); err != nil {
 		return nil, err
 	}

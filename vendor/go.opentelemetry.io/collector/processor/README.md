@@ -68,7 +68,7 @@ data, and the data can be safely modified in the pipeline.
 
 The exclusive ownership of data allows processors to freely modify the data while
 they own it (e.g. see `attributesprocessor`). The duration of ownership of the data
-by processor is from the beginning of `ConsumeTraces`/`ConsumeMetrics`/`ConsumeLogs` 
+by processor is from the beginning of `ConsumeTraces`/`ConsumeMetrics`/`ConsumeLogs`
 call until the processor calls the next processor's `ConsumeTraces`/`ConsumeMetrics`/`ConsumeLogs`
 function, which passes the ownership to the next processor. After that the processor
 must no longer read or write the data since it may be concurrently modified by the
@@ -110,4 +110,3 @@ order in which each processor is applied.
 ## Creating Custom Processors
 
 To create a custom processor for the OpenTelemetry Collector, you need to implement the processor interface, define the processor's configuration, and register it with the Collector. The process typically involves creating a factory, implementing the required processing logic, and handling configuration options. For a practical example and guidance, refer to the [`processorhelper`](https://pkg.go.dev/go.opentelemetry.io/collector/processor/processorhelper) package, which provides utilities and patterns to simplify processor development.
-

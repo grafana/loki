@@ -39,7 +39,7 @@ type cstripe struct {
 
 // NewCounter creates a new Counter instance.
 func NewCounter() *Counter {
-	nstripes := nextPowOf2(parallelism())
+	nstripes := uint32(nextPowOf2(uint64(parallelism())))
 	c := Counter{
 		stripes: make([]cstripe, nstripes),
 		mask:    nstripes - 1,

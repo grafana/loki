@@ -99,6 +99,8 @@ func (r *Rolodex) Release() {
 		return
 	}
 	r.indexLock.Lock()
+	r.localFS = nil
+	r.remoteFS = nil
 	r.indexes = nil
 	r.indexMap = nil
 	r.rootIndex = nil
@@ -115,6 +117,15 @@ func (r *Rolodex) Release() {
 	r.infiniteCircularReferences = nil
 	r.ignoredCircularReferences = nil
 	r.globalSchemaIdRegistry = nil
+	r.indexConfig = nil
+	r.indexingDuration = 0
+	r.indexed = false
+	r.built = false
+	r.manualBuilt = false
+	r.resolved = false
+	r.circChecked = false
+	r.logger = nil
+	r.id = ""
 }
 
 // NewRolodex creates a new rolodex with the provided index configuration.
@@ -246,7 +257,7 @@ func (r *Rolodex) GetConfig() *SpecIndexConfig {
 	return r.indexConfig
 }
 
-// GetRootNode returns the root index of the rolodex (the entry point, the main document)
+// GetRootNode returns the root node of the rolodex (the entry point, the main document)
 func (r *Rolodex) GetRootNode() *yaml.Node {
 	return r.rootNode
 }
@@ -577,28 +588,9 @@ func (r *Rolodex) CheckForCircularReferences() {
 
 // Resolve resolves references in the rolodex.
 func (r *Rolodex) Resolve() {
-	var resolvers []*Resolver
-	if r.rootIndex != nil && r.rootIndex.resolver != nil {
-		resolvers = append(resolvers, r.rootIndex.resolver)
-	}
-	for _, idx := range r.indexes {
-		if idx.resolver != nil {
-			resolvers = append(resolvers, idx.resolver)
-		}
-	}
+	resolvers := r.collectResolvers()
 	for _, res := range resolvers {
-		resolvingErrors := res.Resolve()
-		for e := range resolvingErrors {
-			r.caughtErrors = append(r.caughtErrors, resolvingErrors[e])
-		}
-		if r.rootIndex != nil && len(r.rootIndex.resolver.ignoredPolyReferences) > 0 {
-			r.ignoredCircularReferences = append(r.ignoredCircularReferences, res.ignoredPolyReferences...)
-		}
-		if r.rootIndex != nil && len(r.rootIndex.resolver.ignoredArrayReferences) > 0 {
-			r.ignoredCircularReferences = append(r.ignoredCircularReferences, res.ignoredArrayReferences...)
-		}
-		r.safeCircularReferences = append(r.safeCircularReferences, res.GetSafeCircularReferences()...)
-		r.infiniteCircularReferences = append(r.infiniteCircularReferences, res.GetInfiniteCircularReferences()...)
+		r.mergeResolverResults(res)
 	}
 
 	// resolve pending nodes
@@ -609,6 +601,36 @@ func (r *Rolodex) Resolve() {
 	// invalidate debounced caches since underlying slices were mutated
 	r.debouncedSafeCircRefs = nil
 	r.debouncedIgnoredCircRefs = nil
+}
+
+func (r *Rolodex) collectResolvers() []*Resolver {
+	var resolvers []*Resolver
+	if r.rootIndex != nil {
+		if resolver := r.rootIndex.GetResolver(); resolver != nil {
+			resolvers = append(resolvers, resolver)
+		}
+	}
+	for _, idx := range r.indexes {
+		if resolver := idx.GetResolver(); resolver != nil {
+			resolvers = append(resolvers, resolver)
+		}
+	}
+	return resolvers
+}
+
+func (r *Rolodex) mergeResolverResults(res *Resolver) {
+	resolvingErrors := res.Resolve()
+	for e := range resolvingErrors {
+		r.caughtErrors = append(r.caughtErrors, resolvingErrors[e])
+	}
+	if len(res.ignoredPolyReferences) > 0 {
+		r.ignoredCircularReferences = append(r.ignoredCircularReferences, res.ignoredPolyReferences...)
+	}
+	if len(res.ignoredArrayReferences) > 0 {
+		r.ignoredCircularReferences = append(r.ignoredCircularReferences, res.ignoredArrayReferences...)
+	}
+	r.safeCircularReferences = append(r.safeCircularReferences, res.GetSafeCircularReferences()...)
+	r.infiniteCircularReferences = append(r.infiniteCircularReferences, res.GetInfiniteCircularReferences()...)
 }
 
 // BuildIndexes builds the indexes in the rolodex, this is generally not required unless manually building a rolodex.
@@ -668,8 +690,6 @@ func (r *Rolodex) OpenWithContext(ctx context.Context, location string) (Rolodex
 	}
 
 	var errorStack []error
-	var localFile *LocalFile
-	var remoteFile *RemoteFile
 	fileLookup := location
 	isUrl := false
 	if strings.HasPrefix(location, "http") {
@@ -683,109 +703,10 @@ func (r *Rolodex) OpenWithContext(ctx context.Context, location string) (Rolodex
 				"the rolodex has no local file systems configured, cannot open local file '%s'", location,
 			)
 		}
-
-		for k, v := range r.localFS {
-
-			// check if this is a URL or an abs/rel reference.
-			if !filepath.IsAbs(location) {
-				fileLookup, _ = filepath.Abs(utils.CheckPathOverlap(k, location, string(os.PathSeparator)))
-			}
-
-			// For generic fs.FS implementations, we need to use relative paths
-			// The fs.FS interface requires paths to be relative and slash-separated.
-			// This ensures compatibility with standard Go file systems like embed.FS,
-			// fstest.MapFS, afero.NewIOFS, and others that strictly follow the fs.FS contract.
-			var pathForOpen string
-
-			// Check if this is our custom LocalFS which supports absolute paths
-			if _, isLocalFS := v.(*LocalFS); isLocalFS {
-				// LocalFS can handle absolute paths directly for backward compatibility
-				pathForOpen = fileLookup
-			} else {
-				// For standard fs.FS implementations, convert to relative path
-				// Calculate relative path from base directory k to target fileLookup
-				relPath, _ := filepath.Rel(k, fileLookup)
-				pathForOpen = filepath.ToSlash(relPath)
-			}
-
-			f, err := openFile(ctx, pathForOpen, v)
-
-			if err != nil {
-				// If the first attempt failed and we haven't already tried with the original location,
-				// try a lookup with the original location path
-				if pathForOpen != location {
-					f, err = openFile(ctx, location, v)
-				}
-
-				if err != nil {
-					errorStack = append(errorStack, err)
-					continue
-				}
-			}
-			// check if this is a native rolodex FS, then the work is done.
-			if lf, ko := interface{}(f).(*LocalFile); ko {
-				localFile = lf
-				break
-			}
-
-			if lf, ko := f.(RolodexFile); ko {
-				var atm atomic.Value
-				atm.Store(lf.GetIndex())
-				var parsed *yaml.Node
-				var parseErrors []error
-				if p, e := lf.GetContentAsYAMLNode(); e == nil {
-					parsed = p
-				} else {
-					parseErrors = append(parseErrors, e)
-				}
-				parseErrors = append(parseErrors, lf.GetErrors()...)
-
-				localFile = &LocalFile{
-					filename:      lf.Name(),
-					name:          lf.Name(),
-					extension:     ExtractFileType(lf.Name()),
-					data:          []byte(lf.GetContent()),
-					fullPath:      lf.GetFullPath(),
-					lastModified:  lf.ModTime(),
-					index:         atm,
-					readingErrors: parseErrors,
-					parsed:        parsed,
-				}
-				// If there were errors processing the file content, we should return them
-				if len(parseErrors) > 0 {
-					errorStack = append(errorStack, parseErrors...)
-				}
-				break
-			}
-
-			// not a native FS, so we need to read the file and create a local file.
-			bytes, rErr := io.ReadAll(f)
-			if rErr != nil {
-				errorStack = append(errorStack, rErr)
-				continue
-			}
-			s, sErr := f.Stat()
-			if sErr != nil {
-				errorStack = append(errorStack, sErr)
-				continue
-			}
-			if len(bytes) > 0 {
-				var atm atomic.Value
-				idx := r.rootIndex
-				atm.Store(idx)
-
-				localFile = &LocalFile{
-					filename:     filepath.Base(fileLookup),
-					name:         filepath.Base(fileLookup),
-					extension:    ExtractFileType(fileLookup),
-					data:         bytes,
-					fullPath:     fileLookup,
-					lastModified: s.ModTime(),
-					index:        atm,
-				}
-				break
-			}
-
+		localFile, errs := r.openLocalLocation(ctx, location)
+		errorStack = append(errorStack, errs...)
+		if localFile != nil {
+			return r.wrapLocalRolodexFile(localFile)
 		}
 
 	} else {
@@ -796,78 +717,184 @@ func (r *Rolodex) OpenWithContext(ctx context.Context, location string) (Rolodex
 					"AllowRemoteLookup to true", fileLookup,
 			)
 		}
-
-		for _, v := range r.remoteFS {
-
-			var f fs.File
-			var err error
-			if fscw, ok := v.(RolodexFSWithContext); ok {
-				f, err = fscw.OpenWithContext(ctx, fileLookup)
-			} else {
-				f, err = v.Open(fileLookup)
-			}
-
-			if err != nil {
-				r.logger.Warn("[rolodex] errors opening remote file", "location", fileLookup, "error", err)
-			}
-			if f != nil {
-				if rf, ok := interface{}(f).(*RemoteFile); ok {
-					remoteFile = rf
-					break
-				} else {
-
-					bytes, rErr := io.ReadAll(f)
-					if rErr != nil {
-						errorStack = append(errorStack, rErr)
-						continue
-					}
-					s, sErr := f.Stat()
-					if sErr != nil {
-						errorStack = append(errorStack, sErr)
-						continue
-					}
-					if len(bytes) > 0 {
-						var atm atomic.Value
-						atm.Store(r.rootIndex)
-						remoteFile = &RemoteFile{
-							filename:     filepath.Base(fileLookup),
-							name:         filepath.Base(fileLookup),
-							extension:    ExtractFileType(fileLookup),
-							data:         bytes,
-							fullPath:     fileLookup,
-							lastModified: s.ModTime(),
-							index:        atm,
-						}
-						break
-					}
-				}
-			}
+		remoteFile, errs := r.openRemoteLocation(ctx, fileLookup)
+		errorStack = append(errorStack, errs...)
+		if remoteFile != nil {
+			return r.wrapRemoteRolodexFile(remoteFile)
 		}
 	}
 
-	if localFile != nil {
-		// Check if the localFile has any reading errors that should be returned
-		var fileErrors []error
-		fileErrors = localFile.readingErrors
-		return &rolodexFile{
-			rolodex:   r,
-			location:  localFile.fullPath,
-			localFile: localFile,
-		}, errors.Join(fileErrors...)
-	}
-
-	if remoteFile != nil {
-		// Check if the remoteFile has any seeking errors that should be returned
-		var fileErrors []error
-		fileErrors = remoteFile.seekingErrors
-		return &rolodexFile{
-			rolodex:    r,
-			location:   remoteFile.fullPath,
-			remoteFile: remoteFile,
-		}, errors.Join(fileErrors...)
-	}
-
 	return nil, errors.Join(errorStack...)
+}
+
+func (r *Rolodex) openLocalLocation(ctx context.Context, location string) (*LocalFile, []error) {
+	var errorStack []error
+	for baseDir, fileSystem := range r.localFS {
+		fileLookup := location
+		if !filepath.IsAbs(location) {
+			fileLookup, _ = filepath.Abs(utils.CheckPathOverlap(baseDir, location, string(os.PathSeparator)))
+		}
+
+		pathForOpen := r.localPathForOpen(baseDir, fileLookup, fileSystem)
+		file, err := openFile(ctx, pathForOpen, fileSystem)
+		if err != nil && pathForOpen != location {
+			file, err = openFile(ctx, location, fileSystem)
+		}
+		if err != nil {
+			errorStack = append(errorStack, err)
+			continue
+		}
+		localFile, errs := r.asLocalFile(file, fileLookup)
+		errorStack = append(errorStack, errs...)
+		if localFile != nil {
+			return localFile, errorStack
+		}
+	}
+	return nil, errorStack
+}
+
+func (r *Rolodex) localPathForOpen(baseDir, fileLookup string, fileSystem fs.FS) string {
+	if _, isLocalFS := fileSystem.(*LocalFS); isLocalFS {
+		return fileLookup
+	}
+	relPath, _ := filepath.Rel(baseDir, fileLookup)
+	return filepath.ToSlash(relPath)
+}
+
+func (r *Rolodex) asLocalFile(file fs.File, fileLookup string) (*LocalFile, []error) {
+	var errorStack []error
+	if localFile, ok := file.(*LocalFile); ok {
+		return localFile, nil
+	}
+	if existing, ok := file.(RolodexFile); ok {
+		wrapped, errs := wrapExistingRolodexFile(existing)
+		return wrapped, errs
+	}
+
+	bytes, stat, errs := consumeAdaptedFile(file)
+	if len(errs) > 0 {
+		return nil, append(errorStack, errs...)
+	}
+	if len(bytes) == 0 {
+		return nil, nil
+	}
+	var atm atomic.Value
+	atm.Store(r.rootIndex)
+	return &LocalFile{
+		filename:     filepath.Base(fileLookup),
+		name:         filepath.Base(fileLookup),
+		extension:    ExtractFileType(fileLookup),
+		data:         bytes,
+		fullPath:     fileLookup,
+		lastModified: stat.ModTime(),
+		index:        atm,
+	}, nil
+}
+
+func wrapExistingRolodexFile(file RolodexFile) (*LocalFile, []error) {
+	var atm atomic.Value
+	atm.Store(file.GetIndex())
+	var parsed *yaml.Node
+	var parseErrors []error
+	if p, err := file.GetContentAsYAMLNode(); err == nil {
+		parsed = p
+	} else {
+		parseErrors = append(parseErrors, err)
+	}
+	parseErrors = append(parseErrors, file.GetErrors()...)
+
+	return &LocalFile{
+		filename:      file.Name(),
+		name:          file.Name(),
+		extension:     ExtractFileType(file.Name()),
+		data:          []byte(file.GetContent()),
+		fullPath:      file.GetFullPath(),
+		lastModified:  file.ModTime(),
+		index:         atm,
+		readingErrors: parseErrors,
+		parsed:        parsed,
+	}, parseErrors
+}
+
+func (r *Rolodex) openRemoteLocation(ctx context.Context, location string) (*RemoteFile, []error) {
+	var errorStack []error
+	for _, fileSystem := range r.remoteFS {
+		file, err := openFile(ctx, location, fileSystem)
+		if err != nil {
+			r.logger.Warn("[rolodex] errors opening remote file", "location", location, "error", err)
+			errorStack = append(errorStack, err)
+			continue
+		}
+		remoteFile, errs := r.asRemoteFile(file, location)
+		errorStack = append(errorStack, errs...)
+		if remoteFile != nil {
+			return remoteFile, errorStack
+		}
+	}
+	return nil, errorStack
+}
+
+func (r *Rolodex) asRemoteFile(file fs.File, location string) (*RemoteFile, []error) {
+	if remoteFile, ok := file.(*RemoteFile); ok {
+		return remoteFile, nil
+	}
+
+	bytes, stat, errs := consumeAdaptedFile(file)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	if len(bytes) == 0 {
+		return nil, nil
+	}
+	var atm atomic.Value
+	atm.Store(r.rootIndex)
+	return &RemoteFile{
+		filename:     filepath.Base(location),
+		name:         filepath.Base(location),
+		extension:    ExtractFileType(location),
+		data:         bytes,
+		fullPath:     location,
+		lastModified: stat.ModTime(),
+		index:        atm,
+	}, nil
+}
+
+func consumeAdaptedFile(file fs.File) ([]byte, fs.FileInfo, []error) {
+	var errorStack []error
+
+	bytes, readErr := io.ReadAll(file)
+	if readErr != nil {
+		errorStack = append(errorStack, readErr)
+		_ = file.Close()
+		return nil, nil, errorStack
+	}
+
+	stat, statErr := file.Stat()
+	if statErr != nil {
+		errorStack = append(errorStack, statErr)
+		_ = file.Close()
+		return nil, nil, errorStack
+	}
+
+	_ = file.Close()
+
+	return bytes, stat, nil
+}
+
+func (r *Rolodex) wrapLocalRolodexFile(localFile *LocalFile) (RolodexFile, error) {
+	return &rolodexFile{
+		rolodex:   r,
+		location:  localFile.fullPath,
+		localFile: localFile,
+	}, errors.Join(localFile.readingErrors...)
+}
+
+func (r *Rolodex) wrapRemoteRolodexFile(remoteFile *RemoteFile) (RolodexFile, error) {
+	return &rolodexFile{
+		rolodex:    r,
+		location:   remoteFile.fullPath,
+		remoteFile: remoteFile,
+	}, errors.Join(remoteFile.seekingErrors...)
 }
 
 func openFile(ctx context.Context, location string, v fs.FS) (fs.File, error) {

@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package base
@@ -6,6 +6,7 @@ package base
 import (
 	"context"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -28,6 +29,8 @@ type ExternalDoc struct {
 	RootNode    *yaml.Node
 	index       *index.SpecIndex
 	context     context.Context
+	nodeStore   sync.Map
+	reference   low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -50,14 +53,26 @@ func (ex *ExternalDoc) GetKeyNode() *yaml.Node {
 // Build will extract extensions from the ExternalDoc instance.
 func (ex *ExternalDoc) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	ex.KeyNode = keyNode
+	ex.reference = low.Reference{}
+	ex.Reference = &ex.reference
+	ex.nodeStore = sync.Map{}
+	ex.Nodes = &ex.nodeStore
+	ex.context = ctx
+	ex.index = idx
+	if root == nil {
+		ex.RootNode = nil
+		ex.Extensions = nil
+		return nil
+	}
 	root = utils.NodeAlias(root)
 	ex.RootNode = root
 	utils.CheckForMergeNodes(root)
-	ex.Reference = new(low.Reference)
-	ex.Nodes = low.ExtractNodes(ctx, root)
+	if len(root.Content) > 0 {
+		ex.NodeMap.ExtractNodes(root, false)
+	} else {
+		ex.AddNode(root.Line, root)
+	}
 	ex.Extensions = low.ExtractExtensions(root)
-	ex.context = ctx
-	ex.index = idx
 	return nil
 }
 

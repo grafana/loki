@@ -1,3 +1,6 @@
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
+// SPDX-License-Identifier: MIT
+
 package v3
 
 import (
@@ -16,7 +19,107 @@ import (
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
+	"go.yaml.in/yaml/v4"
 )
+
+type documentTopLevelNode struct {
+	key   *yaml.Node
+	value *yaml.Node
+}
+
+type documentTopLevelNodes struct {
+	version           documentTopLevelNode
+	jsonSchemaDialect documentTopLevelNode
+	self              documentTopLevelNode
+	info              documentTopLevelNode
+	servers           documentTopLevelNode
+	tags              documentTopLevelNode
+	components        documentTopLevelNode
+	security          documentTopLevelNode
+	externalDocs      documentTopLevelNode
+	paths             documentTopLevelNode
+	webhooks          documentTopLevelNode
+}
+
+func selectDocumentNode(root *yaml.Node, preferred documentTopLevelNode, label string, topOnly bool) documentTopLevelNode {
+	if preferred.value != nil {
+		return preferred
+	}
+	root = utils.NodeAlias(root)
+	if root == nil {
+		return documentTopLevelNode{}
+	}
+	utils.CheckForMergeNodes(root)
+	if topOnly {
+		_, key, value := utils.FindKeyNodeFullTop(label, root.Content)
+		return documentTopLevelNode{key: key, value: value}
+	}
+	_, key, value := utils.FindKeyNodeFull(label, root.Content)
+	return documentTopLevelNode{key: key, value: value}
+}
+
+func collectDocumentTopLevelNodes(root *yaml.Node) documentTopLevelNodes {
+	root = utils.NodeAlias(root)
+	var nodes documentTopLevelNodes
+	if root == nil {
+		return nodes
+	}
+	utils.CheckForMergeNodes(root)
+
+	content := root.Content
+	for i := 0; i+1 < len(content); i += 2 {
+		keyNode := utils.NodeAlias(content[i])
+		valueNode := utils.NodeAlias(content[i+1])
+		switch keyNode.Value {
+		case OpenAPILabel:
+			if nodes.version.value == nil {
+				nodes.version = documentTopLevelNode{key: keyNode, value: valueNode}
+			}
+		case JSONSchemaDialectLabel:
+			if nodes.jsonSchemaDialect.value == nil {
+				nodes.jsonSchemaDialect = documentTopLevelNode{key: keyNode, value: valueNode}
+			}
+		case SelfLabel:
+			if nodes.self.value == nil {
+				nodes.self = documentTopLevelNode{key: keyNode, value: valueNode}
+			}
+		case base.InfoLabel:
+			if nodes.info.value == nil {
+				nodes.info = documentTopLevelNode{key: keyNode, value: valueNode}
+			}
+		case ServersLabel:
+			if nodes.servers.value == nil {
+				nodes.servers = documentTopLevelNode{key: keyNode, value: valueNode}
+			}
+		case base.TagsLabel:
+			if nodes.tags.value == nil {
+				nodes.tags = documentTopLevelNode{key: keyNode, value: valueNode}
+			}
+		case ComponentsLabel:
+			if nodes.components.value == nil {
+				nodes.components = documentTopLevelNode{key: keyNode, value: valueNode}
+			}
+		case SecurityLabel:
+			if nodes.security.value == nil {
+				nodes.security = documentTopLevelNode{key: keyNode, value: valueNode}
+			}
+		case base.ExternalDocsLabel:
+			if nodes.externalDocs.value == nil {
+				nodes.externalDocs = documentTopLevelNode{key: keyNode, value: valueNode}
+			}
+		case PathsLabel:
+			if nodes.paths.value == nil {
+				nodes.paths = documentTopLevelNode{key: keyNode, value: valueNode}
+			}
+		case WebhooksLabel:
+			if nodes.webhooks.value == nil {
+				nodes.webhooks = documentTopLevelNode{key: keyNode, value: valueNode}
+			}
+		}
+	}
+
+	return nodes
+}
 
 // CreateDocument will create a new Document instance from the provided SpecInfo.
 //
@@ -32,14 +135,17 @@ func CreateDocumentFromConfig(info *datamodel.SpecInfo, config *datamodel.Docume
 }
 
 func createDocument(info *datamodel.SpecInfo, config *datamodel.DocumentConfiguration) (*Document, error) {
-	_, labelNode, versionNode := utils.FindKeyNodeFull(OpenAPILabel, info.RootNode.Content)
+	rootNode := utils.NodeAlias(info.RootNode.Content[0])
+	topNodes := collectDocumentTopLevelNodes(rootNode)
+	versionNodeRef := selectDocumentNode(rootNode, topNodes.version, OpenAPILabel, false)
+	labelNode, versionNode := versionNodeRef.key, versionNodeRef.value
 	var version low.NodeReference[string]
 	if versionNode == nil {
 		return nil, errors.New("no openapi version/tag found, cannot create document")
 	}
 	version = low.NodeReference[string]{Value: versionNode.Value, KeyNode: labelNode, ValueNode: versionNode}
 	doc := Document{Version: version}
-	doc.Nodes = low.ExtractNodes(nil, info.RootNode.Content[0])
+	doc.Nodes = low.ExtractNodes(nil, rootNode)
 	// create an index config and shadow the document configuration.
 	idxConfig := index.CreateClosedAPIIndexConfig()
 	idxConfig.SpecInfo = info
@@ -141,8 +247,8 @@ func createDocument(info *datamodel.SpecInfo, config *datamodel.DocumentConfigur
 			rolodex.AddLocalFS(cwd, fileFS)
 		}
 	}
-	// if base url is provided, add a remote filesystem to the rolodex.
-	if idxConfig.BaseURL != nil || config.AllowRemoteReferences {
+	// Only create a remote filesystem when the caller explicitly allows remote references.
+	if config.AllowRemoteReferences {
 
 		// create a remote filesystem
 		remoteFS, _ := index.NewRemoteFSWithConfig(idxConfig)
@@ -200,11 +306,12 @@ func createDocument(info *datamodel.SpecInfo, config *datamodel.DocumentConfigur
 	modelContext := base.ModelContext{SchemaCache: &cacheMap}
 	ctx := context.WithValue(context.Background(), "modelCtx", &modelContext)
 
-	doc.Extensions = low.ExtractExtensions(info.RootNode.Content[0])
+	doc.Extensions = low.ExtractExtensions(rootNode)
 	low.ExtractExtensionNodes(ctx, doc.Extensions, doc.Nodes)
 
 	// if set, extract jsonSchemaDialect (3.1)
-	_, dialectLabel, dialectNode := utils.FindKeyNodeFull(JSONSchemaDialectLabel, info.RootNode.Content)
+	dialectRef := selectDocumentNode(rootNode, topNodes.jsonSchemaDialect, JSONSchemaDialectLabel, false)
+	dialectLabel, dialectNode := dialectRef.key, dialectRef.value
 	if dialectNode != nil {
 		doc.JsonSchemaDialect = low.NodeReference[string]{
 			Value: dialectNode.Value, KeyNode: dialectLabel, ValueNode: dialectNode,
@@ -212,24 +319,15 @@ func createDocument(info *datamodel.SpecInfo, config *datamodel.DocumentConfigur
 	}
 
 	// if set, extract $self (3.2)
-	_, selfLabel, selfNode := utils.FindKeyNodeFull(SelfLabel, info.RootNode.Content)
+	selfRef := selectDocumentNode(rootNode, topNodes.self, SelfLabel, false)
+	selfLabel, selfNode := selfRef.key, selfRef.value
 	if selfNode != nil {
 		doc.Self = low.NodeReference[string]{
 			Value: selfNode.Value, KeyNode: selfLabel, ValueNode: selfNode,
 		}
 	}
 
-	runExtraction := func(ctx context.Context, info *datamodel.SpecInfo, doc *Document, idx *index.SpecIndex,
-		runFunc func(ctx context.Context, i *datamodel.SpecInfo, d *Document, idx *index.SpecIndex) error,
-		ers *[]error,
-		wg *sync.WaitGroup,
-	) {
-		if er := runFunc(ctx, info, doc, idx); er != nil {
-			*ers = append(*ers, er)
-		}
-		wg.Done()
-	}
-	extractionFuncs := []func(ctx context.Context, i *datamodel.SpecInfo, d *Document, idx *index.SpecIndex) error{
+	extractionFuncs := []func(ctx context.Context, root *yaml.Node, n documentTopLevelNodes, d *Document, idx *index.SpecIndex) error{
 		extractInfo,
 		extractServers,
 		extractTags,
@@ -241,12 +339,20 @@ func createDocument(info *datamodel.SpecInfo, config *datamodel.DocumentConfigur
 	}
 
 	wg.Add(len(extractionFuncs))
+	var errsMu sync.Mutex
 	if config.Logger != nil {
 		config.Logger.Debug("running extractions")
 	}
 	now = time.Now()
 	for _, f := range extractionFuncs {
-		runExtraction(ctx, info, &doc, rolodex.GetRootIndex(), f, &errs, &wg)
+		go func(runFunc func(ctx context.Context, root *yaml.Node, n documentTopLevelNodes, d *Document, idx *index.SpecIndex) error) {
+			defer wg.Done()
+			if er := runFunc(ctx, rootNode, topNodes, &doc, rolodex.GetRootIndex()); er != nil {
+				errsMu.Lock()
+				errs = append(errs, er)
+				errsMu.Unlock()
+			}
+		}(f)
 	}
 	wg.Wait()
 	done = time.Duration(time.Since(now).Milliseconds())
@@ -256,8 +362,9 @@ func createDocument(info *datamodel.SpecInfo, config *datamodel.DocumentConfigur
 	return &doc, errors.Join(errs...)
 }
 
-func extractInfo(ctx context.Context, info *datamodel.SpecInfo, doc *Document, idx *index.SpecIndex) error {
-	_, ln, vn := utils.FindKeyNodeFullTop(base.InfoLabel, info.RootNode.Content[0].Content)
+func extractInfo(ctx context.Context, root *yaml.Node, nodes documentTopLevelNodes, doc *Document, idx *index.SpecIndex) error {
+	nodeRef := selectDocumentNode(root, nodes.info, base.InfoLabel, true)
+	ln, vn := nodeRef.key, nodeRef.value
 	if vn != nil {
 		ir := base.Info{}
 		_ = low.BuildModel(vn, &ir)
@@ -268,32 +375,29 @@ func extractInfo(ctx context.Context, info *datamodel.SpecInfo, doc *Document, i
 	return nil
 }
 
-func extractSecurity(ctx context.Context, info *datamodel.SpecInfo, doc *Document, idx *index.SpecIndex) error {
-	sec, ln, vn, err := low.ExtractArray[*base.SecurityRequirement](ctx, SecurityLabel, info.RootNode.Content[0], idx)
+func extractSecurity(ctx context.Context, root *yaml.Node, nodes documentTopLevelNodes, doc *Document, idx *index.SpecIndex) error {
+	sec, ln, vn, err := low.ExtractArray[*base.SecurityRequirement](ctx, SecurityLabel, root, idx)
 	if err != nil {
 		return err
 	}
 	if vn != nil && ln != nil {
-		doc.Security = low.NodeReference[[]low.ValueReference[*base.SecurityRequirement]]{
-			Value:     sec,
-			KeyNode:   ln,
-			ValueNode: vn,
-		}
+		doc.Security = low.NodeReference[[]low.ValueReference[*base.SecurityRequirement]]{Value: sec, KeyNode: ln, ValueNode: vn}
 	}
 	return nil
 }
 
-func extractExternalDocs(ctx context.Context, info *datamodel.SpecInfo, doc *Document, idx *index.SpecIndex) error {
-	extDocs, dErr := low.ExtractObject[*base.ExternalDoc](ctx, base.ExternalDocsLabel, info.RootNode.Content[0], idx)
-	if dErr != nil {
-		return dErr
+func extractExternalDocs(ctx context.Context, root *yaml.Node, nodes documentTopLevelNodes, doc *Document, idx *index.SpecIndex) error {
+	extDocs, err := low.ExtractObject[*base.ExternalDoc](ctx, base.ExternalDocsLabel, root, idx)
+	if err != nil {
+		return err
 	}
 	doc.ExternalDocs = extDocs
 	return nil
 }
 
-func extractComponents(ctx context.Context, info *datamodel.SpecInfo, doc *Document, idx *index.SpecIndex) error {
-	_, ln, vn := utils.FindKeyNodeFullTop(ComponentsLabel, info.RootNode.Content[0].Content)
+func extractComponents(ctx context.Context, root *yaml.Node, nodes documentTopLevelNodes, doc *Document, idx *index.SpecIndex) error {
+	nodeRef := selectDocumentNode(root, nodes.components, ComponentsLabel, true)
+	ln, vn := nodeRef.key, nodeRef.value
 	if vn != nil {
 		ir := Components{}
 		_ = low.BuildModel(vn, &ir)
@@ -307,8 +411,9 @@ func extractComponents(ctx context.Context, info *datamodel.SpecInfo, doc *Docum
 	return nil
 }
 
-func extractServers(ctx context.Context, info *datamodel.SpecInfo, doc *Document, idx *index.SpecIndex) error {
-	_, ln, vn := utils.FindKeyNodeFull(ServersLabel, info.RootNode.Content[0].Content)
+func extractServers(ctx context.Context, root *yaml.Node, nodes documentTopLevelNodes, doc *Document, idx *index.SpecIndex) error {
+	nodeRef := selectDocumentNode(root, nodes.servers, ServersLabel, false)
+	ln, vn := nodeRef.key, nodeRef.value
 	if vn != nil {
 		if utils.IsNodeArray(vn) {
 			var servers []low.ValueReference[*Server]
@@ -333,8 +438,9 @@ func extractServers(ctx context.Context, info *datamodel.SpecInfo, doc *Document
 	return nil
 }
 
-func extractTags(ctx context.Context, info *datamodel.SpecInfo, doc *Document, idx *index.SpecIndex) error {
-	_, ln, vn := utils.FindKeyNodeFull(base.TagsLabel, info.RootNode.Content[0].Content)
+func extractTags(ctx context.Context, root *yaml.Node, nodes documentTopLevelNodes, doc *Document, idx *index.SpecIndex) error {
+	nodeRef := selectDocumentNode(root, nodes.tags, base.TagsLabel, false)
+	ln, vn := nodeRef.key, nodeRef.value
 	if vn != nil {
 		if utils.IsNodeArray(vn) {
 			var tags []low.ValueReference[*base.Tag]
@@ -361,8 +467,9 @@ func extractTags(ctx context.Context, info *datamodel.SpecInfo, doc *Document, i
 	return nil
 }
 
-func extractPaths(ctx context.Context, info *datamodel.SpecInfo, doc *Document, idx *index.SpecIndex) error {
-	_, ln, vn := utils.FindKeyNodeFull(PathsLabel, info.RootNode.Content[0].Content)
+func extractPaths(ctx context.Context, root *yaml.Node, nodes documentTopLevelNodes, doc *Document, idx *index.SpecIndex) error {
+	nodeRef := selectDocumentNode(root, nodes.paths, PathsLabel, false)
+	ln, vn := nodeRef.key, nodeRef.value
 	if vn != nil {
 		ir := Paths{}
 		err := ir.Build(ctx, ln, vn, idx)
@@ -375,17 +482,13 @@ func extractPaths(ctx context.Context, info *datamodel.SpecInfo, doc *Document, 
 	return nil
 }
 
-func extractWebhooks(ctx context.Context, info *datamodel.SpecInfo, doc *Document, idx *index.SpecIndex) error {
-	hooks, hooksL, hooksN, eErr := low.ExtractMap[*PathItem](ctx, WebhooksLabel, info.RootNode, idx)
-	if eErr != nil {
-		return eErr
+func extractWebhooks(ctx context.Context, root *yaml.Node, nodes documentTopLevelNodes, doc *Document, idx *index.SpecIndex) error {
+	hooks, hooksL, hooksN, err := low.ExtractMap[*PathItem](ctx, WebhooksLabel, root, idx)
+	if err != nil {
+		return err
 	}
-	if hooks != nil {
-		doc.Webhooks = low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[*PathItem]]]{
-			Value:     hooks,
-			KeyNode:   hooksL,
-			ValueNode: hooksN,
-		}
+	if hooksN != nil && hooksL != nil {
+		doc.Webhooks = low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[*PathItem]]]{Value: hooks, KeyNode: hooksL, ValueNode: hooksN}
 		for k, v := range hooks.FromOldest() {
 			v.Value.Nodes.Store(k.KeyNode.Line, k.KeyNode)
 		}

@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package base
@@ -6,6 +6,7 @@ package base
 import (
 	"context"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -27,6 +28,8 @@ type License struct {
 	RootNode   *yaml.Node
 	index      *index.SpecIndex
 	context    context.Context
+	nodeStore  sync.Map
+	reference  low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -34,15 +37,26 @@ type License struct {
 // Build out a license, complain if both a URL and identifier are present as they are mutually exclusive
 func (l *License) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	l.KeyNode = keyNode
+	l.reference = low.Reference{}
+	l.Reference = &l.reference
+	l.nodeStore = sync.Map{}
+	l.Nodes = &l.nodeStore
+	l.context = ctx
+	l.index = idx
+	if root == nil {
+		l.RootNode = nil
+		l.Extensions = nil
+		return nil
+	}
 	root = utils.NodeAlias(root)
 	l.RootNode = root
 	utils.CheckForMergeNodes(root)
-	l.Reference = new(low.Reference)
-	no := low.ExtractNodes(ctx, root)
+	if len(root.Content) > 0 {
+		l.NodeMap.ExtractNodes(root, false)
+	} else {
+		l.AddNode(root.Line, root)
+	}
 	l.Extensions = low.ExtractExtensions(root)
-	l.Nodes = no
-	l.context = ctx
-	l.index = idx
 	return nil
 }
 

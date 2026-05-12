@@ -1,8 +1,12 @@
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
+// SPDX-License-Identifier: MIT
+
 package base
 
 import (
 	"context"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -31,19 +35,33 @@ type XML struct {
 	RootNode   *yaml.Node
 	index      *index.SpecIndex
 	context    context.Context
+	nodeStore  sync.Map
+	reference  low.Reference
 	*low.Reference
 	low.NodeMap
 }
 
 // Build will extract extensions from the XML instance.
 func (x *XML) Build(root *yaml.Node, idx *index.SpecIndex) error {
+	x.reference = low.Reference{}
+	x.Reference = &x.reference
+	x.nodeStore = sync.Map{}
+	x.Nodes = &x.nodeStore
+	x.index = idx
+	if root == nil {
+		x.RootNode = nil
+		x.Extensions = nil
+		return nil
+	}
 	root = utils.NodeAlias(root)
 	utils.CheckForMergeNodes(root)
 	x.RootNode = root
-	x.Reference = new(low.Reference)
-	x.Nodes = low.ExtractNodes(nil, root)
+	if len(root.Content) > 0 {
+		x.NodeMap.ExtractNodes(root, false)
+	} else {
+		x.AddNode(root.Line, root)
+	}
 	x.Extensions = low.ExtractExtensions(root)
-	x.index = idx
 	return nil
 }
 

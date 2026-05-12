@@ -326,6 +326,10 @@ func NewSchema(schema *base.Schema) *Schema {
 	for i := range schema.Required.Value {
 		req = append(req, schema.Required.Value[i].Value)
 	}
+	if !schema.Required.IsEmpty() && schema.Required.ValueNode != nil &&
+		schema.Required.ValueNode.Kind == yaml.SequenceNode && len(schema.Required.Value) == 0 {
+		req = []string{}
+	}
 	s.Required = req
 
 	if !schema.Id.IsEmpty() {

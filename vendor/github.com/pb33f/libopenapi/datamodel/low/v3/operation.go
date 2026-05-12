@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -7,6 +7,7 @@ import (
 	"context"
 	"hash/maphash"
 	"sort"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/datamodel/low/base"
@@ -39,6 +40,8 @@ type Operation struct {
 	RootNode     *yaml.Node
 	index        *index.SpecIndex
 	context      context.Context
+	nodeStore    sync.Map
+	reference    low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -84,11 +87,18 @@ func (o *Operation) GetKeyNode() *yaml.Node {
 // Build will extract external docs, parameters, request body, responses, callbacks, security and servers.
 func (o *Operation) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	o.KeyNode = keyNode
-	o.RootNode = root
 	root = utils.NodeAlias(root)
+	o.RootNode = root
 	utils.CheckForMergeNodes(root)
-	o.Reference = new(low.Reference)
-	o.Nodes = low.ExtractNodes(ctx, root)
+	o.reference = low.Reference{}
+	o.Reference = &o.reference
+	o.nodeStore = sync.Map{}
+	o.Nodes = &o.nodeStore
+	if len(root.Content) > 0 {
+		o.NodeMap.ExtractNodes(root, false)
+	} else {
+		o.AddNode(root.Line, root)
+	}
 	o.Extensions = low.ExtractExtensions(root)
 	o.index = idx
 	o.context = ctx
@@ -126,11 +136,7 @@ func (o *Operation) Build(ctx context.Context, keyNode, root *yaml.Node, idx *in
 	k, v := utils.FindKeyNode(TagsLabel, root.Content)
 	if k != nil && v != nil {
 		o.Nodes.Store(k.Line, k)
-		nm := low.ExtractNodesRecursive(ctx, v)
-		nm.Range(func(key, value interface{}) bool {
-			o.Nodes.Store(key, value)
-			return true
-		})
+		low.MergeRecursiveNodesIfLineAbsent(o.Nodes, v)
 	}
 
 	// extract responses
@@ -175,9 +181,9 @@ func (o *Operation) Build(ctx context.Context, keyNode, root *yaml.Node, idx *in
 
 	// if security is set, but no requirements are defined.
 	// https://github.com/pb33f/libopenapi/issues/111
-	if sln != nil && len(svn.Content) == 0 && sec == nil {
+	if sln != nil && len(svn.Content) == 0 && len(sec) == 0 {
 		o.Security = low.NodeReference[[]low.ValueReference[*base.SecurityRequirement]]{
-			Value:     []low.ValueReference[*base.SecurityRequirement]{}, // empty
+			Value:     []low.ValueReference[*base.SecurityRequirement]{},
 			KeyNode:   sln,
 			ValueNode: svn,
 		}

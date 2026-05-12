@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -28,6 +29,8 @@ type OAuthFlows struct {
 	RootNode          *yaml.Node
 	index             *index.SpecIndex
 	context           context.Context
+	nodeStore         sync.Map
+	reference         low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -68,8 +71,15 @@ func (o *OAuthFlows) Build(ctx context.Context, keyNode, root *yaml.Node, idx *i
 	root = utils.NodeAlias(root)
 	o.RootNode = root
 	utils.CheckForMergeNodes(root)
-	o.Reference = new(low.Reference)
-	o.Nodes = low.ExtractNodes(ctx, root)
+	o.reference = low.Reference{}
+	o.Reference = &o.reference
+	o.nodeStore = sync.Map{}
+	o.Nodes = &o.nodeStore
+	if len(root.Content) > 0 {
+		o.NodeMap.ExtractNodes(root, false)
+	} else {
+		o.AddNode(root.Line, root)
+	}
 	o.Extensions = low.ExtractExtensions(root)
 	o.index = idx
 	o.context = ctx
@@ -149,6 +159,8 @@ type OAuthFlow struct {
 	RootNode         *yaml.Node
 	index            *index.SpecIndex
 	context          context.Context
+	nodeStore        sync.Map
+	reference        low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -185,8 +197,15 @@ func (o *OAuthFlow) GetRootNode() *yaml.Node {
 
 // Build will extract extensions from the node.
 func (o *OAuthFlow) Build(ctx context.Context, _, root *yaml.Node, idx *index.SpecIndex) error {
-	o.Reference = new(low.Reference)
-	o.Nodes = low.ExtractNodes(ctx, root)
+	o.reference = low.Reference{}
+	o.Reference = &o.reference
+	o.nodeStore = sync.Map{}
+	o.Nodes = &o.nodeStore
+	if len(root.Content) > 0 {
+		o.NodeMap.ExtractNodes(root, false)
+	} else {
+		o.AddNode(root.Line, root)
+	}
 	o.Extensions = low.ExtractExtensions(root)
 	o.index = idx
 	o.context = ctx

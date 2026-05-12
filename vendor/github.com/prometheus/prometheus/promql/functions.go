@@ -59,6 +59,13 @@ import (
 // Scalar results should be returned as the value of a sample in a Vector.
 type FunctionCall func(vectorVals []Vector, matrixVals Matrix, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations)
 
+// funcQueryContext is a placeholder for start(), end(), range(), and step() functions.
+// These are folded into NumberLiteral nodes by foldQueryContextFunctions during query
+// preprocessing and must never reach the evaluator.
+func funcQueryContext(_ []Vector, _ Matrix, _ parser.Expressions, _ *EvalNodeHelper) (Vector, annotations.Annotations) {
+	panic("query context functions must be folded during preprocessing and must never be evaluated")
+}
+
 // === time() float64 ===
 func funcTime(_ []Vector, _ Matrix, _ parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
 	return Vector{Sample{
@@ -142,6 +149,9 @@ func extendedRate(vals Matrix, args parser.Expressions, enh *EvalNodeHelper, isC
 	if f[lastSampleIndex].T <= rangeStart {
 		return enh.Out, annos
 	}
+	if smoothed && f[firstSampleIndex].T > rangeEnd {
+		return enh.Out, annos
+	}
 
 	left := pickOrInterpolateLeft(f, firstSampleIndex, rangeStart, smoothed, isCounter)
 	right := pickOrInterpolateRight(f, lastSampleIndex, rangeEnd, smoothed, isCounter)
@@ -206,7 +216,12 @@ func extrapolatedRate(vals Matrix, args parser.Expressions, enh *EvalNodeHelper,
 		firstT = samples.Histograms[0].T
 		lastT = samples.Histograms[numSamplesMinusOne].T
 		var newAnnos annotations.Annotations
-		resultHistogram, newAnnos = histogramRate(samples.Histograms, isCounter, samples.Metric, args[0].PositionRange())
+		var startTimestamps []int64
+		if enh.StartTimestamps != nil {
+			startTimestamps = enh.StartTimestamps.Histograms
+		}
+		resultHistogram, newAnnos = histogramRate(samples.Histograms, startTimestamps, isCounter,
+			samples.Metric, args[0].PositionRange())
 		annos.Merge(newAnnos)
 		if resultHistogram == nil {
 			// The histograms are not compatible with each other.
@@ -221,12 +236,15 @@ func extrapolatedRate(vals Matrix, args parser.Expressions, enh *EvalNodeHelper,
 			break
 		}
 		// Handle counter resets:
-		prevValue := samples.Floats[0].F
-		for _, currPoint := range samples.Floats[1:] {
-			if currPoint.F < prevValue {
-				resultFloat += prevValue
+		var startTimestamps []int64
+		if enh.StartTimestamps != nil {
+			startTimestamps = enh.StartTimestamps.Floats
+		}
+		for i, currPoint := range samples.Floats[1:] {
+			prevPoint := samples.Floats[i]
+			if currPoint.F < prevPoint.F || (i+1 < len(startTimestamps) && isStartTimestampReset(startTimestamps[i], prevPoint.T, startTimestamps[i+1], currPoint.T)) {
+				resultFloat += prevPoint.F
 			}
-			prevValue = currPoint.F
 		}
 	default:
 		// TODO: add RangeTooShortWarning
@@ -300,7 +318,13 @@ func extrapolatedRate(vals Matrix, args parser.Expressions, enh *EvalNodeHelper,
 // points[0] to be a histogram. It returns nil if any other Point in points is
 // not a histogram, and a warning wrapped in an annotation in that case.
 // Otherwise, it returns the calculated histogram and an empty annotation.
-func histogramRate(points []HPoint, isCounter bool, labels labels.Labels, pos posrange.PositionRange) (*histogram.FloatHistogram, annotations.Annotations) {
+func histogramRate(
+	points []HPoint,
+	startTimestamps []int64,
+	isCounter bool,
+	labels labels.Labels,
+	pos posrange.PositionRange,
+) (*histogram.FloatHistogram, annotations.Annotations) {
 	var (
 		prev               = points[0].H
 		usingCustomBuckets = prev.UsesCustomBuckets()
@@ -324,7 +348,7 @@ func histogramRate(points []HPoint, isCounter bool, labels labels.Labels, pos po
 	// bucket layout of the 1st sample because we do not need to look at it.
 	if isCounter && len(points) > 1 {
 		second := points[1].H
-		if second != nil && second.DetectReset(prev) {
+		if second != nil && (len(startTimestamps) > 1 && isStartTimestampReset(startTimestamps[0], points[0].T, startTimestamps[1], points[1].T) || second.DetectReset(prev)) {
 			prev = &histogram.FloatHistogram{}
 			prev.Schema = second.Schema
 			prev.CustomValues = second.CustomValues
@@ -375,9 +399,10 @@ func histogramRate(points []HPoint, isCounter bool, labels labels.Labels, pos po
 
 	if isCounter {
 		// Second iteration to deal with counter resets.
-		for _, currPoint := range points[1:] {
+		for i, currPoint := range points[1:] {
 			curr := currPoint.H
-			if curr.DetectReset(prev) {
+			// Check start timestamps first since it's potentially cheaper.
+			if i+1 < len(startTimestamps) && isStartTimestampReset(startTimestamps[i], points[i].T, startTimestamps[i+1], currPoint.T) || curr.DetectReset(prev) {
 				// Counter reset conflict ignored here for the same reason as above.
 				_, _, nhcbBoundsReconciled, err := h.Add(prev)
 				if err != nil {
@@ -399,6 +424,38 @@ func histogramRate(points []HPoint, isCounter bool, labels labels.Labels, pos po
 	return h.Compact(0), annos
 }
 
+// isStartTimestampReset tells whether there was a counter reset by checking the start timestamp value.
+func isStartTimestampReset(prevStartTimestamp, prevTimestamp, currStartTimestamp, currTimestamp int64) bool {
+	if currStartTimestamp == 0 || currStartTimestamp > currTimestamp {
+		// No reset if start timestamp is not set (value is 0), or if it is clearly invalid.
+		return false
+	}
+
+	if currStartTimestamp < prevTimestamp {
+		return false
+	}
+
+	if currStartTimestamp > prevTimestamp {
+		return true
+	}
+
+	// If this place is reached, then it means that the current datapoint start timestamp is pointing
+	// to a previous datapoint. In OTel, this should only happen in two cases:
+	// * this is a delta series,
+	// * or this is a cumulative series with unknown start timestamp.
+	//
+	// This should be treated as a reset for deltas, but it is not a reset for cumulative series
+	// with unknown start timestamp. Thus we have to check whether the start timestamp
+	// of the previous datapoint is known.
+	//
+	// A previous start timestamp greater than the previous sample timestamp is invalid; treat it
+	// as unknown to avoid a spurious reset.
+	if prevStartTimestamp > prevTimestamp {
+		return false
+	}
+	return prevStartTimestamp != 0
+}
+
 // === delta(Matrix parser.ValueTypeMatrix) (Vector, Annotations) ===
 func funcDelta(_ []Vector, matrixVals Matrix, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
 	return extrapolatedRate(matrixVals, args, enh, false, false)
@@ -416,18 +473,25 @@ func funcIncrease(_ []Vector, matrixVals Matrix, args parser.Expressions, enh *E
 
 // === irate(node parser.ValueTypeMatrix) (Vector, Annotations) ===
 func funcIrate(_ []Vector, matrixVals Matrix, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
-	return instantValue(matrixVals, args, enh.Out, true)
+	return instantValue(matrixVals, args, enh, true)
 }
 
 // === idelta(node model.ValMatrix) (Vector, Annotations) ===
 func funcIdelta(_ []Vector, matrixVals Matrix, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
-	return instantValue(matrixVals, args, enh.Out, false)
+	return instantValue(matrixVals, args, enh, false)
 }
 
-func instantValue(vals Matrix, args parser.Expressions, out Vector, isRate bool) (Vector, annotations.Annotations) {
+func instantValue(vals Matrix, args parser.Expressions, enh *EvalNodeHelper, isRate bool) (Vector, annotations.Annotations) {
+	type sampleWithSt struct {
+		Sample
+
+		ST int64
+	}
+
 	var (
 		samples = vals[0]
-		ss      = make([]Sample, 0, 2)
+		out     = enh.Out
+		ss      = make([]sampleWithSt, 0, 2)
 		annos   annotations.Annotations
 	)
 
@@ -440,24 +504,35 @@ func instantValue(vals Matrix, args parser.Expressions, out Vector, isRate bool)
 
 	// Add the last 2 float samples if they exist.
 	for i := max(0, len(samples.Floats)-2); i < len(samples.Floats); i++ {
-		ss = append(ss, Sample{
-			F: samples.Floats[i].F,
-			T: samples.Floats[i].T,
-		})
+		s := sampleWithSt{
+			Sample: Sample{
+				F: samples.Floats[i].F,
+				T: samples.Floats[i].T,
+			},
+		}
+		if sts := enh.StartTimestamps; sts != nil && i < len(sts.Floats) {
+			s.ST = sts.Floats[i]
+		}
+		ss = append(ss, s)
 	}
 
 	// Add the last 2 histogram samples into their correct position if they exist.
 	for i := max(0, len(samples.Histograms)-2); i < len(samples.Histograms); i++ {
-		s := Sample{
-			H: samples.Histograms[i].H,
-			T: samples.Histograms[i].T,
+		s := sampleWithSt{
+			Sample: Sample{
+				H: samples.Histograms[i].H,
+				T: samples.Histograms[i].T,
+			},
+		}
+		if sts := enh.StartTimestamps; sts != nil && i < len(sts.Histograms) {
+			s.ST = sts.Histograms[i]
 		}
 		switch {
 		case len(ss) == 0:
 			ss = append(ss, s)
 		case len(ss) == 1:
 			if s.T < ss[0].T {
-				ss = append([]Sample{s}, ss...)
+				ss = append([]sampleWithSt{s}, ss...)
 			} else {
 				ss = append(ss, s)
 			}
@@ -483,7 +558,7 @@ func instantValue(vals Matrix, args parser.Expressions, out Vector, isRate bool)
 	}
 	switch {
 	case ss[1].H == nil && ss[0].H == nil:
-		if !isRate || !(ss[1].F < ss[0].F) {
+		if !isRate || !(ss[1].F < ss[0].F || isStartTimestampReset(ss[0].ST, ss[0].T, ss[1].ST, ss[1].T)) {
 			// Gauge, or counter without reset, or counter with NaN value.
 			resultSample.F = ss[1].F - ss[0].F
 		}
@@ -500,7 +575,7 @@ func instantValue(vals Matrix, args parser.Expressions, out Vector, isRate bool)
 		if !isRate && (ss[1].H.CounterResetHint != histogram.GaugeType || ss[0].H.CounterResetHint != histogram.GaugeType) {
 			annos.Add(annotations.NewNativeHistogramNotGaugeWarning(getMetricName(samples.Metric), args.PositionRange()))
 		}
-		if !isRate || !ss[1].H.DetectReset(ss[0].H) {
+		if !isRate || (!isStartTimestampReset(ss[0].ST, ss[0].T, ss[1].ST, ss[1].T) && !ss[1].H.DetectReset(ss[0].H)) {
 			// This subtraction may deliberately include conflicting
 			// counter resets. Counter resets are treated explicitly
 			// in this function, so the information about
@@ -529,7 +604,7 @@ func instantValue(vals Matrix, args parser.Expressions, out Vector, isRate bool)
 		}
 	}
 
-	return append(out, resultSample), annos
+	return append(out, resultSample.Sample), annos
 }
 
 // Calculate the trend value at the given index i in raw data d.
@@ -1882,41 +1957,61 @@ func funcResets(_ []Vector, matrixVal Matrix, args parser.Expressions, enh *Eval
 		return enh.Out, nil
 	}
 
-	var prevSample, curSample Sample
+	var (
+		prevSample, curSample  Sample
+		prevST                 int64
+		floatSTs, histogramSTs []int64
+	)
+	if sts := enh.StartTimestamps; sts != nil {
+		floatSTs = sts.Floats
+		histogramSTs = sts.Histograms
+	}
 	firstSampleIndex, found := pickFirstSampleIndex(floats, args, enh)
 	if !found {
 		return enh.Out, nil
 	}
 	for iFloat, iHistogram := firstSampleIndex, 0; iFloat < len(floats) || iHistogram < len(histograms); {
+		var curST int64
 		switch {
 		// Process a float sample if no histogram sample remains or its timestamp is earlier.
 		// Process a histogram sample if no float sample remains or its timestamp is earlier.
 		case iHistogram >= len(histograms) || iFloat < len(floats) && floats[iFloat].T < histograms[iHistogram].T:
+			curSample.T = floats[iFloat].T
 			curSample.F = floats[iFloat].F
 			curSample.H = nil
+			if iFloat < len(floatSTs) {
+				curST = floatSTs[iFloat]
+			}
 			iFloat++
 		case iFloat >= len(floats) || iHistogram < len(histograms) && floats[iFloat].T > histograms[iHistogram].T:
+			curSample.T = histograms[iHistogram].T
 			curSample.H = histograms[iHistogram].H
+			if iHistogram < len(histogramSTs) {
+				curST = histogramSTs[iHistogram]
+			}
 			iHistogram++
 		}
 		// Skip the comparison for the first sample, just initialize prevSample.
 		if iFloat+iHistogram == 1+firstSampleIndex {
 			prevSample = curSample
+			prevST = curST
 			continue
 		}
+
 		switch {
 		case prevSample.H == nil && curSample.H == nil:
-			if curSample.F < prevSample.F {
+			if curSample.F < prevSample.F || isStartTimestampReset(prevST, prevSample.T, curST, curSample.T) {
 				resets++
 			}
 		case prevSample.H != nil && curSample.H == nil, prevSample.H == nil && curSample.H != nil:
 			resets++
 		case prevSample.H != nil && curSample.H != nil:
-			if curSample.H.DetectReset(prevSample.H) {
+			if isStartTimestampReset(prevST, prevSample.T, curST, curSample.T) || curSample.H.DetectReset(prevSample.H) {
 				resets++
 			}
 		}
 		prevSample = curSample
+		prevST = curST
 	}
 
 	return append(enh.Out, Sample{F: float64(resets)}), nil
@@ -2174,6 +2269,7 @@ var FunctionCalls = map[string]FunctionCall{
 	"day_of_week":                  funcDayOfWeek,
 	"day_of_year":                  funcDayOfYear,
 	"deg":                          funcDeg,
+	"end":                          funcQueryContext,
 	"delta":                        funcDelta,
 	"deriv":                        funcDeriv,
 	"exp":                          funcExp,
@@ -2213,6 +2309,7 @@ var FunctionCalls = map[string]FunctionCall{
 	"present_over_time":            funcPresentOverTime,
 	"quantile_over_time":           funcQuantileOverTime,
 	"rad":                          funcRad,
+	"range":                        funcQueryContext,
 	"rate":                         funcRate,
 	"resets":                       funcResets,
 	"round":                        funcRound,
@@ -2224,6 +2321,8 @@ var FunctionCalls = map[string]FunctionCall{
 	"sort_desc":                    funcSortDesc,
 	"sort_by_label":                funcSortByLabel,
 	"sort_by_label_desc":           funcSortByLabelDesc,
+	"start":                        funcQueryContext,
+	"step":                         funcQueryContext,
 	"sqrt":                         funcSqrt,
 	"stddev_over_time":             funcStddevOverTime,
 	"stdvar_over_time":             funcStdvarOverTime,
@@ -2244,8 +2343,8 @@ var FunctionCalls = map[string]FunctionCall{
 var AtModifierUnsafeFunctions = map[string]struct{}{
 	// Step invariant functions.
 	"days_in_month": {}, "day_of_month": {}, "day_of_week": {}, "day_of_year": {},
-	"hour": {}, "minute": {}, "month": {}, "year": {},
-	"predict_linear": {}, "time": {},
+	"end": {}, "hour": {}, "minute": {}, "month": {}, "year": {},
+	"predict_linear": {}, "range": {}, "start": {}, "step": {}, "time": {},
 	// Uses timestamp of the argument for the result,
 	// hence unsafe to use with @ modifier.
 	"timestamp": {},

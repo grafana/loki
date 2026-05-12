@@ -67,6 +67,8 @@ type SchemaProxy struct {
 	hashMu         sync.Mutex // protects cachedHash + hashGen
 	cachedHash     *uint64    // protected by hashMu
 	hashGen        uint64     // generation counter for invalidation
+	nodeStore      sync.Map
+	nodeMap        low.NodeMap
 	TransformedRef *yaml.Node // Original node that contained the ref before transformation
 	*low.NodeMap
 }
@@ -109,9 +111,26 @@ func (sp *SchemaProxy) Build(ctx context.Context, key, value *yaml.Node, idx *in
 	}
 	// for transformed schemas, don't set reference since it's now an allOf structure
 	// the reference is embedded within the allOf, but the schema itself is not a pure reference
-	var m sync.Map
-	sp.NodeMap = &low.NodeMap{Nodes: &m}
+	sp.nodeStore = sync.Map{}
+	sp.nodeMap = low.NodeMap{Nodes: &sp.nodeStore}
+	sp.NodeMap = &sp.nodeMap
 	return nil
+}
+
+// prepareForResolvedBuild initializes proxy state when the caller has already resolved any reference metadata.
+// This avoids re-running the full Build ref-detection path for child-schema helpers that already did that work.
+func (sp *SchemaProxy) prepareForResolvedBuild(ctx context.Context, key, value *yaml.Node, idx *index.SpecIndex, refLocation string, refNode *yaml.Node) {
+	sp.kn = key
+	sp.idx = idx
+	sp.vn = value
+	sp.ctx = applySchemaIdScope(ctx, value, idx)
+	sp.Reference = low.Reference{}
+	if refLocation != "" {
+		sp.SetReference(refLocation, refNode)
+	}
+	sp.nodeStore = sync.Map{}
+	sp.nodeMap = low.NodeMap{Nodes: &sp.nodeStore}
+	sp.NodeMap = &sp.nodeMap
 }
 
 func applySchemaIdScope(ctx context.Context, node *yaml.Node, idx *index.SpecIndex) context.Context {

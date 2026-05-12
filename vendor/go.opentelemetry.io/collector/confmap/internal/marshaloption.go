@@ -9,7 +9,10 @@ type MarshalOption interface {
 
 // MarshalOptions is used by (*Conf).Marshal to toggle unmarshaling settings.
 // It is in the `internal` package so experimental options can be added in xconfmap.
-type MarshalOptions struct{}
+type MarshalOptions struct {
+	// OpaqueUnredacted specifies whether opaque strings should be marshaled unredacted.
+	OpaqueUnredacted bool
+}
 
 type MarshalOptionFunc func(*MarshalOptions)
 

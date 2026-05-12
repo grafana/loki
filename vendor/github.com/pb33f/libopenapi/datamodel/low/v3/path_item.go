@@ -1,4 +1,4 @@
-// Copyright 2022-2023 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -9,6 +9,7 @@ import (
 	"hash/maphash"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel"
 	"github.com/pb33f/libopenapi/datamodel/low"
@@ -44,6 +45,8 @@ type PathItem struct {
 	RootNode             *yaml.Node
 	index                *index.SpecIndex
 	context              context.Context
+	nodeStore            sync.Map
+	reference            low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -194,7 +197,8 @@ func (p *PathItem) GetExtensions() *orderedmap.Map[low.KeyReference[string], low
 // Build extracts extensions, parameters, servers and each http method defined.
 // everything is extracted asynchronously for speed.
 func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
-	p.Reference = new(low.Reference)
+	p.reference = low.Reference{}
+	p.Reference = &p.reference
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		p.SetReference(ref, root)
 	}
@@ -202,7 +206,13 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 	p.KeyNode = keyNode
 	p.RootNode = root
 	utils.CheckForMergeNodes(root)
-	p.Nodes = low.ExtractNodes(ctx, root)
+	p.nodeStore = sync.Map{}
+	p.Nodes = &p.nodeStore
+	if len(root.Content) > 0 {
+		p.NodeMap.ExtractNodes(root, false)
+	} else {
+		p.AddNode(root.Line, root)
+	}
 	p.Extensions = low.ExtractExtensions(root)
 	p.index = idx
 	p.context = ctx
@@ -211,7 +221,7 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 	skip := false
 	var currentNode *yaml.Node
 
-	var ops []low.NodeReference[*Operation]
+	ops := make([]low.NodeReference[*Operation], 0, len(root.Content)/2)
 	var additionalOps *orderedmap.Map[low.KeyReference[string], low.NodeReference[*Operation]]
 
 	// extract parameters
@@ -231,7 +241,7 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 	_, ln, vn = utils.FindKeyNodeFullTop(ServersLabel, root.Content)
 	if vn != nil {
 		if utils.IsNodeArray(vn) {
-			var servers []low.ValueReference[*Server]
+			servers := make([]low.ValueReference[*Server], 0, len(vn.Content))
 			for _, srvN := range vn.Content {
 				if utils.IsNodeMap(srvN) {
 					srvr := new(Server)
@@ -422,7 +432,7 @@ func (p *PathItem) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 
 	// assign additionalOperations if any were found
 	if additionalOps != nil && additionalOps.Len() > 0 {
-		var extrOps []low.NodeReference[*Operation]
+		extrOps := make([]low.NodeReference[*Operation], 0, additionalOps.Len())
 		// build out each additional operation
 		for _, appVal := range additionalOps.FromOldest() {
 			extrOps = append(extrOps, appVal)

@@ -313,6 +313,11 @@ func (sp *SchemaProxy) GetReference() string {
 	if sp.refStr != "" {
 		return sp.refStr
 	}
+	if refNode := sp.GetReferenceNode(); refNode != nil {
+		if refValNode := utils.GetRefValueNode(refNode); refValNode != nil {
+			return refValNode.Value
+		}
+	}
 	return sp.schema.GetValue().GetReference()
 }
 
