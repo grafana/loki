@@ -20,18 +20,24 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	fs.DurationVar(&cfg.MaxWait, prefix+".max-wait", 100*time.Millisecond, "How long to wait for inflight budget before load shedding a request.")
 }
 
+// ByteCounter is satisfied by any type that tracks a running byte count via
+// signed deltas, such as [util_metric.MaxSampleCollector].
+type ByteCounter interface {
+	Inc(int64)
+}
+
 // Limiter gates concurrent inflight bytes. Construct with [New].
 type Limiter struct {
-	cfg    Config
-	sem    *semaphore.Weighted // nil when MaxInflightBytes == 0 (no limit)
-	onHeld func(int64)         // called with signed byte delta on each change; may be nil
+	cfg     Config
+	sem     *semaphore.Weighted // nil when MaxInflightBytes == 0 (no limit)
+	counter ByteCounter         // updated with signed byte deltas; may be nil
 }
 
 // New returns a Limiter. When MaxInflightBytes is 0 the limiter is a no-op.
-// onHeld is called with the signed byte delta whenever the held count changes
+// counter is updated with the signed byte delta whenever the held count changes
 // (positive on reserve, negative on adjust/release); may be nil.
-func New(cfg Config, onHeld func(int64)) *Limiter {
-	l := &Limiter{cfg: cfg, onHeld: onHeld}
+func New(cfg Config, counter ByteCounter) *Limiter {
+	l := &Limiter{cfg: cfg, counter: counter}
 	if cfg.MaxInflightBytes > 0 {
 		l.sem = semaphore.NewWeighted(cfg.MaxInflightBytes)
 	}
@@ -49,19 +55,19 @@ func (l *Limiter) Reserve(ctx context.Context, maxSize int64) (*Reservation, err
 	if err := l.sem.Acquire(ctx, maxSize); err != nil {
 		return nil, err
 	}
-	if l.onHeld != nil {
-		l.onHeld(maxSize)
+	if l.counter != nil {
+		l.counter.Inc(maxSize)
 	}
-	return &Reservation{sem: l.sem, onHeld: l.onHeld, held: maxSize}, nil
+	return &Reservation{sem: l.sem, counter: l.counter, held: maxSize}, nil
 }
 
 // Reservation holds bytes pre-reserved from a Limiter.
 // Its methods are safe to call concurrently.
 type Reservation struct {
-	mu     sync.Mutex
-	sem    *semaphore.Weighted // nil for noop reservations
-	onHeld func(int64)
-	held   int64
+	mu      sync.Mutex
+	sem     *semaphore.Weighted // nil for noop reservations
+	counter ByteCounter
+	held    int64
 }
 
 // AdjustToActual releases the over-estimate (held − actual) back to the Limiter
@@ -75,8 +81,8 @@ func (r *Reservation) AdjustToActual(actual int64) {
 	}
 	if r.sem != nil {
 		r.sem.Release(overage)
-		if r.onHeld != nil {
-			r.onHeld(-overage)
+		if r.counter != nil {
+			r.counter.Inc(-overage)
 		}
 	}
 	r.held = actual
@@ -92,8 +98,8 @@ func (r *Reservation) Release() {
 	}
 	if r.sem != nil {
 		r.sem.Release(r.held)
-		if r.onHeld != nil {
-			r.onHeld(-r.held)
+		if r.counter != nil {
+			r.counter.Inc(-r.held)
 		}
 	}
 	r.held = 0
