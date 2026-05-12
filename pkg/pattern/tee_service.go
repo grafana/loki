@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	metric_util "github.com/grafana/loki/v3/pkg/util/metric"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -44,8 +46,9 @@ type TeeService struct {
 
 	flushQueue chan clientRequest
 
-	buffersMutex *sync.Mutex
-	buffers      map[string][]distributor.KeyedStream
+	buffersMutex  *sync.Mutex
+	buffers       map[string][]distributor.KeyedStream
+	bufferedBytes *metric_util.MaxSampleCollector
 }
 
 func NewTeeService(
@@ -86,6 +89,10 @@ func NewTeeService(
 				}, instrument.HistogramCollectorBuckets,
 			),
 		),
+		bufferedBytes: metric_util.NewMaxSampleCollector(
+			"pattern_ingester_tee_buffered_bytes",
+			"The total number of bytes buffered in the tee.",
+		),
 		cfg:        cfg,
 		limits:     limits,
 		tenantCfgs: tenantCfgs,
@@ -96,6 +103,7 @@ func NewTeeService(
 		buffers:      make(map[string][]distributor.KeyedStream),
 		flushQueue:   make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
 	}
+	registerer.MustRegister(t.bufferedBytes)
 
 	return t, nil
 }
@@ -158,12 +166,13 @@ func (ts *TeeService) Start(runCtx context.Context) error {
 			}
 		}
 	}()
-
+	services.StartAndAwaitRunning(runCtx, ts.bufferedBytes)
 	return nil
 }
 
 func (ts *TeeService) WaitUntilDone() {
 	ts.wg.Wait()
+	services.StopAndAwaitTerminated(context.TODO(), ts.bufferedBytes)
 }
 
 func (ts *TeeService) flush() {
@@ -212,6 +221,13 @@ func (ts *TeeService) flush() {
 				ts.teedRequests.WithLabelValues("queued").Inc()
 			default:
 				ts.teedRequests.WithLabelValues("dropped").Inc()
+				totalSize := 0
+				for _, req := range reqs {
+					for _, stream := range req.Streams {
+						totalSize += stream.Size()
+					}
+				}
+				ts.bufferedBytes.Sub(int64(totalSize))
 			}
 		}
 	}
@@ -291,6 +307,12 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 		if len(req.Streams) == 0 {
 			continue
 		}
+
+		totalSize := 0
+		for _, stream := range req.Streams {
+			totalSize += stream.Size()
+		}
+		defer ts.bufferedBytes.Sub(int64(totalSize))
 
 		// Nothing to do with this error. It's recorded in the metrics that
 		// are gathered by this request
@@ -443,6 +465,8 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 		ts.buffersMutex.Lock()
 		ts.buffers[tenant] = append(ts.buffers[tenant], stream)
 		ts.buffersMutex.Unlock()
+
+		ts.bufferedBytes.Add(int64(stream.Stream.Size()))
 	}
 }
 
