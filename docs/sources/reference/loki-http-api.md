@@ -1028,6 +1028,10 @@ It accepts the following query parameters in the URL:
 
 In microservices mode, `/loki/api/v1/tail` is exposed by the querier.
 
+{{< admonition type="note" >}}
+The `tail` endpoint is designed for near real-time observation of a log stream. The initial lookback from `start` to the current time is best-effort and isn't guaranteed to return every matching log line, so this endpoint isn't suitable for retrieving complete log history. To reliably retrieve a large or complete range of logs, make repeated calls to [`/loki/api/v1/query_range`](#query-logs-within-a-range-of-time).
+{{< /admonition >}}
+
 Response format (streamed):
 
 ```json
