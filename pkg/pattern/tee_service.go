@@ -42,6 +42,8 @@ type TeeService struct {
 
 	sendDuration *instrument.HistogramCollector
 
+	bufferedBytes prometheus.Gauge
+
 	flushQueue chan clientRequest
 
 	buffersMutex *sync.Mutex
@@ -86,6 +88,10 @@ func NewTeeService(
 				}, instrument.HistogramCollectorBuckets,
 			),
 		),
+		bufferedBytes: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Name: "pattern_ingester_tee_buffered_bytes",
+			Help: "Estimated byte size of streams currently buffered in the pattern tee, pending flush to pattern ingesters.",
+		}),
 		cfg:        cfg,
 		limits:     limits,
 		tenantCfgs: tenantCfgs,
@@ -175,6 +181,7 @@ func (ts *TeeService) flush() {
 
 	buffered := ts.buffers
 	ts.buffers = make(map[string][]distributor.KeyedStream)
+	ts.bufferedBytes.Set(0)
 	ts.buffersMutex.Unlock()
 
 	batches := make([]map[string]map[string]*logproto.PushRequest, 0, len(buffered))
@@ -442,6 +449,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 
 		ts.buffersMutex.Lock()
 		ts.buffers[tenant] = append(ts.buffers[tenant], stream)
+		ts.bufferedBytes.Add(float64(stream.Stream.Size()))
 		ts.buffersMutex.Unlock()
 	}
 }
