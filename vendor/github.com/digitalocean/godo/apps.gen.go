@@ -382,6 +382,8 @@ type AppSecureHeaderSpec struct {
 	Key string `json:"key,omitempty"`
 	// The value of the header to set.
 	Value string `json:"value,omitempty"`
+	// Remove the header from incoming requests before forwarding to the app.
+	RemoveHeader bool `json:"remove_header,omitempty"`
 }
 
 // AppInstance struct for AppInstance
@@ -754,6 +756,14 @@ type AppWorkerSpecTermination struct {
 type AutoscalerActionScaleChange struct {
 	From int64 `json:"from,omitempty"`
 	To   int64 `json:"to,omitempty"`
+}
+
+// AutoscalingEventComponentScaleChange struct for AutoscalingEventComponentScaleChange
+type AutoscalingEventComponentScaleChange struct {
+	From int64 `json:"from,omitempty"`
+	To   int64 `json:"to,omitempty"`
+	// The metric that triggered the scale change while scaling up. Known values are "cpu", "requests_per_second", "request_duration". For inactivity sleep, "scale_from_zero" and "scale_to_zero" are used.
+	TriggeringMetric string `json:"triggering_metric,omitempty"`
 }
 
 // BitbucketSourceSpec struct for BitbucketSourceSpec
@@ -1202,6 +1212,45 @@ type AppDomainValidation struct {
 	TXTName  string `json:"txt_name,omitempty"`
 	TXTValue string `json:"txt_value,omitempty"`
 }
+
+// Event struct for Event
+type Event struct {
+	ID           string                 `json:"id,omitempty"`
+	Type         EventType              `json:"type,omitempty"`
+	CreatedAt    time.Time              `json:"created_at,omitempty"`
+	DeploymentID string                 `json:"deployment_id,omitempty"`
+	Deployment   *Deployment            `json:"deployment,omitempty"`
+	Autoscaling  *EventAutoscalingEvent `json:"autoscaling,omitempty"`
+}
+
+// EventAutoscalingEvent struct for EventAutoscalingEvent
+type EventAutoscalingEvent struct {
+	Phase      EventAutoscalingEventPhase                      `json:"phase,omitempty"`
+	Components map[string]AutoscalingEventComponentScaleChange `json:"components,omitempty"`
+}
+
+// EventAutoscalingEventPhase the model 'EventAutoscalingEventPhase'
+type EventAutoscalingEventPhase string
+
+// List of EventAutoscalingEventPhase
+const (
+	EVENTAUTOSCALINGEVENTPHASE_Unknown    EventAutoscalingEventPhase = "UNKNOWN"
+	EVENTAUTOSCALINGEVENTPHASE_Pending    EventAutoscalingEventPhase = "PENDING"
+	EVENTAUTOSCALINGEVENTPHASE_InProgress EventAutoscalingEventPhase = "IN_PROGRESS"
+	EVENTAUTOSCALINGEVENTPHASE_Succeeded  EventAutoscalingEventPhase = "SUCCEEDED"
+	EVENTAUTOSCALINGEVENTPHASE_Failed     EventAutoscalingEventPhase = "FAILED"
+	EVENTAUTOSCALINGEVENTPHASE_Canceled   EventAutoscalingEventPhase = "CANCELED"
+)
+
+// EventType the model 'EventType'
+type EventType string
+
+// List of EventType
+const (
+	EVENTTYPE_Unknown     EventType = "UNKNOWN"
+	EVENTTYPE_Deployment  EventType = "DEPLOYMENT"
+	EVENTTYPE_Autoscaling EventType = "AUTOSCALING"
+)
 
 // FunctionsComponentHealth struct for FunctionsComponentHealth
 type FunctionsComponentHealth struct {

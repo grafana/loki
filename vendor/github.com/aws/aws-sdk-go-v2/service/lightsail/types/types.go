@@ -1261,6 +1261,12 @@ type ContactMethod struct {
 	// team to look up your Lightsail information more easily.
 	SupportCode *string
 
+	// The tag keys and optional values for the resource. For more information about
+	// tags in Lightsail, see the [Amazon Lightsail Developer Guide].
+	//
+	// [Amazon Lightsail Developer Guide]: https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-tags
+	Tags []Tag
+
 	noSmithyDocumentSerde
 }
 

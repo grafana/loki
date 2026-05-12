@@ -8,12 +8,21 @@
 [![Release][release-badge]][release-url] [![Go Report Card][gocard-badge]][gocard-url] [![CodeFactor Grade][codefactor-badge]][codefactor-url] [![License][license-badge]][license-url]
 <!-- Badges: documentation & support -->
 <!-- Badges: others & stats -->
-[![GoDoc][godoc-badge]][godoc-url] [![Slack Channel][slack-logo]![slack-badge]][slack-url] [![go version][goversion-badge]][goversion-url] ![Top language][top-badge] ![Commits since latest release][commits-badge]
+[![GoDoc][godoc-badge]][godoc-url] [![Discord Channel][discord-badge]][discord-url] [![go version][goversion-badge]][goversion-url] ![Top language][top-badge] ![Commits since latest release][commits-badge]
 
 ---
 
 A foundational library to analyze an OAI specification document for easier reasoning about the content.
 
+## Announcements
+
+* **2025-12-19** : new community chat on discord
+  * a new discord community channel is available to be notified of changes and support users
+  * our venerable Slack channel remains open, and will be eventually discontinued on **2026-03-31**
+
+You may join the discord community by clicking the invite link on the discord badge (also above). [![Discord Channel][discord-badge]][discord-url]
+
+Or join our Slack channel: [![Slack Channel][slack-logo]![slack-badge]][slack-url]
 
 ## Status
 
@@ -25,7 +34,7 @@ API is stable.
 go get github.com/go-openapi/analysis
 ```
 
-## What's inside?
+## What's inside
 
 * An analyzer providing methods to walk the functional content of a specification
 * A spec flattener producing a self-contained document bundle, while preserving `$ref`s
@@ -35,6 +44,7 @@ go get github.com/go-openapi/analysis
 ## FAQ
 
 * Does this library support OpenAPI 3?
+
 > No.
 > This package currently only supports OpenAPI 2.0 (aka Swagger 2.0).
 > There is no plan to make it evolve toward supporting OpenAPI 3.x.
@@ -45,7 +55,9 @@ go get github.com/go-openapi/analysis
 See <https://github.com/go-openapi/analysis/releases>
 
 <!--
+
 ## References
+
 -->
 
 ## Licensing
@@ -53,12 +65,14 @@ See <https://github.com/go-openapi/analysis/releases>
 This library ships under the [SPDX-License-Identifier: Apache-2.0](./LICENSE).
 
 <!--
-See the license [NOTICE](./NOTICE), which recalls the licensing terms of all the pieces of software
+See the license NOTICE, which recalls the licensing terms of all the pieces of software
 on top of which it has been built.
 -->
 
 <!--
+
 ## Limitations
+
 -->
 
 ## Other documentation
@@ -89,21 +103,20 @@ Maintainers can cut a new release by either:
 <!-- Badges: release & docker images  -->
 [release-badge]: https://badge.fury.io/gh/go-openapi%2Fanalysis.svg
 [release-url]: https://badge.fury.io/gh/go-openapi%2Fanalysis
-[gomod-badge]: https://badge.fury.io/go/github.com%2Fgo-openapi%2Fanalysis.svg
-[gomod-url]: https://badge.fury.io/go/github.com%2Fgo-openapi%2Fanalysis
 <!-- Badges: code quality  -->
 [gocard-badge]: https://goreportcard.com/badge/github.com/go-openapi/analysis
 [gocard-url]: https://goreportcard.com/report/github.com/go-openapi/analysis
 [codefactor-badge]: https://img.shields.io/codefactor/grade/github/go-openapi/analysis
 [codefactor-url]: https://www.codefactor.io/repository/github/go-openapi/analysis
 <!-- Badges: documentation & support -->
-[doc-badge]: https://img.shields.io/badge/doc-site-blue?link=https%3A%2F%2Fgoswagger.io%2Fgo-openapi%2F
-[doc-url]: https://goswagger.io/go-openapi
 [godoc-badge]: https://pkg.go.dev/badge/github.com/go-openapi/analysis
 [godoc-url]: http://pkg.go.dev/github.com/go-openapi/analysis
 [slack-logo]: https://a.slack-edge.com/e6a93c1/img/icons/favicon-32.png
 [slack-badge]: https://img.shields.io/badge/slack-blue?link=https%3A%2F%2Fgoswagger.slack.com%2Farchives%2FC04R30YM
 [slack-url]: https://goswagger.slack.com/archives/C04R30YMU
+[discord-badge]: https://img.shields.io/discord/1446918742398341256?logo=discord&label=discord&color=blue
+[discord-url]: https://discord.gg/twZ9BwT3
+
 <!-- Badges: license & compliance -->
 [license-badge]: http://img.shields.io/badge/license-Apache%20v2-orange.svg
 [license-url]: https://github.com/go-openapi/analysis/?tab=Apache-2.0-1-ov-file#readme

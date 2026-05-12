@@ -3,4 +3,4 @@
 package rds
 
 // goModuleVersion is the tagged release for this module
-const goModuleVersion = "1.116.1"
+const goModuleVersion = "1.117.0"

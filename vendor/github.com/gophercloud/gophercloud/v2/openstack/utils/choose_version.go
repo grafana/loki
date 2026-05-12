@@ -89,7 +89,7 @@ func ChooseVersion(ctx context.Context, client *gophercloud.ProviderClient, reco
 				// Prefer a version that exactly matches the provided endpoint.
 				if href == identityEndpoint {
 					if href == "" {
-						return nil, "", fmt.Errorf("Endpoint missing in version %s response from %s", value.ID, client.IdentityBase)
+						return nil, "", fmt.Errorf("endpoint missing in version %s response from %s", value.ID, client.IdentityBase)
 					}
 					return version, href, nil
 				}
@@ -106,10 +106,10 @@ func ChooseVersion(ctx context.Context, client *gophercloud.ProviderClient, reco
 	}
 
 	if highest == nil {
-		return nil, "", fmt.Errorf("No supported version available from endpoint %s", client.IdentityBase)
+		return nil, "", fmt.Errorf("no supported version available from endpoint %s", client.IdentityBase)
 	}
 	if endpoint == "" {
-		return nil, "", fmt.Errorf("Endpoint missing in version %s response from %s", highest.ID, client.IdentityBase)
+		return nil, "", fmt.Errorf("endpoint missing in version %s response from %s", highest.ID, client.IdentityBase)
 	}
 
 	return highest, endpoint, nil
