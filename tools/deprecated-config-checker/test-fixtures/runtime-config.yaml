@@ -20,6 +20,7 @@ overrides:
       region: "wherever"
     per_tenant_override_config: ./overrides.yaml # DEPRECATED
     per_tenant_override_period: 5s # DEPRECATED
+    allow_deletes: true # REMOVED
   "bar": *tenant_overrides
 
 multi_kv_config:
