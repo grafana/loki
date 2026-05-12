@@ -9,13 +9,15 @@ package limitedreader
 import (
 	"context"
 	"sync"
+	"sync/atomic" //lint:ignore faillint we use new atomic types from sync/atomic.
 
 	"golang.org/x/sync/semaphore"
 )
 
 // Pool tracks the shared byte budget. Construct with [NewPool].
 type Pool struct {
-	sem *semaphore.Weighted
+	sem          *semaphore.Weighted
+	inflightBytes atomic.Int64
 }
 
 // NewPool returns a Pool with the given byte limit. limit must be > 0.
@@ -44,7 +46,13 @@ func (p *Pool) Reserve(ctx context.Context, n int64) (*Reservation, error) {
 	if err := p.sem.Acquire(ctx, n); err != nil {
 		return nil, err
 	}
+	p.inflightBytes.Add(n)
 	return &Reservation{pool: p, held: n}, nil
+}
+
+// InflightBytes returns the number of bytes currently held across all active reservations.
+func (p *Pool) InflightBytes() int64 {
+	return p.inflightBytes.Load()
 }
 
 // AdjustToActual releases the over-estimate (held − actual) back to the Pool
@@ -58,6 +66,7 @@ func (r *Reservation) AdjustToActual(actual int64) {
 	}
 	if r.pool != nil {
 		r.pool.sem.Release(overage)
+		r.pool.inflightBytes.Add(-overage)
 	}
 	r.held = actual
 }
@@ -72,6 +81,7 @@ func (r *Reservation) Release() {
 	}
 	if r.pool != nil {
 		r.pool.sem.Release(r.held)
+		r.pool.inflightBytes.Add(-r.held)
 	}
 	r.held = 0
 }

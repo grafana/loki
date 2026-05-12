@@ -227,6 +227,8 @@ type Distributor struct {
 	// Track the maximum number of inflight bytes in the last 1 minute.
 	inflightBytes *util_metric.MaxSampleCollector
 
+	requestSizeLimiter requestlimiter.RequestLimiter
+
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
 	kafkaWriteBytesTotal   prometheus.Counter
@@ -419,6 +421,7 @@ func New(
 			"loki_distributor_max_inflight_bytes",
 			"The maximum number of inflight bytes in the last 1 minute.",
 		),
+		requestSizeLimiter: requestlimiter.New(cfg.RequestSizeLimiter),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -460,6 +463,13 @@ func New(
 	d.rateStore = rs
 
 	_ = registerer.Register(d.inflightBytes)
+	_ = registerer.Register(prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "loki_distributor_inflight_semaphore_bytes",
+			Help: "Current bytes reserved in the load-shedding semaphore across all inflight gRPC push requests.",
+		},
+		func() float64 { return float64(d.requestSizeLimiter.InflightBytes()) },
+	))
 	servs = append(servs, d.inflightBytes)
 	servs = append(servs, d.ingesterClients, rs)
 	d.subservices, err = services.NewManager(servs...)
