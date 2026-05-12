@@ -52,6 +52,7 @@ message Node {
     PointersScan pointers_scan = 14;
     Batching batching = 15;
     Cache cache = 16;
+    IndexConsolidate index_consolidate = 17;
   }
 }
 
@@ -303,4 +304,35 @@ message Cache {
   string cache_name = 2;
   uint64 max_cacheable_size_bytes = 3;
   string compression = 4;
+}
+
+// IndexConsolidate is a workflow-final compaction task that builds one
+// covering index from N compacted log objects, performs the single primary-ToC
+// swap, and deletes the workflow marker. Emitted only by the
+// dataobj-compactor coordinator (future PR A11).
+message IndexConsolidate {
+  // Tenant scope. All paths below belong to this tenant.
+  string tenant = 1;
+
+  // Start of the ToC window for this compaction cycle, in nanoseconds since
+  // the Unix epoch.
+  int64 toc_window_start = 2;
+
+  // Deterministic output paths of all Phase-1 CompactionMerge tasks.
+  repeated string compacted_log_object_paths = 3;
+
+  // Source index paths to be removed from the primary ToC during the swap.
+  repeated string source_index_paths = 4;
+
+  // Deterministic destination for the consolidated covering index.
+  string output_index_path = 5;
+
+  // Workflow marker to delete on success.
+  string marker_path = 6;
+
+  // Per-task execution deadline.
+  google.protobuf.Duration task_ttl = 7 [
+    (gogoproto.stdduration) = true,
+    (gogoproto.nullable) = false
+  ];
 }
