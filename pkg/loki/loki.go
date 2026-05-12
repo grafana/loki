@@ -412,6 +412,7 @@ type Loki struct {
 	tenantConfigs                       *runtime.TenantConfigs
 	TenantLimits                        validation.TenantLimits
 	distributor                         *distributor.Distributor
+	loadSheddingHandle                  *distributor.LoadSheddingHandle
 	ingestLimits                        *limits.Service
 	ingestLimitsRing                    *ring.Ring
 	ingestLimitsFrontend                *limits_frontend.Frontend
@@ -479,6 +480,13 @@ func New(cfg Config) (*Loki, error) {
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
 	loki.setupGRPCRecoveryMiddleware()
+	// Register the load-shedding tap handle before the server is created so it
+	// is included in GRPCTapHandles. Only enabled for standalone distributor
+	// targets where gRPC push is registered.
+	if cfg.isTarget(Distributor) && !cfg.isTarget(All) && !cfg.isTarget(Write) && !cfg.isTarget(Ingester) {
+		loki.loadSheddingHandle = distributor.NewLoadSheddingHandle()
+		loki.Cfg.Server.GRPCTapHandles = append(loki.Cfg.Server.GRPCTapHandles, loki.loadSheddingHandle.Handle)
+	}
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}

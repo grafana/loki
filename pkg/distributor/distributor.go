@@ -57,6 +57,7 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_metric "github.com/grafana/loki/v3/pkg/util/metric"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/util/requestlimiter"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -115,6 +116,8 @@ type Config struct {
 	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
 
 	InMemoryPushTimeout time.Duration `yaml:"inmemory_dataobj_push_timeout"`
+
+	RequestSizeLimiter requestlimiter.Config `yaml:"request_size_limiter,omitempty"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -124,6 +127,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DataObjTeeConfig.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
+	cfg.RequestSizeLimiter.RegisterFlagsWithPrefix("distributor", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.Int64Var(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
@@ -571,6 +575,13 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	requestSize := int64(req.Size())
 	d.inflightBytes.Inc(requestSize)
 	defer d.inflightBytes.Inc(-requestSize)
+
+	// Adjust the tap-time reservation to the actual decompressed size now that
+	// the full request is in memory, then release on return.
+	if r, ok := inflightReservation(ctx); ok {
+		r.AdjustToActual(requestSize)
+		defer r.Release()
+	}
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {

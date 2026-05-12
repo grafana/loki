@@ -408,6 +408,9 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	// EXCEPT when running with `-target=all` or `-target=` contains `ingester`
 	if !t.Cfg.isTarget(All) && !t.Cfg.isTarget(Write) && !t.Cfg.isTarget(Ingester) {
 		logproto.RegisterPusherServer(t.Server.GRPC, t.distributor)
+		if t.loadSheddingHandle != nil {
+			t.loadSheddingHandle.SetDistributor(t.distributor)
+		}
 	}
 
 	httpPushHandlerMiddleware := middleware.Merge(
