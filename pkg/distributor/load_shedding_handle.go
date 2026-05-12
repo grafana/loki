@@ -20,7 +20,7 @@ const inflightReservationKey contextKey = 0
 // budget is exhausted.
 type LoadSheddingHandle struct {
 	d              *Distributor
-	requestLimiter requestlimiter.RequestLimiter
+	requestLimiter *requestlimiter.Limiter
 }
 
 func NewLoadSheddingHandle() *LoadSheddingHandle {

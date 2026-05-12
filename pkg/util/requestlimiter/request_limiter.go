@@ -20,70 +20,51 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	fs.DurationVar(&cfg.MaxWait, prefix+".max-wait", 100*time.Millisecond, "How long to wait for inflight budget before load shedding a request.")
 }
 
-// RequestLimiter reserves bytes of inflight budget for a request.
-type RequestLimiter interface {
-	Reserve(ctx context.Context, maxSize int64) (*Reservation, error)
+// Limiter gates concurrent inflight bytes. Construct with [New].
+type Limiter struct {
+	cfg    Config
+	sem    *semaphore.Weighted // nil when MaxInflightBytes == 0 (no limit)
+	onHeld func(int64)         // called with signed byte delta on each change; may be nil
 }
 
-// New returns an active limiter when MaxInflightBytes > 0, otherwise a no-op.
+// New returns a Limiter. When MaxInflightBytes is 0 the limiter is a no-op.
 // onHeld is called with the signed byte delta whenever the held count changes
 // (positive on reserve, negative on adjust/release); may be nil.
-func New(cfg Config, onHeld func(int64)) RequestLimiter {
-	if cfg.MaxInflightBytes == 0 {
-		return noopRequestLimiter{}
+func New(cfg Config, onHeld func(int64)) *Limiter {
+	l := &Limiter{cfg: cfg, onHeld: onHeld}
+	if cfg.MaxInflightBytes > 0 {
+		l.sem = semaphore.NewWeighted(cfg.MaxInflightBytes)
 	}
-	return &inflightBytesLimiter{
-		cfg:  cfg,
-		pool: newPool(cfg.MaxInflightBytes, onHeld),
-	}
+	return l
 }
 
-type inflightBytesLimiter struct {
-	cfg  Config
-	pool *pool
-}
-
-func (l *inflightBytesLimiter) Reserve(ctx context.Context, maxSize int64) (*Reservation, error) {
+// Reserve pre-acquires up to maxSize bytes, blocking up to MaxWait.
+// The caller must eventually call Release on the returned Reservation.
+func (l *Limiter) Reserve(ctx context.Context, maxSize int64) (*Reservation, error) {
+	if l.sem == nil {
+		return &Reservation{}, nil
+	}
 	ctx, cancel := context.WithTimeout(ctx, l.cfg.MaxWait)
 	defer cancel()
-	return l.pool.reserve(ctx, maxSize)
-}
-
-type noopRequestLimiter struct{}
-
-func (noopRequestLimiter) Reserve(_ context.Context, _ int64) (*Reservation, error) {
-	return &Reservation{}, nil
-}
-
-// pool tracks the shared byte budget.
-type pool struct {
-	sem    *semaphore.Weighted
-	onHeld func(int64) // called with +n on reserve, −delta on adjust/release; may be nil
-}
-
-func newPool(limit int64, onHeld func(int64)) *pool {
-	return &pool{sem: semaphore.NewWeighted(limit), onHeld: onHeld}
-}
-
-func (p *pool) reserve(ctx context.Context, n int64) (*Reservation, error) {
-	if err := p.sem.Acquire(ctx, n); err != nil {
+	if err := l.sem.Acquire(ctx, maxSize); err != nil {
 		return nil, err
 	}
-	if p.onHeld != nil {
-		p.onHeld(n)
+	if l.onHeld != nil {
+		l.onHeld(maxSize)
 	}
-	return &Reservation{pool: p, held: n}, nil
+	return &Reservation{sem: l.sem, onHeld: l.onHeld, held: maxSize}, nil
 }
 
-// Reservation holds bytes pre-reserved from a pool.
+// Reservation holds bytes pre-reserved from a Limiter.
 // Its methods are safe to call concurrently.
 type Reservation struct {
-	mu   sync.Mutex
-	pool *pool
-	held int64
+	mu     sync.Mutex
+	sem    *semaphore.Weighted // nil for noop reservations
+	onHeld func(int64)
+	held   int64
 }
 
-// AdjustToActual releases the over-estimate (held − actual) back to the pool
+// AdjustToActual releases the over-estimate (held − actual) back to the Limiter
 // once the true decompressed size is known. No-op if actual ≥ held.
 func (r *Reservation) AdjustToActual(actual int64) {
 	r.mu.Lock()
@@ -92,16 +73,16 @@ func (r *Reservation) AdjustToActual(actual int64) {
 	if overage <= 0 {
 		return
 	}
-	if r.pool != nil {
-		r.pool.sem.Release(overage)
-		if r.pool.onHeld != nil {
-			r.pool.onHeld(-overage)
+	if r.sem != nil {
+		r.sem.Release(overage)
+		if r.onHeld != nil {
+			r.onHeld(-overage)
 		}
 	}
 	r.held = actual
 }
 
-// Release returns all remaining held bytes to the pool.
+// Release returns all remaining held bytes to the Limiter.
 // Safe to call multiple times and without a prior AdjustToActual.
 func (r *Reservation) Release() {
 	r.mu.Lock()
@@ -109,10 +90,10 @@ func (r *Reservation) Release() {
 	if r.held == 0 {
 		return
 	}
-	if r.pool != nil {
-		r.pool.sem.Release(r.held)
-		if r.pool.onHeld != nil {
-			r.pool.onHeld(-r.held)
+	if r.sem != nil {
+		r.sem.Release(r.held)
+		if r.onHeld != nil {
+			r.onHeld(-r.held)
 		}
 	}
 	r.held = 0
