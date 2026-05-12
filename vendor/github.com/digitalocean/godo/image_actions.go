@@ -54,7 +54,7 @@ func (i *ImageActionsServiceOp) Transfer(ctx context.Context, imageID int, trans
 // Convert an image to a snapshot
 func (i *ImageActionsServiceOp) Convert(ctx context.Context, imageID int) (*Action, *Response, error) {
 	if imageID < 1 {
-		return nil, nil, NewArgError("imageID", "cannont be less than 1")
+		return nil, nil, NewArgError("imageID", "cannot be less than 1")
 	}
 
 	path := fmt.Sprintf("v2/images/%d/actions", imageID)

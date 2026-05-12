@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )
@@ -73,7 +73,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 		return &alertingRule{
 			Name:   name,
 			Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-			State:  "inactive",
+			State:  "unknown",
 			Health: "unknown",
 			Type:   "alerting",
 			Alerts: []*Alert{},
@@ -115,7 +115,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -151,7 +151,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -182,7 +182,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -517,7 +517,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "UniqueNamedRuleN3G2",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -780,7 +780,7 @@ interval: 15s
 			err:    errors.New("invalid rules config: rule group 'rg_name' has no rules"),
 		},
 		{
-			name:   "with a a valid rules file",
+			name:   "with a valid rules file",
 			status: 202,
 			input: `
 name: test
@@ -799,7 +799,7 @@ rules:
 			output: "name: test\ninterval: 15s\nrules:\n    - record: up_rule\n      expr: up{}\n    - alert: up_alert\n      expr: sum(up{}) > 1\n      for: 30s\n      labels:\n        test: test\n      annotations:\n        test: test\n",
 		},
 		{
-			name:   "with a a valid rules file with limit parameter",
+			name:   "with a valid rules file with limit parameter",
 			status: 202,
 			input: `
 name: test

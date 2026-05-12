@@ -547,6 +547,24 @@ pattern_ingester:
 
         [client_secret_ref: <string> | default = ""]
 
+        [client_certificate_key_id: <string> | default = ""]
+
+        [client_certificate_key: <string> | default = ""]
+
+        [client_certificate_key_file: <string> | default = ""]
+
+        [client_certificate_key_ref: <string> | default = ""]
+
+        [grant_type: <string> | default = ""]
+
+        [signature_algorithm: <string> | default = ""]
+
+        [iss: <string> | default = ""]
+
+        [audience: <string> | default = ""]
+
+        [claims: <map of string to >]
+
         [scopes: <list of strings>]
 
         [token_url: <string> | default = ""]
@@ -710,6 +728,24 @@ pattern_ingester:
         [client_secret_file: <string> | default = ""]
 
         [client_secret_ref: <string> | default = ""]
+
+        [client_certificate_key_id: <string> | default = ""]
+
+        [client_certificate_key: <string> | default = ""]
+
+        [client_certificate_key_file: <string> | default = ""]
+
+        [client_certificate_key_ref: <string> | default = ""]
+
+        [grant_type: <string> | default = ""]
+
+        [signature_algorithm: <string> | default = ""]
+
+        [iss: <string> | default = ""]
+
+        [audience: <string> | default = ""]
+
+        [claims: <map of string to >]
 
         [scopes: <list of strings>]
 

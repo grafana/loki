@@ -8,6 +8,8 @@ import (
 	tokens3 "github.com/gophercloud/gophercloud/v2/openstack/identity/v3/tokens"
 )
 
+// TODO(stephenfin): Remove this module in v3. The functions below are no longer used.
+
 /*
 V2EndpointURL discovers the endpoint URL for a specific service from a
 ServiceCatalog acquired during the v2 identity service.
@@ -20,39 +22,33 @@ available on your OpenStack deployment.
 */
 func V2EndpointURL(catalog *tokens2.ServiceCatalog, opts gophercloud.EndpointOpts) (string, error) {
 	// Extract Endpoints from the catalog entries that match the requested Type, Name if provided, and Region if provided.
-	var endpoints = make([]tokens2.Endpoint, 0, 1)
+	//
+	// If multiple endpoints are found, we return the first result and disregard the rest.
+	// This behavior matches the Python library. See GH-1764.
 	for _, entry := range catalog.Entries {
 		if (slices.Contains(opts.Types(), entry.Type)) && (opts.Name == "" || entry.Name == opts.Name) {
 			for _, endpoint := range entry.Endpoints {
-				if opts.Region == "" || endpoint.Region == opts.Region {
-					endpoints = append(endpoints, endpoint)
+				if opts.Region != "" && endpoint.Region != opts.Region {
+					continue
 				}
+
+				var endpointURL string
+				switch opts.Availability {
+				case gophercloud.AvailabilityPublic:
+					endpointURL = gophercloud.NormalizeURL(endpoint.PublicURL)
+				case gophercloud.AvailabilityInternal:
+					endpointURL = gophercloud.NormalizeURL(endpoint.InternalURL)
+				case gophercloud.AvailabilityAdmin:
+					endpointURL = gophercloud.NormalizeURL(endpoint.AdminURL)
+				default:
+					err := &ErrInvalidAvailabilityProvided{}
+					err.Argument = "Availability"
+					err.Value = opts.Availability
+					return "", err
+				}
+
+				return endpointURL, nil
 			}
-		}
-	}
-
-	// If multiple endpoints were found, use the first result
-	// and disregard the other endpoints.
-	//
-	// This behavior matches the Python library. See GH-1764.
-	if len(endpoints) > 1 {
-		endpoints = endpoints[0:1]
-	}
-
-	// Extract the appropriate URL from the matching Endpoint.
-	for _, endpoint := range endpoints {
-		switch opts.Availability {
-		case gophercloud.AvailabilityPublic:
-			return gophercloud.NormalizeURL(endpoint.PublicURL), nil
-		case gophercloud.AvailabilityInternal:
-			return gophercloud.NormalizeURL(endpoint.InternalURL), nil
-		case gophercloud.AvailabilityAdmin:
-			return gophercloud.NormalizeURL(endpoint.AdminURL), nil
-		default:
-			err := &ErrInvalidAvailabilityProvided{}
-			err.Argument = "Availability"
-			err.Value = opts.Availability
-			return "", err
 		}
 	}
 
@@ -72,39 +68,33 @@ will also often need to specify a Name and/or a Region depending on what's
 available on your OpenStack deployment.
 */
 func V3EndpointURL(catalog *tokens3.ServiceCatalog, opts gophercloud.EndpointOpts) (string, error) {
+	if opts.Availability != gophercloud.AvailabilityAdmin &&
+		opts.Availability != gophercloud.AvailabilityPublic &&
+		opts.Availability != gophercloud.AvailabilityInternal {
+		err := &ErrInvalidAvailabilityProvided{}
+		err.Argument = "Availability"
+		err.Value = opts.Availability
+		return "", err
+	}
+
 	// Extract Endpoints from the catalog entries that match the requested Type, Interface,
 	// Name if provided, and Region if provided.
-	var endpoints = make([]tokens3.Endpoint, 0, 1)
+	//
+	// If multiple endpoints are found, we return the first result and disregard the rest.
+	// This behavior matches the Python library. See GH-1764.
 	for _, entry := range catalog.Entries {
 		if (slices.Contains(opts.Types(), entry.Type)) && (opts.Name == "" || entry.Name == opts.Name) {
 			for _, endpoint := range entry.Endpoints {
-				if opts.Availability != gophercloud.AvailabilityAdmin &&
-					opts.Availability != gophercloud.AvailabilityPublic &&
-					opts.Availability != gophercloud.AvailabilityInternal {
-					err := &ErrInvalidAvailabilityProvided{}
-					err.Argument = "Availability"
-					err.Value = opts.Availability
-					return "", err
+				if opts.Availability != gophercloud.Availability(endpoint.Interface) {
+					continue
 				}
-				if (opts.Availability == gophercloud.Availability(endpoint.Interface)) &&
-					(opts.Region == "" || endpoint.Region == opts.Region || endpoint.RegionID == opts.Region) {
-					endpoints = append(endpoints, endpoint)
+				if opts.Region != "" && endpoint.Region != opts.Region && endpoint.RegionID != opts.Region {
+					continue
 				}
+
+				return gophercloud.NormalizeURL(endpoint.URL), nil
 			}
 		}
-	}
-
-	// If multiple endpoints were found, use the first result
-	// and disregard the other endpoints.
-	//
-	// This behavior matches the Python library. See GH-1764.
-	if len(endpoints) > 1 {
-		endpoints = endpoints[0:1]
-	}
-
-	// Extract the URL from the matching Endpoint.
-	for _, endpoint := range endpoints {
-		return gophercloud.NormalizeURL(endpoint.URL), nil
 	}
 
 	// Report an error if there were no matching endpoints.

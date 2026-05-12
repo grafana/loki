@@ -3499,7 +3499,7 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 
 					for vi := range variants {
 						for si, s := range curSeries {
-							lbls, err := promql_parser.ParseMetric(s.Labels)
+							lbls, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(s.Labels)
 							if err != nil {
 								return nil
 							}

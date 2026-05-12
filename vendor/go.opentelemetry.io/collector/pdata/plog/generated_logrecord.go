@@ -8,8 +8,6 @@ package plog
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	"go.opentelemetry.io/collector/pdata/internal/data"
-	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -21,11 +19,11 @@ import (
 // Must use NewLogRecord function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type LogRecord struct {
-	orig  *otlplogs.LogRecord
+	orig  *internal.LogRecord
 	state *internal.State
 }
 
-func newLogRecord(orig *otlplogs.LogRecord, state *internal.State) LogRecord {
+func newLogRecord(orig *internal.LogRecord, state *internal.State) LogRecord {
 	return LogRecord{orig: orig, state: state}
 }
 
@@ -34,7 +32,7 @@ func newLogRecord(orig *otlplogs.LogRecord, state *internal.State) LogRecord {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewLogRecord() LogRecord {
-	return newLogRecord(internal.NewOrigLogRecord(), internal.NewState())
+	return newLogRecord(internal.NewLogRecord(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -46,7 +44,7 @@ func (ms LogRecord) MoveTo(dest LogRecord) {
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigLogRecord(dest.orig, false)
+	internal.DeleteLogRecord(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
@@ -80,7 +78,7 @@ func (ms LogRecord) SeverityNumber() SeverityNumber {
 // SetSeverityNumber replaces the severitynumber associated with this LogRecord.
 func (ms LogRecord) SetSeverityNumber(v SeverityNumber) {
 	ms.state.AssertMutable()
-	ms.orig.SeverityNumber = otlplogs.SeverityNumber(v)
+	ms.orig.SeverityNumber = internal.SeverityNumber(v)
 }
 
 // SeverityText returns the severitytext associated with this LogRecord.
@@ -96,12 +94,12 @@ func (ms LogRecord) SetSeverityText(v string) {
 
 // Body returns the body associated with this LogRecord.
 func (ms LogRecord) Body() pcommon.Value {
-	return pcommon.Value(internal.NewValue(&ms.orig.Body, ms.state))
+	return pcommon.Value(internal.NewValueWrapper(&ms.orig.Body, ms.state))
 }
 
 // Attributes returns the Attributes associated with this LogRecord.
 func (ms LogRecord) Attributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Attributes, ms.state))
+	return pcommon.Map(internal.NewMapWrapper(&ms.orig.Attributes, ms.state))
 }
 
 // DroppedAttributesCount returns the droppedattributescount associated with this LogRecord.
@@ -134,7 +132,7 @@ func (ms LogRecord) TraceID() pcommon.TraceID {
 // SetTraceID replaces the traceid associated with this LogRecord.
 func (ms LogRecord) SetTraceID(v pcommon.TraceID) {
 	ms.state.AssertMutable()
-	ms.orig.TraceId = data.TraceID(v)
+	ms.orig.TraceId = internal.TraceID(v)
 }
 
 // SpanID returns the spanid associated with this LogRecord.
@@ -145,7 +143,7 @@ func (ms LogRecord) SpanID() pcommon.SpanID {
 // SetSpanID replaces the spanid associated with this LogRecord.
 func (ms LogRecord) SetSpanID(v pcommon.SpanID) {
 	ms.state.AssertMutable()
-	ms.orig.SpanId = data.SpanID(v)
+	ms.orig.SpanId = internal.SpanID(v)
 }
 
 // EventName returns the eventname associated with this LogRecord.
@@ -162,5 +160,5 @@ func (ms LogRecord) SetEventName(v string) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms LogRecord) CopyTo(dest LogRecord) {
 	dest.state.AssertMutable()
-	internal.CopyOrigLogRecord(dest.orig, ms.orig)
+	internal.CopyLogRecord(dest.orig, ms.orig)
 }

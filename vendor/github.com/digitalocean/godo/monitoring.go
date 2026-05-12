@@ -14,6 +14,7 @@ const (
 	alertPolicyBasePath         = monitoringBasePath + "/alerts"
 	dropletMetricsBasePath      = monitoringBasePath + "/metrics/droplet"
 	loadBalancerMetricsBasePath = monitoringBasePath + "/metrics/load_balancer"
+	dbaasMysqlMetricsBasePath   = monitoringBasePath + "/metrics/database/mysql"
 
 	DropletCPUUtilizationPercent        = "v1/insights/droplet/cpu"
 	DropletMemoryUtilizationPercent     = "v1/insights/droplet/memory_utilization_percent"
@@ -96,6 +97,21 @@ type MonitoringService interface {
 	GetLoadBalancerDropletsConnections(ctx context.Context, args *LoadBalancerMetricsRequest) (*MetricsResponse, *Response, error)
 	GetLoadBalancerDropletsHealthChecks(ctx context.Context, args *LoadBalancerMetricsRequest) (*MetricsResponse, *Response, error)
 	GetLoadBalancerDropletsDowntime(ctx context.Context, args *LoadBalancerMetricsRequest) (*MetricsResponse, *Response, error)
+
+	// DBaaS MySQL metrics (host-level: db_id only)
+	GetDbaasMysqlCpuUsage(ctx context.Context, args *DbaasMysqlCpuUsageRequest) (*MetricsResponse, *Response, error)
+	GetDbaasMysqlLoad(ctx context.Context, args *DbaasMysqlLoadRequest) (*MetricsResponse, *Response, error)
+	GetDbaasMysqlMemoryUsage(ctx context.Context, args *DbaasMysqlMemoryUsageRequest) (*MetricsResponse, *Response, error)
+	GetDbaasMysqlDiskUsage(ctx context.Context, args *DbaasMysqlDiskUsageRequest) (*MetricsResponse, *Response, error)
+	// DBaaS MySQL metrics (service-level: db_id + service)
+	GetDbaasMysqlThreadsConnected(ctx context.Context, args *DbaasMysqlServiceMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDbaasMysqlThreadsCreatedRate(ctx context.Context, args *DbaasMysqlServiceMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDbaasMysqlThreadsActive(ctx context.Context, args *DbaasMysqlServiceMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDbaasMysqlIndexVsSequentialReads(ctx context.Context, args *DbaasMysqlServiceMetricsRequest) (*MetricsResponse, *Response, error)
+	GetDbaasMysqlOpRates(ctx context.Context, args *DbaasMysqlOpRatesRequest) (*MetricsResponse, *Response, error)
+	// DBaaS MySQL metrics (schema-level: db_id + service + schema)
+	GetDbaasMysqlSchemaThroughput(ctx context.Context, args *DbaasMysqlSchemaThroughputRequest) (*MetricsResponse, *Response, error)
+	GetDbaasMysqlSchemaLatency(ctx context.Context, args *DbaasMysqlSchemaLatencyRequest) (*MetricsResponse, *Response, error)
 }
 
 // MonitoringServiceOp handles communication with monitoring related methods of the
@@ -197,6 +213,73 @@ type LoadBalancerMetricsRequest struct {
 	LoadBalancerID string
 	Start          time.Time
 	End            time.Time
+}
+
+// DbaasMysqlMetricsRequest holds the information needed to retrieve DBaaS MySQL host-level metrics (db_id only).
+type DbaasMysqlMetricsRequest struct {
+	DBID  string
+	Start time.Time
+	End   time.Time
+}
+
+// DbaasMysqlCpuUsageRequest holds the information needed to retrieve MySQL cluster CPU usage (percent). Aggregate: avg, max, min.
+type DbaasMysqlCpuUsageRequest struct {
+	DbaasMysqlMetricsRequest
+	Aggregate string // avg, max, min
+}
+
+// DbaasMysqlLoadRequest holds the information needed to retrieve MySQL cluster load average. Metric: load1, load5, load15. Aggregate: avg, max.
+type DbaasMysqlLoadRequest struct {
+	DbaasMysqlMetricsRequest
+	Metric    string // load1, load5, load15
+	Aggregate string // avg, max
+}
+
+// DbaasMysqlMemoryUsageRequest holds the information needed to retrieve MySQL cluster memory usage (percent). Aggregate: avg, max, min.
+type DbaasMysqlMemoryUsageRequest struct {
+	DbaasMysqlMetricsRequest
+	Aggregate string // avg, max, min
+}
+
+// DbaasMysqlDiskUsageRequest holds the information needed to retrieve MySQL cluster disk usage (percent). Aggregate: avg, max, min.
+type DbaasMysqlDiskUsageRequest struct {
+	DbaasMysqlMetricsRequest
+	Aggregate string // avg, max, min
+}
+
+// DbaasMysqlServiceMetricsRequest holds the information needed to retrieve DBaaS MySQL service-level metrics (db_id + service).
+type DbaasMysqlServiceMetricsRequest struct {
+	DBID    string
+	Service string
+	Start   time.Time
+	End     time.Time
+}
+
+// DbaasMysqlOpRatesRequest holds the information needed to retrieve MySQL service operations rate. Metric: select, insert, update, delete.
+type DbaasMysqlOpRatesRequest struct {
+	DbaasMysqlServiceMetricsRequest
+	Metric string // select, insert, update, delete
+}
+
+// DbaasMysqlSchemaMetricsRequest holds the information needed to retrieve DBaaS MySQL schema-level metrics (db_id + service + schema).
+type DbaasMysqlSchemaMetricsRequest struct {
+	DBID    string
+	Service string
+	Schema  string
+	Start   time.Time
+	End     time.Time
+}
+
+// DbaasMysqlSchemaThroughputRequest holds the information needed to retrieve MySQL schema table I/O throughput (rows/s). Metric: insert, fetch, update, delete.
+type DbaasMysqlSchemaThroughputRequest struct {
+	DbaasMysqlSchemaMetricsRequest
+	Metric string // insert, fetch, update, delete
+}
+
+// DbaasMysqlSchemaLatencyRequest holds the information needed to retrieve MySQL schema table I/O latency (seconds). Metric: insert, fetch, update, delete.
+type DbaasMysqlSchemaLatencyRequest struct {
+	DbaasMysqlSchemaMetricsRequest
+	Metric string // insert, fetch, update, delete
 }
 
 // MetricsResponse holds a Metrics query response.
@@ -561,4 +644,148 @@ func (s *MonitoringServiceOp) getLoadBalancerMetrics(ctx context.Context, path s
 	resp, err := s.client.Do(ctx, req, root)
 
 	return root, resp, err
+}
+
+// getDbaasMysqlMetrics performs a GET request for a DBaaS MySQL metric path with the given query params.
+func (s *MonitoringServiceOp) getDbaasMysqlMetrics(ctx context.Context, path string, params map[string]string) (*MetricsResponse, *Response, error) {
+	fullPath := dbaasMysqlMetricsBasePath + path
+	req, err := s.client.NewRequest(ctx, http.MethodGet, fullPath, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	q := req.URL.Query()
+	for k, v := range params {
+		q.Add(k, v)
+	}
+	req.URL.RawQuery = q.Encode()
+	root := new(MetricsResponse)
+	resp, err := s.client.Do(ctx, req, root)
+	return root, resp, err
+}
+
+// GetDbaasMysqlCpuUsage retrieves CPU usage (percent) for a MySQL cluster. Aggregate: avg, max, min.
+func (s *MonitoringServiceOp) GetDbaasMysqlCpuUsage(ctx context.Context, args *DbaasMysqlCpuUsageRequest) (*MetricsResponse, *Response, error) {
+	params := map[string]string{
+		"db_id":     args.DBID,
+		"start":     fmt.Sprintf("%d", args.Start.Unix()),
+		"end":       fmt.Sprintf("%d", args.End.Unix()),
+		"aggregate": args.Aggregate,
+	}
+	return s.getDbaasMysqlMetrics(ctx, "/cpu_usage", params)
+}
+
+// GetDbaasMysqlLoad retrieves load average for a MySQL cluster. Metric: load1, load5, load15. Aggregate: avg, max.
+func (s *MonitoringServiceOp) GetDbaasMysqlLoad(ctx context.Context, args *DbaasMysqlLoadRequest) (*MetricsResponse, *Response, error) {
+	params := map[string]string{
+		"db_id":     args.DBID,
+		"start":     fmt.Sprintf("%d", args.Start.Unix()),
+		"end":       fmt.Sprintf("%d", args.End.Unix()),
+		"metric":    args.Metric,
+		"aggregate": args.Aggregate,
+	}
+	return s.getDbaasMysqlMetrics(ctx, "/load", params)
+}
+
+// GetDbaasMysqlMemoryUsage retrieves memory usage (percent) for a MySQL cluster. Aggregate: avg, max, min.
+func (s *MonitoringServiceOp) GetDbaasMysqlMemoryUsage(ctx context.Context, args *DbaasMysqlMemoryUsageRequest) (*MetricsResponse, *Response, error) {
+	params := map[string]string{
+		"db_id":     args.DBID,
+		"start":     fmt.Sprintf("%d", args.Start.Unix()),
+		"end":       fmt.Sprintf("%d", args.End.Unix()),
+		"aggregate": args.Aggregate,
+	}
+	return s.getDbaasMysqlMetrics(ctx, "/memory_usage", params)
+}
+
+// GetDbaasMysqlDiskUsage retrieves disk usage (percent) for a MySQL cluster. Aggregate: avg, max, min.
+func (s *MonitoringServiceOp) GetDbaasMysqlDiskUsage(ctx context.Context, args *DbaasMysqlDiskUsageRequest) (*MetricsResponse, *Response, error) {
+	params := map[string]string{
+		"db_id":     args.DBID,
+		"start":     fmt.Sprintf("%d", args.Start.Unix()),
+		"end":       fmt.Sprintf("%d", args.End.Unix()),
+		"aggregate": args.Aggregate,
+	}
+	return s.getDbaasMysqlMetrics(ctx, "/disk_usage", params)
+}
+
+// GetDbaasMysqlThreadsConnected retrieves current threads connected for a MySQL service.
+func (s *MonitoringServiceOp) GetDbaasMysqlThreadsConnected(ctx context.Context, args *DbaasMysqlServiceMetricsRequest) (*MetricsResponse, *Response, error) {
+	params := map[string]string{
+		"db_id":   args.DBID,
+		"service": args.Service,
+		"start":   fmt.Sprintf("%d", args.Start.Unix()),
+		"end":     fmt.Sprintf("%d", args.End.Unix()),
+	}
+	return s.getDbaasMysqlMetrics(ctx, "/threads_connected", params)
+}
+
+// GetDbaasMysqlThreadsCreatedRate retrieves threads created rate (per second) for a MySQL service.
+func (s *MonitoringServiceOp) GetDbaasMysqlThreadsCreatedRate(ctx context.Context, args *DbaasMysqlServiceMetricsRequest) (*MetricsResponse, *Response, error) {
+	params := map[string]string{
+		"db_id":   args.DBID,
+		"service": args.Service,
+		"start":   fmt.Sprintf("%d", args.Start.Unix()),
+		"end":     fmt.Sprintf("%d", args.End.Unix()),
+	}
+	return s.getDbaasMysqlMetrics(ctx, "/threads_created_rate", params)
+}
+
+// GetDbaasMysqlThreadsActive retrieves active (running) threads for a MySQL service.
+func (s *MonitoringServiceOp) GetDbaasMysqlThreadsActive(ctx context.Context, args *DbaasMysqlServiceMetricsRequest) (*MetricsResponse, *Response, error) {
+	params := map[string]string{
+		"db_id":   args.DBID,
+		"service": args.Service,
+		"start":   fmt.Sprintf("%d", args.Start.Unix()),
+		"end":     fmt.Sprintf("%d", args.End.Unix()),
+	}
+	return s.getDbaasMysqlMetrics(ctx, "/threads_active", params)
+}
+
+// GetDbaasMysqlIndexVsSequentialReads retrieves index vs sequential reads ratio (percent) for a MySQL service.
+func (s *MonitoringServiceOp) GetDbaasMysqlIndexVsSequentialReads(ctx context.Context, args *DbaasMysqlServiceMetricsRequest) (*MetricsResponse, *Response, error) {
+	params := map[string]string{
+		"db_id":   args.DBID,
+		"service": args.Service,
+		"start":   fmt.Sprintf("%d", args.Start.Unix()),
+		"end":     fmt.Sprintf("%d", args.End.Unix()),
+	}
+	return s.getDbaasMysqlMetrics(ctx, "/index_vs_sequential_reads", params)
+}
+
+// GetDbaasMysqlOpRates retrieves operations rate (select, insert, update, delete per second) for a MySQL service.
+func (s *MonitoringServiceOp) GetDbaasMysqlOpRates(ctx context.Context, args *DbaasMysqlOpRatesRequest) (*MetricsResponse, *Response, error) {
+	params := map[string]string{
+		"db_id":   args.DBID,
+		"service": args.Service,
+		"metric":  args.Metric,
+		"start":   fmt.Sprintf("%d", args.Start.Unix()),
+		"end":     fmt.Sprintf("%d", args.End.Unix()),
+	}
+	return s.getDbaasMysqlMetrics(ctx, "/op_rates", params)
+}
+
+// GetDbaasMysqlSchemaThroughput retrieves table I/O throughput (rows/s) for a MySQL schema. Metric: insert, fetch, update, delete.
+func (s *MonitoringServiceOp) GetDbaasMysqlSchemaThroughput(ctx context.Context, args *DbaasMysqlSchemaThroughputRequest) (*MetricsResponse, *Response, error) {
+	params := map[string]string{
+		"db_id":   args.DBID,
+		"service": args.Service,
+		"schema":  args.Schema,
+		"metric":  args.Metric,
+		"start":   fmt.Sprintf("%d", args.Start.Unix()),
+		"end":     fmt.Sprintf("%d", args.End.Unix()),
+	}
+	return s.getDbaasMysqlMetrics(ctx, "/schema_throughput", params)
+}
+
+// GetDbaasMysqlSchemaLatency retrieves table I/O latency (seconds) for a MySQL schema. Metric: insert, fetch, update, delete.
+func (s *MonitoringServiceOp) GetDbaasMysqlSchemaLatency(ctx context.Context, args *DbaasMysqlSchemaLatencyRequest) (*MetricsResponse, *Response, error) {
+	params := map[string]string{
+		"db_id":   args.DBID,
+		"service": args.Service,
+		"schema":  args.Schema,
+		"metric":  args.Metric,
+		"start":   fmt.Sprintf("%d", args.Start.Unix()),
+		"end":     fmt.Sprintf("%d", args.End.Unix()),
+	}
+	return s.getDbaasMysqlMetrics(ctx, "/schema_latency", params)
 }

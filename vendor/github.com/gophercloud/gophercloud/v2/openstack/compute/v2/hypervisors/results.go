@@ -11,6 +11,7 @@ import (
 
 // Topology represents a CPU Topology.
 type Topology struct {
+	Cells   int `json:"cells"`
 	Sockets int `json:"sockets"`
 	Cores   int `json:"cores"`
 	Threads int `json:"threads"`
@@ -194,7 +195,7 @@ func (r *Hypervisor) UnmarshalJSON(b []byte) error {
 	case float64:
 		r.HypervisorVersion = int(t)
 	default:
-		return fmt.Errorf("Hypervisor version has unexpected type: %T", t)
+		return fmt.Errorf("HypervisorVersion has unexpected type: %T", t)
 	}
 
 	// free_disk_gb doesn't exist after api version 2.87
@@ -205,7 +206,7 @@ func (r *Hypervisor) UnmarshalJSON(b []byte) error {
 		case float64:
 			r.FreeDiskGB = int(t)
 		default:
-			return fmt.Errorf("Free disk GB has unexpected type: %T", t)
+			return fmt.Errorf("FreeDiskGB has unexpected type: %T", t)
 		}
 	}
 
@@ -217,7 +218,7 @@ func (r *Hypervisor) UnmarshalJSON(b []byte) error {
 		case float64:
 			r.LocalGB = int(t)
 		default:
-			return fmt.Errorf("Local GB has unexpected type: %T", t)
+			return fmt.Errorf("LocalGB has unexpected type: %T", t)
 		}
 	}
 
@@ -240,7 +241,7 @@ func (r *Hypervisor) UnmarshalJSON(b []byte) error {
 // HypervisorPage represents a single page of all Hypervisors from a List
 // request.
 type HypervisorPage struct {
-	pagination.SinglePageBase
+	pagination.LinkedPageBase
 }
 
 // IsEmpty determines whether or not a HypervisorPage is empty.
@@ -251,6 +252,19 @@ func (page HypervisorPage) IsEmpty() (bool, error) {
 
 	va, err := ExtractHypervisors(page)
 	return len(va) == 0, err
+}
+
+// NextPageURL uses the response's embedded link reference to navigate to the
+// next page of results.
+func (page HypervisorPage) NextPageURL() (string, error) {
+	var s struct {
+		Links []gophercloud.Link `json:"hypervisors_links"`
+	}
+	err := page.ExtractInto(&s)
+	if err != nil {
+		return "", err
+	}
+	return gophercloud.ExtractNextURL(s.Links)
 }
 
 // ExtractHypervisors interprets a page of results as a slice of Hypervisors.

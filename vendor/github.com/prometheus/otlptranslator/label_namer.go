@@ -20,6 +20,7 @@
 package otlptranslator
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
@@ -34,6 +35,17 @@ import (
 //	result := namer.Build("http.method") // "http_method"
 type LabelNamer struct {
 	UTF8Allowed bool
+	// UnderscoreLabelSanitization, if true, enabled prepending 'key' to labels
+	// starting with '_'. Reserved labels starting with `__` are not modified.
+	//
+	// Deprecated: This will be removed in a future version of otlptranslator.
+	UnderscoreLabelSanitization bool
+	// PreserveMultipleUnderscores enables preserving of multiple
+	// consecutive underscores in label names when UTF8Allowed is false.
+	// This option is discouraged as it violates the OpenTelemetry to Prometheus
+	// specification https://github.com/open-telemetry/opentelemetry-specification/blob/v1.38.0/specification/compatibility/prometheus_and_openmetrics.md#otlp-metric-points-to-prometheus),
+	// but may be needed for compatibility with legacy systems that rely on the old behavior.
+	PreserveMultipleUnderscores bool
 }
 
 // Build normalizes the specified label to follow Prometheus label names standard.
@@ -50,41 +62,39 @@ type LabelNamer struct {
 //	namer.Build("http.method")     // "http_method"
 //	namer.Build("123invalid")      // "key_123invalid"
 //	namer.Build("__reserved__")    // "__reserved__" (preserved)
-func (ln *LabelNamer) Build(label string) (normalizedName string, err error) {
-	defer func() {
-		if len(normalizedName) == 0 {
-			err = fmt.Errorf("normalization for label name %q resulted in empty name", label)
-			return
-		}
-
-		if ln.UTF8Allowed || normalizedName == label {
-			return
-		}
-
-		// Check that the resulting normalized name contains at least one non-underscore character
-		for _, c := range normalizedName {
-			if c != '_' {
-				return
-			}
-		}
-		err = fmt.Errorf("normalization for label name %q resulted in invalid name %q", label, normalizedName)
-		normalizedName = ""
-	}()
-
-	// Trivial case.
-	if len(label) == 0 || ln.UTF8Allowed {
-		normalizedName = label
-		return
+func (ln *LabelNamer) Build(label string) (string, error) {
+	if len(label) == 0 {
+		return "", errors.New("label name is empty")
 	}
 
-	normalizedName = sanitizeLabelName(label)
+	if ln.UTF8Allowed {
+		if hasUnderscoresOnly(label) {
+			return "", fmt.Errorf("label name %q contains only underscores", label)
+		}
+		return label, nil
+	}
+
+	normalizedName := sanitizeLabelName(label, ln.PreserveMultipleUnderscores)
 
 	// If label starts with a number, prepend with "key_".
 	if unicode.IsDigit(rune(normalizedName[0])) {
 		normalizedName = "key_" + normalizedName
-	} else if strings.HasPrefix(normalizedName, "_") && !strings.HasPrefix(normalizedName, "__") {
+	} else if ln.UnderscoreLabelSanitization && strings.HasPrefix(normalizedName, "_") && !strings.HasPrefix(normalizedName, "__") {
 		normalizedName = "key" + normalizedName
 	}
 
-	return
+	if hasUnderscoresOnly(normalizedName) {
+		return "", fmt.Errorf("normalization for label name %q resulted in invalid name %q", label, normalizedName)
+	}
+
+	return normalizedName, nil
+}
+
+func hasUnderscoresOnly(label string) bool {
+	for _, c := range label {
+		if c != '_' {
+			return false
+		}
+	}
+	return true
 }

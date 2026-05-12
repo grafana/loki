@@ -18,7 +18,7 @@ import (
 
 // Backwards-compatible with model.Metric.String()
 func labelsString(ls labels.Labels) string {
-	metricName := ls.Get(labels.MetricName)
+	metricName := ls.Get(model.MetricNameLabel)
 	if metricName != "" && ls.Len() == 1 {
 		return metricName
 	}
@@ -29,7 +29,7 @@ func labelsString(ls labels.Labels) string {
 	b.WriteByte('{')
 	i := 0
 	ls.Range(func(l labels.Label) {
-		if l.Name == labels.MetricName {
+		if l.Name == model.MetricNameLabel {
 			return // (will continue Range loop, not abort)
 		}
 		if i > 0 {

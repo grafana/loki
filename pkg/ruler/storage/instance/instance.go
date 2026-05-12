@@ -308,7 +308,7 @@ func (i *Instance) initialize(_ context.Context, reg prometheus.Registerer, cfg 
 
 	// Setup the remote storage
 	remoteLogger := log.With(i.logger, "component", "remote")
-	i.remoteStore = remote.NewStorage(util_log.SlogFromGoKit(remoteLogger), reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{})
+	i.remoteStore = remote.NewStorage(util_log.SlogFromGoKit(remoteLogger), reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{}, false)
 	err = i.remoteStore.ApplyConfig(&config.Config{
 		RemoteWriteConfigs: cfg.RemoteWrite,
 	})
@@ -522,6 +522,7 @@ type walStorage interface {
 	WriteStalenessMarkers(remoteTsFunc func() int64) error
 	SetWriteNotified(wlog.WriteNotified)
 	Appender(context.Context) storage.Appender
+	AppenderV2(context.Context) storage.AppenderV2
 	Truncate(mint int64) error
 
 	Close() error

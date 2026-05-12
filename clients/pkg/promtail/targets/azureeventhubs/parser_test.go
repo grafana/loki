@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
 )
 
 func Test_parseMessage_function_app(t *testing.T) {
@@ -195,7 +197,7 @@ func Test_parseMessage_relable_config(t *testing.T) {
 		Value: readFile(t, "testdata/function_app_logs_message.txt"),
 	}
 
-	relableConfigs := []*relabel.Config{
+	relabelConfigs := testutils.ValidateRelabelConfig(t, []*relabel.Config{
 		{
 			SourceLabels: model.LabelNames{"__azure_event_hubs_category"},
 			Regex:        relabel.MustNewRegexp("(.*)"),
@@ -203,9 +205,9 @@ func Test_parseMessage_relable_config(t *testing.T) {
 			Replacement:  "$1",
 			Action:       "replace",
 		},
-	}
+	})
 
-	entries, err := messageParser.Parse(message, nil, relableConfigs, true)
+	entries, err := messageParser.Parse(message, nil, relabelConfigs, true)
 	assert.NoError(t, err)
 	assert.Len(t, entries, 2)
 

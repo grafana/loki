@@ -139,9 +139,9 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 	}
 
 	// The input config is expected to be addressable.
-	if reflect.TypeOf(cfg).Kind() != reflect.Ptr {
+	if reflect.TypeOf(cfg).Kind() != reflect.Pointer {
 		t := reflect.TypeOf(cfg)
-		return nil, fmt.Errorf("%s is a %s while a %s is expected", t, t.Kind(), reflect.Ptr)
+		return nil, fmt.Errorf("%s is a %s while a %s is expected", t, t.Kind(), reflect.Pointer)
 	}
 
 	// The input config is expected to be a pointer to struct.
@@ -189,7 +189,7 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 		}
 
 		// Recursively re-iterate if it's a struct, and it's not a custom type.
-		if _, custom := getCustomFieldType(field.Type); (field.Type.Kind() == reflect.Struct || field.Type.Kind() == reflect.Ptr) && !custom {
+		if _, custom := getCustomFieldType(field.Type); (field.Type.Kind() == reflect.Struct || field.Type.Kind() == reflect.Pointer) && !custom {
 			// Check whether the sub-block is a root config block
 			rootName, rootDesc, isRoot := isRootBlock(field.Type, rootBlocks)
 
@@ -250,7 +250,7 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 				}
 			}
 
-			if field.Type.Kind() == reflect.Ptr {
+			if field.Type.Kind() == reflect.Pointer {
 				// If this is a pointer, it's probably nil, so we initialize it.
 				fieldValue = reflect.New(field.Type.Elem())
 			} else if field.Type.Kind() == reflect.Struct {
@@ -275,7 +275,7 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 			// Add ConfigBlock for slices only if the field isn't a custom type,
 			// which shouldn't be inspected because doesn't have YAML tags, flag registrations, etc.
 			_, isCustomType := getFieldCustomType(field.Type)
-			isSliceOfStructs := field.Type.Kind() == reflect.Slice && (field.Type.Elem().Kind() == reflect.Struct || field.Type.Elem().Kind() == reflect.Ptr)
+			isSliceOfStructs := field.Type.Kind() == reflect.Slice && (field.Type.Elem().Kind() == reflect.Struct || field.Type.Elem().Kind() == reflect.Pointer)
 			if !isCustomType && isSliceOfStructs {
 				// Check if slice element type is a root block
 				// and add it to the blocks structure
@@ -451,7 +451,7 @@ func getFieldType(t reflect.Type, rootBlocks []RootBlock) (string, error) {
 		return fmt.Sprintf("map of %s to %s", t.Key(), elemType), nil
 	case reflect.Struct:
 		return t.Name(), nil
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return getFieldType(t.Elem(), rootBlocks)
 	case reflect.Interface:
 		return t.Name(), nil

@@ -398,7 +398,7 @@ func (s *LineFilterLabelFilter) String() string {
 		} else {
 			rStr = fmt.Sprintf("`%s`", rStr)
 		}
-		str := fmt.Sprintf("%s%s%s", s.Matcher.Name, s.Matcher.Type, rStr)
+		str := fmt.Sprintf("%s%s%s", s.Name, s.Type, rStr)
 		return str
 	}
 	return s.Matcher.String()

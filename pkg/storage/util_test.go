@@ -103,9 +103,9 @@ func newChunk(chunkFormat byte, headBlockFmt chunkenc.HeadBlockFmt, stream logpr
 	if err != nil {
 		panic(err)
 	}
-	if !lbs.Has(labels.MetricName) {
+	if !lbs.Has(model.MetricNameLabel) {
 		builder := labels.NewBuilder(lbs)
-		builder.Set(labels.MetricName, "logs")
+		builder.Set(model.MetricNameLabel, "logs")
 		lbs = builder.Labels()
 	}
 	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
@@ -202,7 +202,7 @@ Outer:
 					continue Outer
 				}
 			}
-			l := labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels()
+			l := labels.NewBuilder(c.Metric).Del(model.MetricNameLabel).Labels()
 			if m.f != nil {
 				if m.f.ForRequest(ctx).ShouldFilter(l) {
 					continue

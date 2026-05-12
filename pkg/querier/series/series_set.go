@@ -134,6 +134,12 @@ func (c *concreteSeriesIterator) AtT() (t int64) {
 	return int64(s.Timestamp)
 }
 
+func (c *concreteSeriesIterator) AtST() int64 {
+	// TODO: implement AtST if needed.
+	// See https://github.com/prometheus/prometheus/pull/17840.
+	return 0
+}
+
 func (c *concreteSeriesIterator) Next() chunkenc.ValueType {
 	c.cur++
 	if c.cur < len(c.series.samples) {
@@ -177,6 +183,10 @@ func (errIterator) AtFloatHistogram(*histogram.FloatHistogram) (int64, *histogra
 }
 
 func (errIterator) AtT() (t int64) {
+	return 0
+}
+
+func (errIterator) AtST() int64 {
 	return 0
 }
 
@@ -258,6 +268,12 @@ func (d DeletedSeriesIterator) AtT() (t int64) {
 	return ts
 }
 
+func (d DeletedSeriesIterator) AtST() int64 {
+	// TODO: implement AtST if needed.
+	// See https://github.com/prometheus/prometheus/pull/17840.
+	return 0
+}
+
 func (d DeletedSeriesIterator) Next() chunkenc.ValueType {
 	for {
 		ty := d.itr.Next()
@@ -337,6 +353,10 @@ func (emptySeriesIterator) AtFloatHistogram(*histogram.FloatHistogram) (int64, *
 }
 
 func (emptySeriesIterator) AtT() (t int64) {
+	return 0
+}
+
+func (emptySeriesIterator) AtST() int64 {
 	return 0
 }
 

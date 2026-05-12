@@ -1300,7 +1300,9 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 			TLSClientConfig: cfg,
 		}
 
+		//nolint:staticcheck // SA1019: Director is deprecated in favor of Rewrite, but migrating requires careful testing.
 		director := tp.Director
+		//nolint:staticcheck // SA1019
 		tp.Director = func(req *http.Request) {
 			director(req)
 			req.Host = tailURL.Host

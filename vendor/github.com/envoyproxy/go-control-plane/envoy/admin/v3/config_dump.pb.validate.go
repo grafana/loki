@@ -105,7 +105,7 @@ type ConfigDumpMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m ConfigDumpMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -263,7 +263,7 @@ type BootstrapConfigDumpMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m BootstrapConfigDumpMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -467,7 +467,7 @@ type SecretsConfigDumpMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m SecretsConfigDumpMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -662,7 +662,7 @@ type SecretsConfigDump_DynamicSecretMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m SecretsConfigDump_DynamicSecretMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -825,7 +825,7 @@ type SecretsConfigDump_StaticSecretMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m SecretsConfigDump_StaticSecretMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

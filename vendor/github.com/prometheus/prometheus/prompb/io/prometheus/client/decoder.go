@@ -1,4 +1,4 @@
-// Copyright 2025 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -114,7 +114,7 @@ func (m *MetricStreamingDecoder) resetMetric() {
 	// TODO(bwplotka): Autogenerate reset functions.
 	if m.Counter != nil {
 		m.Counter.Value = 0
-		m.Counter.CreatedTimestamp = nil
+		m.Counter.StartTimestamp = nil
 		m.Counter.Exemplar = nil
 	}
 	if m.Gauge != nil {
@@ -125,7 +125,7 @@ func (m *MetricStreamingDecoder) resetMetric() {
 		m.Histogram.SampleCountFloat = 0
 		m.Histogram.SampleSum = 0
 		m.Histogram.Bucket = m.Histogram.Bucket[:0]
-		m.Histogram.CreatedTimestamp = nil
+		m.Histogram.StartTimestamp = nil
 		m.Histogram.Schema = 0
 		m.Histogram.ZeroThreshold = 0
 		m.Histogram.ZeroCount = 0
@@ -142,7 +142,7 @@ func (m *MetricStreamingDecoder) resetMetric() {
 		m.Summary.SampleCount = 0
 		m.Summary.SampleSum = 0
 		m.Summary.Quantile = m.Summary.Quantile[:0]
-		m.Summary.CreatedTimestamp = nil
+		m.Summary.StartTimestamp = nil
 	}
 }
 
@@ -154,17 +154,24 @@ func (*MetricStreamingDecoder) GetLabel() {
 	panic("don't use GetLabel, use Label instead")
 }
 
-type scratchBuilder interface {
+// unsafeLabelAdder adds labels for a single metric.
+// The "unsafe" word highlights that some strings must not be retained on a
+// caller side. When used with labels.ScratchBuilder ensure it's used
+// with SetUnsafeAdd set to true.
+type unsafeLabelAdder interface {
 	Add(name, value string)
-	UnsafeAddBytes(name, value []byte)
 }
 
-// Label parses labels into labels scratch builder. Metric name is missing
+// Label parses labels into unsafeLabelAdder. Metric name is missing
 // given the protobuf metric model and has to be deduced from the metric family name.
-// TODO: The method name intentionally hide MetricStreamingDecoder.Metric.Label
+//
+// TODO: The Label method name intentionally hide MetricStreamingDecoder.Metric.Label
 // field to avoid direct use (it's not parsed). In future generator will generate
 // structs tailored for streaming decoding.
-func (m *MetricStreamingDecoder) Label(b scratchBuilder) error {
+//
+// Unsafe in this context means that bytes and strings are reused across iterations.
+// They are live only until the next NextMetric() or NextMetricFamily() call.
+func (m *MetricStreamingDecoder) Label(b unsafeLabelAdder) error {
 	for _, l := range m.labels {
 		if err := parseLabel(m.mData[l.start:l.end], b); err != nil {
 			return err
@@ -173,10 +180,9 @@ func (m *MetricStreamingDecoder) Label(b scratchBuilder) error {
 	return nil
 }
 
-// parseLabel is essentially LabelPair.Unmarshal but directly adding into scratch builder
-// via UnsafeAddBytes method to reuse strings.
-func parseLabel(dAtA []byte, b scratchBuilder) error {
-	var name, value []byte
+// parseLabel is essentially LabelPair.Unmarshal but directly adding into unsafeLabelAdder.
+func parseLabel(dAtA []byte, b unsafeLabelAdder) error {
+	var unsafeName, unsafeValue string
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -235,9 +241,9 @@ func parseLabel(dAtA []byte, b scratchBuilder) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			name = dAtA[iNdEx:postIndex]
-			if !model.LabelName(name).IsValid() {
-				return fmt.Errorf("invalid label name: %s", name)
+			unsafeName = yoloString(dAtA[iNdEx:postIndex])
+			if !model.UTF8Validation.IsValidLabelName(unsafeName) {
+				return fmt.Errorf("invalid label name: %s", unsafeName)
 			}
 			iNdEx = postIndex
 		case 2:
@@ -270,9 +276,9 @@ func parseLabel(dAtA []byte, b scratchBuilder) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			value = dAtA[iNdEx:postIndex]
-			if !utf8.ValidString(yoloString(value)) {
-				return fmt.Errorf("invalid label value: %s", value)
+			unsafeValue = yoloString(dAtA[iNdEx:postIndex])
+			if !utf8.ValidString(unsafeValue) {
+				return fmt.Errorf("invalid label value: %s", unsafeValue)
 			}
 			iNdEx = postIndex
 		default:
@@ -293,7 +299,7 @@ func parseLabel(dAtA []byte, b scratchBuilder) error {
 	if iNdEx > l {
 		return io.ErrUnexpectedEOF
 	}
-	b.UnsafeAddBytes(name, value)
+	b.Add(unsafeName, unsafeValue)
 	return nil
 }
 

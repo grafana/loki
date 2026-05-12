@@ -111,7 +111,7 @@ func (r commonResult) Extract() (*FloatingIP, error) {
 }
 
 func (r commonResult) ExtractInto(v any) error {
-	return r.Result.ExtractIntoStructPtr(v, "floatingip")
+	return r.ExtractIntoStructPtr(v, "floatingip")
 }
 
 // CreateResult represents the result of a create operation. Call its Extract
@@ -180,5 +180,5 @@ func ExtractFloatingIPs(r pagination.Page) ([]FloatingIP, error) {
 }
 
 func ExtractFloatingIPsInto(r pagination.Page, v any) error {
-	return r.(FloatingIPPage).Result.ExtractIntoSlicePtr(v, "floatingips")
+	return r.(FloatingIPPage).ExtractIntoSlicePtr(v, "floatingips")
 }

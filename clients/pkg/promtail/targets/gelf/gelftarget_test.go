@@ -15,6 +15,8 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
+
 	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 )
@@ -29,7 +31,7 @@ func Test_Gelf(t *testing.T) {
 				UseIncomingTimestamp: true,
 				Labels:               model.LabelSet{"cfg": "true"},
 			},
-			RelabelConfigs: []*relabel.Config{
+			RelabelConfigs: testutils.ValidateRelabelConfig(t, []*relabel.Config{
 				{
 					SourceLabels: model.LabelNames{"__gelf_message_level"},
 					TargetLabel:  "level",
@@ -51,7 +53,7 @@ func Test_Gelf(t *testing.T) {
 					Action:       relabel.Replace,
 					Regex:        relabel.MustNewRegexp("(.*)"),
 				},
-			},
+			}),
 		},
 	})
 	require.NoError(t, err)

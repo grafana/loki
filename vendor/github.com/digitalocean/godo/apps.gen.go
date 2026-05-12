@@ -100,6 +100,7 @@ type App struct {
 	ProjectID string `json:"project_id,omitempty"`
 	// The dedicated egress ip addresses associated with the app.
 	DedicatedIps []*AppDedicatedIp `json:"dedicated_ips,omitempty"`
+	VPC          *AppVPC           `json:"vpc,omitempty"`
 }
 
 // AppAlertSpec Configuration of an alert for the app or a individual component.
@@ -123,7 +124,7 @@ const (
 	AppAlertSpecOperator_LessThan            AppAlertSpecOperator = "LESS_THAN"
 )
 
-// AppAlertSpecRule  - CPU_UTILIZATION: Represents CPU for a given container instance. Only applicable at the component level.  - MEM_UTILIZATION: Represents RAM for a given container instance. Only applicable at the component level.  - RESTART_COUNT: Represents restart count for a given container instance. Only applicable at the component level.  - DEPLOYMENT_FAILED: Represents whether a deployment has failed. Only applicable at the app level.  - DEPLOYMENT_LIVE: Represents whether a deployment has succeeded. Only applicable at the app level.  - DEPLOYMENT_STARTED: Represents whether a deployment has started. Only applicable at the app level.  - DEPLOYMENT_CANCELED: Represents whether a deployment has been canceled. Only applicable at the app level.  - DOMAIN_FAILED: Represents whether a domain configuration has failed. Only applicable at the app level.  - DOMAIN_LIVE: Represents whether a domain configuration has succeeded. Only applicable at the app level.  - AUTOSCALE_FAILED: Represents whether autoscaling has failed. Only applicable at the app level.  - FUNCTIONS_ACTIVATION_COUNT: Represents an activation count for a given functions instance. Only applicable to functions components.  - FUNCTIONS_AVERAGE_DURATION_MS: Represents the average duration for function runtimes. Only applicable to functions components.  - FUNCTIONS_ERROR_RATE_PER_MINUTE: Represents an error rate per minute for a given functions instance. Only applicable to functions components.  - FUNCTIONS_AVERAGE_WAIT_TIME_MS: Represents the average wait time for functions. Only applicable to functions components.  - FUNCTIONS_ERROR_COUNT: Represents an error count for a given functions instance. Only applicable to functions components.  - FUNCTIONS_GB_RATE_PER_SECOND: Represents the rate of memory consumption (GB x seconds) for functions. Only applicable to functions components.
+// AppAlertSpecRule  - CPU_UTILIZATION: Represents CPU for a given container instance. Only applicable at the component level.  - MEM_UTILIZATION: Represents RAM for a given container instance. Only applicable at the component level.  - RESTART_COUNT: Represents restart count for a given container instance. Only applicable at the component level.  - DEPLOYMENT_FAILED: Represents whether a deployment has failed. Only applicable at the app level.  - DEPLOYMENT_LIVE: Represents whether a deployment has succeeded. Only applicable at the app level.  - DEPLOYMENT_STARTED: Represents whether a deployment has started. Only applicable at the app level.  - DEPLOYMENT_CANCELED: Represents whether a deployment has been canceled. Only applicable at the app level.  - DOMAIN_FAILED: Represents whether a domain configuration has failed. Only applicable at the app level.  - DOMAIN_LIVE: Represents whether a domain configuration has succeeded. Only applicable at the app level.  - AUTOSCALE_FAILED: Represents whether autoscaling has failed. Only applicable at the app level.  - AUTOSCALE_SUCCEEDED: Represents whether autoscaling has succeeded. Only applicable at the app level. - FUNCTIONS_ACTIVATION_COUNT: Represents an activation count for a given functions instance. Only applicable to functions components.  - FUNCTIONS_AVERAGE_DURATION_MS: Represents the average duration for function runtimes. Only applicable to functions components.  - FUNCTIONS_ERROR_RATE_PER_MINUTE: Represents an error rate per minute for a given functions instance. Only applicable to functions components.  - FUNCTIONS_AVERAGE_WAIT_TIME_MS: Represents the average wait time for functions. Only applicable to functions components.  - FUNCTIONS_ERROR_COUNT: Represents an error count for a given functions instance. Only applicable to functions components.  - FUNCTIONS_GB_RATE_PER_SECOND: Represents the rate of memory consumption (GB x seconds) for functions. Only applicable to functions components.
 type AppAlertSpecRule string
 
 // List of AppAlertSpecRule
@@ -139,6 +140,8 @@ const (
 	AppAlertSpecRule_DomainFailed                AppAlertSpecRule = "DOMAIN_FAILED"
 	AppAlertSpecRule_DomainLive                  AppAlertSpecRule = "DOMAIN_LIVE"
 	AppAlertSpecRule_AutoscaleFailed             AppAlertSpecRule = "AUTOSCALE_FAILED"
+	AppAlertSpecRule_AutoscaleSucceeded          AppAlertSpecRule = "AUTOSCALE_SUCCEEDED"
+	AppAlertSpecRule_JobInvocationFailed         AppAlertSpecRule = "JOB_INVOCATION_FAILED"
 	AppAlertSpecRule_FunctionsActivationCount    AppAlertSpecRule = "FUNCTIONS_ACTIVATION_COUNT"
 	AppAlertSpecRule_FunctionsAverageDurationMS  AppAlertSpecRule = "FUNCTIONS_AVERAGE_DURATION_MS"
 	AppAlertSpecRule_FunctionsErrorRatePerMinute AppAlertSpecRule = "FUNCTIONS_ERROR_RATE_PER_MINUTE"
@@ -316,7 +319,8 @@ type AppIngressSpec struct {
 	LoadBalancer     AppIngressSpecLoadBalancer `json:"load_balancer,omitempty"`
 	LoadBalancerSize int64                      `json:"load_balancer_size,omitempty"`
 	// Rules for configuring HTTP ingress for component routes, CORS, rewrites, and redirects.
-	Rules []*AppIngressSpecRule `json:"rules,omitempty"`
+	Rules        []*AppIngressSpecRule `json:"rules,omitempty"`
+	SecureHeader *AppSecureHeaderSpec  `json:"secure_header,omitempty"`
 }
 
 // AppIngressSpecLoadBalancer the model 'AppIngressSpecLoadBalancer'
@@ -373,6 +377,15 @@ type AppIngressSpecRuleStringMatch struct {
 	Exact  string `json:"exact,omitempty"`
 }
 
+type AppSecureHeaderSpec struct {
+	// The name of the header to set.
+	Key string `json:"key,omitempty"`
+	// The value of the header to set.
+	Value string `json:"value,omitempty"`
+	// Remove the header from incoming requests before forwarding to the app.
+	RemoveHeader bool `json:"remove_header,omitempty"`
+}
+
 // AppInstance struct for AppInstance
 type AppInstance struct {
 	// The name of the component this instance belongs to.
@@ -412,20 +425,23 @@ type AppJobSpec struct {
 	RunCommand string `json:"run_command,omitempty"`
 	// An optional path to the working directory to use for the build. For Dockerfile builds, this will be used as the build context. Must be relative to the root of the repo.
 	SourceDir string `json:"source_dir,omitempty"`
-	// An environment slug describing the type of this app. For a full list, please refer to [the product documentation](https://www.digitalocean.com/docs/app-platform/).
+	// A slug identifying the type of app, such as `node-js`. Available values are `node-js`, `php`, `ruby`, `python`, `go`, `hugo`, `html`, `hexo`, `ruby-on-rails`, `jekyll`, and `gatsby`.
 	EnvironmentSlug string `json:"environment_slug,omitempty"`
 	// A list of environment variables made available to the component.
 	Envs []*AppVariableDefinition `json:"envs,omitempty"`
 	// The instance size to use for this component.
 	InstanceSizeSlug string `json:"instance_size_slug,omitempty"`
 	// The amount of instances that this component should be scaled to. Default 1, Minimum 1, Maximum 250. Consider using a larger instance size if your application requires more than 250 instances.
-	InstanceCount int64          `json:"instance_count,omitempty"`
-	Kind          AppJobSpecKind `json:"kind,omitempty"`
+	InstanceCount int64               `json:"instance_count,omitempty"`
+	Kind          AppJobSpecKind      `json:"kind,omitempty"`
+	Schedule      *AppJobSpecSchedule `json:"schedule,omitempty"`
 	// A list of configured alerts which apply to the component.
 	Alerts []*AppAlertSpec `json:"alerts,omitempty"`
 	// A list of configured log forwarding destinations.
 	LogDestinations []*AppLogDestinationSpec `json:"log_destinations,omitempty"`
 	Termination     *AppJobSpecTermination   `json:"termination,omitempty"`
+	// The maximum amount of time a job is allowed to run before it is automatically terminated. If not specified, defaults to 30 minutes. Example: `1h30m`.
+	Timeout string `json:"timeout,omitempty"`
 }
 
 // AppJobSpecKind the model 'AppJobSpecKind'
@@ -437,7 +453,14 @@ const (
 	AppJobSpecKind_PreDeploy    AppJobSpecKind = "PRE_DEPLOY"
 	AppJobSpecKind_PostDeploy   AppJobSpecKind = "POST_DEPLOY"
 	AppJobSpecKind_FailedDeploy AppJobSpecKind = "FAILED_DEPLOY"
+	AppJobSpecKind_Scheduled    AppJobSpecKind = "SCHEDULED"
 )
+
+// AppJobSpecSchedule struct for AppJobSpecSchedule
+type AppJobSpecSchedule struct {
+	Cron     string `json:"cron,omitempty"`
+	TimeZone string `json:"time_zone,omitempty"`
+}
 
 // AppJobSpecTermination struct for AppJobSpecTermination
 type AppJobSpecTermination struct {
@@ -552,9 +575,11 @@ type AppServiceSpec struct {
 	// A list of configured alerts which apply to the component.
 	Alerts []*AppAlertSpec `json:"alerts,omitempty"`
 	// A list of configured log forwarding destinations.
-	LogDestinations     []*AppLogDestinationSpec   `json:"log_destinations,omitempty"`
-	Termination         *AppServiceSpecTermination `json:"termination,omitempty"`
-	LivenessHealthCheck *HealthCheckSpec           `json:"liveness_health_check,omitempty"`
+	LogDestinations []*AppLogDestinationSpec   `json:"log_destinations,omitempty"`
+	Termination     *AppServiceSpecTermination `json:"termination,omitempty"`
+	// A configuration for putting the service to sleep after it has been inactive. Note: this is in Private Preview.
+	InactivitySleep     *AppServiceSpecInactivitySleep `json:"inactivity_sleep,omitempty"`
+	LivenessHealthCheck *HealthCheckSpec               `json:"liveness_health_check,omitempty"`
 }
 
 // AppServiceSpecHealthCheck struct for AppServiceSpecHealthCheck
@@ -567,14 +592,21 @@ type AppServiceSpecHealthCheck struct {
 	PeriodSeconds int32 `json:"period_seconds,omitempty"`
 	// The number of seconds after which the check times out. Default: 1 second, Minimum 1, Maximum 120.
 	TimeoutSeconds int32 `json:"timeout_seconds,omitempty"`
-	// The number of successful health checks before considered healthy. Default: 1, Minimum 1, Maximum 50. When used in liveness_health_check, Default: 1, Minimum 1, Maximum 1.
+	// The number of successful health checks before considered healthy. Default: 1 second, Minimum 1, Maximum 50. When used in liveness_health_check, Default: 1 second, Minimum 1, Maximum 1.
 	SuccessThreshold int32 `json:"success_threshold,omitempty"`
-	// The number of failed health checks before considered unhealthy. Default: 9, Minimum 1, Maximum 50. When used in liveness_health_check, Default: 18, Minimum 1, Maximum 50.
+	// The number of failed health checks before considered unhealthy. Default: 9 seconds, Minimum 1, Maximum 50. When used in liveness_health_check, Default: 18 seconds, Minimum 1, Maximum 50.
 	FailureThreshold int32 `json:"failure_threshold,omitempty"`
 	// The route path used for the HTTP health check ping. If not set, the HTTP health check will be disabled and a TCP health check used instead.
 	HTTPPath string `json:"http_path,omitempty"`
 	// The port on which the health check will be performed. If not set, the health check will be performed on the component's http_port.
 	Port int64 `json:"port,omitempty"`
+}
+
+// AppServiceSpecInactivitySleep struct for AppServiceSpecInactivitySleep
+type AppServiceSpecInactivitySleep struct {
+	// The number of seconds to wait before putting the service to sleep after it has been inactive. Minimum 600, Maximum 86400.
+	AfterSeconds int32                       `json:"after_seconds,omitempty"`
+	LoadingPage  *InactivitySleepLoadingPage `json:"loading_page,omitempty"`
 }
 
 // AppServiceSpecTermination struct for AppServiceSpecTermination
@@ -612,11 +644,12 @@ type AppSpec struct {
 	Egress      *AppEgressSpec      `json:"egress,omitempty"`
 	Features    []string            `json:"features,omitempty"`
 	Maintenance *AppMaintenanceSpec `json:"maintenance,omitempty"`
-	// Specification to disable edge (CDN) cache for all domains of the app. Note that this feature is in private preview.
+	Vpc         *AppVpcSpec         `json:"vpc,omitempty"`
+	// Set to `true` to disable the CDN cache, allowing you to use your own CDN, use SSE, and build MCP servers. Defaults to `false`.
 	DisableEdgeCache bool `json:"disable_edge_cache,omitempty"`
-	// Specification to disable email obfuscation.
+	// Set to `true` to disable email obfuscation, presenting any email addresses in your site's HTML as they are, instead of automatically anonymizing them. Defaults to `false`.
 	DisableEmailObfuscation bool `json:"disable_email_obfuscation,omitempty"`
-	// Specification to enable enhanced threat control mode, which takes necessary steps to prevent layer 7 DDoS for all domains of the app. Note that this feature is in private preview.
+	// Set to `true` to enable enhanced threat control for Layer 7 DDoS protection. This returns a `403 Forbidden` error response to suspicious API requests. Takes up to 30 seconds to propagate. Defaults to `false`.
 	EnhancedThreatControlEnabled bool `json:"enhanced_threat_control_enabled,omitempty"`
 }
 
@@ -634,7 +667,7 @@ type AppStaticSiteSpec struct {
 	BuildCommand string `json:"build_command,omitempty"`
 	// An optional path to the working directory to use for the build. For Dockerfile builds, this will be used as the build context. Must be relative to the root of the repo.
 	SourceDir string `json:"source_dir,omitempty"`
-	// An environment slug describing the type of this app. For a full list, please refer to [the product documentation](https://www.digitalocean.com/docs/app-platform/).
+	// A slug identifying the type of app, such as `node-js`. Available values are `node-js`, `php`, `ruby`, `python`, `go`, `hugo`, `html`, `hexo`, `ruby-on-rails`, `jekyll`, and `gatsby`.
 	EnvironmentSlug string `json:"environment_slug,omitempty"`
 	// An optional path to where the built assets will be located, relative to the build context. If not set, App Platform will automatically scan for these directory names: `_static`, `dist`, `public`, `build`.
 	OutputDir     string `json:"output_dir,omitempty"`
@@ -660,6 +693,25 @@ type AppVariableDefinition struct {
 	Type  AppVariableType  `json:"type,omitempty"`
 }
 
+// AppVPC The VPC configuration for the app.
+type AppVPC struct {
+	// The ID of the VPC (derived from the app spec).
+	ID string `json:"id,omitempty"`
+	// The private IP addresses allocated for the app in the customer's VPC.
+	EgressIPs []*AppVPCEgressIP `json:"egress_ips,omitempty"`
+}
+
+// AppVPCEgressIP struct for AppVPCEgressIP
+type AppVPCEgressIP struct {
+	IP string `json:"ip,omitempty"`
+}
+
+// AppVpcSpec Configuration of VPC.
+type AppVpcSpec struct {
+	// The id of the target VPC, in UUID format.
+	ID string `json:"id,omitempty"`
+}
+
 // AppWorkerSpec struct for AppWorkerSpec
 type AppWorkerSpec struct {
 	// The name. Must be unique across all components within the same app.
@@ -677,7 +729,7 @@ type AppWorkerSpec struct {
 	RunCommand string `json:"run_command,omitempty"`
 	// An optional path to the working directory to use for the build. For Dockerfile builds, this will be used as the build context. Must be relative to the root of the repo.
 	SourceDir string `json:"source_dir,omitempty"`
-	// An environment slug describing the type of this app. For a full list, please refer to [the product documentation](https://www.digitalocean.com/docs/app-platform/).
+	// A slug identifying the type of app, such as `node-js`. Available values are `node-js`, `php`, `ruby`, `python`, `go`, `hugo`, `html`, `hexo`, `ruby-on-rails`, `jekyll`, and `gatsby`.
 	EnvironmentSlug string `json:"environment_slug,omitempty"`
 	// A list of environment variables made available to the component.
 	Envs []*AppVariableDefinition `json:"envs,omitempty"`
@@ -698,6 +750,20 @@ type AppWorkerSpec struct {
 type AppWorkerSpecTermination struct {
 	// The number of seconds to wait between sending a TERM signal to a container and issuing a KILL which causes immediate shutdown. Default: 120, Minimum 1, Maximum 600.
 	GracePeriodSeconds int32 `json:"grace_period_seconds,omitempty"`
+}
+
+// AutoscalerActionScaleChange struct for AutoscalerActionScaleChange
+type AutoscalerActionScaleChange struct {
+	From int64 `json:"from,omitempty"`
+	To   int64 `json:"to,omitempty"`
+}
+
+// AutoscalingEventComponentScaleChange struct for AutoscalingEventComponentScaleChange
+type AutoscalingEventComponentScaleChange struct {
+	From int64 `json:"from,omitempty"`
+	To   int64 `json:"to,omitempty"`
+	// The metric that triggered the scale change while scaling up. Known values are "cpu", "requests_per_second", "request_duration". For inactivity sleep, "scale_from_zero" and "scale_to_zero" are used.
+	TriggeringMetric string `json:"triggering_metric,omitempty"`
 }
 
 // BitbucketSourceSpec struct for BitbucketSourceSpec
@@ -727,7 +793,8 @@ type Buildpack struct {
 
 // DeploymentCauseDetailsAutoscalerAction struct for DeploymentCauseDetailsAutoscalerAction
 type DeploymentCauseDetailsAutoscalerAction struct {
-	Autoscaled bool `json:"autoscaled,omitempty"`
+	Autoscaled       bool                                   `json:"autoscaled,omitempty"`
+	ScaledComponents map[string]AutoscalerActionScaleChange `json:"scaled_components,omitempty"`
 }
 
 // DeploymentCauseDetailsDigitalOceanUser struct for DeploymentCauseDetailsDigitalOceanUser
@@ -1146,6 +1213,45 @@ type AppDomainValidation struct {
 	TXTValue string `json:"txt_value,omitempty"`
 }
 
+// Event struct for Event
+type Event struct {
+	ID           string                 `json:"id,omitempty"`
+	Type         EventType              `json:"type,omitempty"`
+	CreatedAt    time.Time              `json:"created_at,omitempty"`
+	DeploymentID string                 `json:"deployment_id,omitempty"`
+	Deployment   *Deployment            `json:"deployment,omitempty"`
+	Autoscaling  *EventAutoscalingEvent `json:"autoscaling,omitempty"`
+}
+
+// EventAutoscalingEvent struct for EventAutoscalingEvent
+type EventAutoscalingEvent struct {
+	Phase      EventAutoscalingEventPhase                      `json:"phase,omitempty"`
+	Components map[string]AutoscalingEventComponentScaleChange `json:"components,omitempty"`
+}
+
+// EventAutoscalingEventPhase the model 'EventAutoscalingEventPhase'
+type EventAutoscalingEventPhase string
+
+// List of EventAutoscalingEventPhase
+const (
+	EVENTAUTOSCALINGEVENTPHASE_Unknown    EventAutoscalingEventPhase = "UNKNOWN"
+	EVENTAUTOSCALINGEVENTPHASE_Pending    EventAutoscalingEventPhase = "PENDING"
+	EVENTAUTOSCALINGEVENTPHASE_InProgress EventAutoscalingEventPhase = "IN_PROGRESS"
+	EVENTAUTOSCALINGEVENTPHASE_Succeeded  EventAutoscalingEventPhase = "SUCCEEDED"
+	EVENTAUTOSCALINGEVENTPHASE_Failed     EventAutoscalingEventPhase = "FAILED"
+	EVENTAUTOSCALINGEVENTPHASE_Canceled   EventAutoscalingEventPhase = "CANCELED"
+)
+
+// EventType the model 'EventType'
+type EventType string
+
+// List of EventType
+const (
+	EVENTTYPE_Unknown     EventType = "UNKNOWN"
+	EVENTTYPE_Deployment  EventType = "DEPLOYMENT"
+	EVENTTYPE_Autoscaling EventType = "AUTOSCALING"
+)
+
 // FunctionsComponentHealth struct for FunctionsComponentHealth
 type FunctionsComponentHealth struct {
 	Name                            string                             `json:"name,omitempty"`
@@ -1204,6 +1310,11 @@ type GetDatabaseTrustedSourceResponse struct {
 	IsEnabled bool `json:"is_enabled,omitempty"`
 }
 
+// GetJobInvocationResponse struct for GetJobInvocationResponse
+type GetJobInvocationResponse struct {
+	JobInvocation *JobInvocation `json:"job_invocation,omitempty"`
+}
+
 // GitHubSourceSpec struct for GitHubSourceSpec
 type GitHubSourceSpec struct {
 	Repo         string `json:"repo,omitempty"`
@@ -1232,9 +1343,9 @@ type HealthCheckSpec struct {
 	PeriodSeconds int32 `json:"period_seconds,omitempty"`
 	// The number of seconds after which the check times out. Default: 1 second, Minimum 1, Maximum 120.
 	TimeoutSeconds int32 `json:"timeout_seconds,omitempty"`
-	// The number of successful health checks before considered healthy. Default: 1 second, Minimum 1, Maximum 1.
+	// The number of successful health checks before considered healthy. Default: 1, Minimum 1, Maximum 50. When used in liveness_health_check, Default: 1, Minimum 1, Maximum 1.
 	SuccessThreshold int32 `json:"success_threshold,omitempty"`
-	// The number of failed health checks before considered unhealthy. Default: 18 seconds, Minimum 1, Maximum 50.
+	// The number of failed health checks before considered unhealthy. Default: 9, Minimum 1, Maximum 50. When used in liveness_health_check, Default: 18, Minimum 1, Maximum 50.
 	FailureThreshold int32 `json:"failure_threshold,omitempty"`
 	// The route path used for the HTTP health check ping. If not set, the HTTP health check will be disabled and a TCP health check used instead.
 	HTTPPath string `json:"http_path,omitempty"`
@@ -1275,6 +1386,14 @@ const (
 	ImageSourceSpecRegistryType_Ghcr        ImageSourceSpecRegistryType = "GHCR"
 )
 
+// InactivitySleepLoadingPage struct for InactivitySleepLoadingPage
+type InactivitySleepLoadingPage struct {
+	// Whether to show a loading page while the service is waking up from sleep. Defaults to false. If this is enabled and there is a request header `Accept` containing `text/html`, then the app will show a loading page with a 503 status code until the service is woken up.
+	Enabled bool `json:"enabled,omitempty"`
+	// A custom loading page to display when the service is woken up from sleep. If not provided, a default loading page will be shown.
+	CustomURL string `json:"custom_url,omitempty"`
+}
+
 // AppInstanceSize struct for AppInstanceSize
 type AppInstanceSize struct {
 	Name         string                 `json:"name,omitempty"`
@@ -1309,6 +1428,49 @@ const (
 	AppInstanceSizeCPUType_Unspecified AppInstanceSizeCPUType = "UNSPECIFIED"
 	AppInstanceSizeCPUType_Shared      AppInstanceSizeCPUType = "SHARED"
 	AppInstanceSizeCPUType_Dedicated   AppInstanceSizeCPUType = "DEDICATED"
+)
+
+// JobInvocation struct for JobInvocation
+type JobInvocation struct {
+	ID           string                `json:"id,omitempty"`
+	JobName      string                `json:"job_name,omitempty"`
+	DeploymentID string                `json:"deployment_id,omitempty"`
+	Phase        JobInvocationPhase    `json:"phase,omitempty"`
+	Trigger      *JobInvocationTrigger `json:"trigger,omitempty"`
+	CreatedAt    time.Time             `json:"created_at,omitempty"`
+	StartedAt    time.Time             `json:"started_at,omitempty"`
+	CompletedAt  time.Time             `json:"completed_at,omitempty"`
+}
+
+// JobInvocationPhase the model 'JobInvocationPhase'
+type JobInvocationPhase string
+
+// List of JobInvocationPhase
+const (
+	JOBINVOCATIONPHASE_Unknown   JobInvocationPhase = "UNKNOWN"
+	JOBINVOCATIONPHASE_Pending   JobInvocationPhase = "PENDING"
+	JOBINVOCATIONPHASE_Running   JobInvocationPhase = "RUNNING"
+	JOBINVOCATIONPHASE_Succeeded JobInvocationPhase = "SUCCEEDED"
+	JOBINVOCATIONPHASE_Failed    JobInvocationPhase = "FAILED"
+	JOBINVOCATIONPHASE_Canceled  JobInvocationPhase = "CANCELED"
+	JOBINVOCATIONPHASE_Skipped   JobInvocationPhase = "SKIPPED"
+)
+
+// JobInvocationTrigger struct for JobInvocationTrigger
+type JobInvocationTrigger struct {
+	Type      JobInvocationTriggerType  `json:"type,omitempty"`
+	Scheduled *TriggerMetadataScheduled `json:"scheduled,omitempty"`
+	Manual    *TriggerMetadataManual    `json:"manual,omitempty"`
+}
+
+// JobInvocationTriggerType the model 'JobInvocationTriggerType'
+type JobInvocationTriggerType string
+
+// List of JobInvocationTriggerType
+const (
+	JOBINVOCATIONTRIGGERTYPE_Unknown   JobInvocationTriggerType = "UNKNOWN"
+	JOBINVOCATIONTRIGGERTYPE_Scheduled JobInvocationTriggerType = "SCHEDULED"
+	JOBINVOCATIONTRIGGERTYPE_Manual    JobInvocationTriggerType = "MANUAL"
 )
 
 // ListBuildpacksResponse struct for ListBuildpacksResponse
@@ -1419,6 +1581,16 @@ type ToggleDatabaseTrustedSourceRequest struct {
 // ToggleDatabaseTrustedSourceResponse struct for ToggleDatabaseTrustedSourceResponse
 type ToggleDatabaseTrustedSourceResponse struct {
 	IsEnabled bool `json:"is_enabled,omitempty"`
+}
+
+// TriggerMetadataManual struct for TriggerMetadataManual
+type TriggerMetadataManual struct {
+	User *DeploymentCauseDetailsDigitalOceanUser `json:"user,omitempty"`
+}
+
+// TriggerMetadataScheduled struct for TriggerMetadataScheduled
+type TriggerMetadataScheduled struct {
+	Schedule *AppJobSpecSchedule `json:"schedule,omitempty"`
 }
 
 // UpgradeBuildpackResponse struct for UpgradeBuildpackResponse

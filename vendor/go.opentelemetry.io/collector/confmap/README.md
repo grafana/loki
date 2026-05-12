@@ -129,8 +129,6 @@ service:
 
 ```yaml
 # extra_extension.yaml
-processors:
-  batch:
 extensions:
   healthcheckv2:
 
@@ -138,7 +136,6 @@ service:
   extensions: [ healthcheckv2 ]
   pipelines:
     traces:
-      processors: [ batch ]
 ```
 
 If you run the Collector with following command,
@@ -157,7 +154,6 @@ processors:
       - key: key
         value: "value"
         action: upsert
-  batch:
 exporters:
   otlp/out:
 extensions:
@@ -168,7 +164,7 @@ service:
   pipelines:
     traces:
       receivers: [ otlp/in ]
-      processors: [ attributes/example, batch ]
+      processors: [ attributes/example ]
       exporters: [ otlp/out ]
   extensions: [ file_storage, healthcheckv2 ]
 ```

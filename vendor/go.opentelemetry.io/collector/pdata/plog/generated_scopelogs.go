@@ -8,7 +8,6 @@ package plog
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -20,11 +19,11 @@ import (
 // Must use NewScopeLogs function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ScopeLogs struct {
-	orig  *otlplogs.ScopeLogs
+	orig  *internal.ScopeLogs
 	state *internal.State
 }
 
-func newScopeLogs(orig *otlplogs.ScopeLogs, state *internal.State) ScopeLogs {
+func newScopeLogs(orig *internal.ScopeLogs, state *internal.State) ScopeLogs {
 	return ScopeLogs{orig: orig, state: state}
 }
 
@@ -33,7 +32,7 @@ func newScopeLogs(orig *otlplogs.ScopeLogs, state *internal.State) ScopeLogs {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewScopeLogs() ScopeLogs {
-	return newScopeLogs(internal.NewOrigScopeLogs(), internal.NewState())
+	return newScopeLogs(internal.NewScopeLogs(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -45,13 +44,13 @@ func (ms ScopeLogs) MoveTo(dest ScopeLogs) {
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigScopeLogs(dest.orig, false)
+	internal.DeleteScopeLogs(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Scope returns the scope associated with this ScopeLogs.
 func (ms ScopeLogs) Scope() pcommon.InstrumentationScope {
-	return pcommon.InstrumentationScope(internal.NewInstrumentationScope(&ms.orig.Scope, ms.state))
+	return pcommon.InstrumentationScope(internal.NewInstrumentationScopeWrapper(&ms.orig.Scope, ms.state))
 }
 
 // LogRecords returns the LogRecords associated with this ScopeLogs.
@@ -73,5 +72,5 @@ func (ms ScopeLogs) SetSchemaUrl(v string) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ScopeLogs) CopyTo(dest ScopeLogs) {
 	dest.state.AssertMutable()
-	internal.CopyOrigScopeLogs(dest.orig, ms.orig)
+	internal.CopyScopeLogs(dest.orig, ms.orig)
 }

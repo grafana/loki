@@ -734,7 +734,7 @@ func TestCompactedIndex(t *testing.T) {
 		"__name__ label should get dropped while indexing chunks": {
 			addChunks: []chunk.Chunk{
 				{
-					Metric:   labels.NewBuilder(testCtx.lbls1).Set(labels.MetricName, "log").Labels(),
+					Metric:   labels.NewBuilder(testCtx.lbls1).Set(model.MetricNameLabel, "log").Labels(),
 					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
 					Data:     dummyChunkData{},
 				},
