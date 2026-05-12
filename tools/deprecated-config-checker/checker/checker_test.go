@@ -86,8 +86,10 @@ var (
 	expectedRuntimeConfigDeletes = []string{
 		"overrides.foo.ruler_evaluation_delay_duration",
 		"overrides.foo.enforce_metric_name",
+		"overrides.foo.allow_deletes",
 		"overrides.bar.ruler_evaluation_delay_duration",
 		"overrides.bar.enforce_metric_name",
+		"overrides.bar.allow_deletes",
 	}
 
 	expectedRuntimeConfigDeprecates = []string{
