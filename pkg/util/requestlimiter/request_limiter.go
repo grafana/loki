@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"golang.org/x/sync/semaphore"
+
+	util_metric "github.com/grafana/loki/v3/pkg/util/metric"
 )
 
 // Config holds the inflight-bytes load-shedding configuration.
@@ -20,23 +22,17 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	fs.DurationVar(&cfg.MaxWait, prefix+".max-wait", 100*time.Millisecond, "How long to wait for inflight budget before load shedding a request.")
 }
 
-// ByteCounter is satisfied by any type that tracks a running byte count via
-// signed deltas, such as [util_metric.MaxSampleCollector].
-type ByteCounter interface {
-	Inc(int64)
-}
-
 // Limiter gates concurrent inflight bytes. Construct with [New].
 type Limiter struct {
 	cfg     Config
-	sem     *semaphore.Weighted // nil when MaxInflightBytes == 0 (no limit)
-	counter ByteCounter         // updated with signed byte deltas; may be nil
+	sem     *semaphore.Weighted          // nil when MaxInflightBytes == 0 (no limit)
+	counter *util_metric.MaxSampleCollector // updated with signed byte deltas; may be nil
 }
 
 // New returns a Limiter. When MaxInflightBytes is 0 the limiter is a no-op.
 // counter is updated with the signed byte delta whenever the held count changes
 // (positive on reserve, negative on adjust/release); may be nil.
-func New(cfg Config, counter ByteCounter) *Limiter {
+func New(cfg Config, counter *util_metric.MaxSampleCollector) *Limiter {
 	l := &Limiter{cfg: cfg, counter: counter}
 	if cfg.MaxInflightBytes > 0 {
 		l.sem = semaphore.NewWeighted(cfg.MaxInflightBytes)
@@ -65,8 +61,8 @@ func (l *Limiter) Reserve(ctx context.Context, maxSize int64) (*Reservation, err
 // Its methods are safe to call concurrently.
 type Reservation struct {
 	mu      sync.Mutex
-	sem     *semaphore.Weighted // nil for noop reservations
-	counter ByteCounter
+	sem     *semaphore.Weighted          // nil for noop reservations
+	counter *util_metric.MaxSampleCollector
 	held    int64
 }
 
