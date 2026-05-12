@@ -124,17 +124,13 @@ This validation error is returned when a stream is submitted without any labels.
 | Sample discarded        | **Yes**       |
 | Configurable per tenant | No            |
 
-## `too_far_behind` and `out_of_order`
+## `too_far_behind`
 
-The `too_far_behind` and `out_of_order` reasons are identical. Loki clusters with `unordered_writes=true` (the default value as of Loki v2.4) use `reason=too_far_behind`. Loki clusters with `unordered_writes=false` use `reason=out_of_order`.
+The `too_far_behind` validation error is returned when lines in question are older than half of `-ingester.max-chunk-age` compared to the newest line in the stream.
 
-This validation error is returned when a stream is submitted out of order. More details can be found [here](/docs/loki/<LOKI_VERSION>/configuration/#accept-out-of-order-writes) about the Loki ordering constraints.
+This problem can be solved by ensuring that log delivery is configured correctly.
 
-The `unordered_writes` config value can be modified globally in the [`limits_config`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](/docs/loki/<LOKI_VERSION>/configuration/#runtime-configuration-file) file, whereas `max_chunk_age` is a global configuration.
-
-This problem can be solved by ensuring that log delivery is configured correctly, or by increasing the `max_chunk_age` value.
-
-It is recommended to resist modifying the default value of `max_chunk_age` as this has other implications, and to instead try track down the cause for delayed logged delivery. It should also be noted that this a per-stream error, so by simply splitting streams (adding more labels) this problem can be circumvented, especially if multiple hosts are sending samples for a single stream.
+Alternatively the allowed period for out-of-order logs cound be increased by setting the `max_chunk_age` value. However, **it is recommended to resist modifying the default value of `max_chunk_age`** as this has other implications, and to instead try track down the cause for delayed logged delivery. It should also be noted that this a per-stream error, so by simply splitting streams (adding more labels) this problem can be circumvented, especially if multiple hosts are sending samples for a single stream.
 
 | Property                | Value      |
 |-------------------------|------------|

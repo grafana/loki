@@ -37,6 +37,12 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Removal of various configuration options
+
+- The deprecated per-tenant setting `unordered_writes` has been removed and defaults to true.
+
+Use the `deprecated-config-checker` tool to validate your `config.yaml`.
+
 ### Breaking change: Configure deletes on compactor
 
 The configuration option `-compactor.allow-deletes` has been removed. Instead, use the the per-tenant `deletion_mode` option instead.
