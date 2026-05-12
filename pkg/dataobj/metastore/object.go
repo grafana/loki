@@ -39,7 +39,11 @@ import (
 )
 
 const (
-	metastoreWindowSize = 12 * time.Hour
+	// TOCWindowSize is the UTC-aligned bucket size used by the metastore's
+	// Table-of-Contents files. Every object produced by the dataobj consumer
+	// is aligned to this window so that a single TOC file only ever references
+	// objects whose time ranges fall inside the same window.
+	TOCWindowSize = 12 * time.Hour
 
 	// TocPrefix is the prefix under which ToC files are stored in the object storage.
 	TocPrefix = "tocs/"
@@ -127,14 +131,14 @@ func tableOfContentsPath(window time.Time) string {
 }
 
 func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
-	minTocWindow := start.Truncate(metastoreWindowSize).UTC()
-	maxTocWindow := end.Truncate(metastoreWindowSize).UTC()
+	minTocWindow := start.Truncate(TOCWindowSize).UTC()
+	maxTocWindow := end.Truncate(TOCWindowSize).UTC()
 
 	return func(yield func(t string, timeRange multitenancy.TimeRange) bool) {
-		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(metastoreWindowSize) {
+		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(TOCWindowSize) {
 			tocTimeRange := multitenancy.TimeRange{
 				MinTime: tocWindow,
-				MaxTime: tocWindow.Add(metastoreWindowSize),
+				MaxTime: tocWindow.Add(TOCWindowSize),
 			}
 			if !yield(tableOfContentsPath(tocWindow), tocTimeRange) {
 				return

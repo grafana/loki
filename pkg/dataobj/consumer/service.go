@@ -173,7 +173,18 @@ func NewInMemory(cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scra
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
-	builderFactory := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore)
+
+	builderMetrics := logsobj.NewBuilderMetrics()
+	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
+		"partition": strconv.Itoa(int(partitionID)),
+	}, reg)
+	if err := builderMetrics.Register(wrapped); err != nil {
+		return nil, fmt.Errorf("failed to register logsobj builder metrics: %w", err)
+	}
+	builderFactory, err := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore, builderMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logsobj builder factory: %w", err)
+	}
 	sorter := logsobj.NewSorter(builderFactory, reg)
 	s.flusher = newFlusher(sorter, uploader, logger, reg)
 
@@ -214,14 +225,6 @@ func NewInMemory(cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scra
 		logger:          logger,
 	}
 
-	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
-		"partition": strconv.Itoa(int(partitionID)),
-	}, reg)
-	builder, err := builderFactory.NewBuilder(wrapped)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
-	}
-
 	flushCommitter := newFlushCommitter(
 		wrappedFlusher,
 		noopMetastoreEventEmitter{},
@@ -231,7 +234,7 @@ func NewInMemory(cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scra
 		wrapped,
 	)
 	s.processor = newProcessor(
-		builder,
+		NewTOCAlignedBuilderGroup(builderFactory, int(cfg.BuilderConfig.TargetObjectSize)),
 		recordsChan,
 		flushCommitter,
 		cfg.IdleFlushTimeout,
@@ -360,16 +363,22 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
-	builderFactory := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore)
-	sorter := logsobj.NewSorter(builderFactory, reg)
-	s.flusher = newFlusher(sorter, uploader, logger, reg)
+
+	builderMetrics := logsobj.NewBuilderMetrics()
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
 		"partition": strconv.Itoa(int(partitionID)),
 	}, reg)
-	builder, err := builderFactory.NewBuilder(wrapped)
+	err = builderMetrics.Register(wrapped)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
+		return nil, fmt.Errorf("failed to register logsobj builder metrics: %w", err)
 	}
+	builderFactory, err := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore, builderMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logsobj builder factory: %w", err)
+	}
+
+	sorter := logsobj.NewSorter(builderFactory, reg)
+	s.flusher = newFlusher(sorter, uploader, logger, reg)
 	flushCommitter := newFlushCommitter(
 		s.flusher,
 		newMetastoreEvents(partitionID, int32(mCfg.PartitionRatio), metastoreEvents),
@@ -379,7 +388,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		wrapped,
 	)
 	s.processor = newProcessor(
-		builder,
+		NewTOCAlignedBuilderGroup(builderFactory, int(cfg.BuilderConfig.TargetObjectSize)),
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,

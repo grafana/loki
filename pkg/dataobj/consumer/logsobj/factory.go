@@ -1,10 +1,6 @@
 package logsobj
 
 import (
-	"fmt"
-
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -12,26 +8,33 @@ import (
 type BuilderFactory struct {
 	cfg          BuilderConfig
 	scratchStore scratch.Store
+	metrics      *BuilderMetrics
 }
 
-func NewBuilderFactory(cfg BuilderConfig, scratchStore scratch.Store) *BuilderFactory {
+// NewBuilderFactory validates the config, reports related metrics, and returns a factory that is prepared to create new
+// builders.
+func NewBuilderFactory(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderMetrics) (*BuilderFactory, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	metrics.ObserveConfig(cfg)
+
 	return &BuilderFactory{
 		cfg:          cfg,
 		scratchStore: scratchStore,
-	}
+		metrics:      metrics,
+	}, nil
 }
 
-// NewBuilder returns a new builder, or an error. The registerer is optional.
-// No metrics will be registered if the registerer is nil.
-func (f *BuilderFactory) NewBuilder(r prometheus.Registerer) (*Builder, error) {
-	b, err := NewBuilder(f.cfg, f.scratchStore)
-	if err != nil {
-		return nil, err
-	}
-	if r != nil {
-		if err = b.RegisterMetrics(r); err != nil {
-			return nil, fmt.Errorf("failed to register metrics: %w", err)
-		}
-	}
-	return b, nil
+// NewBuilder returns a new builder, or an error. The returned builder shares
+// the factory's [BuilderMetrics].
+func (f *BuilderFactory) NewBuilder() (*Builder, error) {
+	return NewBuilder(f.cfg, f.scratchStore, f.metrics)
+}
+
+// NewSorterBuilder returns a new builder with "fake" non-registered metrics.
+// TODO(ivkalita): This is temporary to prevent "sorting" builder metrics from messing up the real builder metrics.
+func (f *BuilderFactory) NewSorterBuilder() (*Builder, error) {
+	return NewBuilder(f.cfg, f.scratchStore, NewBuilderMetrics())
 }

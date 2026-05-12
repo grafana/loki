@@ -25,14 +25,14 @@ func TestFlushCommitter(t *testing.T) {
 			flushCommitter  = newFlushCommitter(flusher, metastoreEvents, committer, 0, log.NewNopLogger(), reg)
 		)
 		// Create a builder and append some logs so it can be flushed.
-		builder := newTestBuilder(t, reg)
-		require.NoError(t, builder.Append("test", logproto.Stream{
+		b := newTestBuilder(t, reg)
+		require.NoError(t, b.Append("test", logproto.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []logproto.Entry{
 				{Timestamp: now, Line: "test"},
 			},
-		}))
-		require.NoError(t, flushCommitter.Flush(t.Context(), builder, "test", 1, now))
+		}, now))
+		require.NoError(t, flushCommitter.Flush(t.Context(), []builder{b}, "test", 1))
 		// A flush should have occurred, a metastore event emitted, and the correct
 		// offset was committed.
 		require.Equal(t, 1, flusher.flushes)
@@ -61,14 +61,14 @@ func TestFlushCommitter(t *testing.T) {
 			flushCommitter  = newFlushCommitter(flusher, metastoreEvents, committer, 0, log.NewNopLogger(), reg)
 		)
 		// Create a builder and append some logs so it can be flushed.
-		builder := newTestBuilder(t, reg)
-		require.NoError(t, builder.Append("test", logproto.Stream{
+		b := newTestBuilder(t, reg)
+		require.NoError(t, b.Append("test", logproto.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []logproto.Entry{
 				{Timestamp: now, Line: "test"},
 			},
-		}))
-		flushErr := flushCommitter.Flush(t.Context(), builder, "test", 1, now)
+		}, now))
+		flushErr := flushCommitter.Flush(t.Context(), []builder{b}, "test", 1)
 		require.EqualError(t, flushErr, "failed to flush data object: mock error")
 		// Since no flush occurred, no event should be emitted and no offsets
 		// should be committed either.

@@ -92,7 +92,7 @@ func buildBenchDataobj(tb testing.TB, tenants, streamsPerTenant, entriesPerStrea
 			BufferSize:              4 << 20,
 			SectionStripeMergeLimit: 2,
 		},
-	}, scratch.NewMemory())
+	}, scratch.NewMemory(), logsobj.NewBuilderMetrics())
 	require.NoError(tb, err)
 
 	// Deterministic so iteration-to-iteration variance is only from scheduling.
@@ -143,7 +143,7 @@ func buildBenchDataobj(tb testing.TB, tenants, streamsPerTenant, entriesPerStrea
 				}
 			}
 
-			require.NoError(tb, builder.Append(tenantID, logproto.Stream{Labels: lbls, Entries: entries}))
+			require.NoError(tb, builder.Append(tenantID, logproto.Stream{Labels: lbls, Entries: entries}, baseTime))
 		}
 	}
 

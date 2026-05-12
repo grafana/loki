@@ -2,7 +2,6 @@ package logsobj
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -76,11 +75,11 @@ func TestBuilder(t *testing.T) {
 	}
 
 	t.Run("Build", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil)
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 		require.NoError(t, err)
 
 		for _, entry := range testStreams {
-			require.NoError(t, builder.Append("tenant", entry))
+			require.NoError(t, builder.Append("tenant", entry, time.Time{}))
 		}
 		obj, closer, err := builder.Flush()
 		require.NoError(t, err)
@@ -97,35 +96,31 @@ func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil)
+	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 	require.NoError(t, err)
 
 	tenant := "test"
 
-	for {
+	for !builder.IsFull() {
 		require.NoError(t, ctx.Err())
 
-		err := builder.Append(tenant, logproto.Stream{
+		require.NoError(t, builder.Append(tenant, logproto.Stream{
 			Labels: `{cluster="test",app="foo"}`,
 			Entries: []push.Entry{{
 				Timestamp: time.Now().UTC(),
 				Line:      strings.Repeat("a", 1024),
 			}},
-		})
-		if errors.Is(err, ErrBuilderFull) {
-			break
-		}
-		require.NoError(t, err)
+		}, time.Time{}))
 	}
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
 	defer closer.Close()
 
-	// When a section builder is reset, which happens on ErrBuilderFull, the
-	// tenant is reset too. We must check that the tenant is added back
-	// to the section builder otherwise tenant will be absent from successive
-	// sections.
+	// When a section builder is reset (which happens when the builder reports
+	// IsFull and we flush) the tenant is reset too. We must check that the
+	// tenant is added back to the section builder otherwise tenant will be
+	// absent from successive sections.
 	secs := obj.Sections()
 	require.Equal(t, 1, secs.Count(streams.CheckSection))
 	require.Greater(t, secs.Count(logs.CheckSection), 1)
@@ -135,7 +130,7 @@ func TestBuilder_Append(t *testing.T) {
 }
 
 func TestBuilder_CopyAndSort(t *testing.T) {
-	builder, _ := NewBuilder(testBuilderConfig, nil)
+	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 	numRows := 16 // 16 rows with 1KiB each line and 8KiB section size ~> 2 logs sections per tenant
@@ -148,7 +143,7 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 					Timestamp: now.Add(time.Duration(i%8) * time.Second),
 					Line:      strings.Repeat("a", 1024), // 1KiB log line
 				}},
-			})
+			}, time.Time{})
 			require.NoError(t, err)
 		}
 	}
@@ -157,7 +152,7 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 	require.NoError(t, err)
 	defer closer1.Close()
 
-	newBuilder, _ := NewBuilder(testBuilderConfig, nil)
+	newBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 
 	obj2, closer2, err := newBuilder.CopyAndSort(t.Context(), obj1)
 	require.NoError(t, err)

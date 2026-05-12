@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/facette/natsort"
 	"github.com/grafana/dskit/flagext"
@@ -25,12 +26,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// ErrBuilderFull is returned by [Builder.Append] when the buffer is
-// full and needs to flush; call [Builder.Flush] to flush it.
-var (
-	ErrBuilderFull  = errors.New("builder full")
-	ErrBuilderEmpty = errors.New("builder empty")
-)
+// ErrBuilderEmpty is returned by [Builder.Flush] when the builder does not
+// contain any buffered data yet.
+var ErrBuilderEmpty = errors.New("builder empty")
 
 const (
 	// Constants for the sort order configuration
@@ -200,7 +198,7 @@ func appendStrategy(ordered bool) logs.AppendStrategy {
 // synchronization.
 type Builder struct {
 	cfg     BuilderConfig
-	metrics *builderMetrics
+	metrics *BuilderMetrics
 
 	labelCache *lru.Cache[string, labels.Labels]
 
@@ -209,6 +207,8 @@ type Builder struct {
 	builder *dataobj.Builder // Inner builder for accumulating sections.
 	streams map[string]*streams.Builder
 	logs    map[string]*logs.Builder
+
+	earliestRecordTime time.Time
 
 	state builderState
 }
@@ -225,19 +225,12 @@ const (
 
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
-// NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-
+// Config validation and metric registration are handled by [BuilderFactory].
+func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderMetrics) (*Builder, error) {
 	labelCache, err := lru.New[string, labels.Labels](5000)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
 	}
-
-	metrics := newBuilderMetrics()
-	metrics.ObserveConfig(cfg)
 
 	return &Builder{
 		cfg:        cfg,
@@ -275,26 +268,24 @@ func (b *Builder) GetEstimatedSize() int {
 	return b.currentSizeEstimate
 }
 
+func (b *Builder) IsFull() bool {
+	return b.currentSizeEstimate > int(b.cfg.TargetObjectSize)
+}
+
 // Append buffers a stream to be written to a data object. Append returns an
-// error if the stream labels cannot be parsed or [ErrBuilderFull] if the
-// builder is full.
+// error only when the stream's labels cannot be parsed; it does not refuse
+// appends when the buffer grows past [BuilderConfig.TargetObjectSize].
 //
-// Once a Builder is full, call [Builder.Flush] to flush the buffered data,
-// then call Append again with the same entry.
-func (b *Builder) Append(tenant string, stream logproto.Stream) error {
+// Callers are expected to poll [Builder.IsFull] (or the equivalent group
+// signal when multiple builders are managed together) before appending and
+// to flush the builder once it reports full. The additional entry appended
+// by the caller on the way to [Builder.IsFull] returning true is permitted;
+// it is tracked by recTime, which is used to drive [Builder.EarliestRecordTime]
+// and the resulting metastore/TOC events.
+func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
 	ls, err := b.parseLabels(stream.Labels)
 	if err != nil {
 		return err
-	}
-
-	// Check whether the buffer is full before a stream can be appended; this is
-	// tends to overestimate, but we may still go over our target size.
-	//
-	// Since this check only happens after the first call to Append,
-	// b.currentSizeEstimate will always be updated to reflect the size following
-	// the previous append.
-	if b.state != builderStateEmpty && b.currentSizeEstimate+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
-		return ErrBuilderFull
 	}
 
 	b.initBuilder(tenant)
@@ -330,6 +321,9 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 		}
 	}
 
+	if b.earliestRecordTime.IsZero() || recTime.Before(b.earliestRecordTime) {
+		b.earliestRecordTime = recTime
+	}
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	return nil
@@ -347,38 +341,6 @@ func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {
 	}
 	b.labelCache.Add(labelString, parsed)
 	return parsed, nil
-}
-
-// labelsEstimate estimates the size of a set of labels in bytes.
-func labelsEstimate(ls labels.Labels) int {
-	var (
-		keysSize   int
-		valuesSize int
-	)
-
-	ls.Range(func(l labels.Label) {
-		keysSize += len(l.Name)
-		valuesSize += len(l.Value)
-	})
-
-	// Keys are stored as columns directly, while values get compressed. We'll
-	// underestimate a 2x compression ratio.
-	return keysSize + valuesSize/2
-}
-
-// streamSizeEstimate estimates the size of a stream in bytes.
-func streamSizeEstimate(stream logproto.Stream) int {
-	var size int
-	for _, entry := range stream.Entries {
-		// We only check the size of the line and metadata. Timestamps and IDs
-		// encode so well that they're unlikely to make a singificant impact on our
-		// size estimate.
-		size += len(entry.Line) / 2 // Line with 2x compression ratio
-		for _, md := range entry.StructuredMetadata {
-			size += len(md.Name) + len(md.Value)/2
-		}
-	}
-	return size
 }
 
 func convertMetadata(md push.LabelsAdapter) labels.Labels {
@@ -401,7 +363,6 @@ func (b *Builder) estimatedSize() int {
 		size += lb.EstimatedSize()
 	}
 	size += b.builder.Bytes()
-	b.metrics.sizeEstimate.Set(float64(size))
 	return size
 }
 
@@ -417,6 +378,10 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 		})
 	}
 	return timeRanges
+}
+
+func (b *Builder) EarliestRecordTime() time.Time {
+	return b.earliestRecordTime
 }
 
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result
@@ -627,7 +592,7 @@ func (b *Builder) Reset() {
 	clear(b.logs)
 	clear(b.streams)
 
-	b.metrics.sizeEstimate.Set(0)
+	b.earliestRecordTime = time.Time{}
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
 }
@@ -639,9 +604,4 @@ func (b *Builder) Reset() {
 // reg must contain additional labels to differentiate between them.
 func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
 	return b.metrics.Register(reg)
-}
-
-// UnregisterMetrics unregisters metrics about builder from reg.
-func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
-	b.metrics.Unregister(reg)
 }

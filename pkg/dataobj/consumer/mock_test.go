@@ -19,14 +19,15 @@ import (
 type mockBuilder struct {
 	builder *logsobj.Builder
 	nextErr error
+	full    bool
 }
 
-func (m *mockBuilder) Append(tenant string, stream logproto.Stream) error {
+func (m *mockBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
 		return err
 	}
-	return m.builder.Append(tenant, stream)
+	return m.builder.Append(tenant, stream, recTime)
 }
 
 func (m *mockBuilder) GetEstimatedSize() int {
@@ -49,6 +50,41 @@ func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {
 	return m.builder.TimeRanges()
 }
 
+func (m *mockBuilder) EarliestRecordTime() time.Time {
+	return m.builder.EarliestRecordTime()
+}
+
+func (m *mockBuilder) IsFull() bool {
+	if m.full {
+		return true
+	}
+	return m.builder.IsFull()
+}
+
+// mockBuilderGroup wraps a single [logsobj.Builder] so tests that want to
+// exercise the processor's [builderGroup] dependency without caring about TOC
+// window splitting can just pass a single builder.
+type mockBuilderGroup struct {
+	b *logsobj.Builder
+}
+
+func newMockBuilderGroup(b *logsobj.Builder) *mockBuilderGroup {
+	return &mockBuilderGroup{b: b}
+}
+
+func (g *mockBuilderGroup) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
+	return g.b.Append(tenant, stream, recTime)
+}
+func (g *mockBuilderGroup) GetEstimatedSize() int { return g.b.GetEstimatedSize() }
+func (g *mockBuilderGroup) Reset()                { g.b.Reset() }
+func (g *mockBuilderGroup) GetBuilders() []builder {
+	if g.b.GetEstimatedSize() == 0 {
+		return nil
+	}
+	return []builder{g.b}
+}
+func (g *mockBuilderGroup) IsFull() bool { return g.b.IsFull() }
+
 // A mockCommitter implements the committer interface for tests.
 type mockCommitter struct {
 	offsets []int64
@@ -69,11 +105,17 @@ func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (string, err
 }
 
 type mockFlushCommitter struct {
-	flushes int
+	flushes          int
+	lastBuilderCount int
+	lastReason       string
+	lastOffset       int64
 }
 
-func (m *mockFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
+func (m *mockFlushCommitter) Flush(_ context.Context, builders []builder, reason string, offset int64) error {
 	m.flushes++
+	m.lastBuilderCount = len(builders)
+	m.lastReason = reason
+	m.lastOffset = offset
 	return nil
 }
 

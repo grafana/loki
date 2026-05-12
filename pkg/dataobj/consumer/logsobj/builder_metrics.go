@@ -10,8 +10,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// builderMetrics provides instrumnetation for a [Builder].
-type builderMetrics struct {
+// BuilderMetrics provides instrumentation for a [Builder].
+//
+// A single instance of BuilderMetrics is shared by every [Builder] created
+// through the same [BuilderFactory]. The exported counters and histograms
+// aggregate across all of those builders. Gauges that describe the current
+// buffered size of a partition intentionally live on the consumer-level
+// metrics instead of here, because a group of builders (one per TOC window)
+// may be active at the same time and a single per-builder gauge would
+// otherwise become last-write-wins across siblings.
+type BuilderMetrics struct {
 	logs    *logs.Metrics
 	streams *streams.Metrics
 	dataobj *dataobj.Metrics
@@ -24,14 +32,13 @@ type builderMetrics struct {
 	buildTime     prometheus.Histogram
 	flushFailures prometheus.Counter
 
-	sizeEstimate prometheus.Gauge
-	builtSize    prometheus.Histogram
+	builtSize prometheus.Histogram
 }
 
-// newBuilderMetrics creates a new set of [builderMetrics] for instrumenting
+// NewBuilderMetrics creates a new set of [BuilderMetrics] for instrumenting
 // logs objects.
-func newBuilderMetrics() *builderMetrics {
-	return &builderMetrics{
+func NewBuilderMetrics() *BuilderMetrics {
+	return &BuilderMetrics{
 		logs:    logs.NewMetrics(),
 		streams: streams.NewMetrics(),
 		dataobj: dataobj.NewMetrics(),
@@ -65,10 +72,6 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		sizeEstimate: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "loki_dataobj_size_estimate_bytes",
-			Help: "Current estimated size of the data object in bytes.",
-		}),
 		builtSize: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_dataobj_built_size_bytes",
 			Help: "Distribution of constructed data object sizes in bytes.",
@@ -85,13 +88,13 @@ func newBuilderMetrics() *builderMetrics {
 }
 
 // ObserveConfig updates config metrics based on the provided [BuilderConfig].
-func (m *builderMetrics) ObserveConfig(cfg BuilderConfig) {
+func (m *BuilderMetrics) ObserveConfig(cfg BuilderConfig) {
 	m.targetPageSize.Set(float64(cfg.TargetPageSize))
 	m.targetObjectSize.Set(float64(cfg.TargetObjectSize))
 }
 
 // Register registers metrics to report to reg.
-func (m *builderMetrics) Register(reg prometheus.Registerer) error {
+func (m *BuilderMetrics) Register(reg prometheus.Registerer) error {
 	var errs []error
 
 	errs = append(errs, m.logs.Register(reg))
@@ -105,7 +108,6 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 	errs = append(errs, reg.Register(m.appendTime))
 	errs = append(errs, reg.Register(m.buildTime))
 
-	errs = append(errs, reg.Register(m.sizeEstimate))
 	errs = append(errs, reg.Register(m.builtSize))
 	errs = append(errs, reg.Register(m.flushFailures))
 
@@ -113,7 +115,7 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 }
 
 // Unregister unregisters metrics from the provided Registerer.
-func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
+func (m *BuilderMetrics) Unregister(reg prometheus.Registerer) {
 	m.logs.Unregister(reg)
 	m.streams.Unregister(reg)
 	m.dataobj.Unregister(reg)
@@ -125,7 +127,6 @@ func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.appendTime)
 	reg.Unregister(m.buildTime)
 
-	reg.Unregister(m.sizeEstimate)
 	reg.Unregister(m.builtSize)
 	reg.Unregister(m.flushFailures)
 }

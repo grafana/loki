@@ -75,7 +75,7 @@ type testDataBuilder struct {
 }
 
 func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Stream) {
-	err := b.builder.Append(tenant, stream)
+	err := b.builder.Append(tenant, stream, time.Time{})
 	require.NoError(b.t, err)
 
 	timeRanges := b.builder.TimeRanges()
@@ -804,7 +804,7 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 			BufferSize:              1024 * 1024,      // 1MB
 			SectionStripeMergeLimit: 2,
 		},
-	}, nil)
+	}, nil, logsobj.NewBuilderMetrics())
 	require.NoError(t, err)
 
 	logger := log.NewLogfmtLogger(os.Stdout)

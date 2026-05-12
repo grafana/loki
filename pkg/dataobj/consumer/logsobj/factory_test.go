@@ -11,16 +11,22 @@ import (
 )
 
 func TestBuilderFactory(t *testing.T) {
-	bf := NewBuilderFactory(testBuilderConfig, scratch.NewMemory())
-	// Can create a builder without registering metrics.
-	b, err := bf.NewBuilder(nil)
-	require.NoError(t, err)
-	require.NotNil(t, b)
-	// Can also create a builder with metrics.
 	reg := prometheus.NewRegistry()
-	b, err = bf.NewBuilder(reg)
+	metrics := NewBuilderMetrics()
+	require.NoError(t, metrics.Register(reg))
+	bf, err := NewBuilderFactory(testBuilderConfig, scratch.NewMemory(), metrics)
+	require.NoError(t, err)
+
+	// can create builder without metrics
+	b, err := bf.NewSorterBuilder()
 	require.NoError(t, err)
 	require.NotNil(t, b)
+
+	// can create builder with metrics
+	b, err = bf.NewBuilder()
+	require.NoError(t, err)
+	require.NotNil(t, b)
+
 	// Should be able to gather registered metrics.
 	n, err := testutil.GatherAndCount(reg)
 	require.NoError(t, err)
