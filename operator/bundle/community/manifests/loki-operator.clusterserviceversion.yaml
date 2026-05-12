@@ -151,8 +151,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing, Observability
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:0.10.1
-    createdAt: "2026-05-08T08:55:11Z"
+    containerImage: docker.io/grafana/loki-operator:0.10.2
+    createdAt: "2026-05-27T14:24:35Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -162,7 +162,7 @@ metadata:
   labels:
     operatorframework.io/arch.amd64: supported
     operatorframework.io/arch.arm64: supported
-  name: loki-operator.v0.10.1
+  name: loki-operator.v0.10.2
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -1943,11 +1943,11 @@ spec:
         serviceAccountName: loki-operator-controller-manager
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.10.1
+          app.kubernetes.io/instance: loki-operator-v0.10.2
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: loki-operator
-          app.kubernetes.io/version: 0.10.1
+          app.kubernetes.io/version: 0.10.2
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
@@ -1983,7 +1983,7 @@ spec:
                   value: quay.io/observatorium/opa-openshift:latest
                 - name: RELATED_IMAGE_PASSTHROUGH_GATEWAY
                   value: quay.io/openshift-logging/passthrough-gateway:latest
-                image: docker.io/grafana/loki-operator:0.10.1
+                image: docker.io/grafana/loki-operator:0.10.2
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -2083,8 +2083,8 @@ spec:
     name: opa
   - image: quay.io/openshift-logging/passthrough-gateway:latest
     name: passthrough-gateway
-  replaces: loki-operator.v0.10.0
-  version: 0.10.1
+  replaces: loki-operator.v0.10.1
+  version: 0.10.2
   webhookdefinitions:
   - admissionReviewVersions:
     - v1
