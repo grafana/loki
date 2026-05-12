@@ -7,7 +7,6 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"google.golang.org/grpc/tap"
 
-	"github.com/grafana/loki/v3/pkg/util/limitedreader"
 	"github.com/grafana/loki/v3/pkg/util/requestlimiter"
 )
 
@@ -56,7 +55,7 @@ func (h *LoadSheddingHandle) Handle(ctx context.Context, _ *tap.Info) (context.C
 }
 
 // inflightReservation extracts the Reservation stored by Handle, if present.
-func inflightReservation(ctx context.Context) (*limitedreader.Reservation, bool) {
-	r, ok := ctx.Value(inflightReservationKey).(*limitedreader.Reservation)
+func inflightReservation(ctx context.Context) (*requestlimiter.Reservation, bool) {
+	r, ok := ctx.Value(inflightReservationKey).(*requestlimiter.Reservation)
 	return r, ok
 }
