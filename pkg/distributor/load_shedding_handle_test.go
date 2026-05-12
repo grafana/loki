@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -127,4 +128,48 @@ func TestLoadSheddingHandle_SafetyNetReleasesOnContextCancel(t *testing.T) {
 		_, err2 := h.requestLimiter.Reserve(ctx2, maxDecompressed)
 		return err2 == nil
 	}, 500*time.Millisecond, 10*time.Millisecond)
+}
+
+func TestLoadSheddingHandle_AllPermitsReleasedAfterParallelRequests(t *testing.T) {
+	const (
+		numRequests     = 50
+		maxDecompressed = 1 << 20 // 1 MiB per request
+		actualSize      = 100_000 // smaller than maxDecompressed, exercises AdjustToActual
+	)
+
+	cfg := Config{
+		MaxDecompressedSize: maxDecompressed,
+		RequestSizeLimiter: requestlimiter.Config{
+			MaxInflightBytes: numRequests * maxDecompressed,
+			MaxWait:          100 * time.Millisecond,
+		},
+	}
+	h := NewLoadSheddingHandle()
+	h.SetDistributor(newTestDistributor(cfg))
+
+	var wg sync.WaitGroup
+	wg.Add(numRequests)
+	for range numRequests {
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			outCtx, err := h.Handle(ctx, &tap.Info{})
+			require.NoError(t, err)
+
+			res, ok := inflightReservation(outCtx)
+			require.True(t, ok)
+			res.AdjustToActual(actualSize)
+			res.Release()
+		}()
+	}
+	wg.Wait()
+
+	// All permits must be back: reserving the full budget must succeed immediately.
+	fullCtx, fullCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer fullCancel()
+	res, err := h.requestLimiter.Reserve(fullCtx, numRequests*maxDecompressed)
+	require.NoError(t, err, "full budget must be available after all requests complete")
+	res.Release()
 }
