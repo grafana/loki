@@ -23,7 +23,7 @@ func TestBuildTLSConfig(t *testing.T) {
 			},
 		},
 		{
-			desc: "custom min and max version",
+			desc: "custom min and maximum version",
 			cfg: &TLSConfig{
 				MinVersion: "VersionTLS12",
 				MaxVersion: "VersionTLS13",
@@ -39,7 +39,7 @@ func TestBuildTLSConfig(t *testing.T) {
 				MinVersion: "TLS99",
 			},
 			wantErr:     true,
-			errContains: "invalid min TLS version",
+			errContains: "invalid minimum TLS version",
 		},
 		{
 			desc: "invalid max version",
@@ -47,7 +47,7 @@ func TestBuildTLSConfig(t *testing.T) {
 				MaxVersion: "invalid",
 			},
 			wantErr:     true,
-			errContains: "invalid max TLS version",
+			errContains: "invalid maximum TLS version",
 		},
 		{
 			desc: "valid cipher suites",

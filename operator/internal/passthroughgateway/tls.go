@@ -3,12 +3,15 @@ package passthroughgateway
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 )
+
+var errUnknownClientAuthType = errors.New("unknown client auth type")
 
 type TLSConfig struct {
 	MinVersion   string
@@ -141,7 +144,7 @@ func parseClientAuthType(authType string) (tls.ClientAuthType, error) {
 	}
 	auth, ok := tlsClientAuthTypes[authType]
 	if !ok {
-		return 0, fmt.Errorf("unknown client auth type: %s", authType)
+		return 0, fmt.Errorf("%w: %s", errUnknownClientAuthType, authType)
 	}
 	return auth, nil
 }

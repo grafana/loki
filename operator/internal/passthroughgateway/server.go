@@ -19,7 +19,7 @@ type Server struct {
 	metrics      *Metrics
 	proxyServer  *http.Server
 	adminServer  *http.Server
-	shuttingDown atomic.Bool
+	shuttingDown *atomic.Bool
 }
 
 func NewServer(cfg *Config, logger logr.Logger, reg prometheus.Registerer) (*Server, error) {
@@ -30,7 +30,7 @@ func NewServer(cfg *Config, logger logr.Logger, reg prometheus.Registerer) (*Ser
 		return nil, err
 	}
 
-	proxyHandler := InstrumentedHandler(router, metrics)
+	proxyHandler := instrumentedHandler(router, metrics)
 
 	var proxyWriteTimeout time.Duration
 	if cfg.Loki.Timeout > 0 {
@@ -74,9 +74,10 @@ func NewServer(cfg *Config, logger logr.Logger, reg prometheus.Registerer) (*Ser
 		_, _ = w.Write([]byte("ok"))
 	})
 	server := &Server{
-		config:  cfg,
-		logger:  logger,
-		metrics: metrics,
+		config:       cfg,
+		logger:       logger,
+		metrics:      metrics,
+		shuttingDown: &atomic.Bool{},
 	}
 
 	adminMux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
@@ -102,9 +103,7 @@ func (s *Server) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	errChan := make(chan error, 2)
 
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		var err error
 		if s.config.TLSEnabled() {
 			s.logger.Info("starting HTTPS admin server", "addr", s.config.AdminAddr)
@@ -116,10 +115,9 @@ func (s *Server) Run(ctx context.Context) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errChan <- err
 		}
-	}()
+	})
 
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		var err error
 		if s.config.TLSEnabled() {
 			s.logger.Info("starting mTLS proxy server", "addr", s.config.ListenAddr)
@@ -131,7 +129,7 @@ func (s *Server) Run(ctx context.Context) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errChan <- err
 		}
-	}()
+	})
 
 	var runErr error
 	select {
@@ -156,26 +154,23 @@ func (s *Server) Shutdown() error {
 		adminErr error
 	)
 
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := s.proxyServer.Shutdown(ctx); err != nil {
 			s.logger.Error(err, "error shutting down proxy server")
 			proxyErr = err
 		}
-	}()
+	})
 
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := s.adminServer.Shutdown(ctx); err != nil {
 			s.logger.Error(err, "error shutting down admin server")
 			adminErr = err
 		}
-	}()
+	})
 
 	wg.Wait()
 	return errors.Join(proxyErr, adminErr)

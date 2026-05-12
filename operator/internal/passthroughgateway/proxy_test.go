@@ -80,7 +80,7 @@ func TestInstrumentedHandler(t *testing.T) {
 				w.WriteHeader(tc.handlerStatus)
 			})
 
-			instrumented := InstrumentedHandler(handler, metrics)
+			instrumented := instrumentedHandler(handler, metrics)
 
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			rec := httptest.NewRecorder()
