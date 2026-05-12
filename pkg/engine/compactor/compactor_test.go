@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"errors"
+	"flag"
 	"testing"
 	"time"
 
@@ -98,4 +99,20 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "resolve scheduler advertise address",
 		"error must mention the resolution step for operator clarity, got: %v", err)
+}
+
+// TestConfig_WorkerDefaults captures the default-config invariant for
+// the worker block: all fields default to safe zero-equivalents and
+// flag registration produces a usable Config.
+func TestConfig_WorkerDefaults(t *testing.T) {
+	cfg := Config{}
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	cfg.RegisterFlags(fs)
+	require.NoError(t, fs.Parse(nil))
+
+	require.Equal(t, 0, cfg.Worker.WorkerThreads, "worker threads must default to 0 (GOMAXPROCS)")
+	require.Equal(t, 10*time.Second, cfg.Worker.SchedulerLookupInterval, "scheduler lookup interval default")
+	require.Equal(t, defaultEndpoint, cfg.Worker.Endpoint, "endpoint default")
+	require.Empty(t, cfg.Worker.SchedulerLookupAddress, "scheduler lookup address has no sensible default")
+	require.Empty(t, cfg.Worker.AdvertiseAddr, "advertise addr has no sensible default")
 }
