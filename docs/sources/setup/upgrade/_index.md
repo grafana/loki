@@ -39,7 +39,7 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Breaking change: Removal of various configuration options
 
-- The deprecated per-tenant setting `unordered_writes` has been removed and defaults to true.
+- The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
 
 Use the `deprecated-config-checker` tool to validate your `config.yaml`.
 
