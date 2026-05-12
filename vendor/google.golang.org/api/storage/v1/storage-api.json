@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"31363539393037303230303637393438373935\"",
+  "etag": "\"3136383236333536383830353031333435373432\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -521,7 +521,7 @@
           ]
         },
         "update": {
-          "description": "Updates the config(ttl and admissionPolicy) of an Anywhere Cache instance.",
+          "description": "Updates the config of an Anywhere Cache instance.",
           "httpMethod": "PATCH",
           "id": "storage.anywhereCaches.update",
           "parameterOrder": [
@@ -4605,7 +4605,7 @@
       }
     }
   },
-  "revision": "20260204",
+  "revision": "20260408",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -4649,6 +4649,10 @@
         "id": {
           "description": "The ID of the resource, including the project number, bucket name and anywhere cache ID.",
           "type": "string"
+        },
+        "ingestOnWrite": {
+          "description": "Specifies whether objects are ingested into the cache upon write.",
+          "type": "boolean"
         },
         "kind": {
           "default": "storage#anywhereCache",

@@ -384,6 +384,47 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 	}
 }
 
+func TestParamsFromRequest_CachingOptions(t *testing.T) {
+	expr := syntax.MustParseExpr(`{foo="bar"}`)
+
+	tests := []struct {
+		name string
+		req  queryrangebase.Request
+	}{
+		{
+			name: "LokiRequest",
+			req: &LokiRequest{
+				Query:   `{foo="bar"}`,
+				StartTs: start,
+				EndTs:   end,
+				Plan:    &plan.QueryPlan{AST: expr},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
+		{
+			name: "LokiInstantRequest",
+			req: &LokiInstantRequest{
+				Query:  `{foo="bar"}`,
+				TimeTs: start,
+				Plan:   &plan.QueryPlan{AST: expr},
+				CachingOptions: queryrangebase.CachingOptions{
+					Disabled: true,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, err := ParamsFromRequest(tt.req)
+			require.NoError(t, err)
+			require.True(t, params.CachingOptions().Disabled, "expected CachingOptions.Disabled to be true")
+		})
+	}
+}
+
 func Test_codec_DecodeResponse(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1969,7 +2010,8 @@ var (
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
 					"totalPageDownloadTime": 0,
-					"totalRowsAvailable": 0
+					"totalRowsAvailable": 0,
+					"wireBytesTransferred": 0
 				},
 				"totalChunksRef": 0,
 				"totalChunksDownloaded": 0,
@@ -2012,7 +2054,8 @@ var (
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
 					"totalPageDownloadTime": 0,
-					"totalRowsAvailable": 0
+					"totalRowsAvailable": 0,
+					"wireBytesTransferred": 0
 				},
 				"totalChunksRef": 17,
 				"totalChunksDownloaded": 18,
@@ -2103,6 +2146,26 @@ var (
 				"queryLengthServed": 0
 			},
 			"result": {
+				"entriesFound": 0,
+				"entriesRequested": 0,
+				"entriesStored": 0,
+				"bytesReceived": 0,
+				"bytesSent": 0,
+				"requests": 0,
+				"downloadTime": 0,
+				"queryLengthServed": 0
+			},
+			"logResult": {
+				"entriesFound": 0,
+				"entriesRequested": 0,
+				"entriesStored": 0,
+				"bytesReceived": 0,
+				"bytesSent": 0,
+				"requests": 0,
+				"downloadTime": 0,
+				"queryLengthServed": 0
+			},
+			"taskResult": {
 				"entriesFound": 0,
 				"entriesRequested": 0,
 				"entriesStored": 0,
@@ -2575,6 +2638,50 @@ type buffer struct {
 
 func (b *buffer) Bytes() []byte {
 	return b.buff
+}
+
+// Test_codec_DetectedLabelsResponseProtobufRoundTrip is a regression test for
+// https://github.com/grafana/loki/issues/14605. It ensures that a
+// DetectedLabelsResponse survives a protobuf encode→decode round-trip without
+// data loss. Prior to the fix, decodeResponseProtobuf had no case for
+// *DetectedLabelsRequest and fell through to the default branch, which did not
+// handle QueryResponse_DetectedLabels and returned an internal-server-error.
+func Test_codec_DetectedLabelsResponseProtobufRoundTrip(t *testing.T) {
+	ctx := context.Background()
+
+	want := &DetectedLabelsResponse{
+		Response: &logproto.DetectedLabelsResponse{
+			DetectedLabels: []*logproto.DetectedLabel{
+				{Label: "foo", Cardinality: 42},
+				{Label: "bar", Cardinality: 7},
+			},
+		},
+	}
+
+	// Encode using the protobuf path (Accept: application/vnd.google.protobuf).
+	u := &url.URL{Path: "/loki/api/v1/detected_labels"}
+	encReq := &http.Request{
+		Method:     "GET",
+		RequestURI: u.String(),
+		URL:        u,
+		Header:     http.Header{"Accept": []string{ProtobufType}},
+	}
+	httpResp, err := DefaultCodec.EncodeResponse(ctx, encReq, want)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, httpResp.StatusCode)
+
+	// Decode should recognise *DetectedLabelsRequest and extract the nested
+	// DetectedLabelsResponse from the QueryResponse wrapper.
+	decReq := &DetectedLabelsRequest{
+		path: "/loki/api/v1/detected_labels",
+	}
+	got, err := DefaultCodec.DecodeResponse(ctx, httpResp, decReq)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	gotDetected, ok := got.(*DetectedLabelsResponse)
+	require.True(t, ok, "expected *DetectedLabelsResponse, got %T", got)
+	require.Equal(t, want.Response, gotDetected.Response)
 }
 
 func Benchmark_CodecDecodeLogs(b *testing.B) {

@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	pushtypes "github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
@@ -30,6 +29,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
+
+	pushtypes "github.com/grafana/loki/pkg/push"
 )
 
 var ErrEntriesExist = errors.New("duplicate push - entries already exist")
@@ -144,23 +145,6 @@ func newStream(
 		retentionHours: retentionHours,
 		policy:         policy,
 	}
-}
-
-// consumeChunk manually adds a chunk to the stream that was received during
-// ingester chunk transfer.
-// Must hold chunkMtx
-// DEPRECATED: chunk transfers are no longer suggested and remain for compatibility.
-func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
-	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
-	if err != nil {
-		return err
-	}
-
-	s.chunks = append(s.chunks, chunkDesc{
-		chunk: c,
-	})
-	s.metrics.chunksCreatedTotal.Inc()
-	return nil
 }
 
 // setChunks is used during checkpoint recovery

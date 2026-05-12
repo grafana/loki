@@ -268,7 +268,7 @@ func RecoverWAL(ctx context.Context, reader WALReader, recoverer Recoverer) erro
 			return err
 		}
 
-		// First process all series to ensure we don't write entries to nonexistant series.
+		// First process all series to ensure we don't write entries to nonexistent series.
 		var firstErr error
 		for _, s := range rec.Series {
 			if err := recoverer.SetStream(ctx, rec.UserID, s); err != nil {

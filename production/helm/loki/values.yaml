@@ -629,10 +629,12 @@ loki:
 
 # -- Configuration for running Enterprise Loki
 enterprise:
-  # Enable enterprise features, license must be provided
+  # Enterprise features are disabled by default.
+  # Set to `true` to deploy Grafana Enterprise Logs (GEL) with a valid license via
+  # `enterprise.license.contents` or `enterprise.useExternalLicense`/`enterprise.externalLicenseName`.
   enabled: false
   # Default version of GEL to deploy
-  version: 3.6.5
+  version: 3.6.6
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -674,7 +676,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.6.7
+    tag: 3.6.6
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -687,9 +689,13 @@ enterprise:
   canarySecret: null
   # -- Configuration for `provisioner` target
   # Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.
+  # The provisioner is disabled by default because it requires an out-of-band admin token secret
+  # (created via GEL `tokengen`) referenced by `enterprise.adminToken.secret`. After creating that
+  # secret, set both `enterprise.adminToken.secret` and `enterprise.provisioner.enabled: true`.
+  # See production/helm/loki/docs/examples/enterprise/README.md for the full procedure.
   provisioner:
     # -- Whether the job should be part of the deployment
-    enabled: true
+    enabled: false
     # -- Name of the secret to store provisioned tokens in
     provisionedSecretPrefix: null
     # -- Hook type(s) to customize when the job runs.  defaults to post-install
@@ -4034,6 +4040,17 @@ rollout_operator:
 # -- Configuration for the minio subchart
 minio:
   enabled: false
+  # Override the upstream MinIO, Inc. images with the Pigsty (pgsty) community
+  # fork to mitigate the unresolved CVE in the abandoned MinIO images.
+  # See https://github.com/pgsty/minio for details.
+  image:
+    repository: docker.io/pgsty/minio
+    tag: RELEASE.2026-03-14T12-00-00Z
+    pullPolicy: IfNotPresent
+  mcImage:
+    repository: docker.io/pgsty/mc
+    tag: RELEASE.2026-03-13T08-57-32Z
+    pullPolicy: IfNotPresent
   replicas: 1
   # Minio requires 2 to 16 drives for erasure code (drivesPerNode * replicas)
   # https://docs.min.io/docs/minio-erasure-code-quickstart-guide

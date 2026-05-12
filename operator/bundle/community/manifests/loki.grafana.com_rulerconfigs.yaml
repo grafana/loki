@@ -6,11 +6,11 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.20.1
   creationTimestamp: null
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.9.0
+    app.kubernetes.io/instance: loki-operator-v0.10.1
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.9.0
+    app.kubernetes.io/version: 0.10.1
   name: rulerconfigs.loki.grafana.com
 spec:
   conversion:
@@ -487,7 +487,7 @@ spec:
                           write endpoint
                         enum:
                         - basic
-                        - header
+                        - bearer
                         type: string
                       authorizationSecretName:
                         description: Name of a secret in the namespace configured
@@ -1144,7 +1144,7 @@ spec:
                           write endpoint
                         enum:
                         - basic
-                        - header
+                        - bearer
                         type: string
                       authorizationSecretName:
                         description: Name of a secret in the namespace configured

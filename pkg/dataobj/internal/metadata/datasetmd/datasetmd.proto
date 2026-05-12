@@ -245,6 +245,12 @@ message SortInfo {
   // contain a single element. Otherwise, this field will contain multiple
   // elements when compound sorting is used.
   repeated ColumnSort column_sorts = 1;
+
+  // schema_labels, if non-empty, indicates that rows are sorted by the values
+  // of these stream label names (in order) as the primary sort keys, followed
+  // by column_sorts as tiebreakers. When set, column_sorts describes only the
+  // remaining tiebreaker columns (typically timestamp DESC).
+  repeated string schema_labels = 2;
 }
 
 // SortDirection represents sort direction of a column.

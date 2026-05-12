@@ -12,13 +12,14 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/json"
+	"go.opentelemetry.io/collector/pdata/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
 // Sample represents each record value encountered within a profiled program.
 type Sample struct {
-	Values             []int64
 	AttributeIndices   []int32
+	Values             []int64
 	TimestampsUnixNano []uint64
 	StackIndex         int32
 	LinkIndex          int32
@@ -33,7 +34,7 @@ var (
 )
 
 func NewSample() *Sample {
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		return &Sample{}
 	}
 	return protoPoolSample.Get().(*Sample)
@@ -44,7 +45,7 @@ func DeleteSample(orig *Sample, nullable bool) {
 		return
 	}
 
-	if !UseProtoPooling.IsEnabled() {
+	if !metadata.PdataUseProtoPoolingFeatureGate.IsEnabled() {
 		orig.Reset()
 		return
 	}
@@ -69,11 +70,11 @@ func CopySample(dest, src *Sample) *Sample {
 		dest = NewSample()
 	}
 	dest.StackIndex = src.StackIndex
-	dest.Values = append(dest.Values[:0], src.Values...)
-
 	dest.AttributeIndices = append(dest.AttributeIndices[:0], src.AttributeIndices...)
 
 	dest.LinkIndex = src.LinkIndex
+	dest.Values = append(dest.Values[:0], src.Values...)
+
 	dest.TimestampsUnixNano = append(dest.TimestampsUnixNano[:0], src.TimestampsUnixNano...)
 
 	return dest
@@ -138,17 +139,6 @@ func (orig *Sample) MarshalJSON(dest *json.Stream) {
 		dest.WriteObjectField("stackIndex")
 		dest.WriteInt32(orig.StackIndex)
 	}
-	if len(orig.Values) > 0 {
-		dest.WriteObjectField("values")
-		dest.WriteArrayStart()
-		dest.WriteInt64(orig.Values[0])
-		for i := 1; i < len(orig.Values); i++ {
-			dest.WriteMore()
-			dest.WriteInt64(orig.Values[i])
-		}
-		dest.WriteArrayEnd()
-	}
-
 	if len(orig.AttributeIndices) > 0 {
 		dest.WriteObjectField("attributeIndices")
 		dest.WriteArrayStart()
@@ -164,6 +154,17 @@ func (orig *Sample) MarshalJSON(dest *json.Stream) {
 		dest.WriteObjectField("linkIndex")
 		dest.WriteInt32(orig.LinkIndex)
 	}
+	if len(orig.Values) > 0 {
+		dest.WriteObjectField("values")
+		dest.WriteArrayStart()
+		dest.WriteInt64(orig.Values[0])
+		for i := 1; i < len(orig.Values); i++ {
+			dest.WriteMore()
+			dest.WriteInt64(orig.Values[i])
+		}
+		dest.WriteArrayEnd()
+	}
+
 	if len(orig.TimestampsUnixNano) > 0 {
 		dest.WriteObjectField("timestampsUnixNano")
 		dest.WriteArrayStart()
@@ -184,11 +185,6 @@ func (orig *Sample) UnmarshalJSON(iter *json.Iterator) {
 		switch f {
 		case "stackIndex", "stack_index":
 			orig.StackIndex = iter.ReadInt32()
-		case "values":
-			for iter.ReadArray() {
-				orig.Values = append(orig.Values, iter.ReadInt64())
-			}
-
 		case "attributeIndices", "attribute_indices":
 			for iter.ReadArray() {
 				orig.AttributeIndices = append(orig.AttributeIndices, iter.ReadInt32())
@@ -196,6 +192,11 @@ func (orig *Sample) UnmarshalJSON(iter *json.Iterator) {
 
 		case "linkIndex", "link_index":
 			orig.LinkIndex = iter.ReadInt32()
+		case "values":
+			for iter.ReadArray() {
+				orig.Values = append(orig.Values, iter.ReadInt64())
+			}
+
 		case "timestampsUnixNano", "timestamps_unix_nano":
 			for iter.ReadArray() {
 				orig.TimestampsUnixNano = append(orig.TimestampsUnixNano, iter.ReadUint64())
@@ -215,14 +216,6 @@ func (orig *Sample) SizeProto() int {
 		n += 1 + proto.Sov(uint64(orig.StackIndex))
 	}
 
-	if len(orig.Values) > 0 {
-		l = 0
-		for _, e := range orig.Values {
-			l += proto.Sov(uint64(e))
-		}
-		n += 1 + proto.Sov(uint64(l)) + l
-	}
-
 	if len(orig.AttributeIndices) > 0 {
 		l = 0
 		for _, e := range orig.AttributeIndices {
@@ -232,6 +225,14 @@ func (orig *Sample) SizeProto() int {
 	}
 	if orig.LinkIndex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.LinkIndex))
+	}
+
+	if len(orig.Values) > 0 {
+		l = 0
+		for _, e := range orig.Values {
+			l += proto.Sov(uint64(e))
+		}
+		n += 1 + proto.Sov(uint64(l)) + l
 	}
 	l = len(orig.TimestampsUnixNano)
 	if l > 0 {
@@ -250,16 +251,6 @@ func (orig *Sample) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x8
 	}
-	l = len(orig.Values)
-	if l > 0 {
-		endPos := pos
-		for i := l - 1; i >= 0; i-- {
-			pos = proto.EncodeVarint(buf, pos, uint64(orig.Values[i]))
-		}
-		pos = proto.EncodeVarint(buf, pos, uint64(endPos-pos))
-		pos--
-		buf[pos] = 0x12
-	}
 	l = len(orig.AttributeIndices)
 	if l > 0 {
 		endPos := pos
@@ -268,12 +259,22 @@ func (orig *Sample) MarshalProto(buf []byte) int {
 		}
 		pos = proto.EncodeVarint(buf, pos, uint64(endPos-pos))
 		pos--
-		buf[pos] = 0x1a
+		buf[pos] = 0x12
 	}
 	if orig.LinkIndex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.LinkIndex))
 		pos--
-		buf[pos] = 0x20
+		buf[pos] = 0x18
+	}
+	l = len(orig.Values)
+	if l > 0 {
+		endPos := pos
+		for i := l - 1; i >= 0; i-- {
+			pos = proto.EncodeVarint(buf, pos, uint64(orig.Values[i]))
+		}
+		pos = proto.EncodeVarint(buf, pos, uint64(endPos-pos))
+		pos--
+		buf[pos] = 0x22
 	}
 	l = len(orig.TimestampsUnixNano)
 	if l > 0 {
@@ -328,36 +329,6 @@ func (orig *Sample) UnmarshalProto(buf []byte) error {
 					if err != nil {
 						return err
 					}
-					orig.Values = append(orig.Values, int64(num))
-				}
-				if startPos != pos {
-					return fmt.Errorf("proto: invalid field len = %d for field Values", pos-startPos)
-				}
-			case proto.WireTypeVarint:
-				var num uint64
-				num, pos, err = proto.ConsumeVarint(buf, pos)
-				if err != nil {
-					return err
-				}
-				orig.Values = append(orig.Values, int64(num))
-			default:
-				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
-			}
-		case 3:
-			switch wireType {
-			case proto.WireTypeLen:
-				var length int
-				length, pos, err = proto.ConsumeLen(buf, pos)
-				if err != nil {
-					return err
-				}
-				startPos := pos - length
-				var num uint64
-				for startPos < pos {
-					num, startPos, err = proto.ConsumeVarint(buf[:pos], startPos)
-					if err != nil {
-						return err
-					}
 					orig.AttributeIndices = append(orig.AttributeIndices, int32(num))
 				}
 				if startPos != pos {
@@ -374,7 +345,7 @@ func (orig *Sample) UnmarshalProto(buf []byte) error {
 				return fmt.Errorf("proto: wrong wireType = %d for field AttributeIndices", wireType)
 			}
 
-		case 4:
+		case 3:
 			if wireType != proto.WireTypeVarint {
 				return fmt.Errorf("proto: wrong wireType = %d for field LinkIndex", wireType)
 			}
@@ -384,6 +355,36 @@ func (orig *Sample) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			orig.LinkIndex = int32(num)
+		case 4:
+			switch wireType {
+			case proto.WireTypeLen:
+				var length int
+				length, pos, err = proto.ConsumeLen(buf, pos)
+				if err != nil {
+					return err
+				}
+				startPos := pos - length
+				var num uint64
+				for startPos < pos {
+					num, startPos, err = proto.ConsumeVarint(buf[:pos], startPos)
+					if err != nil {
+						return err
+					}
+					orig.Values = append(orig.Values, int64(num))
+				}
+				if startPos != pos {
+					return fmt.Errorf("proto: invalid field len = %d for field Values", pos-startPos)
+				}
+			case proto.WireTypeVarint:
+				var num uint64
+				num, pos, err = proto.ConsumeVarint(buf, pos)
+				if err != nil {
+					return err
+				}
+				orig.Values = append(orig.Values, int64(num))
+			default:
+				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
+			}
 		case 5:
 			switch wireType {
 			case proto.WireTypeLen:
@@ -429,9 +430,9 @@ func (orig *Sample) UnmarshalProto(buf []byte) error {
 func GenTestSample() *Sample {
 	orig := NewSample()
 	orig.StackIndex = int32(13)
-	orig.Values = []int64{int64(0), int64(13)}
 	orig.AttributeIndices = []int32{int32(0), int32(13)}
 	orig.LinkIndex = int32(13)
+	orig.Values = []int64{int64(0), int64(13)}
 	orig.TimestampsUnixNano = []uint64{uint64(0), uint64(13)}
 	return orig
 }

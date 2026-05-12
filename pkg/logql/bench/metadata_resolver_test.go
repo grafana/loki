@@ -2,26 +2,11 @@ package bench
 
 import (
 	"math/rand"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
-
-// extractServiceName is a helper to extract service_name from a query for testing
-func extractServiceName(query string) string {
-	if strings.Contains(query, `service_name="loki"`) {
-		return "loki"
-	}
-	if strings.Contains(query, `service_name="database"`) {
-		return "database"
-	}
-	if strings.Contains(query, `service_name="web-server"`) {
-		return "web-server"
-	}
-	return ""
-}
 
 func TestMetadataVariableResolver_ResolveQuery(t *testing.T) {
 	// Create test metadata with known selectors and capabilities

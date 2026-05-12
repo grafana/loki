@@ -13,7 +13,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -626,7 +625,7 @@ func accumulateChunksToShards(
 	}
 
 	collectedSeries := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(filteredM)))
-	defer sharding.SizedFPsPool.Put(collectedSeries)
+	defer func() { sharding.SizedFPsPool.Put(collectedSeries) }()
 
 	for fp, chks := range filteredM {
 		x := sharding.SizedFP{Fp: fp}
@@ -700,11 +699,3 @@ func (r refWithSizingInfo) Cmp(chk tsdb_index.ChunkMeta) iter.Ord {
 
 	return iter.Eq
 }
-
-type failingIndexClient struct{}
-
-func (f failingIndexClient) QueryPages(_ context.Context, _ []seriesindex.Query, _ seriesindex.QueryPagesCallback) error {
-	return errors.New("index client is not initialized likely due to boltdb-shipper not being used")
-}
-
-func (f failingIndexClient) Stop() {}

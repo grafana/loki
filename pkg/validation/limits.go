@@ -13,9 +13,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/sigv4"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
@@ -219,9 +219,6 @@ type Limits struct {
 	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
 	PerTenantOverridePeriod model.Duration `yaml:"per_tenant_override_period" json:"per_tenant_override_period"`
 
-	// Deprecated
-	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes" doc:"deprecated|description=Use deletion_mode per tenant configuration instead."`
-
 	ShardStreams shardstreams.Config `yaml:"shard_streams" json:"shard_streams" doc:"description=Define streams sharding behavior."`
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
@@ -291,10 +288,62 @@ type Limits struct {
 	MaxScanTaskParallelism int  `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
 	DebugEngineTasks       bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
 	DebugEngineStreams     bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
+
+	// Data-objects sort schema
+	SortSchema SortSchema `yaml:"sort_schema,omitempty" json:"sort_schema,omitempty" doc:"hidden"`
 }
 
 type FieldDetectorConfig struct {
 	Fields map[string][]string `yaml:"fields,omitempty" json:"fields,omitempty"`
+}
+
+// SortSchemaTimestampName is the reserved name for the timestamp entry in a sort schema.
+const SortSchemaTimestampName = "__timestamp__"
+
+// SortSchemaEntry is one element in a per-tenant sort schema.
+// Name is the label name to sort by. SortSchemaTimestampName is reserved and must not appear
+// in the schema — the timestamp is always implicitly the final sort key.
+type SortSchemaEntry struct {
+	Name string `yaml:"name" json:"name"`
+}
+
+// SortSchema is an ordered list of sort schema entries for a tenant.
+// The timestamp is always implicitly appended as the final sort key and must not be listed.
+// An empty schema means "use DefaultSortSchema".
+// Example: [{Name: "service_name"}]
+type SortSchema []SortSchemaEntry
+
+// DefaultSortSchema is the broad default schema used when no tenant-specific schema is configured.
+var DefaultSortSchema = SortSchema{
+	{Name: "service_name"},
+}
+
+// Validate checks that the sort schema is well-formed.
+// An empty schema is valid (callers fall back to DefaultSortSchema).
+func (s SortSchema) Validate() error {
+	seen := make(map[string]struct{}, len(s))
+	for i, e := range s {
+		if e.Name == "" {
+			return fmt.Errorf("sort_schema entry %d has an empty name", i)
+		}
+		if e.Name == SortSchemaTimestampName {
+			return fmt.Errorf("sort_schema must not include %q — the timestamp is always the implicit last sort key", SortSchemaTimestampName)
+		}
+		if _, dup := seen[e.Name]; dup {
+			return fmt.Errorf("sort_schema entry %q is duplicated", e.Name)
+		}
+		seen[e.Name] = struct{}{}
+	}
+	return nil
+}
+
+// LabelNames returns the ordered label names in the schema.
+func (s SortSchema) LabelNames() []string {
+	names := make([]string, 0, len(s))
+	for _, e := range s {
+		names = append(names, e.Name)
+	}
+	return names
 }
 
 type StreamRetention struct {
@@ -448,9 +497,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
 
 	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
-
-	// Deprecated
-	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
 	f.Float64Var(&l.IndexGatewayMaxCapacity, "index-gateway.max-capacity", 1.0, "Experimental. Defines a fraction (between 0.0 and 1.0) of the total index gateways available for a each tenant. A value of 0.0 has the same effect as 1.0, meaning all available index gateways. This setting only applies to simple mode.")
@@ -620,10 +666,6 @@ func (l *Limits) Validate() error {
 		return err
 	}
 
-	if l.CompactorDeletionEnabled {
-		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
-	}
-
 	if l.MaxQueryCapacity < 0 {
 		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-query-capacity to 0 as it is configured to a value less than 0")
 		l.MaxQueryCapacity = 0
@@ -655,6 +697,10 @@ func (l *Limits) Validate() error {
 	if time.Duration(l.EngineResultsCacheTimeBucketInterval) < time.Minute {
 		return fmt.Errorf("engine_results_cache_time_bucket_interval must be >= 1m, got %s",
 			l.EngineResultsCacheTimeBucketInterval)
+	}
+
+	if err := l.SortSchema.Validate(); err != nil {
+		return fmt.Errorf("sort_schema: %w", err)
 	}
 
 	return nil
@@ -1466,4 +1512,13 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}
 
 func (o *Overrides) SimulatedPushLatency(userID string) time.Duration {
 	return o.getOverridesForUser(userID).SimulatedPushLatency
+}
+
+// SortSchema returns the per-tenant sort schema. Falls back to DefaultSortSchema if not set.
+func (o *Overrides) SortSchema(userID string) SortSchema {
+	s := o.getOverridesForUser(userID).SortSchema
+	if len(s) == 0 {
+		return DefaultSortSchema
+	}
+	return s
 }

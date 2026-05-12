@@ -8,11 +8,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
 
-func buildLogfmtColumns(input *array.String, requestedKeys []string, strict bool, keepEmpty bool) ([]string, []arrow.Array) {
-	parseFunc := func(line string) (map[string]string, error) {
+func buildLogfmtColumns(input arrow.RecordBatch, sourceCol *array.String, requestedKeys []string, strict bool, keepEmpty bool) ([]string, []arrow.Array) {
+	parseFunc := func(_ arrow.RecordBatch, line string) (map[string]string, error) {
 		return tokenizeLogfmt(line, requestedKeys, strict, keepEmpty)
 	}
-	return buildColumns(input, requestedKeys, parseFunc, types.LogfmtParserErrorType)
+	return buildColumns(input, sourceCol, requestedKeys, parseFunc, types.VariadicOpParseLogfmt, types.LogfmtParserErrorType)
 }
 
 // tokenizeLogfmt parses logfmt input using the standard decoder
@@ -32,7 +32,15 @@ func tokenizeLogfmt(input string, requestedKeys []string, strict bool, keepEmpty
 	}
 
 	decoder := logfmt.NewDecoder(unsafeBytes(input))
-	for !decoder.EOL() && decoder.ScanKeyval() {
+	for !decoder.EOL() {
+		ok := decoder.ScanKeyval()
+		if !ok {
+			// for strict parsing, don't continue on error
+			if strict {
+				break
+			}
+			continue
+		}
 		key := sanitizeLabelKey(unsafeString(decoder.Key()), true)
 		if requestedKeyLookup != nil {
 			if _, wantKey := requestedKeyLookup[key]; !wantKey {

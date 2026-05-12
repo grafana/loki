@@ -6,7 +6,7 @@ queries:
     kind: log
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     tags:
       - structured-metadata
       - line-filter
@@ -16,6 +16,7 @@ queries:
         - detected_level
   - description: JSON parsing with duration filter and structured metadata
     query: ${SELECTOR} | json | duration_seconds > 0.1 | detected_level!="debug"
+    skip: true # numeric label filter (> 0.1) unsupported by v2 engine
     time_range:
       length: 24h
     directions: both
@@ -32,7 +33,7 @@ queries:
     query: ${SELECTOR} | logfmt | level="error" | detected_level="error"
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     tags:
       - structured-metadata
       - logfmt
@@ -43,6 +44,7 @@ queries:
         - detected_level
   - description: Drilldown pattern with case-insensitive error search
     query: ${SELECTOR} |~ "(?i)error" | json | logfmt | drop __error__, __error_details__ | status_code >= 500
+    skip: true # numeric label filter (>= 500) unsupported by v2 engine
     time_range:
       length: 24h
     directions: both
@@ -56,7 +58,7 @@ queries:
     query: ${SELECTOR} | detected_level="error" |~ "(?i)failed"
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     tags:
       - drilldown
       - structured-metadata
@@ -70,7 +72,7 @@ queries:
     query: ${SELECTOR} | detected_level=~"error|warn" |~ "(?i)refused"
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     tags:
       - drilldown
       - structured-metadata

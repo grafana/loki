@@ -1,6 +1,7 @@
 package columnar
 
 import (
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -12,8 +13,11 @@ type UTF8Scalar struct {
 
 var _ Scalar = (*UTF8Scalar)(nil)
 
-// Kind implements [Datum] and returns [KindUTF8].
-func (s *UTF8Scalar) Kind() Kind { return KindUTF8 }
+// Kind implements [Datum] and returns [types.KindUTF8].
+func (s *UTF8Scalar) Kind() types.Kind { return types.KindUTF8 }
+
+// Type returns a [*types.UTF8].
+func (s *UTF8Scalar) Type() types.Type { return utf8Type }
 
 // IsNull implements [Scalar] and returns s.Null.
 func (s *UTF8Scalar) IsNull() bool { return s.Null }
@@ -57,9 +61,6 @@ func NewUTF8(data []byte, offsets []int32, validity memory.Bitmap) *UTF8 {
 
 //go:noinline
 func (arr *UTF8) init() {
-	// Moving initialization of additional fields to a non-inlined init method
-	// improved the performance of the plain bytes decoder in dataset by 10%.
-
 	numElements := max(0, len(arr.offsets)-1)
 	if arr.validity.Len() > 0 && arr.validity.Len() != numElements {
 		panic("length mismatch with validity")
@@ -115,7 +116,7 @@ func (arr *UTF8) Offsets() []int32 { return arr.offsets }
 func (arr *UTF8) Size() int {
 	var (
 		validitySize = arr.validity.Len() / 8
-		dataSize     = len(arr.data)
+		dataSize     = arr.DataLen()
 		offsetsSize  = len(arr.offsets) * 4 // *4 for int32
 	)
 	return validitySize + dataSize + offsetsSize
@@ -128,8 +129,11 @@ func (arr *UTF8) Size() int {
 // element at that position is valid (not null).
 func (arr *UTF8) Validity() memory.Bitmap { return arr.validity }
 
-// Kind returns the kind of Array being represented.
-func (arr *UTF8) Kind() Kind { return KindUTF8 }
+// Kind implements [Datum] and returns [types.KindUTF8].
+func (arr *UTF8) Kind() types.Kind { return types.KindUTF8 }
+
+// Type returns a [*types.UTF8].
+func (arr *UTF8) Type() types.Type { return utf8Type }
 
 // Slice returns a slice of arr from i to j.
 //
@@ -199,7 +203,7 @@ func (b *UTF8Builder) Grow(n int) {
 }
 
 func (b *UTF8Builder) needGrow(n int) bool {
-	return b.offsets.Len()+n > b.offsets.Cap()
+	return b.validity.Len()+n > b.validity.Cap() || b.offsets.Len()+n > b.offsets.Cap()
 }
 
 // GrowData increases b's bytes capacity, if necessary, to guarantee space

@@ -40,7 +40,7 @@ func TestProcessor_BuilderMaxAge(t *testing.T) {
 			reg            = prometheus.NewRegistry()
 			builder        = newTestBuilder(t, reg)
 			flushCommitter = &mockFlushCommitter{}
-			proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+			proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, IngestModeKafka, log.NewNopLogger(), reg)
 		)
 
 		// Since no records have been pushed, the first append time should be zero,
@@ -89,7 +89,7 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 			reg            = prometheus.NewRegistry()
 			builder        = newTestBuilder(t, reg)
 			flushCommitter = &mockFlushCommitter{}
-			proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+			proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, IngestModeKafka, log.NewNopLogger(), reg)
 		)
 
 		// The idle flush timeout has not been exceeded, no flush should occur.
@@ -145,7 +145,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 				reg            = prometheus.NewRegistry()
 				builder        = newTestBuilder(t, reg)
 				flushCommitter = &mockFlushCommitter{}
-				proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+				proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, IngestModeKafka, log.NewNopLogger(), reg)
 			)
 
 			// No flush should have occurred.
@@ -177,7 +177,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 				reg            = prometheus.NewRegistry()
 				builder        = newTestBuilder(t, reg)
 				flushCommitter = &failureFlushCommitter{}
-				proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+				proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, IngestModeKafka, log.NewNopLogger(), reg)
 			)
 
 			// Process a record containing some log lines. No flush should occur.

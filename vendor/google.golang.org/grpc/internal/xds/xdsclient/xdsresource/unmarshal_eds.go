@@ -74,11 +74,16 @@ func unmarshalEndpointsResource(r *anypb.Any) (string, EndpointsUpdate, error) {
 		return "", EndpointsUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
 	}
 
+	if cla.GetClusterName() == "" {
+		return "", EndpointsUpdate{}, fmt.Errorf("empty resource name in endpoints resource")
+	}
+
 	u, err := parseEDSRespProto(cla)
 	if err != nil {
 		return cla.GetClusterName(), EndpointsUpdate{}, err
 	}
 	u.Raw = r
+
 	return cla.GetClusterName(), u, nil
 }
 
@@ -109,6 +114,7 @@ func parseDropPolicy(dropPolicy *v3endpointpb.ClusterLoadAssignment_Policy_DropO
 
 func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs map[string]bool) ([]Endpoint, error) {
 	endpoints := make([]Endpoint, 0, len(lbEndpoints))
+	var totalWeight uint64
 	for _, lbEndpoint := range lbEndpoints {
 		// If the load_balancing_weight field is specified, it must be set to a
 		// value of at least 1.  If unspecified, each host is presumed to have
@@ -120,6 +126,12 @@ func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs 
 			}
 			weight = w.GetValue()
 		}
+
+		totalWeight += uint64(weight)
+		if totalWeight > math.MaxUint32 {
+			return nil, fmt.Errorf("sum of weights of endpoints in the same locality exceeds maximum value %d", uint64(math.MaxUint32))
+		}
+
 		addrs := []string{parseAddress(lbEndpoint.GetEndpoint().GetAddress().GetSocketAddress())}
 		if envconfig.XDSDualstackEndpointsEnabled {
 			for _, sa := range lbEndpoint.GetEndpoint().GetAdditionalAddresses() {
@@ -278,7 +290,7 @@ func validateAndConstructMetadata(metadataProto *v3corepb.Metadata) (map[string]
 
 	// Process FilterMetadata for any keys not already handled.
 	for key, structProto := range metadataProto.GetFilterMetadata() {
-		// Skip keys already added from TyperFilterMetadata.
+		// Skip keys already added from TypedFilterMetadata.
 		if metadata[key] != nil {
 			continue
 		}

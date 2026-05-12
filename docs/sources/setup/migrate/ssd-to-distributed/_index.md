@@ -49,23 +49,23 @@ This example is only a reference on the parameters that need to be changed. Ther
 ```yaml
 ---
 loki:
-   schemaConfig:
-     configs:
-       - from: "2024-04-01"
-         store: tsdb
-         object_store: s3
-         schema: v13
-         index:
-           prefix: loki_index_
-           period: 24h
-   storage_config:
-     aws:
-       region: eu-central-1
-       bucketnames: aws-chunks-bucket
-       s3forcepathstyle: false
-   ingester:
-       chunk_encoding: snappy
-   ruler:
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage_config:
+    aws:
+      region: eu-central-1
+      bucketnames: aws-chunks-bucket
+      s3forcepathstyle: false
+  ingester:
+    chunk_encoding: snappy
+  ruler:
     enable_api: true
     storage:
       type: s3
@@ -74,59 +74,59 @@ loki:
         bucketnames: aws-ruler-bucket
         s3forcepathstyle: false
       alertmanager_url: http://prom:9093
-   querier:
-      max_concurrent: 4
+  querier:
+    max_concurrent: 4
 
-   storage:
-      type: s3
-      bucketNames:
-        chunks: "aws-chunks-bucket"
-        ruler: "aws-ruler-bucket"
-      s3:
-        region: eu-central-1
+  storage:
+    type: s3
+    bucketNames:
+      chunks: "aws-chunks-bucket"
+      ruler: "aws-ruler-bucket"
+    s3:
+      region: eu-central-1
 
 deploymentMode: SimpleScalable
 
 # SSD
 backend:
- replicas: 2
+  replicas: 2
 read:
- replicas: 3
+  replicas: 3
 write:
- replicas: 3
+  replicas: 3
 
 # Distributed Loki
 ingester:
- replicas: 0
- zoneAwareReplication:
-  enabled: false
+  replicas: 0
+  zoneAwareReplication:
+    enabled: false
 
 querier:
- replicas: 0
- maxUnavailable: 0
+  replicas: 0
+  maxUnavailable: 0
 queryFrontend:
- replicas: 0
- maxUnavailable: 0
+  replicas: 0
+  maxUnavailable: 0
 queryScheduler:
- replicas: 0
+  replicas: 0
 distributor:
- replicas: 0
- maxUnavailable: 0
+  replicas: 0
+  maxUnavailable: 0
 compactor:
- replicas: 0
+  replicas: 0
 indexGateway:
- replicas: 0
- maxUnavailable: 0
+  replicas: 0
+  maxUnavailable: 0
 ruler:
- replicas: 0
- maxUnavailable: 0
+  replicas: 0
+  maxUnavailable: 0
 
 # Single binary Loki
 singleBinary:
- replicas: 0
+  replicas: 0
 
 minio:
- enabled: false
+  enabled: false
 ```
 
 ## Stage 1: Deploying the Loki distributed components

@@ -1,3 +1,22 @@
+# v1.19.22 (2026-04-17)
+
+* **Dependency Update**: Bump smithy-go to 1.25.0 to support endpointBdd trait
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.21 (2026-03-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.20 (2026-03-13)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.19 (2026-03-03)
+
+* **Bug Fix**: Modernize non codegen files with go fix
+* **Dependency Update**: Bump minimum Go version to 1.24
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.19.18 (2026-02-23)
 
 * **Dependency Update**: Updated to the latest SDK module versions

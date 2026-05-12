@@ -19,6 +19,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -244,6 +245,25 @@ type KeyboardEnhancements struct {
 	// [KeyPressMsg] with the [Key.IsRepeat] field set indicating that this is
 	// a it's part of a key repeat sequence.
 	ReportEventTypes bool
+
+	// ReportAlternateKeys requests the terminal to report alternate key values
+	// in addition to the main ones.
+	// Note that only key events represented as escape codes will affected by
+	// this enhancement.
+	ReportAlternateKeys bool
+
+	// ReportAllKeysAsEscapeCodes requests the terminal to report all key
+	// events, including plain text keys, as escape codes.
+	// When this is enabled, text won't be sent as plain text but instead as
+	// escape codes that encode the key value and modifiers.
+	ReportAllKeysAsEscapeCodes bool
+
+	// ReportAssociatedText requests the terminal to report the text associated
+	// with key events.
+	// Note that this is an enhancement to
+	// [KeyboardEnhancements.ReportAllKeysAsEscapeCodes] and only has an effect
+	// if that is enabled.
+	ReportAssociatedText bool
 }
 
 // SetContent is a helper method to set the content of a [View] with a styled
@@ -987,12 +1007,14 @@ func (p *Program) Run() (returnModel Model, returnErr error) {
 	if p.disableInput {
 		p.input = nil
 	} else if p.input == nil {
-		// Always open the TTY for input.
-		ttyIn, _, err := OpenTTY()
-		if err != nil {
-			return p.initialModel, fmt.Errorf("bubbletea: error opening TTY: %w", err)
+		p.input = os.Stdin
+		if !term.IsTerminal(os.Stdin.Fd()) {
+			ttyIn, _, err := OpenTTY()
+			if err != nil {
+				return p.initialModel, fmt.Errorf("bubbletea: error opening TTY: %w", err)
+			}
+			p.input = ttyIn
 		}
-		p.input = ttyIn
 	}
 
 	// Handle signals.
@@ -1049,8 +1071,8 @@ func (p *Program) Run() (returnModel Model, returnErr error) {
 			// issue where when a PTY session is detected, and we don't
 			// allocate a real PTY, the terminal settings (Termios and WinCon)
 			// don't change and the we end up working in cooked mode instead of
-			// raw mode.
-			mapNl := false // p.ttyInput == nil
+			// raw mode. See issue #1572.
+			mapNl := runtime.GOOS != "windows" && p.ttyInput == nil
 			r.setOptimizations(p.useHardTabs, p.useBackspace, mapNl)
 			p.renderer = r
 		}

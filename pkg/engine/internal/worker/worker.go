@@ -85,24 +85,9 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
-}
 
-// readyRequest is a message sent from a thread to notify the worker that it's
-// ready for a task.
-type readyRequest struct {
-	// Response is the channel to send assigned tasks to. Response must be a
-	// buffered channel with at least one slot.
-	Response chan readyResponse
-}
-
-// readyResponse is the response for a readyRequest.
-type readyResponse struct {
-	Job *threadJob
-
-	// Error is set if the task failed to be assigned, including when the
-	// connection to a chosen scheduler has been lost. Threads should use this
-	// to request a new task.
-	Error error
+	// TaskCaches is an optional registry of backing caches for task results.
+	TaskCaches executor.TaskCacheRegistry
 }
 
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
@@ -112,6 +97,7 @@ type Worker struct {
 	config     Config
 	logger     log.Logger
 	numThreads int
+	taskCaches executor.TaskCacheRegistry
 
 	initOnce sync.Once
 	svc      services.Service
@@ -160,6 +146,7 @@ func New(config Config) (*Worker, error) {
 		logger:      config.Logger,
 		wireMetrics: wire.NewMetrics(),
 		numThreads:  numThreads,
+		taskCaches:  config.TaskCaches,
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
@@ -200,6 +187,7 @@ func (w *Worker) run(ctx context.Context) error {
 			Bucket:         w.config.Bucket,
 			Metastore:      w.config.Metastore,
 			StreamFilterer: w.config.StreamFilterer,
+			TaskCaches:     w.taskCaches,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,
@@ -294,8 +282,8 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 		Metrics: w.wireMetrics,
 		Conn:    conn,
 
-		// Allow for a backlog of 128 frames before backpressure is applied.
-		Buffer: 128,
+		// Allow for a backlog of 8 frames before backpressure is applied.
+		Buffer: 8,
 
 		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) error {
 			switch msg := msg.(type) {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/compute"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -22,13 +23,13 @@ func TestEquals_Errors(t *testing.T) {
 	}{
 		{
 			name:  "fails on mismatched types",
-			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
+			left:  columnartest.Scalar(t, types.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, types.KindUint64, uint64(0)),
 		},
 		{
 			name:  "fails on mismatch length arrays",
-			left:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
-			right: columnartest.Array(t, columnar.KindBool, &alloc, true, false),
+			left:  columnartest.Array(t, types.KindBool, &alloc, true, false, true, false),
+			right: columnartest.Array(t, types.KindBool, &alloc, true, false),
 		},
 	}
 
@@ -50,13 +51,13 @@ func TestNotEquals_Errors(t *testing.T) {
 	}{
 		{
 			name:  "fails on mismatched types",
-			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
+			left:  columnartest.Scalar(t, types.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, types.KindUint64, uint64(0)),
 		},
 		{
 			name:  "fails on mismatch length arrays",
-			left:  columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
-			right: columnartest.Array(t, columnar.KindBool, &alloc, true, false),
+			left:  columnartest.Array(t, types.KindBool, &alloc, true, false, true, false),
+			right: columnartest.Array(t, types.KindBool, &alloc, true, false),
 		},
 	}
 
@@ -78,18 +79,18 @@ func TestLessThan_Errors(t *testing.T) {
 	}{
 		{
 			name:  "fails on mismatched types",
-			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
+			left:  columnartest.Scalar(t, types.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, types.KindUint64, uint64(0)),
 		},
 		{
 			name:  "fails on mismatch length arrays",
-			left:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
-			right: columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
+			left:  columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+			right: columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2)),
 		},
 		{
 			name:  "fails on bool type",
-			left:  columnartest.Scalar(t, columnar.KindBool, true),
-			right: columnartest.Scalar(t, columnar.KindBool, false),
+			left:  columnartest.Scalar(t, types.KindBool, true),
+			right: columnartest.Scalar(t, types.KindBool, false),
 		},
 	}
 
@@ -111,18 +112,18 @@ func TestLessOrEqual_Errors(t *testing.T) {
 	}{
 		{
 			name:  "fails on mismatched types",
-			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
+			left:  columnartest.Scalar(t, types.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, types.KindUint64, uint64(0)),
 		},
 		{
 			name:  "fails on mismatch length arrays",
-			left:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
-			right: columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
+			left:  columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+			right: columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2)),
 		},
 		{
 			name:  "fails on bool type",
-			left:  columnartest.Scalar(t, columnar.KindBool, true),
-			right: columnartest.Scalar(t, columnar.KindBool, false),
+			left:  columnartest.Scalar(t, types.KindBool, true),
+			right: columnartest.Scalar(t, types.KindBool, false),
 		},
 	}
 
@@ -144,18 +145,18 @@ func TestGreaterThan_Errors(t *testing.T) {
 	}{
 		{
 			name:  "fails on mismatched types",
-			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
+			left:  columnartest.Scalar(t, types.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, types.KindUint64, uint64(0)),
 		},
 		{
 			name:  "fails on mismatch length arrays",
-			left:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
-			right: columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
+			left:  columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+			right: columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2)),
 		},
 		{
 			name:  "fails on bool type",
-			left:  columnartest.Scalar(t, columnar.KindBool, true),
-			right: columnartest.Scalar(t, columnar.KindBool, false),
+			left:  columnartest.Scalar(t, types.KindBool, true),
+			right: columnartest.Scalar(t, types.KindBool, false),
 		},
 	}
 
@@ -177,18 +178,18 @@ func TestGreaterOrEqual_Errors(t *testing.T) {
 	}{
 		{
 			name:  "fails on mismatched types",
-			left:  columnartest.Scalar(t, columnar.KindInt64, int64(0)),
-			right: columnartest.Scalar(t, columnar.KindUint64, uint64(0)),
+			left:  columnartest.Scalar(t, types.KindInt64, int64(0)),
+			right: columnartest.Scalar(t, types.KindUint64, uint64(0)),
 		},
 		{
 			name:  "fails on mismatch length arrays",
-			left:  columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
-			right: columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
+			left:  columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+			right: columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2)),
 		},
 		{
 			name:  "fails on bool type",
-			left:  columnartest.Scalar(t, columnar.KindBool, true),
-			right: columnartest.Scalar(t, columnar.KindBool, false),
+			left:  columnartest.Scalar(t, types.KindBool, true),
+			right: columnartest.Scalar(t, types.KindBool, false),
 		},
 	}
 

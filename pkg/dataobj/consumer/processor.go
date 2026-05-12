@@ -35,6 +35,11 @@ type flushCommitter interface {
 }
 
 // A processor receives records and builds data objects from them.
+// flushRequest is used to send a flush request to the processor's Run loop.
+type flushRequest struct {
+	done chan<- error
+}
+
 type processor struct {
 	*services.BasicService
 	builder        builder
@@ -73,6 +78,14 @@ type processor struct {
 	// to the data object builder. It is required for the metastore index.
 	earliestRecordTime time.Time
 
+	// timePartitionedEstimates counts how many data objects we would build
+	// per flush with 12 hour windows.
+	timePartitionedEstimates map[time.Time]struct{}
+
+	// flushRequests is used to safely trigger a flush from outside the Run loop.
+	mode          IngestMode
+	flushRequests chan flushRequest
+
 	metrics *metrics
 	logger  log.Logger
 }
@@ -83,6 +96,7 @@ func newProcessor(
 	flushCommitter flushCommitter,
 	idleFlushTimeout time.Duration,
 	maxBuilderAge time.Duration,
+	mode IngestMode,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) *processor {
@@ -91,14 +105,17 @@ func newProcessor(
 		panic(err)
 	}
 	p := &processor{
-		builder:          builder,
-		decoder:          decoder,
-		records:          records,
-		flushCommitter:   flushCommitter,
-		idleFlushTimeout: idleFlushTimeout,
-		maxBuilderAge:    maxBuilderAge,
-		metrics:          newMetrics(reg),
-		logger:           logger,
+		builder:                  builder,
+		decoder:                  decoder,
+		records:                  records,
+		flushCommitter:           flushCommitter,
+		flushRequests:            make(chan flushRequest, 1),
+		idleFlushTimeout:         idleFlushTimeout,
+		maxBuilderAge:            maxBuilderAge,
+		metrics:                  newMetrics(reg),
+		logger:                   logger,
+		timePartitionedEstimates: make(map[time.Time]struct{}),
+		mode:                     mode,
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p
@@ -114,8 +131,19 @@ func (p *processor) running(ctx context.Context) error {
 	return p.Run(ctx)
 }
 
-// stopping implements [services.StoppingFn].
+// stopping implements [services.StoppingFn]. It drains any buffered records
+// from the in-process channel (up to a 30s timeout) before returning, then
+// flushes any accumulated data. This ensures that records buffered at SIGTERM
+// are not silently lost in inmemory mode.
+//
+// Note: stopping() is called after Run() returns (dskit guarantees
+// RunningFn happens-before StoppingFn), so there is no race with the run loop.
+// The records channel remains open (owned by Service) and may still have
+// buffered records written by the distributor before the push timeout fired.
 func (p *processor) stopping(_ error) error {
+	if p.mode == IngestModeInMemory {
+		p.drainOnShutdown()
+	}
 	return nil
 }
 
@@ -144,6 +172,29 @@ func (p *processor) Run(ctx context.Context) error {
 			if _, err := p.idleFlush(ctx); err != nil {
 				level.Error(p.logger).Log("msg", "failed to idle flush", "err", err)
 			}
+		case req := <-p.flushRequests:
+			// Drain any records that are already in the channel before flushing
+			// so that all pending data is included in the flush.
+		drain:
+			for {
+				select {
+				case rec, ok := <-p.records:
+					if !ok {
+						break drain
+					}
+					if err := p.processRecord(ctx, rec); err != nil {
+						level.Error(p.logger).Log("msg", "failed to process record during flush drain", "err", err)
+						p.observeRecordErr(rec)
+					}
+				default:
+					break drain
+				}
+			}
+			var err error
+			if !p.lastAppend.IsZero() && p.builder.GetEstimatedSize() > 0 {
+				err = p.flush(ctx, flushReasonIdle)
+			}
+			req.done <- err
 		}
 	}
 }
@@ -153,6 +204,10 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 	// consumption lag, the age of the data object builder, etc.
 	now := time.Now()
 	p.observeRecord(rec, now)
+
+	// Find the 12 hour window.
+	window := rec.Timestamp.UTC().Truncate(12 * time.Hour)
+	p.timePartitionedEstimates[window] = struct{}{}
 
 	// Try to decode the stream in the record.
 	tenant := string(rec.Key)
@@ -213,6 +268,23 @@ func (p *processor) idleFlush(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// Flush triggers an immediate flush via the processor's Run loop, draining any
+// pending records from the channel first. Safe to call from any goroutine.
+func (p *processor) Flush(ctx context.Context) error {
+	done := make(chan error, 1)
+	select {
+	case p.flushRequests <- flushRequest{done: done}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // needsIdleFlush returns true if the partition has exceeded the idle timeout
 // and the builder has some data buffered.
 func (p *processor) needsIdleFlush() bool {
@@ -234,7 +306,9 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.earliestRecordTime = time.Time{}
 		p.firstAppend = time.Time{}
 		p.lastAppend = time.Time{}
+		clear(p.timePartitionedEstimates)
 	}()
+	p.metrics.timePartitionEstimate.Add(float64(len(p.timePartitionedEstimates)))
 	return p.flushCommitter.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
 }
 
@@ -248,4 +322,44 @@ func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
 func (p *processor) observeRecordErr(rec *kgo.Record) {
 	p.metrics.recordFailures.Inc()
 	p.metrics.discardedBytes.Add(float64(len(rec.Value)))
+}
+
+func (p *processor) drainOnShutdown() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	dropped := 0
+drain:
+	for {
+		select {
+		case rec, ok := <-p.records:
+			if !ok {
+				break drain
+			}
+			if err := p.processRecord(ctx, rec); err != nil {
+				level.Error(p.logger).Log("msg", "failed to process record during shutdown drain", "err", err)
+				p.observeRecordErr(rec)
+			}
+		case <-ctx.Done():
+			// Drain timed out — count remaining buffered records as dropped.
+			dropped = len(p.records)
+			break drain
+		default:
+			// Channel is empty — drain complete.
+			break drain
+		}
+	}
+
+	if dropped > 0 {
+		level.Warn(p.logger).Log("msg", "inmemory drain timed out, records dropped", "count", dropped)
+	} else {
+		level.Info(p.logger).Log("msg", "inmemory channel drained cleanly on shutdown")
+	}
+
+	// Flush whatever was accumulated during drain.
+	if !p.lastAppend.IsZero() && p.builder.GetEstimatedSize() > 0 {
+		if err := p.flush(ctx, "shutdown"); err != nil {
+			level.Error(p.logger).Log("msg", "failed to flush during shutdown drain", "err", err)
+		}
+	}
 }

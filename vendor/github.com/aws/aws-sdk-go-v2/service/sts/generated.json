@@ -3,6 +3,7 @@
         "github.com/aws/aws-sdk-go-v2": "v1.4.0",
         "github.com/aws/aws-sdk-go-v2/internal/configsources": "v0.0.0-00010101000000-000000000000",
         "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2": "v2.0.0-00010101000000-000000000000",
+        "github.com/aws/aws-sdk-go-v2/internal/v4a": "v0.0.0-00010101000000-000000000000",
         "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding": "v1.0.5",
         "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url": "v1.0.7",
         "github.com/aws/smithy-go": "v1.4.0"
@@ -31,7 +32,6 @@
         "internal/endpoints/endpoints.go",
         "internal/endpoints/endpoints_test.go",
         "options.go",
-        "protocol_test.go",
         "serializers.go",
         "snapshot_test.go",
         "sra_operation_order_test.go",
@@ -39,7 +39,7 @@
         "types/types.go",
         "validators.go"
     ],
-    "go": "1.23",
+    "go": "1.24",
     "module": "github.com/aws/aws-sdk-go-v2/service/sts",
     "unstable": false
 }
