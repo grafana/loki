@@ -114,6 +114,12 @@ func (n *Node_Cache) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return n.Cache.MarshalPhysical(nodeID)
 }
 
+// MarshalPhysical converts a protobuf node into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *Node_IndexConsolidate) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return n.IndexConsolidate.MarshalPhysical(nodeID)
+}
+
 // MarshalPhysical converts a protobuf AggregateRange into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
 func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
@@ -430,5 +436,20 @@ func (n *Cache) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		CacheName:    n.CacheName,
 		MaxSizeBytes: n.MaxCacheableSizeBytes,
 		Compression:  n.Compression,
+	}, nil
+}
+
+// MarshalPhysical converts a protobuf IndexConsolidate into a physical plan
+// node. Returns an error if the conversion fails or is unsupported.
+func (n *IndexConsolidate) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return &physical.IndexConsolidate{
+		NodeID:                  nodeID,
+		Tenant:                  n.Tenant,
+		ToCWindowStart:          n.TocWindowStart,
+		CompactedLogObjectPaths: append([]string(nil), n.CompactedLogObjectPaths...),
+		SourceIndexPaths:        append([]string(nil), n.SourceIndexPaths...),
+		OutputIndexPath:         n.OutputIndexPath,
+		MarkerPath:              n.MarkerPath,
+		TaskTTL:                 n.TaskTtl,
 	}, nil
 }

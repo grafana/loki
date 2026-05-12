@@ -229,6 +229,19 @@ func Test_Node(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "IndexConsolidate",
+			node: &physical.IndexConsolidate{
+				NodeID:                  ulid.Make(),
+				Tenant:                  "29",
+				ToCWindowStart:          1_715_000_000_000_000_000,
+				CompactedLogObjectPaths: []string{"tenants/29/objects/a.dataobj", "tenants/29/objects/b.dataobj"},
+				SourceIndexPaths:        []string{"tenants/29/indexes/x.dataobj", "tenants/29/indexes/y.dataobj"},
+				OutputIndexPath:         "tenants/29/indexes/out.dataobj",
+				MarkerPath:              "dataobj/compaction/in-flight/abc.json",
+				TaskTTL:                 30 * time.Minute,
+			},
+		},
 	}
 
 	for _, tc := range tt {
