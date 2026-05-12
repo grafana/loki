@@ -181,7 +181,6 @@ func (ts *TeeService) flush() {
 
 	buffered := ts.buffers
 	ts.buffers = make(map[string][]distributor.KeyedStream)
-	ts.bufferedBytes.Set(0)
 	ts.buffersMutex.Unlock()
 
 	batches := make([]map[string]map[string]*logproto.PushRequest, 0, len(buffered))
@@ -210,15 +209,21 @@ func (ts *TeeService) flush() {
 
 	for tenant, requests := range byTenantAndPatternIngester {
 		for addr, reqs := range requests {
+			var size int64
+			for _, req := range reqs {
+				size += int64(req.Size())
+			}
 			select {
 			case ts.flushQueue <- clientRequest{
 				ingesterAddr: addr,
 				tenant:       tenant,
 				reqs:         reqs,
+				size:         size,
 			}:
 				ts.teedRequests.WithLabelValues("queued").Inc()
 			default:
 				ts.teedRequests.WithLabelValues("dropped").Inc()
+				ts.bufferedBytes.Sub(float64(size))
 			}
 		}
 	}
@@ -242,6 +247,7 @@ func (ts *TeeService) batchesForTenant(
 			Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 		if err != nil || len(replicationSet.Instances) == 0 {
 			ts.teedStreams.WithLabelValues("dropped").Inc()
+			ts.bufferedBytes.Sub(float64(stream.Stream.Size()))
 			continue
 		}
 
@@ -272,6 +278,7 @@ type clientRequest struct {
 	ingesterAddr string
 	tenant       string
 	reqs         []*logproto.PushRequest
+	size         int64
 }
 
 func (ts *TeeService) batchSender(ctx context.Context) {
@@ -282,6 +289,7 @@ func (ts *TeeService) batchSender(ctx context.Context) {
 				return // we are done, the queue was closed by Run()
 			}
 			ts.sendBatch(ctx, clientReq)
+			ts.bufferedBytes.Sub(float64(clientReq.size))
 		case <-ctx.Done():
 			return
 		}
