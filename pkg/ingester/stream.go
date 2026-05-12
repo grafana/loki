@@ -645,15 +645,6 @@ func (s *stream) addTailer(t *tailer) {
 	s.tailers[t.getID()] = t
 }
 
-func headBlockType(chunkfmt byte, unorderedWrites bool) chunkenc.HeadBlockFmt {
-	if unorderedWrites {
-		if chunkfmt >= chunkenc.ChunkFormatV3 {
-			return chunkenc.ChunkHeadFormatFor(chunkfmt)
-		}
-	}
-	return chunkenc.OrderedHeadBlockFmt
-}
-
 func labelsEqual(a, b pushtypes.LabelsAdapter) bool {
 	if len(a) != len(b) {
 		return false
