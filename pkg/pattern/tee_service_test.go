@@ -3,13 +3,17 @@ package pattern
 import (
 	"context"
 	"flag"
+	"fmt"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -185,4 +189,77 @@ func TestPatternTeeEmptyStream(t *testing.T) {
 
 	require.Nil(t, req)
 	require.Nil(t, reqCtx)
+}
+
+// TestPatternTeeBufferedBytesMetric verifies that the buffered_bytes gauge returns
+// to exactly 0 after all concurrent work is processed, with no negative drift.
+func TestPatternTeeBufferedBytesMetric(t *testing.T) {
+	cfg := Config{}
+	cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+	cfg.Enabled = true
+
+	response := &logproto.PushResponse{}
+	client := &mockPoolClient{}
+	client.On("Push", mock.Anything, mock.Anything).Return(response, nil)
+
+	replicationSet := ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{Id: "localhost", Addr: "ingester0"},
+		},
+	}
+
+	fakeRingInst := &fakeRing{}
+	fakeRingInst.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(replicationSet, nil)
+	fakeRingInst.On("GetReplicationSetForOperation", mock.Anything).Return(replicationSet, nil)
+
+	ringClient := &fakeRingClient{
+		poolClient: client,
+		ring:       fakeRingInst,
+	}
+
+	reg := prometheus.NewRegistry()
+	tee, err := NewTeeService(
+		cfg,
+		&fakeLimits{metricAggregationEnabled: true},
+		ringClient,
+		runtime.DefaultTenantConfigs(),
+		"test",
+		reg,
+		log.NewNopLogger(),
+	)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, tee.Start(ctx))
+
+	const goroutines = 20
+	const streamsPerGoroutine = 50
+	now := time.Now()
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < streamsPerGoroutine; j++ {
+				tee.Duplicate(ctx, fmt.Sprintf("tenant-%d", i%5), []distributor.KeyedStream{
+					{
+						HashKey: uint32(i*streamsPerGoroutine + j),
+						Stream: push.Stream{
+							Labels: fmt.Sprintf(`{goroutine="%d",stream="%d"}`, i, j),
+							Entries: []push.Entry{
+								{Timestamp: now, Line: fmt.Sprintf("line from goroutine %d stream %d", i, j)},
+							},
+						},
+					},
+				}, nil)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	cancel()
+	tee.WaitUntilDone()
+
+	require.Equal(t, 0.0, testutil.ToFloat64(tee.bufferedBytes))
 }

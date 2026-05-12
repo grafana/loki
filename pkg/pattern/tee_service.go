@@ -211,7 +211,9 @@ func (ts *TeeService) flush() {
 		for addr, reqs := range requests {
 			var size int64
 			for _, req := range reqs {
-				size += int64(req.Size())
+				for _, stream := range req.Streams {
+					size += int64(stream.Size())
+				}
 			}
 			select {
 			case ts.flushQueue <- clientRequest{
