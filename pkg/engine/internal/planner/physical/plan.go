@@ -31,6 +31,7 @@ const (
 	NodeTypeBatching                          // NodeTypeBatching represents a [Batching] node.
 	NodeTypeCache                             // NodeTypeCache represents a [Cache] node.
 	NodeTypeCompactionMerge                   // NodeTypeCompactionMerge represents a [CompactionMerge].
+	NodeTypeIndexConsolidate                  // NodeTypeIndexConsolidate represents an [IndexConsolidate] node.
 )
 
 // String returns a string representation of the NodeType.
@@ -68,6 +69,8 @@ func (t NodeType) String() string {
 		return "Cache"
 	case NodeTypeCompactionMerge:
 		return "CompactionMerge"
+	case NodeTypeIndexConsolidate:
+		return "IndexConsolidate"
 	default:
 		return "Invalid"
 	}
@@ -124,6 +127,7 @@ var _ Node = (*Merge)(nil)
 var _ Node = (*Batching)(nil)
 var _ Node = (*Cache)(nil)
 var _ Node = (*CompactionMerge)(nil)
+var _ Node = (*IndexConsolidate)(nil)
 
 func (*DataObjScan) isNode()       {}
 func (*Projection) isNode()        {}
@@ -141,6 +145,7 @@ func (*Merge) isNode()             {}
 func (*Batching) isNode()          {}
 func (*Cache) isNode()             {}
 func (*CompactionMerge) isNode()   {}
+func (*IndexConsolidate) isNode()  {}
 
 var _ fmt.Stringer = (*Plan)(nil)
 
