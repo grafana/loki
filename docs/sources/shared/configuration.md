@@ -1635,6 +1635,28 @@ dataobj:
   # CLI flag: -dataobj.enabled
   [enabled: <boolean> | default = false]
 
+rate_service:
+  # Enable the rates service.
+  # CLI flag: -rate-service.enabled
+  [enabled: <boolean> | default = false]
+
+  # The time window over which samples are collected.
+  # CLI flag: -rate-service.window
+  [window: <int> | default = 300]
+
+  # The size of each bucket, smaller buckets means better estimates.
+  # CLI flag: -rate-service.bucket-size
+  [bucket_size: <int> | default = 15]
+
+rate_service_client:
+  # The address of the rate service.
+  # CLI flag: -rate-service-client.address
+  [address: <string> | default = ""]
+
+  # Configures client gRPC connections to limits service.
+  # The CLI flags prefix for this block configuration is: rate-service-client
+  [grpc_client_config: <grpc_client>]
+
 ingest_limits:
   # Enable the ingest limits service.
   # CLI flag: -ingest-limits.enabled
@@ -3640,6 +3662,7 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`
 - `query-scheduler.grpc-client-config`
+- `rate-service-client`
 - `ruler.client`
 - `ruler.evaluation.query-frontend`
 - `tsdb.shipper.index-gateway-client.grpc`
@@ -7446,6 +7469,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `query-engine.task-results-cache.memcached`
 - `query-scheduler.grpc-client-config`
 - `query-scheduler.ring.etcd`
+- `rate-service-client`
 - `reporting.tls-config`
 - `ruler.alertmanager-client`
 - `ruler.client`

@@ -36,8 +36,6 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
@@ -51,6 +49,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
@@ -71,6 +70,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/tail"
+	"github.com/grafana/loki/v3/pkg/rateservice"
+	rateserviceproto "github.com/grafana/loki/v3/pkg/rateservice/proto"
 	"github.com/grafana/loki/v3/pkg/ruler"
 	base_ruler "github.com/grafana/loki/v3/pkg/ruler/base"
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
@@ -129,6 +130,7 @@ const (
 	QueryEngineScheduler         = "query-engine-scheduler"
 	QueryEngineWorker            = "query-engine-worker"
 	Store                        = "store"
+	RateService                  = "rate-service"
 	RulerStorage                 = "ruler-storage"
 	Ruler                        = "ruler"
 	RuleEvaluator                = "rule-evaluator"
@@ -872,6 +874,22 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 			return nil
 		},
 	), nil
+}
+
+func (t *Loki) initRateService() (services.Service, error) {
+	if !t.Cfg.RateService.Enabled {
+		return nil, nil
+	}
+	t.rateService = rateservice.NewService(
+		t.Cfg.RateService,
+		prometheus.DefaultRegisterer,
+		util_log.Logger,
+	)
+
+	rateserviceproto.RegisterRateServiceServer(t.Server.GRPC, t.rateService)
+	t.Server.HTTP.Path("/rate-service/realm/{realm}").Methods("GET").HandlerFunc(t.rateService.GetRealmHandler)
+
+	return t.rateService, nil
 }
 
 func (t *Loki) initStore() (services.Service, error) {

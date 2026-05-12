@@ -58,6 +58,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/worker"
+	"github.com/grafana/loki/v3/pkg/rateservice"
+	rateservice_client "github.com/grafana/loki/v3/pkg/rateservice/client"
 	"github.com/grafana/loki/v3/pkg/ruler"
 	base_ruler "github.com/grafana/loki/v3/pkg/ruler/base"
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
@@ -115,6 +117,8 @@ type Config struct {
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
+	RateService         rateservice.Config         `yaml:"rate_service,omitempty" category:"experimental"`
+	RateServiceClient   rateservice_client.Config  `yaml:"rate_service_client,omitempty" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
 	IngestLimitsFrontend       limits_frontend.Config        `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
@@ -233,6 +237,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.IngestLimitsFrontendClient.RegisterFlags(f)
 	c.UI.RegisterFlags(f)
 	c.DataObj.RegisterFlags(f)
+	c.RateService.RegisterFlags(f)
+	c.RateServiceClient.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -360,6 +366,9 @@ func (c *Config) Validate() error {
 	if err := c.Distributor.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))
 	}
+	if err := c.RateService.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid rate service config"))
+	}
 
 	errs = append(errs, validateSchemaValues(c)...)
 	errs = append(errs, ValidateConfigCompatibility(*c)...)
@@ -451,6 +460,7 @@ type Loki struct {
 	scratchStore                        scratch.Store
 	queryEngineV2                       *engine.Engine
 	queryEngineV2Scheduler              *engine.Scheduler
+	rateService                         *rateservice.Service
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -809,6 +819,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
 	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner)
 	mm.RegisterModule(ScratchStore, t.initScratchStore)
+	mm.RegisterModule(RateService, t.initRateService)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -861,6 +872,7 @@ func (t *Loki) setupModuleManager() error {
 		DataObjIndexBuilder:          {ScratchStore, Server, UIRing},
 		DataObjCompactionPlanner:     {Server, UIRing},
 		ScratchStore:                 {},
+		RateService:                  {Server},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},
