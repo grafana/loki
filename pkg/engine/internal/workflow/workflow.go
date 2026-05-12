@@ -62,10 +62,10 @@ type Options struct {
 	// tasks that may run concurrently within a single workflow. 0 means no
 	// limit.
 	//
-	// The lane is dormant in query workflows (typeFor never classifies a
-	// query task as compaction); compactor workflows opt in by populating
-	// this field once the dataobj-compaction physical-plan node types and
-	// the corresponding typeFor classification land.
+	// Query workflows never produce compaction tasks (typeFor never
+	// classifies a query task as compaction), so this knob is a no-op in
+	// query plans. Compactor workflows populate it to cap parallelism of
+	// Phase 1 CompactionMerge tasks and Phase 2 IndexConsolidate.
 	MaxRunningCompactionTasks int
 
 	// DebugTasks toggles debug messages for a task. This is very verbose and
@@ -356,10 +356,9 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 	groups := wf.admissionControl.groupByType(tasks)
 	// taskTypeCompaction is appended last because the loop is sequential
 	// (each lane is fully drained before the next): a populated Compaction
-	// lane should never delay Scan dispatch. The lane is currently dormant
-	// — typeFor does not classify any task as compaction — so this slot is
-	// always empty for query workflows. It will be populated once the
-	// dataobj-compaction node types and typeFor classification land.
+	// lane should never delay Scan dispatch. Query workflows never produce
+	// compaction tasks, so this slot is always empty in query plans; it is
+	// populated only by the dataobj-compactor.
 	for _, taskType := range []taskType{
 		taskTypeOther,
 		taskTypeScan,
