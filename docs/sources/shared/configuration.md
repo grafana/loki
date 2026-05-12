@@ -4374,10 +4374,6 @@ discover_generic_fields:
 # CLI flag: -ingester.max-global-streams-per-user
 [max_global_streams_per_user: <int> | default = 5000]
 
-# Deprecated. When true, out-of-order writes are accepted.
-# CLI flag: -ingester.unordered-writes
-[unordered_writes: <boolean> | default = true]
-
 # Maximum byte rate per second per stream, also expressible in human readable
 # forms (1MB, 256KB, etc).
 # CLI flag: -ingester.per-stream-rate-limit
