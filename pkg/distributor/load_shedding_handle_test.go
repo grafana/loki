@@ -17,9 +17,8 @@ import (
 
 func newTestDistributor(cfg Config) *Distributor {
 	return &Distributor{
-		cfg:                cfg,
-		inflightBytes:      util_metric.NewMaxSampleCollector("", ""),
-		requestSizeLimiter: requestlimiter.New(cfg.RequestSizeLimiter),
+		cfg:           cfg,
+		inflightBytes: util_metric.NewMaxSampleCollector("", ""),
 	}
 }
 

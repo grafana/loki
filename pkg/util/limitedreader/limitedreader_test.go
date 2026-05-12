@@ -6,7 +6,7 @@ import (
 )
 
 func TestReservation_AdjustAndRelease(t *testing.T) {
-	p := NewPool(1000)
+	p := NewPool(1000, nil)
 	res, err := p.Reserve(context.Background(), 800)
 	if err != nil {
 		t.Fatalf("Reserve: %v", err)
@@ -28,7 +28,7 @@ func TestReservation_AdjustAndRelease(t *testing.T) {
 }
 
 func TestReservation_ReleaseIsIdempotent(t *testing.T) {
-	p := NewPool(100)
+	p := NewPool(100, nil)
 	res, _ := p.Reserve(context.Background(), 100)
 	res.Release()
 	res.Release() // must not panic or double-release
@@ -39,7 +39,7 @@ func TestReservation_ReleaseIsIdempotent(t *testing.T) {
 
 func TestReservation_AdjustActualLargerThanReserved(t *testing.T) {
 	// actual > reserved is a no-op; Release must still free the original held amount.
-	p := NewPool(100)
+	p := NewPool(100, nil)
 	res, _ := p.Reserve(context.Background(), 50)
 	res.AdjustToActual(200) // no-op
 	res.Release()
@@ -49,7 +49,7 @@ func TestReservation_AdjustActualLargerThanReserved(t *testing.T) {
 }
 
 func TestReservation_ExceedsBudgetBlocking(t *testing.T) {
-	p := NewPool(100)
+	p := NewPool(100, nil)
 	res, _ := p.Reserve(context.Background(), 100)
 	defer res.Release()
 	ctx, cancel := context.WithTimeout(context.Background(), 0)

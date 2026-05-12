@@ -32,7 +32,7 @@ func NewLoadSheddingHandle() *LoadSheddingHandle {
 // before Handle is used.
 func (h *LoadSheddingHandle) SetDistributor(d *Distributor) {
 	h.d = d
-	h.requestLimiter = d.requestSizeLimiter
+	h.requestLimiter = requestlimiter.New(d.cfg.RequestSizeLimiter, d.inflightBytes.Inc)
 }
 
 // Handle implements tap.ServerInHandle.

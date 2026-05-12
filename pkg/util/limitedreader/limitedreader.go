@@ -9,20 +9,20 @@ package limitedreader
 import (
 	"context"
 	"sync"
-	"sync/atomic" //lint:ignore faillint we use new atomic types from sync/atomic.
 
 	"golang.org/x/sync/semaphore"
 )
 
 // Pool tracks the shared byte budget. Construct with [NewPool].
 type Pool struct {
-	sem          *semaphore.Weighted
-	inflightBytes atomic.Int64
+	sem    *semaphore.Weighted
+	onHeld func(int64) // called with +n on Reserve, −delta on AdjustToActual/Release; may be nil
 }
 
 // NewPool returns a Pool with the given byte limit. limit must be > 0.
-func NewPool(limit int64) *Pool {
-	return &Pool{sem: semaphore.NewWeighted(limit)}
+// onHeld is an optional callback invoked whenever the held-byte count changes.
+func NewPool(limit int64, onHeld func(int64)) *Pool {
+	return &Pool{sem: semaphore.NewWeighted(limit), onHeld: onHeld}
 }
 
 // Reservation holds bytes pre-reserved from a [Pool].
@@ -46,13 +46,10 @@ func (p *Pool) Reserve(ctx context.Context, n int64) (*Reservation, error) {
 	if err := p.sem.Acquire(ctx, n); err != nil {
 		return nil, err
 	}
-	p.inflightBytes.Add(n)
+	if p.onHeld != nil {
+		p.onHeld(n)
+	}
 	return &Reservation{pool: p, held: n}, nil
-}
-
-// InflightBytes returns the number of bytes currently held across all active reservations.
-func (p *Pool) InflightBytes() int64 {
-	return p.inflightBytes.Load()
 }
 
 // AdjustToActual releases the over-estimate (held − actual) back to the Pool
@@ -66,7 +63,9 @@ func (r *Reservation) AdjustToActual(actual int64) {
 	}
 	if r.pool != nil {
 		r.pool.sem.Release(overage)
-		r.pool.inflightBytes.Add(-overage)
+		if r.pool.onHeld != nil {
+			r.pool.onHeld(-overage)
+		}
 	}
 	r.held = actual
 }
@@ -81,7 +80,9 @@ func (r *Reservation) Release() {
 	}
 	if r.pool != nil {
 		r.pool.sem.Release(r.held)
-		r.pool.inflightBytes.Add(-r.held)
+		if r.pool.onHeld != nil {
+			r.pool.onHeld(-r.held)
+		}
 	}
 	r.held = 0
 }

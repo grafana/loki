@@ -22,18 +22,18 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 // RequestLimiter reserves bytes of inflight budget for a request.
 type RequestLimiter interface {
 	Reserve(ctx context.Context, maxSize int64) (*limitedreader.Reservation, error)
-	// InflightBytes returns the number of bytes currently held across all active reservations.
-	InflightBytes() int64
 }
 
 // New returns an active limiter when MaxInflightBytes > 0, otherwise a no-op.
-func New(cfg Config) RequestLimiter {
+// onHeld is called with the signed byte delta whenever the held count changes
+// (positive on reserve, negative on adjust/release); may be nil.
+func New(cfg Config, onHeld func(int64)) RequestLimiter {
 	if cfg.MaxInflightBytes == 0 {
 		return noopRequestLimiter{}
 	}
 	return &inflightBytesLimiter{
 		cfg:  cfg,
-		pool: limitedreader.NewPool(cfg.MaxInflightBytes),
+		pool: limitedreader.NewPool(cfg.MaxInflightBytes, onHeld),
 	}
 }
 
@@ -48,14 +48,8 @@ func (l *inflightBytesLimiter) Reserve(ctx context.Context, maxSize int64) (*lim
 	return l.pool.Reserve(ctx, maxSize)
 }
 
-func (l *inflightBytesLimiter) InflightBytes() int64 {
-	return l.pool.InflightBytes()
-}
-
 type noopRequestLimiter struct{}
 
 func (noopRequestLimiter) Reserve(_ context.Context, _ int64) (*limitedreader.Reservation, error) {
 	return limitedreader.NewNoopReservation(), nil
 }
-
-func (noopRequestLimiter) InflightBytes() int64 { return 0 }
