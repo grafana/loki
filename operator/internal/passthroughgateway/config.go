@@ -93,16 +93,28 @@ func (c *Config) Validate() error {
 		return kverrors.New("-loki-distributor-endpoint is required")
 	}
 
-	if _, err := url.Parse(c.Loki.DistributorEndpoint); err != nil {
-		return kverrors.New("-loki-distributor-endpoint is not a valid URL: " + err.Error())
+	u, err := url.Parse(c.Loki.DistributorEndpoint)
+	if err != nil {
+		return kverrors.New("-loki-distributor-endpoint is not a valid URL", "endpoint", c.Loki.DistributorEndpoint, "err", err)
+	}
+	if u.Host == "" {
+		return kverrors.New("-loki-distributor-endpoint is missing a host", "endpoint", c.Loki.DistributorEndpoint)
 	}
 
 	if c.Loki.QueryFrontendEndpoint == "" {
 		return kverrors.New("-loki-query-frontend-endpoint is required")
 	}
 
-	if _, err := url.Parse(c.Loki.QueryFrontendEndpoint); err != nil {
-		return kverrors.New("-loki-query-frontend-endpoint is not a valid URL: " + err.Error())
+	u, err = url.Parse(c.Loki.QueryFrontendEndpoint)
+	if err != nil {
+		return kverrors.New("-loki-query-frontend-endpoint is not a valid URL", "endpoint", c.Loki.QueryFrontendEndpoint, "err", err)
+	}
+	if u.Host == "" {
+		return kverrors.New("-loki-query-frontend-endpoint is missing a host", "endpoint", c.Loki.QueryFrontendEndpoint)
+	}
+
+	if c.DefaultTenant != "" && strings.ContainsAny(c.DefaultTenant, "\r\n") {
+		return kverrors.New("-default-tenant must not contain newline characters")
 	}
 
 	return nil

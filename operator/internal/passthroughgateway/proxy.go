@@ -35,6 +35,16 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
+}
+
 // NewLokiRouter creates a new router that directs requests to the appropriate upstream.
 func NewLokiRouter(cfg *Config, logger logr.Logger) (*LokiRouter, error) {
 	transport, err := newTransport(cfg)
@@ -119,7 +129,7 @@ func (r *LokiRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.readProxy.ServeHTTP(w, req)
 }
 
-// InstrumentedHandler wraps an http.Handler with metrics instrumentation.
+// instrumentedHandler wraps an http.Handler with metrics instrumentation.
 func instrumentedHandler(handler http.Handler, metrics *Metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		metrics.RequestsInFlight.Inc()
