@@ -172,3 +172,93 @@ func TestPatienceSort_Determinism_Shuffled(t *testing.T) {
 		}
 	}
 }
+
+// The following tests pin the multi-column (tuple) compare semantics for
+// MinKey/MaxKey. They demonstrate cases that would fail under a naive
+// single-string concatenation of column values:
+//
+// Sort schema = [service_name, env] (two columns). Sections carry MinKey/MaxKey
+// as []string{service_name_value, env_value}. The calculator must compare these
+// element-wise (column 0 first, column 1 only if column 0 is equal). A
+// concatenated-string representation -- say, joined by some delimiter -- gets
+// these cases wrong because the delimiter byte intermixes with column-content
+// bytes at the boundary.
+
+// TestCalculateRuns_MultiColumn_PrefixOrder demonstrates the prefix case:
+// when one section's column-0 value is a strict prefix of another's, the
+// prefix is less. Concatenation with any printable separator (e.g. '|' at
+// 0x7C) reverses this whenever the next byte in the longer string is less
+// than the separator -- e.g. "api|*" vs "apiv2|*" hits '|' vs 'v' (0x7C vs
+// 0x76) and orders them backwards.
+func TestCalculateRuns_MultiColumn_PrefixOrder(t *testing.T) {
+	// Two sections, two columns each.
+	//   a: MinKey=("api","zoo")    MaxKey=("api","zzz")
+	//   b: MinKey=("apiv2","aaa")  MaxKey=("apiv2","aaa")
+	//
+	// Tuple compare on MinKey: column 0 "api" vs "apiv2" — prefix is less,
+	// so a < b. Column 1 ("zoo" vs "aaa") never inspected.
+	//
+	// a.MaxKey = ("api","zzz") < b.MinKey = ("apiv2","aaa") at column 0
+	// (same prefix logic), so the ranges do NOT overlap: one run with both
+	// sections in order.
+	a := secT("o", 0, []string{"api", "zoo"}, []string{"api", "zzz"})
+	b := secT("o", 1, []string{"apiv2", "aaa"}, []string{"apiv2", "aaa"})
+
+	got := calculateRuns([]*compactionv2pb.SectionRef{a, b})
+
+	require.Len(t, got, 1, "non-overlapping sections should form one run")
+	require.Equal(t, []*compactionv2pb.SectionRef{a, b}, got[0].sections,
+		"prefix on column 0 must place 'api' before 'apiv2' regardless of column 1")
+}
+
+// TestCalculateRuns_MultiColumn_SecondColumnDecides verifies that when
+// column 0 values tie, the comparison correctly proceeds to column 1.
+// Tests sort ordering AND non-overlapping run packing on column 1.
+func TestCalculateRuns_MultiColumn_SecondColumnDecides(t *testing.T) {
+	// All three sections share service_name="api"; they only differ on env.
+	//   a: ("api","prod")..("api","prod")     — env=prod
+	//   b: ("api","qa")..("api","qa")          — env=qa
+	//   c: ("api","staging")..("api","staging") — env=staging
+	//
+	// Lexicographic: prod < qa < staging. All three non-overlapping; one run.
+	a := secT("o", 0, []string{"api", "prod"}, []string{"api", "prod"})
+	b := secT("o", 1, []string{"api", "qa"}, []string{"api", "qa"})
+	c := secT("o", 2, []string{"api", "staging"}, []string{"api", "staging"})
+
+	// Feed in jumbled order; sort step must reorder by tuple compare.
+	got := calculateRuns([]*compactionv2pb.SectionRef{c, a, b})
+
+	require.Len(t, got, 1, "non-overlapping sections should form one run")
+	require.Equal(t, []*compactionv2pb.SectionRef{a, b, c}, got[0].sections,
+		"with equal column 0, column 1 must decide the order (prod < qa < staging)")
+}
+
+// TestCalculateRuns_MultiColumn_OverlapAcrossColumns demonstrates that
+// overlap detection works correctly across columns. The same input under a
+// single-concatenated-string MinKey/MaxKey could mistakenly treat these as
+// non-overlapping (and pack them into one run) because the byte order would
+// reverse at the column-0/column-1 boundary.
+func TestCalculateRuns_MultiColumn_OverlapAcrossColumns(t *testing.T) {
+	// a: MinKey=("api","prod")  MaxKey=("apiv2","aaa")
+	// b: MinKey=("api","zoo")   MaxKey=("api","zzz")
+	//
+	// Tuple compare sorts a < b on MinKey (col 0 prefix: "api" < "api"? equal;
+	// col 1 "prod" < "zoo"; so a.MinKey < b.MinKey).
+	//
+	// Does a contain b? a.MaxKey=("apiv2","aaa") vs b.MinKey=("api","zoo"):
+	// col 0 "apiv2" vs "api" — "api" is a prefix of "apiv2" → "api" < "apiv2"
+	// → a.MaxKey > b.MinKey. So b.MinKey falls INSIDE a's range. They overlap.
+	// Expected: 2 runs.
+	//
+	// Under a naive "join columns with '|'" encoding, a.MaxKey = "apiv2|aaa"
+	// vs b.MinKey = "api|zoo" — at position 3, 'v' (0x76) vs '|' (0x7C);
+	// 'v' < '|', so "apiv2|aaa" < "api|zoo". The encoder would conclude
+	// a.MaxKey < b.MinKey, treat them as non-overlapping, and pack them into
+	// a single run. This test pins the correct overlap detection.
+	a := secT("o", 0, []string{"api", "prod"}, []string{"apiv2", "aaa"})
+	b := secT("o", 1, []string{"api", "zoo"}, []string{"api", "zzz"})
+
+	got := calculateRuns([]*compactionv2pb.SectionRef{a, b})
+
+	require.Len(t, got, 2, "overlapping sections must produce separate runs")
+}
