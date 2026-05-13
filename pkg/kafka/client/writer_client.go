@@ -319,8 +319,8 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 	c.produceRequestsTotal.Add(float64(len(records)))
 
 	onProduceDone := func(r *kgo.Record, err error) {
-		if c.maxBufferedBytes > 0 {
-			c.bufferedBytes.Add(-int64(len(r.Value)))
+		if !errors.Is(err, kgo.ErrMaxBuffered) {
+			c.releaseBufferedBytes(len(r.Value))
 		}
 
 		resMx.Lock()
@@ -340,12 +340,12 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 	}
 
 	// Check that all records can fit within the limit.
-	var totalSize int64
+	var totalSize int
 	for _, record := range records {
-		totalSize += int64(len(record.Value))
+		totalSize += len(record.Value)
 	}
 
-	if c.maxBufferedBytes > 0 && c.bufferedBytes.Add(totalSize) > c.maxBufferedBytes {
+	if !c.reserveBufferedBytes(totalSize) {
 		// The records exceed what is left of the limit, we must fail them.
 		for _, record := range records {
 			// onProduceDone will dec the counter.
@@ -373,6 +373,39 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		// Once we're done, it's guaranteed that no more results will be appended, so we can safely return it.
 		return res
 	}
+}
+
+// reserveBufferedBytes attempts to reserve size bytes of capacity in the writer.
+// It returns true on success, otherwise false. A reservation is unsuccessful
+// if size would cause the tee to exceed maxBufferedBytes. When maxBufferedBytes
+// is zero, the limit is disabled.
+//
+// All reserved sizes must be returned by calling releaseBufferedBytes with
+// the same value.
+//
+// It is safe for concurrent use.
+func (c *Producer) reserveBufferedBytes(size int) bool {
+	for {
+		oldVal := c.bufferedBytes.Load()
+		newVal := oldVal + int64(size)
+		if c.maxBufferedBytes > 0 && newVal > c.maxBufferedBytes {
+			// If the limit is non-zero, we must first check that size can be reserved.
+			return false
+		}
+		// If we won the CAS, size was reserved, and we can return true.
+		if c.bufferedBytes.CompareAndSwap(oldVal, newVal) {
+			return true
+		}
+	}
+}
+
+// releaseBufferedBytes returns size bytes of reserved capacity to the writer.
+// It must be called whenever previously reserved capacity is no longer
+// needed.
+//
+// It is safe for concurrent use.
+func (c *Producer) releaseBufferedBytes(size int) {
+	c.bufferedBytes.Add(-int64(size))
 }
 
 // produceResultsForErr returns a [kgo.ProduceResults] that contains all records and
