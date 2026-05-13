@@ -27,26 +27,20 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 // SectionRef identifies one section in object storage with its sort-key bounds.
 //
-// The section's sort-key is the tuple (sort_schema_label_values,
-// __timestamp__) per the tenant's sort_schema (see PR #21557). To order
-// sections correctly without imposing encoding contracts on the caller, the
-// proto splits this tuple across two field categories:
+// The section's sort-key is the tuple (sort_schema_label_values, __timestamp__)
+// per the tenant's sort_schema. To order sections correctly without imposing
+// encoding contracts on the caller, the proto splits this tuple across two
+// field categories:
 //
 //   - min_key / max_key carry the sort_schema LABEL columns only, in schema
-//     order. Each element is one column value. Using repeated string --
-//     rather than a single concatenated string -- avoids the
-//     prefix/separator problem when comparing multi-column keys.
-//   - min_timestamp / max_timestamp carry the __timestamp__ column as a
-//     typed int64 (nanoseconds since epoch). Storing as int64 -- rather than
-//     as a trailing string element of min_key/max_key -- avoids the
-//     within-column encoding question: callers do not need to remember to
-//     zero-pad or big-endian-encode timestamps for byte-compare to match
-//     numeric compare.
+//     order. Each element is one column value. - min_timestamp / max_timestamp
+//     carry the __timestamp__ column as a typed int64 (nanoseconds since epoch).
+//     Storing as int64 -- rather than as a trailing string element of
+//     min_key/max_key -- avoids lexicographic sorting problems that can arise
+//     from comparing timestamps as strings.
 //
 // The composite sort key compared across sections is (min_key, min_timestamp)
-// and (max_key, max_timestamp) -- label tuple first, then timestamp -- which
-// matches the spec's stated K-way-merge order of
-// (sort_schema_label_values, timestamp).
+// and (max_key, max_timestamp) -- label tuple first, then timestamp.
 type SectionRef struct {
 	ObjectPath   string   `protobuf:"bytes,1,opt,name=object_path,json=objectPath,proto3" json:"object_path"`
 	SectionIndex int32    `protobuf:"varint,2,opt,name=section_index,json=sectionIndex,proto3" json:"section_index"`
@@ -130,7 +124,7 @@ func (m *SectionRef) GetMaxTimestamp() int64 {
 	return 0
 }
 
-// RunRef is one patience-sort pile: a sorted, non-overlapping section sequence.
+// RunRef is one pile: a sorted, non-overlapping section sequence.
 type RunRef struct {
 	Sections []*SectionRef `protobuf:"bytes,1,rep,name=sections,proto3" json:"sections"`
 }
@@ -897,7 +891,10 @@ func (m *SectionRef) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthCompactionv2
 			}
 			if (iNdEx + skippy) > l {
@@ -981,7 +978,10 @@ func (m *RunRef) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthCompactionv2
 			}
 			if (iNdEx + skippy) > l {
@@ -1097,7 +1097,10 @@ func (m *TaskSpec) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthCompactionv2
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthCompactionv2
 			}
 			if (iNdEx + skippy) > l {
@@ -1115,7 +1118,6 @@ func (m *TaskSpec) Unmarshal(dAtA []byte) error {
 func skipCompactionv2(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
-	depth := 0
 	for iNdEx < l {
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
@@ -1147,8 +1149,10 @@ func skipCompactionv2(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
+			return iNdEx, nil
 		case 1:
 			iNdEx += 8
+			return iNdEx, nil
 		case 2:
 			var length int
 			for shift := uint(0); ; shift += 7 {
@@ -1169,30 +1173,55 @@ func skipCompactionv2(dAtA []byte) (n int, err error) {
 				return 0, ErrInvalidLengthCompactionv2
 			}
 			iNdEx += length
-		case 3:
-			depth++
-		case 4:
-			if depth == 0 {
-				return 0, ErrUnexpectedEndOfGroupCompactionv2
+			if iNdEx < 0 {
+				return 0, ErrInvalidLengthCompactionv2
 			}
-			depth--
+			return iNdEx, nil
+		case 3:
+			for {
+				var innerWire uint64
+				var start int = iNdEx
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return 0, ErrIntOverflowCompactionv2
+					}
+					if iNdEx >= l {
+						return 0, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					innerWire |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				innerWireType := int(innerWire & 0x7)
+				if innerWireType == 4 {
+					break
+				}
+				next, err := skipCompactionv2(dAtA[start:])
+				if err != nil {
+					return 0, err
+				}
+				iNdEx = start + next
+				if iNdEx < 0 {
+					return 0, ErrInvalidLengthCompactionv2
+				}
+			}
+			return iNdEx, nil
+		case 4:
+			return iNdEx, nil
 		case 5:
 			iNdEx += 4
+			return iNdEx, nil
 		default:
 			return 0, fmt.Errorf("proto: illegal wireType %d", wireType)
 		}
-		if iNdEx < 0 {
-			return 0, ErrInvalidLengthCompactionv2
-		}
-		if depth == 0 {
-			return iNdEx, nil
-		}
 	}
-	return 0, io.ErrUnexpectedEOF
+	panic("unreachable")
 }
 
 var (
-	ErrInvalidLengthCompactionv2        = fmt.Errorf("proto: negative length found during unmarshaling")
-	ErrIntOverflowCompactionv2          = fmt.Errorf("proto: integer overflow")
-	ErrUnexpectedEndOfGroupCompactionv2 = fmt.Errorf("proto: unexpected end of group")
+	ErrInvalidLengthCompactionv2 = fmt.Errorf("proto: negative length found during unmarshaling")
+	ErrIntOverflowCompactionv2   = fmt.Errorf("proto: integer overflow")
 )
