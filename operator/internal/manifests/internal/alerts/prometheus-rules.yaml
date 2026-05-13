@@ -109,10 +109,12 @@ groups:
                 pod=~".*-distributor-.*"
               }[5m])
               -
-              (rate(loki_discarded_bytes_total{
-                container="loki-distributor",
-                pod=~".*-distributor-.*"
-              }[5m]) or
+              (sum without (reason) (
+                rate(loki_discarded_bytes_total{
+                  container="loki-distributor",
+                  pod=~".*-distributor-.*"
+                }[5m])
+              ) or
                rate(loki_distributor_bytes_received_total{
                  container="loki-distributor",
                  pod=~".*-distributor-.*"

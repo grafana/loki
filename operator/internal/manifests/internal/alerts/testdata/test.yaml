@@ -108,7 +108,7 @@ tests:
       # Stack2: receiving 90 MB/s, discarding 5 MB/s = 85 MB/s net
       - series: 'loki_distributor_bytes_received_total{namespace="my-ns",pod="mystack2-distributor-0",container="loki-distributor"}'
         values: '0+5662310400x5'
-      - series: 'loki_discarded_bytes_total{namespace="my-ns",pod="mystack2-distributor-0",container="loki-distributor"}'
+      - series: 'loki_discarded_bytes_total{namespace="my-ns",pod="mystack2-distributor-0",container="loki-distributor",reason="rate_limited"}'
         values: '0+314572800x5'
 
     alert_rule_test:
