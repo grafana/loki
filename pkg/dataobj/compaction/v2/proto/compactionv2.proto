@@ -13,19 +13,33 @@ option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 
 // SectionRef identifies one section in object storage with its sort-key bounds.
 //
-// min_key and max_key are tuples of column values from the tenant's
-// sort_schema (one element per column, in schema order). Using a repeated
-// string -- rather than a single concatenated string -- avoids the
-// prefix/separator problem when comparing multi-column keys: element-wise
-// lexicographic compare matches the schema's natural tuple order without
-// needing a delimiter byte that is strictly less than every byte that can
-// appear in a column value (a guarantee Prometheus label values do not
-// provide).
+// The section's sort-key is the tuple (sort_schema_label_values,
+// __timestamp__) per the tenant's sort_schema (see PR #21557). To order
+// sections correctly without imposing encoding contracts on the caller, the
+// proto splits this tuple across two field categories:
+//
+//   - min_key / max_key carry the sort_schema LABEL columns only, in schema
+//     order. Each element is one column value. Using repeated string --
+//     rather than a single concatenated string -- avoids the
+//     prefix/separator problem when comparing multi-column keys.
+//   - min_timestamp / max_timestamp carry the __timestamp__ column as a
+//     typed int64 (nanoseconds since epoch). Storing as int64 -- rather than
+//     as a trailing string element of min_key/max_key -- avoids the
+//     within-column encoding question: callers do not need to remember to
+//     zero-pad or big-endian-encode timestamps for byte-compare to match
+//     numeric compare.
+//
+// The composite sort key compared across sections is (min_key, min_timestamp)
+// and (max_key, max_timestamp) -- label tuple first, then timestamp -- which
+// matches the spec's stated K-way-merge order of
+// (sort_schema_label_values, timestamp).
 message SectionRef {
   string object_path = 1 [(gogoproto.jsontag) = "object_path"];
   int32 section_index = 2 [(gogoproto.jsontag) = "section_index"];
   repeated string min_key = 3 [(gogoproto.jsontag) = "min_key"];
   repeated string max_key = 4 [(gogoproto.jsontag) = "max_key"];
+  int64 min_timestamp = 5 [(gogoproto.jsontag) = "min_timestamp"];
+  int64 max_timestamp = 6 [(gogoproto.jsontag) = "max_timestamp"];
 }
 
 // RunRef is one patience-sort pile: a sorted, non-overlapping section sequence.
