@@ -40,6 +40,7 @@ The output is incredibly verbose as it shows the entire internal config struct u
 ### Breaking change: Removal of various configuration options
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
+- The deprecated setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
 
 Use the `deprecated-config-checker` tool to validate your `config.yaml`.
 

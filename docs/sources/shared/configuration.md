@@ -2411,7 +2411,6 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
 - `store.index-cache-read`
-- `store.index-cache-write`
 
 &nbsp;
 
@@ -2503,7 +2502,7 @@ memcached_client:
 
   # The TLS configuration.
   # The CLI flags prefix for this block configuration is:
-  # store.index-cache-write.memcached
+  # store.index-cache-read.memcached
   [<tls_config>]
 
 redis:
@@ -2598,12 +2597,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # component.
 # The CLI flags prefix for this block configuration is: store.chunks-cache-l2
 [chunk_cache_config_l2: <cache_config>]
-
-# Write dedupe cache is deprecated along with legacy index types (aws,
-# aws-dynamo, grpc-store).
-# Consider using TSDB index which does not require a write dedupe cache.
-# The CLI flags prefix for this block configuration is: store.index-cache-write
-[write_dedupe_cache_config: <cache_config>]
 
 # Chunks fetched from queriers before this duration will not be written to the
 # cache. A value of 0 will write all chunks to the cache
@@ -7380,7 +7373,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `store.chunks-cache-l2.memcached`
 - `store.chunks-cache.memcached`
 - `store.index-cache-read.memcached`
-- `store.index-cache-write.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
 - `ui.ring.etcd`
 

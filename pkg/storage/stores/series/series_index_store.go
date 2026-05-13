@@ -22,7 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	storageerrors "github.com/grafana/loki/v3/pkg/storage/errors"
@@ -70,43 +69,32 @@ var (
 
 // IndexReaderWriter implements pkg/storage/stores/index.ReaderWriter
 type IndexReaderWriter struct {
-	schema           series_index.SeriesStoreSchema
-	index            series_index.Client
-	schemaCfg        config.SchemaConfig
-	fetcher          *fetcher.Fetcher
-	chunkFilterer    chunk.RequestChunkFilterer
-	chunkBatchSize   int
-	writeDedupeCache cache.Cache
+	schema         series_index.SeriesStoreSchema
+	index          series_index.Client
+	schemaCfg      config.SchemaConfig
+	fetcher        *fetcher.Fetcher
+	chunkFilterer  chunk.RequestChunkFilterer
+	chunkBatchSize int
 }
 
 func NewIndexReaderWriter(schemaCfg config.SchemaConfig, schema series_index.SeriesStoreSchema, index series_index.Client,
-	fetcher *fetcher.Fetcher, chunkBatchSize int, writeDedupeCache cache.Cache) *IndexReaderWriter {
+	fetcher *fetcher.Fetcher, chunkBatchSize int) *IndexReaderWriter {
 	return &IndexReaderWriter{
-		schema:           schema,
-		index:            index,
-		schemaCfg:        schemaCfg,
-		fetcher:          fetcher,
-		chunkBatchSize:   chunkBatchSize,
-		writeDedupeCache: writeDedupeCache,
+		schema:         schema,
+		index:          index,
+		schemaCfg:      schemaCfg,
+		fetcher:        fetcher,
+		chunkBatchSize: chunkBatchSize,
 	}
 }
 
 func (c *IndexReaderWriter) IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
-	writeReqs, keysToCache, err := c.calculateIndexEntries(ctx, from, through, chk)
+	writeReqs, _, err := c.calculateIndexEntries(ctx, from, through, chk)
 	if err != nil {
 		return err
 	}
 
-	if err := c.index.BatchWrite(ctx, writeReqs); err != nil {
-		return err
-	}
-
-	bufs := make([][]byte, len(keysToCache))
-	err = c.writeDedupeCache.Store(ctx, keysToCache, bufs)
-	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "could not cache index in write dedupe cache", "err", err)
-	}
-	return nil
+	return c.index.BatchWrite(ctx, writeReqs)
 }
 
 // calculateIndexEntries creates a set of batched WriteRequests for all the chunks it is given.
@@ -117,21 +105,6 @@ func (c *IndexReaderWriter) calculateIndexEntries(ctx context.Context, from, thr
 	metricName := chunk.Metric.Get(model.MetricNameLabel)
 	if metricName == "" {
 		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
-	}
-
-	keys, labelEntries, err := c.schema.GetCacheKeysAndLabelWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.schemaCfg.ExternalKey(chunk.ChunkRef))
-	if err != nil {
-		return nil, nil, err
-	}
-	_, _, missing, _ := c.writeDedupeCache.Fetch(ctx, keys)
-	// keys and labelEntries are matched in order, but Fetch() may
-	// return missing keys in any order so check against all of them.
-	for _, missingKey := range missing {
-		for i, key := range keys {
-			if key == missingKey {
-				entries = append(entries, labelEntries[i]...)
-			}
-		}
 	}
 
 	chunkEntries, err := c.schema.GetChunkWriteEntries(from, through, chunk.UserID, metricName, chunk.Metric, c.schemaCfg.ExternalKey(chunk.ChunkRef))
@@ -152,7 +125,7 @@ func (c *IndexReaderWriter) calculateIndexEntries(ctx context.Context, from, thr
 		}
 	}
 
-	return result, missing, nil
+	return result, nil, nil
 }
 
 func (c *IndexReaderWriter) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {

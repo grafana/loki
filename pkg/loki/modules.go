@@ -978,7 +978,6 @@ func (t *Loki) updateConfigForShipperStore() {
 	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
 	if t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 {
 		t.Cfg.ChunkStoreConfig.DisableIndexDeduplication = true
-		t.Cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
 	}
 
 	switch true {
