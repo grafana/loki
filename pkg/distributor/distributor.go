@@ -221,7 +221,7 @@ type Distributor struct {
 	numMetadataPartitions int
 
 	// Track the maximum number of inflight bytes in the last 1 minute.
-	inflightBytes *util_metric.MaxSampleCollector
+	inflightBytes *util_metric.HighWatermarkGauge
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -411,7 +411,7 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
-		inflightBytes: util_metric.NewMaxSampleCollector(
+		inflightBytes: util_metric.NewHighWatermarkGauge(
 			"loki_distributor_max_inflight_bytes",
 			"The maximum number of inflight bytes since the last scrape.",
 		),

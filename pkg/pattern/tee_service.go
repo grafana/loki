@@ -30,7 +30,7 @@ import (
 
 // teeMetrics contains the metrics for [TeeService].
 type teeMetrics struct {
-	bufferedBytes         *metric_util.MaxSampleCollector
+	bufferedBytes         *metric_util.HighWatermarkGauge
 	ingesterAppends       *prometheus.CounterVec
 	ingesterMetricAppends *prometheus.CounterVec
 	teedStreams           *prometheus.CounterVec
@@ -41,7 +41,7 @@ type teeMetrics struct {
 // newTeeMetrics returns new teeMetrics.
 func newTeeMetrics(reg prometheus.Registerer) *teeMetrics {
 	m := teeMetrics{
-		bufferedBytes: metric_util.NewMaxSampleCollector(
+		bufferedBytes: metric_util.NewHighWatermarkGauge(
 			"pattern_ingester_tee_buffered_bytes",
 			"The current number of bytes buffered in the tee.",
 		),
