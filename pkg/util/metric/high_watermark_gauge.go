@@ -28,65 +28,65 @@ func NewHighWatermarkGauge(fqName, help string) *HighWatermarkGauge {
 }
 
 // Add adds the delta to the current value.
-func (c *HighWatermarkGauge) Add(delta int64) {
-	c.updateMaxVal(c.val.Add(delta))
+func (g *HighWatermarkGauge) Add(delta int64) {
+	g.updateMaxVal(g.val.Add(delta))
 }
 
 // Sub subtracts the delta from the current value.
-func (c *HighWatermarkGauge) Sub(delta int64) {
-	c.val.Add(-delta)
+func (g *HighWatermarkGauge) Sub(delta int64) {
+	g.val.Add(-delta)
 }
 
 // Inc increments the counter.
-func (c *HighWatermarkGauge) Inc() {
-	c.updateMaxVal(c.val.Add(1))
+func (g *HighWatermarkGauge) Inc() {
+	g.updateMaxVal(g.val.Add(1))
 }
 
 // Dec decrements the counter.
-func (c *HighWatermarkGauge) Dec() {
-	c.val.Add(-1)
+func (g *HighWatermarkGauge) Dec() {
+	g.val.Add(-1)
 }
 
 // Describe implements [prometheus.Collector].
-func (c *HighWatermarkGauge) Describe(descs chan<- *prometheus.Desc) {
-	descs <- c.desc
+func (g *HighWatermarkGauge) Describe(descs chan<- *prometheus.Desc) {
+	descs <- g.desc
 }
 
 // Collect implements [prometheus.Collector]. It reports the peak observed
 // in the last 2 minutes.
-func (c *HighWatermarkGauge) Collect(metrics chan<- prometheus.Metric) {
-	c.resetStaleMaxVal()
+func (g *HighWatermarkGauge) Collect(metrics chan<- prometheus.Metric) {
+	g.resetStaleMaxVal()
 	metrics <- prometheus.MustNewConstMetric(
-		c.desc,
+		g.desc,
 		prometheus.GaugeValue,
-		float64(c.maxVal.Load()),
+		float64(g.maxVal.Load()),
 	)
 }
 
 // resetStaleMaxVal resets max val if its stale.
-func (c *HighWatermarkGauge) resetStaleMaxVal() {
+func (g *HighWatermarkGauge) resetStaleMaxVal() {
 	for {
-		lastResetSecs := c.lastResetSecs.Load()
+		lastResetSecs := g.lastResetSecs.Load()
 		nowSecs := time.Now().Unix()
-		if nowSecs-lastResetSecs < c.resetIntervalSecs {
+		if nowSecs-lastResetSecs < g.resetIntervalSecs {
 			break
 		}
-		if c.lastResetSecs.CompareAndSwap(lastResetSecs, nowSecs) {
-			c.maxVal.Swap(0)
-			c.updateMaxVal(c.val.Load())
+		if g.lastResetSecs.CompareAndSwap(lastResetSecs, nowSecs) {
+			g.maxVal.Swap(0)
+			g.updateMaxVal(g.val.Load())
 			break
 		}
 	}
 }
 
 // updateMaxVal bumps maxVal up to newVal if newVal is larger.
-func (c *HighWatermarkGauge) updateMaxVal(newVal int64) {
+func (g *HighWatermarkGauge) updateMaxVal(newVal int64) {
 	for {
-		cur := c.maxVal.Load()
+		cur := g.maxVal.Load()
 		if newVal <= cur {
 			return
 		}
-		if c.maxVal.CompareAndSwap(cur, newVal) {
+		if g.maxVal.CompareAndSwap(cur, newVal) {
 			return
 		}
 	}
