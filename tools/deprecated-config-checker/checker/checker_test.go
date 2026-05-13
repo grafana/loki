@@ -34,6 +34,7 @@ var (
 		"compactor.deletion_mode",
 		"compactor.shared_store",
 		"compactor.shared_store_key_prefix",
+		"limits_config.unordered_writes",
 		"limits_config.enforce_metric_name",
 		"limits_config.ruler_evaluation_delay_duration",
 		"limits_config.allow_deletes",
@@ -65,7 +66,6 @@ var (
 		"ruler.remote_write.client",
 		"index_gateway.ring.replication_factor",
 		"chunk_store_config.write_dedupe_cache_config",
-		"limits_config.unordered_writes",
 		"limits_config.ruler_remote_write_url",
 		"limits_config.ruler_remote_write_timeout",
 		"limits_config.ruler_remote_write_headers",
@@ -84,16 +84,17 @@ var (
 	}
 
 	expectedRuntimeConfigDeletes = []string{
+		"overrides.foo.unordered_writes",
 		"overrides.foo.ruler_evaluation_delay_duration",
 		"overrides.foo.enforce_metric_name",
 		"overrides.foo.allow_deletes",
+		"overrides.bar.unordered_writes",
 		"overrides.bar.ruler_evaluation_delay_duration",
 		"overrides.bar.enforce_metric_name",
 		"overrides.bar.allow_deletes",
 	}
 
 	expectedRuntimeConfigDeprecates = []string{
-		"overrides.foo.unordered_writes",
 		"overrides.foo.ruler_remote_write_url",
 		"overrides.foo.ruler_remote_write_timeout",
 		"overrides.foo.ruler_remote_write_headers",
@@ -109,7 +110,6 @@ var (
 		"overrides.foo.ruler_remote_write_sigv4_config",
 		"overrides.foo.per_tenant_override_config",
 		"overrides.foo.per_tenant_override_period",
-		"overrides.bar.unordered_writes",
 		"overrides.bar.ruler_remote_write_url",
 		"overrides.bar.ruler_remote_write_timeout",
 		"overrides.bar.ruler_remote_write_headers",
