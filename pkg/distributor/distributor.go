@@ -902,7 +902,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				// Mirror Thanos quorum https://github.com/thanos-io/thanos/blob/v0.41.0/pkg/receive/handler.go#L1058
 				// Allow one failure so RF=2 matches the fault tolerance of RF≥3 and return as soon as one ingester
 				// succeeds and let the second write complete in the background.
-				if len(replicationSet.Instances) == 2 && maxErrors == 0 {
+				if d.ingestersRing.ReplicationFactor() == 2 && maxErrors == 0 {
 					maxErrors = 1
 				}
 				streamTrackers[i] = streamTracker{

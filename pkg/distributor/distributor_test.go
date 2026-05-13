@@ -613,12 +613,6 @@ func TestDistributorPushErrors(t *testing.T) {
 		require.Equal(t, 0, len(ingesters[0].pushed))
 		require.Equal(t, 0, len(ingesters[2].pushed))
 	})
-}
-
-// Test RF=2 behaviour with one failure allowed.
-func TestDistributorPushErrorsRF2(t *testing.T) {
-	limits := &validation.Limits{}
-	flagext.DefaultValues(limits)
 
 	t.Run("with RF=2 a single ingester failure still succeeds", func(t *testing.T) {
 		distributors, ingesters := prepareWithRF(t, 1, 2, 2, limits, nil)
@@ -673,6 +667,19 @@ func TestDistributorPushErrorsRF2(t *testing.T) {
 		require.Eventually(t, func() bool {
 			return len(ingesters[1].pushed) == 1
 		}, 2*time.Second, 10*time.Millisecond)
+	})
+
+	t.Run("with RF=3 degraded to 2 instances a single failure still errors", func(t *testing.T) {
+		distributors, ingesters := prepareWithRF(t, 1, 2, 3, limits, nil)
+		ingesters[0].failAfter = 5 * time.Millisecond
+		ingesters[1].succeedAfter = 10 * time.Millisecond
+
+		request := makeWriteRequest(10, 64)
+		_, err := distributors[0].Push(ctx, request)
+
+		// minSuccess=2 with only 2 instances means one failure is fatal.
+		require.Error(t, err)
+		require.Equal(t, 0, len(ingesters[0].pushed))
 	})
 }
 
