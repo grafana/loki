@@ -128,7 +128,7 @@ This validation error is returned when a stream is submitted without any labels.
 
 The `too_far_behind` validation error is returned when lines in question are older than half of `-ingester.max-chunk-age` compared to the newest line in the stream.
 
-This problem can be solved by ensuring that log delivery is configured correctly.
+More details can be found [here](/docs/loki/<LOKI_VERSION>/configuration/#accept-out-of-order-writes) about the Loki ordering constraints.
 
 Alternatively the allowed period for out-of-order logs cound be increased by setting the `max_chunk_age` value. However, **it is recommended to resist modifying the default value of `max_chunk_age`** as this has other implications, and to instead try track down the cause for delayed logged delivery. It should also be noted that this a per-stream error, so by simply splitting streams (adding more labels) this problem can be circumvented, especially if multiple hosts are sending samples for a single stream.
 

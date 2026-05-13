@@ -7563,50 +7563,18 @@ multi_kv_config:
 
 ## Accept out-of-order writes
 
-Since the beginning of Loki, log entries had to be written to Loki in order
-by time.
-This limitation has been lifted.
-Out-of-order writes are enabled globally by default, but can be disabled/enabled
-on a cluster or per-tenant basis.
-
-- To disable out-of-order writes for all tenants,
-place in the `limits_config` section:
-
-    ```yaml
-    limits_config:
-        unordered_writes: false
-    ```
-
-- To disable out-of-order writes for specific tenants,
-configure a runtime configuration file:
-
-    ```yaml
-    runtime_config:
-      file: overrides.yaml
-    ```
-
-    In the `overrides.yaml` file, add `unordered_writes` for each tenant
-    permitted to have out-of-order writes:
-
-    ```yaml
-    overrides:
-      "tenantA":
-        unordered_writes: false
-    ```
-
-How far into the past accepted out-of-order log entries may be
-is configurable with `max_chunk_age`.
-`max_chunk_age` defaults to 2 hour.
-Loki calculates the earliest time that out-of-order entries may have
-and be accepted with
+Loki accepts log entries of a stream to arrive out of order by time.
+How far into the past accepted out-of-order log entries may be is configurable with `max_chunk_age`.
+The setting `max_chunk_age` defaults to 2 hours, but it is advised to not increase it.
+Loki calculates the earliest time that out-of-order entries may have and be accepted with.
 
 ```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
-This means the allowed out-of-order window is half of the configured max_chunk_age.
+This means the allowed out-of-order window is half of the configured `max_chunk_age`.
 
 Log entries with timestamps that are after this earliest time are accepted.
-Log entries further back in time return an out-of-order error.
+Log entries further back in time return a `too_far_behind` error.
 
 For example, if `max_chunk_age` is 2 hours
 and the stream `{foo="bar"}` has one entry at `8:00`,
