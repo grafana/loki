@@ -30,9 +30,24 @@ func NewMaxSampleCollector(fqName, help string) *MaxSampleCollector {
 	return c
 }
 
-// Inc adds the delta to the current value.
-func (c *MaxSampleCollector) Inc(delta int64) {
+// Add adds the delta to the current value.
+func (c *MaxSampleCollector) Add(delta int64) {
 	c.val.Add(delta)
+}
+
+// Sub subtracts the delta to the current value.
+func (c *MaxSampleCollector) Sub(delta int64) {
+	c.val.Add(-delta)
+}
+
+// Inc increments the counter.
+func (c *MaxSampleCollector) Inc() {
+	c.val.Add(1)
+}
+
+// Dec decrements the counter.
+func (c *MaxSampleCollector) Dec() {
+	c.val.Add(-1)
 }
 
 // Describe implements [prometheus.Collector].
