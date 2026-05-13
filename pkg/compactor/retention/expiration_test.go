@@ -130,6 +130,63 @@ func Test_expirationChecker_Expired(t *testing.T) {
 	}
 }
 
+func Test_expirationChecker_Expired_prefersIngestedAtWhenPresent(t *testing.T) {
+	t1 := defaultLimitsTestConfig()
+	t1.RetentionPeriod = model.Duration(time.Hour)
+
+	f := fakeOverrides{
+		tenantLimits: map[string]*validation.Limits{
+			"1": &t1,
+		},
+	}
+	o, err := overridesTestConfig(defaultLimitsTestConfig(), f)
+	require.NoError(t, err)
+
+	e := NewExpirationChecker(o)
+	now := model.Now()
+
+	tests := []struct {
+		name  string
+		chunk Chunk
+		want  bool
+	}{
+		{
+			name:  "zero ingested at within retention falls back to through",
+			chunk: Chunk{Through: now.Add(-30 * time.Minute)},
+			want:  false,
+		},
+		{
+			name:  "zero ingested at past retention falls back to through",
+			chunk: Chunk{Through: now.Add(-2 * time.Hour)},
+			want:  true,
+		},
+		{
+			name: "non-zero ingested at within retention uses ingested at",
+			chunk: Chunk{
+				Through:    now.Add(-24 * time.Hour),
+				IngestedAt: now.Add(-30 * time.Minute),
+			},
+			want: false,
+		},
+		{
+			name: "non-zero ingested at past retention uses ingested at",
+			chunk: Chunk{
+				Through:    now.Add(-30 * time.Minute),
+				IngestedAt: now.Add(-2 * time.Hour),
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, nonDeletedIntervalFilters := e.Expired([]byte("1"), tt.chunk, labels.EmptyLabels(), nil, "", now)
+			require.Equal(t, tt.want, actual)
+			require.Nil(t, nonDeletedIntervalFilters)
+		})
+	}
+}
+
 func TestTenantsRetention_RetentionPeriodFor(t *testing.T) {
 	sevenDays, err := model.ParseDuration("720h")
 	require.NoError(t, err)

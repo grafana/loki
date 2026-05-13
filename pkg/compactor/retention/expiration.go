@@ -61,7 +61,11 @@ func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels
 	if period <= 0 {
 		return false, nil
 	}
-	return now.Sub(chk.Through) > period, nil
+	expirationFrom := chk.Through
+	if chk.IngestedAt != 0 {
+		expirationFrom = chk.IngestedAt
+	}
+	return now.Sub(expirationFrom) > period, nil
 }
 
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.
