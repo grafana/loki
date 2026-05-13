@@ -1,5 +1,6 @@
 rule_files:
   - ../prometheus-alerts.yaml
+  - ../prometheus-rules.yaml
 
 evaluation_interval: 1m
 
@@ -73,6 +74,42 @@ tests:
         values: '0+25x20'
       - series: 'loki_ingester_chunks_flush_requests_total{namespace="my-ns", pod="ingester-0"}'
         values: '0+100x20'
+
+      - series: 'lokistack_info{stack_namespace="my-ns",stack_name="mystack",size="1x.small"}'
+        values: '1+0x5'
+      - series: 'lokistack_storage_info{stack_namespace="my-ns",stack_name="mystack",size="1x.small",backend_type="s3",credential_mode="static"}'
+        values: '1+0x5'
+      - series: 'lokistack_storage_schema_version{stack_namespace="my-ns",stack_name="mystack",size="1x.small",version="v12",effective_date="2023-01-01"}'
+        values: '1+0x5'
+      - series: 'lokistack_storage_schema_version{stack_namespace="my-ns",stack_name="mystack",size="1x.small",version="v13",effective_date="2024-06-01"}'
+        values: '1+0x5'
+      - series: 'lokistack_global_ingestion_rate_limit_mb{stack_namespace="my-ns",stack_name="mystack",size="1x.small"}'
+        values: '100+0x5'
+      - series: 'lokistack_component_replicas{stack_namespace="my-ns",stack_name="mystack",size="1x.medium",component="ingester"}'
+        values: '5+0x5'
+
+      # Ingester container metrics for actual resource consumption
+      # 2 ingester replicas, 0.5 CPU cores each, 2GB memory each
+      - series: 'container_cpu_usage_seconds_total{namespace="my-ns",pod="mystack-ingester-0",container="loki-ingester"}'
+        values: '0+30x5'
+      - series: 'container_cpu_usage_seconds_total{namespace="my-ns",pod="mystack-ingester-1",container="loki-ingester"}'
+        values: '0+30x5'
+      - series: 'container_memory_working_set_bytes{namespace="my-ns",pod="mystack-ingester-0",container="loki-ingester"}'
+        values: '2147483648+0x5'
+      - series: 'container_memory_working_set_bytes{namespace="my-ns",pod="mystack-ingester-1",container="loki-ingester"}'
+        values: '2147483648+0x5'
+
+      # Ingestion rate metrics
+      # Stack1: receiving 80 MB/s, discarding 5 MB/s = 75 MB/s net
+      - series: 'loki_distributor_bytes_received_total{namespace="my-ns",pod="mystack1-distributor-0",container="loki-distributor"}'
+        values: '0+5033164800x5'
+      - series: 'loki_discarded_bytes_total{namespace="my-ns",pod="mystack1-distributor-0",container="loki-distributor"}'
+        values: '0+314572800x5'
+      # Stack2: receiving 90 MB/s, discarding 5 MB/s = 85 MB/s net
+      - series: 'loki_distributor_bytes_received_total{namespace="my-ns",pod="mystack2-distributor-0",container="loki-distributor"}'
+        values: '0+5662310400x5'
+      - series: 'loki_discarded_bytes_total{namespace="my-ns",pod="mystack2-distributor-0",container="loki-distributor"}'
+        values: '0+314572800x5'
 
     alert_rule_test:
       - eval_time: 16m
@@ -213,7 +250,7 @@ tests:
               description: 'The LokiStack "mystack" in namespace "my-ns" has components that are not ready.'
               summary: "One or more LokiStack components are not ready."
               runbook_url: "[[ .RunbookURL ]]#Lokistack-Components-Not-Ready-Warning"
-      - eval_time: 16m  
+      - eval_time: 16m
         alertname: LokiIngesterFlushFailureRateCritical
         exp_alerts:
           - exp_labels:
@@ -227,3 +264,49 @@ tests:
                 25%. This requires immediate attention as data is
                 not being flushed to the storage. Validate if the storage configuration is still valid and if the storage is
                 still reachable. Current failure rate: 25% Threshold: 20%
+
+    promql_expr_test:
+      - eval_time: 5m
+        expr: loki_operator:lokistack_info:count
+        exp_samples:
+          - labels: 'loki_operator:lokistack_info:count{size="1x.small"}'
+            value: 1
+      - eval_time: 5m
+        expr: loki_operator:lokistack_storage_info:count
+        exp_samples:
+          - labels: 'loki_operator:lokistack_storage_info:count{backend_type="s3",credential_mode="static"}'
+            value: 1
+      - eval_time: 5m
+        expr: loki_operator:lokistack_storage_schema_version:count
+        exp_samples:
+          - labels: 'loki_operator:lokistack_storage_schema_version:count{version="v12"}'
+            value: 1
+          - labels: 'loki_operator:lokistack_storage_schema_version:count{version="v13"}'
+            value: 1
+      - eval_time: 5m
+        expr: loki_operator:lokistack_component_custom_replicas:count
+        exp_samples:
+          - labels: 'loki_operator:lokistack_component_custom_replicas:count{component="ingester"}'
+            value: 1
+      - eval_time: 5m
+        expr: loki_operator:lokistack_global_ingestion_rate_limit_mb:avg
+        exp_samples:
+          - labels: 'loki_operator:lokistack_global_ingestion_rate_limit_mb:avg{}'
+            value: 100
+      - eval_time: 5m
+        expr: loki_operator:lokistack_ingester_cpu_cores:sum
+        exp_samples:
+          - labels: 'loki_operator:lokistack_ingester_cpu_cores:sum{stack_namespace="my-ns",stack_name="mystack"}'
+            value: 1
+      - eval_time: 5m
+        expr: loki_operator:lokistack_ingester_memory_working_set_bytes:sum
+        exp_samples:
+          - labels: 'loki_operator:lokistack_ingester_memory_working_set_bytes:sum{stack_namespace="my-ns",stack_name="mystack"}'
+            value: 4294967296
+      - eval_time: 5m
+        expr: loki_operator:lokistack_ingestion_rate_mb_per_second:sum
+        exp_samples:
+          - labels: 'loki_operator:lokistack_ingestion_rate_mb_per_second:sum{stack_namespace="my-ns",stack_name="mystack1"}'
+            value: 75
+          - labels: 'loki_operator:lokistack_ingestion_rate_mb_per_second:sum{stack_namespace="my-ns",stack_name="mystack2"}'
+            value: 85
