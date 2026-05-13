@@ -29,6 +29,53 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 )
 
+// teeMetrics contains the metrics for [TeeService].
+type teeMetrics struct {
+	bufferedBytes         *metric_util.MaxSampleCollector
+	ingesterAppends       *prometheus.CounterVec
+	ingesterMetricAppends *prometheus.CounterVec
+	teedStreams           *prometheus.CounterVec
+	teedRequests          *prometheus.CounterVec
+	sendDuration          *instrument.HistogramCollector
+}
+
+// newTeeMetrics returns new teeMetrics.
+func newTeeMetrics(reg prometheus.Registerer) *teeMetrics {
+	m := teeMetrics{
+		bufferedBytes: metric_util.NewMaxSampleCollector(
+			"pattern_ingester_tee_buffered_bytes",
+			"The current number of bytes buffered in the tee.",
+		),
+		ingesterAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "pattern_ingester_appends_total",
+			Help: "The total number of batch appends sent to pattern ingesters.",
+		}, []string{"ingester", "status"}),
+		ingesterMetricAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "pattern_ingester_metric_appends_total",
+			Help: "The total number of metric only batch appends sent to pattern ingesters. These requests will not be processed for patterns.",
+		}, []string{"status"}),
+		teedStreams: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "pattern_ingester_teed_streams_total",
+			Help: "The total number of streams teed to the pattern ingester.",
+		}, []string{"status"}),
+		teedRequests: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "pattern_ingester_teed_requests_total",
+			Help: "The total number of batch appends sent to fallback pattern ingesters, for not owned streams.",
+		}, []string{"status"}),
+		sendDuration: instrument.NewHistogramCollector(
+			promauto.With(reg).NewHistogramVec(
+				prometheus.HistogramOpts{
+					Name:    "pattern_ingester_tee_send_duration_seconds",
+					Help:    "Time spent sending batches from the tee to the pattern ingester",
+					Buckets: prometheus.DefBuckets,
+				}, instrument.HistogramCollectorBuckets,
+			),
+		),
+	}
+	reg.MustRegister(m.bufferedBytes)
+	return &m
+}
+
 type TeeService struct {
 	cfg        Config
 	limits     Limits
@@ -46,13 +93,7 @@ type TeeService struct {
 	// client requests in the flushQueue.
 	bufferedBytes atomic.Int64
 
-	// Metrics.
-	bufferedBytesMaxSample *metric_util.MaxSampleCollector
-	ingesterAppends        *prometheus.CounterVec
-	ingesterMetricAppends  *prometheus.CounterVec
-	teedStreams            *prometheus.CounterVec
-	teedRequests           *prometheus.CounterVec
-	sendDuration           *instrument.HistogramCollector
+	metrics *teeMetrics
 }
 
 func NewTeeService(
@@ -61,55 +102,22 @@ func NewTeeService(
 	ringClient RingClient,
 	tenantCfgs *runtime.TenantConfigs,
 	metricsNamespace string,
-	registerer prometheus.Registerer,
+	reg prometheus.Registerer,
 	logger log.Logger,
 ) (*TeeService, error) {
-	registerer = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer)
-
+	reg = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", reg)
 	t := &TeeService{
 		logger:     log.With(logger, "component", "pattern-tee"),
 		cfg:        cfg,
 		limits:     limits,
 		tenantCfgs: tenantCfgs,
 		ringClient: ringClient,
-
 		wg:         &sync.WaitGroup{},
 		bufMtx:     &sync.Mutex{},
 		buf:        make(map[string][]distributor.KeyedStream),
 		flushQueue: make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
-
-		bufferedBytesMaxSample: metric_util.NewMaxSampleCollector(
-			"pattern_ingester_tee_buffered_bytes",
-			"The current number of bytes buffered in the tee.",
-		),
-		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "pattern_ingester_appends_total",
-			Help: "The total number of batch appends sent to pattern ingesters.",
-		}, []string{"ingester", "status"}),
-		ingesterMetricAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "pattern_ingester_metric_appends_total",
-			Help: "The total number of metric only batch appends sent to pattern ingesters. These requests will not be processed for patterns.",
-		}, []string{"status"}),
-		teedStreams: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "pattern_ingester_teed_streams_total",
-			Help: "The total number of streams teed to the pattern ingester.",
-		}, []string{"status"}),
-		teedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "pattern_ingester_teed_requests_total",
-			Help: "The total number of batch appends sent to fallback pattern ingesters, for not owned streams.",
-		}, []string{"status"}),
-		sendDuration: instrument.NewHistogramCollector(
-			promauto.With(registerer).NewHistogramVec(
-				prometheus.HistogramOpts{
-					Name:    "pattern_ingester_tee_send_duration_seconds",
-					Help:    "Time spent sending batches from the tee to the pattern ingester",
-					Buckets: prometheus.DefBuckets,
-				}, instrument.HistogramCollectorBuckets,
-			),
-		),
+		metrics:    newTeeMetrics(reg),
 	}
-	registerer.MustRegister(t.bufferedBytesMaxSample)
-
 	return t, nil
 }
 
@@ -172,13 +180,13 @@ func (ts *TeeService) Start(runCtx context.Context) error {
 		}
 	}()
 
-	_ = services.StartAndAwaitRunning(runCtx, ts.bufferedBytesMaxSample)
+	_ = services.StartAndAwaitRunning(runCtx, ts.metrics.bufferedBytes)
 	return nil
 }
 
 func (ts *TeeService) WaitUntilDone() {
 	ts.wg.Wait()
-	_ = services.StopAndAwaitTerminated(context.TODO(), ts.bufferedBytesMaxSample)
+	_ = services.StopAndAwaitTerminated(context.TODO(), ts.metrics.bufferedBytes)
 }
 
 func (ts *TeeService) flush() {
@@ -232,9 +240,9 @@ func (ts *TeeService) flush() {
 				reqs:         reqs,
 				size:         totalSize,
 			}:
-				ts.teedRequests.WithLabelValues("queued").Inc()
+				ts.metrics.teedRequests.WithLabelValues("queued").Inc()
 			default:
-				ts.teedRequests.WithLabelValues("dropped").Inc()
+				ts.metrics.teedRequests.WithLabelValues("dropped").Inc()
 				ts.releaseBufferedBytes(totalSize)
 			}
 		}
@@ -259,7 +267,7 @@ func (ts *TeeService) batchesForTenant(
 			Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 		if err != nil || len(replicationSet.Instances) == 0 {
 			ts.releaseBufferedBytes(stream.Stream.Size())
-			ts.teedStreams.WithLabelValues("dropped").Inc()
+			ts.metrics.teedStreams.WithLabelValues("dropped").Inc()
 			continue
 		}
 
@@ -271,7 +279,7 @@ func (ts *TeeService) batchesForTenant(
 		}
 
 		batch.Streams = append(batch.Streams, stream.Stream)
-		ts.teedStreams.WithLabelValues("batched").Inc()
+		ts.metrics.teedStreams.WithLabelValues("batched").Inc()
 	}
 
 	streamCount := uint64(len(streams))
@@ -324,7 +332,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 		_ = instrument.CollectedRequest(
 			ctx,
 			"FlushTeedLogsToPatternIngester",
-			ts.sendDuration,
+			ts.metrics.sendDuration,
 			instrument.ErrorCode,
 			func(ctx context.Context) error {
 				sp := spanlogger.FromContext(ctx, ts.logger)
@@ -342,8 +350,8 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 				_, err = client.(logproto.PatternClient).Push(ctx, req)
 				if err == nil {
 					// Success here means the stream will be processed for both metrics and patterns
-					ts.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
-					ts.ingesterMetricAppends.WithLabelValues("success").Inc()
+					ts.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
+					ts.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
 
 					// limit logged labels to 1000
 					labelsLimit := len(req.Streams)
@@ -383,7 +391,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 				}
 
 				// The pattern ingester appends failed, but we can retry the metric append
-				ts.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "fail").Inc()
+				ts.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "fail").Inc()
 				level.Error(ts.logger).Log("msg", "failed to send patterns to pattern ingester", "err", err)
 
 				// Pattern ingesters serve 2 functions, processing patterns and aggregating metrics.
@@ -398,7 +406,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 				replicationSet, err := ts.ringClient.Ring().
 					GetReplicationSetForOperation(ring.WriteNoExtend)
 				if err != nil || len(replicationSet.Instances) == 0 {
-					ts.ingesterMetricAppends.WithLabelValues("fail").Inc()
+					ts.metrics.ingesterMetricAppends.WithLabelValues("fail").Inc()
 					level.Error(ts.logger).Log(
 						"msg", "failed to send metrics to fallback pattern ingesters",
 						"num_instances", len(replicationSet.Instances),
@@ -426,13 +434,13 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 							continue
 						}
 
-						ts.ingesterMetricAppends.WithLabelValues("success").Inc()
+						ts.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
 						// bail after any success to prevent sending more than one
 						return nil
 					}
 				}
 
-				ts.ingesterMetricAppends.WithLabelValues("fail").Inc()
+				ts.metrics.ingesterMetricAppends.WithLabelValues("fail").Inc()
 				level.Error(ts.logger).Log(
 					"msg", "failed to send metrics to fallback pattern ingesters. exhausted all fallback instances",
 					"addresses", strings.Join(fallbackAddrs, ", "),
@@ -445,11 +453,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 
 // Duplicate Implements distributor.Tee which is used to tee distributor requests to pattern ingesters.
 func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []distributor.KeyedStream, _ *distributor.PushTracker) {
-	if !ts.cfg.Enabled {
-		return
-	}
-
-	if len(streams) == 0 {
+	if !ts.cfg.Enabled || len(streams) == 0 {
 		return
 	}
 
@@ -473,7 +477,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 		// Check that the stream is allowed within the current limit.
 		size := stream.Stream.Size()
 		if !ts.tryReserveBufferedBytes(size) {
-			ts.teedStreams.WithLabelValues("dropped").Inc()
+			ts.metrics.teedStreams.WithLabelValues("dropped").Inc()
 			continue
 		}
 
@@ -489,7 +493,7 @@ func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
 	maxBufferedBytes := int64(ts.cfg.TeeConfig.MaxBufferedBytes)
 	if maxBufferedBytes == 0 {
 		// The limit is disabled, size can be reserved.
-		ts.bufferedBytesMaxSample.Add(int64(size))
+		ts.metrics.bufferedBytes.Add(int64(size))
 		return true
 	}
 	for {
@@ -502,7 +506,7 @@ func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
 		// If we won the CAS, our new size was reserved, and we can return true.
 		// If someone else won the CAS, we must loop and make another attempt.
 		if ts.bufferedBytes.CompareAndSwap(oldVal, newVal) {
-			ts.bufferedBytesMaxSample.Add(int64(size))
+			ts.metrics.bufferedBytes.Add(int64(size))
 			return true
 		}
 	}
@@ -513,11 +517,11 @@ func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
 func (ts *TeeService) releaseBufferedBytes(size int) {
 	maxBufferedBytes := uint64(ts.cfg.TeeConfig.MaxBufferedBytes)
 	if maxBufferedBytes == 0 {
-		ts.bufferedBytesMaxSample.Sub(int64(size))
+		ts.metrics.bufferedBytes.Sub(int64(size))
 		return
 	}
 	ts.bufferedBytes.Add(-int64(size))
-	ts.bufferedBytesMaxSample.Sub(int64(size))
+	ts.metrics.bufferedBytes.Sub(int64(size))
 }
 
 func (ts *TeeService) Register(_ context.Context, _ string, _ []distributor.KeyedStream, _ *distributor.PushTracker) {
