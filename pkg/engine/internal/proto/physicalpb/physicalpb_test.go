@@ -235,8 +235,8 @@ func Test_Node(t *testing.T) {
 				NodeID:                  ulid.Make(),
 				Tenant:                  "29",
 				ToCWindowStart:          1_715_000_000_000_000_000,
-				CompactedLogObjectPaths: []string{"tenants/29/objects/a.dataobj", "tenants/29/objects/b.dataobj"},
-				SourceIndexPaths:        []string{"tenants/29/indexes/x.dataobj", "tenants/29/indexes/y.dataobj"},
+				CompactedLogObjectPaths: []string{"tenants/29/objects/a.dataobj", "tenants/29/objects/b.dataobj", "tenants/29/objects/c.dataobj"},
+				SourceIndexPaths:        []string{"tenants/29/indexes/x.dataobj"},
 				OutputIndexPath:         "tenants/29/indexes/out.dataobj",
 				MarkerPath:              "dataobj/compaction/in-flight/abc.json",
 				TaskTTL:                 30 * time.Minute,
@@ -264,6 +264,51 @@ func Test_Node(t *testing.T) {
 			require.Equal(t, expectedOutput, actualOutput, "Unmarshaled plan from protobuf does not match origianl")
 		})
 	}
+}
+
+// TestRoundTrip_IndexConsolidate_FieldLevel asserts every IndexConsolidate
+// field round-trips by value, not by tree-printed equality. This catches
+// regressions (e.g. swapping CompactedLogObjectPaths and SourceIndexPaths)
+// that the tree-equality check would miss because the printer renders both
+// slices as counts only.
+func TestRoundTrip_IndexConsolidate_FieldLevel(t *testing.T) {
+	src := &physical.IndexConsolidate{
+		NodeID:                  ulid.Make(),
+		Tenant:                  "29",
+		ToCWindowStart:          1_715_000_000_000_000_000,
+		CompactedLogObjectPaths: []string{"compacted/a", "compacted/b", "compacted/c"},
+		SourceIndexPaths:        []string{"source/x"},
+		OutputIndexPath:         "tenants/29/indexes/out.dataobj",
+		MarkerPath:              "dataobj/compaction/in-flight/abc.json",
+		TaskTTL:                 30 * time.Minute,
+	}
+
+	var graph dag.Graph[physical.Node]
+	graph.Add(src)
+	plan := physical.FromGraph(graph)
+
+	var protoPlan physicalpb.Plan
+	require.NoError(t, protoPlan.UnmarshalPhysical(plan))
+
+	roundTrip, err := protoPlan.MarshalPhysical()
+	require.NoError(t, err)
+
+	root, err := roundTrip.Root()
+	require.NoError(t, err)
+	got, ok := root.(*physical.IndexConsolidate)
+	require.True(t, ok, "round-tripped root must be *physical.IndexConsolidate, got %T", root)
+
+	require.Equal(t, src.Tenant, got.Tenant)
+	require.Equal(t, src.ToCWindowStart, got.ToCWindowStart)
+	require.Equal(t, src.CompactedLogObjectPaths, got.CompactedLogObjectPaths)
+	require.Equal(t, src.SourceIndexPaths, got.SourceIndexPaths)
+	require.Equal(t, src.OutputIndexPath, got.OutputIndexPath)
+	require.Equal(t, src.MarkerPath, got.MarkerPath)
+	require.Equal(t, src.TaskTTL, got.TaskTTL)
+	// NodeID is preserved through the round-trip via the proto Node.Id
+	// envelope: unmarshal_node.go stores from.ID() into Node.Id.Value, and
+	// Node.MarshalPhysical passes it back to the kind-specific marshaler.
+	require.Equal(t, src.NodeID, got.NodeID)
 }
 
 func Test_Expression(t *testing.T) {

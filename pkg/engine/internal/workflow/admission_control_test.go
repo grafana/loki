@@ -95,3 +95,21 @@ func TestAdmissionControl_typeFor_IndexConsolidate(t *testing.T) {
 	}
 	require.Equal(t, taskTypeCompaction, ac.typeFor(task))
 }
+
+// TestAdmissionControl_typeFor_CompactionPrecedesScan verifies that a task
+// containing both a compaction node and a scan node is classified into the
+// compaction lane, not the scan lane. This is a guardrail for A9's
+// CompactionMerge node which itself scans data objects.
+func TestAdmissionControl_typeFor_CompactionPrecedesScan(t *testing.T) {
+	ac := newAdmissionControl(math.MaxInt64, math.MaxInt64, math.MaxInt64)
+
+	fragment := dag.Graph[physical.Node]{}
+	fragment.Add(&physical.IndexConsolidate{NodeID: ulid.Make()})
+	fragment.Add(&physical.DataObjScan{NodeID: ulid.Make()})
+
+	task := &Task{
+		ULID:     ulid.Make(),
+		Fragment: physical.FromGraph(fragment),
+	}
+	require.Equal(t, taskTypeCompaction, ac.typeFor(task))
+}

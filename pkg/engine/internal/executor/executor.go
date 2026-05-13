@@ -639,6 +639,15 @@ func nodeAttributes(n physical.Node) []attribute.KeyValue {
 			attribute.Int("num_predicates", len(n.Predicates)),
 			attribute.Int("num_projections", len(n.Projections)),
 		)
+
+	case *physical.IndexConsolidate:
+		attrs = append(attrs,
+			attribute.String("tenant", n.Tenant),
+			attribute.String("output_index_path", n.OutputIndexPath),
+			attribute.String("marker_path", n.MarkerPath),
+			attribute.Int("num_log_objects", len(n.CompactedLogObjectPaths)),
+			attribute.Int("num_source_indexes", len(n.SourceIndexPaths)),
+		)
 	default:
 		// do nothing.
 	}
