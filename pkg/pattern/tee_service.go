@@ -500,7 +500,7 @@ func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
 			return false
 		}
 		// If we won the CAS, our new size was reserved, and we can return true.
-		// If someone else round the CAS, we must loop and make another attempt.
+		// If someone else won the CAS, we must loop and make another attempt.
 		if ts.bufferedBytes.CompareAndSwap(oldVal, newVal) {
 			ts.bufferedBytesMaxSample.Add(int64(size))
 			return true
