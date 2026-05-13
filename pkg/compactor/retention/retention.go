@@ -29,9 +29,10 @@ import (
 var chunkBucket = []byte("chunks")
 
 type Chunk struct {
-	ChunkID string
-	From    model.Time
-	Through model.Time
+	ChunkID    string
+	From       model.Time
+	Through    model.Time
+	IngestedAt model.Time
 }
 
 func (c Chunk) String() string {

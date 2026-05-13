@@ -333,9 +333,10 @@ func (c *compactedIndex) ForEachSeries(ctx context.Context, callback retention.S
 			logprotoChunkRef.Checksum = chk.Checksum
 
 			series.AppendChunks(retention.Chunk{
-				ChunkID: schemaCfg.ExternalKey(logprotoChunkRef),
-				From:    logprotoChunkRef.From,
-				Through: logprotoChunkRef.Through,
+				ChunkID:    schemaCfg.ExternalKey(logprotoChunkRef),
+				From:       logprotoChunkRef.From,
+				Through:    logprotoChunkRef.Through,
+				IngestedAt: model.Time(chk.IngestedAt),
 			})
 		}
 		if ctx.Err() != nil {

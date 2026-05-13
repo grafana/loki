@@ -214,6 +214,17 @@ func buildChunkMetas(from, to int64, span ...int64) index.ChunkMetas {
 	return chunkMetas
 }
 
+func withIngestedAt(chunkMetas index.ChunkMetas, ingestedAt int64) index.ChunkMetas {
+	withIngestedAt := make(index.ChunkMetas, len(chunkMetas))
+	copy(withIngestedAt, chunkMetas)
+
+	for i := range withIngestedAt {
+		withIngestedAt[i].IngestedAt = ingestedAt
+	}
+
+	return withIngestedAt
+}
+
 func buildUserID(i int) string {
 	return fmt.Sprintf("user_%d", i)
 }
@@ -631,9 +642,10 @@ func chunkMetasToRetentionChunk(schemaCfg config.SchemaConfig, userID string, lb
 	chunkEntries := make([]retention.Chunk, 0, len(chunkMetas))
 	for _, chunkMeta := range chunkMetas {
 		chunkEntries = append(chunkEntries, retention.Chunk{
-			ChunkID: schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls)),
-			From:    chunkMeta.From(),
-			Through: chunkMeta.Through(),
+			ChunkID:    schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls)),
+			From:       chunkMeta.From(),
+			Through:    chunkMeta.Through(),
+			IngestedAt: model.Time(chunkMeta.IngestedAt),
 		})
 	}
 
@@ -926,6 +938,54 @@ func TestIteratorContextCancelation(t *testing.T) {
 	})
 
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestCompactedIndexForEachSeriesPropagatesIngestedAt(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		schema     string
+		chunkMetas index.ChunkMetas
+	}{
+		{
+			name:       "v3 leaves ingested at zero",
+			schema:     "v13",
+			chunkMetas: buildChunkMetas(0, 0),
+		},
+		{
+			name:       "v4 propagates ingested at",
+			schema:     "v14",
+			chunkMetas: withIngestedAt(buildChunkMetas(0, 0), 1234),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			periodConfig := config.PeriodConfig{
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+				},
+				Schema: tc.schema,
+			}
+
+			indexFormat, err := periodConfig.TSDBFormat()
+			require.NoError(t, err)
+
+			builder := NewBuilder(indexFormat)
+			lbls := mustParseLabels(`{foo="bar"}`)
+			stream := buildStream(lbls, tc.chunkMetas, "")
+			builder.AddSeries(stream.labels, stream.fp, stream.chunks)
+			builder.FinalizeChunks()
+
+			indexBuckets := IndexBuckets(model.Now(), model.Now(), []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: model.Now()})})
+			compactedIndex := newCompactedIndex(context.Background(), indexBuckets[0].Prefix, buildUserID(0), t.TempDir(), periodConfig, builder)
+
+			var got []retention.Chunk
+			err = compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
+				got = append(got, series.Chunks()...)
+				return nil
+			})
+			require.NoError(t, err)
+			require.Equal(t, chunkMetasToRetentionChunk(config.SchemaConfig{Configs: []config.PeriodConfig{periodConfig}}, buildUserID(0), lbls, tc.chunkMetas), got)
+		})
+	}
 }
 
 type testContext struct {
