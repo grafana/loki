@@ -22,6 +22,8 @@ import (
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -1683,6 +1685,37 @@ func TestInstance_LabelsWithValues(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, map[string]UniqueValues{}, res)
 	})
+}
+
+func TestInstancePush_ReplayAgeGateBypassMetric(t *testing.T) {
+	limitCfg := defaultLimitsTestConfig()
+	limitCfg.RejectOldSamples = true
+	limitCfg.RejectOldSamplesMaxAge = model.Duration(time.Hour)
+
+	limits, err := validation.NewOverrides(limitCfg, nil)
+	require.NoError(t, err)
+
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantsRetention := retention.NewTenantsRetention(limits)
+	registry := prometheus.NewRegistry()
+	metrics := newIngesterMetrics(registry, "loki")
+
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, metrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+	require.NoError(t, err)
+
+	ctx := httpreq.InjectHeader(context.Background(), httpreq.AdaptiveTelemetryReplayHeader, "true")
+	now := time.Now()
+	err = inst.Push(ctx, &logproto.PushRequest{
+		Streams: []logproto.Stream{{
+			Labels: `{foo="bar"}`,
+			Entries: []logproto.Entry{
+				{Timestamp: now.Add(-5 * time.Hour), Line: "old"},
+				{Timestamp: now.Add(-30 * time.Minute), Line: "new"},
+			},
+		}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, float64(1), testutil.ToFloat64(metrics.replayEntriesAccepted.WithLabelValues("test")))
 }
 
 type fakeQueryServer func(*logproto.QueryResponse) error

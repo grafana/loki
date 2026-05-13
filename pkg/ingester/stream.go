@@ -88,6 +88,8 @@ type stream struct {
 
 	retentionHours string
 	policy         string
+
+	replayAgeGateBypass func(entryTimestamp, now time.Time) bool
 }
 
 type chunkDesc struct {
@@ -442,6 +444,9 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		}
 
 		validBytes += entryBytes
+		if isReplay && s.replayAgeGateBypass != nil && s.replayAgeGateBypass(entries[i].Timestamp, now) {
+			s.metrics.replayEntriesAccepted.WithLabelValues(s.tenant).Inc()
+		}
 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line

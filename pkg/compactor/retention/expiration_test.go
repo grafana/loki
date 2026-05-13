@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -106,7 +108,7 @@ func Test_expirationChecker_Expired(t *testing.T) {
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
 
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -142,7 +144,7 @@ func Test_expirationChecker_Expired_prefersIngestedAtWhenPresent(t *testing.T) {
 	o, err := overridesTestConfig(defaultLimitsTestConfig(), f)
 	require.NoError(t, err)
 
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	now := model.Now()
 
 	tests := []struct {
@@ -185,6 +187,40 @@ func Test_expirationChecker_Expired_prefersIngestedAtWhenPresent(t *testing.T) {
 			require.Nil(t, nonDeletedIntervalFilters)
 		})
 	}
+}
+
+func Test_expirationChecker_ExpiredByIngestedAtMetric(t *testing.T) {
+	t1 := defaultLimitsTestConfig()
+	t1.RetentionPeriod = model.Duration(time.Hour)
+
+	f := fakeOverrides{
+		tenantLimits: map[string]*validation.Limits{
+			"1": &t1,
+		},
+	}
+	o, err := overridesTestConfig(defaultLimitsTestConfig(), f)
+	require.NoError(t, err)
+
+	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "test_chunks_expired_by_ingestion_time_total",
+		Help: "test",
+	}, []string{"tenant"})
+
+	e := NewExpirationChecker(o, counter)
+	now := model.Now()
+
+	expired, _ := e.Expired([]byte("1"), Chunk{
+		Through:    now.Add(-30 * time.Minute),
+		IngestedAt: now.Add(-2 * time.Hour),
+	}, labels.EmptyLabels(), nil, "", now)
+	require.True(t, expired)
+	require.Equal(t, float64(1), testutil.ToFloat64(counter.WithLabelValues("1")))
+
+	expired, _ = e.Expired([]byte("1"), Chunk{
+		Through: now.Add(-2 * time.Hour),
+	}, labels.EmptyLabels(), nil, "", now)
+	require.True(t, expired)
+	require.Equal(t, float64(1), testutil.ToFloat64(counter.WithLabelValues("1")))
 }
 
 func TestTenantsRetention_RetentionPeriodFor(t *testing.T) {
@@ -240,7 +276,7 @@ func Test_expirationChecker_Expired_zeroValue(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -288,7 +324,7 @@ func Test_expirationChecker_Expired_zeroValueOverride(t *testing.T) {
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
 
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -324,7 +360,7 @@ func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 
 	chunkFrom := model.Now().Add(-3 * time.Hour)
 	chunkThrough := model.Now().Add(-2 * time.Hour)
@@ -363,7 +399,7 @@ func Test_expirationChecker_CanSkipSeries(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 
 	tests := []struct {
 		name        string

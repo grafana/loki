@@ -19,6 +19,7 @@ type metrics struct {
 	applyRetentionLastSuccess              prometheus.Gauge
 	compactorRunning                       prometheus.Gauge
 	skippedCompactingLockedTables          *prometheus.GaugeVec
+	chunksExpiredByIngestionTimeTotal      *prometheus.CounterVec
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -63,6 +64,11 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "locked_table_successive_compaction_skips",
 			Help:      "Number of times uncompacted tables were consecutively skipped due to them being locked by retention",
 		}, []string{"table_name"}),
+		chunksExpiredByIngestionTimeTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_compactor",
+			Name:      "chunks_expired_by_ingestion_time_total",
+			Help:      "Number of chunks expired using ingestion time retention.",
+		}, []string{"tenant"}),
 	}
 
 	return &m

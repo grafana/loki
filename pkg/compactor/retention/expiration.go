@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -35,8 +36,9 @@ type ExpirationChecker interface {
 }
 
 type expirationChecker struct {
-	tenantsRetention         *TenantsRetention
-	latestRetentionStartTime latestRetentionStartTime
+	tenantsRetention                  *TenantsRetention
+	latestRetentionStartTime          latestRetentionStartTime
+	chunksExpiredByIngestionTimeTotal *prometheus.CounterVec
 }
 
 type Limits interface {
@@ -47,9 +49,10 @@ type Limits interface {
 	PoliciesStreamMapping(userID string) validation.PolicyStreamMapping
 }
 
-func NewExpirationChecker(limits Limits) ExpirationChecker {
+func NewExpirationChecker(limits Limits, chunksExpiredByIngestionTimeTotal *prometheus.CounterVec) ExpirationChecker {
 	return &expirationChecker{
-		tenantsRetention: NewTenantsRetention(limits),
+		tenantsRetention:                  NewTenantsRetention(limits),
+		chunksExpiredByIngestionTimeTotal: chunksExpiredByIngestionTimeTotal,
 	}
 }
 
@@ -62,10 +65,16 @@ func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels
 		return false, nil
 	}
 	expirationFrom := chk.Through
+	usingIngestedAt := false
 	if chk.IngestedAt != 0 {
 		expirationFrom = chk.IngestedAt
+		usingIngestedAt = true
 	}
-	return now.Sub(expirationFrom) > period, nil
+	expired := now.Sub(expirationFrom) > period
+	if expired && usingIngestedAt && e.chunksExpiredByIngestionTimeTotal != nil {
+		e.chunksExpiredByIngestionTimeTotal.WithLabelValues(userIDStr).Inc()
+	}
+	return expired, nil
 }
 
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.

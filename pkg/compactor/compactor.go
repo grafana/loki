@@ -147,6 +147,7 @@ func NewCompactor(
 		schemaConfig:    schemaConfig,
 		limits:          limits,
 	}
+	compactor.metrics = newMetrics(r)
 
 	ringStore, err := kv.NewClient(
 		cfg.CompactorRing.KVStore,
@@ -316,7 +317,6 @@ func (c *Compactor) init(
 		}
 	}
 
-	c.metrics = newMetrics(r)
 	c.tablesManager = newTablesManager(c.cfg, c.storeContainers, c.indexCompactors, c.schemaConfig, c.expirationChecker, c.metrics)
 
 	if c.cfg.RetentionEnabled {
@@ -376,7 +376,7 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 		return err
 	}
 
-	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
+	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits, c.metrics.chunksExpiredByIngestionTimeTotal), c.deleteRequestsManager)
 	return nil
 }
 

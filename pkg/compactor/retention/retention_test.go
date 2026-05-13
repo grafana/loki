@@ -163,7 +163,7 @@ func Test_Retention(t *testing.T) {
 			store.Stop()
 
 			// marks and sweep
-			expiration := NewExpirationChecker(tt.limits)
+			expiration := NewExpirationChecker(tt.limits, nil)
 			workDir := filepath.Join(t.TempDir(), "retention")
 			// must not fail the process because deletion must be retried
 			chunkClient := newMockChunkClient(true)
@@ -265,18 +265,18 @@ func Test_EmptyTable(t *testing.T) {
 	require.Len(t, tables, 1)
 
 	// disabled retention should not do anything to the table
-	empty, modified, err := markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{}), nil, util_log.Logger)
+	empty, modified, err := markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{}, nil), nil, util_log.Logger)
 	require.NoError(t, err)
 	require.False(t, empty)
 	require.False(t, modified)
 
 	// Set a very low retention to make sure all chunks are marked for deletion which will create an empty table.
-	empty, modified, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}), nil, util_log.Logger)
+	empty, modified, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}, nil), nil, util_log.Logger)
 	require.NoError(t, err)
 	require.True(t, empty)
 	require.True(t, modified)
 
-	_, _, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}), nil, util_log.Logger)
+	_, _, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}, nil), nil, util_log.Logger)
 	require.Equal(t, err, errNoChunksFound)
 }
 
@@ -1070,7 +1070,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 
 	for i, table := range tables {
 		empty, _, err := markForDelete(context.Background(), 0, table.name, &noopWriter{}, table,
-			NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil, util_log.Logger)
+			NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}, nil), nil, util_log.Logger)
 		require.NoError(t, err)
 		if i == 7 {
 			require.False(t, empty)

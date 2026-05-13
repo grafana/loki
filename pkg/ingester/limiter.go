@@ -35,6 +35,8 @@ type Limits interface {
 	PerStreamRateLimit(userID string) validation.RateLimit
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
+	RejectOldSamples(userID string) bool
+	RejectOldSamplesMaxAge(userID string) time.Duration
 
 	retention.Limits
 }
