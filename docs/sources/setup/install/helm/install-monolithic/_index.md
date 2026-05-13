@@ -77,7 +77,7 @@ loki:
 minio:
   enabled: true
       
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 1
@@ -154,7 +154,7 @@ loki:
 minio:
   enabled: true
       
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 3
@@ -289,7 +289,7 @@ loki:
 minio:
   enabled: false
 
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 3
@@ -375,7 +375,7 @@ loki:
 minio:
   enabled: false
 
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 3
