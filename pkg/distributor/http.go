@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -34,7 +35,13 @@ func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, errorWriter push.ErrorWriter, format string) {
-	logger := util_log.WithContext(r.Context(), util_log.Logger)
+	ctx := r.Context()
+	if r.Header.Get(httpreq.AdaptiveTelemetryReplayHeader) == "true" {
+		ctx = httpreq.InjectHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader, "true")
+		r = r.WithContext(ctx)
+	}
+
+	logger := util_log.WithContext(ctx, util_log.Logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", "error getting tenant id", "err", err)

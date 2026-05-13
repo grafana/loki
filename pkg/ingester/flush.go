@@ -440,6 +440,9 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			firstTime,
 			lastTime,
 		)
+		if !c.firstSeen.IsZero() {
+			ch.IngestedAt = model.TimeFromUnixNano(c.firstSeen.UnixNano())
+		}
 
 		// encodeChunk mutates the chunk so we must pass by reference
 		if err := i.encodeChunk(ctx, &ch, c); err != nil {

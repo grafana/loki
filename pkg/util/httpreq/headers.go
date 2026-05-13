@@ -14,6 +14,7 @@ var (
 	// LokiActorPathHeader is the name of the header e.g. used to enqueue requests in hierarchical queues.
 	LokiActorPathHeader               = "X-Loki-Actor-Path"
 	LokiDisablePipelineWrappersHeader = "X-Loki-Disable-Pipeline-Wrappers"
+	AdaptiveTelemetryReplayHeader     = "X-Adaptive-Telemetry-Replay"
 
 	// LokiActorPathDelimiter is the delimiter used to serialise the hierarchy of the actor.
 	LokiActorPathDelimiter = "|"

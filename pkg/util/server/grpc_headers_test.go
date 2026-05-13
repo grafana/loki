@@ -12,19 +12,36 @@ import (
 
 func TestInjectHTTPHeaderIntoGRPCRequest(t *testing.T) {
 	for _, tt := range []struct {
-		name, header       string
+		name               string
+		headers            map[string]string
 		md, expectMetadata metadata.MD
 	}{
 		{
-			name:           "creates new metadata and sets header",
-			header:         "true",
+			name: "creates new metadata and sets header",
+			headers: map[string]string{
+				httpreq.LokiDisablePipelineWrappersHeader: "true",
+			},
 			expectMetadata: metadata.New(map[string]string{httpreq.LokiDisablePipelineWrappersHeader: "true"}),
 		},
 		{
-			name:           "sets header on existing metadata",
-			header:         "true",
-			md:             metadata.New(map[string]string{"x-foo": "bar"}),
-			expectMetadata: metadata.New(map[string]string{"x-foo": "bar", httpreq.LokiDisablePipelineWrappersHeader: "true"}),
+			name: "creates new metadata and sets replay header",
+			headers: map[string]string{
+				httpreq.AdaptiveTelemetryReplayHeader: "true",
+			},
+			expectMetadata: metadata.New(map[string]string{lokiReplayGRPCMetadataKey: "true"}),
+		},
+		{
+			name: "sets headers on existing metadata",
+			headers: map[string]string{
+				httpreq.LokiDisablePipelineWrappersHeader: "true",
+				httpreq.AdaptiveTelemetryReplayHeader:     "true",
+			},
+			md: metadata.New(map[string]string{"x-foo": "bar"}),
+			expectMetadata: metadata.New(map[string]string{
+				"x-foo": "bar",
+				httpreq.LokiDisablePipelineWrappersHeader: "true",
+				lokiReplayGRPCMetadataKey:                 "true",
+			}),
 		},
 		{
 			name:           "no header, leave metadata untouched",
@@ -38,8 +55,8 @@ func TestInjectHTTPHeaderIntoGRPCRequest(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			if tt.header != "" {
-				ctx = httpreq.InjectHeader(context.Background(), httpreq.LokiDisablePipelineWrappersHeader, tt.header)
+			for header, value := range tt.headers {
+				ctx = httpreq.InjectHeader(ctx, header, value)
 			}
 
 			if tt.md != nil {
@@ -55,14 +72,20 @@ func TestInjectHTTPHeaderIntoGRPCRequest(t *testing.T) {
 
 func TestExtractHTTPHeaderFromGRPCRequest(t *testing.T) {
 	for _, tt := range []struct {
-		name         string
-		md           metadata.MD
-		expectedResp string
+		name            string
+		md              metadata.MD
+		expectedHeaders map[string]string
 	}{
 		{
-			name:         "extracts header from metadata",
-			md:           metadata.New(map[string]string{httpreq.LokiDisablePipelineWrappersHeader: "true"}),
-			expectedResp: "true",
+			name: "extracts headers from metadata",
+			md: metadata.New(map[string]string{
+				httpreq.LokiDisablePipelineWrappersHeader: "true",
+				lokiReplayGRPCMetadataKey:                 "true",
+			}),
+			expectedHeaders: map[string]string{
+				httpreq.LokiDisablePipelineWrappersHeader: "true",
+				httpreq.AdaptiveTelemetryReplayHeader:     "true",
+			},
 		},
 		{
 			name: "non-nil metadata without header",
@@ -75,7 +98,9 @@ func TestExtractHTTPHeaderFromGRPCRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := metadata.NewIncomingContext(context.Background(), tt.md)
 			ctx = extractHTTPHeadersFromGRPCRequest(ctx)
-			require.Equal(t, tt.expectedResp, httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader))
+			for header, value := range tt.expectedHeaders {
+				require.Equal(t, value, httpreq.ExtractHeader(ctx, header))
+			}
 		})
 	}
 }

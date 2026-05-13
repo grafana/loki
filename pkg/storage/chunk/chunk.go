@@ -44,6 +44,8 @@ type Chunk struct {
 	logproto.ChunkRef
 
 	Metric labels.Labels `json:"metric"`
+	// IngestedAt records when a chunk was first seen by the ingester.
+	IngestedAt model.Time `json:"ingestedAt"`
 
 	// We never use Delta encoding (the zero value), so if this entry is
 	// missing, we default to DoubleDelta.
