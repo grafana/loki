@@ -156,6 +156,7 @@ const (
 	DataObjConsumerPartitionRing = "dataobj-consumer-partition-ring"
 	DataObjIndexBuilder          = "dataobj-index-builder"
 	DataObjCompactionPlanner     = "dataobj-compaction-planner"
+	DataObjCompactionWorker      = "dataobj-compaction-worker"
 	ScratchStore                 = "scratch-store"
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
@@ -2522,6 +2523,52 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	// coordinator loop from ever running.
 	t.dataObjCompactionPlanner = c
 	return c, nil
+}
+
+func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
+	if !t.Cfg.DataObj.Enabled || !t.Cfg.DataObj.Compaction.Enabled {
+		return nil, nil
+	}
+
+	if err := t.Cfg.DataObj.Compaction.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
+	}
+
+	logger := log.With(util_log.Logger, "component", "dataobj-compaction-worker")
+
+	store, err := t.getDataObjBucket("dataobj-compaction-worker")
+	if err != nil {
+		return nil, err
+	}
+
+	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+
+	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
+		Config:     t.Cfg.DataObj.Compaction.Worker,
+		Bucket:     store,
+		Metastore:  ms,
+		Logger:     logger,
+		Registerer: prometheus.DefaultRegisterer,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := w.RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
+		return nil, err
+	}
+	w.Service().AddListener(services.NewListener(
+		nil, nil, nil,
+		func(_ services.State) { w.UnregisterMetrics(prometheus.DefaultRegisterer) },
+		func(_ services.State, _ error) { w.UnregisterMetrics(prometheus.DefaultRegisterer) },
+	))
+
+	// AdvertiseAddr is required by NewWorker, so RegisterWorkerServer
+	// always installs a real handler here.
+	w.RegisterWorkerServer(t.Server.HTTP)
+
+	t.dataObjCompactionWorker = w
+	return w.Service(), nil
 }
 
 func (t *Loki) initScratchStore() (services.Service, error) {
