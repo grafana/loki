@@ -1072,7 +1072,8 @@ pattern_ingester:
     # CLI flag: -pattern-ingester.tee.flush-worker-count
     [flush_worker_count: <int> | default = 100]
 
-    # The maximum number of bytes that can be buffered before dropping
+    # The maximum number of bytes that can be buffered before dropping, 0 means
+    # disabled
     # CLI flag: -pattern-ingester.tee.max-buffered-bytes
     [max_buffered_bytes: <int> | default = 0]
 

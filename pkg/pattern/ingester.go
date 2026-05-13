@@ -168,7 +168,7 @@ func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 		&cfg.MaxBufferedBytes,
 		prefix+"tee.max-buffered-bytes",
 		0,
-		"The maximum number of bytes that can be buffered before dropping",
+		"The maximum number of bytes that can be buffered before dropping, 0 means disabled",
 	)
 	f.DurationVar(
 		&cfg.StopFlushTimeout,
