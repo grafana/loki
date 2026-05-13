@@ -34,7 +34,8 @@ func (g *HighWatermarkGauge) Add(delta int64) {
 
 // Sub subtracts the delta from the current value.
 func (g *HighWatermarkGauge) Sub(delta int64) {
-	g.val.Add(-delta)
+	// Call updateMaxVal because delta can be negative.
+	g.updateMaxVal(g.val.Add(-delta))
 }
 
 // Inc increments the counter.
