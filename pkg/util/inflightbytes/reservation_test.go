@@ -67,6 +67,36 @@ func TestReservation_ExceedsBudgetBlocking(t *testing.T) {
 func TestNoopReservation(t *testing.T) {
 	res := &Reservation{}
 	res.AdjustToActual(500) // must not panic
-	res.Release()            // must not panic
-	res.Release()            // idempotent
+	res.Release()           // must not panic
+	res.Release()           // idempotent
+}
+
+func TestNoLimitReservationTracksHeld(t *testing.T) {
+	// MaxInflightBytes == 0 disables rate limiting but must still track held bytes
+	// so that the inflight-bytes metric is populated.
+	l := New(Config{MaxInflightBytes: 0}, nil)
+
+	res, err := l.Reserve(context.Background(), 800)
+	if err != nil {
+		t.Fatalf("Reserve: %v", err)
+	}
+	if res.held != 800 {
+		t.Fatalf("held = %d, want 800", res.held)
+	}
+
+	res.AdjustToActual(300)
+	if res.held != 300 {
+		t.Fatalf("held after AdjustToActual = %d, want 300", res.held)
+	}
+
+	res.Release()
+	if res.held != 0 {
+		t.Fatalf("held after Release = %d, want 0", res.held)
+	}
+
+	// Second Reserve must succeed (no semaphore to exhaust).
+	_, err = l.Reserve(context.Background(), 1<<40)
+	if err != nil {
+		t.Fatalf("Reserve with no limit: %v", err)
+	}
 }
