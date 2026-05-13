@@ -51,6 +51,8 @@ func NewWriter(alloc *memory.Allocator, spec Spec, typ types.Type) (Writer, erro
 		return newZstdWriter(alloc, spec, typ)
 	case EncodingKindZigZag:
 		return newZigZagWriter(alloc, spec, typ)
+	case EncodingKindDelta:
+		return newDeltaWriter(alloc, spec, typ)
 
 	default:
 		return nil, fmt.Errorf("unsupported encoding kind %q", spec.Kind())
@@ -107,6 +109,8 @@ func NewReader(alloc *memory.Allocator, arr Array, source buffer.Source) (Reader
 		return newZstdReader(alloc, arr, source)
 	case EncodingKindZigZag:
 		return newZigZagReader(alloc, arr, source)
+	case EncodingKindDelta:
+		return newDeltaReader(alloc, arr, source)
 
 	default:
 		return nil, fmt.Errorf("unsupported encoding kind %q", arr.Encoding.Kind())
