@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.44.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.11
+
 
 ## 7.0.0
 
