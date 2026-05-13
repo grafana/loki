@@ -43,15 +43,15 @@ func Plan(
 		return nil
 	}
 
-	piles := patienceSort(sections)
-	if len(piles) == 0 {
+	calculated := calculateRuns(sections)
+	if len(calculated) == 0 {
 		return nil
 	}
 
-	// Materialize piles as RunRefs in creation order.
-	runs := make([]*compactionv2pb.RunRef, len(piles))
-	for i, p := range piles {
-		runs[i] = &compactionv2pb.RunRef{Sections: p.sections}
+	// Materialize runs as RunRefs in creation order.
+	runs := make([]*compactionv2pb.RunRef, len(calculated))
+	for i, r := range calculated {
+		runs[i] = &compactionv2pb.RunRef{Sections: r.sections}
 	}
 
 	// Group into ⌈P/K⌉ TaskSpec batches.

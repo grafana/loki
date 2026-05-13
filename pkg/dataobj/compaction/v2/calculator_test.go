@@ -23,13 +23,13 @@ func sec(path string, idx int32, minKey, maxKey string) *compactionv2pb.SectionR
 }
 
 func TestPatienceSort_Empty(t *testing.T) {
-	require.Nil(t, patienceSort(nil))
-	require.Nil(t, patienceSort([]*compactionv2pb.SectionRef{}))
+	require.Nil(t, calculateRuns(nil))
+	require.Nil(t, calculateRuns([]*compactionv2pb.SectionRef{}))
 }
 
 func TestPatienceSort_SingleSection(t *testing.T) {
 	s := sec("obj-1", 0, "a", "b")
-	got := patienceSort([]*compactionv2pb.SectionRef{s})
+	got := calculateRuns([]*compactionv2pb.SectionRef{s})
 
 	require.Len(t, got, 1)
 	require.Equal(t, []*compactionv2pb.SectionRef{s}, got[0].sections)
@@ -42,7 +42,7 @@ func TestPatienceSort_AllNonOverlapping(t *testing.T) {
 	s2 := sec("o", 1, "c", "d")
 	s3 := sec("o", 2, "e", "f")
 
-	got := patienceSort([]*compactionv2pb.SectionRef{s1, s2, s3})
+	got := calculateRuns([]*compactionv2pb.SectionRef{s1, s2, s3})
 
 	require.Len(t, got, 1, "all non-overlapping sections should form exactly one pile")
 	require.Equal(t, []*compactionv2pb.SectionRef{s1, s2, s3}, got[0].sections)
@@ -55,7 +55,7 @@ func TestPatienceSort_AllOverlapping(t *testing.T) {
 	s2 := sec("o", 1, "b", "n")
 	s3 := sec("o", 2, "c", "o")
 
-	got := patienceSort([]*compactionv2pb.SectionRef{s1, s2, s3})
+	got := calculateRuns([]*compactionv2pb.SectionRef{s1, s2, s3})
 
 	require.Len(t, got, 3)
 	for _, p := range got {
@@ -72,7 +72,7 @@ func TestPatienceSort_BestFit(t *testing.T) {
 	s2 := sec("o", 1, "01", "10") // overlaps s1; creates pile1
 	s3 := sec("o", 2, "12", "20") // MinKey > both top_max_keys; pick pile1
 
-	got := patienceSort([]*compactionv2pb.SectionRef{s1, s2, s3})
+	got := calculateRuns([]*compactionv2pb.SectionRef{s1, s2, s3})
 
 	require.Len(t, got, 2, "expected 2 piles")
 	// pile1 (created second) should now contain s2 and s3.
@@ -97,7 +97,7 @@ func TestPatienceSort_TiebreakerOnCreationOrder(t *testing.T) {
 	s3 := sec("o", 2, "06", "10")
 	s4 := sec("o", 3, "11", "20")
 
-	got := patienceSort([]*compactionv2pb.SectionRef{s1, s2, s3, s4})
+	got := calculateRuns([]*compactionv2pb.SectionRef{s1, s2, s3, s4})
 
 	require.Len(t, got, 3)
 	// pile0 (createdAt=0) should have received s4.
@@ -119,7 +119,7 @@ func TestPatienceSort_StableIDTiebreaker(t *testing.T) {
 
 	// Feed in deliberately scrambled order — output must still be deterministic
 	// per the stable_id tiebreaker.
-	got := patienceSort([]*compactionv2pb.SectionRef{c, b, a})
+	got := calculateRuns([]*compactionv2pb.SectionRef{c, b, a})
 
 	require.Len(t, got, 3)
 	require.Equal(t, a, got[0].sections[0], "pile0 expected to hold stable_id-smallest section")
@@ -141,7 +141,7 @@ func TestPatienceSort_Determinism_Shuffled(t *testing.T) {
 	}
 
 	// Reference result: feed in input order.
-	want := patienceSort(append([]*compactionv2pb.SectionRef(nil), base...))
+	want := calculateRuns(append([]*compactionv2pb.SectionRef(nil), base...))
 
 	// Try 10 different deterministic shuffles. Use a seeded math/rand so the
 	// test is reproducible.
@@ -151,7 +151,7 @@ func TestPatienceSort_Determinism_Shuffled(t *testing.T) {
 		r.Shuffle(len(shuffled), func(i, j int) {
 			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
 		})
-		got := patienceSort(shuffled)
+		got := calculateRuns(shuffled)
 
 		require.Equal(t, len(want), len(got), "trial %d: pile count must match", trial)
 		for i := range want {
