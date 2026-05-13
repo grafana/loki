@@ -221,7 +221,7 @@ type Distributor struct {
 	numMetadataPartitions int
 
 	// Track the maximum number of inflight bytes in the last 1 minute.
-	inflightBytes *util_metric.HighWatermarkGauge
+	inflightBytesHighWatermark *util_metric.HighWatermarkGauge
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -411,9 +411,9 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
-		inflightBytes: util_metric.NewHighWatermarkGauge(
-			"loki_distributor_max_inflight_bytes",
-			"The maximum number of inflight bytes since the last scrape.",
+		inflightBytesHighWatermark: util_metric.NewHighWatermarkGauge(
+			"loki_distributor_inflight_bytes_high_watermark",
+			"The maximum number of inflight bytes.",
 		),
 	}
 
@@ -455,7 +455,7 @@ func New(
 	)
 	d.rateStore = rs
 
-	_ = registerer.Register(d.inflightBytes)
+	_ = registerer.Register(d.inflightBytesHighWatermark)
 	servs = append(servs, d.ingesterClients, rs)
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
@@ -568,8 +568,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(req.Size())
-	d.inflightBytes.Add(requestSize)
-	defer d.inflightBytes.Sub(requestSize)
+	d.inflightBytesHighWatermark.Add(requestSize)
+	defer d.inflightBytesHighWatermark.Sub(requestSize)
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {

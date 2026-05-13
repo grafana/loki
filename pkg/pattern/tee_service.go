@@ -30,19 +30,19 @@ import (
 
 // teeMetrics contains the metrics for [TeeService].
 type teeMetrics struct {
-	bufferedBytes         *metric_util.HighWatermarkGauge
-	ingesterAppends       *prometheus.CounterVec
-	ingesterMetricAppends *prometheus.CounterVec
-	teedStreams           *prometheus.CounterVec
-	teedRequests          *prometheus.CounterVec
-	sendDuration          *instrument.HistogramCollector
+	bufferedBytesHighWatermark *metric_util.HighWatermarkGauge
+	ingesterAppends            *prometheus.CounterVec
+	ingesterMetricAppends      *prometheus.CounterVec
+	teedStreams                *prometheus.CounterVec
+	teedRequests               *prometheus.CounterVec
+	sendDuration               *instrument.HistogramCollector
 }
 
 // newTeeMetrics returns new teeMetrics.
 func newTeeMetrics(reg prometheus.Registerer) *teeMetrics {
 	m := teeMetrics{
-		bufferedBytes: metric_util.NewHighWatermarkGauge(
-			"pattern_ingester_tee_buffered_bytes",
+		bufferedBytesHighWatermark: metric_util.NewHighWatermarkGauge(
+			"pattern_ingester_tee_buffered_bytes_high_watermark",
 			"The current number of bytes buffered in the tee.",
 		),
 		ingesterAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -71,7 +71,7 @@ func newTeeMetrics(reg prometheus.Registerer) *teeMetrics {
 			),
 		),
 	}
-	reg.MustRegister(m.bufferedBytes)
+	reg.MustRegister(m.bufferedBytesHighWatermark)
 	return &m
 }
 
@@ -490,7 +490,7 @@ func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
 	maxBufferedBytes := int64(ts.cfg.TeeConfig.MaxBufferedBytes)
 	if maxBufferedBytes <= 0 {
 		// The limit is disabled, size can be reserved.
-		ts.metrics.bufferedBytes.Add(int64(size))
+		ts.metrics.bufferedBytesHighWatermark.Add(int64(size))
 		return true
 	}
 	for {
@@ -503,7 +503,7 @@ func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
 		// If we won the CAS, our new size was reserved, and we can return true.
 		// If someone else won the CAS, we must loop and make another attempt.
 		if ts.bufferedBytes.CompareAndSwap(oldVal, newVal) {
-			ts.metrics.bufferedBytes.Add(int64(size))
+			ts.metrics.bufferedBytesHighWatermark.Add(int64(size))
 			return true
 		}
 	}
@@ -514,11 +514,11 @@ func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
 func (ts *TeeService) releaseBufferedBytes(size int) {
 	maxBufferedBytes := ts.cfg.TeeConfig.MaxBufferedBytes
 	if maxBufferedBytes <= 0 {
-		ts.metrics.bufferedBytes.Sub(int64(size))
+		ts.metrics.bufferedBytesHighWatermark.Sub(int64(size))
 		return
 	}
 	ts.bufferedBytes.Add(-int64(size))
-	ts.metrics.bufferedBytes.Sub(int64(size))
+	ts.metrics.bufferedBytesHighWatermark.Sub(int64(size))
 }
 
 func (ts *TeeService) Register(_ context.Context, _ string, _ []distributor.KeyedStream, _ *distributor.PushTracker) {

@@ -3,6 +3,8 @@ package metric
 import (
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -10,45 +12,55 @@ import (
 )
 
 func TestHighWatermarkGauge(t *testing.T) {
-	g := NewHighWatermarkGauge("test", "A test metric from the max sample collector.")
-	reg := prometheus.NewRegistry()
-	require.NoError(t, reg.Register(g))
+	synctest.Test(t, func(t *testing.T) {
+		g := NewHighWatermarkGauge("test", "A test metric from the max sample collector.")
+		reg := prometheus.NewRegistry()
+		require.NoError(t, reg.Register(g))
 
-	require.Equal(t, int64(0), g.val.Load())
-	require.Equal(t, int64(0), g.maxVal.Load())
+		require.Equal(t, int64(0), g.val.Load())
+		require.Equal(t, int64(0), g.maxVal.Load())
 
-	// Add should update both val and maxVal.
-	g.Add(1)
-	require.Equal(t, int64(1), g.val.Load())
-	require.Equal(t, int64(1), g.maxVal.Load())
+		// Add should update both val and maxVal.
+		g.Add(1)
+		require.Equal(t, int64(1), g.val.Load())
+		require.Equal(t, int64(1), g.maxVal.Load())
 
-	// A second add should update both once more.
-	g.Add(2)
-	require.Equal(t, int64(3), g.val.Load())
-	require.Equal(t, int64(3), g.maxVal.Load())
+		// A second add should update both once more.
+		g.Add(2)
+		require.Equal(t, int64(3), g.val.Load())
+		require.Equal(t, int64(3), g.maxVal.Load())
 
-	// Sub should update val, but not maxVal (as it cannot create a new max).
-	g.Sub(2)
-	require.Equal(t, int64(1), g.val.Load())
-	require.Equal(t, int64(3), g.maxVal.Load())
+		// Sub should update val, but not maxVal (as it cannot create a new max).
+		g.Sub(2)
+		require.Equal(t, int64(1), g.val.Load())
+		require.Equal(t, int64(3), g.maxVal.Load())
 
-	// Scrape the metric — should report the max.
-	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		// Scrape the metric — should report maxVal.
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 # HELP test A test metric from the max sample collector.
 # TYPE test gauge
 test 3
 `), "test"))
 
-	// After scrape, maxVal is reset to the current val.
-	require.Equal(t, int64(1), g.val.Load())
-	require.Equal(t, int64(1), g.maxVal.Load())
+		// Second scrape the metric — should report the same maxVal.
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+# HELP test A test metric from the max sample collector.
+# TYPE test gauge
+test 3
+`), "test"))
 
-	// A subsequent scrape reports the current val.
-	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		// After 2 minutes, maxVal should be reset.
+		time.Sleep(2 * time.Minute)
+
+		// A subsequent scrape reports the current val.
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 # HELP test A test metric from the max sample collector.
 # TYPE test gauge
 test 1
 `), "test"))
+		require.Equal(t, int64(1), g.val.Load())
+		require.Equal(t, int64(1), g.maxVal.Load())
+	})
 }
 
 func TestHighWatermarkGauge_Add_Sub(t *testing.T) {

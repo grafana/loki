@@ -2,22 +2,29 @@ package metric
 
 import (
 	"sync/atomic" //lint:ignore faillint we use new atomic types from sync/atomic.
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 // A HighWatermarkGauge is a lock-free Prometheus collector that reports the
-// maximum value observed since the last scrape. It is updated on Add/Inc;
+// maximum value observed in the last 2 minutes. It is updated on Add/Inc;
 // Sub/Dec cannot produce a new maximum.
 type HighWatermarkGauge struct {
-	val, maxVal atomic.Int64
-	desc        *prometheus.Desc
+	val, maxVal, lastResetSecs atomic.Int64
+	resetIntervalSecs          int64
+	desc                       *prometheus.Desc
 }
 
 // NewHighWatermarkGauge returns a new HighWatermarkGauge for the metric name
 // and help.
 func NewHighWatermarkGauge(fqName, help string) *HighWatermarkGauge {
-	return &HighWatermarkGauge{desc: prometheus.NewDesc(fqName, help, nil, nil)}
+	g := HighWatermarkGauge{
+		resetIntervalSecs: 120,
+		desc:              prometheus.NewDesc(fqName, help, nil, nil),
+	}
+	_ = g.lastResetSecs.Swap(time.Now().Unix())
+	return &g
 }
 
 // Add adds the delta to the current value.
@@ -46,14 +53,24 @@ func (c *HighWatermarkGauge) Describe(descs chan<- *prometheus.Desc) {
 }
 
 // Collect implements [prometheus.Collector]. It reports the peak observed
-// since the last scrape and resets the high-water mark to the current value.
+// in the last 2 minutes.
 func (c *HighWatermarkGauge) Collect(metrics chan<- prometheus.Metric) {
-	maxVal := c.maxVal.Swap(0)
-	c.updateMaxVal(c.val.Load())
+	for {
+		lastResetSecs := c.lastResetSecs.Load()
+		nowSecs := time.Now().Unix()
+		if nowSecs-lastResetSecs < c.resetIntervalSecs {
+			break
+		}
+		if c.lastResetSecs.CompareAndSwap(lastResetSecs, nowSecs) {
+			c.maxVal.Swap(0)
+			c.updateMaxVal(c.val.Load())
+			break
+		}
+	}
 	metrics <- prometheus.MustNewConstMetric(
 		c.desc,
 		prometheus.GaugeValue,
-		float64(maxVal),
+		float64(c.maxVal.Load()),
 	)
 }
 
