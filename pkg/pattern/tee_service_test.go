@@ -247,7 +247,8 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 	// tenantBuf should contain s1 and s3.
 	tenantBuf, ok = tee.buf["test"]
 	require.True(t, ok)
-	require.Contains(t, tenantBuf, s1, s3)
+	require.Contains(t, tenantBuf, s1)
+	require.Contains(t, tenantBuf, s3)
 
 	// Stream should be rejected, total of s1, s3 and s4 is more than 1KB.
 	s4 := distributor.KeyedStream{
@@ -265,7 +266,8 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 	// tenantBuf should contain s1 and s3.
 	tenantBuf, ok = tee.buf["test"]
 	require.True(t, ok)
-	require.Contains(t, tenantBuf, s1, s3)
+	require.Contains(t, tenantBuf, s1)
+	require.Contains(t, tenantBuf, s3)
 
 	// Flush s1 and s3, s4 should be accepted.
 	tee.flush()
