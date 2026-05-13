@@ -117,7 +117,7 @@ type Config struct {
 
 	InMemoryPushTimeout time.Duration `yaml:"inmemory_dataobj_push_timeout"`
 
-	RequestSizeLimiter inflightbytes.Config `yaml:"request_size_limiter,omitempty"`
+	InflightBytesConfig inflightbytes.Config `yaml:"inflight_bytes,omitempty"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -127,7 +127,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DataObjTeeConfig.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
-	cfg.RequestSizeLimiter.RegisterFlagsWithPrefix("distributor", fs)
+	cfg.InflightBytesConfig.RegisterFlagsWithPrefix("distributor", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.Int64Var(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")

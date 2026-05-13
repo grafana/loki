@@ -44,7 +44,7 @@ func TestLoadSheddingHandle_NoLimitConfigured(t *testing.T) {
 func TestLoadSheddingHandle_InflightBytesSheds(t *testing.T) {
 	cfg := Config{
 		MaxDecompressedSize: 1 << 20,
-		RequestSizeLimiter: inflightbytes.Config{
+		InflightBytesConfig: inflightbytes.Config{
 			MaxInflightBytes: 1, // budget smaller than MaxDecompressedSize
 			MaxWait:          10 * time.Millisecond,
 		},
@@ -59,7 +59,7 @@ func TestLoadSheddingHandle_InflightBytesSheds(t *testing.T) {
 func TestLoadSheddingHandle_InflightBytesLargeLimit(t *testing.T) {
 	cfg := Config{
 		MaxDecompressedSize: 1 << 20,
-		RequestSizeLimiter: inflightbytes.Config{
+		InflightBytesConfig: inflightbytes.Config{
 			MaxInflightBytes: 1 << 50,
 			MaxWait:          10 * time.Millisecond,
 		},
@@ -78,7 +78,7 @@ func TestLoadSheddingHandle_ReservationInContext(t *testing.T) {
 	const maxDecompressed = 1 << 20
 	cfg := Config{
 		MaxDecompressedSize: maxDecompressed,
-		RequestSizeLimiter: inflightbytes.Config{
+		InflightBytesConfig: inflightbytes.Config{
 			MaxInflightBytes: 2 * maxDecompressed, // room for two requests
 			MaxWait:          10 * time.Millisecond,
 		},
@@ -107,7 +107,7 @@ func TestLoadSheddingHandle_SafetyNetReleasesOnContextCancel(t *testing.T) {
 	const maxDecompressed = 1 << 20
 	cfg := Config{
 		MaxDecompressedSize: maxDecompressed,
-		RequestSizeLimiter: inflightbytes.Config{
+		InflightBytesConfig: inflightbytes.Config{
 			MaxInflightBytes: maxDecompressed, // exactly one request fits
 			MaxWait:          50 * time.Millisecond,
 		},
@@ -139,7 +139,7 @@ func TestLoadSheddingHandle_AllPermitsReleasedAfterParallelRequests(t *testing.T
 
 	cfg := Config{
 		MaxDecompressedSize: maxDecompressed,
-		RequestSizeLimiter: inflightbytes.Config{
+		InflightBytesConfig: inflightbytes.Config{
 			MaxInflightBytes: numRequests * maxDecompressed,
 			MaxWait:          100 * time.Millisecond,
 		},
