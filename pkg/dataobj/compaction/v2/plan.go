@@ -7,28 +7,22 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
-// Plan patience-sorts the input sections into P runs and groups them into
+// Plan sorts the input sections into P runs and groups them into
 // ⌈P/K⌉ task batches: runs [0..K) -> task 0, runs [K..2K) -> task 1, ...
 //
-// The output is deterministic for a given input regardless of the input order:
-// see the spec § Compaction unit / Phase 1 for the algorithm.
+// The output is deterministic for a given input regardless of the input order.
 //
 // Special cases:
 //   - len(sections) == 0  -> returns nil (no tasks).
 //   - k >= P              -> returns a single TaskSpec containing all runs.
 //
-// Panics if k <= 0: that's a programmer error in the caller's config plumbing,
-// not a runtime condition. k validation always runs first; if both k <= 0 and
-// len(sections) == 0, the function panics (not nil-returns). Tests pin this
-// ordering.
+// K must be greater than 0. Plan sorts the input sections slice in place;
+// callers that need the original order must copy beforehand. The contract
+// requires non-nil SectionRef entries.
 //
-// Plan sorts the input sections slice in place; callers that need the original
-// order must copy beforehand. The contract requires non-nil SectionRef entries;
-// nil entries will panic.
-//
-// The ctx parameter is reserved for future use; the current implementation runs
-// the algorithm to completion without honoring cancellation, because partial
-// output would violate the determinism contract.
+// The ctx parameter is currently not used. The algorithm runs to completion
+// without honoring cancellation, because partial output would violate the
+// determinism contract.
 func Plan(
 	ctx context.Context,
 	sections []*compactionv2pb.SectionRef,
@@ -37,7 +31,7 @@ func Plan(
 ) []*compactionv2pb.TaskSpec {
 	_ = ctx
 	if k <= 0 {
-		panic(fmt.Sprintf("compactionv2.Plan: k must be > 0, got %d", k))
+		panic(fmt.Sprintf("k must be > 0, got %d", k))
 	}
 	if len(sections) == 0 {
 		return nil
@@ -58,10 +52,7 @@ func Plan(
 	numTasks := (len(runs) + k - 1) / k
 	tasks := make([]*compactionv2pb.TaskSpec, 0, numTasks)
 	for start := 0; start < len(runs); start += k {
-		end := start + k
-		if end > len(runs) {
-			end = len(runs)
-		}
+		end := min(start+k, len(runs))
 		tasks = append(tasks, &compactionv2pb.TaskSpec{
 			Tenant: tenant,
 			Runs:   runs[start:end],
