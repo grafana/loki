@@ -49,11 +49,10 @@ func TestAdmissionControl_getBucket(t *testing.T) {
 	})
 }
 
-// TestAdmissionControl_CompactionLaneWired verifies the dormant
-// taskTypeCompaction lane is allocated with the requested capacity, is
-// reachable via get(), and appears in the groupByType map even when no tasks
-// are provided. The underlying semaphore is library code and is not
-// re-tested here.
+// TestAdmissionControl_CompactionLaneWired verifies the taskTypeCompaction
+// lane is allocated with the requested capacity, is reachable via get(),
+// and appears in the groupByType map even when no tasks are provided. The
+// underlying semaphore is library code and is not re-tested here.
 func TestAdmissionControl_CompactionLaneWired(t *testing.T) {
 	const compactionCap int64 = 5
 	ac := newAdmissionControl(8, 8, compactionCap)
@@ -67,4 +66,16 @@ func TestAdmissionControl_CompactionLaneWired(t *testing.T) {
 	require.Contains(t, groups, taskTypeOther)
 	require.Contains(t, groups, taskTypeCompaction)
 	require.Empty(t, groups[taskTypeCompaction])
+}
+
+func TestAdmissionControl_typeFor_CompactionMerge(t *testing.T) {
+	// A task whose Fragment contains a CompactionMerge node must be
+	// classified as taskTypeCompaction so the compactor's parallelism is
+	// governed by MaxRunningCompactionTasks.
+	g := dag.Graph[physical.Node]{}
+	g.Add(&physical.CompactionMerge{NodeID: ulid.Make(), Tenant: "tenant-29"})
+	task := &Task{Fragment: physical.FromGraph(g)}
+
+	ac := newAdmissionControl(0, 0, 0)
+	require.Equal(t, taskTypeCompaction, ac.typeFor(task))
 }
