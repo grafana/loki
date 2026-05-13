@@ -34,18 +34,16 @@ type TeeService struct {
 	ringClient RingClient
 	wg         *sync.WaitGroup
 
-	ingesterAppends       *prometheus.CounterVec
-	ingesterMetricAppends *prometheus.CounterVec
-
-	teedStreams  *prometheus.CounterVec
-	teedRequests *prometheus.CounterVec
-
-	sendDuration *instrument.HistogramCollector
-
 	flushQueue chan clientRequest
 
 	buffersMutex *sync.Mutex
 	buffers      map[string][]distributor.KeyedStream
+
+	ingesterAppends       *prometheus.CounterVec
+	ingesterMetricAppends *prometheus.CounterVec
+	teedStreams           *prometheus.CounterVec
+	teedRequests          *prometheus.CounterVec
+	sendDuration          *instrument.HistogramCollector
 }
 
 func NewTeeService(
@@ -60,7 +58,17 @@ func NewTeeService(
 	registerer = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer)
 
 	t := &TeeService{
-		logger: log.With(logger, "component", "pattern-tee"),
+		logger:     log.With(logger, "component", "pattern-tee"),
+		cfg:        cfg,
+		limits:     limits,
+		tenantCfgs: tenantCfgs,
+		ringClient: ringClient,
+
+		wg:           &sync.WaitGroup{},
+		buffersMutex: &sync.Mutex{},
+		buffers:      make(map[string][]distributor.KeyedStream),
+		flushQueue:   make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
+
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "pattern_ingester_appends_total",
 			Help: "The total number of batch appends sent to pattern ingesters.",
@@ -86,15 +94,6 @@ func NewTeeService(
 				}, instrument.HistogramCollectorBuckets,
 			),
 		),
-		cfg:        cfg,
-		limits:     limits,
-		tenantCfgs: tenantCfgs,
-		ringClient: ringClient,
-
-		wg:           &sync.WaitGroup{},
-		buffersMutex: &sync.Mutex{},
-		buffers:      make(map[string][]distributor.KeyedStream),
-		flushQueue:   make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
 	}
 
 	return t, nil
