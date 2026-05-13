@@ -2554,21 +2554,21 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		return nil, err
 	}
 
-	if err := w.Inner().RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
+	if err := w.RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
 		return nil, err
 	}
-	w.Inner().Service().AddListener(services.NewListener(
+	w.Service().AddListener(services.NewListener(
 		nil, nil, nil,
-		func(_ services.State) { w.Inner().UnregisterMetrics(prometheus.DefaultRegisterer) },
-		func(_ services.State, _ error) { w.Inner().UnregisterMetrics(prometheus.DefaultRegisterer) },
+		func(_ services.State) { w.UnregisterMetrics(prometheus.DefaultRegisterer) },
+		func(_ services.State, _ error) { w.UnregisterMetrics(prometheus.DefaultRegisterer) },
 	))
 
 	// AdvertiseAddr is required by NewWorker, so RegisterWorkerServer
 	// always installs a real handler here.
-	w.Inner().RegisterWorkerServer(t.Server.HTTP)
+	w.RegisterWorkerServer(t.Server.HTTP)
 
 	t.dataObjCompactionWorker = w
-	return w, nil
+	return w.Service(), nil
 }
 
 func (t *Loki) initScratchStore() (services.Service, error) {

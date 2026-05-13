@@ -1,12 +1,11 @@
 package compactor
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
+	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -27,23 +26,21 @@ type WorkerParams struct {
 }
 
 // Worker is the dataobj-compaction-worker target service. It wraps an
-// embedded engine.Worker pointed at the compaction scheduler's DNS-SRV
-// record.
+// engine.Worker pointed at the compaction scheduler's DNS-SRV record and
+// mirrors engine.Worker's public surface (Service / RegisterWorkerServer /
+// RegisterMetrics / UnregisterMetrics) so callers don't reach through to
+// the engine type directly.
 type Worker struct {
-	*services.BasicService
-
-	cfg    WorkerConfig
-	logger log.Logger
-	worker *engine.Worker
+	inner *engine.Worker
 }
 
-// NewWorker constructs a compaction Worker. Returns an error if the worker
-// config is unusable or if the engine worker constructor
-// rejects the parameters.
+// NewWorker constructs a compaction Worker. Returns an error if the
+// worker config is unusable or if the engine worker constructor rejects
+// the parameters.
 //
 // Worker-specific config preconditions are enforced here rather than in
-// Config.Validate() so that planner-only deployments (which keep the worker
-// fields at their defaults) validate cleanly.
+// Config.Validate() so that planner-only deployments (which keep the
+// worker fields at their defaults) validate cleanly.
 func NewWorker(params WorkerParams) (*Worker, error) {
 	if params.Bucket == nil {
 		return nil, errors.New("dataobj compaction worker: bucket is required")
@@ -77,7 +74,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 	}
 
 	inner, err := engine.NewWorker(engine.WorkerParams{
-		Logger:    log.With(logger, "component", "dataobj-compaction-worker-inner"),
+		Logger:    log.With(logger, "component", "dataobj-compaction-worker"),
 		Bucket:    params.Bucket,
 		Metastore: params.Metastore,
 		Config: engine.WorkerConfig{
@@ -98,58 +95,23 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, fmt.Errorf("dataobj compaction worker: construct engine worker: %w", err)
 	}
 
-	w := &Worker{
-		cfg:    params.Config,
-		logger: logger,
-		worker: inner,
-	}
-	w.BasicService = services.NewBasicService(w.starting, w.running, w.stopping)
-	return w, nil
+	return &Worker{inner: inner}, nil
 }
 
-// Inner returns the embedded engine.Worker. Used by the Loki module-init
-// wiring to register the worker's HTTP frame handler on the Loki router
-// (when an advertise address is configured) and to register/unregister
-// worker metrics.
-func (w *Worker) Inner() *engine.Worker { return w.worker }
+// Service returns the service used to manage the lifecycle of the Worker.
+func (w *Worker) Service() services.Service { return w.inner.Service() }
 
-// starting brings the embedded engine worker up.
-func (w *Worker) starting(ctx context.Context) error {
-	level.Info(w.logger).Log(
-		"msg", "starting dataobj compaction worker",
-		"scheduler_lookup_address", w.cfg.SchedulerLookupAddress,
-		"endpoint", w.cfg.Endpoint,
-	)
+// RegisterWorkerServer registers the worker's HTTP frame handler on the
+// provided router. No-op when the worker was constructed without an
+// advertise address.
+func (w *Worker) RegisterWorkerServer(router *mux.Router) { w.inner.RegisterWorkerServer(router) }
 
-	if err := services.StartAndAwaitRunning(ctx, w.worker.Service()); err != nil {
-		return fmt.Errorf("dataobj compaction worker: start engine worker: %w", err)
-	}
-	return nil
+// RegisterMetrics registers metrics about w to report to reg.
+func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
+	return w.inner.RegisterMetrics(reg)
 }
 
-// running blocks until shutdown. The engine worker's own service does the
-// actual task work; this callback exists only to satisfy BasicService.
-func (w *Worker) running(ctx context.Context) error {
-	level.Info(w.logger).Log("msg", "dataobj compaction worker running")
-	<-ctx.Done()
-	return nil
-}
-
-// stopping tears down the embedded engine worker. The error parameter is
-// the reason the service is shutting down; it is logged but does not
-// gate cleanup.
-func (w *Worker) stopping(runErr error) error {
-	if runErr != nil {
-		level.Warn(w.logger).Log("msg", "dataobj compaction worker stopping after run error", "err", runErr)
-	}
-	// TODO: the dskit stopping() callback signature doesn't accept a
-	// context, so we use Background(). When real executors run inside the
-	// worker, revisit adding an upper bound (e.g., a derived context with
-	// a configurable shutdown deadline) so a stuck in-flight task can't
-	// wedge Loki shutdown indefinitely.
-	if err := services.StopAndAwaitTerminated(context.Background(), w.worker.Service()); err != nil {
-		level.Warn(w.logger).Log("msg", "stop dataobj compaction worker engine worker", "err", err)
-		return fmt.Errorf("dataobj compaction worker: stop engine worker: %w", err)
-	}
-	return nil
+// UnregisterMetrics unregisters metrics about w from reg.
+func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
+	w.inner.UnregisterMetrics(reg)
 }

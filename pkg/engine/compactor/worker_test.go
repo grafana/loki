@@ -44,18 +44,19 @@ func TestWorker_BootShutdown(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	require.NoError(t, services.StartAndAwaitRunning(ctx, w))
-	require.Equal(t, services.Running, w.State())
+	svc := w.Service()
+	require.NoError(t, services.StartAndAwaitRunning(ctx, svc))
+	require.Equal(t, services.Running, svc.State())
 
 	// Sleep one lookup interval + a bit so the SRV poll loop runs at
 	// least once with no scheduler in sight. The worker must stay
 	// Running through that poll.
 	time.Sleep(1500 * time.Millisecond)
-	require.Equal(t, services.Running, w.State(),
+	require.Equal(t, services.Running, svc.State(),
 		"worker must stay running while no scheduler is discoverable")
 
-	require.NoError(t, services.StopAndAwaitTerminated(ctx, w))
-	require.Equal(t, services.Terminated, w.State())
+	require.NoError(t, services.StopAndAwaitTerminated(ctx, svc))
+	require.Equal(t, services.Terminated, svc.State())
 }
 
 // TestNewWorker_RequiresBucket pins the constructor invariant: the
