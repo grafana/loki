@@ -1,4 +1,4 @@
-package util //nolint:revive
+package local
 
 import (
 	"context"
@@ -7,16 +7,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 type mockTableQuerier struct {
 	sync.Mutex
-	queries map[string]index.Query
+	queries map[string]Query
 }
 
-func (m *mockTableQuerier) MultiQueries(_ context.Context, queries []index.Query, _ index.QueryPagesCallback) error {
+func (m *mockTableQuerier) MultiQueries(_ context.Context, queries []Query, _ QueryPagesCallback) error {
 	m.Lock()
 	defer m.Unlock()
 
@@ -32,7 +30,7 @@ func (m *mockTableQuerier) hasQueries(t *testing.T, count int) {
 	for i := 0; i < count; i++ {
 		idx := strconv.Itoa(i)
 
-		require.Equal(t, m.queries[idx], index.Query{
+		require.Equal(t, m.queries[idx], Query{
 			HashValue:  idx,
 			ValueEqual: []byte(idx),
 		})
@@ -61,10 +59,10 @@ func TestDoParallelQueries(t *testing.T) {
 			queries := buildQueries(tc.queryCount)
 
 			tableQuerier := mockTableQuerier{
-				queries: map[string]index.Query{},
+				queries: map[string]Query{},
 			}
 
-			err := DoParallelQueries(context.Background(), tableQuerier.MultiQueries, queries, func(_ index.Query, _ index.ReadBatchResult) bool {
+			err := DoParallelQueries(context.Background(), tableQuerier.MultiQueries, queries, func(_ Query, _ ReadBatchResult) bool {
 				return false
 			})
 			require.NoError(t, err)
@@ -74,11 +72,11 @@ func TestDoParallelQueries(t *testing.T) {
 	}
 }
 
-func buildQueries(n int) []index.Query {
-	queries := make([]index.Query, 0, n)
+func buildQueries(n int) []Query {
+	queries := make([]Query, 0, n)
 	for i := 0; i < n; i++ {
 		idx := strconv.Itoa(i)
-		queries = append(queries, index.Query{
+		queries = append(queries, Query{
 			HashValue:  idx,
 			ValueEqual: []byte(idx),
 		})
@@ -159,7 +157,7 @@ func TestIndexDeduper(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("sync", func(t *testing.T) {
 				actualValues := map[string][][]byte{}
-				deduper := NewSyncCallbackDeduper(func(query index.Query, readBatch index.ReadBatchResult) bool {
+				deduper := NewSyncCallbackDeduper(func(query Query, readBatch ReadBatchResult) bool {
 					itr := readBatch.Iterator()
 					for itr.Next() {
 						actualValues[query.HashValue] = append(actualValues[query.HashValue], itr.RangeValue())
@@ -168,7 +166,7 @@ func TestIndexDeduper(t *testing.T) {
 				}, 0)
 
 				for _, batch := range tc.batches {
-					deduper(index.Query{HashValue: batch.hashValue}, batch)
+					deduper(Query{HashValue: batch.hashValue}, batch)
 				}
 
 				require.Equal(t, tc.expectedValues, actualValues)
@@ -176,7 +174,7 @@ func TestIndexDeduper(t *testing.T) {
 
 			t.Run("nosync", func(t *testing.T) {
 				actualValues := map[string][][]byte{}
-				deduper := NewCallbackDeduper(func(query index.Query, readBatch index.ReadBatchResult) bool {
+				deduper := NewCallbackDeduper(func(query Query, readBatch ReadBatchResult) bool {
 					itr := readBatch.Iterator()
 					for itr.Next() {
 						actualValues[query.HashValue] = append(actualValues[query.HashValue], itr.RangeValue())
@@ -185,7 +183,7 @@ func TestIndexDeduper(t *testing.T) {
 				}, 0)
 
 				for _, batch := range tc.batches {
-					deduper(index.Query{HashValue: batch.hashValue}, batch)
+					deduper(Query{HashValue: batch.hashValue}, batch)
 				}
 
 				require.Equal(t, tc.expectedValues, actualValues)
@@ -199,7 +197,7 @@ type batch struct {
 	rangeValues [][]byte
 }
 
-func (b batch) Iterator() index.ReadBatchIterator {
+func (b batch) Iterator() ReadBatchIterator {
 	return &batchIterator{
 		rangeValues: b.rangeValues,
 	}
@@ -228,14 +226,14 @@ func (b batchIterator) Value() []byte {
 }
 
 func Benchmark_DedupeCallback(b *testing.B) {
-	deduper := NewCallbackDeduper(func(_ index.Query, readBatch index.ReadBatchResult) bool {
+	deduper := NewCallbackDeduper(func(_ Query, readBatch ReadBatchResult) bool {
 		itr := readBatch.Iterator()
 		for itr.Next() {
 			_ = itr.RangeValue()
 		}
 		return true
 	}, 1)
-	q := index.Query{HashValue: "1"}
+	q := Query{HashValue: "1"}
 	batch1 := batch{
 		hashValue:   "1",
 		rangeValues: [][]byte{[]byte("a"), []byte("b"), []byte("c")},
@@ -248,9 +246,9 @@ func Benchmark_DedupeCallback(b *testing.B) {
 	}
 }
 
-type TableQuerierFunc func(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
+type TableQuerierFunc func(ctx context.Context, queries []Query, callback QueryPagesCallback) error
 
-func (f TableQuerierFunc) MultiQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+func (f TableQuerierFunc) MultiQueries(ctx context.Context, queries []Query, callback QueryPagesCallback) error {
 	return f(ctx, queries, callback)
 }
 
@@ -264,23 +262,23 @@ func Benchmark_MultiQueries(b *testing.B) {
 
 func benchmarkMultiQueries(b *testing.B, n int) {
 	b.Run(strconv.Itoa(n), func(b *testing.B) {
-		callback := index.QueryPagesCallback(func(_ index.Query, readBatch index.ReadBatchResult) bool {
+		callback := QueryPagesCallback(func(_ Query, readBatch ReadBatchResult) bool {
 			itr := readBatch.Iterator()
 			for itr.Next() {
 				_ = itr.RangeValue()
 			}
 			return true
 		})
-		queries := make([]index.Query, n)
+		queries := make([]Query, n)
 		for i := range queries {
-			queries[i] = index.Query{HashValue: strconv.Itoa(i)}
+			queries[i] = Query{HashValue: strconv.Itoa(i)}
 		}
 		ranges := [][]byte{[]byte("a"), []byte("b"), []byte("c")}
 		ctx := context.Background()
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = DoParallelQueries(ctx, func(_ context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+			_ = DoParallelQueries(ctx, func(_ context.Context, queries []Query, callback QueryPagesCallback) error {
 				for _, query := range queries {
 					callback(query, batch{
 						hashValue:   query.HashValue,

@@ -15,9 +15,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	shipper_util "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -35,7 +33,7 @@ type deleteRequestsTable struct {
 
 const deleteRequestsDBBoltDBFileName = DeleteRequestsTableName + ".gz"
 
-func newDeleteRequestsTable(workingDirectory string, indexStorageClient storage.Client) (index.Client, error) {
+func newDeleteRequestsTable(workingDirectory string, indexStorageClient storage.Client) (local.Client, error) {
 	dbPath := filepath.Join(workingDirectory, DeleteRequestsTableName)
 	boltdbIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: filepath.Dir(dbPath)})
 	if err != nil {
@@ -77,7 +75,7 @@ func (t *deleteRequestsTable) init() error {
 		}
 	}
 
-	t.db, err = shipper_util.SafeOpenBoltdbFile(t.dbPath)
+	t.db, err = local.SafeOpenBoltdbFile(t.dbPath)
 	return err
 }
 
@@ -173,11 +171,11 @@ func (t *deleteRequestsTable) Stop() {
 	t.boltdbIndexClient.Stop()
 }
 
-func (t *deleteRequestsTable) NewWriteBatch() index.WriteBatch {
+func (t *deleteRequestsTable) NewWriteBatch() local.WriteBatch {
 	return t.boltdbIndexClient.NewWriteBatch()
 }
 
-func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
+func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch local.WriteBatch) error {
 	boltWriteBatch, ok := batch.(*local.BoltWriteBatch)
 	if !ok {
 		return errors.New("invalid write batch")
@@ -193,7 +191,7 @@ func (t *deleteRequestsTable) BatchWrite(ctx context.Context, batch index.WriteB
 	return nil
 }
 
-func (t *deleteRequestsTable) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+func (t *deleteRequestsTable) QueryPages(ctx context.Context, queries []local.Query, callback local.QueryPagesCallback) error {
 	for _, query := range queries {
 		if err := local.QueryDB(ctx, t.db, local.IndexBucketName, query, callback); err != nil {
 			return err

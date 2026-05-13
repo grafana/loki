@@ -18,7 +18,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 func AddRecordsToDB(t testing.TB, path string, start, numRecords int, bucketName []byte) {
@@ -39,7 +38,7 @@ func AddRecordsToDB(t testing.TB, path string, start, numRecords int, bucketName
 	require.NoError(t, db.Close())
 }
 
-func AddRecordsToBatch(batch index.WriteBatch, tableName string, start, numRecords int) {
+func AddRecordsToBatch(batch local.WriteBatch, tableName string, start, numRecords int) {
 	for i := 0; i < numRecords; i++ {
 		rec := []byte(strconv.Itoa(start + i))
 		batch.Add(tableName, "", rec, rec)
@@ -47,13 +46,13 @@ func AddRecordsToBatch(batch index.WriteBatch, tableName string, start, numRecor
 }
 
 // nolint
-func queryIndexes(t *testing.T, ctx context.Context, queries []index.Query, indexIteratorFunc IndexIteratorFunc, callback index.QueryPagesCallback) {
+func queryIndexes(t *testing.T, ctx context.Context, queries []local.Query, indexIteratorFunc IndexIteratorFunc, callback local.QueryPagesCallback) {
 	userID, err := tenant.TenantID(ctx)
 	require.NoError(t, err)
 
 	for _, query := range queries {
 		err := indexIteratorFunc(ctx, query.TableName, func(boltdb *bbolt.DB) error {
-			return queryBoltDB(ctx, boltdb, []byte(userID), []index.Query{query}, callback)
+			return queryBoltDB(ctx, boltdb, []byte(userID), []local.Query{query}, callback)
 		})
 		require.NoError(t, err)
 	}
@@ -61,7 +60,7 @@ func queryIndexes(t *testing.T, ctx context.Context, queries []index.Query, inde
 
 type IndexIteratorFunc func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error
 
-func VerifyIndexes(t *testing.T, userID string, queries []index.Query, indexIteratorFunc IndexIteratorFunc, start, numRecords int) {
+func VerifyIndexes(t *testing.T, userID string, queries []local.Query, indexIteratorFunc IndexIteratorFunc, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
@@ -72,10 +71,10 @@ func VerifyIndexes(t *testing.T, userID string, queries []index.Query, indexIter
 }
 
 type SingleDBQuerier interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query index.Query, callback index.QueryPagesCallback) error
+	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query local.Query, callback local.QueryPagesCallback) error
 }
 
-func VerifySingleIndexFile(t *testing.T, query index.Query, db *bbolt.DB, bucketName []byte, start, numRecords int) {
+func VerifySingleIndexFile(t *testing.T, query local.Query, db *bbolt.DB, bucketName []byte, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
@@ -91,10 +90,10 @@ func VerifySingleIndexFile(t *testing.T, query index.Query, db *bbolt.DB, bucket
 	require.Len(t, fetchedRecords, numRecords)
 }
 
-func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) index.QueryPagesCallback {
+func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) local.QueryPagesCallback {
 	t.Helper()
 	recordsMtx := sync.Mutex{}
-	return func(_ index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
+	return func(_ local.Query, batch local.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {
 			require.Equal(t, itr.RangeValue(), itr.Value())
@@ -249,7 +248,7 @@ func BuildUserID(id int) string {
 	return fmt.Sprintf("user-%d", id)
 }
 
-func queryBoltDB(ctx context.Context, db *bbolt.DB, userID []byte, queries []index.Query, callback index.QueryPagesCallback) error {
+func queryBoltDB(ctx context.Context, db *bbolt.DB, userID []byte, queries []local.Query, callback local.QueryPagesCallback) error {
 	return db.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(userID)
 		if bucket == nil {
