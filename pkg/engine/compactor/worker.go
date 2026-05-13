@@ -26,7 +26,7 @@ type WorkerParams struct {
 	Registerer prometheus.Registerer
 }
 
-// Worker is the dataobj-compactor-worker target service. It wraps an
+// Worker is the dataobj-compaction-worker target service. It wraps an
 // embedded engine.Worker pointed at the compaction scheduler's DNS-SRV
 // record.
 type Worker struct {

@@ -15,7 +15,7 @@ import (
 // Config is the top-level configuration for dataobj compaction.
 type Config struct {
 	// Enabled gates both the dataobj-compaction-planner and the
-	// dataobj-compactor-worker targets. When false, both modules are no-ops
+	// dataobj-compaction-worker targets. When false, both modules are no-ops
 	// even if their target is selected.
 	Enabled bool `yaml:"enabled"`
 
@@ -33,7 +33,7 @@ type Config struct {
 	// pkg/engine/scheduler.go for the underlying SchedulerParams.
 	Scheduler SchedulerConfig `yaml:"scheduler"`
 
-	// Worker holds the worker-side knobs for the dataobj-compactor-worker
+	// Worker holds the worker-side knobs for the dataobj-compaction-worker
 	// target. Independent of Scheduler: a process can be a planner-only
 	// (scheduler+coordinator) or worker-only deployment, selected via
 	// -target.
@@ -56,11 +56,11 @@ type SchedulerConfig struct {
 }
 
 // WorkerConfig holds the worker-side parameters that get passed to
-// engine.NewWorker when the dataobj-compactor-worker target boots.
+// engine.NewWorker when the dataobj-compaction-worker target boots.
 // The compaction worker runs in remote-transport mode only; it discovers
 // the compaction scheduler via DNS-SRV lookup.
 //
-// The worker module is gated by Loki target -target=dataobj-compactor-worker
+// The worker module is gated by Loki target -target=dataobj-compaction-worker
 // AND the same dataobj.compaction.enabled flag the planner uses. There is
 // no separate worker enable flag — the role separation comes from the
 // Loki target.
@@ -130,11 +130,11 @@ func (cfg *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 	f.IntVar(&cfg.WorkerThreads, prefix+"worker-threads", 0,
 		"Experimental: Number of task-execution threads. 0 uses GOMAXPROCS.")
 	f.StringVar(&cfg.SchedulerLookupAddress, prefix+"scheduler-lookup-address", "",
-		"Experimental: DNS-SRV address used to discover compaction schedulers. Required when -target=dataobj-compactor-worker. Example: dnssrv+_compaction-frame._tcp.compactor-scheduler.svc.cluster.local")
+		"Experimental: DNS-SRV address used to discover compaction schedulers. Required when -target=dataobj-compaction-worker. Example: dnssrv+_compaction-frame._tcp.compactor-scheduler.svc.cluster.local")
 	f.DurationVar(&cfg.SchedulerLookupInterval, prefix+"scheduler-lookup-interval", 10*time.Second,
 		"Experimental: Interval at which to re-run the DNS-SRV lookup.")
 	f.StringVar(&cfg.AdvertiseAddr, prefix+"advertise-addr", "",
-		"Experimental: host:port the embedded compaction worker advertises to schedulers. Required when -target=dataobj-compactor-worker.")
+		"Experimental: host:port the embedded compaction worker advertises to schedulers. Required when -target=dataobj-compaction-worker.")
 	f.StringVar(&cfg.Endpoint, prefix+"endpoint", defaultEndpoint,
 		"Experimental: HTTP path the embedded compaction worker registers its frame handler on.")
 }

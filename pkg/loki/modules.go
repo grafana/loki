@@ -156,7 +156,7 @@ const (
 	DataObjConsumerPartitionRing = "dataobj-consumer-partition-ring"
 	DataObjIndexBuilder          = "dataobj-index-builder"
 	DataObjCompactionPlanner     = "dataobj-compaction-planner"
-	DataObjCompactorWorker       = "dataobj-compactor-worker"
+	DataObjCompactionWorker      = "dataobj-compaction-worker"
 	ScratchStore                 = "scratch-store"
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
@@ -2525,7 +2525,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 	return c, nil
 }
 
-func (t *Loki) initDataObjCompactorWorker() (services.Service, error) {
+func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled || !t.Cfg.DataObj.Compaction.Enabled {
 		return nil, nil
 	}
@@ -2534,9 +2534,9 @@ func (t *Loki) initDataObjCompactorWorker() (services.Service, error) {
 		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
 	}
 
-	logger := log.With(util_log.Logger, "component", "dataobj-compactor-worker")
+	logger := log.With(util_log.Logger, "component", "dataobj-compaction-worker")
 
-	store, err := t.getDataObjBucket("dataobj-compactor-worker")
+	store, err := t.getDataObjBucket("dataobj-compaction-worker")
 	if err != nil {
 		return nil, err
 	}
@@ -2567,7 +2567,7 @@ func (t *Loki) initDataObjCompactorWorker() (services.Service, error) {
 	// always installs a real handler here.
 	w.Inner().RegisterWorkerServer(t.Server.HTTP)
 
-	t.dataObjCompactorWorker = w
+	t.dataObjCompactionWorker = w
 	return w, nil
 }
 
