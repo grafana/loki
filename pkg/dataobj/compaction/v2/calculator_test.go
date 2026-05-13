@@ -262,3 +262,78 @@ func TestCalculateRuns_MultiColumn_OverlapAcrossColumns(t *testing.T) {
 
 	require.Len(t, got, 2, "overlapping sections must produce separate runs")
 }
+
+// secTS is a constructor for SectionRef test fixtures with explicit
+// MinTimestamp/MaxTimestamp values (for tests that exercise the timestamp
+// component of the composite sort key). MinKey/MaxKey are still []string
+// tuples; pass single-element slices for the single-column case.
+func secTS(path string, idx int32, minKey, maxKey []string, minTs, maxTs int64) *compactionv2pb.SectionRef {
+	return &compactionv2pb.SectionRef{
+		ObjectPath:   path,
+		SectionIndex: idx,
+		MinKey:       minKey,
+		MaxKey:       maxKey,
+		MinTimestamp: minTs,
+		MaxTimestamp: maxTs,
+	}
+}
+
+// TestCalculateRuns_Timestamp_NonOverlap demonstrates that when two sections
+// share the same label tuple but have non-overlapping time slices, they
+// correctly pack into a single run. Without including the timestamp
+// component in the comparison, the algorithm would see equal label tuples
+// at the boundary (a.MaxKey == b.MinKey) and conclude they overlap.
+func TestCalculateRuns_Timestamp_NonOverlap(t *testing.T) {
+	// a: labels=["api"], ts=[100..200]
+	// b: labels=["api"], ts=[300..400]
+	//
+	// Composite compare on (a.MaxKey, a.MaxTimestamp) vs (b.MinKey, b.MinTimestamp):
+	// labels equal (["api"] == ["api"]); fall through to timestamp:
+	// 200 < 300 -> a's upper bound < b's lower bound -> NO overlap -> one run.
+	a := secTS("o", 0, []string{"api"}, []string{"api"}, 100, 200)
+	b := secTS("o", 1, []string{"api"}, []string{"api"}, 300, 400)
+
+	got := calculateRuns([]*compactionv2pb.SectionRef{b, a}) // jumbled
+
+	require.Len(t, got, 1, "same-label, non-overlapping time should form one run")
+	require.Equal(t, []*compactionv2pb.SectionRef{a, b}, got[0].sections,
+		"composite sort key must order by timestamp when labels tie: a (ts=100) before b (ts=300)")
+}
+
+// TestCalculateRuns_Timestamp_Overlap is the dual: same labels with
+// overlapping time slices must produce separate runs.
+func TestCalculateRuns_Timestamp_Overlap(t *testing.T) {
+	// a: labels=["api"], ts=[100..300]
+	// b: labels=["api"], ts=[200..400]   -- overlaps a in time
+	//
+	// Composite compare on (a.MaxKey, a.MaxTimestamp) vs (b.MinKey, b.MinTimestamp):
+	// labels equal; 300 > 200 -> a's upper bound > b's lower bound -> OVERLAP.
+	// Two runs.
+	a := secTS("o", 0, []string{"api"}, []string{"api"}, 100, 300)
+	b := secTS("o", 1, []string{"api"}, []string{"api"}, 200, 400)
+
+	got := calculateRuns([]*compactionv2pb.SectionRef{a, b})
+
+	require.Len(t, got, 2, "same-label, time-overlapping sections must form separate runs")
+}
+
+// TestCalculateRuns_Timestamp_NumericOrder verifies that timestamps compare
+// numerically as int64, not lexicographically as strings. A naive encoding
+// of timestamps as Sprintf("%d", ts) would order ts=9 > ts=10 (because '9'
+// (0x39) > '1' (0x31) under byte compare); the int64 field side-steps that
+// entirely.
+func TestCalculateRuns_Timestamp_NumericOrder(t *testing.T) {
+	// Same labels; widely-separated timestamps where decimal-string compare
+	// would give the wrong answer.
+	//   a: labels=["api"], ts=[9..9]
+	//   b: labels=["api"], ts=[10..10]
+	// Numeric order: a < b (9 < 10). String "9" > "10" under byte compare.
+	a := secTS("o", 0, []string{"api"}, []string{"api"}, 9, 9)
+	b := secTS("o", 1, []string{"api"}, []string{"api"}, 10, 10)
+
+	got := calculateRuns([]*compactionv2pb.SectionRef{b, a}) // jumbled
+
+	require.Len(t, got, 1, "non-overlapping (one timestamp each) -> one run")
+	require.Equal(t, []*compactionv2pb.SectionRef{a, b}, got[0].sections,
+		"timestamps must compare numerically: ts=9 < ts=10")
+}
