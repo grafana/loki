@@ -11,8 +11,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-var _ WrappedPipeline = (*batchingPipeline)(nil)
-
 // batchingPipeline wraps a [Pipeline] and accumulates records from it into
 // larger batches of at most batchSize rows, performing schema reconciliation
 // across records with different schemas via [arrowagg.Records].
@@ -39,10 +37,6 @@ func NewBatchingPipeline(inner Pipeline, batchSize int64) Pipeline {
 		batchSize: batchSize,
 		agg:       arrowagg.NewRecords(memory.DefaultAllocator),
 	}
-}
-
-func (p *batchingPipeline) Unwrap() Pipeline {
-	return p.inner
 }
 
 // Open implements Pipeline.

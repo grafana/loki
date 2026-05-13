@@ -569,8 +569,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(req.Size())
-	d.inflightBytes.Inc(requestSize)
-	defer d.inflightBytes.Inc(-requestSize)
+	d.inflightBytes.Add(requestSize)
+	defer d.inflightBytes.Sub(requestSize)
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {

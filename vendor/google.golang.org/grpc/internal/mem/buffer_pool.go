@@ -73,7 +73,7 @@ type BinaryTieredBufferPool struct {
 func NewBinaryTieredBufferPool(powerOfTwoExponents ...uint8) (*BinaryTieredBufferPool, error) {
 	return newBinaryTiered(func(size int) bufferPool {
 		return newSizedBufferPool(size, true)
-	}, &SimpleBufferPool{shouldZero: true}, powerOfTwoExponents...)
+	}, &simpleBufferPool{shouldZero: true}, powerOfTwoExponents...)
 }
 
 // NewDirtyBinaryTieredBufferPool returns a BufferPool backed by multiple
@@ -82,7 +82,7 @@ func NewBinaryTieredBufferPool(powerOfTwoExponents ...uint8) (*BinaryTieredBuffe
 func NewDirtyBinaryTieredBufferPool(powerOfTwoExponents ...uint8) (*BinaryTieredBufferPool, error) {
 	return newBinaryTiered(func(size int) bufferPool {
 		return newSizedBufferPool(size, false)
-	}, NewDirtySimplePool(), powerOfTwoExponents...)
+	}, &simpleBufferPool{shouldZero: false}, powerOfTwoExponents...)
 }
 
 func newBinaryTiered(sizedPoolFactory func(int) bufferPool, fallbackPool bufferPool, powerOfTwoExponents ...uint8) (*BinaryTieredBufferPool, error) {
@@ -258,7 +258,7 @@ func newSizedBufferPool(size int, zero bool) *sizedBufferPool {
 // buffer pools for different sizes of buffers.
 type TieredBufferPool struct {
 	sizedPools   []*sizedBufferPool
-	fallbackPool SimpleBufferPool
+	fallbackPool simpleBufferPool
 }
 
 // NewTieredBufferPool returns a BufferPool implementation that uses multiple
@@ -271,7 +271,7 @@ func NewTieredBufferPool(poolSizes ...int) *TieredBufferPool {
 	}
 	return &TieredBufferPool{
 		sizedPools:   pools,
-		fallbackPool: SimpleBufferPool{shouldZero: true},
+		fallbackPool: simpleBufferPool{shouldZero: true},
 	}
 }
 
@@ -297,26 +297,16 @@ func (p *TieredBufferPool) getPool(size int) bufferPool {
 	return p.sizedPools[poolIdx]
 }
 
-// SimpleBufferPool is an implementation of the mem.BufferPool interface that
+// simpleBufferPool is an implementation of the BufferPool interface that
 // attempts to pool buffers with a sync.Pool. When Get is invoked, it tries to
 // acquire a buffer from the pool but if that buffer is too small, it returns it
 // to the pool and creates a new one.
-type SimpleBufferPool struct {
+type simpleBufferPool struct {
 	pool       sync.Pool
 	shouldZero bool
 }
 
-// NewDirtySimplePool constructs a [SimpleBufferPool]. It does not initialize
-// the buffers before returning them. Callers must ensure they don't read the
-// buffers before writing data to them.
-func NewDirtySimplePool() *SimpleBufferPool {
-	return &SimpleBufferPool{
-		shouldZero: false,
-	}
-}
-
-// Get returns a buffer with specified length from the pool.
-func (p *SimpleBufferPool) Get(size int) *[]byte {
+func (p *simpleBufferPool) Get(size int) *[]byte {
 	bs, ok := p.pool.Get().(*[]byte)
 	if ok && cap(*bs) >= size {
 		if p.shouldZero {
@@ -343,7 +333,6 @@ func (p *SimpleBufferPool) Get(size int) *[]byte {
 	return &b
 }
 
-// Put returns a buffer to the pool.
-func (p *SimpleBufferPool) Put(buf *[]byte) {
+func (p *simpleBufferPool) Put(buf *[]byte) {
 	p.pool.Put(buf)
 }
