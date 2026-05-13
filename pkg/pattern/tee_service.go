@@ -29,6 +29,13 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 )
 
+const (
+	teedRequestsStatusDropped = "dropped"
+	teedRequestsStatusQueued  = "queued"
+	teedStreamsStatusBatched  = "batched"
+	teedStreamsStatusDropped  = "dropped"
+)
+
 // teeMetrics contains the metrics for [TeeService].
 type teeMetrics struct {
 	bufferedBytes         *metric_util.MaxSampleCollector
@@ -72,6 +79,13 @@ func newTeeMetrics(reg prometheus.Registerer) *teeMetrics {
 			),
 		),
 	}
+	// Initialize counters to 0, as rate and increase PromQL functions do not detect
+	// increase from absent to 1.
+	m.teedRequests.WithLabelValues(teedRequestsStatusDropped)
+	m.teedRequests.WithLabelValues(teedRequestsStatusQueued)
+	m.teedStreams.WithLabelValues(teedStreamsStatusBatched)
+	m.teedStreams.WithLabelValues(teedStreamsStatusDropped)
+
 	reg.MustRegister(m.bufferedBytes)
 	return &m
 }
@@ -240,9 +254,9 @@ func (ts *TeeService) flush() {
 				reqs:         reqs,
 				size:         totalSize,
 			}:
-				ts.metrics.teedRequests.WithLabelValues("queued").Inc()
+				ts.metrics.teedRequests.WithLabelValues(teedRequestsStatusQueued).Inc()
 			default:
-				ts.metrics.teedRequests.WithLabelValues("dropped").Inc()
+				ts.metrics.teedRequests.WithLabelValues(teedRequestsStatusDropped).Inc()
 				ts.releaseBufferedBytes(totalSize)
 			}
 		}
@@ -267,7 +281,7 @@ func (ts *TeeService) batchesForTenant(
 			Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 		if err != nil || len(replicationSet.Instances) == 0 {
 			ts.releaseBufferedBytes(stream.Stream.Size())
-			ts.metrics.teedStreams.WithLabelValues("dropped").Inc()
+			ts.metrics.teedStreams.WithLabelValues(teedStreamsStatusDropped).Inc()
 			continue
 		}
 
@@ -279,7 +293,7 @@ func (ts *TeeService) batchesForTenant(
 		}
 
 		batch.Streams = append(batch.Streams, stream.Stream)
-		ts.metrics.teedStreams.WithLabelValues("batched").Inc()
+		ts.metrics.teedStreams.WithLabelValues(teedStreamsStatusBatched).Inc()
 	}
 
 	streamCount := uint64(len(streams))
@@ -477,7 +491,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 		// Check that the stream is allowed within the current limit.
 		size := stream.Stream.Size()
 		if !ts.tryReserveBufferedBytes(size) {
-			ts.metrics.teedStreams.WithLabelValues("dropped").Inc()
+			ts.metrics.teedStreams.WithLabelValues(teedStreamsStatusDropped).Inc()
 			continue
 		}
 

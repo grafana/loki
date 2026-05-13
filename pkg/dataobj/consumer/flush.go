@@ -80,11 +80,11 @@ func newFlusher(sorter sorter, uploader uploader, logger log.Logger, r prometheu
 			NativeHistogramMinResetDuration: 0,
 		}),
 	}
-	// Initialize each counter to 0, otherwise neither the rate nor increase
-	// PromQL functions detect increases from 0 to 1.
-	f.flushes.WithLabelValues(flushReasonBuilderFull).Add(0)
-	f.flushes.WithLabelValues(flushReasonIdle).Add(0)
-	f.flushes.WithLabelValues(flushReasonMaxAge).Add(0)
+	// Initialize counters to 0, as rate and increase PromQL functions do not detect
+	// increase from absent to 1.
+	f.flushes.WithLabelValues(flushReasonBuilderFull)
+	f.flushes.WithLabelValues(flushReasonIdle)
+	f.flushes.WithLabelValues(flushReasonMaxAge)
 	f.flushFunc = f.flush
 	return f
 }
