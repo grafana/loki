@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"google.golang.org/grpc/tap"
 
-	"github.com/grafana/loki/v3/pkg/util/requestlimiter"
+	"github.com/grafana/loki/v3/pkg/util/inflightbytes"
 )
 
 type contextKey int
@@ -20,7 +20,7 @@ const inflightReservationKey contextKey = 0
 // budget is exhausted.
 type LoadSheddingHandle struct {
 	d              *Distributor
-	requestLimiter *requestlimiter.Limiter
+	requestLimiter *inflightbytes.Limiter
 }
 
 func NewLoadSheddingHandle() *LoadSheddingHandle {
@@ -31,7 +31,7 @@ func NewLoadSheddingHandle() *LoadSheddingHandle {
 // before Handle is used.
 func (h *LoadSheddingHandle) SetDistributor(d *Distributor) {
 	h.d = d
-	h.requestLimiter = requestlimiter.New(d.cfg.RequestSizeLimiter, d.inflightBytes)
+	h.requestLimiter = inflightbytes.New(d.cfg.RequestSizeLimiter, d.inflightBytes)
 }
 
 // Handle implements tap.ServerInHandle.
@@ -55,7 +55,7 @@ func (h *LoadSheddingHandle) Handle(ctx context.Context, _ *tap.Info) (context.C
 }
 
 // inflightReservation extracts the Reservation stored by Handle, if present.
-func inflightReservation(ctx context.Context) (*requestlimiter.Reservation, bool) {
-	r, ok := ctx.Value(inflightReservationKey).(*requestlimiter.Reservation)
+func inflightReservation(ctx context.Context) (*inflightbytes.Reservation, bool) {
+	r, ok := ctx.Value(inflightReservationKey).(*inflightbytes.Reservation)
 	return r, ok
 }

@@ -57,7 +57,7 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_metric "github.com/grafana/loki/v3/pkg/util/metric"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
-	"github.com/grafana/loki/v3/pkg/util/requestlimiter"
+	"github.com/grafana/loki/v3/pkg/util/inflightbytes"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -117,7 +117,7 @@ type Config struct {
 
 	InMemoryPushTimeout time.Duration `yaml:"inmemory_dataobj_push_timeout"`
 
-	RequestSizeLimiter requestlimiter.Config `yaml:"request_size_limiter,omitempty"`
+	RequestSizeLimiter inflightbytes.Config `yaml:"request_size_limiter,omitempty"`
 }
 
 // RegisterFlags registers distributor-related flags.

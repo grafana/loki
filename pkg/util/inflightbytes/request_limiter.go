@@ -1,4 +1,4 @@
-package requestlimiter
+package inflightbytes
 
 import (
 	"context"
