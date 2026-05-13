@@ -6,11 +6,12 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
-// run is one non-overlapping run of sections
+// run is one non-overlapping run of sections. Runs are kept in creation order
+// in the calculator's `runs` slice (no deletes, no reordering), so a run's
+// index in that slice equals its creation order.
 type run struct {
 	sections  []*compactionv2pb.SectionRef
 	topMaxKey string
-	createdAt int
 }
 
 // calculateRuns sorts the provided [sections] in place and returns a set of
@@ -118,7 +119,6 @@ func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
 		runs = append(runs, &run{
 			sections:  []*compactionv2pb.SectionRef{s},
 			topMaxKey: s.MaxKey,
-			createdAt: len(runs),
 		})
 	}
 

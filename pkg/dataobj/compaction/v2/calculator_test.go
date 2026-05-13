@@ -34,7 +34,6 @@ func TestPatienceSort_SingleSection(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, []*compactionv2pb.SectionRef{s}, got[0].sections)
 	require.Equal(t, "b", got[0].topMaxKey)
-	require.Equal(t, 0, got[0].createdAt)
 }
 
 func TestPatienceSort_AllNonOverlapping(t *testing.T) {
@@ -91,7 +90,7 @@ func TestPatienceSort_TiebreakerOnCreationOrder(t *testing.T) {
 	// pile0 topMaxKey=10, pile1 topMaxKey=11, pile2 topMaxKey=10
 	//   s4 = ("11","20") — eligible for pile0 (topMaxKey "10" < "11") AND pile2 (topMaxKey "10" < "11").
 	//   pile1 topMaxKey "11" is NOT < "11"; not eligible.
-	//   Per D2 tiebreak: pick the OLDEST eligible pile -> pile0 (createdAt=0).
+	//   Tiebreak: pick the OLDEST eligible pile -> pile0 (slice index 0).
 	s1 := sec("o", 0, "00", "10")
 	s2 := sec("o", 1, "05", "11")
 	s3 := sec("o", 2, "06", "10")
@@ -100,12 +99,12 @@ func TestPatienceSort_TiebreakerOnCreationOrder(t *testing.T) {
 	got := calculateRuns([]*compactionv2pb.SectionRef{s1, s2, s3, s4})
 
 	require.Len(t, got, 3)
-	// pile0 (createdAt=0) should have received s4.
+	// pile0 (slice index 0, the oldest) should have received s4.
 	require.Equal(t, []*compactionv2pb.SectionRef{s1, s4}, got[0].sections,
-		"D2: among piles with equal topMaxKey, append to the OLDEST")
+		"among piles with equal topMaxKey, append to the OLDEST")
 	// pile2 unchanged.
 	require.Equal(t, []*compactionv2pb.SectionRef{s3}, got[2].sections,
-		"D2: newer pile is NOT chosen on tie")
+		"newer pile is NOT chosen on tie")
 }
 
 func TestPatienceSort_StableIDTiebreaker(t *testing.T) {
