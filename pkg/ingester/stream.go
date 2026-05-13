@@ -219,7 +219,7 @@ func (s *stream) Push(
 	}
 
 	isReplay := replay || walReplay
-	toStore, invalid := s.validateEntries(ctx, entries, isReplay, rateLimitWholeStream, usageTracker, format)
+	toStore, invalid := s.validateEntries(ctx, entries, replay, isReplay, rateLimitWholeStream, usageTracker, format)
 	if rateLimitWholeStream && hasRateLimitErr(invalid) {
 		return 0, errorForFailedEntries(s, invalid, len(entries))
 	}
@@ -344,6 +344,9 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, rep
 	storedEntries := make([]logproto.Entry, 0, len(entries))
 	for i := 0; i < len(entries); i++ {
 		chunk := &s.chunks[len(s.chunks)-1]
+		if replay != !chunk.firstSeen.IsZero() && chunk.chunk.UncompressedSize() > 0 {
+			chunk = s.cutChunk(ctx, replay)
+		}
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			chunk = s.cutChunk(ctx, replay)
 		}
@@ -393,7 +396,7 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 
 }
 
-func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
+func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, replay, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
 
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
@@ -444,7 +447,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		}
 
 		validBytes += entryBytes
-		if isReplay && s.replayAgeGateBypass != nil && s.replayAgeGateBypass(entries[i].Timestamp, now) {
+		if replay && s.replayAgeGateBypass != nil && s.replayAgeGateBypass(entries[i].Timestamp, now) {
 			s.metrics.replayEntriesAccepted.WithLabelValues(s.tenant).Inc()
 		}
 

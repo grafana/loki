@@ -18,8 +18,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -28,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	lokiutil "github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -44,6 +47,15 @@ type mockIndexSet struct {
 	objectClient      client.ObjectClient
 	compactedIndex    compactor.CompactedIndex
 	removeSourceFiles bool
+}
+
+type recordingIndexWriter struct {
+	metas index.ChunkMetas
+}
+
+func (w *recordingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, chks index.ChunkMetas) error {
+	w.metas = append(w.metas, chks...)
+	return nil
 }
 
 func newMockIndexSet(userID, tableName, workingDir string, objectClient client.ObjectClient) (compactor.IndexSet, error) {
@@ -902,7 +914,7 @@ func TestCompactedIndex(t *testing.T) {
 
 			for _, chk := range tc.addChunks {
 				approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
-				_, err := compactedIndex.IndexChunk(chk.ChunkRef, chk.Metric, uint32(approxKB), uint32(chk.Data.Entries()))
+				_, err := compactedIndex.IndexChunk(chk.ChunkRef, chk.Metric, chk.IngestedAt, uint32(approxKB), uint32(chk.Data.Entries()))
 				require.NoError(t, err)
 			}
 
@@ -986,6 +998,61 @@ func TestCompactedIndexForEachSeriesPropagatesIngestedAt(t *testing.T) {
 			require.Equal(t, chunkMetasToRetentionChunk(config.SchemaConfig{Configs: []config.PeriodConfig{periodConfig}}, buildUserID(0), lbls, tc.chunkMetas), got)
 		})
 	}
+}
+
+func TestReplayChunkIngestedAtSurvivesStoreIndexAndCompactedRewrite(t *testing.T) {
+	lbls := mustParseLabels(`{foo="bar"}`)
+	metric := labels.NewBuilder(lbls).Set(model.MetricNameLabel, "logs").Labels()
+	now := time.Now()
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.GZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 1500*1024)
+	dup, err := memChunk.Append(&logproto.Entry{
+		Timestamp: now,
+		Line:      "replayed line",
+	})
+	require.False(t, dup)
+	require.NoError(t, err)
+	require.NoError(t, memChunk.Close())
+
+	firstTime, lastTime := lokiutil.RoundToMilliseconds(memChunk.Bounds())
+	flushedChunk := chunk.NewChunk("user-0", model.Fingerprint(labels.StableHash(metric)), metric, chunkenc.NewFacade(memChunk, 256*1024, 1500*1024), firstTime, lastTime)
+	flushedChunk.IngestedAt = model.TimeFromUnix(1234)
+
+	writer := &recordingIndexWriter{}
+	store := &store{indexWriter: writer}
+	require.NoError(t, store.IndexChunk(context.Background(), 0, 0, flushedChunk))
+	require.Len(t, writer.metas, 1)
+	require.Equal(t, int64(flushedChunk.IngestedAt), writer.metas[0].IngestedAt)
+
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+		},
+		Schema: "v14",
+	}
+	indexFormat, err := periodConfig.TSDBFormat()
+	require.NoError(t, err)
+
+	builder := NewBuilder(indexFormat)
+	builder.AddSeries(lbls, model.Fingerprint(labels.StableHash(lbls)), index.ChunkMetas{})
+	builder.FinalizeChunks()
+
+	indexBuckets := IndexBuckets(model.Now(), model.Now(), []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: model.Now()})})
+	compactedIndex := newCompactedIndex(context.Background(), indexBuckets[0].Prefix, flushedChunk.UserID, t.TempDir(), periodConfig, builder)
+
+	_, err = compactedIndex.IndexChunk(flushedChunk.ChunkRef, metric, flushedChunk.IngestedAt, writer.metas[0].KB, writer.metas[0].Entries)
+	require.NoError(t, err)
+
+	_, err = compactedIndex.ToIndexFile()
+	require.NoError(t, err)
+
+	var got []retention.Chunk
+	err = compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
+		got = append(got, series.Chunks()...)
+		return nil
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, flushedChunk.IngestedAt, got[0].IngestedAt)
 }
 
 type testContext struct {

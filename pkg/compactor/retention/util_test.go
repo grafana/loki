@@ -167,7 +167,7 @@ func (t *table) ForEachSeries(ctx context.Context, callback SeriesCallback) erro
 	return ctx.Err()
 }
 
-func (t *table) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, _ uint32, _ uint32) (bool, error) {
+func (t *table) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, _ model.Time, _ uint32, _ uint32) (bool, error) {
 	seriesID := lbls.String()
 	t.chunks[chunkRef.UserID][seriesID] = append(t.chunks[chunkRef.UserID][seriesID], chunkRef)
 	return true, nil

@@ -36,7 +36,7 @@ func newIndexUpdatesRecorder(schemaCfg config.SchemaConfig, missingChunks []stri
 	}
 }
 
-func (i *indexUpdatesRecorder) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, sizeInKB uint32, logEntriesCount uint32) (bool, error) {
+func (i *indexUpdatesRecorder) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, ingestedAt model.Time, sizeInKB uint32, logEntriesCount uint32) (bool, error) {
 	lblsString := lbls.String()
 	indexedChunks, ok := i.indexedChunks[lblsString]
 	if !ok {
@@ -46,6 +46,7 @@ func (i *indexUpdatesRecorder) IndexChunk(chunkRef logproto.ChunkRef, lbls label
 	indexedChunks = append(indexedChunks, dummyChunk{
 		from:        chunkRef.From,
 		through:     chunkRef.Through,
+		ingestedAt:  ingestedAt,
 		fingerprint: chunkRef.Fingerprint,
 		checksum:    chunkRef.Checksum,
 		kb:          sizeInKB,
@@ -99,6 +100,7 @@ func (i *indexUpdatesRecorder) sortEntries() {
 
 type dummyChunk struct {
 	from, through model.Time
+	ingestedAt    model.Time
 	fingerprint   uint64
 	checksum      uint32
 	kb, entries   uint32
@@ -110,6 +112,10 @@ func (c dummyChunk) GetFrom() model.Time {
 
 func (c dummyChunk) GetThrough() model.Time {
 	return c.through
+}
+
+func (c dummyChunk) GetIngestedAt() model.Time {
+	return c.ingestedAt
 }
 
 func (c dummyChunk) GetFingerprint() uint64 {

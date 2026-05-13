@@ -353,7 +353,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	}
 	tracker := &mockUsageTracker{}
 
-	_, failed := s.validateEntries(context.Background(), entries, false, true, tracker, "loki")
+	_, failed := s.validateEntries(context.Background(), entries, false, false, true, tracker, "loki")
 	require.NotEmpty(t, failed)
 	require.False(t, hasRateLimitErr(failed))
 	require.Equal(t, 13.0, tracker.discardedBytes)
@@ -660,6 +660,108 @@ func TestNonReplayPushLeavesFirstSeenZero(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
 	require.True(t, s.chunks[0].firstSeen.IsZero())
+}
+
+func TestReplayModeSwitchForceClosesCurrentChunk(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
+	newTestStream := func() *stream {
+		return newStream(
+			chunkfmt,
+			headfmt,
+			defaultConfig(),
+			limiter.rateLimitStrategy,
+			"fake",
+			model.Fingerprint(0),
+			labels.FromStrings("foo", "bar"),
+			true,
+			NewStreamRateCalculator(),
+			NilMetrics,
+			nil,
+			nil,
+			retentionHours,
+			noPolicy,
+		)
+	}
+
+	for _, tc := range []struct {
+		name        string
+		firstReplay bool
+		nextReplay  bool
+	}{
+		{name: "live to replay", firstReplay: false, nextReplay: true},
+		{name: "replay to live", firstReplay: true, nextReplay: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestStream()
+
+			_, err := s.Push(context.Background(), []logproto.Entry{
+				{Timestamp: time.Unix(1, 0), Line: "first"},
+			}, tc.firstReplay, recordPool.GetRecord(), 0, true, false, nil, "loki")
+			require.NoError(t, err)
+
+			firstChunkFirstSeen := s.chunks[0].firstSeen
+
+			_, err = s.Push(context.Background(), []logproto.Entry{
+				{Timestamp: time.Unix(2, 0), Line: "second"},
+			}, tc.nextReplay, recordPool.GetRecord(), 0, true, false, nil, "loki")
+			require.NoError(t, err)
+
+			require.Len(t, s.chunks, 2)
+			require.True(t, s.chunks[0].closed)
+			require.Equal(t, firstChunkFirstSeen, s.chunks[0].firstSeen)
+
+			if tc.firstReplay {
+				require.False(t, s.chunks[0].firstSeen.IsZero())
+			} else {
+				require.True(t, s.chunks[0].firstSeen.IsZero())
+			}
+
+			if tc.nextReplay {
+				require.False(t, s.chunks[1].firstSeen.IsZero())
+			} else {
+				require.True(t, s.chunks[1].firstSeen.IsZero())
+			}
+		})
+	}
+}
+
+func TestWALReplayDoesNotIncrementReplayEntriesAccepted(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	chunkfmt, headfmt := defaultChunkFormat(t)
+	registry := prometheus.NewRegistry()
+	metrics := newIngesterMetrics(registry, "loki")
+
+	s := newStream(
+		chunkfmt,
+		headfmt,
+		defaultConfig(),
+		limiter.rateLimitStrategy,
+		"fake",
+		model.Fingerprint(0),
+		labels.FromStrings("foo", "bar"),
+		true,
+		NewStreamRateCalculator(),
+		metrics,
+		nil,
+		nil,
+		retentionHours,
+		noPolicy,
+	)
+	s.replayAgeGateBypass = func(_, _ time.Time) bool { return true }
+
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Now().Add(-2 * time.Hour), Line: "wal replay"},
+	}, false, nil, 1, true, false, nil, "loki")
+	require.NoError(t, err)
+	require.Equal(t, float64(0), testutil.ToFloat64(metrics.replayEntriesAccepted.WithLabelValues("fake")))
 }
 
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {

@@ -99,6 +99,9 @@ func fromWireChunks(conf *Config, headfmt chunkenc.HeadBlockFmt, wireChunks []Ch
 			flushed:     c.FlushedAt,
 			lastUpdated: c.LastUpdated,
 		}
+		if c.FlushedAt.IsZero() {
+			desc.firstSeen = time.Now()
+		}
 
 		mc, err := chunkenc.MemchunkFromCheckpoint(c.Data, c.Head, headfmt, conf.BlockSize, conf.TargetChunkSize)
 		if err != nil {

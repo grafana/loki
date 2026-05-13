@@ -354,7 +354,7 @@ func (c *compactedIndex) ForEachSeries(ctx context.Context, callback retention.S
 
 // IndexChunk adds the chunk to the list of chunks to index.
 // Before accepting the chunk it checks if it falls within the tableInterval and rejects it if not.
-func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, sizeInKB uint32, logEntriesCount uint32) (bool, error) {
+func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, ingestedAt model.Time, sizeInKB uint32, logEntriesCount uint32) (bool, error) {
 	if chunkRef.From > c.tableInterval.End || c.tableInterval.Start > chunkRef.Through {
 		return false, nil
 	}
@@ -365,11 +365,12 @@ func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labe
 	ls := b.Labels().String()
 
 	c.indexChunks[ls] = append(c.indexChunks[ls], tsdbindex.ChunkMeta{
-		Checksum: chunkRef.Checksum,
-		MinTime:  int64(chunkRef.From),
-		MaxTime:  int64(chunkRef.Through),
-		KB:       sizeInKB,
-		Entries:  logEntriesCount,
+		Checksum:   chunkRef.Checksum,
+		MinTime:    int64(chunkRef.From),
+		MaxTime:    int64(chunkRef.Through),
+		IngestedAt: int64(ingestedAt),
+		KB:         sizeInKB,
+		Entries:    logEntriesCount,
 	})
 
 	return true, nil
