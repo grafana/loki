@@ -53,6 +53,7 @@ import (
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
+	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -154,6 +155,7 @@ const (
 	DataObjConsumerRing          = "dataobj-consumer-ring"
 	DataObjConsumerPartitionRing = "dataobj-consumer-partition-ring"
 	DataObjIndexBuilder          = "dataobj-index-builder"
+	DataObjCompactionPlanner     = "dataobj-compaction-planner"
 	ScratchStore                 = "scratch-store"
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
@@ -2476,6 +2478,50 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 	)
 
 	return t.dataObjIndexBuilder, err
+}
+
+func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
+	if !t.Cfg.DataObj.Enabled || !t.Cfg.DataObj.Compaction.Enabled {
+		return nil, nil
+	}
+
+	if err := t.Cfg.DataObj.Compaction.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
+	}
+
+	logger := log.With(util_log.Logger, "component", "dataobj-compaction-planner")
+
+	c, err := enginecompactor.New(t.Cfg.DataObj.Compaction, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	// Register scheduler metrics; mirror the query-engine-scheduler
+	// pattern so a clean shutdown unregisters them.
+	if err := c.Scheduler().RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
+		return nil, err
+	}
+	c.Scheduler().Service().AddListener(services.NewListener(
+		nil, nil, nil,
+		func(_ services.State) { c.Scheduler().UnregisterMetrics(prometheus.DefaultRegisterer) },
+		func(_ services.State, _ error) { c.Scheduler().UnregisterMetrics(prometheus.DefaultRegisterer) },
+	))
+
+	// Only register the HTTP frame handler when the user provided an
+	// advertise address (i.e., remote-worker mode). In-process-only mode
+	// does not need a router registration.
+	if t.Cfg.DataObj.Compaction.Scheduler.AdvertiseAddr != "" {
+		c.Scheduler().RegisterSchedulerServer(t.Server.HTTP)
+	}
+
+	// Return the Compactor wrapper rather than c.Scheduler().Service():
+	// the wrapper's BasicService runs the coordinator polling loop in
+	// running() (a no-op stub today; real loop arrives in a follow-up
+	// change). Mirroring initV2QueryEngineScheduler's pattern of
+	// returning the inner service directly would prevent the
+	// coordinator loop from ever running.
+	t.dataObjCompactionPlanner = c
+	return c, nil
 }
 
 func (t *Loki) initScratchStore() (services.Service, error) {

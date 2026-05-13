@@ -58,6 +58,16 @@ type Options struct {
 	// may run concurrently within a single workflow. 0 means no limit.
 	MaxRunningOtherTasks int
 
+	// MaxRunningCompactionTasks specifies the maximum number of compaction
+	// tasks that may run concurrently within a single workflow. 0 means no
+	// limit.
+	//
+	// The lane is dormant in query workflows (typeFor never classifies a
+	// query task as compaction); compactor workflows opt in by populating
+	// this field once the dataobj-compaction physical-plan node types and
+	// the corresponding typeFor classification land.
+	MaxRunningCompactionTasks int
+
 	// DebugTasks toggles debug messages for a task. This is very verbose and
 	// should only be enabled for debugging purposes.
 	//
@@ -227,7 +237,7 @@ func (wf *Workflow) init(ctx context.Context) error {
 		Actor:  wf.opts.Actor,
 
 		Streams: wf.allStreams(),
-		Tasks:   wf.AllTasks(),
+		Tasks:   wf.allTasks(),
 
 		StreamEventHandler: wf.onStreamChange,
 		TaskEventHandler:   wf.onTaskChange,
@@ -320,6 +330,7 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 	wf.admissionControl = newAdmissionControl(
 		int64(wf.opts.MaxRunningScanTasks),
 		int64(wf.opts.MaxRunningOtherTasks),
+		int64(wf.opts.MaxRunningCompactionTasks),
 	)
 
 	// this span captures the time spent waiting for all tasks to be admitted
@@ -335,9 +346,16 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 	region.Record(xcap.StatTaskCount.Observe(int64(len(tasks))))
 
 	groups := wf.admissionControl.groupByType(tasks)
+	// taskTypeCompaction is appended last because the loop is sequential
+	// (each lane is fully drained before the next): a populated Compaction
+	// lane should never delay Scan dispatch. The lane is currently dormant
+	// — typeFor does not classify any task as compaction — so this slot is
+	// always empty for query workflows. It will be populated once the
+	// dataobj-compaction node types and typeFor classification land.
 	for _, taskType := range []taskType{
 		taskTypeOther,
 		taskTypeScan,
+		taskTypeCompaction,
 	} {
 		lane := wf.admissionControl.get(taskType)
 		tasks := groups[taskType]
@@ -397,7 +415,7 @@ func (wf *Workflow) allStreams() []*Stream {
 	return result
 }
 
-func (wf *Workflow) AllTasks() []*Task {
+func (wf *Workflow) allTasks() []*Task {
 	var tasks []*Task
 
 	for _, root := range wf.graph.Roots() {

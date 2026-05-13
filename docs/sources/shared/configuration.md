@@ -1072,6 +1072,11 @@ pattern_ingester:
     # CLI flag: -pattern-ingester.tee.flush-worker-count
     [flush_worker_count: <int> | default = 100]
 
+    # The maximum number of bytes that can be buffered before dropping, 0 means
+    # disabled
+    # CLI flag: -pattern-ingester.tee.max-buffered-bytes
+    [max_buffered_bytes: <int> | default = 0]
+
     # The max time we will try to flush any remaining logs to be mined when the
     # service is stopped
     # CLI flag: -pattern-ingester.tee.stop-flush-timeout
@@ -1604,6 +1609,28 @@ dataobj:
     # log partitions.
     # CLI flag: -dataobj-metastore.partition-ratio
     [partition_ratio: <int> | default = 10]
+
+  compaction:
+    # Experimental: Enable the dataobj compaction planner target.
+    # CLI flag: -dataobj.compaction.enabled
+    [enabled: <boolean> | default = false]
+
+    # Experimental: Per-workflow cap on concurrent CompactionMerge tasks.
+    # Currently unused; reserved for the engine scheduler's compaction admission
+    # lane added in a follow-up change.
+    # CLI flag: -dataobj.compaction.max-running-compaction-tasks
+    [max_running_compaction_tasks: <int> | default = 16]
+
+    scheduler:
+      # Experimental: host:port the embedded compaction scheduler advertises to
+      # compaction workers. Empty string keeps the scheduler in-process-only.
+      # CLI flag: -dataobj.compaction.scheduler.advertise-addr
+      [advertise_addr: <string> | default = ""]
+
+      # Experimental: HTTP path the embedded compaction scheduler listens on for
+      # worker frame traffic.
+      # CLI flag: -dataobj.compaction.scheduler.endpoint
+      [endpoint: <string> | default = "/api/v2/compaction-frame"]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
@@ -4352,10 +4379,6 @@ discover_generic_fields:
 # CLI flag: -ingester.max-global-streams-per-user
 [max_global_streams_per_user: <int> | default = 5000]
 
-# Deprecated. When true, out-of-order writes are accepted.
-# CLI flag: -ingester.unordered-writes
-[unordered_writes: <boolean> | default = true]
-
 # Maximum byte rate per second per stream, also expressible in human readable
 # forms (1MB, 256KB, etc).
 # CLI flag: -ingester.per-stream-rate-limit
@@ -4712,9 +4735,6 @@ ruler_remote_write_sigv4_config:
 # -runtime-config.reload-period (runtime_config.period in YAML).
 # CLI flag: -limits.per-user-override-period
 [per_tenant_override_period: <duration> | default = 10s]
-
-# Deprecated: Use deletion_mode per tenant configuration instead.
-[allow_deletes: <boolean>]
 
 # Define streams sharding behavior.
 shard_streams:
@@ -7548,50 +7568,18 @@ multi_kv_config:
 
 ## Accept out-of-order writes
 
-Since the beginning of Loki, log entries had to be written to Loki in order
-by time.
-This limitation has been lifted.
-Out-of-order writes are enabled globally by default, but can be disabled/enabled
-on a cluster or per-tenant basis.
-
-- To disable out-of-order writes for all tenants,
-place in the `limits_config` section:
-
-    ```yaml
-    limits_config:
-        unordered_writes: false
-    ```
-
-- To disable out-of-order writes for specific tenants,
-configure a runtime configuration file:
-
-    ```yaml
-    runtime_config:
-      file: overrides.yaml
-    ```
-
-    In the `overrides.yaml` file, add `unordered_writes` for each tenant
-    permitted to have out-of-order writes:
-
-    ```yaml
-    overrides:
-      "tenantA":
-        unordered_writes: false
-    ```
-
-How far into the past accepted out-of-order log entries may be
-is configurable with `max_chunk_age`.
-`max_chunk_age` defaults to 2 hour.
-Loki calculates the earliest time that out-of-order entries may have
-and be accepted with
+Loki accepts log entries of a stream to arrive out of order by time.
+How far into the past accepted out-of-order log entries may be is configurable with `max_chunk_age`.
+The setting `max_chunk_age` defaults to 2 hours, but it is advised to not increase it.
+Loki calculates the earliest time that out-of-order entries may have and be accepted with.
 
 ```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
-This means the allowed out-of-order window is half of the configured max_chunk_age.
+This means the allowed out-of-order window is half of the configured `max_chunk_age`.
 
 Log entries with timestamps that are after this earliest time are accepted.
-Log entries further back in time return an out-of-order error.
+Log entries further back in time return a `too_far_behind` error.
 
 For example, if `max_chunk_age` is 2 hours
 and the stream `{foo="bar"}` has one entry at `8:00`,

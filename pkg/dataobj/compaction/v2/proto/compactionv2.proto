@@ -1,0 +1,31 @@
+// compactionv2.proto declares the schema for the v2 compaction planner's data
+// structures. SectionRef points to one section inside an object in object
+// storage with its sort-key bounds; RunRef groups sorted non-overlapping
+// sections (one patience-sort pile); TaskSpec is one K-way merge task — K
+// piles bundled together for a single worker.
+syntax = "proto3";
+
+package proto;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto";
+
+// SectionRef identifies one section in object storage with its sort-key bounds.
+message SectionRef {
+  string object_path = 1 [(gogoproto.jsontag) = "object_path"];
+  int32 section_index = 2 [(gogoproto.jsontag) = "section_index"];
+  string min_key = 3 [(gogoproto.jsontag) = "min_key"];
+  string max_key = 4 [(gogoproto.jsontag) = "max_key"];
+}
+
+// RunRef is one patience-sort pile: a sorted, non-overlapping section sequence.
+message RunRef {
+  repeated SectionRef sections = 1 [(gogoproto.jsontag) = "sections"];
+}
+
+// TaskSpec is one K-way merge task: K piles bundled together for one worker.
+message TaskSpec {
+  string tenant = 1 [(gogoproto.jsontag) = "tenant"];
+  repeated RunRef runs = 2 [(gogoproto.jsontag) = "runs"];
+}

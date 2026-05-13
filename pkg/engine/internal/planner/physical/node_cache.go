@@ -293,6 +293,11 @@ func (s *PointersScan) CacheKey(_ context.Context) string {
 		s.End.UTC().Format(time.RFC3339Nano))
 }
 
+// CompactionMerge is a mutation node; its result is an object-storage
+// side effect, not a cacheable query result, so CacheKey returns ""
+// (non-cacheable).
+func (*CompactionMerge) CacheKey(_ context.Context) string { return "" }
+
 // groupingCacheKey returns a deterministic string for a Grouping.
 func groupingCacheKey(g Grouping) string {
 	cols := make([]string, len(g.Columns))
