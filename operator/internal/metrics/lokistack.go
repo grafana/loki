@@ -140,12 +140,14 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 			1.0,
 			storageLabels...)
 
-		for _, schema := range stack.Spec.Storage.Schemas {
-			schemaLabels := append(labels, string(schema.Version), string(schema.EffectiveDate))
-			m <- prometheus.MustNewConstMetric(lokiStackStorageSchemaVersionDesc,
-				prometheus.GaugeValue,
-				1.0,
-				schemaLabels...)
+		if len(stack.Spec.Storage.Schemas) > 0 {
+			for _, schema := range stack.Spec.Storage.Schemas {
+				schemaLabels := append(labels, string(schema.Version), string(schema.EffectiveDate))
+				m <- prometheus.MustNewConstMetric(lokiStackStorageSchemaVersionDesc,
+					prometheus.GaugeValue,
+					1.0,
+					schemaLabels...)
+			}
 		}
 
 		customReplicas := getCustomReplicas(&stack)

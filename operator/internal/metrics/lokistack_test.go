@@ -56,12 +56,6 @@ func TestLokiStackMetricsCollect(t *testing.T) {
 									Type: lokiv1.ObjectStorageSecretS3,
 									Name: "storage-secret",
 								},
-								Schemas: []lokiv1.ObjectStorageSchema{
-									{
-										Version:       lokiv1.ObjectStorageSchemaV13,
-										EffectiveDate: "2025-01-01",
-									},
-								},
 							},
 						},
 					},
@@ -83,9 +77,6 @@ lokistack_status_condition{condition="Ready",reason="",size="1x.demo",stack_name
 # HELP lokistack_storage_info Information about LokiStack storage backend configuration.
 # TYPE lokistack_storage_info gauge
 lokistack_storage_info{backend_type="s3",credential_mode="static",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
-# HELP lokistack_storage_schema_version Storage schema versions configured for the LokiStack
-# TYPE lokistack_storage_schema_version gauge
-lokistack_storage_schema_version{effective_date="2025-01-01",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",version="v13"} 1
 `,
 		},
 		{
@@ -104,12 +95,6 @@ lokistack_storage_schema_version{effective_date="2025-01-01",size="1x.demo",stac
 								Secret: lokiv1.ObjectStorageSecretSpec{
 									Type: lokiv1.ObjectStorageSecretS3,
 									Name: "storage-secret",
-								},
-								Schemas: []lokiv1.ObjectStorageSchema{
-									{
-										Version:       lokiv1.ObjectStorageSchemaV13,
-										EffectiveDate: "2025-01-01",
-									},
 								},
 							},
 						},
@@ -143,9 +128,6 @@ lokistack_status_condition{condition="Warning",reason="StorageNeedsSchemaUpdate"
 # HELP lokistack_storage_info Information about LokiStack storage backend configuration.
 # TYPE lokistack_storage_info gauge
 lokistack_storage_info{backend_type="s3",credential_mode="static",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
-# HELP lokistack_storage_schema_version Storage schema versions configured for the LokiStack
-# TYPE lokistack_storage_schema_version gauge
-lokistack_storage_schema_version{effective_date="2025-01-01",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",version="v13"} 1
 `,
 		},
 		{
