@@ -487,7 +487,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 // It always returns true when [TeeConfig.MaxBufferedBytes] is 0.
 func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
 	maxBufferedBytes := int64(ts.cfg.TeeConfig.MaxBufferedBytes)
-	if maxBufferedBytes == 0 {
+	if maxBufferedBytes <= 0 {
 		// The limit is disabled, size can be reserved.
 		ts.bufferedBytesMaxSample.Add(int64(size))
 		return true
@@ -511,8 +511,8 @@ func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
 // reelaseBufferedBytes releases the size from the buffered bytes counter.
 // It is a no-op when [TeeConfig.MaxBufferedBytes] is 0.
 func (ts *TeeService) releaseBufferedBytes(size int) {
-	maxBufferedBytes := uint64(ts.cfg.TeeConfig.MaxBufferedBytes)
-	if maxBufferedBytes == 0 {
+	maxBufferedBytes := ts.cfg.TeeConfig.MaxBufferedBytes
+	if maxBufferedBytes <= 0 {
 		ts.bufferedBytesMaxSample.Sub(int64(size))
 		return
 	}
