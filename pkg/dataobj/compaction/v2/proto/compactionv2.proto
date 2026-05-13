@@ -13,10 +13,10 @@ option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 
 // SectionRef identifies one section in object storage with its sort-key bounds.
 message SectionRef {
-  string object_path  = 1 [(gogoproto.jsontag) = "object_path"];
-  int32  section_index = 2 [(gogoproto.jsontag) = "section_index"];
-  string min_key       = 3 [(gogoproto.jsontag) = "min_key"];
-  string max_key       = 4 [(gogoproto.jsontag) = "max_key"];
+  string object_path = 1 [(gogoproto.jsontag) = "object_path"];
+  int32 section_index = 2 [(gogoproto.jsontag) = "section_index"];
+  string min_key = 3 [(gogoproto.jsontag) = "min_key"];
+  string max_key = 4 [(gogoproto.jsontag) = "max_key"];
 }
 
 // RunRef is one patience-sort pile: a sorted, non-overlapping section sequence.
