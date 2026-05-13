@@ -2,17 +2,8 @@
 // skeletons. The planner and worker are two roles in the broader dataobj
 // compaction system.
 //
-// The compaction planner and compaction worker are both opt-in via Loki target
-// and share the same dataobj.compaction.enabled gate. The planner runs only
-// when started with -target=dataobj-compaction-planner AND dataobj.enabled AND
-// dataobj.compaction.enabled are true. The worker runs only when started with
-// -target=dataobj-compactor-worker AND the same two flags are true.
-// The default configuration leaves both gates off; nothing in this package runs
-// in the default Loki binary.
-//
-// This file is the scaffold for the compaction planner and worker. The real
-// coordinator polling loop, marker management, planner integration, physical-plan
-// node types, and worker service wrapper are added in subsequent changes.
+// The compaction planner and compaction worker are both opt-in via Loki targets
+// and share the same dataobj.compaction.enabled gate.
 package compactor
 
 import (
@@ -21,16 +12,11 @@ import (
 	"time"
 )
 
-// Config is the top-level configuration for the dataobj compaction
-// planner target.
-// A follow-up commit wires it into the dataobj config tree at
-// pkg/dataobj/config/config.go as the `compaction` field.
+// Config is the top-level configuration for dataobj compaction.
 type Config struct {
 	// Enabled gates both the dataobj-compaction-planner and the
 	// dataobj-compactor-worker targets. When false, both modules are no-ops
-	// even if their target is selected. The role separation between planner
-	// and worker comes from the Loki -target flag, not from a per-role
-	// enable flag.
+	// even if their target is selected.
 	Enabled bool `yaml:"enabled"`
 
 	// MaxRunningCompactionTasks caps how many CompactionMerge tasks a
@@ -153,9 +139,7 @@ func (cfg *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 		"Experimental: HTTP path the embedded compaction worker registers its frame handler on.")
 }
 
-// Validate returns nil while the compaction planner is disabled. When enabled it
-// performs basic shape checks; deeper validation lands alongside the real
-// coordinator in a follow-up change.
+// Validate returns nil while the compaction planner is disabled.
 func (cfg *Config) Validate() error {
 	if !cfg.Enabled {
 		return nil

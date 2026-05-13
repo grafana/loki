@@ -16,8 +16,6 @@ import (
 )
 
 // WorkerParams collects the constructor arguments for NewWorker.
-// Keeping these as a struct (rather than positional args) mirrors
-// engine.WorkerParams and makes future field additions backwards-compatible.
 type WorkerParams struct {
 	Config WorkerConfig
 
@@ -30,8 +28,7 @@ type WorkerParams struct {
 
 // Worker is the dataobj-compactor-worker target service. It wraps an
 // embedded engine.Worker pointed at the compaction scheduler's DNS-SRV
-// record. This scaffold ships only the lifecycle plumbing; the real
-// CompactionMerge / IndexConsolidate executors arrive in follow-up changes.
+// record.
 type Worker struct {
 	*services.BasicService
 
@@ -41,8 +38,7 @@ type Worker struct {
 }
 
 // NewWorker constructs a compaction Worker. Returns an error if the worker
-// config is unusable (missing scheduler lookup address, missing advertise
-// address, unparseable advertise addr) or if the engine worker constructor
+// config is unusable or if the engine worker constructor
 // rejects the parameters.
 //
 // Worker-specific config preconditions are enforced here rather than in
@@ -57,9 +53,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 	}
 	if params.Config.AdvertiseAddr == "" {
 		// engine.NewWorker rejects nil AdvertiseAddr when no LocalScheduler
-		// is set; the compaction worker never sets LocalScheduler. Catch
-		// this here with a clear operator-facing message rather than
-		// letting the generic engine error bubble up.
+		// is set; the compaction worker never sets LocalScheduler.
 		return nil, errors.New("dataobj compaction worker: advertise_addr is required")
 	}
 	if params.Config.Endpoint == "" {
