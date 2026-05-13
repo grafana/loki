@@ -37,8 +37,8 @@ func init() {
 	httpfilter.Register(builder{})
 }
 
-// IsRouterFilter returns true iff b is a Router filter builder.
-func IsRouterFilter(b httpfilter.Builder) bool {
+// IsRouterFilter returns true iff a HTTP filter is a Router filter.
+func IsRouterFilter(b httpfilter.Filter) bool {
 	_, ok := b.(builder)
 	return ok
 }
@@ -76,22 +76,12 @@ func (builder) IsTerminal() bool {
 	return true
 }
 
-func (builder) BuildClientFilter() httpfilter.ClientFilter {
-	return filter{}
-}
+var (
+	_ httpfilter.ClientInterceptorBuilder = builder{}
+	_ httpfilter.ServerInterceptorBuilder = builder{}
+)
 
-func (builder) BuildServerFilter() httpfilter.ServerFilter {
-	return filter{}
-}
-
-var _ httpfilter.ClientFilterBuilder = builder{}
-var _ httpfilter.ServerFilterBuilder = builder{}
-
-type filter struct{}
-
-func (filter) Close() {}
-
-func (filter) BuildClientInterceptor(cfg, override httpfilter.FilterConfig) (iresolver.ClientInterceptor, error) {
+func (builder) BuildClientInterceptor(cfg, override httpfilter.FilterConfig) (iresolver.ClientInterceptor, error) {
 	if _, ok := cfg.(config); !ok {
 		return nil, fmt.Errorf("router: incorrect config type provided (%T): %v", cfg, cfg)
 	}
@@ -104,7 +94,7 @@ func (filter) BuildClientInterceptor(cfg, override httpfilter.FilterConfig) (ire
 	return nil, nil
 }
 
-func (filter) BuildServerInterceptor(cfg, override httpfilter.FilterConfig) (iresolver.ServerInterceptor, error) {
+func (builder) BuildServerInterceptor(cfg, override httpfilter.FilterConfig) (iresolver.ServerInterceptor, error) {
 	if _, ok := cfg.(config); !ok {
 		return nil, fmt.Errorf("router: incorrect config type provided (%T): %v", cfg, cfg)
 	}

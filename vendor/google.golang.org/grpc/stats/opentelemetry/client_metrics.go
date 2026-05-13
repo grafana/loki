@@ -134,18 +134,11 @@ func (h *clientMetricsHandler) streamInterceptor(ctx context.Context, desc *grpc
 // perCallMetrics records per call metrics for both unary and stream calls.
 func (h *clientMetricsHandler) perCallMetrics(ctx context.Context, err error, startTime time.Time, ci *callInfo) {
 	callLatency := float64(time.Since(startTime)) / float64(time.Second)
-	attributes := []otelattribute.KeyValue{
+	attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(
 		otelattribute.String("grpc.method", ci.method),
 		otelattribute.String("grpc.target", ci.target),
 		otelattribute.String("grpc.status", canonicalString(status.Code(err))),
-	}
-	for _, o := range h.options.MetricsOptions.OptionalLabels {
-		if o == "grpc.client.call.custom" {
-			label := estats.CustomLabelFromContext(ctx)
-			attributes = append(attributes, otelattribute.String(o, label))
-		}
-	}
-	attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(attributes...))
+	))
 	h.clientMetrics.callDuration.Record(ctx, callLatency, attrs)
 }
 
@@ -214,18 +207,10 @@ func (h *clientMetricsHandler) processRPCEvent(ctx context.Context, s stats.RPCS
 			return
 		}
 
-		attributes := []otelattribute.KeyValue{
+		attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(
 			otelattribute.String("grpc.method", ci.method),
 			otelattribute.String("grpc.target", ci.target),
-		}
-		for _, o := range h.options.MetricsOptions.OptionalLabels {
-			if o == "grpc.client.call.custom" {
-				label := estats.CustomLabelFromContext(ctx)
-				attributes = append(attributes, otelattribute.String(o, label))
-			}
-		}
-
-		attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(attributes...))
+		))
 		h.clientMetrics.attemptStarted.Add(ctx, 1, attrs)
 	case *stats.OutPayload:
 		atomic.AddInt64(&ai.sentCompressedBytes, int64(st.CompressedLength))
@@ -279,9 +264,6 @@ func (h *clientMetricsHandler) processRPCEnd(ctx context.Context, ai *attemptInf
 		// CSM Plugin Option layer by adding an optional labels API.
 		if val, ok := ai.xdsLabels[o]; ok {
 			attributes = append(attributes, otelattribute.String(o, val))
-		} else if o == "grpc.client.call.custom" {
-			label := estats.CustomLabelFromContext(ctx)
-			attributes = append(attributes, otelattribute.String(o, label))
 		}
 	}
 
