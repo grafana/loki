@@ -54,10 +54,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/inflightbytes"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_metric "github.com/grafana/loki/v3/pkg/util/metric"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
-	"github.com/grafana/loki/v3/pkg/util/inflightbytes"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -225,7 +225,8 @@ type Distributor struct {
 	numMetadataPartitions int
 
 	// Track the maximum number of inflight bytes in the last 1 minute.
-	inflightBytes *util_metric.MaxSampleCollector
+	inflightBytes           *util_metric.MaxSampleCollector
+	loadShedRequestsCounter prometheus.Counter
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -419,6 +420,11 @@ func New(
 			"loki_distributor_max_inflight_bytes",
 			"The maximum number of inflight bytes in the last 1 minute.",
 		),
+		loadShedRequestsCounter: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_load_shed_requests_total",
+			Help:      "The total number of load shed requests.",
+		}),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {

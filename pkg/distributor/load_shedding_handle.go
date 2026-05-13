@@ -37,6 +37,7 @@ func (h *LoadSheddingHandle) SetDistributor(d *Distributor) {
 // Handle implements tap.ServerInHandle.
 func (h *LoadSheddingHandle) Handle(ctx context.Context, _ *tap.Info) (context.Context, error) {
 	if h.d == nil {
+		h.d.loadShedRequestsCounter.Inc()
 		return ctx, httpgrpc.Errorf(http.StatusInternalServerError, "load shedding handle misconfigured: SetDistributor not called")
 	}
 
