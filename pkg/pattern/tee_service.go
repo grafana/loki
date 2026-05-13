@@ -172,13 +172,13 @@ func (ts *TeeService) Start(runCtx context.Context) error {
 		}
 	}()
 
-	services.StartAndAwaitRunning(runCtx, ts.bufferedBytesMaxSample)
+	_ = services.StartAndAwaitRunning(runCtx, ts.bufferedBytesMaxSample)
 	return nil
 }
 
 func (ts *TeeService) WaitUntilDone() {
 	ts.wg.Wait()
-	services.StopAndAwaitTerminated(context.TODO(), ts.bufferedBytesMaxSample)
+	_ = services.StopAndAwaitTerminated(context.TODO(), ts.bufferedBytesMaxSample)
 }
 
 func (ts *TeeService) flush() {
@@ -493,15 +493,15 @@ func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
 		return true
 	}
 	for {
-		old := ts.bufferedBytes.Load()
-		new := old + int64(size)
-		if new > maxBufferedBytes {
+		oldVal := ts.bufferedBytes.Load()
+		newVal := oldVal + int64(size)
+		if newVal > maxBufferedBytes {
 			// size exceeds the limit, so cannot be reserved.
 			return false
 		}
 		// If we won the CAS, our new size was reserved, and we can return true.
-		// Otherwise, someone else round the CAS, and we should loop again.
-		if ts.bufferedBytes.CompareAndSwap(old, new) {
+		// If someone else round the CAS, we must loop and make another attempt.
+		if ts.bufferedBytes.CompareAndSwap(oldVal, newVal) {
 			ts.bufferedBytesMaxSample.Add(int64(size))
 			return true
 		}
