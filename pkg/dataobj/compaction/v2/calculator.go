@@ -1,6 +1,7 @@
 package compactionv2
 
 import (
+	"cmp"
 	"slices"
 	"sort"
 
@@ -9,10 +10,28 @@ import (
 
 // run is one non-overlapping run of sections.
 //
-// topMaxKey holds the most recent appended section's MaxKey
+// topMaxKey + topMaxTimestamp hold the most recent appended section's upper
+// bound -- the composite (labels, timestamp) sort key, mirroring
+// SectionRef.MaxKey / MaxTimestamp on the proto.
 type run struct {
-	sections  []*compactionv2pb.SectionRef
-	topMaxKey []string
+	sections        []*compactionv2pb.SectionRef
+	topMaxKey       []string
+	topMaxTimestamp int64
+}
+
+// cmpSortKey compares two composite (labels, timestamp) sort keys
+// lexicographically -- labels first via slices.Compare, then timestamp via
+// cmp.Compare. Returns -1 if a < b, 0 if equal, +1 if a > b.
+//
+// Keeping timestamp as a separate int64 -- rather than concatenated as a
+// trailing string in the labels tuple -- removes the within-column encoding
+// question: Sprintf("%d", 9) > Sprintf("%d", 10) under byte compare, but
+// cmp.Compare(int64(9), int64(10)) is correct by construction.
+func cmpSortKey(aLabels []string, aTs int64, bLabels []string, bTs int64) int {
+	if c := slices.Compare(aLabels, bLabels); c != 0 {
+		return c
+	}
+	return cmp.Compare(aTs, bTs)
 }
 
 // calculateRuns sorts the provided [sections] in place and returns a set of
@@ -27,13 +46,15 @@ func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
 		return nil
 	}
 
-	// Step 1: sort sections by (MinKey ASC, MaxKey ASC, ObjectPath ASC, SectionIndex ASC).
+	// Step 1: sort sections by composite (MinKey, MinTimestamp) ASC, then
+	// composite (MaxKey, MaxTimestamp) ASC, then (ObjectPath, SectionIndex) as
+	// a stable tiebreaker.
 	sort.Slice(sections, func(i, j int) bool {
 		a, b := sections[i], sections[j]
-		if c := slices.Compare(a.MinKey, b.MinKey); c != 0 {
+		if c := cmpSortKey(a.MinKey, a.MinTimestamp, b.MinKey, b.MinTimestamp); c != 0 {
 			return c < 0
 		}
-		if c := slices.Compare(a.MaxKey, b.MaxKey); c != 0 {
+		if c := cmpSortKey(a.MaxKey, a.MaxTimestamp, b.MaxKey, b.MaxTimestamp); c != 0 {
 			return c < 0
 		}
 		if a.ObjectPath != b.ObjectPath {
@@ -91,7 +112,7 @@ func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
 	//
 	// The MinKey/MaxKey ranges are now non-overlapping in sort-key space:
 	//
-	//	["auth",T1]..["auth",T7]  |  ["auth",T8]..["billing",T4]  |  ["billing",T9]..["cart",T6]
+	//	[["auth",T1]..["auth",T7]]..[["auth",T8]..["billing",T4]]..[["billing",T9]..["cart",T6]]
 	//	           X1                            Y1                              Z1
 	//
 	// A subsequent L1 -> L2 run on {X1, Y1, Z1} would yield P=1 indicating strong
@@ -101,8 +122,8 @@ func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
 	for _, s := range sections {
 		var best *run
 		for _, r := range runs {
-			if slices.Compare(r.topMaxKey, s.MinKey) < 0 {
-				if best == nil || slices.Compare(r.topMaxKey, best.topMaxKey) > 0 {
+			if cmpSortKey(r.topMaxKey, r.topMaxTimestamp, s.MinKey, s.MinTimestamp) < 0 {
+				if best == nil || cmpSortKey(r.topMaxKey, r.topMaxTimestamp, best.topMaxKey, best.topMaxTimestamp) > 0 {
 					best = r
 				}
 			}
@@ -111,13 +132,15 @@ func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
 		if best != nil {
 			best.sections = append(best.sections, s)
 			best.topMaxKey = s.MaxKey
+			best.topMaxTimestamp = s.MaxTimestamp
 			continue
 		}
 
 		// No eligible pile: start a new one.
 		runs = append(runs, &run{
-			sections:  []*compactionv2pb.SectionRef{s},
-			topMaxKey: s.MaxKey,
+			sections:        []*compactionv2pb.SectionRef{s},
+			topMaxKey:       s.MaxKey,
+			topMaxTimestamp: s.MaxTimestamp,
 		})
 	}
 
