@@ -8,7 +8,7 @@ env:
   DRY_RUN: false
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+  RELEASE_LIB_REF: "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
@@ -19,11 +19,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+    uses: "grafana/loki-release/.github/workflows/check.yml@52d476dc60de14b52b6dec2b33e86abeeb497fcc"
     with:
       build_image: "grafana/loki-build-image:0.35.1"
       golang_ci_lint_version: "v2.11.4"
-      release_lib_ref: "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+      release_lib_ref: "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -131,8 +131,6 @@ jobs:
       pull-requests: "write"
     runs-on: "ubuntu-x64"
     steps:
-    - name: "clean up build tools cache"
-      run: "rm -rf /opt/hostedtoolcache"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
@@ -187,6 +185,16 @@ jobs:
           fi
           make dist packages
         EOF
+      working-directory: "release"
+    - continue-on-error: true
+      env:
+        BUILD_IN_CONTAINER: false
+        DRONE_TAG: "${{ needs.version.outputs.version }}"
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "build optional artifacts"
+      run: |
+        echo "Nothing to do"
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
