@@ -11,8 +11,7 @@ import (
 // run is one non-overlapping run of sections.
 //
 // topMaxKey + topMaxTimestamp hold the most recent appended section's upper
-// bound -- the composite (labels, timestamp) sort key, mirroring
-// SectionRef.MaxKey / MaxTimestamp on the proto.
+// bound -- the composite (labels, timestamp) sort key.
 type run struct {
 	sections        []*compactionv2pb.SectionRef
 	topMaxKey       []string
@@ -20,13 +19,8 @@ type run struct {
 }
 
 // cmpSortKey compares two composite (labels, timestamp) sort keys
-// lexicographically -- labels first via slices.Compare, then timestamp via
-// cmp.Compare. Returns -1 if a < b, 0 if equal, +1 if a > b.
-//
-// Keeping timestamp as a separate int64 -- rather than concatenated as a
-// trailing string in the labels tuple -- removes the within-column encoding
-// question: Sprintf("%d", 9) > Sprintf("%d", 10) under byte compare, but
-// cmp.Compare(int64(9), int64(10)) is correct by construction.
+// lexicographically -- labels first, then timestamp.
+// Returns -1 if a < b, 0 if equal, +1 if a > b.
 func cmpSortKey(aLabels []string, aTs int64, bLabels []string, bTs int64) int {
 	if c := slices.Compare(aLabels, bLabels); c != 0 {
 		return c
@@ -36,11 +30,12 @@ func cmpSortKey(aLabels []string, aTs int64, bLabels []string, bTs int64) int {
 
 // calculateRuns sorts the provided [sections] in place and returns a set of
 // runs in creation order. A "run" is a sorted sequence of sections whose
-// (MinKey, MaxKey) bounds are pairwise non-overlapping in sort-key space.
+// ([MinKey, MinTimestamp], [MaxKey, MaxTimestamp]) bounds are pairwise
+// non-overlapping in sort-key space.
 //
-// The input slice is sorted in place; callers that need the original order
-// must copy beforehand. The contract requires non-nil SectionRef entries;
-// nil entries will panic.
+// The input slice is sorted in place; callers that need the original order must
+// copy beforehand. The contract requires non-nil SectionRef entries; nil
+// entries will panic.
 func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
 	if len(sections) == 0 {
 		return nil
@@ -112,7 +107,7 @@ func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
 	//
 	// The MinKey/MaxKey ranges are now non-overlapping in sort-key space:
 	//
-	//	[["auth",T1]..["auth",T7]]..[["auth",T8]..["billing",T4]]..[["billing",T9]..["cart",T6]]
+	//	(["auth",T1]..["auth",T7])..(["auth",T8]..["billing",T4])..(["billing",T9]..["cart",T6])
 	//	           X1                            Y1                              Z1
 	//
 	// A subsequent L1 -> L2 run on {X1, Y1, Z1} would yield P=1 indicating strong
