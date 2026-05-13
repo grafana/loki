@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.6.11](https://github.com/grafana/loki/compare/v3.6.10...v3.6.11) (2026-05-13)
+
+
+### Bug Fixes
+
+* CVEs in release 3.6.x ([#21773](https://github.com/grafana/loki/issues/21773)) ([1fe3b6d](https://github.com/grafana/loki/commit/1fe3b6dde0c74db743489363b42c5e1f8ed605f2))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.97.3 [security] (release-3.6.x) ([#21459](https://github.com/grafana/loki/issues/21459)) ([11c1d07](https://github.com/grafana/loki/commit/11c1d07f0b6c512aee0367dec7b5d6ad954fd1fc))
+* **deps:** update module go.opentelemetry.io/otel/sdk to v1.43.0 [security] (release-3.6.x) ([#21480](https://github.com/grafana/loki/issues/21480)) ([47fb29e](https://github.com/grafana/loki/commit/47fb29ec07fd0c1a3c4ee50e73b84d17f7bc322f))
+* **storage:** attach SHA-256 checksum on PutObject for Object Lock buckets ([#21848](https://github.com/grafana/loki/issues/21848)) ([2a7c34c](https://github.com/grafana/loki/commit/2a7c34c689291c074bb349c7ab9ba74bf6cf2b00))
+
 ## [3.6.10](https://github.com/grafana/loki/compare/v3.6.8...v3.6.10) (2026-04-02)
 
 ### Bug Fixes
