@@ -80,6 +80,11 @@ type CreateContactMethodInput struct {
 	// This member is required.
 	Protocol types.ContactProtocol
 
+	// The tag keys and optional values to add to the contact method during create.
+	//
+	// Use the TagResource action to tag a resource after it's created.
+	Tags []types.Tag
+
 	noSmithyDocumentSerde
 }
 

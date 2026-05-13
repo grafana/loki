@@ -29841,6 +29841,22 @@ func awsAwsquery_deserializeDocumentDBCluster(v **types.DBCluster, decoder smith
 				sv.IAMDatabaseAuthenticationEnabled = ptr.Bool(xtv)
 			}
 
+		case strings.EqualFold("InternetAccessGatewayEnabled", t.Name.Local):
+			val, err := decoder.Value()
+			if err != nil {
+				return err
+			}
+			if val == nil {
+				break
+			}
+			{
+				xtv, err := strconv.ParseBool(string(val))
+				if err != nil {
+					return fmt.Errorf("expected BooleanOptional to be of type *bool, got %T instead", val)
+				}
+				sv.InternetAccessGatewayEnabled = ptr.Bool(xtv)
+			}
+
 		case strings.EqualFold("IOOptimizedNextAllowedModificationTime", t.Name.Local):
 			val, err := decoder.Value()
 			if err != nil {
@@ -30284,6 +30300,22 @@ func awsAwsquery_deserializeDocumentDBCluster(v **types.DBCluster, decoder smith
 			{
 				xtv := string(val)
 				sv.UpgradeRolloutOrder = types.UpgradeRolloutOrder(xtv)
+			}
+
+		case strings.EqualFold("VPCNetworkingEnabled", t.Name.Local):
+			val, err := decoder.Value()
+			if err != nil {
+				return err
+			}
+			if val == nil {
+				break
+			}
+			{
+				xtv, err := strconv.ParseBool(string(val))
+				if err != nil {
+					return fmt.Errorf("expected BooleanOptional to be of type *bool, got %T instead", val)
+				}
+				sv.VPCNetworkingEnabled = ptr.Bool(xtv)
 			}
 
 		case strings.EqualFold("VpcSecurityGroups", t.Name.Local):

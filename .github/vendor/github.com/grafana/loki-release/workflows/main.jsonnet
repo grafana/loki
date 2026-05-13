@@ -14,6 +14,7 @@
     changelogPath='CHANGELOG.md',
     checkTemplate='./.github/workflows/check.yml',
     distMakeTargets=['dist', 'packages'],
+    distOptionalTargets=[],
     distRunsOn='ubuntu-latest',
     dryRun=false,
     dockerUsername='grafana',
@@ -81,7 +82,7 @@
                GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
              }) else {},
       version: $.build.version + $.common.job.withNeeds(validationSteps),
-      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets, distRunsOn)
+      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets, distOptionalTargets, distRunsOn)
             + $.common.job.withNeeds(['version'])
             + $.common.job.withPermissions({
               contents: 'write',

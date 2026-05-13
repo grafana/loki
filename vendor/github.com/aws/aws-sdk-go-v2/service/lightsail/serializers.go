@@ -11128,6 +11128,13 @@ func awsAwsjson11_serializeOpDocumentCreateContactMethodInput(v *CreateContactMe
 		ok.String(string(v.Protocol))
 	}
 
+	if v.Tags != nil {
+		ok := object.Key("tags")
+		if err := awsAwsjson11_serializeDocumentTagList(v.Tags, ok); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

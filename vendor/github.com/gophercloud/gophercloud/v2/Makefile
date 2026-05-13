@@ -1,7 +1,7 @@
 undefine GOFLAGS
 
-GOLANGCI_LINT_VERSION?=v1.62.2
-GOTESTSUM_VERSION?=v1.12.2
+GOLANGCI_LINT_VERSION?=v2.5.0
+GOTESTSUM_VERSION?=v1.13.0
 GO_TEST?=go run gotest.tools/gotestsum@$(GOTESTSUM_VERSION) --format testname --
 TIMEOUT := "60m"
 
@@ -77,6 +77,10 @@ acceptance-db:
 acceptance-dns:
 	$(GO_TEST) -timeout $(TIMEOUT) -tags "fixtures acceptance" ./internal/acceptance/openstack/dns/...
 .PHONY: acceptance-dns
+
+acceptance-fwaas:
+	$(GO_TEST) -timeout $(TIMEOUT) -tags "fixtures acceptance" ./internal/acceptance/openstack/networking/v2/extensions/fwaas_v2/...
+.PHONY: acceptance-fwaas
 
 acceptance-identity:
 	$(GO_TEST) -timeout $(TIMEOUT) -tags "fixtures acceptance" ./internal/acceptance/openstack/identity/...

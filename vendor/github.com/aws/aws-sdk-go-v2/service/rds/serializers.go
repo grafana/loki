@@ -13102,6 +13102,11 @@ func awsAwsquery_serializeOpDocumentCreateDBClusterInput(v *CreateDBClusterInput
 		}
 	}
 
+	if v.WithExpressConfiguration != nil {
+		objectKey := object.Key("WithExpressConfiguration")
+		objectKey.Boolean(*v.WithExpressConfiguration)
+	}
+
 	return nil
 }
 
@@ -18144,9 +18149,19 @@ func awsAwsquery_serializeOpDocumentRestoreDBClusterFromSnapshotInput(v *Restore
 		objectKey.Boolean(*v.EnableIAMDatabaseAuthentication)
 	}
 
+	if v.EnableInternetAccessGateway != nil {
+		objectKey := object.Key("EnableInternetAccessGateway")
+		objectKey.Boolean(*v.EnableInternetAccessGateway)
+	}
+
 	if v.EnablePerformanceInsights != nil {
 		objectKey := object.Key("EnablePerformanceInsights")
 		objectKey.Boolean(*v.EnablePerformanceInsights)
+	}
+
+	if v.EnableVPCNetworking != nil {
+		objectKey := object.Key("EnableVPCNetworking")
+		objectKey.Boolean(*v.EnableVPCNetworking)
 	}
 
 	if v.Engine != nil {
@@ -18345,9 +18360,19 @@ func awsAwsquery_serializeOpDocumentRestoreDBClusterToPointInTimeInput(v *Restor
 		objectKey.Boolean(*v.EnableIAMDatabaseAuthentication)
 	}
 
+	if v.EnableInternetAccessGateway != nil {
+		objectKey := object.Key("EnableInternetAccessGateway")
+		objectKey.Boolean(*v.EnableInternetAccessGateway)
+	}
+
 	if v.EnablePerformanceInsights != nil {
 		objectKey := object.Key("EnablePerformanceInsights")
 		objectKey.Boolean(*v.EnablePerformanceInsights)
+	}
+
+	if v.EnableVPCNetworking != nil {
+		objectKey := object.Key("EnableVPCNetworking")
+		objectKey.Boolean(*v.EnableVPCNetworking)
 	}
 
 	if v.EngineLifecycleSupport != nil {

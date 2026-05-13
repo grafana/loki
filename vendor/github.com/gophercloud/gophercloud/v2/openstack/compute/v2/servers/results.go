@@ -27,11 +27,11 @@ func (r serverResult) Extract() (*Server, error) {
 }
 
 func (r serverResult) ExtractInto(v any) error {
-	return r.Result.ExtractIntoStructPtr(v, "server")
+	return r.ExtractIntoStructPtr(v, "server")
 }
 
 func ExtractServersInto(r pagination.Page, v any) error {
-	return r.(ServerPage).Result.ExtractIntoSlicePtr(v, "servers")
+	return r.(ServerPage).ExtractIntoSlicePtr(v, "servers")
 }
 
 // CreateResult is the response from a Create operation. Call its Extract
@@ -119,11 +119,11 @@ func decryptPassword(encryptedPassword string, privateKey *rsa.PrivateKey) (stri
 
 	n, err := base64.StdEncoding.Decode(b64EncryptedPassword, []byte(encryptedPassword))
 	if err != nil {
-		return "", fmt.Errorf("Failed to base64 decode encrypted password: %s", err)
+		return "", fmt.Errorf("failed to base64 decode encrypted password: %s", err)
 	}
 	password, err := rsa.DecryptPKCS1v15(nil, privateKey, b64EncryptedPassword[0:n])
 	if err != nil {
-		return "", fmt.Errorf("Failed to decrypt password: %s", err)
+		return "", fmt.Errorf("failed to decrypt password: %s", err)
 	}
 
 	return string(password), nil
@@ -159,7 +159,7 @@ func (r CreateImageResult) extractImageIDFromLocationHeader() (string, error) {
 
 	imageID := path.Base(u.Path)
 	if imageID == "." || imageID == "/" {
-		return "", fmt.Errorf("Failed to parse the ID of newly created image: %s", u)
+		return "", fmt.Errorf("failed to parse the ID of newly created image: %s", u)
 	}
 
 	return imageID, nil

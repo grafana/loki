@@ -128,6 +128,62 @@ func SplitRefFragment(ref string) (baseUri string, fragment string) {
 	return ref[:idx], ref[idx:]
 }
 
+func joinSchemaIdDefinitionPath(definitionPath, fragment string) string {
+	if definitionPath == "" {
+		return ""
+	}
+	normalizedFragment := strings.TrimPrefix(fragment, "#")
+	if normalizedFragment == "" || normalizedFragment == "/" {
+		return definitionPath
+	}
+	if definitionPath == "#" {
+		return "#" + normalizedFragment
+	}
+	return strings.TrimRight(definitionPath, "/") + normalizedFragment
+}
+
+func buildSchemaIdResolvedReference(index *SpecIndex, entry *SchemaIdEntry, originalRef, baseUri, fragment string) *Reference {
+	if entry == nil {
+		return nil
+	}
+
+	node := entry.SchemaNode
+	if fragment != "" && entry.SchemaNode != nil {
+		if fragmentNode := navigateToFragment(entry.SchemaNode, fragment); fragmentNode != nil {
+			node = fragmentNode
+		}
+	}
+
+	definition := originalRef
+	fullDefinition := originalRef
+	if entry.DefinitionPath != "" {
+		definition = joinSchemaIdDefinitionPath(entry.DefinitionPath, fragment)
+		fullDefinition = definition
+		if entry.Index != nil {
+			if specPath := entry.Index.GetSpecAbsolutePath(); specPath != "" {
+				fullDefinition = specPath + definition
+			}
+		}
+	}
+
+	remoteLocation := ""
+	if entry.Index != nil {
+		remoteLocation = entry.Index.GetSpecAbsolutePath()
+	}
+
+	return &Reference{
+		FullDefinition: fullDefinition,
+		Definition:     definition,
+		Name:           baseUri,
+		RawRef:         originalRef,
+		SchemaIdBase:   baseUri,
+		Node:           node,
+		IsRemote:       entry.Index != index,
+		RemoteLocation: remoteLocation,
+		Index:          entry.Index,
+	}
+}
+
 // ResolveRefViaSchemaId attempts to resolve a $ref via the $id registry.
 // Implements JSON Schema 2020-12 $id-based resolution:
 // 1. Split ref into base URI and fragment
@@ -156,26 +212,7 @@ func (index *SpecIndex) ResolveRefViaSchemaId(ref string) *Reference {
 		return nil
 	}
 
-	r := &Reference{
-		FullDefinition: ref,
-		Definition:     ref,
-		Name:           baseUri,
-		RawRef:         ref,
-		SchemaIdBase:   baseUri,
-		Node:           entry.SchemaNode,
-		IsRemote:       entry.Index != index,
-		RemoteLocation: entry.Index.GetSpecAbsolutePath(),
-		Index:          entry.Index,
-	}
-
-	// Navigate to fragment if present
-	if fragment != "" && entry.SchemaNode != nil {
-		if fragmentNode := navigateToFragment(entry.SchemaNode, fragment); fragmentNode != nil {
-			r.Node = fragmentNode
-		}
-	}
-
-	return r
+	return buildSchemaIdResolvedReference(index, entry, ref, baseUri, fragment)
 }
 
 func (index *SpecIndex) resolveRefViaSchemaIdPath(path string) *Reference {
@@ -212,17 +249,7 @@ func (index *SpecIndex) resolveRefViaSchemaIdPath(path string) *Reference {
 	}
 
 	baseUri := match.GetKey()
-	return &Reference{
-		FullDefinition: baseUri,
-		Definition:     baseUri,
-		Name:           baseUri,
-		RawRef:         path,
-		SchemaIdBase:   baseUri,
-		Node:           match.SchemaNode,
-		IsRemote:       match.Index != index,
-		RemoteLocation: match.Index.GetSpecAbsolutePath(),
-		Index:          match.Index,
-	}
+	return buildSchemaIdResolvedReference(index, match, path, baseUri, "")
 }
 
 // navigateToFragment navigates to a JSON pointer fragment within a YAML node.

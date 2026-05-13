@@ -942,6 +942,13 @@ type DBCluster struct {
 	// This setting is only for Aurora DB clusters.
 	IOOptimizedNextAllowedModificationTime *time.Time
 
+	// Indicates whether the DB cluster has internet-based connectivity enabled
+	// through an internet access gateway.
+	//
+	// This setting is applicable only for Aurora PostgreSQL clusters created through
+	// express configuration.
+	InternetAccessGatewayEnabled *bool
+
 	// The Provisioned IOPS (I/O operations per second) value.
 	//
 	// This setting is only for non-Aurora Multi-AZ DB clusters.
@@ -1163,6 +1170,12 @@ type DBCluster struct {
 	//
 	//   - [last] - Usually reserved for production environments.
 	UpgradeRolloutOrder UpgradeRolloutOrder
+
+	// Indicates whether the DB cluster uses VPC-based networking.
+	//
+	// This setting is applicable only for Aurora PostgreSQL clusters created through
+	// express configuration.
+	VPCNetworkingEnabled *bool
 
 	// The list of VPC security groups that the DB cluster belongs to.
 	VpcSecurityGroups []VpcSecurityGroupMembership

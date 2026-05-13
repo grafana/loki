@@ -1,18 +1,18 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@52d476dc60de14b52b6dec2b33e86abeeb497fcc"
     "with":
       "build_image": "grafana/loki-build-image:0.35.1"
       "golang_ci_lint_version": "v2.11.4"
-      "release_lib_ref": "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+      "release_lib_ref": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
       "skip_validation": false
       "use_github_app_token": true
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.1"
+      "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -134,9 +134,9 @@
   "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.1"
+      "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -258,9 +258,9 @@
   "loki-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.1"
+      "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -382,9 +382,9 @@
   "querytee-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.1"
+      "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"

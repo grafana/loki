@@ -24470,6 +24470,11 @@ func awsAwsjson11_deserializeDocumentContactMethod(v **types.ContactMethod, valu
 				sv.SupportCode = ptr.String(jtv)
 			}
 
+		case "tags":
+			if err := awsAwsjson11_deserializeDocumentTagList(&sv.Tags, value); err != nil {
+				return err
+			}
+
 		default:
 			_, _ = key, value
 

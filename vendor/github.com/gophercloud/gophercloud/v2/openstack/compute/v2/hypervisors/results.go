@@ -195,7 +195,7 @@ func (r *Hypervisor) UnmarshalJSON(b []byte) error {
 	case float64:
 		r.HypervisorVersion = int(t)
 	default:
-		return fmt.Errorf("Hypervisor version has unexpected type: %T", t)
+		return fmt.Errorf("HypervisorVersion has unexpected type: %T", t)
 	}
 
 	// free_disk_gb doesn't exist after api version 2.87
@@ -206,7 +206,7 @@ func (r *Hypervisor) UnmarshalJSON(b []byte) error {
 		case float64:
 			r.FreeDiskGB = int(t)
 		default:
-			return fmt.Errorf("Free disk GB has unexpected type: %T", t)
+			return fmt.Errorf("FreeDiskGB has unexpected type: %T", t)
 		}
 	}
 
@@ -218,7 +218,7 @@ func (r *Hypervisor) UnmarshalJSON(b []byte) error {
 		case float64:
 			r.LocalGB = int(t)
 		default:
-			return fmt.Errorf("Local GB has unexpected type: %T", t)
+			return fmt.Errorf("LocalGB has unexpected type: %T", t)
 		}
 	}
 

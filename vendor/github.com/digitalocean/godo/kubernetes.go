@@ -91,6 +91,7 @@ type KubernetesClusterCreateRequest struct {
 	AmdGpuDeviceMetricsExporterPlugin *KubernetesAmdGpuDeviceMetricsExporterPlugin `json:"amd_gpu_device_metrics_exporter_plugin,omitempty"`
 	NvidiaGpuDevicePlugin             *KubernetesNvidiaGpuDevicePlugin             `json:"nvidia_gpu_device_plugin,omitempty"`
 	RdmaSharedDevicePlugin            *KubernetesRdmaSharedDevicePlugin            `json:"rdma_shared_dev_plugin,omitempty"`
+	SSO                               *KubernetesClusterSSO                        `json:"sso,omitempty"`
 }
 
 // KubernetesClusterUpdateRequest represents a request to update a Kubernetes cluster.
@@ -107,6 +108,7 @@ type KubernetesClusterUpdateRequest struct {
 	AmdGpuDeviceMetricsExporterPlugin *KubernetesAmdGpuDeviceMetricsExporterPlugin `json:"amd_gpu_device_metrics_exporter_plugin,omitempty"`
 	NvidiaGpuDevicePlugin             *KubernetesNvidiaGpuDevicePlugin             `json:"nvidia_gpu_device_plugin,omitempty"`
 	RdmaSharedDevicePlugin            *KubernetesRdmaSharedDevicePlugin            `json:"rdma_shared_dev_plugin,omitempty"`
+	SSO                               *KubernetesClusterSSO                        `json:"sso,omitempty"`
 
 	// Convert cluster to run highly available control plane
 	HA *bool `json:"ha,omitempty"`
@@ -244,6 +246,7 @@ type KubernetesCluster struct {
 	AmdGpuDeviceMetricsExporterPlugin *KubernetesAmdGpuDeviceMetricsExporterPlugin `json:"amd_gpu_device_metrics_exporter_plugin,omitempty"`
 	NvidiaGpuDevicePlugin             *KubernetesNvidiaGpuDevicePlugin             `json:"nvidia_gpu_device_plugin,omitempty"`
 	RdmaSharedDevicePlugin            *KubernetesRdmaSharedDevicePlugin            `json:"rdma_shared_dev_plugin,omitempty"`
+	SSO                               *KubernetesClusterSSO                        `json:"sso,omitempty"`
 
 	Status    *KubernetesClusterStatus `json:"status,omitempty"`
 	CreatedAt time.Time                `json:"created_at,omitempty"`
@@ -319,6 +322,14 @@ type KubernetesNvidiaGpuDevicePlugin struct {
 // If a cluster has a multi-node GPU ready slug it will be enabled by default.
 type KubernetesRdmaSharedDevicePlugin struct {
 	Enabled *bool `json:"enabled"`
+}
+
+// KubernetesClusterSSO configures Single Sign-On (SSO) for a Kubernetes cluster.
+// Identity Provider (IDP) settings for SSO are set up on the team level,
+// whereas on a per-cluster level, users can enable or require SSO for the cluster.
+type KubernetesClusterSSO struct {
+	Enabled  *bool `json:"enabled,omitempty"`
+	Required *bool `json:"required,omitempty"`
 }
 
 // KubernetesMaintenancePolicyDay represents the possible days of a maintenance

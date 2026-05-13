@@ -1,3 +1,15 @@
+## v2.11.0 (2026-03-04)
+
+* [GH-3602](https://github.com/gophercloud/gophercloud/pull/3602) [v2] Add PCIAddress field to baremetal InterfaceType
+* [GH-3610](https://github.com/gophercloud/gophercloud/pull/3610) [v2] Networking V2: Added support for ML2 extension port_trusted_vif
+* [GH-3611](https://github.com/gophercloud/gophercloud/pull/3611) [v2] networking/v2/layer3/routers: Add external gateways management
+* [GH-3625](https://github.com/gophercloud/gophercloud/pull/3625) [v2] Use jimmy amphora in octavia job
+* [GH-3629](https://github.com/gophercloud/gophercloud/pull/3629) [v2] Add a new Ironic field representing node health to Gophercloud
+* [GH-3630](https://github.com/gophercloud/gophercloud/pull/3630) [v2] Bump go
+* [GH-3632](https://github.com/gophercloud/gophercloud/pull/3632) [v2] CI: Fix fwaas jobs
+* [GH-3633](https://github.com/gophercloud/gophercloud/pull/3633) [v2] Add TSIG key support for OpenStack DNS v2 API
+* [GH-3640](https://github.com/gophercloud/gophercloud/pull/3640) [v2] fix: networkipavailabilities: handle scientific notation in IP counts
+
 ## v2.10.0 (2026-01-05)
 
 * [GH-3569](https://github.com/gophercloud/gophercloud/pull/3569) identity/role: restore backward compatibility for description
