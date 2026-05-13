@@ -55,6 +55,16 @@ func (c *HighWatermarkGauge) Describe(descs chan<- *prometheus.Desc) {
 // Collect implements [prometheus.Collector]. It reports the peak observed
 // in the last 2 minutes.
 func (c *HighWatermarkGauge) Collect(metrics chan<- prometheus.Metric) {
+	c.resetStaleMaxVal()
+	metrics <- prometheus.MustNewConstMetric(
+		c.desc,
+		prometheus.GaugeValue,
+		float64(c.maxVal.Load()),
+	)
+}
+
+// resetStaleMaxVal resets max val if its stale.
+func (c *HighWatermarkGauge) resetStaleMaxVal() {
 	for {
 		lastResetSecs := c.lastResetSecs.Load()
 		nowSecs := time.Now().Unix()
@@ -67,11 +77,6 @@ func (c *HighWatermarkGauge) Collect(metrics chan<- prometheus.Metric) {
 			break
 		}
 	}
-	metrics <- prometheus.MustNewConstMetric(
-		c.desc,
-		prometheus.GaugeValue,
-		float64(c.maxVal.Load()),
-	)
 }
 
 // updateMaxVal bumps maxVal up to newVal if newVal is larger.
