@@ -194,7 +194,9 @@ type DecorateWriter func(Writer) Writer
 // rejected (or ignored) by the MsgAcceptFunc, or passed to this function.
 type MsgInvalidFunc func(m []byte, err error)
 
-func DefaultMsgInvalidFunc(m []byte, err error) {}
+var DefaultMsgInvalidFunc MsgInvalidFunc = defaultMsgInvalidFunc
+
+func defaultMsgInvalidFunc(m []byte, err error) {}
 
 // A Server defines parameters for running an DNS server.
 type Server struct {

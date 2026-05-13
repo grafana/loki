@@ -18,7 +18,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/log"
 )
 
-const envVarSendCertChain = "AZURE_CLIENT_SEND_CERTIFICATE_CHAIN"
+const (
+	credNameEnvironment = "EnvironmentCredential"
+	envVarSendCertChain = "AZURE_CLIENT_SEND_CERTIFICATE_CHAIN"
+)
 
 // EnvironmentCredentialOptions contains optional parameters for EnvironmentCredential
 type EnvironmentCredentialOptions struct {

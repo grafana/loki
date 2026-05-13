@@ -1,0 +1,12 @@
+$defs:
+  log_record_flags:
+    description: LogRecordFlags defines flags for the LogRecord. The 8 least significant bits are the trace flags as defined in W3C Trace Context specification. 24 most significant bits are reserved and must be set to 0.
+    type: integer
+    x-customType: uint32
+  logs:
+    description: 'Logs is the top-level struct that is propagated through the logs pipeline. Use NewLogs to create new instance, zero-initialized instance is not valid for use. This is a reference type, if passed by value and callee modifies it the caller will see the modification. Must use NewLogs function to create new instances. Important: zero-initialized instance is not valid for use.'
+    $ref: go.opentelemetry.io/collector/pdata/internal.logs_wrapper
+  severity_number:
+    description: SeverityNumber represents severity number of a log record.
+    type: integer
+    x-customType: int32

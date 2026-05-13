@@ -122,7 +122,12 @@ func (t *Target) handleMessage(msg *gelf.Message) {
 	lb.Set("__gelf_message_version", msg.Version)
 	lb.Set("__gelf_message_facility", msg.Facility)
 
-	processed, _ := relabel.Process(lb.Labels(), t.relabelConfig...)
+	if len(t.relabelConfig) > 0 {
+		if keep := relabel.ProcessBuilder(lb, t.relabelConfig...); !keep {
+			return
+		}
+	}
+	processed := lb.Labels()
 
 	filtered := make(model.LabelSet)
 	processed.Range(func(lbl labels.Label) {

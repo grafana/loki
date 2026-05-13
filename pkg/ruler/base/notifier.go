@@ -27,7 +27,7 @@ import (
 // TODO: Instead of using the same metrics for all notifiers,
 // should we have separate metrics for each discovery.NewManager?
 var (
-	sdMetrics map[string]discovery.DiscovererMetrics
+	sdMetrics *discovery.SDMetrics
 
 	srvDNSregexp = regexp.MustCompile(`^_.+._.+`)
 )
@@ -54,7 +54,7 @@ type rulerNotifier struct {
 func newRulerNotifier(o *notifier.Options, l gklog.Logger) *rulerNotifier {
 	sdCtx, sdCancel := context.WithCancel(context.Background())
 	return &rulerNotifier{
-		notifier:  notifier.NewManager(o, util_log.SlogFromGoKit(l)),
+		notifier:  notifier.NewManager(o, model.UTF8Validation, util_log.SlogFromGoKit(l)),
 		sdCancel:  sdCancel,
 		sdManager: discovery.NewManager(sdCtx, util_log.SlogFromGoKit(l), util.NoopRegistry{}, sdMetrics),
 		logger:    l,
@@ -154,6 +154,9 @@ func buildNotifierConfig(amConfig *ruler_config.AlertManagerConfig, externalLabe
 	promConfig := &config.Config{
 		GlobalConfig: config.GlobalConfig{
 			ExternalLabels: externalLabels,
+			// Prometheus notifier ApplyConfig assigns this to alert relabel configs whose
+			// scheme is unset; model.UnsetValidation panics during notify (see grafana/loki#21368).
+			MetricNameValidationScheme: model.UTF8Validation,
 		},
 		AlertingConfig: config.AlertingConfig{
 			AlertRelabelConfigs: amConfig.AlertRelabelConfigs,

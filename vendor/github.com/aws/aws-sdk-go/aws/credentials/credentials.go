@@ -14,38 +14,39 @@
 //
 // Example of using the environment variable credentials.
 //
-//     creds := credentials.NewEnvCredentials()
+//	creds := credentials.NewEnvCredentials()
 //
-//     // Retrieve the credentials value
-//     credValue, err := creds.Get()
-//     if err != nil {
-//         // handle error
-//     }
+//	// Retrieve the credentials value
+//	credValue, err := creds.Get()
+//	if err != nil {
+//	    // handle error
+//	}
 //
 // Example of forcing credentials to expire and be refreshed on the next Get().
 // This may be helpful to proactively expire credentials and refresh them sooner
 // than they would naturally expire on their own.
 //
-//     creds := credentials.NewCredentials(&ec2rolecreds.EC2RoleProvider{})
-//     creds.Expire()
-//     credsValue, err := creds.Get()
-//     // New credentials will be retrieved instead of from cache.
+//	creds := credentials.NewCredentials(&ec2rolecreds.EC2RoleProvider{})
+//	creds.Expire()
+//	credsValue, err := creds.Get()
+//	// New credentials will be retrieved instead of from cache.
 //
-//
-// Custom Provider
+// # Custom Provider
 //
 // Each Provider built into this package also provides a helper method to generate
 // a Credentials pointer setup with the provider. To use a custom Provider just
 // create a type which satisfies the Provider interface and pass it to the
 // NewCredentials method.
 //
-//     type MyProvider struct{}
-//     func (m *MyProvider) Retrieve() (Value, error) {...}
-//     func (m *MyProvider) IsExpired() bool {...}
+//	type MyProvider struct{}
+//	func (m *MyProvider) Retrieve() (Value, error) {...}
+//	func (m *MyProvider) IsExpired() bool {...}
 //
-//     creds := credentials.NewCredentials(&MyProvider{})
-//     credValue, err := creds.Get()
+//	creds := credentials.NewCredentials(&MyProvider{})
+//	credValue, err := creds.Get()
 //
+// Deprecated: aws-sdk-go is deprecated. Use aws-sdk-go-v2.
+// See https://aws.amazon.com/blogs/developer/announcing-end-of-support-for-aws-sdk-for-go-v1-on-july-31-2025/.
 package credentials
 
 import (
@@ -64,10 +65,10 @@ import (
 // when making service API calls. For example, when accessing public
 // s3 buckets.
 //
-//     svc := s3.New(session.Must(session.NewSession(&aws.Config{
-//       Credentials: credentials.AnonymousCredentials,
-//     })))
-//     // Access public S3 buckets.
+//	svc := s3.New(session.Must(session.NewSession(&aws.Config{
+//	  Credentials: credentials.AnonymousCredentials,
+//	})))
+//	// Access public S3 buckets.
 var AnonymousCredentials = NewStaticCredentials("", "", "")
 
 // A Value is the AWS credentials value for individual credential fields.
@@ -150,10 +151,11 @@ func (p ErrorProvider) IsExpired() bool {
 // provider's struct.
 //
 // Example:
-//     type EC2RoleProvider struct {
-//         Expiry
-//         ...
-//     }
+//
+//	type EC2RoleProvider struct {
+//	    Expiry
+//	    ...
+//	}
 type Expiry struct {
 	// The date/time when to expire on
 	expiration time.Time

@@ -20,7 +20,7 @@ func (r commonResult) Extract() (*Port, error) {
 }
 
 func (r commonResult) ExtractInto(v any) error {
-	return r.Result.ExtractIntoStructPtr(v, "port")
+	return r.ExtractIntoStructPtr(v, "port")
 }
 
 // CreateResult represents the result of a create operation. Call its Extract
@@ -49,7 +49,7 @@ type DeleteResult struct {
 
 // IP is a sub-struct that represents an individual IP.
 type IP struct {
-	SubnetID  string `json:"subnet_id"`
+	SubnetID  string `json:"subnet_id,omitempty"`
 	IPAddress string `json:"ip_address,omitempty"`
 }
 
@@ -202,5 +202,5 @@ func ExtractPorts(r pagination.Page) ([]Port, error) {
 }
 
 func ExtractPortsInto(r pagination.Page, v any) error {
-	return r.(PortPage).Result.ExtractIntoSlicePtr(v, "ports")
+	return r.(PortPage).ExtractIntoSlicePtr(v, "ports")
 }

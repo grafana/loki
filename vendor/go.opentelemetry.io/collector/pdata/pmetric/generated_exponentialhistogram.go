@@ -8,7 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
 
 // ExponentialHistogram represents the type of a metric that is calculated by aggregating
@@ -20,11 +19,11 @@ import (
 // Must use NewExponentialHistogram function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ExponentialHistogram struct {
-	orig  *otlpmetrics.ExponentialHistogram
+	orig  *internal.ExponentialHistogram
 	state *internal.State
 }
 
-func newExponentialHistogram(orig *otlpmetrics.ExponentialHistogram, state *internal.State) ExponentialHistogram {
+func newExponentialHistogram(orig *internal.ExponentialHistogram, state *internal.State) ExponentialHistogram {
 	return ExponentialHistogram{orig: orig, state: state}
 }
 
@@ -33,7 +32,7 @@ func newExponentialHistogram(orig *otlpmetrics.ExponentialHistogram, state *inte
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewExponentialHistogram() ExponentialHistogram {
-	return newExponentialHistogram(internal.NewOrigExponentialHistogram(), internal.NewState())
+	return newExponentialHistogram(internal.NewExponentialHistogram(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -45,7 +44,7 @@ func (ms ExponentialHistogram) MoveTo(dest ExponentialHistogram) {
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigExponentialHistogram(dest.orig, false)
+	internal.DeleteExponentialHistogram(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
@@ -62,11 +61,11 @@ func (ms ExponentialHistogram) AggregationTemporality() AggregationTemporality {
 // SetAggregationTemporality replaces the aggregationtemporality associated with this ExponentialHistogram.
 func (ms ExponentialHistogram) SetAggregationTemporality(v AggregationTemporality) {
 	ms.state.AssertMutable()
-	ms.orig.AggregationTemporality = otlpmetrics.AggregationTemporality(v)
+	ms.orig.AggregationTemporality = internal.AggregationTemporality(v)
 }
 
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ExponentialHistogram) CopyTo(dest ExponentialHistogram) {
 	dest.state.AssertMutable()
-	internal.CopyOrigExponentialHistogram(dest.orig, ms.orig)
+	internal.CopyExponentialHistogram(dest.orig, ms.orig)
 }

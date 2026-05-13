@@ -283,7 +283,7 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 		blockSize  = 256 * 1024
 	)
 	labelsBuilder := labels.NewBuilder(lbs)
-	labelsBuilder.Set(labels.MetricName, "logs")
+	labelsBuilder.Set(model.MetricNameLabel, "logs")
 	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
@@ -318,7 +318,7 @@ func encodeBase64Bytes(bytes []byte) []byte {
 
 // Backwards-compatible with model.Metric.String()
 func labelsString(ls labels.Labels) string {
-	metricName := ls.Get(labels.MetricName)
+	metricName := ls.Get(model.MetricNameLabel)
 	if metricName != "" && ls.Len() == 1 {
 		return metricName
 	}
@@ -329,7 +329,7 @@ func labelsString(ls labels.Labels) string {
 	b.WriteByte('{')
 	i := 0
 	ls.Range(func(l labels.Label) {
-		if l.Name == labels.MetricName {
+		if l.Name == model.MetricNameLabel {
 			return
 		}
 		if i > 0 {

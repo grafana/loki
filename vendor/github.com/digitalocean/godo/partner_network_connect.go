@@ -20,7 +20,6 @@ type PartnerAttachmentService interface {
 	Update(context.Context, string, *PartnerAttachmentUpdateRequest) (*PartnerAttachment, *Response, error)
 	Delete(context.Context, string) (*Response, error)
 	GetServiceKey(context.Context, string) (*ServiceKey, *Response, error)
-	SetRoutes(context.Context, string, *PartnerAttachmentSetRoutesRequest) (*PartnerAttachment, *Response, error)
 	ListRoutes(context.Context, string, *ListOptions) ([]*RemoteRoute, *Response, error)
 	GetBGPAuthKey(ctx context.Context, iaID string) (*BgpAuthKey, *Response, error)
 	RegenerateServiceKey(ctx context.Context, iaID string) (*RegenerateServiceKey, *Response, error)
@@ -104,11 +103,6 @@ type PartnerAttachmentUpdateRequest struct {
 	VPCIDs []string `json:"vpc_ids,omitempty"`
 }
 
-type PartnerAttachmentSetRoutesRequest struct {
-	// Routes is the list of routes to be used for the Partner Attachment
-	Routes []string `json:"routes,omitempty"`
-}
-
 // BGP represents the BGP configuration of a Partner Attachment.
 type BGP struct {
 	// LocalASN is the local ASN
@@ -175,8 +169,6 @@ type ServiceKey struct {
 
 // RemoteRoute represents a route for a Partner Attachment.
 type RemoteRoute struct {
-	// ID is the generated ID of the Route
-	ID string `json:"id,omitempty"`
 	// Cidr is the CIDR of the route
 	Cidr string `json:"cidr,omitempty"`
 }
@@ -378,23 +370,6 @@ func (s *PartnerAttachmentServiceOp) ListRoutes(ctx context.Context, id string, 
 	}
 
 	return root.RemoteRoutes, resp, nil
-}
-
-// SetRoutes updates specific properties of a Partner Attachment.
-func (s *PartnerAttachmentServiceOp) SetRoutes(ctx context.Context, id string, set *PartnerAttachmentSetRoutesRequest) (*PartnerAttachment, *Response, error) {
-	path := fmt.Sprintf("%s/%s/remote_routes", partnerNetworkConnectBasePath, id)
-	req, err := s.client.NewRequest(ctx, http.MethodPut, path, set)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	root := new(partnerNetworkConnectAttachmentRoot)
-	resp, err := s.client.Do(ctx, req, root)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return root.PartnerAttachment, resp, nil
 }
 
 // GetBGPAuthKey returns Partner Attachment bgp auth key

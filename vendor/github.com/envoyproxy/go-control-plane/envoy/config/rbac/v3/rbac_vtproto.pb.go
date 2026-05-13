@@ -234,6 +234,28 @@ func (m *Policy) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.CelConfig != nil {
+		if vtmsg, ok := interface{}(m.CelConfig).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.CelConfig)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x2a
+	}
 	if m.CheckedCondition != nil {
 		if vtmsg, ok := interface{}(m.CheckedCondition).(interface {
 			MarshalToSizedBufferVTStrict([]byte) (int, error)
@@ -1737,6 +1759,16 @@ func (m *Policy) SizeVT() (n int) {
 			l = size.SizeVT()
 		} else {
 			l = proto.Size(m.CheckedCondition)
+		}
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.CelConfig != nil {
+		if size, ok := interface{}(m.CelConfig).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.CelConfig)
 		}
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}

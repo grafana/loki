@@ -300,8 +300,7 @@ func Create(ctx context.Context, c *gophercloud.ServiceClient, opts tokens.AuthO
 	deleteBodyElements(b, "token")
 
 	resp, err := c.Post(ctx, ec2tokensURL(c), b, &r.Body, &gophercloud.RequestOpts{
-		MoreHeaders: map[string]string{"X-Auth-Token": ""},
-		OkCodes:     []int{200},
+		OkCodes: []int{200},
 	})
 	_, r.Header, r.Err = gophercloud.ParseResponse(resp, err)
 	return
@@ -320,8 +319,7 @@ func ValidateS3Token(ctx context.Context, c *gophercloud.ServiceClient, opts tok
 	deleteBodyElements(b, "body_hash", "headers", "host", "params", "path", "verb")
 
 	resp, err := c.Post(ctx, s3tokensURL(c), b, &r.Body, &gophercloud.RequestOpts{
-		MoreHeaders: map[string]string{"X-Auth-Token": ""},
-		OkCodes:     []int{200},
+		OkCodes: []int{200},
 	})
 	_, r.Header, r.Err = gophercloud.ParseResponse(resp, err)
 	return

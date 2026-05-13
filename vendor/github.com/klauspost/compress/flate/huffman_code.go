@@ -91,7 +91,7 @@ func generateFixedLiteralEncoding() *huffmanEncoder {
 	h := newHuffmanEncoder(literalCount)
 	codes := h.codes
 	var ch uint16
-	for ch = 0; ch < literalCount; ch++ {
+	for ch = range uint16(literalCount) {
 		var bits uint16
 		var size uint8
 		switch {
@@ -407,8 +407,8 @@ func histogramSplit(b []byte, h []uint16) {
 	for i, t := range x {
 		v0 := &h[t]
 		v1 := &h[y[i]]
-		v3 := &h[w[i]]
 		v2 := &h[z[i]]
+		v3 := &h[w[i]]
 		*v0++
 		*v1++
 		*v2++

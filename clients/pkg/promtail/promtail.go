@@ -1,6 +1,7 @@
 package promtail
 
 import (
+	"crypto/sha3"
 	"errors"
 	"fmt"
 	"os"
@@ -8,8 +9,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"golang.org/x/crypto/sha3"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -133,6 +132,9 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	newConf := cfg.String()
 	hash := sha3.Sum256([]byte(newConf))
 	level.Info(p.logger).Log("msg", "Reloading configuration file", "sha3sum", fmt.Sprintf("%x", hash))
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("error validating config: %w", err)
+	}
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}

@@ -1,4 +1,4 @@
-// Copyright 2016 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -32,27 +32,35 @@ import (
 )
 
 // Endpoints discovers new endpoint targets.
+//
+// Deprecated: The Endpoints API is deprecated starting in K8s v1.33+. Use EndpointSlice.
 type Endpoints struct {
 	logger *slog.Logger
 
-	endpointsInf          cache.SharedIndexInformer
-	serviceInf            cache.SharedInformer
-	podInf                cache.SharedInformer
-	nodeInf               cache.SharedInformer
-	withNodeMetadata      bool
-	namespaceInf          cache.SharedInformer
-	withNamespaceMetadata bool
+	endpointsInf           cache.SharedIndexInformer
+	serviceInf             cache.SharedInformer
+	podInf                 cache.SharedInformer
+	nodeInf                cache.SharedInformer
+	withNodeMetadata       bool
+	namespaceInf           cache.SharedInformer
+	withNamespaceMetadata  bool
+	replicaSetInf          cache.SharedInformer
+	withDeploymentMetadata bool
+	jobInf                 cache.SharedInformer
+	withJobMetadata        bool
+	withCronJobMetadata    bool
 
 	podStore       cache.Store
 	endpointsStore cache.Store
 	serviceStore   cache.Store
 
-	queue *workqueue.Type
+	queue *workqueue.Typed[string]
 }
 
 // NewEndpoints returns a new endpoints discovery.
-// Endpoints API is deprecated in k8s v1.33+, but we should still support it.
-func NewEndpoints(l *slog.Logger, eps cache.SharedIndexInformer, svc, pod, node, namespace cache.SharedInformer, eventCount *prometheus.CounterVec) *Endpoints {
+//
+// Deprecated: The Endpoints API is deprecated starting in K8s v1.33+. Use NewEndpointSlice.
+func NewEndpoints(l *slog.Logger, eps cache.SharedIndexInformer, svc, pod, node, namespace, rs, job cache.SharedInformer, withDeploymentMetadata, withJobMetadata, withCronJobMetadata bool, eventCount *prometheus.CounterVec) *Endpoints {
 	if l == nil {
 		l = promslog.NewNopLogger()
 	}
@@ -68,30 +76,37 @@ func NewEndpoints(l *slog.Logger, eps cache.SharedIndexInformer, svc, pod, node,
 	podUpdateCount := eventCount.WithLabelValues(RolePod.String(), MetricLabelRoleUpdate)
 
 	e := &Endpoints{
-		logger:                l,
-		endpointsInf:          eps,
-		endpointsStore:        eps.GetStore(),
-		serviceInf:            svc,
-		serviceStore:          svc.GetStore(),
-		podInf:                pod,
-		podStore:              pod.GetStore(),
-		nodeInf:               node,
-		withNodeMetadata:      node != nil,
-		namespaceInf:          namespace,
-		withNamespaceMetadata: namespace != nil,
-		queue:                 workqueue.NewNamed(RoleEndpoint.String()),
+		logger:                 l,
+		endpointsInf:           eps,
+		endpointsStore:         eps.GetStore(),
+		serviceInf:             svc,
+		serviceStore:           svc.GetStore(),
+		podInf:                 pod,
+		podStore:               pod.GetStore(),
+		nodeInf:                node,
+		withNodeMetadata:       node != nil,
+		namespaceInf:           namespace,
+		withNamespaceMetadata:  namespace != nil,
+		replicaSetInf:          rs,
+		withDeploymentMetadata: withDeploymentMetadata,
+		jobInf:                 job,
+		withJobMetadata:        withJobMetadata,
+		withCronJobMetadata:    withCronJobMetadata,
+		queue: workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[string]{
+			Name: RoleEndpoint.String(),
+		}),
 	}
 
 	_, err := e.endpointsInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(o interface{}) {
+		AddFunc: func(o any) {
 			epAddCount.Inc()
 			e.enqueue(o)
 		},
-		UpdateFunc: func(_, o interface{}) {
+		UpdateFunc: func(_, o any) {
 			epUpdateCount.Inc()
 			e.enqueue(o)
 		},
-		DeleteFunc: func(o interface{}) {
+		DeleteFunc: func(o any) {
 			epDeleteCount.Inc()
 			e.enqueue(o)
 		},
@@ -100,7 +115,7 @@ func NewEndpoints(l *slog.Logger, eps cache.SharedIndexInformer, svc, pod, node,
 		l.Error("Error adding endpoints event handler.", "err", err)
 	}
 
-	serviceUpdate := func(o interface{}) {
+	serviceUpdate := func(o any) {
 		svc, err := convertToService(o)
 		if err != nil {
 			e.logger.Error("converting to Service object failed", "err", err)
@@ -119,15 +134,15 @@ func NewEndpoints(l *slog.Logger, eps cache.SharedIndexInformer, svc, pod, node,
 	_, err = e.serviceInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		// TODO(fabxc): potentially remove add and delete event handlers. Those should
 		// be triggered via the endpoint handlers already.
-		AddFunc: func(o interface{}) {
+		AddFunc: func(o any) {
 			svcAddCount.Inc()
 			serviceUpdate(o)
 		},
-		UpdateFunc: func(_, o interface{}) {
+		UpdateFunc: func(_, o any) {
 			svcUpdateCount.Inc()
 			serviceUpdate(o)
 		},
-		DeleteFunc: func(o interface{}) {
+		DeleteFunc: func(o any) {
 			svcDeleteCount.Inc()
 			serviceUpdate(o)
 		},
@@ -136,7 +151,7 @@ func NewEndpoints(l *slog.Logger, eps cache.SharedIndexInformer, svc, pod, node,
 		l.Error("Error adding services event handler.", "err", err)
 	}
 	_, err = e.podInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(old, cur interface{}) {
+		UpdateFunc: func(old, cur any) {
 			podUpdateCount.Inc()
 			oldPod, ok := old.(*apiv1.Pod)
 			if !ok {
@@ -160,15 +175,15 @@ func NewEndpoints(l *slog.Logger, eps cache.SharedIndexInformer, svc, pod, node,
 	}
 	if e.withNodeMetadata {
 		_, err = e.nodeInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc: func(o interface{}) {
+			AddFunc: func(o any) {
 				node := o.(*apiv1.Node)
 				e.enqueueNode(node.Name)
 			},
-			UpdateFunc: func(_, o interface{}) {
+			UpdateFunc: func(_, o any) {
 				node := o.(*apiv1.Node)
 				e.enqueueNode(node.Name)
 			},
-			DeleteFunc: func(o interface{}) {
+			DeleteFunc: func(o any) {
 				nodeName, err := nodeName(o)
 				if err != nil {
 					l.Error("Error getting Node name", "err", err)
@@ -183,7 +198,7 @@ func NewEndpoints(l *slog.Logger, eps cache.SharedIndexInformer, svc, pod, node,
 
 	if e.withNamespaceMetadata {
 		_, err = e.namespaceInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			UpdateFunc: func(_, o interface{}) {
+			UpdateFunc: func(_, o any) {
 				namespace := o.(*apiv1.Namespace)
 				e.enqueueNamespace(namespace.Name)
 			},
@@ -234,7 +249,7 @@ func (e *Endpoints) enqueuePod(podNamespacedName string) {
 	}
 }
 
-func (e *Endpoints) enqueue(obj interface{}) {
+func (e *Endpoints) enqueue(obj any) {
 	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
 		return
@@ -272,12 +287,11 @@ func (e *Endpoints) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 }
 
 func (e *Endpoints) process(ctx context.Context, ch chan<- []*targetgroup.Group) bool {
-	keyObj, quit := e.queue.Get()
+	key, quit := e.queue.Get()
 	if quit {
 		return false
 	}
-	defer e.queue.Done(keyObj)
-	key := keyObj.(string)
+	defer e.queue.Done(key)
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -303,7 +317,7 @@ func (e *Endpoints) process(ctx context.Context, ch chan<- []*targetgroup.Group)
 	return true
 }
 
-func convertToEndpoints(o interface{}) (*apiv1.Endpoints, error) {
+func convertToEndpoints(o any) (*apiv1.Endpoints, error) {
 	endpoints, ok := o.(*apiv1.Endpoints)
 	if ok {
 		return endpoints, nil
@@ -396,7 +410,7 @@ func (e *Endpoints) buildEndpoints(eps *apiv1.Endpoints) *targetgroup.Group {
 		}
 
 		// Attach standard pod labels.
-		target = target.Merge(podLabels(pod))
+		target = target.Merge(podLabels(pod, e.replicaSetInf, e.jobInf, e.withDeploymentMetadata, e.withJobMetadata, e.withCronJobMetadata))
 
 		// Attach potential container port labels matching the endpoint port.
 		containers := append(pod.Spec.Containers, pod.Spec.InitContainers...)
@@ -448,7 +462,7 @@ func (e *Endpoints) buildEndpoints(eps *apiv1.Endpoints) *targetgroup.Group {
 	// by one of the service endpoints, generate targets for them.
 	for _, pe := range seenPods {
 		// PodIP can be empty when a pod is starting or has been evicted.
-		if len(pe.pod.Status.PodIP) == 0 {
+		if pe.pod.Status.PodIP == "" {
 			continue
 		}
 
@@ -480,7 +494,7 @@ func (e *Endpoints) buildEndpoints(eps *apiv1.Endpoints) *targetgroup.Group {
 					podContainerPortProtocolLabel: lv(string(cport.Protocol)),
 					podContainerIsInit:            lv(strconv.FormatBool(isInit)),
 				}
-				tg.Targets = append(tg.Targets, target.Merge(podLabels(pe.pod)))
+				tg.Targets = append(tg.Targets, target.Merge(podLabels(pe.pod, e.replicaSetInf, e.jobInf, e.withDeploymentMetadata, e.withJobMetadata, e.withCronJobMetadata)))
 			}
 		}
 	}
