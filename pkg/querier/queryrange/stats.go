@@ -7,11 +7,13 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/middleware"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
@@ -97,7 +99,70 @@ type queryData struct {
 	match      []string // used in `series` query
 	label      string   // used in `labels` query
 
-	recorded bool
+	recorded            bool
+	estimatedQueryBytes int64
+	indexStatsMu        sync.Mutex
+	indexStatsBytesSeen map[indexStatsRequestKey]struct{}
+}
+
+type indexStatsRequestKey struct {
+	from     model.Time
+	through  model.Time
+	matchers string
+}
+
+func (d *queryData) recordEstimatedQueryBytes(req *logproto.IndexStatsRequest, responseBytes uint64) {
+	if d == nil || req == nil || responseBytes == 0 {
+		return
+	}
+
+	d.indexStatsMu.Lock()
+	defer d.indexStatsMu.Unlock()
+
+	if d.indexStatsBytesSeen == nil {
+		d.indexStatsBytesSeen = make(map[indexStatsRequestKey]struct{})
+	}
+
+	key := indexStatsRequestKey{
+		from:     req.From,
+		through:  req.Through,
+		matchers: req.Matchers,
+	}
+
+	if _, seen := d.indexStatsBytesSeen[key]; seen {
+		return
+	}
+
+	d.indexStatsBytesSeen[key] = struct{}{}
+	d.estimatedQueryBytes += int64(responseBytes)
+}
+
+func IndexStatsContextCollectorMiddleware() queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			resp, err := next.Do(ctx, req)
+			if err != nil {
+				return resp, err
+			}
+
+			indexStatsReq, ok := req.(*logproto.IndexStatsRequest)
+			if !ok {
+				return resp, nil
+			}
+
+			indexStatsResp, ok := resp.(*IndexStatsResponse)
+			if !ok || indexStatsResp == nil || indexStatsResp.Response == nil {
+				return resp, nil
+			}
+
+			data, _ := ctx.Value(ctxKey).(*queryData)
+			if data != nil {
+				data.recordEstimatedQueryBytes(indexStatsReq, indexStatsResp.Response.Bytes)
+			}
+
+			return resp, nil
+		})
+	})
 }
 
 func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
@@ -128,6 +193,8 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			logger := spanlogger.FromContext(ctx, util_log.Logger)
 			start := time.Now()
+			ctxValue := ctx.Value(ctxKey)
+			data, _ := ctxValue.(*queryData)
 
 			// start a new statistics context to be used by middleware, which we will merge with the response's statistics
 			middlewareStats, statsCtx := stats.NewContext(ctx)
@@ -190,6 +257,11 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &stats.Result{} // TODO: support stats in proto
 					totalEntries = 1
 					queryType = queryTypeStats
+					if data != nil && r.Response != nil {
+						if indexStatsReq, ok := req.(*logproto.IndexStatsRequest); ok {
+							data.recordEstimatedQueryBytes(indexStatsReq, r.Response.Bytes)
+						}
+					}
 				case *ShardsResponse:
 					responseStats = &r.Response.Statistics
 					queryType = queryTypeShards
@@ -211,6 +283,11 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			}
 
 			if responseStats != nil {
+				if data != nil && data.estimatedQueryBytes > responseStats.Summary.EstimatedQueryBytes &&
+					(queryType == queryTypeLog || queryType == queryTypeMetric) {
+					responseStats.Summary.EstimatedQueryBytes = data.estimatedQueryBytes
+				}
+
 				// merge the response's statistics with the stats collected by the middleware
 				responseStats.Merge(middlewareStats.Result(time.Since(start), 0, totalEntries))
 
@@ -219,8 +296,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				responseStats.ComputeSummary(time.Since(start), 0, totalEntries)
 				logger.LogKV(responseStats.KVList()...)
 			}
-			ctxValue := ctx.Value(ctxKey)
-			if data, ok := ctxValue.(*queryData); ok {
+			if data != nil {
 				data.recorded = true
 				data.statistics = responseStats
 				data.result = res

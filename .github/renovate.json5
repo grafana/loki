@@ -31,18 +31,18 @@
       enabled: false,
     },
     {
-    // Disable ALL updates (including security) 
-    // for dependencies found in the 'operator/**' path, but ONLY on 
-    // the specified release branches. This explicitly overrides the 
-    // global 'vulnerabilityAlerts' for this scope.
-    matchBaseBranches: [
-      'release-2.9.x', 
-      'release-3.6.x', 
-      'release-3.7.x'
-    ],
-    matchFileNames: ['operator/**'],
-    enabled: false
-  },
+      // Disable ALL updates (including security) 
+      // for dependencies found in the 'operator/**' path, but ONLY on 
+      // the specified release branches. This explicitly overrides the 
+      // global 'vulnerabilityAlerts' for this scope.
+      matchBaseBranches: [
+        'release-2.9.x', 
+        'release-3.6.x', 
+        'release-3.7.x'
+      ],
+      matchFileNames: ['operator/**'],
+      enabled: false
+    },
     {
       // Disable Go version updates
       matchManagers: [
@@ -232,7 +232,9 @@
   postUpdateOptions: [
     'gomodTidy',
   ],
+  semanticCommits: 'enabled',
   semanticCommitType: 'fix',
   semanticCommitScope: 'deps',
-  commitMessageAction: 'Update', // default is lower case
+  commitMessageLowerCase: 'never', // to leave the titles untouched, allowing uppercase characters in semantic commit titles
+  commitMessageAction: 'Update',
 }

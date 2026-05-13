@@ -17,12 +17,12 @@
 package schema
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/parquet"
 	format "github.com/apache/arrow-go/v18/parquet/internal/gen-go/parquet"
 	"github.com/apache/thrift/lib/go/thrift"
-	"golang.org/x/xerrors"
 )
 
 // NodeType describes whether the Node is a Primitive or Group node
@@ -172,12 +172,12 @@ func NewPrimitiveNodeLogical(name string, repetition parquet.Repetition, logical
 		n.convertedType, n.decimalMetaData = n.logicalType.ToConvertedType()
 	}
 
-	if !(n.logicalType != nil && !n.logicalType.IsNested() && n.logicalType.IsCompatible(n.convertedType, n.decimalMetaData)) {
+	if n.logicalType == nil || n.logicalType.IsNested() || !n.logicalType.IsCompatible(n.convertedType, n.decimalMetaData) {
 		return nil, fmt.Errorf("invalid logical type %s", n.logicalType)
 	}
 
 	if n.physicalType == parquet.Types.FixedLenByteArray && n.typeLen <= 0 {
-		return nil, xerrors.New("invalid fixed length byte array length")
+		return nil, errors.New("invalid fixed length byte array length")
 	}
 	return n, nil
 }
@@ -201,7 +201,7 @@ func NewPrimitiveNodeConverted(name string, repetition parquet.Repetition, typ p
 		switch typ {
 		case parquet.Types.Int32, parquet.Types.Int64, parquet.Types.ByteArray, parquet.Types.FixedLenByteArray:
 		default:
-			return nil, xerrors.New("parquet: DECIMAL can only annotate INT32, INT64, BYTE_ARRAY and FIXED")
+			return nil, errors.New("parquet: DECIMAL can only annotate INT32, INT64, BYTE_ARRAY and FIXED")
 		}
 
 		switch {
@@ -236,11 +236,11 @@ func NewPrimitiveNodeConverted(name string, repetition parquet.Repetition, typ p
 		}
 	case ConvertedTypes.Interval:
 		if typ != parquet.Types.FixedLenByteArray || typeLen != 12 {
-			return nil, xerrors.New("parquet: INTERVAL can only annotate FIXED_LEN_BYTE_ARRAY(12)")
+			return nil, errors.New("parquet: INTERVAL can only annotate FIXED_LEN_BYTE_ARRAY(12)")
 		}
 	case ConvertedTypes.Enum:
 		if typ != parquet.Types.ByteArray {
-			return nil, xerrors.New("parquet: ENUM can only annotate BYTE_ARRAY fields")
+			return nil, errors.New("parquet: ENUM can only annotate BYTE_ARRAY fields")
 		}
 	case ConvertedTypes.NA:
 	default:
@@ -254,7 +254,7 @@ func NewPrimitiveNodeConverted(name string, repetition parquet.Repetition, typ p
 
 	if n.physicalType == parquet.Types.FixedLenByteArray {
 		if typeLen <= 0 {
-			return nil, xerrors.New("invalid fixed len byte array length")
+			return nil, errors.New("invalid fixed len byte array length")
 		}
 		n.typeLen = typeLen
 	}

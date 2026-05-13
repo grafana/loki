@@ -12,7 +12,7 @@ import (
 )
 
 func TestAdmissionControl_getBucket(t *testing.T) {
-	ac := newAdmissionControl(32, math.MaxInt64)
+	ac := newAdmissionControl(32, math.MaxInt64, math.MaxInt64)
 
 	t.Run("Task without a DataObjScan node is considered an 'other' task", func(t *testing.T) {
 		fragment := dag.Graph[physical.Node]{}
@@ -47,4 +47,24 @@ func TestAdmissionControl_getBucket(t *testing.T) {
 		ty := ac.typeFor(task)
 		require.Equal(t, taskTypeScan, ty)
 	})
+}
+
+// TestAdmissionControl_CompactionLaneWired verifies the dormant
+// taskTypeCompaction lane is allocated with the requested capacity, is
+// reachable via get(), and appears in the groupByType map even when no tasks
+// are provided. The underlying semaphore is library code and is not
+// re-tested here.
+func TestAdmissionControl_CompactionLaneWired(t *testing.T) {
+	const compactionCap int64 = 5
+	ac := newAdmissionControl(8, 8, compactionCap)
+
+	lane := ac.get(taskTypeCompaction)
+	require.NotNil(t, lane)
+	require.Equal(t, compactionCap, lane.capacity)
+
+	groups := ac.groupByType(nil)
+	require.Contains(t, groups, taskTypeScan)
+	require.Contains(t, groups, taskTypeOther)
+	require.Contains(t, groups, taskTypeCompaction)
+	require.Empty(t, groups[taskTypeCompaction])
 }

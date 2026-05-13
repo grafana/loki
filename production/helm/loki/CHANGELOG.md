@@ -95,7 +95,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.46.0
 
-- [CHANGE] `nameOverride` now passed through Helm template function. [#19590](https://github.com/grafana/loki/pull/19590)
+- [BREAKING] `nameOverride` now passed through Helm template function. [#19590](https://github.com/grafana/loki/pull/19590) This PR also changed the default service account name from the chart *name* (`enterprise-logs` / `loki`) to the chart *fullname* (`<release>-enterprise-logs` / `<release>-loki`) when `serviceAccount.create: true` and `serviceAccount.name` is unset. This breaks external identity bindings (for example, AWS EKS Pod Identity, IRSA, GCP Workload Identity, Azure Workload Identity) that reference the previous default name. To preserve the previous behavior, set `serviceAccount.name` explicitly. See the [upgrade guide](https://grafana.com/docs/loki/latest/setup/upgrade/#helm-chart-6460---default-service-account-name-change) for details.
 - [FEATURE] Add configurable `singleBinary.topologySpreadConstraints`. [#19534](https://github.com/grafana/loki/pull/19534)
 - [FEATURE] Add load balancer port to query-frontend service. [#19462](https://github.com/grafana/loki/pull/19462)
 - [FEATURE] Make loki-canary readinessProbe configurable via values.yaml. [#19328](https://github.com/grafana/loki/pull/19328)

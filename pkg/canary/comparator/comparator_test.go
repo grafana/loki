@@ -492,42 +492,6 @@ func (m *mockCounter) Inc() {
 	m.count++
 }
 
-type mockCounterVec struct {
-	mockCounter
-	labels []string
-}
-
-func (m *mockCounterVec) WithLabelValues(lvs ...string) prometheus.Counter {
-	m.labels = lvs
-	return &m.mockCounter
-}
-
-func (m *mockCounterVec) Desc() *prometheus.Desc {
-	panic("implement me")
-}
-
-func (m *mockCounterVec) Write(*io_prometheus_client.Metric) error {
-	panic("implement me")
-}
-
-func (m *mockCounterVec) Describe(chan<- *prometheus.Desc) {
-	panic("implement me")
-}
-
-func (m *mockCounterVec) Collect(chan<- prometheus.Metric) {
-	panic("implement me")
-}
-
-func (m *mockCounterVec) Add(float64) {
-	panic("implement me")
-}
-
-func (m *mockCounterVec) Inc() {
-	m.cLck.Lock()
-	defer m.cLck.Unlock()
-	m.count++
-}
-
 type mockGauge struct {
 	cLck sync.Mutex
 	val  float64
