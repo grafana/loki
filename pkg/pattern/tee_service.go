@@ -245,10 +245,8 @@ func (ts *TeeService) batchesForTenant(
 			batches[tenant][addr] = batch
 		}
 
-		if len(stream.Stream.Entries) > 0 {
-			batch.Streams = append(batch.Streams, stream.Stream)
-			ts.teedStreams.WithLabelValues("batched").Inc()
-		}
+		batch.Streams = append(batch.Streams, stream.Stream)
+		ts.teedStreams.WithLabelValues("batched").Inc()
 	}
 
 	streamCount := uint64(len(streams))
@@ -427,11 +425,14 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 	}
 
 	for _, stream := range streams {
+		// Skip streams with no entries.
+		if len(stream.Stream.Entries) == 0 {
+			continue
+		}
+
 		lbls, err := syntax.ParseLabels(stream.Stream.Labels)
 		if err != nil {
-			level.Error(ts.logger).
-				Log("msg", "error parsing stream labels", "labels", stream.Stream.Labels, "err", err)
-
+			level.Error(ts.logger).Log("msg", "error parsing stream labels", "labels", stream.Stream.Labels, "err", err)
 			continue
 		}
 
