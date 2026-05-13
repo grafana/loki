@@ -36,8 +36,8 @@ type TeeService struct {
 
 	flushQueue chan clientRequest
 
-	buffersMutex *sync.Mutex
-	buffers      map[string][]distributor.KeyedStream
+	bufMtx *sync.Mutex
+	buf    map[string][]distributor.KeyedStream
 
 	ingesterAppends       *prometheus.CounterVec
 	ingesterMetricAppends *prometheus.CounterVec
@@ -64,10 +64,10 @@ func NewTeeService(
 		tenantCfgs: tenantCfgs,
 		ringClient: ringClient,
 
-		wg:           &sync.WaitGroup{},
-		buffersMutex: &sync.Mutex{},
-		buffers:      make(map[string][]distributor.KeyedStream),
-		flushQueue:   make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
+		wg:         &sync.WaitGroup{},
+		bufMtx:     &sync.Mutex{},
+		buf:        make(map[string][]distributor.KeyedStream),
+		flushQueue: make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
 
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "pattern_ingester_appends_total",
@@ -166,15 +166,15 @@ func (ts *TeeService) WaitUntilDone() {
 }
 
 func (ts *TeeService) flush() {
-	ts.buffersMutex.Lock()
-	if len(ts.buffers) == 0 {
-		ts.buffersMutex.Unlock()
+	ts.bufMtx.Lock()
+	if len(ts.buf) == 0 {
+		ts.bufMtx.Unlock()
 		return
 	}
 
-	buffered := ts.buffers
-	ts.buffers = make(map[string][]distributor.KeyedStream)
-	ts.buffersMutex.Unlock()
+	buffered := ts.buf
+	ts.buf = make(map[string][]distributor.KeyedStream)
+	ts.bufMtx.Unlock()
 
 	batches := make([]map[string]map[string]*logproto.PushRequest, 0, len(buffered))
 	for tenant, streams := range buffered {
@@ -440,9 +440,9 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 			continue
 		}
 
-		ts.buffersMutex.Lock()
-		ts.buffers[tenant] = append(ts.buffers[tenant], stream)
-		ts.buffersMutex.Unlock()
+		ts.bufMtx.Lock()
+		ts.buf[tenant] = append(ts.buf[tenant], stream)
+		ts.bufMtx.Unlock()
 	}
 }
 
