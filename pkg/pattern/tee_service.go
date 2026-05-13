@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic" //lint:ignore faillint we use new atomic types from sync/atomic.
 	"time"
 
 	"github.com/go-kit/log"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
@@ -21,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	metric_util "github.com/grafana/loki/v3/pkg/util/metric"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -34,18 +37,22 @@ type TeeService struct {
 	ringClient RingClient
 	wg         *sync.WaitGroup
 
-	ingesterAppends       *prometheus.CounterVec
-	ingesterMetricAppends *prometheus.CounterVec
-
-	teedStreams  *prometheus.CounterVec
-	teedRequests *prometheus.CounterVec
-
-	sendDuration *instrument.HistogramCollector
-
 	flushQueue chan clientRequest
 
-	buffersMutex *sync.Mutex
-	buffers      map[string][]distributor.KeyedStream
+	bufMtx *sync.Mutex
+	buf    map[string][]distributor.KeyedStream
+
+	// bufferedBytes is a count of the total number of bytes in buf, and all
+	// client requests in the flushQueue.
+	bufferedBytes atomic.Int64
+
+	// Metrics.
+	bufferedBytesMaxSample *metric_util.MaxSampleCollector
+	ingesterAppends        *prometheus.CounterVec
+	ingesterMetricAppends  *prometheus.CounterVec
+	teedStreams            *prometheus.CounterVec
+	teedRequests           *prometheus.CounterVec
+	sendDuration           *instrument.HistogramCollector
 }
 
 func NewTeeService(
@@ -60,7 +67,21 @@ func NewTeeService(
 	registerer = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer)
 
 	t := &TeeService{
-		logger: log.With(logger, "component", "pattern-tee"),
+		logger:     log.With(logger, "component", "pattern-tee"),
+		cfg:        cfg,
+		limits:     limits,
+		tenantCfgs: tenantCfgs,
+		ringClient: ringClient,
+
+		wg:         &sync.WaitGroup{},
+		bufMtx:     &sync.Mutex{},
+		buf:        make(map[string][]distributor.KeyedStream),
+		flushQueue: make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
+
+		bufferedBytesMaxSample: metric_util.NewMaxSampleCollector(
+			"pattern_ingester_tee_buffered_bytes",
+			"The current number of bytes buffered in the tee.",
+		),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "pattern_ingester_appends_total",
 			Help: "The total number of batch appends sent to pattern ingesters.",
@@ -86,16 +107,8 @@ func NewTeeService(
 				}, instrument.HistogramCollectorBuckets,
 			),
 		),
-		cfg:        cfg,
-		limits:     limits,
-		tenantCfgs: tenantCfgs,
-		ringClient: ringClient,
-
-		wg:           &sync.WaitGroup{},
-		buffersMutex: &sync.Mutex{},
-		buffers:      make(map[string][]distributor.KeyedStream),
-		flushQueue:   make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
 	}
+	registerer.MustRegister(t.bufferedBytesMaxSample)
 
 	return t, nil
 }
@@ -159,23 +172,25 @@ func (ts *TeeService) Start(runCtx context.Context) error {
 		}
 	}()
 
+	_ = services.StartAndAwaitRunning(runCtx, ts.bufferedBytesMaxSample)
 	return nil
 }
 
 func (ts *TeeService) WaitUntilDone() {
 	ts.wg.Wait()
+	_ = services.StopAndAwaitTerminated(context.TODO(), ts.bufferedBytesMaxSample)
 }
 
 func (ts *TeeService) flush() {
-	ts.buffersMutex.Lock()
-	if len(ts.buffers) == 0 {
-		ts.buffersMutex.Unlock()
+	ts.bufMtx.Lock()
+	if len(ts.buf) == 0 {
+		ts.bufMtx.Unlock()
 		return
 	}
 
-	buffered := ts.buffers
-	ts.buffers = make(map[string][]distributor.KeyedStream)
-	ts.buffersMutex.Unlock()
+	buffered := ts.buf
+	ts.buf = make(map[string][]distributor.KeyedStream)
+	ts.bufMtx.Unlock()
 
 	batches := make([]map[string]map[string]*logproto.PushRequest, 0, len(buffered))
 	for tenant, streams := range buffered {
@@ -203,15 +218,24 @@ func (ts *TeeService) flush() {
 
 	for tenant, requests := range byTenantAndPatternIngester {
 		for addr, reqs := range requests {
+			// Calculate the total size of all streams.
+			var totalSize int
+			for _, req := range reqs {
+				for _, stream := range req.Streams {
+					totalSize += stream.Size()
+				}
+			}
 			select {
 			case ts.flushQueue <- clientRequest{
 				ingesterAddr: addr,
 				tenant:       tenant,
 				reqs:         reqs,
+				size:         totalSize,
 			}:
 				ts.teedRequests.WithLabelValues("queued").Inc()
 			default:
 				ts.teedRequests.WithLabelValues("dropped").Inc()
+				ts.releaseBufferedBytes(totalSize)
 			}
 		}
 	}
@@ -234,6 +258,7 @@ func (ts *TeeService) batchesForTenant(
 		replicationSet, err := ts.ringClient.Ring().
 			Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 		if err != nil || len(replicationSet.Instances) == 0 {
+			ts.releaseBufferedBytes(stream.Stream.Size())
 			ts.teedStreams.WithLabelValues("dropped").Inc()
 			continue
 		}
@@ -245,10 +270,8 @@ func (ts *TeeService) batchesForTenant(
 			batches[tenant][addr] = batch
 		}
 
-		if len(stream.Stream.Entries) > 0 {
-			batch.Streams = append(batch.Streams, stream.Stream)
-			ts.teedStreams.WithLabelValues("batched").Inc()
-		}
+		batch.Streams = append(batch.Streams, stream.Stream)
+		ts.teedStreams.WithLabelValues("batched").Inc()
 	}
 
 	streamCount := uint64(len(streams))
@@ -265,6 +288,8 @@ type clientRequest struct {
 	ingesterAddr string
 	tenant       string
 	reqs         []*logproto.PushRequest
+	// size is the total size of all streams in reqs.
+	size int
 }
 
 func (ts *TeeService) batchSender(ctx context.Context) {
@@ -282,6 +307,8 @@ func (ts *TeeService) batchSender(ctx context.Context) {
 }
 
 func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest) {
+	defer ts.releaseBufferedBytes(clientRequest.size)
+
 	ctx, cancel := context.WithTimeout(ctx, ts.cfg.ConnectionTimeout)
 	defer cancel()
 
@@ -427,11 +454,14 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 	}
 
 	for _, stream := range streams {
+		// Skip streams with no entries.
+		if len(stream.Stream.Entries) == 0 {
+			continue
+		}
+
 		lbls, err := syntax.ParseLabels(stream.Stream.Labels)
 		if err != nil {
-			level.Error(ts.logger).
-				Log("msg", "error parsing stream labels", "labels", stream.Stream.Labels, "err", err)
-
+			level.Error(ts.logger).Log("msg", "error parsing stream labels", "labels", stream.Stream.Labels, "err", err)
 			continue
 		}
 
@@ -440,10 +470,54 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 			continue
 		}
 
-		ts.buffersMutex.Lock()
-		ts.buffers[tenant] = append(ts.buffers[tenant], stream)
-		ts.buffersMutex.Unlock()
+		// Check that the stream is allowed within the current limit.
+		size := stream.Stream.Size()
+		if !ts.tryReserveBufferedBytes(size) {
+			ts.teedStreams.WithLabelValues("dropped").Inc()
+			continue
+		}
+
+		ts.bufMtx.Lock()
+		ts.buf[tenant] = append(ts.buf[tenant], stream)
+		ts.bufMtx.Unlock()
 	}
+}
+
+// tryReserveBufferedBytes returns true if size can be reserved, otherwise false.
+// It always returns true when [TeeConfig.MaxBufferedBytes] is 0.
+func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
+	maxBufferedBytes := int64(ts.cfg.TeeConfig.MaxBufferedBytes)
+	if maxBufferedBytes == 0 {
+		// The limit is disabled, size can be reserved.
+		ts.bufferedBytesMaxSample.Add(int64(size))
+		return true
+	}
+	for {
+		oldVal := ts.bufferedBytes.Load()
+		newVal := oldVal + int64(size)
+		if newVal > maxBufferedBytes {
+			// size exceeds the limit, so cannot be reserved.
+			return false
+		}
+		// If we won the CAS, our new size was reserved, and we can return true.
+		// If someone else won the CAS, we must loop and make another attempt.
+		if ts.bufferedBytes.CompareAndSwap(oldVal, newVal) {
+			ts.bufferedBytesMaxSample.Add(int64(size))
+			return true
+		}
+	}
+}
+
+// reelaseBufferedBytes releases the size from the buffered bytes counter.
+// It is a no-op when [TeeConfig.MaxBufferedBytes] is 0.
+func (ts *TeeService) releaseBufferedBytes(size int) {
+	maxBufferedBytes := uint64(ts.cfg.TeeConfig.MaxBufferedBytes)
+	if maxBufferedBytes == 0 {
+		ts.bufferedBytesMaxSample.Sub(int64(size))
+		return
+	}
+	ts.bufferedBytes.Add(-int64(size))
+	ts.bufferedBytesMaxSample.Sub(int64(size))
 }
 
 func (ts *TeeService) Register(_ context.Context, _ string, _ []distributor.KeyedStream, _ *distributor.PushTracker) {
