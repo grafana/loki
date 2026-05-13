@@ -46,21 +46,23 @@ func (r *scanTimeRangePushup) applyToTargets(node Node, timeRange TimeRange) boo
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
-		if node.Step != 0 { // only apply optimization to range queries
+		if node.Step > 0 { // only apply optimization to range queries
 			trSteppedStart := time.UnixMilli((timeRange.Start.UnixMilli() / node.Step.Milliseconds()) * node.Step.Milliseconds()).UTC()
 
 			endPlusRange := timeRange.End.Add(node.Range)
 			trSteppedEnd := time.UnixMilli((endPlusRange.UnixMilli() / node.Step.Milliseconds()) * node.Step.Milliseconds()).UTC()
-			for trSteppedEnd.Compare(endPlusRange) < 0 {
-				trSteppedEnd = trSteppedEnd.Add(node.Step)
+			if trSteppedEnd.Compare(endPlusRange) < 0 {
+				steps := endPlusRange.Sub(trSteppedEnd)/node.Step + 1
+				trSteppedEnd = trSteppedEnd.Add(steps * node.Step)
 			}
 			if node.Start.Compare(trSteppedStart) < 0 {
 				node.Start = trSteppedStart
 				changed = true
 			}
 			// trSteppedEnd could still be before node.Start; make sure it isn't
-			for trSteppedEnd.Compare(node.Start) <= 0 {
-				trSteppedEnd = trSteppedEnd.Add(node.Step)
+			if trSteppedEnd.Compare(node.Start) <= 0 {
+				steps := node.Start.Sub(trSteppedEnd)/node.Step + 1
+				trSteppedEnd = trSteppedEnd.Add(steps * node.Step)
 			}
 
 			if node.End.Compare(trSteppedEnd) > 0 {
