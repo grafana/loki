@@ -1072,6 +1072,10 @@ pattern_ingester:
     # CLI flag: -pattern-ingester.tee.flush-worker-count
     [flush_worker_count: <int> | default = 100]
 
+    # The maximum number of bytes that can be buffered before dropping
+    # CLI flag: -pattern-ingester.tee.max-buffered-bytes
+    [max_buffered_bytes: <int> | default = 0]
+
     # The max time we will try to flush any remaining logs to be mined when the
     # service is stopped
     # CLI flag: -pattern-ingester.tee.stop-flush-timeout

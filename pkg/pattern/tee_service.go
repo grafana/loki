@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic" //lint:ignore faillint we use new atomic types from sync/atomic.
 	"time"
 
 	"github.com/go-kit/log"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
@@ -21,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	metric_util "github.com/grafana/loki/v3/pkg/util/metric"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -39,11 +42,17 @@ type TeeService struct {
 	bufMtx *sync.Mutex
 	buf    map[string][]distributor.KeyedStream
 
-	ingesterAppends       *prometheus.CounterVec
-	ingesterMetricAppends *prometheus.CounterVec
-	teedStreams           *prometheus.CounterVec
-	teedRequests          *prometheus.CounterVec
-	sendDuration          *instrument.HistogramCollector
+	// bufferedBytes is a count of the total number of bytes in buf, and all
+	// client requests in the flushQueue.
+	bufferedBytes atomic.Int64
+
+	// Metrics.
+	bufferedBytesMaxSample *metric_util.MaxSampleCollector
+	ingesterAppends        *prometheus.CounterVec
+	ingesterMetricAppends  *prometheus.CounterVec
+	teedStreams            *prometheus.CounterVec
+	teedRequests           *prometheus.CounterVec
+	sendDuration           *instrument.HistogramCollector
 }
 
 func NewTeeService(
@@ -69,6 +78,10 @@ func NewTeeService(
 		buf:        make(map[string][]distributor.KeyedStream),
 		flushQueue: make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
 
+		bufferedBytesMaxSample: metric_util.NewMaxSampleCollector(
+			"pattern_ingester_tee_buffered_bytes",
+			"The current number of bytes buffered in the tee.",
+		),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "pattern_ingester_appends_total",
 			Help: "The total number of batch appends sent to pattern ingesters.",
@@ -95,6 +108,7 @@ func NewTeeService(
 			),
 		),
 	}
+	registerer.MustRegister(t.bufferedBytesMaxSample)
 
 	return t, nil
 }
@@ -158,11 +172,13 @@ func (ts *TeeService) Start(runCtx context.Context) error {
 		}
 	}()
 
+	services.StartAndAwaitRunning(runCtx, ts.bufferedBytesMaxSample)
 	return nil
 }
 
 func (ts *TeeService) WaitUntilDone() {
 	ts.wg.Wait()
+	services.StopAndAwaitTerminated(context.TODO(), ts.bufferedBytesMaxSample)
 }
 
 func (ts *TeeService) flush() {
@@ -202,15 +218,24 @@ func (ts *TeeService) flush() {
 
 	for tenant, requests := range byTenantAndPatternIngester {
 		for addr, reqs := range requests {
+			// Calculate the total size of all streams.
+			var totalSize int
+			for _, req := range reqs {
+				for _, stream := range req.Streams {
+					totalSize += stream.Size()
+				}
+			}
 			select {
 			case ts.flushQueue <- clientRequest{
 				ingesterAddr: addr,
 				tenant:       tenant,
 				reqs:         reqs,
+				size:         totalSize,
 			}:
 				ts.teedRequests.WithLabelValues("queued").Inc()
 			default:
 				ts.teedRequests.WithLabelValues("dropped").Inc()
+				ts.releaseBufferedBytes(totalSize)
 			}
 		}
 	}
@@ -233,6 +258,7 @@ func (ts *TeeService) batchesForTenant(
 		replicationSet, err := ts.ringClient.Ring().
 			Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 		if err != nil || len(replicationSet.Instances) == 0 {
+			ts.releaseBufferedBytes(stream.Stream.Size())
 			ts.teedStreams.WithLabelValues("dropped").Inc()
 			continue
 		}
@@ -262,6 +288,8 @@ type clientRequest struct {
 	ingesterAddr string
 	tenant       string
 	reqs         []*logproto.PushRequest
+	// size is the total size of all streams in reqs.
+	size int
 }
 
 func (ts *TeeService) batchSender(ctx context.Context) {
@@ -279,6 +307,8 @@ func (ts *TeeService) batchSender(ctx context.Context) {
 }
 
 func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest) {
+	defer ts.releaseBufferedBytes(clientRequest.size)
+
 	ctx, cancel := context.WithTimeout(ctx, ts.cfg.ConnectionTimeout)
 	defer cancel()
 
@@ -440,10 +470,54 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 			continue
 		}
 
+		// Check that the stream is allowed within the current limit.
+		size := stream.Stream.Size()
+		if !ts.tryReserveBufferedBytes(size) {
+			ts.teedStreams.WithLabelValues("dropped").Inc()
+			continue
+		}
+
 		ts.bufMtx.Lock()
 		ts.buf[tenant] = append(ts.buf[tenant], stream)
 		ts.bufMtx.Unlock()
 	}
+}
+
+// tryReserveBufferedBytes returns true if size can be reserved, otherwise false.
+// It always returns true when [TeeConfig.MaxBufferedBytes] is 0.
+func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
+	maxBufferedBytes := int64(ts.cfg.TeeConfig.MaxBufferedBytes)
+	if maxBufferedBytes == 0 {
+		// The limit is disabled, size can be reserved.
+		ts.bufferedBytesMaxSample.Add(int64(size))
+		return true
+	}
+	for {
+		old := ts.bufferedBytes.Load()
+		new := old + int64(size)
+		if new > maxBufferedBytes {
+			// size exceeds the limit, so cannot be reserved.
+			return false
+		}
+		// If we won the CAS, our new size was reserved, and we can return true.
+		// Otherwise, someone else round the CAS, and we should loop again.
+		if ts.bufferedBytes.CompareAndSwap(old, new) {
+			ts.bufferedBytesMaxSample.Add(int64(size))
+			return true
+		}
+	}
+}
+
+// reelaseBufferedBytes releases the size from the buffered bytes counter.
+// It is a no-op when [TeeConfig.MaxBufferedBytes] is 0.
+func (ts *TeeService) releaseBufferedBytes(size int) {
+	maxBufferedBytes := uint64(ts.cfg.TeeConfig.MaxBufferedBytes)
+	if maxBufferedBytes == 0 {
+		ts.bufferedBytesMaxSample.Sub(int64(size))
+		return
+	}
+	ts.bufferedBytes.Add(-int64(size))
+	ts.bufferedBytesMaxSample.Sub(int64(size))
 }
 
 func (ts *TeeService) Register(_ context.Context, _ string, _ []distributor.KeyedStream, _ *distributor.PushTracker) {
