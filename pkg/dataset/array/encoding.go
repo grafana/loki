@@ -47,6 +47,25 @@ type (
 	EncodingBitpacked struct {
 		BlockSize int // Number of rows per block. The last block may have fewer rows.
 	}
+
+	// EncodingZstd holds zstd-compressed binary data. The structure mirrors
+	// [EncodingBinary]: the first child Array holds N+1 offsets, and if
+	// nullable, the last child Array holds validity data. The data buffer is
+	// zstd-compressed.
+	EncodingZstd struct {
+		// UncompressedSize is the byte length of the data buffer before
+		// compression. The reader uses this to pre-allocate the decode buffer.
+		UncompressedSize int
+	}
+
+	// EncodingZigZag maps signed integer values to unsigned integers using
+	// zigzag encoding, where small-magnitude values (positive and negative)
+	// produce small unsigned values. This encoding stores no data of its own;
+	// all data lives in child Arrays.
+	//
+	// The single child Array holds the zigzag-encoded unsigned data.
+	// Nullability is handled by the child encoding.
+	EncodingZigZag struct{}
 )
 
 // Kind returns [EncodingKindBool].
@@ -69,6 +88,16 @@ func (enc *EncodingBitpacked) Kind() EncodingKind {
 	return EncodingKindBitpacked
 }
 
+// Kind returns [EncodingKindZstd].
+func (enc *EncodingZstd) Kind() EncodingKind {
+	return EncodingKindZstd
+}
+
+// Kind returns [EncodingKindZigZag].
+func (enc *EncodingZigZag) Kind() EncodingKind {
+	return EncodingKindZigZag
+}
+
 //
 // Sealed marker implementations.
 //
@@ -77,3 +106,5 @@ func (enc *EncodingBool) isEncoding()      {}
 func (enc *EncodingPlain) isEncoding()     {}
 func (enc *EncodingBinary) isEncoding()    {}
 func (enc *EncodingBitpacked) isEncoding() {}
+func (enc *EncodingZstd) isEncoding()      {}
+func (enc *EncodingZigZag) isEncoding()    {}

@@ -120,7 +120,6 @@ type Limits struct {
 	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
 	MaxGlobalStreamsPerUser int              `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
-	UnorderedWrites         bool             `yaml:"unordered_writes" json:"unordered_writes"`
 	PerStreamRateLimit      flagext.ByteSize `yaml:"per_stream_rate_limit" json:"per_stream_rate_limit"`
 	PerStreamRateLimitBurst flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst"`
 
@@ -218,9 +217,6 @@ type Limits struct {
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
 	PerTenantOverridePeriod model.Duration `yaml:"per_tenant_override_period" json:"per_tenant_override_period"`
-
-	// Deprecated
-	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes" doc:"deprecated|description=Use deletion_mode per tenant configuration instead."`
 
 	ShardStreams shardstreams.Config `yaml:"shard_streams" json:"shard_streams" doc:"description=Define streams sharding behavior."`
 
@@ -410,9 +406,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 0, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 5000, "Maximum number of active streams per user, across the cluster. 0 to disable. When the global limit is enabled, each ingester is configured with a dynamic local limit based on the replication factor and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.")
 
-	// TODO(ashwanth) Deprecated. This will be removed with the next major release and out-of-order writes would be accepted by default.
-	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", true, "Deprecated. When true, out-of-order writes are accepted.")
-
 	_ = l.PerStreamRateLimit.Set(strconv.Itoa(defaultPerStreamRateLimit))
 	f.Var(&l.PerStreamRateLimit, "ingester.per-stream-rate-limit", "Maximum byte rate per second per stream, also expressible in human readable forms (1MB, 256KB, etc).")
 	_ = l.PerStreamRateLimitBurst.Set(strconv.Itoa(defaultPerStreamBurstLimit))
@@ -500,9 +493,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
 
 	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
-
-	// Deprecated
-	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
 	f.Float64Var(&l.IndexGatewayMaxCapacity, "index-gateway.max-capacity", 1.0, "Experimental. Defines a fraction (between 0.0 and 1.0) of the total index gateways available for a each tenant. A value of 0.0 has the same effect as 1.0, meaning all available index gateways. This setting only applies to simple mode.")
@@ -670,10 +660,6 @@ func (l *Limits) Validate() error {
 
 	if _, err := deletionmode.ParseMode(l.DeletionMode); err != nil {
 		return err
-	}
-
-	if l.CompactorDeletionEnabled {
-		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
 	}
 
 	if l.MaxQueryCapacity < 0 {
@@ -1177,10 +1163,6 @@ func (o *Overrides) RetentionPeriod(userID string) time.Duration {
 // StreamRetention returns the retention period for a given user.
 func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 	return o.getOverridesForUser(userID).StreamRetention
-}
-
-func (o *Overrides) UnorderedWrites(userID string) bool {
-	return o.getOverridesForUser(userID).UnorderedWrites
 }
 
 func (o *Overrides) DeletionMode(userID string) string {

@@ -160,17 +160,11 @@ func (builder) IsTerminal() bool {
 	return false
 }
 
-func (builder) BuildServerFilter() httpfilter.ServerFilter {
-	return serverFilter{}
-}
+var _ httpfilter.ServerInterceptorBuilder = builder{}
 
-var _ httpfilter.ServerFilterBuilder = builder{}
-
-type serverFilter struct{}
-
-func (serverFilter) Close() {}
-
-func (serverFilter) BuildServerInterceptor(cfg httpfilter.FilterConfig, override httpfilter.FilterConfig) (resolver.ServerInterceptor, error) {
+// BuildServerInterceptor is an optional interface builder implements in order
+// to signify it works server side.
+func (builder) BuildServerInterceptor(cfg httpfilter.FilterConfig, override httpfilter.FilterConfig) (resolver.ServerInterceptor, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("rbac: nil config provided")
 	}
@@ -207,5 +201,3 @@ type interceptor struct {
 func (i *interceptor) AllowRPC(ctx context.Context) error {
 	return i.chainEngine.IsAuthorized(ctx)
 }
-
-func (i *interceptor) Close() {}
