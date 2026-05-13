@@ -1116,7 +1116,7 @@ compactor_grpc_client:
 # Configuration for memberlist client. Only applies if the selected kvstore is
 # memberlist.
 # 
-# When a memberlist config with at least 1 join_members is defined, kvstore of
+# When a memberlist config with atleast 1 join_members is defined, kvstore of
 # type memberlist is automatically selected for all the components that require
 # a ring unless otherwise specified in the component's configuration section.
 [memberlist: <memberlist>]
@@ -5010,7 +5010,7 @@ The `local_storage_config` block configures the usage of local file system as ob
 
 Configuration for `memberlist` client. Only applies if the selected kvstore is memberlist.
 
-When a memberlist config with at least 1 join_members is defined, kvstore of type memberlist is automatically selected for all the components that require a ring unless otherwise specified in the component's configuration section.
+When a memberlist config with atleast 1 join_members is defined, kvstore of type memberlist is automatically selected for all the components that require a ring unless otherwise specified in the component's configuration section.
 
 ```yaml
 # Name of the node in memberlist cluster. Defaults to hostname.
