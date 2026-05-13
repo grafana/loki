@@ -26,10 +26,7 @@ type WorkerParams struct {
 }
 
 // Worker is the dataobj-compaction-worker target service. It wraps an
-// engine.Worker pointed at the compaction scheduler's DNS-SRV record and
-// mirrors engine.Worker's public surface (Service / RegisterWorkerServer /
-// RegisterMetrics / UnregisterMetrics) so callers don't reach through to
-// the engine type directly.
+// engine.Worker pointed at the compaction scheduler's DNS-SRV record.
 type Worker struct {
 	inner *engine.Worker
 }
