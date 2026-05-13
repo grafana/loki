@@ -21,11 +21,11 @@ func TestPlan_EmptyInput(t *testing.T) {
 func TestPlan_InvalidK_Panics(t *testing.T) {
 	sections := []*compactionv2pb.SectionRef{sec("o", 0, "a", "b")}
 
-	require.PanicsWithValue(t, "compactionv2.Plan: k must be > 0, got 0", func() {
+	require.PanicsWithValue(t, "k must be > 0, got 0", func() {
 		Plan(context.Background(), sections, "tenantA", 0)
 	}, "k=0 must panic")
 
-	require.PanicsWithValue(t, "compactionv2.Plan: k must be > 0, got -1", func() {
+	require.PanicsWithValue(t, "k must be > 0, got -1", func() {
 		Plan(context.Background(), sections, "tenantA", -1)
 	}, "negative k must panic")
 
