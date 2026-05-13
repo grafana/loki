@@ -106,6 +106,24 @@ func TestNewWorker_RequiresAdvertiseAddr(t *testing.T) {
 		"error must name the missing field for operator clarity, got: %v", err)
 }
 
+// TestNewWorker_RequiresEndpoint pins the worker-side precondition that
+// Endpoint must be non-empty. Empty Endpoint would otherwise silently
+// fall through to engine.NewWorker's default ("/api/v2/frame") which
+// collides with the query-engine worker's path.
+func TestNewWorker_RequiresEndpoint(t *testing.T) {
+	cfg := validWorkerCfg()
+	cfg.Endpoint = ""
+	_, err := NewWorker(WorkerParams{
+		Config:     cfg,
+		Bucket:     objstore.NewInMemBucket(),
+		Logger:     log.NewNopLogger(),
+		Registerer: prometheus.NewRegistry(),
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "endpoint",
+		"error must name the missing field for operator clarity, got: %v", err)
+}
+
 // TestNewWorker_InvalidAdvertiseAddr exercises the constructor error
 // path when the advertise address can't be parsed. Pins the error
 // wrapping around the shared resolveAdvertiseAddr helper.

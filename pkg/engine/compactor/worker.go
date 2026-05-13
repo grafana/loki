@@ -62,6 +62,9 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		// letting the generic engine error bubble up.
 		return nil, errors.New("dataobj compaction worker: advertise_addr is required")
 	}
+	if params.Config.Endpoint == "" {
+		return nil, errors.New("dataobj compaction worker: endpoint is required")
+	}
 
 	logger := params.Logger
 	if logger == nil {

@@ -2563,12 +2563,9 @@ func (t *Loki) initDataObjCompactorWorker() (services.Service, error) {
 		func(_ services.State, _ error) { w.Inner().UnregisterMetrics(prometheus.DefaultRegisterer) },
 	))
 
-	// Only register the HTTP frame handler when the user provided an
-	// advertise address (i.e., the worker is reachable for cross-worker
-	// frames). Outbound-only mode does not need a router registration.
-	if t.Cfg.DataObj.Compaction.Worker.AdvertiseAddr != "" {
-		w.Inner().RegisterWorkerServer(t.Server.HTTP)
-	}
+	// AdvertiseAddr is required by NewWorker, so RegisterWorkerServer
+	// always installs a real handler here.
+	w.Inner().RegisterWorkerServer(t.Server.HTTP)
 
 	t.dataObjCompactorWorker = w
 	return w, nil
