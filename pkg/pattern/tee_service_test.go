@@ -277,7 +277,7 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 	}
 	tee.Duplicate(ctx, "test", []distributor.KeyedStream{s4}, nil)
 	require.Len(t, tee.buf, 1)
-	// tenantBuf should contain s1 and s3.
+	// tenantBuf should contain s4.
 	tenantBuf, ok = tee.buf["test"]
 	require.True(t, ok)
 	require.Contains(t, tenantBuf, s4)
