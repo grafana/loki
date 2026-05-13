@@ -57,6 +57,15 @@ type (
 		// compression. The reader uses this to pre-allocate the decode buffer.
 		UncompressedSize int
 	}
+
+	// EncodingZigZag maps signed integer values to unsigned integers using
+	// zigzag encoding, where small-magnitude values (positive and negative)
+	// produce small unsigned values. This encoding stores no data of its own;
+	// all data lives in child Arrays.
+	//
+	// The single child Array holds the zigzag-encoded unsigned data.
+	// Nullability is handled by the child encoding.
+	EncodingZigZag struct{}
 )
 
 // Kind returns [EncodingKindBool].
@@ -84,6 +93,11 @@ func (enc *EncodingZstd) Kind() EncodingKind {
 	return EncodingKindZstd
 }
 
+// Kind returns [EncodingKindZigZag].
+func (enc *EncodingZigZag) Kind() EncodingKind {
+	return EncodingKindZigZag
+}
+
 //
 // Sealed marker implementations.
 //
@@ -93,3 +107,4 @@ func (enc *EncodingPlain) isEncoding()     {}
 func (enc *EncodingBinary) isEncoding()    {}
 func (enc *EncodingBitpacked) isEncoding() {}
 func (enc *EncodingZstd) isEncoding()      {}
+func (enc *EncodingZigZag) isEncoding()    {}
