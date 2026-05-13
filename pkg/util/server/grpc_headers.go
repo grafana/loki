@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
-const lokiReplayGRPCMetadataKey = "loki-replay"
+const LokiReplayGRPCMetadataKey = "loki-replay"
 
 var grpcHeaderPropagationMappings = []struct {
 	contextHeader string
@@ -21,7 +21,7 @@ var grpcHeaderPropagationMappings = []struct {
 	},
 	{
 		contextHeader: httpreq.AdaptiveTelemetryReplayHeader,
-		grpcMetadata:  lokiReplayGRPCMetadataKey,
+		grpcMetadata:  LokiReplayGRPCMetadataKey,
 	},
 }
 

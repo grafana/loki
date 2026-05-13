@@ -585,7 +585,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	require.NotNil(t, err)
 
 	// Now pretend it's a replay. The same write should succeed.
-	_, err = s.Push(context.Background(), entries, false, nil, 2, true, false, nil, "loki")
+	_, err = s.Push(context.Background(), entries, true, recordPool.GetRecord(), 0, true, false, nil, "loki")
 	require.Nil(t, err)
 
 }

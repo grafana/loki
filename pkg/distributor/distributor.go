@@ -593,7 +593,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	var validationErrors util.GroupedErrors
 
 	now := time.Now()
-	validationContext := d.validator.getValidationContextForTime(now, tenantID)
+	validationContext := d.validator.getValidationContextForTime(ctx, now, tenantID)
 	fieldDetector := newFieldDetector(validationContext)
 	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
 	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()

@@ -28,7 +28,7 @@ func TestInjectHTTPHeaderIntoGRPCRequest(t *testing.T) {
 			headers: map[string]string{
 				httpreq.AdaptiveTelemetryReplayHeader: "true",
 			},
-			expectMetadata: metadata.New(map[string]string{lokiReplayGRPCMetadataKey: "true"}),
+			expectMetadata: metadata.New(map[string]string{LokiReplayGRPCMetadataKey: "true"}),
 		},
 		{
 			name: "sets headers on existing metadata",
@@ -40,7 +40,7 @@ func TestInjectHTTPHeaderIntoGRPCRequest(t *testing.T) {
 			expectMetadata: metadata.New(map[string]string{
 				"x-foo": "bar",
 				httpreq.LokiDisablePipelineWrappersHeader: "true",
-				lokiReplayGRPCMetadataKey:                 "true",
+				LokiReplayGRPCMetadataKey:                 "true",
 			}),
 		},
 		{
@@ -80,7 +80,7 @@ func TestExtractHTTPHeaderFromGRPCRequest(t *testing.T) {
 			name: "extracts headers from metadata",
 			md: metadata.New(map[string]string{
 				httpreq.LokiDisablePipelineWrappersHeader: "true",
-				lokiReplayGRPCMetadataKey:                 "true",
+				LokiReplayGRPCMetadataKey:                 "true",
 			}),
 			expectedHeaders: map[string]string{
 				httpreq.LokiDisablePipelineWrappersHeader: "true",

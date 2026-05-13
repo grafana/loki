@@ -1350,7 +1350,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	d := distributors[0]
 	request := makeWriteRequest(10, 10)
 	streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
-	vCtx := d.validator.getValidationContextForTime(testTime, "123")
+	vCtx := d.validator.getValidationContextForTime(context.Background(), testTime, "123")
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
@@ -1391,7 +1391,7 @@ func TestParseStreamLabels(t *testing.T) {
 		distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 		d := distributors[0]
 
-		vCtx := d.validator.getValidationContextForTime(testTime, "123")
+		vCtx := d.validator.getValidationContextForTime(context.Background(), testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
 			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, logproto.Stream{

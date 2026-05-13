@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -44,6 +46,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 		userID    string
 		overrides validation.TenantLimits
 		entry     logproto.Entry
+		replay    bool
 		expected  error
 	}{
 		{
@@ -51,6 +54,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			"test",
 			nil,
 			logproto.Entry{Timestamp: testTime, Line: "test"},
+			false,
 			nil,
 		},
 		{
@@ -63,6 +67,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime.Add(-time.Hour * 5), Line: "test"},
+			false,
 			fmt.Errorf(validation.GreaterThanMaxSampleAgeErrorMsg,
 				testStreamLabelsString,
 				testTime.Add(-time.Hour*5).Format(timeFormat),
@@ -70,10 +75,24 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			),
 		},
 		{
+			"test too old replay bypass",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					RejectOldSamples:       true,
+					RejectOldSamplesMaxAge: model.Duration(1 * time.Hour),
+				},
+			},
+			logproto.Entry{Timestamp: testTime.Add(-time.Hour * 5), Line: "test"},
+			true,
+			nil,
+		},
+		{
 			"test too new",
 			"test",
 			nil,
 			logproto.Entry{Timestamp: testTime.Add(time.Hour * 5), Line: "test"},
+			false,
 			fmt.Errorf(validation.TooFarInFutureErrorMsg, testStreamLabelsString, testTime.Add(time.Hour*5).Format(timeFormat)),
 		},
 		{
@@ -85,6 +104,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901"},
+			false,
 			fmt.Errorf(validation.LineTooLongErrorMsg, 10, testStreamLabelsString, 11),
 		},
 		{
@@ -96,6 +116,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
+			false,
 			fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, testStreamLabelsString),
 		},
 		{
@@ -108,6 +129,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
+			false,
 			fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, testStreamLabelsString, 6, 4),
 		},
 		{
@@ -120,6 +142,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}, {Name: "too", Value: "many"}}},
+			false,
 			fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, testStreamLabelsString, 2, 1),
 		},
 	}
@@ -132,8 +155,12 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 			retentionHours := util.RetentionHours(v.RetentionPeriod(tt.userID))
+			ctx := context.Background()
+			if tt.replay {
+				ctx = httpreq.InjectHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader, "true")
+			}
 
-			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry, retentionHours, "", "loki")
+			err = v.ValidateEntry(ctx, v.getValidationContextForTime(ctx, testTime, tt.userID), testStreamLabels, tt.entry, retentionHours, "", "loki")
 			assert.Equal(t, tt.expected, err)
 		})
 	}
@@ -232,7 +259,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels}, retentionHours, "", "loki")
+			err = v.ValidateLabels(v.getValidationContextForTime(context.Background(), testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels}, retentionHours, "", "loki")
 			assert.Equal(t, tt.expected, err)
 		})
 	}
@@ -377,7 +404,7 @@ func TestShouldBlockIngestion(t *testing.T) {
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
-			block, statusCode, reason, err := v.ShouldBlockIngestion(v.getValidationContextForTime(testTime, "fake"), testTime, tc.policy)
+			block, statusCode, reason, err := v.ShouldBlockIngestion(v.getValidationContextForTime(context.Background(), testTime, "fake"), testTime, tc.policy)
 			assert.Equal(t, tc.expectBlock, block)
 			if tc.expectBlock {
 				assert.Equal(t, tc.expectStatusCode, statusCode)

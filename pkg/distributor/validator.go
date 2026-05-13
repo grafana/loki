@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -63,10 +64,15 @@ type validationContext struct {
 	userID string
 }
 
-func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {
+func (v Validator) getValidationContextForTime(ctx context.Context, now time.Time, userID string) validationContext {
+	rejectOldSample := v.RejectOldSamples(userID)
+	if httpreq.ExtractHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader) == "true" {
+		rejectOldSample = false
+	}
+
 	return validationContext{
 		userID:                        userID,
-		rejectOldSample:               v.RejectOldSamples(userID),
+		rejectOldSample:               rejectOldSample,
 		rejectOldSampleMaxAge:         now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
 		creationGracePeriod:           now.Add(v.CreationGracePeriod(userID)).UnixNano(),
 		maxLineSize:                   v.MaxLineSize(userID),
