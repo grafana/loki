@@ -407,11 +407,12 @@ func mkChks(n int) (chks []ChunkMeta) {
 
 func chkFrom(i int) ChunkMeta {
 	return ChunkMeta{
-		Checksum: uint32(i),
-		MinTime:  int64(i),
-		MaxTime:  int64(i + 1),
-		KB:       uint32(i),
-		Entries:  uint32(i),
+		Checksum:   uint32(i),
+		MinTime:    int64(i),
+		MaxTime:    int64(i + 1),
+		IngestedAt: int64(1000 + i),
+		KB:         uint32(i),
+		Entries:    uint32(i),
 	}
 }
 
@@ -419,6 +420,7 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 	for _, version := range []int{
 		FormatV2,
 		FormatV3,
+		FormatV4,
 	} {
 		for _, nChks := range []int{
 			0,
@@ -448,6 +450,11 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 					if len(chks) == 0 {
 						require.Equal(t, 0, len(dst))
 					} else {
+						if version < FormatV4 {
+							for i := range chks {
+								chks[i].IngestedAt = 0
+							}
+						}
 						require.Equal(t, chks, dst)
 					}
 				})
@@ -592,7 +599,7 @@ func TestSearchWithPageMarkers(t *testing.T) {
 				decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
 				dec := newDecoder(nil, 0)
 				dst := []ChunkMeta{}
-				require.Nil(t, dec.readChunksV3(&decbuf, tc.mint, tc.maxt, &dst))
+				require.Nil(t, dec.readChunksV3(FormatV3, &decbuf, tc.mint, tc.maxt, &dst))
 				require.Equal(t, tc.exp, dst)
 			})
 		}
