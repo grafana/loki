@@ -28,11 +28,13 @@ func (r *scanTimeRangePushup) apply(root Node) bool {
 			applied := r.applyToTargets(scan, scan.MaxTimeRange)
 			if applied {
 				changed = true
+				break // should be at most one scan node, so break after applying to the first one.
 			}
 		case *PointersScan:
 			applied := r.applyToTargets(scan, scan.MaxTimeRange())
 			if applied {
 				changed = true
+				break // should be at most one scan node, so break after applying to the first one.
 			}
 		}
 	}
