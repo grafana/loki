@@ -10,8 +10,11 @@ import (
 )
 
 const (
-	deprecatedValuesField = "_deprecated"
+	deprecatedValuesField = "_values"
 	messageField          = "_msg"
+
+	prefixDeprecated = "Deprecated"
+	prefixRemoved    = "Removed"
 
 	defaultDeprecatesFilePath = "tools/deprecated-config-checker/deprecated-config.yaml"
 	defaultDeletesFilePath    = "tools/deprecated-config-checker/deleted-config.yaml"
@@ -100,24 +103,24 @@ func NewChecker(cfg Config) (*Checker, error) {
 }
 
 func (c *Checker) CheckConfigDeprecated() []DeprecationNotes {
-	return checkConfigDeprecated(c.deprecates, c.config)
+	return checkConfig(prefixDeprecated, c.deprecates, c.config)
 }
 
 func (c *Checker) CheckConfigDeleted() []DeprecationNotes {
-	return checkConfigDeprecated(c.deletes, c.config)
+	return checkConfig(prefixRemoved, c.deletes, c.config)
 }
 
 func (c *Checker) CheckRuntimeConfigDeprecated() []DeprecationNotes {
-	return checkRuntimeConfigDeprecated(c.deprecates, c.runtimeConfig)
+	return checkRuntimeConfig(prefixDeprecated, c.deprecates, c.runtimeConfig)
 }
 
 func (c *Checker) CheckRuntimeConfigDeleted() []DeprecationNotes {
-	return checkRuntimeConfigDeprecated(c.deletes, c.runtimeConfig)
+	return checkRuntimeConfig(prefixRemoved, c.deletes, c.runtimeConfig)
 }
 
 type deprecationAnnotation struct {
-	DeprecatedValues []string
-	Msg              string
+	Values []string
+	Msg    string
 }
 
 func getDeprecationAnnotation(value interface{}) (deprecationAnnotation, bool) {
@@ -145,8 +148,8 @@ func getDeprecationAnnotation(value interface{}) (deprecationAnnotation, bool) {
 		}
 
 		return deprecationAnnotation{
-			Msg:              msg.(string),
-			DeprecatedValues: deprecatedValues,
+			Msg:    msg.(string),
+			Values: deprecatedValues,
 		}, true
 	}
 
@@ -154,6 +157,7 @@ func getDeprecationAnnotation(value interface{}) (deprecationAnnotation, bool) {
 }
 
 type DeprecationNotes struct {
+	prefix string
 	deprecationAnnotation
 	ItemPath   string
 	ItemValues []string
@@ -174,9 +178,9 @@ func (d DeprecationNotes) String() string {
 		}
 	}
 	sb.WriteString(": " + d.Msg)
-	if len(d.DeprecatedValues) > 0 {
-		sb.WriteString("\n\t|- " + "Deprecated values: ")
-		sb.WriteString(strings.Join(d.DeprecatedValues, ", "))
+	if len(d.Values) > 0 {
+		sb.WriteString("\n\t|- " + d.prefix + " values: ")
+		sb.WriteString(strings.Join(d.Values, ", "))
 	}
 
 	return sb.String()
@@ -205,7 +209,7 @@ func getOverrides(runtimeConf RawYaml) RawYaml {
 	return overrides.(RawYaml)
 }
 
-func checkRuntimeConfigDeprecated(deprecates, runtimeConfig RawYaml) []DeprecationNotes {
+func checkRuntimeConfig(prefix string, deprecates, runtimeConfig RawYaml) []DeprecationNotes {
 	deprecatedLimits := getLimitsConfig(deprecates)
 	if deprecatedLimits == nil {
 		return nil
@@ -219,7 +223,7 @@ func checkRuntimeConfigDeprecated(deprecates, runtimeConfig RawYaml) []Deprecati
 	// We check the deprecated fields for each tenant
 	var deprecations []DeprecationNotes
 	for tenant, tenantOverrides := range overrides {
-		tenantDeprecations := checkConfigDeprecated(deprecatedLimits, tenantOverrides.(RawYaml))
+		tenantDeprecations := checkConfig(prefix, deprecatedLimits, tenantOverrides.(RawYaml))
 		for i := range tenantDeprecations {
 			tenantPath := appendToPath("overrides", tenant)
 			tenantDeprecations[i].ItemPath = appendToPath(tenantPath, tenantDeprecations[i].ItemPath)
@@ -230,11 +234,12 @@ func checkRuntimeConfigDeprecated(deprecates, runtimeConfig RawYaml) []Deprecati
 	return deprecations
 }
 
-func checkConfigDeprecated(deprecates, config RawYaml) []DeprecationNotes {
-	return enumerateDeprecatesFields(deprecates, config, "", []DeprecationNotes{})
+func checkConfig(prefix string, deprecates, config RawYaml) []DeprecationNotes {
+	return enumerateDeprecatesFields(deprecates, config, "", prefix)
 }
 
-func enumerateDeprecatesFields(deprecates, input RawYaml, rootPath string, deprecations []DeprecationNotes) []DeprecationNotes {
+func enumerateDeprecatesFields(deprecates, input RawYaml, rootPath string, prefix string) []DeprecationNotes {
+	var deprecations []DeprecationNotes
 	for key, deprecate := range deprecates {
 		inputValue, exists := input[key]
 		if !exists {
@@ -263,12 +268,12 @@ func enumerateDeprecatesFields(deprecates, input RawYaml, rootPath string, depre
 			// If there are no specific values deprecated, the whole config is deprecated.
 			// Otherwise, look for the config value in the list of deprecated values.
 			var inputDeprecated bool
-			if len(note.DeprecatedValues) == 0 {
+			if len(note.Values) == 0 {
 				inputDeprecated = true
 			} else {
 				// If the config is a list, check each item.
 			FindDeprecatedValues:
-				for _, v := range note.DeprecatedValues {
+				for _, v := range note.Values {
 					for _, itemValueStr := range inputValueStrSlice {
 						if v == itemValueStr {
 							inputDeprecated = true
@@ -280,6 +285,7 @@ func enumerateDeprecatesFields(deprecates, input RawYaml, rootPath string, depre
 
 			if inputDeprecated {
 				deprecations = append(deprecations, DeprecationNotes{
+					prefix:                prefix,
 					deprecationAnnotation: note,
 					ItemPath:              path,
 					ItemValues:            inputValueStrSlice,
@@ -292,12 +298,12 @@ func enumerateDeprecatesFields(deprecates, input RawYaml, rootPath string, depre
 		if deprecateYaml, is := deprecate.(RawYaml); is {
 			switch v := inputValue.(type) {
 			case RawYaml:
-				deprecations = enumerateDeprecatesFields(deprecateYaml, v, path, deprecations)
+				deprecations = append(deprecations, enumerateDeprecatesFields(deprecateYaml, v, path, prefix)...)
 			case []interface{}:
 				// If the config is a list, recurse into each item.
 				for i, item := range v {
 					itemYaml := item.(RawYaml)
-					deprecations = enumerateDeprecatesFields(deprecateYaml, itemYaml, appendToPath(path, fmt.Sprintf("[%d]", i)), deprecations)
+					deprecations = append(deprecations, enumerateDeprecatesFields(deprecateYaml, itemYaml, appendToPath(path, fmt.Sprintf("[%d]", i)), prefix)...)
 				}
 			}
 		}
