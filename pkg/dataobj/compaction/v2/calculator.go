@@ -1,6 +1,7 @@
 package compactionv2
 
 import (
+	"slices"
 	"sort"
 
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
@@ -9,17 +10,33 @@ import (
 // run is one non-overlapping run of sections. Runs are kept in creation order
 // in the calculator's `runs` slice (no deletes, no reordering), so a run's
 // index in that slice equals its creation order.
+//
+// topMaxKey holds the most recent appended section's MaxKey tuple (the run's
+// upper bound in sort-key space). It is compared via slices.Compare against
+// other tuples; see the contract note on calculateRuns regarding equal
+// tuple lengths.
 type run struct {
 	sections  []*compactionv2pb.SectionRef
-	topMaxKey string
+	topMaxKey []string
 }
 
 // calculateRuns sorts the provided [sections] in place and returns a set of
 // runs in creation order. A "run" is a sorted sequence of sections whose
 // (MinKey, MaxKey) bounds are pairwise non-overlapping in sort-key space.
-// MinKey/MaxKey are treated as opaque byte sequences and compared
-// lexicographically. The caller/planner is responsible for constructing
-// them as sort_schema-prefixed sort keys derived from each section's stats.
+//
+// MinKey/MaxKey are []string tuples -- one element per sort_schema column,
+// in schema order. They are compared element-wise (via [slices.Compare]),
+// which gives the schema's natural tuple order without the prefix/separator
+// ambiguity of a concatenated-string representation. The caller is
+// responsible for constructing them from each section's stats row.
+//
+// Contract: all SectionRefs passed in a single call must share the same
+// tenant's sort_schema, so their MinKey/MaxKey tuples have equal length.
+// Mixed-schema input is caught downstream at task-execution time. If a
+// length mismatch reaches this function it indicates an upstream encoding
+// bug; the comparison still produces a deterministic order via
+// shorter-tuple-is-less semantics but the result is not semantically
+// meaningful.
 //
 // The input slice is sorted in place; callers that need the original order
 // must copy beforehand. The contract requires non-nil SectionRef entries;
@@ -30,13 +47,16 @@ func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
 	}
 
 	// Step 1: sort sections by (MinKey ASC, MaxKey ASC, ObjectPath ASC, SectionIndex ASC).
+	// MinKey/MaxKey are []string tuples; slices.Compare gives element-wise
+	// lexicographic order (matches the sort_schema's natural tuple order without
+	// the prefix/separator problem of a concatenated-string representation).
 	sort.Slice(sections, func(i, j int) bool {
 		a, b := sections[i], sections[j]
-		if a.MinKey != b.MinKey {
-			return a.MinKey < b.MinKey
+		if c := slices.Compare(a.MinKey, b.MinKey); c != 0 {
+			return c < 0
 		}
-		if a.MaxKey != b.MaxKey {
-			return a.MaxKey < b.MaxKey
+		if c := slices.Compare(a.MaxKey, b.MaxKey); c != 0 {
+			return c < 0
 		}
 		if a.ObjectPath != b.ObjectPath {
 			return a.ObjectPath < b.ObjectPath
@@ -102,8 +122,8 @@ func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
 	for _, s := range sections {
 		var best *run
 		for _, r := range runs {
-			if r.topMaxKey < s.MinKey {
-				if best == nil || r.topMaxKey > best.topMaxKey {
+			if slices.Compare(r.topMaxKey, s.MinKey) < 0 {
+				if best == nil || slices.Compare(r.topMaxKey, best.topMaxKey) > 0 {
 					best = r
 				}
 			}

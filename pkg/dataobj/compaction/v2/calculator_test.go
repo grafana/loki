@@ -12,8 +12,21 @@ import (
 // Suppress unused import warning; math/rand is used in the shuffle determinism tests.
 var _ = rand.Float64
 
-// sec is a small constructor for SectionRef test fixtures.
+// sec is a small constructor for SectionRef test fixtures with single-column
+// MinKey/MaxKey values (the common case in existing tests).
 func sec(path string, idx int32, minKey, maxKey string) *compactionv2pb.SectionRef {
+	return &compactionv2pb.SectionRef{
+		ObjectPath:   path,
+		SectionIndex: idx,
+		MinKey:       []string{minKey},
+		MaxKey:       []string{maxKey},
+	}
+}
+
+// secT is a constructor for SectionRef test fixtures with multi-column
+// MinKey/MaxKey tuples (for tests that exercise multi-column sort_schema
+// semantics).
+func secT(path string, idx int32, minKey, maxKey []string) *compactionv2pb.SectionRef {
 	return &compactionv2pb.SectionRef{
 		ObjectPath:   path,
 		SectionIndex: idx,
@@ -33,7 +46,7 @@ func TestPatienceSort_SingleSection(t *testing.T) {
 
 	require.Len(t, got, 1)
 	require.Equal(t, []*compactionv2pb.SectionRef{s}, got[0].sections)
-	require.Equal(t, "b", got[0].topMaxKey)
+	require.Equal(t, []string{"b"}, got[0].topMaxKey)
 }
 
 func TestPatienceSort_AllNonOverlapping(t *testing.T) {
@@ -45,7 +58,7 @@ func TestPatienceSort_AllNonOverlapping(t *testing.T) {
 
 	require.Len(t, got, 1, "all non-overlapping sections should form exactly one pile")
 	require.Equal(t, []*compactionv2pb.SectionRef{s1, s2, s3}, got[0].sections)
-	require.Equal(t, "f", got[0].topMaxKey)
+	require.Equal(t, []string{"f"}, got[0].topMaxKey)
 }
 
 func TestPatienceSort_AllOverlapping(t *testing.T) {
@@ -76,10 +89,10 @@ func TestPatienceSort_BestFit(t *testing.T) {
 	require.Len(t, got, 2, "expected 2 piles")
 	// pile1 (created second) should now contain s2 and s3.
 	require.Equal(t, []*compactionv2pb.SectionRef{s2, s3}, got[1].sections)
-	require.Equal(t, "20", got[1].topMaxKey)
+	require.Equal(t, []string{"20"}, got[1].topMaxKey)
 	// pile0 should still hold only s1.
 	require.Equal(t, []*compactionv2pb.SectionRef{s1}, got[0].sections)
-	require.Equal(t, "05", got[0].topMaxKey)
+	require.Equal(t, []string{"05"}, got[0].topMaxKey)
 }
 
 func TestPatienceSort_TiebreakerOnCreationOrder(t *testing.T) {

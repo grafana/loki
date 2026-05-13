@@ -12,11 +12,20 @@ import "gogoproto/gogo.proto";
 option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto";
 
 // SectionRef identifies one section in object storage with its sort-key bounds.
+//
+// min_key and max_key are tuples of column values from the tenant's
+// sort_schema (one element per column, in schema order). Using a repeated
+// string -- rather than a single concatenated string -- avoids the
+// prefix/separator problem when comparing multi-column keys: element-wise
+// lexicographic compare matches the schema's natural tuple order without
+// needing a delimiter byte that is strictly less than every byte that can
+// appear in a column value (a guarantee Prometheus label values do not
+// provide).
 message SectionRef {
   string object_path = 1 [(gogoproto.jsontag) = "object_path"];
   int32 section_index = 2 [(gogoproto.jsontag) = "section_index"];
-  string min_key = 3 [(gogoproto.jsontag) = "min_key"];
-  string max_key = 4 [(gogoproto.jsontag) = "max_key"];
+  repeated string min_key = 3 [(gogoproto.jsontag) = "min_key"];
+  repeated string max_key = 4 [(gogoproto.jsontag) = "max_key"];
 }
 
 // RunRef is one patience-sort pile: a sorted, non-overlapping section sequence.
