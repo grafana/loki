@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime/pprof"
 	gotrace "runtime/trace"
+	"slices"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/oklog/ulid/v2"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -34,10 +36,28 @@ type recordSink interface {
 }
 
 // sinksForJob returns the job's sinks as a slice for use with drainPipeline.
+// The sinks are returned in deterministic order sorted by their stream ULID to ensure
+// consistent sharding behavior across all worker threads.
 func sinksForJob(job *threadJob) []recordSink {
+	if len(job.Sinks) == 0 {
+		return nil
+	}
+
+	// Extract and sort ULIDs to ensure deterministic ordering
+	ulids := make([]ulid.ULID, 0, len(job.Sinks))
+	for id := range job.Sinks {
+		ulids = append(ulids, id)
+	}
+
+	// Sort ULIDs - ULID implements comparison via Compare method and can be sorted lexicographically
+	slices.SortFunc(ulids, func(a, b ulid.ULID) int {
+		return a.Compare(b)
+	})
+
+	// Build sink slice in sorted order
 	sinks := make([]recordSink, 0, len(job.Sinks))
-	for _, s := range job.Sinks {
-		sinks = append(sinks, s)
+	for _, id := range ulids {
+		sinks = append(sinks, job.Sinks[id])
 	}
 	return sinks
 }
@@ -284,7 +304,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	}
 
 	gotrace.Log(ctx, "drain_pipeline", "start")
-	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), logger)
+	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), job.Task.SinkRouting, logger)
 	if err != nil {
 		level.Warn(logger).Log("msg", "task failed", "err", err)
 		_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
@@ -348,7 +368,7 @@ func recordBatchBytes(rec arrow.RecordBatch) int64 {
 	return n
 }
 
-func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
+func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, routing *workflow.SinkRouting, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
 	startRead := time.Now()
@@ -362,6 +382,9 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		totalComputeTime time.Duration
 		totalWriteTime   time.Duration
 	)
+
+	// Determine if we need to partition records
+	usePartitioning := routing != nil && routing.Strategy != workflow.SinkRoutingStrategyBroadcast && len(sinks) > 1
 
 	for {
 		startCompute := time.Now()
@@ -386,22 +409,53 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		}
 
 		startSend := time.Now()
-		for _, sink := range sinks {
-			// If a sink doesn't accept the result, we'll continue
-			// best-effort processing our task. It's possible that one of
-			// the receiving sinks got canceled, and other sinks may still
-			// need data.
-			if err := sink.Send(ctx, rec); err != nil {
-				level.Warn(logger).Log("msg", "failed to send result", "err", err)
+		if usePartitioning {
+			// Partition the record batch by shard
+			shardedBatches, partErr := partitionRecordBatch(rec, routing, len(sinks))
+			if partErr != nil {
+				level.Warn(logger).Log("msg", "failed to partition record batch, falling back to broadcast", "err", partErr)
+				// Fallback to broadcast
+				for _, sink := range sinks {
+					if err := sink.Send(ctx, rec); err != nil {
+						level.Warn(logger).Log("msg", "failed to send result", "err", err)
+					}
+				}
+			} else {
+				// Send each sharded batch to its corresponding sink
+				for shardIdx, shardBatch := range shardedBatches {
+					if shardBatch == nil || shardBatch.NumRows() == 0 {
+						continue
+					}
+
+					if shardIdx < len(sinks) {
+						if err := sinks[shardIdx].Send(ctx, shardBatch); err != nil {
+							level.Warn(logger).Log("msg", "failed to send result to shard", "shard", shardIdx, "err", err)
+						}
+						region.Record(xcap.TaskRecordsSent.Observe(1))
+						region.Record(xcap.TaskRowsSent.Observe(shardBatch.NumRows()))
+						region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(shardBatch)))
+					}
+				}
 			}
+		} else {
+			// Broadcast mode: send to all sinks
+			for _, sink := range sinks {
+				// If a sink doesn't accept the result, we'll continue
+				// best-effort processing our task. It's possible that one of
+				// the receiving sinks got canceled, and other sinks may still
+				// need data.
+				if err := sink.Send(ctx, rec); err != nil {
+					level.Warn(logger).Log("msg", "failed to send result", "err", err)
+				}
+			}
+			region.Record(xcap.TaskRecordsSent.Observe(1))
+			region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
+			region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(rec)))
 		}
 		writeDuration := time.Since(startSend)
 		t.Metrics.passWriteSeconds.Observe(writeDuration.Seconds())
 		totalWriteTime += writeDuration
 
-		region.Record(xcap.TaskRecordsSent.Observe(1))
-		region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
-		region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(rec)))
 		region.Record(xcap.TaskSendDuration.Observe(writeDuration.Seconds()))
 	}
 
