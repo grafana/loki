@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.7.2](https://github.com/grafana/loki/compare/v3.7.1...v3.7.2) (2026-05-13)
+
+
+### Bug Fixes
+
+* CVEs in release 3.7.x ([#21771](https://github.com/grafana/loki/issues/21771)) ([bb4c5d8](https://github.com/grafana/loki/commit/bb4c5d8758b8540cb742466683143a9ea93743c8))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.97.3 [security] (release-3.7.x) ([#21457](https://github.com/grafana/loki/issues/21457)) ([7bc9450](https://github.com/grafana/loki/commit/7bc945082fd7ef7632a9bfd18cc22f23130ea64a))
+* Fix ruler panic related to unset validation scheme (backport release-3.7.x) ([#21401](https://github.com/grafana/loki/issues/21401)) ([cf65729](https://github.com/grafana/loki/commit/cf65729674b1f0be8011223c474df3e2e5253216))
+* **storage:** attach SHA-256 checksum on PutObject for Object Lock buckets ([#21849](https://github.com/grafana/loki/issues/21849)) ([7df13d9](https://github.com/grafana/loki/commit/7df13d9ad3993700c3aff23edf5dfa2966281416))
+
 ## [3.7.1](https://github.com/grafana/loki/compare/v3.7.0...v3.7.1) (2026-03-26)
 
 
