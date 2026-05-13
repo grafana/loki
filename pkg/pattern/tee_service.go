@@ -15,7 +15,6 @@ import (
 
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
-	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
@@ -180,13 +179,11 @@ func (ts *TeeService) Start(runCtx context.Context) error {
 		}
 	}()
 
-	_ = services.StartAndAwaitRunning(runCtx, ts.metrics.bufferedBytes)
 	return nil
 }
 
 func (ts *TeeService) WaitUntilDone() {
 	ts.wg.Wait()
-	_ = services.StopAndAwaitTerminated(context.TODO(), ts.metrics.bufferedBytes)
 }
 
 func (ts *TeeService) flush() {

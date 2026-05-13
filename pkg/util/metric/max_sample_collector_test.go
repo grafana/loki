@@ -11,43 +11,43 @@ import (
 
 func TestMaxSampleCollector(t *testing.T) {
 	c := NewMaxSampleCollector("test", "A test metric from the max sample collector.")
-	// The collector should have no samples.
-	expected := [60]int64{}
-	require.Equal(t, expected, c.samples)
-	// Inc should update the current value, but not samples, since the
-	// timer hasn't fired.
-	c.Add(1)
-	require.Equal(t, int64(1), c.val.Load())
-	require.Equal(t, int64(0), c.maxVal.Load())
-	require.Equal(t, expected, c.samples)
-	// Call the iterFunc to mimic the timer.
-	require.NoError(t, c.iterFunc(t.Context()))
-	require.Equal(t, int64(1), c.val.Load())
-	require.Equal(t, int64(1), c.maxVal.Load())
-	expected[0] = 1
-	require.Equal(t, expected, c.samples)
-	// Call the iterFunc once more, the next sample should also be 1.
-	require.NoError(t, c.iterFunc(t.Context()))
-	expected[1] = 1
-	require.Equal(t, expected, c.samples)
-	require.Equal(t, int64(1), c.val.Load())
-	require.Equal(t, int64(1), c.maxVal.Load())
-	// Inc one last time, and call the iterFunc.
-	c.Add(2)
-	require.Equal(t, int64(3), c.val.Load())
-	require.Equal(t, int64(1), c.maxVal.Load())
-	require.NoError(t, c.iterFunc(t.Context()))
-	expected[2] = 3
-	require.Equal(t, expected, c.samples)
-	require.Equal(t, int64(3), c.val.Load())
-	require.Equal(t, int64(3), c.maxVal.Load())
-	// Scrape the metric.
 	reg := prometheus.NewRegistry()
 	require.NoError(t, reg.Register(c))
+
+	require.Equal(t, int64(0), c.val.Load())
+	require.Equal(t, int64(0), c.maxVal.Load())
+
+	// Add should update both val and maxVal.
+	c.Add(1)
+	require.Equal(t, int64(1), c.val.Load())
+	require.Equal(t, int64(1), c.maxVal.Load())
+
+	// A second add should update both once more.
+	c.Add(2)
+	require.Equal(t, int64(3), c.val.Load())
+	require.Equal(t, int64(3), c.maxVal.Load())
+
+	// Sub should update val, but not maxVal (as it cannot create a new max).
+	c.Sub(2)
+	require.Equal(t, int64(1), c.val.Load())
+	require.Equal(t, int64(3), c.maxVal.Load())
+
+	// Scrape the metric — should report the max.
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 # HELP test A test metric from the max sample collector.
 # TYPE test gauge
 test 3
+`), "test"))
+
+	// After scrape, maxVal is reset to the current val.
+	require.Equal(t, int64(1), c.val.Load())
+	require.Equal(t, int64(1), c.maxVal.Load())
+
+	// A subsequent scrape reports the current val.
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+# HELP test A test metric from the max sample collector.
+# TYPE test gauge
+test 1
 `), "test"))
 }
 
@@ -56,8 +56,10 @@ func TestMaxSampleCollector_Add_Sub(t *testing.T) {
 	require.Equal(t, int64(0), c.val.Load())
 	c.Add(2)
 	require.Equal(t, int64(2), c.val.Load())
+	require.Equal(t, int64(2), c.maxVal.Load())
 	c.Sub(1)
 	require.Equal(t, int64(1), c.val.Load())
+	require.Equal(t, int64(2), c.maxVal.Load())
 }
 
 func TestMaxSampleCollector_Inc_Dec(t *testing.T) {
@@ -65,10 +67,13 @@ func TestMaxSampleCollector_Inc_Dec(t *testing.T) {
 	require.Equal(t, int64(0), c.val.Load())
 	c.Inc()
 	require.Equal(t, int64(1), c.val.Load())
+	require.Equal(t, int64(1), c.maxVal.Load())
 	c.Inc()
 	require.Equal(t, int64(2), c.val.Load())
+	require.Equal(t, int64(2), c.maxVal.Load())
 	c.Dec()
 	require.Equal(t, int64(1), c.val.Load())
+	require.Equal(t, int64(2), c.maxVal.Load())
 }
 
 func ExampleMaxSampleCollector() {

@@ -413,7 +413,7 @@ func New(
 		numMetadataPartitions: numMetadataPartitions,
 		inflightBytes: util_metric.NewMaxSampleCollector(
 			"loki_distributor_max_inflight_bytes",
-			"The maximum number of inflight bytes in the last 1 minute.",
+			"The maximum number of inflight bytes since the last scrape.",
 		),
 	}
 
@@ -456,7 +456,6 @@ func New(
 	d.rateStore = rs
 
 	_ = registerer.Register(d.inflightBytes)
-	servs = append(servs, d.inflightBytes)
 	servs = append(servs, d.ingesterClients, rs)
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
