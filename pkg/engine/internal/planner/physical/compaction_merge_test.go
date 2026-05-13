@@ -22,7 +22,7 @@ func TestCompactionMerge_CloneIsDeepCopy(t *testing.T) {
 		Runs: []*compactionv2pb.RunRef{
 			{
 				Sections: []*compactionv2pb.SectionRef{
-					{ObjectPath: "objs/a.dataobj", SectionIndex: 0, MinKey: "a", MaxKey: "f"},
+					{ObjectPath: "objs/a.dataobj", SectionIndex: 0, MinKey: []string{"a"}, MaxKey: []string{"f"}},
 				},
 			},
 		},
@@ -36,10 +36,10 @@ func TestCompactionMerge_CloneIsDeepCopy(t *testing.T) {
 	require.NotEqual(t, orig.ID(), clone.ID(), "Clone must produce a fresh ULID")
 
 	// Mutate the clone's nested structures; assert original is untouched.
-	clone.Runs[0].Sections[0].MinKey = "MUTATED"
+	clone.Runs[0].Sections[0].MinKey[0] = "MUTATED"
 	clone.SourceIndexPaths[0] = "MUTATED"
 
-	require.Equal(t, "a", orig.Runs[0].Sections[0].MinKey,
+	require.Equal(t, []string{"a"}, orig.Runs[0].Sections[0].MinKey,
 		"Clone must deep-copy nested SectionRefs; observed shallow alias")
 	require.Equal(t, "idx/x.idx", orig.SourceIndexPaths[0],
 		"Clone must deep-copy SourceIndexPaths")
