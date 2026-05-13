@@ -7,20 +7,24 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
-// Plan patience-sorts the input sections into P piles (runs) and groups them
-// into ⌈P/K⌉ task batches: piles [0..K) -> task 0, piles [K..2K) -> task 1, ...
+// Plan patience-sorts the input sections into P runs and groups them into
+// ⌈P/K⌉ task batches: runs [0..K) -> task 0, runs [K..2K) -> task 1, ...
 //
 // The output is deterministic for a given input regardless of the input order:
 // see the spec § Compaction unit / Phase 1 for the algorithm.
 //
 // Special cases:
 //   - len(sections) == 0  -> returns nil (no tasks).
-//   - k >= P              -> returns a single TaskSpec containing all piles.
+//   - k >= P              -> returns a single TaskSpec containing all runs.
 //
 // Panics if k <= 0: that's a programmer error in the caller's config plumbing,
-// not a runtime condition. **k validation always runs first**; if both k <= 0
-// and len(sections) == 0, the function panics (not nil-returns). Tests pin
-// this ordering.
+// not a runtime condition. k validation always runs first; if both k <= 0 and
+// len(sections) == 0, the function panics (not nil-returns). Tests pin this
+// ordering.
+//
+// Plan sorts the input sections slice in place; callers that need the original
+// order must copy beforehand. The contract requires non-nil SectionRef entries;
+// nil entries will panic.
 //
 // The ctx parameter is reserved for future use; the current implementation runs
 // the algorithm to completion without honoring cancellation, because partial
