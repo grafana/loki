@@ -57,13 +57,15 @@ func (e *bloomPostingEntry) BitmapBytes() []byte {
 // It is NOT goroutine-safe; callers must synchronize if needed.
 type bloomAggregator struct {
 	entries       map[bloomPostingKey]*bloomPostingEntry
+	appendedKeys  map[bloomPostingKey]struct{}
 	estimatedSize int
 }
 
 // newBloomAggregator creates a new bloomAggregator.
 func newBloomAggregator() *bloomAggregator {
 	return &bloomAggregator{
-		entries: make(map[bloomPostingKey]*bloomPostingEntry),
+		entries:      make(map[bloomPostingKey]*bloomPostingEntry),
+		appendedKeys: make(map[bloomPostingKey]struct{}),
 	}
 }
 
@@ -97,12 +99,17 @@ func (a *bloomAggregator) PrepareColumn(objectPath string, sectionIndex int64, c
 }
 
 // Observe records a single observation for a bloom column. Returns an error if
-// the column has not been prepared via PrepareColumn.
+// the column has not been prepared via PrepareColumn or if the key was
+// previously added via AppendEntry.
 func (a *bloomAggregator) Observe(obs BloomObservation) error {
 	key := bloomPostingKey{
 		objectPath:   obs.ObjectPath,
 		sectionIndex: obs.SectionIndex,
 		columnName:   obs.ColumnName,
+	}
+
+	if _, ok := a.appendedKeys[key]; ok {
+		return fmt.Errorf("bloom posting key %v already added via AppendBloomEntry", key)
 	}
 
 	entry, ok := a.entries[key]
@@ -171,8 +178,34 @@ func (a *bloomAggregator) EstimatedSize() int {
 	return a.estimatedSize
 }
 
+// AppendEntry appends a pre-built bloom posting entry directly to the
+// aggregator, bypassing the observation aggregation path. Returns an error if
+// an entry with the same key already exists.
+func (a *bloomAggregator) AppendEntry(entry *bloomPostingEntry) error {
+	key := bloomPostingKey{
+		objectPath:   entry.ObjectPath,
+		sectionIndex: entry.SectionIndex,
+		columnName:   entry.ColumnName,
+	}
+
+	if _, ok := a.entries[key]; ok {
+		return fmt.Errorf("bloom posting entry with key (%q, %d, %q) already exists", entry.ObjectPath, entry.SectionIndex, entry.ColumnName)
+	}
+
+	a.entries[key] = entry
+	a.appendedKeys[key] = struct{}{}
+
+	// Track size for appended entry: 5 int64 fields + string sizes + bloom filter capacity + bitmap bytes.
+	// Use the same bloom filter estimation as PrepareColumn for consistency.
+	bitmapBytes := entry.BitmapBytes()
+	a.estimatedSize += 5*8 + len(entry.ObjectPath) + len(entry.ColumnName) + int(entry.bloomFilter.Cap()/8) + len(bitmapBytes)
+
+	return nil
+}
+
 // Reset clears all accumulated state including prepared columns.
 func (a *bloomAggregator) Reset() {
 	a.entries = make(map[bloomPostingKey]*bloomPostingEntry)
+	a.appendedKeys = make(map[bloomPostingKey]struct{})
 	a.estimatedSize = 0
 }

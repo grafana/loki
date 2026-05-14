@@ -1,6 +1,8 @@
 package postings
 
 import (
+	"fmt"
+
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -39,23 +41,30 @@ func (e *labelPostingEntry) BitmapBytes() []byte {
 // It is NOT goroutine-safe; callers must synchronize if needed.
 type labelAggregator struct {
 	entries       map[labelPostingKey]*labelPostingEntry
+	appendedKeys  map[labelPostingKey]struct{}
 	estimatedSize int
 }
 
 // newLabelAggregator creates a new labelAggregator.
 func newLabelAggregator() *labelAggregator {
 	return &labelAggregator{
-		entries: make(map[labelPostingKey]*labelPostingEntry),
+		entries:      make(map[labelPostingKey]*labelPostingEntry),
+		appendedKeys: make(map[labelPostingKey]struct{}),
 	}
 }
 
-// Observe records a single observation of a label posting.
-func (a *labelAggregator) Observe(obs LabelObservation) {
+// Observe records a single observation of a label posting. Returns an error if
+// the key was previously added via AppendEntry.
+func (a *labelAggregator) Observe(obs LabelObservation) error {
 	key := labelPostingKey{
 		objectPath:   obs.ObjectPath,
 		sectionIndex: obs.SectionIndex,
 		columnName:   obs.ColumnName,
 		labelValue:   obs.LabelValue,
+	}
+
+	if _, ok := a.appendedKeys[key]; ok {
+		return fmt.Errorf("label posting key %v already added via AppendLabelEntry", key)
 	}
 
 	tsNano := obs.Timestamp.UnixNano()
@@ -95,6 +104,8 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 		entry.MaxTimestamp = tsNano
 	}
 	entry.UncompressedSize += obs.UncompressedSize
+
+	return nil
 }
 
 // Entries returns all aggregated entries. Bitmap normalization (padding to
@@ -118,8 +129,34 @@ func (a *labelAggregator) EstimatedSize() int {
 	return a.estimatedSize
 }
 
+// AppendEntry appends a pre-built label posting entry directly to the
+// aggregator, bypassing the observation aggregation path. Returns an error if
+// an entry with the same key already exists.
+func (a *labelAggregator) AppendEntry(entry *labelPostingEntry) error {
+	key := labelPostingKey{
+		objectPath:   entry.ObjectPath,
+		sectionIndex: entry.SectionIndex,
+		columnName:   entry.ColumnName,
+		labelValue:   entry.LabelValue,
+	}
+
+	if _, ok := a.entries[key]; ok {
+		return fmt.Errorf("label posting entry with key (%q, %d, %q, %q) already exists", entry.ObjectPath, entry.SectionIndex, entry.ColumnName, entry.LabelValue)
+	}
+
+	a.entries[key] = entry
+	a.appendedKeys[key] = struct{}{}
+
+	// Track size for appended entry: 5 int64 fields + string sizes + bitmap bytes
+	bitmapBytes := entry.BitmapBytes()
+	a.estimatedSize += 5*8 + len(entry.ObjectPath) + len(entry.ColumnName) + len(entry.LabelValue) + len(bitmapBytes)
+
+	return nil
+}
+
 // Reset clears all accumulated state.
 func (a *labelAggregator) Reset() {
 	a.entries = make(map[labelPostingKey]*labelPostingEntry)
+	a.appendedKeys = make(map[labelPostingKey]struct{})
 	a.estimatedSize = 0
 }

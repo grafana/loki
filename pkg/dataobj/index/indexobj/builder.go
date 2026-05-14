@@ -218,7 +218,9 @@ func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObserva
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
 	preSize := tenantPostings.EstimatedSize()
 
-	tenantPostings.ObserveLabelPosting(obs)
+	if err := tenantPostings.ObserveLabelPosting(obs); err != nil {
+		return err
+	}
 
 	postSize := tenantPostings.EstimatedSize()
 	b.unflushedSizeEstimate += postSize - preSize
@@ -240,7 +242,8 @@ func (b *Builder) PrepareBloomColumn(tenantID, objectPath string, sectionIdx int
 
 // ObserveBloomPosting records a bloom-filter posting observation for a data
 // object column. Returns an error if the column has not been prepared via
-// PrepareBloomColumn. The aggregated postings are flushed when
+// PrepareBloomColumn, or if the same (objectPath, sectionIdx, columnName) key
+// was previously added via AppendBloomEntry. The aggregated postings are flushed when
 // [Builder.Flush] is called.
 func (b *Builder) ObserveBloomPosting(tenantID string, obs postings.BloomObservation) error {
 	// See ObserveLabelPosting for why metrics.appendTime / sizeEstimate.Set are
