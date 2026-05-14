@@ -30,7 +30,9 @@ const (
 	NodeTypePointersScan                      // NodeTypePointersScan represents a [PointersScan].
 	NodeTypeBatching                          // NodeTypeBatching represents a [Batching] node.
 	NodeTypeCache                             // NodeTypeCache represents a [Cache] node.
-	NodeTypeCompactionMerge                   // NodeTypeCompactionMerge represents a [CompactionMerge].
+	NodeTypeIndexMerge                        // NodeTypeIndexMerge represents an [IndexMerge].
+	NodeTypeLogMerge                          // NodeTypeLogMerge represents a [LogMerge].
+	NodeTypeCompactionMerge                   // NodeTypeCompactionMerge represents a [CompactionMerge]. DEPRECATED in this PR; removed in Task 2.
 )
 
 // String returns a string representation of the NodeType.
@@ -66,6 +68,10 @@ func (t NodeType) String() string {
 		return "Batching"
 	case NodeTypeCache:
 		return "Cache"
+	case NodeTypeIndexMerge:
+		return "IndexMerge"
+	case NodeTypeLogMerge:
+		return "LogMerge"
 	case NodeTypeCompactionMerge:
 		return "CompactionMerge"
 	default:
@@ -123,6 +129,8 @@ var _ Node = (*PointersScan)(nil)
 var _ Node = (*Merge)(nil)
 var _ Node = (*Batching)(nil)
 var _ Node = (*Cache)(nil)
+var _ Node = (*IndexMerge)(nil)
+var _ Node = (*LogMerge)(nil)
 var _ Node = (*CompactionMerge)(nil)
 
 func (*DataObjScan) isNode()       {}
@@ -140,6 +148,8 @@ func (*PointersScan) isNode()      {}
 func (*Merge) isNode()             {}
 func (*Batching) isNode()          {}
 func (*Cache) isNode()             {}
+func (*IndexMerge) isNode()        {}
+func (*LogMerge) isNode()          {}
 func (*CompactionMerge) isNode()   {}
 
 var _ fmt.Stringer = (*Plan)(nil)

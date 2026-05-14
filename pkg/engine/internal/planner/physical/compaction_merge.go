@@ -68,22 +68,4 @@ func (n *CompactionMerge) Clone() Node {
 	}
 }
 
-func cloneRuns(runs []*compactionv2pb.RunRef) []*compactionv2pb.RunRef {
-	if runs == nil {
-		return nil
-	}
-	out := make([]*compactionv2pb.RunRef, len(runs))
-	for i, r := range runs {
-		sections := make([]*compactionv2pb.SectionRef, len(r.Sections))
-		for j, s := range r.Sections {
-			cp := *s
-			// MinKey/MaxKey are []string; a struct copy aliases the slice
-			// backing array. Clone them so callers can mutate either copy.
-			cp.MinKey = slices.Clone(s.MinKey)
-			cp.MaxKey = slices.Clone(s.MaxKey)
-			sections[j] = &cp
-		}
-		out[i] = &compactionv2pb.RunRef{Sections: sections}
-	}
-	return out
-}
+
