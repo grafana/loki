@@ -15,7 +15,6 @@ import (
 
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
-	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
@@ -23,7 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	metric_util "github.com/grafana/loki/v3/pkg/util/metric"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -31,7 +29,7 @@ import (
 
 // teeMetrics contains the metrics for [TeeService].
 type teeMetrics struct {
-	bufferedBytes         *metric_util.MaxSampleCollector
+	bufferedBytes         prometheus.Summary
 	ingesterAppends       *prometheus.CounterVec
 	ingesterMetricAppends *prometheus.CounterVec
 	teedStreams           *prometheus.CounterVec
@@ -42,10 +40,12 @@ type teeMetrics struct {
 // newTeeMetrics returns new teeMetrics.
 func newTeeMetrics(reg prometheus.Registerer) *teeMetrics {
 	m := teeMetrics{
-		bufferedBytes: metric_util.NewMaxSampleCollector(
-			"pattern_ingester_tee_buffered_bytes",
-			"The current number of bytes buffered in the tee.",
-		),
+		bufferedBytes: promauto.With(reg).NewSummary(prometheus.SummaryOpts{
+			Name:       "pattern_ingester_tee_buffered_bytes",
+			Help:       "The current number of bytes buffered in the tee.",
+			Objectives: map[float64]float64{1.0: 0.1},
+			MaxAge:     time.Minute,
+		}),
 		ingesterAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "pattern_ingester_appends_total",
 			Help: "The total number of batch appends sent to pattern ingesters.",
@@ -72,7 +72,6 @@ func newTeeMetrics(reg prometheus.Registerer) *teeMetrics {
 			),
 		),
 	}
-	reg.MustRegister(m.bufferedBytes)
 	return &m
 }
 
@@ -180,13 +179,11 @@ func (ts *TeeService) Start(runCtx context.Context) error {
 		}
 	}()
 
-	_ = services.StartAndAwaitRunning(runCtx, ts.metrics.bufferedBytes)
 	return nil
 }
 
 func (ts *TeeService) WaitUntilDone() {
 	ts.wg.Wait()
-	_ = services.StopAndAwaitTerminated(context.TODO(), ts.metrics.bufferedBytes)
 }
 
 func (ts *TeeService) flush() {
@@ -476,7 +473,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 
 		// Check that the stream is allowed within the current limit.
 		size := stream.Stream.Size()
-		if !ts.tryReserveBufferedBytes(size) {
+		if !ts.reserveBufferedBytes(size) {
 			ts.metrics.teedStreams.WithLabelValues("dropped").Inc()
 			continue
 		}
@@ -487,41 +484,40 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 	}
 }
 
-// tryReserveBufferedBytes returns true if size can be reserved, otherwise false.
-// It always returns true when [TeeConfig.MaxBufferedBytes] is 0.
-func (ts *TeeService) tryReserveBufferedBytes(size int) bool {
+// reserveBufferedBytes attempts to reserve size bytes of capacity in the tee.
+// It returns true on success, otherwise false. A reservation is unsuccessful
+// if size would cause the tee to exceed [TeeConfig.MaxBufferedBytes]. When
+// [TeeConfig.MaxBufferedBytes] is zero, the limit is disabled.
+//
+// All reserved sizes must be returned by calling releaseBufferedBytes with
+// the same value.
+//
+// It is safe for concurrent use.
+func (ts *TeeService) reserveBufferedBytes(size int) bool {
 	maxBufferedBytes := int64(ts.cfg.TeeConfig.MaxBufferedBytes)
-	if maxBufferedBytes <= 0 {
-		// The limit is disabled, size can be reserved.
-		ts.metrics.bufferedBytes.Add(int64(size))
-		return true
-	}
 	for {
 		oldVal := ts.bufferedBytes.Load()
 		newVal := oldVal + int64(size)
-		if newVal > maxBufferedBytes {
-			// size exceeds the limit, so cannot be reserved.
+		// If the limit is non-zero, we must first check that size can be reserved.
+		if maxBufferedBytes > 0 && newVal > maxBufferedBytes {
 			return false
 		}
-		// If we won the CAS, our new size was reserved, and we can return true.
-		// If someone else won the CAS, we must loop and make another attempt.
+		// If we won the CAS, size was reserved, and we can return true.
 		if ts.bufferedBytes.CompareAndSwap(oldVal, newVal) {
-			ts.metrics.bufferedBytes.Add(int64(size))
+			ts.metrics.bufferedBytes.Observe(float64(newVal))
 			return true
 		}
 	}
 }
 
-// reelaseBufferedBytes releases the size from the buffered bytes counter.
-// It is a no-op when [TeeConfig.MaxBufferedBytes] is 0.
+// releaseBufferedBytes returns size bytes of reserved capacity to the tee.
+// It must be called whenever previously reserved capacity is no longer
+// needed.
+//
+// It is safe for concurrent use.
 func (ts *TeeService) releaseBufferedBytes(size int) {
-	maxBufferedBytes := ts.cfg.TeeConfig.MaxBufferedBytes
-	if maxBufferedBytes <= 0 {
-		ts.metrics.bufferedBytes.Sub(int64(size))
-		return
-	}
-	ts.bufferedBytes.Add(-int64(size))
-	ts.metrics.bufferedBytes.Sub(int64(size))
+	newVal := ts.bufferedBytes.Add(-int64(size))
+	ts.metrics.bufferedBytes.Observe(float64(newVal))
 }
 
 func (ts *TeeService) Register(_ context.Context, _ string, _ []distributor.KeyedStream, _ *distributor.PushTracker) {
