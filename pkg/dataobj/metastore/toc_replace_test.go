@@ -3,6 +3,7 @@ package metastore
 import (
 	"bytes"
 	"context"
+	stderrors "errors"
 	"io"
 	"sort"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/backoff"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -288,4 +290,121 @@ func TestReplaceIndexPointers_MissingToC(t *testing.T) {
 	exists, err := bucket.Exists(ctx, tocPath)
 	require.NoError(t, err)
 	require.False(t, exists, "missing-ToC no-op must not create an empty ToC blob")
+}
+
+// flakyBucket wraps an objstore.Bucket and, on the first N GetAndReplace calls,
+// returns the supplied error WITHOUT invoking the callback. Subsequent calls
+// pass through. Used to simulate a 412 PreconditionFailed on the first attempt.
+type flakyBucket struct {
+	objstore.Bucket
+	mu              sync.Mutex
+	remainingErrors []error
+	gotSizedReader  bool
+}
+
+func (b *flakyBucket) GetAndReplace(ctx context.Context, name string, fn func(io.ReadCloser) (io.ReadCloser, error)) error {
+	b.mu.Lock()
+	if len(b.remainingErrors) > 0 {
+		err := b.remainingErrors[0]
+		b.remainingErrors = b.remainingErrors[1:]
+		b.mu.Unlock()
+		return err
+	}
+	b.mu.Unlock()
+
+	return b.Bucket.GetAndReplace(ctx, name, func(existing io.ReadCloser) (io.ReadCloser, error) {
+		rc, err := fn(existing)
+		if err != nil || rc == nil {
+			return rc, err
+		}
+		if _, sizeErr := objstore.TryToGetSize(rc); sizeErr == nil {
+			b.mu.Lock()
+			b.gotSizedReader = true
+			b.mu.Unlock()
+		}
+		return rc, nil
+	})
+}
+
+// alwaysFailBucket wraps an objstore.Bucket and returns errPreconditionFailed
+// from every GetAndReplace call. Used to drive the retry-exhaustion test.
+type alwaysFailBucket struct {
+	objstore.Bucket
+}
+
+func (b *alwaysFailBucket) GetAndReplace(_ context.Context, _ string, _ func(io.ReadCloser) (io.ReadCloser, error)) error {
+	return errPreconditionFailed
+}
+
+// errPreconditionFailed is a synthetic 412-shaped error used by the retry tests.
+var errPreconditionFailed = stderrors.New("PreconditionFailed: simulated If-Match mismatch")
+
+func TestReplaceIndexPointers_RetriesOnConditionalWriteFailure(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	inner := objstore.NewInMemBucket()
+
+	seedToC(t, inner, window, []tocRow{
+		{"tenantA", "idx/a-0", 10, 20},
+		{"tenantB", "idx/b-0", 11, 21},
+	})
+
+	flaky := &flakyBucket{
+		Bucket:          inner,
+		remainingErrors: []error{errPreconditionFailed},
+	}
+
+	writer := &TableOfContentsWriter{
+		bucket:      flaky,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		[]string{"idx/a-0"},
+		[]TableOfContentsEntry{
+			{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)},
+		},
+	)
+	require.NoError(t, err)
+	require.True(t, swapped)
+	require.True(t, flaky.gotSizedReader, "callback must return a sized ReadCloser so If-Match survives on S3")
+
+	got := readToC(t, ctx, inner, TableOfContentsPath(window))
+	require.Equal(t, []tocRow{
+		{"tenantA", "idx/a-new", 100, 110},
+		{"tenantB", "idx/b-0", 11, 21},
+	}, got)
+}
+
+func TestReplaceIndexPointers_RetryExhaustion(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	inner := objstore.NewInMemBucket()
+	seedToC(t, inner, window, []tocRow{{"tenantA", "idx/a-0", 10, 20}})
+
+	// Always fail. Build a wrapper that returns errPreconditionFailed every call.
+	alwaysFail := &alwaysFailBucket{Bucket: inner}
+
+	writer := &TableOfContentsWriter{
+		bucket:      alwaysFail,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	// Use the same-package internal helper to override backoff to a tight budget,
+	// keeping this test fast (<100ms) while still exercising the retry loop.
+	tightBackoff := backoff.Config{
+		MinBackoff: 1 * time.Millisecond,
+		MaxBackoff: 5 * time.Millisecond,
+		MaxRetries: 3,
+	}
+	swapped, err := writer.replaceIndexPointers(ctx, window, "tenantA",
+		[]string{"idx/a-0"}, nil, tightBackoff,
+	)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errPreconditionFailed)
+	require.False(t, swapped)
 }
