@@ -6,25 +6,34 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/cespare/xxhash/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
+// ExpressionEvaluatorForGrouping is an interface for expression evaluation during grouping.
+// This allows different implementations for different use cases (e.g., full aggregation vs sharding).
+type ExpressionEvaluatorForGrouping interface {
+	EvalForGrouping(expr physical.Expression, rec arrow.RecordBatch) (arrow.Array, error)
+}
+
 func collectGroupingColumns(record arrow.RecordBatch, grouping physical.Grouping, evaluator *expressionEvaluator, identCache *semconv.IdentifierCache) ([]*array.String, []arrow.Field, error) {
 	if grouping.Without {
 		return collectWithoutGroupingColumns(record, grouping, identCache)
 	}
-	return collectByGroupingColumns(record, grouping, evaluator)
+	return CollectByGroupingColumns(record, grouping, evaluator)
 }
 
-func collectByGroupingColumns(record arrow.RecordBatch, grouping physical.Grouping, evaluator *expressionEvaluator) ([]*array.String, []arrow.Field, error) {
+// CollectByGroupingColumns collects grouping columns from a record batch.
+// This is exported so it can be reused for sharding logic.
+func CollectByGroupingColumns(record arrow.RecordBatch, grouping physical.Grouping, evaluator ExpressionEvaluatorForGrouping) ([]*array.String, []arrow.Field, error) {
 	arrays := make([]*array.String, 0, len(grouping.Columns))
 	fields := make([]arrow.Field, 0, len(grouping.Columns))
 
 	for _, columnExpr := range grouping.Columns {
-		arr, err := evaluator.evalForGrouping(columnExpr, record)
+		arr, err := evaluator.EvalForGrouping(columnExpr, record)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -33,7 +42,11 @@ func collectByGroupingColumns(record arrow.RecordBatch, grouping physical.Groupi
 			return nil, nil, fmt.Errorf("unsupported datatype for grouping %s", arr.DataType())
 		}
 
-		arrays = append(arrays, arr.(*array.String))
+		stringArr, ok := arr.(*array.String)
+		if !ok {
+			return nil, nil, fmt.Errorf("expected string array for grouping, got %T", arr)
+		}
+		arrays = append(arrays, stringArr)
 
 		colExpr, ok := columnExpr.(*physical.ColumnExpr)
 		if !ok {
@@ -159,4 +172,30 @@ func identMatchesGrouping(grouping []physical.ColumnExpression, ident *semconv.I
 	}
 
 	return false, nil
+}
+
+// ComputeGroupingHash computes the hash for a single row across grouping columns.
+// This is the same hash computation used by the aggregator for determining unique series.
+// The arrays and fields must be in the same order as returned by collectGroupingColumns.
+func ComputeGroupingHash(arrays []*array.String, fields []arrow.Field, rowIdx int, digest *xxhash.Digest) uint64 {
+	if len(arrays) == 0 {
+		return 0
+	}
+
+	digest.Reset()
+	for i, arr := range arrays {
+		if i > 0 {
+			_, _ = digest.Write([]byte{0}) // separator
+		}
+
+		_, _ = digest.WriteString(fields[i].Name)
+		_, _ = digest.Write([]byte("="))
+
+		if arr.IsNull(rowIdx) {
+			_, _ = digest.WriteString("")
+		} else {
+			_, _ = digest.WriteString(arr.Value(rowIdx))
+		}
+	}
+	return digest.Sum64()
 }

@@ -1,15 +1,15 @@
 package worker
 
 import (
-	"time"
-
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/cespare/xxhash/v2"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
@@ -32,7 +32,7 @@ func partitionRecordBatch(rec arrow.RecordBatch, routing *workflow.SinkRouting, 
 		}
 
 	case workflow.SinkRoutingStrategyTimeShard:
-		if err := computeTimeShards(rec, routing.TimeRange, numShards, shardIndices); err != nil {
+		if err := computeTimeShards(rec, routing.TimeRanges, shardIndices); err != nil {
 			return nil, err
 		}
 
@@ -46,84 +46,67 @@ func partitionRecordBatch(rec arrow.RecordBatch, routing *workflow.SinkRouting, 
 }
 
 // computeLabelHashShards computes the shard index for each row based on grouping labels.
-// This mimics the grouping logic used in aggregator.go.
 func computeLabelHashShards(rec arrow.RecordBatch, grouping physical.Grouping, numShards int, shardIndices []int) error {
 	if len(grouping.Columns) == 0 {
 		// No grouping columns - all rows go to shard 0
 		return nil
 	}
 
-	// Find the grouping columns in the record
-	groupingCols := make([]arrow.Field, 0, len(grouping.Columns))
-	groupingColIndices := make([]int, 0, len(grouping.Columns))
-
-	schema := rec.Schema()
-	for _, groupExpr := range grouping.Columns {
-		colExpr, ok := groupExpr.(*physical.ColumnExpr)
-		if !ok {
-			continue
-		}
-		colName := colExpr.Ref.Column
-
-		// Find the column index in the schema
-		for i := 0; i < int(rec.NumCols()); i++ {
-			field := schema.Field(i)
-			if field.Name == colName {
-				groupingCols = append(groupingCols, field)
-				groupingColIndices = append(groupingColIndices, i)
-				break
-			}
-		}
+	// Use the shared grouping column collection logic
+	// We need an evaluator for collectByGroupingColumns, but for sharding we can use a simple one
+	// that just looks up column references
+	evaluator := &simpleEvaluatorForSharding{rec: rec}
+	arrays, fields, err := executor.CollectByGroupingColumns(rec, grouping, evaluator)
+	if err != nil {
+		// If we can't collect grouping columns, fall back to shard 0 for all rows
+		return nil
 	}
 
-	if len(groupingCols) == 0 {
+	if len(arrays) == 0 {
 		// No grouping columns found - all rows go to shard 0
 		return nil
 	}
 
-	// Hash each row's grouping labels to determine shard
+	// Hash each row's grouping labels to determine shard using shared hash function
 	digest := xxhash.New()
 	for rowIdx := 0; rowIdx < int(rec.NumRows()); rowIdx++ {
-		digest.Reset()
-
-		for i, colIdx := range groupingColIndices {
-			if i > 0 {
-				_, _ = digest.Write([]byte{0}) // separator
-			}
-
-			col := rec.Column(colIdx)
-			field := groupingCols[i]
-
-			// Write field name
-			_, _ = digest.WriteString(field.Name)
-			_, _ = digest.Write([]byte("="))
-
-			// Write field value
-			if col.IsNull(rowIdx) {
-				_, _ = digest.WriteString("")
-			} else {
-				switch arr := col.(type) {
-				case *array.String:
-					_, _ = digest.WriteString(arr.Value(rowIdx))
-				case *array.Binary:
-					_, _ = digest.Write(arr.Value(rowIdx))
-				default:
-					// For other types, use string representation
-					_, _ = digest.WriteString(col.ValueStr(rowIdx))
-				}
-			}
-		}
-
-		hash := digest.Sum64()
+		hash := executor.ComputeGroupingHash(arrays, fields, rowIdx, digest)
 		shardIndices[rowIdx] = int(hash % uint64(numShards))
 	}
 
 	return nil
 }
 
+// simpleEvaluatorForSharding is a minimal expression evaluator that only supports
+// column reference lookups for use in sharding.
+type simpleEvaluatorForSharding struct {
+	rec arrow.RecordBatch
+}
+
+func (e *simpleEvaluatorForSharding) EvalForGrouping(expr physical.Expression, rec arrow.RecordBatch) (arrow.Array, error) {
+	colExpr, ok := expr.(*physical.ColumnExpr)
+	if !ok {
+		return nil, nil
+	}
+
+	// Find the column by name (FQN)
+	ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
+	fqn := ident.FQN()
+
+	schema := rec.Schema()
+	for i := 0; i < int(rec.NumCols()); i++ {
+		field := schema.Field(i)
+		if field.Name == fqn {
+			return rec.Column(i), nil
+		}
+	}
+
+	return nil, nil
+}
+
 // computeTimeShards computes the shard index for each row based on timestamp.
-// The time range is divided evenly among shards.
-func computeTimeShards(rec arrow.RecordBatch, timeRange physical.TimeRange, numShards int, shardIndices []int) error {
+// Each row is assigned to a shard based on which time range it falls into.
+func computeTimeShards(rec arrow.RecordBatch, timeRanges []physical.TimeRange, shardIndices []int) error {
 	// Find the timestamp column
 	timestampCol, err := findTimestampColumn(rec)
 	if err != nil {
@@ -131,14 +114,10 @@ func computeTimeShards(rec arrow.RecordBatch, timeRange physical.TimeRange, numS
 		return nil
 	}
 
-	if timeRange.IsZero() || timeRange.Start.Equal(timeRange.End) {
-		// Invalid time range - all rows go to shard 0
+	if len(timeRanges) == 0 {
+		// No time ranges - all rows go to shard 0
 		return nil
 	}
-
-	// Calculate shard boundaries
-	totalDuration := timeRange.End.Sub(timeRange.Start)
-	shardDuration := totalDuration / time.Duration(numShards)
 
 	for rowIdx := 0; rowIdx < int(rec.NumRows()); rowIdx++ {
 		if timestampCol.IsNull(rowIdx) {
@@ -148,19 +127,16 @@ func computeTimeShards(rec arrow.RecordBatch, timeRange physical.TimeRange, numS
 
 		ts := timestampCol.Value(rowIdx).ToTime(arrow.Nanosecond)
 
-		// Calculate which shard this timestamp belongs to
-		if ts.Before(timeRange.Start) {
-			shardIndices[rowIdx] = 0
-		} else if ts.After(timeRange.End) || ts.Equal(timeRange.End) {
-			shardIndices[rowIdx] = numShards - 1
-		} else {
-			offset := ts.Sub(timeRange.Start)
-			shardIdx := int(offset / shardDuration)
-			if shardIdx >= numShards {
-				shardIdx = numShards - 1
+		// Find which time range this timestamp belongs to
+		shardIdx := 0
+		for i, tr := range timeRanges {
+			if (ts.Equal(tr.Start) || ts.After(tr.Start)) && ts.Before(tr.End) {
+				shardIdx = i
+				break
 			}
-			shardIndices[rowIdx] = shardIdx
 		}
+
+		shardIndices[rowIdx] = shardIdx
 	}
 
 	return nil

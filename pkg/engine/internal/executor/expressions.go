@@ -154,14 +154,14 @@ func (e expressionEvaluator) lookupColumnExpr(colExpr *physical.ColumnExpr, inpu
 	return nil, false, nil
 }
 
-// evalForGrouping is like eval but treats absent columns as null rather than empty string.
+// EvalForGrouping is like eval but treats absent columns as null rather than empty string.
 // When a column referenced in a grouping expression does not exist in the record, the
 // regular eval returns a scalar "" so that label-filter expressions like `| foo=""` match
 // entries where foo is absent. For grouping that behaviour is wrong: a missing label must
 // not appear in the output label set at all.  Returning an all-null array lets
 // getLabelValues/getFields skip the column for those rows, so they merge into the same
 // aggregation bucket as rows from data objects where the column is present but null.
-func (e expressionEvaluator) evalForGrouping(expr physical.Expression, input arrow.RecordBatch) (arrow.Array, error) {
+func (e expressionEvaluator) EvalForGrouping(expr physical.Expression, input arrow.RecordBatch) (arrow.Array, error) {
 	colExpr, ok := expr.(*physical.ColumnExpr)
 	if !ok {
 		return e.eval(expr, input)

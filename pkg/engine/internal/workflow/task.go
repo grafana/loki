@@ -52,9 +52,10 @@ type SinkRouting struct {
 	// Only used when Strategy is SinkRoutingStrategyLabelHash.
 	Grouping physical.Grouping
 
-	// TimeRange specifies the full time range to divide among shards.
+	// TimeRanges specifies the time range for each shard.
 	// Only used when Strategy is SinkRoutingStrategyTimeShard.
-	TimeRange physical.TimeRange
+	// The order matches the order of sinks: TimeRanges[i] corresponds to sinks[i].
+	TimeRanges []physical.TimeRange
 }
 
 // SinkRoutingStrategy defines the strategy for routing records to sinks.

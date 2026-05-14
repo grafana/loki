@@ -57,10 +57,15 @@ func Fprint(w io.Writer, wf *Workflow) error {
 						}
 					}
 				case SinkRoutingStrategyTimeShard:
-					if !n.SinkRouting.TimeRange.IsZero() {
-						fmt.Fprintf(w, " time_range=%s..%s",
-							n.SinkRouting.TimeRange.Start.Format(time.RFC3339),
-							n.SinkRouting.TimeRange.End.Format(time.RFC3339))
+					if len(n.SinkRouting.TimeRanges) > 0 {
+						fmt.Fprintf(w, " shards=%d", len(n.SinkRouting.TimeRanges))
+						// Print each time range on its own line
+						for i, tr := range n.SinkRouting.TimeRanges {
+							fmt.Fprintf(w, "\n│     shard[%d]: %s..%s",
+								i,
+								tr.Start.Format(time.RFC3339),
+								tr.End.Format(time.RFC3339))
+						}
 					}
 				}
 				fmt.Fprintln(w)

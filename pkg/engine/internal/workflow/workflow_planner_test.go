@@ -1229,6 +1229,164 @@ func Test_pruneCachedTasks_cascadeProtection(t *testing.T) {
 	require.Empty(t, taskRoot.Sources, "stream from intermediate must be gone from Sources")
 }
 
+func Test_shardingAndParallelization(t *testing.T) {
+	t.Run("rate query with parallelize - no sharding when parallelize present", func(t *testing.T) {
+		// Simulates: rate({cluster="cluster-0"} | logfmt | duration != "" | unwrap duration(duration) [15m])
+		// This tests that:
+		// 1. When Parallelize is present in the query, NO aggregations above it are sharded
+		// 2. Parallelize creates multiple scan tasks (parallelization works)
+		// 3. Both VectorAgg and RangeAgg are NOT sharded because Parallelize provides parallelism
+
+		ulidGen := ulidGenerator{}
+		var physicalGraph dag.Graph[physical.Node]
+
+		// Create the physical plan: VectorAgg → RangeAgg → Parallelize → Filter → Projection → ScanSet
+		vectorAgg := physicalGraph.Add(&physical.VectorAggregation{
+			Operation: types.VectorAggregationTypeSum,
+			Grouping:  physical.Grouping{},
+		})
+
+		rangeAgg := physicalGraph.Add(&physical.RangeAggregation{
+			Operation: types.RangeAggregationTypeSum, // Simulating rate/unwrap aggregation
+			Start:     time.Unix(0, 0).UTC(),
+			End:       time.Unix(3600, 0).UTC(), // 1 hour = 3 x 12h shards, but won't be used due to Parallelize
+			Grouping:  physical.Grouping{},
+		})
+
+		parallelize := physicalGraph.Add(&physical.Parallelize{})
+
+		filter := physicalGraph.Add(&physical.Filter{})
+
+		project := physicalGraph.Add(&physical.Projection{
+			Expressions: []physical.Expression{
+				&physical.VariadicExpr{
+					Op: types.VariadicOpParseLogfmt,
+					Expressions: []physical.Expression{
+						&physical.ColumnExpr{
+							Ref: semconv.ColumnIdentMessage.ColumnRef(),
+						},
+					},
+				},
+			},
+			All:    true,
+			Expand: true,
+		})
+
+		scanSet := physicalGraph.Add(&physical.ScanSet{
+			Targets: []*physical.ScanTarget{
+				{
+					Type: physical.ScanTypeDataObject,
+					DataObject: &physical.DataObjScan{
+						Location:     "object-a",
+						MaxTimeRange: physical.TimeRange{Start: time.Unix(0, 0).UTC(), End: time.Unix(3600, 0).UTC()},
+					},
+				},
+				{
+					Type: physical.ScanTypeDataObject,
+					DataObject: &physical.DataObjScan{
+						Location:     "object-b",
+						MaxTimeRange: physical.TimeRange{Start: time.Unix(0, 0).UTC(), End: time.Unix(3600, 0).UTC()},
+					},
+				},
+				{
+					Type: physical.ScanTypeDataObject,
+					DataObject: &physical.DataObjScan{
+						Location:     "object-c",
+						MaxTimeRange: physical.TimeRange{Start: time.Unix(0, 0).UTC(), End: time.Unix(3600, 0).UTC()},
+					},
+				},
+			},
+		})
+
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallelize})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: filter})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: filter, Child: project})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: project, Child: scanSet})
+
+		physicalPlan := physical.FromGraph(physicalGraph)
+		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
+		require.NoError(t, err)
+
+		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
+		require.NoError(t, err)
+		requireUniqueStreams(t, graph)
+		generateConsistentULIDs(&ulidGen, graph)
+
+		// Expected structure:
+		// - 1 VectorAgg task (NOT sharded because Parallelize is in descendant tree)
+		// - 1 RangeAgg task (NOT sharded because Parallelize is its direct child)
+		// - 3 Parallelize tasks (one per scan target)
+		// Total: 1 + 1 + 3 = 5 tasks
+
+		t.Logf("Workflow structure:\n%s", Sprint(&Workflow{graph: graph}))
+		require.Equal(t, 5, graph.Len(), "Expected 5 tasks: 1 VectorAgg + 1 RangeAgg + 3 Parallelize scans")
+
+		// Verify the root is VectorAggregation (wrapped in Batching)
+		roots := graph.Roots()
+		require.Equal(t, 1, len(roots), "Expected single root")
+		rootTask := roots[0]
+		rootNode, err := rootTask.Fragment.Root()
+		require.NoError(t, err)
+
+		// Root might be Batching wrapping VectorAggregation
+		if rootNode.Type() == physical.NodeTypeBatching {
+			// Unwrap Batching to get to VectorAggregation
+			children := rootTask.Fragment.Children(rootNode)
+			require.Equal(t, 1, len(children), "Batching should have one child")
+			require.Equal(t, physical.NodeTypeVectorAggregation, children[0].Type(), "Child of Batching should be VectorAggregation")
+		} else {
+			require.Equal(t, physical.NodeTypeVectorAggregation, rootNode.Type(), "Root should be VectorAggregation")
+		}
+
+		// Verify the VectorAgg has 1 source (from RangeAgg, not sharded)
+		require.Len(t, rootTask.Sources, 1, "VectorAgg should have sources from one node type")
+		for _, sources := range rootTask.Sources {
+			require.Equal(t, 1, len(sources), "VectorAgg should have 1 source from RangeAgg")
+		}
+
+		// Count tasks by type to verify structure
+		var (
+			mergeCount     int
+			vectorAggCount int
+			rangeAggCount  int
+			scanCount      int
+		)
+
+		for _, root := range graph.Roots() {
+			_ = graph.Walk(root, func(t *Task) error {
+				taskRoot, _ := t.Fragment.Root()
+
+				// Unwrap Batching if present
+				nodeToCheck := taskRoot
+				if taskRoot.Type() == physical.NodeTypeBatching {
+					children := t.Fragment.Children(taskRoot)
+					if len(children) == 1 {
+						nodeToCheck = children[0]
+					}
+				}
+
+				switch nodeToCheck.Type() {
+				case physical.NodeTypeMerge:
+					mergeCount++
+				case physical.NodeTypeVectorAggregation:
+					vectorAggCount++
+				case physical.NodeTypeRangeAggregation:
+					rangeAggCount++
+				case physical.NodeTypeFilter:
+					scanCount++ // Filter is at the top of each scan task
+				}
+				return nil
+			}, dag.PreOrderWalk)
+		}
+
+		require.Equal(t, 0, mergeCount, "Should have 0 Merge nodes (no sharding when Parallelize present)")
+		require.Equal(t, 1, vectorAggCount, "Should have 1 VectorAgg (NOT sharded due to Parallelize)")
+		require.Equal(t, 1, rangeAggCount, "Should have 1 RangeAgg (NOT sharded due to Parallelize)")
+		require.Equal(t, 3, scanCount, "Should have 3 scan tasks from Parallelize")
+	})
+}
+
 // workflowMockCache is a simple in-memory cache.Cache for workflow planning tests.
 type workflowMockCache struct {
 	data map[string][]byte
