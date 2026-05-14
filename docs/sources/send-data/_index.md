@@ -47,7 +47,7 @@ be used as it automatically adds labels appropriate to the running container.
 and you already have configured `Parser` and `Filter` plugins.
 - [Fluentd](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentd/) - The Fluentd plugin is ideal when you already have Fluentd deployed
 and you already have configured `Parser` and `Filter` plugins. Fluentd also works well for extracting metrics from logs when using itsPrometheus plugin.
-- [Lambda Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/lambda-promtail/) - This is a workflow combining the Promtail push-api [scrape config](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#loki_push_api) and the lambda-promtail AWS Lambda function which pipes logs from Cloudwatch to Loki. This is a good choice if you're looking to try out Loki in a low-footprint way or if you wish to monitor AWS lambda logs in Loki
+- [Lambda Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/lambda-promtail/) - This is a workflow combining the Promtail push-api [scrape config](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#loki_push_api) and the lambda-promtail AWS Lambda function which pipes logs from CloudWatch to Loki. This is a good choice if you're looking to try out Loki in a low-footprint way or if you wish to monitor AWS lambda logs in Loki
 - [Logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/) - If you are already using logstash and/or beats, this will be the easiest way to start.
 By adding our output plugin you can quickly try Loki without doing big configuration changes.
 

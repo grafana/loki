@@ -59,7 +59,7 @@ Without an API each client will have to use a LogQL parser.
 
 *Pros*
 - The split logic in Loki can be changed at will without breaking client behavior.
-- There is no maintanence overhead for an API.
+- There is no maintenance overhead for an API.
 
 *Cons*
 - Currently, the LogQL grammar is specific to Go. It is not easy to port it and the parser to other languages.
@@ -67,7 +67,7 @@ Without an API each client will have to use a LogQL parser.
 
 ### Proposal 1: Expose Splitting in an API
 
-A new endpoint `GET /loki/api/v1/split_query` is introduced that takes a `splits` parameter and the same parameters as the [/loki/api/v1/query_range](https://grafana.com/docs/loki/latest/reference/loki-http-api/#query-logs-within-a-range-of-time) endpoint. The new endoint returns sub-queries split by time.
+A new endpoint `GET /loki/api/v1/split_query` is introduced that takes a `splits` parameter and the same parameters as the [/loki/api/v1/query_range](https://grafana.com/docs/loki/latest/reference/loki-http-api/#query-logs-within-a-range-of-time) endpoint. The new endpoint returns sub-queries split by time.
 
 The `splits` parameter optionally defines the number of desired splits. The API is allowed to return fewer splits than requested.
 
@@ -96,12 +96,12 @@ The response body is JSON encoded:
 ```
 
 *Pros*
-- Clients can split queries independent on the implemation language and platform.
+- Clients can split queries independent on the implementation language and platform.
 - Split logic is controlled by Loki and not the client. This means it can be improved, for example, by introducing sharding
   labels.
 
 *Cons*
-- A new API endpoint increases the compatiblity surface area and thus maintanence overhead for Loki maintainers.
+- A new API endpoint increases the compatibility surface area and thus maintenance overhead for Loki maintainers.
 
 ### Proposal 2: Support Apache Arrow Flight RPC
 

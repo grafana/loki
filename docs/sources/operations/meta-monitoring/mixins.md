@@ -155,5 +155,5 @@ After you have installed the Loki mixin dashboards, alerts, and recording rules,
 You can now move onto:
 
 * **Send Logs:** Ready to start sending your own logs to Loki, there a several methods you can use. For more information, refer to [send data](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/).
-* **Query Logs:** LogQL is an extensive query language for logs and contains many tools to improve log retrival and generate insights. For more information see the [Query section](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
+* **Query Logs:** LogQL is an extensive query language for logs and contains many tools to improve log retrieval and generate insights. For more information see the [Query section](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
 * **Alert:** Lastly you can use the ruler component of Loki to create alerts based on log queries. For more information refer to [Alerting](https://grafana.com/docs/loki/<LOKI_VERSION>/alert/).

@@ -68,7 +68,7 @@ scrape_configs:
 ```
 
 Only `api_token` and `zone_id` are required.
-Refer to the [Cloudfare](../configuration/#cloudflare) configuration section for details.
+Refer to the [Cloudflare](../configuration/#cloudflare) configuration section for details.
 
 ## File Target Discovery
 
