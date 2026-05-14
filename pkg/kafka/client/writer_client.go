@@ -339,22 +339,30 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		}
 	}
 
+	// Check that all records can fit within the limit.
+	var totalSize int64
 	for _, record := range records {
-		// Fast fail if the Kafka client buffer is full. Buffered bytes counter is decreased onProducerDone().
-		if c.maxBufferedBytes > 0 && c.bufferedBytes.Add(int64(len(record.Value))) > c.maxBufferedBytes {
-			onProduceDone(record, kgo.ErrMaxBuffered)
-			continue
-		}
+		totalSize += int64(len(record.Value))
+	}
 
-		// We use a new context to avoid that other Produce() may be cancelled when this call's context is
-		// canceled. It's important to note that cancelling the context passed to Produce() doesn't actually
-		// prevent the data to be sent over the wire (because it's never removed from the buffer) but in some
-		// cases may cause all requests to fail with context cancelled.
-		//
-		// Produce() may theoretically block if the buffer is full, but we configure the Kafka client with
-		// unlimited buffer because we implement the buffer limit ourselves (see maxBufferedBytes). This means
-		// Produce() should never block for us in practice.
-		c.Produce(context.WithoutCancel(ctx), record, onProduceDone)
+	if c.maxBufferedBytes > 0 && c.bufferedBytes.Add(totalSize) > c.maxBufferedBytes {
+		// The records exceed what is left of the limit, we must fail them.
+		for _, record := range records {
+			// onProduceDone will dec the counter.
+			onProduceDone(record, kgo.ErrMaxBuffered)
+		}
+	} else {
+		for _, record := range records {
+			// We use a new context to avoid that other Produce() may be cancelled when this call's context is
+			// canceled. It's important to note that cancelling the context passed to Produce() doesn't actually
+			// prevent the data to be sent over the wire (because it's never removed from the buffer) but in some
+			// cases may cause all requests to fail with context cancelled.
+			//
+			// Produce() may theoretically block if the buffer is full, but we configure the Kafka client with
+			// unlimited buffer because we implement the buffer limit ourselves (see maxBufferedBytes). This means
+			// Produce() should never block for us in practice.
+			c.Produce(context.WithoutCancel(ctx), record, onProduceDone)
+		}
 	}
 
 	// Wait for a response or until the context has done.

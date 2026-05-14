@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/oklog/ulid/v2"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -19,6 +20,15 @@ var errNoReadyThreads = errors.New("no ready threads")
 type threadJob struct {
 	Context context.Context
 	Cancel  context.CancelFunc
+
+	// interrupted reports whether the scheduler has explicitly requested
+	// cancellation of this job via a TaskCancelMessage. It is used by the
+	// running thread to distinguish a scheduler-requested cancellation from
+	// an ambient context cancellation (e.g., worker shutdown).
+	//
+	// Only interrupted jobs should be reported as canceled; any other context
+	// cancellation should be treated as a failure.
+	interrupted atomic.Bool
 
 	Scheduler *wire.Peer     // Scheduler which owns the task.
 	Task      *workflow.Task // Task to execute.

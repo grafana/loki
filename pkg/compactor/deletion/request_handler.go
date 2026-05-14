@@ -302,16 +302,6 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestHandler(w http.ResponseWriter
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func filterProcessed(reqs []deleteRequest) []deleteRequest {
-	var unprocessed []deleteRequest
-	for _, r := range reqs {
-		if r.Status == deletionproto.StatusReceived {
-			unprocessed = append(unprocessed, r)
-		}
-	}
-	return unprocessed
-}
-
 // GetCacheGenerationNumberHandler handles requests for a user's cache generation number
 func (dm *DeleteRequestHandler) GetCacheGenerationNumberHandler(w http.ResponseWriter, r *http.Request) {
 	if dm == nil {

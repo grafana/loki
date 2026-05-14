@@ -25,7 +25,6 @@ import (
 
 // DataObjStore implements Store using the dataobj format
 type DataObjStore struct {
-	path             string
 	tenant           string
 	builder          *logsobj.Builder
 	buf              *bytes.Buffer

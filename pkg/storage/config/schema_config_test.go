@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
@@ -992,19 +991,6 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 		},
 	}, GetIndexStoreTableRanges(types.TSDBType, schemaConfig.Configs))
 }
-
-const (
-	fixedTimestamp = model.Time(1557654321000)
-	userID         = "userID"
-)
-
-var (
-	labelsForDummyChunks = labels.New(
-		labels.Label{Name: model.MetricNameLabel, Value: "foo"},
-		labels.Label{Name: "bar", Value: "baz"},
-		labels.Label{Name: "toms", Value: "code"},
-	)
-)
 
 func TestChunkKeys(t *testing.T) {
 	for _, tc := range []struct {

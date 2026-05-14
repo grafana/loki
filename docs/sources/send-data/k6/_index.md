@@ -54,14 +54,14 @@ Use the custom-built k6 binary in the same way as a non-custom k6 binary:
 ./k6 run test.js
 ```
 
-`test.js` is a Javascript load test.
+`test.js` is a JavaScript load test.
 Refer to the [k6 documentation](https://grafana.com/docs/k6/latest/) to get started.
 
 ### Scripting API
 
-The custom-built k6 binary provides a Javascript `loki` module.
+The custom-built k6 binary provides a JavaScript `loki` module.
 
-Your Javascript load test imports the module: 
+Your JavaScript load test imports the module: 
 
 ```js
 import loki from 'k6/x/loki';
@@ -91,7 +91,7 @@ The `Client` class exposes the following instance methods:
 | `client.labelValuesQuery(label, duration)` | execute label values query  ([GET /loki/api/v1/label/\<name\>/values](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-label-values) |
 | `client.seriesQuery(matchers, duration)` | execute series query  ([GET /loki/api/v1/series](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#query-streams) |
 
-**Javascript load test example:**
+**JavaScript load test example:**
 
 ```js
 import loki from 'k6/x/loki';

@@ -65,7 +65,7 @@ storage_config:
   bigtable: # DEPRECATED
     project: "my-project"
   cassandra: # DEPRECATED
-    addresses: 'a.b.c.d:9042'
+    addresses: "a.b.c.d:9042"
   boltdb: # DEPRECATED
     directory: /tmp/loki/boltdb
   grpc_store: # DEPRECATED
@@ -117,7 +117,7 @@ schema_config:
 
 limits_config:
   ingestion_rate_mb: 100
-  unordered_writes: true # DEPRECATED
+  unordered_writes: true # REMOVED
   enforce_metric_name: true # DELETED
   ruler_evaluation_delay_duration: 1m # DELETED
   ruler_remote_write_url: "push.123abc.net" # DEPRECATED
@@ -136,4 +136,4 @@ limits_config:
     region: "wherever"
   per_tenant_override_config: ./overrides.yaml # DEPRECATED
   per_tenant_override_period: 5s # DEPRECATED
-  allow_deletes: true # DEPRECATED
+  allow_deletes: true # DELETED
