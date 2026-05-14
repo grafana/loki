@@ -148,7 +148,7 @@ func New(config Config) (*Worker, error) {
 		wireMetrics:   wire.NewMetrics(),
 		wireCollector: wire.NewCollector(),
 		numThreads:    numThreads,
-		taskCaches:  config.TaskCaches,
+		taskCaches:    config.TaskCaches,
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
