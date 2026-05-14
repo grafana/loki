@@ -67,6 +67,14 @@ func DecodeReadRequest(r *http.Request) (*prompb.ReadRequest, error) {
 		return nil, err
 	}
 
+	decodedLen, err := snappy.DecodedLen(compressed)
+	if err != nil {
+		return nil, err
+	}
+	if decodedLen > decodeReadLimit {
+		return nil, fmt.Errorf("snappy: decoded length %d exceeds limit %d", decodedLen, decodeReadLimit)
+	}
+
 	reqBuf, err := snappy.Decode(nil, compressed)
 	if err != nil {
 		return nil, err
@@ -1000,7 +1008,7 @@ func DecodeOTLPWriteRequest(r *http.Request) (pmetricotlp.ExportRequest, error) 
 		return pmetricotlp.NewExportRequest(), fmt.Errorf("unsupported compression: %s. Only \"gzip\" or no compression supported", r.Header.Get("Content-Encoding"))
 	}
 
-	body, err := io.ReadAll(io.LimitReader(reader, decodeReadLimit))
+	body, err := io.ReadAll(reader)
 	if err != nil {
 		r.Body.Close()
 		return pmetricotlp.NewExportRequest(), err

@@ -19,9 +19,7 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/moby/moby/api/types/network"
-	"github.com/moby/moby/api/types/swarm"
-	"github.com/moby/moby/client"
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -47,7 +45,7 @@ func (d *Discovery) refreshServices(ctx context.Context) ([]*targetgroup.Group, 
 		Source: "DockerSwarm",
 	}
 
-	services, err := d.client.ServiceList(ctx, client.ServiceListOptions{Filters: d.filters})
+	services, err := d.client.ServiceList(ctx, swarm.ServiceListOptions{Filters: d.filters})
 	if err != nil {
 		return nil, fmt.Errorf("error while listing swarm services: %w", err)
 	}
@@ -57,7 +55,7 @@ func (d *Discovery) refreshServices(ctx context.Context) ([]*targetgroup.Group, 
 		return nil, fmt.Errorf("error while computing swarm network labels: %w", err)
 	}
 
-	for _, s := range services.Items {
+	for _, s := range services {
 		commonLabels := map[string]string{
 			swarmLabelServiceID:                    s.ID,
 			swarmLabelServiceName:                  s.Spec.Name,
@@ -77,13 +75,13 @@ func (d *Discovery) refreshServices(ctx context.Context) ([]*targetgroup.Group, 
 
 		for _, p := range s.Endpoint.VirtualIPs {
 			var added bool
-			ip, _, err := net.ParseCIDR(p.Addr.String())
+			ip, _, err := net.ParseCIDR(p.Addr)
 			if err != nil {
 				return nil, fmt.Errorf("error while parsing address %s: %w", p.Addr, err)
 			}
 
 			for _, e := range s.Endpoint.Ports {
-				if e.Protocol != network.TCP {
+				if e.Protocol != swarm.PortConfigProtocolTCP {
 					continue
 				}
 				labels := model.LabelSet{
@@ -128,13 +126,13 @@ func (d *Discovery) refreshServices(ctx context.Context) ([]*targetgroup.Group, 
 }
 
 func (d *Discovery) getServicesLabelsAndPorts(ctx context.Context) (map[string]map[string]string, map[string][]swarm.PortConfig, error) {
-	services, err := d.client.ServiceList(ctx, client.ServiceListOptions{})
+	services, err := d.client.ServiceList(ctx, swarm.ServiceListOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
-	servicesLabels := make(map[string]map[string]string, len(services.Items))
-	servicesPorts := make(map[string][]swarm.PortConfig, len(services.Items))
-	for _, s := range services.Items {
+	servicesLabels := make(map[string]map[string]string, len(services))
+	servicesPorts := make(map[string][]swarm.PortConfig, len(services))
+	for _, s := range services {
 		servicesLabels[s.ID] = map[string]string{
 			swarmLabelServiceID:   s.ID,
 			swarmLabelServiceName: s.Spec.Name,

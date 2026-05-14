@@ -166,7 +166,7 @@ func NewManager(o *ManagerOptions) *Manager {
 	}
 
 	if o.GroupLoader == nil {
-		o.GroupLoader = FileLoader{parser: o.Parser, logger: o.Logger}
+		o.GroupLoader = FileLoader{parser: o.Parser}
 	}
 
 	if o.RuleConcurrencyController == nil {
@@ -330,11 +330,10 @@ type GroupLoader interface {
 // for loading and uses the configured Parser for expression parsing.
 type FileLoader struct {
 	parser parser.Parser
-	logger *slog.Logger
 }
 
 func (fl FileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
-	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, fl.parser, fl.logger)
+	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, fl.parser)
 }
 
 func (fl FileLoader) Parse(query string) (parser.Expr, error) {
@@ -618,12 +617,7 @@ func FromMaps(maps ...map[string]string) labels.Labels {
 }
 
 // ParseFiles parses the rule files corresponding to glob patterns.
-func ParseFiles(
-	patterns []string,
-	nameValidationScheme model.ValidationScheme,
-	p parser.Parser,
-	logger *slog.Logger,
-) error {
+func ParseFiles(patterns []string, nameValidationScheme model.ValidationScheme, p parser.Parser) error {
 	files := map[string]string{}
 	for _, pat := range patterns {
 		fns, err := filepath.Glob(pat)
@@ -643,7 +637,7 @@ func ParseFiles(
 		}
 	}
 	for fn, pat := range files {
-		_, errs := rulefmt.ParseFile(fn, false, nameValidationScheme, p, logger)
+		_, errs := rulefmt.ParseFile(fn, false, nameValidationScheme, p)
 		if len(errs) > 0 {
 			return fmt.Errorf("parse rules from file %q (pattern: %q): %w", fn, pat, errors.Join(errs...))
 		}

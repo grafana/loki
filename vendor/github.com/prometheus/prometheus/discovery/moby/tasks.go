@@ -20,8 +20,7 @@ import (
 	"net"
 	"strconv"
 
-	mobynetwork "github.com/moby/moby/api/types/network"
-	"github.com/moby/moby/client"
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -44,7 +43,7 @@ func (d *Discovery) refreshTasks(ctx context.Context) ([]*targetgroup.Group, err
 		Source: "DockerSwarm",
 	}
 
-	tasks, err := d.client.TaskList(ctx, client.TaskListOptions{Filters: d.filters})
+	tasks, err := d.client.TaskList(ctx, swarm.TaskListOptions{Filters: d.filters})
 	if err != nil {
 		return nil, fmt.Errorf("error while listing swarm services: %w", err)
 	}
@@ -64,7 +63,7 @@ func (d *Discovery) refreshTasks(ctx context.Context) ([]*targetgroup.Group, err
 		return nil, fmt.Errorf("error while computing swarm network labels: %w", err)
 	}
 
-	for _, s := range tasks.Items {
+	for _, s := range tasks {
 		commonLabels := map[string]string{
 			swarmLabelTaskID:           s.ID,
 			swarmLabelTaskDesiredState: string(s.DesiredState),
@@ -88,7 +87,7 @@ func (d *Discovery) refreshTasks(ctx context.Context) ([]*targetgroup.Group, err
 		maps.Copy(commonLabels, nodeLabels[s.NodeID])
 
 		for _, p := range s.Status.PortStatus.Ports {
-			if p.Protocol != mobynetwork.TCP {
+			if p.Protocol != swarm.PortConfigProtocolTCP {
 				continue
 			}
 
@@ -109,13 +108,13 @@ func (d *Discovery) refreshTasks(ctx context.Context) ([]*targetgroup.Group, err
 			for _, address := range network.Addresses {
 				var added bool
 
-				ip, _, err := net.ParseCIDR(address.String())
+				ip, _, err := net.ParseCIDR(address)
 				if err != nil {
 					return nil, fmt.Errorf("error while parsing address %s: %w", address, err)
 				}
 
 				for _, p := range servicePorts[s.ServiceID] {
-					if p.Protocol != mobynetwork.TCP {
+					if p.Protocol != swarm.PortConfigProtocolTCP {
 						continue
 					}
 					labels := model.LabelSet{
