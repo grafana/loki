@@ -139,6 +139,42 @@ func Test_mergeTables(t *testing.T) {
 	}
 }
 
+func TestSortRecords_SortSchemaASC(t *testing.T) {
+	t1 := time.Unix(1, 0)
+	t2 := time.Unix(2, 0)
+	t3 := time.Unix(3, 0)
+
+	records := []Record{
+		{StreamID: 10, Timestamp: t1, SortKey: "app-b", Line: []byte("b-old")},
+		{StreamID: 20, Timestamp: t3, SortKey: "app-a", Line: []byte("a-new")},
+		{StreamID: 21, Timestamp: t1, SortKey: "app-a", Line: []byte("a-old")},
+		{StreamID: 11, Timestamp: t2, SortKey: "app-b", Line: []byte("b-mid")},
+		{StreamID: 22, Timestamp: t2, SortKey: "app-a", Line: []byte("a-mid")},
+		{StreamID: 12, Timestamp: t3, SortKey: "app-b", Line: []byte("b-new")},
+	}
+
+	sortRecords(records, SortSchemaASC)
+
+	var lines []string
+	for _, r := range records {
+		lines = append(lines, string(r.Line))
+	}
+
+	// app-a records first (sort key ASC), timestamp DESC within group
+	require.Equal(t, []string{"a-new", "a-mid", "a-old", "b-new", "b-mid", "b-old"}, lines)
+
+	for i := 0; i < len(records)-1; i++ {
+		a, b := records[i], records[i+1]
+		if a.SortKey == b.SortKey {
+			require.True(t, a.Timestamp.After(b.Timestamp) || a.Timestamp.Equal(b.Timestamp),
+				"within same sort key, timestamps must be DESC: got %v then %v", a.Timestamp, b.Timestamp)
+		} else {
+			require.LessOrEqual(t, a.SortKey, b.SortKey,
+				"sort keys must be ASC across groups: got %q then %q", a.SortKey, b.SortKey)
+		}
+	}
+}
+
 func Test_table_backfillMetadata(t *testing.T) {
 	records := []Record{
 		{StreamID: 1, Timestamp: time.Unix(1, 0), Line: []byte("msg1"), Metadata: labels.FromStrings("env", "prod", "service", "api")},
