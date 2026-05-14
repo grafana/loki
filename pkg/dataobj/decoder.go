@@ -6,9 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
@@ -35,42 +32,16 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	// is closed.
 	buf := make([]byte, prefetchBytes)
 
-	g, gctx := errgroup.WithContext(ctx)
-
-	// We launch a separate goroutine to cache the object size in the background
-	// as we read the header.
-	//
-	// This lowers the cost of the fallback case (one fewer round trip), and
-	// allows [Object.Size] to work.
-	if d.size == 0 {
-		g.Go(func() error {
-			if _, err := d.objectSize(gctx); err != nil {
-				return fmt.Errorf("fetching object size: %w", err)
-			}
-			return nil
-		})
+	n, err := d.readFirstBytes(ctx, prefetchBytes, buf)
+	if err != nil {
+		return nil, fmt.Errorf("reading first %d bytes: %w", prefetchBytes, err)
 	}
 
-	g.Go(func() error {
-		n, err := d.readFirstBytes(gctx, prefetchBytes, buf)
-		if err != nil {
-			return fmt.Errorf("reading first %d bytes: %w", prefetchBytes, err)
-		}
-
-		buf = buf[:n]
-		return nil
-	})
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
+	buf = buf[:n]
 
 	header, err := d.header(buf)
 	if err != nil && errors.Is(err, errLegacyMagic) {
-		// Fall back to legacy metadata, reusing the same prefetch buffer we
-		// allocated already.
-		buf = buf[:0]
-		return d.legacyMetadata(ctx, buf)
+		return nil, fmt.Errorf("unsupported object format: %w", err)
 	}
 
 	d.setPrefetchedBytes(0, buf)
@@ -112,66 +83,6 @@ func (d *decoder) readFirstBytes(ctx context.Context, readSize int64, buf []byte
 	return n, nil
 }
 
-func (d *decoder) legacyMetadata(ctx context.Context, buf []byte) (*filemd.Metadata, error) {
-	objectSize, err := d.objectSize(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("reading object size: %w", err)
-	}
-
-	readSize := min(objectSize, d.effectivePrefetchBytes())
-	buf = slices.Grow(buf, int(readSize))
-	buf = buf[:readSize]
-
-	n, err := d.readLastBytes(ctx, readSize, buf)
-	if err != nil {
-		return nil, fmt.Errorf("reading last %d bytes: %w", readSize, err)
-	}
-	buf = buf[:n]
-
-	d.setPrefetchedBytes(objectSize-readSize, buf)
-
-	tailer, err := d.tailer(ctx, buf)
-	if err != nil {
-		return nil, fmt.Errorf("reading tailer: %w", err)
-	}
-
-	if tailer.MetadataSize+8 <= uint64(len(buf)) {
-		// Optimistic read was successful, so we can decode the metadata from the buffer
-		rc := bytes.NewReader(buf[len(buf)-int(tailer.MetadataSize)-8 : len(buf)-8])
-		return decodeFileMetadata(rc)
-	}
-
-	// Optimistic read was too small, so we need to read the metadata fully
-	rc, err := d.rr.ReadRange(ctx, int64(tailer.FileSize-tailer.MetadataSize-8), int64(tailer.MetadataSize))
-	if err != nil {
-		return nil, fmt.Errorf("getting metadata: %w", err)
-	}
-	defer rc.Close()
-
-	br := bufpool.GetReader(rc)
-	defer bufpool.PutReader(br)
-
-	return decodeFileMetadata(br)
-}
-
-func (d *decoder) readLastBytes(ctx context.Context, readSize int64, buf []byte) (int, error) {
-	objectSize, err := d.objectSize(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("reading object size: %w", err)
-	}
-
-	// Truncate readSize to the object size so the range doesn't go negative.
-	readSize = min(readSize, objectSize)
-
-	rc, err := d.rr.ReadRange(ctx, objectSize-readSize, readSize)
-	if err != nil {
-		return 0, fmt.Errorf("reading last %d bytes: %w", readSize, err)
-	}
-	defer rc.Close()
-
-	return io.ReadAtLeast(rc, buf, int(readSize))
-}
-
 func (d *decoder) objectSize(ctx context.Context) (int64, error) {
 	if d.size == 0 {
 		size, err := d.rr.Size(ctx)
@@ -198,30 +109,6 @@ func (d *decoder) header(headData []byte) (header, error) {
 	}
 
 	return header{MetadataSize: uint64(metadataSize)}, nil
-}
-
-type tailer struct {
-	MetadataSize uint64
-	FileSize     uint64
-}
-
-func (d *decoder) tailer(ctx context.Context, tailData []byte) (tailer, error) {
-	objectSize, err := d.objectSize(ctx)
-	if err != nil {
-		return tailer{}, fmt.Errorf("reading object size: %w", err)
-	}
-
-	br := bytes.NewReader(tailData[len(tailData)-8:])
-
-	metadataSize, err := decodeTailer(br)
-	if err != nil {
-		return tailer{}, fmt.Errorf("scanning tailer: %w", err)
-	}
-
-	return tailer{
-		MetadataSize: uint64(metadataSize),
-		FileSize:     uint64(objectSize),
-	}, nil
 }
 
 func (d *decoder) SectionReader(metadata *filemd.Metadata, section *filemd.SectionInfo, extensionData []byte) SectionReader {

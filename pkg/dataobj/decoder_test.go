@@ -29,20 +29,8 @@ func Test_decoder_legacyObject(t *testing.T) {
 
 	encodedObject := buildLegacyTHORMagicObject(t, fixture)
 
-	obj, err := FromReaderAt(bytes.NewReader(encodedObject), int64(len(encodedObject)))
-	require.NoError(t, err)
-	require.Equal(t, int64(len(encodedObject)), obj.Size())
-
-	require.Len(t, obj.Sections(), 1)
-	sec := obj.Sections()[0]
-
-	dataReader, err := sec.Reader.DataRange(t.Context(), 0, sec.Reader.DataSize())
-	require.NoError(t, err)
-	require.Equal(t, fixture.sectionData, readAll(t, dataReader))
-
-	metadataReader, err := sec.Reader.MetadataRange(t.Context(), 0, sec.Reader.MetadataSize())
-	require.NoError(t, err)
-	require.Equal(t, fixture.sectionMetadata, readAll(t, metadataReader))
+	_, err := FromReaderAt(bytes.NewReader(encodedObject), int64(len(encodedObject)))
+	require.ErrorIs(t, err, errLegacyMagic)
 }
 
 type legacyTHORMagicFixture struct {
