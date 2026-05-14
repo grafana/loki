@@ -56,6 +56,8 @@ const (
 	// FormatV3 represents 3 version of index. It adds support for
 	// paging through batches of chunks within a series
 	FormatV3 = 3
+	// FormatV4 extends v3 chunk metas with an optional ingest wall time (varint millis, 0 = unset).
+	FormatV4 = 4
 
 	IndexFilename = "index"
 
@@ -568,6 +570,9 @@ func (w *Creator) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Enc
 			t0 = c.MaxTime
 
 			scratch.PutBE32(c.Checksum)
+			if w.Version >= FormatV4 {
+				scratch.PutVarint64(c.IngestWallTime)
+			}
 
 			// test if this is the last chunk in the page
 			if i%chunkPageSize == chunkPageSize-1 {
@@ -1286,7 +1291,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 	}
 	r.version = int(r.b.Range(4, 5)[0])
 
-	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 {
+	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 && r.version != FormatV4 {
 		return nil, errors.Errorf("unknown index file version %d", r.version)
 	}
 
@@ -1372,6 +1377,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 	}
 
 	r.dec = newDecoder(r.lookupSymbol, DefaultMaxChunksToBypassMarkerLookup)
+	r.dec.fileVersion = r.version
 
 	return r, nil
 }
@@ -1985,6 +1991,8 @@ type Decoder struct {
 	chunksSample                  map[storage.SeriesRef]*chunkSamples // used prior to v3
 	maxChunksToBypassMarkerLookup int
 	chunksSampleMtx               sync.RWMutex // used prior to v3
+	// fileVersion is the on-disk TSDB index format (FormatV*) used when decoding chunk metas.
+	fileVersion int
 }
 
 func newDecoder(
@@ -2079,7 +2087,7 @@ func (dec *Decoder) getOrCreateChunksSample(d encoding.Decbuf, seriesRef storage
 
 	dec.chunksSampleMtx.Unlock()
 
-	if err := buildChunkSamples(d, numChunks, sample); err != nil {
+	if err := buildChunkSamples(dec.fileVersion, d, numChunks, sample); err != nil {
 		return nil, err
 	}
 
@@ -2089,12 +2097,12 @@ func (dec *Decoder) getOrCreateChunksSample(d encoding.Decbuf, seriesRef storage
 // buildChunkSamples samples chunks considering maxt of the indexed chunks.
 // It would always sample first and last chunk for returning earlier when query falls out of range on either ends.
 // First chunk onwards it would only sample chunks that have maxt greater by at least 1h than previous sampled chunk's maxt.
-func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) error {
+func buildChunkSamples(fileVersion int, d encoding.Decbuf, numChunks int, info *chunkSamples) error {
 	bufLen := d.Len()
 
 	chunkPos := bufLen - d.Len()
 	chunkMeta := &ChunkMeta{}
-	if err := readChunkMeta(&d, 0, chunkMeta); err != nil {
+	if err := readChunkMeta(fileVersion, &d, 0, chunkMeta); err != nil {
 		return errors.Wrapf(d.Err(), "read meta for chunk %d", 0)
 	}
 
@@ -2110,7 +2118,7 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 
 	for i := 1; i < numChunks; i++ {
 		chunkPos = bufLen - d.Len()
-		if err := readChunkMeta(&d, t0, chunkMeta); err != nil {
+		if err := readChunkMeta(fileVersion, &d, t0, chunkMeta); err != nil {
 			return errors.Wrapf(d.Err(), "read meta for chunk %d", i)
 		}
 		if chunkMeta.MaxTime > largestMaxt {
@@ -2209,6 +2217,7 @@ func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRe
 }
 
 func (dec *Decoder) readChunkStats(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (ChunkStats, error) {
+	dec.fileVersion = version
 	if version > FormatV2 {
 		return dec.readChunkStatsV3(d, from, through)
 	}
@@ -2280,9 +2289,9 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 				// but this doesn't reset at page boundaries
 				// (maybe it should for more ergonomic programming).
 				// instead, we can just force the min-time to the page's min-time
-				err = readChunkMetaWithForcedMintime(d, curMarker.MinTime, chunkMeta, true)
+				err = readChunkMetaWithForcedMintime(dec.fileVersion, d, curMarker.MinTime, chunkMeta, true)
 			} else {
-				err = readChunkMeta(d, prevMaxT, chunkMeta)
+				err = readChunkMeta(dec.fileVersion, d, prevMaxT, chunkMeta)
 			}
 			if err != nil {
 				return res, errors.Wrap(d.Err(), "read meta for chunk")
@@ -2306,7 +2315,7 @@ func (dec *Decoder) accumulateChunkStats(d *encoding.Decbuf, nChunks int, from, 
 	var prevMaxT int64
 	chunkMeta := &ChunkMeta{}
 	for i := 0; i < nChunks; i++ {
-		if err := readChunkMeta(d, prevMaxT, chunkMeta); err != nil {
+		if err := readChunkMeta(dec.fileVersion, d, prevMaxT, chunkMeta); err != nil {
 			return res, errors.Wrap(d.Err(), "read meta for chunk")
 		}
 		prevMaxT = chunkMeta.MaxTime
@@ -2366,6 +2375,7 @@ func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, f
 }
 
 func (dec *Decoder) readChunks(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from int64, through int64, chks *[]ChunkMeta) error {
+	dec.fileVersion = version
 	// read chunks based on fmt
 	if version > FormatV2 {
 		return dec.readChunksV3(d, from, through, chks)
@@ -2425,9 +2435,9 @@ iterate:
 		chunkMeta := &ChunkMeta{}
 		var err error
 		if i == 0 && forceMinTime {
-			err = readChunkMetaWithForcedMintime(d, marker.MinTime, chunkMeta, true)
+			err = readChunkMetaWithForcedMintime(dec.fileVersion, d, marker.MinTime, chunkMeta, true)
 		} else {
-			err = readChunkMeta(d, prevMaxT, chunkMeta)
+			err = readChunkMeta(dec.fileVersion, d, prevMaxT, chunkMeta)
 		}
 		if err != nil {
 			return errors.Wrapf(d.Err(), "read meta for chunk %d", nChunks-chunksRemaining+i)
@@ -2464,7 +2474,7 @@ func (dec *Decoder) readChunksPriorV3(d *encoding.Decbuf, seriesRef storage.Seri
 	d.Skip(cs.offset)
 
 	chunkMeta := &ChunkMeta{}
-	if err := readChunkMeta(d, cs.prevChunkMaxt, chunkMeta); err != nil {
+	if err := readChunkMeta(dec.fileVersion, d, cs.prevChunkMaxt, chunkMeta); err != nil {
 		return errors.Wrapf(d.Err(), "read meta for chunk %d", cs.idx)
 	}
 
@@ -2474,7 +2484,7 @@ func (dec *Decoder) readChunksPriorV3(d *encoding.Decbuf, seriesRef storage.Seri
 	t0 := chunkMeta.MaxTime
 
 	for i := cs.idx + 1; i < k; i++ {
-		if err := readChunkMeta(d, t0, chunkMeta); err != nil {
+		if err := readChunkMeta(dec.fileVersion, d, t0, chunkMeta); err != nil {
 			return errors.Wrapf(d.Err(), "read meta for chunk %d", cs.idx)
 		}
 		t0 = chunkMeta.MaxTime
@@ -2488,14 +2498,14 @@ func (dec *Decoder) readChunksPriorV3(d *encoding.Decbuf, seriesRef storage.Seri
 	return d.Err()
 }
 
-func readChunkMeta(d *encoding.Decbuf, prevChunkMaxt int64, chunkMeta *ChunkMeta) error {
+func readChunkMeta(fileVersion int, d *encoding.Decbuf, prevChunkMaxt int64, chunkMeta *ChunkMeta) error {
 	// Decode the diff against previous chunk as varint
 	// instead of uvarint because chunks may overlap
 	mint := d.Varint64() + prevChunkMaxt
-	return readChunkMetaWithForcedMintime(d, mint, chunkMeta, false)
+	return readChunkMetaWithForcedMintime(fileVersion, d, mint, chunkMeta, false)
 }
 
-func readChunkMetaWithForcedMintime(d *encoding.Decbuf, mint int64, chunkMeta *ChunkMeta, decodeMinT bool) error {
+func readChunkMetaWithForcedMintime(fileVersion int, d *encoding.Decbuf, mint int64, chunkMeta *ChunkMeta, decodeMinT bool) error {
 	if decodeMinT {
 		// skip the mint delta since we're forcing, but still need to
 		// remove the bytes from our buffer
@@ -2511,7 +2521,13 @@ func readChunkMetaWithForcedMintime(d *encoding.Decbuf, mint int64, chunkMeta *C
 		return d.Err()
 	}
 
-	return nil
+	if fileVersion >= FormatV4 {
+		chunkMeta.IngestWallTime = d.Varint64()
+	} else {
+		chunkMeta.IngestWallTime = 0
+	}
+
+	return d.Err()
 }
 
 func yoloString(b []byte) string {

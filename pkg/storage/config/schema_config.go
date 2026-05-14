@@ -145,6 +145,11 @@ type PeriodConfig struct {
 	ChunkTables PeriodicTableConfig      `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
 	RowShards   uint32                   `yaml:"row_shards" doc:"default=16|description=How many shards will be created. Only used if schema is v10 or greater."`
 
+	// TSDBChunkMetasIncludeIngestWallTime, when true for a TSDB period, writes TSDB index format v4 chunk metas that include
+	// millisecond wall-clock ingest time alongside log timestamps. Use with per-tenant limits.retention_ingest_wall_time_enabled
+	// so retention can anchor on max(log timestamp, ingest wall time) for replayed historical logs.
+	TSDBChunkMetasIncludeIngestWallTime bool `yaml:"tsdb_chunk_metas_include_ingest_wall_time,omitempty" json:"tsdb_chunk_metas_include_ingest_wall_time,omitempty"`
+
 	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
 	schemaInt *int `yaml:"-"`
 }
@@ -439,6 +444,9 @@ func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 	case sver <= 12:
 		return index.FormatV2, nil
 	default: // for v13 and above
+		if cfg.IndexType == types.TSDBType && cfg.TSDBChunkMetasIncludeIngestWallTime {
+			return index.FormatV4, nil
+		}
 		return index.FormatV3, nil
 	}
 }

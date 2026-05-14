@@ -796,7 +796,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 				dw := encoding.DecWrap(tsdb_enc.Decbuf{B: d.Get()})
 				dw.Skip(cs.offset)
 				chunkMeta := ChunkMeta{}
-				require.NoError(t, readChunkMeta(&dw, cs.prevChunkMaxt, &chunkMeta))
+				require.NoError(t, readChunkMeta(FormatV3, &dw, cs.prevChunkMaxt, &chunkMeta))
 				require.Equal(t, tc.chunkMetas[tc.expectedChunkSamples[i].idx], chunkMeta)
 			}
 

@@ -16,12 +16,14 @@ type retentionLimit struct {
 	retentionPeriod     time.Duration
 	streamRetention     []validation.StreamRetention
 	policyStreamMapping validation.PolicyStreamMapping
+	retentionIngestWall bool
 }
 
 func (r retentionLimit) convertToValidationLimit() *validation.Limits {
 	return &validation.Limits{
-		RetentionPeriod: model.Duration(r.retentionPeriod),
-		StreamRetention: r.streamRetention,
+		RetentionPeriod:                model.Duration(r.retentionPeriod),
+		StreamRetention:                r.streamRetention,
+		RetentionIngestWallTimeEnabled: r.retentionIngestWall,
 	}
 }
 
@@ -52,6 +54,13 @@ func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
 		res[userID] = ret.convertToValidationLimit()
 	}
 	return res
+}
+
+func (f fakeLimits) RetentionIngestWallTimeEnabled(userID string) bool {
+	if l, ok := f.perTenant[userID]; ok {
+		return l.retentionIngestWall
+	}
+	return f.defaultLimit.retentionIngestWall
 }
 
 func defaultLimitsTestConfig() validation.Limits {
@@ -588,4 +597,34 @@ func TestExpirationChecker_IntervalMayHaveExpiredChunks(t *testing.T) {
 			require.Equal(t, tc.hasExpiredChunks, expirationChecker.IntervalMayHaveExpiredChunks(tc.interval, tc.userID))
 		})
 	}
+}
+
+func Test_expirationChecker_RetentionIngestWallTime(t *testing.T) {
+	now := model.Now()
+	e := NewExpirationChecker(fakeLimits{
+		defaultLimit: retentionLimit{retentionPeriod: time.Hour},
+		perTenant: map[string]retentionLimit{
+			"1": {
+				retentionPeriod:     time.Hour,
+				retentionIngestWall: true,
+			},
+		},
+	})
+
+	// Log lines are 3h old; without ingest wall the chunk would be expired for 1h retention.
+	oldThrough := now.Add(-3 * time.Hour)
+	recentIngest := now.Time().Add(-30 * time.Minute).UnixMilli()
+
+	expired, _ := e.Expired([]byte("1"), Chunk{
+		From:           oldThrough.Add(-time.Hour),
+		Through:        oldThrough,
+		IngestWallTime: recentIngest,
+	}, labels.FromStrings("foo", "buzz"), nil, "", now)
+	require.False(t, expired, "ingest wall time should keep data within retention window")
+
+	expiredNoIngest, _ := e.Expired([]byte("1"), Chunk{
+		From:    oldThrough.Add(-time.Hour),
+		Through: oldThrough,
+	}, labels.FromStrings("foo", "buzz"), nil, "", now)
+	require.True(t, expiredNoIngest, "without ingest wall metadata chunk should expire on log time")
 }

@@ -77,6 +77,32 @@ func Test_Encoding_Chunks(t *testing.T) {
 	require.Equal(t, record, decoded)
 }
 
+func Test_Encoding_ChunksWithIngestWallTime(t *testing.T) {
+	record := &WALRecord{
+		UserID: "foo",
+		Chks: ChunkMetasRecord{
+			Ref: 1,
+			Chks: index.ChunkMetas{
+				{
+					Checksum:       1,
+					MinTime:        1,
+					MaxTime:        4,
+					KB:             5,
+					Entries:        6,
+					IngestWallTime: 1700000000000,
+				},
+			},
+		},
+	}
+	buf := record.encodeChunks(nil)
+	require.Equal(t, byte(WalRecordChunksWithIngestWallTime), buf[0])
+
+	decoded := &WALRecord{}
+	err := decodeWALRecord(buf, decoded)
+	require.NoError(t, err)
+	require.Equal(t, record, decoded)
+}
+
 func Test_HeadWALLog(t *testing.T) {
 	dir := t.TempDir()
 	w, err := newHeadWAL(log.NewNopLogger(), dir, time.Now())

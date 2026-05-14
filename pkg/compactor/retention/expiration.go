@@ -45,12 +45,26 @@ type Limits interface {
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
 	PoliciesStreamMapping(userID string) validation.PolicyStreamMapping
+	// RetentionIngestWallTimeEnabled is true when retention expiry should use max(log timestamp, ingest wall time)
+	// for chunks that carry ingest wall time metadata.
+	RetentionIngestWallTimeEnabled(userID string) bool
 }
 
 func NewExpirationChecker(limits Limits) ExpirationChecker {
 	return &expirationChecker{
 		tenantsRetention: NewTenantsRetention(limits),
 	}
+}
+
+func retentionReferenceThrough(userID string, chk Chunk, limits Limits) model.Time {
+	if !limits.RetentionIngestWallTimeEnabled(userID) || chk.IngestWallTime <= 0 {
+		return chk.Through
+	}
+	ing := model.TimeFromUnixNano(time.UnixMilli(chk.IngestWallTime).UnixNano())
+	if ing.After(chk.Through) {
+		return ing
+	}
+	return chk.Through
 }
 
 // Expired tells if a ref chunk is expired based on retention rules.
@@ -61,7 +75,8 @@ func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels
 	if period <= 0 {
 		return false, nil
 	}
-	return now.Sub(chk.Through) > period, nil
+	refThrough := retentionReferenceThrough(userIDStr, chk, e.tenantsRetention.limits)
+	return now.Sub(refThrough) > period, nil
 }
 
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.
@@ -95,6 +110,10 @@ func (e *expirationChecker) MarkPhaseTimedOut() {}
 func (e *expirationChecker) MarkPhaseFinished() {}
 func (e *expirationChecker) CanSkipSeries(userID []byte, lbls labels.Labels, _ []byte, seriesStart model.Time, _ string, now model.Time) bool {
 	userIDStr := unsafeGetString(userID)
+	if e.tenantsRetention.limits.RetentionIngestWallTimeEnabled(userIDStr) {
+		// Series can contain chunks with different ingest wall times; skip optimization to avoid missing work.
+		return false
+	}
 	period := e.tenantsRetention.RetentionPeriodFor(userIDStr, lbls)
 	// The 0 value should disable retention
 	if period <= 0 {

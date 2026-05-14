@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 type IndexWriter interface {
@@ -33,6 +35,8 @@ type store struct {
 	indexWriter  IndexWriter
 	logger       log.Logger
 	stopOnce     sync.Once
+	schemaCfg    config.SchemaConfig
+	limits       downloads.Limits
 }
 
 // NewStore creates a new tsdb index ReaderWriter.
@@ -65,6 +69,9 @@ func NewStore(
 
 func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
+
+	s.schemaCfg = schemaCfg
+	s.limits = limits
 
 	var err error
 	s.indexShipper, err = indexshipper.NewIndexShipper(
@@ -159,15 +166,20 @@ func (s *store) Stop() {
 func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
-	metas := tsdbindex.ChunkMetas{
-		{
-			Checksum: chk.Checksum,
-			MinTime:  int64(chk.From),
-			MaxTime:  int64(chk.Through),
-			KB:       uint32(approxKB),
-			Entries:  uint32(chk.Data.Entries()),
-		},
+	meta := tsdbindex.ChunkMeta{
+		Checksum: chk.Checksum,
+		MinTime:  int64(chk.From),
+		MaxTime:  int64(chk.Through),
+		KB:       uint32(approxKB),
+		Entries:  uint32(chk.Data.Entries()),
 	}
+	if s.limits != nil {
+		pc, err := s.schemaCfg.SchemaForTime(chk.From)
+		if err == nil && pc.IndexType == types.TSDBType && pc.TSDBChunkMetasIncludeIngestWallTime && s.limits.RetentionIngestWallTimeEnabled(chk.UserID) {
+			meta.IngestWallTime = time.Now().UnixMilli()
+		}
+	}
+	metas := tsdbindex.ChunkMetas{meta}
 	if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.Fingerprint, metas); err != nil {
 		return errors.Wrap(err, "writing index entry")
 	}

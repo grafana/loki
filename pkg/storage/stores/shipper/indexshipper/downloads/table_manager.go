@@ -34,6 +34,7 @@ type Limits interface {
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
 	VolumeMaxSeries(userID string) int
+	RetentionIngestWallTimeEnabled(userID string) bool
 }
 
 // TenantFilter is invoked by an IndexGateway instance and answers which

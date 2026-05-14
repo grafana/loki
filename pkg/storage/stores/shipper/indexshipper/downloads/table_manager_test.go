@@ -433,6 +433,10 @@ func (m *mockLimits) VolumeMaxSeries(_ string) int {
 	return m.volumeMaxSeries
 }
 
+func (m *mockLimits) RetentionIngestWallTimeEnabled(_ string) bool {
+	return false
+}
+
 type mockTable struct {
 	tableExpired               bool
 	queryReadinessDoneForUsers []string

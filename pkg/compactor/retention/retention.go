@@ -32,6 +32,9 @@ type Chunk struct {
 	ChunkID string
 	From    model.Time
 	Through model.Time
+	// IngestWallTime is Unix epoch milliseconds when the chunk was written to the TSDB index.
+	// Zero means unset. Used with retention_ingest_wall_time_enabled to retain replayed data by ingest time.
+	IngestWallTime int64
 }
 
 func (c Chunk) String() string {

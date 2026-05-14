@@ -64,6 +64,10 @@ func (m *zeroValueLimits) VolumeMaxSeries(_ string) int {
 	return 0
 }
 
+func (m *zeroValueLimits) RetentionIngestWallTimeEnabled(_ string) bool {
+	return false
+}
+
 func (m *zeroValueLimits) DefaultLimits() *validation.Limits {
 	return &validation.Limits{
 		QueryReadyIndexNumDays: 0,

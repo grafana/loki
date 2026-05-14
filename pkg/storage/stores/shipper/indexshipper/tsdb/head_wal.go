@@ -41,6 +41,7 @@ const (
 	WalRecordSeries RecordType = iota
 	WalRecordChunks
 	WalRecordSeriesWithFingerprint
+	WalRecordChunksWithIngestWallTime
 )
 
 type WALRecord struct {
@@ -88,7 +89,14 @@ func (r *WALRecord) encodeSeriesWithFingerprint(b []byte) []byte {
 
 func (r *WALRecord) encodeChunks(b []byte) []byte {
 	buf := encoding.EncWith(b)
-	buf.PutByte(byte(WalRecordChunks))
+	recordType := WalRecordChunks
+	for _, chk := range r.Chks.Chks {
+		if chk.IngestWallTime != 0 {
+			recordType = WalRecordChunksWithIngestWallTime
+			break
+		}
+	}
+	buf.PutByte(byte(recordType))
 	buf.PutUvarintStr(r.UserID)
 	buf.PutBE64(r.Chks.Ref)
 	buf.PutUvarint(len(r.Chks.Chks))
@@ -99,12 +107,15 @@ func (r *WALRecord) encodeChunks(b []byte) []byte {
 		buf.PutBE32(chk.Checksum)
 		buf.PutBE32(chk.KB)
 		buf.PutBE32(chk.Entries)
+		if recordType == WalRecordChunksWithIngestWallTime {
+			buf.PutVarint64(chk.IngestWallTime)
+		}
 	}
 
 	return buf.Get()
 }
 
-func decodeChunks(b []byte, rec *WALRecord) error {
+func decodeChunks(b []byte, rec *WALRecord, withIngestWall bool) error {
 	if len(b) == 0 {
 		return nil
 	}
@@ -123,14 +134,18 @@ func decodeChunks(b []byte, rec *WALRecord) error {
 	// allocate space for the required number of chunks
 	rec.Chks.Chks = make(index.ChunkMetas, 0, ln)
 
-	for len(dec.B) > 0 && dec.Err() == nil {
-		rec.Chks.Chks = append(rec.Chks.Chks, index.ChunkMeta{
+	for len(dec.B) > 0 && dec.Err() == nil && len(rec.Chks.Chks) < ln {
+		cm := index.ChunkMeta{
 			MinTime:  dec.Be64int64(),
 			MaxTime:  dec.Be64int64(),
 			Checksum: dec.Be32(),
 			KB:       dec.Be32(),
 			Entries:  dec.Be32(),
-		})
+		}
+		if withIngestWall {
+			cm.IngestWallTime = dec.Varint64()
+		}
+		rec.Chks.Chks = append(rec.Chks.Chks, cm)
 	}
 
 	if err := dec.Err(); err != nil {
@@ -179,7 +194,12 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 		}
 	case WalRecordChunks:
 		userID = decbuf.UvarintStr()
-		if err := decodeChunks(decbuf.B, walRec); err != nil {
+		if err := decodeChunks(decbuf.B, walRec, false); err != nil {
+			return err
+		}
+	case WalRecordChunksWithIngestWallTime:
+		userID = decbuf.UvarintStr()
+		if err := decodeChunks(decbuf.B, walRec, true); err != nil {
 			return err
 		}
 	default:

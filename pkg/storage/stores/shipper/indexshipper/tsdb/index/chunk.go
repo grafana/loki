@@ -19,6 +19,11 @@ type ChunkMeta struct {
 	KB uint32
 
 	Entries uint32
+
+	// IngestWallTime is Unix epoch milliseconds when the chunk was indexed (flush time).
+	// Only populated for TSDB index format v4 and when the period enables ingest wall metas.
+	// Zero means unset (retention and readers treat the index as log-time only).
+	IngestWallTime int64 `yaml:"ingest_wall_time,omitempty" json:"ingest_wall_time,omitempty"`
 }
 
 func (c ChunkMeta) From() model.Time                 { return model.Time(c.MinTime) }
@@ -63,7 +68,11 @@ func (c ChunkMetas) Less(i, j int) bool {
 		return a.MaxTime < b.MaxTime
 	}
 
-	return a.Checksum < b.Checksum
+	if a.Checksum != b.Checksum {
+		return a.Checksum < b.Checksum
+	}
+
+	return a.IngestWallTime < b.IngestWallTime
 }
 
 // Finalize sorts and dedupes
@@ -83,7 +92,7 @@ func (c ChunkMetas) Finalize() ChunkMetas {
 	// minimize reslicing costs due to duplicates
 	for i := 1; i < len(c); i++ {
 		x := c[i]
-		if x.MinTime == prior.MinTime && x.MaxTime == prior.MaxTime && x.Checksum == prior.Checksum {
+		if x.MinTime == prior.MinTime && x.MaxTime == prior.MaxTime && x.Checksum == prior.Checksum && x.IngestWallTime == prior.IngestWallTime {
 			res = append(res, c[lastDuplicate+1:i]...)
 			lastDuplicate = i
 		}
@@ -121,7 +130,7 @@ func (c ChunkMetas) Add(chk ChunkMeta) ChunkMetas {
 		return ichk.Checksum >= chk.Checksum
 	})
 
-	if j < len(c) && c[j].MinTime == chk.MinTime && c[j].MaxTime == chk.MaxTime && c[j].Checksum == chk.Checksum {
+	if j < len(c) && c[j].MinTime == chk.MinTime && c[j].MaxTime == chk.MaxTime && c[j].Checksum == chk.Checksum && c[j].IngestWallTime == chk.IngestWallTime {
 		return c
 	}
 
@@ -159,10 +168,14 @@ func (c ChunkMetas) chunkPos(chk ChunkMeta) int {
 			return ichk.MaxTime >= chk.MaxTime
 		}
 
-		return ichk.Checksum >= chk.Checksum
+		if ichk.Checksum != chk.Checksum {
+			return ichk.Checksum >= chk.Checksum
+		}
+
+		return ichk.IngestWallTime >= chk.IngestWallTime
 	})
 
-	if j >= len(c) || c[j].Checksum != chk.Checksum || c[j].MinTime != chk.MinTime || c[j].MaxTime != chk.MaxTime {
+	if j >= len(c) || c[j].Checksum != chk.Checksum || c[j].MinTime != chk.MinTime || c[j].MaxTime != chk.MaxTime || c[j].IngestWallTime != chk.IngestWallTime {
 		return -1
 	}
 

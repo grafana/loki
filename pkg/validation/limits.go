@@ -213,6 +213,8 @@ type Limits struct {
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
 	StreamRetention []StreamRetention `yaml:"retention_stream,omitempty" json:"retention_stream,omitempty" doc:"description=Per-stream retention to apply, if the retention is enabled on the compactor side.\nExample:\n retention_stream:\n - selector: '{namespace=\"dev\"}'\n priority: 1\n period: 24h\n- selector: '{container=\"nginx\"}'\n priority: 1\n period: 744h\nSelector is a Prometheus labels matchers that will apply the 'period' retention only if the stream is matching. In case multiple streams are matching, the highest priority will be picked. If no rule is matched the 'retention_period' is used."`
+	// RetentionIngestWallTimeEnabled makes retention expiry use max(log line time, TSDB ingest wall time) when chunk metas record ingest wall time (TSDB index format v4).
+	RetentionIngestWallTimeEnabled bool `yaml:"retention_ingest_wall_time_enabled,omitempty" json:"retention_ingest_wall_time_enabled,omitempty"`
 
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
@@ -1163,6 +1165,11 @@ func (o *Overrides) RetentionPeriod(userID string) time.Duration {
 // StreamRetention returns the retention period for a given user.
 func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 	return o.getOverridesForUser(userID).StreamRetention
+}
+
+// RetentionIngestWallTimeEnabled returns whether retention should consider ingest wall time for a tenant.
+func (o *Overrides) RetentionIngestWallTimeEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).RetentionIngestWallTimeEnabled
 }
 
 func (o *Overrides) DeletionMode(userID string) string {
