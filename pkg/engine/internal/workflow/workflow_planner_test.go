@@ -1390,7 +1390,7 @@ func Test_pruneCachedTasks_cascadeProtection(t *testing.T) {
 
 	// Physical nodes that serve as map keys for Sources/Sinks/CachedSources.
 	rootNode := &physical.VectorAggregation{}
-	intermNode := &physical.Cache{CacheName: cacheName, Key: "interim-key"}
+	intermNode := &physical.Cache{CacheName: cacheName, Key: "interm-key"}
 	leafANode := &physical.Cache{CacheName: cacheName, Key: "leaf-a-key"}
 	leafBNode := &physical.Cache{CacheName: cacheName, Key: "leaf-b-key"}
 
