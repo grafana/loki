@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
@@ -304,25 +305,26 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	}
 
 	gotrace.Log(ctx, "drain_pipeline", "start")
-	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), job.Task.SinkRouting, logger)
-	if err != nil {
-		level.Warn(logger).Log("msg", "task failed", "err", err)
-		_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
-			ID: job.Task.ULID,
-			Status: workflow.TaskStatus{
-				State: workflow.TaskStateFailed,
-				Error: err,
-			},
-		})
+	_, drainErr := t.drainPipeline(ctx, pipeline, sinksForJob(job), job.Task.SinkRouting, logger)
+	gotrace.Log(ctx, "drain_pipeline", "done")
 
-		pipeline.Close()
-		return
+	var terminalStatus workflow.TaskStatus
+	switch {
+	case drainErr == nil:
+		terminalStatus = workflow.TaskStatus{State: workflow.TaskStateCompleted}
+	case errors.Is(drainErr, context.Canceled) && job.interrupted.Load():
+		// Context cancellation only counts as a task cancellation if the scheduler
+		// specifically requested it. In all other cases we treat it as a failure.
+		terminalStatus = workflow.TaskStatus{State: workflow.TaskStateCancelled}
+		level.Info(logger).Log("msg", "task cancelled", "err", drainErr)
+	default:
+		terminalStatus = workflow.TaskStatus{State: workflow.TaskStateFailed, Error: drainErr}
+		level.Warn(logger).Log("msg", "task failed", "err", drainErr)
 	}
 
-	// Finally, close all sinks.
+	// Close all sinks regardless of outcome so downstream tasks unblock.
 	for _, sink := range job.Sinks {
-		err := sink.Close(ctx)
-		if err != nil {
+		if err := sink.Close(ctx); err != nil {
 			level.Warn(logger).Log("msg", "failed to close sink", "err", err)
 		}
 	}
@@ -333,27 +335,31 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	// to finalize the capture before it's included in the TaskStatusMessage.
 	span.End()
 	capture.End()
+	terminalStatus.Capture = capture
 
-	gotrace.Log(ctx, "drain_pipeline", "done")
 	duration := time.Since(startTime)
 
 	logValues := []any{
 		"msg", "task completed",
 		"duration", duration,
+		"status", terminalStatus.State,
 	}
 	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
 
 	level.Info(logger).Log(logValues...)
 	t.Metrics.taskExecSeconds.Observe(duration.Seconds())
 
-	// Wait for the scheduler to confirm the task has completed before
-	// requesting a new one. This allows the scheduler to update its bookkeeping
-	// for how many threads have capacity for requesting tasks.
-	err = job.Scheduler.SendMessage(ctx, wire.TaskStatusMessage{
+	// Send the terminal status synchronously so the scheduler can update its
+	// thread-capacity bookkeeping and merge the Capture before the worker
+	// thread requests its next job.
+	//
+	// We use a detached context so a cancelled job context does not prevent us
+	// from delivering the final status (and in particular, the Capture).
+	sendCtx := context.WithoutCancel(ctx)
+	if err := job.Scheduler.SendMessage(sendCtx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
-		Status: workflow.TaskStatus{State: workflow.TaskStateCompleted, Capture: capture},
-	})
-	if err != nil {
+		Status: terminalStatus,
+	}); err != nil {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
 }
@@ -463,6 +469,12 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	t.Metrics.taskReadSeconds.Observe(readDuration.Seconds())
 	t.Metrics.taskComputeSeconds.Observe(totalComputeTime.Seconds())
 	t.Metrics.taskWriteSeconds.Observe(totalWriteTime.Seconds())
+
+	// Record execution sub-phase durations on the task region so the workflow
+	// can include them in the per-task summary log.
+	region.Record(workerstat.TaskExecutionOpenDuration.Observe(readDuration.Nanoseconds()))
+	region.Record(workerstat.TaskExecutionReadDuration.Observe(totalComputeTime.Nanoseconds()))
+	region.Record(workerstat.TaskExecutionSendDuration.Observe(totalWriteTime.Nanoseconds()))
 
 	return totalRows, nil
 }

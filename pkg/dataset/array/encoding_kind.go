@@ -15,6 +15,7 @@ const (
 	EncodingKindBitpacked // EncodingKindBitpacked is a bitpacked encoding for unsigned integer types.
 	EncodingKindZstd      // EncodingKindZstd encodes variable-length binary data with zstd compression.
 	EncodingKindZigZag    // EncodingKindZigZag maps signed integers to unsigned integers via zigzag encoding.
+	EncodingKindDelta     // EncodingKindDelta stores differences between consecutive integer values.
 )
 
 var kindNames = [...]string{
@@ -25,6 +26,7 @@ var kindNames = [...]string{
 	EncodingKindBitpacked: "bitpacked",
 	EncodingKindZstd:      "zstd",
 	EncodingKindZigZag:    "zigzag",
+	EncodingKindDelta:     "delta",
 }
 
 // String returns the string representation of k.

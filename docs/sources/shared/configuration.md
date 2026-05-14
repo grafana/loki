@@ -1056,10 +1056,6 @@ pattern_ingester:
 
   # Configures the pattern tee which forwards requests to the pattern ingester.
   tee_config:
-    # The size of the batch of raw logs to send for template mining
-    # CLI flag: -pattern-ingester.tee.batch-size
-    [batch_size: <int> | default = 5000]
-
     # The max time between batches of raw logs to send for template mining
     # CLI flag: -pattern-ingester.tee.batch-flush-interval
     [batch_flush_interval: <duration> | default = 1s]
@@ -1611,7 +1607,8 @@ dataobj:
     [partition_ratio: <int> | default = 10]
 
   compaction:
-    # Experimental: Enable the dataobj compaction planner target.
+    # Experimental: Enable dataobj compaction modules (planner and worker
+    # targets when selected via -target).
     # CLI flag: -dataobj.compaction.enabled
     [enabled: <boolean> | default = false]
 
@@ -1630,6 +1627,31 @@ dataobj:
       # Experimental: HTTP path the embedded compaction scheduler listens on for
       # worker frame traffic.
       # CLI flag: -dataobj.compaction.scheduler.endpoint
+      [endpoint: <string> | default = "/api/v2/compaction-frame"]
+
+    worker:
+      # Experimental: Number of task-execution threads. 0 uses GOMAXPROCS.
+      # CLI flag: -dataobj.compaction.worker.worker-threads
+      [worker_threads: <int> | default = 0]
+
+      # Experimental: DNS-SRV address used to discover compaction schedulers.
+      # Required when -target=dataobj-compaction-worker. Example:
+      # dnssrv+_compaction-frame._tcp.compactor-scheduler.svc.cluster.local
+      # CLI flag: -dataobj.compaction.worker.scheduler-lookup-address
+      [scheduler_lookup_address: <string> | default = ""]
+
+      # Experimental: Interval at which to re-run the DNS-SRV lookup.
+      # CLI flag: -dataobj.compaction.worker.scheduler-lookup-interval
+      [scheduler_lookup_interval: <duration> | default = 10s]
+
+      # Experimental: host:port the embedded compaction worker advertises to
+      # schedulers. Required when -target=dataobj-compaction-worker.
+      # CLI flag: -dataobj.compaction.worker.advertise-addr
+      [advertise_addr: <string> | default = ""]
+
+      # Experimental: HTTP path the embedded compaction worker registers its
+      # frame handler on.
+      # CLI flag: -dataobj.compaction.worker.endpoint
       [endpoint: <string> | default = "/api/v2/compaction-frame"]
 
   # The prefix to use for the storage bucket.

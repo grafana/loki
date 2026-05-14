@@ -17,7 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -47,8 +46,9 @@ var (
 
 // Options configures a [Workflow].
 type Options struct {
-	Tenant string   // Tenant ID associated with the workflow.
-	Actor  []string // Optional path to the actor that is generating the workflow.
+	ID     ulid.ULID // Optional ID for the workflow. One will be generated if not provided.
+	Tenant string    // Tenant ID associated with the workflow.
+	Actor  []string  // Optional path to the actor that is generating the workflow.
 
 	// MaxRunningScanTasks specifies the maximum number of scan tasks that may
 	// run concurrently within a single workflow. 0 means no limit.
@@ -135,7 +135,7 @@ type Workflow struct {
 	capture      *xcap.Capture
 	parentRegion *xcap.Region
 
-	span trace.Span
+	span *xcap.Span
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -151,8 +151,8 @@ type Workflow struct {
 // cannot be partitioned into a Workflow.
 //
 // The provided Runner will be used for Workflow execution.
-func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
-	graph, err := planWorkflow(opts.Tenant, plan, cacheParams{
+func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
+	graph, err := planWorkflow(ctx, opts.Tenant, plan, cacheParams{
 		enabled:                     opts.CacheEnabled,
 		taskCacheMaxSizeBytes:       opts.MaxTaskCacheSize,
 		dataObjScanMaxSizeBytes:     opts.MaxDataObjScanCacheSize,
@@ -196,7 +196,10 @@ func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*
 		taskStates:   make(map[*Task]TaskState),
 		streamStates: make(map[*Stream]StreamState),
 	}
-	if err := wf.init(context.Background()); err != nil {
+	// Detach cancellation from the caller's ctx so a cancellation of the
+	// planning context does not abort the manifest registration, but keep
+	// the xcap region attached for observation recording.
+	if err := wf.init(context.WithoutCancel(ctx)); err != nil {
 		wf.Close()
 		return nil, err
 	}
@@ -231,8 +234,13 @@ func injectResultsStream(tenantID string, graph *dag.Graph[*Task]) (*Stream, err
 
 // init initializes the workflow.
 func (wf *Workflow) init(ctx context.Context) error {
+	id := wf.opts.ID
+	if id.IsZero() {
+		id = ulid.Make()
+	}
+
 	wf.manifest = &Manifest{
-		ID:     ulid.Make(),
+		ID:     id,
 		Tenant: wf.opts.Tenant,
 		Actor:  wf.opts.Actor,
 
@@ -373,7 +381,8 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 
 			region.Record(xcap.StatTaskAdmissionWaitDuration.Observe(time.Since(start).Seconds()))
 
-			if err := wf.runner.Start(ctx, tasks[offset:offset+batchSize]...); err != nil {
+			batch := tasks[offset : offset+batchSize]
+			if err := wf.runner.Start(ctx, batch...); err != nil {
 				return fmt.Errorf("failed to start tasks: %w", err)
 			}
 		}
@@ -521,6 +530,9 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 	wf.tasksMut.RUnlock()
 
 	wf.cancelTasks(ctx, tasksToCancel)
+
+	// Print the summary at the very end to track full end-to-end task time.
+	wf.printTaskSummary(task, oldState, newStatus)
 }
 
 func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task, newStatus TaskStatus) {
@@ -573,18 +585,7 @@ func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
 	wf.captureMut.Lock()
 	defer wf.captureMut.Unlock()
 
-	if wf.capture == nil || capture == nil {
-		return
-	}
-
-	if wf.parentRegion != nil {
-		capture.LinkParent(wf.parentRegion)
-	}
-
-	// Merge all regions from the task's capture into the workflow's capture.
-	for _, region := range capture.Regions() {
-		wf.capture.AddRegion(region)
-	}
+	wf.capture.Merge(wf.parentRegion, capture)
 }
 
 func (wf *Workflow) mergeResults(results stats.Result) {

@@ -27,7 +27,7 @@ The Docker plugin must be installed on each Docker host that will be running con
 Run the following command to install the plugin, updating the release version, or changing the architecture (`arm64` and `amd64` are currently supported), if needed:
 
 ```bash
-docker plugin install grafana/loki-docker-driver:3.6.0-arm64 --alias loki --grant-all-permissions
+docker plugin install grafana/loki-docker-driver:3.6.0-amd64 --alias loki --grant-all-permissions
 ```
 
 {{< admonition type="note" >}}
@@ -52,7 +52,7 @@ Once you have successfully installed the plugin you can [configure](https://graf
 
 ## Upgrade the Docker driver client
 
-The upgrade process involves disabling the existing plugin, upgrading (chaning version and architecture as needed), then
+The upgrade process involves disabling the existing plugin, upgrading (changing version and architecture as needed), then
 re-enabling and restarting Docker:
 
 ```bash

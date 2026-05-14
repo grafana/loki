@@ -199,20 +199,20 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 				Labels: `{foo="bar"}`,
 				Entries: []push.Entry{{
 					Timestamp: time.Now(),
-					Line:      "abc",
+					Line:      strings.Repeat("abc", 2<<11), // 4KB
 				}},
 			},
 		}
 
 		tee.cfg.TeeConfig.MaxBufferedBytes = 0
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s1}, nil)
-		// The atomic counter should not be incremented when disabled.
-		require.Equal(t, int64(0), tee.bufferedBytes.Load())
+		bufferedBytes1 := tee.bufferedBytes.Load()
+		require.NotZero(t, bufferedBytes1)
 
 		tee.cfg.TeeConfig.MaxBufferedBytes = -1
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s1}, nil)
-		// The atomic counter should not be incremented when disabled.
-		require.Equal(t, int64(0), tee.bufferedBytes.Load())
+		bufferedBytes2 := tee.bufferedBytes.Load()
+		require.Greater(t, bufferedBytes2, bufferedBytes1)
 	})
 
 	t.Run("limit is enforced when positive", func(t *testing.T) {

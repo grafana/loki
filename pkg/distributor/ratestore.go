@@ -219,7 +219,7 @@ func (s *rateStore) wasUpdated(tenantID string, streamID uint64, lastUpdated map
 
 func (s *rateStore) anyShardingEnabled() bool {
 	limits := s.limits.AllByUserID()
-	if limits == nil {
+	if len(limits) == 0 {
 		// There aren't any tenant limits, check the default
 		return s.limits.ShardStreams("fake").Enabled
 	}

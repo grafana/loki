@@ -40,7 +40,7 @@ func Test_planWorkflow(t *testing.T) {
 
 		physicalPlan := physical.FromGraph(physicalGraph)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
+		graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 1, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -78,7 +78,7 @@ func Test_planWorkflow(t *testing.T) {
 
 		physicalPlan := physical.FromGraph(physicalGraph)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
+		graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 1, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -121,7 +121,7 @@ func Test_planWorkflow(t *testing.T) {
 		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
 		require.NoError(t, err)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
+		graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		//require.Equal(t, 2, graph.Len())
 		//requireUniqueStreams(t, graph)
@@ -152,7 +152,7 @@ func Test_planWorkflow(t *testing.T) {
 		t.Run("with caching", func(t *testing.T) {
 			ulidGen := ulidGenerator{}
 
-			graph, err := planWorkflow("", physicalPlan, cacheParams{
+			graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{
 				enabled:                 true,
 				taskCacheMaxSizeBytes:   1 * 1024 * 1024,
 				dataObjScanMaxSizeBytes: 0,
@@ -253,7 +253,7 @@ func Test_planWorkflow(t *testing.T) {
 		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
 		require.NoError(t, err)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
+		graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 5, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -315,7 +315,7 @@ func Test_planWorkflow(t *testing.T) {
 		t.Run("with caching", func(t *testing.T) {
 			ulidGen := ulidGenerator{}
 
-			graph, err := planWorkflow("", physicalPlan, cacheParams{
+			graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{
 				enabled:                 true,
 				taskCacheMaxSizeBytes:   1 * 1024 * 1024,
 				dataObjScanMaxSizeBytes: 0,
@@ -422,7 +422,7 @@ func Test_planWorkflow(t *testing.T) {
 		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
 		require.NoError(t, err)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
+		graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 3, graph.Len()) // 1 global + 2 local (one per scan target)
 		requireUniqueStreams(t, graph)
@@ -468,7 +468,7 @@ func Test_planWorkflow(t *testing.T) {
 		t.Run("with caching", func(t *testing.T) {
 			ulidGen := ulidGenerator{}
 
-			graph, err := planWorkflow("", physicalPlan, cacheParams{
+			graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{
 				enabled:                 true,
 				taskCacheMaxSizeBytes:   1 * 1024 * 1024,
 				dataObjScanMaxSizeBytes: 0,
@@ -556,7 +556,7 @@ func Test_planWorkflow(t *testing.T) {
 
 		physicalPlan := physical.FromGraph(physicalGraph)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
+		graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 2, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -635,7 +635,7 @@ func Test_planWorkflow(t *testing.T) {
 		physicalPlan, err := physical.WrapWithBatching(physicalPlan, 500)
 		require.NoError(t, err)
 
-		graph, err := planWorkflow("", physicalPlan, cacheParams{}, log.NewNopLogger())
+		graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{}, log.NewNopLogger())
 		require.NoError(t, err)
 		require.Equal(t, 4, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -686,7 +686,7 @@ func Test_planWorkflow(t *testing.T) {
 		t.Run("with caching", func(t *testing.T) {
 			ulidGen := ulidGenerator{}
 
-			graph, err := planWorkflow("", physicalPlan, cacheParams{enabled: true, taskCacheMaxSizeBytes: 1 * 1024 * 1024, dataObjScanMaxSizeBytes: 1 * 1024 * 1024}, log.NewNopLogger())
+			graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{enabled: true, taskCacheMaxSizeBytes: 1 * 1024 * 1024, dataObjScanMaxSizeBytes: 1 * 1024 * 1024}, log.NewNopLogger())
 			require.NoError(t, err)
 			require.Equal(t, 4, graph.Len())
 			requireUniqueStreams(t, graph)
@@ -870,7 +870,7 @@ func Test_pruneCachedTasks(t *testing.T) {
 	// Extract raw cache keys for every task in graph traversal order.
 	// tasks[0] = root (VecAgg, no graph parents), tasks[1] = leaf "a", tasks[2] = leaf "b".
 	// Each entry maps cache-type name → raw key for that task.
-	baseGraph, err := planWorkflow("", physicalPlan, cacheP, log.NewNopLogger())
+	baseGraph, err := planWorkflow(t.Context(), "", physicalPlan, cacheP, log.NewNopLogger())
 	require.NoError(t, err)
 	require.Equal(t, 3, baseGraph.Len())
 
@@ -1116,7 +1116,7 @@ func Test_pruneCachedTasks(t *testing.T) {
 				})
 			}
 
-			g, err := planWorkflow("", physicalPlan, p, log.NewNopLogger())
+			g, err := planWorkflow(t.Context(), "", physicalPlan, p, log.NewNopLogger())
 			require.NoError(t, err)
 			requireUniqueStreams(t, g)
 			generateConsistentULIDs(&ulidGen, g)
@@ -1214,7 +1214,7 @@ func Test_pruneCachedTasks_cascadeProtection(t *testing.T) {
 		}),
 	}
 
-	require.NoError(t, pruneCachedTasks(p, cacheOpts, log.NewNopLogger()))
+	require.NoError(t, pruneCachedTasks(t.Context(), p, cacheOpts, log.NewNopLogger()))
 
 	// Root and intermediate are the only tasks that should remain.
 	// leaf_a and leaf_b are eliminated (empty hits); intermediate is also
