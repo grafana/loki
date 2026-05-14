@@ -66,14 +66,14 @@ func (m *Metrics) incFrameSent(frameType string) {
 	m.framesSentTotal.WithLabelValues(frameType).Inc()
 }
 
-func (m *Metrics) newMessageRTTTimer() *prometheus.Timer {
-	return prometheus.NewTimer(m.messageRTTSeconds)
+func (m *Metrics) observeMessageRTT(duration time.Duration) {
+	m.messageRTTSeconds.Observe(duration.Seconds())
 }
 
-func (m *Metrics) newEnqueueOutgoingTimer() *prometheus.Timer {
-	return prometheus.NewTimer(m.enqueueOutgoingSeconds)
+func (m *Metrics) observeEnqueueOutgoing(duration time.Duration) {
+	m.enqueueOutgoingSeconds.Observe(duration.Seconds())
 }
 
-func (m *Metrics) newEnqueueIncomingTimer() *prometheus.Timer {
-	return prometheus.NewTimer(m.enqueueIncomingSeconds)
+func (m *Metrics) observeEnqueueIncoming(duration time.Duration) {
+	m.enqueueIncomingSeconds.Observe(duration.Seconds())
 }

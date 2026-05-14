@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -94,10 +95,10 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 		switch frame := frame.(type) {
 		case MessageFrame:
 			// Queue the message for processing.
-			timer := p.Metrics.newEnqueueIncomingTimer()
+			start := time.Now()
 			select {
 			case p.incoming <- frame:
-				timer.ObserveDuration()
+				p.Metrics.observeEnqueueIncoming(time.Since(start))
 			case <-ctx.Done():
 				return nil
 			}
@@ -243,9 +244,7 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 	p.sentRequests.Store(reqID, req)
 	defer p.sentRequests.Delete(reqID)
 
-	timer := p.Metrics.newMessageRTTTimer()
-	defer timer.ObserveDuration()
-
+	start := time.Now()
 	if err := p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message}); err != nil {
 		return err
 	}
@@ -257,6 +256,7 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 	case <-p.done:
 		return ErrConnClosed
 	case err := <-req.result:
+		p.Metrics.observeMessageRTT(time.Since(start))
 		return err
 	}
 }
@@ -276,8 +276,7 @@ func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 
 // enqueueFrame enqueues a frame to be sent to the remote peer.
 func (p *Peer) enqueueFrame(ctx context.Context, frame Frame) error {
-	timer := p.Metrics.newEnqueueOutgoingTimer()
-	defer timer.ObserveDuration()
+	start := time.Now()
 
 	select {
 	case <-ctx.Done():
@@ -285,6 +284,7 @@ func (p *Peer) enqueueFrame(ctx context.Context, frame Frame) error {
 	case <-p.done:
 		return ErrConnClosed
 	case p.outgoing <- frame:
+		p.Metrics.observeEnqueueOutgoing(time.Since(start))
 		p.Metrics.incFrameSent(frame.FrameKind().String())
 		return nil
 	}
