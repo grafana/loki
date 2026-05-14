@@ -517,14 +517,8 @@ func (ts *TeeService) reserveBufferedBytes(size int) bool {
 // It is safe for concurrent use.
 func (ts *TeeService) releaseBufferedBytes(size int) {
 	ts.bufferedBytesMtx.Lock()
-	newVal := ts.bufferedBytes - int64(size)
-	if newVal < 0 {
-		ts.bufferedBytesMtx.Unlock()
-		panic("bufferedBytes: released more than reserved")
-	}
-
-	ts.bufferedBytes = newVal
-	ts.bufferedBytesMtx.Unlock()
+	defer ts.bufferedBytesMtx.Unlock()
+	ts.bufferedBytes -= int64(size)
 }
 
 func (ts *TeeService) Register(_ context.Context, _ string, _ []distributor.KeyedStream, _ *distributor.PushTracker) {
