@@ -199,3 +199,93 @@ func filterRows(rows []tocRow, tenants ...string) []tocRow {
 	}
 	return out
 }
+
+func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	bucket := objstore.NewInMemBucket()
+
+	seedToC(t, bucket, window, []tocRow{
+		{"tenantA", "idx/a-already-rolled-up", 10, 60}, // simulates "the other coordinator's swap already landed"
+		{"tenantB", "idx/b-0", 11, 21},
+	})
+	preSwap := readToC(t, ctx, bucket, TableOfContentsPath(window))
+
+	writer := &TableOfContentsWriter{
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	// Caller still believes "idx/a-0" / "idx/a-1" are present — they're not.
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		[]string{"idx/a-0", "idx/a-1"},
+		[]TableOfContentsEntry{
+			{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(60)},
+		},
+	)
+	require.NoError(t, err)
+	require.False(t, swapped, "expected no-op when oldPaths are no longer present")
+
+	postSwap := readToC(t, ctx, bucket, TableOfContentsPath(window))
+	require.Equal(t, preSwap, postSwap, "ToC must be unchanged on race-loss")
+}
+
+func TestReplaceIndexPointers_EmptyOldPaths(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	bucket := objstore.NewInMemBucket()
+
+	seedToC(t, bucket, window, []tocRow{
+		{"tenantA", "idx/a-0", 10, 20},
+		{"tenantB", "idx/b-0", 11, 21},
+	})
+	preSwap := readToC(t, ctx, bucket, TableOfContentsPath(window))
+
+	writer := &TableOfContentsWriter{
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	// No removes, only adds — semantics: nothing matched, so no-op even though newEntries non-empty.
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		nil,
+		[]TableOfContentsEntry{
+			{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)},
+		},
+	)
+	require.NoError(t, err)
+	require.False(t, swapped, "empty oldPaths must no-op (use WriteEntry for pure appends)")
+	require.Equal(t, preSwap, readToC(t, ctx, bucket, TableOfContentsPath(window)))
+}
+
+func TestReplaceIndexPointers_MissingToC(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	bucket := objstore.NewInMemBucket()
+	tocPath := TableOfContentsPath(window)
+
+	writer := &TableOfContentsWriter{
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		[]string{"idx/a-0"},
+		[]TableOfContentsEntry{
+			{Path: "idx/a-new", StartTime: unixTime(10), EndTime: unixTime(20)},
+		},
+	)
+	require.NoError(t, err)
+	require.False(t, swapped, "missing ToC must no-op")
+
+	// Verify the no-op did NOT materialize an empty object at tocPath.
+	exists, err := bucket.Exists(ctx, tocPath)
+	require.NoError(t, err)
+	require.False(t, exists, "missing-ToC no-op must not create an empty ToC blob")
+}
