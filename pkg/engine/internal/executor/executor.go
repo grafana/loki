@@ -160,11 +160,6 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// object at OutputPath. The real K-way merge over log sections
 		// lands in v2.0.
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMergeStub(n))
-	case *physical.CompactionMerge:
-		// CompactionMerge is currently served by a stub executor that writes
-		// a zero-byte object to OutputPath. The real K-way merge will replace
-		// this dispatch.
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeCompactionMergeStub(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}

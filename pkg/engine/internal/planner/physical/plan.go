@@ -32,7 +32,6 @@ const (
 	NodeTypeCache                             // NodeTypeCache represents a [Cache] node.
 	NodeTypeIndexMerge                        // NodeTypeIndexMerge represents an [IndexMerge].
 	NodeTypeLogMerge                          // NodeTypeLogMerge represents a [LogMerge].
-	NodeTypeCompactionMerge                   // NodeTypeCompactionMerge represents a [CompactionMerge]. DEPRECATED in this PR; removed in Task 2.
 )
 
 // String returns a string representation of the NodeType.
@@ -72,8 +71,6 @@ func (t NodeType) String() string {
 		return "IndexMerge"
 	case NodeTypeLogMerge:
 		return "LogMerge"
-	case NodeTypeCompactionMerge:
-		return "CompactionMerge"
 	default:
 		return "Invalid"
 	}
@@ -131,7 +128,6 @@ var _ Node = (*Batching)(nil)
 var _ Node = (*Cache)(nil)
 var _ Node = (*IndexMerge)(nil)
 var _ Node = (*LogMerge)(nil)
-var _ Node = (*CompactionMerge)(nil)
 
 func (*DataObjScan) isNode()       {}
 func (*Projection) isNode()        {}
@@ -150,7 +146,6 @@ func (*Batching) isNode()          {}
 func (*Cache) isNode()             {}
 func (*IndexMerge) isNode()        {}
 func (*LogMerge) isNode()          {}
-func (*CompactionMerge) isNode()   {}
 
 var _ fmt.Stringer = (*Plan)(nil)
 

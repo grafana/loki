@@ -71,7 +71,7 @@ func (*IndexMerge) CacheKey(_ context.Context) string { return "" }
 
 // cloneRuns deep-copies a RunRef slice including the nested SectionRef
 // slices (whose MinKey / MaxKey are themselves slices). Used by both
-// IndexMerge.Clone, LogMerge.Clone, and CompactionMerge.Clone.
+// IndexMerge.Clone and LogMerge.Clone.
 func cloneRuns(runs []*compactionv2pb.RunRef) []*compactionv2pb.RunRef {
 	if runs == nil {
 		return nil

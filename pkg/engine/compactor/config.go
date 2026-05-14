@@ -19,13 +19,14 @@ type Config struct {
 	// even if their target is selected.
 	Enabled bool `yaml:"enabled"`
 
-	// MaxRunningCompactionTasks caps how many CompactionMerge tasks a
-	// single workflow may run concurrently within the engine scheduler's
-	// taskTypeCompaction admission lane. Currently unused; reserved for
-	// the engine scheduler's compaction admission lane added in a
-	// follow-up change. The semantic of zero (unlimited vs. blocked) is
-	// intentionally undefined at scaffold time; the follow-up change that
-	// consumes this field will define and document it.
+	// MaxRunningCompactionTasks caps how many compaction tasks (IndexMerge
+	// in v1.0; LogMerge in v2.0) a single workflow may run concurrently
+	// within the engine scheduler's taskTypeCompaction admission lane.
+	// Currently unused; reserved for the engine scheduler's compaction
+	// admission lane added in a follow-up change. The semantic of zero
+	// (unlimited vs. blocked) is intentionally undefined at scaffold
+	// time; the follow-up change that consumes this field will define
+	// and document it.
 	MaxRunningCompactionTasks int `yaml:"max_running_compaction_tasks"`
 
 	// Scheduler holds the scheduler-side knobs: advertise_addr and
@@ -115,7 +116,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Enable dataobj compaction modules (planner and worker targets when selected via -target).")
 	f.IntVar(&cfg.MaxRunningCompactionTasks, prefix+"max-running-compaction-tasks",
 		defaultMaxRunningCompactionTasks,
-		"Experimental: Per-workflow cap on concurrent CompactionMerge tasks. Currently unused; reserved for the engine scheduler's compaction admission lane added in a follow-up change.")
+		"Experimental: Per-workflow cap on concurrent compaction tasks (IndexMerge / LogMerge). Currently unused; reserved for the engine scheduler's compaction admission lane added in a follow-up change.")
 	f.StringVar(&cfg.Scheduler.AdvertiseAddr, prefix+"scheduler.advertise-addr", "",
 		"Experimental: host:port the embedded compaction scheduler advertises to compaction workers. Empty string keeps the scheduler in-process-only.")
 	f.StringVar(&cfg.Scheduler.Endpoint, prefix+"scheduler.endpoint", defaultEndpoint,
