@@ -52,7 +52,7 @@ Once you have successfully installed the plugin you can [configure](https://graf
 
 ## Upgrade the Docker driver client
 
-The upgrade process involves disabling the existing plugin, upgrading (chaning version and architecture as needed), then
+The upgrade process involves disabling the existing plugin, upgrading (changing version and architecture as needed), then
 re-enabling and restarting Docker:
 
 ```bash

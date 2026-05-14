@@ -69,7 +69,7 @@ where the `~` character is used for regular expressions.
 
 ### Log pipeline
 
-The optional log pipline may contain any combination of the following expressions:
+The optional log pipeline may contain any combination of the following expressions:
 - filters
 - parsers
 - formatters
