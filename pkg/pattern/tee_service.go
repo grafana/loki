@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"sync"
-	"sync/atomic" //lint:ignore faillint we use new atomic types from sync/atomic.
 	"time"
 
 	"github.com/go-kit/log"
@@ -90,7 +89,8 @@ type TeeService struct {
 
 	// bufferedBytes is a count of the total number of bytes in buf, and all
 	// client requests in the flushQueue.
-	bufferedBytes atomic.Int64
+	bufferedBytes    int64
+	bufferedBytesMtx sync.Mutex
 
 	metrics *teeMetrics
 }
@@ -495,19 +495,19 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 // It is safe for concurrent use.
 func (ts *TeeService) reserveBufferedBytes(size int) bool {
 	maxBufferedBytes := int64(ts.cfg.TeeConfig.MaxBufferedBytes)
-	for {
-		oldVal := ts.bufferedBytes.Load()
-		newVal := oldVal + int64(size)
-		// If the limit is non-zero, we must first check that size can be reserved.
-		if maxBufferedBytes > 0 && newVal > maxBufferedBytes {
-			return false
-		}
-		// If we won the CAS, size was reserved, and we can return true.
-		if ts.bufferedBytes.CompareAndSwap(oldVal, newVal) {
-			ts.metrics.bufferedBytes.Observe(float64(newVal))
-			return true
-		}
+
+	ts.bufferedBytesMtx.Lock()
+	newVal := ts.bufferedBytes + int64(size)
+	if maxBufferedBytes > 0 && newVal > maxBufferedBytes {
+		ts.bufferedBytesMtx.Unlock()
+		return false
 	}
+
+	ts.bufferedBytes = newVal
+	ts.bufferedBytesMtx.Unlock()
+
+	ts.metrics.bufferedBytes.Observe(float64(newVal))
+	return true
 }
 
 // releaseBufferedBytes returns size bytes of reserved capacity to the tee.
@@ -516,7 +516,15 @@ func (ts *TeeService) reserveBufferedBytes(size int) bool {
 //
 // It is safe for concurrent use.
 func (ts *TeeService) releaseBufferedBytes(size int) {
-	_ = ts.bufferedBytes.Add(-int64(size))
+	ts.bufferedBytesMtx.Lock()
+	newVal := ts.bufferedBytes - int64(size)
+	if newVal < 0 {
+		ts.bufferedBytesMtx.Unlock()
+		panic("bufferedBytes: released more than reserved")
+	}
+
+	ts.bufferedBytes = newVal
+	ts.bufferedBytesMtx.Unlock()
 }
 
 func (ts *TeeService) Register(_ context.Context, _ string, _ []distributor.KeyedStream, _ *distributor.PushTracker) {
