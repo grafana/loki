@@ -1056,10 +1056,6 @@ pattern_ingester:
 
   # Configures the pattern tee which forwards requests to the pattern ingester.
   tee_config:
-    # The size of the batch of raw logs to send for template mining
-    # CLI flag: -pattern-ingester.tee.batch-size
-    [batch_size: <int> | default = 5000]
-
     # The max time between batches of raw logs to send for template mining
     # CLI flag: -pattern-ingester.tee.batch-flush-interval
     [batch_flush_interval: <duration> | default = 1s]
