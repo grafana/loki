@@ -227,7 +227,18 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	engineLogger := logger
 	logger = q.Logger()
 
-	level.Info(logger).Log("msg", "starting query", "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","))
+	level.Info(logger).Log(
+		"msg", "logql-query-start",
+
+		"type", string(logql.GetRangeType(params)),
+		"query", params.QueryString(),
+		"start", params.Start().Format(time.RFC3339Nano),
+		"end", params.End().Format(time.RFC3339Nano),
+		"step_ms", params.Step().Milliseconds(),
+		"length_ms", params.End().Sub(params.Start()).Milliseconds(),
+		"shards", strings.Join(params.Shards(), ","),
+		"cache_enabled", cacheEnabled,
+	)
 
 	ctx, task := gotrace.NewTask(ctx, "Engine.Execute")
 	defer task.End()
@@ -454,8 +465,6 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 
 // printExecutionSummary prints a general summary of the execution, including
 // timing and cache information.
-//
-// Stats that are not reported in the capture are left empty.
 func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Duration) {
 	var (
 		indexQueryDuration, _ = q.capture.Value(statPhysicalIndexQueryDuration).Int64()
