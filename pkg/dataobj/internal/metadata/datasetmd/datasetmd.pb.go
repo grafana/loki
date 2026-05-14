@@ -744,9 +744,10 @@ type SortInfo struct {
 	// elements when compound sorting is used.
 	ColumnSorts []*SortInfo_ColumnSort `protobuf:"bytes,1,rep,name=column_sorts,json=columnSorts,proto3" json:"column_sorts,omitempty"`
 	// schema_labels, if non-empty, indicates that rows are sorted by the values
-	// of these stream label names (in order) as the primary sort keys, followed
-	// by column_sorts as tiebreakers. When set, column_sorts describes only the
-	// remaining tiebreaker columns (typically timestamp DESC).
+	// of these fully-qualified sort keys (in order) as the primary sort keys,
+	// followed by column_sorts as tiebreakers. Each entry is a FQN of the form
+	// "label:<name>" (e.g. "label:service_name"). When set, column_sorts describes
+	// only the remaining tiebreaker columns (typically timestamp DESC).
 	SchemaLabels []string `protobuf:"bytes,2,rep,name=schema_labels,json=schemaLabels,proto3" json:"schema_labels,omitempty"`
 }
 

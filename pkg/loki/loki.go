@@ -859,7 +859,7 @@ func (t *Loki) setupModuleManager() error {
 		DataObjExplorer:              {Server, UIRing},
 		DataObjConsumerRing:          {RuntimeConfig, Server, MemberlistKV},
 		DataObjConsumerPartitionRing: {MemberlistKV, Server, Ring},
-		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UI},
+		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UI, Overrides},
 		DataObjIndexBuilder:          {ScratchStore, Server, UIRing},
 		DataObjCompactionPlanner:     {Server, UIRing},
 		DataObjCompactionWorker:      {Server, UIRing},
