@@ -26,7 +26,6 @@ import (
 
 var (
 	errNegativeBucketCount = errors.New("bucket count must be non-negative")
-	errNaNBucket           = errors.New("bucket boundary must not be NaN")
 	errNegativeCount       = errors.New("count must be non-negative")
 	errCountMismatch       = errors.New("count mismatch")
 	errCountNotCumulative  = errors.New("count is not cumulative")
@@ -70,10 +69,6 @@ func (h *TempHistogram) Reset() {
 
 func (h *TempHistogram) SetBucketCount(boundary, count float64) error {
 	if h.err != nil {
-		return h.err
-	}
-	if math.IsNaN(boundary) {
-		h.err = errNaNBucket
 		return h.err
 	}
 	if count < 0 {

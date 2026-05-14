@@ -56,18 +56,10 @@ func (ev *evaluator) evalInfo(ctx context.Context, args parser.Expressions) (par
 	}
 
 	// Don't try to enrich info series.
-	effectiveNameMatchers := effectiveInfoNameMatchers(infoNameMatchers)
 	ignoreSeries := map[uint64]struct{}{}
 	for _, s := range mat {
 		name := s.Metric.Get(model.MetricNameLabel)
-		matchesAllMatchers := true
-		for _, m := range effectiveNameMatchers {
-			if !m.Matches(name) {
-				matchesAllMatchers = false
-				break
-			}
-		}
-		if matchesAllMatchers {
+		if len(infoNameMatchers) > 0 && matchersMatch(infoNameMatchers, name) {
 			ignoreSeries[s.Metric.Hash()] = struct{}{}
 		}
 	}
@@ -84,24 +76,13 @@ func (ev *evaluator) evalInfo(ctx context.Context, args parser.Expressions) (par
 	return res, annots
 }
 
-// effectiveInfoNameMatchers returns the set of __name__ matchers that will
-// actually be used to select info series.
-// When positive matchers exist, all matchers (positive + negative) are returned.
-// When only negative matchers exist, a synthetic .+_info matcher is prepended.
-// When no matchers exist, a target_info equality matcher is returned.
-func effectiveInfoNameMatchers(matchers []*labels.Matcher) []*labels.Matcher {
+func matchersMatch(matchers []*labels.Matcher, value string) bool {
 	for _, m := range matchers {
-		if m.Type == labels.MatchEqual || m.Type == labels.MatchRegexp {
-			// There's at least one positive matcher - return as-is.
-			return matchers
+		if !m.Matches(value) {
+			return false
 		}
 	}
-	if len(matchers) > 0 {
-		// Only negative matchers: prepend a synthetic .+_info matcher.
-		return append([]*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, model.MetricNameLabel, ".+_info")}, matchers...)
-	}
-
-	return []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, targetInfo)}
+	return true
 }
 
 // infoSelectHints calculates the storage.SelectHints for selecting info series, given expr (first argument to info call).
@@ -209,18 +190,20 @@ func (ev *evaluator) fetchInfoSeries(ctx context.Context, mat Matrix, ignoreSeri
 	for name, re := range idLblRegexps {
 		infoLabelMatchers = append(infoLabelMatchers, labels.MustNewMatcher(labels.MatchRegexp, name, re))
 	}
-	var nameMatchers []*labels.Matcher
+	hasNameMatcher := false
 	for _, ms := range dataLabelMatchers {
 		for _, m := range ms {
 			if m.Name == model.MetricNameLabel {
-				nameMatchers = append(nameMatchers, m)
-				continue
+				hasNameMatcher = true
 			}
 			infoLabelMatchers = append(infoLabelMatchers, m)
 		}
 	}
 	removeNameFromDataLabelMatchers()
-	infoLabelMatchers = append(infoLabelMatchers, effectiveInfoNameMatchers(nameMatchers)...)
+	if !hasNameMatcher {
+		// Default to using the target_info metric.
+		infoLabelMatchers = append([]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, targetInfo)}, infoLabelMatchers...)
+	}
 
 	infoIt := ev.querier.Select(ctx, false, &selectHints, infoLabelMatchers...)
 	infoSeries, ws, err := expandSeriesSet(ctx, infoIt)

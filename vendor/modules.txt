@@ -497,6 +497,9 @@ github.com/baidubce/bce-sdk-go/services/sts
 github.com/baidubce/bce-sdk-go/services/sts/api
 github.com/baidubce/bce-sdk-go/util
 github.com/baidubce/bce-sdk-go/util/log
+# github.com/basgys/goxml2json v1.1.1-0.20231018121955-e66ee54ceaad
+## explicit; go 1.16
+github.com/basgys/goxml2json
 # github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3
 ## explicit; go 1.20
 github.com/bboreham/go-loser
@@ -1405,18 +1408,43 @@ github.com/pb33f/jsonpath/pkg/jsonpath/config
 github.com/pb33f/jsonpath/pkg/jsonpath/token
 # github.com/pb33f/libopenapi v0.34.4
 ## explicit; go 1.25.0
+github.com/pb33f/libopenapi
 github.com/pb33f/libopenapi/datamodel
 github.com/pb33f/libopenapi/datamodel/high
+github.com/pb33f/libopenapi/datamodel/high/arazzo
 github.com/pb33f/libopenapi/datamodel/high/base
 github.com/pb33f/libopenapi/datamodel/high/nodes
+github.com/pb33f/libopenapi/datamodel/high/overlay
+github.com/pb33f/libopenapi/datamodel/high/v2
 github.com/pb33f/libopenapi/datamodel/high/v3
 github.com/pb33f/libopenapi/datamodel/low
+github.com/pb33f/libopenapi/datamodel/low/arazzo
 github.com/pb33f/libopenapi/datamodel/low/base
+github.com/pb33f/libopenapi/datamodel/low/overlay
+github.com/pb33f/libopenapi/datamodel/low/v2
 github.com/pb33f/libopenapi/datamodel/low/v3
 github.com/pb33f/libopenapi/index
 github.com/pb33f/libopenapi/json
 github.com/pb33f/libopenapi/orderedmap
+github.com/pb33f/libopenapi/overlay
 github.com/pb33f/libopenapi/utils
+github.com/pb33f/libopenapi/what-changed
+github.com/pb33f/libopenapi/what-changed/model
+# github.com/pb33f/libopenapi-validator v0.13.3
+## explicit; go 1.25.0
+github.com/pb33f/libopenapi-validator
+github.com/pb33f/libopenapi-validator/cache
+github.com/pb33f/libopenapi-validator/config
+github.com/pb33f/libopenapi-validator/errors
+github.com/pb33f/libopenapi-validator/helpers
+github.com/pb33f/libopenapi-validator/openapi_vocabulary
+github.com/pb33f/libopenapi-validator/parameters
+github.com/pb33f/libopenapi-validator/paths
+github.com/pb33f/libopenapi-validator/radix
+github.com/pb33f/libopenapi-validator/requests
+github.com/pb33f/libopenapi-validator/responses
+github.com/pb33f/libopenapi-validator/schema_validation
+github.com/pb33f/libopenapi-validator/strict
 # github.com/pb33f/ordered-map/v2 v2.3.1
 ## explicit; go 1.24
 github.com/pb33f/ordered-map/v2
@@ -1514,7 +1542,7 @@ github.com/prometheus/otlptranslator
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.311.3-0.20260415124738-34cebfe9536c
+# github.com/prometheus/prometheus v0.311.3
 ## explicit; go 1.25.0
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -1537,6 +1565,7 @@ github.com/prometheus/prometheus/prompb/io/prometheus/write/v2
 github.com/prometheus/prometheus/promql
 github.com/prometheus/prometheus/promql/parser
 github.com/prometheus/prometheus/promql/parser/posrange
+github.com/prometheus/prometheus/promql/promqltest
 github.com/prometheus/prometheus/rules
 github.com/prometheus/prometheus/schema
 github.com/prometheus/prometheus/scrape
@@ -1574,8 +1603,10 @@ github.com/prometheus/prometheus/util/pool
 github.com/prometheus/prometheus/util/runtime
 github.com/prometheus/prometheus/util/stats
 github.com/prometheus/prometheus/util/strutil
+github.com/prometheus/prometheus/util/teststorage
 github.com/prometheus/prometheus/util/testutil
 github.com/prometheus/prometheus/util/zeropool
+github.com/prometheus/prometheus/web/api/testhelpers
 github.com/prometheus/prometheus/web/api/v1
 # github.com/prometheus/sigv4 v0.4.1
 ## explicit; go 1.24.0
@@ -1618,6 +1649,10 @@ github.com/rs/xid
 # github.com/sahilm/fuzzy v0.1.1
 ## explicit
 github.com/sahilm/fuzzy
+# github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
+## explicit; go 1.21
+github.com/santhosh-tekuri/jsonschema/v6
+github.com/santhosh-tekuri/jsonschema/v6/kind
 # github.com/schollz/progressbar/v3 v3.19.0
 ## explicit; go 1.22
 github.com/schollz/progressbar/v3
@@ -2114,6 +2149,9 @@ golang.org/x/mod/semver
 ## explicit; go 1.25.0
 golang.org/x/net/bpf
 golang.org/x/net/context/ctxhttp
+golang.org/x/net/html
+golang.org/x/net/html/atom
+golang.org/x/net/html/charset
 golang.org/x/net/http/httpguts
 golang.org/x/net/http/httpproxy
 golang.org/x/net/http2
@@ -2163,11 +2201,29 @@ golang.org/x/term
 # golang.org/x/text v0.36.0
 ## explicit; go 1.25.0
 golang.org/x/text/cases
+golang.org/x/text/encoding
+golang.org/x/text/encoding/charmap
+golang.org/x/text/encoding/htmlindex
+golang.org/x/text/encoding/internal
+golang.org/x/text/encoding/internal/identifier
+golang.org/x/text/encoding/japanese
+golang.org/x/text/encoding/korean
+golang.org/x/text/encoding/simplifiedchinese
+golang.org/x/text/encoding/traditionalchinese
+golang.org/x/text/encoding/unicode
+golang.org/x/text/feature/plural
 golang.org/x/text/internal
+golang.org/x/text/internal/catmsg
+golang.org/x/text/internal/format
 golang.org/x/text/internal/language
 golang.org/x/text/internal/language/compact
+golang.org/x/text/internal/number
+golang.org/x/text/internal/stringset
 golang.org/x/text/internal/tag
+golang.org/x/text/internal/utf8internal
 golang.org/x/text/language
+golang.org/x/text/message
+golang.org/x/text/message/catalog
 golang.org/x/text/runes
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
