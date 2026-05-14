@@ -9,6 +9,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -45,7 +46,9 @@ func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	region := xcap.RegionFromContext(ctx)
 	startRecv := time.Now()
 	defer func() {
-		region.Record(xcap.TaskRecvDuration.Observe(time.Since(startRecv).Seconds()))
+		recvDuration := time.Since(startRecv)
+		region.Record(xcap.TaskRecvDuration.Observe(recvDuration.Seconds()))
+		region.Record(workerstat.TaskExecutionReadRecvDuration.Observe(recvDuration.Nanoseconds()))
 	}()
 
 	src.lazyInit()

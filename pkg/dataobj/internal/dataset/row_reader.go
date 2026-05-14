@@ -7,6 +7,7 @@ import (
 	"io"
 	"iter"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
@@ -576,13 +577,16 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		primary := mask.Test(i)
 		r.dl.AddColumn(column, primary)
 
+		pageCount := int64(column.ColumnDesc().PagesCount)
+		region.Record(dataobj.StatDatasetPagesTotal.Observe(pageCount))
+
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
 			region.Record(xcap.StatDatasetPrimaryColumns.Observe(1))
-			region.Record(xcap.StatDatasetPrimaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
+			region.Record(xcap.StatDatasetPrimaryColumnPages.Observe(pageCount))
 		} else {
 			region.Record(xcap.StatDatasetSecondaryColumns.Observe(1))
-			region.Record(xcap.StatDatasetSecondaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
+			region.Record(xcap.StatDatasetSecondaryColumnPages.Observe(pageCount))
 		}
 	}
 
@@ -819,6 +823,8 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 		return rangeset.Set{}, fmt.Errorf("column %v not found in RowReader columns", c)
 	}
 
+	region := xcap.RegionFromContext(ctx)
+
 	var ranges rangeset.Set
 
 	var (
@@ -874,6 +880,12 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 		if include {
 			ranges.Add(pageRange)
+		} else {
+			// Page-level stats were present and the predicate ruled out the page,
+			// so the page will not be downloaded for this predicate. Pages without
+			// stats short-circuit above (they are always included) and are not
+			// counted here.
+			region.Record(dataobj.StatDatasetPagesPruned.Observe(1))
 		}
 	}
 

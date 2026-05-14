@@ -45,7 +45,7 @@ func Test(t *testing.T) {
 
 		fr := newFakeRunner()
 
-		wf, err := New(Options{}, log.NewNopLogger(), fr, physicalPlan)
+		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -111,7 +111,7 @@ func TestCancellation(t *testing.T) {
 		t.Run(state.String(), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				fr := newFakeRunner()
-				wf, err := New(Options{}, log.NewNopLogger(), fr, physicalPlan)
+				wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
 				require.NoError(t, err, "workflow should construct properly")
 				require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -211,7 +211,7 @@ func TestShortCircuiting(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		fr := newFakeRunner()
-		wf, err := New(Options{}, log.NewNopLogger(), fr, physicalPlan)
+		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -303,7 +303,7 @@ func TestAdmissionControl(t *testing.T) {
 			MaxRunningOtherTasks:      0,  // unlimited
 			MaxRunningCompactionTasks: 0,  // unlimited; lane is dormant
 		}
-		wf, err := New(opts, log.NewNopLogger(), fr, physicalPlan)
+		wf, err := New(t.Context(), opts, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
