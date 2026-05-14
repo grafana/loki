@@ -158,14 +158,12 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("hashed_key", false, cache.HashKey(node.Key)),
 			tree.NewProperty("key", false, node.Key),
 		}
-	case *IndexConsolidate:
+	case *TableOfContentsConsolidate:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("tenant", false, node.Tenant),
 			tree.NewProperty("toc_window_start", false, node.ToCWindowStart),
-			tree.NewProperty("output_index_path", false, node.OutputIndexPath),
-			tree.NewProperty("marker_path", false, node.MarkerPath),
-			tree.NewProperty("num_log_objects", false, len(node.CompactedLogObjectPaths)),
-			tree.NewProperty("num_source_indexes", false, len(node.SourceIndexPaths)),
+			tree.NewProperty("num_remove", false, len(node.RemoveIndexPaths)),
+			tree.NewProperty("num_add", false, len(node.AddIndexPaths)),
 			tree.NewProperty("task_ttl", false, node.TaskTTL),
 		}
 	}

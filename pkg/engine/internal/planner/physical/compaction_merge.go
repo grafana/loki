@@ -39,7 +39,7 @@ type CompactionMerge struct {
 	// configured target object size the executor may write additional log
 	// objects with keys derived from OutputPath; the derivation scheme is
 	// owned by the executor. CompactionMerge writes log objects only; index
-	// rebuild is handled separately by IndexConsolidate.
+	// rebuild is handled separately by TableOfContentsConsolidate.
 	OutputPath string
 
 	// TaskTTL is the per-task execution deadline enforced by the executor

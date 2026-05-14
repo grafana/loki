@@ -80,14 +80,14 @@ func TestAdmissionControl_typeFor_CompactionMerge(t *testing.T) {
 	require.Equal(t, taskTypeCompaction, ac.typeFor(task))
 }
 
-// TestAdmissionControl_typeFor_IndexConsolidate verifies that any task whose
-// fragment contains an IndexConsolidate node is classified into the compaction
-// lane.
-func TestAdmissionControl_typeFor_IndexConsolidate(t *testing.T) {
+// TestAdmissionControl_typeFor_TableOfContentsConsolidate verifies that any
+// task whose fragment contains a TableOfContentsConsolidate node is classified
+// into the compaction lane.
+func TestAdmissionControl_typeFor_TableOfContentsConsolidate(t *testing.T) {
 	ac := newAdmissionControl(math.MaxInt64, math.MaxInt64, math.MaxInt64)
 
 	fragment := dag.Graph[physical.Node]{}
-	fragment.Add(&physical.IndexConsolidate{NodeID: ulid.Make()})
+	fragment.Add(&physical.TableOfContentsConsolidate{NodeID: ulid.Make()})
 
 	task := &Task{
 		ULID:     ulid.Make(),
@@ -104,7 +104,7 @@ func TestAdmissionControl_typeFor_CompactionPrecedesScan(t *testing.T) {
 	ac := newAdmissionControl(math.MaxInt64, math.MaxInt64, math.MaxInt64)
 
 	fragment := dag.Graph[physical.Node]{}
-	fragment.Add(&physical.IndexConsolidate{NodeID: ulid.Make()})
+	fragment.Add(&physical.TableOfContentsConsolidate{NodeID: ulid.Make()})
 	fragment.Add(&physical.DataObjScan{NodeID: ulid.Make()})
 
 	task := &Task{

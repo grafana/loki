@@ -14,24 +14,24 @@ import (
 type NodeType uint32
 
 const (
-	NodeTypeInvalid           NodeType = iota // NodeTypeInvalid is an illegal NodeType.
-	NodeTypeDataObjScan                       // NodeTypeDataObjScan represents a [DataObjScan].
-	NodeTypeProjection                        // NodeTypeProjection represents a [Projection].
-	NodeTypeFilter                            // NodeTypeFilter represents a [Filter].
-	NodeTypeLimit                             // NodeTypeLimit represents a [Limit].
-	NodeTypeRangeAggregation                  // NodeTypeRangeAggregation represents a [RangeAggregation].
-	NodeTypeVectorAggregation                 // NodeTypeVectorAggregation represents a [VectorAggregation].
-	NodeTypeMerge                             // NodeTypeMerge represents a [Merge].
-	NodeTypeCompat                            // NodeTypeCompat represents a [ColumnCompat].
-	NodeTypeTopK                              // NodeTypeTopK represents a [TopK].
-	NodeTypeParallelize                       // NodeTypeParallelize represents a [Parallelize].
-	NodeTypeScanSet                           // NodeTypeScanSet represents a [ScanSet].
-	NodeTypeJoin                              // NodeTypeJoin represents a [Join].
-	NodeTypePointersScan                      // NodeTypePointersScan represents a [PointersScan].
-	NodeTypeBatching                          // NodeTypeBatching represents a [Batching] node.
-	NodeTypeCache                             // NodeTypeCache represents a [Cache] node.
-	NodeTypeCompactionMerge                   // NodeTypeCompactionMerge represents a [CompactionMerge].
-	NodeTypeIndexConsolidate                  // NodeTypeIndexConsolidate represents an [IndexConsolidate] node.
+	NodeTypeInvalid                    NodeType = iota // NodeTypeInvalid is an illegal NodeType.
+	NodeTypeDataObjScan                                // NodeTypeDataObjScan represents a [DataObjScan].
+	NodeTypeProjection                                 // NodeTypeProjection represents a [Projection].
+	NodeTypeFilter                                     // NodeTypeFilter represents a [Filter].
+	NodeTypeLimit                                      // NodeTypeLimit represents a [Limit].
+	NodeTypeRangeAggregation                           // NodeTypeRangeAggregation represents a [RangeAggregation].
+	NodeTypeVectorAggregation                          // NodeTypeVectorAggregation represents a [VectorAggregation].
+	NodeTypeMerge                                      // NodeTypeMerge represents a [Merge].
+	NodeTypeCompat                                     // NodeTypeCompat represents a [ColumnCompat].
+	NodeTypeTopK                                       // NodeTypeTopK represents a [TopK].
+	NodeTypeParallelize                                // NodeTypeParallelize represents a [Parallelize].
+	NodeTypeScanSet                                    // NodeTypeScanSet represents a [ScanSet].
+	NodeTypeJoin                                       // NodeTypeJoin represents a [Join].
+	NodeTypePointersScan                               // NodeTypePointersScan represents a [PointersScan].
+	NodeTypeBatching                                   // NodeTypeBatching represents a [Batching] node.
+	NodeTypeCache                                      // NodeTypeCache represents a [Cache] node.
+	NodeTypeCompactionMerge                            // NodeTypeCompactionMerge represents a [CompactionMerge].
+	NodeTypeTableOfContentsConsolidate                 // NodeTypeTableOfContentsConsolidate represents a [TableOfContentsConsolidate] node.
 )
 
 // String returns a string representation of the NodeType.
@@ -69,8 +69,8 @@ func (t NodeType) String() string {
 		return "Cache"
 	case NodeTypeCompactionMerge:
 		return "CompactionMerge"
-	case NodeTypeIndexConsolidate:
-		return "IndexConsolidate"
+	case NodeTypeTableOfContentsConsolidate:
+		return "TableOfContentsConsolidate"
 	default:
 		return "Invalid"
 	}
@@ -127,25 +127,25 @@ var _ Node = (*Merge)(nil)
 var _ Node = (*Batching)(nil)
 var _ Node = (*Cache)(nil)
 var _ Node = (*CompactionMerge)(nil)
-var _ Node = (*IndexConsolidate)(nil)
+var _ Node = (*TableOfContentsConsolidate)(nil)
 
-func (*DataObjScan) isNode()       {}
-func (*Projection) isNode()        {}
-func (*Limit) isNode()             {}
-func (*Filter) isNode()            {}
-func (*RangeAggregation) isNode()  {}
-func (*VectorAggregation) isNode() {}
-func (*ColumnCompat) isNode()      {}
-func (*TopK) isNode()              {}
-func (*Parallelize) isNode()       {}
-func (*ScanSet) isNode()           {}
-func (*Join) isNode()              {}
-func (*PointersScan) isNode()      {}
-func (*Merge) isNode()             {}
-func (*Batching) isNode()          {}
-func (*Cache) isNode()             {}
-func (*CompactionMerge) isNode()   {}
-func (*IndexConsolidate) isNode()  {}
+func (*DataObjScan) isNode()                {}
+func (*Projection) isNode()                 {}
+func (*Limit) isNode()                      {}
+func (*Filter) isNode()                     {}
+func (*RangeAggregation) isNode()           {}
+func (*VectorAggregation) isNode()          {}
+func (*ColumnCompat) isNode()               {}
+func (*TopK) isNode()                       {}
+func (*Parallelize) isNode()                {}
+func (*ScanSet) isNode()                    {}
+func (*Join) isNode()                       {}
+func (*PointersScan) isNode()               {}
+func (*Merge) isNode()                      {}
+func (*Batching) isNode()                   {}
+func (*Cache) isNode()                      {}
+func (*CompactionMerge) isNode()            {}
+func (*TableOfContentsConsolidate) isNode() {}
 
 var _ fmt.Stringer = (*Plan)(nil)
 

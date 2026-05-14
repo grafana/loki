@@ -16,8 +16,8 @@ const (
 
 	// taskTypeCompaction is the lane for tasks whose fragments contain a
 	// dataobj-compaction node. Active for NodeTypeCompactionMerge and
-	// NodeTypeIndexConsolidate. Query workflows never produce such tasks,
-	// so the lane remains empty in query plans regardless.
+	// NodeTypeTableOfContentsConsolidate. Query workflows never produce such
+	// tasks, so the lane remains empty in query plans regardless.
 	taskTypeCompaction taskType = "compaction"
 )
 
@@ -79,9 +79,9 @@ func (ac *admissionControl) groupByType(tasks []*Task) map[taskType][]*Task {
 
 // typeFor classifies a task by inspecting its fragment. Tasks that contain a
 // compaction-family physical-plan node (NodeTypeCompactionMerge or
-// NodeTypeIndexConsolidate) are routed into the dedicated compaction lane.
-// Compaction is checked first so hybrid plans are constrained by the
-// compaction lane rather than the scan lane.
+// NodeTypeTableOfContentsConsolidate) are routed into the dedicated
+// compaction lane. Compaction is checked first so hybrid plans are
+// constrained by the compaction lane rather than the scan lane.
 func (ac *admissionControl) typeFor(task *Task) taskType {
 	if isCompactionTask(task) {
 		return taskTypeCompaction
@@ -111,7 +111,7 @@ func isScanTask(task *Task) bool {
 
 func isCompactionTask(task *Task) bool {
 	for node := range task.Fragment.Graph().Nodes() {
-		if node.Type() == physical.NodeTypeCompactionMerge || node.Type() == physical.NodeTypeIndexConsolidate {
+		if node.Type() == physical.NodeTypeCompactionMerge || node.Type() == physical.NodeTypeTableOfContentsConsolidate {
 			return true
 		}
 	}

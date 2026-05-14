@@ -52,7 +52,7 @@ message Node {
     PointersScan pointers_scan = 14;
     Batching batching = 15;
     Cache cache = 16;
-    IndexConsolidate index_consolidate = 17;
+    TableOfContentsConsolidate table_of_contents_consolidate = 17;
   }
 }
 
@@ -306,11 +306,12 @@ message Cache {
   string compression = 4;
 }
 
-// IndexConsolidate is a workflow-final compaction task that builds one
-// covering index from N compacted log objects, performs the single primary-ToC
-// swap, and deletes the workflow marker. Emitted only by the
-// dataobj-compactor coordinator (future PR A11).
-message IndexConsolidate {
+// TableOfContentsConsolidate is the dataobj-compactor v1.0 Phase-2 task.
+// Sole responsibility: a single primary-ToC ReplaceIndexPointers swap that
+// removes the indexes being consolidated and adds the merged indexes produced
+// by Phase-1 IndexMerge tasks. No index build, no object uploads, no marker
+// handling. Emitted only by the dataobj-compactor coordinator.
+message TableOfContentsConsolidate {
   // Tenant scope. All paths below belong to this tenant.
   string tenant = 1;
 
@@ -318,20 +319,16 @@ message IndexConsolidate {
   // the Unix epoch.
   int64 toc_window_start = 2;
 
-  // Deterministic output paths of all Phase-1 CompactionMerge tasks.
-  repeated string compacted_log_object_paths = 3;
+  // Existing ToC entries to remove (the indexes being consolidated).
+  repeated string remove_index_paths = 3;
 
-  // Source index paths to be removed from the primary ToC during the swap.
-  repeated string source_index_paths = 4;
+  // New ToC entries to add (the merged indexes produced by Phase-1
+  // IndexMerge tasks).
+  repeated string add_index_paths = 4;
 
-  // Deterministic destination for the consolidated covering index.
-  string output_index_path = 5;
-
-  // Workflow marker to delete on success.
-  string marker_path = 6;
-
-  // Per-task execution deadline.
-  google.protobuf.Duration task_ttl = 7 [
+  // Per-task execution deadline. Sourced from
+  // table_of_contents_consolidate_task_ttl.
+  google.protobuf.Duration task_ttl = 5 [
     (gogoproto.stdduration) = true,
     (gogoproto.nullable) = false
   ];

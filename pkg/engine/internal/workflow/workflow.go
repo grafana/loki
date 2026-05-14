@@ -65,7 +65,7 @@ type Options struct {
 	// Query workflows never produce compaction tasks (typeFor never
 	// classifies a query task as compaction), so this knob is a no-op in
 	// query plans. Compactor workflows populate it to cap parallelism of
-	// Phase 1 CompactionMerge tasks and Phase 2 IndexConsolidate.
+	// Phase 1 IndexMerge/CompactionMerge tasks and Phase 2 TableOfContentsConsolidate.
 	MaxRunningCompactionTasks int
 
 	// DebugTasks toggles debug messages for a task. This is very verbose and

@@ -116,8 +116,8 @@ func (n *Node_Cache) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 
 // MarshalPhysical converts a protobuf node into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
-func (n *Node_IndexConsolidate) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
-	return n.IndexConsolidate.MarshalPhysical(nodeID)
+func (n *Node_TableOfContentsConsolidate) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return n.TableOfContentsConsolidate.MarshalPhysical(nodeID)
 }
 
 // MarshalPhysical converts a protobuf AggregateRange into a physical plan node. Returns
@@ -439,17 +439,16 @@ func (n *Cache) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	}, nil
 }
 
-// MarshalPhysical converts a protobuf IndexConsolidate into a physical plan
-// node. Returns an error if the conversion fails or is unsupported.
-func (n *IndexConsolidate) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
-	return &physical.IndexConsolidate{
-		NodeID:                  nodeID,
-		Tenant:                  n.Tenant,
-		ToCWindowStart:          n.TocWindowStart,
-		CompactedLogObjectPaths: append([]string(nil), n.CompactedLogObjectPaths...),
-		SourceIndexPaths:        append([]string(nil), n.SourceIndexPaths...),
-		OutputIndexPath:         n.OutputIndexPath,
-		MarkerPath:              n.MarkerPath,
-		TaskTTL:                 n.TaskTtl,
+// MarshalPhysical converts a protobuf TableOfContentsConsolidate into a
+// physical plan node. Returns an error if the conversion fails or is
+// unsupported.
+func (n *TableOfContentsConsolidate) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return &physical.TableOfContentsConsolidate{
+		NodeID:           nodeID,
+		Tenant:           n.Tenant,
+		ToCWindowStart:   n.TocWindowStart,
+		RemoveIndexPaths: append([]string(nil), n.RemoveIndexPaths...),
+		AddIndexPaths:    append([]string(nil), n.AddIndexPaths...),
+		TaskTTL:          n.TaskTtl,
 	}, nil
 }

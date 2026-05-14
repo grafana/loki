@@ -46,8 +46,8 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_Batching{}
 	case *physical.Cache:
 		n.Kind = &Node_Cache{}
-	case *physical.IndexConsolidate:
-		n.Kind = &Node_IndexConsolidate{}
+	case *physical.TableOfContentsConsolidate:
+		n.Kind = &Node_TableOfContentsConsolidate{}
 	default:
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
@@ -169,9 +169,9 @@ func (n *Node_Cache) UnmarshalPhysical(from physical.Node) error {
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
-func (n *Node_IndexConsolidate) UnmarshalPhysical(from physical.Node) error {
-	n.IndexConsolidate = new(IndexConsolidate)
-	return n.IndexConsolidate.UnmarshalPhysical(from)
+func (n *Node_TableOfContentsConsolidate) UnmarshalPhysical(from physical.Node) error {
+	n.TableOfContentsConsolidate = new(TableOfContentsConsolidate)
+	return n.TableOfContentsConsolidate.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
@@ -585,20 +585,18 @@ func (n *Cache) UnmarshalPhysical(from physical.Node) error {
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
-func (n *IndexConsolidate) UnmarshalPhysical(from physical.Node) error {
-	ic, ok := from.(*physical.IndexConsolidate)
+func (n *TableOfContentsConsolidate) UnmarshalPhysical(from physical.Node) error {
+	tc, ok := from.(*physical.TableOfContentsConsolidate)
 	if !ok {
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
 
-	*n = IndexConsolidate{
-		Tenant:                  ic.Tenant,
-		TocWindowStart:          ic.ToCWindowStart,
-		CompactedLogObjectPaths: append([]string(nil), ic.CompactedLogObjectPaths...),
-		SourceIndexPaths:        append([]string(nil), ic.SourceIndexPaths...),
-		OutputIndexPath:         ic.OutputIndexPath,
-		MarkerPath:              ic.MarkerPath,
-		TaskTtl:                 ic.TaskTTL,
+	*n = TableOfContentsConsolidate{
+		Tenant:           tc.Tenant,
+		TocWindowStart:   tc.ToCWindowStart,
+		RemoveIndexPaths: append([]string(nil), tc.RemoveIndexPaths...),
+		AddIndexPaths:    append([]string(nil), tc.AddIndexPaths...),
+		TaskTtl:          tc.TaskTTL,
 	}
 	return nil
 }

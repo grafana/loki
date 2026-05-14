@@ -198,8 +198,8 @@ func (*ScanSet) CacheKey(_ context.Context) string { return "" }
 
 func (*Join) CacheKey(_ context.Context) string { return "" }
 
-// IndexConsolidate is never part of a cacheable query fragment.
-func (*IndexConsolidate) CacheKey(_ context.Context) string { return "" }
+// TableOfContentsConsolidate is never part of a cacheable query fragment.
+func (*TableOfContentsConsolidate) CacheKey(_ context.Context) string { return "" }
 
 func (l *Limit) CacheKey(_ context.Context) string {
 	return fmt.Sprintf("Limit{skip=%d,fetch=%d}", l.Skip, l.Fetch)

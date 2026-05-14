@@ -230,16 +230,14 @@ func Test_Node(t *testing.T) {
 			},
 		},
 		{
-			name: "IndexConsolidate",
-			node: &physical.IndexConsolidate{
-				NodeID:                  ulid.Make(),
-				Tenant:                  "29",
-				ToCWindowStart:          1_715_000_000_000_000_000,
-				CompactedLogObjectPaths: []string{"tenants/29/objects/a.dataobj", "tenants/29/objects/b.dataobj", "tenants/29/objects/c.dataobj"},
-				SourceIndexPaths:        []string{"tenants/29/indexes/x.dataobj"},
-				OutputIndexPath:         "tenants/29/indexes/out.dataobj",
-				MarkerPath:              "dataobj/compaction/in-flight/abc.json",
-				TaskTTL:                 30 * time.Minute,
+			name: "TableOfContentsConsolidate",
+			node: &physical.TableOfContentsConsolidate{
+				NodeID:           ulid.Make(),
+				Tenant:           "29",
+				ToCWindowStart:   1_715_000_000_000_000_000,
+				RemoveIndexPaths: []string{"tenants/29/indexes/old-a.dataobj", "tenants/29/indexes/old-b.dataobj", "tenants/29/indexes/old-c.dataobj"},
+				AddIndexPaths:    []string{"tenants/29/indexes/new-a.dataobj"},
+				TaskTTL:          30 * time.Second,
 			},
 		},
 	}
@@ -266,21 +264,19 @@ func Test_Node(t *testing.T) {
 	}
 }
 
-// TestRoundTrip_IndexConsolidate_FieldLevel asserts every IndexConsolidate
-// field round-trips by value, not by tree-printed equality. This catches
-// regressions (e.g. swapping CompactedLogObjectPaths and SourceIndexPaths)
-// that the tree-equality check would miss because the printer renders both
-// slices as counts only.
-func TestRoundTrip_IndexConsolidate_FieldLevel(t *testing.T) {
-	src := &physical.IndexConsolidate{
-		NodeID:                  ulid.Make(),
-		Tenant:                  "29",
-		ToCWindowStart:          1_715_000_000_000_000_000,
-		CompactedLogObjectPaths: []string{"compacted/a", "compacted/b", "compacted/c"},
-		SourceIndexPaths:        []string{"source/x"},
-		OutputIndexPath:         "tenants/29/indexes/out.dataobj",
-		MarkerPath:              "dataobj/compaction/in-flight/abc.json",
-		TaskTTL:                 30 * time.Minute,
+// TestRoundTrip_TableOfContentsConsolidate_FieldLevel asserts every
+// TableOfContentsConsolidate field round-trips by value, not by tree-printed
+// equality. This catches regressions (e.g. swapping RemoveIndexPaths and
+// AddIndexPaths) that the tree-equality check would miss because the printer
+// renders both slices as counts only.
+func TestRoundTrip_TableOfContentsConsolidate_FieldLevel(t *testing.T) {
+	src := &physical.TableOfContentsConsolidate{
+		NodeID:           ulid.Make(),
+		Tenant:           "29",
+		ToCWindowStart:   1_715_000_000_000_000_000,
+		RemoveIndexPaths: []string{"remove/a", "remove/b", "remove/c"},
+		AddIndexPaths:    []string{"add/x"},
+		TaskTTL:          30 * time.Second,
 	}
 
 	var graph dag.Graph[physical.Node]
@@ -295,15 +291,13 @@ func TestRoundTrip_IndexConsolidate_FieldLevel(t *testing.T) {
 
 	root, err := roundTrip.Root()
 	require.NoError(t, err)
-	got, ok := root.(*physical.IndexConsolidate)
-	require.True(t, ok, "round-tripped root must be *physical.IndexConsolidate, got %T", root)
+	got, ok := root.(*physical.TableOfContentsConsolidate)
+	require.True(t, ok, "round-tripped root must be *physical.TableOfContentsConsolidate, got %T", root)
 
 	require.Equal(t, src.Tenant, got.Tenant)
 	require.Equal(t, src.ToCWindowStart, got.ToCWindowStart)
-	require.Equal(t, src.CompactedLogObjectPaths, got.CompactedLogObjectPaths)
-	require.Equal(t, src.SourceIndexPaths, got.SourceIndexPaths)
-	require.Equal(t, src.OutputIndexPath, got.OutputIndexPath)
-	require.Equal(t, src.MarkerPath, got.MarkerPath)
+	require.Equal(t, src.RemoveIndexPaths, got.RemoveIndexPaths)
+	require.Equal(t, src.AddIndexPaths, got.AddIndexPaths)
 	require.Equal(t, src.TaskTTL, got.TaskTTL)
 	// NodeID is preserved through the round-trip via the proto Node.Id
 	// envelope: unmarshal_node.go stores from.ID() into Node.Id.Value, and

@@ -148,9 +148,9 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeBatching(ctx, n, inputs))
 	case *physical.Cache:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeCache(ctx, n, inputs))
-	case *physical.IndexConsolidate:
-		// STUB — see index_consolidate_stub.go. Replaced by A12.
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexConsolidateStub(ctx, n))
+	case *physical.TableOfContentsConsolidate:
+		// STUB — see toc_consolidate_stub.go. Replaced by A12.
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeTableOfContentsConsolidateStub(ctx, n))
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
 	case *physical.CompactionMerge:
@@ -640,13 +640,12 @@ func nodeAttributes(n physical.Node) []attribute.KeyValue {
 			attribute.Int("num_projections", len(n.Projections)),
 		)
 
-	case *physical.IndexConsolidate:
+	case *physical.TableOfContentsConsolidate:
 		attrs = append(attrs,
 			attribute.String("tenant", n.Tenant),
-			attribute.String("output_index_path", n.OutputIndexPath),
-			attribute.String("marker_path", n.MarkerPath),
-			attribute.Int("num_log_objects", len(n.CompactedLogObjectPaths)),
-			attribute.Int("num_source_indexes", len(n.SourceIndexPaths)),
+			attribute.Int64("toc_window_start", n.ToCWindowStart),
+			attribute.Int("num_remove", len(n.RemoveIndexPaths)),
+			attribute.Int("num_add", len(n.AddIndexPaths)),
 		)
 	default:
 		// do nothing.
