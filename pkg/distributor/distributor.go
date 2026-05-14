@@ -55,7 +55,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	util_metric "github.com/grafana/loki/v3/pkg/util/metric"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -220,8 +219,9 @@ type Distributor struct {
 	// are consumed.
 	numMetadataPartitions int
 
-	// Track the maximum number of inflight bytes in the last 1 minute.
-	inflightBytes *util_metric.MaxSampleCollector
+	// Track the max inflight bytes in the last 1 minute.
+	inflightBytesHighWatermark prometheus.Summary
+	inflightBytes              atomic.Int64
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -411,10 +411,12 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
-		inflightBytes: util_metric.NewMaxSampleCollector(
-			"loki_distributor_max_inflight_bytes",
-			"The maximum number of inflight bytes in the last 1 minute.",
-		),
+		inflightBytesHighWatermark: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
+			Name:       "loki_distributor_inflight_bytes_high_watermark",
+			Help:       "The max inflight bytes in the last 1 minute.",
+			Objectives: map[float64]float64{1.0: 0.1},
+			MaxAge:     time.Minute,
+		}),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -455,8 +457,6 @@ func New(
 	)
 	d.rateStore = rs
 
-	_ = registerer.Register(d.inflightBytes)
-	servs = append(servs, d.inflightBytes)
 	servs = append(servs, d.ingesterClients, rs)
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
@@ -569,8 +569,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(req.Size())
-	d.inflightBytes.Add(requestSize)
-	defer d.inflightBytes.Sub(requestSize)
+	d.inflightBytesHighWatermark.Observe(float64(d.inflightBytes.Add(requestSize)))
+	defer d.inflightBytes.Add(-requestSize)
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {

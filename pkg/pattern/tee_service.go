@@ -41,8 +41,8 @@ type teeMetrics struct {
 func newTeeMetrics(reg prometheus.Registerer) *teeMetrics {
 	m := teeMetrics{
 		bufferedBytes: promauto.With(reg).NewSummary(prometheus.SummaryOpts{
-			Name:       "pattern_ingester_tee_buffered_bytes",
-			Help:       "The current number of bytes buffered in the tee.",
+			Name:       "pattern_ingester_tee_buffered_bytes_high_watermark",
+			Help:       "The max buffered bytes in the last 1 minute.",
 			Objectives: map[float64]float64{1.0: 0.1},
 			MaxAge:     time.Minute,
 		}),
@@ -516,8 +516,7 @@ func (ts *TeeService) reserveBufferedBytes(size int) bool {
 //
 // It is safe for concurrent use.
 func (ts *TeeService) releaseBufferedBytes(size int) {
-	newVal := ts.bufferedBytes.Add(-int64(size))
-	ts.metrics.bufferedBytes.Observe(float64(newVal))
+	_ = ts.bufferedBytes.Add(-int64(size))
 }
 
 func (ts *TeeService) Register(_ context.Context, _ string, _ []distributor.KeyedStream, _ *distributor.PushTracker) {
