@@ -942,6 +942,11 @@ func (p *planner) processShardedAggregation(node physical.Node) ([]*Task, *SinkR
 	// Get the children of the aggregation task (tasks that feed INTO the aggregation)
 	childTasks := p.graph.Children(baseAggTask)
 
+	// Update MaxTimeRange for the base task if sharding by time
+	if routing.Strategy == SinkRoutingStrategyTimeShard {
+		baseAggTask.MaxTimeRange = routing.TimeRanges[0]
+	}
+
 	// Create N-1 more aggregation shard tasks (we already have one from baseTasks)
 	allShardTasks := []*Task{baseAggTask}
 	for i := 1; i < numShards; i++ {
@@ -957,13 +962,21 @@ func (p *planner) processShardedAggregation(node physical.Node) ([]*Task, *SinkR
 			}
 		}
 
+		// Set MaxTimeRange based on sharding strategy
+		var maxTimeRange physical.TimeRange
+		if routing.Strategy == SinkRoutingStrategyTimeShard {
+			maxTimeRange = routing.TimeRanges[i]
+		} else {
+			maxTimeRange = baseAggTask.MaxTimeRange
+		}
+
 		shardTask := &Task{
 			ULID:         ulid.Make(),
 			TenantID:     p.tenantID,
 			Fragment:     shardFragment,
 			Sources:      make(map[physical.Node][]*Stream),
 			Sinks:        make(map[physical.Node][]*Stream),
-			MaxTimeRange: baseAggTask.MaxTimeRange,
+			MaxTimeRange: maxTimeRange,
 		}
 		p.graph.Add(shardTask)
 		allShardTasks = append(allShardTasks, shardTask)

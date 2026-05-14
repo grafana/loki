@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -148,7 +147,8 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 			// deadlocks and preempting deadlocked tasks. In the meantime, 8
 			// threads is always more than enough for any currently producible
 			// LogQL query.
-			WorkerThreads: max(runtime.GOMAXPROCS(0), 8),
+			//WorkerThreads: max(runtime.GOMAXPROCS(0), 8),
+			WorkerThreads: 64,
 		},
 		Executor:  cfg,
 		Metastore: ms,

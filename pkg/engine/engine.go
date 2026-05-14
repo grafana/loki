@@ -277,7 +277,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	defer wf.Close()
 	gotrace.Log(ctx, "workflow_planning", "done")
 
-	fmt.Println(workflow.Sprint(wf))
+	//fmt.Println(workflow.Sprint(wf))
 
 	pipeline, err := wf.Run(ctx)
 	if err != nil {
