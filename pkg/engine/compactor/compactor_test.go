@@ -78,6 +78,11 @@ func TestConfig_Validate_EnabledRejectsBadValues(t *testing.T) {
 			Enabled:                   true,
 			MaxRunningCompactionTasks: 16,
 			Scheduler:                 SchedulerConfig{Endpoint: defaultEndpoint},
+			PollingInterval:           defaultPollingInterval,
+			MaxRunsPerTask:            defaultMaxRunsPerTask,
+			IndexMergeTaskTTL:         defaultIndexMergeTaskTTL,
+			ToCConsolidateTimeout:     defaultToCConsolidateTimeout,
+			PlanVersion:               defaultPlanVersion,
 		}
 		require.NoError(t, cfg.Validate())
 	})
