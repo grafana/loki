@@ -487,19 +487,17 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 // reserveBufferedBytes attempts to reserve size bytes of capacity in the tee.
 // It returns true on success, otherwise false. A reservation is unsuccessful
 // if size would cause the tee to exceed [TeeConfig.MaxBufferedBytes]. When
-// [TeeConfig.MaxBufferedBytes] is zero, the limit is disabled.
+// [TeeConfig.MaxBufferedBytes] is zero or negative, the limit is disabled.
 //
 // All reserved sizes must be returned by calling releaseBufferedBytes with
 // the same value.
 //
 // It is safe for concurrent use.
 func (ts *TeeService) reserveBufferedBytes(size int) bool {
-	maxBufferedBytes := int64(ts.cfg.TeeConfig.MaxBufferedBytes)
 	for {
 		oldVal := ts.bufferedBytes.Load()
 		newVal := oldVal + int64(size)
-		// If the limit is non-zero, we must first check that size can be reserved.
-		if maxBufferedBytes > 0 && newVal > maxBufferedBytes {
+		if !ts.permittedMaxBufferedBytes(newVal) {
 			return false
 		}
 		// If we won the CAS, size was reserved, and we can return true.
@@ -508,6 +506,17 @@ func (ts *TeeService) reserveBufferedBytes(size int) bool {
 			return true
 		}
 	}
+}
+
+// permittedMaxBufferedBytes returns true if the new value is less than
+// [TeeConfig.maxBufferedBytes].
+func (ts *TeeService) permittedMaxBufferedBytes(newVal int64) bool {
+	maxBufferedBytes := int64(ts.cfg.TeeConfig.MaxBufferedBytes)
+	if maxBufferedBytes <= 0 {
+		// When zero or negative, the limit is disabled.
+		return true
+	}
+	return newVal <= maxBufferedBytes
 }
 
 // releaseBufferedBytes returns size bytes of reserved capacity to the tee.
