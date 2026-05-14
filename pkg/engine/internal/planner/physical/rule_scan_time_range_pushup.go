@@ -22,19 +22,20 @@ func (r *scanTimeRangePushup) apply(root Node) bool {
 
 	// propagate time range to target parent nodes.
 	changed := false
+Loop:
 	for _, n := range nodes {
 		switch scan := n.(type) {
 		case *DataObjScan:
 			applied := r.applyToTargets(scan, scan.MaxTimeRange)
 			if applied {
 				changed = true
-				break // should be at most one scan node, so break after applying to the first one.
+				break Loop // should be at most one scan node, so break after applying to the first one.
 			}
 		case *PointersScan:
 			applied := r.applyToTargets(scan, scan.MaxTimeRange())
 			if applied {
 				changed = true
-				break // should be at most one scan node, so break after applying to the first one.
+				break Loop // should be at most one scan node, so break after applying to the first one.
 			}
 		}
 	}
