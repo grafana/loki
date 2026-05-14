@@ -132,3 +132,70 @@ func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
 	}
 	require.Equal(t, want, got)
 }
+
+func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	bucket := objstore.NewInMemBucket()
+
+	// Three tenants, each with three rows at well-separated time ranges.
+	seedRows := []tocRow{
+		{"tenantA", "idx/a-0", 10, 20},
+		{"tenantA", "idx/a-1", 30, 40},
+		{"tenantA", "idx/a-2", 50, 60},
+		{"tenantB", "idx/b-0", 11, 21},
+		{"tenantB", "idx/b-1", 31, 41},
+		{"tenantB", "idx/b-2", 51, 61},
+		{"tenantC", "idx/c-0", 12, 22},
+		{"tenantC", "idx/c-1", 32, 42},
+		{"tenantC", "idx/c-2", 52, 62},
+	}
+	seedToC(t, bucket, window, seedRows)
+
+	// Capture B and C rows from the pre-swap state to compare verbatim.
+	preSwap := readToC(t, ctx, bucket, TableOfContentsPath(window))
+	bcRowsBefore := filterRows(preSwap, "tenantB", "tenantC")
+
+	writer := &TableOfContentsWriter{
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		[]string{"idx/a-0", "idx/a-1", "idx/a-2"},
+		[]TableOfContentsEntry{
+			{Path: "idx/a-merged", StartTime: unixTime(10), EndTime: unixTime(60)},
+		},
+	)
+	require.NoError(t, err)
+	require.True(t, swapped, "expected tenantA swap to apply")
+
+	postSwap := readToC(t, ctx, bucket, TableOfContentsPath(window))
+
+	// 1. Tenant A is exactly the new single row.
+	aAfter := filterRows(postSwap, "tenantA")
+	require.Equal(t, []tocRow{
+		{"tenantA", "idx/a-merged", 10, 60},
+	}, aAfter)
+
+	// 2. Tenants B and C are byte-equivalent (same rows, same time ranges) to pre-swap.
+	bcRowsAfter := filterRows(postSwap, "tenantB", "tenantC")
+	require.Equal(t, bcRowsBefore, bcRowsAfter,
+		"non-target tenant rows must be preserved unchanged")
+}
+
+func filterRows(rows []tocRow, tenants ...string) []tocRow {
+	keep := make(map[string]struct{}, len(tenants))
+	for _, t := range tenants {
+		keep[t] = struct{}{}
+	}
+	out := make([]tocRow, 0, len(rows))
+	for _, r := range rows {
+		if _, ok := keep[r.Tenant]; ok {
+			out = append(out, r)
+		}
+	}
+	return out
+}
