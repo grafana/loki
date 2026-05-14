@@ -161,6 +161,29 @@ func (arr *UTF8) Slice(i, j int) Array {
 	return NewUTF8(data, offsets, validity)
 }
 
+// Normalize returns a UTF8 array with zero-based offsets and data trimmed to
+// only the referenced range. If the array is already normalized, it is returned
+// as-is. Otherwise, a new array is allocated from alloc.
+func (arr *UTF8) Normalize(alloc *memory.Allocator) *UTF8 {
+	if len(arr.offsets) == 0 || arr.offsets[0] == 0 {
+		return arr
+	}
+
+	dataStart := arr.offsets[0]
+	dataEnd := arr.offsets[len(arr.offsets)-1]
+
+	data := memory.NewBuffer[byte](alloc, int(dataEnd-dataStart))
+	data.Append(arr.data[dataStart:dataEnd]...)
+
+	offsets := memory.NewBuffer[int32](alloc, len(arr.offsets))
+	for _, off := range arr.offsets {
+		offsets.Push(off - dataStart)
+	}
+
+	validity := cloneValidity(alloc, arr.validity)
+	return NewUTF8(data.Data(), offsets.Data(), validity)
+}
+
 func (arr *UTF8) isDatum() {}
 func (arr *UTF8) isArray() {}
 
