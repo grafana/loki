@@ -21,10 +21,11 @@ import (
 
 // planner is responsible for constructing the Task graph held by a [Workflow].
 type planner struct {
-	tenantID  string
-	batchSize int // batch size to wrap each task fragment with; 0 means no wrapping
-	graph     dag.Graph[*Task]
-	physical  *physical.Plan
+	tenantID            string
+	batchSize           int // batch size to wrap each task fragment with; 0 means no wrapping
+	labelHashShardCount int // number of shards for label hash sharding
+	graph               dag.Graph[*Task]
+	physical            *physical.Plan
 
 	streamWriters map[*Stream]*Task // Lookup of stream to which task writes to it
 }
@@ -49,7 +50,10 @@ type cacheParams struct {
 // The provided context is used only for recording planning-time observations
 // into the xcap region (if any) carried by ctx. Cancellation of ctx does not
 // abort planning.
-func planWorkflow(ctx context.Context, tenantID string, plan *physical.Plan, cacheOpts cacheParams, logger log.Logger) (dag.Graph[*Task], error) {
+//
+// labelHashShardCount specifies the number of shards to create when sharding
+// aggregations by label hash. Use 0 for the default value (16).
+func planWorkflow(ctx context.Context, tenantID string, plan *physical.Plan, cacheOpts cacheParams, labelHashShardCount int, logger log.Logger) (dag.Graph[*Task], error) {
 	root, err := plan.Root()
 	if err != nil {
 		return dag.Graph[*Task]{}, err
@@ -68,11 +72,17 @@ func planWorkflow(ctx context.Context, tenantID string, plan *physical.Plan, cac
 		}
 	}
 
+	// Use default shard count if not specified
+	if labelHashShardCount == 0 {
+		labelHashShardCount = 16
+	}
+
 	planner := &planner{
-		tenantID:      tenantID,
-		batchSize:     batchSize,
-		physical:      plan,
-		streamWriters: make(map[*Stream]*Task),
+		tenantID:            tenantID,
+		batchSize:           batchSize,
+		labelHashShardCount: labelHashShardCount,
+		physical:            plan,
+		streamWriters:       make(map[*Stream]*Task),
 	}
 	if err := planner.Process(root); err != nil {
 		return dag.Graph[*Task]{}, err
@@ -867,8 +877,7 @@ func (p *planner) getShardingConfig(node physical.Node) *SinkRouting {
 	case *physical.RangeAggregation:
 		// Shard range aggregations by time
 		if !agg.Start.IsZero() && !agg.End.IsZero() {
-			// Calculate 12-hour aligned time shards
-			timeRanges := calculate12HourShards(agg.Start, agg.End)
+			timeRanges := calculateAlignedTimeShards(agg.Start, agg.End)
 			if len(timeRanges) > 1 {
 				return &SinkRouting{
 					Strategy:   SinkRoutingStrategyTimeShard,
@@ -886,9 +895,9 @@ func (p *planner) getShardingConfig(node physical.Node) *SinkRouting {
 	return nil
 }
 
-// calculate12HourShards splits a time range into 12-hour aligned shards.
+// calculateAlignedTimeShards splits a time range into 12-hour aligned shards.
 // Returns a slice of TimeRanges, one for each shard.
-func calculate12HourShards(start, end time.Time) []physical.TimeRange {
+func calculateAlignedTimeShards(start, end time.Time) []physical.TimeRange {
 	const shardDuration = 12 * time.Hour
 
 	// Align start to a 12-hour boundary (00:00 or 12:00 UTC)
@@ -939,9 +948,18 @@ func (p *planner) processShardedAggregation(node physical.Node) ([]*Task, *SinkR
 	}
 
 	// Determine the number of shards to create based on the routing strategy
-	numShards := 8
+	numShards := p.labelHashShardCount
 	if routing.Strategy == SinkRoutingStrategyTimeShard {
 		numShards = len(routing.TimeRanges)
+	}
+
+	if numShards == 1 {
+		// No sharding needed, process normally
+		tasks, err := p.processNode(node, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		return tasks, nil, nil
 	}
 
 	// Process the aggregation and its children ONCE to get the base task structure

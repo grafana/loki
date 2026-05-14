@@ -45,7 +45,7 @@ func Test(t *testing.T) {
 
 		fr := newFakeRunner()
 
-		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
+		wf, err := New(t.Context(), Options{AggregationLabelHashShardCount: 1}, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -302,6 +302,8 @@ func TestAdmissionControl(t *testing.T) {
 			MaxRunningScanTasks:       32, // less than numScanTasks
 			MaxRunningOtherTasks:      0,  // unlimited
 			MaxRunningCompactionTasks: 0,  // unlimited; lane is dormant
+
+			AggregationLabelHashShardCount: 1,
 		}
 		wf, err := New(t.Context(), opts, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
