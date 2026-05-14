@@ -40,8 +40,8 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	buf = buf[:n]
 
 	header, err := d.header(buf)
-	if err != nil && errors.Is(err, errLegacyMagic) {
-		return nil, fmt.Errorf("unsupported object format: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("reading header: %w", err)
 	}
 
 	d.setPrefetchedBytes(0, buf)
