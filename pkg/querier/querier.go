@@ -62,6 +62,14 @@ type Config struct {
 	PerRequestLimitsEnabled   bool             `yaml:"per_request_limits_enabled"`
 	QueryPartitionIngesters   bool             `yaml:"query_partition_ingesters" category:"experimental"`
 
+	// WildcardTenantQueriesEnabled enables wildcard tenant queries using "*" in X-Scope-OrgID.
+	// Requires MultiTenantQueriesEnabled to be true.
+	WildcardTenantQueriesEnabled bool `yaml:"wildcard_tenant_queries_enabled" category:"experimental"`
+
+	// WildcardTenantCacheTTL is how long to cache the list of discovered tenants for wildcard queries.
+	// Default is 5 minutes.
+	WildcardTenantCacheTTL time.Duration `yaml:"wildcard_tenant_cache_ttl"`
+
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
 }
@@ -82,12 +90,17 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, prefix+"multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, prefix+"per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
+	f.BoolVar(&cfg.WildcardTenantQueriesEnabled, prefix+"wildcard-tenant-queries-enabled", false, "When true, allow wildcard (*) in X-Scope-OrgID to query all tenants. Requires multi-tenant-queries-enabled to be true.")
+	f.DurationVar(&cfg.WildcardTenantCacheTTL, prefix+"wildcard-tenant-cache-ttl", 5*time.Minute, "How long to cache the list of discovered tenants for wildcard queries.")
 }
 
 // Validate validates the config.
 func (cfg *Config) Validate() error {
 	if cfg.QueryStoreOnly && cfg.QueryIngesterOnly {
 		return errors.New("querier.query_store_only and querier.query_ingester_only cannot both be true")
+	}
+	if cfg.WildcardTenantQueriesEnabled && !cfg.MultiTenantQueriesEnabled {
+		return errors.New("querier.wildcard_tenant_queries_enabled requires querier.multi_tenant_queries_enabled to be true")
 	}
 	return nil
 }
