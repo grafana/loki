@@ -45,7 +45,7 @@ Use the `deprecated-config-checker` tool to validate your `config.yaml`.
 
 ### Breaking change: Configure deletes on compactor
 
-The configuration option `-compactor.allow-deletes` has been removed. Instead, use the the per-tenant `deletion_mode` option instead.
+The configuration option `-compactor.allow-deletes` has been removed. Instead, use the per-tenant `deletion_mode` option instead.
 This is configured in the `limits_config` and can be one of `disabled`, `filter-only`, or `filter-and-delete`.
 When set to `filter-only` or `filter-and-delete`, and `retention_enabled` is set to true, then the log entry deletion API endpoints are available.
 
