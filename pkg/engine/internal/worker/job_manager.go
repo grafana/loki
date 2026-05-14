@@ -9,6 +9,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
@@ -83,7 +84,7 @@ func (jm *jobManager) Recv(ctx context.Context) (*threadJob, error) {
 		// they would be blocked forever.
 		jm.cancelWaiting()
 
-		return nil, ctx.Err()
+		return nil, util.CauseError(ctx)
 	case job := <-jm.jobCh:
 		return job, nil
 	}
@@ -151,7 +152,7 @@ func (jm *jobManager) Send(ctx context.Context, job *threadJob) error {
 		jm.waiting--
 		return nil
 	case !sent && ctx.Err() != nil:
-		return ctx.Err()
+		return util.CauseError(ctx)
 	default:
 		return errNoReadyThreads
 	}
@@ -183,5 +184,5 @@ func (jm *jobManager) WaitReady(ctx context.Context) error {
 		jm.mut.RLock()
 	}
 
-	return ctx.Err()
+	return util.CauseError(ctx)
 }

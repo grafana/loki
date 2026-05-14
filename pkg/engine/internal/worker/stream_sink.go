@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
@@ -137,7 +138,7 @@ func (sink *streamSink) getPeer(ctx context.Context) (*wire.Peer, error) {
 	// Wait for destination.
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, util.CauseError(ctx)
 	case <-sink.ctx.Done():
 		return nil, wire.ErrConnClosed
 	case <-sink.bound:

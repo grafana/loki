@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -38,7 +39,7 @@ func (src *streamSource) Write(ctx context.Context, rec arrow.RecordBatch) error
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return util.CauseError(ctx)
 	case <-src.closed:
 		return wire.ErrConnClosed
 	case <-src.bound:

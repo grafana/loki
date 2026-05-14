@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
 var (
@@ -80,7 +82,7 @@ func (l *Local) DialFrom(ctx context.Context, from net.Addr) (Conn, error) {
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, util.CauseError(ctx)
 	case <-alive.Done():
 		return nil, net.ErrClosed
 	case l.incoming <- remoteStream:
@@ -103,7 +105,7 @@ func (l *Local) Accept(ctx context.Context) (Conn, error) {
 	case <-l.alive.Done():
 		return nil, net.ErrClosed
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, util.CauseError(ctx)
 	case conn := <-l.incoming:
 		return conn, nil
 	}
@@ -139,7 +141,7 @@ var _ Conn = (*localConn)(nil)
 func (c *localConn) Send(ctx context.Context, frame Frame) error {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return util.CauseError(ctx)
 	case <-c.alive.Done(): // Conn closed
 		return ErrConnClosed
 	case c.write <- frame:
@@ -150,7 +152,7 @@ func (c *localConn) Send(ctx context.Context, frame Frame) error {
 func (c *localConn) Recv(ctx context.Context) (Frame, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, util.CauseError(ctx)
 	case <-c.alive.Done(): // Conn closed
 		return nil, ErrConnClosed
 	case frame, ok := <-c.read:

@@ -9,6 +9,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -55,7 +56,7 @@ func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, util.CauseError(ctx)
 	case <-src.closed:
 		if ep := src.failErr.Load(); ep != nil {
 			return nil, *ep
@@ -80,7 +81,7 @@ func (src *nodeSource) Write(ctx context.Context, rec arrow.RecordBatch) error {
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return util.CauseError(ctx)
 	case <-src.closed:
 		return executor.EOF
 	case src.records <- rec:
