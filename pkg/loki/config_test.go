@@ -8,9 +8,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/dskit/server"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestCrossComponentValidation(t *testing.T) {
@@ -83,6 +85,20 @@ func TestCrossComponentValidation(t *testing.T) {
 							},
 						},
 					},
+				},
+			},
+			err: true,
+		},
+		{
+			desc: "no schema_config",
+			base: &Config{
+				AuthEnabled: false,
+				Server: server.Config{
+					HTTPListenPort: 3100,
+				},
+				LimitsConfig: validation.Limits{
+					RejectOldSamples:       true,
+					RejectOldSamplesMaxAge: model.Duration(1),
 				},
 			},
 			err: true,
