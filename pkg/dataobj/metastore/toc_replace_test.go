@@ -29,7 +29,7 @@ type tocRow struct {
 }
 
 // readToC reads all index pointers from a ToC at the given path, flattened by tenant.
-func readToC(t *testing.T, ctx context.Context, bucket objstore.Bucket, path string) []tocRow {
+func readToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []tocRow {
 	t.Helper()
 	rc, err := bucket.Get(ctx, path)
 	require.NoError(t, err)
@@ -126,7 +126,7 @@ func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, swapped, "expected swap to apply")
 
-	got := readToC(t, ctx, bucket, TableOfContentsPath(window))
+	got := readToC(ctx, t, bucket, TableOfContentsPath(window))
 	want := []tocRow{
 		{"tenantA", "idx/a-new", 100, 110},
 		{"tenantB", "idx/b-0", 11, 21},
@@ -155,7 +155,7 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 	seedToC(t, bucket, window, seedRows)
 
 	// Capture B and C rows from the pre-swap state to compare verbatim.
-	preSwap := readToC(t, ctx, bucket, TableOfContentsPath(window))
+	preSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
 	bcRowsBefore := filterRows(preSwap, "tenantB", "tenantC")
 
 	writer := &TableOfContentsWriter{
@@ -174,7 +174,7 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, swapped, "expected tenantA swap to apply")
 
-	postSwap := readToC(t, ctx, bucket, TableOfContentsPath(window))
+	postSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
 
 	// 1. Tenant A is exactly the new single row.
 	aAfter := filterRows(postSwap, "tenantA")
@@ -211,7 +211,7 @@ func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
 		{"tenantA", "idx/a-already-rolled-up", 10, 60}, // simulates "the other coordinator's swap already landed"
 		{"tenantB", "idx/b-0", 11, 21},
 	})
-	preSwap := readToC(t, ctx, bucket, TableOfContentsPath(window))
+	preSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
 
 	writer := &TableOfContentsWriter{
 		bucket:      bucket,
@@ -230,7 +230,7 @@ func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, swapped, "expected no-op when oldPaths are no longer present")
 
-	postSwap := readToC(t, ctx, bucket, TableOfContentsPath(window))
+	postSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
 	require.Equal(t, preSwap, postSwap, "ToC must be unchanged on race-loss")
 }
 
@@ -243,7 +243,7 @@ func TestReplaceIndexPointers_EmptyOldPaths(t *testing.T) {
 		{"tenantA", "idx/a-0", 10, 20},
 		{"tenantB", "idx/b-0", 11, 21},
 	})
-	preSwap := readToC(t, ctx, bucket, TableOfContentsPath(window))
+	preSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
 
 	writer := &TableOfContentsWriter{
 		bucket:      bucket,
@@ -261,7 +261,7 @@ func TestReplaceIndexPointers_EmptyOldPaths(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.False(t, swapped, "empty oldPaths must no-op (use WriteEntry for pure appends)")
-	require.Equal(t, preSwap, readToC(t, ctx, bucket, TableOfContentsPath(window)))
+	require.Equal(t, preSwap, readToC(ctx, t, bucket, TableOfContentsPath(window)))
 }
 
 func TestReplaceIndexPointers_MissingToC(t *testing.T) {
@@ -371,7 +371,7 @@ func TestReplaceIndexPointers_RetriesOnConditionalWriteFailure(t *testing.T) {
 	require.True(t, swapped)
 	require.True(t, flaky.gotSizedReader, "callback must return a sized ReadCloser so If-Match survives on S3")
 
-	got := readToC(t, ctx, inner, TableOfContentsPath(window))
+	got := readToC(ctx, t, inner, TableOfContentsPath(window))
 	require.Equal(t, []tocRow{
 		{"tenantA", "idx/a-new", 100, 110},
 		{"tenantB", "idx/b-0", 11, 21},
