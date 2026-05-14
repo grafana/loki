@@ -138,16 +138,14 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		Config: engine.WorkerConfig{
 			SchedulerLookupAddress:  schedLookupAddr,
 			SchedulerLookupInterval: time.Minute,
-			// Try to create one thread per host CPU core. However, we always
-			// create at least 8 threads. This prevents situations where
-			// no task can make progress because a parent task hasn't been
-			// scheduled yet.
+			// We always create at least 64 threads, more than just CPU cores.
+			// This prevents situations where no task can make progress because
+			// a parent task hasn't been scheduled yet.
 			//
 			// Eventually, this will be fixed by the scheduler detecting
-			// deadlocks and preempting deadlocked tasks. In the meantime, 8
-			// threads is always more than enough for any currently producible
-			// LogQL query.
-			//WorkerThreads: max(runtime.GOMAXPROCS(0), 8),
+			// deadlocks and preempting deadlocked tasks. In the meantime, 64
+			// threads should be enough for any currently producible
+			// LogQL query, including finely sharded aggregation tasks.
 			WorkerThreads: 64,
 		},
 		Executor:  cfg,

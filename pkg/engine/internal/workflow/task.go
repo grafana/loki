@@ -62,7 +62,7 @@ type SinkRouting struct {
 type SinkRoutingStrategy int
 
 const (
-	// SinkRoutingStrategyBroadcast sends all records to all sinks (current behavior).
+	// SinkRoutingStrategyBroadcast sends all records to all sinks.
 	SinkRoutingStrategyBroadcast SinkRoutingStrategy = iota
 
 	// SinkRoutingStrategyLabelHash routes records to sinks based on a hash of grouping labels.

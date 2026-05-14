@@ -643,10 +643,10 @@ func (p *planner) processShardedRootAggregation(aggNode physical.Node) error {
 // indicates whether pipeline breaker nodes should be split off into their own
 // task.
 //
-// The resulting tasks are the tasks immediately produced by node, which callers
+// The resulting task is the task immediately produced by node, which callers
 // can use to add edges. All tasks, including those produced in recursive calls
 // to processNode, are added into p.Graph.
-func (p *planner) processNode(node physical.Node, splitOnBreaker bool) ([]*Task, error) {
+func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, error) {
 	var (
 		// taskPlan is the in-progress physical plan for an individual task.
 		taskPlan dag.Graph[physical.Node]
@@ -701,12 +701,12 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) ([]*Task,
 						childTasks = nodeTasks[child]
 					} else {
 						// Split the pipeline breaker into its own task
-						tasks, err := p.processNode(child, splitOnBreaker)
+						task, err := p.processNode(child, splitOnBreaker)
 						if err != nil {
 							return nil, err
 						}
-						childrenTasks = append(childrenTasks, tasks...)
-						nodeTasks[child] = append(nodeTasks[child], tasks...)
+						childrenTasks = append(childrenTasks, task)
+						nodeTasks[child] = append(nodeTasks[child], task)
 						childTasks = nodeTasks[child]
 					}
 				}
@@ -798,7 +798,7 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) ([]*Task,
 		})
 	}
 
-	return []*Task{task}, nil
+	return task, nil
 }
 
 // addSink adds the sink stream to the root node of the provided task. addSink
@@ -940,11 +940,11 @@ func (p *planner) processShardedAggregation(node physical.Node) ([]*Task, *SinkR
 	routing := p.getShardingConfig(node)
 	if routing == nil {
 		// No sharding needed, process normally
-		tasks, err := p.processNode(node, true)
+		task, err := p.processNode(node, true)
 		if err != nil {
 			return nil, nil, err
 		}
-		return tasks, nil, nil
+		return []*Task{task}, nil, nil
 	}
 
 	// Determine the number of shards to create based on the routing strategy
@@ -955,22 +955,18 @@ func (p *planner) processShardedAggregation(node physical.Node) ([]*Task, *SinkR
 
 	if numShards == 1 {
 		// No sharding needed, process normally
-		tasks, err := p.processNode(node, true)
+		task, err := p.processNode(node, true)
 		if err != nil {
 			return nil, nil, err
 		}
-		return tasks, nil, nil
+		return []*Task{task}, nil, nil
 	}
 
 	// Process the aggregation and its children ONCE to get the base task structure
-	baseTasks, err := p.processNode(node, true)
+	baseAggTask, err := p.processNode(node, true)
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(baseTasks) != 1 {
-		return nil, nil, fmt.Errorf("expected exactly one aggregation task, got %d", len(baseTasks))
-	}
-	baseAggTask := baseTasks[0]
 
 	// Get the children of the aggregation task (tasks that feed INTO the aggregation)
 	childTasks := p.graph.Children(baseAggTask)
@@ -1089,15 +1085,10 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 	// Since parallelize nodes can fan out to many smaller tasks, we don't split
 	// on pipeline breakers, which would otherwise create far too many tasks
 	// that do too *little* work.
-	templateTasks, err := p.processNode(root, false)
+	templateTask, err := p.processNode(root, false)
 	if err != nil {
 		return nil, err
 	}
-
-	if len(templateTasks) != 1 {
-		return nil, fmt.Errorf("expected exactly one template task, got %d", len(templateTasks))
-	}
-	templateTask := templateTasks[0]
 
 	shardableNode, err := findShardableNode(templateTask.Fragment.Graph(), root)
 	if err != nil {

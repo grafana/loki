@@ -74,7 +74,7 @@ func TestThread_drainPipeline(t *testing.T) {
 
 	sink := &mockRecordSink{}
 	th := &thread{Logger: log.NewNopLogger(), Metrics: newMetrics()}
-	totalRows, err := th.drainPipeline(ctx, pipeline, []recordSink{sink}, &workflow.SinkRouting{Strategy: workflow.SinkRoutingStrategyBroadcast}, log.NewNopLogger())
+	totalRows, err := th.drainPipeline(ctx, pipeline, []recordSink{sink}, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.Equal(t, 3, totalRows)
 
