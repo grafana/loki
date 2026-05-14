@@ -1,0 +1,137 @@
+// Copyright 2023-2026 Princess Beef Heavy Industries, LLC / Dave Shanley
+// https://pb33f.io
+
+package responses
+
+import (
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/pb33f/libopenapi/orderedmap"
+
+	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
+	lowv3 "github.com/pb33f/libopenapi/datamodel/low/v3"
+
+	"github.com/pb33f/libopenapi-validator/config"
+	"github.com/pb33f/libopenapi-validator/errors"
+	"github.com/pb33f/libopenapi-validator/helpers"
+	"github.com/pb33f/libopenapi-validator/parameters"
+	"github.com/pb33f/libopenapi-validator/strict"
+)
+
+// ValidateResponseHeaders validates the response headers against the OpenAPI spec.
+func ValidateResponseHeaders(
+	request *http.Request,
+	response *http.Response,
+	headers *orderedmap.Map[string, *v3.Header],
+	pathTemplate string,
+	statusCode string,
+	opts ...config.Option,
+) (bool, []*errors.ValidationError) {
+	options := config.NewValidationOptions(opts...)
+
+	// locate headers
+	type headerPair struct {
+		name  string
+		value []string
+		model *v3.Header
+	}
+	locatedHeaders := make(map[string]headerPair)
+	var validationErrors []*errors.ValidationError
+	// iterate through the response headers
+	for name, v := range response.Header {
+		// check if the model is in the spec
+		for pair := headers.First(); pair != nil; pair = pair.Next() {
+			k := pair.Key()
+			header := pair.Value()
+			if strings.EqualFold(k, name) {
+				locatedHeaders[strings.ToLower(name)] = headerPair{
+					name:  k,
+					value: v,
+					model: header,
+				}
+			}
+		}
+	}
+
+	// determine if any required headers are missing from the response
+	for pair := headers.First(); pair != nil; pair = pair.Next() {
+		name := pair.Key()
+		header := pair.Value()
+		if header.Required {
+			if _, ok := locatedHeaders[strings.ToLower(name)]; !ok {
+				keywordLocation := helpers.ConstructResponseHeaderJSONPointer(pathTemplate, request.Method, statusCode, name, "required")
+
+				specLine, specCol := 1, 0
+				if low := header.GoLow(); low != nil && low.KeyNode != nil {
+					specLine = low.KeyNode.Line
+					specCol = low.KeyNode.Column
+				}
+
+				validationErrors = append(validationErrors, &errors.ValidationError{
+					ValidationType:    helpers.ResponseBodyValidation,
+					ValidationSubType: helpers.ParameterValidationHeader,
+					Message:           "Missing required header",
+					Reason:            fmt.Sprintf("Required header '%s' was not found in response", name),
+					SpecLine:          specLine,
+					SpecCol:           specCol,
+					HowToFix:          errors.HowToFixMissingHeader,
+					RequestPath:       request.URL.Path,
+					RequestMethod:     request.Method,
+					SchemaValidationErrors: []*errors.SchemaValidationFailure{{
+						Reason:          fmt.Sprintf("Required header '%s' is missing", name),
+						FieldName:       name,
+						InstancePath:    []string{name},
+						KeywordLocation: keywordLocation,
+					}},
+				})
+			}
+		}
+	}
+
+	// validate the model schemas if they are set.
+	for h, header := range locatedHeaders {
+		if header.model.Schema != nil {
+			schema := header.model.Schema.Schema()
+			if schema != nil && header.model.Required {
+				for _, headerValue := range header.value {
+					validationErrors = append(validationErrors,
+						parameters.ValidateParameterSchema(schema, nil, headerValue, "header",
+							"response header", h, helpers.ResponseBodyValidation, lowv3.HeadersLabel, options)...)
+				}
+			}
+		}
+	}
+
+	if len(validationErrors) > 0 {
+		return false, validationErrors
+	}
+
+	// strict mode: check for undeclared response headers
+	if options.StrictMode {
+		// convert orderedmap to regular map for strict validation
+		declaredMap := make(map[string]*v3.Header)
+		for name, header := range headers.FromOldest() {
+			declaredMap[name] = header
+		}
+
+		undeclaredHeaders := strict.ValidateResponseHeaders(response.Header, &declaredMap, options)
+		for _, undeclared := range undeclaredHeaders {
+			validationErrors = append(validationErrors,
+				errors.UndeclaredHeaderError(
+					undeclared.Name,
+					undeclared.Value.(string),
+					undeclared.DeclaredProperties,
+					undeclared.Direction.String(),
+					request.URL.Path,
+					request.Method,
+				))
+		}
+	}
+
+	if len(validationErrors) > 0 {
+		return false, validationErrors
+	}
+	return true, nil
+}

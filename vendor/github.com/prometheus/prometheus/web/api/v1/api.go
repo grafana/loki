@@ -443,6 +443,7 @@ func (api *API) Register(r *route.Router) {
 
 	r.Get("/series", wrapAgent(api.series))
 	r.Post("/series", wrapAgent(api.series))
+	r.Del("/series", wrapAgent(api.dropSeries))
 
 	r.Get("/scrape_pools", wrap(api.scrapePools))
 	r.Get("/targets", wrap(api.targets))
@@ -1044,6 +1045,10 @@ func (api *API) series(r *http.Request) (result apiFuncResult) {
 	}
 
 	return apiFuncResult{metrics, nil, warnings, closer}
+}
+
+func (*API) dropSeries(*http.Request) apiFuncResult {
+	return apiFuncResult{nil, &apiError{errorInternal, errors.New("not implemented")}, nil, nil}
 }
 
 // Target has the information for one target.

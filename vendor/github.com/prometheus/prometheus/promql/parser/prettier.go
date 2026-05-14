@@ -111,16 +111,11 @@ func (e *EvalStmt) Pretty(int) string {
 
 func (e Expressions) Pretty(level int) string {
 	// Do not prefix the indent since respective nodes will indent itself.
-	if len(e) == 0 {
-		return ""
-	}
-
-	parts := make([]string, len(e))
+	s := ""
 	for i := range e {
-		parts[i] = e[i].Pretty(level)
+		s += fmt.Sprintf("%s,\n", e[i].Pretty(level))
 	}
-
-	return strings.Join(parts, ",\n")
+	return s[:len(s)-2]
 }
 
 func (e *ParenExpr) Pretty(level int) string {
