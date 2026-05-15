@@ -42,6 +42,25 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
+	// TODO: In future, we want to be able to compose this with the middleware pattern,
+	// but this requires refactor of this file to support next handlers. We will do
+	// this at a later time.
+	var (
+		circuitBreakerOk       bool
+		circuitBreakerDoneFunc func(err error)
+		circuitBreakerErr      error
+	)
+	if d.circuitBreaker != nil {
+		circuitBreakerOk, circuitBreakerDoneFunc = d.circuitBreaker.Allow()
+		// Must be wrapped in a closure so circuitBreakerErr is evaluated when the
+		// deferred function runs.
+		defer func() { circuitBreakerDoneFunc(circuitBreakerErr) }()
+		if !circuitBreakerOk {
+			errorWriter(w, "circuit breaker open, request denied", http.StatusServiceUnavailable, logger)
+			return
+		}
+	}
+
 	if d.RequestParserWrapper != nil {
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
@@ -162,6 +181,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
+	circuitBreakerErr = err
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
 		body := string(resp.Body)
