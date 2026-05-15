@@ -293,7 +293,6 @@ func (s *PointersScan) CacheKey(_ context.Context) string {
 		s.End.UTC().Format(time.RFC3339Nano))
 }
 
-
 // groupingCacheKey returns a deterministic string for a Grouping.
 func groupingCacheKey(g Grouping) string {
 	cols := make([]string, len(g.Columns))
