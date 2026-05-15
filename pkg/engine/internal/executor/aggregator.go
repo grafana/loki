@@ -22,8 +22,6 @@ type groupState struct {
 	count int64   // values counter
 }
 
-type keyedAdder func(ts time.Time, value float64) error
-
 type aggregationOperation int
 
 const (
@@ -48,6 +46,11 @@ type aggregator struct {
 	// Track unique series across all timestamps to enforce maxSeries limit
 	maxSeries    int                          // maximum number of unique series allowed (0 means no limit)
 	uniqueSeries map[uint64]map[string]string // tracks unique series across all timestamps
+
+	// cached values to avoid recomputing the key and labels for each sample value in a tight loop
+	memoizedKey         uint64
+	memoizedLabels      []arrow.Field
+	memoizedLabelValues []string
 }
 
 // newAggregator creates a new aggregator with the specified grouping.
@@ -84,27 +87,50 @@ func (a *aggregator) SetMaxSeries(maxSeries int) {
 	a.maxSeries = maxSeries
 }
 
-func (a *aggregator) WithLabelValues(labels []arrow.Field, labelValues []string) keyedAdder {
+// BindLabels caches the provided labels for the next Add call.
+// If Add is called on an aggregator with Bound labels, the bound labels and values will be used instead of the provided labels and values.
+// The returned unbind function must be called to release the cached labels and values and use the allocator for a new series.
+func (a *aggregator) BindLabels(labels []arrow.Field, labelValues []string) func() {
+	a.memoizedKey = a.computeKey(labels, labelValues)
+	a.memoizedLabels = labels
+	a.memoizedLabelValues = labelValues
+
+	return a.unbindLabels
+}
+
+func (a *aggregator) unbindLabels() {
+	a.memoizedKey = 0
+	a.memoizedLabels = nil
+	a.memoizedLabelValues = nil
+}
+
+func (a *aggregator) computeKey(labels []arrow.Field, labelValues []string) uint64 {
 	a.digest.Reset()
 	for i, label := range labels {
 		if i > 0 {
 			_, _ = a.digest.Write([]byte{0}) // separator
 		}
 		_, _ = a.digest.WriteString(label.Name)
-		_, _ = a.digest.Write([]byte("="))
+		_, _ = a.digest.Write([]byte{'='})
 		_, _ = a.digest.WriteString(labelValues[i])
 	}
-	key := a.digest.Sum64()
-	return func(ts time.Time, value float64) error {
-		return a.add(ts, key, value, labels, labelValues)
-	}
+	return a.digest.Sum64()
 }
 
 // Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
 // It expects labelValues to be in the same order as the groupBy columns.
-func (a *aggregator) add(ts time.Time, key uint64, value float64, labels []arrow.Field, labelValues []string) error {
+func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) error {
 	if len(labels) != len(labelValues) {
 		panic("len(labels) != len(labelValues)")
+	}
+
+	var key uint64
+	if a.memoizedKey != 0 {
+		key = a.memoizedKey
+		labels = a.memoizedLabels
+		labelValues = a.memoizedLabelValues
+	} else {
+		key = a.computeKey(labels, labelValues)
 	}
 
 	point, ok := a.points[ts]

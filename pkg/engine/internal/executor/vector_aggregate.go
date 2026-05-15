@@ -166,8 +166,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 				labelValues := labelValuesCache.getLabelValues(arrays, row)
 				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
-				aggregatorAdd := v.aggregator.WithLabelValues(labels, labelValues)
-				if err := aggregatorAdd(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row)); err != nil {
+				if err := v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues); err != nil {
 					return nil, err
 				}
 			}

@@ -234,12 +234,13 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				labelValues := labelValuesCache.getLabelValues(arrays, row)
 				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
-				aggregatorAdd := r.aggregator.WithLabelValues(labels, labelValues)
+				unbind := r.aggregator.BindLabels(labels, labelValues)
 				for _, w := range windows {
-					if err := aggregatorAdd(w.end, value); err != nil {
+					if err := r.aggregator.Add(w.end, value, labels, labelValues); err != nil {
 						return nil, err
 					}
 				}
+				unbind()
 			}
 		}
 	}
