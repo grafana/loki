@@ -173,7 +173,7 @@ func (n *AggregateRange) UnmarshalPhysical(from physical.Node) error {
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
 
-	grouping, err := unmarshalGrouping(rangeAgg.Grouping)
+	grouping, err := UnmarshalGrouping(rangeAgg.Grouping)
 	if err != nil {
 		return err
 	}
@@ -209,11 +209,6 @@ func UnmarshalGrouping(g physical.Grouping) (*Grouping, error) {
 	}, nil
 }
 
-// For backwards compatibility, keep the unexported version as an alias
-func unmarshalGrouping(g physical.Grouping) (*Grouping, error) {
-	return UnmarshalGrouping(g)
-}
-
 func unmarshalColumnExpressions(from []physical.ColumnExpression) ([]*expressionpb.ColumnExpression, error) {
 	if from == nil {
 		return nil, nil
@@ -237,7 +232,7 @@ func (n *AggregateVector) UnmarshalPhysical(from physical.Node) error {
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
 
-	grouping, err := unmarshalGrouping(vectorAgg.Grouping)
+	grouping, err := UnmarshalGrouping(vectorAgg.Grouping)
 	if err != nil {
 		return err
 	}

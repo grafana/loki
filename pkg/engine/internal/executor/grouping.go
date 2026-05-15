@@ -174,6 +174,26 @@ func identMatchesGrouping(grouping []physical.ColumnExpression, ident *semconv.I
 	return false, nil
 }
 
+// ComputeHashFromValues computes a hash from field names and their corresponding values.
+// This is the core hash computation used for grouping and aggregation.
+func ComputeHashFromValues(digest *xxhash.Digest, fields []arrow.Field, values []string) uint64 {
+	if len(fields) == 0 {
+		return 0
+	}
+
+	digest.Reset()
+	for i, val := range values {
+		if i > 0 {
+			_, _ = digest.Write([]byte{0}) // separator
+		}
+
+		_, _ = digest.WriteString(fields[i].Name)
+		_, _ = digest.Write([]byte("="))
+		_, _ = digest.WriteString(val)
+	}
+	return digest.Sum64()
+}
+
 // ComputeGroupingHash computes the hash for a single row across grouping columns.
 // This is the same hash computation used by the aggregator for determining unique series.
 // The arrays and fields must be in the same order as returned by collectGroupingColumns.
@@ -182,20 +202,14 @@ func ComputeGroupingHash(arrays []*array.String, fields []arrow.Field, rowIdx in
 		return 0
 	}
 
-	digest.Reset()
+	values := make([]string, len(arrays))
 	for i, arr := range arrays {
-		if i > 0 {
-			_, _ = digest.Write([]byte{0}) // separator
-		}
-
-		_, _ = digest.WriteString(fields[i].Name)
-		_, _ = digest.Write([]byte("="))
-
 		if arr.IsNull(rowIdx) {
-			_, _ = digest.WriteString("")
+			values[i] = ""
 		} else {
-			_, _ = digest.WriteString(arr.Value(rowIdx))
+			values[i] = arr.Value(rowIdx)
 		}
 	}
-	return digest.Sum64()
+
+	return ComputeHashFromValues(digest, fields, values)
 }
