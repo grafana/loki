@@ -225,6 +225,8 @@ type Distributor struct {
 	kafkaWriteBytesTotal   prometheus.Counter
 	kafkaWriteLatency      prometheus.Histogram
 	kafkaRecordsPerRequest prometheus.Histogram
+
+	circuitBreaker circuitBreaker
 }
 
 // New a distributor creates.
@@ -427,6 +429,7 @@ func New(
 			Objectives: map[float64]float64{1.0: 0.1},
 			MaxAge:     time.Minute,
 		}),
+		circuitBreaker: newLinearRampCircuitBreaker(time.Second, 30*time.Second),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -948,6 +951,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	select {
 	case err := <-tracker.err:
+		if d.circuitBreaker != nil && errors.Is(err, kgo.ErrMaxBuffered) {
+			d.circuitBreaker.Open()
+		}
 		return nil, err
 	case <-tracker.done:
 		return &logproto.PushResponse{}, validationErr

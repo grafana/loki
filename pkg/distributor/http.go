@@ -42,6 +42,11 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
+	if d.circuitBreaker != nil && !d.circuitBreaker.IsPermitted() {
+		errorWriter(w, "circuit breaker open, request denied", http.StatusServiceUnavailable, logger)
+		return
+	}
+
 	if d.RequestParserWrapper != nil {
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
