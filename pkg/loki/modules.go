@@ -2453,7 +2453,25 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "dataobj-compaction-planner")
 
-	c, err := enginecompactor.New(t.Cfg.DataObj.Compaction, logger)
+	store, err := t.getDataObjBucket("dataobj-compaction-planner")
+	if err != nil {
+		return nil, err
+	}
+	// Wrap with the same IndexStoragePrefix the dataobj-index-builder uses so
+	// compactor outputs and ToC reads land alongside the existing multi-tenant
+	// indexes namespace.
+	indexBucket := store
+	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
+		indexBucket = objstore.NewPrefixedBucket(store, prefix)
+	}
+	tocWriter := metastore.NewTableOfContentsWriter(indexBucket, logger)
+
+	c, err := enginecompactor.New(enginecompactor.PlannerParams{
+		Config:          t.Cfg.DataObj.Compaction,
+		Bucket:          indexBucket,
+		MetastoreWriter: tocWriter,
+		Logger:          logger,
+	})
 	if err != nil {
 		return nil, err
 	}

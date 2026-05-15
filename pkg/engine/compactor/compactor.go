@@ -2,65 +2,92 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"net"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
+	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/engine"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
+// PlannerParams collects the constructor arguments for [New].
+//
+// Bucket and MetastoreWriter are required when Config.Enabled is true (the
+// coordinator polling loop calls into both). When Enabled is false, both may
+// be nil and the Planner runs as a lifecycle-only service — the embedded
+// scheduler is still constructed so the module wiring is uniform across
+// enabled and disabled states.
+type PlannerParams struct {
+	Config          Config
+	Bucket          objstore.Bucket                  // required when Config.Enabled = true
+	MetastoreWriter *metastore.TableOfContentsWriter // required when Config.Enabled = true
+	Logger          log.Logger
+}
+
 // Planner is the dataobj-compaction-planner target service. It hosts an
-// embedded engine.Scheduler that compaction workers connect to, and (in
-// a follow-up change) a coordinator polling loop. This scaffold ships
-// only the lifecycle plumbing: the coordinator polling loop is a no-op
-// stub that blocks until shutdown.
+// embedded scheduler that compaction workers connect to and drives the
+// stateless per-cycle coordinator (when compaction is enabled).
 type Planner struct {
 	*services.BasicService
 
-	cfg       Config
-	logger    log.Logger
-	scheduler *engine.Scheduler
+	cfg         Config
+	logger      log.Logger
+	scheduler   *Scheduler
+	coordinator *coordinator // nil when disabled
 }
 
-// New constructs a compaction Planner. The scaffold takes no bucket dependency;
-// the coordinator loop that needs object-storage access is added in a
-// follow-up change.
-func New(cfg Config, logger log.Logger) (*Planner, error) {
+// New constructs a compaction Planner. Returns an error if the scheduler
+// cannot be constructed or if Config.Enabled is true but bucket/metastore
+// writer dependencies are missing.
+func New(params PlannerParams) (*Planner, error) {
+	logger := params.Logger
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 
-	advertiseAddr, err := resolveAdvertiseAddr(cfg.Scheduler.AdvertiseAddr)
-	if err != nil {
-		return nil, fmt.Errorf("dataobj compaction planner: resolve scheduler advertise address: %w", err)
-	}
-
-	scheduler, err := engine.NewScheduler(engine.SchedulerParams{
-		Logger:        log.With(logger, "component", "dataobj-compaction-scheduler"),
-		AdvertiseAddr: advertiseAddr,
-		Endpoint:      cfg.Scheduler.Endpoint,
-	})
+	sched, err := newScheduler(
+		params.Config.Scheduler,
+		log.With(logger, "component", "dataobj-compaction-scheduler"),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("dataobj compaction planner: construct scheduler: %w", err)
 	}
 
-	c := &Planner{
-		cfg:       cfg,
-		logger:    logger,
-		scheduler: scheduler,
+	if params.Config.Enabled {
+		if params.Bucket == nil {
+			return nil, errors.New("dataobj compaction planner: bucket is required when compaction is enabled")
+		}
+		if params.MetastoreWriter == nil {
+			return nil, errors.New("dataobj compaction planner: metastore writer is required when compaction is enabled")
+		}
 	}
-	c.BasicService = services.NewBasicService(c.starting, c.running, c.stopping)
-	return c, nil
+
+	p := &Planner{
+		cfg:       params.Config,
+		logger:    logger,
+		scheduler: sched,
+	}
+	if params.Config.Enabled {
+		p.coordinator = newCoordinator(
+			params.Config,
+			log.With(logger, "component", "dataobj-compaction-coordinator"),
+			params.Bucket,
+			sched.inner,
+			params.MetastoreWriter,
+		)
+	}
+	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
+	return p, nil
 }
 
-// Scheduler returns the embedded engine.Scheduler. Used by the Loki
+// Scheduler returns the embedded compactor Scheduler. Used by the Loki
 // module-init wiring to register the scheduler's HTTP handler on the
 // Loki router (when running in remote-transport mode) and to register
 // scheduler metrics.
-func (c *Planner) Scheduler() *engine.Scheduler {
+func (c *Planner) Scheduler() *Scheduler {
 	return c.scheduler
 }
 
@@ -78,13 +105,23 @@ func (c *Planner) starting(ctx context.Context) error {
 	return nil
 }
 
-// running is the BasicService running callback. The coordinator polling
-// loop is a no-op stub in this scaffold; it simply blocks until shutdown
-// so the service stays healthy.
+// running is the BasicService running callback. When compaction is
+// enabled it drives the stateless coordinator polling loop; when
+// disabled it simply blocks until shutdown so the service stays healthy
+// (the embedded scheduler still serves workers either way).
 func (c *Planner) running(ctx context.Context) error {
-	level.Info(c.logger).Log("msg", "dataobj compaction planner running")
-	<-ctx.Done()
-	return nil
+	level.Info(c.logger).Log("msg", "dataobj compaction planner running",
+		"compaction_enabled", c.cfg.Enabled,
+	)
+	if c.coordinator == nil {
+		<-ctx.Done()
+		return nil
+	}
+	err := c.coordinator.Run(ctx)
+	if errors.Is(err, context.Canceled) {
+		return nil // clean shutdown
+	}
+	return err
 }
 
 // stopping is the BasicService stopping callback. It tears down the
@@ -104,18 +141,4 @@ func (c *Planner) stopping(runErr error) error {
 		return fmt.Errorf("dataobj compaction planner: stop scheduler: %w", err)
 	}
 	return nil
-}
-
-// resolveAdvertiseAddr converts the raw config string into a *net.TCPAddr
-// suitable for engine.SchedulerParams.AdvertiseAddr. Empty string keeps
-// the scheduler in-process-only (no remote listener) by returning nil.
-func resolveAdvertiseAddr(raw string) (net.Addr, error) {
-	if raw == "" {
-		return nil, nil
-	}
-	addr, err := net.ResolveTCPAddr("tcp", raw)
-	if err != nil {
-		return nil, fmt.Errorf("resolve %q: %w", raw, err)
-	}
-	return addr, nil
 }
