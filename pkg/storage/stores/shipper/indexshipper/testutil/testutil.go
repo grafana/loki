@@ -122,7 +122,7 @@ type DBRecords struct {
 
 func SetupDBsAtPath(t *testing.T, path string, dbs map[string]DBConfig, bucketName []byte) string {
 	t.Helper()
-	boltIndexClient, err := boltdbcommon.NewBoltDBIndexClient(boltdbcommon.BoltDBConfig{Directory: path})
+	boltIndexClient, err := boltdbcommon.NewBoltDBIndexClient(boltdbcommon.Config{Directory: path})
 	require.NoError(t, err)
 
 	defer boltIndexClient.Stop()

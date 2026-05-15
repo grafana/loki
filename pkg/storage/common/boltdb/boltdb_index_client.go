@@ -131,18 +131,18 @@ func QueryKey(q Query) string {
 
 // <<<<< END
 
-// BoltDBConfig for a BoltDB index client.
-type BoltDBConfig struct {
+// Config for a BoltDB index client.
+type Config struct {
 	Directory string `yaml:"directory"`
 }
 
 // RegisterFlags registers flags.
-func (cfg *BoltDBConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, "boltdb.dir", "", "Location of BoltDB index files.")
 }
 
 type BoltIndexClient struct {
-	cfg BoltDBConfig
+	cfg Config
 
 	dbsMtx sync.RWMutex
 	dbs    map[string]*bbolt.DB
@@ -151,7 +151,7 @@ type BoltIndexClient struct {
 }
 
 // NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
-func NewBoltDBIndexClient(cfg BoltDBConfig) (*BoltIndexClient, error) {
+func NewBoltDBIndexClient(cfg Config) (*BoltIndexClient, error) {
 	if err := util.EnsureDirectory(cfg.Directory); err != nil {
 		return nil, err
 	}

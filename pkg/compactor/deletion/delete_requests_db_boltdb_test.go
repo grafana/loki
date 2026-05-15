@@ -87,7 +87,7 @@ func checkRecordsInStorage(t *testing.T, storageFilePath string, start, numRecor
 		require.NoError(t, tempDB.Close())
 	}()
 
-	boltdbIndexClient, err := boltdbcommon.NewBoltDBIndexClient(boltdbcommon.BoltDBConfig{Directory: tempDir})
+	boltdbIndexClient, err := boltdbcommon.NewBoltDBIndexClient(boltdbcommon.Config{Directory: tempDir})
 	require.NoError(t, err)
 
 	defer boltdbIndexClient.Stop()

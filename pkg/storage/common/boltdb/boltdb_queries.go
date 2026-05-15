@@ -142,7 +142,7 @@ func (f *readBatchDeduperSync) Next() bool {
 	return false
 }
 
-// TOOD(chaudum): Find a better name
+// TODO(chaudum): Find a better name
 // TODO(chaudum): This function is only used in tests
 // Prior to this change, there where two exported functions DoParallelQueries in different packages:
 // * pkg/storage/chunk/client/util/util.go

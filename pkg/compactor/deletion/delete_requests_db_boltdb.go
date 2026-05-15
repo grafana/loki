@@ -35,7 +35,7 @@ const deleteRequestsDBBoltDBFileName = DeleteRequestsTableName + ".gz"
 
 func newDeleteRequestsTable(workingDirectory string, indexStorageClient storage.Client) (boltdbcommon.Client, error) {
 	dbPath := filepath.Join(workingDirectory, DeleteRequestsTableName)
-	boltdbIndexClient, err := boltdbcommon.NewBoltDBIndexClient(boltdbcommon.BoltDBConfig{Directory: filepath.Dir(dbPath)})
+	boltdbIndexClient, err := boltdbcommon.NewBoltDBIndexClient(boltdbcommon.Config{Directory: filepath.Dir(dbPath)})
 	if err != nil {
 		return nil, err
 	}
