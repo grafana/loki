@@ -121,7 +121,7 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 		Command("prepare", "Modifies a set of rules by including an specific label in aggregations.").
 		Action(r.prepare)
 	formatCmd := rulesCmd.
-		Command("format", "Formats a set of rule files. It reorders keys alphabetically, uses 4 spaces as indentantion, and formats PromQL expressions to a single line. `lint` is an alias for `format` and is deprecated.").
+		Command("format", "Formats a set of rule files. It reorders keys alphabetically, uses 4 spaces as indentation, and formats PromQL expressions to a single line. `lint` is an alias for `format` and is deprecated.").
 		Alias("lint").
 		Action(r.format)
 	checkCmd := rulesCmd.
@@ -224,7 +224,7 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 		"rule-dirs",
 		"Comma separated list of paths to directories containing rules yaml files. Each file in a directory with a .yml or .yaml suffix will be parsed.",
 	).StringVar(&r.RuleFilesPath)
-	formatCmd.Flag("dry-run", "Performs a trial run that doesn't make any changes and (mostly) produces the same outpupt as a real run.").Short('n').BoolVar(&r.LintDryRun)
+	formatCmd.Flag("dry-run", "Performs a trial run that doesn't make any changes and (mostly) produces the same output as a real run.").Short('n').BoolVar(&r.LintDryRun)
 
 	// Check Command
 	checkCmd.Arg("rule-files", "The rule files to check.").ExistingFilesVar(&r.RuleFilesList)
@@ -674,12 +674,12 @@ func (r *RuleCommand) prepare(_ *kingpin.ParseContext) error {
 func (r *RuleCommand) format(_ *kingpin.ParseContext) error {
 	err := r.setupFiles()
 	if err != nil {
-		return errors.Wrap(err, "prepare operation unsuccessful, unable to load rules files")
+		return errors.Wrap(err, "format operation unsuccessful, unable to load rules files")
 	}
 
 	namespaces, err := rules.ParseFiles(r.RuleFilesList)
 	if err != nil {
-		return errors.Wrap(err, "prepare operation unsuccessful, unable to parse rules files")
+		return errors.Wrap(err, "format operation unsuccessful, unable to parse rules files")
 	}
 
 	var count, mod int
@@ -694,13 +694,13 @@ func (r *RuleCommand) format(_ *kingpin.ParseContext) error {
 	}
 
 	if !r.LintDryRun {
-		// linting will always in-place edit unless is a dry-run.
+		// formatting always edits in place unless this is a dry run.
 		if err := save(namespaces, true); err != nil {
 			return err
 		}
 	}
 
-	log.Infof("SUCCESS: %d rules found, %d linted expressions", count, mod)
+	log.Infof("SUCCESS: %d rules found, %d expressions formatted", count, mod)
 
 	return nil
 }

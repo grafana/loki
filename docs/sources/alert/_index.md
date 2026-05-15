@@ -229,8 +229,8 @@ lokitool is intended to run against multi-tenant Loki. The commands need an `--i
 An example workflow is included below:
 
 ```sh
-# lint the rules.yaml file ensuring it's valid and reformatting it if necessary
-lokitool rules lint ./output/rules.yaml
+# format the rules.yaml file, reordering keys and reformatting PromQL expressions
+lokitool rules format ./output/rules.yaml
 
 # diff rules against the currently managed ruleset in Loki
 lokitool rules diff --rule-dirs=./output

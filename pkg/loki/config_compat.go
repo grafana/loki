@@ -26,7 +26,7 @@ func ensureInvertedIndexShardingCompatibility(c Config) error {
 
 	for i, sc := range c.SchemaConfig.Configs {
 		switch sc.IndexType {
-		case types.TSDBType:
+		case types.IndexTypeTSDB:
 			if err := index.ValidateBitPrefixShardFactor(uint32(c.Ingester.IndexShards)); err != nil {
 				return err
 			}

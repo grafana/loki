@@ -175,7 +175,7 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			iter := iterTableOfContentsPaths(tc.start, tc.end)
+			iter := IterTableOfContentsPaths(tc.start, tc.end)
 			actual := []string{}
 			for path := range iter {
 				actual = append(actual, path)

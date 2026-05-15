@@ -26,7 +26,7 @@ type logsIndexCalculation interface {
 	// Name returns a short identifier for this calculation step, used for metrics labels.
 	Name() string
 	// Prepare is called before the first batch of logs is processed in order to initialize any state.
-	Prepare(ctx context.Context, section *dataobj.Section, stats logs.Stats) error
+	Prepare(ctx context.Context, calcCtx *logsCalculationContext, section *dataobj.Section, stats logs.Stats) error
 	// ProcessBatch is called for each batch of logs records.
 	//
 	// If ProcessBatchNeedsBuilderLock returns true, implementations can assume
@@ -255,11 +255,20 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	// Track cumulative duration per calculation step across all batches + flush.
 	stepDurations := make([]time.Duration, len(calculationSteps))
 
+	// Lock the builder during Prepare because some calculations (e.g.,
+	// columnValuesCalculation) mutate shared builder state via
+	// PrepareBloomColumn. The Calculate method dispatches one goroutine per
+	// logs section (see g.Go in Calculate), so two processLogsSection calls
+	// for sections of the same tenant within one data object run
+	// concurrently against the same per-tenant postings builder.
+	c.builderMtx.Lock()
 	for _, calculation := range calculationSteps {
-		if err := calculation.Prepare(ctx, section, stats); err != nil {
+		if err := calculation.Prepare(ctx, calculationContext, section, stats); err != nil {
+			c.builderMtx.Unlock()
 			return fmt.Errorf("failed to prepare calculation: %w", err)
 		}
 	}
+	c.builderMtx.Unlock()
 
 	// TODO(benclive): Switch to a columnar reader instead of row based
 	rowReader := logs.NewRowReader(logsSection)

@@ -140,6 +140,28 @@ func (c *Capture) LinkParent(parent *Region) {
 	}
 }
 
+// Merge incorporates all regions from src into c. If parent is non-nil, the
+// root regions of src are re-parented onto it before being added to c,
+// preserving the parent/child relationships when src's data is presented as
+// part of c's hierarchy.
+//
+// Regions are shared by reference between c and src after Merge returns.
+//
+// Merge is a no-op if c or src is nil, or if c has already been ended.
+func (c *Capture) Merge(parent *Region, src *Capture) {
+	if c == nil || src == nil {
+		return
+	}
+
+	if parent != nil {
+		src.LinkParent(parent)
+	}
+
+	for _, region := range src.Regions() {
+		c.AddRegion(region)
+	}
+}
+
 // getAllStatistics returns statistics used across all regions
 // in this capture.
 func (c *Capture) getAllStatistics() map[StatisticKey]Statistic {
@@ -202,4 +224,60 @@ func (c *Capture) UnmarshalBinary(data []byte) error {
 	}
 
 	return nil
+}
+
+// Value computes the value of a statistic from the capture, rolling up from all
+// regions. If the statistic is not present in any region, Value returns nil.
+func (c *Capture) Value(stat Statistic) *AggregatedObservation {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	key := stat.Key()
+	var rolled *AggregatedObservation
+
+	for _, region := range c.regions {
+		region.mu.RLock()
+		obs, ok := region.observations[key]
+		if !ok {
+			region.mu.RUnlock()
+			continue
+		}
+		if rolled == nil {
+			rolled = &AggregatedObservation{
+				Statistic: obs.Statistic,
+				Value:     obs.Value,
+				Count:     obs.Count,
+			}
+		} else {
+			rolled.Merge(obs)
+		}
+		region.mu.RUnlock()
+	}
+
+	return rolled
+}
+
+// Value gets a typed value from a capture. If the statistic it not present in
+// any region from the capture, or the statistic is not of type T, Value returns
+// the zero value for T.
+//
+// Use [TryValue] if you need to distinguish between a missing statistic and a
+// zero value.
+func Value[T any](c *Capture, stat Statistic) T {
+	v, _ := TryValue[T](c, stat)
+	return v
+}
+
+// TryValue gets a typed value from a capture, returning both the value and a
+// boolean indicating whether the statistic was present in the capture and
+// matching type T.
+func TryValue[T any](c *Capture, stat Statistic) (T, bool) {
+	rolled := c.Value(stat)
+	if rolled == nil {
+		var zero T
+		return zero, false
+	}
+
+	val, ok := rolled.Value.(T)
+	return val, ok
 }

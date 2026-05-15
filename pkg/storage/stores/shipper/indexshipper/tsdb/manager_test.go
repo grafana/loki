@@ -42,7 +42,7 @@ func TestIndexBuckets(t *testing.T) {
 			},
 		}
 
-		tableRanges = config.GetIndexStoreTableRanges(types.TSDBType, periods)
+		tableRanges = config.GetIndexStoreTableRanges(types.IndexTypeTSDB, periods)
 	)
 	tests := []struct {
 		name         string

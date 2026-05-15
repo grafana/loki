@@ -26,7 +26,6 @@ import (
 	"github.com/grafana/loki/v3/integration/util"
 
 	"github.com/grafana/loki/v3/pkg/loki"
-	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -84,9 +83,6 @@ storage_config:
       filesystem:
         store-1:
           dir: {{.sharedDataPath}}/fs-store-1
-  boltdb_shipper:
-    active_index_directory: {{.dataPath}}/boltdb-index
-    cache_location: {{.dataPath}}/boltdb-cache
   tsdb_shipper:
     active_index_directory: {{.dataPath}}/tsdb-index
     cache_location: {{.dataPath}}/tsdb-cache
@@ -233,8 +229,6 @@ func (c *Cluster) Restart() error {
 }
 
 func (c *Cluster) Cleanup() error {
-	// cleanup singleton boltdb shipper client instances
-	storage.ResetBoltDBIndexClientsWithShipper()
 	return c.stop(true)
 }
 
@@ -385,7 +379,7 @@ func (c *Component) MergedConfig() ([]byte, error) {
 
 	// default to using boltdb index
 	if len(c.cluster.periodCfgs) == 0 {
-		c.cluster.periodCfgs = []string{boltDBShipperSchemaConfigTemplate}
+		c.cluster.periodCfgs = []string{tsdbShipperSchemaConfigTemplate}
 	}
 
 	for _, periodCfg := range c.cluster.periodCfgs {

@@ -74,6 +74,7 @@ QUERY_TEE_IMAGE        := $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 LOGCLI_IMAGE           := $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG)
 LOGQL_ANALYZER_IMAGE   := $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG)
 OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
+MAKEFILE_IMAGE         := $(IMAGE_PREFIX)/loki-makefile:latest
 
 # OCI (Docker) setup
 OCI_PLATFORMS  := --platform=linux/amd64,linux/arm64
@@ -101,6 +102,7 @@ INSTALL_WORKFLOW_DEPS_ARGS ?=
 define run_in_container
 	@mkdir -p $(shell pwd)/.pkg $(shell pwd)/.cache
 	@echo ">>> Running make $@ in container ..."
+
 	$(eval GIT_MOUNT := $(shell \
 		if git rev-parse --git-dir >/dev/null 2>&1; then \
 			GIT_DIR=$$(git rev-parse --git-dir); \
@@ -112,19 +114,23 @@ define run_in_container
 				echo "-v $$ABS_GIT_DIR:/src/loki/.git$(MOUNT_FLAGS)"; \
 			fi; \
 		fi))
+
+	@docker build --rm $(OCI_BUILD_ARGS) --build-arg "SRC_DIR=/src/loki" --build-arg "INSTALL_WORKFLOW_DEPS_ARGS=$(INSTALL_WORKFLOW_DEPS_ARGS)" \
+		-f loki-build-image/Dockerfile \
+		-t $(MAKEFILE_IMAGE) \
+		.
+
 	@docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
 		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		$(GIT_MOUNT) \
-		--entrypoint /bin/sh \
+		--entrypoint /usr/bin/make \
 		-e SRC_DIR=/src/loki \
-		$(BUILD_IMAGE) \
-		-c \
-		"/src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh $(INSTALL_WORKFLOW_DEPS_ARGS) && \
-		cd /src/loki && \
-		make BUILD_IN_CONTAINER=false $@"
+		-e BUILD_IN_CONTAINER=false \
+		$(MAKEFILE_IMAGE) \
+		$@
 endef
 
 # Adapted from https://www.thapaliya.com/en/writings/well-documented-makefiles/
@@ -137,7 +143,6 @@ help: ## Display this help
 .PHONY: fluent-bit-image fluent-bit-test
 .PHONY: fluentd-image fluentd-test
 .PHONY: loki-image build-image build-image-push
-.PHONY: bigtable-backup push-bigtable-backup
 .PHONY: benchmark-store check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: doc check-doc
@@ -577,20 +582,6 @@ logstash-push-test-logs:
 logstash-env:
 	 docker run -v  `pwd`/clients/cmd/logstash:/home/logstash/ -it --rm --entrypoint /bin/sh \
 		 $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
-
-########################
-# Bigtable Backup Tool #
-########################
-
-BIGTABLE_BACKUP_TOOL_FOLDER = ./tools/bigtable-backup
-BIGTABLE_BACKUP_TOOL_TAG ?= $(IMAGE_TAG)
-
-bigtable-backup:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(BIGTABLE_BACKUP_TOOL_FOLDER)
-	$(OCI_TAG) $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(IMAGE_PREFIX)/loki-bigtable-backup:$(BIGTABLE_BACKUP_TOOL_TAG)
-
-push-bigtable-backup: bigtable-backup
-	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-bigtable-backup:$(BIGTABLE_BACKUP_TOOL_TAG)
 
 ##########
 # Images #
