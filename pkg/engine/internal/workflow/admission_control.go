@@ -15,7 +15,6 @@ const (
 	taskTypeOther taskType = "other"
 
 	// taskTypeCompaction is the admission lane for compaction tasks
-	// (IndexMerge in v1.0; LogMerge in v2.0).
 	taskTypeCompaction taskType = "compaction"
 )
 

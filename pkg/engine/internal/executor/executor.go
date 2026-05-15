@@ -151,14 +151,14 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
 	case *physical.IndexMerge:
-		// IndexMerge ships with a stub executor that writes a zero-byte
-		// object at OutputIndexPath. The real K-way merge over index
-		// sections lands in PR A14.
+		// IndexMerge ships with a stub executor that writes a zero-byte object at
+		// OutputIndexPath. The real K-way merge over index sections lands in a
+		// later PR.
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexMergeStub(n))
 	case *physical.LogMerge:
-		// LogMerge ships with a stub executor that writes a zero-byte
-		// object at OutputPath. The real K-way merge over log sections
-		// lands in v2.0.
+		// LogMerge ships with a stub executor that writes a zero-byte object at
+		// OutputPath. The real K-way merge over log sections lands in a later PR,
+		// after we ship IndeXMerge.
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMergeStub(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))

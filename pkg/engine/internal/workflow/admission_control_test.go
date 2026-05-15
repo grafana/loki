@@ -82,8 +82,7 @@ func TestAdmissionControl_typeFor_IndexMerge(t *testing.T) {
 
 func TestAdmissionControl_typeFor_LogMerge(t *testing.T) {
 	// A task whose Fragment contains a LogMerge node must be classified
-	// as taskTypeCompaction. v1.0 doesn't emit LogMerge, but classification
-	// is wired so v2.0 doesn't need a follow-up admission change.
+	// as taskTypeCompaction.
 	g := dag.Graph[physical.Node]{}
 	g.Add(&physical.LogMerge{NodeID: ulid.Make(), Tenant: "tenant-29"})
 	task := &Task{Fragment: physical.FromGraph(g)}

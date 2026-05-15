@@ -5,7 +5,7 @@
 // Placeholder executor for the IndexMerge physical plan node. Uploads a
 // zero-byte object at OutputIndexPath and returns an empty pipeline so
 // the engine workflow framework reports the task as completed. The real
-// K-way merge over index sections (postings + stats) lands in PR A14.
+// K-way merge over index sections (postings + stats) comes later.
 //
 // No default code path constructs an IndexMerge node, so this stub is
 // only reachable from the compactor coordinator (opt-in via target).

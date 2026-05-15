@@ -13,11 +13,6 @@ import (
 // IndexMerge represents one K-way sort-merge task over INDEX sections
 // (postings + stats) for a single tenant within one ToC window. The node
 // is a mutation node: it has no Arrow output and is not cacheable.
-//
-// IndexMerge is the v1.0 sibling of LogMerge — see the v1.0 milestone
-// section of the dataobj-compactor design spec (rev 5.15). The real
-// executor lands in PR A14; this file ships with a stub executor at
-// pkg/engine/internal/executor/index_merge_stub.go.
 type IndexMerge struct {
 	NodeID ulid.ULID
 
@@ -41,8 +36,7 @@ type IndexMerge struct {
 	OutputIndexPath string
 
 	// TaskTTL is the per-task execution deadline enforced by the executor
-	// via context.WithDeadline. The stub ignores this value; A14's real
-	// executor honours it.
+	// via context.WithDeadline.
 	TaskTTL time.Duration
 }
 

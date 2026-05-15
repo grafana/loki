@@ -13,11 +13,6 @@ import (
 // LogMerge represents one K-way sort-merge task over LOG sections for a
 // single tenant within one ToC window. The node is a mutation node: it
 // has no Arrow output and is not cacheable.
-//
-// LogMerge is the v2.0 sibling of IndexMerge — see the v1.0 milestone
-// section of the dataobj-compactor design spec (rev 5.15). In v1.0 this
-// node ships with a stub executor only; no caller emits it. The real
-// K-way merge over log sections lands in v2.0.
 type LogMerge struct {
 	NodeID ulid.ULID
 
@@ -31,17 +26,16 @@ type LogMerge struct {
 	// sections in object storage.
 	Runs []*compactionv2pb.RunRef
 
-	// SourceIndexPaths is the set of unique source-index paths referenced
-	// across all Runs. Used by the consolidation step (Phase 2) to know
-	// which indexes the merge's outputs replace.
+	// SourceIndexPaths is the set of unique source-index paths referenced across
+	// all Runs. Used by the consolidation step to know which indexes the merge's
+	// outputs replace.
 	SourceIndexPaths []string
 
 	// OutputPath is the deterministic object-storage key where the
 	// executor writes the compacted log object.
 	OutputPath string
 
-	// TaskTTL is the per-task execution deadline. The stub ignores this
-	// value; v2.0's real executor honours it.
+	// TaskTTL is the per-task execution deadline.
 	TaskTTL time.Duration
 }
 

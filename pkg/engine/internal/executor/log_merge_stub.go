@@ -4,7 +4,7 @@
 //
 // Placeholder executor for the LogMerge physical plan node. Uploads a
 // zero-byte object at OutputPath and returns an empty pipeline. The real
-// K-way merge over log sections lands in v2.0.
+// K-way merge over log sections comes later.
 //
 // No default code path constructs a LogMerge node, so this stub is only
 // reachable from the compactor coordinator (opt-in via target).

@@ -79,9 +79,8 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 			SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 			SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 		},
-		// ExecutorConfig left zero: real IndexMerge and
-		// TableOfContentsConsolidate executors (and LogMerge for v2.0)
-		// arrive in follow-up changes. The zero value produces a no-op
+		// ExecutorConfig left zero: real IndexMerge and TableOfContentsConsolidate
+		// executors arrive in follow-up changes. The zero value produces a no-op
 		// task-results cache and a default batch size.
 		Executor:      engine.ExecutorConfig{},
 		AdvertiseAddr: advertiseAddr,
