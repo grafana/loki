@@ -414,7 +414,8 @@ func TestSplitRecordByShards_EvenDistribution(t *testing.T) {
 	// Manually create shard indices: 2 rows per shard
 	shardIndices := []int{0, 0, 1, 1, 2, 2}
 
-	results := splitRecordByShards(rec, shardIndices, 3)
+	results, err := splitRecordByShards(rec, shardIndices, 3)
+	require.NoError(t, err)
 	require.Len(t, results, 3)
 
 	for i, result := range results {
@@ -435,7 +436,8 @@ func TestSplitRecordByShards_UnevenDistribution(t *testing.T) {
 	// Shard 0: 3 rows, Shard 1: 2 rows, Shard 2: 0 rows
 	shardIndices := []int{0, 0, 0, 1, 1}
 
-	results := splitRecordByShards(rec, shardIndices, 3)
+	results, err := splitRecordByShards(rec, shardIndices, 3)
+	require.NoError(t, err)
 	require.Len(t, results, 3)
 
 	require.Equal(t, int64(3), results[0].NumRows())
@@ -458,7 +460,8 @@ func TestSplitRecordByShards_AllToOneShard(t *testing.T) {
 	// All rows go to shard 1
 	shardIndices := []int{1, 1, 1}
 
-	results := splitRecordByShards(rec, shardIndices, 3)
+	results, err := splitRecordByShards(rec, shardIndices, 3)
+	require.NoError(t, err)
 	require.Len(t, results, 3)
 
 	require.Equal(t, int64(0), results[0].NumRows())
@@ -512,7 +515,8 @@ func TestSplitRecordByShards_MultipleColumns(t *testing.T) {
 	// Split: shard 0 gets rows 0,2; shard 1 gets rows 1,3
 	shardIndices := []int{0, 1, 0, 1}
 
-	results := splitRecordByShards(rec, shardIndices, 2)
+	results, err := splitRecordByShards(rec, shardIndices, 2)
+	require.NoError(t, err)
 	require.Len(t, results, 2)
 
 	// Verify shard 0 has correct data
@@ -565,7 +569,8 @@ func TestSplitRecordByShards_WithNulls(t *testing.T) {
 	// All rows go to shard 0
 	shardIndices := []int{0, 0, 0}
 
-	results := splitRecordByShards(rec, shardIndices, 2)
+	results, err := splitRecordByShards(rec, shardIndices, 2)
+	require.NoError(t, err)
 	require.Len(t, results, 2)
 
 	// Verify shard 0 has all rows including the null

@@ -2,6 +2,7 @@ package worker
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -44,7 +45,7 @@ func partitionRecordBatch(rec arrow.RecordBatch, routing *workflow.SinkRouting, 
 	}
 
 	// Split the record batch by shard
-	return splitRecordByShards(rec, shardIndices, numShards), nil
+	return splitRecordByShards(rec, shardIndices, numShards)
 }
 
 // computeLabelHashShards computes the shard index for each row based on grouping labels.
@@ -161,7 +162,7 @@ func findTimestampColumn(rec arrow.RecordBatch) (*array.Timestamp, error) {
 
 // splitRecordByShards splits a record batch into multiple batches based on shard indices.
 // Returns a slice of record batches, one per shard.
-func splitRecordByShards(rec arrow.RecordBatch, shardIndices []int, numShards int) []arrow.RecordBatch {
+func splitRecordByShards(rec arrow.RecordBatch, shardIndices []int, numShards int) ([]arrow.RecordBatch, error) {
 	// Count rows per shard
 	rowsPerShard := make([]int, numShards)
 	for _, shardIdx := range shardIndices {
@@ -206,8 +207,7 @@ func splitRecordByShards(rec arrow.RecordBatch, shardIndices []int, numShards in
 			case *array.Boolean:
 				fieldBuilder.(*array.BooleanBuilder).Append(arr.Value(rowIdx))
 			default:
-				// For other types, append null as fallback
-				fieldBuilder.AppendNull()
+				return nil, fmt.Errorf("unsupported type: %T", arr)
 			}
 		}
 	}
@@ -218,5 +218,5 @@ func splitRecordByShards(rec arrow.RecordBatch, shardIndices []int, numShards in
 		results[i] = builders[i].NewRecordBatch()
 	}
 
-	return results
+	return results, nil
 }
