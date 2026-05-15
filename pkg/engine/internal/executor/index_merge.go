@@ -167,6 +167,35 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 		}
 	}
 
+	// Validate that all stats sections share the same SortSchema.
+	// Read the first row of each stats section to check the schema.
+	if len(statsSections) > 0 {
+		var firstSortSchema string
+		for i, rs := range statsSections {
+			sec, err := stats.Open(ctx, rs.section)
+			if err != nil {
+				return nil, nil, fmt.Errorf("opening stats section for validation: %w", err)
+			}
+			
+			reader := newStatsPileReader(sec)
+			row, err := reader.Next(ctx)
+			reader.Close()
+			
+			if err != nil && !errors.Is(err, io.EOF) {
+				return nil, nil, fmt.Errorf("reading stats section %d for validation: %w", i, err)
+			}
+			
+			if i == 0 {
+				firstSortSchema = row.SortSchema
+			} else if row.SortSchema != firstSortSchema {
+				return nil, nil, fmt.Errorf(
+					"stats sections have mismatched SortSchema: section 0 has %q, section %d has %q",
+					firstSortSchema, i, row.SortSchema,
+				)
+			}
+		}
+	}
+
 	return postingsSections, statsSections, nil
 }
 
@@ -182,8 +211,9 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 		return nil
 	}
 
-	// Open all postings sections and create pile readers
-	var pileReaders []pileReader[postingsRow]
+	// Open all postings sections and create pile readers.
+	// Pre-allocate with known capacity to avoid slice growth allocations.
+	pileReaders := make([]pileReader[postingsRow], 0, len(sections))
 
 	for _, rs := range sections {
 		sec, err := postings.Open(ctx, rs.section)
@@ -266,8 +296,9 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 		return nil
 	}
 
-	// Open all stats sections and create pile readers
-	var pileReaders []pileReader[statsRow]
+	// Open all stats sections and create pile readers.
+	// Pre-allocate with known capacity to avoid slice growth allocations.
+	pileReaders := make([]pileReader[statsRow], 0, len(sections))
 
 	for _, rs := range sections {
 		sec, err := stats.Open(ctx, rs.section)
@@ -319,6 +350,10 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 
 	var emitErr error
 	err := seq(func(row statsRow) bool {
+		// Stop iteration immediately if the reducer encountered an error.
+		if reducerErr != nil {
+			return false
+		}
 		if e := builder.AppendStat(tenant, row.ObjectPath, row.SectionIndex,
 			row.SortSchema, row.Labels,
 			time.Unix(0, row.MinTimestamp),

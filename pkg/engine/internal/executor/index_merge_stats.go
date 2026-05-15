@@ -230,18 +230,16 @@ func decodeStatsRow(batch arrow.RecordBatch, columns map[string]int, rowIndex in
 		result.UncompressedSize = col.(*array.Int64).Value(rowIndex)
 	}
 
-	// Decode all label columns (format: "<label>.label.utf8")
+	// Decode all label columns (format: "<label>.label.utf8").
+	// Use suffix trimming rather than Split to handle label names that contain dots.
 	for fieldName, colIdx := range columns {
-		if strings.HasSuffix(fieldName, ".label.utf8") {
-			// Extract label name
-			parts := strings.Split(fieldName, ".")
-			if len(parts) >= 2 {
-				labelName := parts[0]
-				col := batch.Column(colIdx)
-				if !col.IsNull(rowIndex) {
-					result.Labels[labelName] = col.(*array.String).Value(rowIndex)
-				}
-			}
+		if !strings.HasSuffix(fieldName, ".label.utf8") {
+			continue
+		}
+		labelName := strings.TrimSuffix(fieldName, ".label.utf8")
+		col := batch.Column(colIdx)
+		if !col.IsNull(rowIndex) {
+			result.Labels[labelName] = col.(*array.String).Value(rowIndex)
 		}
 	}
 

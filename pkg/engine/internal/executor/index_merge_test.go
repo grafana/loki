@@ -1446,3 +1446,116 @@ func TestExecuteIndexMerge_EmptyInputs(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, exists, "output object must be uploaded even for empty input")
 }
+
+// TestStatsPileReader_DottedLabelNames tests that label names containing dots
+// are correctly decoded (not truncated by split).
+func TestStatsPileReader_DottedLabelNames(t *testing.T) {
+	ctx := context.Background()
+
+	// Build a stats section with a label name containing a dot, e.g., "my.svc"
+	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
+
+	b.Append(stats.Stat{
+		ObjectPath:       "/obj1",
+		SectionIndex:     0,
+		SortSchema:       "my.svc",
+		Labels:           map[string]string{"my.svc": "api"},
+		MinTimestamp:     100,
+		MaxTimestamp:     200,
+		RowCount:         5,
+		UncompressedSize: 50,
+	})
+
+	// Flush to a dataobj
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(b))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	// Find and open the stats section
+	var sec *stats.Section
+	for _, s := range obj.Sections() {
+		if !stats.CheckSection(s) {
+			continue
+		}
+		sec, err = stats.Open(ctx, s)
+		require.NoError(t, err)
+		break
+	}
+	require.NotNil(t, sec)
+
+	// Create a pile reader and read the row
+	pileReader := newStatsPileReader(sec)
+	defer pileReader.Close()
+
+	row, err := pileReader.Next(ctx)
+	require.NoError(t, err)
+
+	// Verify the label name is NOT truncated: should be "my.svc", not "my"
+	require.Equal(t, "my.svc", row.SortSchema)
+	require.Equal(t, map[string]string{"my.svc": "api"}, row.Labels)
+	require.Equal(t, "api", row.Labels["my.svc"])
+
+	// Verify we don't have a truncated label
+	_, hasTruncated := row.Labels["my"]
+	require.False(t, hasTruncated, "label should not be truncated to 'my'")
+}
+
+// TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly tests that merging
+// stats sections with different SortSchema values fails with a clear error
+// before any data is written.
+func TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	// Build two source objects with DIFFERENT SortSchema values
+	sourceAPath := "source/index-a.dat"
+	buildSourceStatsObject(t, bucket, "tenant", sourceAPath, []stats.Stat{
+		{
+			ObjectPath:       "log-X",
+			SectionIndex:     0,
+			SortSchema:       "service,job",
+			Labels:           map[string]string{"service": "api", "job": "j1"},
+			MinTimestamp:     100,
+			MaxTimestamp:     200,
+			RowCount:         10,
+			UncompressedSize: 1000,
+		},
+	})
+
+	sourceBPath := "source/index-b.dat"
+	buildSourceStatsObject(t, bucket, "tenant", sourceBPath, []stats.Stat{
+		{
+			ObjectPath:       "log-X",
+			SectionIndex:     0,
+			SortSchema:       "job,service", // Different SortSchema
+			Labels:           map[string]string{"job": "j1", "service": "api"},
+			MinTimestamp:     100,
+			MaxTimestamp:     200,
+			RowCount:         20,
+			UncompressedSize: 2000,
+		},
+	})
+
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant",
+		OutputIndexPath: outputPath,
+		TaskTTL:         time.Minute,
+		Runs: []*physical.RunRef{
+			{
+				Sections: []*physical.SectionRef{
+					{ObjectPath: sourceAPath, SectionIndex: 0},
+					{ObjectPath: sourceBPath, SectionIndex: 0},
+				},
+			},
+		},
+	}
+
+	execCtx := newTestExecutorContext(t, bucket)
+	err := execCtx.doIndexMerge(ctx, node)
+	require.Error(t, err, "merge should fail with SortSchema mismatch")
+	require.Contains(t, err.Error(), "SortSchema", "error should mention SortSchema mismatch")
+}
