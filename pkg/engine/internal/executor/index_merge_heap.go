@@ -9,7 +9,7 @@ import (
 // pileReader is one pile cursor; records must be emitted in non-decreasing
 // order according to the comparator passed to mergeHeap.
 type pileReader[R any] interface {
-	Next(ctx context.Context) (R, error)  // returns io.EOF when exhausted
+	Next(ctx context.Context) (R, error) // returns io.EOF when exhausted
 	Close() error
 }
 

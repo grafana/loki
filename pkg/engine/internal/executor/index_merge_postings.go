@@ -67,12 +67,12 @@ func comparePostingsRow(a, b postingsRow) int {
 
 // postingsPileReader reads postingsRow records from a postings section in order.
 type postingsPileReader struct {
-	reader     *postings.Reader
-	batch      arrow.RecordBatch
-	index      int
-	columns    map[string]int // column name -> field index
-	opened     bool
-	validated  bool
+	reader    *postings.Reader
+	batch     arrow.RecordBatch
+	index     int
+	columns   map[string]int // column name -> field index
+	opened    bool
+	validated bool
 }
 
 // newPostingsPileReader creates a new postingsPileReader from a postings section.
@@ -139,7 +139,7 @@ func (r *postingsPileReader) Next(ctx context.Context) (postingsRow, error) {
 	}
 
 	// Decode the row at r.index from r.batch
-	row := decodePostingsRow(r.batch, r.columns, int(r.index))
+	row := decodePostingsRow(r.batch, r.columns, r.index)
 	r.index++
 	return row, nil
 }

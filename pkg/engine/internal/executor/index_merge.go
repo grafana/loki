@@ -19,7 +19,7 @@ import (
 
 // executeIndexMerge orchestrates the index merge: existence-check, classify sections,
 // drive both heaps, feed indexobj.Builder, and upload the result.
-func (c *Context) executeIndexMerge(ctx context.Context, node *physical.IndexMerge) Pipeline {
+func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
 		if err := c.doIndexMerge(ctx, node); err != nil {
 			return errorPipeline(ctx, err)
@@ -196,7 +196,7 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 	}
 
 	// D2: last-wins reducer
-	reducer := func(acc, next postingsRow) postingsRow {
+	reducer := func(_, next postingsRow) postingsRow {
 		level.Warn(c.logger).Log(
 			"msg", "IndexMerge: postings full-key collision; D2 last-wins reducer fired",
 			"tenant", tenant,

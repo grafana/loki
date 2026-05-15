@@ -28,7 +28,8 @@ type statsRow struct {
 
 // compareStatsRow returns the lexicographic order of two statsRow records
 // under the on-disk stats sort, which is:
-//   (Labels in SortSchema order, MinTimestamp, MaxTimestamp)
+//
+//	(Labels in SortSchema order, MinTimestamp, MaxTimestamp)
 //
 // This matches pkg/dataobj/sections/stats/builder.go:compareStats. Keeping
 // the comparator aligned with the on-disk sort is required for the K-way
@@ -75,12 +76,12 @@ func compareStatsRow(a, b statsRow) int {
 
 // statsPileReader reads statsRow records from a stats section in order.
 type statsPileReader struct {
-	reader     *stats.Reader
-	batch      arrow.RecordBatch
-	index      int
-	columns    map[string]int // column name -> field index
-	opened     bool
-	validated  bool
+	reader    *stats.Reader
+	batch     arrow.RecordBatch
+	index     int
+	columns   map[string]int // column name -> field index
+	opened    bool
+	validated bool
 }
 
 // newStatsPileReader creates a new statsPileReader from a stats section.
@@ -147,7 +148,7 @@ func (r *statsPileReader) Next(ctx context.Context) (statsRow, error) {
 	}
 
 	// Decode the row at r.index from r.batch
-	row := decodeStatsRow(r.batch, r.columns, int(r.index))
+	row := decodeStatsRow(r.batch, r.columns, r.index)
 	r.index++
 	return row, nil
 }

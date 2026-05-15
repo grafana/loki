@@ -40,7 +40,7 @@ func newTestPileReader(records ...intRecord) *testPileReader {
 	}
 }
 
-func (p *testPileReader) Next(ctx context.Context) (intRecord, error) {
+func (p *testPileReader) Next(_ context.Context) (intRecord, error) {
 	if p.index >= len(p.records) {
 		return intRecord{}, io.EOF
 	}
@@ -211,7 +211,7 @@ func TestMergeHeap_ContextCancelled(t *testing.T) {
 
 	iter := mergeHeap(ctx, []pileReader[intRecord]{pile1, pile2}, cmp, nil)
 
-	err := iter(func(rec intRecord) bool {
+	err := iter(func(_ intRecord) bool {
 		return true
 	})
 	require.Equal(t, context.Canceled, err)
@@ -407,7 +407,7 @@ func TestMergeHeap_ClosesAllPilesOnEarlyStop(t *testing.T) {
 
 	// Iterate and stop after the 2nd record
 	var count int
-	err := iter(func(rec intRecord) bool {
+	err := iter(func(_ intRecord) bool {
 		count++
 		return count < 2 // Stop after 2 records
 	})
@@ -444,7 +444,7 @@ func TestMergeHeap_ClosesAllPilesOnReadError(t *testing.T) {
 	iter := mergeHeap(ctx, []pileReader[intRecord]{trackingErrorPile, trackingNormalPile}, cmp, nil)
 
 	// Try to iterate; should get an error
-	err := iter(func(rec intRecord) bool {
+	err := iter(func(_ intRecord) bool {
 		return true
 	})
 	require.Error(t, err)
@@ -481,7 +481,7 @@ func TestMergeHeap_ClosesAllPilesOnContextCancel(t *testing.T) {
 
 	// Start iteration and cancel after first record
 	var count int
-	err := iter(func(rec intRecord) bool {
+	err := iter(func(_ intRecord) bool {
 		count++
 		if count == 1 {
 			cancel()
@@ -500,7 +500,7 @@ type errorPileReader[R any] struct {
 	called bool
 }
 
-func (p *errorPileReader[R]) Next(ctx context.Context) (R, error) {
+func (p *errorPileReader[R]) Next(_ context.Context) (R, error) {
 	if p.called {
 		var zero R
 		return zero, io.ErrUnexpectedEOF
@@ -603,7 +603,7 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 	buildSourceIndexWithBothKinds(t, bucket, "tenant-1", srcPath)
 
 	// 2. Open the uploaded object and find the section indices for postings and stats.
-	postingsIdx, statsIdx := findSectionIndices(t, ctx, bucket, srcPath)
+	postingsIdx, statsIdx := findSectionIndices(ctx, t, bucket, srcPath)
 
 	// 3. Construct an IndexMerge node with two RunRefs:
 	//    - one referencing the postings section
@@ -634,7 +634,7 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, exists, "output object must exist")
 
-	outObj := openObjectFromBucket(t, ctx, bucket, outputPath)
+	outObj := openObjectFromBucket(ctx, t, bucket, outputPath)
 	var sawPostings, sawStats bool
 	for _, sec := range outObj.Sections() {
 		if postings.CheckSection(sec) {
@@ -651,7 +651,7 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 // buildSourceIndexWithBothKinds builds a dataobj containing one postings section
 // (with 1-2 LabelObservations) and one stats section (with 1-2 Stat rows),
 // then uploads it to the bucket at the given path.
-func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant, path string) {
+func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, _, path string) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -698,10 +698,10 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant,
 
 // findSectionIndices opens the source object and returns the indices of the
 // postings and stats sections. Both sections must exist.
-func findSectionIndices(t *testing.T, ctx context.Context, bucket objstore.Bucket, path string) (int, int) {
+func findSectionIndices(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) (int, int) {
 	t.Helper()
 
-	obj := openObjectFromBucket(t, ctx, bucket, path)
+	obj := openObjectFromBucket(ctx, t, bucket, path)
 	postingsIdx, statsIdx := -1, -1
 
 	for i, sec := range obj.Sections() {
@@ -720,7 +720,7 @@ func findSectionIndices(t *testing.T, ctx context.Context, bucket objstore.Bucke
 }
 
 // openObjectFromBucket downloads and opens a dataobj.Object from the bucket.
-func openObjectFromBucket(t *testing.T, ctx context.Context, bucket objstore.Bucket, path string) *dataobj.Object {
+func openObjectFromBucket(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) *dataobj.Object {
 	t.Helper()
 
 	obj, err := dataobj.FromBucket(ctx, bucket, path, 0)
@@ -755,11 +755,11 @@ func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 		bucket:       bucket,
 		scratchStore: scratch.NewMemory(),
 		indexobjCfg: logsobj.BuilderBaseConfig{
-			TargetPageSize:         2048,
-			MaxPageRows:            10000,
-			TargetObjectSize:       1 << 22, // 4 MiB
-			TargetSectionSize:      1 << 21, // 2 MiB
-			BufferSize:             2048 * 8,
+			TargetPageSize:          2048,
+			MaxPageRows:             10000,
+			TargetObjectSize:        1 << 22, // 4 MiB
+			TargetSectionSize:       1 << 21, // 2 MiB
+			BufferSize:              2048 * 8,
 			SectionStripeMergeLimit: 2,
 		},
 		logger: log.NewNopLogger(),
@@ -768,7 +768,7 @@ func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 
 // buildSourcePostingsObject builds a dataobj containing a single postings section
 // with the given label observations, then uploads it to the bucket.
-func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, tenant, path string, observations []postings.LabelObservation) {
+func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, _, path string, observations []postings.LabelObservation) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -790,7 +790,7 @@ func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, tenant, pat
 
 // buildSourceStatsObject builds a dataobj containing a single stats section
 // with the given stats rows, then uploads it to the bucket.
-func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, tenant, path string, statsRows []stats.Stat) {
+func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, _, path string, statsRows []stats.Stat) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -811,10 +811,10 @@ func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, tenant, path s
 
 // readPostingsRowsFromBucket downloads an object from the bucket, finds its
 // postings section, and returns all decoded postings rows.
-func readPostingsRowsFromBucket(t *testing.T, ctx context.Context, bucket objstore.Bucket, path string) []postingsRow {
+func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []postingsRow {
 	t.Helper()
 
-	obj := openObjectFromBucket(t, ctx, bucket, path)
+	obj := openObjectFromBucket(ctx, t, bucket, path)
 
 	var sec *postings.Section
 	for _, s := range obj.Sections() {
@@ -847,10 +847,10 @@ func readPostingsRowsFromBucket(t *testing.T, ctx context.Context, bucket objsto
 
 // readStatsRowsFromBucket downloads an object from the bucket, finds its
 // stats section, and returns all decoded stats rows.
-func readStatsRowsFromBucket(t *testing.T, ctx context.Context, bucket objstore.Bucket, path string) []statsRow {
+func readStatsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []statsRow {
 	t.Helper()
 
-	obj := openObjectFromBucket(t, ctx, bucket, path)
+	obj := openObjectFromBucket(ctx, t, bucket, path)
 
 	var sec *stats.Section
 	for _, s := range obj.Sections() {
@@ -1048,7 +1048,7 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 	require.NoError(t, err)
 
 	// Read and verify output.
-	rows := readPostingsRowsFromBucket(t, ctx, bucket, outputPath)
+	rows := readPostingsRowsFromBucket(ctx, t, bucket, outputPath)
 
 	// Should have 2 unique full keys (overlap collapsed).
 	require.Len(t, rows, 2)
@@ -1101,8 +1101,8 @@ func TestExecuteIndexMerge_StatsAggregation(t *testing.T) {
 			SectionIndex:     0,
 			SortSchema:       "service",
 			Labels:           map[string]string{"service": "api"},
-			MinTimestamp:     ts1,  // identical to source B
-			MaxTimestamp:     ts2,  // identical to source B
+			MinTimestamp:     ts1, // identical to source B
+			MaxTimestamp:     ts2, // identical to source B
 			RowCount:         10,
 			UncompressedSize: 1000,
 		},
@@ -1115,8 +1115,8 @@ func TestExecuteIndexMerge_StatsAggregation(t *testing.T) {
 			SectionIndex:     0,
 			SortSchema:       "service",
 			Labels:           map[string]string{"service": "api"},
-			MinTimestamp:     ts1,  // identical to source A
-			MaxTimestamp:     ts2,  // identical to source A
+			MinTimestamp:     ts1, // identical to source A
+			MaxTimestamp:     ts2, // identical to source A
 			RowCount:         20,
 			UncompressedSize: 2000,
 		},
@@ -1142,7 +1142,7 @@ func TestExecuteIndexMerge_StatsAggregation(t *testing.T) {
 	err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	rows := readStatsRowsFromBucket(t, ctx, bucket, outputPath)
+	rows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
 	// Should have exactly one stats row (overlap aggregated).
 	require.Len(t, rows, 1)
@@ -1155,9 +1155,9 @@ func TestExecuteIndexMerge_StatsAggregation(t *testing.T) {
 
 	// Verify aggregation on full-key match: timestamps unchanged (both inputs match),
 	// row counts and sizes summed.
-	require.Equal(t, ts1, row.MinTimestamp)         // unchanged since both inputs match
-	require.Equal(t, ts2, row.MaxTimestamp)         // unchanged since both inputs match
-	require.Equal(t, int64(30), row.RowCount)       // 10 + 20
+	require.Equal(t, ts1, row.MinTimestamp)             // unchanged since both inputs match
+	require.Equal(t, ts2, row.MaxTimestamp)             // unchanged since both inputs match
+	require.Equal(t, int64(30), row.RowCount)           // 10 + 20
 	require.Equal(t, int64(3000), row.UncompressedSize) // 1000 + 2000
 }
 
@@ -1224,7 +1224,7 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, exists)
 
-	outObj := openObjectFromBucket(t, ctx, bucket, outputPath)
+	outObj := openObjectFromBucket(ctx, t, bucket, outputPath)
 	var sawPostings, sawStats bool
 	for _, sec := range outObj.Sections() {
 		if postings.CheckSection(sec) {
@@ -1239,8 +1239,8 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 	require.True(t, sawStats, "output must contain stats section")
 
 	// Verify content from both sections.
-	postingsRows := readPostingsRowsFromBucket(t, ctx, bucket, outputPath)
-	statRows := readStatsRowsFromBucket(t, ctx, bucket, outputPath)
+	postingsRows := readPostingsRowsFromBucket(ctx, t, bucket, outputPath)
+	statRows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
 	require.Len(t, postingsRows, 1)
 	require.Len(t, statRows, 1)
@@ -1404,7 +1404,7 @@ func TestExecuteIndexMerge_RowCountSum(t *testing.T) {
 	err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	rows := readStatsRowsFromBucket(t, ctx, bucket, outputPath)
+	rows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
 	// Should have exactly one row (all sources merged at identical full key).
 	require.Len(t, rows, 1)
