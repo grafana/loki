@@ -88,7 +88,7 @@ type simpleEvaluatorForSharding struct {
 func (e *simpleEvaluatorForSharding) EvalForGrouping(expr physical.Expression, rec arrow.RecordBatch) (arrow.Array, error) {
 	colExpr, ok := expr.(*physical.ColumnExpr)
 	if !ok {
-		return nil, nil
+		return nil, errors.New("unsupported expression type")
 	}
 
 	// Find the column by name (FQN)
@@ -103,7 +103,7 @@ func (e *simpleEvaluatorForSharding) EvalForGrouping(expr physical.Expression, r
 		}
 	}
 
-	return nil, nil
+	return nil, errors.New("column not found")
 }
 
 // computeTimeShards computes the shard index for each row based on timestamp.

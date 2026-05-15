@@ -609,22 +609,22 @@ func TestSimpleEvaluatorForSharding(t *testing.T) {
 		require.Equal(t, "api", strArr.Value(1))
 	})
 
-	t.Run("non-column expression returns nil", func(t *testing.T) {
+	t.Run("non-column expression returns error", func(t *testing.T) {
 		// Use a non-column expression
 		literalExpr := physical.NewLiteral("test")
 
 		arr, err := eval.EvalForGrouping(literalExpr, rec)
-		require.NoError(t, err)
+		require.Error(t, err)
 		require.Nil(t, arr)
 	})
 
-	t.Run("non-existent column returns nil", func(t *testing.T) {
+	t.Run("non-existent column returns error", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{Column: "nonexistent", Type: types.ColumnTypeLabel},
 		}
 
 		arr, err := eval.EvalForGrouping(colExpr, rec)
-		require.NoError(t, err)
+		require.Error(t, err)
 		require.Nil(t, arr)
 	})
 }
