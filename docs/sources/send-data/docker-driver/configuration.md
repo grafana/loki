@@ -133,7 +133,7 @@ next section for all supported options.
 
 `loki-external-labels` have the default value of `container_name={{.Name}}`. If you have custom value for
 `loki-external-labels` then that will replace the default value, meaning you won't have `container_name` label unless
-you explcity add it (e.g: `loki-external-labels: "job=docker,container_name={{.Name}}"`.
+you explicitly add it (e.g: `loki-external-labels: "job=docker,container_name={{.Name}}"`.
 
 ## Pipeline stages
 

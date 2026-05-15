@@ -204,6 +204,36 @@ func (seq *DatasetSequence) Close() {
 	_ = seq.r.Close()
 }
 
+// CompareForSortSchema returns a comparison function for k-way merge using
+// schema-based sort order: [sortKey ASC, timestamp DESC].
+// sortKeys maps streamID to its pre-computed sort key.
+// math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
+func CompareForSortSchema(sortKeys map[int64]string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+	return func(a, b result.Result[dataset.Row]) bool {
+		return result.Compare(a, b, func(ra, rb dataset.Row) int {
+			aStreamID := ra.Values[0].Int64()
+			bStreamID := rb.Values[0].Int64()
+			if aStreamID == math.MaxInt64 && bStreamID == math.MaxInt64 {
+				return 0
+			}
+			if aStreamID == math.MaxInt64 {
+				return 1
+			}
+			if bStreamID == math.MaxInt64 {
+				return -1
+			}
+			aKey := sortKeys[aStreamID]
+			bKey := sortKeys[bStreamID]
+			if res := cmp.Compare(aKey, bKey); res != 0 {
+				return res
+			}
+			aTS := ra.Values[1].Int64()
+			bTS := rb.Values[1].Int64()
+			return cmp.Compare(bTS, aTS)
+		}) < 0
+	}
+}
+
 // CompareForSortOrder returns a comparison function for result rows for the given sort order.
 func CompareForSortOrder(sort SortOrder) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
 	switch sort {
@@ -215,6 +245,8 @@ func CompareForSortOrder(sort SortOrder) func(result.Result[dataset.Row], result
 		return func(a, b result.Result[dataset.Row]) bool {
 			return result.Compare(a, b, compareRowsTimestamp) < 0
 		}
+	case SortSchemaASC:
+		panic("CompareForSortOrder does not support SortSchemaASC: use CompareForSortSchema instead")
 	default:
 		panic("invalid sort order")
 	}

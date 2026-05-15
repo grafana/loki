@@ -3,6 +3,7 @@ package logsobj
 import (
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -11,7 +12,7 @@ import (
 )
 
 func TestBuilderFactory(t *testing.T) {
-	bf := NewBuilderFactory(testBuilderConfig, scratch.NewMemory())
+	bf := NewBuilderFactory(testBuilderConfig, scratch.NewMemory(), log.NewNopLogger())
 	// Can create a builder without registering metrics.
 	b, err := bf.NewBuilder(nil)
 	require.NoError(t, err)

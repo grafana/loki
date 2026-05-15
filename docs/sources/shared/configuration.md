@@ -1056,10 +1056,6 @@ pattern_ingester:
 
   # Configures the pattern tee which forwards requests to the pattern ingester.
   tee_config:
-    # The size of the batch of raw logs to send for template mining
-    # CLI flag: -pattern-ingester.tee.batch-size
-    [batch_size: <int> | default = 5000]
-
     # The max time between batches of raw logs to send for template mining
     # CLI flag: -pattern-ingester.tee.batch-flush-interval
     [batch_flush_interval: <duration> | default = 1s]
@@ -1611,7 +1607,8 @@ dataobj:
     [partition_ratio: <int> | default = 10]
 
   compaction:
-    # Experimental: Enable the dataobj compaction planner target.
+    # Experimental: Enable dataobj compaction modules (planner and worker
+    # targets when selected via -target).
     # CLI flag: -dataobj.compaction.enabled
     [enabled: <boolean> | default = false]
 
@@ -1630,6 +1627,31 @@ dataobj:
       # Experimental: HTTP path the embedded compaction scheduler listens on for
       # worker frame traffic.
       # CLI flag: -dataobj.compaction.scheduler.endpoint
+      [endpoint: <string> | default = "/api/v2/compaction-frame"]
+
+    worker:
+      # Experimental: Number of task-execution threads. 0 uses GOMAXPROCS.
+      # CLI flag: -dataobj.compaction.worker.worker-threads
+      [worker_threads: <int> | default = 0]
+
+      # Experimental: DNS-SRV address used to discover compaction schedulers.
+      # Required when -target=dataobj-compaction-worker. Example:
+      # dnssrv+_compaction-frame._tcp.compactor-scheduler.svc.cluster.local
+      # CLI flag: -dataobj.compaction.worker.scheduler-lookup-address
+      [scheduler_lookup_address: <string> | default = ""]
+
+      # Experimental: Interval at which to re-run the DNS-SRV lookup.
+      # CLI flag: -dataobj.compaction.worker.scheduler-lookup-interval
+      [scheduler_lookup_interval: <duration> | default = 10s]
+
+      # Experimental: host:port the embedded compaction worker advertises to
+      # schedulers. Required when -target=dataobj-compaction-worker.
+      # CLI flag: -dataobj.compaction.worker.advertise-addr
+      [advertise_addr: <string> | default = ""]
+
+      # Experimental: HTTP path the embedded compaction worker registers its
+      # frame handler on.
+      # CLI flag: -dataobj.compaction.worker.endpoint
       [endpoint: <string> | default = "/api/v2/compaction-frame"]
 
   # The prefix to use for the storage bucket.
@@ -3634,7 +3656,6 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
-- `boltdb.shipper.index-gateway-client.grpc`
 - `compactor.grpc-client`
 - `frontend.grpc-client-config`
 - `ingest-limits-frontend-client`
@@ -4073,8 +4094,7 @@ flush_op_backoff:
 [max_returned_stream_errors: <int> | default = 10]
 
 # How far back should an ingester be allowed to query the store for data, for
-# use only with boltdb-shipper/tsdb index and filesystem object store. -1 for
-# infinite.
+# use only with tsdb index and filesystem object store. -1 for infinite.
 # CLI flag: -ingester.query-store-max-look-back-period
 [query_store_max_look_back_period: <duration> | default = 0s]
 
@@ -5338,13 +5358,12 @@ The `period_config` block configures what index schemas should be used for from 
 [from: <daytime>]
 
 # store and object_store below affect which <storage_config> key is used. Which
-# index to use. Either tsdb or boltdb-shipper. Following stores are deprecated:
-# aws, aws-dynamo, grpc.
+# index to use. Only tsdb is supported.
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws (alias s3), azure, gcs,
 # alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to
-# named_stores_config). Following stores are deprecated: aws-dynamo, grpc.
+# named_stores_config).
 [object_store: <string> | default = ""]
 
 # The schema version to use, current recommended schema is v13.
@@ -6692,69 +6711,6 @@ object_store:
 [max_chunk_batch_size: <int> | default = 50]
 
 # Configures storing index in an Object Store
-# (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required
-# fields only required when boltdb-shipper is defined in config.
-boltdb_shipper:
-  # Directory where ingesters would write index files which would then be
-  # uploaded by shipper to configured storage
-  # CLI flag: -boltdb.shipper.active-index-directory
-  [active_index_directory: <string> | default = ""]
-
-  # Cache location for restoring index files from storage for queries
-  # CLI flag: -boltdb.shipper.cache-location
-  [cache_location: <string> | default = ""]
-
-  # TTL for index files restored in cache for queries
-  # CLI flag: -boltdb.shipper.cache-ttl
-  [cache_ttl: <duration> | default = 24h]
-
-  # Resync downloaded files with the storage
-  # CLI flag: -boltdb.shipper.resync-interval
-  [resync_interval: <duration> | default = 5m]
-
-  # Number of days of common index to be kept downloaded for queries. For per
-  # tenant index query readiness, use limits overrides config.
-  # CLI flag: -boltdb.shipper.query-ready-num-days
-  [query_ready_num_days: <int> | default = 0]
-
-  index_gateway_client:
-    # The grpc_client block configures the gRPC client used to communicate
-    # between a client and server component in Loki.
-    # The CLI flags prefix for this block configuration is:
-    # boltdb.shipper.index-gateway-client.grpc
-    [grpc_client_config: <grpc_client>]
-
-    # Hostname or IP of the Index Gateway gRPC server running in simple mode.
-    # Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A
-    # record with multiple IP's, a DNS SRV record with a followup A record
-    # lookup, or a DNS SRV record without a followup A record lookup,
-    # respectively.
-    # CLI flag: -boltdb.shipper.index-gateway-client.server-address
-    [server_address: <string> | default = ""]
-
-    # Whether requests sent to the gateway should be logged or not.
-    # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
-    [log_gateway_requests: <boolean> | default = false]
-
-    # Experimental: Defines buckets for time-based sharding. Time based sharding
-    # only takes affect when index gateways run in simple mode. To enable client
-    # side time-based sharding of queries across index gateway instances set at
-    # least one bucket in the format of a string representation of a
-    # time.Duration, e.g. ['168h', '336h', '504h']
-    # CLI flag: -boltdb.shipper.index-gateway-client.time-based-sharding-buckets
-    [time_based_sharding_buckets: <list of strings> | default = []]
-
-  [ingestername: <string> | default = ""]
-
-  [mode: <string> | default = ""]
-
-  [ingesterdbretainperiod: <duration>]
-
-  # Build per tenant index files
-  # CLI flag: -boltdb.shipper.build-per-tenant-index
-  [build_per_tenant_index: <boolean> | default = false]
-
-# Configures storing index in an Object Store
 # (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required
 # fields only required when TSDB is defined in config.
 tsdb_shipper:
@@ -7411,7 +7367,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `bloom.metas-cache.memcached`
-- `boltdb.shipper.index-gateway-client.grpc`
 - `common.storage.ring.etcd`
 - `compactor.grpc-client`
 - `compactor.ring.etcd`

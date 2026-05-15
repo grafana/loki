@@ -25,6 +25,10 @@ type Record struct {
 	Timestamp time.Time
 	Metadata  labels.Labels
 	Line      []byte
+
+	// SortKey is a pre-computed schema sort key. It is not encoded into the section;
+	// it only guides the in-memory sort during building.
+	SortKey string
 }
 
 type AppendStrategy int
@@ -56,6 +60,7 @@ type SortOrder int
 const (
 	SortStreamASC SortOrder = iota
 	SortTimestampDESC
+	SortSchemaASC
 )
 
 // BuilderOptions configures the behavior of the logs section.
@@ -92,6 +97,12 @@ type BuilderOptions struct {
 	// SortOrder defines the order in which the rows of the logs sections are sorted.
 	// They can either be sorted by [streamID ASC, timestamp DESC] ([SortStreamASC]) or [timestamp DESC, streamID ASC] ([SortTimestampDESC]).
 	SortOrder SortOrder
+
+	// SchemaLabels holds the ordered list of label names that define the schema
+	// sort key when SortOrder is SortSchemaASC. It is persisted in the section
+	// metadata so readers can reconstruct the sort key without re-reading the
+	// tenant overrides.
+	SchemaLabels []string
 }
 
 // Builder accumulate a set of [Record]s within a data object.
@@ -150,7 +161,12 @@ func (b *Builder) Tenant() string { return b.tenant }
 func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
 
 // Type returns the [dataobj.SectionType] of the logs builder.
-func (b *Builder) Type() dataobj.SectionType { return sectionType }
+func (b *Builder) Type() dataobj.SectionType {
+	if b.opts.SortOrder == SortSchemaASC {
+		return schemaSortSectionType
+	}
+	return sectionType
+}
 
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {
@@ -313,7 +329,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 
 	// The first two columns of each row are *always* stream ID and timestamp.
 	// TODO(ashwanth): Find a safer way to do this. Same as [CompareRows]
-	logsEnc.SetSortInfo(sortInfo(b.opts.SortOrder))
+	logsEnc.SetSortInfo(sortInfo(b.opts.SortOrder, b.opts.SchemaLabels))
 	logsEnc.SetTenant(b.tenant)
 
 	n, err = logsEnc.Flush(w)
@@ -340,7 +356,7 @@ func (b *Builder) encodeSection(enc *columnar.Encoder, section *table) error {
 	return nil
 }
 
-func sortInfo(sort SortOrder) *datasetmd_v2.SortInfo {
+func sortInfo(sort SortOrder, schemaLabels []string) *datasetmd_v2.SortInfo {
 	switch sort {
 	case SortStreamASC:
 		return &datasetmd_v2.SortInfo{
@@ -354,6 +370,13 @@ func sortInfo(sort SortOrder) *datasetmd_v2.SortInfo {
 			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
 				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
 				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
+			},
+		}
+	case SortSchemaASC:
+		return &datasetmd_v2.SortInfo{
+			SchemaLabels: schemaLabels,
+			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
+				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
 			},
 		}
 	default:

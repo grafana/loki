@@ -77,6 +77,10 @@ func cloneRuns(runs []*compactionv2pb.RunRef) []*compactionv2pb.RunRef {
 		sections := make([]*compactionv2pb.SectionRef, len(r.Sections))
 		for j, s := range r.Sections {
 			cp := *s
+			// MinKey/MaxKey are []string; a struct copy aliases the slice
+			// backing array. Clone them so callers can mutate either copy.
+			cp.MinKey = slices.Clone(s.MinKey)
+			cp.MaxKey = slices.Clone(s.MaxKey)
 			sections[j] = &cp
 		}
 		out[i] = &compactionv2pb.RunRef{Sections: sections}

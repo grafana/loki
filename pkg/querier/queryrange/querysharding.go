@@ -202,7 +202,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	var strategy logql.ShardingStrategy
 
-	if conf.IndexType == types.TSDBType {
+	if conf.IndexType == types.IndexTypeTSDB {
 		v := ast.limits.TSDBShardingStrategy(tenants[0])
 		version, err := logql.ParseShardVersion(v)
 		if err != nil {
@@ -349,7 +349,7 @@ func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request)
 
 func hasShards(confs ShardingConfigs) bool {
 	for _, conf := range confs {
-		if conf.RowShards > 0 || conf.IndexType == types.TSDBType {
+		if conf.RowShards > 0 || conf.IndexType == types.IndexTypeTSDB {
 			return true
 		}
 	}
@@ -388,7 +388,7 @@ func (confs ShardingConfigs) GetConf(start, end int64) (config.PeriodConfig, err
 	}
 
 	// query doesn't have shard factor, so don't try to do AST mapping.
-	if conf.RowShards < 2 && conf.IndexType != types.TSDBType {
+	if conf.RowShards < 2 && conf.IndexType != types.IndexTypeTSDB {
 		return conf, errors.Errorf("shard factor not high enough: [%d]", conf.RowShards)
 	}
 

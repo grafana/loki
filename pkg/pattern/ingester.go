@@ -131,7 +131,6 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 }
 
 type TeeConfig struct {
-	BatchSize          int           `yaml:"batch_size"`
 	BatchFlushInterval time.Duration `yaml:"batch_flush_interval"`
 	FlushQueueSize     int           `yaml:"flush_queue_size"`
 	FlushWorkerCount   int           `yaml:"flush_worker_count"`
@@ -140,12 +139,6 @@ type TeeConfig struct {
 }
 
 func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
-	f.IntVar(
-		&cfg.BatchSize,
-		prefix+"tee.batch-size",
-		5000,
-		"The size of the batch of raw logs to send for template mining",
-	)
 	f.DurationVar(
 		&cfg.BatchFlushInterval,
 		prefix+"tee.batch-flush-interval",

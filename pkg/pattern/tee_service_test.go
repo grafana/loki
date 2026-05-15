@@ -199,20 +199,20 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 				Labels: `{foo="bar"}`,
 				Entries: []push.Entry{{
 					Timestamp: time.Now(),
-					Line:      "abc",
+					Line:      strings.Repeat("abc", 2<<11), // 4KB
 				}},
 			},
 		}
 
 		tee.cfg.TeeConfig.MaxBufferedBytes = 0
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s1}, nil)
-		// The atomic counter should not be incremented when disabled.
-		require.Equal(t, int64(0), tee.bufferedBytes.Load())
+		bufferedBytes1 := tee.bufferedBytes
+		require.NotZero(t, bufferedBytes1)
 
 		tee.cfg.TeeConfig.MaxBufferedBytes = -1
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s1}, nil)
-		// The atomic counter should not be incremented when disabled.
-		require.Equal(t, int64(0), tee.bufferedBytes.Load())
+		bufferedBytes2 := tee.bufferedBytes
+		require.Greater(t, bufferedBytes2, bufferedBytes1)
 	})
 
 	t.Run("limit is enforced when positive", func(t *testing.T) {
@@ -234,7 +234,7 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		}
 		require.LessOrEqual(t, s1.Stream.Size(), 1024)
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s1}, nil)
-		bufferedBytes1 := tee.bufferedBytes.Load()
+		bufferedBytes1 := tee.bufferedBytes
 		require.NotZero(t, bufferedBytes1)
 		require.Len(t, tee.buf, 1)
 		tenantBuf, ok := tee.buf["test"]
@@ -254,7 +254,7 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		}
 		require.Greater(t, s2.Stream.Size(), 1024)
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s2}, nil)
-		bufferedBytes2 := tee.bufferedBytes.Load()
+		bufferedBytes2 := tee.bufferedBytes
 		require.Equal(t, bufferedBytes2, bufferedBytes1)
 		require.Len(t, tee.buf, 1)
 		// tenantBuf should contain s1, but not s2.
@@ -274,7 +274,7 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 			},
 		}
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s3}, nil)
-		bufferedBytes3 := tee.bufferedBytes.Load()
+		bufferedBytes3 := tee.bufferedBytes
 		require.Greater(t, bufferedBytes3, bufferedBytes2)
 		require.Len(t, tee.buf, 1)
 		// tenantBuf should contain s1 and s3.
@@ -296,7 +296,7 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		}
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s4}, nil)
 		// The total size of s4 is less than s1 and s3, but not 0.
-		bufferedBytes4 := tee.bufferedBytes.Load()
+		bufferedBytes4 := tee.bufferedBytes
 		require.Equal(t, bufferedBytes4, bufferedBytes3)
 		require.Len(t, tee.buf, 1)
 		// tenantBuf should contain s1 and s3.
@@ -315,7 +315,7 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		}
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s4}, nil)
 		// The total size of s4 is less than s1 and s3, but not 0.
-		bufferedBytes5 := tee.bufferedBytes.Load()
+		bufferedBytes5 := tee.bufferedBytes
 		require.Less(t, bufferedBytes5, bufferedBytes4)
 		require.NotZero(t, bufferedBytes5)
 		require.Len(t, tee.buf, 1)
