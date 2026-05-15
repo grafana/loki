@@ -188,11 +188,10 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 			a.uniqueSeries[key] = series
 		}
 
-		state = &groupState{
+		a.points[groupKey] = &groupState{
 			value: value,
 			count: int64(1),
 		}
-		a.points[groupKey] = state
 	}
 	return nil
 }
