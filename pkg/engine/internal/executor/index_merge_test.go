@@ -1,16 +1,24 @@
 package executor
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 // intRecord is a simple test record for the merge heap tests.
@@ -581,4 +589,179 @@ func TestPostingsPileReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 
 	// The bitmaps should be different (different stream IDs used)
 	require.NotEqual(t, rows[0].StreamIDBitmap, rows[1].StreamIDBitmap, "bitmaps for different stream IDs should differ")
+}
+
+// TestExecuteIndexMerge_Smoke_BothKinds smoke tests the full merge path: builds
+// a source index object with both postings and stats sections, runs the merge
+// executor, and verifies the output contains both section types with merged data.
+func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	// 1. Build and upload a source index object containing both postings and stats sections.
+	srcPath := "source/index-0.dat"
+	buildSourceIndexWithBothKinds(t, bucket, "tenant-1", srcPath)
+
+	// 2. Open the uploaded object and find the section indices for postings and stats.
+	postingsIdx, statsIdx := findSectionIndices(t, ctx, bucket, srcPath)
+
+	// 3. Construct an IndexMerge node with two RunRefs:
+	//    - one referencing the postings section
+	//    - one referencing the stats section
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant-1",
+		OutputIndexPath: outputPath,
+		TaskTTL:         time.Minute,
+		Runs: []*physical.RunRef{
+			{Sections: []*physical.SectionRef{
+				{ObjectPath: srcPath, SectionIndex: int64(postingsIdx)},
+			}},
+			{Sections: []*physical.SectionRef{
+				{ObjectPath: srcPath, SectionIndex: int64(statsIdx)},
+			}},
+		},
+	}
+
+	// 4. Create executor context and run the merger.
+	execCtx := newTestExecutorContext(t, bucket)
+	err := execCtx.doIndexMerge(ctx, node)
+	require.NoError(t, err)
+
+	// 5. Verify the output exists and contains both section kinds.
+	exists, err := bucket.Exists(ctx, outputPath)
+	require.NoError(t, err)
+	require.True(t, exists, "output object must exist")
+
+	outObj := openObjectFromBucket(t, ctx, bucket, outputPath)
+	var sawPostings, sawStats bool
+	for _, sec := range outObj.Sections() {
+		if postings.CheckSection(sec) {
+			sawPostings = true
+		}
+		if stats.CheckSection(sec) {
+			sawStats = true
+		}
+	}
+	require.True(t, sawPostings, "output must contain a postings section")
+	require.True(t, sawStats, "output must contain a stats section")
+}
+
+// buildSourceIndexWithBothKinds builds a dataobj containing one postings section
+// (with 1-2 LabelObservations) and one stats section (with 1-2 Stat rows),
+// then uploads it to the bucket at the given path.
+func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant, path string) {
+	t.Helper()
+	ctx := context.Background()
+
+	// Build postings section with one label entry
+	postingsBuilder := postings.NewBuilder(nil, 0, 0)
+	ts := time.Unix(0, 1_000_000)
+
+	err := postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "log-A",
+		SectionIndex:     0,
+		ColumnName:       "service",
+		LabelValue:       "api",
+		StreamID:         1,
+		Timestamp:        ts,
+		UncompressedSize: 100,
+	})
+	require.NoError(t, err)
+
+	// Build stats section with one stat row
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+	statsBuilder.Append(stats.Stat{
+		ObjectPath:       "log-A",
+		SectionIndex:     0,
+		SortSchema:       "service,namespace",
+		Labels:           map[string]string{"service": "api", "namespace": "default"},
+		MinTimestamp:     ts.UnixNano(),
+		MaxTimestamp:     ts.UnixNano() + 1000,
+		RowCount:         10,
+		UncompressedSize: 1000,
+	})
+
+	// Build and flush the combined dataobj
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(postingsBuilder))
+	require.NoError(t, objBuilder.Append(statsBuilder))
+
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	// Upload to bucket
+	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
+}
+
+// findSectionIndices opens the source object and returns the indices of the
+// postings and stats sections. Both sections must exist.
+func findSectionIndices(t *testing.T, ctx context.Context, bucket objstore.Bucket, path string) (int, int) {
+	t.Helper()
+
+	obj := openObjectFromBucket(t, ctx, bucket, path)
+	postingsIdx, statsIdx := -1, -1
+
+	for i, sec := range obj.Sections() {
+		if postings.CheckSection(sec) {
+			postingsIdx = i
+		}
+		if stats.CheckSection(sec) {
+			statsIdx = i
+		}
+	}
+
+	require.GreaterOrEqual(t, postingsIdx, 0, "source object must contain a postings section")
+	require.GreaterOrEqual(t, statsIdx, 0, "source object must contain a stats section")
+
+	return postingsIdx, statsIdx
+}
+
+// openObjectFromBucket downloads and opens a dataobj.Object from the bucket.
+func openObjectFromBucket(t *testing.T, ctx context.Context, bucket objstore.Bucket, path string) *dataobj.Object {
+	t.Helper()
+
+	obj, err := dataobj.FromBucket(ctx, bucket, path, 0)
+	require.NoError(t, err, "failed to open object from bucket at %s", path)
+
+	return obj
+}
+
+// uploadObjectToBucket serializes a *dataobj.Object and uploads it to the bucket.
+func uploadObjectToBucket(ctx context.Context, bucket objstore.Bucket, path string, obj *dataobj.Object) error {
+	reader, err := obj.Reader(ctx)
+	if err != nil {
+		return fmt.Errorf("getting object reader: %w", err)
+	}
+	defer reader.Close()
+
+	objBytes, err := io.ReadAll(reader)
+	if err != nil {
+		return fmt.Errorf("reading object: %w", err)
+	}
+
+	return bucket.Upload(ctx, path, io.NopCloser(bytes.NewReader(objBytes)))
+}
+
+// newTestExecutorContext constructs a minimal *Context wired with the bucket,
+// an in-memory scratch store, a default indexobj BuilderBaseConfig, and a
+// no-op logger.
+func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
+	t.Helper()
+
+	return &Context{
+		bucket:       bucket,
+		scratchStore: scratch.NewMemory(),
+		indexobjCfg: logsobj.BuilderBaseConfig{
+			TargetPageSize:         2048,
+			MaxPageRows:            10000,
+			TargetObjectSize:       1 << 22, // 4 MiB
+			TargetSectionSize:      1 << 21, // 2 MiB
+			BufferSize:             2048 * 8,
+			SectionStripeMergeLimit: 2,
+		},
+		logger: log.NewNopLogger(),
+	}
 }

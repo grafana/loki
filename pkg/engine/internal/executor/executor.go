@@ -17,10 +17,12 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
@@ -56,6 +58,14 @@ type Config struct {
 
 	// TaskCaches is an optional registry mapping cache types to their backing stores.
 	TaskCaches TaskCacheRegistry
+
+	// ScratchStore is an optional scratch store for index merge operations.
+	// Required for compaction tasks; may be nil for query-only executors.
+	ScratchStore scratch.Store
+
+	// IndexobjCfg is the builder config for index objects.
+	// Required for compaction tasks; may be nil for query-only executors.
+	IndexobjCfg logsobj.BuilderBaseConfig
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
@@ -71,6 +81,8 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		getExternalInputs:  cfg.GetExternalInputs,
 		streamFilterer:     cfg.StreamFilterer,
 		taskCaches:         cfg.TaskCaches,
+		scratchStore:       cfg.ScratchStore,
+		indexobjCfg:        cfg.IndexobjCfg,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -100,6 +112,9 @@ type Context struct {
 
 	streamFilterer RequestStreamFilterer
 	taskCaches     TaskCacheRegistry
+
+	scratchStore scratch.Store
+	indexobjCfg  logsobj.BuilderBaseConfig
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -151,10 +166,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
 	case *physical.IndexMerge:
-		// IndexMerge ships with a stub executor that writes a zero-byte object at
-		// OutputIndexPath. The real K-way merge over index sections lands in a
-		// later PR.
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexMergeStub(n))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexMerge(ctx, n))
 	case *physical.LogMerge:
 		// LogMerge ships with a stub executor that writes a zero-byte object at
 		// OutputPath. The real K-way merge over log sections lands in a later PR,

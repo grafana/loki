@@ -274,6 +274,50 @@ func (b *Builder) BloomBytes(tenantID, objectPath string, sectionIdx int64, colu
 	return tenantPostings.BloomBytes(objectPath, sectionIdx, columnName)
 }
 
+// AppendPostingsLabelEntry appends a pre-aggregated label posting entry directly
+// to the builder without going through the per-observation aggregation path.
+func (b *Builder) AppendPostingsLabelEntry(tenantID string, entry postings.LabelEntry) error {
+	b.metrics.appendsTotal.Inc()
+
+	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
+	preSize := tenantPostings.EstimatedSize()
+
+	if err := tenantPostings.AppendLabelEntry(entry); err != nil {
+		return err
+	}
+
+	postSize := tenantPostings.EstimatedSize()
+	b.unflushedSizeEstimate += postSize - preSize
+	b.currentSizeEstimate += postSize - preSize
+	b.state = builderStateDirty
+	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
+		b.builderFull = true
+	}
+	return nil
+}
+
+// AppendPostingsBloomEntry appends a pre-aggregated bloom posting entry directly
+// to the builder without going through the per-observation aggregation path.
+func (b *Builder) AppendPostingsBloomEntry(tenantID string, entry postings.BloomEntry) error {
+	b.metrics.appendsTotal.Inc()
+
+	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
+	preSize := tenantPostings.EstimatedSize()
+
+	if err := tenantPostings.AppendBloomEntry(entry); err != nil {
+		return err
+	}
+
+	postSize := tenantPostings.EstimatedSize()
+	b.unflushedSizeEstimate += postSize - preSize
+	b.currentSizeEstimate += postSize - preSize
+	b.state = builderStateDirty
+	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
+		b.builderFull = true
+	}
+	return nil
+}
+
 func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {
 	b.metrics.appendsTotal.Inc()
 	newEntrySize := len(path) + 1 + 1 // path, startTs, endTs
