@@ -66,13 +66,11 @@ func computeLabelHashShards(rec arrow.RecordBatch, grouping physical.Grouping, n
 	}
 
 	if err != nil {
-		// If we can't collect grouping columns, fall back to shard 0 for all rows
-		return nil
+		return err
 	}
 
 	if len(arrays) == 0 {
-		// No grouping columns found - all rows go to shard 0
-		return nil
+		return errors.New("no grouping columns found")
 	}
 
 	// Hash each row's grouping labels to determine shard using shared hash function

@@ -207,13 +207,8 @@ func TestComputeLabelHashShards_NoGrouping(t *testing.T) {
 
 	shardIndices := make([]int, rec.NumRows())
 
-	// Empty grouping should result in all rows going to shard 0
 	err := computeLabelHashShards(rec, physical.Grouping{}, 2, shardIndices)
-	require.NoError(t, err)
-
-	for _, idx := range shardIndices {
-		require.Equal(t, 0, idx)
-	}
+	require.Error(t, err)
 }
 
 func TestComputeLabelHashShards_SingleLabel(t *testing.T) {
