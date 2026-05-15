@@ -13,11 +13,11 @@ service IndexGateway {
   /// GetChunkRef returns chunk reference that match the provided label matchers
   rpc GetChunkRef(logproto.GetChunkRefRequest) returns (logproto.GetChunkRefResponse) {}
 
+  rpc GetSeries(logproto.GetSeriesRequest) returns (logproto.GetSeriesResponse) {}
+
   rpc LabelNamesForMetricName(logproto.LabelNamesForMetricNameRequest) returns (logproto.LabelResponse) {}
 
   rpc LabelValuesForMetricName(logproto.LabelValuesForMetricNameRequest) returns (logproto.LabelResponse) {}
-
-  rpc GetSeries(logproto.GetSeriesRequest) returns (logproto.GetSeriesResponse) {}
 
   // Note: this MUST be the same as the variant defined in
   // logproto.proto on the Querier service.
