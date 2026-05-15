@@ -42,15 +42,13 @@ type vectorAggregationPipeline struct {
 	identCache *semconv.IdentifierCache
 }
 
-var (
-	vectorAggregationOperations = map[types.VectorAggregationType]aggregationOperation{
-		types.VectorAggregationTypeSum:   aggregationOperationSum,
-		types.VectorAggregationTypeCount: aggregationOperationCount,
-		types.VectorAggregationTypeAvg:   aggregationOperationAvg,
-		types.VectorAggregationTypeMax:   aggregationOperationMax,
-		types.VectorAggregationTypeMin:   aggregationOperationMin,
-	}
-)
+var vectorAggregationOperations = map[types.VectorAggregationType]aggregationOperation{
+	types.VectorAggregationTypeSum:   aggregationOperationSum,
+	types.VectorAggregationTypeCount: aggregationOperationCount,
+	types.VectorAggregationTypeAvg:   aggregationOperationAvg,
+	types.VectorAggregationTypeMax:   aggregationOperationMax,
+	types.VectorAggregationTypeMin:   aggregationOperationMin,
+}
 
 func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts vectorAggregationOptions) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
@@ -168,7 +166,8 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 				labelValues := labelValuesCache.getLabelValues(arrays, row)
 				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
-				if err := v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues); err != nil {
+				aggregatorAdd := v.aggregator.WithLabelValues(labels, labelValues)
+				if err := aggregatorAdd(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row)); err != nil {
 					return nil, err
 				}
 			}

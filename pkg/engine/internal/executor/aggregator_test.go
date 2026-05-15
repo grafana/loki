@@ -14,12 +14,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
-var (
-	groupBy = []arrow.Field{
-		semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
-		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
-	}
-)
+var groupBy = []arrow.Field{
+	semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
+	semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
+}
 
 func TestAggregator(t *testing.T) {
 	colTs := semconv.ColumnIdentTimestamp.FQN()
@@ -36,18 +34,18 @@ func TestAggregator(t *testing.T) {
 
 		// Add test data
 		// ts1: prod/app1 = 10, prod/app2 = 20, dev/app1 = 30
-		_ = agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 10)
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts1, 20)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app1"})(ts1, 30)
 
 		// ts2: prod/app1 = 15, prod/app2 = 25, dev/app2 = 35
-		_ = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts2, 35, groupBy, []string{"dev", "app2"})
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts2, 15)
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts2, 25)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app2"})(ts2, 35)
 
 		// Add more data to same groups to test aggregation
-		_ = agg.Add(ts1, 5, groupBy, []string{"prod", "app1"})  // prod/app1 at ts1 should now be 15
-		_ = agg.Add(ts2, 10, groupBy, []string{"prod", "app1"}) // prod/app1 at ts2 should now be 25
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 5)  // prod/app1 at ts1 should now be 15
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts2, 10) // prod/app1 at ts2 should now be 25
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
@@ -77,18 +75,18 @@ func TestAggregator(t *testing.T) {
 
 		// Add test data
 		// ts1: prod/app1 = 10, prod/app2 = 20, dev/app1 = 30
-		_ = agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 10)
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts1, 20)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app1"})(ts1, 30)
 
 		// ts2: prod/app1 = 15, prod/app2 = 25, dev/app2 = 35
-		_ = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts2, 35, groupBy, []string{"dev", "app2"})
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts2, 15)
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts2, 25)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app2"})(ts2, 35)
 
 		// Add more data to same groups to test aggregation
-		_ = agg.Add(ts1, 5, groupBy, []string{"prod", "app1"})  // prod/app1 at ts1 should now be 7.5
-		_ = agg.Add(ts2, 10, groupBy, []string{"prod", "app1"}) // prod/app1 at ts2 should now be 12.5
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 5)  // prod/app1 at ts1 should now be 7.5
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts2, 10) // prod/app1 at ts2 should now be 12.5
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
@@ -119,24 +117,24 @@ func TestAggregator(t *testing.T) {
 
 		// Add test data
 		// ts1: add one datapoint for prod/app1, prod/app2, and dev/app1
-		_ = agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 10)
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts1, 20)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app1"})(ts1, 30)
 
 		// ts2: add another datapoint for prod/app1, prod/app2, and dev/app2
-		_ = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts2, 35, groupBy, []string{"dev", "app2"})
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts2, 15)
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts2, 25)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app2"})(ts2, 35)
 
 		// ts3: add another datapoint for prod/app1, prod/app2, and dev/app2
-		_ = agg.Add(ts3, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts3, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts3, 35, groupBy, []string{"dev", "app2"})
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts3, 15)
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts3, 25)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app2"})(ts3, 35)
 
 		// Add more datapoints for prod/app1 and prod/app2
-		_ = agg.Add(ts1, 5, groupBy, []string{"prod", "app1"})  // prod/app1 at ts1 should now be count 2
-		_ = agg.Add(ts2, 10, groupBy, []string{"prod", "app2"}) // prod/app2 at ts2 should now be count 2
-		_ = agg.Add(ts1, 25, groupBy, []string{"prod", "app1"}) // prod/app1 at ts1 should now be count 3
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 5)  // prod/app1 at ts1 should now be count 2
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts2, 10) // prod/app2 at ts2 should now be count 2
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 25) // prod/app1 at ts1 should now be count 3
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
@@ -170,19 +168,19 @@ func TestAggregator(t *testing.T) {
 
 		// Add test data
 		// ts1: add one datapoint for prod/app1, prod/app2, and dev/app1
-		_ = agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 10)
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts1, 20)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app1"})(ts1, 30)
 
 		// ts2: add another datapoint for prod/app1, prod/app2, and dev/app2
-		_ = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts2, 35, groupBy, []string{"dev", "app2"})
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts2, 15)
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts2, 25)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app2"})(ts2, 35)
 
 		// Add more datapoints for prod/app1 and prod/app2
-		_ = agg.Add(ts1, 5, groupBy, []string{"prod", "app1"})  // prod/app1 at ts1 should still be 10
-		_ = agg.Add(ts2, 50, groupBy, []string{"prod", "app2"}) // prod/app2 at ts2 should now be 50
-		_ = agg.Add(ts1, 15, groupBy, []string{"prod", "app1"}) // prod/app1 at ts1 should now be 15
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 5)  // prod/app1 at ts1 should still be 10
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts2, 50) // prod/app2 at ts2 should now be 50
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 15) // prod/app1 at ts1 should now be 15
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
@@ -212,19 +210,20 @@ func TestAggregator(t *testing.T) {
 
 		// Add test data
 		// ts1: add one datapoint for prod/app1, prod/app2, and dev/app1
-		_ = agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 10)
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts1, 20)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app1"})(ts1, 30)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app1"})(ts1, 30)
 
 		// ts2: add another datapoint for prod/app1, prod/app2, and dev/app2
-		_ = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts2, 35, groupBy, []string{"dev", "app2"})
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts2, 15)
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts2, 25)
+		_ = agg.WithLabelValues(groupBy, []string{"dev", "app2"})(ts2, 35)
 
 		// Add more datapoints for prod/app1 and prod/app2
-		_ = agg.Add(ts1, 5, groupBy, []string{"prod", "app1"})  // prod/app1 at ts1 should now be 5
-		_ = agg.Add(ts2, 40, groupBy, []string{"prod", "app2"}) // prod/app2 at ts2 should still be 25
-		_ = agg.Add(ts1, 25, groupBy, []string{"prod", "app1"}) // prod/app1 at ts1 should still be 5
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 5)  // prod/app1 at ts1 should now be 5
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts2, 40) // prod/app2 at ts2 should still be 25
+		_ = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 25) // prod/app1 at ts1 should still be 5
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
@@ -257,17 +256,17 @@ func TestAggregator(t *testing.T) {
 
 		// Add test data
 		// ts1: prod/app1 = 10, prod/app2 = 20, dev/app1 = 30
-		_ = agg.Add(ts1, 10, groupBy, []string{}) // "prod", "app1"
-		_ = agg.Add(ts1, 20, groupBy, []string{}) // "prod", "app2"
-		_ = agg.Add(ts1, 30, groupBy, []string{}) // "dev", "app1"
+		_ = agg.WithLabelValues(groupBy, []string{})(ts1, 10) // "prod", "app1"
+		_ = agg.WithLabelValues(groupBy, []string{})(ts1, 20) // "prod", "app2"
+		_ = agg.WithLabelValues(groupBy, []string{})(ts1, 30) // "dev", "app1"
 
 		// ts2: prod/app1 = 15, prod/app2 = 25, dev/app2 = 35
-		_ = agg.Add(ts2, 15, groupBy, []string{}) // "prod", "app1"
-		_ = agg.Add(ts2, 25, groupBy, []string{}) // "prod", "app2"
-		_ = agg.Add(ts2, 35, groupBy, []string{}) // "dev", "app2"
+		_ = agg.WithLabelValues(groupBy, []string{})(ts2, 15) // "prod", "app1"
+		_ = agg.WithLabelValues(groupBy, []string{})(ts2, 25) // "prod", "app2"
+		_ = agg.WithLabelValues(groupBy, []string{})(ts2, 35) // "dev", "app2"
 
-		_ = agg.Add(ts1, 5, groupBy, []string{})  // "prod", "app1"
-		_ = agg.Add(ts2, 10, groupBy, []string{}) // "prod", "app1"
+		_ = agg.WithLabelValues(groupBy, []string{})(ts1, 5)  // "prod", "app1"
+		_ = agg.WithLabelValues(groupBy, []string{})(ts2, 10) // "prod", "app1"
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
@@ -302,17 +301,17 @@ func TestAggregator(t *testing.T) {
 		agg.AddLabels(buildFields("env", "service", "cluster", "method"))
 
 		// Add test data
-		_ = agg.Add(ts1, 10, buildFields("env", "service"), []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, buildFields("env", "cluster"), []string{"prod", "east-1"})
-		_ = agg.Add(ts1, 30, buildFields("method"), []string{"init"})
+		_ = agg.WithLabelValues(buildFields("env", "service"), []string{"prod", "app1"})(ts1, 10)
+		_ = agg.WithLabelValues(buildFields("env", "cluster"), []string{"prod", "east-1"})(ts1, 20)
+		_ = agg.WithLabelValues(buildFields("method"), []string{"init"})(ts1, 30)
 
-		_ = agg.Add(ts2, 15, buildFields("env", "service"), []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, buildFields("env", "cluster"), []string{"prod", "east-1"})
-		_ = agg.Add(ts2, 35, buildFields("method"), []string{"init"})
+		_ = agg.WithLabelValues(buildFields("env", "service"), []string{"prod", "app1"})(ts2, 15)
+		_ = agg.WithLabelValues(buildFields("env", "cluster"), []string{"prod", "east-1"})(ts2, 25)
+		_ = agg.WithLabelValues(buildFields("method"), []string{"init"})(ts2, 35)
 
 		// Add more data to same groups to test aggregation
-		_ = agg.Add(ts1, 5, buildFields("env", "service"), []string{"prod", "app1"})
-		_ = agg.Add(ts2, 10, buildFields("env", "cluster"), []string{"prod", "east-1"})
+		_ = agg.WithLabelValues(buildFields("env", "service"), []string{"prod", "app1"})(ts1, 5)
+		_ = agg.WithLabelValues(buildFields("env", "cluster"), []string{"prod", "east-1"})(ts2, 10)
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
@@ -345,29 +344,29 @@ func TestAggregator(t *testing.T) {
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
 
 		// Add first 3 series at ts1 - should succeed
-		err := agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
+		err := agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts1, 10)
 		require.NoError(t, err)
 
-		err = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
+		err = agg.WithLabelValues(groupBy, []string{"prod", "app2"})(ts1, 20)
 		require.NoError(t, err)
 
-		err = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
+		err = agg.WithLabelValues(groupBy, []string{"dev", "app1"})(ts1, 30)
 		require.NoError(t, err)
 
 		// Try to add 4th unique series should fail
-		err = agg.Add(ts2, 10, groupBy, []string{"dev", "app2"})
+		err = agg.WithLabelValues(groupBy, []string{"dev", "app2"})(ts2, 10)
 		require.Error(t, err)
 		require.True(t, errors.Is(err, ErrSeriesLimitExceeded))
 
 		// Adding same series again at different timestamp should succeed (not a new unique series)
-		err = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
+		err = agg.WithLabelValues(groupBy, []string{"prod", "app1"})(ts2, 15)
 		require.NoError(t, err)
 
 		// unset the limit
 		agg.SetMaxSeries(0)
 
 		// Now adding new series should succeed
-		err = agg.Add(ts2, 10, groupBy, []string{"dev", "app2"})
+		err = agg.WithLabelValues(groupBy, []string{"dev", "app2"})(ts2, 10)
 		require.NoError(t, err)
 	})
 }
@@ -379,16 +378,31 @@ func BenchmarkAggregator(b *testing.B) {
 		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
 	}
 
-	agg := newAggregator(10, aggregationOperationSum)
-	agg.AddLabels(fields)
+	b.Run("case=interleaved_series", func(b *testing.B) {
+		agg := newAggregator(10, aggregationOperationSum)
+		agg.AddLabels(fields)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Second)
-		env := fmt.Sprintf("env-%d", i%3)
-		cluster := fmt.Sprintf("cluster-%d", i%10)
-		service := fmt.Sprintf("service-%d", i%7)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Second)
+			env := fmt.Sprintf("env-%d", i%3)
+			cluster := fmt.Sprintf("cluster-%d", i%10)
+			service := fmt.Sprintf("service-%d", i%7)
 
-		_ = agg.Add(ts, 10, fields, []string{env, cluster, service})
-	}
+			_ = agg.WithLabelValues(fields, []string{env, cluster, service})(ts, 10)
+		}
+	})
+
+	b.Run("case=single_series", func(b *testing.B) {
+		agg := newAggregator(10, aggregationOperationSum)
+		agg.AddLabels(fields)
+
+		b.ResetTimer()
+		adderFn := agg.WithLabelValues(fields, []string{"prod", "app1", "east-1"})
+		for i := 0; i < b.N; i++ {
+			ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Second)
+
+			_ = adderFn(ts, 10)
+		}
+	})
 }

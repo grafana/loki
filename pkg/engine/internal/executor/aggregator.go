@@ -22,6 +22,8 @@ type groupState struct {
 	count int64   // values counter
 }
 
+type keyedAdder func(ts time.Time, value float64) error
+
 type aggregationOperation int
 
 const (
@@ -82,9 +84,25 @@ func (a *aggregator) SetMaxSeries(maxSeries int) {
 	a.maxSeries = maxSeries
 }
 
+func (a *aggregator) WithLabelValues(labels []arrow.Field, labelValues []string) keyedAdder {
+	a.digest.Reset()
+	for i, label := range labels {
+		if i > 0 {
+			_, _ = a.digest.Write([]byte{0}) // separator
+		}
+		_, _ = a.digest.WriteString(label.Name)
+		_, _ = a.digest.Write([]byte("="))
+		_, _ = a.digest.WriteString(labelValues[i])
+	}
+	key := a.digest.Sum64()
+	return func(ts time.Time, value float64) error {
+		return a.add(ts, key, value, labels, labelValues)
+	}
+}
+
 // Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
 // It expects labelValues to be in the same order as the groupBy columns.
-func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) error {
+func (a *aggregator) add(ts time.Time, key uint64, value float64, labels []arrow.Field, labelValues []string) error {
 	if len(labels) != len(labelValues) {
 		panic("len(labels) != len(labelValues)")
 	}
@@ -93,21 +111,6 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 	if !ok {
 		point = make(map[uint64]*groupState)
 		a.points[ts] = point
-	}
-
-	var key uint64
-	if len(labelValues) != 0 {
-		a.digest.Reset()
-		for i, val := range labelValues {
-			if i > 0 {
-				_, _ = a.digest.Write([]byte{0}) // separator
-			}
-
-			_, _ = a.digest.WriteString(labels[i].Name)
-			_, _ = a.digest.Write([]byte("="))
-			_, _ = a.digest.WriteString(val)
-		}
-		key = a.digest.Sum64()
 	}
 
 	if state, ok := point[key]; ok {

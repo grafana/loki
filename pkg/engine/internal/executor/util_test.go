@@ -129,5 +129,8 @@ func (p *ArrowtestPipeline) Read(_ context.Context) (arrow.RecordBatch, error) {
 	return rows.Record(memory.DefaultAllocator, schema), nil
 }
 
+// Reset rewinds the pipeline so the next Read emits from the first batch again.
+func (p *ArrowtestPipeline) Reset() { p.cur = 0 }
+
 // Close implements [Pipeline], immediately exhausting the pipeline.
 func (p *ArrowtestPipeline) Close() { p.cur = math.MaxInt64 }
