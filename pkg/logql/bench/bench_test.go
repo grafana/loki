@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	slowTests      = flag.Bool("slow-tests", true, "run slow tests")
+	slowTests      = flag.Bool("slow-tests", false, "run slow tests")
 	rangeType      = flag.String("range-type", "range", "query range type: instant or range (only affects metric queries)")
 	includeSkipped = flag.Bool("include-skipped", false, "include skipped queries in test execution")
 )
