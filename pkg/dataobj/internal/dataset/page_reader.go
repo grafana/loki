@@ -187,7 +187,7 @@ func (pr *pageReader) init(ctx context.Context) error {
 		pr.memPage.Close()
 		pr.memPage = nil
 	}
-	memPage := MemPage{*pr.page.PageDesc(), &NonReleasableData{data.Bytes()}}
+	memPage := MemPage{*pr.page.PageDesc(), data}
 	pr.memPage = &memPage
 
 	presenceReader, valuesReader, err := memPage.reader(pr.compression)

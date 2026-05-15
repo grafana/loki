@@ -96,6 +96,7 @@ var bufferPool = sync.Pool{
 	},
 }
 
+// ReleasableData is a PageData that can be released back to a pool when closed.
 type ReleasableData struct {
 	buf *byteBuffer
 }
