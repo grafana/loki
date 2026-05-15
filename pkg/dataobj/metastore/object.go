@@ -39,7 +39,11 @@ import (
 )
 
 const (
-	metastoreWindowSize = 12 * time.Hour
+	// MetastoreWindowSize is the duration covered by a single Table of
+	// Contents file in the metastore. ToC files are aligned to multiples of
+	// this duration. Exported so external packages (e.g. the dataobj
+	// compactor) can iterate over the same time windows used internally.
+	MetastoreWindowSize = 12 * time.Hour
 
 	// TocPrefix is the prefix under which ToC files are stored in the object storage.
 	TocPrefix = "tocs/"
@@ -121,22 +125,27 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls [
 	d.AmbiguousPredicatesByStream[pointer.StreamIDRef] = curLbls
 }
 
-// Table of Content files are stored in well-known locations that can be computed from a known time.
-func tableOfContentsPath(window time.Time) string {
+// TableOfContentsPath returns the object-storage path of the ToC file that
+// covers the given window-aligned time. The path layout is part of the
+// metastore's on-disk contract; callers must align window to MetastoreWindowSize.
+func TableOfContentsPath(window time.Time) string {
 	return fmt.Sprintf("%s%s.toc", TocPrefix, strings.ReplaceAll(window.Format(time.RFC3339), ":", "_"))
 }
 
-func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
-	minTocWindow := start.Truncate(metastoreWindowSize).UTC()
-	maxTocWindow := end.Truncate(metastoreWindowSize).UTC()
+// IterTableOfContentsPaths returns a sequence of (path, time-range) pairs
+// covering every ToC window that overlaps [start, end]. start and end may
+// be unaligned; the iterator truncates them to MetastoreWindowSize boundaries.
+func IterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
+	minTocWindow := start.Truncate(MetastoreWindowSize).UTC()
+	maxTocWindow := end.Truncate(MetastoreWindowSize).UTC()
 
 	return func(yield func(t string, timeRange multitenancy.TimeRange) bool) {
-		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(metastoreWindowSize) {
+		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(MetastoreWindowSize) {
 			tocTimeRange := multitenancy.TimeRange{
 				MinTime: tocWindow,
-				MaxTime: tocWindow.Add(metastoreWindowSize),
+				MaxTime: tocWindow.Add(MetastoreWindowSize),
 			}
-			if !yield(tableOfContentsPath(tocWindow), tocTimeRange) {
+			if !yield(TableOfContentsPath(tocWindow), tocTimeRange) {
 				return
 			}
 		}
@@ -187,7 +196,7 @@ func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, mat
 	var (
 		tablePaths []string
 	)
-	for path := range iterTableOfContentsPaths(start, end) {
+	for path := range IterTableOfContentsPaths(start, end) {
 		tablePaths = append(tablePaths, path)
 	}
 
@@ -215,7 +224,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 
 	// Get all metastore paths for the time range
 	var tablePaths []string
-	for path := range iterTableOfContentsPaths(start, end) {
+	for path := range IterTableOfContentsPaths(start, end) {
 		tablePaths = append(tablePaths, path)
 	}
 
@@ -642,7 +651,7 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	resp := GetIndexesResponse{}
 
 	// Get all metastore paths for the time range
-	for path := range iterTableOfContentsPaths(req.Start, req.End) {
+	for path := range IterTableOfContentsPaths(req.Start, req.End) {
 		resp.TableOfContentsPaths = append(resp.TableOfContentsPaths, path)
 	}
 

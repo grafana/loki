@@ -303,7 +303,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				ShardingConfigs{
 					config.PeriodConfig{
 						RowShards: 2,
-						IndexType: types.TSDBType,
+						IndexType: types.IndexTypeTSDB,
 					},
 				},
 				testEngineOpts,

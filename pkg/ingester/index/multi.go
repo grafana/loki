@@ -35,7 +35,7 @@ func NewMultiInvertedIndex(periods []config.PeriodConfig, indexShards uint32) (*
 
 	for _, pd := range periods {
 		switch pd.IndexType {
-		case types.TSDBType:
+		case types.IndexTypeTSDB:
 			if bitPrefixed == nil {
 				bitPrefixed, err = NewBitPrefixWithShards(indexShards)
 				if err != nil {

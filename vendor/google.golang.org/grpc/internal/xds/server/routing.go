@@ -92,8 +92,10 @@ func RouteAndProcess(ctx context.Context) error {
 	if rwi == nil {
 		return rc.statusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Route")
 	}
-	if err := rwi.interceptor.AllowRPC(ctx); err != nil {
-		return rc.statusErrWithNodeID(codes.PermissionDenied, "Incoming RPC is not allowed: %v", err)
+	for _, interceptor := range rwi.interceptors {
+		if err := interceptor.AllowRPC(ctx); err != nil {
+			return rc.statusErrWithNodeID(codes.PermissionDenied, "Incoming RPC is not allowed: %v", err)
+		}
 	}
 	return nil
 }

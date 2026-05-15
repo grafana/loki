@@ -14,7 +14,7 @@ To test the artifacts before releasing, you can download the artifacts from the 
 
 1. Fetch the built artifacts.
 1. Create a draft GitHub release with the release notes in the PR description.
-1. Upload fetched binareis to the draft release.
+1. Upload fetched binaries to the draft release.
 1. Publish fetched images to Docker Hub as multi-arch images.
 1. Publish the draft release and create the GitHub tag.
 1. (Optionally) Mark the release as the latest if it represents the newest version of Loki.

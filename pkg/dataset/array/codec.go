@@ -17,6 +17,9 @@ type Writer interface {
 	//
 	// Implementations must not retain references to arr beyond the call to
 	// Append.
+	//
+	// Writers are not guaranteed to be in a stable state if Append returns an
+	// error.
 	Append(arr columnar.Array) error
 
 	// Flush flushes buffered data and returns a new [Array] that represents the
@@ -38,6 +41,18 @@ func NewWriter(alloc *memory.Allocator, spec Spec, typ types.Type) (Writer, erro
 	switch spec.Kind() {
 	case EncodingKindBool:
 		return newBoolWriter(alloc, spec, typ)
+	case EncodingKindPlain:
+		return newPlainWriter(alloc, spec, typ)
+	case EncodingKindBinary:
+		return newBinaryWriter(alloc, spec, typ)
+	case EncodingKindBitpacked:
+		return newBitpackedWriter(alloc, spec, typ)
+	case EncodingKindZstd:
+		return newZstdWriter(alloc, spec, typ)
+	case EncodingKindZigZag:
+		return newZigZagWriter(alloc, spec, typ)
+	case EncodingKindDelta:
+		return newDeltaWriter(alloc, spec, typ)
 
 	default:
 		return nil, fmt.Errorf("unsupported encoding kind %q", spec.Kind())
@@ -84,6 +99,18 @@ func NewReader(alloc *memory.Allocator, arr Array, source buffer.Source) (Reader
 	switch arr.Encoding.Kind() {
 	case EncodingKindBool:
 		return newBoolReader(alloc, arr, source)
+	case EncodingKindPlain:
+		return newPlainReader(alloc, arr, source)
+	case EncodingKindBinary:
+		return newBinaryReader(alloc, arr, source)
+	case EncodingKindBitpacked:
+		return newBitpackedReader(alloc, arr, source)
+	case EncodingKindZstd:
+		return newZstdReader(alloc, arr, source)
+	case EncodingKindZigZag:
+		return newZigZagReader(alloc, arr, source)
+	case EncodingKindDelta:
+		return newDeltaReader(alloc, arr, source)
 
 	default:
 		return nil, fmt.Errorf("unsupported encoding kind %q", arr.Encoding.Kind())

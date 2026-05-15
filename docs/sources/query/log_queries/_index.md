@@ -468,7 +468,7 @@ The logfmt parser also supports the following flags:
     ```
 
     Without the `--strict` flag the parser skips invalid key/value pairs and continues parsing the rest of the log line.
-    Non-strict mode offers the flexibility to parse semi-structed log lines, though note that this is only best-effort.
+    Non-strict mode offers the flexibility to parse semi-structured log lines, though note that this is only best-effort.
 
 - `--keep-empty` to retain standalone keys with empty value
 

@@ -150,6 +150,11 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeCache(ctx, n, inputs))
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
+	case *physical.CompactionMerge:
+		// CompactionMerge is currently served by a stub executor that writes
+		// a zero-byte object to OutputPath. The real K-way merge will replace
+		// this dispatch.
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeCompactionMergeStub(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
