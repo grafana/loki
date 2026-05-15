@@ -10,9 +10,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
 // Peer wraps a [Conn] into a synchronous API that acts as both a

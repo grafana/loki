@@ -13,8 +13,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"golang.org/x/net/http2"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
 // peerAddressHeader is the header used to advertise the address to connect back
