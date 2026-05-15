@@ -765,3 +765,684 @@ func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 		logger: log.NewNopLogger(),
 	}
 }
+
+// buildSourcePostingsObject builds a dataobj containing a single postings section
+// with the given label observations, then uploads it to the bucket.
+func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, tenant, path string, observations []postings.LabelObservation) {
+	t.Helper()
+	ctx := context.Background()
+
+	postingsBuilder := postings.NewBuilder(nil, 0, 0)
+	for _, obs := range observations {
+		err := postingsBuilder.ObserveLabelPosting(obs)
+		require.NoError(t, err)
+	}
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(postingsBuilder))
+
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
+}
+
+// buildSourceStatsObject builds a dataobj containing a single stats section
+// with the given stats rows, then uploads it to the bucket.
+func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, tenant, path string, statsRows []stats.Stat) {
+	t.Helper()
+	ctx := context.Background()
+
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+	for _, row := range statsRows {
+		statsBuilder.Append(row)
+	}
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(statsBuilder))
+
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
+}
+
+// readPostingsRowsFromBucket downloads an object from the bucket, finds its
+// postings section, and returns all decoded postings rows.
+func readPostingsRowsFromBucket(t *testing.T, ctx context.Context, bucket objstore.Bucket, path string) []postingsRow {
+	t.Helper()
+
+	obj := openObjectFromBucket(t, ctx, bucket, path)
+
+	var sec *postings.Section
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		var err error
+		sec, err = postings.Open(ctx, s)
+		require.NoError(t, err)
+		break
+	}
+
+	require.NotNil(t, sec, "expected postings section in output object")
+
+	pileReader := newPostingsPileReader(sec)
+	defer pileReader.Close()
+
+	var rows []postingsRow
+	for {
+		row, err := pileReader.Next(ctx)
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		rows = append(rows, row)
+	}
+
+	return rows
+}
+
+// readStatsRowsFromBucket downloads an object from the bucket, finds its
+// stats section, and returns all decoded stats rows.
+func readStatsRowsFromBucket(t *testing.T, ctx context.Context, bucket objstore.Bucket, path string) []statsRow {
+	t.Helper()
+
+	obj := openObjectFromBucket(t, ctx, bucket, path)
+
+	var sec *stats.Section
+	for _, s := range obj.Sections() {
+		if !stats.CheckSection(s) {
+			continue
+		}
+		var err error
+		sec, err = stats.Open(ctx, s)
+		require.NoError(t, err)
+		break
+	}
+
+	require.NotNil(t, sec, "expected stats section in output object")
+
+	pileReader := newStatsPileReader(sec)
+	defer pileReader.Close()
+
+	var rows []statsRow
+	for {
+		row, err := pileReader.Next(ctx)
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		rows = append(rows, row)
+	}
+
+	return rows
+}
+
+// countingBucket wraps an objstore.Bucket and counts Exists and Upload calls.
+type countingBucket struct {
+	underlying  objstore.Bucket
+	existsCount int64
+	uploadCount int64
+}
+
+func newCountingBucket(underlying objstore.Bucket) *countingBucket {
+	return &countingBucket{
+		underlying: underlying,
+	}
+}
+
+func (cb *countingBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+	cb.uploadCount++
+	return cb.underlying.Upload(ctx, name, r)
+}
+
+func (cb *countingBucket) Exists(ctx context.Context, name string) (bool, error) {
+	cb.existsCount++
+	return cb.underlying.Exists(ctx, name)
+}
+
+func (cb *countingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	return cb.underlying.Get(ctx, name)
+}
+
+func (cb *countingBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	return cb.underlying.GetRange(ctx, name, off, length)
+}
+
+func (cb *countingBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+	return cb.underlying.Iter(ctx, dir, f, options...)
+}
+
+func (cb *countingBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
+	return cb.underlying.Attributes(ctx, name)
+}
+
+func (cb *countingBucket) Delete(ctx context.Context, name string) error {
+	return cb.underlying.Delete(ctx, name)
+}
+
+func (cb *countingBucket) Name() string {
+	return cb.underlying.Name()
+}
+
+func (cb *countingBucket) Provider() objstore.ObjProvider {
+	return cb.underlying.Provider()
+}
+
+func (cb *countingBucket) GetAndReplace(ctx context.Context, name string, f func(existing io.ReadCloser) (io.ReadCloser, error)) error {
+	return cb.underlying.GetAndReplace(ctx, name, f)
+}
+
+func (cb *countingBucket) IsObjNotFoundErr(err error) bool {
+	return cb.underlying.IsObjNotFoundErr(err)
+}
+
+func (cb *countingBucket) IsAccessDeniedErr(err error) bool {
+	return cb.underlying.IsAccessDeniedErr(err)
+}
+
+func (cb *countingBucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	return cb.underlying.IterWithAttributes(ctx, dir, f, options...)
+}
+
+func (cb *countingBucket) SupportedIterOptions() []objstore.IterOptionType {
+	return cb.underlying.SupportedIterOptions()
+}
+
+func (cb *countingBucket) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
+	if br, ok := cb.underlying.(objstore.InstrumentedBucketReader); ok {
+		return br.ReaderWithExpectedErrs(fn)
+	}
+	return cb.underlying
+}
+
+func (cb *countingBucket) WithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.Bucket {
+	if ib, ok := cb.underlying.(objstore.InstrumentedBucket); ok {
+		return ib.WithExpectedErrs(fn)
+	}
+	return cb
+}
+
+func (cb *countingBucket) Close() error {
+	return cb.underlying.Close()
+}
+
+func (cb *countingBucket) ExistsCount() int64 {
+	return cb.existsCount
+}
+
+func (cb *countingBucket) UploadCount() int64 {
+	return cb.uploadCount
+}
+
+func (cb *countingBucket) ResetCounts() {
+	cb.existsCount = 0
+	cb.uploadCount = 0
+}
+
+// TestExecuteIndexMerge_PostingsUnion tests the union operation on overlapping postings.
+func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	// Build two source objects with overlapping postings rows.
+	// Source A has rows for (log-A, 0, service, api, sid=1) and (log-A, 0, service, auth, sid=2).
+	sourceAPath := "source/index-a.dat"
+	buildSourcePostingsObject(t, bucket, "tenant", sourceAPath, []postings.LabelObservation{
+		{
+			ObjectPath:       "log-A",
+			SectionIndex:     0,
+			ColumnName:       "service",
+			LabelValue:       "api",
+			StreamID:         1,
+			Timestamp:        time.Unix(0, 100),
+			UncompressedSize: 100,
+		},
+		{
+			ObjectPath:       "log-A",
+			SectionIndex:     0,
+			ColumnName:       "service",
+			LabelValue:       "auth",
+			StreamID:         2,
+			Timestamp:        time.Unix(0, 200),
+			UncompressedSize: 200,
+		},
+	})
+
+	// Source B has row for (log-A, 0, service, api, sid=99) - overlaps with A's first row.
+	sourceBPath := "source/index-b.dat"
+	buildSourcePostingsObject(t, bucket, "tenant", sourceBPath, []postings.LabelObservation{
+		{
+			ObjectPath:       "log-A",
+			SectionIndex:     0,
+			ColumnName:       "service",
+			LabelValue:       "api",
+			StreamID:         99,
+			Timestamp:        time.Unix(0, 150),
+			UncompressedSize: 300,
+		},
+	})
+
+	// Build IndexMerge node with two source objects.
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant",
+		OutputIndexPath: outputPath,
+		TaskTTL:         time.Minute,
+		Runs: []*physical.RunRef{
+			{
+				Sections: []*physical.SectionRef{
+					{ObjectPath: sourceAPath, SectionIndex: 0},
+					{ObjectPath: sourceBPath, SectionIndex: 0},
+				},
+			},
+		},
+	}
+
+	execCtx := newTestExecutorContext(t, bucket)
+	err := execCtx.doIndexMerge(ctx, node)
+	require.NoError(t, err)
+
+	// Read and verify output.
+	rows := readPostingsRowsFromBucket(t, ctx, bucket, outputPath)
+
+	// Should have 2 unique full keys (overlap collapsed).
+	require.Len(t, rows, 2)
+
+	// Rows must be in sort order (Kind, ObjectPath, SectionIndex, ColumnName, LabelValue).
+	for i := 0; i < len(rows)-1; i++ {
+		assert := comparePostingsRow(rows[i], rows[i+1]) < 0
+		require.True(t, assert, "rows not in sort order at index %d", i)
+	}
+
+	// The overlapping key (log-A, 0, service, api) should have the winner from Source B
+	// (last-wins reducer).
+	var apiRow postingsRow
+	for _, r := range rows {
+		if r.ObjectPath == "log-A" && r.SectionIndex == 0 &&
+			r.ColumnName == "service" && r.LabelValue == "api" {
+			apiRow = r
+			break
+		}
+	}
+
+	require.NotZero(t, apiRow, "expected to find overlapping key in output")
+	// The bitmap should contain the StreamID from Source B (99).
+	// This is a simplified check; a full check would decode the bitmap.
+	require.NotEmpty(t, apiRow.StreamIDBitmap)
+
+	// Source A's UncompressedSize is 100; Source B's is 300. The heap's stable
+	// tiebreak pops the lower pile index first, giving reducer (acc=A, next=B),
+	// and the last-wins reducer keeps the row from the higher pile index (Source B).
+	// Therefore the merged row's UncompressedSize must be 300.
+	require.Equal(t, int64(300), apiRow.UncompressedSize,
+		"last-wins merger should keep Source B's UncompressedSize")
+}
+
+// TestExecuteIndexMerge_StatsAggregation tests aggregation of overlapping stats rows.
+func TestExecuteIndexMerge_StatsAggregation(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	// Build two source objects with overlapping stats rows (same full key).
+	// In v1.0, true full-key aggregation requires identical timestamps: the
+	// comparator matches the on-disk sort order (Labels, MinTimestamp, MaxTimestamp),
+	// so rows must have the same timestamps to be considered equal keys for merging.
+	ts1, ts2 := int64(100), int64(200)
+
+	sourceAPath := "source/index-a.dat"
+	buildSourceStatsObject(t, bucket, "tenant", sourceAPath, []stats.Stat{
+		{
+			ObjectPath:       "log-X",
+			SectionIndex:     0,
+			SortSchema:       "service",
+			Labels:           map[string]string{"service": "api"},
+			MinTimestamp:     ts1,  // identical to source B
+			MaxTimestamp:     ts2,  // identical to source B
+			RowCount:         10,
+			UncompressedSize: 1000,
+		},
+	})
+
+	sourceBPath := "source/index-b.dat"
+	buildSourceStatsObject(t, bucket, "tenant", sourceBPath, []stats.Stat{
+		{
+			ObjectPath:       "log-X",
+			SectionIndex:     0,
+			SortSchema:       "service",
+			Labels:           map[string]string{"service": "api"},
+			MinTimestamp:     ts1,  // identical to source A
+			MaxTimestamp:     ts2,  // identical to source A
+			RowCount:         20,
+			UncompressedSize: 2000,
+		},
+	})
+
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant",
+		OutputIndexPath: outputPath,
+		TaskTTL:         time.Minute,
+		Runs: []*physical.RunRef{
+			{
+				Sections: []*physical.SectionRef{
+					{ObjectPath: sourceAPath, SectionIndex: 0},
+					{ObjectPath: sourceBPath, SectionIndex: 0},
+				},
+			},
+		},
+	}
+
+	execCtx := newTestExecutorContext(t, bucket)
+	err := execCtx.doIndexMerge(ctx, node)
+	require.NoError(t, err)
+
+	rows := readStatsRowsFromBucket(t, ctx, bucket, outputPath)
+
+	// Should have exactly one stats row (overlap aggregated).
+	require.Len(t, rows, 1)
+
+	row := rows[0]
+	require.Equal(t, "log-X", row.ObjectPath)
+	require.Equal(t, int64(0), row.SectionIndex)
+	require.Equal(t, "service", row.SortSchema)
+	require.Equal(t, map[string]string{"service": "api"}, row.Labels)
+
+	// Verify aggregation on full-key match: timestamps unchanged (both inputs match),
+	// row counts and sizes summed.
+	require.Equal(t, ts1, row.MinTimestamp)         // unchanged since both inputs match
+	require.Equal(t, ts2, row.MaxTimestamp)         // unchanged since both inputs match
+	require.Equal(t, int64(30), row.RowCount)       // 10 + 20
+	require.Equal(t, int64(3000), row.UncompressedSize) // 1000 + 2000
+}
+
+// TestExecuteIndexMerge_MixedKinds tests merging both postings and stats sections.
+func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	// Build one source with postings only.
+	postingsPath := "source/index-postings.dat"
+	buildSourcePostingsObject(t, bucket, "tenant", postingsPath, []postings.LabelObservation{
+		{
+			ObjectPath:       "log-A",
+			SectionIndex:     0,
+			ColumnName:       "service",
+			LabelValue:       "api",
+			StreamID:         1,
+			Timestamp:        time.Unix(0, 100),
+			UncompressedSize: 100,
+		},
+	})
+
+	// Build one source with stats only.
+	statsPath := "source/index-stats.dat"
+	buildSourceStatsObject(t, bucket, "tenant", statsPath, []stats.Stat{
+		{
+			ObjectPath:       "log-A",
+			SectionIndex:     0,
+			SortSchema:       "service",
+			Labels:           map[string]string{"service": "api"},
+			MinTimestamp:     100,
+			MaxTimestamp:     200,
+			RowCount:         10,
+			UncompressedSize: 1000,
+		},
+	})
+
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant",
+		OutputIndexPath: outputPath,
+		TaskTTL:         time.Minute,
+		Runs: []*physical.RunRef{
+			{
+				Sections: []*physical.SectionRef{
+					{ObjectPath: postingsPath, SectionIndex: 0},
+				},
+			},
+			{
+				Sections: []*physical.SectionRef{
+					{ObjectPath: statsPath, SectionIndex: 0},
+				},
+			},
+		},
+	}
+
+	execCtx := newTestExecutorContext(t, bucket)
+	err := execCtx.doIndexMerge(ctx, node)
+	require.NoError(t, err)
+
+	// Verify output contains both kinds.
+	exists, err := bucket.Exists(ctx, outputPath)
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	outObj := openObjectFromBucket(t, ctx, bucket, outputPath)
+	var sawPostings, sawStats bool
+	for _, sec := range outObj.Sections() {
+		if postings.CheckSection(sec) {
+			sawPostings = true
+		}
+		if stats.CheckSection(sec) {
+			sawStats = true
+		}
+	}
+
+	require.True(t, sawPostings, "output must contain postings section")
+	require.True(t, sawStats, "output must contain stats section")
+
+	// Verify content from both sections.
+	postingsRows := readPostingsRowsFromBucket(t, ctx, bucket, outputPath)
+	statRows := readStatsRowsFromBucket(t, ctx, bucket, outputPath)
+
+	require.Len(t, postingsRows, 1)
+	require.Len(t, statRows, 1)
+}
+
+// TestExecuteIndexMerge_ExistenceShortCircuit tests that when output already exists,
+// the executor does not re-upload it.
+func TestExecuteIndexMerge_ExistenceShortCircuit(t *testing.T) {
+	ctx := context.Background()
+	innerBucket := objstore.NewInMemBucket()
+	bucket := newCountingBucket(innerBucket)
+
+	// Pre-upload a sentinel to the output path.
+	outputPath := "output/merged.dat"
+	sentinel := bytes.NewReader([]byte{})
+	err := innerBucket.Upload(ctx, outputPath, io.NopCloser(sentinel))
+	require.NoError(t, err)
+
+	// Reset counts so we only count calls during executor run.
+	bucket.ResetCounts()
+
+	// Build a simple source.
+	sourcePath := "source/index.dat"
+	buildSourcePostingsObject(t, bucket, "tenant", sourcePath, []postings.LabelObservation{
+		{
+			ObjectPath:       "log-A",
+			SectionIndex:     0,
+			ColumnName:       "service",
+			LabelValue:       "api",
+			StreamID:         1,
+			Timestamp:        time.Unix(0, 100),
+			UncompressedSize: 100,
+		},
+	})
+
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant",
+		OutputIndexPath: outputPath,
+		TaskTTL:         time.Minute,
+		Runs: []*physical.RunRef{
+			{
+				Sections: []*physical.SectionRef{
+					{ObjectPath: sourcePath, SectionIndex: 0},
+				},
+			},
+		},
+	}
+
+	// Reset again before running executor.
+	bucket.ResetCounts()
+
+	execCtx := newTestExecutorContext(t, bucket)
+	err = execCtx.doIndexMerge(ctx, node)
+	require.NoError(t, err)
+
+	// Verify Exists was called once and Upload was not called.
+	require.Equal(t, int64(1), bucket.ExistsCount())
+	require.Equal(t, int64(0), bucket.UploadCount())
+}
+
+// TestExecuteIndexMerge_TaskTTLExceeded tests that the executor respects TaskTTL.
+func TestExecuteIndexMerge_TaskTTLExceeded(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	// Build a source with enough rows to exceed 1µs processing time.
+	// Start with 100k rows and increase if needed on fast machines.
+	const rowCount = 100000
+	observations := make([]postings.LabelObservation, rowCount)
+	for i := 0; i < rowCount; i++ {
+		observations[i] = postings.LabelObservation{
+			ObjectPath:       "log-A",
+			SectionIndex:     0,
+			ColumnName:       "service",
+			LabelValue:       fmt.Sprintf("svc-%d", i),
+			StreamID:         int64(i + 1),
+			Timestamp:        time.Unix(0, int64(i*100)),
+			UncompressedSize: 100,
+		}
+	}
+
+	sourcePath := "source/index.dat"
+	buildSourcePostingsObject(t, bucket, "tenant", sourcePath, observations)
+
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant",
+		OutputIndexPath: outputPath,
+		TaskTTL:         1 * time.Microsecond, // Very tight deadline.
+		Runs: []*physical.RunRef{
+			{
+				Sections: []*physical.SectionRef{
+					{ObjectPath: sourcePath, SectionIndex: 0},
+				},
+			},
+		},
+	}
+
+	execCtx := newTestExecutorContext(t, bucket)
+	err := execCtx.doIndexMerge(ctx, node)
+
+	// The task should be killed by the 1µs TTL. If this flakes on very fast CI
+	// machines, increase rowCount to 500k or 1M to ensure the executor is still
+	// working when the deadline is checked.
+	require.ErrorIs(t, err, context.DeadlineExceeded,
+		"expected deadline exceeded with 1µs TTL and %d-row corpus", rowCount)
+}
+
+// TestExecuteIndexMerge_RowCountSum tests precise row count aggregation across multiple sources.
+func TestExecuteIndexMerge_RowCountSum(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	// Build 4 source objects with overlapping stats rows at the same full key,
+	// each with a different RowCount and UncompressedSize. All must have identical
+	// timestamps to match the full key for aggregation (see v1.0 design).
+	const sourceCount = 4
+	rowCounts := []int64{10, 20, 30, 40}
+	uncompressedSizes := []int64{1000, 2000, 3000, 4000}
+	ts1, ts2 := int64(100), int64(200) // identical for all sources
+
+	for i := 0; i < sourceCount; i++ {
+		path := fmt.Sprintf("source/index-%d.dat", i)
+		buildSourceStatsObject(t, bucket, "tenant", path, []stats.Stat{
+			{
+				ObjectPath:       "log-X",
+				SectionIndex:     0,
+				SortSchema:       "service",
+				Labels:           map[string]string{"service": "api"},
+				MinTimestamp:     ts1, // identical across all sources
+				MaxTimestamp:     ts2, // identical across all sources
+				RowCount:         rowCounts[i],
+				UncompressedSize: uncompressedSizes[i],
+			},
+		})
+	}
+
+	// Build IndexMerge node with all 4 sources.
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant",
+		OutputIndexPath: outputPath,
+		TaskTTL:         time.Minute,
+		Runs: []*physical.RunRef{
+			{
+				Sections: []*physical.SectionRef{},
+			},
+		},
+	}
+
+	for i := 0; i < sourceCount; i++ {
+		path := fmt.Sprintf("source/index-%d.dat", i)
+		node.Runs[0].Sections = append(node.Runs[0].Sections,
+			&physical.SectionRef{ObjectPath: path, SectionIndex: 0})
+	}
+
+	execCtx := newTestExecutorContext(t, bucket)
+	err := execCtx.doIndexMerge(ctx, node)
+	require.NoError(t, err)
+
+	rows := readStatsRowsFromBucket(t, ctx, bucket, outputPath)
+
+	// Should have exactly one row (all sources merged at identical full key).
+	require.Len(t, rows, 1)
+
+	row := rows[0]
+	// Verify exact sum: 10 + 20 + 30 + 40 = 100
+	require.Equal(t, int64(100), row.RowCount)
+	// Verify exact sum: 1000 + 2000 + 3000 + 4000 = 10000
+	require.Equal(t, int64(10000), row.UncompressedSize)
+	// Timestamps unchanged (all inputs identical)
+	require.Equal(t, ts1, row.MinTimestamp)
+	require.Equal(t, ts2, row.MaxTimestamp)
+}
+
+// TestExecuteIndexMerge_EmptyInputs tests behavior when no sections are provided.
+func TestExecuteIndexMerge_EmptyInputs(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant",
+		OutputIndexPath: outputPath,
+		TaskTTL:         time.Minute,
+		Runs: []*physical.RunRef{
+			{
+				Sections: nil, // Empty input
+			},
+		},
+	}
+
+	execCtx := newTestExecutorContext(t, bucket)
+	err := execCtx.doIndexMerge(ctx, node)
+	require.NoError(t, err)
+
+	// Verify a sentinel object was uploaded so retries short-circuit.
+	exists, err := bucket.Exists(ctx, outputPath)
+	require.NoError(t, err)
+	require.True(t, exists, "output object must be uploaded even for empty input")
+}

@@ -26,10 +26,21 @@ type statsRow struct {
 	UncompressedSize int64
 }
 
-// compareStatsRow compares two stats rows using the sort order:
-// (label values in schema-defined order, MinTimestamp, MaxTimestamp).
-// Assumes all input rows share the same SortSchema; SortSchema-mismatch handling
-// is the caller's responsibility.
+// compareStatsRow returns the lexicographic order of two statsRow records
+// under the on-disk stats sort, which is:
+//   (Labels in SortSchema order, MinTimestamp, MaxTimestamp)
+//
+// This matches pkg/dataobj/sections/stats/builder.go:compareStats. Keeping
+// the comparator aligned with the on-disk sort is required for the K-way
+// merge heap invariant: each pile emits rows in this order, and the heap
+// pop-order must agree.
+//
+// Note: ObjectPath, SectionIndex, and SortSchema are NOT part of the sort
+// key. The reducer (mergeStatsIntoBuilder) verifies they match when an
+// equal-key collision actually occurs (a v1.0 invariant violation).
+//
+// Assumes all input rows share the same SortSchema; SortSchema-mismatch
+// handling is the reducer's responsibility (D3).
 func compareStatsRow(a, b statsRow) int {
 	// Compare label values in the order defined by SortSchema
 	for labelName := range strings.SplitSeq(a.SortSchema, ",") {
