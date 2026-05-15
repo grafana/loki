@@ -236,7 +236,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 				unbind := r.aggregator.BindLabels(labels, labelValues)
 				for _, w := range windows {
-					if err := r.aggregator.Add(w.end, value, labels, labelValues); err != nil {
+					if err := r.aggregator.Add(w.end, value, nil, nil); err != nil {
 						return nil, err
 					}
 				}

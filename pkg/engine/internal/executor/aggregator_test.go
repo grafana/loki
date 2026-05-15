@@ -255,17 +255,17 @@ func TestAggregator(t *testing.T) {
 
 		// Add test data
 		// ts1: prod/app1 = 10, prod/app2 = 20, dev/app1 = 30
-		_ = agg.Add(ts1, 10, groupBy, []string{"prod", "app1"}) // "prod", "app1"
-		_ = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"}) // "prod", "app2"
-		_ = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})  // "dev", "app1"
+		_ = agg.Add(ts1, 10, groupBy, []string{}) // "prod", "app1"
+		_ = agg.Add(ts1, 20, groupBy, []string{}) // "prod", "app2"
+		_ = agg.Add(ts1, 30, groupBy, []string{}) // "dev", "app1"
 
 		// ts2: prod/app1 = 15, prod/app2 = 25, dev/app2 = 35
-		_ = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"}) // "prod", "app1"
-		_ = agg.Add(ts2, 25, groupBy, []string{"prod", "app2"}) // "prod", "app2"
-		_ = agg.Add(ts2, 35, groupBy, []string{"dev", "app2"})  // "dev", "app2"
+		_ = agg.Add(ts2, 15, groupBy, []string{}) // "prod", "app1"
+		_ = agg.Add(ts2, 25, groupBy, []string{}) // "prod", "app2"
+		_ = agg.Add(ts2, 35, groupBy, []string{}) // "dev", "app2"
 
-		_ = agg.Add(ts1, 5, groupBy, []string{"prod", "app1"})  // "prod", "app1"
-		_ = agg.Add(ts2, 10, groupBy, []string{"prod", "app1"}) // "prod", "app1"
+		_ = agg.Add(ts1, 5, groupBy, []string{})  // "prod", "app1"
+		_ = agg.Add(ts2, 10, groupBy, []string{}) // "prod", "app1"
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
@@ -404,5 +404,24 @@ func BenchmarkAggregator(b *testing.B) {
 			_ = agg.Add(ts, 10, fields, []string{"prod", "app1", "east-1"})
 		}
 		unbind()
+	})
+
+	b.Run("case=build_record", func(b *testing.B) {
+		agg := newAggregator(10, aggregationOperationSum)
+		agg.AddLabels(fields)
+
+		for i := 0; i < 8192; i++ {
+			ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Second)
+			env := fmt.Sprintf("env-%d", i%3)
+			cluster := fmt.Sprintf("cluster-%d", i%10)
+			service := fmt.Sprintf("service-%d", i%7)
+
+			_ = agg.Add(ts, 10, fields, []string{env, cluster, service})
+		}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _ = agg.BuildRecord()
+		}
 	})
 }
