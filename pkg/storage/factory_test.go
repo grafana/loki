@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -57,11 +56,11 @@ func TestNamedStores(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// config for BoltDB Shipper
-	boltdbShipperConfig := boltdb.IndexCfg{}
-	flagext.DefaultValues(&boltdbShipperConfig)
-	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
-	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
-	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	shipperCfg := indexshipper.Config{}
+	flagext.DefaultValues(&shipperCfg)
+	shipperCfg.ActiveIndexDirectory = path.Join(tempDir, "index")
+	shipperCfg.CacheLocation = path.Join(tempDir, "tsdb-cache")
+	shipperCfg.Mode = indexshipper.ModeReadWrite
 
 	cfg := Config{
 		NamedStores: NamedStores{
@@ -72,21 +71,21 @@ func TestNamedStores(t *testing.T) {
 		FSConfig: local.FSConfig{
 			Directory: path.Join(tempDir, "default"),
 		},
-		BoltDBShipperConfig: boltdbShipperConfig,
+		TSDBShipperConfig: shipperCfg,
 	}
 	require.NoError(t, cfg.NamedStores.Validate())
 
 	schemaConfig := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:       config.DayTime{Time: timeToModelTime(parseDate("2019-01-01"))},
-				IndexType:  "boltdb-shipper",
+				From:       config.DayTime{Time: timeToModelTime(parseDate("2026-01-01"))},
+				IndexType:  "tsdb",
 				ObjectType: "named-store",
-				Schema:     "v9",
+				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
-						Period: time.Hour * 168,
+						Period: 24 * time.Hour,
 					}},
 			},
 		},
@@ -241,26 +240,26 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 	})
 }
 
-// DefaultSchemaConfig creates a simple schema config for testing
-func DefaultSchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
-	s := config.SchemaConfig{
-		Configs: []config.PeriodConfig{{
-			IndexType: store,
-			Schema:    schema,
-			From:      config.DayTime{Time: from},
-			ChunkTables: config.PeriodicTableConfig{
-				Prefix: "cortex",
-				Period: 7 * 24 * time.Hour,
-			},
-			IndexTables: config.IndexPeriodicTableConfig{
-				PeriodicTableConfig: config.PeriodicTableConfig{
-					Prefix: "cortex_chunks",
-					Period: 7 * 24 * time.Hour,
-				}},
-		}},
-	}
-	if err := s.Validate(); err != nil {
-		panic(err)
-	}
-	return s
-}
+// // DefaultSchemaConfig creates a simple schema config for testing
+// func DefaultSchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
+// 	s := config.SchemaConfig{
+// 		Configs: []config.PeriodConfig{{
+// 			IndexType: store,
+// 			Schema:    schema,
+// 			From:      config.DayTime{Time: from},
+// 			ChunkTables: config.PeriodicTableConfig{
+// 				Prefix: "cortex",
+// 				Period: 24 * time.Hour,
+// 			},
+// 			IndexTables: config.IndexPeriodicTableConfig{
+// 				PeriodicTableConfig: config.PeriodicTableConfig{
+// 					Prefix: "cortex_chunks",
+// 					Period: 24 * time.Hour,
+// 				}},
+// 		}},
+// 	}
+// 	if err := s.Validate(); err != nil {
+// 		panic(err)
+// 	}
+// 	return s
+// }

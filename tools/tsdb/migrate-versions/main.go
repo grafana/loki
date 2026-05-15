@@ -81,7 +81,7 @@ func main() {
 	}
 
 	for i, cfg := range lokiCfg.SchemaConfig.Configs {
-		if cfg.IndexType != types.TSDBType {
+		if cfg.IndexType != types.IndexTypeTSDB {
 			continue
 		}
 
