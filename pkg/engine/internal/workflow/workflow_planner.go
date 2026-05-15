@@ -907,7 +907,20 @@ func calculateAlignedTimeShards(start, end time.Time) []physical.TimeRange {
 	}
 
 	var shards []physical.TimeRange
-	current := alignedStart
+	current := start
+	if current.Before(alignedStart) {
+		shardEnd := alignedStart
+		if shardEnd.After(end) {
+			shardEnd = end
+		}
+
+		shards = append(shards, physical.TimeRange{
+			Start: current,
+			End:   shardEnd,
+		})
+
+		current = shardEnd
+	}
 
 	for current.Before(end) {
 		shardEnd := current.Add(shardDuration)

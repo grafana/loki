@@ -1,6 +1,8 @@
 package worker
 
 import (
+	"errors"
+
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -154,7 +156,7 @@ func findTimestampColumn(rec arrow.RecordBatch) (*array.Timestamp, error) {
 			}
 		}
 	}
-	return nil, nil
+	return nil, errors.New("no timestamp column")
 }
 
 // splitRecordByShards splits a record batch into multiple batches based on shard indices.

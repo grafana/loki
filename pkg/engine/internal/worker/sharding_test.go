@@ -69,7 +69,7 @@ func createTestRecordBatch(t *testing.T, numRows int, timestamps []time.Time, la
 		cols = append(cols, builder.NewArray())
 	}
 
-	return array.NewRecord(schema, cols, int64(numRows))
+	return array.NewRecordBatch(schema, cols, int64(numRows))
 }
 
 // Helper function to create a simple record batch with just timestamps
@@ -88,7 +88,7 @@ func createTimestampRecordBatch(t *testing.T, timestamps []time.Time) arrow.Reco
 		tsBuilder.Append(arrow.Timestamp(ts.UnixNano()))
 	}
 
-	return array.NewRecord(schema, []arrow.Array{tsBuilder.NewArray()}, int64(len(timestamps)))
+	return array.NewRecordBatch(schema, []arrow.Array{tsBuilder.NewArray()}, int64(len(timestamps)))
 }
 
 func TestPartitionRecordBatch_NoSharding(t *testing.T) {
@@ -155,11 +155,11 @@ func TestPartitionRecordBatch_LabelHash(t *testing.T) {
 func TestPartitionRecordBatch_TimeShard(t *testing.T) {
 	// Create a record batch with timestamps spanning different time ranges
 	timestamps := []time.Time{
-		time.Unix(10, 0),  // Should go to shard 0
-		time.Unix(20, 0),  // Should go to shard 0
-		time.Unix(35, 0),  // Should go to shard 1
-		time.Unix(45, 0),  // Should go to shard 1
-		time.Unix(70, 0),  // Should go to shard 2
+		time.Unix(10, 0), // Should go to shard 0
+		time.Unix(20, 0), // Should go to shard 0
+		time.Unix(35, 0), // Should go to shard 1
+		time.Unix(45, 0), // Should go to shard 1
+		time.Unix(70, 0), // Should go to shard 2
 	}
 
 	rec := createTimestampRecordBatch(t, timestamps)
@@ -168,9 +168,9 @@ func TestPartitionRecordBatch_TimeShard(t *testing.T) {
 	routing := &workflow.SinkRouting{
 		Strategy: workflow.SinkRoutingStrategyTimeShard,
 		TimeRanges: []physical.TimeRange{
-			{Start: time.Unix(0, 0), End: time.Unix(30, 0)},   // Shard 0
-			{Start: time.Unix(30, 0), End: time.Unix(60, 0)},  // Shard 1
-			{Start: time.Unix(60, 0), End: time.Unix(90, 0)},  // Shard 2
+			{Start: time.Unix(0, 0), End: time.Unix(30, 0)},  // Shard 0
+			{Start: time.Unix(30, 0), End: time.Unix(60, 0)}, // Shard 1
+			{Start: time.Unix(60, 0), End: time.Unix(90, 0)}, // Shard 2
 		},
 	}
 
@@ -319,11 +319,11 @@ func TestComputeTimeShards_SingleRange(t *testing.T) {
 
 func TestComputeTimeShards_MultipleRanges(t *testing.T) {
 	timestamps := []time.Time{
-		time.Unix(5, 0),   // Shard 0
-		time.Unix(15, 0),  // Shard 0
-		time.Unix(25, 0),  // Shard 1
-		time.Unix(35, 0),  // Shard 1
-		time.Unix(45, 0),  // Shard 2
+		time.Unix(5, 0),  // Shard 0
+		time.Unix(15, 0), // Shard 0
+		time.Unix(25, 0), // Shard 1
+		time.Unix(35, 0), // Shard 1
+		time.Unix(45, 0), // Shard 2
 	}
 
 	rec := createTimestampRecordBatch(t, timestamps)
@@ -332,9 +332,9 @@ func TestComputeTimeShards_MultipleRanges(t *testing.T) {
 	shardIndices := make([]int, rec.NumRows())
 
 	timeRanges := []physical.TimeRange{
-		{Start: time.Unix(0, 0), End: time.Unix(20, 0)},   // Shard 0
-		{Start: time.Unix(20, 0), End: time.Unix(40, 0)},  // Shard 1
-		{Start: time.Unix(40, 0), End: time.Unix(60, 0)},  // Shard 2
+		{Start: time.Unix(0, 0), End: time.Unix(20, 0)},  // Shard 0
+		{Start: time.Unix(20, 0), End: time.Unix(40, 0)}, // Shard 1
+		{Start: time.Unix(40, 0), End: time.Unix(60, 0)}, // Shard 2
 	}
 
 	err := computeTimeShards(rec, timeRanges, shardIndices)
@@ -359,9 +359,9 @@ func TestComputeTimeShards_EdgeCases(t *testing.T) {
 	shardIndices := make([]int, rec.NumRows())
 
 	timeRanges := []physical.TimeRange{
-		{Start: time.Unix(0, 0), End: time.Unix(20, 0)},   // Shard 0
-		{Start: time.Unix(20, 0), End: time.Unix(40, 0)},  // Shard 1
-		{Start: time.Unix(40, 0), End: time.Unix(60, 0)},  // Shard 2
+		{Start: time.Unix(0, 0), End: time.Unix(20, 0)},  // Shard 0
+		{Start: time.Unix(20, 0), End: time.Unix(40, 0)}, // Shard 1
+		{Start: time.Unix(40, 0), End: time.Unix(60, 0)}, // Shard 2
 	}
 
 	err := computeTimeShards(rec, timeRanges, shardIndices)
@@ -392,11 +392,11 @@ func TestFindTimestampColumn(t *testing.T) {
 		strBuilder := array.NewStringBuilder(alloc)
 		strBuilder.Append("test")
 
-		rec := array.NewRecord(schema, []arrow.Array{strBuilder.NewArray()}, 1)
+		rec := array.NewRecordBatch(schema, []arrow.Array{strBuilder.NewArray()}, 1)
 		defer rec.Release()
 
 		tsCol, err := findTimestampColumn(rec)
-		require.NoError(t, err)
+		require.Error(t, err)
 		require.Nil(t, tsCol)
 	})
 }
@@ -502,7 +502,7 @@ func TestSplitRecordByShards_MultipleColumns(t *testing.T) {
 		float64Builder.Append(values[i])
 	}
 
-	rec := array.NewRecord(schema, []arrow.Array{
+	rec := array.NewRecordBatch(schema, []arrow.Array{
 		tsBuilder.NewArray(),
 		strBuilder.NewArray(),
 		float64Builder.NewArray(),
@@ -556,7 +556,7 @@ func TestSplitRecordByShards_WithNulls(t *testing.T) {
 	tsBuilder.Append(arrow.Timestamp(time.Unix(30, 0).UnixNano()))
 	strBuilder.Append("api")
 
-	rec := array.NewRecord(schema, []arrow.Array{
+	rec := array.NewRecordBatch(schema, []arrow.Array{
 		tsBuilder.NewArray(),
 		strBuilder.NewArray(),
 	}, 3)
@@ -627,4 +627,27 @@ func TestSimpleEvaluatorForSharding(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, arr)
 	})
+}
+
+func TestComputeTimeShards_NoTimestampColumn(t *testing.T) {
+	alloc := memory.NewGoAllocator()
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "some_column", Type: arrow.BinaryTypes.String},
+	}, nil)
+
+	strBuilder := array.NewStringBuilder(alloc)
+	strBuilder.AppendValues([]string{"first", "second"}, nil)
+
+	rec := array.NewRecordBatch(schema, []arrow.Array{strBuilder.NewArray()}, 2)
+	defer rec.Release()
+
+	shardIndices := make([]int, rec.NumRows())
+	timeRanges := []physical.TimeRange{
+		{Start: time.Unix(0, 0), End: time.Unix(100, 0)},
+		{Start: time.Unix(100, 0), End: time.Unix(200, 0)},
+	}
+
+	err := computeTimeShards(rec, timeRanges, shardIndices)
+	require.NoError(t, err)
+	require.Equal(t, []int{0, 0}, shardIndices)
 }

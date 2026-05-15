@@ -1627,6 +1627,28 @@ func Test_shardingAndParallelization(t *testing.T) {
 	})
 }
 
+func TestCalculateAlignedTimeShardsIncludesLeadingPartialShard(t *testing.T) {
+	start := time.Date(2026, time.January, 1, 1, 0, 0, 0, time.UTC)
+	end := start.Add(25 * time.Hour)
+
+	shards := calculateAlignedTimeShards(start, end)
+
+	require.Equal(t, []physical.TimeRange{
+		{
+			Start: start,
+			End:   time.Date(2026, time.January, 1, 12, 0, 0, 0, time.UTC),
+		},
+		{
+			Start: time.Date(2026, time.January, 1, 12, 0, 0, 0, time.UTC),
+			End:   time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			Start: time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC),
+			End:   end,
+		},
+	}, shards)
+}
+
 // workflowMockCache is a simple in-memory cache.Cache for workflow planning tests.
 type workflowMockCache struct {
 	data map[string][]byte
