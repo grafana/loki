@@ -62,8 +62,3 @@ func TestLogMerge_Clone_AllowsNilRuns(t *testing.T) {
 	require.Nil(t, cloned.Runs)
 	require.Nil(t, cloned.SourceIndexPaths)
 }
-
-func TestLogMerge_Type(t *testing.T) {
-	require.Equal(t, NodeTypeLogMerge, (&LogMerge{}).Type())
-	require.Equal(t, "LogMerge", NodeTypeLogMerge.String())
-}

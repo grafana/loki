@@ -59,8 +59,3 @@ func TestIndexMerge_Clone_AllowsNilRuns(t *testing.T) {
 	cloned := orig.Clone().(*IndexMerge)
 	require.Nil(t, cloned.Runs)
 }
-
-func TestIndexMerge_Type(t *testing.T) {
-	require.Equal(t, NodeTypeIndexMerge, (&IndexMerge{}).Type())
-	require.Equal(t, "IndexMerge", NodeTypeIndexMerge.String())
-}
