@@ -3,15 +3,14 @@ package distributor
 import (
 	"context"
 	"errors"
-	"fmt"
 	"hash/fnv"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
+	"github.com/grafana/loki/v3/pkg/distributor/rendezvous"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 // A segmentationKey is a special partition key that attempts to equally
@@ -70,55 +69,41 @@ func newSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 
 func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateBytes uint64) (int32, error) {
 	r.resolveTotal.Inc()
-	// We use a snapshot of the partition ring to ensure resolving the
-	// partition for a segmentation key is determinstic even if the ring
+	// We use a snapshot of the partition partitionRing to ensure resolving the
+	// partition for a segmentation key is determinstic even if the partitionRing
 	// changes.
-	ring := r.ringReader.PartitionRing()
-	if ring.ActivePartitionsCount() == 0 {
+	partitionRing := r.ringReader.PartitionRing()
+	if partitionRing.ActivePartitionsCount() == 0 {
 		// If there are no active partitions then we cannot write to any
 		// partition as we do not know if the partition we chose will have a
 		// consumer.
 		r.resolveFailed.Inc()
 		return 0, errors.New("no active partitions")
 	}
-	// Get a subring for the tenant based on their ingestion rate limit.
+
+	// Construct rendezvous shuffle sharder
+	activePartitions := make([]ring.PartitionDesc, partitionRing.ActivePartitionsCount())
+	for i, partition := range partitionRing.Partitions() {
+		activePartitions[i] = partition
+	}
+	shuffleSharder := rendezvous.NewShuffleSharder(activePartitions)
+
+	// Shuffle shard for the tenant based on their ingestion rate limit.
 	// This ensures that streams are not only co-located within the same
 	// segmentation key, but also segmentation keys for a tenant are as
 	// co-located as possible.
-	subring, err := r.tenantShuffleShard(ctx, ring, tenant, tenantRateBytes)
-	if err != nil {
-		r.resolveFailed.Inc()
-		return 0, fmt.Errorf("failed to shuffle shard tenant: %w", err)
-	}
-	// If the rate is 0, we cannot make a decision to shuffle shard the segmentation
-	// key. We fallback to choosing a partition for the hash key.
-	if rateBytes == 0 {
-		return subring.ActivePartitionForKey(hashKey)
-	}
-	numShuffleShardPartitions := numPartitionsForRate(rateBytes, r.perPartitionRateBytes, subring.ActivePartitionsCount())
-	// If the segmentation key is small enough that it does not need to be sharded,
-	// we can avoid doing an expensive shuffle shard.
-	if numShuffleShardPartitions == 1 {
-		return subring.ActivePartitionForKey(uint32(key.Sum64()))
-	}
-	subring, err = subring.ShuffleShard(string(key), numShuffleShardPartitions)
-	if err != nil {
-		r.resolveFailed.Inc()
-		return 0, fmt.Errorf("failed to get segmentation key subring: %w", err)
-	}
-	// TODO(grobinson): We need to use a different method that does not depend on
-	// stream sharding, as this information comes from the ingesters.
-	return subring.ActivePartitionForKey(hashKey)
-}
+	numTenantShuffleShardPartitions := numPartitionsForRate(tenantRateBytes, r.perPartitionRateBytes, partitionRing.ActivePartitionsCount())
+	shuffleSharder = shuffleSharder.ShuffleShard(tenant, numTenantShuffleShardPartitions)
 
-// tenantShuffleShard returns a subring for the tenant based on their rate limit.
-func (r *segmentationPartitionResolver) tenantShuffleShard(_ context.Context, ring *ring.PartitionRing, tenant string, tenantRateBytes uint64) (*ring.PartitionRing, error) {
-	// If the tenant has no limit, return the full ring.
-	if tenantRateBytes == 0 {
-		return ring, nil
+	// Shuffle shard for the segmentation key.
+	numSegKeyShuffleShardPartitions := numPartitionsForRate(rateBytes, r.perPartitionRateBytes, partitionRing.ActivePartitionsCount())
+	// If the segmentation key is small enough that it does not need to be sharded,
+	// we can avoid doing a shuffle shard.
+	if numSegKeyShuffleShardPartitions > 1 {
+		shuffleSharder = shuffleSharder.ShuffleShard(string(key), numSegKeyShuffleShardPartitions)
 	}
-	numShuffleShardPartitions := numPartitionsForRate(tenantRateBytes, r.perPartitionRateBytes, ring.ActivePartitionsCount())
-	return ring.ShuffleShard(tenant, numShuffleShardPartitions)
+
+	return shuffleSharder.Shard(hashKey).Id, nil
 }
 
 // numPartitionsForRate returns the number of partitions needed to keep within

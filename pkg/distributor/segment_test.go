@@ -194,31 +194,4 @@ func TestSegmentationPartitionResolver_TenantShuffleShard(t *testing.T) {
 	})
 	require.NoError(t, err)
 	ringWithActivePartitions.ring = ring
-
-	t.Run("no rate returns full ring", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		resolver := newSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
-		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.tenantShuffleShard(t.Context(), ring, "tenant", 0)
-		require.NoError(t, err)
-		require.Equal(t, ring, subring)
-	})
-
-	t.Run("rate equals partition rate returns subring with one partition", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		resolver := newSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
-		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.tenantShuffleShard(t.Context(), ring, "tenant", 1024)
-		require.NoError(t, err)
-		require.Equal(t, 1, subring.ActivePartitionsCount())
-	})
-
-	t.Run("rate exceeds partition rate returns subring with all partitions", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		resolver := newSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
-		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.tenantShuffleShard(t.Context(), ring, "tenant", 2048)
-		require.NoError(t, err)
-		require.Equal(t, 2, subring.ActivePartitionsCount())
-	})
 }
