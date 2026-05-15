@@ -8,14 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/util"
-
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-
-	"github.com/grafana/regexp/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -856,10 +852,31 @@ func (e *DropLabelsExpr) Stage() (log.Stage, error) {
 	return log.NewDropLabels(e.dropLabels), nil
 }
 
+func (e *DropLabelsExpr) HasNamedMatchers() bool {
+	for _, dropLabel := range e.dropLabels {
+		if dropLabel.Matcher != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *DropLabelsExpr) Names() []string {
+	names := []string{}
+	for _, dropLabel := range e.dropLabels {
+		if dropLabel.Name != "" {
+			names = append(names, dropLabel.Name)
+		} else if dropLabel.Matcher != nil {
+			names = append(names, dropLabel.Matcher.Name)
+		}
+	}
+	return names
+}
+
 func (e *DropLabelsExpr) String() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpDrop))
+	fmt.Fprintf(&sb, "%s %s ", OpPipe, OpDrop)
 
 	for i, dropLabel := range e.dropLabels {
 		if dropLabel.Matcher != nil {
@@ -899,7 +916,7 @@ func (e *KeepLabelsExpr) Stage() (log.Stage, error) {
 func (e *KeepLabelsExpr) String() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpKeep))
+	fmt.Fprintf(&sb, "%s %s ", OpPipe, OpKeep)
 
 	for i, keepLabel := range e.keepLabels {
 		if keepLabel.Matcher != nil {
@@ -964,7 +981,7 @@ func (e *LabelFmtExpr) Stage() (log.Stage, error) {
 func (e *LabelFmtExpr) String() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFmtLabel))
+	fmt.Fprintf(&sb, "%s %s ", OpPipe, OpFmtLabel)
 
 	for i, f := range e.Formats {
 		sb.WriteString(f.Name)
@@ -1003,7 +1020,7 @@ func (j *JSONExpressionParserExpr) Stage() (log.Stage, error) {
 
 func (j *JSONExpressionParserExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeJSON))
+	fmt.Fprintf(&sb, "%s %s ", OpPipe, OpParserTypeJSON)
 	for i, exp := range j.Expressions {
 		sb.WriteString(exp.Identifier)
 		sb.WriteString("=")
@@ -1014,11 +1031,6 @@ func (j *JSONExpressionParserExpr) String() string {
 		}
 	}
 	return sb.String()
-}
-
-type internedStringSet map[string]struct {
-	s  string
-	ok bool
 }
 
 type LogfmtExpressionParserExpr struct {
@@ -1055,7 +1067,7 @@ func (l *LogfmtExpressionParserExpr) Stage() (log.Stage, error) {
 
 func (l *LogfmtExpressionParserExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeLogfmt))
+	fmt.Fprintf(&sb, "%s %s ", OpPipe, OpParserTypeLogfmt)
 	if l.Strict {
 		sb.WriteString(OpStrict)
 		sb.WriteString(" ")
@@ -1086,30 +1098,6 @@ func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	return m
 }
 
-// simplify will return an equals matcher if there is a regex matching a literal
-func simplify(typ labels.MatchType, name string, reg *syntax.Regexp) (*labels.Matcher, bool) {
-	switch reg.Op {
-	case syntax.OpLiteral:
-		if !util.IsCaseInsensitive(reg) {
-			t := labels.MatchEqual
-			if typ == labels.MatchNotRegexp {
-				t = labels.MatchNotEqual
-			}
-			return labels.MustNewMatcher(t, name, string(reg.Rune)), true
-		}
-		return nil, false
-	}
-	return nil, false
-}
-
-func mustNewFloat(s string) float64 {
-	n, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		panic(logqlmodel.NewParseError(fmt.Sprintf("unable to parse float: %s", err.Error()), 0, 0))
-	}
-	return n
-}
-
 type UnwrapExpr struct {
 	Identifier string
 	Operation  string
@@ -1120,12 +1108,12 @@ type UnwrapExpr struct {
 func (u UnwrapExpr) String() string {
 	var sb strings.Builder
 	if u.Operation != "" {
-		sb.WriteString(fmt.Sprintf(" %s %s %s(%s)", OpPipe, OpUnwrap, u.Operation, u.Identifier))
+		fmt.Fprintf(&sb, " %s %s %s(%s)", OpPipe, OpUnwrap, u.Operation, u.Identifier)
 	} else {
-		sb.WriteString(fmt.Sprintf(" %s %s %s", OpPipe, OpUnwrap, u.Identifier))
+		fmt.Fprintf(&sb, " %s %s %s", OpPipe, OpUnwrap, u.Identifier)
 	}
 	for _, f := range u.PostFilters {
-		sb.WriteString(fmt.Sprintf(" %s %s", OpPipe, f))
+		fmt.Fprintf(&sb, " %s %s", OpPipe, f)
 	}
 	return sb.String()
 }
@@ -1153,7 +1141,7 @@ func (r LogRangeExpr) String() string {
 	if r.Unwrap != nil {
 		sb.WriteString(r.Unwrap.String())
 	}
-	sb.WriteString(fmt.Sprintf("[%v]", model.Duration(r.Interval)))
+	fmt.Fprintf(&sb, "[%v]", model.Duration(r.Interval))
 	if r.Offset != 0 {
 		offsetExpr := OffsetExpr{Offset: r.Offset}
 		sb.WriteString(offsetExpr.String())
@@ -1208,7 +1196,7 @@ type OffsetExpr struct {
 
 func (o *OffsetExpr) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf(" %s %s", OpOffset, o.Offset.String()))
+	fmt.Fprintf(&sb, " %s %s", OpOffset, o.Offset.String())
 	return sb.String()
 }
 
@@ -2366,7 +2354,7 @@ func (e *VectorExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(OpTypeVector)
 	sb.WriteString("(")
-	sb.WriteString(fmt.Sprintf("%f", e.Val))
+	fmt.Fprintf(&sb, "%f", e.Val)
 	sb.WriteString(")")
 	return sb.String()
 }

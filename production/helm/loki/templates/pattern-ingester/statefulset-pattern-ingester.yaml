@@ -59,7 +59,7 @@ spec:
       {{- end }}
       {{- include "loki.patternIngesterPriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.patternIngester.terminationGracePeriodSeconds }}
       {{- with .Values.patternIngester.initContainers }}
       initContainers:
@@ -103,7 +103,9 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- include "loki.patternIngester.livenessProbe" . | nindent 10 }}
           {{- include "loki.patternIngester.readinessProbe" . | nindent 10 }}
+          {{- include "loki.patternIngester.startupProbe" . | nindent 10 }}
           volumeMounts:
             - name: temp
               mountPath: /tmp
@@ -187,6 +189,9 @@ spec:
           {{- toYaml .accessModes | nindent 10 }}
         {{- with .storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        {{- with .volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
         {{- end }}
         resources:
           requests:

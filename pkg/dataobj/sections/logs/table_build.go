@@ -12,8 +12,8 @@ import (
 
 // buildTable builds a table from the set of provided records. The records are
 // sorted with [sortRecords] prior to building the table.
-func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, records []Record) *table {
-	sortRecords(records)
+func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, records []Record, sortOrder SortOrder) *table {
+	sortRecords(records, sortOrder)
 
 	buf.Reset()
 
@@ -57,15 +57,36 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts da
 	return table
 }
 
-// sortRecords sorts the set of records by stream ID and timestamp.
-func sortRecords(records []Record) {
+// sortRecords sorts the set of records according to the specified sort order.
+func sortRecords(records []Record, sortOrder SortOrder) {
 	slices.SortFunc(records, func(a, b Record) int {
-		if res := b.Timestamp.Compare(a.Timestamp); res != 0 {
-			return res
+		switch sortOrder {
+		case SortStreamASC:
+			// Sort by [streamID ASC, timestamp DESC]
+			if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
+				return res
+			}
+			return b.Timestamp.Compare(a.Timestamp)
+		case SortTimestampDESC:
+			// Sort by [timestamp DESC, streamID ASC]
+			if res := b.Timestamp.Compare(a.Timestamp); res != 0 {
+				return res
+			}
+			return cmp.Compare(a.StreamID, b.StreamID)
+		case SortSchemaASC:
+			if res := cmp.Compare(a.SortKey, b.SortKey); res != 0 {
+				return res
+			}
+			return b.Timestamp.Compare(a.Timestamp)
+		default:
+			panic("invalid sort order")
 		}
-		return cmp.Compare(a.StreamID, b.StreamID)
 	})
 }
+
+// SortRecords sorts records in place by sortOrder. For SortSchemaASC each
+// record's SortKey must be set before calling.
+func SortRecords(records []Record, sortOrder SortOrder) { sortRecords(records, sortOrder) }
 
 func equalRecords(a, b Record) bool {
 	if a.StreamID != b.StreamID {

@@ -14,7 +14,7 @@ type ClusterValidationConfig struct {
 
 func (cfg *ClusterValidationConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.registeredFlags = flagext.TrackRegisteredFlags(prefix, f, func(prefix string, f *flag.FlagSet) {
-		f.StringVar(&cfg.Label, prefix+"label", "", "Optionally define the cluster validation label.")
+		f.StringVar(&cfg.Label, prefix+"label", "", "Primary cluster validation label.")
 	})
 }
 
@@ -24,12 +24,35 @@ func (cfg *ClusterValidationConfig) RegisteredFlags() flagext.RegisteredFlags {
 
 type ServerClusterValidationConfig struct {
 	ClusterValidationConfig `yaml:",inline"`
+	AdditionalLabels        flagext.StringSliceCSV                 `yaml:"additional_labels" category:"experimental"`
 	GRPC                    ClusterValidationProtocolConfig        `yaml:"grpc" category:"experimental"`
 	HTTP                    ClusterValidationProtocolConfigForHTTP `yaml:"http" category:"experimental"`
 	registeredFlags         flagext.RegisteredFlags                `yaml:"-"`
 }
 
+// GetAllowedClusterLabels returns the effective cluster validation labels.
+// It combines the primary Label with any AdditionalLabels.
+// The primary Label is always first if present, followed by AdditionalLabels.
+func (cfg *ServerClusterValidationConfig) GetAllowedClusterLabels() []string {
+	if cfg.Label == "" && len(cfg.AdditionalLabels) == 0 {
+		return nil
+	}
+
+	var labels []string
+	if cfg.Label != "" {
+		labels = append(labels, cfg.Label)
+	}
+	labels = append(labels, cfg.AdditionalLabels...)
+	return labels
+}
+
 func (cfg *ServerClusterValidationConfig) Validate() error {
+	// Validate that additional labels require primary label to be set
+	if len(cfg.AdditionalLabels) > 0 && cfg.Label == "" {
+		return fmt.Errorf("additional cluster validation labels require primary label to be set")
+	}
+
+	// Protocol validation only checks against the primary label
 	err := cfg.GRPC.Validate("grpc", cfg.Label)
 	if err != nil {
 		return err
@@ -40,6 +63,7 @@ func (cfg *ServerClusterValidationConfig) Validate() error {
 func (cfg *ServerClusterValidationConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.registeredFlags = flagext.TrackRegisteredFlags(prefix, f, func(prefix string, f *flag.FlagSet) {
 		cfg.ClusterValidationConfig.RegisterFlagsWithPrefix(prefix, f)
+		f.Var(&cfg.AdditionalLabels, prefix+"additional-labels", "Comma-separated list of additional cluster validation labels that the server will accept from incoming requests.")
 		cfg.GRPC.RegisterFlagsWithPrefix(prefix+"grpc.", f)
 		cfg.HTTP.RegisterFlagsWithPrefix(prefix+"http.", f)
 	})

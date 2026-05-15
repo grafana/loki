@@ -1,5 +1,7 @@
 package kgo
 
+import "maps"
+
 type directConsumer struct {
 	cfg    *cfg
 	tps    *topicsPartitions           // data for topics that the user assigned
@@ -31,9 +33,7 @@ func (c *consumer) initDirect() {
 			d.m.add(topic, partition)
 		}
 		p := make(map[int32]Offset, len(partitions))
-		for partition, offset := range partitions {
-			p[partition] = offset
-		}
+		maps.Copy(p, partitions)
 		d.ps[topic] = p
 	}
 	for topic := range d.cfg.topics {
@@ -43,9 +43,9 @@ func (c *consumer) initDirect() {
 	d.tps.storeTopics(topics) // prime topics to load if non-regex (this is of no benefit if regex)
 }
 
-// For SetOffsets, unlike the group consumer, we just blindly translate the
-// input EpochOffsets into Offsets, and those will be set directly.
-func (*directConsumer) getSetAssigns(setOffsets map[string]map[int32]EpochOffset) (assigns map[string]map[int32]Offset) {
+// applySetOffsets for a direct consumer blindly translates EpochOffsets into
+// Offsets. Unlike the group consumer, there is no uncommitted map to check.
+func (*directConsumer) applySetOffsets(setOffsets map[string]map[int32]EpochOffset) (assigns map[string]map[int32]Offset) {
 	assigns = make(map[string]map[int32]Offset)
 	for topic, partitions := range setOffsets {
 		set := make(map[int32]Offset)

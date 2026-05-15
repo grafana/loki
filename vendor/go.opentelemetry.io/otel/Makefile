@@ -38,10 +38,14 @@ CROSSLINK = $(TOOLS)/crosslink
 $(TOOLS)/crosslink: PACKAGE=go.opentelemetry.io/build-tools/crosslink
 
 SEMCONVKIT = $(TOOLS)/semconvkit
+SEMCONVKIT_FILES := $(sort $(shell find $(TOOLS_MOD_DIR)/semconvkit -type f))
 $(TOOLS)/semconvkit: PACKAGE=go.opentelemetry.io/otel/$(TOOLS_MOD_DIR)/semconvkit
+$(TOOLS)/semconvkit: $(SEMCONVKIT_FILES)
 
 VERIFYREADMES = $(TOOLS)/verifyreadmes
+VERIFYREADMES_FILES := $(sort $(shell find $(TOOLS_MOD_DIR)/verifyreadmes -type f))
 $(TOOLS)/verifyreadmes: PACKAGE=go.opentelemetry.io/otel/$(TOOLS_MOD_DIR)/verifyreadmes
+$(TOOLS)/verifyreadmes: $(VERIFYREADMES_FILES)
 
 GOLANGCI_LINT = $(TOOLS)/golangci-lint
 $(TOOLS)/golangci-lint: PACKAGE=github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -146,11 +150,12 @@ build-tests/%:
 
 # Tests
 
-TEST_TARGETS := test-default test-bench test-short test-verbose test-race test-concurrent-safe
+TEST_TARGETS := test-default test-bench test-short test-verbose test-race test-concurrent-safe test-fuzz
 .PHONY: $(TEST_TARGETS) test
 test-default test-race: ARGS=-race
 test-bench:   ARGS=-run=xxxxxMatchNothingxxxxx -test.benchtime=1ms -bench=.
 test-short:   ARGS=-short
+test-fuzz:    ARGS=-fuzztime=10s -fuzz
 test-verbose: ARGS=-v -race
 test-concurrent-safe: ARGS=-run=ConcurrentSafe -count=100 -race
 test-concurrent-safe: TIMEOUT=120
@@ -184,11 +189,10 @@ test-coverage: $(GOCOVMERGE)
 .PHONY: benchmark
 benchmark: $(OTEL_GO_MOD_DIRS:%=benchmark/%)
 benchmark/%:
-	@echo "$(GO) test -run=xxxxxMatchNothingxxxxx -bench=. $*..." \
-		&& cd $* \
-		&& $(GO) list ./... \
-		| grep -v third_party \
-		| xargs $(GO) test -run=xxxxxMatchNothingxxxxx -bench=.
+	cd $* && $(GO) test -run='^$$' -bench=. $(ARGS) ./...
+
+print-sharded-benchmarks:
+	@echo $(OTEL_GO_MOD_DIRS) | jq -cR 'split(" ")'
 
 .PHONY: golangci-lint golangci-lint-fix
 golangci-lint-fix: ARGS=--fix
@@ -214,7 +218,7 @@ go-mod-tidy/%: crosslink
 		&& $(GO) mod tidy -compat=1.21
 
 .PHONY: lint
-lint: misspell go-mod-tidy golangci-lint govulncheck
+lint: misspell go-mod-tidy golangci-lint
 
 .PHONY: vanity-import-check
 vanity-import-check: $(PORTO)

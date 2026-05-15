@@ -1,5 +1,0 @@
-linters:
-  disable:
-  - errcheck
-  enable:
-  - gofmt

@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   dependabot-reviewer:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
 
     if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
 

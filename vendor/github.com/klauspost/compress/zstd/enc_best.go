@@ -158,11 +158,9 @@ func (e *bestFastEncoder) Encode(blk *blockEnc, src []byte) {
 
 	// Use this to estimate literal cost.
 	// Scaled by 10 bits.
-	bitsPerByte := int32((compress.ShannonEntropyBits(src) * 1024) / len(src))
-	// Huffman can never go < 1 bit/byte
-	if bitsPerByte < 1024 {
-		bitsPerByte = 1024
-	}
+	bitsPerByte := max(
+		// Huffman can never go < 1 bit/byte
+		int32((compress.ShannonEntropyBits(src)*1024)/len(src)), 1024)
 
 	// Override src
 	src = e.hist
@@ -235,10 +233,7 @@ encodeLoop:
 				// Extend candidate match backwards as far as possible.
 				// Do not extend repeats as we can assume they are optimal
 				// and offsets change if s == nextEmit.
-				tMin := s - e.maxMatchOff
-				if tMin < 0 {
-					tMin = 0
-				}
+				tMin := max(s-e.maxMatchOff, 0)
 				for offset > tMin && s > nextEmit && src[offset-1] == src[s-1] && l < maxMatchLength {
 					s--
 					offset--
@@ -382,10 +377,7 @@ encodeLoop:
 			nextEmit = s
 
 			// Index skipped...
-			end := s
-			if s > sLimit+4 {
-				end = sLimit + 4
-			}
+			end := min(s, sLimit+4)
 			off := index0 + e.cur
 			for index0 < end {
 				cv0 := load6432(src, index0)
@@ -444,10 +436,7 @@ encodeLoop:
 		nextEmit = s
 
 		// Index old s + 1 -> s - 1 or sLimit
-		end := s
-		if s > sLimit-4 {
-			end = sLimit - 4
-		}
+		end := min(s, sLimit-4)
 
 		off := index0 + e.cur
 		for index0 < end {
@@ -490,10 +479,13 @@ func (e *bestFastEncoder) Reset(d *dict, singleBlock bool) {
 	if d == nil {
 		return
 	}
+	dictChanged := d != e.lastDict
 	// Init or copy dict table
-	if len(e.dictTable) != len(e.table) || d.id != e.lastDictID {
+	if len(e.dictTable) != len(e.table) || dictChanged {
 		if len(e.dictTable) != len(e.table) {
 			e.dictTable = make([]prevEntry, len(e.table))
+		} else {
+			clear(e.dictTable)
 		}
 		end := int32(len(d.content)) - 8 + e.maxMatchOff
 		for i := e.maxMatchOff; i < end; i += 4 {
@@ -521,13 +513,14 @@ func (e *bestFastEncoder) Reset(d *dict, singleBlock bool) {
 				offset: i + 3,
 			}
 		}
-		e.lastDictID = d.id
 	}
 
-	// Init or copy dict table
-	if len(e.dictLongTable) != len(e.longTable) || d.id != e.lastDictID {
+	// Init or copy dict long table
+	if len(e.dictLongTable) != len(e.longTable) || dictChanged {
 		if len(e.dictLongTable) != len(e.longTable) {
 			e.dictLongTable = make([]prevEntry, len(e.longTable))
+		} else {
+			clear(e.dictLongTable)
 		}
 		if len(d.content) >= 8 {
 			cv := load6432(d.content, 0)
@@ -549,8 +542,8 @@ func (e *bestFastEncoder) Reset(d *dict, singleBlock bool) {
 				off++
 			}
 		}
-		e.lastDictID = d.id
 	}
+	e.lastDict = d
 	// Reset table to initial state
 	copy(e.longTable[:], e.dictLongTable)
 

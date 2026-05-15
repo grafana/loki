@@ -59,11 +59,12 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 	now := model.Now()
 
 	for _, tc := range []struct {
-		name                 string
-		setupManifest        func(client client.ObjectClient) []deletionproto.DeleteRequest
-		expectedJobs         []grpc.Job
-		expectedTableUpdates map[string]map[string]map[string]deletionproto.StorageUpdates
-		wholeChunksDeleted   bool
+		name                   string
+		setupManifest          func(client client.ObjectClient) []deletionproto.DeleteRequest
+		expectedJobsPerSegment []int
+		expectedJobs           []grpc.Job
+		expectedTableUpdates   map[string]map[string]map[string]deletionproto.StorageUpdates
+		wholeChunksDeleted     bool
 	}{
 		{
 			name: "no manifests in storage",
@@ -105,6 +106,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 				return requestsToAdd
 			},
+			expectedJobsPerSegment: []int{1},
 			expectedJobs: []grpc.Job{
 				{
 					Type: grpc.JOB_TYPE_DELETION,
@@ -162,6 +164,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 				return requestsToAdd
 			},
+			expectedJobsPerSegment: []int{2},
 			expectedJobs: []grpc.Job{
 				{
 					Type: grpc.JOB_TYPE_DELETION,
@@ -243,6 +246,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 				return requestsToAdd
 			},
+			expectedJobsPerSegment: []int{2},
 			expectedJobs: []grpc.Job{
 				{
 					Type: grpc.JOB_TYPE_DELETION,
@@ -329,6 +333,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
 				return requestsToAdd
 			},
+			expectedJobsPerSegment: []int{1, 1},
 			expectedJobs: []grpc.Job{
 				{
 					Type: grpc.JOB_TYPE_DELETION,
@@ -414,6 +419,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 				require.NoError(t, manifestBuilder.Finish(context.Background()))
 				return requestsToAdd
 			},
+			expectedJobsPerSegment: []int{1, 1},
 			expectedJobs: []grpc.Job{
 				{
 					Type: grpc.JOB_TYPE_DELETION,
@@ -494,7 +500,15 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			seenJobIDs := map[string]struct{}{}
 			go func() {
 				cnt := 0
+				currSegNum := -1
+				expectedJobsLeftCount := 0
 				for job := range jobsChan {
+					// When we are done processing all the jobs from the current segment, we pick up the next segment to process and re-estimate the jobs count
+					if expectedJobsLeftCount == 0 {
+						currSegNum++
+						expectedJobsLeftCount = tc.expectedJobsPerSegment[currSegNum]
+					}
+					require.Equal(t, expectedJobsLeftCount, builder.JobsLeft())
 					// ensure that we get unique job IDs
 					jobID := job.Id
 					if _, ok := seenJobIDs[jobID]; ok {
@@ -514,6 +528,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					})
 					require.NoError(t, err)
 					cnt++
+					expectedJobsLeftCount--
 				}
 			}()
 
@@ -522,6 +537,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 			require.Equal(t, len(tc.expectedJobs), len(jobsBuilt))
 			require.Equal(t, tc.expectedJobs, jobsBuilt)
+			require.Equal(t, 0, builder.JobsLeft())
 
 			// verify operations and data post-processing of the manifests
 			require.Equal(t, tc.expectedTableUpdates, tableUpdatesRecorder.updates)

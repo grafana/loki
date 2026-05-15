@@ -29,11 +29,11 @@ spec:
   ports:
     - name: memcached-client
       port: {{ .port }}
-      targetPort: {{ .port }}
+      targetPort: client
     {{ if $.ctx.Values.memcachedExporter.enabled -}}
     - name: http-metrics
       port: 9150
-      targetPort: 9150
+      targetPort: http-metrics
     {{ end }}
   selector:
     {{- include "loki.selectorLabels" $.ctx | nindent 4 }}

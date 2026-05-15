@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -84,7 +85,7 @@ func (m *mockIndexSet) GetSourceFile(indexFile storage.IndexFile) (string, error
 	decompress := storage.IsCompressedFile(indexFile.Name)
 	dst := filepath.Join(m.workingDir, indexFile.Name)
 	if decompress {
-		dst = strings.Trim(dst, ".gz")
+		dst = strings.TrimSuffix(dst, ".gz")
 	}
 
 	err := storage.DownloadFileFromStorage(dst, storage.IsCompressedFile(indexFile.Name),
@@ -734,7 +735,7 @@ func TestCompactedIndex(t *testing.T) {
 		"__name__ label should get dropped while indexing chunks": {
 			addChunks: []chunk.Chunk{
 				{
-					Metric:   labels.NewBuilder(testCtx.lbls1).Set(labels.MetricName, "log").Labels(),
+					Metric:   labels.NewBuilder(testCtx.lbls1).Set(model.MetricNameLabel, "log").Labels(),
 					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
 					Data:     dummyChunkData{},
 				},
@@ -996,4 +997,136 @@ func (d dummyChunkData) UncompressedSize() int {
 
 func (d dummyChunkData) Entries() int {
 	return 1
+}
+
+// TestSetupBuilder_ManyFiles verifies that setupBuilder can handle processing
+// many files without running into resource exhaustion issues.
+func TestSetupBuilder_ManyFiles(t *testing.T) {
+	now := model.Now()
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
+		Schema: "v12",
+	}
+	indexBkts := IndexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
+	tableName := indexBkts[0]
+
+	tempDir := t.TempDir()
+	objectStoragePath := filepath.Join(tempDir, "objects")
+	tablePathInStorage := filepath.Join(objectStoragePath, tableName.Prefix)
+	tableWorkingDirectory := filepath.Join(tempDir, "working-dir", tableName.Prefix)
+
+	require.NoError(t, util.EnsureDirectory(objectStoragePath))
+	require.NoError(t, util.EnsureDirectory(tablePathInStorage))
+	require.NoError(t, util.EnsureDirectory(tableWorkingDirectory))
+
+	// Create a large number of files
+	numFiles := 100
+	indexFormat, err := periodConfig.TSDBFormat()
+	require.NoError(t, err)
+
+	// Create per-tenant index files in the user's directory
+	userTablePath := filepath.Join(tablePathInStorage, "user1")
+	require.NoError(t, util.EnsureDirectory(userTablePath))
+
+	lbls := mustParseLabels(`{foo="bar"}`)
+	for i := 0; i < numFiles; i++ {
+		streams := []stream{
+			buildStream(lbls, buildChunkMetas(int64(i*1000), int64(i*1000+100)), ""),
+		}
+		setupPerTenantIndex(t, indexFormat, streams, userTablePath, time.Unix(int64(i), 0))
+	}
+
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+	require.NoError(t, err)
+
+	idxSet, err := newMockIndexSet("user1", tableName.Prefix, filepath.Join(tableWorkingDirectory, "user1"), objectClient)
+	require.NoError(t, err)
+
+	// This should complete without errors even with many files
+	// because files are closed immediately after processing
+	ctx := context.Background()
+	builder, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{})
+	require.NoError(t, err)
+	require.NotNil(t, builder)
+
+	// Verify builder has the expected data
+	builder.FinalizeChunks()
+	require.Greater(t, len(builder.streams), 0)
+}
+
+func TestCompactTable_ClosesFilesOnError(t *testing.T) {
+	now := model.Now()
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
+		Schema: "v12",
+	}
+	indexBkts := IndexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
+	tableName := indexBkts[0]
+	lbls := mustParseLabels(`{foo="bar", a="b"}`)
+
+	tempDir := t.TempDir()
+	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
+	tablePathInStorage := filepath.Join(objectStoragePath, tableName.Prefix)
+	tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName.Prefix)
+
+	require.NoError(t, util.EnsureDirectory(objectStoragePath))
+	require.NoError(t, util.EnsureDirectory(tablePathInStorage))
+	require.NoError(t, util.EnsureDirectory(tableWorkingDirectory))
+
+	indexFormat, err := periodConfig.TSDBFormat()
+	require.NoError(t, err)
+
+	// Create several valid multi-tenant index files.
+	for i := 0; i < 5; i++ {
+		userStreams := map[string][]stream{
+			"user_0": {buildStream(lbls, buildChunkMetas(int64(i*10), int64(i*10+5)), "")},
+			"user_1": {buildStream(lbls, buildChunkMetas(int64(i*10), int64(i*10+5)), "")},
+		}
+		setupMultiTenantIndex(t, indexFormat, userStreams, tablePathInStorage, time.Unix(int64(i), 0))
+	}
+
+	// Create a corrupt file with a valid multi-tenant TSDB filename.
+	// It will be downloaded successfully but OpenShippableTSDB will fail
+	// because the content is not a valid TSDB index.
+	corruptFilePath := filepath.Join(tablePathInStorage, "100-corrupt-node.tsdb")
+	require.NoError(t, os.WriteFile(corruptFilePath, []byte("invalid tsdb data"), 0o644))
+
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+	require.NoError(t, err)
+
+	commonIndexSet, err := newMockIndexSet("", tableName.Prefix, tableWorkingDirectory, objectClient)
+	require.NoError(t, err)
+	require.Len(t, commonIndexSet.ListSourceFiles(), 6)
+
+	tc := newTableCompactor(
+		context.Background(),
+		commonIndexSet,
+		map[string]compactor.IndexSet{},
+		func(userID string) (compactor.IndexSet, error) {
+			return newMockIndexSet(userID, tableName.Prefix,
+				filepath.Join(tableWorkingDirectory, userID), objectClient)
+		},
+		periodConfig,
+	)
+
+	// CompactTable should return an error due to the corrupt file.
+	err = tc.CompactTable()
+	require.Error(t, err)
+
+	// Verify that all downloaded temp files in the working directory are cleaned up.
+	// Before the fix, the defer block was not registered on the error path,
+	// leaving downloaded files and open file descriptors behind.
+	entries, readErr := os.ReadDir(tableWorkingDirectory)
+	require.NoError(t, readErr)
+
+	var remainingTSDB []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".tsdb") {
+			remainingTSDB = append(remainingTSDB, e.Name())
+		}
+	}
+	require.Empty(t, remainingTSDB,
+		"expected all downloaded TSDB files to be cleaned up after error, but found: %v", remainingTSDB)
 }

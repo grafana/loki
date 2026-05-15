@@ -50,7 +50,7 @@ func createPlanner(
 						Period: 24 * time.Hour,
 					},
 				},
-				IndexType:  types.TSDBType,
+				IndexType:  types.IndexTypeTSDB,
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v13",
 				RowShards:  16,
@@ -176,9 +176,17 @@ func Test_BuilderLoop(t *testing.T) {
 			// Start planner
 			err := services.StartAndAwaitRunning(context.Background(), planner)
 			require.NoError(t, err)
+
+			builderErrCh := make(chan error, nBuilders)
+			var builderWg sync.WaitGroup
+
 			t.Cleanup(func() {
 				err := services.StopAndAwaitTerminated(context.Background(), planner)
 				require.NoError(t, err)
+				builderWg.Wait()
+				for i := 0; i < nBuilders; i++ {
+					require.ErrorIs(t, <-builderErrCh, tc.expectedBuilderLoopError)
+				}
 			})
 
 			// Enqueue tasks
@@ -195,10 +203,11 @@ func Test_BuilderLoop(t *testing.T) {
 				builder := newMockBuilder(fmt.Sprintf("builder-%d", i))
 				builders = append(builders, builder)
 
-				go func(expectedBuilderLoopError error) {
-					err := planner.BuilderLoop(builder)
-					require.ErrorIs(t, err, expectedBuilderLoopError)
-				}(tc.expectedBuilderLoopError)
+				builderWg.Add(1)
+				go func(builder *fakeBuilder) {
+					defer builderWg.Done()
+					builderErrCh <- planner.BuilderLoop(builder)
+				}(builder)
 			}
 
 			// Eventually, all tasks should be sent to builders
@@ -210,8 +219,10 @@ func Test_BuilderLoop(t *testing.T) {
 				return receivedTasks == nTasks
 			}, 5*time.Second, 10*time.Millisecond)
 
-			// Finally, the queue should be empty
-			require.Equal(t, 0, planner.tasksQueue.TotalPending())
+			// Dequeued tasks stay in pendingTasks until Release; wait for that after all sends.
+			require.Eventually(t, func() bool {
+				return planner.tasksQueue.TotalPending() == 0
+			}, 5*time.Second, 10*time.Millisecond, "pending tasks: %d", planner.tasksQueue.TotalPending())
 
 			// consume all tasks result to free up the channel for the next round of tasks
 			for i := 0; i < nTasks; i++ {

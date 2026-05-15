@@ -281,6 +281,31 @@ type TenantsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Openshift"
 	Openshift *OpenshiftTenantSpec `json:"openshift,omitempty"`
+
+	// DisableIngress disables automatic creation of external access resources (Route / Ingress).
+	// When true, no Route or Ingress will be created for the gateway.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Disable Ingress"
+	DisableIngress bool `json:"disableIngress,omitempty"`
+
+	// Gateway defines the configuration specific to Gateway server
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Gateway"
+	Gateway *GatewaySpec `json:"gateway,omitempty"`
+}
+
+// GatewaySpec defines the configuration specific to Gateway server
+type GatewaySpec struct {
+	// TLS defines the TLS configuration for the Gateway server.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLS"
+	TLS *TLSSpec `json:"tls,omitempty"`
 }
 
 // OpenshiftTenantSpec defines the configuration specific to Openshift modes.
@@ -308,12 +333,13 @@ type OpenshiftTenantSpec struct {
 
 // OpenshiftOTLPConfig defines configuration specific to users using OTLP together with an OpenShift tenancy mode.
 type OpenshiftOTLPConfig struct {
-	// DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
+	// EnableConsoleLabels can be used to add a set of additional stream labels to the OTLP input. These labels are
+	// currently used by the logs console in OpenShift.
 	//
-	// Enabling this setting removes the "recommended attributes" from the stream labels. This requires an update
-	// to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.
+	// This is not different from manually adding some or all of the attributes to the set of stream labels using the
+	// normal OTLP configuration.
 	//
-	// The recommended attributes are:
+	// The additional attributes which are converted to stream labels are:
 	//
 	//  - k8s.container.name
 	//  - k8s.cronjob.name
@@ -328,15 +354,12 @@ type OpenshiftOTLPConfig struct {
 	//  - kubernetes.pod_name
 	//  - service.name
 	//
-	// This option is supposed to be combined with a custom attribute configuration listing the stream labels that
-	// should continue to exist.
-	//
 	// See also: https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Disable recommended OTLP attributes"
-	DisableRecommendedAttributes bool `json:"disableRecommendedAttributes,omitempty"`
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Enable Console labels"
+	EnableConsoleLabels bool `json:"enableConsoleLabels,omitempty"`
 }
 
 // LokiComponentSpec defines the requirements to configure scheduling
@@ -1040,6 +1063,32 @@ type LimitsSpec struct {
 	Tenants map[string]PerTenantLimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
+// NetworkPolicyRuleSet is the type of network policy rule set to use
+//
+// +kubebuilder:validation:Enum:=None;RestrictIngressEgress
+type NetworkPolicyRuleSet string
+
+const (
+	// The NetworkPolicyRuleSetNone rule-set contains no network policies, effectively removing all network policies created by the operator.
+	NetworkPolicyRuleSetNone NetworkPolicyRuleSet = "None"
+
+	// The NetworkPolicyRuleSetRestrictIngressEgress rule-set creates NetworkPolicies allowing the following:
+	//
+	//  - queries and log ingestion through the gateway
+	//  - access to object storage for Loki components requiring this
+	//  - communication between LokiStack components
+	NetworkPolicyRuleSetRestrictIngressEgress NetworkPolicyRuleSet = "RestrictIngressEgress"
+)
+
+// NetworkPoliciesSpec defines the configuration for NetworkPolicies.
+type NetworkPoliciesSpec struct {
+	// RuleSet determines which of the pre-defined sets of NetworkPolicy rules is used for this LokiStack.
+	//
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Network Policy Rule-Set",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	RuleSet NetworkPolicyRuleSet `json:"ruleSet"`
+}
+
 // RulesSpec defines the spec for the ruler component.
 type RulesSpec struct {
 	// Enabled defines a flag to enable/disable the ruler component
@@ -1155,6 +1204,15 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenants Configuration"
 	Tenants *TenantsSpec `json:"tenants,omitempty"`
+
+	// NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+	// When enabled, the operator creates NetworkPolicies to control ingress/egress between
+	// Loki components and related services.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Network Policies"
+	NetworkPolicies *NetworkPoliciesSpec `json:"networkPolicies,omitempty"`
 }
 
 type ReplicationSpec struct {
@@ -1190,6 +1248,64 @@ type ZoneSpec struct {
 	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Topology Key"
 	TopologyKey string `json:"topologyKey"`
+}
+
+// ValueReference encodes a reference to a single field in either a ConfigMap or Secret in the same namespace.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.configMapName) || has(self.secretName)", message="Either configMapName or secretName needs to be set"
+// +kubebuilder:validation:XValidation:rule="!(has(self.configMapName) && has(self.secretName))", message="Only one of configMapName and secretName can be set"
+type ValueReference struct {
+	// Name of the key used to get the value in either the referenced ConfigMap or Secret.
+	//
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Key Name",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	Key string `json:"key"`
+
+	// ConfigMapName contains the name of the ConfigMap containing the referenced value.
+	//
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="ConfigMap Name",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	ConfigMapName string `json:"configMapName,omitempty"`
+
+	// SecretName contains the name of the Secret containing the referenced value.
+	//
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Secret Name",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	SecretName string `json:"secretName,omitempty"`
+}
+
+// SecretReference encodes a reference to a single key in a Secret in the same namespace.
+type SecretReference struct {
+	// Key contains the name of the key inside the referenced Secret.
+	//
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Key Name",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	Key string `json:"key"`
+
+	// SecretName contains the name of the Secret containing the referenced value.
+	//
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Secret Name",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	SecretName string `json:"secretName"`
+}
+
+// TLSSpec contains options for TLS connections.
+type TLSSpec struct {
+	// CA can be used to specify a custom list of trusted certificate authorities.
+	//
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Certificate Authority Bundle"
+	CA *ValueReference `json:"ca,omitempty"`
+
+	// Certificate points to the server certificate to use.
+	//
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Certificate"
+	Certificate *ValueReference `json:"certificate,omitempty"`
+
+	// PrivateKey points to the private key of the server certificate.
+	//
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Private Key"
+	PrivateKey *SecretReference `json:"privateKey,omitempty"`
 }
 
 // LokiStackConditionType deifnes the type of condition types of a Loki deployment.
@@ -1262,6 +1378,10 @@ const (
 	ReasonMissingGatewayAuthenticationConfig LokiStackConditionReason = "MissingGatewayTenantAuthenticationConfig"
 	// ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.
 	ReasonInvalidTenantsConfiguration LokiStackConditionReason = "InvalidTenantsConfiguration"
+	// ReasonMissingGatewayTLSConfig when the referenced TLS Secret or ConfigMap for the gateway is missing.
+	ReasonMissingGatewayTLSConfig LokiStackConditionReason = "MissingGatewayTLSConfig"
+	// ReasonInvalidGatewayTLSConfig when the referenced TLS Secret or ConfigMap is invalid or missing required keys.
+	ReasonInvalidGatewayTLSConfig LokiStackConditionReason = "InvalidGatewayTLSConfig"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
 	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.
@@ -1274,6 +1394,8 @@ const (
 	ReasonZoneAwareEmptyLabel LokiStackConditionReason = "ReasonZoneAwareEmptyLabel"
 	// ReasonStorageNeedsSchemaUpdate when the object storage schema version is older than V13
 	ReasonStorageNeedsSchemaUpdate LokiStackConditionReason = "StorageNeedsSchemaUpdate"
+	// ReasonInsufficientIngesterReplicas when the ingester replicas are less than or equal to the replication factor. Which causes log ingestion to stop when ingester pods get restarted.
+	ReasonInsufficientIngesterReplicas LokiStackConditionReason = "InsufficientIngesterReplicas"
 )
 
 // PodStatus is a short description of the status a Pod can be in.
@@ -1412,6 +1534,12 @@ type LokiStackStatus struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Storage LokiStackStorageStatus `json:"storage,omitempty"`
+
+	// NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	NetworkPolicyRuleSet NetworkPolicyRuleSet `json:"networkPolicyRuleSet,omitempty"`
 
 	// Conditions of the Loki deployment health.
 	//

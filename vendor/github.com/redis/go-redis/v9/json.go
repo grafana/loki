@@ -68,8 +68,9 @@ var _ Cmder = (*JSONCmd)(nil)
 func newJSONCmd(ctx context.Context, args ...interface{}) *JSONCmd {
 	return &JSONCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeJSON,
 		},
 	}
 }
@@ -82,6 +83,7 @@ func (cmd *JSONCmd) SetVal(val string) {
 	cmd.val = val
 }
 
+// Val returns the result of the JSON.GET command as a string.
 func (cmd *JSONCmd) Val() string {
 	if len(cmd.val) == 0 && cmd.expanded != nil {
 		val, err := json.Marshal(cmd.expanded)
@@ -100,6 +102,7 @@ func (cmd *JSONCmd) Result() (string, error) {
 	return cmd.Val(), cmd.Err()
 }
 
+// Expanded returns the result of the JSON.GET command as unmarshalled JSON.
 func (cmd *JSONCmd) Expanded() (interface{}, error) {
 	if len(cmd.val) != 0 && cmd.expanded == nil {
 		err := json.Unmarshal([]byte(cmd.val), &cmd.expanded)
@@ -113,9 +116,15 @@ func (cmd *JSONCmd) Expanded() (interface{}, error) {
 
 func (cmd *JSONCmd) readReply(rd *proto.Reader) error {
 	// nil response from JSON.(M)GET (cmd.baseCmd.err will be "redis: nil")
+	// This happens when the key doesn't exist
 	if cmd.baseCmd.Err() == Nil {
 		cmd.val = ""
 		return Nil
+	}
+
+	// Handle other base command errors
+	if cmd.baseCmd.Err() != nil {
+		return cmd.baseCmd.Err()
 	}
 
 	if readType, err := rd.PeekReplyType(); err != nil {
@@ -125,6 +134,13 @@ func (cmd *JSONCmd) readReply(rd *proto.Reader) error {
 		size, err := rd.ReadArrayLen()
 		if err != nil {
 			return err
+		}
+
+		// Empty array means no results found for JSON path, but key exists
+		// This should return "[]", not an error
+		if size == 0 {
+			cmd.val = "[]"
+			return nil
 		}
 
 		expanded := make([]interface{}, size)
@@ -141,12 +157,21 @@ func (cmd *JSONCmd) readReply(rd *proto.Reader) error {
 			return err
 		} else if str == "" || err == Nil {
 			cmd.val = ""
+			return Nil
 		} else {
 			cmd.val = str
 		}
 	}
 
 	return nil
+}
+
+func (cmd *JSONCmd) Clone() Cmder {
+	return &JSONCmd{
+		baseCmd:  cmd.cloneBaseCmd(),
+		val:      cmd.val,
+		expanded: cmd.expanded, // interface{} can be shared as it should be immutable after parsing
+	}
 }
 
 // -------------------------------------------
@@ -159,8 +184,9 @@ type JSONSliceCmd struct {
 func NewJSONSliceCmd(ctx context.Context, args ...interface{}) *JSONSliceCmd {
 	return &JSONSliceCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeJSONSlice,
 		},
 	}
 }
@@ -217,6 +243,18 @@ func (cmd *JSONSliceCmd) readReply(rd *proto.Reader) error {
 	return nil
 }
 
+func (cmd *JSONSliceCmd) Clone() Cmder {
+	var val []interface{}
+	if cmd.val != nil {
+		val = make([]interface{}, len(cmd.val))
+		copy(val, cmd.val)
+	}
+	return &JSONSliceCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+	}
+}
+
 /*******************************************************************************
 *
 * IntPointerSliceCmd
@@ -233,8 +271,9 @@ type IntPointerSliceCmd struct {
 func NewIntPointerSliceCmd(ctx context.Context, args ...interface{}) *IntPointerSliceCmd {
 	return &IntPointerSliceCmd{
 		baseCmd: baseCmd{
-			ctx:  ctx,
-			args: args,
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeIntPointerSlice,
 		},
 	}
 }
@@ -272,6 +311,18 @@ func (cmd *IntPointerSliceCmd) readReply(rd *proto.Reader) error {
 	}
 
 	return nil
+}
+
+func (cmd *IntPointerSliceCmd) Clone() Cmder {
+	var val []*int64
+	if cmd.val != nil {
+		val = make([]*int64, len(cmd.val))
+		copy(val, cmd.val)
+	}
+	return &IntPointerSliceCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		val:     val,
+	}
 }
 
 //------------------------------------------------------------------------------

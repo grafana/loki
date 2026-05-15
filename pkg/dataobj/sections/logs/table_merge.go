@@ -20,7 +20,7 @@ import (
 // tables are open at a time.
 //
 // mergeTablesIncremental panics if maxMergeSize is less than 2.
-func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table, maxMergeSize int, sort SortOrder) (*table, error) {
+func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, maxMergeSize int, sort SortOrder) (*table, error) {
 	if maxMergeSize < 2 {
 		panic("mergeTablesIncremental: merge size must be at least 2, got " + fmt.Sprint(maxMergeSize))
 	}
@@ -53,7 +53,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 
 // mergeTables merges the provided sorted tables into a new single sorted table
 // using k-way merge.
-func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table, sort SortOrder) (*table, error) {
+func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, sort SortOrder) (*table, error) {
 	buf.Reset()
 
 	var (
@@ -69,13 +69,16 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts d
 			return nil, err
 		}
 
-		r := dataset.NewReader(dataset.ReaderOptions{
+		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset: t,
 			Columns: dsetColumns,
 
 			// The table is in memory, so don't prefetch.
 			Prefetch: false,
 		})
+		if err := r.Open(context.Background()); err != nil {
+			return nil, fmt.Errorf("opening dataset row reader: %w", err)
+		}
 
 		tableSequences = append(tableSequences, &tableSequence{
 			columns:         dsetColumns,
@@ -150,7 +153,7 @@ var _ loser.Sequence = (*tableSequence)(nil)
 func tableSequenceAt(seq *tableSequence) result.Result[dataset.Row] { return seq.At() }
 func tableSequenceClose(seq *tableSequence)                         { seq.Close() }
 
-func NewDatasetSequence(r *dataset.Reader, bufferSize int) DatasetSequence {
+func NewDatasetSequence(r *dataset.RowReader, bufferSize int) DatasetSequence {
 	return DatasetSequence{
 		r:   r,
 		buf: make([]dataset.Row, bufferSize),
@@ -160,7 +163,7 @@ func NewDatasetSequence(r *dataset.Reader, bufferSize int) DatasetSequence {
 type DatasetSequence struct {
 	curValue result.Result[dataset.Row]
 
-	r *dataset.Reader
+	r *dataset.RowReader
 
 	buf  []dataset.Row
 	off  int // Offset into buf
@@ -201,6 +204,36 @@ func (seq *DatasetSequence) Close() {
 	_ = seq.r.Close()
 }
 
+// CompareForSortSchema returns a comparison function for k-way merge using
+// schema-based sort order: [sortKey ASC, timestamp DESC].
+// sortKeys maps streamID to its pre-computed sort key.
+// math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
+func CompareForSortSchema(sortKeys map[int64]string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+	return func(a, b result.Result[dataset.Row]) bool {
+		return result.Compare(a, b, func(ra, rb dataset.Row) int {
+			aStreamID := ra.Values[0].Int64()
+			bStreamID := rb.Values[0].Int64()
+			if aStreamID == math.MaxInt64 && bStreamID == math.MaxInt64 {
+				return 0
+			}
+			if aStreamID == math.MaxInt64 {
+				return 1
+			}
+			if bStreamID == math.MaxInt64 {
+				return -1
+			}
+			aKey := sortKeys[aStreamID]
+			bKey := sortKeys[bStreamID]
+			if res := cmp.Compare(aKey, bKey); res != 0 {
+				return res
+			}
+			aTS := ra.Values[1].Int64()
+			bTS := rb.Values[1].Int64()
+			return cmp.Compare(bTS, aTS)
+		}) < 0
+	}
+}
+
 // CompareForSortOrder returns a comparison function for result rows for the given sort order.
 func CompareForSortOrder(sort SortOrder) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
 	switch sort {
@@ -212,6 +245,8 @@ func CompareForSortOrder(sort SortOrder) func(result.Result[dataset.Row], result
 		return func(a, b result.Result[dataset.Row]) bool {
 			return result.Compare(a, b, compareRowsTimestamp) < 0
 		}
+	case SortSchemaASC:
+		panic("CompareForSortOrder does not support SortSchemaASC: use CompareForSortSchema instead")
 	default:
 		panic("invalid sort order")
 	}
@@ -242,28 +277,6 @@ func valuesForRows(a, b dataset.Row) (aStreamID int64, bStreamID int64, aTimesta
 	aTimestamp = a.Values[1].Int64()
 	bTimestamp = b.Values[1].Int64()
 	return
-}
-
-// CompareRows compares two rows by their first two columns. CompareRows panics
-// if a or b doesn't have at least two columns, if the first column isn't a
-// int64-encoded stream ID, or if the second column isn't an int64-encoded
-// timestamp.
-func CompareRows(a, b dataset.Row) int {
-	// The first two columns of each row are *always* stream ID and timestamp.
-	//
-	// TODO(rfratto): Can we find a safer way of doing this?
-	var (
-		aStreamID = a.Values[0].Int64()
-		bStreamID = b.Values[0].Int64()
-
-		aTimestamp = a.Values[1].Int64()
-		bTimestamp = b.Values[1].Int64()
-	)
-
-	if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
-		return res
-	}
-	return cmp.Compare(bTimestamp, aTimestamp)
 }
 
 // equalRows compares two rows for equality, column by column.

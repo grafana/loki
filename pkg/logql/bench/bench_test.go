@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime/pprof"
 	"slices"
 	"strings"
 	"testing"
@@ -17,9 +18,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
+	"golang.org/x/sync/errgroup"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine"
@@ -29,9 +31,9 @@ import (
 )
 
 var (
-	slowTests     = flag.Bool("slow-tests", false, "run slow tests")
-	rangeType     = flag.String("range-type", DefaultTestCaseGeneratorConfig.RangeType, "range type to use for test cases")
-	rangeInterval = flag.Duration("range-interval", DefaultTestCaseGeneratorConfig.RangeInterval, "interval to use for range aggregations")
+	slowTests      = flag.Bool("slow-tests", false, "run slow tests")
+	rangeType      = flag.String("range-type", "range", "query range type: instant or range (only affects metric queries)")
+	includeSkipped = flag.Bool("include-skipped", false, "include skipped queries in test execution")
 )
 
 const testTenant = "test-tenant"
@@ -44,6 +46,65 @@ const (
 var allStores = []string{StoreDataObjV2Engine, StoreChunk}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
+
+func init() {
+	engine.EnableParanoidMode()
+}
+
+// loadTestCases loads test cases from the query registry
+func loadTestCases(tb testing.TB, config *GeneratorConfig) []TestCase {
+	tb.Helper()
+
+	// Load from query registry
+	queriesDir := "./queries"
+	registry := NewQueryRegistry(queriesDir)
+
+	// Load all suites - filtering will be done via -run flag
+	suites := []Suite{SuiteFast, SuiteRegression, SuiteExhaustive}
+
+	if err := registry.Load(suites...); err != nil {
+		tb.Fatalf("failed to load query registry: %v", err)
+	}
+
+	queryDefs := registry.GetQueries(*includeSkipped, suites...)
+
+	metadata, err := LoadMetadata(DefaultDataDir)
+	if err != nil {
+		tb.Fatalf("failed to load dataset metadata: %v", err)
+	}
+	resolver := NewMetadataVariableResolver(metadata, config.Seed)
+
+	isInstant := *rangeType == "instant"
+
+	var cases []TestCase
+	for _, def := range queryDefs {
+		expanded, err := registry.ExpandQuery(def, resolver, isInstant)
+		if err != nil {
+			tb.Fatalf("failed to expand query %q: %v", def.Description, err)
+		}
+		cases = append(cases, expanded...)
+	}
+
+	// Filter and adjust test cases based on range type
+	if *rangeType == "instant" {
+		// For instant queries, filter to only metric queries and adjust parameters
+		filtered := cases[:0]
+		for _, tc := range cases {
+			if tc.Kind() == "metric" {
+				// Adjust for instant query: query at end time with no step
+				tc.Start = tc.End
+				tc.Step = 0
+				filtered = append(filtered, tc)
+			}
+		}
+		cases = filtered
+		tb.Logf("Loaded %d test cases from registry (range-type=%s, metric-only)", len(cases), *rangeType)
+	} else {
+		tb.Logf("Loaded %d test cases from registry (range-type=%s)", len(cases), *rangeType)
+	}
+
+	return cases
+}
 
 // setupBenchmarkWithStore sets up the benchmark environment with the specified store type
 // and returns the necessary components
@@ -64,10 +125,14 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 
 		return store.engine
 	case StoreChunk:
-		store, err := NewChunkStore(DefaultDataDir, testTenant)
+		reg := prometheus.NewRegistry()
+		store, err := NewChunkStoreWithRegisterer(DefaultDataDir, testTenant, reg)
 		if err != nil {
 			tb.Fatal(err)
 		}
+		tb.Cleanup(func() {
+			_ = store.Close()
+		})
 		querier, err = store.Querier()
 		if err != nil {
 			tb.Fatal(err)
@@ -85,7 +150,6 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 // TestStorageEquality ensures that for each test case, all known storages
 // return the same query result.
 func TestStorageEquality(t *testing.T) {
-	ctx := user.InjectOrgID(t.Context(), testTenant)
 
 	if !*slowTests {
 		t.Skip("test skipped because -slow-tests flag is not set")
@@ -105,11 +169,7 @@ func TestStorageEquality(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		cases := NewTestCaseGenerator(
-			TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
-			config,
-		).Generate()
-
+		cases := loadTestCases(t, config)
 		return &store{
 			Name:   name,
 			Cases:  cases,
@@ -141,65 +201,101 @@ func TestStorageEquality(t *testing.T) {
 				continue
 			}
 
-			t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", baseCase.Name(), baseCase.Kind(), store.Name), func(t *testing.T) {
-				defer func() {
-					if t.Failed() {
-						t.Logf("Re-run just this test with -test.run='%s'", testNameRegex(t.Name()))
+			t.Run(fmt.Sprintf("%s/kind=%s/store=%s", baseCase.Source, baseCase.Kind(), store.Name), func(t *testing.T) {
+				ctx := user.InjectOrgID(t.Context(), testTenant)
+
+				labels := pprof.Labels("query", baseCase.Name(), "kind", baseCase.Kind(), "store", store.Name)
+				pprof.Do(ctx, labels, func(ctx context.Context) {
+					defer func() {
+						if t.Failed() {
+							t.Logf("Re-run just this test with -test.run='%s'", testNameRegex(t.Name()))
+						}
+					}()
+
+					t.Logf("Query information:\n%s", baseCase.Description())
+					params, err := logql.NewLiteralParams(
+						baseCase.Query,
+						baseCase.Start,
+						baseCase.End,
+						baseCase.Step,
+						0,
+						baseCase.Direction,
+						1000,
+						nil,
+						nil,
+					)
+					require.NoError(t, err)
+
+					// Find matching test case in other stores and then compare results.
+					idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
+						return tc.Equal(baseCase)
+					})
+					if idx == -1 {
+						t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
+						return
 					}
-				}()
 
-				t.Logf("Query information:\n%s", baseCase.Description())
-				params, err := logql.NewLiteralParams(
-					baseCase.Query,
-					baseCase.Start,
-					baseCase.End,
-					baseCase.Step,
-					0,
-					baseCase.Direction,
-					1000,
-					nil,
-					nil,
-				)
-				require.NoError(t, err)
+					var (
+						actual, expected logqlmodel.Result
+					)
 
-				// Find matching test case in other stores and then compare results.
-				idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
-					return tc == baseCase
+					g, ctx := errgroup.WithContext(ctx)
+
+					g.Go(func() error {
+						result, err := store.Engine.Query(params).Exec(ctx)
+						actual = result
+						return err
+					})
+
+					g.Go(func() error {
+						result, err := baseStore.Engine.Query(params).Exec(ctx)
+						expected = result
+						return err
+					})
+
+					err = g.Wait()
+
+					if err != nil {
+						if errors.Is(err, engine.ErrNotSupported) {
+							t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
+						}
+
+						t.Fatal(err)
+					}
+
+					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+						store.Name,
+						actual.Statistics.Summary.TotalLinesProcessed,
+						actual.Statistics.Summary.TotalEntriesReturned,
+						humanize.Bytes(uint64(actual.Statistics.Summary.TotalBytesProcessed)),
+						uint64(actual.Statistics.Summary.ExecTime),
+						humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
+					)
+
+					dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
+					t.Log("Dataobj stats:", string(dataobjStats))
+
+					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+						baseStore.Name,
+						expected.Statistics.Summary.TotalLinesProcessed,
+						expected.Statistics.Summary.TotalEntriesReturned,
+						humanize.Bytes(uint64(expected.Statistics.Summary.TotalBytesProcessed)),
+						uint64(expected.Statistics.Summary.ExecTime),
+						humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
+					)
+
+					// Verify that the query returned non-empty results to catch query templating issues
+					if !slices.Contains(baseCase.Tags, "empty-result") {
+						assertResultNotEmpty(t, expected.Data, "base store query returned empty results - possible query templating issue")
+						assertResultNotEmpty(t, actual.Data, "store query returned empty results - possible query templating issue")
+					} else {
+						assertResultEmpty(t, expected.Data, "base store query returned non-empty results but expected empty")
+						assertResultEmpty(t, actual.Data, "store query returned non-empty results but expected empty")
+					}
+
+					// Use tolerance-based comparison for floating point precision issues
+					assertDataEqualWithTolerance(t, expected.Data, actual.Data, 1e-5)
 				})
-				if idx == -1 {
-					t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
-					return
-				}
-
-				actual, err := store.Engine.Query(params).Exec(ctx)
-				if err != nil && errors.Is(err, engine.ErrNotSupported) {
-					t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
-				}
-				require.NoError(t, err)
-				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
-					store.Name,
-					actual.Statistics.Summary.TotalLinesProcessed,
-					actual.Statistics.Summary.TotalEntriesReturned,
-					humanize.Bytes(uint64(actual.Statistics.Summary.TotalBytesProcessed)),
-					uint64(actual.Statistics.Summary.ExecTime),
-					humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
-				)
-
-				dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
-				t.Log("Dataobj stats:", string(dataobjStats))
-
-				expected, err := baseStore.Engine.Query(params).Exec(ctx)
-				require.NoError(t, err)
-				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
-					baseStore.Name,
-					expected.Statistics.Summary.TotalLinesProcessed,
-					expected.Statistics.Summary.TotalEntriesReturned,
-					humanize.Bytes(uint64(expected.Statistics.Summary.TotalBytesProcessed)),
-					uint64(expected.Statistics.Summary.ExecTime),
-					humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
-				)
-
-				assert.Equal(t, expected.Data, actual.Data, "store %q results do not match base store %q", store.Name, baseStore.Name)
 			})
 		}
 	}
@@ -230,11 +326,8 @@ func TestLogQLQueries(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
-	// Generate test cases
-	cases := NewTestCaseGenerator(
-		TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
-		config,
-	).Generate()
+	// Load test cases from registry
+	cases := loadTestCases(t, config)
 
 	// Log all unique queries
 	uniqueQueries := make(map[string]struct{})
@@ -248,7 +341,7 @@ func TestLogQLQueries(t *testing.T) {
 	// }
 
 	for _, c := range cases {
-		t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), store), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/kind=%s/store=%s", c.Source, c.Kind(), store), func(t *testing.T) {
 			// Uncomment this to run only log queries
 			// if c.Kind() != "log" {
 			// 	continue
@@ -310,52 +403,78 @@ func BenchmarkLogQL(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		// Generate test cases using the loaded config
-		cases := NewTestCaseGenerator(
-			TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
-			config,
-		).Generate()
+		// Load test cases
+		cases := loadTestCases(b, config)
 
 		for _, c := range cases {
-			b.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), storeType), func(b *testing.B) {
-				ctx := user.InjectOrgID(context.Background(), testTenant)
-				params, err := logql.NewLiteralParams(
-					c.Query,
-					c.Start,
-					c.End,
-					c.Step,
-					0,
-					c.Direction,
-					1000,
-					nil,
-					nil,
-				)
-				require.NoError(b, err)
+			b.Run(fmt.Sprintf("%s/kind=%s/store=%s", c.Source, c.Kind(), storeType), func(b *testing.B) {
+				ctx := user.InjectOrgID(b.Context(), testTenant)
 
-				q := engine.Query(params)
+				labels := pprof.Labels("query", c.Name(), "kind", c.Kind(), "store", storeType)
 
-				b.ReportAllocs()
-				b.ResetTimer()
-
-				for i := 0; i < b.N; i++ {
-					ctx, cancel := context.WithTimeout(ctx, time.Minute)
-					defer cancel()
-					r, err := q.Exec(ctx)
+				pprof.Do(ctx, labels, func(ctx context.Context) {
+					params, err := logql.NewLiteralParams(
+						c.Query,
+						c.Start,
+						c.End,
+						c.Step,
+						0,
+						c.Direction,
+						1000,
+						nil,
+						nil,
+					)
 					require.NoError(b, err)
-					b.ReportMetric(float64(r.Statistics.Summary.TotalLinesProcessed), "linesProcessed")
-					b.ReportMetric(float64(r.Statistics.Summary.TotalPostFilterLines), "postFilterLines")
-					b.ReportMetric(float64(r.Statistics.Summary.TotalBytesProcessed)/1024, "kilobytesProcessed")
-				}
+
+					q := engine.Query(params)
+
+					b.ReportAllocs()
+
+					for b.Loop() {
+						ctx, cancel := context.WithTimeout(ctx, time.Minute)
+						defer cancel()
+
+						r, err := q.Exec(ctx)
+						require.NoError(b, err)
+
+						b.ReportMetric(float64(r.Statistics.Summary.TotalLinesProcessed), "linesProcessed")
+						b.ReportMetric(float64(r.Statistics.Summary.TotalPostFilterLines), "postFilterLines")
+						b.ReportMetric(float64(r.Statistics.Summary.TotalBytesProcessed)/1024, "kilobytesProcessed")
+					}
+				})
 			})
 		}
 	}
 }
 
 func TestPrintBenchmarkQueries(t *testing.T) {
-	cases := NewTestCaseGenerator(
-		TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
-		&defaultGeneratorConfig,
-	).Generate()
+	// Generate small in-memory dataset for variable resolution (no file I/O needed)
+	metadata := GenerateInMemoryMetadata(&defaultGeneratorConfig)
+
+	// Load from query registry
+	queriesDir := "./queries"
+	registry := NewQueryRegistry(queriesDir)
+
+	// Load all suites
+	suites := []Suite{SuiteFast, SuiteRegression, SuiteExhaustive}
+
+	if err := registry.Load(suites...); err != nil {
+		t.Fatalf("failed to load query registry: %v", err)
+	}
+
+	queryDefs := registry.GetQueries(false, suites...)
+	resolver := NewMetadataVariableResolver(metadata, defaultGeneratorConfig.Seed)
+
+	var cases []TestCase
+	for _, def := range queryDefs {
+		expanded, err := registry.ExpandQuery(def, resolver, false)
+		if err != nil {
+			t.Fatalf("failed to expand query %q: %v", def.Description, err)
+		}
+		cases = append(cases, expanded...)
+	}
+
+	t.Logf("Loaded %d test cases from registry (range-type=%s)", len(cases), *rangeType)
 
 	t.Log("Benchmark Queries:")
 	t.Log("================")

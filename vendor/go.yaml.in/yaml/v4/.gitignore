@@ -1,0 +1,10 @@
+# Copyright 2025 The go-yaml Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+/.cache/
+/.claude/
+/CLAUDE.md
+/yts/testdata/
+/go-yaml
+/note/
+/*.yaml

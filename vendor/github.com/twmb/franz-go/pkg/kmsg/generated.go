@@ -13,7 +13,7 @@ import (
 
 // MaxKey is the maximum key used for any messages in this package.
 // Note that this value will change as Kafka adds more messages.
-const MaxKey = 82
+const MaxKey = 92
 
 type AssignmentTopicPartition struct {
 	TopicID [16]byte
@@ -35,6 +35,30 @@ func (v *AssignmentTopicPartition) Default() {
 // This is a shortcut for creating a struct and calling Default yourself.
 func NewAssignmentTopicPartition() AssignmentTopicPartition {
 	var v AssignmentTopicPartition
+	v.Default()
+	return v
+}
+
+type TopicInfoConfig struct {
+	// Key is the config key.
+	Key string
+
+	// Value is the config value.
+	Value string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to TopicInfoConfig.
+func (v *TopicInfoConfig) Default() {
+}
+
+// NewTopicInfoConfig returns a default TopicInfoConfig
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewTopicInfoConfig() TopicInfoConfig {
+	var v TopicInfoConfig
 	v.Default()
 	return v
 }
@@ -734,6 +758,8 @@ func NewOffsetCommitKey() OffsetCommitKey {
 //
 // KAFKA-7437 commit 9f7267dd2f, proposed in KIP-320 and included in 2.1.0
 // released version 3.
+//
+// KAFKA-19141 commit 199772a included in 4.1.0 released version 4.
 type OffsetCommitValue struct {
 	// Version is which encoding version this value is using.
 	Version int16
@@ -753,11 +779,19 @@ type OffsetCommitValue struct {
 	// ExpireTimestamp, introduced in v1 and dropped in v2 with KIP-111,
 	// is when this commit expires.
 	ExpireTimestamp int64 // v1-v1
+
+	// TopicID is the topic id of the committed offset
+	TopicID [16]byte // tag 0
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags // v4+
 }
 
 func (v *OffsetCommitValue) AppendTo(dst []byte) []byte {
 	version := v.Version
 	_ = version
+	isFlexible := version >= 4
+	_ = isFlexible
 	{
 		v := v.Version
 		dst = kbin.AppendInt16(dst, v)
@@ -772,7 +806,11 @@ func (v *OffsetCommitValue) AppendTo(dst []byte) []byte {
 	}
 	{
 		v := v.Metadata
-		dst = kbin.AppendString(dst, v)
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
 	}
 	{
 		v := v.CommitTimestamp
@@ -781,6 +819,25 @@ func (v *OffsetCommitValue) AppendTo(dst []byte) []byte {
 	if version >= 1 && version <= 1 {
 		v := v.ExpireTimestamp
 		dst = kbin.AppendInt64(dst, v)
+	}
+	if isFlexible {
+		var toEncode []uint32
+		if v.TopicID != [16]byte{} {
+			toEncode = append(toEncode, 0)
+		}
+		dst = kbin.AppendUvarint(dst, uint32(len(toEncode)+v.UnknownTags.Len()))
+		for _, tag := range toEncode {
+			switch tag {
+			case 0:
+				{
+					v := v.TopicID
+					dst = kbin.AppendUvarint(dst, 0)
+					dst = kbin.AppendUvarint(dst, 16)
+					dst = kbin.AppendUuid(dst, v)
+				}
+			}
+		}
+		dst = v.UnknownTags.AppendEach(dst)
 	}
 	return dst
 }
@@ -799,6 +856,8 @@ func (v *OffsetCommitValue) readFrom(src []byte, unsafe bool) error {
 	v.Version = b.Int16()
 	version := v.Version
 	_ = version
+	isFlexible := version >= 4
+	_ = isFlexible
 	s := v
 	{
 		v := b.Int64()
@@ -811,9 +870,17 @@ func (v *OffsetCommitValue) readFrom(src []byte, unsafe bool) error {
 	{
 		var v string
 		if unsafe {
-			v = b.UnsafeString()
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
 		} else {
-			v = b.String()
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
 		}
 		s.Metadata = v
 	}
@@ -825,8 +892,24 @@ func (v *OffsetCommitValue) readFrom(src []byte, unsafe bool) error {
 		v := b.Int64()
 		s.ExpireTimestamp = v
 	}
+	if isFlexible {
+		for i := b.Uvarint(); i > 0; i-- {
+			switch key := b.Uvarint(); key {
+			default:
+				s.UnknownTags.Set(key, b.Span(int(b.Uvarint())))
+			case 0:
+				b := kbin.Reader{Src: b.Span(int(b.Uvarint()))}
+				v := b.Uuid()
+				s.TopicID = v
+				if err := b.Complete(); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return b.Complete()
 }
+func (v *OffsetCommitValue) IsFlexible() bool { return v.Version >= 4 }
 
 // Default sets any default fields. Calling this allows for future compatibility
 // if new fields are added to OffsetCommitValue.
@@ -1404,6 +1487,9 @@ type TxnMetadataValueTopic struct {
 
 	// Partitions are partitions in this topic involved in the transaction.
 	Partitions []int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags // v1+
 }
 
 // Default sets any default fields. Calling this allows for future compatibility
@@ -1421,6 +1507,11 @@ func NewTxnMetadataValueTopic() TxnMetadataValueTopic {
 
 // TxnMetadataValue is the value for the Kafka internal __transaction_state
 // topic if the key is of TxnMetadataKey type.
+//
+// Version 0 was introduced in 0.11.0.
+//
+// KAFKA-14869 commit 4b6dcf19dc, proposed in KIP-915 and included in 3.5
+// released version 1.
 type TxnMetadataValue struct {
 	// Version is the version of this value.
 	Version int16
@@ -1448,11 +1539,40 @@ type TxnMetadataValue struct {
 
 	// StartTimestamp is the timestamp in millis of when this transaction started.
 	StartTimestamp int64
+
+	// PreviousProducerID is the producer ID used by the last committed
+	// transaction. KAFKA-14562 commit ede0c94aaa, proposed in KIP-890 and
+	// included in 4.0.
+	//
+	// This field has a default of -1.
+	PreviousProducerID int64 // tag 0
+
+	// NextProducerID is the latest producer ID sent to the producer for the
+	// given transactional ID. KAFKA-14562 commit ede0c94aaa, proposed in
+	// KIP-890 and included in 4.0.
+	//
+	// This field has a default of -1.
+	NextProducerID int64 // tag 1
+
+	// ClientTransactionVersion is the transaction version used by the client.
+	// KAFKA-14562 commit ede0c94aaa, proposed in KIP-890 and included in 4.0.
+	ClientTransactionVersion int16 // tag 2
+
+	// NextProducerEpoch is the producer epoch associated with NextProducerID.
+	// KAFKA-15370 commit 247c0f0ba5, proposed in KIP-939 and included in 4.1.0.
+	//
+	// This field has a default of -1.
+	NextProducerEpoch int16 // tag 3
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags // v1+
 }
 
 func (v *TxnMetadataValue) AppendTo(dst []byte) []byte {
 	version := v.Version
 	_ = version
+	isFlexible := version >= 1
+	_ = isFlexible
 	{
 		v := v.Version
 		dst = kbin.AppendInt16(dst, v)
@@ -1478,20 +1598,36 @@ func (v *TxnMetadataValue) AppendTo(dst []byte) []byte {
 	}
 	{
 		v := v.Topics
-		dst = kbin.AppendArrayLen(dst, len(v))
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
 		for i := range v {
 			v := &v[i]
 			{
 				v := v.Topic
-				dst = kbin.AppendString(dst, v)
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
 			}
 			{
 				v := v.Partitions
-				dst = kbin.AppendArrayLen(dst, len(v))
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
 				for i := range v {
 					v := v[i]
 					dst = kbin.AppendInt32(dst, v)
 				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
 			}
 		}
 	}
@@ -1502,6 +1638,55 @@ func (v *TxnMetadataValue) AppendTo(dst []byte) []byte {
 	{
 		v := v.StartTimestamp
 		dst = kbin.AppendInt64(dst, v)
+	}
+	if isFlexible {
+		var toEncode []uint32
+		if v.PreviousProducerID != -1 {
+			toEncode = append(toEncode, 0)
+		}
+		if v.NextProducerID != -1 {
+			toEncode = append(toEncode, 1)
+		}
+		if v.ClientTransactionVersion != 0 {
+			toEncode = append(toEncode, 2)
+		}
+		if v.NextProducerEpoch != -1 {
+			toEncode = append(toEncode, 3)
+		}
+		dst = kbin.AppendUvarint(dst, uint32(len(toEncode)+v.UnknownTags.Len()))
+		for _, tag := range toEncode {
+			switch tag {
+			case 0:
+				{
+					v := v.PreviousProducerID
+					dst = kbin.AppendUvarint(dst, 0)
+					dst = kbin.AppendUvarint(dst, 8)
+					dst = kbin.AppendInt64(dst, v)
+				}
+			case 1:
+				{
+					v := v.NextProducerID
+					dst = kbin.AppendUvarint(dst, 1)
+					dst = kbin.AppendUvarint(dst, 8)
+					dst = kbin.AppendInt64(dst, v)
+				}
+			case 2:
+				{
+					v := v.ClientTransactionVersion
+					dst = kbin.AppendUvarint(dst, 2)
+					dst = kbin.AppendUvarint(dst, 2)
+					dst = kbin.AppendInt16(dst, v)
+				}
+			case 3:
+				{
+					v := v.NextProducerEpoch
+					dst = kbin.AppendUvarint(dst, 3)
+					dst = kbin.AppendUvarint(dst, 2)
+					dst = kbin.AppendInt16(dst, v)
+				}
+			}
+		}
+		dst = v.UnknownTags.AppendEach(dst)
 	}
 	return dst
 }
@@ -1520,6 +1705,8 @@ func (v *TxnMetadataValue) readFrom(src []byte, unsafe bool) error {
 	v.Version = b.Int16()
 	version := v.Version
 	_ = version
+	isFlexible := version >= 1
+	_ = isFlexible
 	s := v
 	{
 		v := b.Int64()
@@ -1546,7 +1733,14 @@ func (v *TxnMetadataValue) readFrom(src []byte, unsafe bool) error {
 		v := s.Topics
 		a := v
 		var l int32
-		l = b.ArrayLen()
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []TxnMetadataValueTopic{}
+		}
 		if !b.Ok() {
 			return b.Complete()
 		}
@@ -1561,9 +1755,17 @@ func (v *TxnMetadataValue) readFrom(src []byte, unsafe bool) error {
 			{
 				var v string
 				if unsafe {
-					v = b.UnsafeString()
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
 				} else {
-					v = b.String()
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
 				}
 				s.Topic = v
 			}
@@ -1571,7 +1773,11 @@ func (v *TxnMetadataValue) readFrom(src []byte, unsafe bool) error {
 				v := s.Partitions
 				a := v
 				var l int32
-				l = b.ArrayLen()
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
 				if !b.Ok() {
 					return b.Complete()
 				}
@@ -1586,6 +1792,9 @@ func (v *TxnMetadataValue) readFrom(src []byte, unsafe bool) error {
 				v = a
 				s.Partitions = v
 			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
 		}
 		v = a
 		s.Topics = v
@@ -1598,12 +1807,52 @@ func (v *TxnMetadataValue) readFrom(src []byte, unsafe bool) error {
 		v := b.Int64()
 		s.StartTimestamp = v
 	}
+	if isFlexible {
+		for i := b.Uvarint(); i > 0; i-- {
+			switch key := b.Uvarint(); key {
+			default:
+				s.UnknownTags.Set(key, b.Span(int(b.Uvarint())))
+			case 0:
+				b := kbin.Reader{Src: b.Span(int(b.Uvarint()))}
+				v := b.Int64()
+				s.PreviousProducerID = v
+				if err := b.Complete(); err != nil {
+					return err
+				}
+			case 1:
+				b := kbin.Reader{Src: b.Span(int(b.Uvarint()))}
+				v := b.Int64()
+				s.NextProducerID = v
+				if err := b.Complete(); err != nil {
+					return err
+				}
+			case 2:
+				b := kbin.Reader{Src: b.Span(int(b.Uvarint()))}
+				v := b.Int16()
+				s.ClientTransactionVersion = v
+				if err := b.Complete(); err != nil {
+					return err
+				}
+			case 3:
+				b := kbin.Reader{Src: b.Span(int(b.Uvarint()))}
+				v := b.Int16()
+				s.NextProducerEpoch = v
+				if err := b.Complete(); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return b.Complete()
 }
+func (v *TxnMetadataValue) IsFlexible() bool { return v.Version >= 1 }
 
 // Default sets any default fields. Calling this allows for future compatibility
 // if new fields are added to TxnMetadataValue.
 func (v *TxnMetadataValue) Default() {
+	v.PreviousProducerID = -1
+	v.NextProducerID = -1
+	v.NextProducerEpoch = -1
 }
 
 // NewTxnMetadataValue returns a default TxnMetadataValue
@@ -2554,8 +2803,8 @@ func (v *ControlRecordKey) AppendTo(dst []byte) []byte {
 	{
 		v := v.Type
 		{
-			v := int8(v)
-			dst = kbin.AppendInt8(dst, v)
+			v := int16(v)
+			dst = kbin.AppendInt16(dst, v)
 		}
 	}
 	return dst
@@ -2579,7 +2828,7 @@ func (v *ControlRecordKey) readFrom(src []byte, unsafe bool) error {
 	{
 		var t ControlRecordKeyType
 		{
-			v := b.Int8()
+			v := b.Int16()
 			t = ControlRecordKeyType(v)
 		}
 		v := t
@@ -2660,6 +2909,10 @@ func NewEndTxnMarker() EndTxnMarker {
 type LeaderChangeMessageVoter struct {
 	VoterID int32
 
+	// VoterDirectoryID is the directory ID of the voter.
+	// KAFKA-16915 commit da8fe6355b, proposed in KIP-853 and included in 3.9.
+	VoterDirectoryID [16]byte // v1+
+
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
 }
@@ -2677,7 +2930,7 @@ func NewLeaderChangeMessageVoter() LeaderChangeMessageVoter {
 	return v
 }
 
-// LeaderChangeMessage is the value for a control record when the key is type 3.
+// LeaderChangeMessage is the value for a control record when the key is type 2.
 type LeaderChangeMessage struct {
 	Version int16
 
@@ -2720,6 +2973,10 @@ func (v *LeaderChangeMessage) AppendTo(dst []byte) []byte {
 				v := v.VoterID
 				dst = kbin.AppendInt32(dst, v)
 			}
+			if version >= 1 {
+				v := v.VoterDirectoryID
+				dst = kbin.AppendUuid(dst, v)
+			}
 			if isFlexible {
 				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
 				dst = v.UnknownTags.AppendEach(dst)
@@ -2738,6 +2995,10 @@ func (v *LeaderChangeMessage) AppendTo(dst []byte) []byte {
 			{
 				v := v.VoterID
 				dst = kbin.AppendInt32(dst, v)
+			}
+			if version >= 1 {
+				v := v.VoterDirectoryID
+				dst = kbin.AppendUuid(dst, v)
 			}
 			if isFlexible {
 				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
@@ -2797,6 +3058,10 @@ func (v *LeaderChangeMessage) readFrom(src []byte, unsafe bool) error {
 				v := b.Int32()
 				s.VoterID = v
 			}
+			if version >= 1 {
+				v := b.Uuid()
+				s.VoterDirectoryID = v
+			}
 			if isFlexible {
 				s.UnknownTags = internalReadTags(&b)
 			}
@@ -2827,6 +3092,10 @@ func (v *LeaderChangeMessage) readFrom(src []byte, unsafe bool) error {
 			{
 				v := b.Int32()
 				s.VoterID = v
+			}
+			if version >= 1 {
+				v := b.Uuid()
+				s.VoterDirectoryID = v
 			}
 			if isFlexible {
 				s.UnknownTags = internalReadTags(&b)
@@ -2885,7 +3154,10 @@ func NewProduceRequestTopicPartition() ProduceRequestTopicPartition {
 
 type ProduceRequestTopic struct {
 	// Topic is a topic to send record batches to.
-	Topic string
+	Topic string // v0-v12
+
+	// TopicID is the uuid of the topic to produce records to.
+	TopicID [16]byte // v13+
 
 	// Partitions is an array of partitions to send record batches to.
 	Partitions []ProduceRequestTopicPartition
@@ -2948,7 +3220,7 @@ type ProduceRequest struct {
 }
 
 func (*ProduceRequest) Key() int16                       { return 0 }
-func (*ProduceRequest) MaxVersion() int16                { return 12 }
+func (*ProduceRequest) MaxVersion() int16                { return 13 }
 func (v *ProduceRequest) SetVersion(version int16)       { v.Version = version }
 func (v *ProduceRequest) GetVersion() int16              { return v.Version }
 func (v *ProduceRequest) IsFlexible() bool               { return v.Version >= 9 }
@@ -2999,13 +3271,17 @@ func (v *ProduceRequest) AppendTo(dst []byte) []byte {
 		}
 		for i := range v {
 			v := &v[i]
-			{
+			if version >= 0 && version <= 12 {
 				v := v.Topic
 				if isFlexible {
 					dst = kbin.AppendCompactString(dst, v)
 				} else {
 					dst = kbin.AppendString(dst, v)
 				}
+			}
+			if version >= 13 {
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
 			}
 			{
 				v := v.Partitions
@@ -3108,7 +3384,7 @@ func (v *ProduceRequest) readFrom(src []byte, unsafe bool) error {
 			v := &a[i]
 			v.Default()
 			s := v
-			{
+			if version >= 0 && version <= 12 {
 				var v string
 				if unsafe {
 					if isFlexible {
@@ -3124,6 +3400,10 @@ func (v *ProduceRequest) readFrom(src []byte, unsafe bool) error {
 					}
 				}
 				s.Topic = v
+			}
+			if version >= 13 {
+				v := b.Uuid()
+				s.TopicID = v
 			}
 			{
 				v := s.Partitions
@@ -3335,6 +3615,8 @@ type ProduceResponseTopicPartition struct {
 	// means data loss. Before, there could be confusion on if the broker
 	// actually rotated the partition out of existence (this is why
 	// UNKNOWN_PRODUCER_ID was introduced).
+	//
+	// UNKNOWN_TOPIC_ID is returned if producing to an unknown topic ID.
 	ErrorCode int16
 
 	// BaseOffset is the offset that the records in the produce request began
@@ -3392,7 +3674,10 @@ func NewProduceResponseTopicPartition() ProduceResponseTopicPartition {
 
 type ProduceResponseTopic struct {
 	// Topic is the topic this response pertains to.
-	Topic string
+	Topic string // v0-v12
+
+	// TopicID is the uuid of the topic produced to.
+	TopicID [16]byte // v13+
 
 	// Partitions is an array of responses for the partition's that
 	// batches were sent to.
@@ -3471,7 +3756,7 @@ type ProduceResponse struct {
 }
 
 func (*ProduceResponse) Key() int16                         { return 0 }
-func (*ProduceResponse) MaxVersion() int16                  { return 12 }
+func (*ProduceResponse) MaxVersion() int16                  { return 13 }
 func (v *ProduceResponse) SetVersion(version int16)         { v.Version = version }
 func (v *ProduceResponse) GetVersion() int16                { return v.Version }
 func (v *ProduceResponse) IsFlexible() bool                 { return v.Version >= 9 }
@@ -3493,13 +3778,17 @@ func (v *ProduceResponse) AppendTo(dst []byte) []byte {
 		}
 		for i := range v {
 			v := &v[i]
-			{
+			if version >= 0 && version <= 12 {
 				v := v.Topic
 				if isFlexible {
 					dst = kbin.AppendCompactString(dst, v)
 				} else {
 					dst = kbin.AppendString(dst, v)
 				}
+			}
+			if version >= 13 {
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
 			}
 			{
 				v := v.Partitions
@@ -3718,7 +4007,7 @@ func (v *ProduceResponse) readFrom(src []byte, unsafe bool) error {
 			v := &a[i]
 			v.Default()
 			s := v
-			{
+			if version >= 0 && version <= 12 {
 				var v string
 				if unsafe {
 					if isFlexible {
@@ -3734,6 +4023,10 @@ func (v *ProduceResponse) readFrom(src []byte, unsafe bool) error {
 					}
 				}
 				s.Topic = v
+			}
+			if version >= 13 {
+				v := b.Uuid()
+				s.TopicID = v
 			}
 			{
 				v := s.Partitions
@@ -4054,6 +4347,14 @@ type FetchRequestTopicPartition struct {
 	// clients; see KIP-853.
 	ReplicaDirectoryID [16]byte // tag 0
 
+	// The high-watermark known by the replica. -1 if the high-watermark is
+	// not known and 9223372036854775807 if the feature is not supported.
+	// For KIP-1166; not relevant for clients. Should not have forced a
+	// version bump in the protocol...
+	//
+	// This field has a default of 9223372036854775807.
+	HighWatermark int64 // tag 1
+
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags // v12+
 }
@@ -4064,6 +4365,7 @@ func (v *FetchRequestTopicPartition) Default() {
 	v.CurrentLeaderEpoch = -1
 	v.LastFetchedEpoch = -1
 	v.LogStartOffset = -1
+	v.HighWatermark = 9223372036854775807
 }
 
 // NewFetchRequestTopicPartition returns a default FetchRequestTopicPartition
@@ -4194,7 +4496,7 @@ type FetchRequest struct {
 	// ID used should be 0, and thereafter (until session resets) the ID should
 	// be the ID returned in the fetch response.
 	//
-	// Read KIP-227 for more details. Use -1 if you want to disable sessions.
+	// Read KIP-227 for more details.
 	SessionID int32 // v7+
 
 	// SessionEpoch is the session epoch for this request if using sessions.
@@ -4222,7 +4524,7 @@ type FetchRequest struct {
 }
 
 func (*FetchRequest) Key() int16                 { return 1 }
-func (*FetchRequest) MaxVersion() int16          { return 17 }
+func (*FetchRequest) MaxVersion() int16          { return 18 }
 func (v *FetchRequest) SetVersion(version int16) { v.Version = version }
 func (v *FetchRequest) GetVersion() int16        { return v.Version }
 func (v *FetchRequest) IsFlexible() bool         { return v.Version >= 12 }
@@ -4333,6 +4635,9 @@ func (v *FetchRequest) AppendTo(dst []byte) []byte {
 						if v.ReplicaDirectoryID != [16]byte{} {
 							toEncode = append(toEncode, 0)
 						}
+						if v.HighWatermark != 9223372036854775807 {
+							toEncode = append(toEncode, 1)
+						}
 						dst = kbin.AppendUvarint(dst, uint32(len(toEncode)+v.UnknownTags.Len()))
 						for _, tag := range toEncode {
 							switch tag {
@@ -4342,6 +4647,13 @@ func (v *FetchRequest) AppendTo(dst []byte) []byte {
 									dst = kbin.AppendUvarint(dst, 0)
 									dst = kbin.AppendUvarint(dst, 16)
 									dst = kbin.AppendUuid(dst, v)
+								}
+							case 1:
+								{
+									v := v.HighWatermark
+									dst = kbin.AppendUvarint(dst, 1)
+									dst = kbin.AppendUvarint(dst, 8)
+									dst = kbin.AppendInt64(dst, v)
 								}
 							}
 						}
@@ -4601,6 +4913,13 @@ func (v *FetchRequest) readFrom(src []byte, unsafe bool) error {
 								b := kbin.Reader{Src: b.Span(int(b.Uvarint()))}
 								v := b.Uuid()
 								s.ReplicaDirectoryID = v
+								if err := b.Complete(); err != nil {
+									return err
+								}
+							case 1:
+								b := kbin.Reader{Src: b.Span(int(b.Uvarint()))}
+								v := b.Int64()
+								s.HighWatermark = v
 								if err := b.Complete(); err != nil {
 									return err
 								}
@@ -4947,7 +5266,7 @@ type FetchResponseTopicPartition struct {
 	// LastStableOffset is the offset at which all prior offsets have
 	// been "decided". Non transactional records are always decided
 	// immediately, but transactional records are only decided once
-	// they are commited or aborted.
+	// they are committed or aborted.
 	//
 	// The LastStableOffset will always be at or under the HighWatermark.
 	//
@@ -5137,7 +5456,7 @@ type FetchResponse struct {
 }
 
 func (*FetchResponse) Key() int16                         { return 1 }
-func (*FetchResponse) MaxVersion() int16                  { return 17 }
+func (*FetchResponse) MaxVersion() int16                  { return 18 }
 func (v *FetchResponse) SetVersion(version int16)         { v.Version = version }
 func (v *FetchResponse) GetVersion() int16                { return v.Version }
 func (v *FetchResponse) IsFlexible() bool                 { return v.Version >= 12 }
@@ -5875,6 +6194,9 @@ func NewListOffsetsRequestTopic() ListOffsetsRequestTopic {
 // Version 10, introduced in Kafka 4.0, adds TimeoutMillis, allowing you to set
 // a timeout when the ListOffsets request triggers a lookup from remote storage.
 // See KIP-1075.
+//
+// Version 11, introduced in Kafka 4.2, supports -6 as a timestamp to return
+// the earliest pending upload offset. See KIP-1023.
 type ListOffsetsRequest struct {
 	// Version is the version of this message used with a Kafka broker.
 	Version int16
@@ -5908,7 +6230,7 @@ type ListOffsetsRequest struct {
 }
 
 func (*ListOffsetsRequest) Key() int16                 { return 2 }
-func (*ListOffsetsRequest) MaxVersion() int16          { return 10 }
+func (*ListOffsetsRequest) MaxVersion() int16          { return 11 }
 func (v *ListOffsetsRequest) SetVersion(version int16) { v.Version = version }
 func (v *ListOffsetsRequest) GetVersion() int16        { return v.Version }
 func (v *ListOffsetsRequest) IsFlexible() bool         { return v.Version >= 6 }
@@ -6282,7 +6604,7 @@ type ListOffsetsResponse struct {
 }
 
 func (*ListOffsetsResponse) Key() int16                         { return 2 }
-func (*ListOffsetsResponse) MaxVersion() int16                  { return 10 }
+func (*ListOffsetsResponse) MaxVersion() int16                  { return 11 }
 func (v *ListOffsetsResponse) SetVersion(version int16)         { v.Version = version }
 func (v *ListOffsetsResponse) GetVersion() int16                { return v.Version }
 func (v *ListOffsetsResponse) IsFlexible() bool                 { return v.Version >= 6 }
@@ -10787,7 +11109,10 @@ func NewOffsetCommitRequestTopicPartition() OffsetCommitRequestTopicPartition {
 
 type OffsetCommitRequestTopic struct {
 	// Topic is a topic to commit offsets for.
-	Topic string
+	Topic string // v0-v9
+
+	// TopicID is the topic ID, replacing Topic in v10+.
+	TopicID [16]byte // v10+
 
 	// Partitions contains partitions in a topic for which to commit offsets.
 	Partitions []OffsetCommitRequestTopicPartition
@@ -10811,6 +11136,8 @@ func NewOffsetCommitRequestTopic() OffsetCommitRequestTopic {
 
 // OffsetCommitRequest commits offsets for consumed topics / partitions in
 // a group.
+// Version 10, introduced in Kafka 4.2, replaces topic names with topic IDs
+// (KIP-848).
 type OffsetCommitRequest struct {
 	// Version is the version of this message used with a Kafka broker.
 	Version int16
@@ -10855,7 +11182,7 @@ type OffsetCommitRequest struct {
 }
 
 func (*OffsetCommitRequest) Key() int16                   { return 8 }
-func (*OffsetCommitRequest) MaxVersion() int16            { return 9 }
+func (*OffsetCommitRequest) MaxVersion() int16            { return 10 }
 func (v *OffsetCommitRequest) SetVersion(version int16)   { v.Version = version }
 func (v *OffsetCommitRequest) GetVersion() int16          { return v.Version }
 func (v *OffsetCommitRequest) IsFlexible() bool           { return v.Version >= 8 }
@@ -10921,13 +11248,17 @@ func (v *OffsetCommitRequest) AppendTo(dst []byte) []byte {
 		}
 		for i := range v {
 			v := &v[i]
-			{
+			if version >= 0 && version <= 9 {
 				v := v.Topic
 				if isFlexible {
 					dst = kbin.AppendCompactString(dst, v)
 				} else {
 					dst = kbin.AppendString(dst, v)
 				}
+			}
+			if version >= 10 {
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
 			}
 			{
 				v := v.Partitions
@@ -11076,7 +11407,7 @@ func (v *OffsetCommitRequest) readFrom(src []byte, unsafe bool) error {
 			v := &a[i]
 			v.Default()
 			s := v
-			{
+			if version >= 0 && version <= 9 {
 				var v string
 				if unsafe {
 					if isFlexible {
@@ -11092,6 +11423,10 @@ func (v *OffsetCommitRequest) readFrom(src []byte, unsafe bool) error {
 					}
 				}
 				s.Topic = v
+			}
+			if version >= 10 {
+				v := b.Uuid()
+				s.TopicID = v
 			}
 			{
 				v := s.Partitions
@@ -11247,7 +11582,10 @@ func NewOffsetCommitResponseTopicPartition() OffsetCommitResponseTopicPartition 
 
 type OffsetCommitResponseTopic struct {
 	// Topic is the topic this offset commit response corresponds to.
-	Topic string
+	Topic string // v0-v9
+
+	// TopicID is the topic ID, replacing Topic in v10+.
+	TopicID [16]byte // v10+
 
 	// Partitions contains responses for each requested partition in
 	// a topic.
@@ -11291,7 +11629,7 @@ type OffsetCommitResponse struct {
 }
 
 func (*OffsetCommitResponse) Key() int16                         { return 8 }
-func (*OffsetCommitResponse) MaxVersion() int16                  { return 9 }
+func (*OffsetCommitResponse) MaxVersion() int16                  { return 10 }
 func (v *OffsetCommitResponse) SetVersion(version int16)         { v.Version = version }
 func (v *OffsetCommitResponse) GetVersion() int16                { return v.Version }
 func (v *OffsetCommitResponse) IsFlexible() bool                 { return v.Version >= 8 }
@@ -11317,13 +11655,17 @@ func (v *OffsetCommitResponse) AppendTo(dst []byte) []byte {
 		}
 		for i := range v {
 			v := &v[i]
-			{
+			if version >= 0 && version <= 9 {
 				v := v.Topic
 				if isFlexible {
 					dst = kbin.AppendCompactString(dst, v)
 				} else {
 					dst = kbin.AppendString(dst, v)
 				}
+			}
+			if version >= 10 {
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
 			}
 			{
 				v := v.Partitions
@@ -11401,7 +11743,7 @@ func (v *OffsetCommitResponse) readFrom(src []byte, unsafe bool) error {
 			v := &a[i]
 			v.Default()
 			s := v
-			{
+			if version >= 0 && version <= 9 {
 				var v string
 				if unsafe {
 					if isFlexible {
@@ -11417,6 +11759,10 @@ func (v *OffsetCommitResponse) readFrom(src []byte, unsafe bool) error {
 					}
 				}
 				s.Topic = v
+			}
+			if version >= 10 {
+				v := b.Uuid()
+				s.TopicID = v
 			}
 			{
 				v := s.Partitions
@@ -11512,7 +11858,10 @@ func NewOffsetFetchRequestTopic() OffsetFetchRequestTopic {
 }
 
 type OffsetFetchRequestGroupTopic struct {
-	Topic string
+	Topic string // v8-v9
+
+	// TopicID is the topic ID, replacing Topic in v10+.
+	TopicID [16]byte // v10+
 
 	Partitions []int32
 
@@ -11566,6 +11915,8 @@ func NewOffsetFetchRequestGroup() OffsetFetchRequestGroup {
 
 // OffsetFetchRequest requests the most recent committed offsets for topic
 // partitions in a group.
+// Version 10, introduced in Kafka 4.2, replaces topic names with topic IDs
+// in the Groups field (KIP-848).
 type OffsetFetchRequest struct {
 	// Version is the version of this message used with a Kafka broker.
 	Version int16
@@ -11595,7 +11946,7 @@ type OffsetFetchRequest struct {
 }
 
 func (*OffsetFetchRequest) Key() int16                   { return 9 }
-func (*OffsetFetchRequest) MaxVersion() int16            { return 9 }
+func (*OffsetFetchRequest) MaxVersion() int16            { return 10 }
 func (v *OffsetFetchRequest) SetVersion(version int16)   { v.Version = version }
 func (v *OffsetFetchRequest) GetVersion() int16          { return v.Version }
 func (v *OffsetFetchRequest) IsFlexible() bool           { return v.Version >= 6 }
@@ -11709,13 +12060,17 @@ func (v *OffsetFetchRequest) AppendTo(dst []byte) []byte {
 				}
 				for i := range v {
 					v := &v[i]
-					{
+					if version >= 8 && version <= 9 {
 						v := v.Topic
 						if isFlexible {
 							dst = kbin.AppendCompactString(dst, v)
 						} else {
 							dst = kbin.AppendString(dst, v)
 						}
+					}
+					if version >= 10 {
+						v := v.TopicID
+						dst = kbin.AppendUuid(dst, v)
 					}
 					{
 						v := v.Partitions
@@ -11936,7 +12291,7 @@ func (v *OffsetFetchRequest) readFrom(src []byte, unsafe bool) error {
 					v := &a[i]
 					v.Default()
 					s := v
-					{
+					if version >= 8 && version <= 9 {
 						var v string
 						if unsafe {
 							if isFlexible {
@@ -11952,6 +12307,10 @@ func (v *OffsetFetchRequest) readFrom(src []byte, unsafe bool) error {
 							}
 						}
 						s.Topic = v
+					}
+					if version >= 10 {
+						v := b.Uuid()
+						s.TopicID = v
 					}
 					{
 						v := s.Partitions
@@ -12137,7 +12496,10 @@ func NewOffsetFetchResponseGroupTopicPartition() OffsetFetchResponseGroupTopicPa
 }
 
 type OffsetFetchResponseGroupTopic struct {
-	Topic string
+	Topic string // v8-v9
+
+	// TopicID is the topic ID, replacing Topic in v10+.
+	TopicID [16]byte // v10+
 
 	Partitions []OffsetFetchResponseGroupTopicPartition
 
@@ -12212,7 +12574,7 @@ type OffsetFetchResponse struct {
 }
 
 func (*OffsetFetchResponse) Key() int16                         { return 9 }
-func (*OffsetFetchResponse) MaxVersion() int16                  { return 9 }
+func (*OffsetFetchResponse) MaxVersion() int16                  { return 10 }
 func (v *OffsetFetchResponse) SetVersion(version int16)         { v.Version = version }
 func (v *OffsetFetchResponse) GetVersion() int16                { return v.Version }
 func (v *OffsetFetchResponse) IsFlexible() bool                 { return v.Version >= 6 }
@@ -12321,13 +12683,17 @@ func (v *OffsetFetchResponse) AppendTo(dst []byte) []byte {
 				}
 				for i := range v {
 					v := &v[i]
-					{
+					if version >= 8 && version <= 9 {
 						v := v.Topic
 						if isFlexible {
 							dst = kbin.AppendCompactString(dst, v)
 						} else {
 							dst = kbin.AppendString(dst, v)
 						}
+					}
+					if version >= 10 {
+						v := v.TopicID
+						dst = kbin.AppendUuid(dst, v)
 					}
 					{
 						v := v.Partitions
@@ -12576,7 +12942,7 @@ func (v *OffsetFetchResponse) readFrom(src []byte, unsafe bool) error {
 					v := &a[i]
 					v.Default()
 					s := v
-					{
+					if version >= 8 && version <= 9 {
 						var v string
 						if unsafe {
 							if isFlexible {
@@ -12592,6 +12958,10 @@ func (v *OffsetFetchResponse) readFrom(src []byte, unsafe bool) error {
 							}
 						}
 						s.Topic = v
+					}
+					if version >= 10 {
+						v := b.Uuid()
+						s.TopicID = v
 					}
 					{
 						v := s.Partitions
@@ -12716,7 +13086,7 @@ type FindCoordinatorRequest struct {
 	CoordinatorKey string // v0-v3
 
 	// CoordinatorType is the type that key is. Groups are type 0,
-	// transactional IDs are type 1.
+	// transactional IDs are type 1, share groups are 2.
 	CoordinatorType int8 // v1+
 
 	// CoordinatorKeys contains all keys to find the coordinator for.
@@ -16221,7 +16591,8 @@ type ListGroupsRequest struct {
 	// StatesFilter, proposed in KIP-518 and introduced in Kafka 2.6.0,
 	// allows filtering groups by state, where a state is any of
 	// "Preparing", "PreparingRebalance", "CompletingRebalance", "Stable",
-	// "Dead", or "Empty". If empty, all groups are returned.
+	// "Dead", "Empty", "Assigning", "Reconciling", or "NotReady".
+	// If empty, all groups are returned.
 	StatesFilter []string // v4+
 
 	// TypesFilter, part of KIP-848, filters the types of groups we want
@@ -22333,6 +22704,10 @@ type WriteTxnMarkersRequestMarker struct {
 	// are writing a marker to. This is used to detect fenced writers.
 	CoordinatorEpoch int32
 
+	// TransactionVersion is the transaction version of the marker.
+	// 0/1 = legacy (TV0/TV1), 2 = TV2 etc.
+	TransactionVersion int8 // v2+
+
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags // v1+
 }
@@ -22352,6 +22727,7 @@ func NewWriteTxnMarkersRequestMarker() WriteTxnMarkersRequestMarker {
 
 // WriteTxnMarkersRequest is a broker-to-broker request that Kafka uses to
 // finish transactions.
+// Version 2, introduced in Kafka 4.2, adds TransactionVersion (KIP-1228).
 type WriteTxnMarkersRequest struct {
 	// Version is the version of this message used with a Kafka broker.
 	Version int16
@@ -22364,7 +22740,7 @@ type WriteTxnMarkersRequest struct {
 }
 
 func (*WriteTxnMarkersRequest) Key() int16                 { return 27 }
-func (*WriteTxnMarkersRequest) MaxVersion() int16          { return 1 }
+func (*WriteTxnMarkersRequest) MaxVersion() int16          { return 2 }
 func (v *WriteTxnMarkersRequest) SetVersion(version int16) { v.Version = version }
 func (v *WriteTxnMarkersRequest) GetVersion() int16        { return v.Version }
 func (v *WriteTxnMarkersRequest) IsFlexible() bool         { return v.Version >= 1 }
@@ -22447,6 +22823,10 @@ func (v *WriteTxnMarkersRequest) AppendTo(dst []byte) []byte {
 			{
 				v := v.CoordinatorEpoch
 				dst = kbin.AppendInt32(dst, v)
+			}
+			if version >= 2 {
+				v := v.TransactionVersion
+				dst = kbin.AppendInt8(dst, v)
 			}
 			if isFlexible {
 				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
@@ -22579,6 +22959,10 @@ func (v *WriteTxnMarkersRequest) readFrom(src []byte, unsafe bool) error {
 			{
 				v := b.Int32()
 				s.CoordinatorEpoch = v
+			}
+			if version >= 2 {
+				v := b.Int8()
+				s.TransactionVersion = v
 			}
 			if isFlexible {
 				s.UnknownTags = internalReadTags(&b)
@@ -22714,7 +23098,7 @@ type WriteTxnMarkersResponse struct {
 }
 
 func (*WriteTxnMarkersResponse) Key() int16                 { return 27 }
-func (*WriteTxnMarkersResponse) MaxVersion() int16          { return 1 }
+func (*WriteTxnMarkersResponse) MaxVersion() int16          { return 2 }
 func (v *WriteTxnMarkersResponse) SetVersion(version int16) { v.Version = version }
 func (v *WriteTxnMarkersResponse) GetVersion() int16        { return v.Version }
 func (v *WriteTxnMarkersResponse) IsFlexible() bool         { return v.Version >= 1 }
@@ -28113,7 +28497,7 @@ type DescribeLogDirsResponse struct {
 	ErrorCode int16 // v3+
 
 	// Dirs pairs log directories with the topics and partitions that are
-	// stored in those directores.
+	// stored in those directories.
 	Dirs []DescribeLogDirsResponseDir
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
@@ -32652,6 +33036,12 @@ type AlterPartitionAssignmentsRequest struct {
 	// This field has a default of 60000.
 	TimeoutMillis int32
 
+	// The option indicating whether changing the replication factor of any given
+	// partition as part of this request is a valid move.
+	//
+	// This field has a default of true.
+	AllowReplicationFactorChange bool // v1+
+
 	// Topics are topics for which to reassign partitions of.
 	Topics []AlterPartitionAssignmentsRequestTopic
 
@@ -32660,7 +33050,7 @@ type AlterPartitionAssignmentsRequest struct {
 }
 
 func (*AlterPartitionAssignmentsRequest) Key() int16                 { return 45 }
-func (*AlterPartitionAssignmentsRequest) MaxVersion() int16          { return 0 }
+func (*AlterPartitionAssignmentsRequest) MaxVersion() int16          { return 1 }
 func (v *AlterPartitionAssignmentsRequest) SetVersion(version int16) { v.Version = version }
 func (v *AlterPartitionAssignmentsRequest) GetVersion() int16        { return v.Version }
 func (v *AlterPartitionAssignmentsRequest) IsFlexible() bool         { return v.Version >= 0 }
@@ -32692,6 +33082,10 @@ func (v *AlterPartitionAssignmentsRequest) AppendTo(dst []byte) []byte {
 	{
 		v := v.TimeoutMillis
 		dst = kbin.AppendInt32(dst, v)
+	}
+	if version >= 1 {
+		v := v.AllowReplicationFactorChange
+		dst = kbin.AppendBool(dst, v)
 	}
 	{
 		v := v.Topics
@@ -32773,6 +33167,10 @@ func (v *AlterPartitionAssignmentsRequest) readFrom(src []byte, unsafe bool) err
 	{
 		v := b.Int32()
 		s.TimeoutMillis = v
+	}
+	if version >= 1 {
+		v := b.Bool()
+		s.AllowReplicationFactorChange = v
 	}
 	{
 		v := s.Topics
@@ -32893,6 +33291,7 @@ func NewPtrAlterPartitionAssignmentsRequest() *AlterPartitionAssignmentsRequest 
 // if new fields are added to AlterPartitionAssignmentsRequest.
 func (v *AlterPartitionAssignmentsRequest) Default() {
 	v.TimeoutMillis = 60000
+	v.AllowReplicationFactorChange = true
 }
 
 // NewAlterPartitionAssignmentsRequest returns a default AlterPartitionAssignmentsRequest
@@ -32977,6 +33376,12 @@ type AlterPartitionAssignmentsResponse struct {
 	// after responding to this request.
 	ThrottleMillis int32
 
+	// The option indicating whether changing the replication factor of any given
+	// partition as part of the request was allowed.
+	//
+	// This field has a default of true.
+	AllowReplicationFactorChange bool // v1+
+
 	// ErrorCode is any global (applied to all partitions) error code.
 	ErrorCode int16
 
@@ -32991,7 +33396,7 @@ type AlterPartitionAssignmentsResponse struct {
 }
 
 func (*AlterPartitionAssignmentsResponse) Key() int16                 { return 45 }
-func (*AlterPartitionAssignmentsResponse) MaxVersion() int16          { return 0 }
+func (*AlterPartitionAssignmentsResponse) MaxVersion() int16          { return 1 }
 func (v *AlterPartitionAssignmentsResponse) SetVersion(version int16) { v.Version = version }
 func (v *AlterPartitionAssignmentsResponse) GetVersion() int16        { return v.Version }
 func (v *AlterPartitionAssignmentsResponse) IsFlexible() bool         { return v.Version >= 0 }
@@ -33015,6 +33420,10 @@ func (v *AlterPartitionAssignmentsResponse) AppendTo(dst []byte) []byte {
 	{
 		v := v.ThrottleMillis
 		dst = kbin.AppendInt32(dst, v)
+	}
+	if version >= 1 {
+		v := v.AllowReplicationFactorChange
+		dst = kbin.AppendBool(dst, v)
 	}
 	{
 		v := v.ErrorCode
@@ -33108,6 +33517,10 @@ func (v *AlterPartitionAssignmentsResponse) readFrom(src []byte, unsafe bool) er
 	{
 		v := b.Int32()
 		s.ThrottleMillis = v
+	}
+	if version >= 1 {
+		v := b.Bool()
+		s.AllowReplicationFactorChange = v
 	}
 	{
 		v := b.Int16()
@@ -33243,6 +33656,7 @@ func NewPtrAlterPartitionAssignmentsResponse() *AlterPartitionAssignmentsRespons
 // Default sets any default fields. Calling this allows for future compatibility
 // if new fields are added to AlterPartitionAssignmentsResponse.
 func (v *AlterPartitionAssignmentsResponse) Default() {
+	v.AllowReplicationFactorChange = true
 }
 
 // NewAlterPartitionAssignmentsResponse returns a default AlterPartitionAssignmentsResponse
@@ -38669,7 +39083,7 @@ func (v *EndQuorumEpochRequest) AppendTo(dst []byte) []byte {
 						v := v.LeaderEpoch
 						dst = kbin.AppendInt32(dst, v)
 					}
-					{
+					if version >= 0 && version <= 0 {
 						v := v.PreferredSuccessors
 						if isFlexible {
 							dst = kbin.AppendCompactArrayLen(dst, len(v))
@@ -38860,7 +39274,7 @@ func (v *EndQuorumEpochRequest) readFrom(src []byte, unsafe bool) error {
 						v := b.Int32()
 						s.LeaderEpoch = v
 					}
-					{
+					if version >= 0 && version <= 0 {
 						v := s.PreferredSuccessors
 						a := v
 						var l int32
@@ -40436,7 +40850,7 @@ type AlterPartitionRequestTopicPartitionNewEpochISR struct {
 	// The broker's epoch; -1 if the epoch check is not supported.
 	//
 	// This field has a default of -1.
-	BrokerEpoch int32
+	BrokerEpoch int64
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
@@ -40636,7 +41050,7 @@ func (v *AlterPartitionRequest) AppendTo(dst []byte) []byte {
 							}
 							{
 								v := v.BrokerEpoch
-								dst = kbin.AppendInt32(dst, v)
+								dst = kbin.AppendInt64(dst, v)
 							}
 							if isFlexible {
 								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
@@ -40812,7 +41226,7 @@ func (v *AlterPartitionRequest) readFrom(src []byte, unsafe bool) error {
 								s.BrokerID = v
 							}
 							{
-								v := b.Int32()
+								v := b.Int64()
 								s.BrokerEpoch = v
 							}
 							if isFlexible {
@@ -41523,7 +41937,7 @@ type UpdateFeaturesResponse struct {
 	ErrorMessage *string
 
 	// The results for each feature update request.
-	Results []UpdateFeaturesResponseResult
+	Results []UpdateFeaturesResponseResult // v0-v1
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
@@ -41561,7 +41975,7 @@ func (v *UpdateFeaturesResponse) AppendTo(dst []byte) []byte {
 			dst = kbin.AppendNullableString(dst, v)
 		}
 	}
-	{
+	if version >= 0 && version <= 1 {
 		v := v.Results
 		if isFlexible {
 			dst = kbin.AppendCompactArrayLen(dst, len(v))
@@ -41644,7 +42058,7 @@ func (v *UpdateFeaturesResponse) readFrom(src []byte, unsafe bool) error {
 		}
 		s.ErrorMessage = v
 	}
-	{
+	if version >= 0 && version <= 1 {
 		v := s.Results
 		a := v
 		var l int32
@@ -45500,7 +45914,7 @@ type DescribeTransactionsResponseTransactionState struct {
 	// NOT_COORDINATOR is returned if the broker receiving this transactional
 	// ID does not own the ID.
 	//
-	// COORDINATOR_LOAD_IN_PROGRESS is returned if the coordiantor is laoding.
+	// COORDINATOR_LOAD_IN_PROGRESS is returned if the coordinator is loading.
 	//
 	// COORDINATOR_NOT_AVAILABLE is returned if the coordinator is being shutdown.
 	//
@@ -45905,12 +46319,18 @@ type ListTransactionsRequest struct {
 	// This field has a default of -1.
 	DurationFilterMillis int64 // v1+
 
+	// The transactional ID regular expression pattern to filter by: if it is
+	// empty or null, all transactions are returned; otherwise then only the
+	// transactions matching the given regular expression will be returned.
+	// Uses re2 syntax.
+	TransactionalIDPattern *string // v2+
+
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
 }
 
 func (*ListTransactionsRequest) Key() int16                 { return 66 }
-func (*ListTransactionsRequest) MaxVersion() int16          { return 1 }
+func (*ListTransactionsRequest) MaxVersion() int16          { return 2 }
 func (v *ListTransactionsRequest) SetVersion(version int16) { v.Version = version }
 func (v *ListTransactionsRequest) GetVersion() int16        { return v.Version }
 func (v *ListTransactionsRequest) IsFlexible() bool         { return v.Version >= 0 }
@@ -45965,6 +46385,14 @@ func (v *ListTransactionsRequest) AppendTo(dst []byte) []byte {
 	if version >= 1 {
 		v := v.DurationFilterMillis
 		dst = kbin.AppendInt64(dst, v)
+	}
+	if version >= 2 {
+		v := v.TransactionalIDPattern
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
 	}
 	if isFlexible {
 		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
@@ -46052,6 +46480,23 @@ func (v *ListTransactionsRequest) readFrom(src []byte, unsafe bool) error {
 		v := b.Int64()
 		s.DurationFilterMillis = v
 	}
+	if version >= 2 {
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.TransactionalIDPattern = v
+	}
 	if isFlexible {
 		s.UnknownTags = internalReadTags(&b)
 	}
@@ -46122,6 +46567,9 @@ type ListTransactionsResponse struct {
 	//
 	// COORDINATOR_NOT_AVAILABLE is returned if the coordinator receiving this
 	// request is shutting down.
+	//
+	// INVALID_REGULAR_EXPRESSION is returned if using an invalid regex in
+	// the request's transactional id pattern field.
 	ErrorCode int16
 
 	// Set of state filters provided in the request which were unknown to the
@@ -46138,7 +46586,7 @@ type ListTransactionsResponse struct {
 }
 
 func (*ListTransactionsResponse) Key() int16                 { return 66 }
-func (*ListTransactionsResponse) MaxVersion() int16          { return 1 }
+func (*ListTransactionsResponse) MaxVersion() int16          { return 2 }
 func (v *ListTransactionsResponse) SetVersion(version int16) { v.Version = version }
 func (v *ListTransactionsResponse) GetVersion() int16        { return v.Version }
 func (v *ListTransactionsResponse) IsFlexible() bool         { return v.Version >= 0 }
@@ -49581,7 +50029,7 @@ func NewPushTelemetryResponse() PushTelemetryResponse {
 	return v
 }
 
-type AssignReplicasToDirsRequestDirectorieTopicPartition struct {
+type AssignReplicasToDirsRequestDirectoryTopicPartition struct {
 	// The partition index.
 	Partition int32
 
@@ -49590,62 +50038,62 @@ type AssignReplicasToDirsRequestDirectorieTopicPartition struct {
 }
 
 // Default sets any default fields. Calling this allows for future compatibility
-// if new fields are added to AssignReplicasToDirsRequestDirectorieTopicPartition.
-func (v *AssignReplicasToDirsRequestDirectorieTopicPartition) Default() {
+// if new fields are added to AssignReplicasToDirsRequestDirectoryTopicPartition.
+func (v *AssignReplicasToDirsRequestDirectoryTopicPartition) Default() {
 }
 
-// NewAssignReplicasToDirsRequestDirectorieTopicPartition returns a default AssignReplicasToDirsRequestDirectorieTopicPartition
+// NewAssignReplicasToDirsRequestDirectoryTopicPartition returns a default AssignReplicasToDirsRequestDirectoryTopicPartition
 // This is a shortcut for creating a struct and calling Default yourself.
-func NewAssignReplicasToDirsRequestDirectorieTopicPartition() AssignReplicasToDirsRequestDirectorieTopicPartition {
-	var v AssignReplicasToDirsRequestDirectorieTopicPartition
+func NewAssignReplicasToDirsRequestDirectoryTopicPartition() AssignReplicasToDirsRequestDirectoryTopicPartition {
+	var v AssignReplicasToDirsRequestDirectoryTopicPartition
 	v.Default()
 	return v
 }
 
-type AssignReplicasToDirsRequestDirectorieTopic struct {
+type AssignReplicasToDirsRequestDirectoryTopic struct {
 	// The ID of the assigned topic.
 	TopicID [16]byte
 
 	// The partitions assigned to the directory.
-	Partitions []AssignReplicasToDirsRequestDirectorieTopicPartition
+	Partitions []AssignReplicasToDirsRequestDirectoryTopicPartition
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
 }
 
 // Default sets any default fields. Calling this allows for future compatibility
-// if new fields are added to AssignReplicasToDirsRequestDirectorieTopic.
-func (v *AssignReplicasToDirsRequestDirectorieTopic) Default() {
+// if new fields are added to AssignReplicasToDirsRequestDirectoryTopic.
+func (v *AssignReplicasToDirsRequestDirectoryTopic) Default() {
 }
 
-// NewAssignReplicasToDirsRequestDirectorieTopic returns a default AssignReplicasToDirsRequestDirectorieTopic
+// NewAssignReplicasToDirsRequestDirectoryTopic returns a default AssignReplicasToDirsRequestDirectoryTopic
 // This is a shortcut for creating a struct and calling Default yourself.
-func NewAssignReplicasToDirsRequestDirectorieTopic() AssignReplicasToDirsRequestDirectorieTopic {
-	var v AssignReplicasToDirsRequestDirectorieTopic
+func NewAssignReplicasToDirsRequestDirectoryTopic() AssignReplicasToDirsRequestDirectoryTopic {
+	var v AssignReplicasToDirsRequestDirectoryTopic
 	v.Default()
 	return v
 }
 
-type AssignReplicasToDirsRequestDirectorie struct {
+type AssignReplicasToDirsRequestDirectory struct {
 	// The ID of the directory.
 	ID [16]byte
 
 	// The topics assigned to the directory.
-	Topics []AssignReplicasToDirsRequestDirectorieTopic
+	Topics []AssignReplicasToDirsRequestDirectoryTopic
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
 }
 
 // Default sets any default fields. Calling this allows for future compatibility
-// if new fields are added to AssignReplicasToDirsRequestDirectorie.
-func (v *AssignReplicasToDirsRequestDirectorie) Default() {
+// if new fields are added to AssignReplicasToDirsRequestDirectory.
+func (v *AssignReplicasToDirsRequestDirectory) Default() {
 }
 
-// NewAssignReplicasToDirsRequestDirectorie returns a default AssignReplicasToDirsRequestDirectorie
+// NewAssignReplicasToDirsRequestDirectory returns a default AssignReplicasToDirsRequestDirectory
 // This is a shortcut for creating a struct and calling Default yourself.
-func NewAssignReplicasToDirsRequestDirectorie() AssignReplicasToDirsRequestDirectorie {
-	var v AssignReplicasToDirsRequestDirectorie
+func NewAssignReplicasToDirsRequestDirectory() AssignReplicasToDirsRequestDirectory {
+	var v AssignReplicasToDirsRequestDirectory
 	v.Default()
 	return v
 }
@@ -49666,7 +50114,7 @@ type AssignReplicasToDirsRequest struct {
 	BrokerEpoch int64
 
 	// The directories to which replicas should be assigned.
-	Directories []AssignReplicasToDirsRequestDirectorie
+	Directories []AssignReplicasToDirsRequestDirectory
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
@@ -49807,7 +50255,7 @@ func (v *AssignReplicasToDirsRequest) readFrom(src []byte, unsafe bool) error {
 		}
 		a = a[:0]
 		if l > 0 {
-			a = append(a, make([]AssignReplicasToDirsRequestDirectorie, l)...)
+			a = append(a, make([]AssignReplicasToDirsRequestDirectory, l)...)
 		}
 		for i := int32(0); i < l; i++ {
 			v := &a[i]
@@ -49831,7 +50279,7 @@ func (v *AssignReplicasToDirsRequest) readFrom(src []byte, unsafe bool) error {
 				}
 				a = a[:0]
 				if l > 0 {
-					a = append(a, make([]AssignReplicasToDirsRequestDirectorieTopic, l)...)
+					a = append(a, make([]AssignReplicasToDirsRequestDirectoryTopic, l)...)
 				}
 				for i := int32(0); i < l; i++ {
 					v := &a[i]
@@ -49855,7 +50303,7 @@ func (v *AssignReplicasToDirsRequest) readFrom(src []byte, unsafe bool) error {
 						}
 						a = a[:0]
 						if l > 0 {
-							a = append(a, make([]AssignReplicasToDirsRequestDirectorieTopicPartition, l)...)
+							a = append(a, make([]AssignReplicasToDirsRequestDirectoryTopicPartition, l)...)
 						}
 						for i := int32(0); i < l; i++ {
 							v := &a[i]
@@ -49914,7 +50362,7 @@ func NewAssignReplicasToDirsRequest() AssignReplicasToDirsRequest {
 	return v
 }
 
-type AssignReplicasToDirsResponseDirectorieTopicPartition struct {
+type AssignReplicasToDirsResponseDirectoryTopicPartition struct {
 	Partition int32
 
 	ErrorCode int16
@@ -49924,58 +50372,58 @@ type AssignReplicasToDirsResponseDirectorieTopicPartition struct {
 }
 
 // Default sets any default fields. Calling this allows for future compatibility
-// if new fields are added to AssignReplicasToDirsResponseDirectorieTopicPartition.
-func (v *AssignReplicasToDirsResponseDirectorieTopicPartition) Default() {
+// if new fields are added to AssignReplicasToDirsResponseDirectoryTopicPartition.
+func (v *AssignReplicasToDirsResponseDirectoryTopicPartition) Default() {
 }
 
-// NewAssignReplicasToDirsResponseDirectorieTopicPartition returns a default AssignReplicasToDirsResponseDirectorieTopicPartition
+// NewAssignReplicasToDirsResponseDirectoryTopicPartition returns a default AssignReplicasToDirsResponseDirectoryTopicPartition
 // This is a shortcut for creating a struct and calling Default yourself.
-func NewAssignReplicasToDirsResponseDirectorieTopicPartition() AssignReplicasToDirsResponseDirectorieTopicPartition {
-	var v AssignReplicasToDirsResponseDirectorieTopicPartition
+func NewAssignReplicasToDirsResponseDirectoryTopicPartition() AssignReplicasToDirsResponseDirectoryTopicPartition {
+	var v AssignReplicasToDirsResponseDirectoryTopicPartition
 	v.Default()
 	return v
 }
 
-type AssignReplicasToDirsResponseDirectorieTopic struct {
+type AssignReplicasToDirsResponseDirectoryTopic struct {
 	TopicID [16]byte
 
-	Partitions []AssignReplicasToDirsResponseDirectorieTopicPartition
+	Partitions []AssignReplicasToDirsResponseDirectoryTopicPartition
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
 }
 
 // Default sets any default fields. Calling this allows for future compatibility
-// if new fields are added to AssignReplicasToDirsResponseDirectorieTopic.
-func (v *AssignReplicasToDirsResponseDirectorieTopic) Default() {
+// if new fields are added to AssignReplicasToDirsResponseDirectoryTopic.
+func (v *AssignReplicasToDirsResponseDirectoryTopic) Default() {
 }
 
-// NewAssignReplicasToDirsResponseDirectorieTopic returns a default AssignReplicasToDirsResponseDirectorieTopic
+// NewAssignReplicasToDirsResponseDirectoryTopic returns a default AssignReplicasToDirsResponseDirectoryTopic
 // This is a shortcut for creating a struct and calling Default yourself.
-func NewAssignReplicasToDirsResponseDirectorieTopic() AssignReplicasToDirsResponseDirectorieTopic {
-	var v AssignReplicasToDirsResponseDirectorieTopic
+func NewAssignReplicasToDirsResponseDirectoryTopic() AssignReplicasToDirsResponseDirectoryTopic {
+	var v AssignReplicasToDirsResponseDirectoryTopic
 	v.Default()
 	return v
 }
 
-type AssignReplicasToDirsResponseDirectorie struct {
+type AssignReplicasToDirsResponseDirectory struct {
 	ID [16]byte
 
-	Topics []AssignReplicasToDirsResponseDirectorieTopic
+	Topics []AssignReplicasToDirsResponseDirectoryTopic
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
 }
 
 // Default sets any default fields. Calling this allows for future compatibility
-// if new fields are added to AssignReplicasToDirsResponseDirectorie.
-func (v *AssignReplicasToDirsResponseDirectorie) Default() {
+// if new fields are added to AssignReplicasToDirsResponseDirectory.
+func (v *AssignReplicasToDirsResponseDirectory) Default() {
 }
 
-// NewAssignReplicasToDirsResponseDirectorie returns a default AssignReplicasToDirsResponseDirectorie
+// NewAssignReplicasToDirsResponseDirectory returns a default AssignReplicasToDirsResponseDirectory
 // This is a shortcut for creating a struct and calling Default yourself.
-func NewAssignReplicasToDirsResponseDirectorie() AssignReplicasToDirsResponseDirectorie {
-	var v AssignReplicasToDirsResponseDirectorie
+func NewAssignReplicasToDirsResponseDirectory() AssignReplicasToDirsResponseDirectory {
+	var v AssignReplicasToDirsResponseDirectory
 	v.Default()
 	return v
 }
@@ -49992,7 +50440,7 @@ type AssignReplicasToDirsResponse struct {
 
 	ErrorCode int16
 
-	Directories []AssignReplicasToDirsResponseDirectorie
+	Directories []AssignReplicasToDirsResponseDirectory
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
@@ -50134,7 +50582,7 @@ func (v *AssignReplicasToDirsResponse) readFrom(src []byte, unsafe bool) error {
 		}
 		a = a[:0]
 		if l > 0 {
-			a = append(a, make([]AssignReplicasToDirsResponseDirectorie, l)...)
+			a = append(a, make([]AssignReplicasToDirsResponseDirectory, l)...)
 		}
 		for i := int32(0); i < l; i++ {
 			v := &a[i]
@@ -50158,7 +50606,7 @@ func (v *AssignReplicasToDirsResponse) readFrom(src []byte, unsafe bool) error {
 				}
 				a = a[:0]
 				if l > 0 {
-					a = append(a, make([]AssignReplicasToDirsResponseDirectorieTopic, l)...)
+					a = append(a, make([]AssignReplicasToDirsResponseDirectoryTopic, l)...)
 				}
 				for i := int32(0); i < l; i++ {
 					v := &a[i]
@@ -50182,7 +50630,7 @@ func (v *AssignReplicasToDirsResponse) readFrom(src []byte, unsafe bool) error {
 						}
 						a = a[:0]
 						if l > 0 {
-							a = append(a, make([]AssignReplicasToDirsResponseDirectorieTopicPartition, l)...)
+							a = append(a, make([]AssignReplicasToDirsResponseDirectoryTopicPartition, l)...)
 						}
 						for i := int32(0); i < l; i++ {
 							v := &a[i]
@@ -50244,23 +50692,29 @@ func NewAssignReplicasToDirsResponse() AssignReplicasToDirsResponse {
 	return v
 }
 
-// ListClientMetricsResourcesRequest, introduced in KIP-1000,
-// allows you to list client metric resources (from KIP-714).
-type ListClientMetricsResourcesRequest struct {
+// ListConfigResourcesRequest, introduced in KIP-1000 and renamed
+// in KIP-1142 allows you to list config resources.
+//
+// This was renamed from ListClientMetricsResources in Kafka 4.1.
+type ListConfigResourcesRequest struct {
 	// Version is the version of this message used with a Kafka broker.
 	Version int16
+
+	// The list of resource type. If the list is empty, it uses default supported
+	// config resource types.
+	ResourceTypes []int8 // v1+
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
 }
 
-func (*ListClientMetricsResourcesRequest) Key() int16                 { return 74 }
-func (*ListClientMetricsResourcesRequest) MaxVersion() int16          { return 0 }
-func (v *ListClientMetricsResourcesRequest) SetVersion(version int16) { v.Version = version }
-func (v *ListClientMetricsResourcesRequest) GetVersion() int16        { return v.Version }
-func (v *ListClientMetricsResourcesRequest) IsFlexible() bool         { return v.Version >= 0 }
-func (v *ListClientMetricsResourcesRequest) ResponseKind() Response {
-	r := &ListClientMetricsResourcesResponse{Version: v.Version}
+func (*ListConfigResourcesRequest) Key() int16                 { return 74 }
+func (*ListConfigResourcesRequest) MaxVersion() int16          { return 1 }
+func (v *ListConfigResourcesRequest) SetVersion(version int16) { v.Version = version }
+func (v *ListConfigResourcesRequest) GetVersion() int16        { return v.Version }
+func (v *ListConfigResourcesRequest) IsFlexible() bool         { return v.Version >= 0 }
+func (v *ListConfigResourcesRequest) ResponseKind() Response {
+	r := &ListConfigResourcesResponse{Version: v.Version}
 	r.Default()
 	return r
 }
@@ -50268,17 +50722,29 @@ func (v *ListClientMetricsResourcesRequest) ResponseKind() Response {
 // RequestWith is requests v on r and returns the response or an error.
 // For sharded requests, the response may be merged and still return an error.
 // It is better to rely on client.RequestSharded than to rely on proper merging behavior.
-func (v *ListClientMetricsResourcesRequest) RequestWith(ctx context.Context, r Requestor) (*ListClientMetricsResourcesResponse, error) {
+func (v *ListConfigResourcesRequest) RequestWith(ctx context.Context, r Requestor) (*ListConfigResourcesResponse, error) {
 	kresp, err := r.Request(ctx, v)
-	resp, _ := kresp.(*ListClientMetricsResourcesResponse)
+	resp, _ := kresp.(*ListConfigResourcesResponse)
 	return resp, err
 }
 
-func (v *ListClientMetricsResourcesRequest) AppendTo(dst []byte) []byte {
+func (v *ListConfigResourcesRequest) AppendTo(dst []byte) []byte {
 	version := v.Version
 	_ = version
 	isFlexible := version >= 0
 	_ = isFlexible
+	if version >= 1 {
+		v := v.ResourceTypes
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := v[i]
+			dst = kbin.AppendInt8(dst, v)
+		}
+	}
 	if isFlexible {
 		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
 		dst = v.UnknownTags.AppendEach(dst)
@@ -50286,67 +50752,100 @@ func (v *ListClientMetricsResourcesRequest) AppendTo(dst []byte) []byte {
 	return dst
 }
 
-func (v *ListClientMetricsResourcesRequest) ReadFrom(src []byte) error {
+func (v *ListConfigResourcesRequest) ReadFrom(src []byte) error {
 	return v.readFrom(src, false)
 }
 
-func (v *ListClientMetricsResourcesRequest) UnsafeReadFrom(src []byte) error {
+func (v *ListConfigResourcesRequest) UnsafeReadFrom(src []byte) error {
 	return v.readFrom(src, true)
 }
 
-func (v *ListClientMetricsResourcesRequest) readFrom(src []byte, unsafe bool) error {
+func (v *ListConfigResourcesRequest) readFrom(src []byte, unsafe bool) error {
 	v.Default()
 	b := kbin.Reader{Src: src}
 	version := v.Version
 	_ = version
 	isFlexible := version >= 0
 	_ = isFlexible
+	s := v
+	if version >= 1 {
+		v := s.ResourceTypes
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]int8, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := b.Int8()
+			a[i] = v
+		}
+		v = a
+		s.ResourceTypes = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
 	return b.Complete()
 }
 
-// NewPtrListClientMetricsResourcesRequest returns a pointer to a default ListClientMetricsResourcesRequest
+// NewPtrListConfigResourcesRequest returns a pointer to a default ListConfigResourcesRequest
 // This is a shortcut for creating a new(struct) and calling Default yourself.
-func NewPtrListClientMetricsResourcesRequest() *ListClientMetricsResourcesRequest {
-	var v ListClientMetricsResourcesRequest
+func NewPtrListConfigResourcesRequest() *ListConfigResourcesRequest {
+	var v ListConfigResourcesRequest
 	v.Default()
 	return &v
 }
 
 // Default sets any default fields. Calling this allows for future compatibility
-// if new fields are added to ListClientMetricsResourcesRequest.
-func (v *ListClientMetricsResourcesRequest) Default() {
+// if new fields are added to ListConfigResourcesRequest.
+func (v *ListConfigResourcesRequest) Default() {
 }
 
-// NewListClientMetricsResourcesRequest returns a default ListClientMetricsResourcesRequest
+// NewListConfigResourcesRequest returns a default ListConfigResourcesRequest
 // This is a shortcut for creating a struct and calling Default yourself.
-func NewListClientMetricsResourcesRequest() ListClientMetricsResourcesRequest {
-	var v ListClientMetricsResourcesRequest
+func NewListConfigResourcesRequest() ListConfigResourcesRequest {
+	var v ListConfigResourcesRequest
 	v.Default()
 	return v
 }
 
-type ListClientMetricsResourcesResponseClientMetricsResource struct {
+type ListConfigResourcesResponseConfigResource struct {
 	// The resource name.
 	Name string
+
+	// The resource type.
+	//
+	// This field has a default of 16.
+	Type int8 // v1+
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
 }
 
 // Default sets any default fields. Calling this allows for future compatibility
-// if new fields are added to ListClientMetricsResourcesResponseClientMetricsResource.
-func (v *ListClientMetricsResourcesResponseClientMetricsResource) Default() {
+// if new fields are added to ListConfigResourcesResponseConfigResource.
+func (v *ListConfigResourcesResponseConfigResource) Default() {
+	v.Type = 16
 }
 
-// NewListClientMetricsResourcesResponseClientMetricsResource returns a default ListClientMetricsResourcesResponseClientMetricsResource
+// NewListConfigResourcesResponseConfigResource returns a default ListConfigResourcesResponseConfigResource
 // This is a shortcut for creating a struct and calling Default yourself.
-func NewListClientMetricsResourcesResponseClientMetricsResource() ListClientMetricsResourcesResponseClientMetricsResource {
-	var v ListClientMetricsResourcesResponseClientMetricsResource
+func NewListConfigResourcesResponseConfigResource() ListConfigResourcesResponseConfigResource {
+	var v ListConfigResourcesResponseConfigResource
 	v.Default()
 	return v
 }
 
-type ListClientMetricsResourcesResponse struct {
+type ListConfigResourcesResponse struct {
 	// Version is the version of this message used with a Kafka broker.
 	Version int16
 
@@ -50357,30 +50856,30 @@ type ListClientMetricsResourcesResponse struct {
 	ErrorCode int16
 
 	// Each client metrics resource in the response.
-	ClientMetricsResources []ListClientMetricsResourcesResponseClientMetricsResource
+	ConfigResources []ListConfigResourcesResponseConfigResource
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
 }
 
-func (*ListClientMetricsResourcesResponse) Key() int16                 { return 74 }
-func (*ListClientMetricsResourcesResponse) MaxVersion() int16          { return 0 }
-func (v *ListClientMetricsResourcesResponse) SetVersion(version int16) { v.Version = version }
-func (v *ListClientMetricsResourcesResponse) GetVersion() int16        { return v.Version }
-func (v *ListClientMetricsResourcesResponse) IsFlexible() bool         { return v.Version >= 0 }
-func (v *ListClientMetricsResourcesResponse) Throttle() (int32, bool) {
+func (*ListConfigResourcesResponse) Key() int16                 { return 74 }
+func (*ListConfigResourcesResponse) MaxVersion() int16          { return 1 }
+func (v *ListConfigResourcesResponse) SetVersion(version int16) { v.Version = version }
+func (v *ListConfigResourcesResponse) GetVersion() int16        { return v.Version }
+func (v *ListConfigResourcesResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *ListConfigResourcesResponse) Throttle() (int32, bool) {
 	return v.ThrottleMillis, v.Version >= 0
 }
 
-func (v *ListClientMetricsResourcesResponse) SetThrottle(throttleMillis int32) {
+func (v *ListConfigResourcesResponse) SetThrottle(throttleMillis int32) {
 	v.ThrottleMillis = throttleMillis
 }
 
-func (v *ListClientMetricsResourcesResponse) RequestKind() Request {
-	return &ListClientMetricsResourcesRequest{Version: v.Version}
+func (v *ListConfigResourcesResponse) RequestKind() Request {
+	return &ListConfigResourcesRequest{Version: v.Version}
 }
 
-func (v *ListClientMetricsResourcesResponse) AppendTo(dst []byte) []byte {
+func (v *ListConfigResourcesResponse) AppendTo(dst []byte) []byte {
 	version := v.Version
 	_ = version
 	isFlexible := version >= 0
@@ -50394,7 +50893,7 @@ func (v *ListClientMetricsResourcesResponse) AppendTo(dst []byte) []byte {
 		dst = kbin.AppendInt16(dst, v)
 	}
 	{
-		v := v.ClientMetricsResources
+		v := v.ConfigResources
 		if isFlexible {
 			dst = kbin.AppendCompactArrayLen(dst, len(v))
 		} else {
@@ -50410,6 +50909,10 @@ func (v *ListClientMetricsResourcesResponse) AppendTo(dst []byte) []byte {
 					dst = kbin.AppendString(dst, v)
 				}
 			}
+			if version >= 1 {
+				v := v.Type
+				dst = kbin.AppendInt8(dst, v)
+			}
 			if isFlexible {
 				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
 				dst = v.UnknownTags.AppendEach(dst)
@@ -50423,15 +50926,15 @@ func (v *ListClientMetricsResourcesResponse) AppendTo(dst []byte) []byte {
 	return dst
 }
 
-func (v *ListClientMetricsResourcesResponse) ReadFrom(src []byte) error {
+func (v *ListConfigResourcesResponse) ReadFrom(src []byte) error {
 	return v.readFrom(src, false)
 }
 
-func (v *ListClientMetricsResourcesResponse) UnsafeReadFrom(src []byte) error {
+func (v *ListConfigResourcesResponse) UnsafeReadFrom(src []byte) error {
 	return v.readFrom(src, true)
 }
 
-func (v *ListClientMetricsResourcesResponse) readFrom(src []byte, unsafe bool) error {
+func (v *ListConfigResourcesResponse) readFrom(src []byte, unsafe bool) error {
 	v.Default()
 	b := kbin.Reader{Src: src}
 	version := v.Version
@@ -50448,7 +50951,7 @@ func (v *ListClientMetricsResourcesResponse) readFrom(src []byte, unsafe bool) e
 		s.ErrorCode = v
 	}
 	{
-		v := s.ClientMetricsResources
+		v := s.ConfigResources
 		a := v
 		var l int32
 		if isFlexible {
@@ -50461,7 +50964,7 @@ func (v *ListClientMetricsResourcesResponse) readFrom(src []byte, unsafe bool) e
 		}
 		a = a[:0]
 		if l > 0 {
-			a = append(a, make([]ListClientMetricsResourcesResponseClientMetricsResource, l)...)
+			a = append(a, make([]ListConfigResourcesResponseConfigResource, l)...)
 		}
 		for i := int32(0); i < l; i++ {
 			v := &a[i]
@@ -50484,12 +50987,16 @@ func (v *ListClientMetricsResourcesResponse) readFrom(src []byte, unsafe bool) e
 				}
 				s.Name = v
 			}
+			if version >= 1 {
+				v := b.Int8()
+				s.Type = v
+			}
 			if isFlexible {
 				s.UnknownTags = internalReadTags(&b)
 			}
 		}
 		v = a
-		s.ClientMetricsResources = v
+		s.ConfigResources = v
 	}
 	if isFlexible {
 		s.UnknownTags = internalReadTags(&b)
@@ -50497,23 +51004,23 @@ func (v *ListClientMetricsResourcesResponse) readFrom(src []byte, unsafe bool) e
 	return b.Complete()
 }
 
-// NewPtrListClientMetricsResourcesResponse returns a pointer to a default ListClientMetricsResourcesResponse
+// NewPtrListConfigResourcesResponse returns a pointer to a default ListConfigResourcesResponse
 // This is a shortcut for creating a new(struct) and calling Default yourself.
-func NewPtrListClientMetricsResourcesResponse() *ListClientMetricsResourcesResponse {
-	var v ListClientMetricsResourcesResponse
+func NewPtrListConfigResourcesResponse() *ListConfigResourcesResponse {
+	var v ListConfigResourcesResponse
 	v.Default()
 	return &v
 }
 
 // Default sets any default fields. Calling this allows for future compatibility
-// if new fields are added to ListClientMetricsResourcesResponse.
-func (v *ListClientMetricsResourcesResponse) Default() {
+// if new fields are added to ListConfigResourcesResponse.
+func (v *ListConfigResourcesResponse) Default() {
 }
 
-// NewListClientMetricsResourcesResponse returns a default ListClientMetricsResourcesResponse
+// NewListConfigResourcesResponse returns a default ListConfigResourcesResponse
 // This is a shortcut for creating a struct and calling Default yourself.
-func NewListClientMetricsResourcesResponse() ListClientMetricsResourcesResponse {
-	var v ListClientMetricsResourcesResponse
+func NewListConfigResourcesResponse() ListConfigResourcesResponse {
+	var v ListConfigResourcesResponse
 	v.Default()
 	return v
 }
@@ -50800,7 +51307,7 @@ func NewDescribeTopicPartitionsRequest() DescribeTopicPartitionsRequest {
 
 type DescribeTopicPartitionsResponseTopicPartition struct {
 	// The partition error, or 0 if there is no error.
-	ErrorCode int32
+	ErrorCode int16
 
 	// The partition this is a response for.
 	Partition int32
@@ -50848,7 +51355,7 @@ func NewDescribeTopicPartitionsResponseTopicPartition() DescribeTopicPartitionsR
 
 type DescribeTopicPartitionsResponseTopic struct {
 	// The topic error, or 0 if there is no error.
-	ErrorCode int32
+	ErrorCode int16
 
 	// The topic name.
 	Topic *string
@@ -50963,7 +51470,7 @@ func (v *DescribeTopicPartitionsResponse) AppendTo(dst []byte) []byte {
 			v := &v[i]
 			{
 				v := v.ErrorCode
-				dst = kbin.AppendInt32(dst, v)
+				dst = kbin.AppendInt16(dst, v)
 			}
 			{
 				v := v.Topic
@@ -50992,7 +51499,7 @@ func (v *DescribeTopicPartitionsResponse) AppendTo(dst []byte) []byte {
 					v := &v[i]
 					{
 						v := v.ErrorCode
-						dst = kbin.AppendInt32(dst, v)
+						dst = kbin.AppendInt16(dst, v)
 					}
 					{
 						v := v.Partition
@@ -51154,7 +51661,7 @@ func (v *DescribeTopicPartitionsResponse) readFrom(src []byte, unsafe bool) erro
 			v.Default()
 			s := v
 			{
-				v := b.Int32()
+				v := b.Int16()
 				s.ErrorCode = v
 			}
 			{
@@ -51203,7 +51710,7 @@ func (v *DescribeTopicPartitionsResponse) readFrom(src []byte, unsafe bool) erro
 					v.Default()
 					s := v
 					{
-						v := b.Int32()
+						v := b.Int16()
 						s.ErrorCode = v
 					}
 					{
@@ -51420,6 +51927,3848 @@ func NewDescribeTopicPartitionsResponse() DescribeTopicPartitionsResponse {
 	return v
 }
 
+// ShareGroupHeartbeatRequest is a request for share groups.
+type ShareGroupHeartbeatRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// GroupID is the group ID.
+	GroupID string
+
+	// MemberID is generated by the consumer. The member id must be kept during
+	// the entire lifetime of the consumer process.
+	MemberID string
+
+	// MemberEpoch is the current member epoch; 0 to join the group; -1 to leave
+	// the group.
+	MemberEpoch int32
+
+	// RackID is the rack ID; null if not provided or unchanging since the last
+	// heartbeat.
+	RackID *string
+
+	// SubscribedTopicNames are the subscribed topics; null if unchanging since
+	// the last heartbeat.
+	SubscribedTopicNames []string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ShareGroupHeartbeatRequest) Key() int16                   { return 76 }
+func (*ShareGroupHeartbeatRequest) MaxVersion() int16            { return 1 }
+func (v *ShareGroupHeartbeatRequest) SetVersion(version int16)   { v.Version = version }
+func (v *ShareGroupHeartbeatRequest) GetVersion() int16          { return v.Version }
+func (v *ShareGroupHeartbeatRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *ShareGroupHeartbeatRequest) IsGroupCoordinatorRequest() {}
+func (v *ShareGroupHeartbeatRequest) ResponseKind() Response {
+	r := &ShareGroupHeartbeatResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *ShareGroupHeartbeatRequest) RequestWith(ctx context.Context, r Requestor) (*ShareGroupHeartbeatResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*ShareGroupHeartbeatResponse)
+	return resp, err
+}
+
+func (v *ShareGroupHeartbeatRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.GroupID
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.MemberID
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.MemberEpoch
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.RackID
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.SubscribedTopicNames
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := v[i]
+			if isFlexible {
+				dst = kbin.AppendCompactString(dst, v)
+			} else {
+				dst = kbin.AppendString(dst, v)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ShareGroupHeartbeatRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ShareGroupHeartbeatRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ShareGroupHeartbeatRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.GroupID = v
+	}
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.MemberID = v
+	}
+	{
+		v := b.Int32()
+		s.MemberEpoch = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.RackID = v
+	}
+	{
+		v := s.SubscribedTopicNames
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []string{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]string, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			var v string
+			if unsafe {
+				if isFlexible {
+					v = b.UnsafeCompactString()
+				} else {
+					v = b.UnsafeString()
+				}
+			} else {
+				if isFlexible {
+					v = b.CompactString()
+				} else {
+					v = b.String()
+				}
+			}
+			a[i] = v
+		}
+		v = a
+		s.SubscribedTopicNames = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrShareGroupHeartbeatRequest returns a pointer to a default ShareGroupHeartbeatRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrShareGroupHeartbeatRequest() *ShareGroupHeartbeatRequest {
+	var v ShareGroupHeartbeatRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareGroupHeartbeatRequest.
+func (v *ShareGroupHeartbeatRequest) Default() {
+}
+
+// NewShareGroupHeartbeatRequest returns a default ShareGroupHeartbeatRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareGroupHeartbeatRequest() ShareGroupHeartbeatRequest {
+	var v ShareGroupHeartbeatRequest
+	v.Default()
+	return v
+}
+
+type ShareGroupHeartbeatResponseAssignmentTopicPartition struct {
+	TopicID [16]byte
+
+	Partitions []int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareGroupHeartbeatResponseAssignmentTopicPartition.
+func (v *ShareGroupHeartbeatResponseAssignmentTopicPartition) Default() {
+}
+
+// NewShareGroupHeartbeatResponseAssignmentTopicPartition returns a default ShareGroupHeartbeatResponseAssignmentTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareGroupHeartbeatResponseAssignmentTopicPartition() ShareGroupHeartbeatResponseAssignmentTopicPartition {
+	var v ShareGroupHeartbeatResponseAssignmentTopicPartition
+	v.Default()
+	return v
+}
+
+type ShareGroupHeartbeatResponseAssignment struct {
+	// TopicPartitions contains the partitions assigned to the member.
+	TopicPartitions []ShareGroupHeartbeatResponseAssignmentTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareGroupHeartbeatResponseAssignment.
+func (v *ShareGroupHeartbeatResponseAssignment) Default() {
+}
+
+// NewShareGroupHeartbeatResponseAssignment returns a default ShareGroupHeartbeatResponseAssignment
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareGroupHeartbeatResponseAssignment() ShareGroupHeartbeatResponseAssignment {
+	var v ShareGroupHeartbeatResponseAssignment
+	v.Default()
+	return v
+}
+
+// ShareGroupHeartbeatResponse is a response for a ShareGroupHeartbeatRequest.
+//
+// Version 0 was used for early access of KIP-932 in Apache Kafka 4.0 but
+// removed in Apacke Kafka 4.1.
+//
+// Version 1 is the initial stable version (KIP-932).
+type ShareGroupHeartbeatResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// ThrottleMillis is how long of a throttle Kafka will apply to the client
+	// after responding to this request.
+	ThrottleMillis int32
+
+	// ErrorCode is any error for the response.
+	//
+	// Supported errors:
+	// - GROUP_AUTHORIZATION_FAILED (version 0+)
+	// - TOPIC_AUTHORIZATION_FAILED (version 1+)
+	// - NOT_COORDINATOR (version 0+)
+	// - COORDINATOR_NOT_AVAILABLE (version 0+)
+	// - COORDINATOR_LOAD_IN_PROGRESS (version 0+)
+	// - UNKNOWN_MEMBER_ID (version 0+)
+	// - GROUP_MAX_SIZE_REACHED (version 0+)
+	// - INVALID_REQUEST (version 0+)
+	ErrorCode int16
+
+	// ErrorMessage is an optional message if there is an error.
+	ErrorMessage *string
+
+	// MemberID is the ID generated by the consumer and provided by the consumer
+	// for all requests.
+	MemberID *string
+
+	// MemberEpoch is the member epoch.
+	MemberEpoch int32
+
+	// HeartbeatIntervalMillis is the heartbeat interval in milliseconds.
+	HeartbeatIntervalMillis int32
+
+	// Assignment is the assignment, if provided.
+	Assignment *ShareGroupHeartbeatResponseAssignment
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ShareGroupHeartbeatResponse) Key() int16                 { return 76 }
+func (*ShareGroupHeartbeatResponse) MaxVersion() int16          { return 1 }
+func (v *ShareGroupHeartbeatResponse) SetVersion(version int16) { v.Version = version }
+func (v *ShareGroupHeartbeatResponse) GetVersion() int16        { return v.Version }
+func (v *ShareGroupHeartbeatResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *ShareGroupHeartbeatResponse) Throttle() (int32, bool) {
+	return v.ThrottleMillis, v.Version >= 0
+}
+
+func (v *ShareGroupHeartbeatResponse) SetThrottle(throttleMillis int32) {
+	v.ThrottleMillis = throttleMillis
+}
+
+func (v *ShareGroupHeartbeatResponse) RequestKind() Request {
+	return &ShareGroupHeartbeatRequest{Version: v.Version}
+}
+
+func (v *ShareGroupHeartbeatResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.ThrottleMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.ErrorCode
+		dst = kbin.AppendInt16(dst, v)
+	}
+	{
+		v := v.ErrorMessage
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.MemberID
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.MemberEpoch
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.HeartbeatIntervalMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.Assignment
+		if v == nil {
+			dst = append(dst, 255)
+		} else {
+			dst = append(dst, 1)
+			{
+				v := v.TopicPartitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.TopicID
+						dst = kbin.AppendUuid(dst, v)
+					}
+					{
+						v := v.Partitions
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := v[i]
+							dst = kbin.AppendInt32(dst, v)
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ShareGroupHeartbeatResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ShareGroupHeartbeatResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ShareGroupHeartbeatResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := b.Int32()
+		s.ThrottleMillis = v
+	}
+	{
+		v := b.Int16()
+		s.ErrorCode = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.ErrorMessage = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.MemberID = v
+	}
+	{
+		v := b.Int32()
+		s.MemberEpoch = v
+	}
+	{
+		v := b.Int32()
+		s.HeartbeatIntervalMillis = v
+	}
+	{
+		if present := b.Int8(); present != -1 && b.Ok() {
+			s.Assignment = new(ShareGroupHeartbeatResponseAssignment)
+			v := s.Assignment
+			v.Default()
+			s := v
+			{
+				v := s.TopicPartitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]ShareGroupHeartbeatResponseAssignmentTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Uuid()
+						s.TopicID = v
+					}
+					{
+						v := s.Partitions
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]int32, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := b.Int32()
+							a[i] = v
+						}
+						v = a
+						s.Partitions = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.TopicPartitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrShareGroupHeartbeatResponse returns a pointer to a default ShareGroupHeartbeatResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrShareGroupHeartbeatResponse() *ShareGroupHeartbeatResponse {
+	var v ShareGroupHeartbeatResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareGroupHeartbeatResponse.
+func (v *ShareGroupHeartbeatResponse) Default() {
+	{
+		v := &v.Assignment
+		_ = v
+	}
+}
+
+// NewShareGroupHeartbeatResponse returns a default ShareGroupHeartbeatResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareGroupHeartbeatResponse() ShareGroupHeartbeatResponse {
+	var v ShareGroupHeartbeatResponse
+	v.Default()
+	return v
+}
+
+// ShareGroupDescribeRequest is a request to describe share groups.
+//
+// Version 0 was used for early access of KIP-932 in Apache Kafka 4.0 but
+// removed in Apacke Kafka 4.1.
+//
+// Version 1 is the initial stable version (KIP-932).
+type ShareGroupDescribeRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// GroupIDs are the IDs of the groups to describe.
+	GroupIDs []string
+
+	// IncludeAuthorizedOperations is whether to include authorized operations.
+	IncludeAuthorizedOperations bool
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ShareGroupDescribeRequest) Key() int16                   { return 77 }
+func (*ShareGroupDescribeRequest) MaxVersion() int16            { return 1 }
+func (v *ShareGroupDescribeRequest) SetVersion(version int16)   { v.Version = version }
+func (v *ShareGroupDescribeRequest) GetVersion() int16          { return v.Version }
+func (v *ShareGroupDescribeRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *ShareGroupDescribeRequest) IsGroupCoordinatorRequest() {}
+func (v *ShareGroupDescribeRequest) ResponseKind() Response {
+	r := &ShareGroupDescribeResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *ShareGroupDescribeRequest) RequestWith(ctx context.Context, r Requestor) (*ShareGroupDescribeResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*ShareGroupDescribeResponse)
+	return resp, err
+}
+
+func (v *ShareGroupDescribeRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.GroupIDs
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := v[i]
+			if isFlexible {
+				dst = kbin.AppendCompactString(dst, v)
+			} else {
+				dst = kbin.AppendString(dst, v)
+			}
+		}
+	}
+	{
+		v := v.IncludeAuthorizedOperations
+		dst = kbin.AppendBool(dst, v)
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ShareGroupDescribeRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ShareGroupDescribeRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ShareGroupDescribeRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := s.GroupIDs
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]string, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			var v string
+			if unsafe {
+				if isFlexible {
+					v = b.UnsafeCompactString()
+				} else {
+					v = b.UnsafeString()
+				}
+			} else {
+				if isFlexible {
+					v = b.CompactString()
+				} else {
+					v = b.String()
+				}
+			}
+			a[i] = v
+		}
+		v = a
+		s.GroupIDs = v
+	}
+	{
+		v := b.Bool()
+		s.IncludeAuthorizedOperations = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrShareGroupDescribeRequest returns a pointer to a default ShareGroupDescribeRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrShareGroupDescribeRequest() *ShareGroupDescribeRequest {
+	var v ShareGroupDescribeRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareGroupDescribeRequest.
+func (v *ShareGroupDescribeRequest) Default() {
+}
+
+// NewShareGroupDescribeRequest returns a default ShareGroupDescribeRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareGroupDescribeRequest() ShareGroupDescribeRequest {
+	var v ShareGroupDescribeRequest
+	v.Default()
+	return v
+}
+
+type ShareGroupDescribeResponseGroupMemberAssignmentTopicPartition struct {
+	// TopicID is the topic ID.
+	TopicID [16]byte
+
+	// Topic is the topic name.
+	Topic string
+
+	// Partitions are the partitions.
+	Partitions []int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareGroupDescribeResponseGroupMemberAssignmentTopicPartition.
+func (v *ShareGroupDescribeResponseGroupMemberAssignmentTopicPartition) Default() {
+}
+
+// NewShareGroupDescribeResponseGroupMemberAssignmentTopicPartition returns a default ShareGroupDescribeResponseGroupMemberAssignmentTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareGroupDescribeResponseGroupMemberAssignmentTopicPartition() ShareGroupDescribeResponseGroupMemberAssignmentTopicPartition {
+	var v ShareGroupDescribeResponseGroupMemberAssignmentTopicPartition
+	v.Default()
+	return v
+}
+
+type ShareGroupDescribeResponseGroupMemberAssignment struct {
+	// TopicPartitions are the assigned topic-partitions to the member.
+	TopicPartitions []ShareGroupDescribeResponseGroupMemberAssignmentTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareGroupDescribeResponseGroupMemberAssignment.
+func (v *ShareGroupDescribeResponseGroupMemberAssignment) Default() {
+}
+
+// NewShareGroupDescribeResponseGroupMemberAssignment returns a default ShareGroupDescribeResponseGroupMemberAssignment
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareGroupDescribeResponseGroupMemberAssignment() ShareGroupDescribeResponseGroupMemberAssignment {
+	var v ShareGroupDescribeResponseGroupMemberAssignment
+	v.Default()
+	return v
+}
+
+type ShareGroupDescribeResponseGroupMember struct {
+	// MemberID is the member ID.
+	MemberID string
+
+	// RackID is the member rack ID.
+	RackID *string
+
+	// MemberEpoch is the current member epoch.
+	MemberEpoch int32
+
+	// ClientID is the client ID.
+	ClientID string
+
+	// ClientHost is the client host.
+	ClientHost string
+
+	// SubscribedTopicNames are the subscribed topic names.
+	SubscribedTopicNames []string
+
+	// Assignment is the current assignment.
+	Assignment ShareGroupDescribeResponseGroupMemberAssignment
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareGroupDescribeResponseGroupMember.
+func (v *ShareGroupDescribeResponseGroupMember) Default() {
+	{
+		v := &v.Assignment
+		_ = v
+	}
+}
+
+// NewShareGroupDescribeResponseGroupMember returns a default ShareGroupDescribeResponseGroupMember
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareGroupDescribeResponseGroupMember() ShareGroupDescribeResponseGroupMember {
+	var v ShareGroupDescribeResponseGroupMember
+	v.Default()
+	return v
+}
+
+type ShareGroupDescribeResponseGroup struct {
+	// ErrorCode is the describe error, or 0 if there was no error.
+	//
+	// Supported errors:
+	// - GROUP_AUTHORIZATION_FAILED (version 0+)
+	// - TOPIC_AUTHORIZATION_FAILED (version 1+)
+	// - NOT_COORDINATOR (version 0+)
+	// - COORDINATOR_NOT_AVAILABLE (version 0+)
+	// - COORDINATOR_LOAD_IN_PROGRESS (version 0+)
+	// - INVALID_GROUP_ID (version 0+)
+	// - GROUP_ID_NOT_FOUND (version 0+)
+	// - INVALID_REQUEST (version 0+)
+	ErrorCode int16
+
+	// ErrorMessage is an optional message if there is an error.
+	ErrorMessage *string
+
+	// GroupID is the group ID string.
+	GroupID string
+
+	// GroupState is the group state string, or the empty string.
+	GroupState string
+
+	// GroupEpoch is the group epoch.
+	GroupEpoch int32
+
+	// AssignmentEpoch is the assignment epoch.
+	AssignmentEpoch int32
+
+	// Assignor is the selected assignor.
+	Assignor string
+
+	// Members are the members.
+	Members []ShareGroupDescribeResponseGroupMember
+
+	// AuthorizedOperations is a 32-bit bitfield to represent authorized
+	// operations for this group.
+	//
+	// This field has a default of -2147483648.
+	AuthorizedOperations int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareGroupDescribeResponseGroup.
+func (v *ShareGroupDescribeResponseGroup) Default() {
+	v.AuthorizedOperations = -2147483648
+}
+
+// NewShareGroupDescribeResponseGroup returns a default ShareGroupDescribeResponseGroup
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareGroupDescribeResponseGroup() ShareGroupDescribeResponseGroup {
+	var v ShareGroupDescribeResponseGroup
+	v.Default()
+	return v
+}
+
+// ShareGroupDescribeResponse is a response for a ShareGroupDescribeRequest.
+type ShareGroupDescribeResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// ThrottleMillis is how long of a throttle Kafka will apply to the client
+	// after responding to this request.
+	ThrottleMillis int32
+
+	// Groups contains each described group.
+	Groups []ShareGroupDescribeResponseGroup
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ShareGroupDescribeResponse) Key() int16                 { return 77 }
+func (*ShareGroupDescribeResponse) MaxVersion() int16          { return 1 }
+func (v *ShareGroupDescribeResponse) SetVersion(version int16) { v.Version = version }
+func (v *ShareGroupDescribeResponse) GetVersion() int16        { return v.Version }
+func (v *ShareGroupDescribeResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *ShareGroupDescribeResponse) Throttle() (int32, bool) {
+	return v.ThrottleMillis, v.Version >= 0
+}
+
+func (v *ShareGroupDescribeResponse) SetThrottle(throttleMillis int32) {
+	v.ThrottleMillis = throttleMillis
+}
+
+func (v *ShareGroupDescribeResponse) RequestKind() Request {
+	return &ShareGroupDescribeRequest{Version: v.Version}
+}
+
+func (v *ShareGroupDescribeResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.ThrottleMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.Groups
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.ErrorCode
+				dst = kbin.AppendInt16(dst, v)
+			}
+			{
+				v := v.ErrorMessage
+				if isFlexible {
+					dst = kbin.AppendCompactNullableString(dst, v)
+				} else {
+					dst = kbin.AppendNullableString(dst, v)
+				}
+			}
+			{
+				v := v.GroupID
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.GroupState
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.GroupEpoch
+				dst = kbin.AppendInt32(dst, v)
+			}
+			{
+				v := v.AssignmentEpoch
+				dst = kbin.AppendInt32(dst, v)
+			}
+			{
+				v := v.Assignor
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Members
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.MemberID
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.RackID
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					{
+						v := v.MemberEpoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.ClientID
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.ClientHost
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.SubscribedTopicNames
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := v[i]
+							if isFlexible {
+								dst = kbin.AppendCompactString(dst, v)
+							} else {
+								dst = kbin.AppendString(dst, v)
+							}
+						}
+					}
+					{
+						v := &v.Assignment
+						{
+							v := v.TopicPartitions
+							if isFlexible {
+								dst = kbin.AppendCompactArrayLen(dst, len(v))
+							} else {
+								dst = kbin.AppendArrayLen(dst, len(v))
+							}
+							for i := range v {
+								v := &v[i]
+								{
+									v := v.TopicID
+									dst = kbin.AppendUuid(dst, v)
+								}
+								{
+									v := v.Topic
+									if isFlexible {
+										dst = kbin.AppendCompactString(dst, v)
+									} else {
+										dst = kbin.AppendString(dst, v)
+									}
+								}
+								{
+									v := v.Partitions
+									if isFlexible {
+										dst = kbin.AppendCompactArrayLen(dst, len(v))
+									} else {
+										dst = kbin.AppendArrayLen(dst, len(v))
+									}
+									for i := range v {
+										v := v[i]
+										dst = kbin.AppendInt32(dst, v)
+									}
+								}
+								if isFlexible {
+									dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+									dst = v.UnknownTags.AppendEach(dst)
+								}
+							}
+						}
+						if isFlexible {
+							dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+							dst = v.UnknownTags.AppendEach(dst)
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			{
+				v := v.AuthorizedOperations
+				dst = kbin.AppendInt32(dst, v)
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ShareGroupDescribeResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ShareGroupDescribeResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ShareGroupDescribeResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := b.Int32()
+		s.ThrottleMillis = v
+	}
+	{
+		v := s.Groups
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ShareGroupDescribeResponseGroup, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Int16()
+				s.ErrorCode = v
+			}
+			{
+				var v *string
+				if isFlexible {
+					if unsafe {
+						v = b.UnsafeCompactNullableString()
+					} else {
+						v = b.CompactNullableString()
+					}
+				} else {
+					if unsafe {
+						v = b.UnsafeNullableString()
+					} else {
+						v = b.NullableString()
+					}
+				}
+				s.ErrorMessage = v
+			}
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.GroupID = v
+			}
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.GroupState = v
+			}
+			{
+				v := b.Int32()
+				s.GroupEpoch = v
+			}
+			{
+				v := b.Int32()
+				s.AssignmentEpoch = v
+			}
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.Assignor = v
+			}
+			{
+				v := s.Members
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]ShareGroupDescribeResponseGroupMember, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.MemberID = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.RackID = v
+					}
+					{
+						v := b.Int32()
+						s.MemberEpoch = v
+					}
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.ClientID = v
+					}
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.ClientHost = v
+					}
+					{
+						v := s.SubscribedTopicNames
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]string, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							var v string
+							if unsafe {
+								if isFlexible {
+									v = b.UnsafeCompactString()
+								} else {
+									v = b.UnsafeString()
+								}
+							} else {
+								if isFlexible {
+									v = b.CompactString()
+								} else {
+									v = b.String()
+								}
+							}
+							a[i] = v
+						}
+						v = a
+						s.SubscribedTopicNames = v
+					}
+					{
+						v := &s.Assignment
+						v.Default()
+						s := v
+						{
+							v := s.TopicPartitions
+							a := v
+							var l int32
+							if isFlexible {
+								l = b.CompactArrayLen()
+							} else {
+								l = b.ArrayLen()
+							}
+							if !b.Ok() {
+								return b.Complete()
+							}
+							a = a[:0]
+							if l > 0 {
+								a = append(a, make([]ShareGroupDescribeResponseGroupMemberAssignmentTopicPartition, l)...)
+							}
+							for i := int32(0); i < l; i++ {
+								v := &a[i]
+								v.Default()
+								s := v
+								{
+									v := b.Uuid()
+									s.TopicID = v
+								}
+								{
+									var v string
+									if unsafe {
+										if isFlexible {
+											v = b.UnsafeCompactString()
+										} else {
+											v = b.UnsafeString()
+										}
+									} else {
+										if isFlexible {
+											v = b.CompactString()
+										} else {
+											v = b.String()
+										}
+									}
+									s.Topic = v
+								}
+								{
+									v := s.Partitions
+									a := v
+									var l int32
+									if isFlexible {
+										l = b.CompactArrayLen()
+									} else {
+										l = b.ArrayLen()
+									}
+									if !b.Ok() {
+										return b.Complete()
+									}
+									a = a[:0]
+									if l > 0 {
+										a = append(a, make([]int32, l)...)
+									}
+									for i := int32(0); i < l; i++ {
+										v := b.Int32()
+										a[i] = v
+									}
+									v = a
+									s.Partitions = v
+								}
+								if isFlexible {
+									s.UnknownTags = internalReadTags(&b)
+								}
+							}
+							v = a
+							s.TopicPartitions = v
+						}
+						if isFlexible {
+							s.UnknownTags = internalReadTags(&b)
+						}
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Members = v
+			}
+			{
+				v := b.Int32()
+				s.AuthorizedOperations = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Groups = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrShareGroupDescribeResponse returns a pointer to a default ShareGroupDescribeResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrShareGroupDescribeResponse() *ShareGroupDescribeResponse {
+	var v ShareGroupDescribeResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareGroupDescribeResponse.
+func (v *ShareGroupDescribeResponse) Default() {
+}
+
+// NewShareGroupDescribeResponse returns a default ShareGroupDescribeResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareGroupDescribeResponse() ShareGroupDescribeResponse {
+	var v ShareGroupDescribeResponse
+	v.Default()
+	return v
+}
+
+type ShareFetchRequestTopicPartitionAcknowledgementBatch struct {
+	// FirstOffset is the first offset of batch of records to acknowledge.
+	FirstOffset int64
+
+	// LastOffset is the last offset (inclusive) of batch of records to
+	// acknowledge.
+	LastOffset int64
+
+	// AcknowledgeTypes is an array of acknowledge types -
+	// 0:Gap,1:Accept,2:Release,3:Reject.
+	AcknowledgeTypes []int8
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareFetchRequestTopicPartitionAcknowledgementBatch.
+func (v *ShareFetchRequestTopicPartitionAcknowledgementBatch) Default() {
+}
+
+// NewShareFetchRequestTopicPartitionAcknowledgementBatch returns a default ShareFetchRequestTopicPartitionAcknowledgementBatch
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareFetchRequestTopicPartitionAcknowledgementBatch() ShareFetchRequestTopicPartitionAcknowledgementBatch {
+	var v ShareFetchRequestTopicPartitionAcknowledgementBatch
+	v.Default()
+	return v
+}
+
+type ShareFetchRequestTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// PartitionMaxBytes is the maximum bytes to fetch from this partition.
+	// 0 when only acknowledgement with no fetching is required. See KIP-74
+	// for cases where this limit may not be honored.
+	PartitionMaxBytes int32
+
+	// AcknowledgementBatches are record batches to acknowledge.
+	AcknowledgementBatches []ShareFetchRequestTopicPartitionAcknowledgementBatch
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareFetchRequestTopicPartition.
+func (v *ShareFetchRequestTopicPartition) Default() {
+}
+
+// NewShareFetchRequestTopicPartition returns a default ShareFetchRequestTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareFetchRequestTopicPartition() ShareFetchRequestTopicPartition {
+	var v ShareFetchRequestTopicPartition
+	v.Default()
+	return v
+}
+
+type ShareFetchRequestTopic struct {
+	// TopicID is the unique topic ID.
+	TopicID [16]byte
+
+	// Partitions are the partitions to fetch.
+	Partitions []ShareFetchRequestTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareFetchRequestTopic.
+func (v *ShareFetchRequestTopic) Default() {
+}
+
+// NewShareFetchRequestTopic returns a default ShareFetchRequestTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareFetchRequestTopic() ShareFetchRequestTopic {
+	var v ShareFetchRequestTopic
+	v.Default()
+	return v
+}
+
+type ShareFetchRequestForgottenTopicsData struct {
+	// TopicID is the unique topic ID.
+	TopicID [16]byte
+
+	// Partitions are the partitions indexes to forget.
+	Partitions []int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareFetchRequestForgottenTopicsData.
+func (v *ShareFetchRequestForgottenTopicsData) Default() {
+}
+
+// NewShareFetchRequestForgottenTopicsData returns a default ShareFetchRequestForgottenTopicsData
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareFetchRequestForgottenTopicsData() ShareFetchRequestForgottenTopicsData {
+	var v ShareFetchRequestForgottenTopicsData
+	v.Default()
+	return v
+}
+
+// ShareFetchRequest is a request to fetch records from share groups.
+//
+// Version 0 was used for early access of KIP-932 in Apache Kafka 4.0 but
+// removed in Apacke Kafka 4.1.
+//
+// Version 1 is the initial stable version (KIP-932).
+//
+// Version 2, introduced in Kafka 4.2, adds ShareAcquireMode (KIP-1206) and
+// IsRenewAck for renew acknowledgements (KIP-1222).
+type ShareFetchRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// GroupID is the group identifier.
+	GroupID *string
+
+	// MemberID is the member ID.
+	MemberID *string
+
+	// ShareSessionEpoch is the current share session epoch: 0 to open a share
+	// session; -1 to close it; otherwise increments for consecutive requests.
+	ShareSessionEpoch int32
+
+	// MaxWaitMillis is the maximum time in milliseconds to wait for the
+	// response.
+	MaxWaitMillis int32
+
+	// MinBytes is the minimum bytes to accumulate in the response.
+	MinBytes int32
+
+	// MaxBytes is the maximum bytes to fetch. See KIP-74 for cases where this
+	// limit may not be honored.
+	//
+	// This field has a default of 0x7fffffff.
+	MaxBytes int32
+
+	// MaxRecords is the maximum number of records to fetch. This limit can be
+	// exceeded for alignment of batch boundaries.
+	MaxRecords int32 // v1+
+
+	// BatchSize is the optimal number of records for batches of acquired
+	// records and acknowledgements.
+	BatchSize int32 // v1+
+
+	// ShareAcquireMode controls the fetch behavior:
+	// 0 = batch-optimized, 1 = record-limit.
+	ShareAcquireMode int8 // v2+
+
+	// IsRenewAck indicates whether Renew type acknowledgements are present
+	// in AcknowledgementBatches.
+	IsRenewAck bool // v2+
+
+	// Topics are the topics to fetch.
+	Topics []ShareFetchRequestTopic
+
+	// ForgottenTopicsData are the partitions to remove from this share session.
+	ForgottenTopicsData []ShareFetchRequestForgottenTopicsData
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ShareFetchRequest) Key() int16                 { return 78 }
+func (*ShareFetchRequest) MaxVersion() int16          { return 2 }
+func (v *ShareFetchRequest) SetVersion(version int16) { v.Version = version }
+func (v *ShareFetchRequest) GetVersion() int16        { return v.Version }
+func (v *ShareFetchRequest) IsFlexible() bool         { return v.Version >= 0 }
+func (v *ShareFetchRequest) ResponseKind() Response {
+	r := &ShareFetchResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *ShareFetchRequest) RequestWith(ctx context.Context, r Requestor) (*ShareFetchResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*ShareFetchResponse)
+	return resp, err
+}
+
+func (v *ShareFetchRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.GroupID
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.MemberID
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.ShareSessionEpoch
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.MaxWaitMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.MinBytes
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.MaxBytes
+		dst = kbin.AppendInt32(dst, v)
+	}
+	if version >= 1 {
+		v := v.MaxRecords
+		dst = kbin.AppendInt32(dst, v)
+	}
+	if version >= 1 {
+		v := v.BatchSize
+		dst = kbin.AppendInt32(dst, v)
+	}
+	if version >= 2 {
+		v := v.ShareAcquireMode
+		dst = kbin.AppendInt8(dst, v)
+	}
+	if version >= 2 {
+		v := v.IsRenewAck
+		dst = kbin.AppendBool(dst, v)
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					if version >= 0 && version <= 0 {
+						v := v.PartitionMaxBytes
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.AcknowledgementBatches
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.FirstOffset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.LastOffset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.AcknowledgeTypes
+								if isFlexible {
+									dst = kbin.AppendCompactArrayLen(dst, len(v))
+								} else {
+									dst = kbin.AppendArrayLen(dst, len(v))
+								}
+								for i := range v {
+									v := v[i]
+									dst = kbin.AppendInt8(dst, v)
+								}
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.ForgottenTopicsData
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := v[i]
+					dst = kbin.AppendInt32(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ShareFetchRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ShareFetchRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ShareFetchRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.GroupID = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.MemberID = v
+	}
+	{
+		v := b.Int32()
+		s.ShareSessionEpoch = v
+	}
+	{
+		v := b.Int32()
+		s.MaxWaitMillis = v
+	}
+	{
+		v := b.Int32()
+		s.MinBytes = v
+	}
+	{
+		v := b.Int32()
+		s.MaxBytes = v
+	}
+	if version >= 1 {
+		v := b.Int32()
+		s.MaxRecords = v
+	}
+	if version >= 1 {
+		v := b.Int32()
+		s.BatchSize = v
+	}
+	if version >= 2 {
+		v := b.Int8()
+		s.ShareAcquireMode = v
+	}
+	if version >= 2 {
+		v := b.Bool()
+		s.IsRenewAck = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ShareFetchRequestTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]ShareFetchRequestTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					if version >= 0 && version <= 0 {
+						v := b.Int32()
+						s.PartitionMaxBytes = v
+					}
+					{
+						v := s.AcknowledgementBatches
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]ShareFetchRequestTopicPartitionAcknowledgementBatch, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								v := b.Int64()
+								s.FirstOffset = v
+							}
+							{
+								v := b.Int64()
+								s.LastOffset = v
+							}
+							{
+								v := s.AcknowledgeTypes
+								a := v
+								var l int32
+								if isFlexible {
+									l = b.CompactArrayLen()
+								} else {
+									l = b.ArrayLen()
+								}
+								if !b.Ok() {
+									return b.Complete()
+								}
+								a = a[:0]
+								if l > 0 {
+									a = append(a, make([]int8, l)...)
+								}
+								for i := int32(0); i < l; i++ {
+									v := b.Int8()
+									a[i] = v
+								}
+								v = a
+								s.AcknowledgeTypes = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.AcknowledgementBatches = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	{
+		v := s.ForgottenTopicsData
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ShareFetchRequestForgottenTopicsData, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]int32, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := b.Int32()
+					a[i] = v
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.ForgottenTopicsData = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrShareFetchRequest returns a pointer to a default ShareFetchRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrShareFetchRequest() *ShareFetchRequest {
+	var v ShareFetchRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareFetchRequest.
+func (v *ShareFetchRequest) Default() {
+	v.MaxBytes = 2147483647
+}
+
+// NewShareFetchRequest returns a default ShareFetchRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareFetchRequest() ShareFetchRequest {
+	var v ShareFetchRequest
+	v.Default()
+	return v
+}
+
+type ShareFetchResponseTopicPartitionCurrentLeader struct {
+	// LeaderID is the ID of the current leader or -1 if the leader is
+	// unknown.
+	LeaderID int32
+
+	// LeaderEpoch is the latest known leader epoch.
+	LeaderEpoch int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareFetchResponseTopicPartitionCurrentLeader.
+func (v *ShareFetchResponseTopicPartitionCurrentLeader) Default() {
+}
+
+// NewShareFetchResponseTopicPartitionCurrentLeader returns a default ShareFetchResponseTopicPartitionCurrentLeader
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareFetchResponseTopicPartitionCurrentLeader() ShareFetchResponseTopicPartitionCurrentLeader {
+	var v ShareFetchResponseTopicPartitionCurrentLeader
+	v.Default()
+	return v
+}
+
+type ShareFetchResponseTopicPartitionAcquiredRecord struct {
+	// FirstOffset is the earliest offset in this batch of acquired
+	// records.
+	FirstOffset int64
+
+	// LastOffset is the last offset of this batch of acquired records.
+	LastOffset int64
+
+	// DeliveryCount is the delivery count of this batch of acquired
+	// records.
+	DeliveryCount int16
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareFetchResponseTopicPartitionAcquiredRecord.
+func (v *ShareFetchResponseTopicPartitionAcquiredRecord) Default() {
+}
+
+// NewShareFetchResponseTopicPartitionAcquiredRecord returns a default ShareFetchResponseTopicPartitionAcquiredRecord
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareFetchResponseTopicPartitionAcquiredRecord() ShareFetchResponseTopicPartitionAcquiredRecord {
+	var v ShareFetchResponseTopicPartitionAcquiredRecord
+	v.Default()
+	return v
+}
+
+type ShareFetchResponseTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// ErrorCode is the fetch error code, or 0 if there was no fetch error.
+	ErrorCode int16
+
+	// ErrorMessage is the fetch error message, or null if there was no
+	// fetch error.
+	ErrorMessage *string
+
+	// AcknowledgeErrorCode is the acknowledge error code, or 0 if there was
+	// no acknowledge error.
+	AcknowledgeErrorCode int16
+
+	// AcknowledgeErrorMessage is the acknowledge error message, or null if
+	// there was no acknowledge error.
+	AcknowledgeErrorMessage *string
+
+	// CurrentLeader is the current leader of the partition.
+	CurrentLeader ShareFetchResponseTopicPartitionCurrentLeader
+
+	// Records is the record data.
+	Records []byte
+
+	// AcquiredRecords are the acquired records.
+	AcquiredRecords []ShareFetchResponseTopicPartitionAcquiredRecord
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareFetchResponseTopicPartition.
+func (v *ShareFetchResponseTopicPartition) Default() {
+	{
+		v := &v.CurrentLeader
+		_ = v
+	}
+}
+
+// NewShareFetchResponseTopicPartition returns a default ShareFetchResponseTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareFetchResponseTopicPartition() ShareFetchResponseTopicPartition {
+	var v ShareFetchResponseTopicPartition
+	v.Default()
+	return v
+}
+
+type ShareFetchResponseTopic struct {
+	// TopicID is the unique topic ID.
+	TopicID [16]byte
+
+	// Partitions are the topic partitions.
+	Partitions []ShareFetchResponseTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareFetchResponseTopic.
+func (v *ShareFetchResponseTopic) Default() {
+}
+
+// NewShareFetchResponseTopic returns a default ShareFetchResponseTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareFetchResponseTopic() ShareFetchResponseTopic {
+	var v ShareFetchResponseTopic
+	v.Default()
+	return v
+}
+
+type ShareFetchResponseNodeEndpoint struct {
+	// NodeID is the ID of the associated node.
+	NodeID int32
+
+	// Host is the node's hostname.
+	Host string
+
+	// Port is the node's port.
+	Port int32
+
+	// Rack is the rack of the node, or null if it has not been assigned to a
+	// rack.
+	Rack *string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareFetchResponseNodeEndpoint.
+func (v *ShareFetchResponseNodeEndpoint) Default() {
+}
+
+// NewShareFetchResponseNodeEndpoint returns a default ShareFetchResponseNodeEndpoint
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareFetchResponseNodeEndpoint() ShareFetchResponseNodeEndpoint {
+	var v ShareFetchResponseNodeEndpoint
+	v.Default()
+	return v
+}
+
+// ShareFetchResponse is a response for a ShareFetchRequest.
+type ShareFetchResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// ThrottleMillis is how long of a throttle Kafka will apply to the client
+	// after responding to this request.
+	ThrottleMillis int32
+
+	// ErrorCode is the top-level response error code.
+	//
+	// Supported errors for ErrorCode and AcknowledgeErrorCode:
+	// - GROUP_AUTHORIZATION_FAILED (version 0+)
+	// - TOPIC_AUTHORIZATION_FAILED (version 0+)
+	// - SHARE_SESSION_NOT_FOUND (version 0+)
+	// - INVALID_SHARE_SESSION_EPOCH (version 0+)
+	// - UNKNOWN_TOPIC_OR_PARTITION (version 0+)
+	// - NOT_LEADER_OR_FOLLOWER (version 0+)
+	// - UNKNOWN_TOPIC_ID (version 0+)
+	// - INVALID_RECORD_STATE (version 0+) - only for AcknowledgeErrorCode
+	// - KAFKA_STORAGE_ERROR (version 0+)
+	// - CORRUPT_MESSAGE (version 0+)
+	// - INVALID_REQUEST (version 0+)
+	// - UNKNOWN_SERVER_ERROR (version 0+)
+	ErrorCode int16
+
+	// ErrorMessage is the top-level error message, or null if there was no
+	// error.
+	ErrorMessage *string
+
+	// AcquisitionLockTimeoutMillis is the time in milliseconds for which the
+	// acquired records are locked.
+	AcquisitionLockTimeoutMillis int32 // v1+
+
+	// Topics are the response topics.
+	Topics []ShareFetchResponseTopic
+
+	// NodeEndpoints are endpoints for all current leaders enumerated in
+	// PartitionData with error NOT_LEADER_OR_FOLLOWER.
+	NodeEndpoints []ShareFetchResponseNodeEndpoint
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ShareFetchResponse) Key() int16                         { return 78 }
+func (*ShareFetchResponse) MaxVersion() int16                  { return 2 }
+func (v *ShareFetchResponse) SetVersion(version int16)         { v.Version = version }
+func (v *ShareFetchResponse) GetVersion() int16                { return v.Version }
+func (v *ShareFetchResponse) IsFlexible() bool                 { return v.Version >= 0 }
+func (v *ShareFetchResponse) Throttle() (int32, bool)          { return v.ThrottleMillis, v.Version >= 0 }
+func (v *ShareFetchResponse) SetThrottle(throttleMillis int32) { v.ThrottleMillis = throttleMillis }
+func (v *ShareFetchResponse) RequestKind() Request             { return &ShareFetchRequest{Version: v.Version} }
+
+func (v *ShareFetchResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.ThrottleMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.ErrorCode
+		dst = kbin.AppendInt16(dst, v)
+	}
+	{
+		v := v.ErrorMessage
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	if version >= 1 {
+		v := v.AcquisitionLockTimeoutMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.ErrorCode
+						dst = kbin.AppendInt16(dst, v)
+					}
+					{
+						v := v.ErrorMessage
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					{
+						v := v.AcknowledgeErrorCode
+						dst = kbin.AppendInt16(dst, v)
+					}
+					{
+						v := v.AcknowledgeErrorMessage
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					{
+						v := &v.CurrentLeader
+						{
+							v := v.LeaderID
+							dst = kbin.AppendInt32(dst, v)
+						}
+						{
+							v := v.LeaderEpoch
+							dst = kbin.AppendInt32(dst, v)
+						}
+						if isFlexible {
+							dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+							dst = v.UnknownTags.AppendEach(dst)
+						}
+					}
+					{
+						v := v.Records
+						if isFlexible {
+							dst = kbin.AppendCompactNullableBytes(dst, v)
+						} else {
+							dst = kbin.AppendNullableBytes(dst, v)
+						}
+					}
+					{
+						v := v.AcquiredRecords
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.FirstOffset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.LastOffset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.DeliveryCount
+								dst = kbin.AppendInt16(dst, v)
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.NodeEndpoints
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.NodeID
+				dst = kbin.AppendInt32(dst, v)
+			}
+			{
+				v := v.Host
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Port
+				dst = kbin.AppendInt32(dst, v)
+			}
+			{
+				v := v.Rack
+				if isFlexible {
+					dst = kbin.AppendCompactNullableString(dst, v)
+				} else {
+					dst = kbin.AppendNullableString(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ShareFetchResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ShareFetchResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ShareFetchResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := b.Int32()
+		s.ThrottleMillis = v
+	}
+	{
+		v := b.Int16()
+		s.ErrorCode = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.ErrorMessage = v
+	}
+	if version >= 1 {
+		v := b.Int32()
+		s.AcquisitionLockTimeoutMillis = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ShareFetchResponseTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]ShareFetchResponseTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int16()
+						s.ErrorCode = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.ErrorMessage = v
+					}
+					{
+						v := b.Int16()
+						s.AcknowledgeErrorCode = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.AcknowledgeErrorMessage = v
+					}
+					{
+						v := &s.CurrentLeader
+						v.Default()
+						s := v
+						{
+							v := b.Int32()
+							s.LeaderID = v
+						}
+						{
+							v := b.Int32()
+							s.LeaderEpoch = v
+						}
+						if isFlexible {
+							s.UnknownTags = internalReadTags(&b)
+						}
+					}
+					{
+						var v []byte
+						if isFlexible {
+							v = b.CompactNullableBytes()
+						} else {
+							v = b.NullableBytes()
+						}
+						s.Records = v
+					}
+					{
+						v := s.AcquiredRecords
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]ShareFetchResponseTopicPartitionAcquiredRecord, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								v := b.Int64()
+								s.FirstOffset = v
+							}
+							{
+								v := b.Int64()
+								s.LastOffset = v
+							}
+							{
+								v := b.Int16()
+								s.DeliveryCount = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.AcquiredRecords = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	{
+		v := s.NodeEndpoints
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ShareFetchResponseNodeEndpoint, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Int32()
+				s.NodeID = v
+			}
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.Host = v
+			}
+			{
+				v := b.Int32()
+				s.Port = v
+			}
+			{
+				var v *string
+				if isFlexible {
+					if unsafe {
+						v = b.UnsafeCompactNullableString()
+					} else {
+						v = b.CompactNullableString()
+					}
+				} else {
+					if unsafe {
+						v = b.UnsafeNullableString()
+					} else {
+						v = b.NullableString()
+					}
+				}
+				s.Rack = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.NodeEndpoints = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrShareFetchResponse returns a pointer to a default ShareFetchResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrShareFetchResponse() *ShareFetchResponse {
+	var v ShareFetchResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareFetchResponse.
+func (v *ShareFetchResponse) Default() {
+}
+
+// NewShareFetchResponse returns a default ShareFetchResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareFetchResponse() ShareFetchResponse {
+	var v ShareFetchResponse
+	v.Default()
+	return v
+}
+
+type ShareAcknowledgeRequestTopicPartitionAcknowledgementBatch struct {
+	// FirstOffset is the first offset of batch of records to acknowledge.
+	FirstOffset int64
+
+	// LastOffset is the last offset (inclusive) of batch of records to
+	// acknowledge.
+	LastOffset int64
+
+	// AcknowledgeTypes is an array of acknowledge types -
+	// 0:Gap,1:Accept,2:Release,3:Reject.
+	AcknowledgeTypes []int8
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareAcknowledgeRequestTopicPartitionAcknowledgementBatch.
+func (v *ShareAcknowledgeRequestTopicPartitionAcknowledgementBatch) Default() {
+}
+
+// NewShareAcknowledgeRequestTopicPartitionAcknowledgementBatch returns a default ShareAcknowledgeRequestTopicPartitionAcknowledgementBatch
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareAcknowledgeRequestTopicPartitionAcknowledgementBatch() ShareAcknowledgeRequestTopicPartitionAcknowledgementBatch {
+	var v ShareAcknowledgeRequestTopicPartitionAcknowledgementBatch
+	v.Default()
+	return v
+}
+
+type ShareAcknowledgeRequestTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// AcknowledgementBatches are record batches to acknowledge.
+	AcknowledgementBatches []ShareAcknowledgeRequestTopicPartitionAcknowledgementBatch
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareAcknowledgeRequestTopicPartition.
+func (v *ShareAcknowledgeRequestTopicPartition) Default() {
+}
+
+// NewShareAcknowledgeRequestTopicPartition returns a default ShareAcknowledgeRequestTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareAcknowledgeRequestTopicPartition() ShareAcknowledgeRequestTopicPartition {
+	var v ShareAcknowledgeRequestTopicPartition
+	v.Default()
+	return v
+}
+
+type ShareAcknowledgeRequestTopic struct {
+	// TopicID is the unique topic ID.
+	TopicID [16]byte
+
+	// Partitions are the partitions containing records to acknowledge.
+	Partitions []ShareAcknowledgeRequestTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareAcknowledgeRequestTopic.
+func (v *ShareAcknowledgeRequestTopic) Default() {
+}
+
+// NewShareAcknowledgeRequestTopic returns a default ShareAcknowledgeRequestTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareAcknowledgeRequestTopic() ShareAcknowledgeRequestTopic {
+	var v ShareAcknowledgeRequestTopic
+	v.Default()
+	return v
+}
+
+// ShareAcknowledgeRequest is a request to acknowledge records in share groups.
+//
+// Version 0 was used for early access of KIP-932 in Apache Kafka 4.0 but
+// removed in Apacke Kafka 4.1.
+//
+// Version 1 is the initial stable version (KIP-932).
+//
+// Version 2, introduced in Kafka 4.2, adds IsRenewAck (KIP-1222) and
+// AcquisitionLockTimeoutMillis in the response.
+type ShareAcknowledgeRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// GroupID is the group identifier.
+	GroupID *string
+
+	// MemberID is the member ID.
+	MemberID *string
+
+	// ShareSessionEpoch is the current share session epoch: 0 to open a share
+	// session; -1 to close it; otherwise increments for consecutive requests.
+	ShareSessionEpoch int32
+
+	// IsRenewAck indicates whether Renew type acknowledgements are present
+	// in AcknowledgementBatches.
+	IsRenewAck bool // v2+
+
+	// Topics are the topics containing records to acknowledge.
+	Topics []ShareAcknowledgeRequestTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ShareAcknowledgeRequest) Key() int16                 { return 79 }
+func (*ShareAcknowledgeRequest) MaxVersion() int16          { return 2 }
+func (v *ShareAcknowledgeRequest) SetVersion(version int16) { v.Version = version }
+func (v *ShareAcknowledgeRequest) GetVersion() int16        { return v.Version }
+func (v *ShareAcknowledgeRequest) IsFlexible() bool         { return v.Version >= 0 }
+func (v *ShareAcknowledgeRequest) ResponseKind() Response {
+	r := &ShareAcknowledgeResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *ShareAcknowledgeRequest) RequestWith(ctx context.Context, r Requestor) (*ShareAcknowledgeResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*ShareAcknowledgeResponse)
+	return resp, err
+}
+
+func (v *ShareAcknowledgeRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.GroupID
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.MemberID
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.ShareSessionEpoch
+		dst = kbin.AppendInt32(dst, v)
+	}
+	if version >= 2 {
+		v := v.IsRenewAck
+		dst = kbin.AppendBool(dst, v)
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.AcknowledgementBatches
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.FirstOffset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.LastOffset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.AcknowledgeTypes
+								if isFlexible {
+									dst = kbin.AppendCompactArrayLen(dst, len(v))
+								} else {
+									dst = kbin.AppendArrayLen(dst, len(v))
+								}
+								for i := range v {
+									v := v[i]
+									dst = kbin.AppendInt8(dst, v)
+								}
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ShareAcknowledgeRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ShareAcknowledgeRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ShareAcknowledgeRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.GroupID = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.MemberID = v
+	}
+	{
+		v := b.Int32()
+		s.ShareSessionEpoch = v
+	}
+	if version >= 2 {
+		v := b.Bool()
+		s.IsRenewAck = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ShareAcknowledgeRequestTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]ShareAcknowledgeRequestTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := s.AcknowledgementBatches
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]ShareAcknowledgeRequestTopicPartitionAcknowledgementBatch, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								v := b.Int64()
+								s.FirstOffset = v
+							}
+							{
+								v := b.Int64()
+								s.LastOffset = v
+							}
+							{
+								v := s.AcknowledgeTypes
+								a := v
+								var l int32
+								if isFlexible {
+									l = b.CompactArrayLen()
+								} else {
+									l = b.ArrayLen()
+								}
+								if !b.Ok() {
+									return b.Complete()
+								}
+								a = a[:0]
+								if l > 0 {
+									a = append(a, make([]int8, l)...)
+								}
+								for i := int32(0); i < l; i++ {
+									v := b.Int8()
+									a[i] = v
+								}
+								v = a
+								s.AcknowledgeTypes = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.AcknowledgementBatches = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrShareAcknowledgeRequest returns a pointer to a default ShareAcknowledgeRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrShareAcknowledgeRequest() *ShareAcknowledgeRequest {
+	var v ShareAcknowledgeRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareAcknowledgeRequest.
+func (v *ShareAcknowledgeRequest) Default() {
+}
+
+// NewShareAcknowledgeRequest returns a default ShareAcknowledgeRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareAcknowledgeRequest() ShareAcknowledgeRequest {
+	var v ShareAcknowledgeRequest
+	v.Default()
+	return v
+}
+
+type ShareAcknowledgeResponseTopicPartitionCurrentLeader struct {
+	// LeaderID is the ID of the current leader or -1 if the leader is
+	// unknown.
+	LeaderID int32
+
+	// LeaderEpoch is the latest known leader epoch.
+	LeaderEpoch int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareAcknowledgeResponseTopicPartitionCurrentLeader.
+func (v *ShareAcknowledgeResponseTopicPartitionCurrentLeader) Default() {
+}
+
+// NewShareAcknowledgeResponseTopicPartitionCurrentLeader returns a default ShareAcknowledgeResponseTopicPartitionCurrentLeader
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareAcknowledgeResponseTopicPartitionCurrentLeader() ShareAcknowledgeResponseTopicPartitionCurrentLeader {
+	var v ShareAcknowledgeResponseTopicPartitionCurrentLeader
+	v.Default()
+	return v
+}
+
+type ShareAcknowledgeResponseTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// ErrorCode is the error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the error message, or null if there was no error.
+	ErrorMessage *string
+
+	// CurrentLeader is the current leader of the partition.
+	CurrentLeader ShareAcknowledgeResponseTopicPartitionCurrentLeader
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareAcknowledgeResponseTopicPartition.
+func (v *ShareAcknowledgeResponseTopicPartition) Default() {
+	{
+		v := &v.CurrentLeader
+		_ = v
+	}
+}
+
+// NewShareAcknowledgeResponseTopicPartition returns a default ShareAcknowledgeResponseTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareAcknowledgeResponseTopicPartition() ShareAcknowledgeResponseTopicPartition {
+	var v ShareAcknowledgeResponseTopicPartition
+	v.Default()
+	return v
+}
+
+type ShareAcknowledgeResponseTopic struct {
+	// TopicID is the unique topic ID.
+	TopicID [16]byte
+
+	// Partitions are the topic partitions.
+	Partitions []ShareAcknowledgeResponseTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareAcknowledgeResponseTopic.
+func (v *ShareAcknowledgeResponseTopic) Default() {
+}
+
+// NewShareAcknowledgeResponseTopic returns a default ShareAcknowledgeResponseTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareAcknowledgeResponseTopic() ShareAcknowledgeResponseTopic {
+	var v ShareAcknowledgeResponseTopic
+	v.Default()
+	return v
+}
+
+type ShareAcknowledgeResponseNodeEndpoint struct {
+	// NodeID is the ID of the associated node.
+	NodeID int32
+
+	// Host is the node's hostname.
+	Host string
+
+	// Port is the node's port.
+	Port int32
+
+	// Rack is the rack of the node, or null if it has not been assigned to a
+	// rack.
+	Rack *string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareAcknowledgeResponseNodeEndpoint.
+func (v *ShareAcknowledgeResponseNodeEndpoint) Default() {
+}
+
+// NewShareAcknowledgeResponseNodeEndpoint returns a default ShareAcknowledgeResponseNodeEndpoint
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareAcknowledgeResponseNodeEndpoint() ShareAcknowledgeResponseNodeEndpoint {
+	var v ShareAcknowledgeResponseNodeEndpoint
+	v.Default()
+	return v
+}
+
+// ShareAcknowledgeResponse is a response for a ShareAcknowledgeRequest.
+type ShareAcknowledgeResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// ThrottleMillis is how long of a throttle Kafka will apply to the client
+	// after responding to this request.
+	ThrottleMillis int32
+
+	// ErrorCode is the top level response error code.
+	//
+	// Supported errors:
+	// - GROUP_AUTHORIZATION_FAILED (version 0+)
+	// - TOPIC_AUTHORIZATION_FAILED (version 0+)
+	// - UNKNOWN_TOPIC_OR_PARTITION (version 0+)
+	// - SHARE_SESSION_NOT_FOUND (version 0+)
+	// - INVALID_SHARE_SESSION_EPOCH (version 0+)
+	// - NOT_LEADER_OR_FOLLOWER (version 0+)
+	// - UNKNOWN_TOPIC_ID (version 0+)
+	// - INVALID_RECORD_STATE (version 0+)
+	// - KAFKA_STORAGE_ERROR (version 0+)
+	// - INVALID_REQUEST (version 0+)
+	// - UNKNOWN_SERVER_ERROR (version 0+)
+	ErrorCode int16
+
+	// ErrorMessage is the top-level error message, or null if there was no
+	// error.
+	ErrorMessage *string
+
+	// AcquisitionLockTimeoutMillis is the time in milliseconds for which the
+	// acquired records are locked.
+	AcquisitionLockTimeoutMillis int32 // v2+
+
+	// Topics are the response topics.
+	Topics []ShareAcknowledgeResponseTopic
+
+	// NodeEndpoints are endpoints for all current leaders enumerated in
+	// PartitionData with error NOT_LEADER_OR_FOLLOWER.
+	NodeEndpoints []ShareAcknowledgeResponseNodeEndpoint
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ShareAcknowledgeResponse) Key() int16                 { return 79 }
+func (*ShareAcknowledgeResponse) MaxVersion() int16          { return 2 }
+func (v *ShareAcknowledgeResponse) SetVersion(version int16) { v.Version = version }
+func (v *ShareAcknowledgeResponse) GetVersion() int16        { return v.Version }
+func (v *ShareAcknowledgeResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *ShareAcknowledgeResponse) Throttle() (int32, bool)  { return v.ThrottleMillis, v.Version >= 0 }
+func (v *ShareAcknowledgeResponse) SetThrottle(throttleMillis int32) {
+	v.ThrottleMillis = throttleMillis
+}
+
+func (v *ShareAcknowledgeResponse) RequestKind() Request {
+	return &ShareAcknowledgeRequest{Version: v.Version}
+}
+
+func (v *ShareAcknowledgeResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.ThrottleMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.ErrorCode
+		dst = kbin.AppendInt16(dst, v)
+	}
+	{
+		v := v.ErrorMessage
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	if version >= 2 {
+		v := v.AcquisitionLockTimeoutMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.ErrorCode
+						dst = kbin.AppendInt16(dst, v)
+					}
+					{
+						v := v.ErrorMessage
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					{
+						v := &v.CurrentLeader
+						{
+							v := v.LeaderID
+							dst = kbin.AppendInt32(dst, v)
+						}
+						{
+							v := v.LeaderEpoch
+							dst = kbin.AppendInt32(dst, v)
+						}
+						if isFlexible {
+							dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+							dst = v.UnknownTags.AppendEach(dst)
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.NodeEndpoints
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.NodeID
+				dst = kbin.AppendInt32(dst, v)
+			}
+			{
+				v := v.Host
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Port
+				dst = kbin.AppendInt32(dst, v)
+			}
+			{
+				v := v.Rack
+				if isFlexible {
+					dst = kbin.AppendCompactNullableString(dst, v)
+				} else {
+					dst = kbin.AppendNullableString(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ShareAcknowledgeResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ShareAcknowledgeResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ShareAcknowledgeResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := b.Int32()
+		s.ThrottleMillis = v
+	}
+	{
+		v := b.Int16()
+		s.ErrorCode = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.ErrorMessage = v
+	}
+	if version >= 2 {
+		v := b.Int32()
+		s.AcquisitionLockTimeoutMillis = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ShareAcknowledgeResponseTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]ShareAcknowledgeResponseTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int16()
+						s.ErrorCode = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.ErrorMessage = v
+					}
+					{
+						v := &s.CurrentLeader
+						v.Default()
+						s := v
+						{
+							v := b.Int32()
+							s.LeaderID = v
+						}
+						{
+							v := b.Int32()
+							s.LeaderEpoch = v
+						}
+						if isFlexible {
+							s.UnknownTags = internalReadTags(&b)
+						}
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	{
+		v := s.NodeEndpoints
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ShareAcknowledgeResponseNodeEndpoint, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Int32()
+				s.NodeID = v
+			}
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.Host = v
+			}
+			{
+				v := b.Int32()
+				s.Port = v
+			}
+			{
+				var v *string
+				if isFlexible {
+					if unsafe {
+						v = b.UnsafeCompactNullableString()
+					} else {
+						v = b.CompactNullableString()
+					}
+				} else {
+					if unsafe {
+						v = b.UnsafeNullableString()
+					} else {
+						v = b.NullableString()
+					}
+				}
+				s.Rack = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.NodeEndpoints = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrShareAcknowledgeResponse returns a pointer to a default ShareAcknowledgeResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrShareAcknowledgeResponse() *ShareAcknowledgeResponse {
+	var v ShareAcknowledgeResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ShareAcknowledgeResponse.
+func (v *ShareAcknowledgeResponse) Default() {
+}
+
+// NewShareAcknowledgeResponse returns a default ShareAcknowledgeResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewShareAcknowledgeResponse() ShareAcknowledgeResponse {
+	var v ShareAcknowledgeResponse
+	v.Default()
+	return v
+}
+
 type AddRaftVoterRequestListener struct {
 	// The name of the endpoint.
 	Name string
@@ -51428,7 +55777,7 @@ type AddRaftVoterRequestListener struct {
 	Host string
 
 	// The port.
-	Port int16
+	Port uint16
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
@@ -51449,6 +55798,7 @@ func NewAddRaftVoterRequestListener() AddRaftVoterRequestListener {
 
 // AddRaftVoter, added for KIP-853, allows you to manage your KRaft
 // controllers.
+// Version 1, introduced in Kafka 4.2, adds AckWhenCommitted (KIP-1186).
 type AddRaftVoterRequest struct {
 	// Version is the version of this message used with a Kafka broker.
 	Version int16
@@ -51473,12 +55823,18 @@ type AddRaftVoterRequest struct {
 	// The endpoints that can be used to communicate with the voter.
 	Listeners []AddRaftVoterRequestListener
 
+	// When true, return a response after the new voter set is committed.
+	// Otherwise, return after the leader writes the changes locally.
+	//
+	// This field has a default of true.
+	AckWhenCommitted bool // v1+
+
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
 }
 
 func (*AddRaftVoterRequest) Key() int16                       { return 80 }
-func (*AddRaftVoterRequest) MaxVersion() int16                { return 0 }
+func (*AddRaftVoterRequest) MaxVersion() int16                { return 1 }
 func (v *AddRaftVoterRequest) SetVersion(version int16)       { v.Version = version }
 func (v *AddRaftVoterRequest) GetVersion() int16              { return v.Version }
 func (v *AddRaftVoterRequest) IsFlexible() bool               { return v.Version >= 0 }
@@ -51551,13 +55907,17 @@ func (v *AddRaftVoterRequest) AppendTo(dst []byte) []byte {
 			}
 			{
 				v := v.Port
-				dst = kbin.AppendInt16(dst, v)
+				dst = kbin.AppendUint16(dst, v)
 			}
 			if isFlexible {
 				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
 				dst = v.UnknownTags.AppendEach(dst)
 			}
 		}
+	}
+	if version >= 1 {
+		v := v.AckWhenCommitted
+		dst = kbin.AppendBool(dst, v)
 	}
 	if isFlexible {
 		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
@@ -51666,7 +56026,7 @@ func (v *AddRaftVoterRequest) readFrom(src []byte, unsafe bool) error {
 				s.Host = v
 			}
 			{
-				v := b.Int16()
+				v := b.Uint16()
 				s.Port = v
 			}
 			if isFlexible {
@@ -51675,6 +56035,10 @@ func (v *AddRaftVoterRequest) readFrom(src []byte, unsafe bool) error {
 		}
 		v = a
 		s.Listeners = v
+	}
+	if version >= 1 {
+		v := b.Bool()
+		s.AckWhenCommitted = v
 	}
 	if isFlexible {
 		s.UnknownTags = internalReadTags(&b)
@@ -51694,6 +56058,7 @@ func NewPtrAddRaftVoterRequest() *AddRaftVoterRequest {
 // if new fields are added to AddRaftVoterRequest.
 func (v *AddRaftVoterRequest) Default() {
 	v.TimeoutMillis = 15000
+	v.AckWhenCommitted = true
 }
 
 // NewAddRaftVoterRequest returns a default AddRaftVoterRequest
@@ -51721,7 +56086,7 @@ type AddRaftVoterResponse struct {
 }
 
 func (*AddRaftVoterResponse) Key() int16                         { return 80 }
-func (*AddRaftVoterResponse) MaxVersion() int16                  { return 0 }
+func (*AddRaftVoterResponse) MaxVersion() int16                  { return 1 }
 func (v *AddRaftVoterResponse) SetVersion(version int16)         { v.Version = version }
 func (v *AddRaftVoterResponse) GetVersion() int16                { return v.Version }
 func (v *AddRaftVoterResponse) IsFlexible() bool                 { return v.Version >= 0 }
@@ -52094,7 +56459,7 @@ type UpdateRaftVoterRequestListener struct {
 	Host string
 
 	// The port.
-	Port int16
+	Port uint16
 
 	// UnknownTags are tags Kafka sent that we do not know the purpose of.
 	UnknownTags Tags
@@ -52237,7 +56602,7 @@ func (v *UpdateRaftVoterRequest) AppendTo(dst []byte) []byte {
 			}
 			{
 				v := v.Port
-				dst = kbin.AppendInt16(dst, v)
+				dst = kbin.AppendUint16(dst, v)
 			}
 			if isFlexible {
 				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
@@ -52367,7 +56732,7 @@ func (v *UpdateRaftVoterRequest) readFrom(src []byte, unsafe bool) error {
 				s.Host = v
 			}
 			{
-				v := b.Int16()
+				v := b.Uint16()
 				s.Port = v
 			}
 			if isFlexible {
@@ -52662,6 +57027,10374 @@ func NewUpdateRaftVoterResponse() UpdateRaftVoterResponse {
 	return v
 }
 
+type InitializeShareGroupStateRequestTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// StateEpoch is the state epoch for this share-partition.
+	StateEpoch int32
+
+	// StartOffset is the share-partition start offset, or -1 if the start
+	// offset is not being initialized.
+	StartOffset int64
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to InitializeShareGroupStateRequestTopicPartition.
+func (v *InitializeShareGroupStateRequestTopicPartition) Default() {
+}
+
+// NewInitializeShareGroupStateRequestTopicPartition returns a default InitializeShareGroupStateRequestTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewInitializeShareGroupStateRequestTopicPartition() InitializeShareGroupStateRequestTopicPartition {
+	var v InitializeShareGroupStateRequestTopicPartition
+	v.Default()
+	return v
+}
+
+type InitializeShareGroupStateRequestTopic struct {
+	// TopicID is the topic identifier.
+	TopicID [16]byte
+
+	// Partitions are the data for the partitions.
+	Partitions []InitializeShareGroupStateRequestTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to InitializeShareGroupStateRequestTopic.
+func (v *InitializeShareGroupStateRequestTopic) Default() {
+}
+
+// NewInitializeShareGroupStateRequestTopic returns a default InitializeShareGroupStateRequestTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewInitializeShareGroupStateRequestTopic() InitializeShareGroupStateRequestTopic {
+	var v InitializeShareGroupStateRequestTopic
+	v.Default()
+	return v
+}
+
+// InitializeShareGroupStateRequest is a request to initialize share group state.
+type InitializeShareGroupStateRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// GroupID is the group identifier.
+	GroupID string
+
+	// Topics are the data for the topics.
+	Topics []InitializeShareGroupStateRequestTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*InitializeShareGroupStateRequest) Key() int16                   { return 83 }
+func (*InitializeShareGroupStateRequest) MaxVersion() int16            { return 0 }
+func (v *InitializeShareGroupStateRequest) SetVersion(version int16)   { v.Version = version }
+func (v *InitializeShareGroupStateRequest) GetVersion() int16          { return v.Version }
+func (v *InitializeShareGroupStateRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *InitializeShareGroupStateRequest) IsShareCoordinatorRequest() {}
+func (v *InitializeShareGroupStateRequest) ResponseKind() Response {
+	r := &InitializeShareGroupStateResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *InitializeShareGroupStateRequest) RequestWith(ctx context.Context, r Requestor) (*InitializeShareGroupStateResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*InitializeShareGroupStateResponse)
+	return resp, err
+}
+
+func (v *InitializeShareGroupStateRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.GroupID
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.StateEpoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.StartOffset
+						dst = kbin.AppendInt64(dst, v)
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *InitializeShareGroupStateRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *InitializeShareGroupStateRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *InitializeShareGroupStateRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.GroupID = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]InitializeShareGroupStateRequestTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]InitializeShareGroupStateRequestTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int32()
+						s.StateEpoch = v
+					}
+					{
+						v := b.Int64()
+						s.StartOffset = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrInitializeShareGroupStateRequest returns a pointer to a default InitializeShareGroupStateRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrInitializeShareGroupStateRequest() *InitializeShareGroupStateRequest {
+	var v InitializeShareGroupStateRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to InitializeShareGroupStateRequest.
+func (v *InitializeShareGroupStateRequest) Default() {
+}
+
+// NewInitializeShareGroupStateRequest returns a default InitializeShareGroupStateRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewInitializeShareGroupStateRequest() InitializeShareGroupStateRequest {
+	var v InitializeShareGroupStateRequest
+	v.Default()
+	return v
+}
+
+type InitializeShareGroupStateResponseTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// ErrorCode is the error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the error message, or null if there was no error.
+	ErrorMessage *string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to InitializeShareGroupStateResponseTopicPartition.
+func (v *InitializeShareGroupStateResponseTopicPartition) Default() {
+}
+
+// NewInitializeShareGroupStateResponseTopicPartition returns a default InitializeShareGroupStateResponseTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewInitializeShareGroupStateResponseTopicPartition() InitializeShareGroupStateResponseTopicPartition {
+	var v InitializeShareGroupStateResponseTopicPartition
+	v.Default()
+	return v
+}
+
+type InitializeShareGroupStateResponseTopic struct {
+	// TopicID is the topic identifier.
+	TopicID [16]byte
+
+	// Partitions are the results for the partitions.
+	Partitions []InitializeShareGroupStateResponseTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to InitializeShareGroupStateResponseTopic.
+func (v *InitializeShareGroupStateResponseTopic) Default() {
+}
+
+// NewInitializeShareGroupStateResponseTopic returns a default InitializeShareGroupStateResponseTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewInitializeShareGroupStateResponseTopic() InitializeShareGroupStateResponseTopic {
+	var v InitializeShareGroupStateResponseTopic
+	v.Default()
+	return v
+}
+
+// InitializeShareGroupStateResponse is a response for an InitializeShareGroupStateRequest.
+//
+// Supported errors:
+// - NOT_COORDINATOR (version 0+)
+// - COORDINATOR_NOT_AVAILABLE (version 0+)
+// - COORDINATOR_LOAD_IN_PROGRESS (version 0+)
+// - FENCED_STATE_EPOCH (version 0+)
+// - INVALID_REQUEST (version 0+)
+type InitializeShareGroupStateResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// Topics are the initialization results.
+	Topics []InitializeShareGroupStateResponseTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*InitializeShareGroupStateResponse) Key() int16                 { return 83 }
+func (*InitializeShareGroupStateResponse) MaxVersion() int16          { return 0 }
+func (v *InitializeShareGroupStateResponse) SetVersion(version int16) { v.Version = version }
+func (v *InitializeShareGroupStateResponse) GetVersion() int16        { return v.Version }
+func (v *InitializeShareGroupStateResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *InitializeShareGroupStateResponse) RequestKind() Request {
+	return &InitializeShareGroupStateRequest{Version: v.Version}
+}
+
+func (v *InitializeShareGroupStateResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.ErrorCode
+						dst = kbin.AppendInt16(dst, v)
+					}
+					{
+						v := v.ErrorMessage
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *InitializeShareGroupStateResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *InitializeShareGroupStateResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *InitializeShareGroupStateResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]InitializeShareGroupStateResponseTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]InitializeShareGroupStateResponseTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int16()
+						s.ErrorCode = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.ErrorMessage = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrInitializeShareGroupStateResponse returns a pointer to a default InitializeShareGroupStateResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrInitializeShareGroupStateResponse() *InitializeShareGroupStateResponse {
+	var v InitializeShareGroupStateResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to InitializeShareGroupStateResponse.
+func (v *InitializeShareGroupStateResponse) Default() {
+}
+
+// NewInitializeShareGroupStateResponse returns a default InitializeShareGroupStateResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewInitializeShareGroupStateResponse() InitializeShareGroupStateResponse {
+	var v InitializeShareGroupStateResponse
+	v.Default()
+	return v
+}
+
+type ReadShareGroupStateRequestTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// LeaderEpoch is the leader epoch of the share-partition.
+	LeaderEpoch int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateRequestTopicPartition.
+func (v *ReadShareGroupStateRequestTopicPartition) Default() {
+}
+
+// NewReadShareGroupStateRequestTopicPartition returns a default ReadShareGroupStateRequestTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateRequestTopicPartition() ReadShareGroupStateRequestTopicPartition {
+	var v ReadShareGroupStateRequestTopicPartition
+	v.Default()
+	return v
+}
+
+type ReadShareGroupStateRequestTopic struct {
+	// TopicID is the topic identifier.
+	TopicID [16]byte
+
+	// Partitions are the data for the partitions.
+	Partitions []ReadShareGroupStateRequestTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateRequestTopic.
+func (v *ReadShareGroupStateRequestTopic) Default() {
+}
+
+// NewReadShareGroupStateRequestTopic returns a default ReadShareGroupStateRequestTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateRequestTopic() ReadShareGroupStateRequestTopic {
+	var v ReadShareGroupStateRequestTopic
+	v.Default()
+	return v
+}
+
+// ReadShareGroupStateRequest is a request to read share group state.
+type ReadShareGroupStateRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// GroupID is the group identifier.
+	GroupID string
+
+	// Topics are the data for the topics.
+	Topics []ReadShareGroupStateRequestTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ReadShareGroupStateRequest) Key() int16                   { return 84 }
+func (*ReadShareGroupStateRequest) MaxVersion() int16            { return 0 }
+func (v *ReadShareGroupStateRequest) SetVersion(version int16)   { v.Version = version }
+func (v *ReadShareGroupStateRequest) GetVersion() int16          { return v.Version }
+func (v *ReadShareGroupStateRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *ReadShareGroupStateRequest) IsShareCoordinatorRequest() {}
+func (v *ReadShareGroupStateRequest) ResponseKind() Response {
+	r := &ReadShareGroupStateResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *ReadShareGroupStateRequest) RequestWith(ctx context.Context, r Requestor) (*ReadShareGroupStateResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*ReadShareGroupStateResponse)
+	return resp, err
+}
+
+func (v *ReadShareGroupStateRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.GroupID
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.LeaderEpoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ReadShareGroupStateRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ReadShareGroupStateRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ReadShareGroupStateRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.GroupID = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ReadShareGroupStateRequestTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]ReadShareGroupStateRequestTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int32()
+						s.LeaderEpoch = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrReadShareGroupStateRequest returns a pointer to a default ReadShareGroupStateRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrReadShareGroupStateRequest() *ReadShareGroupStateRequest {
+	var v ReadShareGroupStateRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateRequest.
+func (v *ReadShareGroupStateRequest) Default() {
+}
+
+// NewReadShareGroupStateRequest returns a default ReadShareGroupStateRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateRequest() ReadShareGroupStateRequest {
+	var v ReadShareGroupStateRequest
+	v.Default()
+	return v
+}
+
+type ReadShareGroupStateResponseTopicPartitionStateBatch struct {
+	// FirstOffset is the first offset of this state batch.
+	FirstOffset int64
+
+	// LastOffset is the last offset of this state batch.
+	LastOffset int64
+
+	// DeliveryState is the delivery state -
+	// 0:Available,2:Acked,4:Archived.
+	DeliveryState int8
+
+	// DeliveryCount is the delivery count.
+	DeliveryCount int16
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateResponseTopicPartitionStateBatch.
+func (v *ReadShareGroupStateResponseTopicPartitionStateBatch) Default() {
+}
+
+// NewReadShareGroupStateResponseTopicPartitionStateBatch returns a default ReadShareGroupStateResponseTopicPartitionStateBatch
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateResponseTopicPartitionStateBatch() ReadShareGroupStateResponseTopicPartitionStateBatch {
+	var v ReadShareGroupStateResponseTopicPartitionStateBatch
+	v.Default()
+	return v
+}
+
+type ReadShareGroupStateResponseTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// ErrorCode is the error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the error message, or null if there was no error.
+	ErrorMessage *string
+
+	// StateEpoch is the state epoch of the share-partition.
+	StateEpoch int32
+
+	// StartOffset is the share-partition start offset, which can be -1 if
+	// it is not yet initialized.
+	StartOffset int64
+
+	// StateBatches are the state batches for this share-partition.
+	StateBatches []ReadShareGroupStateResponseTopicPartitionStateBatch
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateResponseTopicPartition.
+func (v *ReadShareGroupStateResponseTopicPartition) Default() {
+}
+
+// NewReadShareGroupStateResponseTopicPartition returns a default ReadShareGroupStateResponseTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateResponseTopicPartition() ReadShareGroupStateResponseTopicPartition {
+	var v ReadShareGroupStateResponseTopicPartition
+	v.Default()
+	return v
+}
+
+type ReadShareGroupStateResponseTopic struct {
+	// TopicID is the topic identifier.
+	TopicID [16]byte
+
+	// Partitions are the results for the partitions.
+	Partitions []ReadShareGroupStateResponseTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateResponseTopic.
+func (v *ReadShareGroupStateResponseTopic) Default() {
+}
+
+// NewReadShareGroupStateResponseTopic returns a default ReadShareGroupStateResponseTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateResponseTopic() ReadShareGroupStateResponseTopic {
+	var v ReadShareGroupStateResponseTopic
+	v.Default()
+	return v
+}
+
+// ReadShareGroupStateResponse is a response for a ReadShareGroupStateRequest.
+//
+// Supported errors:
+// - NOT_COORDINATOR (version 0+)
+// - COORDINATOR_NOT_AVAILABLE (version 0+)
+// - COORDINATOR_LOAD_IN_PROGRESS (version 0+)
+// - GROUP_ID_NOT_FOUND (version 0+)
+// - UNKNOWN_TOPIC_OR_PARTITION (version 0+)
+// - FENCED_LEADER_EPOCH (version 0+)
+// - INVALID_REQUEST (version 0+)
+type ReadShareGroupStateResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// Topics are the read results.
+	Topics []ReadShareGroupStateResponseTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ReadShareGroupStateResponse) Key() int16                 { return 84 }
+func (*ReadShareGroupStateResponse) MaxVersion() int16          { return 0 }
+func (v *ReadShareGroupStateResponse) SetVersion(version int16) { v.Version = version }
+func (v *ReadShareGroupStateResponse) GetVersion() int16        { return v.Version }
+func (v *ReadShareGroupStateResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *ReadShareGroupStateResponse) RequestKind() Request {
+	return &ReadShareGroupStateRequest{Version: v.Version}
+}
+
+func (v *ReadShareGroupStateResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.ErrorCode
+						dst = kbin.AppendInt16(dst, v)
+					}
+					{
+						v := v.ErrorMessage
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					{
+						v := v.StateEpoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.StartOffset
+						dst = kbin.AppendInt64(dst, v)
+					}
+					{
+						v := v.StateBatches
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.FirstOffset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.LastOffset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.DeliveryState
+								dst = kbin.AppendInt8(dst, v)
+							}
+							{
+								v := v.DeliveryCount
+								dst = kbin.AppendInt16(dst, v)
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ReadShareGroupStateResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ReadShareGroupStateResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ReadShareGroupStateResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ReadShareGroupStateResponseTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]ReadShareGroupStateResponseTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int16()
+						s.ErrorCode = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.ErrorMessage = v
+					}
+					{
+						v := b.Int32()
+						s.StateEpoch = v
+					}
+					{
+						v := b.Int64()
+						s.StartOffset = v
+					}
+					{
+						v := s.StateBatches
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]ReadShareGroupStateResponseTopicPartitionStateBatch, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								v := b.Int64()
+								s.FirstOffset = v
+							}
+							{
+								v := b.Int64()
+								s.LastOffset = v
+							}
+							{
+								v := b.Int8()
+								s.DeliveryState = v
+							}
+							{
+								v := b.Int16()
+								s.DeliveryCount = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.StateBatches = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrReadShareGroupStateResponse returns a pointer to a default ReadShareGroupStateResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrReadShareGroupStateResponse() *ReadShareGroupStateResponse {
+	var v ReadShareGroupStateResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateResponse.
+func (v *ReadShareGroupStateResponse) Default() {
+}
+
+// NewReadShareGroupStateResponse returns a default ReadShareGroupStateResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateResponse() ReadShareGroupStateResponse {
+	var v ReadShareGroupStateResponse
+	v.Default()
+	return v
+}
+
+type WriteShareGroupStateRequestTopicPartitionStateBatch struct {
+	// FirstOffset is the first offset of this state batch.
+	FirstOffset int64
+
+	// LastOffset is the last offset of this state batch.
+	LastOffset int64
+
+	// DeliveryState is the delivery state -
+	// 0:Available,2:Acked,4:Archived.
+	DeliveryState int8
+
+	// DeliveryCount is the delivery count.
+	DeliveryCount int16
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to WriteShareGroupStateRequestTopicPartitionStateBatch.
+func (v *WriteShareGroupStateRequestTopicPartitionStateBatch) Default() {
+}
+
+// NewWriteShareGroupStateRequestTopicPartitionStateBatch returns a default WriteShareGroupStateRequestTopicPartitionStateBatch
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewWriteShareGroupStateRequestTopicPartitionStateBatch() WriteShareGroupStateRequestTopicPartitionStateBatch {
+	var v WriteShareGroupStateRequestTopicPartitionStateBatch
+	v.Default()
+	return v
+}
+
+type WriteShareGroupStateRequestTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// StateEpoch is the state epoch of the share-partition.
+	StateEpoch int32
+
+	// LeaderEpoch is the leader epoch of the share-partition.
+	LeaderEpoch int32
+
+	// StartOffset is the share-partition start offset, or -1 if the start
+	// offset is not being written.
+	StartOffset int64
+
+	// DeliveryCompleteCount is the number of offsets >= share-partition start
+	// offset for which delivery has been completed. -1 if not set.
+	//
+	// This field has a default of -1.
+	DeliveryCompleteCount int32 // v1+
+
+	// StateBatches are the state batches for the share-partition.
+	StateBatches []WriteShareGroupStateRequestTopicPartitionStateBatch
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to WriteShareGroupStateRequestTopicPartition.
+func (v *WriteShareGroupStateRequestTopicPartition) Default() {
+	v.DeliveryCompleteCount = -1
+}
+
+// NewWriteShareGroupStateRequestTopicPartition returns a default WriteShareGroupStateRequestTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewWriteShareGroupStateRequestTopicPartition() WriteShareGroupStateRequestTopicPartition {
+	var v WriteShareGroupStateRequestTopicPartition
+	v.Default()
+	return v
+}
+
+type WriteShareGroupStateRequestTopic struct {
+	// TopicID is the topic identifier.
+	TopicID [16]byte
+
+	// Partitions are the data for the partitions.
+	Partitions []WriteShareGroupStateRequestTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to WriteShareGroupStateRequestTopic.
+func (v *WriteShareGroupStateRequestTopic) Default() {
+}
+
+// NewWriteShareGroupStateRequestTopic returns a default WriteShareGroupStateRequestTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewWriteShareGroupStateRequestTopic() WriteShareGroupStateRequestTopic {
+	var v WriteShareGroupStateRequestTopic
+	v.Default()
+	return v
+}
+
+// WriteShareGroupStateRequest is a request to write share group state.
+// Version 1, introduced in Kafka 4.2, adds DeliveryCompleteCount (KIP-1226).
+type WriteShareGroupStateRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// GroupID is the group identifier.
+	GroupID string
+
+	// Topics are the data for the topics.
+	Topics []WriteShareGroupStateRequestTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*WriteShareGroupStateRequest) Key() int16                   { return 85 }
+func (*WriteShareGroupStateRequest) MaxVersion() int16            { return 1 }
+func (v *WriteShareGroupStateRequest) SetVersion(version int16)   { v.Version = version }
+func (v *WriteShareGroupStateRequest) GetVersion() int16          { return v.Version }
+func (v *WriteShareGroupStateRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *WriteShareGroupStateRequest) IsShareCoordinatorRequest() {}
+func (v *WriteShareGroupStateRequest) ResponseKind() Response {
+	r := &WriteShareGroupStateResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *WriteShareGroupStateRequest) RequestWith(ctx context.Context, r Requestor) (*WriteShareGroupStateResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*WriteShareGroupStateResponse)
+	return resp, err
+}
+
+func (v *WriteShareGroupStateRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.GroupID
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.StateEpoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.LeaderEpoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.StartOffset
+						dst = kbin.AppendInt64(dst, v)
+					}
+					if version >= 1 {
+						v := v.DeliveryCompleteCount
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.StateBatches
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.FirstOffset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.LastOffset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.DeliveryState
+								dst = kbin.AppendInt8(dst, v)
+							}
+							{
+								v := v.DeliveryCount
+								dst = kbin.AppendInt16(dst, v)
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *WriteShareGroupStateRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *WriteShareGroupStateRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *WriteShareGroupStateRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.GroupID = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]WriteShareGroupStateRequestTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]WriteShareGroupStateRequestTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int32()
+						s.StateEpoch = v
+					}
+					{
+						v := b.Int32()
+						s.LeaderEpoch = v
+					}
+					{
+						v := b.Int64()
+						s.StartOffset = v
+					}
+					if version >= 1 {
+						v := b.Int32()
+						s.DeliveryCompleteCount = v
+					}
+					{
+						v := s.StateBatches
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]WriteShareGroupStateRequestTopicPartitionStateBatch, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								v := b.Int64()
+								s.FirstOffset = v
+							}
+							{
+								v := b.Int64()
+								s.LastOffset = v
+							}
+							{
+								v := b.Int8()
+								s.DeliveryState = v
+							}
+							{
+								v := b.Int16()
+								s.DeliveryCount = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.StateBatches = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrWriteShareGroupStateRequest returns a pointer to a default WriteShareGroupStateRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrWriteShareGroupStateRequest() *WriteShareGroupStateRequest {
+	var v WriteShareGroupStateRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to WriteShareGroupStateRequest.
+func (v *WriteShareGroupStateRequest) Default() {
+}
+
+// NewWriteShareGroupStateRequest returns a default WriteShareGroupStateRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewWriteShareGroupStateRequest() WriteShareGroupStateRequest {
+	var v WriteShareGroupStateRequest
+	v.Default()
+	return v
+}
+
+type WriteShareGroupStateResponseTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// ErrorCode is the error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the error message, or null if there was no error.
+	ErrorMessage *string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to WriteShareGroupStateResponseTopicPartition.
+func (v *WriteShareGroupStateResponseTopicPartition) Default() {
+}
+
+// NewWriteShareGroupStateResponseTopicPartition returns a default WriteShareGroupStateResponseTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewWriteShareGroupStateResponseTopicPartition() WriteShareGroupStateResponseTopicPartition {
+	var v WriteShareGroupStateResponseTopicPartition
+	v.Default()
+	return v
+}
+
+type WriteShareGroupStateResponseTopic struct {
+	// TopicID is the topic identifier.
+	TopicID [16]byte
+
+	// Partitions are the results for the partitions.
+	Partitions []WriteShareGroupStateResponseTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to WriteShareGroupStateResponseTopic.
+func (v *WriteShareGroupStateResponseTopic) Default() {
+}
+
+// NewWriteShareGroupStateResponseTopic returns a default WriteShareGroupStateResponseTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewWriteShareGroupStateResponseTopic() WriteShareGroupStateResponseTopic {
+	var v WriteShareGroupStateResponseTopic
+	v.Default()
+	return v
+}
+
+// WriteShareGroupStateResponse is a response for a WriteShareGroupStateRequest.
+//
+// Supported errors:
+// - NOT_COORDINATOR (version 0+)
+// - COORDINATOR_NOT_AVAILABLE (version 0+)
+// - COORDINATOR_LOAD_IN_PROGRESS (version 0+)
+// - GROUP_ID_NOT_FOUND (version 0+)
+// - UNKNOWN_TOPIC_OR_PARTITION (version 0+)
+// - FENCED_LEADER_EPOCH (version 0+)
+// - FENCED_STATE_EPOCH (version 0+)
+// - INVALID_REQUEST (version 0+)
+type WriteShareGroupStateResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// Topics are the write results.
+	Topics []WriteShareGroupStateResponseTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*WriteShareGroupStateResponse) Key() int16                 { return 85 }
+func (*WriteShareGroupStateResponse) MaxVersion() int16          { return 1 }
+func (v *WriteShareGroupStateResponse) SetVersion(version int16) { v.Version = version }
+func (v *WriteShareGroupStateResponse) GetVersion() int16        { return v.Version }
+func (v *WriteShareGroupStateResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *WriteShareGroupStateResponse) RequestKind() Request {
+	return &WriteShareGroupStateRequest{Version: v.Version}
+}
+
+func (v *WriteShareGroupStateResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.ErrorCode
+						dst = kbin.AppendInt16(dst, v)
+					}
+					{
+						v := v.ErrorMessage
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *WriteShareGroupStateResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *WriteShareGroupStateResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *WriteShareGroupStateResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]WriteShareGroupStateResponseTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]WriteShareGroupStateResponseTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int16()
+						s.ErrorCode = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.ErrorMessage = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrWriteShareGroupStateResponse returns a pointer to a default WriteShareGroupStateResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrWriteShareGroupStateResponse() *WriteShareGroupStateResponse {
+	var v WriteShareGroupStateResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to WriteShareGroupStateResponse.
+func (v *WriteShareGroupStateResponse) Default() {
+}
+
+// NewWriteShareGroupStateResponse returns a default WriteShareGroupStateResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewWriteShareGroupStateResponse() WriteShareGroupStateResponse {
+	var v WriteShareGroupStateResponse
+	v.Default()
+	return v
+}
+
+type DeleteShareGroupStateRequestTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DeleteShareGroupStateRequestTopicPartition.
+func (v *DeleteShareGroupStateRequestTopicPartition) Default() {
+}
+
+// NewDeleteShareGroupStateRequestTopicPartition returns a default DeleteShareGroupStateRequestTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDeleteShareGroupStateRequestTopicPartition() DeleteShareGroupStateRequestTopicPartition {
+	var v DeleteShareGroupStateRequestTopicPartition
+	v.Default()
+	return v
+}
+
+type DeleteShareGroupStateRequestTopic struct {
+	// TopicID is the topic identifier.
+	TopicID [16]byte
+
+	// Partitions are the data for the partitions.
+	Partitions []DeleteShareGroupStateRequestTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DeleteShareGroupStateRequestTopic.
+func (v *DeleteShareGroupStateRequestTopic) Default() {
+}
+
+// NewDeleteShareGroupStateRequestTopic returns a default DeleteShareGroupStateRequestTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDeleteShareGroupStateRequestTopic() DeleteShareGroupStateRequestTopic {
+	var v DeleteShareGroupStateRequestTopic
+	v.Default()
+	return v
+}
+
+// DeleteShareGroupStateRequest is a request to delete share group state.
+type DeleteShareGroupStateRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// GroupID is the group identifier.
+	GroupID string
+
+	// Topics are the data for the topics.
+	Topics []DeleteShareGroupStateRequestTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*DeleteShareGroupStateRequest) Key() int16                   { return 86 }
+func (*DeleteShareGroupStateRequest) MaxVersion() int16            { return 0 }
+func (v *DeleteShareGroupStateRequest) SetVersion(version int16)   { v.Version = version }
+func (v *DeleteShareGroupStateRequest) GetVersion() int16          { return v.Version }
+func (v *DeleteShareGroupStateRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *DeleteShareGroupStateRequest) IsShareCoordinatorRequest() {}
+func (v *DeleteShareGroupStateRequest) ResponseKind() Response {
+	r := &DeleteShareGroupStateResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *DeleteShareGroupStateRequest) RequestWith(ctx context.Context, r Requestor) (*DeleteShareGroupStateResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*DeleteShareGroupStateResponse)
+	return resp, err
+}
+
+func (v *DeleteShareGroupStateRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.GroupID
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *DeleteShareGroupStateRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *DeleteShareGroupStateRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *DeleteShareGroupStateRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.GroupID = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]DeleteShareGroupStateRequestTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]DeleteShareGroupStateRequestTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrDeleteShareGroupStateRequest returns a pointer to a default DeleteShareGroupStateRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrDeleteShareGroupStateRequest() *DeleteShareGroupStateRequest {
+	var v DeleteShareGroupStateRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DeleteShareGroupStateRequest.
+func (v *DeleteShareGroupStateRequest) Default() {
+}
+
+// NewDeleteShareGroupStateRequest returns a default DeleteShareGroupStateRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDeleteShareGroupStateRequest() DeleteShareGroupStateRequest {
+	var v DeleteShareGroupStateRequest
+	v.Default()
+	return v
+}
+
+type DeleteShareGroupStateResponseTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// ErrorCode is the error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the error message, or null if there was no error.
+	ErrorMessage *string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DeleteShareGroupStateResponseTopicPartition.
+func (v *DeleteShareGroupStateResponseTopicPartition) Default() {
+}
+
+// NewDeleteShareGroupStateResponseTopicPartition returns a default DeleteShareGroupStateResponseTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDeleteShareGroupStateResponseTopicPartition() DeleteShareGroupStateResponseTopicPartition {
+	var v DeleteShareGroupStateResponseTopicPartition
+	v.Default()
+	return v
+}
+
+type DeleteShareGroupStateResponseTopic struct {
+	// TopicID is the topic identifier.
+	TopicID [16]byte
+
+	// Partitions are the results for the partitions.
+	Partitions []DeleteShareGroupStateResponseTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DeleteShareGroupStateResponseTopic.
+func (v *DeleteShareGroupStateResponseTopic) Default() {
+}
+
+// NewDeleteShareGroupStateResponseTopic returns a default DeleteShareGroupStateResponseTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDeleteShareGroupStateResponseTopic() DeleteShareGroupStateResponseTopic {
+	var v DeleteShareGroupStateResponseTopic
+	v.Default()
+	return v
+}
+
+// DeleteShareGroupStateResponse is a response for a DeleteShareGroupStateRequest.
+//
+// Supported errors:
+// - NOT_COORDINATOR (version 0+)
+// - COORDINATOR_NOT_AVAILABLE (version 0+)
+// - COORDINATOR_LOAD_IN_PROGRESS (version 0+)
+// - GROUP_ID_NOT_FOUND (version 0+)
+// - UNKNOWN_TOPIC_OR_PARTITION (version 0+)
+// - FENCED_STATE_EPOCH (version 0+)
+// - INVALID_REQUEST (version 0+)
+type DeleteShareGroupStateResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// Topics are the delete results.
+	Topics []DeleteShareGroupStateResponseTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*DeleteShareGroupStateResponse) Key() int16                 { return 86 }
+func (*DeleteShareGroupStateResponse) MaxVersion() int16          { return 0 }
+func (v *DeleteShareGroupStateResponse) SetVersion(version int16) { v.Version = version }
+func (v *DeleteShareGroupStateResponse) GetVersion() int16        { return v.Version }
+func (v *DeleteShareGroupStateResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *DeleteShareGroupStateResponse) RequestKind() Request {
+	return &DeleteShareGroupStateRequest{Version: v.Version}
+}
+
+func (v *DeleteShareGroupStateResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.ErrorCode
+						dst = kbin.AppendInt16(dst, v)
+					}
+					{
+						v := v.ErrorMessage
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *DeleteShareGroupStateResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *DeleteShareGroupStateResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *DeleteShareGroupStateResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]DeleteShareGroupStateResponseTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]DeleteShareGroupStateResponseTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int16()
+						s.ErrorCode = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.ErrorMessage = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrDeleteShareGroupStateResponse returns a pointer to a default DeleteShareGroupStateResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrDeleteShareGroupStateResponse() *DeleteShareGroupStateResponse {
+	var v DeleteShareGroupStateResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DeleteShareGroupStateResponse.
+func (v *DeleteShareGroupStateResponse) Default() {
+}
+
+// NewDeleteShareGroupStateResponse returns a default DeleteShareGroupStateResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDeleteShareGroupStateResponse() DeleteShareGroupStateResponse {
+	var v DeleteShareGroupStateResponse
+	v.Default()
+	return v
+}
+
+type ReadShareGroupStateSummaryRequestTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// LeaderEpoch is the leader epoch of the share-partition.
+	LeaderEpoch int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateSummaryRequestTopicPartition.
+func (v *ReadShareGroupStateSummaryRequestTopicPartition) Default() {
+}
+
+// NewReadShareGroupStateSummaryRequestTopicPartition returns a default ReadShareGroupStateSummaryRequestTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateSummaryRequestTopicPartition() ReadShareGroupStateSummaryRequestTopicPartition {
+	var v ReadShareGroupStateSummaryRequestTopicPartition
+	v.Default()
+	return v
+}
+
+type ReadShareGroupStateSummaryRequestTopic struct {
+	// TopicID is the topic identifier.
+	TopicID [16]byte
+
+	// Partitions are the data for the partitions.
+	Partitions []ReadShareGroupStateSummaryRequestTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateSummaryRequestTopic.
+func (v *ReadShareGroupStateSummaryRequestTopic) Default() {
+}
+
+// NewReadShareGroupStateSummaryRequestTopic returns a default ReadShareGroupStateSummaryRequestTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateSummaryRequestTopic() ReadShareGroupStateSummaryRequestTopic {
+	var v ReadShareGroupStateSummaryRequestTopic
+	v.Default()
+	return v
+}
+
+// ReadShareGroupStateSummaryRequest is a request to read share group state summary.
+// Version 1, introduced in Kafka 4.2, adds DeliveryCompleteCount to the
+// response (KIP-1226).
+type ReadShareGroupStateSummaryRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// GroupID is the group identifier.
+	GroupID string
+
+	// Topics are the data for the topics.
+	Topics []ReadShareGroupStateSummaryRequestTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ReadShareGroupStateSummaryRequest) Key() int16                   { return 87 }
+func (*ReadShareGroupStateSummaryRequest) MaxVersion() int16            { return 1 }
+func (v *ReadShareGroupStateSummaryRequest) SetVersion(version int16)   { v.Version = version }
+func (v *ReadShareGroupStateSummaryRequest) GetVersion() int16          { return v.Version }
+func (v *ReadShareGroupStateSummaryRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *ReadShareGroupStateSummaryRequest) IsShareCoordinatorRequest() {}
+func (v *ReadShareGroupStateSummaryRequest) ResponseKind() Response {
+	r := &ReadShareGroupStateSummaryResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *ReadShareGroupStateSummaryRequest) RequestWith(ctx context.Context, r Requestor) (*ReadShareGroupStateSummaryResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*ReadShareGroupStateSummaryResponse)
+	return resp, err
+}
+
+func (v *ReadShareGroupStateSummaryRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.GroupID
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.LeaderEpoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ReadShareGroupStateSummaryRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ReadShareGroupStateSummaryRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ReadShareGroupStateSummaryRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.GroupID = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ReadShareGroupStateSummaryRequestTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]ReadShareGroupStateSummaryRequestTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int32()
+						s.LeaderEpoch = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrReadShareGroupStateSummaryRequest returns a pointer to a default ReadShareGroupStateSummaryRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrReadShareGroupStateSummaryRequest() *ReadShareGroupStateSummaryRequest {
+	var v ReadShareGroupStateSummaryRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateSummaryRequest.
+func (v *ReadShareGroupStateSummaryRequest) Default() {
+}
+
+// NewReadShareGroupStateSummaryRequest returns a default ReadShareGroupStateSummaryRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateSummaryRequest() ReadShareGroupStateSummaryRequest {
+	var v ReadShareGroupStateSummaryRequest
+	v.Default()
+	return v
+}
+
+type ReadShareGroupStateSummaryResponseTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// ErrorCode is the error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the error message, or null if there was no error.
+	ErrorMessage *string
+
+	// StateEpoch is the state epoch of the share-partition.
+	StateEpoch int32
+
+	// LeaderEpoch is the leader epoch of the share-partition.
+	LeaderEpoch int32
+
+	// StartOffset is the share-partition start offset.
+	StartOffset int64
+
+	// DeliveryCompleteCount is the number of offsets >= share-partition start
+	// offset for which delivery has been completed. -1 if not set.
+	//
+	// This field has a default of -1.
+	DeliveryCompleteCount int32 // v1+
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateSummaryResponseTopicPartition.
+func (v *ReadShareGroupStateSummaryResponseTopicPartition) Default() {
+	v.DeliveryCompleteCount = -1
+}
+
+// NewReadShareGroupStateSummaryResponseTopicPartition returns a default ReadShareGroupStateSummaryResponseTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateSummaryResponseTopicPartition() ReadShareGroupStateSummaryResponseTopicPartition {
+	var v ReadShareGroupStateSummaryResponseTopicPartition
+	v.Default()
+	return v
+}
+
+type ReadShareGroupStateSummaryResponseTopic struct {
+	// TopicID is the topic identifier.
+	TopicID [16]byte
+
+	// Partitions are the results for the partitions.
+	Partitions []ReadShareGroupStateSummaryResponseTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateSummaryResponseTopic.
+func (v *ReadShareGroupStateSummaryResponseTopic) Default() {
+}
+
+// NewReadShareGroupStateSummaryResponseTopic returns a default ReadShareGroupStateSummaryResponseTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateSummaryResponseTopic() ReadShareGroupStateSummaryResponseTopic {
+	var v ReadShareGroupStateSummaryResponseTopic
+	v.Default()
+	return v
+}
+
+// ReadShareGroupStateSummaryResponse is a response for a ReadShareGroupStateSummaryRequest.
+//
+// Supported errors:
+// - NOT_COORDINATOR (version 0+)
+// - COORDINATOR_NOT_AVAILABLE (version 0+)
+// - COORDINATOR_LOAD_IN_PROGRESS (version 0+)
+// - GROUP_ID_NOT_FOUND (version 0+)
+// - UNKNOWN_TOPIC_OR_PARTITION (version 0+)
+// - FENCED_LEADER_EPOCH (version 0+)
+// - INVALID_REQUEST (version 0+)
+type ReadShareGroupStateSummaryResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// Topics are the read results.
+	Topics []ReadShareGroupStateSummaryResponseTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*ReadShareGroupStateSummaryResponse) Key() int16                 { return 87 }
+func (*ReadShareGroupStateSummaryResponse) MaxVersion() int16          { return 1 }
+func (v *ReadShareGroupStateSummaryResponse) SetVersion(version int16) { v.Version = version }
+func (v *ReadShareGroupStateSummaryResponse) GetVersion() int16        { return v.Version }
+func (v *ReadShareGroupStateSummaryResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *ReadShareGroupStateSummaryResponse) RequestKind() Request {
+	return &ReadShareGroupStateSummaryRequest{Version: v.Version}
+}
+
+func (v *ReadShareGroupStateSummaryResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.ErrorCode
+						dst = kbin.AppendInt16(dst, v)
+					}
+					{
+						v := v.ErrorMessage
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					{
+						v := v.StateEpoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.LeaderEpoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.StartOffset
+						dst = kbin.AppendInt64(dst, v)
+					}
+					if version >= 1 {
+						v := v.DeliveryCompleteCount
+						dst = kbin.AppendInt32(dst, v)
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *ReadShareGroupStateSummaryResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *ReadShareGroupStateSummaryResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *ReadShareGroupStateSummaryResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]ReadShareGroupStateSummaryResponseTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]ReadShareGroupStateSummaryResponseTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int16()
+						s.ErrorCode = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.ErrorMessage = v
+					}
+					{
+						v := b.Int32()
+						s.StateEpoch = v
+					}
+					{
+						v := b.Int32()
+						s.LeaderEpoch = v
+					}
+					{
+						v := b.Int64()
+						s.StartOffset = v
+					}
+					if version >= 1 {
+						v := b.Int32()
+						s.DeliveryCompleteCount = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrReadShareGroupStateSummaryResponse returns a pointer to a default ReadShareGroupStateSummaryResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrReadShareGroupStateSummaryResponse() *ReadShareGroupStateSummaryResponse {
+	var v ReadShareGroupStateSummaryResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to ReadShareGroupStateSummaryResponse.
+func (v *ReadShareGroupStateSummaryResponse) Default() {
+}
+
+// NewReadShareGroupStateSummaryResponse returns a default ReadShareGroupStateSummaryResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewReadShareGroupStateSummaryResponse() ReadShareGroupStateSummaryResponse {
+	var v ReadShareGroupStateSummaryResponse
+	v.Default()
+	return v
+}
+
+// TaskIDs contains a subtopology and its partitions.
+type TaskIDs struct {
+	// SubtopologyID is a string that uniquely identifies the subtopology.
+	SubtopologyID string
+
+	// Partitions are the partitions of the input topics processed by this
+	// member.
+	Partitions []int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to TaskIDs.
+func (v *TaskIDs) Default() {
+}
+
+// NewTaskIDs returns a default TaskIDs
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewTaskIDs() TaskIDs {
+	var v TaskIDs
+	v.Default()
+	return v
+}
+
+// TopicInfo describes a topic's configuration for streams.
+type TopicInfo struct {
+	// Topic is the name of the topic.
+	Topic string
+
+	// NumPartitions is the number of partitions in the topic. 0 if no specific
+	// number is enforced; always 0 for changelog topics.
+	NumPartitions int32
+
+	// ReplicationFactor is the replication factor of the topic. 0 if the
+	// default replication factor should be used.
+	ReplicationFactor int16
+
+	// Configs are topic-level configurations as key-value pairs.
+	Configs []TopicInfoConfig
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to TopicInfo.
+func (v *TopicInfo) Default() {
+}
+
+// NewTopicInfo returns a default TopicInfo
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewTopicInfo() TopicInfo {
+	var v TopicInfo
+	v.Default()
+	return v
+}
+
+// Endpoint describes a host:port endpoint.
+type Endpoint struct {
+	// Host is the hostname.
+	Host string
+
+	// Port is the port.
+	Port uint16
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to Endpoint.
+func (v *Endpoint) Default() {
+}
+
+// NewEndpoint returns a default Endpoint
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewEndpoint() Endpoint {
+	var v Endpoint
+	v.Default()
+	return v
+}
+
+// TaskOffset describes a changelog offset for a task.
+type TaskOffset struct {
+	// SubtopologyID is the subtopology identifier.
+	SubtopologyID string
+
+	// Partition is the partition.
+	Partition int32
+
+	// Offset is the offset.
+	Offset int64
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to TaskOffset.
+func (v *TaskOffset) Default() {
+}
+
+// NewTaskOffset returns a default TaskOffset
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewTaskOffset() TaskOffset {
+	var v TaskOffset
+	v.Default()
+	return v
+}
+
+type StreamsGroupHeartbeatRequestTopologySubtopologyCopartitionGroup struct {
+	// SourceTopics are indexes into the subtopology's SourceTopics array.
+	SourceTopics []int16
+
+	// SourceTopicRegex are indexes into the subtopology's SourceTopicRegex
+	// array.
+	SourceTopicRegex []int16
+
+	// RepartitionSourceTopics are indexes into the subtopology's
+	// RepartitionSourceTopics array.
+	RepartitionSourceTopics []int16
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupHeartbeatRequestTopologySubtopologyCopartitionGroup.
+func (v *StreamsGroupHeartbeatRequestTopologySubtopologyCopartitionGroup) Default() {
+}
+
+// NewStreamsGroupHeartbeatRequestTopologySubtopologyCopartitionGroup returns a default StreamsGroupHeartbeatRequestTopologySubtopologyCopartitionGroup
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupHeartbeatRequestTopologySubtopologyCopartitionGroup() StreamsGroupHeartbeatRequestTopologySubtopologyCopartitionGroup {
+	var v StreamsGroupHeartbeatRequestTopologySubtopologyCopartitionGroup
+	v.Default()
+	return v
+}
+
+type StreamsGroupHeartbeatRequestTopologySubtopology struct {
+	// SubtopologyID uniquely identifies the subtopology.
+	SubtopologyID string
+
+	// SourceTopics are the topics the topology reads from.
+	SourceTopics []string
+
+	// SourceTopicRegex are regular expressions identifying topics the
+	// subtopology reads from.
+	SourceTopicRegex []string
+
+	// StateChangelogTopics are changelog topics associated with this
+	// subtopology, created automatically.
+	StateChangelogTopics []TopicInfo
+
+	// RepartitionSinkTopics are the repartition topics the subtopology
+	// writes to.
+	RepartitionSinkTopics []string
+
+	// RepartitionSourceTopics are source topics that are internally created
+	// repartition topics, created automatically.
+	RepartitionSourceTopics []TopicInfo
+
+	// CopartitionGroups are subsets of source topics that must be
+	// copartitioned.
+	CopartitionGroups []StreamsGroupHeartbeatRequestTopologySubtopologyCopartitionGroup
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupHeartbeatRequestTopologySubtopology.
+func (v *StreamsGroupHeartbeatRequestTopologySubtopology) Default() {
+}
+
+// NewStreamsGroupHeartbeatRequestTopologySubtopology returns a default StreamsGroupHeartbeatRequestTopologySubtopology
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupHeartbeatRequestTopologySubtopology() StreamsGroupHeartbeatRequestTopologySubtopology {
+	var v StreamsGroupHeartbeatRequestTopologySubtopology
+	v.Default()
+	return v
+}
+
+type StreamsGroupHeartbeatRequestTopology struct {
+	// Epoch is the epoch of the topology.
+	Epoch int32
+
+	// Subtopologies are the sub-topologies of the streams application.
+	Subtopologies []StreamsGroupHeartbeatRequestTopologySubtopology
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupHeartbeatRequestTopology.
+func (v *StreamsGroupHeartbeatRequestTopology) Default() {
+}
+
+// NewStreamsGroupHeartbeatRequestTopology returns a default StreamsGroupHeartbeatRequestTopology
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupHeartbeatRequestTopology() StreamsGroupHeartbeatRequestTopology {
+	var v StreamsGroupHeartbeatRequestTopology
+	v.Default()
+	return v
+}
+
+type StreamsGroupHeartbeatRequestUserEndpoint struct {
+	// Host is the hostname.
+	Host string
+
+	// Port is the port.
+	Port uint16
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupHeartbeatRequestUserEndpoint.
+func (v *StreamsGroupHeartbeatRequestUserEndpoint) Default() {
+}
+
+// NewStreamsGroupHeartbeatRequestUserEndpoint returns a default StreamsGroupHeartbeatRequestUserEndpoint
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupHeartbeatRequestUserEndpoint() StreamsGroupHeartbeatRequestUserEndpoint {
+	var v StreamsGroupHeartbeatRequestUserEndpoint
+	v.Default()
+	return v
+}
+
+type StreamsGroupHeartbeatRequestClientTag struct {
+	// Key is the tag key.
+	Key string
+
+	// Value is the tag value.
+	Value string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupHeartbeatRequestClientTag.
+func (v *StreamsGroupHeartbeatRequestClientTag) Default() {
+}
+
+// NewStreamsGroupHeartbeatRequestClientTag returns a default StreamsGroupHeartbeatRequestClientTag
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupHeartbeatRequestClientTag() StreamsGroupHeartbeatRequestClientTag {
+	var v StreamsGroupHeartbeatRequestClientTag
+	v.Default()
+	return v
+}
+
+// StreamsGroupHeartbeatRequest is a part of KIP-1071; documentation is left
+// to the KIP itself for brevity.
+type StreamsGroupHeartbeatRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// Group is the group identifier.
+	Group string
+
+	// MemberID is the member ID generated by the streams consumer. Must be
+	// kept during the entire lifetime of the streams consumer process.
+	MemberID string
+
+	// MemberEpoch is the current member epoch; 0 to join the group; -1 to
+	// leave the group; -2 to indicate that the static member will rejoin.
+	MemberEpoch int32
+
+	// EndpointInformationEpoch is the current endpoint epoch of this client,
+	// represents the latest endpoint epoch this client received.
+	EndpointInformationEpoch int32
+
+	// InstanceID is the instance ID for static membership; null if not provided
+	// or if unchanged since the last heartbeat.
+	InstanceID *string
+
+	// RackID is the rack ID of the member; null if not provided or if unchanged
+	// since the last heartbeat.
+	RackID *string
+
+	// RebalanceTimeoutMillis is the maximum time in milliseconds that the
+	// coordinator will wait on the member to revoke its tasks. -1 if unchanged
+	// since last heartbeat.
+	//
+	// This field has a default of -1.
+	RebalanceTimeoutMillis int32
+
+	// Topology is the topology metadata of the streams application. Only sent
+	// when memberEpoch = 0. Null otherwise.
+	Topology *StreamsGroupHeartbeatRequestTopology
+
+	// ActiveTasks are the currently owned active tasks. Null if unchanged since
+	// last heartbeat.
+	ActiveTasks []TaskIDs
+
+	// StandbyTasks are the currently owned standby tasks. Null if unchanged
+	// since last heartbeat.
+	StandbyTasks []TaskIDs
+
+	// WarmupTasks are the currently owned warm-up tasks. Null if unchanged
+	// since last heartbeat.
+	WarmupTasks []TaskIDs
+
+	// ProcessID is the identity of the streams instance that may have multiple
+	// consumers. Null if unchanged since last heartbeat.
+	ProcessID *string
+
+	// UserEndpoint is the user-defined endpoint for Interactive Queries. Null
+	// if unchanged since last heartbeat or if not defined on the client.
+	UserEndpoint *StreamsGroupHeartbeatRequestUserEndpoint
+
+	// ClientTags are used for rack-aware assignment. Null if unchanged since
+	// last heartbeat.
+	ClientTags []StreamsGroupHeartbeatRequestClientTag
+
+	// TaskOffsets are cumulative changelog offsets for tasks. Null if unchanged
+	// since last heartbeat.
+	TaskOffsets []TaskOffset
+
+	// TaskEndOffsets are cumulative changelog end-offsets for tasks. Null if
+	// unchanged since last heartbeat.
+	TaskEndOffsets []TaskOffset
+
+	// ShutdownApplication indicates whether all Streams clients in the group
+	// should shut down.
+	ShutdownApplication bool
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*StreamsGroupHeartbeatRequest) Key() int16                   { return 88 }
+func (*StreamsGroupHeartbeatRequest) MaxVersion() int16            { return 0 }
+func (v *StreamsGroupHeartbeatRequest) SetVersion(version int16)   { v.Version = version }
+func (v *StreamsGroupHeartbeatRequest) GetVersion() int16          { return v.Version }
+func (v *StreamsGroupHeartbeatRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *StreamsGroupHeartbeatRequest) IsGroupCoordinatorRequest() {}
+func (v *StreamsGroupHeartbeatRequest) ResponseKind() Response {
+	r := &StreamsGroupHeartbeatResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *StreamsGroupHeartbeatRequest) RequestWith(ctx context.Context, r Requestor) (*StreamsGroupHeartbeatResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*StreamsGroupHeartbeatResponse)
+	return resp, err
+}
+
+func (v *StreamsGroupHeartbeatRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.Group
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.MemberID
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.MemberEpoch
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.EndpointInformationEpoch
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.InstanceID
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.RackID
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.RebalanceTimeoutMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.Topology
+		if v == nil {
+			dst = append(dst, 255)
+		} else {
+			dst = append(dst, 1)
+			{
+				v := v.Epoch
+				dst = kbin.AppendInt32(dst, v)
+			}
+			{
+				v := v.Subtopologies
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.SubtopologyID
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.SourceTopics
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := v[i]
+							if isFlexible {
+								dst = kbin.AppendCompactString(dst, v)
+							} else {
+								dst = kbin.AppendString(dst, v)
+							}
+						}
+					}
+					{
+						v := v.SourceTopicRegex
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := v[i]
+							if isFlexible {
+								dst = kbin.AppendCompactString(dst, v)
+							} else {
+								dst = kbin.AppendString(dst, v)
+							}
+						}
+					}
+					{
+						v := v.StateChangelogTopics
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.Topic
+								if isFlexible {
+									dst = kbin.AppendCompactString(dst, v)
+								} else {
+									dst = kbin.AppendString(dst, v)
+								}
+							}
+							{
+								v := v.NumPartitions
+								dst = kbin.AppendInt32(dst, v)
+							}
+							{
+								v := v.ReplicationFactor
+								dst = kbin.AppendInt16(dst, v)
+							}
+							{
+								v := v.Configs
+								if isFlexible {
+									dst = kbin.AppendCompactArrayLen(dst, len(v))
+								} else {
+									dst = kbin.AppendArrayLen(dst, len(v))
+								}
+								for i := range v {
+									v := &v[i]
+									{
+										v := v.Key
+										if isFlexible {
+											dst = kbin.AppendCompactString(dst, v)
+										} else {
+											dst = kbin.AppendString(dst, v)
+										}
+									}
+									{
+										v := v.Value
+										if isFlexible {
+											dst = kbin.AppendCompactString(dst, v)
+										} else {
+											dst = kbin.AppendString(dst, v)
+										}
+									}
+									if isFlexible {
+										dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+										dst = v.UnknownTags.AppendEach(dst)
+									}
+								}
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					{
+						v := v.RepartitionSinkTopics
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := v[i]
+							if isFlexible {
+								dst = kbin.AppendCompactString(dst, v)
+							} else {
+								dst = kbin.AppendString(dst, v)
+							}
+						}
+					}
+					{
+						v := v.RepartitionSourceTopics
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.Topic
+								if isFlexible {
+									dst = kbin.AppendCompactString(dst, v)
+								} else {
+									dst = kbin.AppendString(dst, v)
+								}
+							}
+							{
+								v := v.NumPartitions
+								dst = kbin.AppendInt32(dst, v)
+							}
+							{
+								v := v.ReplicationFactor
+								dst = kbin.AppendInt16(dst, v)
+							}
+							{
+								v := v.Configs
+								if isFlexible {
+									dst = kbin.AppendCompactArrayLen(dst, len(v))
+								} else {
+									dst = kbin.AppendArrayLen(dst, len(v))
+								}
+								for i := range v {
+									v := &v[i]
+									{
+										v := v.Key
+										if isFlexible {
+											dst = kbin.AppendCompactString(dst, v)
+										} else {
+											dst = kbin.AppendString(dst, v)
+										}
+									}
+									{
+										v := v.Value
+										if isFlexible {
+											dst = kbin.AppendCompactString(dst, v)
+										} else {
+											dst = kbin.AppendString(dst, v)
+										}
+									}
+									if isFlexible {
+										dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+										dst = v.UnknownTags.AppendEach(dst)
+									}
+								}
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					{
+						v := v.CopartitionGroups
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.SourceTopics
+								if isFlexible {
+									dst = kbin.AppendCompactArrayLen(dst, len(v))
+								} else {
+									dst = kbin.AppendArrayLen(dst, len(v))
+								}
+								for i := range v {
+									v := v[i]
+									dst = kbin.AppendInt16(dst, v)
+								}
+							}
+							{
+								v := v.SourceTopicRegex
+								if isFlexible {
+									dst = kbin.AppendCompactArrayLen(dst, len(v))
+								} else {
+									dst = kbin.AppendArrayLen(dst, len(v))
+								}
+								for i := range v {
+									v := v[i]
+									dst = kbin.AppendInt16(dst, v)
+								}
+							}
+							{
+								v := v.RepartitionSourceTopics
+								if isFlexible {
+									dst = kbin.AppendCompactArrayLen(dst, len(v))
+								} else {
+									dst = kbin.AppendArrayLen(dst, len(v))
+								}
+								for i := range v {
+									v := v[i]
+									dst = kbin.AppendInt16(dst, v)
+								}
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.ActiveTasks
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.SubtopologyID
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := v[i]
+					dst = kbin.AppendInt32(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.StandbyTasks
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.SubtopologyID
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := v[i]
+					dst = kbin.AppendInt32(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.WarmupTasks
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.SubtopologyID
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := v[i]
+					dst = kbin.AppendInt32(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.ProcessID
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.UserEndpoint
+		if v == nil {
+			dst = append(dst, 255)
+		} else {
+			dst = append(dst, 1)
+			{
+				v := v.Host
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Port
+				dst = kbin.AppendUint16(dst, v)
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.ClientTags
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.Key
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Value
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.TaskOffsets
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.SubtopologyID
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Partition
+				dst = kbin.AppendInt32(dst, v)
+			}
+			{
+				v := v.Offset
+				dst = kbin.AppendInt64(dst, v)
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.TaskEndOffsets
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.SubtopologyID
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Partition
+				dst = kbin.AppendInt32(dst, v)
+			}
+			{
+				v := v.Offset
+				dst = kbin.AppendInt64(dst, v)
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.ShutdownApplication
+		dst = kbin.AppendBool(dst, v)
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *StreamsGroupHeartbeatRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *StreamsGroupHeartbeatRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *StreamsGroupHeartbeatRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.Group = v
+	}
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.MemberID = v
+	}
+	{
+		v := b.Int32()
+		s.MemberEpoch = v
+	}
+	{
+		v := b.Int32()
+		s.EndpointInformationEpoch = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.InstanceID = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.RackID = v
+	}
+	{
+		v := b.Int32()
+		s.RebalanceTimeoutMillis = v
+	}
+	{
+		if present := b.Int8(); present != -1 && b.Ok() {
+			s.Topology = new(StreamsGroupHeartbeatRequestTopology)
+			v := s.Topology
+			v.Default()
+			s := v
+			{
+				v := b.Int32()
+				s.Epoch = v
+			}
+			{
+				v := s.Subtopologies
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]StreamsGroupHeartbeatRequestTopologySubtopology, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.SubtopologyID = v
+					}
+					{
+						v := s.SourceTopics
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]string, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							var v string
+							if unsafe {
+								if isFlexible {
+									v = b.UnsafeCompactString()
+								} else {
+									v = b.UnsafeString()
+								}
+							} else {
+								if isFlexible {
+									v = b.CompactString()
+								} else {
+									v = b.String()
+								}
+							}
+							a[i] = v
+						}
+						v = a
+						s.SourceTopics = v
+					}
+					{
+						v := s.SourceTopicRegex
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]string, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							var v string
+							if unsafe {
+								if isFlexible {
+									v = b.UnsafeCompactString()
+								} else {
+									v = b.UnsafeString()
+								}
+							} else {
+								if isFlexible {
+									v = b.CompactString()
+								} else {
+									v = b.String()
+								}
+							}
+							a[i] = v
+						}
+						v = a
+						s.SourceTopicRegex = v
+					}
+					{
+						v := s.StateChangelogTopics
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]TopicInfo, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								var v string
+								if unsafe {
+									if isFlexible {
+										v = b.UnsafeCompactString()
+									} else {
+										v = b.UnsafeString()
+									}
+								} else {
+									if isFlexible {
+										v = b.CompactString()
+									} else {
+										v = b.String()
+									}
+								}
+								s.Topic = v
+							}
+							{
+								v := b.Int32()
+								s.NumPartitions = v
+							}
+							{
+								v := b.Int16()
+								s.ReplicationFactor = v
+							}
+							{
+								v := s.Configs
+								a := v
+								var l int32
+								if isFlexible {
+									l = b.CompactArrayLen()
+								} else {
+									l = b.ArrayLen()
+								}
+								if !b.Ok() {
+									return b.Complete()
+								}
+								a = a[:0]
+								if l > 0 {
+									a = append(a, make([]TopicInfoConfig, l)...)
+								}
+								for i := int32(0); i < l; i++ {
+									v := &a[i]
+									v.Default()
+									s := v
+									{
+										var v string
+										if unsafe {
+											if isFlexible {
+												v = b.UnsafeCompactString()
+											} else {
+												v = b.UnsafeString()
+											}
+										} else {
+											if isFlexible {
+												v = b.CompactString()
+											} else {
+												v = b.String()
+											}
+										}
+										s.Key = v
+									}
+									{
+										var v string
+										if unsafe {
+											if isFlexible {
+												v = b.UnsafeCompactString()
+											} else {
+												v = b.UnsafeString()
+											}
+										} else {
+											if isFlexible {
+												v = b.CompactString()
+											} else {
+												v = b.String()
+											}
+										}
+										s.Value = v
+									}
+									if isFlexible {
+										s.UnknownTags = internalReadTags(&b)
+									}
+								}
+								v = a
+								s.Configs = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.StateChangelogTopics = v
+					}
+					{
+						v := s.RepartitionSinkTopics
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]string, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							var v string
+							if unsafe {
+								if isFlexible {
+									v = b.UnsafeCompactString()
+								} else {
+									v = b.UnsafeString()
+								}
+							} else {
+								if isFlexible {
+									v = b.CompactString()
+								} else {
+									v = b.String()
+								}
+							}
+							a[i] = v
+						}
+						v = a
+						s.RepartitionSinkTopics = v
+					}
+					{
+						v := s.RepartitionSourceTopics
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]TopicInfo, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								var v string
+								if unsafe {
+									if isFlexible {
+										v = b.UnsafeCompactString()
+									} else {
+										v = b.UnsafeString()
+									}
+								} else {
+									if isFlexible {
+										v = b.CompactString()
+									} else {
+										v = b.String()
+									}
+								}
+								s.Topic = v
+							}
+							{
+								v := b.Int32()
+								s.NumPartitions = v
+							}
+							{
+								v := b.Int16()
+								s.ReplicationFactor = v
+							}
+							{
+								v := s.Configs
+								a := v
+								var l int32
+								if isFlexible {
+									l = b.CompactArrayLen()
+								} else {
+									l = b.ArrayLen()
+								}
+								if !b.Ok() {
+									return b.Complete()
+								}
+								a = a[:0]
+								if l > 0 {
+									a = append(a, make([]TopicInfoConfig, l)...)
+								}
+								for i := int32(0); i < l; i++ {
+									v := &a[i]
+									v.Default()
+									s := v
+									{
+										var v string
+										if unsafe {
+											if isFlexible {
+												v = b.UnsafeCompactString()
+											} else {
+												v = b.UnsafeString()
+											}
+										} else {
+											if isFlexible {
+												v = b.CompactString()
+											} else {
+												v = b.String()
+											}
+										}
+										s.Key = v
+									}
+									{
+										var v string
+										if unsafe {
+											if isFlexible {
+												v = b.UnsafeCompactString()
+											} else {
+												v = b.UnsafeString()
+											}
+										} else {
+											if isFlexible {
+												v = b.CompactString()
+											} else {
+												v = b.String()
+											}
+										}
+										s.Value = v
+									}
+									if isFlexible {
+										s.UnknownTags = internalReadTags(&b)
+									}
+								}
+								v = a
+								s.Configs = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.RepartitionSourceTopics = v
+					}
+					{
+						v := s.CopartitionGroups
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]StreamsGroupHeartbeatRequestTopologySubtopologyCopartitionGroup, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								v := s.SourceTopics
+								a := v
+								var l int32
+								if isFlexible {
+									l = b.CompactArrayLen()
+								} else {
+									l = b.ArrayLen()
+								}
+								if !b.Ok() {
+									return b.Complete()
+								}
+								a = a[:0]
+								if l > 0 {
+									a = append(a, make([]int16, l)...)
+								}
+								for i := int32(0); i < l; i++ {
+									v := b.Int16()
+									a[i] = v
+								}
+								v = a
+								s.SourceTopics = v
+							}
+							{
+								v := s.SourceTopicRegex
+								a := v
+								var l int32
+								if isFlexible {
+									l = b.CompactArrayLen()
+								} else {
+									l = b.ArrayLen()
+								}
+								if !b.Ok() {
+									return b.Complete()
+								}
+								a = a[:0]
+								if l > 0 {
+									a = append(a, make([]int16, l)...)
+								}
+								for i := int32(0); i < l; i++ {
+									v := b.Int16()
+									a[i] = v
+								}
+								v = a
+								s.SourceTopicRegex = v
+							}
+							{
+								v := s.RepartitionSourceTopics
+								a := v
+								var l int32
+								if isFlexible {
+									l = b.CompactArrayLen()
+								} else {
+									l = b.ArrayLen()
+								}
+								if !b.Ok() {
+									return b.Complete()
+								}
+								a = a[:0]
+								if l > 0 {
+									a = append(a, make([]int16, l)...)
+								}
+								for i := int32(0); i < l; i++ {
+									v := b.Int16()
+									a[i] = v
+								}
+								v = a
+								s.RepartitionSourceTopics = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.CopartitionGroups = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Subtopologies = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+	}
+	{
+		v := s.ActiveTasks
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []TaskIDs{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]TaskIDs, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.SubtopologyID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]int32, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := b.Int32()
+					a[i] = v
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.ActiveTasks = v
+	}
+	{
+		v := s.StandbyTasks
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []TaskIDs{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]TaskIDs, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.SubtopologyID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]int32, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := b.Int32()
+					a[i] = v
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.StandbyTasks = v
+	}
+	{
+		v := s.WarmupTasks
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []TaskIDs{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]TaskIDs, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.SubtopologyID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]int32, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := b.Int32()
+					a[i] = v
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.WarmupTasks = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.ProcessID = v
+	}
+	{
+		if present := b.Int8(); present != -1 && b.Ok() {
+			s.UserEndpoint = new(StreamsGroupHeartbeatRequestUserEndpoint)
+			v := s.UserEndpoint
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.Host = v
+			}
+			{
+				v := b.Uint16()
+				s.Port = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+	}
+	{
+		v := s.ClientTags
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []StreamsGroupHeartbeatRequestClientTag{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]StreamsGroupHeartbeatRequestClientTag, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.Key = v
+			}
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.Value = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.ClientTags = v
+	}
+	{
+		v := s.TaskOffsets
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []TaskOffset{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]TaskOffset, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.SubtopologyID = v
+			}
+			{
+				v := b.Int32()
+				s.Partition = v
+			}
+			{
+				v := b.Int64()
+				s.Offset = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.TaskOffsets = v
+	}
+	{
+		v := s.TaskEndOffsets
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []TaskOffset{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]TaskOffset, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.SubtopologyID = v
+			}
+			{
+				v := b.Int32()
+				s.Partition = v
+			}
+			{
+				v := b.Int64()
+				s.Offset = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.TaskEndOffsets = v
+	}
+	{
+		v := b.Bool()
+		s.ShutdownApplication = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrStreamsGroupHeartbeatRequest returns a pointer to a default StreamsGroupHeartbeatRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrStreamsGroupHeartbeatRequest() *StreamsGroupHeartbeatRequest {
+	var v StreamsGroupHeartbeatRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupHeartbeatRequest.
+func (v *StreamsGroupHeartbeatRequest) Default() {
+	v.RebalanceTimeoutMillis = -1
+	{
+		v := &v.Topology
+		_ = v
+	}
+	{
+		v := &v.UserEndpoint
+		_ = v
+	}
+}
+
+// NewStreamsGroupHeartbeatRequest returns a default StreamsGroupHeartbeatRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupHeartbeatRequest() StreamsGroupHeartbeatRequest {
+	var v StreamsGroupHeartbeatRequest
+	v.Default()
+	return v
+}
+
+type StreamsGroupHeartbeatResponseStatus struct {
+	// StatusCode indicates a particular status; 0:STALE_TOPOLOGY,
+	// 1:MISSING_SOURCE_TOPICS, 2:INCORRECTLY_PARTITIONED_TOPICS,
+	// 3:MISSING_INTERNAL_TOPICS, 4:SHUTDOWN_APPLICATION,
+	// 5:ASSIGNMENT_DELAYED.
+	StatusCode int8
+
+	// StatusDetail is a string representation of the status.
+	StatusDetail string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupHeartbeatResponseStatus.
+func (v *StreamsGroupHeartbeatResponseStatus) Default() {
+}
+
+// NewStreamsGroupHeartbeatResponseStatus returns a default StreamsGroupHeartbeatResponseStatus
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupHeartbeatResponseStatus() StreamsGroupHeartbeatResponseStatus {
+	var v StreamsGroupHeartbeatResponseStatus
+	v.Default()
+	return v
+}
+
+type StreamsGroupHeartbeatResponsePartitionsByUserEndpointActivePartition struct {
+	// Topic is the topic name.
+	Topic string
+
+	// Partitions are the partitions.
+	Partitions []int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupHeartbeatResponsePartitionsByUserEndpointActivePartition.
+func (v *StreamsGroupHeartbeatResponsePartitionsByUserEndpointActivePartition) Default() {
+}
+
+// NewStreamsGroupHeartbeatResponsePartitionsByUserEndpointActivePartition returns a default StreamsGroupHeartbeatResponsePartitionsByUserEndpointActivePartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupHeartbeatResponsePartitionsByUserEndpointActivePartition() StreamsGroupHeartbeatResponsePartitionsByUserEndpointActivePartition {
+	var v StreamsGroupHeartbeatResponsePartitionsByUserEndpointActivePartition
+	v.Default()
+	return v
+}
+
+type StreamsGroupHeartbeatResponsePartitionsByUserEndpointStandbyPartition struct {
+	// Topic is the topic name.
+	Topic string
+
+	// Partitions are the partitions.
+	Partitions []int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupHeartbeatResponsePartitionsByUserEndpointStandbyPartition.
+func (v *StreamsGroupHeartbeatResponsePartitionsByUserEndpointStandbyPartition) Default() {
+}
+
+// NewStreamsGroupHeartbeatResponsePartitionsByUserEndpointStandbyPartition returns a default StreamsGroupHeartbeatResponsePartitionsByUserEndpointStandbyPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupHeartbeatResponsePartitionsByUserEndpointStandbyPartition() StreamsGroupHeartbeatResponsePartitionsByUserEndpointStandbyPartition {
+	var v StreamsGroupHeartbeatResponsePartitionsByUserEndpointStandbyPartition
+	v.Default()
+	return v
+}
+
+type StreamsGroupHeartbeatResponsePartitionsByUserEndpoint struct {
+	// UserEndpoint is the user-defined endpoint to connect to the node.
+	UserEndpoint Endpoint
+
+	// ActivePartitions are all topic partitions materialized by active tasks
+	// on the node.
+	ActivePartitions []StreamsGroupHeartbeatResponsePartitionsByUserEndpointActivePartition
+
+	// StandbyPartitions are all topic partitions materialized by standby
+	// tasks on the node.
+	StandbyPartitions []StreamsGroupHeartbeatResponsePartitionsByUserEndpointStandbyPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupHeartbeatResponsePartitionsByUserEndpoint.
+func (v *StreamsGroupHeartbeatResponsePartitionsByUserEndpoint) Default() {
+	{
+		v := &v.UserEndpoint
+		_ = v
+	}
+}
+
+// NewStreamsGroupHeartbeatResponsePartitionsByUserEndpoint returns a default StreamsGroupHeartbeatResponsePartitionsByUserEndpoint
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupHeartbeatResponsePartitionsByUserEndpoint() StreamsGroupHeartbeatResponsePartitionsByUserEndpoint {
+	var v StreamsGroupHeartbeatResponsePartitionsByUserEndpoint
+	v.Default()
+	return v
+}
+
+// StreamsGroupHeartbeatResponse is returned from a StreamsGroupHeartbeatRequest.
+type StreamsGroupHeartbeatResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// ThrottleMillis is how long of a throttle Kafka will apply to the client
+	// after responding to this request.
+	ThrottleMillis int32
+
+	// ErrorCode is the top-level error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the top-level error message, or null if there was no
+	// error.
+	ErrorMessage *string
+
+	// MemberID is the member ID.
+	MemberID string
+
+	// MemberEpoch is the member epoch.
+	MemberEpoch int32
+
+	// HeartbeatIntervalMillis is the heartbeat interval in milliseconds.
+	HeartbeatIntervalMillis int32
+
+	// AcceptableRecoveryLag is the maximal lag a warm-up task can have to be
+	// considered caught-up.
+	AcceptableRecoveryLag int32
+
+	// TaskOffsetIntervalMillis is the interval in which the task changelog
+	// offsets on a client are updated on the broker.
+	TaskOffsetIntervalMillis int32
+
+	// Status indicates zero or more statuses for the group membership.
+	Status []StreamsGroupHeartbeatResponseStatus
+
+	// ActiveTasks are assigned active tasks. Null if unchanged since last
+	// heartbeat.
+	ActiveTasks []TaskIDs
+
+	// StandbyTasks are assigned standby tasks. Null if unchanged since last
+	// heartbeat.
+	StandbyTasks []TaskIDs
+
+	// WarmupTasks are assigned warm-up tasks. Null if unchanged since last
+	// heartbeat.
+	WarmupTasks []TaskIDs
+
+	// EndpointInformationEpoch is the endpoint epoch set in the response.
+	EndpointInformationEpoch int32
+
+	// PartitionsByUserEndpoint is global assignment information used for
+	// Interactive Queries. Null if unchanged since last heartbeat.
+	PartitionsByUserEndpoint []StreamsGroupHeartbeatResponsePartitionsByUserEndpoint
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*StreamsGroupHeartbeatResponse) Key() int16                 { return 88 }
+func (*StreamsGroupHeartbeatResponse) MaxVersion() int16          { return 0 }
+func (v *StreamsGroupHeartbeatResponse) SetVersion(version int16) { v.Version = version }
+func (v *StreamsGroupHeartbeatResponse) GetVersion() int16        { return v.Version }
+func (v *StreamsGroupHeartbeatResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *StreamsGroupHeartbeatResponse) Throttle() (int32, bool) {
+	return v.ThrottleMillis, v.Version >= 0
+}
+
+func (v *StreamsGroupHeartbeatResponse) SetThrottle(throttleMillis int32) {
+	v.ThrottleMillis = throttleMillis
+}
+
+func (v *StreamsGroupHeartbeatResponse) RequestKind() Request {
+	return &StreamsGroupHeartbeatRequest{Version: v.Version}
+}
+
+func (v *StreamsGroupHeartbeatResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.ThrottleMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.ErrorCode
+		dst = kbin.AppendInt16(dst, v)
+	}
+	{
+		v := v.ErrorMessage
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.MemberID
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.MemberEpoch
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.HeartbeatIntervalMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.AcceptableRecoveryLag
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.TaskOffsetIntervalMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.Status
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.StatusCode
+				dst = kbin.AppendInt8(dst, v)
+			}
+			{
+				v := v.StatusDetail
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.ActiveTasks
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.SubtopologyID
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := v[i]
+					dst = kbin.AppendInt32(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.StandbyTasks
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.SubtopologyID
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := v[i]
+					dst = kbin.AppendInt32(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.WarmupTasks
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.SubtopologyID
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := v[i]
+					dst = kbin.AppendInt32(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	{
+		v := v.EndpointInformationEpoch
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.PartitionsByUserEndpoint
+		if isFlexible {
+			dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+		} else {
+			dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := &v.UserEndpoint
+				{
+					v := v.Host
+					if isFlexible {
+						dst = kbin.AppendCompactString(dst, v)
+					} else {
+						dst = kbin.AppendString(dst, v)
+					}
+				}
+				{
+					v := v.Port
+					dst = kbin.AppendUint16(dst, v)
+				}
+				if isFlexible {
+					dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+					dst = v.UnknownTags.AppendEach(dst)
+				}
+			}
+			{
+				v := v.ActivePartitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Topic
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.Partitions
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := v[i]
+							dst = kbin.AppendInt32(dst, v)
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			{
+				v := v.StandbyPartitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Topic
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.Partitions
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := v[i]
+							dst = kbin.AppendInt32(dst, v)
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *StreamsGroupHeartbeatResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *StreamsGroupHeartbeatResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *StreamsGroupHeartbeatResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := b.Int32()
+		s.ThrottleMillis = v
+	}
+	{
+		v := b.Int16()
+		s.ErrorCode = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.ErrorMessage = v
+	}
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.MemberID = v
+	}
+	{
+		v := b.Int32()
+		s.MemberEpoch = v
+	}
+	{
+		v := b.Int32()
+		s.HeartbeatIntervalMillis = v
+	}
+	{
+		v := b.Int32()
+		s.AcceptableRecoveryLag = v
+	}
+	{
+		v := b.Int32()
+		s.TaskOffsetIntervalMillis = v
+	}
+	{
+		v := s.Status
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []StreamsGroupHeartbeatResponseStatus{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]StreamsGroupHeartbeatResponseStatus, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Int8()
+				s.StatusCode = v
+			}
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.StatusDetail = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Status = v
+	}
+	{
+		v := s.ActiveTasks
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []TaskIDs{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]TaskIDs, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.SubtopologyID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]int32, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := b.Int32()
+					a[i] = v
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.ActiveTasks = v
+	}
+	{
+		v := s.StandbyTasks
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []TaskIDs{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]TaskIDs, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.SubtopologyID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]int32, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := b.Int32()
+					a[i] = v
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.StandbyTasks = v
+	}
+	{
+		v := s.WarmupTasks
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []TaskIDs{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]TaskIDs, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.SubtopologyID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]int32, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := b.Int32()
+					a[i] = v
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.WarmupTasks = v
+	}
+	{
+		v := b.Int32()
+		s.EndpointInformationEpoch = v
+	}
+	{
+		v := s.PartitionsByUserEndpoint
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if version < 0 || l == 0 {
+			a = []StreamsGroupHeartbeatResponsePartitionsByUserEndpoint{}
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]StreamsGroupHeartbeatResponsePartitionsByUserEndpoint, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := &s.UserEndpoint
+				v.Default()
+				s := v
+				{
+					var v string
+					if unsafe {
+						if isFlexible {
+							v = b.UnsafeCompactString()
+						} else {
+							v = b.UnsafeString()
+						}
+					} else {
+						if isFlexible {
+							v = b.CompactString()
+						} else {
+							v = b.String()
+						}
+					}
+					s.Host = v
+				}
+				{
+					v := b.Uint16()
+					s.Port = v
+				}
+				if isFlexible {
+					s.UnknownTags = internalReadTags(&b)
+				}
+			}
+			{
+				v := s.ActivePartitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]StreamsGroupHeartbeatResponsePartitionsByUserEndpointActivePartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.Topic = v
+					}
+					{
+						v := s.Partitions
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]int32, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := b.Int32()
+							a[i] = v
+						}
+						v = a
+						s.Partitions = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.ActivePartitions = v
+			}
+			{
+				v := s.StandbyPartitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]StreamsGroupHeartbeatResponsePartitionsByUserEndpointStandbyPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.Topic = v
+					}
+					{
+						v := s.Partitions
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]int32, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := b.Int32()
+							a[i] = v
+						}
+						v = a
+						s.Partitions = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.StandbyPartitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.PartitionsByUserEndpoint = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrStreamsGroupHeartbeatResponse returns a pointer to a default StreamsGroupHeartbeatResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrStreamsGroupHeartbeatResponse() *StreamsGroupHeartbeatResponse {
+	var v StreamsGroupHeartbeatResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupHeartbeatResponse.
+func (v *StreamsGroupHeartbeatResponse) Default() {
+}
+
+// NewStreamsGroupHeartbeatResponse returns a default StreamsGroupHeartbeatResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupHeartbeatResponse() StreamsGroupHeartbeatResponse {
+	var v StreamsGroupHeartbeatResponse
+	v.Default()
+	return v
+}
+
+// StreamsAssignment contains streams group task assignments.
+type StreamsAssignment struct {
+	// ActiveTasks are active tasks for this client.
+	ActiveTasks []TaskIDs
+
+	// StandbyTasks are standby tasks for this client.
+	StandbyTasks []TaskIDs
+
+	// WarmupTasks are warm-up tasks for this client.
+	WarmupTasks []TaskIDs
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsAssignment.
+func (v *StreamsAssignment) Default() {
+}
+
+// NewStreamsAssignment returns a default StreamsAssignment
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsAssignment() StreamsAssignment {
+	var v StreamsAssignment
+	v.Default()
+	return v
+}
+
+// StreamsGroupDescribeRequest describes one or more streams groups. This is
+// part of KIP-1071.
+type StreamsGroupDescribeRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// Groups are the IDs of the groups to describe.
+	Groups []string
+
+	// IncludeAuthorizedOperations controls whether to include authorized
+	// operations.
+	IncludeAuthorizedOperations bool
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*StreamsGroupDescribeRequest) Key() int16                 { return 89 }
+func (*StreamsGroupDescribeRequest) MaxVersion() int16          { return 0 }
+func (v *StreamsGroupDescribeRequest) SetVersion(version int16) { v.Version = version }
+func (v *StreamsGroupDescribeRequest) GetVersion() int16        { return v.Version }
+func (v *StreamsGroupDescribeRequest) IsFlexible() bool         { return v.Version >= 0 }
+func (v *StreamsGroupDescribeRequest) ResponseKind() Response {
+	r := &StreamsGroupDescribeResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *StreamsGroupDescribeRequest) RequestWith(ctx context.Context, r Requestor) (*StreamsGroupDescribeResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*StreamsGroupDescribeResponse)
+	return resp, err
+}
+
+func (v *StreamsGroupDescribeRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.Groups
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := v[i]
+			if isFlexible {
+				dst = kbin.AppendCompactString(dst, v)
+			} else {
+				dst = kbin.AppendString(dst, v)
+			}
+		}
+	}
+	{
+		v := v.IncludeAuthorizedOperations
+		dst = kbin.AppendBool(dst, v)
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *StreamsGroupDescribeRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *StreamsGroupDescribeRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *StreamsGroupDescribeRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := s.Groups
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]string, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			var v string
+			if unsafe {
+				if isFlexible {
+					v = b.UnsafeCompactString()
+				} else {
+					v = b.UnsafeString()
+				}
+			} else {
+				if isFlexible {
+					v = b.CompactString()
+				} else {
+					v = b.String()
+				}
+			}
+			a[i] = v
+		}
+		v = a
+		s.Groups = v
+	}
+	{
+		v := b.Bool()
+		s.IncludeAuthorizedOperations = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrStreamsGroupDescribeRequest returns a pointer to a default StreamsGroupDescribeRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrStreamsGroupDescribeRequest() *StreamsGroupDescribeRequest {
+	var v StreamsGroupDescribeRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupDescribeRequest.
+func (v *StreamsGroupDescribeRequest) Default() {
+}
+
+// NewStreamsGroupDescribeRequest returns a default StreamsGroupDescribeRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupDescribeRequest() StreamsGroupDescribeRequest {
+	var v StreamsGroupDescribeRequest
+	v.Default()
+	return v
+}
+
+type StreamsGroupDescribeResponseGroupTopologySubtopology struct {
+	// SubtopologyID uniquely identifies the subtopology.
+	SubtopologyID string
+
+	// SourceTopics are the topics the subtopology reads from.
+	SourceTopics []string
+
+	// RepartitionSinkTopics are the repartition topics the subtopology
+	// writes to.
+	RepartitionSinkTopics []string
+
+	// StateChangelogTopics are changelog topics associated with this
+	// subtopology.
+	StateChangelogTopics []TopicInfo
+
+	// RepartitionSourceTopics are source topics that are internally
+	// created repartition topics.
+	RepartitionSourceTopics []TopicInfo
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupDescribeResponseGroupTopologySubtopology.
+func (v *StreamsGroupDescribeResponseGroupTopologySubtopology) Default() {
+}
+
+// NewStreamsGroupDescribeResponseGroupTopologySubtopology returns a default StreamsGroupDescribeResponseGroupTopologySubtopology
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupDescribeResponseGroupTopologySubtopology() StreamsGroupDescribeResponseGroupTopologySubtopology {
+	var v StreamsGroupDescribeResponseGroupTopologySubtopology
+	v.Default()
+	return v
+}
+
+type StreamsGroupDescribeResponseGroupTopology struct {
+	// Epoch is the epoch of the currently initialized topology.
+	Epoch int32
+
+	// Subtopologies are the subtopologies of the streams application. Null
+	// if the group is uninitialized, source topics are missing, or
+	// incorrectly partitioned.
+	Subtopologies []StreamsGroupDescribeResponseGroupTopologySubtopology
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupDescribeResponseGroupTopology.
+func (v *StreamsGroupDescribeResponseGroupTopology) Default() {
+}
+
+// NewStreamsGroupDescribeResponseGroupTopology returns a default StreamsGroupDescribeResponseGroupTopology
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupDescribeResponseGroupTopology() StreamsGroupDescribeResponseGroupTopology {
+	var v StreamsGroupDescribeResponseGroupTopology
+	v.Default()
+	return v
+}
+
+type StreamsGroupDescribeResponseGroupMemberUserEndpoint struct {
+	// Host is the hostname.
+	Host string
+
+	// Port is the port.
+	Port uint16
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupDescribeResponseGroupMemberUserEndpoint.
+func (v *StreamsGroupDescribeResponseGroupMemberUserEndpoint) Default() {
+}
+
+// NewStreamsGroupDescribeResponseGroupMemberUserEndpoint returns a default StreamsGroupDescribeResponseGroupMemberUserEndpoint
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupDescribeResponseGroupMemberUserEndpoint() StreamsGroupDescribeResponseGroupMemberUserEndpoint {
+	var v StreamsGroupDescribeResponseGroupMemberUserEndpoint
+	v.Default()
+	return v
+}
+
+type StreamsGroupDescribeResponseGroupMemberClientTag struct {
+	// Key is the tag key.
+	Key string
+
+	// Value is the tag value.
+	Value string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupDescribeResponseGroupMemberClientTag.
+func (v *StreamsGroupDescribeResponseGroupMemberClientTag) Default() {
+}
+
+// NewStreamsGroupDescribeResponseGroupMemberClientTag returns a default StreamsGroupDescribeResponseGroupMemberClientTag
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupDescribeResponseGroupMemberClientTag() StreamsGroupDescribeResponseGroupMemberClientTag {
+	var v StreamsGroupDescribeResponseGroupMemberClientTag
+	v.Default()
+	return v
+}
+
+type StreamsGroupDescribeResponseGroupMember struct {
+	// MemberID is the member ID.
+	MemberID string
+
+	// MemberEpoch is the member epoch.
+	MemberEpoch int32
+
+	// InstanceID is the member instance ID for static membership.
+	InstanceID *string
+
+	// RackID is the rack ID.
+	RackID *string
+
+	// ClientID is the client ID.
+	ClientID string
+
+	// ClientHost is the client host.
+	ClientHost string
+
+	// TopologyEpoch is the epoch of the topology on the client.
+	TopologyEpoch int32
+
+	// ProcessID is the identity of the streams instance that may have
+	// multiple clients.
+	ProcessID string
+
+	// UserEndpoint is the user-defined endpoint for Interactive Queries.
+	// Null if not defined for this client.
+	UserEndpoint *StreamsGroupDescribeResponseGroupMemberUserEndpoint
+
+	// ClientTags are used for rack-aware assignment.
+	ClientTags []StreamsGroupDescribeResponseGroupMemberClientTag
+
+	// TaskOffsets are cumulative changelog offsets for tasks.
+	TaskOffsets []TaskOffset
+
+	// TaskEndOffsets are cumulative changelog end offsets for tasks.
+	TaskEndOffsets []TaskOffset
+
+	// Assignment is the current assignment.
+	Assignment StreamsAssignment
+
+	// TargetAssignment is the target assignment.
+	TargetAssignment StreamsAssignment
+
+	// IsClassic is true for classic members that have not been upgraded yet.
+	IsClassic bool
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupDescribeResponseGroupMember.
+func (v *StreamsGroupDescribeResponseGroupMember) Default() {
+	{
+		v := &v.UserEndpoint
+		_ = v
+	}
+	{
+		v := &v.Assignment
+		_ = v
+	}
+	{
+		v := &v.TargetAssignment
+		_ = v
+	}
+}
+
+// NewStreamsGroupDescribeResponseGroupMember returns a default StreamsGroupDescribeResponseGroupMember
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupDescribeResponseGroupMember() StreamsGroupDescribeResponseGroupMember {
+	var v StreamsGroupDescribeResponseGroupMember
+	v.Default()
+	return v
+}
+
+type StreamsGroupDescribeResponseGroup struct {
+	// ErrorCode is the describe error, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the top-level error message, or null if there was no
+	// error.
+	ErrorMessage *string
+
+	// Group is the group ID.
+	Group string
+
+	// State is the group state.
+	State string
+
+	// Epoch is the group epoch.
+	Epoch int32
+
+	// AssignmentEpoch is the assignment epoch.
+	AssignmentEpoch int32
+
+	// Topology is the topology metadata currently initialized for the streams
+	// application. Null in case of a describe error.
+	Topology *StreamsGroupDescribeResponseGroupTopology
+
+	// Members are the members of the group.
+	Members []StreamsGroupDescribeResponseGroupMember
+
+	// AuthorizedOperations is a 32-bit bitfield representing authorized
+	// operations for the group.
+	//
+	// This field has a default of -2147483648.
+	AuthorizedOperations int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupDescribeResponseGroup.
+func (v *StreamsGroupDescribeResponseGroup) Default() {
+	{
+		v := &v.Topology
+		_ = v
+	}
+	v.AuthorizedOperations = -2147483648
+}
+
+// NewStreamsGroupDescribeResponseGroup returns a default StreamsGroupDescribeResponseGroup
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupDescribeResponseGroup() StreamsGroupDescribeResponseGroup {
+	var v StreamsGroupDescribeResponseGroup
+	v.Default()
+	return v
+}
+
+// StreamsGroupDescribeResponse is returned from a StreamsGroupDescribeRequest.
+type StreamsGroupDescribeResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// ThrottleMillis is how long of a throttle Kafka will apply to the client
+	// after responding to this request.
+	ThrottleMillis int32
+
+	// Groups contains each described group.
+	Groups []StreamsGroupDescribeResponseGroup
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*StreamsGroupDescribeResponse) Key() int16                 { return 89 }
+func (*StreamsGroupDescribeResponse) MaxVersion() int16          { return 0 }
+func (v *StreamsGroupDescribeResponse) SetVersion(version int16) { v.Version = version }
+func (v *StreamsGroupDescribeResponse) GetVersion() int16        { return v.Version }
+func (v *StreamsGroupDescribeResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *StreamsGroupDescribeResponse) Throttle() (int32, bool) {
+	return v.ThrottleMillis, v.Version >= 0
+}
+
+func (v *StreamsGroupDescribeResponse) SetThrottle(throttleMillis int32) {
+	v.ThrottleMillis = throttleMillis
+}
+
+func (v *StreamsGroupDescribeResponse) RequestKind() Request {
+	return &StreamsGroupDescribeRequest{Version: v.Version}
+}
+
+func (v *StreamsGroupDescribeResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.ThrottleMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.Groups
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.ErrorCode
+				dst = kbin.AppendInt16(dst, v)
+			}
+			{
+				v := v.ErrorMessage
+				if isFlexible {
+					dst = kbin.AppendCompactNullableString(dst, v)
+				} else {
+					dst = kbin.AppendNullableString(dst, v)
+				}
+			}
+			{
+				v := v.Group
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.State
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Epoch
+				dst = kbin.AppendInt32(dst, v)
+			}
+			{
+				v := v.AssignmentEpoch
+				dst = kbin.AppendInt32(dst, v)
+			}
+			{
+				v := v.Topology
+				if v == nil {
+					dst = append(dst, 255)
+				} else {
+					dst = append(dst, 1)
+					{
+						v := v.Epoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.Subtopologies
+						if isFlexible {
+							dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+						} else {
+							dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.SubtopologyID
+								if isFlexible {
+									dst = kbin.AppendCompactString(dst, v)
+								} else {
+									dst = kbin.AppendString(dst, v)
+								}
+							}
+							{
+								v := v.SourceTopics
+								if isFlexible {
+									dst = kbin.AppendCompactArrayLen(dst, len(v))
+								} else {
+									dst = kbin.AppendArrayLen(dst, len(v))
+								}
+								for i := range v {
+									v := v[i]
+									if isFlexible {
+										dst = kbin.AppendCompactString(dst, v)
+									} else {
+										dst = kbin.AppendString(dst, v)
+									}
+								}
+							}
+							{
+								v := v.RepartitionSinkTopics
+								if isFlexible {
+									dst = kbin.AppendCompactArrayLen(dst, len(v))
+								} else {
+									dst = kbin.AppendArrayLen(dst, len(v))
+								}
+								for i := range v {
+									v := v[i]
+									if isFlexible {
+										dst = kbin.AppendCompactString(dst, v)
+									} else {
+										dst = kbin.AppendString(dst, v)
+									}
+								}
+							}
+							{
+								v := v.StateChangelogTopics
+								if isFlexible {
+									dst = kbin.AppendCompactArrayLen(dst, len(v))
+								} else {
+									dst = kbin.AppendArrayLen(dst, len(v))
+								}
+								for i := range v {
+									v := &v[i]
+									{
+										v := v.Topic
+										if isFlexible {
+											dst = kbin.AppendCompactString(dst, v)
+										} else {
+											dst = kbin.AppendString(dst, v)
+										}
+									}
+									{
+										v := v.NumPartitions
+										dst = kbin.AppendInt32(dst, v)
+									}
+									{
+										v := v.ReplicationFactor
+										dst = kbin.AppendInt16(dst, v)
+									}
+									{
+										v := v.Configs
+										if isFlexible {
+											dst = kbin.AppendCompactArrayLen(dst, len(v))
+										} else {
+											dst = kbin.AppendArrayLen(dst, len(v))
+										}
+										for i := range v {
+											v := &v[i]
+											{
+												v := v.Key
+												if isFlexible {
+													dst = kbin.AppendCompactString(dst, v)
+												} else {
+													dst = kbin.AppendString(dst, v)
+												}
+											}
+											{
+												v := v.Value
+												if isFlexible {
+													dst = kbin.AppendCompactString(dst, v)
+												} else {
+													dst = kbin.AppendString(dst, v)
+												}
+											}
+											if isFlexible {
+												dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+												dst = v.UnknownTags.AppendEach(dst)
+											}
+										}
+									}
+									if isFlexible {
+										dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+										dst = v.UnknownTags.AppendEach(dst)
+									}
+								}
+							}
+							{
+								v := v.RepartitionSourceTopics
+								if isFlexible {
+									dst = kbin.AppendCompactArrayLen(dst, len(v))
+								} else {
+									dst = kbin.AppendArrayLen(dst, len(v))
+								}
+								for i := range v {
+									v := &v[i]
+									{
+										v := v.Topic
+										if isFlexible {
+											dst = kbin.AppendCompactString(dst, v)
+										} else {
+											dst = kbin.AppendString(dst, v)
+										}
+									}
+									{
+										v := v.NumPartitions
+										dst = kbin.AppendInt32(dst, v)
+									}
+									{
+										v := v.ReplicationFactor
+										dst = kbin.AppendInt16(dst, v)
+									}
+									{
+										v := v.Configs
+										if isFlexible {
+											dst = kbin.AppendCompactArrayLen(dst, len(v))
+										} else {
+											dst = kbin.AppendArrayLen(dst, len(v))
+										}
+										for i := range v {
+											v := &v[i]
+											{
+												v := v.Key
+												if isFlexible {
+													dst = kbin.AppendCompactString(dst, v)
+												} else {
+													dst = kbin.AppendString(dst, v)
+												}
+											}
+											{
+												v := v.Value
+												if isFlexible {
+													dst = kbin.AppendCompactString(dst, v)
+												} else {
+													dst = kbin.AppendString(dst, v)
+												}
+											}
+											if isFlexible {
+												dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+												dst = v.UnknownTags.AppendEach(dst)
+											}
+										}
+									}
+									if isFlexible {
+										dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+										dst = v.UnknownTags.AppendEach(dst)
+									}
+								}
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			{
+				v := v.Members
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.MemberID
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.MemberEpoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.InstanceID
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					{
+						v := v.RackID
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					{
+						v := v.ClientID
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.ClientHost
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.TopologyEpoch
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.ProcessID
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.UserEndpoint
+						if v == nil {
+							dst = append(dst, 255)
+						} else {
+							dst = append(dst, 1)
+							{
+								v := v.Host
+								if isFlexible {
+									dst = kbin.AppendCompactString(dst, v)
+								} else {
+									dst = kbin.AppendString(dst, v)
+								}
+							}
+							{
+								v := v.Port
+								dst = kbin.AppendUint16(dst, v)
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					{
+						v := v.ClientTags
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.Key
+								if isFlexible {
+									dst = kbin.AppendCompactString(dst, v)
+								} else {
+									dst = kbin.AppendString(dst, v)
+								}
+							}
+							{
+								v := v.Value
+								if isFlexible {
+									dst = kbin.AppendCompactString(dst, v)
+								} else {
+									dst = kbin.AppendString(dst, v)
+								}
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					{
+						v := v.TaskOffsets
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.SubtopologyID
+								if isFlexible {
+									dst = kbin.AppendCompactString(dst, v)
+								} else {
+									dst = kbin.AppendString(dst, v)
+								}
+							}
+							{
+								v := v.Partition
+								dst = kbin.AppendInt32(dst, v)
+							}
+							{
+								v := v.Offset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					{
+						v := v.TaskEndOffsets
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.SubtopologyID
+								if isFlexible {
+									dst = kbin.AppendCompactString(dst, v)
+								} else {
+									dst = kbin.AppendString(dst, v)
+								}
+							}
+							{
+								v := v.Partition
+								dst = kbin.AppendInt32(dst, v)
+							}
+							{
+								v := v.Offset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					{
+						v := &v.Assignment
+						{
+							v := v.ActiveTasks
+							if isFlexible {
+								dst = kbin.AppendCompactArrayLen(dst, len(v))
+							} else {
+								dst = kbin.AppendArrayLen(dst, len(v))
+							}
+							for i := range v {
+								v := &v[i]
+								{
+									v := v.SubtopologyID
+									if isFlexible {
+										dst = kbin.AppendCompactString(dst, v)
+									} else {
+										dst = kbin.AppendString(dst, v)
+									}
+								}
+								{
+									v := v.Partitions
+									if isFlexible {
+										dst = kbin.AppendCompactArrayLen(dst, len(v))
+									} else {
+										dst = kbin.AppendArrayLen(dst, len(v))
+									}
+									for i := range v {
+										v := v[i]
+										dst = kbin.AppendInt32(dst, v)
+									}
+								}
+								if isFlexible {
+									dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+									dst = v.UnknownTags.AppendEach(dst)
+								}
+							}
+						}
+						{
+							v := v.StandbyTasks
+							if isFlexible {
+								dst = kbin.AppendCompactArrayLen(dst, len(v))
+							} else {
+								dst = kbin.AppendArrayLen(dst, len(v))
+							}
+							for i := range v {
+								v := &v[i]
+								{
+									v := v.SubtopologyID
+									if isFlexible {
+										dst = kbin.AppendCompactString(dst, v)
+									} else {
+										dst = kbin.AppendString(dst, v)
+									}
+								}
+								{
+									v := v.Partitions
+									if isFlexible {
+										dst = kbin.AppendCompactArrayLen(dst, len(v))
+									} else {
+										dst = kbin.AppendArrayLen(dst, len(v))
+									}
+									for i := range v {
+										v := v[i]
+										dst = kbin.AppendInt32(dst, v)
+									}
+								}
+								if isFlexible {
+									dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+									dst = v.UnknownTags.AppendEach(dst)
+								}
+							}
+						}
+						{
+							v := v.WarmupTasks
+							if isFlexible {
+								dst = kbin.AppendCompactArrayLen(dst, len(v))
+							} else {
+								dst = kbin.AppendArrayLen(dst, len(v))
+							}
+							for i := range v {
+								v := &v[i]
+								{
+									v := v.SubtopologyID
+									if isFlexible {
+										dst = kbin.AppendCompactString(dst, v)
+									} else {
+										dst = kbin.AppendString(dst, v)
+									}
+								}
+								{
+									v := v.Partitions
+									if isFlexible {
+										dst = kbin.AppendCompactArrayLen(dst, len(v))
+									} else {
+										dst = kbin.AppendArrayLen(dst, len(v))
+									}
+									for i := range v {
+										v := v[i]
+										dst = kbin.AppendInt32(dst, v)
+									}
+								}
+								if isFlexible {
+									dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+									dst = v.UnknownTags.AppendEach(dst)
+								}
+							}
+						}
+						if isFlexible {
+							dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+							dst = v.UnknownTags.AppendEach(dst)
+						}
+					}
+					{
+						v := &v.TargetAssignment
+						{
+							v := v.ActiveTasks
+							if isFlexible {
+								dst = kbin.AppendCompactArrayLen(dst, len(v))
+							} else {
+								dst = kbin.AppendArrayLen(dst, len(v))
+							}
+							for i := range v {
+								v := &v[i]
+								{
+									v := v.SubtopologyID
+									if isFlexible {
+										dst = kbin.AppendCompactString(dst, v)
+									} else {
+										dst = kbin.AppendString(dst, v)
+									}
+								}
+								{
+									v := v.Partitions
+									if isFlexible {
+										dst = kbin.AppendCompactArrayLen(dst, len(v))
+									} else {
+										dst = kbin.AppendArrayLen(dst, len(v))
+									}
+									for i := range v {
+										v := v[i]
+										dst = kbin.AppendInt32(dst, v)
+									}
+								}
+								if isFlexible {
+									dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+									dst = v.UnknownTags.AppendEach(dst)
+								}
+							}
+						}
+						{
+							v := v.StandbyTasks
+							if isFlexible {
+								dst = kbin.AppendCompactArrayLen(dst, len(v))
+							} else {
+								dst = kbin.AppendArrayLen(dst, len(v))
+							}
+							for i := range v {
+								v := &v[i]
+								{
+									v := v.SubtopologyID
+									if isFlexible {
+										dst = kbin.AppendCompactString(dst, v)
+									} else {
+										dst = kbin.AppendString(dst, v)
+									}
+								}
+								{
+									v := v.Partitions
+									if isFlexible {
+										dst = kbin.AppendCompactArrayLen(dst, len(v))
+									} else {
+										dst = kbin.AppendArrayLen(dst, len(v))
+									}
+									for i := range v {
+										v := v[i]
+										dst = kbin.AppendInt32(dst, v)
+									}
+								}
+								if isFlexible {
+									dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+									dst = v.UnknownTags.AppendEach(dst)
+								}
+							}
+						}
+						{
+							v := v.WarmupTasks
+							if isFlexible {
+								dst = kbin.AppendCompactArrayLen(dst, len(v))
+							} else {
+								dst = kbin.AppendArrayLen(dst, len(v))
+							}
+							for i := range v {
+								v := &v[i]
+								{
+									v := v.SubtopologyID
+									if isFlexible {
+										dst = kbin.AppendCompactString(dst, v)
+									} else {
+										dst = kbin.AppendString(dst, v)
+									}
+								}
+								{
+									v := v.Partitions
+									if isFlexible {
+										dst = kbin.AppendCompactArrayLen(dst, len(v))
+									} else {
+										dst = kbin.AppendArrayLen(dst, len(v))
+									}
+									for i := range v {
+										v := v[i]
+										dst = kbin.AppendInt32(dst, v)
+									}
+								}
+								if isFlexible {
+									dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+									dst = v.UnknownTags.AppendEach(dst)
+								}
+							}
+						}
+						if isFlexible {
+							dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+							dst = v.UnknownTags.AppendEach(dst)
+						}
+					}
+					{
+						v := v.IsClassic
+						dst = kbin.AppendBool(dst, v)
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			{
+				v := v.AuthorizedOperations
+				dst = kbin.AppendInt32(dst, v)
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *StreamsGroupDescribeResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *StreamsGroupDescribeResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *StreamsGroupDescribeResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := b.Int32()
+		s.ThrottleMillis = v
+	}
+	{
+		v := s.Groups
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]StreamsGroupDescribeResponseGroup, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				v := b.Int16()
+				s.ErrorCode = v
+			}
+			{
+				var v *string
+				if isFlexible {
+					if unsafe {
+						v = b.UnsafeCompactNullableString()
+					} else {
+						v = b.CompactNullableString()
+					}
+				} else {
+					if unsafe {
+						v = b.UnsafeNullableString()
+					} else {
+						v = b.NullableString()
+					}
+				}
+				s.ErrorMessage = v
+			}
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.Group = v
+			}
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.State = v
+			}
+			{
+				v := b.Int32()
+				s.Epoch = v
+			}
+			{
+				v := b.Int32()
+				s.AssignmentEpoch = v
+			}
+			{
+				if present := b.Int8(); present != -1 && b.Ok() {
+					s.Topology = new(StreamsGroupDescribeResponseGroupTopology)
+					v := s.Topology
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Epoch = v
+					}
+					{
+						v := s.Subtopologies
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if version < 0 || l == 0 {
+							a = []StreamsGroupDescribeResponseGroupTopologySubtopology{}
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]StreamsGroupDescribeResponseGroupTopologySubtopology, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								var v string
+								if unsafe {
+									if isFlexible {
+										v = b.UnsafeCompactString()
+									} else {
+										v = b.UnsafeString()
+									}
+								} else {
+									if isFlexible {
+										v = b.CompactString()
+									} else {
+										v = b.String()
+									}
+								}
+								s.SubtopologyID = v
+							}
+							{
+								v := s.SourceTopics
+								a := v
+								var l int32
+								if isFlexible {
+									l = b.CompactArrayLen()
+								} else {
+									l = b.ArrayLen()
+								}
+								if !b.Ok() {
+									return b.Complete()
+								}
+								a = a[:0]
+								if l > 0 {
+									a = append(a, make([]string, l)...)
+								}
+								for i := int32(0); i < l; i++ {
+									var v string
+									if unsafe {
+										if isFlexible {
+											v = b.UnsafeCompactString()
+										} else {
+											v = b.UnsafeString()
+										}
+									} else {
+										if isFlexible {
+											v = b.CompactString()
+										} else {
+											v = b.String()
+										}
+									}
+									a[i] = v
+								}
+								v = a
+								s.SourceTopics = v
+							}
+							{
+								v := s.RepartitionSinkTopics
+								a := v
+								var l int32
+								if isFlexible {
+									l = b.CompactArrayLen()
+								} else {
+									l = b.ArrayLen()
+								}
+								if !b.Ok() {
+									return b.Complete()
+								}
+								a = a[:0]
+								if l > 0 {
+									a = append(a, make([]string, l)...)
+								}
+								for i := int32(0); i < l; i++ {
+									var v string
+									if unsafe {
+										if isFlexible {
+											v = b.UnsafeCompactString()
+										} else {
+											v = b.UnsafeString()
+										}
+									} else {
+										if isFlexible {
+											v = b.CompactString()
+										} else {
+											v = b.String()
+										}
+									}
+									a[i] = v
+								}
+								v = a
+								s.RepartitionSinkTopics = v
+							}
+							{
+								v := s.StateChangelogTopics
+								a := v
+								var l int32
+								if isFlexible {
+									l = b.CompactArrayLen()
+								} else {
+									l = b.ArrayLen()
+								}
+								if !b.Ok() {
+									return b.Complete()
+								}
+								a = a[:0]
+								if l > 0 {
+									a = append(a, make([]TopicInfo, l)...)
+								}
+								for i := int32(0); i < l; i++ {
+									v := &a[i]
+									v.Default()
+									s := v
+									{
+										var v string
+										if unsafe {
+											if isFlexible {
+												v = b.UnsafeCompactString()
+											} else {
+												v = b.UnsafeString()
+											}
+										} else {
+											if isFlexible {
+												v = b.CompactString()
+											} else {
+												v = b.String()
+											}
+										}
+										s.Topic = v
+									}
+									{
+										v := b.Int32()
+										s.NumPartitions = v
+									}
+									{
+										v := b.Int16()
+										s.ReplicationFactor = v
+									}
+									{
+										v := s.Configs
+										a := v
+										var l int32
+										if isFlexible {
+											l = b.CompactArrayLen()
+										} else {
+											l = b.ArrayLen()
+										}
+										if !b.Ok() {
+											return b.Complete()
+										}
+										a = a[:0]
+										if l > 0 {
+											a = append(a, make([]TopicInfoConfig, l)...)
+										}
+										for i := int32(0); i < l; i++ {
+											v := &a[i]
+											v.Default()
+											s := v
+											{
+												var v string
+												if unsafe {
+													if isFlexible {
+														v = b.UnsafeCompactString()
+													} else {
+														v = b.UnsafeString()
+													}
+												} else {
+													if isFlexible {
+														v = b.CompactString()
+													} else {
+														v = b.String()
+													}
+												}
+												s.Key = v
+											}
+											{
+												var v string
+												if unsafe {
+													if isFlexible {
+														v = b.UnsafeCompactString()
+													} else {
+														v = b.UnsafeString()
+													}
+												} else {
+													if isFlexible {
+														v = b.CompactString()
+													} else {
+														v = b.String()
+													}
+												}
+												s.Value = v
+											}
+											if isFlexible {
+												s.UnknownTags = internalReadTags(&b)
+											}
+										}
+										v = a
+										s.Configs = v
+									}
+									if isFlexible {
+										s.UnknownTags = internalReadTags(&b)
+									}
+								}
+								v = a
+								s.StateChangelogTopics = v
+							}
+							{
+								v := s.RepartitionSourceTopics
+								a := v
+								var l int32
+								if isFlexible {
+									l = b.CompactArrayLen()
+								} else {
+									l = b.ArrayLen()
+								}
+								if !b.Ok() {
+									return b.Complete()
+								}
+								a = a[:0]
+								if l > 0 {
+									a = append(a, make([]TopicInfo, l)...)
+								}
+								for i := int32(0); i < l; i++ {
+									v := &a[i]
+									v.Default()
+									s := v
+									{
+										var v string
+										if unsafe {
+											if isFlexible {
+												v = b.UnsafeCompactString()
+											} else {
+												v = b.UnsafeString()
+											}
+										} else {
+											if isFlexible {
+												v = b.CompactString()
+											} else {
+												v = b.String()
+											}
+										}
+										s.Topic = v
+									}
+									{
+										v := b.Int32()
+										s.NumPartitions = v
+									}
+									{
+										v := b.Int16()
+										s.ReplicationFactor = v
+									}
+									{
+										v := s.Configs
+										a := v
+										var l int32
+										if isFlexible {
+											l = b.CompactArrayLen()
+										} else {
+											l = b.ArrayLen()
+										}
+										if !b.Ok() {
+											return b.Complete()
+										}
+										a = a[:0]
+										if l > 0 {
+											a = append(a, make([]TopicInfoConfig, l)...)
+										}
+										for i := int32(0); i < l; i++ {
+											v := &a[i]
+											v.Default()
+											s := v
+											{
+												var v string
+												if unsafe {
+													if isFlexible {
+														v = b.UnsafeCompactString()
+													} else {
+														v = b.UnsafeString()
+													}
+												} else {
+													if isFlexible {
+														v = b.CompactString()
+													} else {
+														v = b.String()
+													}
+												}
+												s.Key = v
+											}
+											{
+												var v string
+												if unsafe {
+													if isFlexible {
+														v = b.UnsafeCompactString()
+													} else {
+														v = b.UnsafeString()
+													}
+												} else {
+													if isFlexible {
+														v = b.CompactString()
+													} else {
+														v = b.String()
+													}
+												}
+												s.Value = v
+											}
+											if isFlexible {
+												s.UnknownTags = internalReadTags(&b)
+											}
+										}
+										v = a
+										s.Configs = v
+									}
+									if isFlexible {
+										s.UnknownTags = internalReadTags(&b)
+									}
+								}
+								v = a
+								s.RepartitionSourceTopics = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.Subtopologies = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+			}
+			{
+				v := s.Members
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]StreamsGroupDescribeResponseGroupMember, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.MemberID = v
+					}
+					{
+						v := b.Int32()
+						s.MemberEpoch = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.InstanceID = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.RackID = v
+					}
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.ClientID = v
+					}
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.ClientHost = v
+					}
+					{
+						v := b.Int32()
+						s.TopologyEpoch = v
+					}
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.ProcessID = v
+					}
+					{
+						if present := b.Int8(); present != -1 && b.Ok() {
+							s.UserEndpoint = new(StreamsGroupDescribeResponseGroupMemberUserEndpoint)
+							v := s.UserEndpoint
+							v.Default()
+							s := v
+							{
+								var v string
+								if unsafe {
+									if isFlexible {
+										v = b.UnsafeCompactString()
+									} else {
+										v = b.UnsafeString()
+									}
+								} else {
+									if isFlexible {
+										v = b.CompactString()
+									} else {
+										v = b.String()
+									}
+								}
+								s.Host = v
+							}
+							{
+								v := b.Uint16()
+								s.Port = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+					}
+					{
+						v := s.ClientTags
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]StreamsGroupDescribeResponseGroupMemberClientTag, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								var v string
+								if unsafe {
+									if isFlexible {
+										v = b.UnsafeCompactString()
+									} else {
+										v = b.UnsafeString()
+									}
+								} else {
+									if isFlexible {
+										v = b.CompactString()
+									} else {
+										v = b.String()
+									}
+								}
+								s.Key = v
+							}
+							{
+								var v string
+								if unsafe {
+									if isFlexible {
+										v = b.UnsafeCompactString()
+									} else {
+										v = b.UnsafeString()
+									}
+								} else {
+									if isFlexible {
+										v = b.CompactString()
+									} else {
+										v = b.String()
+									}
+								}
+								s.Value = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.ClientTags = v
+					}
+					{
+						v := s.TaskOffsets
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]TaskOffset, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								var v string
+								if unsafe {
+									if isFlexible {
+										v = b.UnsafeCompactString()
+									} else {
+										v = b.UnsafeString()
+									}
+								} else {
+									if isFlexible {
+										v = b.CompactString()
+									} else {
+										v = b.String()
+									}
+								}
+								s.SubtopologyID = v
+							}
+							{
+								v := b.Int32()
+								s.Partition = v
+							}
+							{
+								v := b.Int64()
+								s.Offset = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.TaskOffsets = v
+					}
+					{
+						v := s.TaskEndOffsets
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]TaskOffset, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								var v string
+								if unsafe {
+									if isFlexible {
+										v = b.UnsafeCompactString()
+									} else {
+										v = b.UnsafeString()
+									}
+								} else {
+									if isFlexible {
+										v = b.CompactString()
+									} else {
+										v = b.String()
+									}
+								}
+								s.SubtopologyID = v
+							}
+							{
+								v := b.Int32()
+								s.Partition = v
+							}
+							{
+								v := b.Int64()
+								s.Offset = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.TaskEndOffsets = v
+					}
+					{
+						v := &s.Assignment
+						v.Default()
+						s := v
+						{
+							v := s.ActiveTasks
+							a := v
+							var l int32
+							if isFlexible {
+								l = b.CompactArrayLen()
+							} else {
+								l = b.ArrayLen()
+							}
+							if !b.Ok() {
+								return b.Complete()
+							}
+							a = a[:0]
+							if l > 0 {
+								a = append(a, make([]TaskIDs, l)...)
+							}
+							for i := int32(0); i < l; i++ {
+								v := &a[i]
+								v.Default()
+								s := v
+								{
+									var v string
+									if unsafe {
+										if isFlexible {
+											v = b.UnsafeCompactString()
+										} else {
+											v = b.UnsafeString()
+										}
+									} else {
+										if isFlexible {
+											v = b.CompactString()
+										} else {
+											v = b.String()
+										}
+									}
+									s.SubtopologyID = v
+								}
+								{
+									v := s.Partitions
+									a := v
+									var l int32
+									if isFlexible {
+										l = b.CompactArrayLen()
+									} else {
+										l = b.ArrayLen()
+									}
+									if !b.Ok() {
+										return b.Complete()
+									}
+									a = a[:0]
+									if l > 0 {
+										a = append(a, make([]int32, l)...)
+									}
+									for i := int32(0); i < l; i++ {
+										v := b.Int32()
+										a[i] = v
+									}
+									v = a
+									s.Partitions = v
+								}
+								if isFlexible {
+									s.UnknownTags = internalReadTags(&b)
+								}
+							}
+							v = a
+							s.ActiveTasks = v
+						}
+						{
+							v := s.StandbyTasks
+							a := v
+							var l int32
+							if isFlexible {
+								l = b.CompactArrayLen()
+							} else {
+								l = b.ArrayLen()
+							}
+							if !b.Ok() {
+								return b.Complete()
+							}
+							a = a[:0]
+							if l > 0 {
+								a = append(a, make([]TaskIDs, l)...)
+							}
+							for i := int32(0); i < l; i++ {
+								v := &a[i]
+								v.Default()
+								s := v
+								{
+									var v string
+									if unsafe {
+										if isFlexible {
+											v = b.UnsafeCompactString()
+										} else {
+											v = b.UnsafeString()
+										}
+									} else {
+										if isFlexible {
+											v = b.CompactString()
+										} else {
+											v = b.String()
+										}
+									}
+									s.SubtopologyID = v
+								}
+								{
+									v := s.Partitions
+									a := v
+									var l int32
+									if isFlexible {
+										l = b.CompactArrayLen()
+									} else {
+										l = b.ArrayLen()
+									}
+									if !b.Ok() {
+										return b.Complete()
+									}
+									a = a[:0]
+									if l > 0 {
+										a = append(a, make([]int32, l)...)
+									}
+									for i := int32(0); i < l; i++ {
+										v := b.Int32()
+										a[i] = v
+									}
+									v = a
+									s.Partitions = v
+								}
+								if isFlexible {
+									s.UnknownTags = internalReadTags(&b)
+								}
+							}
+							v = a
+							s.StandbyTasks = v
+						}
+						{
+							v := s.WarmupTasks
+							a := v
+							var l int32
+							if isFlexible {
+								l = b.CompactArrayLen()
+							} else {
+								l = b.ArrayLen()
+							}
+							if !b.Ok() {
+								return b.Complete()
+							}
+							a = a[:0]
+							if l > 0 {
+								a = append(a, make([]TaskIDs, l)...)
+							}
+							for i := int32(0); i < l; i++ {
+								v := &a[i]
+								v.Default()
+								s := v
+								{
+									var v string
+									if unsafe {
+										if isFlexible {
+											v = b.UnsafeCompactString()
+										} else {
+											v = b.UnsafeString()
+										}
+									} else {
+										if isFlexible {
+											v = b.CompactString()
+										} else {
+											v = b.String()
+										}
+									}
+									s.SubtopologyID = v
+								}
+								{
+									v := s.Partitions
+									a := v
+									var l int32
+									if isFlexible {
+										l = b.CompactArrayLen()
+									} else {
+										l = b.ArrayLen()
+									}
+									if !b.Ok() {
+										return b.Complete()
+									}
+									a = a[:0]
+									if l > 0 {
+										a = append(a, make([]int32, l)...)
+									}
+									for i := int32(0); i < l; i++ {
+										v := b.Int32()
+										a[i] = v
+									}
+									v = a
+									s.Partitions = v
+								}
+								if isFlexible {
+									s.UnknownTags = internalReadTags(&b)
+								}
+							}
+							v = a
+							s.WarmupTasks = v
+						}
+						if isFlexible {
+							s.UnknownTags = internalReadTags(&b)
+						}
+					}
+					{
+						v := &s.TargetAssignment
+						v.Default()
+						s := v
+						{
+							v := s.ActiveTasks
+							a := v
+							var l int32
+							if isFlexible {
+								l = b.CompactArrayLen()
+							} else {
+								l = b.ArrayLen()
+							}
+							if !b.Ok() {
+								return b.Complete()
+							}
+							a = a[:0]
+							if l > 0 {
+								a = append(a, make([]TaskIDs, l)...)
+							}
+							for i := int32(0); i < l; i++ {
+								v := &a[i]
+								v.Default()
+								s := v
+								{
+									var v string
+									if unsafe {
+										if isFlexible {
+											v = b.UnsafeCompactString()
+										} else {
+											v = b.UnsafeString()
+										}
+									} else {
+										if isFlexible {
+											v = b.CompactString()
+										} else {
+											v = b.String()
+										}
+									}
+									s.SubtopologyID = v
+								}
+								{
+									v := s.Partitions
+									a := v
+									var l int32
+									if isFlexible {
+										l = b.CompactArrayLen()
+									} else {
+										l = b.ArrayLen()
+									}
+									if !b.Ok() {
+										return b.Complete()
+									}
+									a = a[:0]
+									if l > 0 {
+										a = append(a, make([]int32, l)...)
+									}
+									for i := int32(0); i < l; i++ {
+										v := b.Int32()
+										a[i] = v
+									}
+									v = a
+									s.Partitions = v
+								}
+								if isFlexible {
+									s.UnknownTags = internalReadTags(&b)
+								}
+							}
+							v = a
+							s.ActiveTasks = v
+						}
+						{
+							v := s.StandbyTasks
+							a := v
+							var l int32
+							if isFlexible {
+								l = b.CompactArrayLen()
+							} else {
+								l = b.ArrayLen()
+							}
+							if !b.Ok() {
+								return b.Complete()
+							}
+							a = a[:0]
+							if l > 0 {
+								a = append(a, make([]TaskIDs, l)...)
+							}
+							for i := int32(0); i < l; i++ {
+								v := &a[i]
+								v.Default()
+								s := v
+								{
+									var v string
+									if unsafe {
+										if isFlexible {
+											v = b.UnsafeCompactString()
+										} else {
+											v = b.UnsafeString()
+										}
+									} else {
+										if isFlexible {
+											v = b.CompactString()
+										} else {
+											v = b.String()
+										}
+									}
+									s.SubtopologyID = v
+								}
+								{
+									v := s.Partitions
+									a := v
+									var l int32
+									if isFlexible {
+										l = b.CompactArrayLen()
+									} else {
+										l = b.ArrayLen()
+									}
+									if !b.Ok() {
+										return b.Complete()
+									}
+									a = a[:0]
+									if l > 0 {
+										a = append(a, make([]int32, l)...)
+									}
+									for i := int32(0); i < l; i++ {
+										v := b.Int32()
+										a[i] = v
+									}
+									v = a
+									s.Partitions = v
+								}
+								if isFlexible {
+									s.UnknownTags = internalReadTags(&b)
+								}
+							}
+							v = a
+							s.StandbyTasks = v
+						}
+						{
+							v := s.WarmupTasks
+							a := v
+							var l int32
+							if isFlexible {
+								l = b.CompactArrayLen()
+							} else {
+								l = b.ArrayLen()
+							}
+							if !b.Ok() {
+								return b.Complete()
+							}
+							a = a[:0]
+							if l > 0 {
+								a = append(a, make([]TaskIDs, l)...)
+							}
+							for i := int32(0); i < l; i++ {
+								v := &a[i]
+								v.Default()
+								s := v
+								{
+									var v string
+									if unsafe {
+										if isFlexible {
+											v = b.UnsafeCompactString()
+										} else {
+											v = b.UnsafeString()
+										}
+									} else {
+										if isFlexible {
+											v = b.CompactString()
+										} else {
+											v = b.String()
+										}
+									}
+									s.SubtopologyID = v
+								}
+								{
+									v := s.Partitions
+									a := v
+									var l int32
+									if isFlexible {
+										l = b.CompactArrayLen()
+									} else {
+										l = b.ArrayLen()
+									}
+									if !b.Ok() {
+										return b.Complete()
+									}
+									a = a[:0]
+									if l > 0 {
+										a = append(a, make([]int32, l)...)
+									}
+									for i := int32(0); i < l; i++ {
+										v := b.Int32()
+										a[i] = v
+									}
+									v = a
+									s.Partitions = v
+								}
+								if isFlexible {
+									s.UnknownTags = internalReadTags(&b)
+								}
+							}
+							v = a
+							s.WarmupTasks = v
+						}
+						if isFlexible {
+							s.UnknownTags = internalReadTags(&b)
+						}
+					}
+					{
+						v := b.Bool()
+						s.IsClassic = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Members = v
+			}
+			{
+				v := b.Int32()
+				s.AuthorizedOperations = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Groups = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrStreamsGroupDescribeResponse returns a pointer to a default StreamsGroupDescribeResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrStreamsGroupDescribeResponse() *StreamsGroupDescribeResponse {
+	var v StreamsGroupDescribeResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to StreamsGroupDescribeResponse.
+func (v *StreamsGroupDescribeResponse) Default() {
+}
+
+// NewStreamsGroupDescribeResponse returns a default StreamsGroupDescribeResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewStreamsGroupDescribeResponse() StreamsGroupDescribeResponse {
+	var v StreamsGroupDescribeResponse
+	v.Default()
+	return v
+}
+
+type DescribeShareGroupOffsetsRequestGroupTopic struct {
+	// Topic is the topic name.
+	Topic string
+
+	// Partitions are the partitions.
+	Partitions []int32
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DescribeShareGroupOffsetsRequestGroupTopic.
+func (v *DescribeShareGroupOffsetsRequestGroupTopic) Default() {
+}
+
+// NewDescribeShareGroupOffsetsRequestGroupTopic returns a default DescribeShareGroupOffsetsRequestGroupTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDescribeShareGroupOffsetsRequestGroupTopic() DescribeShareGroupOffsetsRequestGroupTopic {
+	var v DescribeShareGroupOffsetsRequestGroupTopic
+	v.Default()
+	return v
+}
+
+type DescribeShareGroupOffsetsRequestGroup struct {
+	// GroupID is the group identifier.
+	GroupID string
+
+	// Topics are the topics to describe offsets for, or null for all
+	// topic-partitions.
+	Topics []DescribeShareGroupOffsetsRequestGroupTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DescribeShareGroupOffsetsRequestGroup.
+func (v *DescribeShareGroupOffsetsRequestGroup) Default() {
+}
+
+// NewDescribeShareGroupOffsetsRequestGroup returns a default DescribeShareGroupOffsetsRequestGroup
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDescribeShareGroupOffsetsRequestGroup() DescribeShareGroupOffsetsRequestGroup {
+	var v DescribeShareGroupOffsetsRequestGroup
+	v.Default()
+	return v
+}
+
+// DescribeShareGroupOffsetsRequest is a request to describe share group offsets.
+// Version 1, introduced in Kafka 4.2, adds Lag to the response (KIP-1226).
+type DescribeShareGroupOffsetsRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// Groups are the groups to describe offsets for.
+	Groups []DescribeShareGroupOffsetsRequestGroup
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*DescribeShareGroupOffsetsRequest) Key() int16                   { return 90 }
+func (*DescribeShareGroupOffsetsRequest) MaxVersion() int16            { return 1 }
+func (v *DescribeShareGroupOffsetsRequest) SetVersion(version int16)   { v.Version = version }
+func (v *DescribeShareGroupOffsetsRequest) GetVersion() int16          { return v.Version }
+func (v *DescribeShareGroupOffsetsRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *DescribeShareGroupOffsetsRequest) IsGroupCoordinatorRequest() {}
+func (v *DescribeShareGroupOffsetsRequest) ResponseKind() Response {
+	r := &DescribeShareGroupOffsetsResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *DescribeShareGroupOffsetsRequest) RequestWith(ctx context.Context, r Requestor) (*DescribeShareGroupOffsetsResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*DescribeShareGroupOffsetsResponse)
+	return resp, err
+}
+
+func (v *DescribeShareGroupOffsetsRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.Groups
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.GroupID
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Topics
+				if isFlexible {
+					dst = kbin.AppendCompactNullableArrayLen(dst, len(v), v == nil)
+				} else {
+					dst = kbin.AppendNullableArrayLen(dst, len(v), v == nil)
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Topic
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.Partitions
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := v[i]
+							dst = kbin.AppendInt32(dst, v)
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *DescribeShareGroupOffsetsRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *DescribeShareGroupOffsetsRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *DescribeShareGroupOffsetsRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := s.Groups
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]DescribeShareGroupOffsetsRequestGroup, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.GroupID = v
+			}
+			{
+				v := s.Topics
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if version < 0 || l == 0 {
+					a = []DescribeShareGroupOffsetsRequestGroupTopic{}
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]DescribeShareGroupOffsetsRequestGroupTopic, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.Topic = v
+					}
+					{
+						v := s.Partitions
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]int32, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := b.Int32()
+							a[i] = v
+						}
+						v = a
+						s.Partitions = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Topics = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Groups = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrDescribeShareGroupOffsetsRequest returns a pointer to a default DescribeShareGroupOffsetsRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrDescribeShareGroupOffsetsRequest() *DescribeShareGroupOffsetsRequest {
+	var v DescribeShareGroupOffsetsRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DescribeShareGroupOffsetsRequest.
+func (v *DescribeShareGroupOffsetsRequest) Default() {
+}
+
+// NewDescribeShareGroupOffsetsRequest returns a default DescribeShareGroupOffsetsRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDescribeShareGroupOffsetsRequest() DescribeShareGroupOffsetsRequest {
+	var v DescribeShareGroupOffsetsRequest
+	v.Default()
+	return v
+}
+
+type DescribeShareGroupOffsetsResponseGroupTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// StartOffset is the share-partition start offset.
+	StartOffset int64
+
+	// LeaderEpoch is the leader epoch of the partition.
+	LeaderEpoch int32
+
+	// Lag is the share-partition lag. -1 if not available.
+	//
+	// This field has a default of -1.
+	Lag int64 // v1+
+
+	// ErrorCode is the partition-level error code, or 0 if there was no
+	// error.
+	ErrorCode int16
+
+	// ErrorMessage is the partition-level error message, or null if there
+	// was no error.
+	ErrorMessage *string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DescribeShareGroupOffsetsResponseGroupTopicPartition.
+func (v *DescribeShareGroupOffsetsResponseGroupTopicPartition) Default() {
+	v.Lag = -1
+}
+
+// NewDescribeShareGroupOffsetsResponseGroupTopicPartition returns a default DescribeShareGroupOffsetsResponseGroupTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDescribeShareGroupOffsetsResponseGroupTopicPartition() DescribeShareGroupOffsetsResponseGroupTopicPartition {
+	var v DescribeShareGroupOffsetsResponseGroupTopicPartition
+	v.Default()
+	return v
+}
+
+type DescribeShareGroupOffsetsResponseGroupTopic struct {
+	// Topic is the topic name.
+	Topic string
+
+	// TopicID is the unique topic ID.
+	TopicID [16]byte
+
+	// Partitions are the partition results.
+	Partitions []DescribeShareGroupOffsetsResponseGroupTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DescribeShareGroupOffsetsResponseGroupTopic.
+func (v *DescribeShareGroupOffsetsResponseGroupTopic) Default() {
+}
+
+// NewDescribeShareGroupOffsetsResponseGroupTopic returns a default DescribeShareGroupOffsetsResponseGroupTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDescribeShareGroupOffsetsResponseGroupTopic() DescribeShareGroupOffsetsResponseGroupTopic {
+	var v DescribeShareGroupOffsetsResponseGroupTopic
+	v.Default()
+	return v
+}
+
+type DescribeShareGroupOffsetsResponseGroup struct {
+	// GroupID is the group identifier.
+	GroupID string
+
+	// Topics are the results for each topic.
+	Topics []DescribeShareGroupOffsetsResponseGroupTopic
+
+	// ErrorCode is the group-level error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the group-level error message, or null if there was no
+	// error.
+	ErrorMessage *string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DescribeShareGroupOffsetsResponseGroup.
+func (v *DescribeShareGroupOffsetsResponseGroup) Default() {
+}
+
+// NewDescribeShareGroupOffsetsResponseGroup returns a default DescribeShareGroupOffsetsResponseGroup
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDescribeShareGroupOffsetsResponseGroup() DescribeShareGroupOffsetsResponseGroup {
+	var v DescribeShareGroupOffsetsResponseGroup
+	v.Default()
+	return v
+}
+
+// DescribeShareGroupOffsetsResponse is a response for a DescribeShareGroupOffsetsRequest.
+//
+// Supported errors:
+// - GROUP_AUTHORIZATION_FAILED (version 0+)
+// - TOPIC_AUTHORIZATION_FAILED (version 0+)
+// - NOT_COORDINATOR (version 0+)
+// - COORDINATOR_NOT_AVAILABLE (version 0+)
+// - COORDINATOR_LOAD_IN_PROGRESS (version 0+)
+// - GROUP_ID_NOT_FOUND (version 0+)
+// - INVALID_REQUEST (version 0+)
+// - UNKNOWN_SERVER_ERROR (version 0+)
+type DescribeShareGroupOffsetsResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// ThrottleMillis is how long of a throttle Kafka will apply to the client
+	// after responding to this request.
+	ThrottleMillis int32
+
+	// Groups are the results for each group.
+	Groups []DescribeShareGroupOffsetsResponseGroup
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*DescribeShareGroupOffsetsResponse) Key() int16                 { return 90 }
+func (*DescribeShareGroupOffsetsResponse) MaxVersion() int16          { return 1 }
+func (v *DescribeShareGroupOffsetsResponse) SetVersion(version int16) { v.Version = version }
+func (v *DescribeShareGroupOffsetsResponse) GetVersion() int16        { return v.Version }
+func (v *DescribeShareGroupOffsetsResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *DescribeShareGroupOffsetsResponse) Throttle() (int32, bool) {
+	return v.ThrottleMillis, v.Version >= 0
+}
+
+func (v *DescribeShareGroupOffsetsResponse) SetThrottle(throttleMillis int32) {
+	v.ThrottleMillis = throttleMillis
+}
+
+func (v *DescribeShareGroupOffsetsResponse) RequestKind() Request {
+	return &DescribeShareGroupOffsetsRequest{Version: v.Version}
+}
+
+func (v *DescribeShareGroupOffsetsResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.ThrottleMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.Groups
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.GroupID
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Topics
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Topic
+						if isFlexible {
+							dst = kbin.AppendCompactString(dst, v)
+						} else {
+							dst = kbin.AppendString(dst, v)
+						}
+					}
+					{
+						v := v.TopicID
+						dst = kbin.AppendUuid(dst, v)
+					}
+					{
+						v := v.Partitions
+						if isFlexible {
+							dst = kbin.AppendCompactArrayLen(dst, len(v))
+						} else {
+							dst = kbin.AppendArrayLen(dst, len(v))
+						}
+						for i := range v {
+							v := &v[i]
+							{
+								v := v.Partition
+								dst = kbin.AppendInt32(dst, v)
+							}
+							{
+								v := v.StartOffset
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.LeaderEpoch
+								dst = kbin.AppendInt32(dst, v)
+							}
+							if version >= 1 {
+								v := v.Lag
+								dst = kbin.AppendInt64(dst, v)
+							}
+							{
+								v := v.ErrorCode
+								dst = kbin.AppendInt16(dst, v)
+							}
+							{
+								v := v.ErrorMessage
+								if isFlexible {
+									dst = kbin.AppendCompactNullableString(dst, v)
+								} else {
+									dst = kbin.AppendNullableString(dst, v)
+								}
+							}
+							if isFlexible {
+								dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+								dst = v.UnknownTags.AppendEach(dst)
+							}
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			{
+				v := v.ErrorCode
+				dst = kbin.AppendInt16(dst, v)
+			}
+			{
+				v := v.ErrorMessage
+				if isFlexible {
+					dst = kbin.AppendCompactNullableString(dst, v)
+				} else {
+					dst = kbin.AppendNullableString(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *DescribeShareGroupOffsetsResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *DescribeShareGroupOffsetsResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *DescribeShareGroupOffsetsResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := b.Int32()
+		s.ThrottleMillis = v
+	}
+	{
+		v := s.Groups
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]DescribeShareGroupOffsetsResponseGroup, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.GroupID = v
+			}
+			{
+				v := s.Topics
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]DescribeShareGroupOffsetsResponseGroupTopic, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						var v string
+						if unsafe {
+							if isFlexible {
+								v = b.UnsafeCompactString()
+							} else {
+								v = b.UnsafeString()
+							}
+						} else {
+							if isFlexible {
+								v = b.CompactString()
+							} else {
+								v = b.String()
+							}
+						}
+						s.Topic = v
+					}
+					{
+						v := b.Uuid()
+						s.TopicID = v
+					}
+					{
+						v := s.Partitions
+						a := v
+						var l int32
+						if isFlexible {
+							l = b.CompactArrayLen()
+						} else {
+							l = b.ArrayLen()
+						}
+						if !b.Ok() {
+							return b.Complete()
+						}
+						a = a[:0]
+						if l > 0 {
+							a = append(a, make([]DescribeShareGroupOffsetsResponseGroupTopicPartition, l)...)
+						}
+						for i := int32(0); i < l; i++ {
+							v := &a[i]
+							v.Default()
+							s := v
+							{
+								v := b.Int32()
+								s.Partition = v
+							}
+							{
+								v := b.Int64()
+								s.StartOffset = v
+							}
+							{
+								v := b.Int32()
+								s.LeaderEpoch = v
+							}
+							if version >= 1 {
+								v := b.Int64()
+								s.Lag = v
+							}
+							{
+								v := b.Int16()
+								s.ErrorCode = v
+							}
+							{
+								var v *string
+								if isFlexible {
+									if unsafe {
+										v = b.UnsafeCompactNullableString()
+									} else {
+										v = b.CompactNullableString()
+									}
+								} else {
+									if unsafe {
+										v = b.UnsafeNullableString()
+									} else {
+										v = b.NullableString()
+									}
+								}
+								s.ErrorMessage = v
+							}
+							if isFlexible {
+								s.UnknownTags = internalReadTags(&b)
+							}
+						}
+						v = a
+						s.Partitions = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Topics = v
+			}
+			{
+				v := b.Int16()
+				s.ErrorCode = v
+			}
+			{
+				var v *string
+				if isFlexible {
+					if unsafe {
+						v = b.UnsafeCompactNullableString()
+					} else {
+						v = b.CompactNullableString()
+					}
+				} else {
+					if unsafe {
+						v = b.UnsafeNullableString()
+					} else {
+						v = b.NullableString()
+					}
+				}
+				s.ErrorMessage = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Groups = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrDescribeShareGroupOffsetsResponse returns a pointer to a default DescribeShareGroupOffsetsResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrDescribeShareGroupOffsetsResponse() *DescribeShareGroupOffsetsResponse {
+	var v DescribeShareGroupOffsetsResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DescribeShareGroupOffsetsResponse.
+func (v *DescribeShareGroupOffsetsResponse) Default() {
+}
+
+// NewDescribeShareGroupOffsetsResponse returns a default DescribeShareGroupOffsetsResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDescribeShareGroupOffsetsResponse() DescribeShareGroupOffsetsResponse {
+	var v DescribeShareGroupOffsetsResponse
+	v.Default()
+	return v
+}
+
+type AlterShareGroupOffsetsRequestTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// StartOffset is the share-partition start offset.
+	StartOffset int64
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to AlterShareGroupOffsetsRequestTopicPartition.
+func (v *AlterShareGroupOffsetsRequestTopicPartition) Default() {
+}
+
+// NewAlterShareGroupOffsetsRequestTopicPartition returns a default AlterShareGroupOffsetsRequestTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewAlterShareGroupOffsetsRequestTopicPartition() AlterShareGroupOffsetsRequestTopicPartition {
+	var v AlterShareGroupOffsetsRequestTopicPartition
+	v.Default()
+	return v
+}
+
+type AlterShareGroupOffsetsRequestTopic struct {
+	// Topic is the topic name.
+	Topic string
+
+	// Partitions are each partition to alter offsets for.
+	Partitions []AlterShareGroupOffsetsRequestTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to AlterShareGroupOffsetsRequestTopic.
+func (v *AlterShareGroupOffsetsRequestTopic) Default() {
+}
+
+// NewAlterShareGroupOffsetsRequestTopic returns a default AlterShareGroupOffsetsRequestTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewAlterShareGroupOffsetsRequestTopic() AlterShareGroupOffsetsRequestTopic {
+	var v AlterShareGroupOffsetsRequestTopic
+	v.Default()
+	return v
+}
+
+// AlterShareGroupOffsetsRequest is a request to alter share group offsets.
+type AlterShareGroupOffsetsRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// GroupID is the group identifier.
+	GroupID string
+
+	// Topics are the topics to alter offsets for.
+	Topics []AlterShareGroupOffsetsRequestTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*AlterShareGroupOffsetsRequest) Key() int16                   { return 91 }
+func (*AlterShareGroupOffsetsRequest) MaxVersion() int16            { return 0 }
+func (v *AlterShareGroupOffsetsRequest) SetVersion(version int16)   { v.Version = version }
+func (v *AlterShareGroupOffsetsRequest) GetVersion() int16          { return v.Version }
+func (v *AlterShareGroupOffsetsRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *AlterShareGroupOffsetsRequest) IsGroupCoordinatorRequest() {}
+func (v *AlterShareGroupOffsetsRequest) ResponseKind() Response {
+	r := &AlterShareGroupOffsetsResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *AlterShareGroupOffsetsRequest) RequestWith(ctx context.Context, r Requestor) (*AlterShareGroupOffsetsResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*AlterShareGroupOffsetsResponse)
+	return resp, err
+}
+
+func (v *AlterShareGroupOffsetsRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.GroupID
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.Topic
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.StartOffset
+						dst = kbin.AppendInt64(dst, v)
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *AlterShareGroupOffsetsRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *AlterShareGroupOffsetsRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *AlterShareGroupOffsetsRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.GroupID = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]AlterShareGroupOffsetsRequestTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.Topic = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]AlterShareGroupOffsetsRequestTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int64()
+						s.StartOffset = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrAlterShareGroupOffsetsRequest returns a pointer to a default AlterShareGroupOffsetsRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrAlterShareGroupOffsetsRequest() *AlterShareGroupOffsetsRequest {
+	var v AlterShareGroupOffsetsRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to AlterShareGroupOffsetsRequest.
+func (v *AlterShareGroupOffsetsRequest) Default() {
+}
+
+// NewAlterShareGroupOffsetsRequest returns a default AlterShareGroupOffsetsRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewAlterShareGroupOffsetsRequest() AlterShareGroupOffsetsRequest {
+	var v AlterShareGroupOffsetsRequest
+	v.Default()
+	return v
+}
+
+type AlterShareGroupOffsetsResponseTopicPartition struct {
+	// Partition is the partition index.
+	Partition int32
+
+	// ErrorCode is the error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the error message, or null if there was no error.
+	ErrorMessage *string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to AlterShareGroupOffsetsResponseTopicPartition.
+func (v *AlterShareGroupOffsetsResponseTopicPartition) Default() {
+}
+
+// NewAlterShareGroupOffsetsResponseTopicPartition returns a default AlterShareGroupOffsetsResponseTopicPartition
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewAlterShareGroupOffsetsResponseTopicPartition() AlterShareGroupOffsetsResponseTopicPartition {
+	var v AlterShareGroupOffsetsResponseTopicPartition
+	v.Default()
+	return v
+}
+
+type AlterShareGroupOffsetsResponseTopic struct {
+	// Topic is the topic name.
+	Topic string
+
+	// TopicID is the unique topic ID.
+	TopicID [16]byte
+
+	// Partitions are the partition results.
+	Partitions []AlterShareGroupOffsetsResponseTopicPartition
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to AlterShareGroupOffsetsResponseTopic.
+func (v *AlterShareGroupOffsetsResponseTopic) Default() {
+}
+
+// NewAlterShareGroupOffsetsResponseTopic returns a default AlterShareGroupOffsetsResponseTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewAlterShareGroupOffsetsResponseTopic() AlterShareGroupOffsetsResponseTopic {
+	var v AlterShareGroupOffsetsResponseTopic
+	v.Default()
+	return v
+}
+
+// AlterShareGroupOffsetsResponse is a response for an AlterShareGroupOffsetsRequest.
+//
+// Supported errors:
+// - GROUP_AUTHORIZATION_FAILED (version 0+)
+// - TOPIC_AUTHORIZATION_FAILED (version 0+)
+// - NOT_COORDINATOR (version 0+)
+// - COORDINATOR_NOT_AVAILABLE (version 0+)
+// - COORDINATOR_LOAD_IN_PROGRESS (version 0+)
+// - GROUP_ID_NOT_FOUND (version 0+)
+// - NON_EMPTY_GROUP (version 0+)
+// - KAFKA_STORAGE_ERROR (version 0+)
+// - INVALID_REQUEST (version 0+)
+// - UNKNOWN_SERVER_ERROR (version 0+)
+type AlterShareGroupOffsetsResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// ThrottleMillis is how long of a throttle Kafka will apply to the client
+	// after responding to this request.
+	ThrottleMillis int32
+
+	// ErrorCode is the top-level error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the top-level error message, or null if there was no
+	// error.
+	ErrorMessage *string
+
+	// Topics are the results for each topic.
+	Topics []AlterShareGroupOffsetsResponseTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*AlterShareGroupOffsetsResponse) Key() int16                 { return 91 }
+func (*AlterShareGroupOffsetsResponse) MaxVersion() int16          { return 0 }
+func (v *AlterShareGroupOffsetsResponse) SetVersion(version int16) { v.Version = version }
+func (v *AlterShareGroupOffsetsResponse) GetVersion() int16        { return v.Version }
+func (v *AlterShareGroupOffsetsResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *AlterShareGroupOffsetsResponse) Throttle() (int32, bool) {
+	return v.ThrottleMillis, v.Version >= 0
+}
+
+func (v *AlterShareGroupOffsetsResponse) SetThrottle(throttleMillis int32) {
+	v.ThrottleMillis = throttleMillis
+}
+
+func (v *AlterShareGroupOffsetsResponse) RequestKind() Request {
+	return &AlterShareGroupOffsetsRequest{Version: v.Version}
+}
+
+func (v *AlterShareGroupOffsetsResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.ThrottleMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.ErrorCode
+		dst = kbin.AppendInt16(dst, v)
+	}
+	{
+		v := v.ErrorMessage
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.Topic
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.Partitions
+				if isFlexible {
+					dst = kbin.AppendCompactArrayLen(dst, len(v))
+				} else {
+					dst = kbin.AppendArrayLen(dst, len(v))
+				}
+				for i := range v {
+					v := &v[i]
+					{
+						v := v.Partition
+						dst = kbin.AppendInt32(dst, v)
+					}
+					{
+						v := v.ErrorCode
+						dst = kbin.AppendInt16(dst, v)
+					}
+					{
+						v := v.ErrorMessage
+						if isFlexible {
+							dst = kbin.AppendCompactNullableString(dst, v)
+						} else {
+							dst = kbin.AppendNullableString(dst, v)
+						}
+					}
+					if isFlexible {
+						dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+						dst = v.UnknownTags.AppendEach(dst)
+					}
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *AlterShareGroupOffsetsResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *AlterShareGroupOffsetsResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *AlterShareGroupOffsetsResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := b.Int32()
+		s.ThrottleMillis = v
+	}
+	{
+		v := b.Int16()
+		s.ErrorCode = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.ErrorMessage = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]AlterShareGroupOffsetsResponseTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.Topic = v
+			}
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := s.Partitions
+				a := v
+				var l int32
+				if isFlexible {
+					l = b.CompactArrayLen()
+				} else {
+					l = b.ArrayLen()
+				}
+				if !b.Ok() {
+					return b.Complete()
+				}
+				a = a[:0]
+				if l > 0 {
+					a = append(a, make([]AlterShareGroupOffsetsResponseTopicPartition, l)...)
+				}
+				for i := int32(0); i < l; i++ {
+					v := &a[i]
+					v.Default()
+					s := v
+					{
+						v := b.Int32()
+						s.Partition = v
+					}
+					{
+						v := b.Int16()
+						s.ErrorCode = v
+					}
+					{
+						var v *string
+						if isFlexible {
+							if unsafe {
+								v = b.UnsafeCompactNullableString()
+							} else {
+								v = b.CompactNullableString()
+							}
+						} else {
+							if unsafe {
+								v = b.UnsafeNullableString()
+							} else {
+								v = b.NullableString()
+							}
+						}
+						s.ErrorMessage = v
+					}
+					if isFlexible {
+						s.UnknownTags = internalReadTags(&b)
+					}
+				}
+				v = a
+				s.Partitions = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrAlterShareGroupOffsetsResponse returns a pointer to a default AlterShareGroupOffsetsResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrAlterShareGroupOffsetsResponse() *AlterShareGroupOffsetsResponse {
+	var v AlterShareGroupOffsetsResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to AlterShareGroupOffsetsResponse.
+func (v *AlterShareGroupOffsetsResponse) Default() {
+}
+
+// NewAlterShareGroupOffsetsResponse returns a default AlterShareGroupOffsetsResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewAlterShareGroupOffsetsResponse() AlterShareGroupOffsetsResponse {
+	var v AlterShareGroupOffsetsResponse
+	v.Default()
+	return v
+}
+
+type DeleteShareGroupOffsetsRequestTopic struct {
+	// Topic is the topic name.
+	Topic string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DeleteShareGroupOffsetsRequestTopic.
+func (v *DeleteShareGroupOffsetsRequestTopic) Default() {
+}
+
+// NewDeleteShareGroupOffsetsRequestTopic returns a default DeleteShareGroupOffsetsRequestTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDeleteShareGroupOffsetsRequestTopic() DeleteShareGroupOffsetsRequestTopic {
+	var v DeleteShareGroupOffsetsRequestTopic
+	v.Default()
+	return v
+}
+
+// DeleteShareGroupOffsetsRequest is a request to delete share group offsets.
+type DeleteShareGroupOffsetsRequest struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// GroupID is the group identifier.
+	GroupID string
+
+	// Topics are the topics to delete offsets for.
+	Topics []DeleteShareGroupOffsetsRequestTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*DeleteShareGroupOffsetsRequest) Key() int16                   { return 92 }
+func (*DeleteShareGroupOffsetsRequest) MaxVersion() int16            { return 0 }
+func (v *DeleteShareGroupOffsetsRequest) SetVersion(version int16)   { v.Version = version }
+func (v *DeleteShareGroupOffsetsRequest) GetVersion() int16          { return v.Version }
+func (v *DeleteShareGroupOffsetsRequest) IsFlexible() bool           { return v.Version >= 0 }
+func (v *DeleteShareGroupOffsetsRequest) IsGroupCoordinatorRequest() {}
+func (v *DeleteShareGroupOffsetsRequest) ResponseKind() Response {
+	r := &DeleteShareGroupOffsetsResponse{Version: v.Version}
+	r.Default()
+	return r
+}
+
+// RequestWith is requests v on r and returns the response or an error.
+// For sharded requests, the response may be merged and still return an error.
+// It is better to rely on client.RequestSharded than to rely on proper merging behavior.
+func (v *DeleteShareGroupOffsetsRequest) RequestWith(ctx context.Context, r Requestor) (*DeleteShareGroupOffsetsResponse, error) {
+	kresp, err := r.Request(ctx, v)
+	resp, _ := kresp.(*DeleteShareGroupOffsetsResponse)
+	return resp, err
+}
+
+func (v *DeleteShareGroupOffsetsRequest) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.GroupID
+		if isFlexible {
+			dst = kbin.AppendCompactString(dst, v)
+		} else {
+			dst = kbin.AppendString(dst, v)
+		}
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.Topic
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *DeleteShareGroupOffsetsRequest) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *DeleteShareGroupOffsetsRequest) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *DeleteShareGroupOffsetsRequest) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		var v string
+		if unsafe {
+			if isFlexible {
+				v = b.UnsafeCompactString()
+			} else {
+				v = b.UnsafeString()
+			}
+		} else {
+			if isFlexible {
+				v = b.CompactString()
+			} else {
+				v = b.String()
+			}
+		}
+		s.GroupID = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]DeleteShareGroupOffsetsRequestTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.Topic = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrDeleteShareGroupOffsetsRequest returns a pointer to a default DeleteShareGroupOffsetsRequest
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrDeleteShareGroupOffsetsRequest() *DeleteShareGroupOffsetsRequest {
+	var v DeleteShareGroupOffsetsRequest
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DeleteShareGroupOffsetsRequest.
+func (v *DeleteShareGroupOffsetsRequest) Default() {
+}
+
+// NewDeleteShareGroupOffsetsRequest returns a default DeleteShareGroupOffsetsRequest
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDeleteShareGroupOffsetsRequest() DeleteShareGroupOffsetsRequest {
+	var v DeleteShareGroupOffsetsRequest
+	v.Default()
+	return v
+}
+
+type DeleteShareGroupOffsetsResponseTopic struct {
+	// Topic is the topic name.
+	Topic string
+
+	// TopicID is the unique topic ID.
+	TopicID [16]byte
+
+	// ErrorCode is the topic-level error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the topic-level error message, or null if there was no
+	// error.
+	ErrorMessage *string
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DeleteShareGroupOffsetsResponseTopic.
+func (v *DeleteShareGroupOffsetsResponseTopic) Default() {
+}
+
+// NewDeleteShareGroupOffsetsResponseTopic returns a default DeleteShareGroupOffsetsResponseTopic
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDeleteShareGroupOffsetsResponseTopic() DeleteShareGroupOffsetsResponseTopic {
+	var v DeleteShareGroupOffsetsResponseTopic
+	v.Default()
+	return v
+}
+
+// DeleteShareGroupOffsetsResponse is a response for a DeleteShareGroupOffsetsRequest.
+//
+// Supported errors:
+// - GROUP_AUTHORIZATION_FAILED (version 0+)
+// - TOPIC_AUTHORIZATION_FAILED (version 0+)
+// - NOT_COORDINATOR (version 0+)
+// - COORDINATOR_NOT_AVAILABLE (version 0+)
+// - COORDINATOR_LOAD_IN_PROGRESS (version 0+)
+// - GROUP_ID_NOT_FOUND (version 0+)
+// - NON_EMPTY_GROUP (version 0+)
+// - KAFKA_STORAGE_ERROR (version 0+)
+// - INVALID_REQUEST (version 0+)
+// - UNKNOWN_SERVER_ERROR (version 0+)
+// - UNKNOWN_TOPIC_OR_PARTITION (version 0+)
+type DeleteShareGroupOffsetsResponse struct {
+	// Version is the version of this message used with a Kafka broker.
+	Version int16
+
+	// ThrottleMillis is how long of a throttle Kafka will apply to the client
+	// after responding to this request.
+	ThrottleMillis int32
+
+	// ErrorCode is the top-level error code, or 0 if there was no error.
+	ErrorCode int16
+
+	// ErrorMessage is the top-level error message, or null if there was no
+	// error.
+	ErrorMessage *string
+
+	// Topics are the results for each topic.
+	Topics []DeleteShareGroupOffsetsResponseTopic
+
+	// UnknownTags are tags Kafka sent that we do not know the purpose of.
+	UnknownTags Tags
+}
+
+func (*DeleteShareGroupOffsetsResponse) Key() int16                 { return 92 }
+func (*DeleteShareGroupOffsetsResponse) MaxVersion() int16          { return 0 }
+func (v *DeleteShareGroupOffsetsResponse) SetVersion(version int16) { v.Version = version }
+func (v *DeleteShareGroupOffsetsResponse) GetVersion() int16        { return v.Version }
+func (v *DeleteShareGroupOffsetsResponse) IsFlexible() bool         { return v.Version >= 0 }
+func (v *DeleteShareGroupOffsetsResponse) Throttle() (int32, bool) {
+	return v.ThrottleMillis, v.Version >= 0
+}
+
+func (v *DeleteShareGroupOffsetsResponse) SetThrottle(throttleMillis int32) {
+	v.ThrottleMillis = throttleMillis
+}
+
+func (v *DeleteShareGroupOffsetsResponse) RequestKind() Request {
+	return &DeleteShareGroupOffsetsRequest{Version: v.Version}
+}
+
+func (v *DeleteShareGroupOffsetsResponse) AppendTo(dst []byte) []byte {
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	{
+		v := v.ThrottleMillis
+		dst = kbin.AppendInt32(dst, v)
+	}
+	{
+		v := v.ErrorCode
+		dst = kbin.AppendInt16(dst, v)
+	}
+	{
+		v := v.ErrorMessage
+		if isFlexible {
+			dst = kbin.AppendCompactNullableString(dst, v)
+		} else {
+			dst = kbin.AppendNullableString(dst, v)
+		}
+	}
+	{
+		v := v.Topics
+		if isFlexible {
+			dst = kbin.AppendCompactArrayLen(dst, len(v))
+		} else {
+			dst = kbin.AppendArrayLen(dst, len(v))
+		}
+		for i := range v {
+			v := &v[i]
+			{
+				v := v.Topic
+				if isFlexible {
+					dst = kbin.AppendCompactString(dst, v)
+				} else {
+					dst = kbin.AppendString(dst, v)
+				}
+			}
+			{
+				v := v.TopicID
+				dst = kbin.AppendUuid(dst, v)
+			}
+			{
+				v := v.ErrorCode
+				dst = kbin.AppendInt16(dst, v)
+			}
+			{
+				v := v.ErrorMessage
+				if isFlexible {
+					dst = kbin.AppendCompactNullableString(dst, v)
+				} else {
+					dst = kbin.AppendNullableString(dst, v)
+				}
+			}
+			if isFlexible {
+				dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+				dst = v.UnknownTags.AppendEach(dst)
+			}
+		}
+	}
+	if isFlexible {
+		dst = kbin.AppendUvarint(dst, 0+uint32(v.UnknownTags.Len()))
+		dst = v.UnknownTags.AppendEach(dst)
+	}
+	return dst
+}
+
+func (v *DeleteShareGroupOffsetsResponse) ReadFrom(src []byte) error {
+	return v.readFrom(src, false)
+}
+
+func (v *DeleteShareGroupOffsetsResponse) UnsafeReadFrom(src []byte) error {
+	return v.readFrom(src, true)
+}
+
+func (v *DeleteShareGroupOffsetsResponse) readFrom(src []byte, unsafe bool) error {
+	v.Default()
+	b := kbin.Reader{Src: src}
+	version := v.Version
+	_ = version
+	isFlexible := version >= 0
+	_ = isFlexible
+	s := v
+	{
+		v := b.Int32()
+		s.ThrottleMillis = v
+	}
+	{
+		v := b.Int16()
+		s.ErrorCode = v
+	}
+	{
+		var v *string
+		if isFlexible {
+			if unsafe {
+				v = b.UnsafeCompactNullableString()
+			} else {
+				v = b.CompactNullableString()
+			}
+		} else {
+			if unsafe {
+				v = b.UnsafeNullableString()
+			} else {
+				v = b.NullableString()
+			}
+		}
+		s.ErrorMessage = v
+	}
+	{
+		v := s.Topics
+		a := v
+		var l int32
+		if isFlexible {
+			l = b.CompactArrayLen()
+		} else {
+			l = b.ArrayLen()
+		}
+		if !b.Ok() {
+			return b.Complete()
+		}
+		a = a[:0]
+		if l > 0 {
+			a = append(a, make([]DeleteShareGroupOffsetsResponseTopic, l)...)
+		}
+		for i := int32(0); i < l; i++ {
+			v := &a[i]
+			v.Default()
+			s := v
+			{
+				var v string
+				if unsafe {
+					if isFlexible {
+						v = b.UnsafeCompactString()
+					} else {
+						v = b.UnsafeString()
+					}
+				} else {
+					if isFlexible {
+						v = b.CompactString()
+					} else {
+						v = b.String()
+					}
+				}
+				s.Topic = v
+			}
+			{
+				v := b.Uuid()
+				s.TopicID = v
+			}
+			{
+				v := b.Int16()
+				s.ErrorCode = v
+			}
+			{
+				var v *string
+				if isFlexible {
+					if unsafe {
+						v = b.UnsafeCompactNullableString()
+					} else {
+						v = b.CompactNullableString()
+					}
+				} else {
+					if unsafe {
+						v = b.UnsafeNullableString()
+					} else {
+						v = b.NullableString()
+					}
+				}
+				s.ErrorMessage = v
+			}
+			if isFlexible {
+				s.UnknownTags = internalReadTags(&b)
+			}
+		}
+		v = a
+		s.Topics = v
+	}
+	if isFlexible {
+		s.UnknownTags = internalReadTags(&b)
+	}
+	return b.Complete()
+}
+
+// NewPtrDeleteShareGroupOffsetsResponse returns a pointer to a default DeleteShareGroupOffsetsResponse
+// This is a shortcut for creating a new(struct) and calling Default yourself.
+func NewPtrDeleteShareGroupOffsetsResponse() *DeleteShareGroupOffsetsResponse {
+	var v DeleteShareGroupOffsetsResponse
+	v.Default()
+	return &v
+}
+
+// Default sets any default fields. Calling this allows for future compatibility
+// if new fields are added to DeleteShareGroupOffsetsResponse.
+func (v *DeleteShareGroupOffsetsResponse) Default() {
+}
+
+// NewDeleteShareGroupOffsetsResponse returns a default DeleteShareGroupOffsetsResponse
+// This is a shortcut for creating a struct and calling Default yourself.
+func NewDeleteShareGroupOffsetsResponse() DeleteShareGroupOffsetsResponse {
+	var v DeleteShareGroupOffsetsResponse
+	v.Default()
+	return v
+}
+
 // RequestForKey returns the request corresponding to the given request key
 // or nil if the key is unknown.
 func RequestForKey(key int16) Request {
@@ -52817,15 +67550,43 @@ func RequestForKey(key int16) Request {
 	case 73:
 		return NewPtrAssignReplicasToDirsRequest()
 	case 74:
-		return NewPtrListClientMetricsResourcesRequest()
+		return NewPtrListConfigResourcesRequest()
 	case 75:
 		return NewPtrDescribeTopicPartitionsRequest()
+	case 76:
+		return NewPtrShareGroupHeartbeatRequest()
+	case 77:
+		return NewPtrShareGroupDescribeRequest()
+	case 78:
+		return NewPtrShareFetchRequest()
+	case 79:
+		return NewPtrShareAcknowledgeRequest()
 	case 80:
 		return NewPtrAddRaftVoterRequest()
 	case 81:
 		return NewPtrRemoveRaftVoterRequest()
 	case 82:
 		return NewPtrUpdateRaftVoterRequest()
+	case 83:
+		return NewPtrInitializeShareGroupStateRequest()
+	case 84:
+		return NewPtrReadShareGroupStateRequest()
+	case 85:
+		return NewPtrWriteShareGroupStateRequest()
+	case 86:
+		return NewPtrDeleteShareGroupStateRequest()
+	case 87:
+		return NewPtrReadShareGroupStateSummaryRequest()
+	case 88:
+		return NewPtrStreamsGroupHeartbeatRequest()
+	case 89:
+		return NewPtrStreamsGroupDescribeRequest()
+	case 90:
+		return NewPtrDescribeShareGroupOffsetsRequest()
+	case 91:
+		return NewPtrAlterShareGroupOffsetsRequest()
+	case 92:
+		return NewPtrDeleteShareGroupOffsetsRequest()
 	}
 }
 
@@ -52984,15 +67745,43 @@ func ResponseForKey(key int16) Response {
 	case 73:
 		return NewPtrAssignReplicasToDirsResponse()
 	case 74:
-		return NewPtrListClientMetricsResourcesResponse()
+		return NewPtrListConfigResourcesResponse()
 	case 75:
 		return NewPtrDescribeTopicPartitionsResponse()
+	case 76:
+		return NewPtrShareGroupHeartbeatResponse()
+	case 77:
+		return NewPtrShareGroupDescribeResponse()
+	case 78:
+		return NewPtrShareFetchResponse()
+	case 79:
+		return NewPtrShareAcknowledgeResponse()
 	case 80:
 		return NewPtrAddRaftVoterResponse()
 	case 81:
 		return NewPtrRemoveRaftVoterResponse()
 	case 82:
 		return NewPtrUpdateRaftVoterResponse()
+	case 83:
+		return NewPtrInitializeShareGroupStateResponse()
+	case 84:
+		return NewPtrReadShareGroupStateResponse()
+	case 85:
+		return NewPtrWriteShareGroupStateResponse()
+	case 86:
+		return NewPtrDeleteShareGroupStateResponse()
+	case 87:
+		return NewPtrReadShareGroupStateSummaryResponse()
+	case 88:
+		return NewPtrStreamsGroupHeartbeatResponse()
+	case 89:
+		return NewPtrStreamsGroupDescribeResponse()
+	case 90:
+		return NewPtrDescribeShareGroupOffsetsResponse()
+	case 91:
+		return NewPtrAlterShareGroupOffsetsResponse()
+	case 92:
+		return NewPtrDeleteShareGroupOffsetsResponse()
 	}
 }
 
@@ -53151,15 +67940,43 @@ func NameForKey(key int16) string {
 	case 73:
 		return "AssignReplicasToDirs"
 	case 74:
-		return "ListClientMetricsResources"
+		return "ListConfigResources"
 	case 75:
 		return "DescribeTopicPartitions"
+	case 76:
+		return "ShareGroupHeartbeat"
+	case 77:
+		return "ShareGroupDescribe"
+	case 78:
+		return "ShareFetch"
+	case 79:
+		return "ShareAcknowledge"
 	case 80:
 		return "AddRaftVoter"
 	case 81:
 		return "RemoveRaftVoter"
 	case 82:
 		return "UpdateRaftVoter"
+	case 83:
+		return "InitializeShareGroupState"
+	case 84:
+		return "ReadShareGroupState"
+	case 85:
+		return "WriteShareGroupState"
+	case 86:
+		return "DeleteShareGroupState"
+	case 87:
+		return "ReadShareGroupStateSummary"
+	case 88:
+		return "StreamsGroupHeartbeat"
+	case 89:
+		return "StreamsGroupDescribe"
+	case 90:
+		return "DescribeShareGroupOffsets"
+	case 91:
+		return "AlterShareGroupOffsets"
+	case 92:
+		return "DeleteShareGroupOffsets"
 	}
 }
 
@@ -53241,11 +68058,25 @@ const (
 	GetTelemetrySubscriptions    Key = 71
 	PushTelemetry                Key = 72
 	AssignReplicasToDirs         Key = 73
-	ListClientMetricsResources   Key = 74
+	ListConfigResources          Key = 74
 	DescribeTopicPartitions      Key = 75
+	ShareGroupHeartbeat          Key = 76
+	ShareGroupDescribe           Key = 77
+	ShareFetch                   Key = 78
+	ShareAcknowledge             Key = 79
 	AddRaftVoter                 Key = 80
 	RemoveRaftVoter              Key = 81
 	UpdateRaftVoter              Key = 82
+	InitializeShareGroupState    Key = 83
+	ReadShareGroupState          Key = 84
+	WriteShareGroupState         Key = 85
+	DeleteShareGroupState        Key = 86
+	ReadShareGroupStateSummary   Key = 87
+	StreamsGroupHeartbeat        Key = 88
+	StreamsGroupDescribe         Key = 89
+	DescribeShareGroupOffsets    Key = 90
+	AlterShareGroupOffsets       Key = 91
+	DeleteShareGroupOffsets      Key = 92
 )
 
 // Name returns the name for this key.
@@ -53269,6 +68100,10 @@ func (k Key) Int16() int16 { return int16(k) }
 // * 4 (BROKER)
 //
 // * 8 (BROKER_LOGGER)
+//
+// * 16 (CLIENT_METRICS)
+//
+// * 32 (GROUP_CONFIG)
 type ConfigResourceType int8
 
 func (v ConfigResourceType) String() string {
@@ -53281,6 +68116,10 @@ func (v ConfigResourceType) String() string {
 		return "BROKER"
 	case 8:
 		return "BROKER_LOGGER"
+	case 16:
+		return "CLIENT_METRICS"
+	case 32:
+		return "GROUP_CONFIG"
 	}
 }
 
@@ -53289,6 +68128,8 @@ func ConfigResourceTypeStrings() []string {
 		"TOPIC",
 		"BROKER",
 		"BROKER_LOGGER",
+		"CLIENT_METRICS",
+		"GROUP_CONFIG",
 	}
 }
 
@@ -53305,16 +68146,22 @@ func ParseConfigResourceType(s string) (ConfigResourceType, error) {
 		return 4, nil
 	case "brokerlogger":
 		return 8, nil
+	case "clientmetrics":
+		return 16, nil
+	case "groupconfig":
+		return 32, nil
 	default:
 		return 0, fmt.Errorf("ConfigResourceType: unable to parse %q", s)
 	}
 }
 
 const (
-	ConfigResourceTypeUnknown      ConfigResourceType = 0
-	ConfigResourceTypeTopic        ConfigResourceType = 2
-	ConfigResourceTypeBroker       ConfigResourceType = 4
-	ConfigResourceTypeBrokerLogger ConfigResourceType = 8
+	ConfigResourceTypeUnknown       ConfigResourceType = 0
+	ConfigResourceTypeTopic         ConfigResourceType = 2
+	ConfigResourceTypeBroker        ConfigResourceType = 4
+	ConfigResourceTypeBrokerLogger  ConfigResourceType = 8
+	ConfigResourceTypeClientMetrics ConfigResourceType = 16
+	ConfigResourceTypeGroupConfig   ConfigResourceType = 32
 )
 
 // MarshalText implements encoding.TextMarshaler.
@@ -53351,6 +68198,12 @@ func (e *ConfigResourceType) UnmarshalText(text []byte) error {
 //
 // * 6 (DYNAMIC_BROKER_LOGGER_CONFIG)
 // Broker logger; see KIP-412.
+//
+// * 7 (CLIENT_METRICS_CONFIG)
+// Client metrics; see KIP-714 / Kafka commit a53147e7d90.
+//
+// * 8 (GROUP_CONFIG)
+// Group configs; see KAFKA-14511 / Kafka commit bbdf79e1b4f>
 type ConfigSource int8
 
 func (v ConfigSource) String() string {
@@ -53369,6 +68222,10 @@ func (v ConfigSource) String() string {
 		return "DEFAULT_CONFIG"
 	case 6:
 		return "DYNAMIC_BROKER_LOGGER_CONFIG"
+	case 7:
+		return "CLIENT_METRICS_CONFIG"
+	case 8:
+		return "GROUP_CONFIG"
 	}
 }
 
@@ -53380,6 +68237,8 @@ func ConfigSourceStrings() []string {
 		"STATIC_BROKER_CONFIG",
 		"DEFAULT_CONFIG",
 		"DYNAMIC_BROKER_LOGGER_CONFIG",
+		"CLIENT_METRICS_CONFIG",
+		"GROUP_CONFIG",
 	}
 }
 
@@ -53402,6 +68261,10 @@ func ParseConfigSource(s string) (ConfigSource, error) {
 		return 5, nil
 	case "dynamicbrokerloggerconfig":
 		return 6, nil
+	case "clientmetricsconfig":
+		return 7, nil
+	case "groupconfig":
+		return 8, nil
 	default:
 		return 0, fmt.Errorf("ConfigSource: unable to parse %q", s)
 	}
@@ -53415,6 +68278,8 @@ const (
 	ConfigSourceStaticBrokerConfig         ConfigSource = 4
 	ConfigSourceDefaultConfig              ConfigSource = 5
 	ConfigSourceDynamicBrokerLoggerConfig  ConfigSource = 6
+	ConfigSourceClientMetricsConfig        ConfigSource = 7
+	ConfigSourceGroupConfig                ConfigSource = 8
 )
 
 // MarshalText implements encoding.TextMarshaler.
@@ -54223,9 +69088,17 @@ func (e *QuotasMatchType) UnmarshalText(text []byte) error {
 // * 1 (COMMIT)
 //
 // * 2 (QUORUM_REASSIGNMENT)
+// QUORUM_REASSIGNMENT was renamed to LEADER_CHANGE in Kafka 3.0
+// (KAFKA-12952 commit d3ec9f940c), but the meaning is the same.
 //
-// * 3 (LEADER_CHANGE)
-type ControlRecordKeyType int8
+// * 3 (SNAPSHOT_HEADER)
+//
+// * 4 (SNAPSHOT_FOOTER)
+//
+// * 5 (KRAFT_VERSION)
+//
+// * 6 (KRAFT_VOTERS)
+type ControlRecordKeyType int16
 
 func (v ControlRecordKeyType) String() string {
 	switch v {
@@ -54238,7 +69111,13 @@ func (v ControlRecordKeyType) String() string {
 	case 2:
 		return "QUORUM_REASSIGNMENT"
 	case 3:
-		return "LEADER_CHANGE"
+		return "SNAPSHOT_HEADER"
+	case 4:
+		return "SNAPSHOT_FOOTER"
+	case 5:
+		return "KRAFT_VERSION"
+	case 6:
+		return "KRAFT_VOTERS"
 	}
 }
 
@@ -54247,7 +69126,10 @@ func ControlRecordKeyTypeStrings() []string {
 		"ABORT",
 		"COMMIT",
 		"QUORUM_REASSIGNMENT",
-		"LEADER_CHANGE",
+		"SNAPSHOT_HEADER",
+		"SNAPSHOT_FOOTER",
+		"KRAFT_VERSION",
+		"KRAFT_VOTERS",
 	}
 }
 
@@ -54264,8 +69146,14 @@ func ParseControlRecordKeyType(s string) (ControlRecordKeyType, error) {
 		return 1, nil
 	case "quorumreassignment":
 		return 2, nil
-	case "leaderchange":
+	case "snapshotheader":
 		return 3, nil
+	case "snapshotfooter":
+		return 4, nil
+	case "kraftversion":
+		return 5, nil
+	case "kraftvoters":
+		return 6, nil
 	default:
 		return 0, fmt.Errorf("ControlRecordKeyType: unable to parse %q", s)
 	}
@@ -54275,7 +69163,10 @@ const (
 	ControlRecordKeyTypeAbort              ControlRecordKeyType = 0
 	ControlRecordKeyTypeCommit             ControlRecordKeyType = 1
 	ControlRecordKeyTypeQuorumReassignment ControlRecordKeyType = 2
-	ControlRecordKeyTypeLeaderChange       ControlRecordKeyType = 3
+	ControlRecordKeyTypeSnapshotHeader     ControlRecordKeyType = 3
+	ControlRecordKeyTypeSnapshotFooter     ControlRecordKeyType = 4
+	ControlRecordKeyTypeKraftVersion       ControlRecordKeyType = 5
+	ControlRecordKeyTypeKraftVoters        ControlRecordKeyType = 6
 )
 
 // MarshalText implements encoding.TextMarshaler.

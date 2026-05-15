@@ -195,8 +195,7 @@ func (r RelabelConfig) SourceLabelsString() string {
 	var sb strings.Builder
 	sb.WriteString("[")
 	for i, labelname := range r.SourceLabels {
-		sb.WriteString(fmt.Sprintf(`"%s"`, labelname))
-
+		fmt.Fprintf(&sb, `"%s"`, labelname)
 		if i != len(r.SourceLabels)-1 {
 			sb.WriteString(",")
 		}

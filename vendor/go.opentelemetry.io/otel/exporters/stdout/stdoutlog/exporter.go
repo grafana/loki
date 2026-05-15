@@ -67,6 +67,6 @@ func (e *Exporter) Shutdown(context.Context) error {
 }
 
 // ForceFlush performs no action.
-func (e *Exporter) ForceFlush(context.Context) error {
+func (*Exporter) ForceFlush(context.Context) error {
 	return nil
 }

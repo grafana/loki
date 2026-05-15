@@ -50,6 +50,17 @@ type Context struct {
 	store Store
 	// result accumulates results for JoinResult.
 	result Result
+	// recvWaitTime accumulates the time the querier spent waiting on ingester
+	// gRPC Recv() in nanoseconds.
+	// We use an int64 nanoseconds value here because the Ingester RecvWaitTime field
+	// is a double (so that it will pass correctly in json), but there are no
+	// atomic operations on doubles.
+	recvWaitTime int64
+	// querierExecTime accumulates the querier execution time in nanoseconds
+	// We use an int64 nanoseconds value here because the Queriers exec time field
+	// is a double (so that it will pass correctly in json), but there are no
+	// atomic operations on doubles.
+	querierExecTime int64
 
 	mtx sync.Mutex
 }
@@ -60,15 +71,17 @@ const (
 	ChunkCache                CacheType = "chunk"                 //nolint:staticcheck
 	IndexCache                CacheType = "index"                 //nolint:staticcheck
 	ResultCache               CacheType = "result"                //nolint:staticcheck
+	LogResultCache            CacheType = "log-result"            //nolint:staticcheck
+	InstantMetricResultsCache CacheType = "instant-metric-result" // nolint:staticcheck
 	StatsResultCache          CacheType = "stats-result"          //nolint:staticcheck
 	VolumeResultCache         CacheType = "volume-result"         //nolint:staticcheck
-	InstantMetricResultsCache CacheType = "instant-metric-result" // nolint:staticcheck
 	WriteDedupeCache          CacheType = "write-dedupe"          //nolint:staticcheck
 	SeriesResultCache         CacheType = "series-result"         //nolint:staticcheck
 	LabelResultCache          CacheType = "label-result"          //nolint:staticcheck
 	BloomFilterCache          CacheType = "bloom-filter"          //nolint:staticcheck
 	BloomBlocksCache          CacheType = "bloom-blocks"          //nolint:staticcheck
 	BloomMetasCache           CacheType = "bloom-metas"           //nolint:staticcheck
+	TaskResultCache           CacheType = "task-result"           //nolint:staticcheck
 )
 
 // NewContext creates a new statistics context
@@ -95,6 +108,7 @@ func (c *Context) Ingester() Ingester {
 		TotalBatches:       c.ingester.TotalBatches,
 		TotalLinesSent:     c.ingester.TotalLinesSent,
 		Store:              c.store,
+		RecvWaitTime:       time.Duration(c.recvWaitTime).Seconds(),
 	}
 }
 
@@ -126,6 +140,8 @@ func (c *Context) Caches() Caches {
 		SeriesResult:        c.caches.SeriesResult,
 		LabelResult:         c.caches.LabelResult,
 		InstantMetricResult: c.caches.InstantMetricResult,
+		LogResult:           c.caches.LogResult,
+		TaskResult:          c.caches.TaskResult,
 	}
 }
 
@@ -140,6 +156,8 @@ func (c *Context) Reset() {
 	c.result.Reset()
 	c.caches.Reset()
 	c.index.Reset()
+	c.recvWaitTime = 0
+	c.querierExecTime = 0
 }
 
 // Result calculates the summary based on store and ingester data.
@@ -147,12 +165,23 @@ func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalE
 	r := c.result
 
 	r.Merge(Result{
+		// ewelch: I'm not sure why we have a separate store object in the context and we don't use the
+		// store object in the querier object. I didn't try to solve this when adding the querier exec time
+		// but I suspect this could be simplified?
 		Querier: Querier{
-			Store: c.store,
+			Store:           c.store,
+			QuerierExecTime: time.Duration(c.querierExecTime).Seconds(),
 		},
-		Ingester: c.ingester,
-		Caches:   c.caches,
-		Index:    c.index,
+		Ingester: Ingester{
+			TotalReached:       c.ingester.TotalReached,
+			TotalChunksMatched: c.ingester.TotalChunksMatched,
+			TotalBatches:       c.ingester.TotalBatches,
+			TotalLinesSent:     c.ingester.TotalLinesSent,
+			Store:              c.ingester.Store,
+			RecvWaitTime:       time.Duration(c.recvWaitTime).Seconds(),
+		},
+		Caches: c.caches,
+		Index:  c.index,
 	})
 
 	r.ComputeSummary(execTime, queueTime, totalEntriesReturned)
@@ -234,6 +263,7 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.PageBatches += m.Dataobj.PageBatches
 	s.Dataobj.TotalPageDownloadTime += m.Dataobj.TotalPageDownloadTime
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
+	s.Dataobj.WireBytesTransferred += m.Dataobj.WireBytesTransferred
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
@@ -249,10 +279,14 @@ func (s *Store) ChunksDownloadDuration() time.Duration {
 func (s *Summary) Merge(m Summary) {
 	s.Splits += m.Splits
 	s.Shards += m.Shards
+	if m.EstimatedQueryBytes > s.EstimatedQueryBytes {
+		s.EstimatedQueryBytes = m.EstimatedQueryBytes
+	}
 }
 
 func (q *Querier) Merge(m Querier) {
 	q.Store.Merge(m.Store)
+	q.QuerierExecTime += m.QuerierExecTime
 }
 
 func (i *Ingester) Merge(m Ingester) {
@@ -261,12 +295,16 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalLinesSent += m.TotalLinesSent
 	i.TotalChunksMatched += m.TotalChunksMatched
 	i.TotalReached += m.TotalReached
+	i.RecvWaitTime += m.RecvWaitTime
 }
 
 func (i *Index) Merge(m Index) {
 	i.TotalChunks += m.TotalChunks
 	i.PostFilterChunks += m.PostFilterChunks
 	i.ShardsDuration += m.ShardsDuration
+	i.TotalStreams += m.TotalStreams
+	i.ChunkRefsLookupTime += m.ChunkRefsLookupTime
+	i.BloomFilterTime += m.BloomFilterTime
 	if m.UsedBloomFilters {
 		i.UsedBloomFilters = m.UsedBloomFilters
 	}
@@ -281,6 +319,8 @@ func (c *Caches) Merge(m Caches) {
 	c.SeriesResult.Merge(m.SeriesResult)
 	c.LabelResult.Merge(m.LabelResult)
 	c.InstantMetricResult.Merge(m.InstantMetricResult)
+	c.LogResult.Merge(m.LogResult)
+	c.TaskResult.Merge(m.TaskResult)
 }
 
 func (c *Cache) Merge(m Cache) {
@@ -315,7 +355,8 @@ func (r *Result) Merge(m Result) {
 	r.Summary.Merge(m.Summary)
 	r.Index.Merge(m.Index)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
-		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
+		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime),
+		int(r.Summary.TotalEntriesReturned+m.Summary.TotalEntriesReturned))
 }
 
 // ConvertSecondsToNanoseconds converts time.Duration representation of seconds (float64)
@@ -379,6 +420,12 @@ func (c *Context) AddIngesterTotalChunkMatched(i int64) {
 
 func (c *Context) AddIngesterReached(i int32) {
 	atomic.AddInt32(&c.ingester.TotalReached, i)
+}
+
+// AddIngesterRecvWait accumulates the time the querier spent waiting
+// for batches from ingesters over gRPC Recv().
+func (c *Context) AddIngesterRecvWait(d time.Duration) {
+	atomic.AddInt64(&c.recvWaitTime, int64(d))
 }
 
 func (c *Context) AddHeadChunkLines(i int64) {
@@ -585,12 +632,21 @@ func (c *Context) AddTotalRowsAvailable(i int64) {
 	atomic.AddInt64(&c.store.Dataobj.TotalRowsAvailable, i)
 }
 
+func (c *Context) AddWireBytesTransferred(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.WireBytesTransferred, i)
+}
+
 func (c *Context) SetQueryReferencedStructuredMetadata() {
 	c.store.QueryReferencedStructured = true
 }
 
 func (c *Context) SetQueryUsedV2Engine() {
 	c.store.QueryUsedV2Engine = true
+}
+
+// AddQuerierExecTime accumulates the querier execution time.
+func (c *Context) AddQuerierExecTime(d time.Duration) {
+	atomic.AddInt64(&c.querierExecTime, int64(d))
 }
 
 func (c *Context) getCacheStatsByType(t CacheType) *Cache {
@@ -612,6 +668,10 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.LabelResult
 	case InstantMetricResultsCache:
 		stats = &c.caches.InstantMetricResult
+	case LogResultCache:
+		stats = &c.caches.LogResult
+	case TaskResultCache:
+		stats = &c.caches.TaskResult
 	default:
 		return nil
 	}
@@ -628,6 +688,7 @@ func (r Result) KVList() []any {
 		"Ingester.TotalChunksMatched", r.Ingester.TotalChunksMatched,
 		"Ingester.TotalBatches", r.Ingester.TotalBatches,
 		"Ingester.TotalLinesSent", r.Ingester.TotalLinesSent,
+		"Ingester.RecvWaitTime", ConvertSecondsToNanoseconds(r.Ingester.RecvWaitTime),
 		"Ingester.TotalChunksRef", r.Ingester.Store.TotalChunksRef,
 		"Ingester.TotalChunksDownloaded", r.Ingester.Store.TotalChunksDownloaded,
 		"Ingester.ChunksDownloadTime", time.Duration(r.Ingester.Store.ChunksDownloadTime),
@@ -730,6 +791,17 @@ func (c Caches) kvList() []any {
 		"Cache.InstantMetricResult.BytesSent", humanize.Bytes(uint64(c.InstantMetricResult.BytesSent)),
 		"Cache.InstantMetricResult.BytesReceived", humanize.Bytes(uint64(c.InstantMetricResult.BytesReceived)),
 		"Cache.InstantMetricResult.DownloadTime", c.InstantMetricResult.CacheDownloadTime(),
+		"Cache.LogResult.Requests", c.LogResult.Requests,
+		"Cache.LogResult.EntriesRequested", c.LogResult.EntriesRequested,
+		"Cache.LogResult.EntriesFound", c.LogResult.EntriesFound,
+		"Cache.LogResult.EntriesStored", c.LogResult.EntriesStored,
+		"Cache.LogResult.BytesSent", humanize.Bytes(uint64(c.LogResult.BytesSent)),
+		"Cache.LogResult.BytesReceived", humanize.Bytes(uint64(c.LogResult.BytesReceived)),
+		"Cache.LogResult.DownloadTime", c.LogResult.CacheDownloadTime(),
+		"Cache.TaskResult.Requests", c.TaskResult.Requests,
+		"Cache.TaskResult.EntriesRequested", c.TaskResult.EntriesRequested,
+		"Cache.TaskResult.EntriesFound", c.TaskResult.EntriesFound,
+		"Cache.TaskResult.BytesReceived", humanize.Bytes(uint64(c.TaskResult.BytesReceived)),
 	}
 }
 
@@ -748,5 +820,6 @@ func (d Dataobj) kvList(prefix string) []any {
 		prefix + "Dataobj.PageBatches", d.PageBatches,
 		prefix + "Dataobj.TotalRowsAvailable", d.TotalRowsAvailable,
 		prefix + "Dataobj.TotalPageDownloadTime", time.Duration(d.TotalPageDownloadTime),
+		prefix + "Dataobj.WireBytesTransferred", humanize.Bytes(uint64(d.WireBytesTransferred)),
 	}
 }

@@ -12,9 +12,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
+	"github.com/grafana/loki/v3/pkg/querytee"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 	loki_tracing "github.com/grafana/loki/v3/pkg/tracing"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/tools/querytee"
 )
 
 type Config struct {
@@ -42,6 +44,7 @@ func main() {
 		trace, err := tracing.NewOTelOrJaegerFromEnv("loki-querytee", util_log.Logger)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
+			exit(1)
 		}
 
 		defer func() {
@@ -60,26 +63,31 @@ func main() {
 	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry, util_log.Logger)
 	if err := i.Start(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Run the proxy.
 	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util_log.Logger, lokiReadRoutes(cfg), lokiWriteRoutes(), registry)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
-		os.Exit(1)
+		exit(1)
 	}
 
 	if err := proxy.Start(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to start the proxy", "err", err.Error())
-		os.Exit(1)
+		exit(1)
 	}
 
 	proxy.Await()
 }
 
+func exit(code int) {
+	util_log.Flush()
+	os.Exit(code)
+}
+
 func lokiReadRoutes(cfg Config) []querytee.Route {
-	samplesComparator := querytee.NewSamplesComparator(querytee.SampleComparisonOptions{
+	samplesComparator := comparator.NewSamplesComparator(comparator.SampleComparisonOptions{
 		Tolerance:         cfg.ProxyConfig.ValueComparisonTolerance,
 		UseRelativeError:  cfg.ProxyConfig.UseRelativeError,
 		SkipRecentSamples: cfg.ProxyConfig.SkipRecentSamples,
@@ -87,22 +95,22 @@ func lokiReadRoutes(cfg Config) []querytee.Route {
 	})
 
 	return []querytee.Route{
-		{Path: "/loki/api/v1/query_range", RouteName: "api_v1_query_range", Methods: []string{"GET", "POST"}, ResponseComparator: samplesComparator},
-		{Path: "/loki/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET", "POST"}, ResponseComparator: samplesComparator},
-		{Path: "/loki/api/v1/label", RouteName: "api_v1_label", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: "/loki/api/v1/labels", RouteName: "api_v1_labels", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: "/loki/api/v1/label/{name}/values", RouteName: "api_v1_label_name_values", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: "/loki/api/v1/series", RouteName: "api_v1_series", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: "/api/prom/query", RouteName: "api_prom_query", Methods: []string{"GET", "POST"}, ResponseComparator: samplesComparator},
-		{Path: "/api/prom/label", RouteName: "api_prom_label", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: "/api/prom/label/{name}/values", RouteName: "api_prom_label_name_values", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: "/api/prom/series", RouteName: "api_prom_series", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: constants.PathLokiQueryRange, RouteName: "api_v1_query_range", Methods: []string{"GET", "POST"}, ResponseComparator: samplesComparator},
+		{Path: constants.PathLokiQuery, RouteName: "api_v1_query", Methods: []string{"GET", "POST"}, ResponseComparator: samplesComparator},
+		{Path: constants.PathLokiLabel, RouteName: "api_v1_label", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: constants.PathLokiLabels, RouteName: "api_v1_labels", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: constants.PathLokiLabelNameValues, RouteName: "api_v1_label_name_values", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: constants.PathLokiSeries, RouteName: "api_v1_series", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: constants.PathPromQuery, RouteName: "api_prom_query", Methods: []string{"GET", "POST"}, ResponseComparator: samplesComparator},
+		{Path: constants.PathPromLabel, RouteName: "api_prom_label", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: constants.PathPromLabelNameValues, RouteName: "api_prom_label_name_values", Methods: []string{"GET"}, ResponseComparator: nil},
+		{Path: constants.PathPromSeries, RouteName: "api_prom_series", Methods: []string{"GET"}, ResponseComparator: nil},
 	}
 }
 
 func lokiWriteRoutes() []querytee.Route {
 	return []querytee.Route{
-		{Path: "/loki/api/v1/push", RouteName: "api_v1_push", Methods: []string{"POST"}, ResponseComparator: nil},
-		{Path: "/api/prom/push", RouteName: "api_prom_push", Methods: []string{"POST"}, ResponseComparator: nil},
+		{Path: constants.PathLokiPush, RouteName: "api_v1_push", Methods: []string{"POST"}, ResponseComparator: nil},
+		{Path: constants.PathPromPush, RouteName: "api_prom_push", Methods: []string{"POST"}, ResponseComparator: nil},
 	}
 }

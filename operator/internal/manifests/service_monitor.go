@@ -4,7 +4,10 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 // BuildServiceMonitors builds the service monitors
@@ -102,10 +105,15 @@ func NewRulerServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 func NewGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 	l := ComponentLabels(LabelGatewayComponent, opts.Name)
 
+	tlsOptions := &lokiv1.TLSSpec{}
+	if opts.Stack.Tenants != nil && opts.Stack.Tenants.Gateway != nil && opts.Stack.Tenants.Gateway.TLS != nil {
+		tlsOptions = opts.Stack.Tenants.Gateway.TLS
+	}
+
 	gatewayName := GatewayName(opts.Name)
 	serviceMonitorName := serviceMonitorName(gatewayName)
 	serviceName := serviceNameGatewayHTTP(opts.Name)
-	gwEndpoint := gatewayServiceMonitorEndpoint(gatewayName, gatewayInternalPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
+	gwEndpoint := gatewayServiceMonitorEndpoint(gatewayName, gatewayInternalPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints, tlsOptions)
 
 	sm := newServiceMonitor(opts.Namespace, serviceMonitorName, l, gwEndpoint)
 
@@ -138,6 +146,7 @@ func newServiceMonitor(namespace, serviceMonitorName string, labels labels.Set, 
 			NamespaceSelector: monitoringv1.NamespaceSelector{
 				MatchNames: []string{namespace},
 			},
+			ServiceDiscoveryRole: ptr.To(monitoringv1.EndpointSliceRole),
 		},
 	}
 }

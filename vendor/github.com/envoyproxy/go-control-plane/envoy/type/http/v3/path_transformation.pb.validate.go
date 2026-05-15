@@ -106,7 +106,7 @@ type PathTransformationMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m PathTransformationMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -308,7 +308,7 @@ type PathTransformation_OperationMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m PathTransformation_OperationMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -414,7 +414,7 @@ type PathTransformation_Operation_NormalizePathRFC3986MultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m PathTransformation_Operation_NormalizePathRFC3986MultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -527,7 +527,7 @@ type PathTransformation_Operation_MergeSlashesMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m PathTransformation_Operation_MergeSlashesMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

@@ -12,9 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: "read"
+      id-token: "write"
     if: |
       github.event.pull_request.head.ref == 'release-please--branches--main--components--operator' &&
-      contains(github.event.pull_request.title, 'chore( operator): community release')
+      contains(github.event.pull_request.title, 'chore( operator): Community release')
     steps:
 
       - name: Retrieve GitHub App Credentials from Vault
@@ -39,11 +40,11 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          SEMVER=$(echo "$PR_TITLE" | sed -n 's/^chore( operator): community release \([0-9]\+\.[0-9]\+\.[0-9]\+\)$/\1/p')
+          SEMVER=$(echo "$PR_TITLE" | sed -n 's/^chore( operator): Community release \([0-9]\+\.[0-9]\+\.[0-9]\+\)$/\1/p')
           echo "semver=$SEMVER" >> $GITHUB_OUTPUT
 
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: main
           path: "release"
@@ -56,7 +57,7 @@ jobs:
           OUTPUTS_SEMVER: ${{ steps.pr_semver.outputs.semver }}
         working-directory: "release"
         run: |
-          COMMIT=$(gh search commits "chore(operator): prepare community release v${OUTPUTS_SEMVER}")
+          COMMIT=$(gh search commits "chore(operator): Prepare community release v${OUTPUTS_SEMVER}")
           if [ -n "$COMMIT" ]; then
             echo "Prepare release commit found."
           else

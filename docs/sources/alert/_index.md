@@ -21,9 +21,9 @@ There are two types of alerts in Grafana:
     These alert rules can query a wide range of backend data sources, including multiple data sources in a single alert rule. They support expression-based transformations, advanced alert conditions, images in notifications, handling of error and no data states, and more.
 - **Data-source-managed alerts:** These alert rules can only query Prometheus-based data sources such as Mimir, Loki, and Prometheus. The rules are stored in the data source.
 
-To learn more about Grafana managed alerts, you can refer to the [Alerts and IRM documentation](https://grafana.com/docs/grafana-cloud/alerting-and-irm/), or take a short Learning Journey.
+To learn more about Grafana managed alerts, you can refer to the [Alerts and IRM documentation](https://grafana.com/docs/grafana-cloud/alerting-and-irm/), or follow this Learning Path.
 
-{{< docs/learning-journeys title="Create log alert rules with Grafana Alerting" url="https://grafana.com/docs/learning-journeys/logs-alert-creation/" >}}
+{{< docs/learning-paths title="Create infrastructure alerts" url="https://grafana.com/docs/learning-paths/infrastructure-alerting/" >}}
 
 ## Loki alerting and recording rules
 
@@ -229,18 +229,41 @@ lokitool is intended to run against multi-tenant Loki. The commands need an `--i
 An example workflow is included below:
 
 ```sh
-# lint the rules.yaml file ensuring it's valid and reformatting it if necessary
-lokitool rules lint ./output/rules.yaml
+# format the rules.yaml file, reordering keys and reformatting PromQL expressions
+lokitool rules format ./output/rules.yaml
 
 # diff rules against the currently managed ruleset in Loki
 lokitool rules diff --rule-dirs=./output
 
+# diff only specific namespaces using comma-separated list
+lokitool rules diff --rule-dirs=./output --namespaces=namespace1,namespace2
+
+# diff using regex to match namespaces
+lokitool rules diff --rule-dirs=./output --namespaces-regex='^prod-.*'
+
+# diff while ignoring specific namespaces
+lokitool rules diff --rule-dirs=./output --ignored-namespaces=test,dev
+
+# diff while ignoring namespaces matching regex
+lokitool rules diff --rule-dirs=./output --ignored-namespaces-regex='^test-.*'
+
 # ensure the remote ruleset matches your local ruleset, creating/updating/deleting remote rules which differ from your local specification.
 lokitool rules sync --rule-dirs=./output
+
+# sync only specific namespaces (supports --namespaces, --namespaces-regex, --ignored-namespaces, --ignored-namespaces-regex)
+lokitool rules sync --rule-dirs=./output --namespaces-regex='^prod-.*'
 
 # print the remote ruleset
 lokitool rules print
 ```
+
+{{< admonition type="note" >}}
+The `diff` and `sync` commands support namespace filtering with the following flags (only one can be used at a time):
+- `--namespaces`: comma-separated list of namespaces to check
+- `--namespaces-regex`: regex matching namespaces to check
+- `--ignored-namespaces`: comma-separated list of namespaces to ignore
+- `--ignored-namespaces-regex`: regex matching namespaces to ignore
+{{< /admonition >}}
 
 ### Terraform
 
@@ -304,16 +327,16 @@ The [Cortex rules action](https://github.com/grafana/cortex-rules-action) introd
   uses: grafana/cortex-rules-action@master
   env:
     ACTION: check
-    RULES_DIR: <source_dir_of_rules> # Example: logs/recording_rules/,logs/alerts/
+    RULES_DIR: <SOURCE_DIR_OF_RULES> # Example: logs/recording_rules/,logs/alerts/
     BACKEND: loki
 
 - name: Deploy rules to Loki staging
   uses: grafana/cortex-rules-action@master
   env:
-    CORTEX_ADDRESS: <loki_ingress_addr>
+    CORTEX_ADDRESS: <LOKI_INGRESS_ADDR>
     CORTEX_TENANT_ID: fake
     ACTION: sync
-    RULES_DIR: <source_dir_of_rules> # Example: logs/recording_rules/,logs/alerts/
+    RULES_DIR: <SOURCE_DIR_OF_RULES> # Example: logs/recording_rules/,logs/alerts/
     BACKEND: loki
 ```
 
@@ -327,7 +350,7 @@ A full sharding-enabled Ruler example is:
 
 ```yaml
 ruler:
-  alertmanager_url: <alertmanager_endpoint>
+  alertmanager_url: <ALERTMANAGER_ENDPOINT>
   enable_alertmanager_v2: true # true by default since Loki 3.2.0
   enable_api: true
   enable_sharding: true
@@ -339,7 +362,7 @@ ruler:
   rule_path: /tmp/rules
   storage:
     gcs:
-      bucket_name: <loki-rules-bucket>
+      bucket_name: <LOKI_RULES_BUCKET>
 ```
 
 ## Ruler storage

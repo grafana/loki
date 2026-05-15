@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -27,16 +28,6 @@ func (m *mockTenantLimits) AllByUserID() map[string]*validation.Limits {
 	return map[string]*validation.Limits{"test-tenant": m.limits}
 }
 
-type mockOverrides struct {
-	limits *validation.Limits
-}
-
-func (m *mockOverrides) DefaultLimits() *validation.Limits {
-	return m.limits
-}
-
-func (m *mockOverrides) AllowStructuredMetadata() bool { return false }
-
 func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 	limits := &validation.Limits{
 		IngestionRateMB:        10.0,
@@ -45,6 +36,16 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 		MaxLocalStreamsPerUser: 500,
 		RejectOldSamples:       true,
 		MaxLineSizeTruncate:    false,
+		OTLPConfig: &push.OTLPConfig{
+			ResourceAttributes: push.ResourceAttributesConfig{
+				AttributesConfig: []push.AttributesConfig{
+					{
+						Action:     push.IndexLabel,
+						Attributes: []string{"foo", "bar"},
+					},
+				},
+			},
+		},
 	}
 
 	mockTenantLimits := &mockTenantLimits{limits: limits}
@@ -60,7 +61,7 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 			name:           "successful tenant limits with allowlist filtering",
 			tenantID:       "test-tenant",
 			expectedStatus: 200,
-			allowlist:      []string{"ingestion_rate_mb", "max_query_series"},
+			allowlist:      []string{"ingestion_rate_mb", "max_query_series", "otlp_config"},
 			checkResponse: func(t *testing.T, body []byte) {
 				var response map[string]any
 				err := yaml.Unmarshal(body, &response)
@@ -69,6 +70,7 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 				// Should only contain allowed fields
 				assert.Contains(t, response, "ingestion_rate_mb")
 				assert.Contains(t, response, "max_query_series")
+				assert.Contains(t, response, "otlp_config")
 
 				// Should NOT contain non-allowed fields
 				assert.NotContains(t, response, "max_label_name_length")
@@ -79,6 +81,13 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 				// Verify correct values for allowed fields
 				assert.Equal(t, int(10), response["ingestion_rate_mb"])
 				assert.Equal(t, 1000, response["max_query_series"])
+
+				// Compare YAML representation of otlp_config
+				actualOtlpConfigYAML, err := yaml.Marshal(response["otlp_config"])
+				require.NoError(t, err)
+				expectedOtlpConfigYAML, err := yaml.Marshal(limits.OTLPConfig)
+				require.NoError(t, err)
+				assert.YAMLEq(t, string(expectedOtlpConfigYAML), string(actualOtlpConfigYAML))
 			},
 		},
 		{
@@ -98,6 +107,7 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 				assert.Contains(t, response, "max_streams_per_user")
 				assert.Contains(t, response, "reject_old_samples")
 				assert.Contains(t, response, "max_line_size_truncate")
+				assert.Contains(t, response, "otlp_config")
 			},
 		},
 	}
@@ -114,7 +124,7 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 				},
 			}
 
-			handler := loki.tenantLimitsHandler()
+			handler := loki.tenantLimitsHandler(false)
 
 			w := httptest.NewRecorder()
 			handler(w, req)

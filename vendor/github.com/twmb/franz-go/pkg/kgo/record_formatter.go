@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -25,7 +26,7 @@ import (
 
 // RecordFormatter formats records.
 type RecordFormatter struct {
-	calls atomicI64
+	calls atomic.Int64
 	fns   []func([]byte, *FetchPartition, *Record) []byte
 }
 

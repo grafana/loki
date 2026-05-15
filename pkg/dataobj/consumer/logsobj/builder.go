@@ -7,8 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/facette/natsort"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -38,8 +42,8 @@ const (
 	sortTimestampDESC = "timestamp-desc"
 )
 
-// BuilderConfig configures a [Builder].
-type BuilderConfig struct {
+// BuilderBaseConfig configures a data object builder.
+type BuilderBaseConfig struct {
 	// TargetPageSize configures a target size for encoded pages within the data
 	// object. TargetPageSize accounts for encoding, but not for compression.
 	TargetPageSize flagext.Bytes `yaml:"target_page_size"`
@@ -75,29 +79,27 @@ type BuilderConfig struct {
 	// merging.
 	SectionStripeMergeLimit int `yaml:"section_stripe_merge_limit"`
 
-	// DataobjSortOrder defines the order in which the rows of the logs sections are sorted.
-	// They can either be sorted by [streamID ASC, timestamp DESC] or [timestamp DESC, streamID ASC].
-	DataobjSortOrder string `yaml:"dataobj_sort_order" doc:"hidden"`
+	// EstimatedCompressionRatio is the expected compression ratio for log data,
+	// used to approximate compressed output size from uncompressed buffered
+	// records. This only takes effect when using the AppendOrdered strategy.
+	// Higher values allow more data to accumulate before the builder reports
+	// full, producing larger objects. Set to 0 or 1 to disable.
+	EstimatedCompressionRatio int `yaml:"estimated_compression_ratio"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
-func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	_ = cfg.TargetPageSize.Set("2MB")
-	_ = cfg.TargetObjectSize.Set("1GB")
-	_ = cfg.BufferSize.Set("16MB")
-	_ = cfg.TargetSectionSize.Set("128MB")
-
+func (cfg *BuilderBaseConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The target maximum amount of uncompressed data to hold in data pages (for columnar sections). Uncompressed size is used for consistent I/O and planning.")
 	f.IntVar(&cfg.MaxPageRows, prefix+"max-page-rows", 0, "The maximum row count for pages to use for the data object builder. A value of 0 means no limit.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-builder-memory-limit", "The target maximum size of the encoded object and all of its encoded sections (after compression), to limit memory usage of a builder.")
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "The target maximum amount of uncompressed data to hold in sections, for sections that support being limited by size. Uncompressed size is used for consistent I/O and planning.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of logs to buffer in memory before adding into columnar builders, used to reduce CPU load of sorting.")
-	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of log section stripes to merge into a section at once. Must be greater than 1.")
-	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-order", sortStreamASC, "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")
+	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of dataobj section stripes to merge into a section at once. Must be greater than 1.")
+	f.IntVar(&cfg.EstimatedCompressionRatio, prefix+"estimated-compression-ratio", 8, "Expected compression ratio for log data, used to estimate compressed output size from uncompressed buffered records. Only takes effect with ordered append. Set to 0 or 1 to disable.")
 }
 
 // Validate validates the BuilderConfig.
-func (cfg *BuilderConfig) Validate() error {
+func (cfg *BuilderBaseConfig) Validate() error {
 	var errs []error
 
 	if cfg.TargetPageSize <= 0 {
@@ -122,10 +124,55 @@ func (cfg *BuilderConfig) Validate() error {
 		errs = append(errs, errors.New("LogsMergeStripesMax must be greater than 1"))
 	}
 
+	return errors.Join(errs...)
+}
+
+// BuilderConfig configures a [Builder].
+type BuilderConfig struct {
+	BuilderBaseConfig `yaml:",inline"`
+
+	// DataobjSortOrder defines the order in which the rows of the logs sections are sorted.
+	// They can either be sorted by [streamID ASC, timestamp DESC] or [timestamp DESC, streamID ASC].
+	DataobjSortOrder string `yaml:"dataobj_sort_order" doc:"hidden"`
+
+	// AppendOrderedEnabled controls whether the builder uses the AppendOrdered
+	// strategy, which skips intermediate stripe sorting and merging for data
+	// that is already in sort order. When false, the classic
+	// AppendUnordered strategy is used.
+	AppendOrderedEnabled bool `yaml:"append_ordered_enabled" doc:"hidden"`
+
+	// DataobjSortSchemaEnabled controls whether the per-tenant sort_schema tenant config is used
+	// to determine sort order instead of DataobjSortOrder.
+	DataobjUseSortSchema bool `yaml:"dataobj_use_sort_schema" doc:"hidden"`
+}
+
+// RegisterFlagsWithPrefix registers flags with the given prefix.
+func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	// Set defaults for base builder configuration
+	_ = cfg.TargetPageSize.Set("2MB")
+	_ = cfg.TargetObjectSize.Set("1GB")
+	_ = cfg.BufferSize.Set("16MB")
+	_ = cfg.TargetSectionSize.Set("128MB")
+	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
+
+	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-order", sortStreamASC, "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")
+	f.BoolVar(&cfg.AppendOrderedEnabled, prefix+"append-ordered-enabled", true, "Skips intermediate stripe sorting and merging. Expects data to be sorted before appending.")
+	f.BoolVar(&cfg.DataobjUseSortSchema, prefix+"dataobj-use-sort-schema", false, "Experimental: When enabled, use the per-tenant sort_schema tenant config to determine sort order of data objects instead of dataobj-sort-order.")
+}
+
+// Validate validates the BuilderConfig.
+func (cfg *BuilderConfig) Validate() error {
+	var errs []error
+
+	if err := cfg.BuilderBaseConfig.Validate(); err != nil {
+		errs = append(errs, err)
+	}
+
 	if cfg.DataobjSortOrder == "" {
 		cfg.DataobjSortOrder = sortStreamASC // default to [streamID ASC, timestamp DESC] sorting
 	}
-	if !(cfg.DataobjSortOrder == sortStreamASC || cfg.DataobjSortOrder == sortTimestampDESC) {
+
+	if cfg.DataobjSortOrder != sortStreamASC && cfg.DataobjSortOrder != sortTimestampDESC {
 		errs = append(errs, fmt.Errorf("invalid dataobj sort order. must be one of `stream-asc` or `timestamp-desc`, got: %s", cfg.DataobjSortOrder))
 	}
 
@@ -138,8 +185,20 @@ var sortOrderMapping = map[string]logs.SortOrder{
 }
 
 func parseSortOrder(s string) logs.SortOrder {
-	val, _ := sortOrderMapping[s]
+	val := sortOrderMapping[s]
 	return val
+}
+
+func appendStrategy(ordered bool) logs.AppendStrategy {
+	if ordered {
+		return logs.AppendOrdered
+	}
+	return logs.AppendUnordered
+}
+
+// TenantOverrides provides per-tenant configuration for the Builder.
+type TenantOverrides interface {
+	SortSchemaLabels(tenant string) []string
 }
 
 // A Builder constructs a logs-oriented data object from a set of incoming
@@ -149,8 +208,10 @@ func parseSortOrder(s string) logs.SortOrder {
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronization.
 type Builder struct {
-	cfg     BuilderConfig
-	metrics *builderMetrics
+	cfg       BuilderConfig
+	metrics   *builderMetrics
+	overrides TenantOverrides
+	logger    log.Logger
 
 	labelCache *lru.Cache[string, labels.Labels]
 
@@ -192,11 +253,22 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error)
 	return &Builder{
 		cfg:        cfg,
 		metrics:    metrics,
+		logger:     log.NewNopLogger(),
 		labelCache: labelCache,
 		builder:    dataobj.NewBuilder(scratchStore),
 		streams:    make(map[string]*streams.Builder),
 		logs:       make(map[string]*logs.Builder),
 	}, nil
+}
+
+// SetOverrides configures per-tenant overrides used when DataobjUseSortSchema is enabled.
+func (b *Builder) SetOverrides(overrides TenantOverrides) {
+	b.overrides = overrides
+}
+
+// SetLogger sets the logger used by the builder.
+func (b *Builder) SetLogger(logger log.Logger) {
+	b.logger = logger
 }
 
 // initBuilder initializes the builders for the tenant.
@@ -208,11 +280,13 @@ func (b *Builder) initBuilder(tenant string) {
 	}
 	if _, ok := b.logs[tenant]; !ok {
 		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
-			PageSizeHint:     int(b.cfg.TargetPageSize),
-			PageMaxRowCount:  b.cfg.MaxPageRows,
-			BufferSize:       int(b.cfg.BufferSize),
-			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-			SortOrder:        parseSortOrder(b.cfg.DataobjSortOrder),
+			PageSizeHint:              int(b.cfg.TargetPageSize),
+			PageMaxRowCount:           b.cfg.MaxPageRows,
+			BufferSize:                int(b.cfg.BufferSize),
+			StripeMergeLimit:          b.cfg.SectionStripeMergeLimit,
+			AppendStrategy:            appendStrategy(b.cfg.AppendOrderedEnabled),
+			EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
+			SortOrder:                 parseSortOrder(b.cfg.DataobjSortOrder),
 		})
 		lb.SetTenant(tenant)
 		b.logs[tenant] = lb
@@ -248,6 +322,7 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 	b.initBuilder(tenant)
 	sb, lb := b.streams[tenant], b.logs[tenant]
 
+	b.metrics.appends.Inc()
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
@@ -408,31 +483,38 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	return obj, closer, err
 }
 
-// CopyAndSort takes an existing [dataobj.Object] and rewrites the logs sections so the logs are sorted object-wide.
-// The order of the sections is deterministic. For each tenant, first come the streams sections in the order of the old object
-// and second come the new, rewritten logs sections. Tenants are sorted in natural order.
-func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	dur := prometheus.NewTimer(b.metrics.sortDurationSeconds)
-	defer dur.ObserveDuration()
+// CopyAndSort takes an existing [dataobj.Object] and rewrites the logs sections
+// so the logs are sorted object-wide. The order of the sections is deterministic.
+// For each tenant, first come the streams sections in the order of the old object
+// and second come the new, rewritten logs sections. Tenants are sorted in natural
+// order.
+func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	// Must reset builder when done.
+	defer b.Reset()
 
-	ctx := context.Background()
-	sort := parseSortOrder(b.cfg.DataobjSortOrder)
+	// You will see a number of occurrences where we check if the context has
+	// been canceled. The reason is that this method is CPU intensive, and we
+	// want to allow the caller to cancel it rather than wait for it to complete
+	// and discard the result.
+	select {
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	default:
+	}
 
 	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
-	lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
-		PageSizeHint:     int(b.cfg.TargetPageSize),
-		PageMaxRowCount:  b.cfg.MaxPageRows,
-		BufferSize:       int(b.cfg.BufferSize),
-		StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-		AppendStrategy:   logs.AppendOrdered,
-		SortOrder:        sort,
-	})
 
 	// Sort the set of tenants so the new object has a deterministic order of sections.
 	tenants := obj.Tenants()
 	natsort.Sort(tenants)
 
 	for _, tenant := range tenants {
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		default:
+		}
+
 		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return streams.CheckSection(s) && s.Tenant == tenant }) {
 			sb.Reset()
 			sb.SetTenant(sec.Tenant)
@@ -466,36 +548,67 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 
 		// TODO(chaudum): Handle special case len(sections) == 1
 
-		lb.Reset()
+		var (
+			sortOrder    logs.SortOrder
+			schemaLabels []string
+			iter         result.Seq[logs.Record]
+			iterErr      error
+		)
+
+		if b.cfg.DataobjUseSortSchema {
+			if len(sections) > 0 {
+				firstSec, err := logs.Open(ctx, sections[0])
+				if err != nil {
+					return nil, nil, fmt.Errorf("opening logs section to read schema labels: %w", err)
+				}
+				schemaLabels, err = firstSec.SchemaLabels()
+				if err != nil {
+					return nil, nil, fmt.Errorf("reading schema labels from logs section: %w", err)
+				}
+			}
+			if len(schemaLabels) == 0 && b.overrides != nil {
+				schemaLabels = b.overrides.SortSchemaLabels(tenant)
+			}
+			if len(schemaLabels) == 0 {
+				level.Warn(b.logger).Log("msg", "sort schema: no schema labels resolved, falling back to dataobj_sort_order", "tenant", tenant, "overrides_configured", b.overrides != nil)
+			}
+		}
+
+		if len(schemaLabels) > 0 {
+			sortKeys, err := buildSortKeys(ctx, obj, tenant, schemaLabels)
+			if err != nil {
+				return nil, nil, fmt.Errorf("building sort keys for tenant %s: %w", tenant, err)
+			}
+			sortOrder = logs.SortSchemaASC
+			iter, iterErr = sortedSchemaIter(ctx, sections, sortKeys, parseSortOrder(b.cfg.DataobjSortOrder))
+		} else {
+			sortOrder = parseSortOrder(b.cfg.DataobjSortOrder)
+			iter, iterErr = sortMergeIterator(ctx, sections, sortOrder)
+		}
+		if iterErr != nil {
+			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)
+		}
+
+		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
+			PageSizeHint:     int(b.cfg.TargetPageSize),
+			PageMaxRowCount:  b.cfg.MaxPageRows,
+			BufferSize:       int(b.cfg.BufferSize),
+			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+			AppendStrategy:   logs.AppendOrdered,
+			SortOrder:        sortOrder,
+			SchemaLabels:     schemaLabels,
+		})
 		lb.SetTenant(tenant)
 
-		iter, err := sortMergeIterator(ctx, sections, sort)
-		if err != nil {
-			return nil, nil, fmt.Errorf("creating sort iterator: %w", err)
-		}
-
-		for rec := range iter {
-			val, err := rec.Value()
-			if err != nil {
-				return nil, nil, err
-			}
-
-			lb.Append(val)
-
-			// If our logs section has gotten big enough, we want to flush it to the encoder and start a new section.
-			if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-				if err := b.builder.Append(lb); err != nil {
-					return nil, nil, err
-				}
-				lb.Reset()
-				lb.SetTenant(tenant)
-			}
-		}
-
-		// Append the final section with the remaining logs
-		if err := b.builder.Append(lb); err != nil {
+		if err := b.drainLogsIter(ctx, iter, lb, tenant); err != nil {
 			return nil, nil, err
 		}
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	default:
 	}
 
 	return b.builder.Flush()
@@ -560,4 +673,84 @@ func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
 // UnregisterMetrics unregisters metrics about builder from reg.
 func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
 	b.metrics.Unregister(reg)
+}
+
+// drainLogsIter consumes iter, appending each record to lb and flushing
+// completed sections to b.builder whenever the section size target is exceeded.
+// It appends the final (possibly partial) section after the iterator is exhausted.
+func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record], lb *logs.Builder, tenant string) error {
+	for rec := range iter {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		val, err := rec.Value()
+		if err != nil {
+			return err
+		}
+		lb.Append(val)
+		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
+			if err := b.builder.Append(lb); err != nil {
+				return err
+			}
+			lb.Reset()
+			lb.SetTenant(tenant)
+		}
+	}
+	return b.builder.Append(lb)
+}
+
+func buildSortKeys(ctx context.Context, obj *dataobj.Object, tenant string, schemaLabels []string) (map[int64]string, error) {
+	sortKeys := make(map[int64]string)
+	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
+		return streams.CheckSection(s) && s.Tenant == tenant
+	}) {
+		section, err := streams.Open(ctx, sec)
+		if err != nil {
+			return nil, fmt.Errorf("opening streams section: %w", err)
+		}
+		for res := range streams.IterSection(ctx, section) {
+			stream, err := res.Value()
+			if err != nil {
+				return nil, err
+			}
+			k, err := computeSortKey(stream.Labels, schemaLabels)
+			if err != nil {
+				return nil, err
+			}
+			sortKeys[stream.ID] = k
+		}
+	}
+	return sortKeys, nil
+}
+
+// computeSortKey builds a composite sort key from stream labels using FQN entries.
+// Each FQN must be "label:<name>" — validation.SortSchema.Validate() enforces this.
+func computeSortKey(ls labels.Labels, schemaLabels []string) (string, error) {
+	if len(schemaLabels) == 0 {
+		return "", nil
+	}
+	resolveLabel := func(fqn string) (string, error) {
+		typ, name, ok := strings.Cut(fqn, ":")
+		if !ok || typ != "label" {
+			return "", fmt.Errorf("computeSortKey: unexpected FQN %q — only \"label:<name>\" is supported", fqn)
+		}
+		return ls.Get(name), nil
+	}
+	if len(schemaLabels) == 1 {
+		return resolveLabel(schemaLabels[0])
+	}
+	var b strings.Builder
+	for i, fqn := range schemaLabels {
+		if i > 0 {
+			b.WriteByte(0)
+		}
+		s, err := resolveLabel(fqn)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(s)
+	}
+	return b.String(), nil
 }

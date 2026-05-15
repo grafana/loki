@@ -24,6 +24,14 @@ func nullIndexInt(bits []uint64, rows sparse.Array) {
 	nullIndex64(&bits[0], rows)
 }
 
+func nullIndexInt8(bits []uint64, rows sparse.Array) {
+	nullIndex8(&bits[0], rows)
+}
+
+func nullIndexInt16(bits []uint64, rows sparse.Array) {
+	nullIndex[int16](bits, rows)
+}
+
 func nullIndexInt32(bits []uint64, rows sparse.Array) {
 	nullIndex32(&bits[0], rows)
 }
@@ -34,6 +42,14 @@ func nullIndexInt64(bits []uint64, rows sparse.Array) {
 
 func nullIndexUint(bits []uint64, rows sparse.Array) {
 	nullIndex64(&bits[0], rows)
+}
+
+func nullIndexUint8(bits []uint64, rows sparse.Array) {
+	nullIndex8(&bits[0], rows)
+}
+
+func nullIndexUint16(bits []uint64, rows sparse.Array) {
+	nullIndex[uint16](bits, rows)
 }
 
 func nullIndexUint32(bits []uint64, rows sparse.Array) {

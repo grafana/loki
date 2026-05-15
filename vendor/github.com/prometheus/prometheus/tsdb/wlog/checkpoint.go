@@ -1,4 +1,4 @@
-// Copyright 2018 The Prometheus Authors
+// Copyright The Prometheus Authors
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"math"
 	"os"
@@ -28,10 +29,10 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
+	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 )
 
 // CheckpointStats returns stats about a created checkpoint.
@@ -71,18 +72,26 @@ func DeleteCheckpoints(dir string, maxIndex int) error {
 		return err
 	}
 
-	errs := tsdb_errors.NewMulti()
+	var errs []error
 	for _, checkpoint := range checkpoints {
 		if checkpoint.index >= maxIndex {
 			break
 		}
-		errs.Add(os.RemoveAll(filepath.Join(dir, checkpoint.name)))
+		errs = append(errs, os.RemoveAll(filepath.Join(dir, checkpoint.name)))
 	}
-	return errs.Err()
+	return errors.Join(errs...)
 }
 
-// CheckpointPrefix is the prefix used for checkpoint files.
-const CheckpointPrefix = "checkpoint."
+// checkpointTempFileSuffix is the suffix used when creating temporary checkpoint files.
+const checkpointTempFileSuffix = ".tmp"
+
+// DeleteTempCheckpoints deletes all temporary checkpoint directories in the given directory.
+func DeleteTempCheckpoints(logger *slog.Logger, dir string) error {
+	if err := tsdbutil.RemoveTmpDirs(logger, dir, isTempDir); err != nil {
+		return fmt.Errorf("remove previous temporary checkpoint dirs: %w", err)
+	}
+	return nil
+}
 
 // Checkpoint creates a compacted checkpoint of segments in range [from, to] in the given WAL.
 // It includes the most recent checkpoint if it exists.
@@ -93,7 +102,7 @@ const CheckpointPrefix = "checkpoint."
 // segmented format as the original WAL itself.
 // This makes it easy to read it through the WAL package and concatenate
 // it with the original WAL.
-func Checkpoint(logger *slog.Logger, w *WL, from, to int, keep func(id chunks.HeadSeriesRef, last int) bool, mint int64) (*CheckpointStats, error) {
+func Checkpoint(logger *slog.Logger, w *WL, from, to int, keep func(id chunks.HeadSeriesRef) bool, mint int64, enableSTStorage bool) (*CheckpointStats, error) {
 	stats := &CheckpointStats{}
 	var sgmReader io.ReadCloser
 
@@ -124,12 +133,12 @@ func Checkpoint(logger *slog.Logger, w *WL, from, to int, keep func(id chunks.He
 		defer sgmReader.Close()
 	}
 
-	cpdir := checkpointDir(w.Dir(), to)
-	cpdirtmp := cpdir + ".tmp"
-
-	if err := os.RemoveAll(cpdirtmp); err != nil {
-		return nil, fmt.Errorf("remove previous temporary checkpoint dir: %w", err)
+	if err := DeleteTempCheckpoints(logger, w.Dir()); err != nil {
+		return nil, err
 	}
+
+	cpdir := checkpointDir(w.Dir(), to)
+	cpdirtmp := cpdir + checkpointTempFileSuffix
 
 	if err := os.MkdirAll(cpdirtmp, 0o777); err != nil {
 		return nil, fmt.Errorf("create checkpoint dir: %w", err)
@@ -156,8 +165,8 @@ func Checkpoint(logger *slog.Logger, w *WL, from, to int, keep func(id chunks.He
 		exemplars             []record.RefExemplar
 		metadata              []record.RefMetadata
 		st                    = labels.NewSymbolTable() // Needed for decoding; labels do not outlive this function.
-		dec                   = record.NewDecoder(st)
-		enc                   record.Encoder
+		dec                   = record.NewDecoder(st, logger)
+		enc                   = record.Encoder{EnableSTStorage: enableSTStorage}
 		buf                   []byte
 		recs                  [][]byte
 
@@ -181,7 +190,7 @@ func Checkpoint(logger *slog.Logger, w *WL, from, to int, keep func(id chunks.He
 			// Drop irrelevant series in place.
 			repl := series[:0]
 			for _, s := range series {
-				if keep(s.Ref, to) {
+				if keep(s.Ref) {
 					repl = append(repl, s)
 				}
 			}
@@ -191,7 +200,7 @@ func Checkpoint(logger *slog.Logger, w *WL, from, to int, keep func(id chunks.He
 			stats.TotalSeries += len(series)
 			stats.DroppedSeries += len(series) - len(repl)
 
-		case record.Samples:
+		case record.Samples, record.SamplesV2:
 			samples, err = dec.Samples(rec, samples)
 			if err != nil {
 				return nil, fmt.Errorf("decode samples: %w", err)
@@ -323,7 +332,7 @@ func Checkpoint(logger *slog.Logger, w *WL, from, to int, keep func(id chunks.He
 			// Only keep reference to the latest found metadata for each refID.
 			repl := 0
 			for _, m := range metadata {
-				if keep(m.Ref, to) {
+				if keep(m.Ref) {
 					if _, ok := latestMetadataMap[m.Ref]; !ok {
 						repl++
 					}
@@ -395,8 +404,11 @@ func Checkpoint(logger *slog.Logger, w *WL, from, to int, keep func(id chunks.He
 	return stats, nil
 }
 
+// checkpointPrefix is the prefix used for checkpoint files.
+const checkpointPrefix = "checkpoint."
+
 func checkpointDir(dir string, i int) string {
-	return filepath.Join(dir, fmt.Sprintf(CheckpointPrefix+"%08d", i))
+	return filepath.Join(dir, fmt.Sprintf(checkpointPrefix+"%08d", i))
 }
 
 type checkpointRef struct {
@@ -410,15 +422,15 @@ func listCheckpoints(dir string) (refs []checkpointRef, err error) {
 		return nil, err
 	}
 
-	for i := 0; i < len(files); i++ {
+	for i := range files {
 		fi := files[i]
-		if !strings.HasPrefix(fi.Name(), CheckpointPrefix) {
+		if !strings.HasPrefix(fi.Name(), checkpointPrefix) {
 			continue
 		}
 		if !fi.IsDir() {
 			return nil, fmt.Errorf("checkpoint %s is not a directory", fi.Name())
 		}
-		idx, err := strconv.Atoi(fi.Name()[len(CheckpointPrefix):])
+		idx, err := strconv.Atoi(fi.Name()[len(checkpointPrefix):])
 		if err != nil {
 			continue
 		}
@@ -431,4 +443,8 @@ func listCheckpoints(dir string) (refs []checkpointRef, err error) {
 	})
 
 	return refs, nil
+}
+
+func isTempDir(fi fs.DirEntry) bool {
+	return strings.HasPrefix(fi.Name(), checkpointPrefix) && strings.HasSuffix(fi.Name(), checkpointTempFileSuffix)
 }

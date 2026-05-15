@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
@@ -23,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
+	"github.com/prometheus/sigv4"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
@@ -270,13 +270,13 @@ func validateRule(r *rulefmt.Rule, groupName string) error {
 		if r.For != 0 {
 			return errors.Errorf("invalid field 'for' in recording rule")
 		}
-		if !model.IsValidLegacyMetricName(r.Record) {
+		if !model.LegacyValidation.IsValidMetricName(r.Record) {
 			return errors.Errorf("invalid recording rule name: %s", r.Record)
 		}
 	}
 
 	for k, v := range r.Labels {
-		if !model.LabelName(k).IsValidLegacy() || k == model.MetricNameLabel {
+		if !model.LegacyValidation.IsValidLabelName(k) || k == model.MetricNameLabel {
 			return errors.Errorf("invalid label name: %s", k)
 		}
 
@@ -286,7 +286,7 @@ func validateRule(r *rulefmt.Rule, groupName string) error {
 	}
 
 	for k := range r.Annotations {
-		if !model.LabelName(k).IsValidLegacy() {
+		if !model.LegacyValidation.IsValidLabelName(k) {
 			return errors.Errorf("invalid annotation name: %s", k)
 		}
 	}

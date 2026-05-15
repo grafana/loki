@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -77,16 +78,18 @@ func NewTSDBManager(
 	}
 }
 
-func (m *tsdbManager) Start() (err error) {
+func (m *tsdbManager) Start() error {
 	var (
 		buckets, indices, loadingErrors int
 	)
 
+	var multiErr multierror.MultiError
+
 	defer func() {
 		level.Info(m.log).Log(
 			"msg", "loaded leftover local indices",
-			"err", err,
-			"successful", err == nil,
+			"err", multiErr.Err(),
+			"successful", multiErr.Err() == nil,
 			"buckets", buckets,
 			"indices", indices,
 			"failures", loadingErrors,
@@ -97,7 +100,8 @@ func (m *tsdbManager) Start() (err error) {
 	mulitenantDir := managerMultitenantDir(m.dir)
 	files, err := os.ReadDir(mulitenantDir)
 	if err != nil {
-		return err
+		multiErr.Add(err)
+		return multiErr.Err()
 	}
 
 	for _, f := range files {
@@ -134,22 +138,24 @@ func (m *tsdbManager) Start() (err error) {
 
 			if err != nil {
 				level.Warn(m.log).Log(
-					"msg", "",
+					"msg", "failed to load shippable TSDB file",
 					"tsdbPath", prefixed.Path(),
 					"err", err.Error(),
 				)
+				multiErr.Add(err)
 				loadingErrors++
+				continue
 			}
 
 			if err := m.shipper.AddIndex(bucket, "", loaded); err != nil {
+				multiErr.Add(err)
 				loadingErrors++
-				return err
+				continue
 			}
 		}
-
 	}
 
-	return nil
+	return multiErr.Err()
 }
 
 type chunkInfo struct {
@@ -277,7 +283,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 
 	if legacy {
 		// pass all TSDB tableRanges as the legacy WAL files are not period specific.
-		tableRanges = config.GetIndexStoreTableRanges(types.TSDBType, m.schemaCfg.Configs)
+		tableRanges = config.GetIndexStoreTableRanges(types.IndexTypeTSDB, m.schemaCfg.Configs)
 
 		// do not ship legacy WAL files.
 		// TSDBs built from these WAL files would get loaded on starting tsdbManager

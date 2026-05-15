@@ -5,26 +5,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grafana/dskit/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"google.golang.org/api/option"
-	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var (
-	bigtableRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: constants.Loki,
-		Name:      "bigtable_request_duration_seconds",
-		Help:      "Time spent doing Bigtable requests.",
-
-		// Bigtable latency seems to range from a few ms to a several seconds and is
-		// important.  So use 9 buckets from 1ms to just over 1 minute (65s).
-		Buckets: prometheus.ExponentialBuckets(0.001, 4, 9),
-	}, []string{"operation", "status_code"})
-
 	gcsRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "gcs_request_duration_seconds",
@@ -35,15 +22,6 @@ var (
 	}, []string{"operation", "status_code"})
 )
 
-func bigtableInstrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
-	return []grpc.UnaryClientInterceptor{
-			middleware.UnaryClientInstrumentInterceptor(bigtableRequestDuration),
-		},
-		[]grpc.StreamClientInterceptor{
-			middleware.StreamClientInstrumentInterceptor(bigtableRequestDuration),
-		}
-}
-
 func gcsInstrumentation(transport http.RoundTripper) *http.Client {
 	client := &http.Client{
 		Transport: instrumentedTransport{
@@ -52,14 +30,6 @@ func gcsInstrumentation(transport http.RoundTripper) *http.Client {
 		},
 	}
 	return client
-}
-
-func toOptions(opts []grpc.DialOption) []option.ClientOption {
-	result := make([]option.ClientOption, 0, len(opts))
-	for _, opt := range opts {
-		result = append(result, option.WithGRPCDialOption(opt))
-	}
-	return result
 }
 
 type instrumentedTransport struct {

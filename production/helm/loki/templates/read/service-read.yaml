@@ -34,4 +34,7 @@ spec:
       protocol: TCP
   selector:
     {{- include "loki.readSelectorLabels" . | nindent 4 }}
+{{- with .Values.read.service.trafficDistribution | default .Values.loki.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+{{- end }}
 {{- end }}

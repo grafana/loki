@@ -16,6 +16,7 @@ func TestRowReader_NoPredicates(t *testing.T) {
 
 	readBuf := make([]Record, 3)
 	rowReader := NewRowReader(logsSection)
+	require.NoError(t, rowReader.Open(context.Background()))
 	n, err := rowReader.Read(context.Background(), readBuf)
 	require.NoError(t, err)
 	require.Equal(t, 2, n)
@@ -29,9 +30,20 @@ func TestRowReader_StreamIDPredicate(t *testing.T) {
 
 	err := rowReader.MatchStreams(slices.Values([]int64{1}))
 	require.NoError(t, err)
+	require.NoError(t, rowReader.Open(context.Background()))
 	n, err := rowReader.Read(context.Background(), readBuf)
 	require.NoError(t, err)
 	require.Equal(t, 1, n)
+}
+
+func TestRowReader_ReadBeforeOpen(t *testing.T) {
+	logsSection := buildSection(t)
+	rowReader := NewRowReader(logsSection)
+
+	readBuf := make([]Record, 1)
+	n, err := rowReader.Read(context.Background(), readBuf)
+	require.Zero(t, n)
+	require.ErrorContains(t, err, "row reader not opened")
 }
 
 func buildSection(t *testing.T) *Section {

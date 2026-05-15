@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"strings"
+	"time"
 
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
@@ -14,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 
 	compactor_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 )
 
@@ -97,9 +99,19 @@ func (s *compactorGRPCClient) Stop() {
 	s.conn.Close()
 }
 
-func (s *compactorGRPCClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletionproto.DeleteRequest, error) {
+func (s *compactorGRPCClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *deletion.TimeRange) ([]deletionproto.DeleteRequest, error) {
 	ctx = user.InjectOrgID(ctx, userID)
-	grpcResp, err := s.grpcClient.GetDeleteRequests(ctx, &compactor_grpc.GetDeleteRequestsRequest{ForQuerytimeFiltering: true})
+
+	req := &compactor_grpc.GetDeleteRequestsRequest{
+		ForQuerytimeFiltering: forQuerytimeFiltering,
+	}
+
+	if timeRange != nil {
+		req.StartTime = time.UnixMilli(int64(timeRange.Start))
+		req.EndTime = time.UnixMilli(int64(timeRange.End))
+	}
+
+	grpcResp, err := s.grpcClient.GetDeleteRequests(ctx, req)
 	if err != nil {
 		return nil, err
 	}

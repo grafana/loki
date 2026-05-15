@@ -90,22 +90,15 @@ func main() {
 	destConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient
 	destConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis
 
-	// Don't keep fetched index files for very long
-	sourceConfig.StorageConfig.BoltDBShipperConfig.CacheTTL = 30 * time.Minute
-
-	sourceConfig.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	sourceConfig.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 
 	// Shorten these timers up so we resync a little faster and clear index files a little quicker
 	destConfig.StorageConfig.IndexCacheValidity = 1 * time.Minute
-	destConfig.StorageConfig.BoltDBShipperConfig.ResyncInterval = 1 * time.Minute
 	destConfig.StorageConfig.TSDBShipperConfig.ResyncInterval = 1 * time.Minute
 
 	// Don't want to use the index gateway for this, this makes sure the index files are properly uploaded when the store is stopped.
-	sourceConfig.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 	sourceConfig.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
-	destConfig.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 	destConfig.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
 	// The long nature of queries requires stretching out the cardinality limit some and removing the query length limit
@@ -144,7 +137,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, "logs")
+	nameLabelMatcher, err := labels.NewMatcher(labels.MatchEqual, model.MetricNameLabel, "logs")
 	if err != nil {
 		log.Println("Failed to create label matcher:", err)
 		os.Exit(1)
@@ -328,15 +321,12 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 					chunks := schemaGroups[i][j:k]
 					//log.Printf("%v Processing chunks %v-%v of %v\n", threadID, j, k, len(schemaGroups[i]))
 
-					chks := make([]chunk.Chunk, 0, len(chunks))
-
-					chks = append(chks, chunks...)
-
-					finalChks, err := f.FetchChunks(m.ctx, chks)
+					var finalChks []chunk.Chunk
+					finalChks, err = f.FetchChunks(m.ctx, chunks)
 					if err != nil {
 						log.Println(threadID, "Error retrieving chunks, will go through them one by one:", err)
 						finalChks = make([]chunk.Chunk, 0, len(chunks))
-						for i := range chks {
+						for i := range chunks {
 							onechunk := []chunk.Chunk{chunks[i]}
 							var retry int
 							for retry = 4; retry >= 0; retry-- {

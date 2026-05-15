@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -92,7 +89,7 @@ func DecodeByteArray(s string, v *[]byte, format Base64Encoding) error {
 		return nil
 	}
 	payload := string(s)
-	if payload[0] == '"' {
+	if len(payload) >= 2 && payload[0] == '"' && payload[len(payload)-1] == '"' {
 		// remove surrounding quotes
 		payload = payload[1 : len(payload)-1]
 	}

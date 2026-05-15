@@ -14,7 +14,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// This operation is not supported by directory buckets.
+// This operation is not supported for directory buckets.
 //
 // Enables notifications of specified events for a bucket. For more information
 // about event notifications, see [Configuring Event Notifications].
@@ -62,6 +62,10 @@ import (
 // The following action is related to PutBucketNotificationConfiguration :
 //
 // [GetBucketNotificationConfiguration]
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [Configuring Notifications for Amazon S3 Events]: https://docs.aws.amazon.com/AmazonS3/latest/dev/NotificationHowTo.html
 // [Amazon S3 service quotas]: https://docs.aws.amazon.com/general/latest/gr/s3.html#limits_s3
@@ -154,13 +158,16 @@ func (c *Client) addOperationPutBucketNotificationConfigurationMiddlewares(stack
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
 		return err
 	}
 	if err = addRecordResponseTiming(stack); err != nil {
+		return err
+	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
 		return err
 	}
 	if err = addClientUserAgent(stack, options); err != nil {
@@ -178,13 +185,13 @@ func (c *Client) addOperationPutBucketNotificationConfigurationMiddlewares(stack
 	if err = addPutBucketContextMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
-		return err
-	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpPutBucketNotificationConfigurationValidationMiddleware(stack); err != nil {
@@ -218,6 +225,15 @@ func (c *Client) addOperationPutBucketNotificationConfigurationMiddlewares(stack
 		return err
 	}
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

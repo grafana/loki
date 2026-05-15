@@ -113,10 +113,6 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 			return err
 		}
 
-		if i := lastBoltdbShipperConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
-			betterBoltdbShipperDefaults(r)
-		}
-
 		if i := lastTSDBConfig(r.SchemaConfig.Configs); i != len(r.SchemaConfig.Configs) {
 			betterTSDBShipperDefaults(r)
 		}
@@ -124,7 +120,6 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyEmbeddedCacheConfig(r)
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
-		applyChunkRetain(r, &defaults)
 		if err := applyCommonQuerierWorkerGRPCConfig(r, &defaults); err != nil {
 			return err
 		}
@@ -142,15 +137,9 @@ func lastConfigFor(configs []config.PeriodConfig, predicate func(config.PeriodCo
 	return len(configs)
 }
 
-func lastBoltdbShipperConfig(configs []config.PeriodConfig) int {
-	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == types.BoltDBShipperType
-	})
-}
-
 func lastTSDBConfig(configs []config.PeriodConfig) int {
 	return lastConfigFor(configs, func(p config.PeriodConfig) bool {
-		return p.IndexType == types.TSDBType
+		return p.IndexType == types.IndexTypeTSDB
 	})
 }
 
@@ -179,6 +168,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.QueryEngine.InterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -363,6 +353,38 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 		r.IndexGateway.Ring.EnableIPv6 = rc.EnableIPv6
 	}
+
+	// UI
+	if mergeWithExisting || reflect.DeepEqual(r.UI.Ring, defaults.UI.Ring) {
+		r.UI.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.UI.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.UI.Ring.InstancePort = rc.InstancePort
+		r.UI.Ring.InstanceAddr = rc.InstanceAddr
+		r.UI.Ring.InstanceID = rc.InstanceID
+		r.UI.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.UI.Ring.InstanceZone = rc.InstanceZone
+		r.UI.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.UI.Ring.KVStore = rc.KVStore
+		r.UI.Ring.EnableIPv6 = rc.EnableIPv6
+	}
+
+	// DataObjConsumer
+	if mergeWithExisting || reflect.DeepEqual(r.DataObj.Consumer.LifecyclerConfig.RingConfig, defaults.DataObj.Consumer.LifecyclerConfig.RingConfig) {
+		r.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.DataObj.Consumer.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.DataObj.Consumer.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.DataObj.Consumer.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.DataObj.Consumer.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.DataObj.Consumer.LifecyclerConfig.ID = rc.InstanceID
+		r.DataObj.Consumer.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.DataObj.Consumer.LifecyclerConfig.Port = rc.InstancePort
+		r.DataObj.Consumer.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.DataObj.Consumer.LifecyclerConfig.Zone = rc.InstanceZone
+		r.DataObj.Consumer.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.DataObj.Consumer.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.DataObj.Consumer.LifecyclerConfig.EnableInet6 = rc.EnableIPv6
+		r.DataObj.Consumer.PartitionRingConfig.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -414,6 +436,20 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.Pattern.LifecyclerConfig.TokensFilePath = f
+
+	// UI
+	f, err = tokensFile(cfg, "ui.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.UI.Ring.TokensFilePath = f
+
+	// Dataobj Consumer
+	f, err = tokensFile(cfg, "dataobjconsumer.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.DataObj.Consumer.LifecyclerConfig.TokensFilePath = f
 
 	return nil
 }
@@ -509,6 +545,14 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.DataObj.Consumer.LifecyclerConfig.InfNames, defaults.DataObj.Consumer.LifecyclerConfig.InfNames) {
+		cfg.DataObj.Consumer.LifecyclerConfig.InfNames = append(cfg.DataObj.Consumer.LifecyclerConfig.InfNames, loopbackIface)
+	}
+
+	if reflect.DeepEqual(cfg.QueryEngine.InterfaceNames, defaults.QueryEngine.InterfaceNames) {
+		cfg.QueryEngine.InterfaceNames = append(cfg.QueryEngine.InterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -525,6 +569,8 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
+	r.UI.Ring.KVStore.Store = memberlistStr
+	r.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
@@ -576,13 +622,13 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
-	if !reflect.DeepEqual(cfg.Common.Storage.S3, defaults.StorageConfig.AWSStorageConfig.S3Config) {
+	if !reflect.DeepEqual(cfg.Common.Storage.S3, defaults.StorageConfig.S3Config) {
 		configsFound++
 
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "s3"
 			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3
-			r.StorageConfig.AWSStorageConfig.S3Config = r.Common.Storage.S3
+			r.StorageConfig.S3Config = r.Common.Storage.S3
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
@@ -648,20 +694,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	}
 
 	return nil
-}
-
-func betterBoltdbShipperDefaults(cfg *ConfigWrapper) {
-	if cfg.Common.PathPrefix != "" {
-		prefix := strings.TrimSuffix(cfg.Common.PathPrefix, "/")
-
-		if cfg.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory == "" {
-			cfg.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory = fmt.Sprintf("%s/boltdb-shipper-active", prefix)
-		}
-
-		if cfg.StorageConfig.BoltDBShipperConfig.CacheLocation == "" {
-			cfg.StorageConfig.BoltDBShipperConfig.CacheLocation = fmt.Sprintf("%s/boltdb-shipper-cache", prefix)
-		}
-	}
 }
 
 func betterTSDBShipperDefaults(cfg *ConfigWrapper) {
@@ -736,23 +768,6 @@ func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 
 func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
-}
-
-// applyChunkRetain is used to set chunk retain based on having an index query cache configured
-// We retain chunks for at least as long as the index queries cache TTL. When an index entry is
-// cached, any chunks flushed after that won't be in the cached entry. To make sure their data is
-// available the RetainPeriod keeps them available in the ingesters live data. We want to retain them
-// for at least as long as the TTL on the index queries cache.
-func applyChunkRetain(cfg, defaults *ConfigWrapper) {
-	if !reflect.DeepEqual(cfg.StorageConfig.IndexQueriesCacheConfig, defaults.StorageConfig.IndexQueriesCacheConfig) {
-		// Only apply this change if the active index period is for boltdb-shipper
-		p := config.ActivePeriodConfig(cfg.SchemaConfig.Configs)
-		if cfg.SchemaConfig.Configs[p].IndexType == types.BoltDBShipperType {
-			// Set the retain period to the cache validity plus one minute. One minute is arbitrary but leaves some
-			// buffer to make sure the chunks are there until the index entries expire.
-			cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
-		}
-	}
 }
 
 func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {

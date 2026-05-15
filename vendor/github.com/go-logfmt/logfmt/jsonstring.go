@@ -19,7 +19,7 @@ import (
 var hex = "0123456789abcdef"
 
 var bufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &bytes.Buffer{}
 	},
 }
@@ -40,7 +40,7 @@ func writeQuotedString(w io.Writer, s string) (int, error) {
 	start := 0
 	for i := 0; i < len(s); {
 		if b := s[i]; b < utf8.RuneSelf {
-			if 0x20 <= b && b != '\\' && b != '"' {
+			if 0x20 <= b && b != '\\' && b != '"' && b != 0x7f {
 				i++
 				continue
 			}
@@ -91,14 +91,14 @@ func writeQuotedString(w io.Writer, s string) (int, error) {
 	return n, err
 }
 
-// NOTE: keep in sync with writeQuoteString above.
+// NOTE: keep in sync with writeQuotedString above.
 func writeQuotedBytes(w io.Writer, s []byte) (int, error) {
 	buf := getBuffer()
 	buf.WriteByte('"')
 	start := 0
 	for i := 0; i < len(s); {
 		if b := s[i]; b < utf8.RuneSelf {
-			if 0x20 <= b && b != '\\' && b != '"' {
+			if 0x20 <= b && b != '\\' && b != '"' && b != 0x7f {
 				i++
 				continue
 			}

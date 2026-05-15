@@ -1,7 +1,7 @@
 variable "version" {
   type        = string
   description = "Loki version"
-  default     = "2.7.5"
+  default     = "3.5.7"
 }
 
 job "loki" {
@@ -66,6 +66,82 @@ job "loki" {
 
         check {
           name     = "Loki read"
+          port     = "http"
+          type     = "http"
+          path     = "/ready"
+          interval = "20s"
+          timeout  = "1s"
+
+          initial_status = "passing"
+        }
+      }
+
+      resources {
+        cpu    = 500
+        memory = 256
+      }
+    }
+  }
+
+  group "backend" {
+    count = 1
+
+    ephemeral_disk {
+      size   = 1000
+      sticky = true
+    }
+
+    network {
+      port "http" {}
+      port "grpc" {}
+    }
+
+    task "backend" {
+      driver = "docker"
+      user   = "nobody"
+
+      config {
+        image = "grafana/loki:${var.version}"
+
+        ports = [
+          "http",
+          "grpc",
+        ]
+
+        args = [
+          "-target=backend",
+          "-config.file=/local/config.yml",
+          "-config.expand-env=true",
+        ]
+      }
+
+      template {
+        data        = file("config.yml")
+        destination = "local/config.yml"
+      }
+
+      template {
+        data = <<-EOH
+        S3_ACCESS_KEY_ID=<access_key>
+        S3_SECRET_ACCESS_KEY=<secret_access_key>
+        EOH
+
+        destination = "secrets/s3.env"
+        env         = true
+      }
+
+      service {
+        name = "loki-backend"
+        port = "http"
+
+        tags = [
+          "traefik.enable=true",
+          "traefik.http.routers.loki-backend.entrypoints=https",
+          "traefik.http.routers.loki-backend.rule=Host(`loki-backend.service.consul`)",
+        ]
+
+        check {
+          name     = "Loki backend"
           port     = "http"
           type     = "http"
           path     = "/ready"

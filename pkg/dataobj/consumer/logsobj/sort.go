@@ -13,7 +13,7 @@ import (
 )
 
 // sortMergeIterator returns an iterator that performs a k-way merge of records from multiple logs sections.
-// It requires that the input sections are sorted sorted by the same order.
+// It requires that the input sections are sorted by the same order.
 func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
 	sequences := make([]*sectionSequence, 0, len(sections))
 	for _, s := range sections {
@@ -32,11 +32,14 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, sort lo
 			return nil, err
 		}
 
-		r := dataset.NewReader(dataset.ReaderOptions{
+		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset:  ds,
 			Columns:  columns,
 			Prefetch: true,
 		})
+		if err := r.Open(ctx); err != nil {
+			return nil, fmt.Errorf("opening dataset row reader: %w", err)
+		}
 
 		sequences = append(sequences, &sectionSequence{
 			section:         sec,
@@ -73,6 +76,36 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, sort lo
 			}
 			return nil
 		}), nil
+}
+
+// sortedSchemaIter reads all records from the input sections, injects schema
+// sort keys, sorts globally by schema key, and returns an iterator in schema
+// order suitable for AppendOrdered.
+func sortedSchemaIter(
+	ctx context.Context, sections []*dataobj.Section, sortKeys map[int64]string, fallbackOrder logs.SortOrder,
+) (result.Seq[logs.Record], error) {
+	iter, err := sortMergeIterator(ctx, sections, fallbackOrder)
+	if err != nil {
+		return nil, err
+	}
+	var recs []logs.Record
+	for res := range iter {
+		rec, err := res.Value()
+		if err != nil {
+			return nil, err
+		}
+		rec.SortKey = sortKeys[rec.StreamID]
+		recs = append(recs, rec)
+	}
+	logs.SortRecords(recs, logs.SortSchemaASC)
+	return result.Iter(func(yield func(logs.Record) bool) error {
+		for _, r := range recs {
+			if !yield(r) {
+				return nil
+			}
+		}
+		return nil
+	}), nil
 }
 
 type sectionSequence struct {

@@ -19,6 +19,7 @@ var (
 	ErrPartitionDoesNotExist          = errors.New("the partition does not exist")
 	ErrPartitionStateMismatch         = errors.New("the partition state does not match the expected one")
 	ErrPartitionStateChangeNotAllowed = errors.New("partition state change not allowed")
+	ErrPartitionStateChangeLocked     = errors.New("partition state change is locked")
 
 	allowedPartitionStateChanges = map[PartitionState][]PartitionState{
 		PartitionPending:  {PartitionActive, PartitionInactive},
@@ -364,7 +365,7 @@ func (l *PartitionInstanceLifecycler) reconcileOwnedPartition(ctx context.Contex
 		// have been added since more than the waiting period.
 		if partition.IsPending() && ring.PartitionOwnersCountUpdatedBefore(partitionID, now.Add(-l.cfg.WaitOwnersDurationOnPending)) >= l.cfg.WaitOwnersCountOnPending {
 			level.Info(l.logger).Log("msg", "switching partition state because enough owners have been registered and minimum waiting time has elapsed", "partition", l.cfg.PartitionID, "from_state", PartitionPending, "to_state", PartitionActive)
-			return ring.UpdatePartitionState(partitionID, PartitionActive, now), nil
+			return ring.UpdatePartitionState(partitionID, PartitionActive, now)
 		}
 
 		return false, nil

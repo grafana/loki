@@ -1,0 +1,151 @@
+package columnartest
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
+	"github.com/grafana/loki/v3/pkg/memory"
+)
+
+// Array returns an array value representing the given kind.
+//
+// Each value must either be nil (for a null value) or a Go type that can be
+// directly converted to kind. See [Scalar] for conversion rules.
+//
+// If alloc is nil, a new allocator will be created for the returned array.
+//
+// If a value cannot be represented as the kind provided, Array fails t.
+func Array(t testing.TB, kind types.Kind, alloc *memory.Allocator, values ...any) columnar.Array {
+	t.Helper()
+
+	if alloc == nil {
+		alloc = memory.NewAllocator(nil)
+	}
+
+	switch kind {
+	case types.KindNull:
+		return arrayNull(t, alloc, values...)
+	case types.KindBool:
+		return arrayBool(t, alloc, values...)
+	case types.KindInt32:
+		return arrayNumber[int32](t, alloc, values...)
+	case types.KindInt64:
+		return arrayNumber[int64](t, alloc, values...)
+	case types.KindUint32:
+		return arrayNumber[uint32](t, alloc, values...)
+	case types.KindUint64:
+		return arrayNumber[uint64](t, alloc, values...)
+	case types.KindUTF8:
+		return arrayUTF8(t, alloc, values...)
+	case types.KindStruct:
+		return arrayStruct(t, alloc, values...)
+	default:
+		require.FailNow(t, "unsupported kind", "kind %s is currently not supported", kind)
+		panic("unreachable")
+	}
+}
+
+func arrayNull(t testing.TB, alloc *memory.Allocator, values ...any) *columnar.Null {
+	t.Helper()
+
+	builder := columnar.NewNullBuilder(alloc)
+	builder.Grow(len(values))
+
+	for _, value := range values {
+		require.Nil(t, value, "all values must be nil for null array")
+		builder.AppendNull()
+	}
+
+	return builder.Build()
+}
+
+func arrayBool(t testing.TB, alloc *memory.Allocator, values ...any) *columnar.Bool {
+	t.Helper()
+
+	builder := columnar.NewBoolBuilder(alloc)
+	builder.Grow(len(values))
+
+	for _, value := range values {
+		if value == nil {
+			builder.AppendNull()
+			continue
+		}
+
+		require.IsType(t, false, value, "all values must be nil or bool for bool array")
+		builder.AppendValue(value.(bool))
+	}
+
+	return builder.Build()
+}
+
+func arrayNumber[T columnar.Numeric](t testing.TB, alloc *memory.Allocator, values ...any) *columnar.Number[T] {
+	t.Helper()
+
+	builder := columnar.NewNumberBuilder[T](alloc)
+	builder.Grow(len(values))
+
+	for _, value := range values {
+		if value == nil {
+			builder.AppendNull()
+			continue
+		}
+
+		switch value := value.(type) {
+		case int:
+			builder.AppendValue(T(value))
+		case T:
+			builder.AppendValue(value)
+		default:
+			var zero T
+			require.FailNow(t, "unexpected value type", "all values must be nil, %T, or int for %T array", zero, zero)
+		}
+	}
+
+	return builder.Build()
+}
+
+func arrayStruct(t testing.TB, alloc *memory.Allocator, values ...any) *columnar.Struct {
+	t.Helper()
+
+	if len(values) == 0 {
+		return columnar.NewStruct(columnar.NewSchema(nil), nil, 0, memory.Bitmap{})
+	}
+
+	arrays := make([]columnar.Array, len(values))
+	for i, v := range values {
+		require.IsType(t, (*columnar.Struct)(nil), v, "all values must be *columnar.Struct for struct array, found %T", v)
+		arrays[i] = v.(*columnar.Struct)
+	}
+
+	result, err := columnar.Concat(alloc, arrays)
+	require.NoError(t, err)
+	return result.(*columnar.Struct)
+}
+
+func arrayUTF8(t testing.TB, alloc *memory.Allocator, values ...any) *columnar.UTF8 {
+	t.Helper()
+
+	builder := columnar.NewUTF8Builder(alloc)
+	builder.Grow(len(values))
+
+	for _, value := range values {
+		if value == nil {
+			builder.AppendNull()
+			continue
+		}
+
+		switch value := value.(type) {
+		case string:
+			builder.AppendValue([]byte(value))
+		case []byte:
+			builder.AppendValue(value)
+		default:
+			require.FailNow(t, "unexpected value type", "all values must be nil, []byte, or string for UTF8 array, found %T", value)
+		}
+	}
+
+	return builder.Build()
+}

@@ -1,11 +1,11 @@
 package types //nolint:revive
 
 var SupportedIndexTypes = []string{
-	BoltDBShipperType,
-	TSDBType,
+	IndexTypeTSDB,
 }
 
-var DeprecatedIndexTypes = []string{
+var UnsupportedIndexTypes = []string{
+	IndexTypeBoltDB,
 	StorageTypeAWS,
 	StorageTypeAWSDynamo,
 	StorageTypeBigTable,
@@ -29,13 +29,13 @@ var SupportedStorageTypes = []string{
 	StorageTypeGCS,
 	StorageTypeS3,
 	StorageTypeSwift,
-	StorageTypeNoop,
 }
 
-var DeprecatedStorageTypes = []string{
+var UnsupportedStorageTypes = []string{
 	StorageTypeAWSDynamo,
 	StorageTypeBigTable,
 	StorageTypeBigTableHashed,
+	StorageTypeBoltDB,
 	StorageTypeCassandra,
 	StorageTypeGCP,
 	StorageTypeGCPColumnKey,
@@ -44,30 +44,31 @@ var DeprecatedStorageTypes = []string{
 
 var TestingStorageTypes = []string{
 	StorageTypeInMemory,
+	StorageTypeNoop,
 }
 
 const (
-	StorageTypeAlibabaCloud   = "alibabacloud"
 	StorageTypeAWS            = "aws"
 	StorageTypeAWSDynamo      = "aws-dynamo"
+	StorageTypeAlibabaCloud   = "alibabacloud"
 	StorageTypeAzure          = "azure"
 	StorageTypeBOS            = "bos"
-	StorageTypeBoltDB         = "boltdb"
-	StorageTypeCassandra      = "cassandra"
-	StorageTypeInMemory       = "inmemory"
 	StorageTypeBigTable       = "bigtable"
 	StorageTypeBigTableHashed = "bigtable-hashed"
+	StorageTypeBoltDB         = "boltdb"
+	StorageTypeCOS            = "cos"
+	StorageTypeCassandra      = "cassandra"
 	StorageTypeFileSystem     = "filesystem"
 	StorageTypeGCP            = "gcp"
 	StorageTypeGCPColumnKey   = "gcp-columnkey"
 	StorageTypeGCS            = "gcs"
 	StorageTypeGrpc           = "grpc-store"
+	StorageTypeInMemory       = "inmemory"
 	StorageTypeLocal          = "local"
+	StorageTypeNoop           = "noop"
 	StorageTypeS3             = "s3"
 	StorageTypeSwift          = "swift"
-	StorageTypeCOS            = "cos"
-	StorageTypeNoop           = "noop"
 
-	BoltDBShipperType = "boltdb-shipper"
-	TSDBType          = "tsdb"
+	IndexTypeBoltDB = "boltdb-shipper"
+	IndexTypeTSDB   = "tsdb"
 )

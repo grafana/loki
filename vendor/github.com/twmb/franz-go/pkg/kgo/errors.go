@@ -150,9 +150,10 @@ var (
 	// know about (maybe missing from metadata responses now).
 	errUnknownBroker = errors.New("unknown broker")
 
-	// A temporary error returned when a broker chosen for a request is
-	// stopped due to a concurrent metadata response.
-	errChosenBrokerDead = errors.New("the internal broker struct chosen to issue this request has died--either the broker id is migrating or no longer exists")
+	// A temporary error returned when a broker connection has died,
+	// either from a metadata update or from the connection closing
+	// while a request was in-flight.
+	errChosenBrokerDead = errors.New("the broker connection has died and the request will be retried on a new connection")
 
 	// If a broker repeatedly gives us tiny sasl lifetimes, we fail a
 	// request after a few tries to forcefully kill the connection and
@@ -256,16 +257,19 @@ func (e *errProducerIDLoadFail) Error() string {
 func (e *errProducerIDLoadFail) Unwrap() error { return e.err }
 
 const (
-	firstReadSASL uint8 = iota
+	firstReadDial uint8 = iota
 	firstReadTLS
+	firstReadSASL
 )
 
 func (e *ErrFirstReadEOF) Error() string {
 	switch e.kind {
+	case firstReadDial:
+		return "broker closed the connection immediately after a dial, which often happens if the client is using TLS when the broker is not expecting it: is TLS misconfigured on the client or the broker?"
 	case firstReadTLS:
-		return "broker closed the connection immediately after a dial, which happens if the client is using TLS when the broker is not expecting it: is TLS misconfigured on the client or the broker?"
+		return "broker closed the connection immediately during api versions negotiation, which often happens when the broker requires TLS but the client is using plaintext: is TLS missing?"
 	default: // firstReadSASL
-		return "broker closed the connection immediately after a request was issued, which happens when SASL is required but not provided: is SASL missing?"
+		return "broker closed the connection immediately after a request was issued, which often happens when SASL is required but not provided: is SASL missing?"
 	}
 }
 

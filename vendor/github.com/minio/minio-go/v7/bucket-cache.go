@@ -142,7 +142,7 @@ func (c *Client) getBucketLocationRequest(ctx context.Context, bucketName string
 	if h, p, err := net.SplitHostPort(targetURL.Host); err == nil {
 		if targetURL.Scheme == "http" && p == "80" || targetURL.Scheme == "https" && p == "443" {
 			targetURL.Host = h
-			if ip := net.ParseIP(h); ip != nil && ip.To16() != nil {
+			if ip := net.ParseIP(h); ip != nil && ip.To4() == nil {
 				targetURL.Host = "[" + h + "]"
 			}
 		}
@@ -209,6 +209,11 @@ func (c *Client) getBucketLocationRequest(ctx context.Context, bucketName string
 	}
 
 	req.Header.Set("X-Amz-Content-Sha256", contentSha256)
-	req = signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, "us-east-1")
+	if s3utils.IsAmazonOutpostsEndpoint(*c.endpointURL) {
+		region := getDefaultLocation(*c.endpointURL, c.region)
+		req = signer.SignV4Outposts(*req, accessKeyID, secretAccessKey, sessionToken, region)
+	} else {
+		req = signer.SignV4(*req, accessKeyID, secretAccessKey, sessionToken, "us-east-1")
+	}
 	return req, nil
 }

@@ -1,6 +1,6 @@
 # Deploy Loki to Kubernetes
 
-See the [Tanka Installation Docs](../../docs/sources/installation/tanka.md)
+See the [Tanka Installation Docs](../../docs/sources/setup/install/tanka.md)
 
 ##  Multizone ingesters
 To use multizone ingesters use following config fields

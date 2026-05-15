@@ -185,7 +185,7 @@ func (b *tableBuffer) Timestamp(pageSize, pageRowCount int) *dataset.ColumnBuild
 
 // Metadata gets or creates a metadata column for the buffer. To remove created
 // metadata columns, call [tableBuffer.CleanupMetadatas].
-func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
+func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions) *dataset.ColumnBuilder {
 	if b.usedMetadatas == nil {
 		b.usedMetadatas = make(map[*dataset.ColumnBuilder]string)
 	}
@@ -230,7 +230,7 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 }
 
 // Message gets or creates a message column for the buffer.
-func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
+func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions) *dataset.ColumnBuilder {
 	if b.message != nil {
 		return b.message
 	}
@@ -339,9 +339,12 @@ func (b *tableBuffer) Flush() (*table, error) {
 		}
 
 		// Each metadata column may have a different number of rows compared to
-		// other columns. Since adding NULLs isn't free, we don't call Backfill
-		// here.
+		// other columns. Backfill them with NULLs to match the max rows in the buffer.
+		// It is safe to use streamID column row count since it is a required column in logs section.
+		metadataBuilder.Backfill(streamID.Desc.RowsCount)
+
 		metadata, _ := metadataBuilder.Flush()
+
 		metadatas = append(metadatas, &tableColumn{metadata, ColumnTypeMetadata})
 	}
 

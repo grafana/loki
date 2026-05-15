@@ -11,11 +11,13 @@ import (
 )
 
 type LogCluster struct {
-	id         int
-	Size       int
-	Tokens     []string
-	TokenState interface{}
-	Stringer   func([]string, interface{}) string
+	id          int
+	Size        int
+	Tokens      []string
+	TokenState  interface{}
+	Stringer    func([]string, interface{}) string
+	Volume      int64
+	SampleCount int64
 
 	Chunks Chunks
 }
@@ -32,11 +34,6 @@ func (c *LogCluster) append(ts model.Time, maxChunkAge time.Duration, sampleInte
 	return c.Chunks.Add(ts, maxChunkAge, sampleInterval)
 }
 
-func (c *LogCluster) merge(samples []*logproto.PatternSample) {
-	c.Size += int(sumSize(samples))
-	c.Chunks.merge(samples)
-}
-
 func (c *LogCluster) Iterator(lvl string, from, through, step, sampleInterval model.Time) iter.Iterator {
 	return c.Chunks.Iterator(c.String(), lvl, from, through, step, sampleInterval)
 }
@@ -49,12 +46,4 @@ func (c *LogCluster) Prune(olderThan time.Duration) []*logproto.PatternSample {
 	prunedSamples := c.Chunks.prune(olderThan)
 	c.Size = c.Chunks.size()
 	return prunedSamples
-}
-
-func sumSize(samples []*logproto.PatternSample) int64 {
-	var x int64
-	for i := range samples {
-		x += samples[i].Value
-	}
-	return x
 }

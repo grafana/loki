@@ -1,8 +1,6 @@
 package metastore
 
 import (
-	"time"
-
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -90,25 +88,7 @@ func (p *tocMetrics) incTableOfContentsWrites(status status) {
 	p.tocWriteFailures.WithLabelValues(string(status)).Inc()
 }
 
-func (p *tocMetrics) observeMetastoreReplay(recordTimestamp time.Time) {
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.tocReplayTime.Observe(time.Since(recordTimestamp).Seconds())
-	}
-}
-
-func (p *tocMetrics) observeMetastoreEncoding(recordTimestamp time.Time) {
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.tocEncodingTime.Observe(time.Since(recordTimestamp).Seconds())
-	}
-}
-
-func (p *tocMetrics) observeMetastoreProcessing(recordTimestamp time.Time) {
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.tocProcessingTime.Observe(time.Since(recordTimestamp).Seconds())
-	}
-}
-
-type objectMetastoreMetrics struct {
+type ObjectMetastoreMetrics struct {
 	indexObjectsTotal                   prometheus.Histogram
 	streamFilterTotalDuration           prometheus.Histogram
 	streamFilterSections                prometheus.Histogram
@@ -122,8 +102,8 @@ type objectMetastoreMetrics struct {
 	resolvedSectionsRatio               prometheus.Histogram
 }
 
-func newObjectMetastoreMetrics() *objectMetastoreMetrics {
-	metrics := &objectMetastoreMetrics{
+func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetrics {
+	metrics := &ObjectMetastoreMetrics{
 		indexObjectsTotal: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_index_objects_total",
 			Help:                            "Total number of objects to be searched for a Metastore query",
@@ -213,11 +193,15 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 	}
+	metrics.register(reg)
 
 	return metrics
 }
 
-func (p *objectMetastoreMetrics) register(reg prometheus.Registerer) {
+func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
+	if reg == nil {
+		return
+	}
 	reg.MustRegister(p.indexObjectsTotal)
 	reg.MustRegister(p.streamFilterTotalDuration)
 	reg.MustRegister(p.streamFilterSections)

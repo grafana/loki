@@ -204,7 +204,7 @@ serviceaccount/loki-gcp-ksa created
 ### Add IAM Policy to Buckets
 
 {{< admonition type="note" >}}
-The [pre-defined `role/storage.objectUser` role](https://cloud.google.com/storage/docs/access-control/iam-roles) is sufficient for Loki to
+The [pre-defined `roles/storage.objectUser` role](https://cloud.google.com/storage/docs/access-control/iam-roles#storage.objectUser) is sufficient for Loki to
  operate. See [IAM permissions for Cloud Storage](https://cloud.google.com/storage/docs/access-control/iam-permissions) for details about each individual
  permission. You can use this predefined role or create your own with matching permissions.
 {{< /admonition >}}
@@ -213,7 +213,7 @@ Create an IAM policy binding on the buckets using the KSA created previously and
 
 ```bash
 gcloud storage buckets add-iam-policy-binding gs://<BUCKET_NAME> \
- --role=roles/storage.objectAdmin \
+ --role=roles/storage.objectUser \
   --member=principal://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<PROJECT_ID>.svc.id.goog/subject/ns/<NAMESPACE>/sa/<KSA_NAME> \
   --condition=None
 ```
@@ -227,7 +227,7 @@ Examples:
 
 ```bash
 gcloud storage buckets add-iam-policy-binding gs://loki-gcp-chunks \
-  --role=roles/storage.objectAdmin \
+  --role=roles/storage.objectUser \
   --member=principal://iam.googleapis.com/projects/12345678901/locations/global/workloadIdentityPools/my-project-123456.svc.id.goog/subject/ns/loki/sa/loki-gcp-ksa \
   --condition=None
 ```
@@ -236,7 +236,7 @@ and
 
 ```bash
 gcloud storage buckets add-iam-policy-binding gs://loki-gcp-ruler \
-  --role=roles/storage.objectAdmin \
+  --role=roles/storage.objectUser \
   --member=principal://iam.googleapis.com/projects/12345678901/locations/global/workloadIdentityPools/my-project-123456.svc.id.goog/subject/ns/loki/sa/loki-gcp-ksa \
   --condition=None
 ```
@@ -261,7 +261,7 @@ bindings:
   role: roles/storage.legacyObjectReader
 - members:
   - principal://iam.googleapis.com/projects/12345678901/locations/global/workloadIdentityPools/my-project-123456.svc.id.goog/subject/ns/loki/sa/loki-gcp-ksa
-  role: roles/storage.objectViewer
+  role: roles/storage.objectUser
 etag: CAI=
 kind: storage#policy
 resourceId: projects/_/buckets/loki-gcp-chunks
@@ -270,12 +270,12 @@ version: 1
 
 ## Deploying the Helm chart
 
-Before we can deploy the Loki Helm chart, we need to add the Grafana chart repository to Helm. This repository contains the Loki Helm chart.
+Before we can deploy the Loki Helm chart, we need to add the Grafana Community chart repository to Helm. This repository contains the Loki Helm chart.
 
-1. Add the Grafana chart repository to Helm:
+1. Add the Grafana Community chart repository to Helm:
 
     ```bash
-    helm repo add grafana https://grafana.github.io/helm-charts
+    helm repo add grafana-community https://grafana-community.github.io/helm-charts
     ```
 2. Update the chart repository:
 
@@ -323,30 +323,30 @@ Create a `values.yaml` file choosing the configuration options that best suit yo
 
 ```yaml
 loki:
-   schemaConfig:
-     configs:
-       - from: "2024-04-01"
-         store: tsdb
-         object_store: gcs
-         schema: v13
-         index:
-           prefix: loki_index_
-           period: 24h
-   storage_config:
-     gcs:
-       bucket_name: <CHUNK_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-chunks
-   ingester:
-       chunk_encoding: snappy
-   pattern_ingester:
-       enabled: true
-   limits_config:
-     allow_structured_metadata: true
-     volume_enabled: true
-     retention_period: 672h # 28 days retention
-   compactor:
-     retention_enabled: true 
-     delete_request_store: gcs
-   ruler:
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: gcs
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage_config:
+    gcs:
+      bucket_name: <CHUNK_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-chunks
+  ingester:
+    chunk_encoding: snappy
+  pattern_ingester:
+    enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    retention_period: 672h # 28 days retention
+  compactor:
+    retention_enabled: true
+    delete_request_store: gcs
+  ruler:
     enable_api: true
     storage_config:
       type: gcs
@@ -355,60 +355,60 @@ loki:
         bucketnames: <RULER_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-ruler
       alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
-   querier:
-      max_concurrent: 4
+  querier:
+    max_concurrent: 4
 
-   storage:
-      type: gcs
-      bucketNames:
-        chunks: <CHUNK_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-chunks
-        ruler: <RULER_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-ruler
+  storage:
+    type: gcs
+    bucketNames:
+      chunks: <CHUNK_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-chunks
+      ruler: <RULER_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-ruler
       
 serviceAccount:
- create: false
- name: <KSA_NAME>
+  create: false
+  name: <KSA_NAME>
 
 deploymentMode: Distributed
 
 ingester:
- replicas: 3
- zoneAwareReplication:
-  enabled: false
+  replicas: 3
+  zoneAwareReplication:
+    enabled: false
 
 querier:
- replicas: 3
- maxUnavailable: 2
+  replicas: 3
+  maxUnavailable: 2
 
 queryFrontend:
- replicas: 2
- maxUnavailable: 1
+  replicas: 2
+  maxUnavailable: 1
 
 queryScheduler:
- replicas: 2
+  replicas: 2
 
 distributor:
- replicas: 3
- maxUnavailable: 2
+  replicas: 3
+  maxUnavailable: 2
  
 compactor:
- replicas: 1
+  replicas: 1
 
 indexGateway:
- replicas: 2
- maxUnavailable: 1
+  replicas: 2
+  maxUnavailable: 1
 
 ruler:
- replicas: 1
- maxUnavailable: 1
+  replicas: 1
+  maxUnavailable: 1
 
 
 # This exposes the Loki gateway so it can be written to and queried externaly
 gateway:
- service:
-   type: LoadBalancer
- basicAuth: 
-     enabled: true
-     existingSecret: loki-basic-auth
+  service:
+    type: LoadBalancer
+  basicAuth:
+    enabled: true
+    existingSecret: loki-basic-auth
 
 # Since we are using basic auth, we need to pass the username and password to the canary
 lokiCanary:
@@ -429,17 +429,17 @@ lokiCanary:
 
 # Enable minio for storage
 minio:
- enabled: false
+  enabled: false
 
 backend:
- replicas: 0
+  replicas: 0
 read:
- replicas: 0
+  replicas: 0
 write:
- replicas: 0
+  replicas: 0
 
 singleBinary:
- replicas: 0
+  replicas: 0
 ```
 
 {{< admonition type="caution" >}}
@@ -461,13 +461,17 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
 
 - **Storage:**
   - Defines where the Helm chart stores data.
-  - Set the type to `GCS` since we are using Amazon GCS.
+  - Set the type to `GCS` since we are using Google Cloud Storage.
   - Configure the bucket names for the chunks and ruler to match the buckets created earlier.
   - The `GCS` section specifies the region of the bucket.
 
 - **Service Account:**
   - The `serviceAccount` section is used to define the IAM role for the Loki service account.
   - This is where the IAM role created earlier is linked.
+
+- **Zone-Aware Replication:**
+  - The Helm chart enables zone-aware ingester replication by default, which creates three ingester StatefulSets (zone-a, zone-b, zone-c) for faster rollouts.
+  - In this guide, zone-aware replication is explicitly disabled (`ingester.zoneAwareReplication.enabled: false`) for simplicity. For production deployments, consider enabling it to improve rollout resilience.
 
 - **Gateway:**
   - Defines how the Loki gateway will be exposed.
@@ -481,7 +485,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
 1. Deploy using the newly created `values.yaml` file:
 
     ```bash
-    helm install --values values.yaml loki grafana/loki -n loki --create-namespace
+    helm install --values values.yaml loki grafana-community/loki -n loki --create-namespace
     ```
     **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account.**
 

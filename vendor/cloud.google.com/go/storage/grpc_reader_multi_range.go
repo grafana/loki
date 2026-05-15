@@ -14,27 +14,1326 @@
 
 package storage
 
-import "sync"
+import (
+	"container/list"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"sync"
 
-// readIDGenerator generates unique read IDs for multi-range reads.
-// Call readIDGenerator.Next to get the next ID. Safe to be called concurrently.
-type readIDGenerator struct {
-	initOnce sync.Once
-	nextID   chan int64 // do not use this field directly
+	"cloud.google.com/go/storage/internal/apiv2/storagepb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/mem"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
+	gax "github.com/googleapis/gax-go/v2"
+)
+
+const (
+	mrdCommandChannelSize    = 1
+	mrdResponseChannelSize   = 100
+	mrdSendChannelSize       = 100
+	mrdAddStreamsChannelSize = 100
+	// This should never be hit in practice, but is a safety valve to prevent
+	// unbounded memory usage if the user is adding ranges faster than they
+	// can be processed.
+	mrdAddInternalQueueMaxSize = 50000
+	defaultTargetPendingBytes  = 1 << 30 // 1 GiB
+	defaultTargetPendingRanges = 500
+)
+
+// --- internalMultiRangeDownloader Interface ---
+// This provides an internal wrapper for the gRPC methods to avoid polluting
+// reader.go with gRPC implementation details. The only implementation
+// currently is for the gRPC transport with bidi APIs enabled. Creating
+// a MultiRangeDownloader with any other client type will fail.
+type internalMultiRangeDownloader interface {
+	add(output io.Writer, offset, length int64, callback func(int64, int64, error))
+	close(err error) error
+	wait()
+	getHandle() []byte
+	getPermanentError() error
+	getSpanCtx() context.Context
 }
 
-func (g *readIDGenerator) init() {
-	g.nextID = make(chan int64, 1)
-	g.nextID <- 1
+// streamPickerStrategy is an interface which each stream picker must implement.
+type streamPickerStrategy interface {
+	pick(streams map[int]*mrdStream) int
 }
 
-// Next returns the Next read ID. It initializes the readIDGenerator if needed.
-func (g *readIDGenerator) Next() int64 {
-	g.initOnce.Do(g.init)
+// weightedPicker picks the stream with the minimum combined score of
+// pending ranges and pending bytes, normalized by their respective targets.
+type weightedPicker struct {
+	targetPendingRanges int
+	targetPendingBytes  int
+}
 
-	id := <-g.nextID
-	n := id + 1
-	g.nextID <- n
+func (p *weightedPicker) pick(streams map[int]*mrdStream) int {
+	minScore := -1.0
+	returnID := -1
 
-	return id
+	for id, stream := range streams {
+		if stream.reconnecting || stream.session == nil {
+			continue
+		}
+		// If the stream's request channel is full, skip it to avoid blocking the event loop.
+		// This ensures we only attempt a send if it can likely proceed immediately.
+		if len(stream.session.reqC) >= cap(stream.session.reqC) {
+			continue
+		}
+
+		// Calculate normalized score.
+		// Score = (PendingRanges / TargetRanges) + (PendingBytes / TargetBytes)
+		// Lower score is better (least loaded).
+		score := float64(stream.totalRanges)/float64(p.targetPendingRanges) +
+			float64(stream.totalRangeBytes)/float64(p.targetPendingBytes)
+
+		if returnID == -1 || score < minScore {
+			minScore = score
+			returnID = id
+		}
+	}
+	return returnID
+}
+
+// mrdStream holds all the relevant information of a single
+// bidi stream.
+type mrdStream struct {
+	id              int
+	pendingRanges   map[int64]*rangeRequest
+	session         *bidiReadStreamSession
+	reconnecting    bool
+	atCapacity      bool
+	totalRanges     int
+	totalRangeBytes int64
+	// statsRanges and statsRangeBytes help understand the
+	// distribution of ranges on different streams.
+	statsRanges     uint
+	statsRangeBytes int64
+}
+
+func (s *mrdStream) updateCapacity(m *multiRangeDownloaderManager, deltaRanges int, deltaBytes int64) {
+	s.totalRanges = s.totalRanges + deltaRanges
+	m.pendingRangesCount += deltaRanges
+	s.totalRangeBytes += deltaBytes
+
+	wasAtCapacity := s.atCapacity
+	s.atCapacity = s.totalRanges >= m.params.targetPendingRanges || s.totalRangeBytes >= int64(m.params.targetPendingBytes)
+
+	if wasAtCapacity && !s.atCapacity {
+		m.atCapacityCount--
+	} else if !wasAtCapacity && s.atCapacity {
+		m.atCapacityCount++
+	}
+}
+
+// --- grpcStorageClient method ---
+// Top level entry point into the MultiRangeDownloader via the storageClient interface.
+func (c *grpcStorageClient) NewMultiRangeDownloader(ctx context.Context, params *newMultiRangeDownloaderParams, opts ...storageOption) (*MultiRangeDownloader, error) {
+	if !c.config.grpcBidiReads {
+		return nil, errors.New("storage: MultiRangeDownloader requires the experimental.WithGRPCBidiReads option")
+	}
+	s := callSettings(c.settings, opts...)
+	// Force the use of the custom codec to enable zero-copy reads.
+	s.gax = append(s.gax, gax.WithGRPCOptions(
+		grpc.ForceCodecV2(bytesCodecV2{}),
+	))
+
+	if s.userProject != "" {
+		ctx = setUserProjectMetadata(ctx, s.userProject)
+	}
+	if s.retry == nil {
+		s.retry = defaultRetry
+	}
+	params.defaults()
+
+	readSpec := makeBidiReadObjectSpec(params)
+
+	mCtx, cancel := context.WithCancel(ctx)
+
+	// Create the manager
+	manager := &multiRangeDownloaderManager{
+		ctx:            mCtx,
+		cancel:         cancel,
+		client:         c,
+		settings:       s,
+		params:         params,
+		cmds:           make(chan mrdCommand, mrdCommandChannelSize),
+		sessionResps:   make(chan mrdSessionResult, mrdResponseChannelSize),
+		readIDCounter:  1,
+		readSpec:       readSpec,
+		attrsReady:     make(chan struct{}),
+		spanCtx:        ctx,
+		streams:        make(map[int]*mrdStream),
+		streamPicker:   &weightedPicker{targetPendingRanges: params.targetPendingRanges, targetPendingBytes: params.targetPendingBytes},
+		unsentRequests: newRequestQueue(),
+		addStreams:     make(chan mrdCommand, mrdAddStreamsChannelSize),
+	}
+
+	mrd := &MultiRangeDownloader{
+		impl: manager,
+	}
+
+	// Blocking call to establish the first session and get attributes.
+	initialStreamID := manager.streamIDCounter
+	manager.streamIDCounter++
+	manager.streams[initialStreamID] = &mrdStream{
+		id:            initialStreamID,
+		pendingRanges: make(map[int64]*rangeRequest),
+	}
+	session, finalSpec, err := manager.createNewSession(initialStreamID, readSpec, true)
+	if err != nil {
+		manager.setPermanentError(err)
+		return nil, err
+	}
+	// Update the manager's readSpec with any changes (like routing token) from the first session.
+	manager.readSpec = finalSpec
+	manager.streams[initialStreamID].session = session
+	manager.wg.Add(1)
+	go func() {
+		defer manager.wg.Done()
+		manager.eventLoop()
+	}()
+
+	// Wait for attributes to be ready
+	select {
+	case <-manager.attrsReady:
+		if pErr := manager.getPermanentError(); pErr != nil {
+			cancel()
+			manager.wg.Wait()
+			return nil, pErr
+		}
+		if manager.attrs != nil {
+			mrd.Attrs = *manager.attrs
+		}
+		return mrd, nil
+	case <-ctx.Done():
+		cancel()
+		manager.wg.Wait()
+		return nil, ctx.Err()
+	}
+}
+
+func makeBidiReadObjectSpec(params *newMultiRangeDownloaderParams) *storagepb.BidiReadObjectSpec {
+	b := bucketResourceName(globalProjectAlias, params.bucket)
+	readSpec := &storagepb.BidiReadObjectSpec{
+		Bucket:                    b,
+		Object:                    params.object,
+		CommonObjectRequestParams: toProtoCommonObjectRequestParams(params.encryptionKey),
+	}
+	if params.gen >= 0 {
+		readSpec.Generation = params.gen
+	}
+	if params.handle != nil && len(*params.handle) > 0 {
+		readSpec.ReadHandle = &storagepb.BidiReadHandle{
+			Handle: *params.handle,
+		}
+	}
+	return readSpec
+}
+
+func (m *newMultiRangeDownloaderParams) defaults() {
+	if m.minConnections <= 0 {
+		m.minConnections = 1
+	}
+	if m.maxConnections < m.minConnections {
+		m.maxConnections = m.minConnections
+	}
+	if m.targetPendingRanges <= 0 {
+		m.targetPendingRanges = defaultTargetPendingRanges
+	}
+	if m.targetPendingBytes <= 0 {
+		m.targetPendingBytes = defaultTargetPendingBytes
+	}
+}
+
+// --- mrdCommand Interface and Implementations ---
+// Used to pass commands from the user-facing code to the MRD manager.
+// mrdCommand handlers are applied sequentially in the event loop. Therefore, it's okay
+// for them to read/modify the manager state without concern for thread safety.
+type mrdCommand interface {
+	apply(ctx context.Context, m *multiRangeDownloaderManager)
+}
+type mrdAddCmd struct {
+	output   io.Writer
+	offset   int64
+	length   int64
+	callback func(int64, int64, error)
+}
+
+func (c *mrdAddCmd) apply(ctx context.Context, m *multiRangeDownloaderManager) {
+	m.handleAddCmd(ctx, c)
+}
+
+type mrdCloseCmd struct {
+	err error
+}
+
+func (c *mrdCloseCmd) apply(ctx context.Context, m *multiRangeDownloaderManager) {
+	m.handleCloseCmd(ctx, c)
+}
+
+type mrdWaitCmd struct {
+	doneC chan struct{}
+}
+
+func (c *mrdWaitCmd) apply(ctx context.Context, m *multiRangeDownloaderManager) {
+	m.handleWaitCmd(ctx, c)
+}
+
+type mrdGetHandleCmd struct {
+	respC chan []byte
+}
+
+func (c *mrdGetHandleCmd) apply(ctx context.Context, m *multiRangeDownloaderManager) {
+	select {
+	case <-m.attrsReady:
+		select {
+		case c.respC <- m.lastReadHandle:
+		case <-m.ctx.Done():
+			close(c.respC)
+		}
+	case <-m.ctx.Done():
+		close(c.respC)
+	}
+}
+
+type addStreamCmd struct {
+	id     int
+	spec   *storagepb.BidiReadObjectSpec
+	stream *mrdStream
+}
+
+func (c *addStreamCmd) apply(ctx context.Context, m *multiRangeDownloaderManager) {
+	m.handleAddStreamCmd(ctx, c)
+}
+
+type reconnectStreamCmd struct {
+	id      int
+	session *bidiReadStreamSession
+	spec    *storagepb.BidiReadObjectSpec
+	err     error
+}
+
+func (c *reconnectStreamCmd) apply(ctx context.Context, m *multiRangeDownloaderManager) {
+	m.handleReconnectStreamCmd(ctx, c)
+}
+
+type mrdAddStreamErrorCmd struct {
+	err error
+}
+
+func (c *mrdAddStreamErrorCmd) apply(ctx context.Context, m *multiRangeDownloaderManager) {
+	m.streamCreating = false
+	if len(m.streams) == 0 {
+		var err error
+		if c.err != nil {
+			err = fmt.Errorf("no streams available. Last observed error: %w", c.err)
+		} else {
+			err = errors.New("no streams available")
+		}
+		m.setPermanentError(err)
+		m.failAllPending(m.getPermanentError())
+	}
+}
+
+// --- mrdSessionResult ---
+// This is used to pass the zero-copy decoded response from the recv stream
+// back up to the multiRangeDownloadManager for processing, or to pass
+// an error if the session failed.
+type mrdSessionResult struct {
+	id       int
+	decoder  *readResponseDecoder
+	err      error
+	session  *bidiReadStreamSession
+	redirect *storagepb.BidiReadObjectRedirectedError
+}
+
+var (
+	errClosed    = errors.New("downloader closed")
+	errNoStreams = errors.New("no streams available")
+)
+
+// --- multiRangeDownloaderManager ---
+// Manages main event loop for MRD commands and processing responses.
+// Spawns bidiStreamSession to deal with actual stream management, retries, etc.
+type multiRangeDownloaderManager struct {
+	ctx          context.Context
+	cancel       context.CancelFunc
+	client       *grpcStorageClient
+	settings     *settings
+	params       *newMultiRangeDownloaderParams
+	wg           sync.WaitGroup // syncs completion of event loop.
+	cmds         chan mrdCommand
+	sessionResps chan mrdSessionResult
+
+	// State
+	mu                 sync.Mutex
+	readIDCounter      int64
+	permanentErr       error
+	waiters            []chan struct{}
+	readSpec           *storagepb.BidiReadObjectSpec
+	lastReadHandle     []byte
+	pendingRangesCount int
+	attrs              *ReaderObjectAttrs
+	attrsReady         chan struct{}
+	attrsOnce          sync.Once
+	spanCtx            context.Context
+	callbackWg         sync.WaitGroup
+	streamCreating     bool
+	streamPicker       streamPickerStrategy
+	streamIDCounter    int
+	streams            map[int]*mrdStream
+	unsentRequests     *requestQueue
+	addStreams         chan mrdCommand
+	atCapacityCount    int
+}
+
+type rangeRequest struct {
+	output   io.Writer
+	offset   int64
+	length   int64
+	callback func(int64, int64, error)
+
+	origOffset int64
+	origLength int64
+
+	readID       int64
+	bytesWritten int64
+	completed    bool
+}
+
+// Methods implementing internalMultiRangeDownloader
+func (m *multiRangeDownloaderManager) add(output io.Writer, offset, length int64, callback func(int64, int64, error)) {
+	if err := m.ctx.Err(); err != nil {
+		if pErr := m.getPermanentError(); pErr != nil {
+			err = pErr
+		}
+		m.runCallback(offset, length, err, callback)
+		return
+	}
+	if length < 0 {
+		m.runCallback(offset, length, fmt.Errorf("storage: MultiRangeDownloader.Add limit cannot be negative"), callback)
+		return
+	}
+
+	cmd := &mrdAddCmd{output: output, offset: offset, length: length, callback: callback}
+	select {
+	case m.cmds <- cmd:
+	case <-m.ctx.Done():
+		err := m.ctx.Err()
+		if pErr := m.getPermanentError(); pErr != nil {
+			err = pErr
+		}
+		m.runCallback(offset, length, err, callback)
+	}
+}
+
+func (m *multiRangeDownloaderManager) close(err error) error {
+	cmd := &mrdCloseCmd{err: err}
+	select {
+	case m.cmds <- cmd:
+		<-m.ctx.Done()
+		m.wg.Wait()
+		if pErr := m.getPermanentError(); pErr != nil && !errors.Is(pErr, errClosed) {
+			return pErr
+		}
+		return nil
+	case <-m.ctx.Done():
+		m.wg.Wait()
+		if m.getPermanentError() != nil {
+			return m.getPermanentError()
+		}
+		return m.ctx.Err()
+	}
+}
+
+func (m *multiRangeDownloaderManager) wait() {
+	doneC := make(chan struct{})
+	cmd := &mrdWaitCmd{doneC: doneC}
+	select {
+	case m.cmds <- cmd:
+		select {
+		case <-doneC:
+			m.callbackWg.Wait()
+			return
+		case <-m.ctx.Done():
+			m.callbackWg.Wait()
+			return
+		}
+	case <-m.ctx.Done():
+		m.callbackWg.Wait()
+		return
+	}
+}
+
+func (m *multiRangeDownloaderManager) getHandle() []byte {
+	select {
+	case <-m.attrsReady:
+	case <-m.ctx.Done():
+		return nil
+	}
+
+	respC := make(chan []byte, 1)
+	cmd := &mrdGetHandleCmd{respC: respC}
+	select {
+	case m.cmds <- cmd:
+		select {
+		case h, ok := <-respC:
+			if !ok {
+				return nil
+			}
+			return h
+		case <-m.ctx.Done():
+			return nil
+		}
+	case <-m.ctx.Done():
+		return nil
+	}
+}
+
+func (m *multiRangeDownloaderManager) getPermanentError() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.permanentErr
+}
+
+func (m *multiRangeDownloaderManager) getSpanCtx() context.Context {
+	return m.spanCtx
+}
+
+func (m *multiRangeDownloaderManager) runCallback(origOffset, numBytes int64, err error, cb func(int64, int64, error)) {
+	m.callbackWg.Add(1)
+	go func() {
+		defer m.callbackWg.Done()
+		cb(origOffset, numBytes, err)
+	}()
+}
+
+func (m *multiRangeDownloaderManager) getReqAndTargetStream(req *rangeRequest) (*storagepb.BidiReadObjectRequest, *mrdStream) {
+	streamID := m.streamPicker.pick(m.streams)
+	if streamID == -1 {
+		return nil, nil
+	}
+	stream := m.streams[streamID]
+	if stream == nil {
+		return nil, nil
+	}
+	protoReq := &storagepb.BidiReadObjectRequest{
+		ReadRanges: []*storagepb.ReadRange{{
+			ReadOffset: req.offset,
+			ReadLength: req.length,
+			ReadId:     req.readID,
+		}},
+	}
+	return protoReq, stream
+}
+
+func (m *multiRangeDownloaderManager) eventLoop() {
+	defer m.cleanup()
+
+	for {
+		var nextReq *storagepb.BidiReadObjectRequest
+		var nextRangeReq *rangeRequest
+		var targetStream *mrdStream
+		var targetChan chan *storagepb.BidiReadObjectRequest
+
+		// Only try to send if we have queued requests
+		if m.unsentRequests.Len() > 0 {
+			nextRangeReq = m.unsentRequests.Front()
+			if nextRangeReq != nil {
+				nextReq, targetStream = m.getReqAndTargetStream(nextRangeReq)
+			}
+		}
+		if targetStream != nil && targetStream.session != nil {
+			targetChan = targetStream.session.reqC
+		}
+
+		// Only read from cmds if we have space in the unsentRequests queue.
+		var cmdsChan chan mrdCommand
+		if m.unsentRequests.Len() < mrdAddInternalQueueMaxSize {
+			cmdsChan = m.cmds
+		}
+		select {
+		case <-m.ctx.Done():
+			return
+		// This path only triggers if space is available in the channel.
+		// It never blocks the eventLoop.
+		case targetChan <- nextReq:
+			targetStream.pendingRanges[nextRangeReq.readID] = nextRangeReq
+			targetStream.updateCapacity(m, 1, nextRangeReq.length)
+
+			targetStream.statsRanges++
+			targetStream.statsRangeBytes += nextRangeReq.length
+
+			m.unsentRequests.RemoveFront()
+		case cmd := <-m.addStreams:
+			cmd.apply(m.ctx, m)
+		case cmd := <-cmdsChan:
+			cmd.apply(m.ctx, m)
+			if _, ok := cmd.(*mrdCloseCmd); ok {
+				return
+			}
+		case result := <-m.sessionResps:
+			m.processSessionResult(result)
+		}
+		// Check if new stream has to be added.
+		if m.shouldAddStream() {
+			m.addNewStream()
+		}
+		// Notify waiters if all ranges are done.
+		if m.pendingRangesCount == 0 && m.unsentRequests.Len() == 0 {
+			for _, waiter := range m.waiters {
+				close(waiter)
+			}
+			m.waiters = nil
+		}
+	}
+}
+
+func (m *multiRangeDownloaderManager) cleanup() {
+	for id, stream := range m.streams {
+		if stream.session != nil {
+			stream.session.Shutdown()
+		}
+		delete(m.streams, id)
+	}
+
+	// Drain and free any remaining responses to prevent buffer leaks.
+	close(m.sessionResps)
+	for result := range m.sessionResps {
+		if result.decoder != nil {
+			result.decoder.databufs.Free()
+		}
+	}
+
+	finalErr := m.getPermanentError()
+	if finalErr == nil {
+		if ctxErr := m.ctx.Err(); ctxErr != nil {
+			finalErr = ctxErr
+		}
+	}
+	if finalErr == nil {
+		finalErr = errClosed
+	}
+	m.failAllPending(finalErr)
+	for _, waiter := range m.waiters {
+		close(waiter)
+	}
+	m.attrsOnce.Do(func() { close(m.attrsReady) })
+	m.callbackWg.Wait()
+}
+
+func (m *multiRangeDownloaderManager) addNewStream() {
+	m.streamCreating = true
+	id := int(m.streamIDCounter)
+	m.streamIDCounter++
+	// Clone the spec within the event loop.
+	clonedSpec := proto.Clone(m.readSpec).(*storagepb.BidiReadObjectSpec)
+	if m.ctx.Err() != nil {
+		m.streamCreating = false
+		return
+	}
+	go func(id int, readSpec *storagepb.BidiReadObjectSpec) {
+		newSession, newSpec, err := m.createNewSession(id, readSpec, false)
+		if err != nil || newSession == nil {
+			// If we can't create a stream, the handler checks the health of
+			// manager and then decides to kill the manager.
+			select {
+			case m.addStreams <- &mrdAddStreamErrorCmd{err: err}:
+			case <-m.ctx.Done():
+				if newSession != nil {
+					newSession.Shutdown()
+				}
+				return
+			}
+			return
+		}
+		select {
+		case m.addStreams <- &addStreamCmd{
+			id:   id,
+			spec: newSpec,
+			stream: &mrdStream{
+				id:            id,
+				session:       newSession,
+				pendingRanges: make(map[int64]*rangeRequest),
+			},
+		}:
+		case <-m.ctx.Done():
+			newSession.Shutdown()
+			return
+		}
+
+	}(id, clonedSpec)
+}
+
+func (m *multiRangeDownloaderManager) createNewSession(id int, readSpec *storagepb.BidiReadObjectSpec, waitForResult bool) (*bidiReadStreamSession, *storagepb.BidiReadObjectSpec, error) {
+	retry := m.settings.retry
+
+	var firstResult mrdSessionResult
+	var newSession *bidiReadStreamSession
+
+	err := run(m.ctx, func(ctx context.Context) error {
+		if newSession != nil {
+			newSession.Shutdown()
+			newSession = nil
+		}
+
+		session, result := m.openAndInitializeSession(ctx, id, readSpec, waitForResult)
+
+		if result.err != nil {
+			if session != nil {
+				session.Shutdown()
+			}
+			if result.redirect != nil {
+				readSpec.RoutingToken = result.redirect.RoutingToken
+				readSpec.ReadHandle = result.redirect.ReadHandle
+
+				// We might get a redirect error here for an out-of-region request.
+				// Add the routing token and read handle to the request and do one
+				// retry.
+				session, result = m.openAndInitializeSession(ctx, id, readSpec, waitForResult)
+
+				if result.err != nil {
+					if session != nil {
+						session.Shutdown()
+					}
+					return result.err
+				}
+			} else {
+				// Not a redirect error, return to run()
+				return result.err
+			}
+		}
+
+		// Success
+		newSession = session
+		firstResult = result
+		return nil
+	}, retry, true)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if waitForResult {
+		// Process the successful first result
+		m.processSessionResult(firstResult)
+		if pErr := m.getPermanentError(); pErr != nil {
+			return nil, nil, pErr
+		}
+	}
+	return newSession, readSpec, nil
+}
+
+func (m *multiRangeDownloaderManager) openAndInitializeSession(ctx context.Context, id int, spec *storagepb.BidiReadObjectSpec, waitForResult bool) (*bidiReadStreamSession, mrdSessionResult) {
+	session, err := newBidiReadStreamSession(m.ctx, id, m.sessionResps, m.client, m.settings, m.params, spec)
+	if err != nil {
+		return nil, mrdSessionResult{err: err}
+	}
+	if !waitForResult {
+		return session, mrdSessionResult{}
+	}
+	for {
+		select {
+		case result := <-m.sessionResps:
+			if result.session != session {
+				// Stale session result, free it if it has data.
+				if result.decoder != nil {
+					result.decoder.databufs.Free()
+				}
+				continue
+			}
+			return session, result
+		case <-ctx.Done():
+			session.Shutdown()
+			return nil, mrdSessionResult{err: ctx.Err()}
+		}
+	}
+}
+
+func (m *multiRangeDownloaderManager) handleAddCmd(ctx context.Context, cmd *mrdAddCmd) {
+	if pErr := m.getPermanentError(); pErr != nil {
+		m.runCallback(cmd.offset, cmd.length, pErr, cmd.callback)
+		return
+	}
+
+	req := &rangeRequest{
+		output:     cmd.output,
+		offset:     cmd.offset,
+		length:     cmd.length,
+		origOffset: cmd.offset,
+		origLength: cmd.length,
+		callback:   cmd.callback,
+		readID:     m.readIDCounter,
+	}
+	m.readIDCounter++
+
+	// Convert to positive offset only if attributes are available.
+	if m.attrs != nil && req.offset < 0 {
+		err := m.convertToPositiveOffset(nil, req)
+		if err != nil {
+			return
+		}
+	}
+
+	m.unsentRequests.PushBack(req)
+}
+
+func (m *multiRangeDownloaderManager) shouldAddStream() bool {
+	if m.streamCreating || len(m.streams) >= m.params.maxConnections {
+		return false
+	}
+	if len(m.streams) < m.params.minConnections {
+		return true
+	}
+
+	// Beyond minConnections, we only add if all existing active streams are at capacity.
+	return m.atCapacityCount >= len(m.streams)
+}
+
+func (m *multiRangeDownloaderManager) convertToPositiveOffset(mrdStream *mrdStream, req *rangeRequest) error {
+	if req.offset >= 0 {
+		return nil
+	}
+	var objSize int64
+	if m.attrs != nil {
+		objSize = m.attrs.Size
+	}
+	if objSize <= 0 {
+		err := errors.New("storage: cannot resolve negative offset with object size as 0")
+		m.failRange(mrdStream, req, err)
+		return err
+	}
+	start := max(objSize+req.offset, 0)
+	req.offset = start
+	if req.length == 0 {
+		diff := (objSize - start)
+		req.length = objSize - start
+		if mrdStream != nil {
+			mrdStream.updateCapacity(m, 0, diff)
+		}
+	}
+	return nil
+}
+
+func (m *multiRangeDownloaderManager) handleCloseCmd(ctx context.Context, cmd *mrdCloseCmd) {
+	var err error
+	if cmd.err != nil {
+		err = cmd.err
+	} else {
+		err = errClosed
+	}
+	m.setPermanentError(err)
+	m.cancel()
+}
+
+func (m *multiRangeDownloaderManager) handleWaitCmd(ctx context.Context, cmd *mrdWaitCmd) {
+	// unsentRequests could be non-empty when eventLoop is busy
+	// in select statements other than Add commands and cleared up
+	// existing pending ranges.
+	if m.pendingRangesCount == 0 && m.unsentRequests.Len() == 0 {
+		close(cmd.doneC)
+	} else {
+		m.waiters = append(m.waiters, cmd.doneC)
+	}
+}
+
+func (m *multiRangeDownloaderManager) handleAddStreamCmd(ctx context.Context, cmd *addStreamCmd) {
+	m.streams[cmd.id] = cmd.stream
+	if cmd.spec != nil {
+		m.readSpec = cmd.spec
+	}
+	m.streamCreating = false
+}
+
+func (m *multiRangeDownloaderManager) handleReconnectStreamCmd(ctx context.Context, cmd *reconnectStreamCmd) {
+	stream, ok := m.streams[cmd.id]
+	if !ok || stream == nil {
+		// Stream might have been removed during shutdown.
+		if cmd.session != nil {
+			cmd.session.Shutdown()
+		}
+		return
+	}
+	stream.reconnecting = false
+
+	if cmd.err != nil {
+		m.failStream(stream, cmd.err)
+		if len(m.streams) == 0 && !m.streamCreating {
+			err := fmt.Errorf("no streams available. Last observed error: %w", cmd.err)
+			m.setPermanentError(err)
+			m.failAllPending(m.getPermanentError())
+		}
+		return
+	}
+
+	stream.session = cmd.session
+	if cmd.spec != nil {
+		m.readSpec = cmd.spec
+	}
+
+	var rangesToResend []*storagepb.ReadRange
+	for _, req := range stream.pendingRanges {
+		if !req.completed {
+			readLength := req.length
+			if req.length > 0 {
+				readLength -= req.bytesWritten
+			}
+			if readLength < 0 {
+				readLength = 0
+			}
+
+			if req.length == 0 || readLength > 0 {
+				rangesToResend = append(rangesToResend, &storagepb.ReadRange{
+					ReadOffset: req.offset + req.bytesWritten,
+					ReadLength: readLength,
+					ReadId:     req.readID,
+				})
+			}
+		}
+	}
+	if len(rangesToResend) > 0 {
+		retryReq := &storagepb.BidiReadObjectRequest{ReadRanges: rangesToResend}
+		stream.session.SendRequest(retryReq)
+	}
+}
+
+func (m *multiRangeDownloaderManager) processSessionResult(result mrdSessionResult) {
+	if result.decoder != nil {
+		defer result.decoder.databufs.Free()
+	}
+
+	mrdStream := m.streams[result.id]
+	// Shutdown any stale streams sending responses.
+	if mrdStream != nil &&
+		mrdStream.session != nil &&
+		mrdStream.session != result.session {
+		result.session.Shutdown()
+		return
+	}
+
+	if result.err != nil {
+		m.handleStreamEnd(result, m.streams[result.id])
+		return
+	}
+
+	resp := result.decoder.msg
+	if handle := resp.GetReadHandle().GetHandle(); len(handle) > 0 {
+		m.lastReadHandle = handle
+		if m.readSpec.ReadHandle == nil {
+			m.readSpec.ReadHandle = &storagepb.BidiReadHandle{
+				Handle: handle,
+			}
+		} else {
+			m.readSpec.ReadHandle.Handle = handle
+		}
+	}
+	m.attrsOnce.Do(func() {
+		defer close(m.attrsReady)
+		if meta := resp.GetMetadata(); meta != nil {
+			obj := newObjectFromProto(meta)
+			attrs := readerAttrsFromObject(obj)
+			m.attrs = &attrs
+			for _, stream := range m.streams {
+				for _, req := range stream.pendingRanges {
+					if req.offset < 0 {
+						_ = m.convertToPositiveOffset(stream, req)
+					}
+				}
+			}
+			// Iterate unsent requests.
+			for req := m.unsentRequests.l.Front(); req != nil; req = req.Next() {
+				rangeReq := req.Value.(*rangeRequest)
+				if rangeReq.offset < 0 {
+					_ = m.convertToPositiveOffset(nil, rangeReq)
+				}
+			}
+		}
+	})
+
+	if mrdStream != nil {
+		m.processDataRanges(result, mrdStream, resp)
+	}
+}
+
+func (m *multiRangeDownloaderManager) processDataRanges(result mrdSessionResult, mrdStream *mrdStream, resp *storagepb.BidiReadObjectResponse) {
+	for _, dataRange := range resp.GetObjectDataRanges() {
+		readID := dataRange.GetReadRange().GetReadId()
+		req, exists := mrdStream.pendingRanges[readID]
+		if !exists || req.completed {
+			continue
+		}
+		written, _, err := result.decoder.writeToAndUpdateCRC(req.output, readID, nil)
+		req.bytesWritten += written
+		mrdStream.updateCapacity(m, 0, -written)
+		if err != nil {
+			m.failRange(mrdStream, req, err)
+			continue
+		}
+
+		if dataRange.GetRangeEnd() {
+			req.completed = true
+			delete(mrdStream.pendingRanges, req.readID)
+			mrdStream.updateCapacity(m, -1, 0)
+			m.runCallback(req.origOffset, req.bytesWritten, nil, req.callback)
+		}
+	}
+}
+
+// ensureSession is now only for reconnecting *after* the initial session is up.
+func (m *multiRangeDownloaderManager) ensureSession(ctx context.Context, stream *mrdStream) {
+	if stream.session != nil || stream.reconnecting {
+		return
+	}
+	if pErr := m.getPermanentError(); pErr != nil {
+		return
+	}
+
+	stream.reconnecting = true
+	// Clone the spec within the event loop.
+	clonedSpec := proto.Clone(m.readSpec).(*storagepb.BidiReadObjectSpec)
+	go func(id int, readSpec *storagepb.BidiReadObjectSpec) {
+		session, finalSpec, err := m.createNewSession(id, readSpec, false)
+		select {
+		case <-ctx.Done():
+			return
+		case m.addStreams <- &reconnectStreamCmd{
+			id:      id,
+			session: session,
+			spec:    finalSpec,
+			err:     err,
+		}:
+		}
+
+	}(stream.id, clonedSpec)
+}
+
+var errBidiReadRedirect = errors.New("bidi read object redirected")
+
+func (m *multiRangeDownloaderManager) handleStreamEnd(result mrdSessionResult, stream *mrdStream) {
+	if stream == nil || stream.session != result.session {
+		result.session.Shutdown()
+		return
+	}
+	if stream.session != nil {
+		stream.session.Shutdown()
+		stream.session = nil
+	}
+	err := result.err
+	if result.redirect != nil {
+		m.readSpec.RoutingToken = result.redirect.RoutingToken
+		m.readSpec.ReadHandle = result.redirect.ReadHandle
+		m.ensureSession(m.ctx, stream)
+	} else if m.settings.retry != nil && m.settings.retry.runShouldRetry(err, nil) {
+		m.ensureSession(m.ctx, stream)
+	} else {
+		m.failStream(stream, err)
+		if len(m.streams) == 0 && !m.streamCreating {
+			err := fmt.Errorf("no streams available. Last observed error: %w", err)
+			m.setPermanentError(err)
+			m.failAllPending(m.getPermanentError())
+		}
+	}
+}
+
+func (m *multiRangeDownloaderManager) failRange(mrdStream *mrdStream, req *rangeRequest, err error) {
+	if req.completed {
+		return
+	}
+	req.completed = true
+	if mrdStream != nil {
+		if _, ok := mrdStream.pendingRanges[req.readID]; ok {
+			delete(mrdStream.pendingRanges, req.readID)
+			mrdStream.updateCapacity(m, -1, -(req.length - req.bytesWritten))
+		}
+	}
+	m.runCallback(req.origOffset, req.bytesWritten, err, req.callback)
+}
+
+func (m *multiRangeDownloaderManager) failStream(mrdStream *mrdStream, err error) {
+	totalBytes := int64(0)
+	pendingRanges := 0
+	for _, req := range mrdStream.pendingRanges {
+		if !req.completed {
+			totalBytes += req.length - req.bytesWritten
+			pendingRanges++
+			req.completed = true
+			m.runCallback(req.origOffset, req.bytesWritten, err, req.callback)
+		}
+	}
+	mrdStream.updateCapacity(m, -pendingRanges, -totalBytes)
+	mrdStream.pendingRanges = make(map[int64]*rangeRequest)
+	delete(m.streams, mrdStream.id)
+}
+
+func (m *multiRangeDownloaderManager) failAllPending(err error) {
+	for _, stream := range m.streams {
+		for _, req := range stream.pendingRanges {
+			if !req.completed {
+				req.completed = true
+				m.runCallback(req.origOffset, req.bytesWritten, err, req.callback)
+			}
+		}
+		stream.pendingRanges = make(map[int64]*rangeRequest)
+		stream.totalRanges = 0
+		stream.totalRangeBytes = 0
+		stream.atCapacity = false
+	}
+	// fail all the ranges in unsent requests
+	for req := m.unsentRequests.l.Front(); req != nil; req = req.Next() {
+		m.failRange(nil, req.Value.(*rangeRequest), err)
+	}
+	m.unsentRequests.Clear()
+	m.pendingRangesCount = 0
+	m.atCapacityCount = 0
+}
+
+// Set permanent error to the provided error, if it hasn't been set already.
+func (m *multiRangeDownloaderManager) setPermanentError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.permanentErr == nil {
+		m.permanentErr = err
+	}
+}
+
+// --- bidiReadStreamSession ---
+// Controls lifespan of an individual bi-directional gRPC stream to the
+// object in GCS. Spins up goroutines for the read and write sides of the
+// stream.
+type bidiReadStreamSession struct {
+	id         int
+	managerCtx context.Context
+	ctx        context.Context
+	cancel     context.CancelFunc
+
+	stream   storagepb.Storage_BidiReadObjectClient
+	client   *grpcStorageClient
+	settings *settings
+	params   *newMultiRangeDownloaderParams
+	readSpec *storagepb.BidiReadObjectSpec
+
+	reqC  chan *storagepb.BidiReadObjectRequest
+	respC chan<- mrdSessionResult
+	wg    sync.WaitGroup
+
+	errOnce   sync.Once
+	streamErr error
+}
+
+func newBidiReadStreamSession(ctx context.Context, id int, respC chan<- mrdSessionResult, client *grpcStorageClient, settings *settings, params *newMultiRangeDownloaderParams, readSpec *storagepb.BidiReadObjectSpec) (*bidiReadStreamSession, error) {
+	sCtx, cancel := context.WithCancel(ctx)
+
+	s := &bidiReadStreamSession{
+		id:         id,
+		ctx:        sCtx,
+		managerCtx: ctx,
+		cancel:     cancel,
+		client:     client,
+		settings:   settings,
+		params:     params,
+		readSpec:   readSpec,
+		reqC:       make(chan *storagepb.BidiReadObjectRequest, mrdSendChannelSize),
+		respC:      respC,
+	}
+
+	initialReq := &storagepb.BidiReadObjectRequest{
+		ReadObjectSpec: s.readSpec,
+	}
+	reqCtx := gax.InsertMetadataIntoOutgoingContext(s.ctx, contextMetadataFromBidiReadObject(initialReq)...)
+
+	var err error
+	s.stream, err = client.raw.BidiReadObject(reqCtx, s.settings.gax...)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
+	if err := s.stream.Send(initialReq); err != nil {
+		s.stream.CloseSend()
+		cancel()
+		return nil, err
+	}
+
+	s.wg.Add(2)
+	go s.sendLoop()
+	go s.receiveLoop()
+
+	go func() {
+		s.wg.Wait()
+		s.cancel()
+	}()
+
+	return s, nil
+}
+func (s *bidiReadStreamSession) SendRequest(req *storagepb.BidiReadObjectRequest) {
+	select {
+	case s.reqC <- req:
+	case <-s.ctx.Done():
+	}
+}
+func (s *bidiReadStreamSession) Shutdown() {
+	s.cancel()
+	s.wg.Wait()
+}
+func (s *bidiReadStreamSession) setError(err error) {
+	s.errOnce.Do(func() {
+		s.streamErr = err
+	})
+}
+func (s *bidiReadStreamSession) sendLoop() {
+	defer s.wg.Done()
+	defer s.stream.CloseSend()
+	for {
+		select {
+		case req, ok := <-s.reqC:
+			if !ok {
+				return
+			}
+			if err := s.stream.Send(req); err != nil {
+				s.setError(err)
+				if err != io.EOF {
+					s.cancel()
+				}
+				return
+			}
+		case <-s.ctx.Done():
+			return
+		}
+	}
+}
+func (s *bidiReadStreamSession) receiveLoop() {
+	defer s.wg.Done()
+	defer s.cancel()
+	for {
+		// Receive message without a copy.
+		databufs := mem.BufferSlice{}
+		err := s.stream.RecvMsg(&databufs)
+		var decoder *readResponseDecoder
+		if err == nil {
+			// Use the custom decoder to parse the raw buffer without copying object data.
+			decoder = &readResponseDecoder{
+				databufs: databufs,
+			}
+			err = decoder.readFullObjectResponse()
+		}
+
+		if err != nil {
+			databufs.Free()
+			redirectErr, isRedirect := isRedirectError(err)
+			result := mrdSessionResult{
+				err:     err,
+				id:      s.id,
+				session: s,
+			}
+			if isRedirect {
+				result.redirect = redirectErr
+				err = fmt.Errorf("%w: %v", errBidiReadRedirect, err)
+				result.err = err
+			}
+			s.setError(err)
+			if s.managerCtx.Err() != nil {
+				return
+			}
+			select {
+			case s.respC <- result:
+			case <-s.managerCtx.Done():
+			}
+			return
+		}
+		if s.managerCtx.Err() != nil {
+			databufs.Free()
+			return
+		}
+		select {
+		case s.respC <- mrdSessionResult{
+			decoder: decoder,
+			id:      s.id,
+			session: s,
+		}:
+
+		case <-s.ctx.Done():
+			// If context is cancelled unexpectedly, make sure to notify
+			// eventLoop before returning
+			err := s.streamErr
+			if err == nil {
+				err = s.ctx.Err()
+			}
+			// Make sure the event loop is active before sending error
+			// to make sure we do not send on a closed respC channel
+			// during normal MRD close.
+			if s.managerCtx.Err() != nil {
+				databufs.Free()
+				return
+			}
+			select {
+			case s.respC <- mrdSessionResult{id: s.id, session: s, err: err}:
+			case <-s.managerCtx.Done():
+			}
+			databufs.Free()
+			return
+		}
+	}
+}
+func isRedirectError(err error) (*storagepb.BidiReadObjectRedirectedError, bool) {
+	st, ok := status.FromError(err)
+	if !ok {
+		return nil, false
+	}
+	if st.Code() != codes.Aborted {
+		return nil, false
+	}
+	for _, d := range st.Details() {
+		if bidiError, ok := d.(*storagepb.BidiReadObjectRedirectedError); ok {
+			if bidiError.RoutingToken != nil {
+				return bidiError, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func readerAttrsFromObject(o *ObjectAttrs) ReaderObjectAttrs {
+	if o == nil {
+		return ReaderObjectAttrs{}
+	}
+	return ReaderObjectAttrs{
+		Size:            o.Size,
+		ContentType:     o.ContentType,
+		ContentEncoding: o.ContentEncoding,
+		CacheControl:    o.CacheControl,
+		LastModified:    o.Updated,
+		Generation:      o.Generation,
+		Metageneration:  o.Metageneration,
+		CRC32C:          o.CRC32C,
+	}
+}
+
+type requestQueue struct {
+	l *list.List
+}
+
+func newRequestQueue() *requestQueue {
+	return &requestQueue{l: list.New()}
+}
+
+func (q *requestQueue) PushBack(r *rangeRequest) { q.l.PushBack(r) }
+func (q *requestQueue) Len() int                 { return q.l.Len() }
+func (q *requestQueue) Clear()                   { q.l.Init() }
+
+func (q *requestQueue) Front() *rangeRequest {
+	if f := q.l.Front(); f != nil {
+		return f.Value.(*rangeRequest)
+	}
+	return nil
+}
+
+func (q *requestQueue) RemoveFront() {
+	if f := q.l.Front(); f != nil {
+		q.l.Remove(f)
+	}
 }

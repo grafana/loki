@@ -8,7 +8,7 @@ metadata:
   {{- if .namespace }}
   namespace: {{ .namespace }}
   {{- else }}
-  namespace: {{ include "loki.namespace" . }}
+  namespace: {{ include "loki.namespace" $ }}
   {{- end }}
   {{- with .annotations }}
   annotations:

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"unsafe"
 
+	dennwc "github.com/dennwc/varint"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
 
@@ -219,7 +221,7 @@ func (v *Value) UnmarshalBinary(data []byte) error {
 
 	switch vtyp := datasetmd.PhysicalType(typ); vtyp {
 	case datasetmd.PHYSICAL_TYPE_INT64:
-		val, n := binary.Varint(data[n:])
+		val, n := varint(data[n:])
 		if n <= 0 {
 			return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid int64 value")
 		}
@@ -306,4 +308,14 @@ func cmpInteger[T int64 | uint64](a, b T) int {
 		return 1
 	}
 	return 0
+}
+
+// copied from Go src/encoding/binary/varint.go, so we can use a faster Uvarint.
+func varint(buf []byte) (int64, int) {
+	ux, n := dennwc.Uvarint(buf) // ok to continue in presence of error
+	x := int64(ux >> 1)
+	if ux&1 != 0 {
+		x = ^x
+	}
+	return x, n
 }

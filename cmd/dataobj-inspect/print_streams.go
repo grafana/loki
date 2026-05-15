@@ -60,6 +60,9 @@ func (cmd *printStreamsCommand) printStreams(ctx context.Context, dataObj *datao
 				exitWithErr(fmt.Errorf("failed to open logs section: %w", err))
 			}
 			r := logs.NewRowReader(logsSec)
+			if err = r.Open(ctx); err != nil {
+				exitWithErr(fmt.Errorf("failed to open row reader: %w", err))
+			}
 			for {
 				n, err := r.Read(ctx, tmp)
 				if err != nil && !errors.Is(err, io.EOF) {

@@ -6,10 +6,13 @@ import (
 	"net/http/pprof"
 	"reflect"
 
+	openshiftconfigv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/library-go/pkg/config/leaderelection"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
@@ -19,6 +22,7 @@ import (
 // from a provided configuration file.
 func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectConfig, *TokenCCOAuthConfig, ctrl.Options, error) {
 	options := ctrl.Options{Scheme: scheme}
+	leaderElection := leaderelection.LeaderElectionDefaulting(openshiftconfigv1.LeaderElection{}, "", "")
 	if configFile == "" {
 		return &configv1.ProjectConfig{}, nil, options, nil
 	}
@@ -34,6 +38,15 @@ func LoadConfig(scheme *runtime.Scheme, configFile string) (*configv1.ProjectCon
 	}
 
 	options = mergeOptionsFromFile(options, ctrlCfg)
+	if options.LeaseDuration == nil {
+		options.LeaseDuration = &leaderElection.LeaseDuration.Duration
+	}
+	if options.RenewDeadline == nil {
+		options.RenewDeadline = &leaderElection.RenewDeadline.Duration
+	}
+	if options.RetryPeriod == nil {
+		options.RetryPeriod = &leaderElection.RetryPeriod.Duration
+	}
 	return ctrlCfg, tokenCCOAuth, options, nil
 }
 
@@ -42,6 +55,12 @@ func mergeOptionsFromFile(o manager.Options, cfg *configv1.ProjectConfig) manage
 
 	if o.Metrics.BindAddress == "" && cfg.Metrics.BindAddress != "" {
 		o.Metrics.BindAddress = cfg.Metrics.BindAddress
+
+		// Only enable Secure Serving when explicitly configured
+		if cfg.Metrics.Secure {
+			o.Metrics.SecureServing = true
+			o.Metrics.FilterProvider = filters.WithAuthenticationAndAuthorization
+		}
 
 		endpoints := map[string]http.HandlerFunc{
 			"/debug/pprof/":        pprof.Index,

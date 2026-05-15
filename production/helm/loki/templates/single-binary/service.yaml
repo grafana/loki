@@ -37,4 +37,7 @@ spec:
     {{- with .Values.singleBinary.selectorLabels }}
       {{- tpl (toYaml .) $ | nindent 4 }}
     {{- end }}
+{{- with .Values.singleBinary.service.trafficDistribution | default .Values.loki.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+{{- end }}
 {{- end }}

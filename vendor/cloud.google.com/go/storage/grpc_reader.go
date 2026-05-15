@@ -22,7 +22,6 @@ import (
 	"hash/crc32"
 	"io"
 
-	"cloud.google.com/go/internal/trace"
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/grpc"
@@ -83,8 +82,8 @@ func (bytesCodecReadObject) Name() string {
 
 // NewRangeReaderReadObject is the legacy (non-bidi) implementation of reads.
 func (c *grpcStorageClient) NewRangeReaderReadObject(ctx context.Context, params *newRangeReaderParams, opts ...storageOption) (r *Reader, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.grpcStorageClient.NewRangeReaderReadObject")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "grpcStorageClient.NewRangeReaderReadObject")
+	defer func() { endSpan(ctx, err) }()
 
 	s := callSettings(c.settings, opts...)
 
@@ -158,7 +157,7 @@ func (c *grpcStorageClient) NewRangeReaderReadObject(ctx context.Context, params
 			}
 			err = decoder.readFullObjectResponse()
 			return err
-		}, s.retry, s.idempotent)
+		}, s.retry, s.idempotent, withOperation("ReadObject"), withBucket(params.bucket), withObject(params.object))
 		if err != nil {
 			// Close the stream context we just created to ensure we don't leak
 			// resources.
@@ -425,7 +424,7 @@ func (r *gRPCReadObjectReader) recv() error {
 	databufs := mem.BufferSlice{}
 	err := r.stream.RecvMsg(&databufs)
 
-	if err != nil && r.settings.retry.runShouldRetry(err) {
+	if err != nil && r.settings.retry.runShouldRetry(err, nil) {
 		// This will "close" the existing stream and immediately attempt to
 		// reopen the stream, but will backoff if further attempts are necessary.
 		// Reopening the stream Recvs the first message, so if retrying is

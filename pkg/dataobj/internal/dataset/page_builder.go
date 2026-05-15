@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
@@ -57,8 +58,15 @@ type pageBuilder struct {
 // combination of opts.Value and opts.Encoding.
 func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 	var (
+		// We avoid giving an initial capacity to the buffers below to reduce
+		// the memory footprint for page builders (one per column), since it's
+		// atypical for every column to completely fill its pages.
+		//
+		// However, this will slightly increase the memory footprint for any
+		// column with at least one full page, due to how Go grows slices.
+
 		presenceBuffer = bytes.NewBuffer(nil)
-		valuesBuffer   = bytes.NewBuffer(make([]byte, 0, opts.PageSizeHint))
+		valuesBuffer   = bytes.NewBuffer(nil)
 
 		valuesWriter = newCompressWriter(valuesBuffer, opts.Compression, opts.CompressionOptions)
 	)
@@ -190,11 +198,24 @@ func (b *pageBuilder) updateMinMax(value Value) {
 	// This allows us to only avoid comparing against NULL values, which would lead to
 	// NULL always being the min.
 	if b.values == 0 || CompareValues(&value, &b.minValue) < 0 {
-		b.minValue = value
+		b.minValue = cloneValue(value)
 	}
 	if b.values == 0 || CompareValues(&value, &b.maxValue) > 0 {
-		b.maxValue = value
+		b.maxValue = cloneValue(value)
 	}
+}
+
+func cloneValue(src Value) Value {
+	dst := Value{}
+	dst.kind = src.kind
+	dst.num = src.num
+	dst.cap = src.cap
+	if src.cap > 0 {
+		newBuffer := make([]byte, src.cap)
+		copy(newBuffer, src.Buffer())
+		dst.data = unsafe.SliceData(newBuffer)
+	}
+	return dst
 }
 
 func valueSize(v Value) int {

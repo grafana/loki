@@ -518,6 +518,7 @@ func (c *StructCode) ToAnonymousOpcode(ctx *compileContext) Opcodes {
 		prevField = firstField
 		codes = codes.Add(fieldCodes...)
 	}
+	ctx.structTypeToCodes[uintptr(unsafe.Pointer(c.typ))] = codes
 	return codes
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // A Decoder allows reading an encoded dataset-based section.
@@ -75,9 +76,11 @@ func (dec *Decoder) getSectionInfo() (*datasetmd.SectionInfoExtension, error) {
 // first slice corresponds to the first column, and so on.
 func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) result.Seq[[]*datasetmd.PageDesc] {
 	return result.Iter(func(yield func([]*datasetmd.PageDesc) bool) error {
-		stats := dataset.StatsFromContext(ctx)
+		region := xcap.RegionFromContext(ctx)
 		startTime := time.Now()
-		defer func() { stats.AddPageDownloadTime(time.Since(startTime)) }()
+		defer func() {
+			region.Record(xcap.StatDatasetPageDownloadTime.Observe(time.Since(startTime).Seconds()))
+		}()
 
 		ranges := make([]rangeio.Range, 0, len(columns))
 		for _, column := range columns {
@@ -129,9 +132,11 @@ func (rr metadataRangeReader) ReadRange(ctx context.Context, r rangeio.Range) (i
 // error is emitted from the sequence and iteration stops.
 func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) result.Seq[dataset.PageData] {
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
-		stats := dataset.StatsFromContext(ctx)
+		region := xcap.RegionFromContext(ctx)
 		startTime := time.Now()
-		defer func() { stats.AddPageDownloadTime(time.Since(startTime)) }()
+		defer func() {
+			region.Record(xcap.StatDatasetPageDownloadTime.Observe(time.Since(startTime).Seconds()))
+		}()
 
 		ranges := make([]rangeio.Range, 0, len(pages))
 		for _, page := range pages {

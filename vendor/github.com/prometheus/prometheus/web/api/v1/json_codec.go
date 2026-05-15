@@ -1,4 +1,4 @@
-// Copyright 2016 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -51,7 +51,7 @@ func (JSONCodec) Encode(resp *Response) ([]byte, error) {
 	return json.Marshal(resp)
 }
 
-// marshalSeriesJSON writes something like the following:
+// unsafeMarshalSeriesJSON writes something like the following:
 //
 //	{
 //	   "metric" : {
@@ -108,7 +108,7 @@ func neverEmpty(unsafe.Pointer) bool {
 	return false
 }
 
-// marshalSampleJSON writes something like the following for normal value samples:
+// unsafeMarshalSampleJSON writes something like the following for normal value samples:
 //
 //	{
 //	   "metric" : {

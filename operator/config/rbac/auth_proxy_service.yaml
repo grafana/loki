@@ -6,9 +6,9 @@ metadata:
   name: controller-manager-metrics-service
 spec:
   ports:
-  - name: https
+  - name: metrics
     port: 8443
     protocol: TCP
-    targetPort: https
+    targetPort: metrics
   selector:
     name: loki-operator-controller-manager

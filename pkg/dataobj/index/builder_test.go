@@ -17,7 +17,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -25,7 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-var testBuilderConfig = indexobj.BuilderConfig{
+var testBuilderConfig = logsobj.BuilderBaseConfig{
 	TargetPageSize:    128 * 1024,
 	TargetObjectSize:  4 * 1024 * 1024,
 	TargetSectionSize: 2 * 1024 * 1024,
@@ -53,8 +52,8 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 	// Create a builder with mocks for dependencies
 	builder, err := NewIndexBuilder(
 		Config{
-			BuilderConfig:  testBuilderConfig,
-			EventsPerIndex: 1,
+			BuilderBaseConfig: testBuilderConfig,
+			EventsPerIndex:    1,
 		},
 		metastore.Config{},
 		kafka.Config{},
@@ -77,12 +76,14 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 		"loki.metastore-events": {0, 1, 2},
 	})
 
+	revokedProcessed := make(chan struct{}, 1)
 	trigger := make(chan struct{})
 	go func() {
 		<-trigger
 		builder.handlePartitionsRevoked(ctx, nil, map[string][]int32{
 			"loki.metastore-events": {1},
 		})
+		revokedProcessed <- struct{}{}
 	}()
 
 	// Trigger the revocation of a partition, but only after we've processed a couple of records.
@@ -102,8 +103,72 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 	}
 
 	// Verify that the partition was revoked.
+	<-revokedProcessed
 	require.Equal(t, 2, len(builder.partitionStates))
 	require.Nil(t, builder.partitionStates[1])
+}
+
+func TestIndexBuilder_PartialCompletion(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
+	defer cancel()
+
+	// Set up some test data
+	bucket := objstore.NewInMemBucket()
+	buildLogObject(t, "loki", "test-path-0", bucket)
+	event := metastore.ObjectWrittenEvent{
+		ObjectPath: "test-path-0",
+		WriteTime:  time.Now().Format(time.RFC3339),
+	}
+	eventBytes, err := event.Marshal()
+	require.NoError(t, err)
+
+	// Create a builder with mocks for dependencies
+	builder, err := NewIndexBuilder(
+		Config{
+			BuilderBaseConfig: logsobj.BuilderBaseConfig{
+				TargetPageSize:          1,
+				TargetObjectSize:        2, // Object size 2 bytes, so it is full after the first object is processed
+				TargetSectionSize:       1,
+				SectionStripeMergeLimit: 2,
+				BufferSize:              1024 * 1024,
+			},
+			EventsPerIndex: 2, // Build from 2 objects when only 1 will fit
+			MaxAge:         time.Hour,
+			MaxIdleTime:    30 * time.Minute,
+		},
+		metastore.Config{},
+		kafka.Config{},
+		log.NewLogfmtLogger(os.Stderr),
+		"instance-id",
+		bucket,
+		nil,
+		prometheus.NewRegistry(),
+	)
+	require.NoError(t, err)
+	builder.client.Close()
+	builder.client = &mockKafkaClient{}
+
+	// Start the service so the downloader goroutines are started.
+	require.NoError(t, builder.StartAsync(ctx))
+	require.NoError(t, builder.AwaitRunning(ctx))
+
+	// Assign some partitions to the builder.
+	builder.handlePartitionsAssigned(ctx, nil, map[string][]int32{
+		"loki.metastore-events": {0},
+	})
+
+	// Trigger the revocation of a partition, but only after we've processed a couple of records.
+	for range 2 {
+		builder.processRecord(ctx, &kgo.Record{
+			Value:     eventBytes,
+			Partition: int32(0),
+		})
+	}
+
+	require.Equal(t, 1, len(builder.partitionStates))
+	require.NotNil(t, builder.partitionStates[0])
+	require.Len(t, builder.partitionStates[0].events, 1) // There should be one event remaining that wasn't processed yet
 }
 
 func TestIndexBuilder(t *testing.T) {
@@ -121,8 +186,10 @@ func TestIndexBuilder(t *testing.T) {
 
 	p, err := NewIndexBuilder(
 		Config{
-			BuilderConfig:  testBuilderConfig,
-			EventsPerIndex: 3,
+			BuilderBaseConfig: testBuilderConfig,
+			EventsPerIndex:    3,
+			MaxAge:            time.Hour,
+			MaxIdleTime:       30 * time.Minute,
 		},
 		metastore.Config{},
 		kafka.Config{},
@@ -161,8 +228,151 @@ func TestIndexBuilder(t *testing.T) {
 		})
 	}
 
+	_, err = p.indexer.(*serialIndexer).flushIndex(ctx, 0)
+	require.NoError(t, err)
+
 	indexes := readAllSectionPointers(t, bucket)
 	require.Equal(t, 30, len(indexes))
+}
+
+func TestIndexBuilder_idlePartition(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	// Setup test dependencies
+	bucket := objstore.NewInMemBucket()
+
+	cluster, configString := testkafka.CreateClusterWithoutCustomConsumerGroupsSupport(t, 1, "loki.metastore-events")
+	defer cluster.Close()
+
+	client, err := kgo.NewClient(kgo.ConsumerGroup("test-consumer-group"), kgo.ConsumeTopics("loki.metastore-events"), kgo.SeedBrokers(configString))
+	require.NoError(t, err)
+
+	p, err := NewIndexBuilder(
+		Config{
+			BuilderBaseConfig: testBuilderConfig,
+			EventsPerIndex:    16,
+			FlushInterval:     time.Millisecond, // Flush idle partitions very often
+			MaxIdleTime:       0,                // Consider all partitions idle
+			MaxAge:            time.Hour,
+		},
+		metastore.Config{},
+		kafka.Config{},
+		log.NewNopLogger(),
+		"instance-id",
+		bucket,
+		nil,
+		prometheus.NewRegistry(),
+	)
+	require.NoError(t, err)
+	p.client.Close()
+	p.client = client
+	require.NoError(t, p.StartAsync(ctx))
+	require.NoError(t, p.AwaitRunning(ctx))
+
+	// Assign some partitions to the builder.
+	p.handlePartitionsAssigned(ctx, nil, map[string][]int32{
+		"loki.metastore-events": {0},
+	})
+
+	buildLogObject(t, "loki", "test-path-0", bucket)
+	buildLogObject(t, "testing", "test-path-1", bucket)
+	buildLogObject(t, "three", "test-path-2", bucket)
+
+	for i := 0; i < 3; i++ {
+		event := metastore.ObjectWrittenEvent{
+			ObjectPath: fmt.Sprintf("test-path-%d", i),
+			WriteTime:  time.Now().Format(time.RFC3339),
+		}
+		eventBytes, err := event.Marshal()
+		require.NoError(t, err)
+
+		p.processRecord(context.Background(), &kgo.Record{
+			Value:     eventBytes,
+			Partition: int32(0),
+		})
+	}
+
+	// Wait for idle partition to be flushed
+	for i := 0; i < 1000; i++ {
+		if len(readAllSectionPointers(t, bucket)) == 30 && len(p.partitionStates[0].events) == 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	require.Equal(t, 30, len(readAllSectionPointers(t, bucket)))
+	require.Equal(t, 0, len(p.partitionStates[0].events)) // Events should be gone now they've been processed
+}
+
+func TestIndexBuilder_oldEvents(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	// Setup test dependencies
+	bucket := objstore.NewInMemBucket()
+
+	cluster, configString := testkafka.CreateClusterWithoutCustomConsumerGroupsSupport(t, 1, "loki.metastore-events")
+	defer cluster.Close()
+
+	client, err := kgo.NewClient(kgo.ConsumerGroup("test-consumer-group"), kgo.ConsumeTopics("loki.metastore-events"), kgo.SeedBrokers(configString))
+	require.NoError(t, err)
+
+	p, err := NewIndexBuilder(
+		Config{
+			BuilderBaseConfig: testBuilderConfig,
+			EventsPerIndex:    16,
+			FlushInterval:     time.Millisecond, // Flush very often
+			MaxAge:            0,                // Consider all events old
+			MaxIdleTime:       time.Hour,
+		},
+		metastore.Config{},
+		kafka.Config{},
+		log.NewNopLogger(),
+		"instance-id",
+		bucket,
+		nil,
+		prometheus.NewRegistry(),
+	)
+	require.NoError(t, err)
+	p.client.Close()
+	p.client = client
+	require.NoError(t, p.StartAsync(ctx))
+	require.NoError(t, p.AwaitRunning(ctx))
+
+	// Assign some partitions to the builder.
+	p.handlePartitionsAssigned(ctx, nil, map[string][]int32{
+		"loki.metastore-events": {0},
+	})
+
+	buildLogObject(t, "loki", "test-path-0", bucket)
+	buildLogObject(t, "testing", "test-path-1", bucket)
+	buildLogObject(t, "three", "test-path-2", bucket)
+
+	for i := 0; i < 3; i++ {
+		event := metastore.ObjectWrittenEvent{
+			ObjectPath: fmt.Sprintf("test-path-%d", i),
+			WriteTime:  time.Now().Format(time.RFC3339),
+		}
+		eventBytes, err := event.Marshal()
+		require.NoError(t, err)
+
+		p.processRecord(context.Background(), &kgo.Record{
+			Value:     eventBytes,
+			Partition: int32(0),
+		})
+	}
+
+	// Wait for data to be flushed
+	for i := 0; i < 1000; i++ {
+		if len(readAllSectionPointers(t, bucket)) == 30 && len(p.partitionStates[0].events) == 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	require.Equal(t, 30, len(readAllSectionPointers(t, bucket)))
+	require.Equal(t, 0, len(p.partitionStates[0].events)) // Events should be gone now they've been processed
 }
 
 func readAllSectionPointers(t *testing.T, bucket objstore.Bucket) []pointers.SectionPointer {
@@ -195,6 +405,11 @@ func readAllSectionPointers(t *testing.T, bucket objstore.Bucket) []pointers.Sec
 			}
 
 			reader.Reset(sec)
+
+			if err := reader.Open(context.Background()); err != nil {
+				return fmt.Errorf("opening section reader: %w", err)
+			}
+
 			for {
 				num, err := reader.Read(context.Background(), buf)
 				if err != nil && err != io.EOF {
@@ -228,13 +443,13 @@ func (m *mockKafkaClient) Close() {}
 
 func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucket) {
 	candidate, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		TargetPageSize:    128 * 1024,
-		TargetObjectSize:  4 * 1024 * 1024,
-		TargetSectionSize: 2 * 1024 * 1024,
-
-		BufferSize:              4 * 1024 * 1024,
-		SectionStripeMergeLimit: 2,
-
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          128 * 1024,
+			TargetObjectSize:        4 * 1024 * 1024,
+			TargetSectionSize:       2 * 1024 * 1024,
+			BufferSize:              4 * 1024 * 1024,
+			SectionStripeMergeLimit: 2,
+		},
 		DataobjSortOrder: "stream-asc",
 	}, nil)
 	require.NoError(t, err)

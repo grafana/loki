@@ -38,11 +38,6 @@ const (
 	// StreamRateLimit is a reason for discarding lines when the streams own rate limit is hit
 	// rather than the overall ingestion rate limit.
 	StreamRateLimit = "per_stream_rate_limit"
-	// OutOfOrder is a reason for discarding lines when Loki doesn't accept out
-	// of order log lines (parameter `-ingester.unordered-writes` is set to
-	// `false`) and the lines in question are older than the newest line in the
-	// stream.
-	OutOfOrder = "out_of_order"
 	// TooFarBehind is a reason for discarding lines when Loki accepts
 	// unordered ingest  (parameter `-ingester.unordered-writes` is set to
 	// `true`, which is the default) and the lines in question are older than
@@ -74,11 +69,11 @@ const (
 	StructuredMetadataTooMany            = "structured_metadata_too_many"
 	StructuredMetadataTooManyErrorMsg    = "stream '%s' has too many structured metadata labels: '%d', limit: '%d'. Please see `limits_config.max_structured_metadata_entries_count` or contact your Loki administrator to increase it"
 	BlockedIngestion                     = "blocked_ingestion"
-	BlockedIngestionErrorMsg             = "ingestion blocked for user %s until '%s' with status code '%d'"
+	BlockedIngestionErrorMsg             = "ingestion blocked for user '%s' until '%s' with status code '%d'"
 	BlockedIngestionPolicy               = "blocked_ingestion_policy"
-	BlockedIngestionPolicyErrorMsg       = "ingestion blocked for user %s until '%s' with status code '%d'"
+	BlockedIngestionPolicyErrorMsg       = "ingestion blocked for user '%s' (policy: '%s') until '%s' with status code '%d'"
 	MissingEnforcedLabels                = "missing_enforced_labels"
-	MissingEnforcedLabelsErrorMsg        = "missing required labels %s for user %s for stream %s"
+	MissingEnforcedLabelsErrorMsg        = "missing required labels '%s' for user '%s' for stream '%s' (policy: '%s')"
 )
 
 type ErrStreamRateLimit struct {

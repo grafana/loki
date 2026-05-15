@@ -17,6 +17,21 @@ keywords: []
 
 This is the generated reference for the Loki Helm Chart values.
 
+Because the Loki Helm chart exposes a large number of configuration options, this reference is intentionally exhaustive and can be quite long.
+
+Configuration keys are grouped by prefix. For example:
+
+- `adminApi.*` — configuration for the admin API component
+- `backend.*` — configuration for backend pods
+- `backend.persistence.*` — storage configuration for backend pods
+- `backend.autoscaling.*` — autoscaling configuration for backend pods
+
+To navigate it more easily:
+
+- Use your browser search (`Ctrl+F`) to locate specific configuration keys.
+- Search by prefix (for example `backend.` or `ingester.`) to jump between related settings.
+- For installation examples and setup instructions, refer to the Helm installation guide rather than this reference page.
+
 > **Note:** This reference is for the Loki Helm chart version 3.0 or greater.
 > If you are using the `grafana/loki-stack` Helm chart from the community repo,
 > please refer to the `values.yaml` of the respective Github repository
@@ -388,6 +403,7 @@ This is the generated reference for the Loki Helm Chart values.
     "tag": null
   },
   "initContainers": [],
+  "maxUnavailable": 1,
   "nodeSelector": {},
   "persistence": {
     "accessModes": [
@@ -402,6 +418,7 @@ This is the generated reference for the Loki Helm Chart values.
     "selector": null,
     "size": "10Gi",
     "storageClass": null,
+    "volumeAttributesClassName": null,
     "volumeClaimsEnabled": true
   },
   "podAnnotations": {},
@@ -414,6 +431,7 @@ This is the generated reference for the Loki Helm Chart values.
   "service": {
     "annotations": {},
     "labels": {},
+    "trafficDistribution": "",
     "type": "ClusterIP"
   },
   "targetModule": "backend",
@@ -605,6 +623,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for backend pods</td>
@@ -684,6 +711,15 @@ null
 			<td>backend.persistence.storageClass</td>
 			<td>string</td>
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -776,6 +812,15 @@ null
 			<td>Additional labels for backend Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for backend Service</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -1280,7 +1325,8 @@ null
         ],
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -1460,7 +1506,7 @@ null
 		<tr>
 			<td>bloomGateway.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for bloom-gateway pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1510,6 +1556,15 @@ null
 			<td>Size of persistent disk</td>
 			<td><pre lang="json">
 "10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -1570,7 +1625,7 @@ null
 		<tr>
 			<td>bloomGateway.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for bloom-gateway pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1651,7 +1706,7 @@ null
 		<tr>
 			<td>bloomGateway.startupProbe</td>
 			<td>object</td>
-			<td>startup probe settings for ingester pods. If empty, use `loki.startupProbe`</td>
+			<td>startup probe settings for bloom-gateway pods. If empty, use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1728,7 +1783,8 @@ null
         "labels": {},
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -1907,7 +1963,7 @@ null
 		<tr>
 			<td>bloomPlanner.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for bloom-planner pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1970,6 +2026,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomPlanner.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomPlanner.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -2017,7 +2082,7 @@ null
 		<tr>
 			<td>bloomPlanner.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for bloom-planner pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2098,7 +2163,7 @@ null
 		<tr>
 			<td>bloomPlanner.startupProbe</td>
 			<td>object</td>
-			<td>startup probe settings for ingester pods. If empty use `loki.startupProbe`</td>
+			<td>startup probe settings for bloom-planner pods. If empty use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2127,7 +2192,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}"
 </pre>
 </td>
 		</tr>
@@ -2137,6 +2202,15 @@ null
 			<td>Affinity for chunks-cache pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.allocatedCPU</td>
+			<td>string</td>
+			<td>Amount of cpu allocated to chunks-cache for object storage (in integer or millicores).</td>
+			<td><pre lang="json">
+"500m"
 </pre>
 </td>
 		</tr>
@@ -2272,8 +2346,9 @@ true
 			<td>l2 memcache configuration</td>
 			<td><pre lang="json">
 {
-  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc",
+  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}",
   "affinity": {},
+  "allocatedCPU": "500m",
   "allocatedMemory": 8192,
   "annotations": {},
   "batchSize": 4,
@@ -2298,7 +2373,8 @@ true
     "labels": {},
     "mountPath": "/data",
     "storageClass": null,
-    "storageSize": "10G"
+    "storageSize": "10G",
+    "volumeAttributesClassName": null
   },
   "podAnnotations": {},
   "podLabels": {},
@@ -2331,7 +2407,7 @@ true
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}"
 </pre>
 </td>
 		</tr>
@@ -2341,6 +2417,15 @@ true
 			<td>Affinity for chunks-cache-l2 pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.allocatedCPU</td>
+			<td>string</td>
+			<td>Amount of cpu allocated to chunks-cache-l2 for object storage (in integer or millicores).</td>
+			<td><pre lang="json">
+"500m"
 </pre>
 </td>
 		</tr>
@@ -2473,7 +2558,7 @@ false
 		<tr>
 			<td>chunksCache.l2.l2ChunkCacheHandoff</td>
 			<td>string</td>
-			<td>The age of chunks should be transfered from l1 cache to l2 4 days</td>
+			<td>The age of chunks should be transferred from l1 cache to l2 4 days</td>
 			<td><pre lang="json">
 "345600s"
 </pre>
@@ -2525,7 +2610,8 @@ false
   "labels": {},
   "mountPath": "/data",
   "storageClass": null,
-  "storageSize": "10G"
+  "storageSize": "10G",
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -2563,6 +2649,15 @@ null
 			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2770,7 +2865,8 @@ null
   "labels": {},
   "mountPath": "/data",
   "storageClass": null,
-  "storageSize": "10G"
+  "storageSize": "10G",
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -2808,6 +2904,15 @@ null
 			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2979,6 +3084,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>commonLabels</td>
+			<td>object</td>
+			<td>Labels to be added to resources</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor</td>
 			<td>object</td>
 			<td>Configuration for the compactor</td>
@@ -3031,13 +3145,12 @@ null
         "labels": {},
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
-    "size": "10Gi",
-    "storageClass": null,
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -3057,6 +3170,7 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "serviceType": "ClusterIP",
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -3212,7 +3326,7 @@ null
 		<tr>
 			<td>compactor.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for compactor pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3266,6 +3380,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>compactor.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -3280,24 +3403,6 @@ false
 			<td>Enable creating PVCs for the compactor</td>
 			<td><pre lang="json">
 false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>compactor.persistence.size</td>
-			<td>string</td>
-			<td>Size of persistent disk</td>
-			<td><pre lang="json">
-"10Gi"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>compactor.persistence.storageClass</td>
-			<td>string</td>
-			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
@@ -3331,7 +3436,7 @@ null
 		<tr>
 			<td>compactor.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for compactor pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3415,6 +3520,15 @@ null
 			<td>Service type for compactor service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.startupProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3913,7 +4027,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.5"
+    "tag": "3.6.8"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3923,7 +4037,7 @@ null
     "affinity": {},
     "annotations": {},
     "apiUrl": "{{ include \"loki.address\" . }}",
-    "enabled": true,
+    "enabled": false,
     "env": [],
     "extraVolumeMounts": [],
     "extraVolumes": [],
@@ -3949,7 +4063,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.5.2"
+  "version": "3.6.8"
 }
 </pre>
 </td>
@@ -4060,7 +4174,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.5"
+"3.6.8"
 </pre>
 </td>
 		</tr>
@@ -4078,14 +4192,14 @@ null
 		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
-			<td>Configuration for `provisioner` target Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.</td>
+			<td>Configuration for `provisioner` target Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api. The provisioner is disabled by default because it requires an out-of-band admin token secret (created via GEL `tokengen`) referenced by `enterprise.adminToken.secret`. After creating that secret, set both `enterprise.adminToken.secret` and `enterprise.provisioner.enabled: true`. See production/helm/loki/docs/examples/enterprise/README.md for the full procedure.</td>
 			<td><pre lang="json">
 {
   "additionalTenants": [],
   "affinity": {},
   "annotations": {},
   "apiUrl": "{{ include \"loki.address\" . }}",
-  "enabled": true,
+  "enabled": false,
   "env": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
@@ -4116,7 +4230,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.additionalTenants</td>
 			<td>list</td>
-			<td>Additional tenants to be created. Each tenant will get a read and write policy and associated token. Tenant must have a name and a namespace for the secret containting the token to be created in. For example additionalTenants:   - name: loki     secretNamespace: grafana</td>
+			<td>Additional tenants to be created. Each tenant will get a read and write policy and associated token. Tenant must have a name and a namespace for the secret containing the token to be created in. For example additionalTenants:   - name: loki     secretNamespace: grafana</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4154,7 +4268,7 @@ null
 			<td>bool</td>
 			<td>Whether the job should be part of the deployment</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -4358,6 +4472,7 @@ false
   "hostUsers": "nil",
   "initContainers": [],
   "labels": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "podSecurityContext": {
     "fsGroup": 10001,
@@ -4379,6 +4494,7 @@ false
     "labels": {},
     "type": "ClusterIP"
   },
+  "startupProbe": {},
   "strategy": {
     "type": "RollingUpdate"
   },
@@ -4429,7 +4545,7 @@ false
 		<tr>
 			<td>enterpriseGateway.extraContainers</td>
 			<td>list</td>
-			<td>Conifgure optional extraContainers</td>
+			<td>Configure optional extraContainers</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4493,6 +4609,15 @@ false
 			<td>enterpriseGateway.labels</td>
 			<td>object</td>
 			<td>Additional labels for the `gateway` Pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4564,6 +4689,15 @@ false
   "labels": {},
   "type": "ClusterIP"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -5274,6 +5408,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for gateway service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.service.type</td>
 			<td>string</td>
 			<td>Type of the gateway service</td>
@@ -5402,7 +5545,16 @@ true
 		<tr>
 			<td>global.image.registry</td>
 			<td>string</td>
-			<td>Overrides the Docker registry globally for all images</td>
+			<td>Overrides the Docker registry globally for all images (deprecated, use global.imageRegistry)</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.imageRegistry</td>
+			<td>string</td>
+			<td>Overrides the Docker registry globally for all images (standard format)</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -5467,6 +5619,7 @@ null
   },
   "initContainers": [],
   "joinMemberlist": true,
+  "lifecycle": {},
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
@@ -5480,6 +5633,7 @@ null
     "labels": {},
     "size": "10Gi",
     "storageClass": null,
+    "volumeAttributesClassName": null,
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -5494,6 +5648,7 @@ null
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [],
+  "trafficDistribution": "",
   "updateStrategy": {
     "type": "RollingUpdate"
   }
@@ -5648,6 +5803,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the index-gateway container</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.maxUnavailable</td>
 			<td>string</td>
 			<td>Pod Disruption Budget maxUnavailable</td>
@@ -5734,6 +5898,15 @@ false
 			<td>indexGateway.persistence.storageClass</td>
 			<td>string</td>
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -5839,6 +6012,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for index-gateway service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.updateStrategy</td>
 			<td>object</td>
 			<td>UpdateStrategy for the indexGateway StatefulSet.</td>
@@ -5926,7 +6108,8 @@ null
         ],
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -5945,6 +6128,7 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "serviceType": "ClusterIP",
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [
@@ -5961,6 +6145,7 @@ null
       "whenUnsatisfiable": "ScheduleAnyway"
     }
   ],
+  "trafficDistribution": "",
   "updateStrategy": {
     "type": "RollingUpdate"
   },
@@ -6289,6 +6474,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ingester.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -6363,7 +6557,7 @@ false
 		<tr>
 			<td>ingester.serviceAnnotations</td>
 			<td>object</td>
-			<td>Annotations for ingestor service</td>
+			<td>Annotations for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6372,7 +6566,7 @@ false
 		<tr>
 			<td>ingester.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for ingestor service</td>
+			<td>Labels for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6381,9 +6575,18 @@ false
 		<tr>
 			<td>ingester.serviceType</td>
 			<td>string</td>
-			<td>Service type for ingestor service</td>
+			<td>Service type for ingester service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty use `loki.startupProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -6415,6 +6618,15 @@ Defaults to allow skew no more than 1 node
 </td>
 		</tr>
 		<tr>
+			<td>ingester.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for ingester service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester.updateStrategy</td>
 			<td>object</td>
 			<td>UpdateStrategy for the ingester StatefulSets.</td>
@@ -6437,7 +6649,7 @@ Defaults to allow skew no more than 1 node
 		<tr>
 			<td>ingester.zoneAwareReplication</td>
 			<td>object</td>
-			<td>Enabling zone awareness on ingesters will create 3 statefulests where all writes will send a replica to each zone. This is primarily intended to accelerate rollout operations by allowing for multiple ingesters within a single zone to be shutdown and restart simultaneously (the remaining 2 zones will be guaranteed to have at least one copy of the data). Note: This can be used to run Loki over multiple cloud provider availability zones however this is not currently recommended as Loki is not optimized for this and cross zone network traffic costs can become extremely high extremely quickly. Even with zone awareness enabled, it is recommended to run Loki in a single availability zone.</td>
+			<td>Enabling zone awareness on ingesters will create 3 StatefulSets where all writes will send a replica to each zone. This is primarily intended to accelerate rollout operations by allowing for multiple ingesters within a single zone to be shutdown and restart simultaneously (the remaining 2 zones will be guaranteed to have at least one copy of the data). Note: This can be used to run Loki over multiple cloud provider availability zones however this is not currently recommended as Loki is not optimized for this and cross zone network traffic costs can become extremely high extremely quickly. Even with zone awareness enabled, it is recommended to run Loki in a single availability zone.</td>
 			<td><pre lang="json">
 {
   "enabled": true,
@@ -6831,7 +7043,7 @@ See values.yaml
 		<tr>
 			<td>loki.commonConfig.compactor_grpc_address</td>
 			<td>string</td>
-			<td>The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address. If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.</td>
+			<td>The gRPC address of the compactor. The use of compactor_grpc_address is preferred over compactor_address. If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.</td>
 			<td><pre lang="json">
 "{{ include \"loki.compactorAddress\" . }}"
 </pre>
@@ -6985,7 +7197,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.5"
+"3.6.8"
 </pre>
 </td>
 		</tr>
@@ -7088,6 +7300,7 @@ null
 			<td><pre lang="json">
 {
   "fsGroup": 10001,
+  "fsGroupChangePolicy": "OnRootMismatch",
   "runAsGroup": 10001,
   "runAsNonRoot": true,
   "runAsUser": 10001
@@ -7173,6 +7386,15 @@ null
   "http_server_read_timeout": "600s",
   "http_server_write_timeout": "600s"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for services Ref: https://kubernetes.io/docs/concepts/services-networking/service/#traffic-distribution</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -7539,6 +7761,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.livenessProbe</td>
+			<td>string</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.lokiurl</td>
 			<td>string</td>
 			<td>If set overwrites the default value set by loki.host helper function. Use this if gateway not enabled.</td>
@@ -7584,6 +7815,22 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe</td>
+			<td><pre lang="json">
+{
+  "httpGet": {
+    "path": "/metrics",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 15,
+  "timeoutSeconds": 1
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.replicas</td>
 			<td>int</td>
 			<td>Replicas for `loki-canary` when using a Deployment</td>
@@ -7616,6 +7863,15 @@ true
 			<td>Additional labels for loki-canary Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.startupProbe</td>
+			<td>string</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -7771,6 +8027,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>memcached.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe for memcached pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcachedExporter.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for memcached exporter containers</td>
@@ -7828,7 +8093,7 @@ true
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v0.15.3"
+"v0.15.4"
 </pre>
 </td>
 		</tr>
@@ -7881,6 +8146,15 @@ true
 			<td>memcachedExporter.resources.requests</td>
 			<td>object</td>
 			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe for memcached exporter</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -7956,6 +8230,16 @@ false
   ],
   "drivesPerNode": 2,
   "enabled": false,
+  "image": {
+    "pullPolicy": "IfNotPresent",
+    "repository": "docker.io/pgsty/minio",
+    "tag": "RELEASE.2026-03-14T12-00-00Z"
+  },
+  "mcImage": {
+    "pullPolicy": "IfNotPresent",
+    "repository": "docker.io/pgsty/mc",
+    "tag": "RELEASE.2026-03-13T08-57-32Z"
+  },
   "persistence": {
     "annotations": {},
     "size": "5Gi"
@@ -7996,9 +8280,43 @@ false
   },
   "rules": {
     "additionalGroups": [],
+    "additionalRuleAnnotations": {},
     "additionalRuleLabels": {},
     "alerting": true,
     "annotations": {},
+    "configs": {
+      "LokiCanaryLatency": {
+        "enabled": true,
+        "for": "15m",
+        "lookbackPeriod": "5m",
+        "severity": "warning",
+        "threshold": 5
+      },
+      "LokiRequestErrors": {
+        "enabled": true,
+        "for": "15m",
+        "lookbackPeriod": "2m",
+        "severity": "critical",
+        "threshold": 10
+      },
+      "LokiRequestLatency": {
+        "enabled": true,
+        "for": "15m",
+        "severity": "critical",
+        "threshold": 1
+      },
+      "LokiRequestPanics": {
+        "enabled": true,
+        "lookbackPeriod": "10m",
+        "severity": "critical",
+        "threshold": 0
+      },
+      "LokiTooManyCompactorsRunning": {
+        "enabled": true,
+        "for": "5m",
+        "severity": "warning"
+      }
+    },
     "disabled": {},
     "enabled": false,
     "labels": {},
@@ -8100,9 +8418,43 @@ null
 			<td><pre lang="json">
 {
   "additionalGroups": [],
+  "additionalRuleAnnotations": {},
   "additionalRuleLabels": {},
   "alerting": true,
   "annotations": {},
+  "configs": {
+    "LokiCanaryLatency": {
+      "enabled": true,
+      "for": "15m",
+      "lookbackPeriod": "5m",
+      "severity": "warning",
+      "threshold": 5
+    },
+    "LokiRequestErrors": {
+      "enabled": true,
+      "for": "15m",
+      "lookbackPeriod": "2m",
+      "severity": "critical",
+      "threshold": 10
+    },
+    "LokiRequestLatency": {
+      "enabled": true,
+      "for": "15m",
+      "severity": "critical",
+      "threshold": 1
+    },
+    "LokiRequestPanics": {
+      "enabled": true,
+      "lookbackPeriod": "10m",
+      "severity": "critical",
+      "threshold": 0
+    },
+    "LokiTooManyCompactorsRunning": {
+      "enabled": true,
+      "for": "5m",
+      "severity": "warning"
+    }
+  },
   "disabled": {},
   "enabled": false,
   "labels": {},
@@ -8117,6 +8469,15 @@ null
 			<td>Additional groups to add to the rules file</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.additionalRuleAnnotations</td>
+			<td>object</td>
+			<td>Additional annotations for PrometheusRule alerts</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8150,7 +8511,7 @@ true
 		<tr>
 			<td>monitoring.rules.disabled</td>
 			<td>object</td>
-			<td>If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.</td>
+			<td>DEPRECATED: use monitoring.rules.configs.*.enabled instead</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9124,7 +9485,8 @@ null
         "labels": {},
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -9149,6 +9511,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": []
@@ -9305,7 +9668,7 @@ null
 		<tr>
 			<td>patternIngester.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for pattern ingester pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9364,6 +9727,15 @@ null
 			<td>Labels for pattern ingester PVCs</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -9433,7 +9805,7 @@ null
 		<tr>
 			<td>patternIngester.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for pattern ingester pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9506,6 +9878,15 @@ null
 			<td>patternIngester.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for pattern ingester service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for pattern ingester pods. If empty use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9618,7 +9999,8 @@ null
       "topologyKey": "kubernetes.io/hostname",
       "whenUnsatisfiable": "ScheduleAnyway"
     }
-  ]
+  ],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -9986,6 +10368,15 @@ Defaults to allow skew no more then 1 node
 </td>
 		</tr>
 		<tr>
+			<td>querier.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for querier service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend</td>
 			<td>object</td>
 			<td>Configuration for the query-frontend</td>
@@ -10038,6 +10429,9 @@ Defaults to allow skew no more then 1 node
     "tag": null
   },
   "initContainers": [],
+  "loadBalancer": {
+    "enabled": true
+  },
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -10050,7 +10444,8 @@ Defaults to allow skew no more then 1 node
   "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
-  "topologySpreadConstraints": []
+  "topologySpreadConstraints": [],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -10283,6 +10678,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.loadBalancer</td>
+			<td>object</td>
+			<td>Enable load balancer port for query-frontend</td>
+			<td><pre lang="json">
+{
+  "enabled": true
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.maxUnavailable</td>
 			<td>string</td>
 			<td>Pod Disruption Budget maxUnavailable</td>
@@ -10400,6 +10806,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for query-frontend service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryScheduler</td>
 			<td>object</td>
 			<td>Configuration for the query-scheduler</td>
@@ -10450,7 +10865,8 @@ null
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
-  "topologySpreadConstraints": []
+  "topologySpreadConstraints": [],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -10701,6 +11117,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryScheduler.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for query-scheduler service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.namespaced</td>
 			<td>bool</td>
 			<td>Whether to install RBAC in the namespace only or cluster-wide. Useful if you want to watch ConfigMap globally.</td>
@@ -10793,6 +11218,7 @@ false
   "legacyReadTarget": false,
   "lifecycle": {},
   "livenessProbe": {},
+  "maxUnavailable": 1,
   "nodeSelector": {},
   "persistence": {
     "accessModes": [
@@ -10803,7 +11229,8 @@ false
     "labels": {},
     "selector": null,
     "size": "10Gi",
-    "storageClass": null
+    "storageClass": null,
+    "volumeAttributesClassName": null
   },
   "podAnnotations": {},
   "podLabels": {},
@@ -10815,8 +11242,10 @@ false
   "service": {
     "annotations": {},
     "labels": {},
+    "trafficDistribution": "",
     "type": "ClusterIP"
   },
+  "startupProbe": {},
   "targetModule": "read",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
@@ -11033,6 +11462,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>read.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for read pods</td>
@@ -11055,7 +11493,8 @@ false
   "labels": {},
   "selector": null,
   "size": "10Gi",
-  "storageClass": null
+  "storageClass": null,
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -11120,6 +11559,15 @@ null
 			<td>read.persistence.storageClass</td>
 			<td>string</td>
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -11207,11 +11655,29 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for read service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.service.type</td>
 			<td>string</td>
 			<td>Service Type for read Service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.startupProbe</td>
+			<td>object</td>
+			<td>startup probe for the read pods. If empty, applies no startupProbe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -11256,7 +11722,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ include \"loki.namespace\" $ }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}"
 </pre>
 </td>
 		</tr>
@@ -11266,6 +11732,15 @@ null
 			<td>Affinity for results-cache pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.allocatedCPU</td>
+			<td>string</td>
+			<td>Amount of cpu allocated to results-cache for object storage (in integer or millicores).</td>
+			<td><pre lang="json">
+"500m"
 </pre>
 </td>
 		</tr>
@@ -11423,7 +11898,8 @@ true
   "labels": {},
   "mountPath": "/data",
   "storageClass": null,
-  "storageSize": "10G"
+  "storageSize": "10G",
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -11470,6 +11946,15 @@ null
 			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -11721,7 +12206,8 @@ null
     "enabled": false,
     "labels": {},
     "size": "10Gi",
-    "storageClass": null
+    "storageClass": null,
+    "volumeAttributesClassName": null
   },
   "podAnnotations": {},
   "podLabels": {},
@@ -11977,6 +12463,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ruler.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ruler.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for ruler pods</td>
@@ -12130,6 +12625,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>sidecar.disableX509StrictVerification</td>
+			<td>bool</td>
+			<td>Set to true to disable strict x509 verification for kube api calls.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>sidecar.enableUniqueFilenames</td>
 			<td>bool</td>
 			<td>Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.</td>
@@ -12148,11 +12652,20 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>sidecar.image.registry</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"docker.io"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>sidecar.image.repository</td>
 			<td>string</td>
 			<td>The Docker registry and image for the k8s sidecar</td>
 			<td><pre lang="json">
-"docker.io/kiwigrid/k8s-sidecar"
+"kiwigrid/k8s-sidecar"
 </pre>
 </td>
 		</tr>
@@ -12170,7 +12683,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.10"
+"2.5.0"
 </pre>
 </td>
 		</tr>
@@ -12554,6 +13067,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.enableStatefulSetRecreationForSizeChange</td>
+			<td>bool</td>
+			<td>Enable StatefulSetRecreation for changes to PVC size. This means that the StatefulSet will be deleted, recreated (with the same name) and rolled when a change to the PVC size is detected. That way the PVC can be resized without manual intervention.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.enabled</td>
 			<td>bool</td>
 			<td>Enable persistent disk</td>
@@ -12689,6 +13211,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution single binary Service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.service.type</td>
 			<td>string</td>
 			<td>Service Type for single binary Service</td>
@@ -12719,6 +13250,15 @@ null
 			<td>singleBinary.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for single binary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for single binary pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -13020,7 +13560,7 @@ false
 			<td><pre lang="json">
 {
   "annotations": {},
-  "canaryServiceAddress": "http://loki-canary:3500/metrics",
+  "canaryServiceAddress": "http://{{ include \"loki-canary.fullname\" $ }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}:3500/metrics",
   "enabled": true,
   "hostUsers": "nil",
   "image": {
@@ -13051,7 +13591,7 @@ false
 			<td>string</td>
 			<td>Used to directly query the metrics endpoint of the canary for testing, this approach avoids needing prometheus for testing. This in a newer approach to using prometheusAddress such that tests do not have a dependency on prometheus</td>
 			<td><pre lang="json">
-"http://loki-canary:3500/metrics"
+"http://{{ include \"loki-canary.fullname\" $ }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}:3500/metrics"
 </pre>
 </td>
 		</tr>
@@ -13387,6 +13927,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for write pods</td>
@@ -13466,6 +14015,15 @@ null
 			<td>write.persistence.storageClass</td>
 			<td>string</td>
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -13558,6 +14116,15 @@ null
 			<td>Additional labels for write Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for write service</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>

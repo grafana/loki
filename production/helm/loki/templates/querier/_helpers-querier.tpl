@@ -30,3 +30,10 @@ querier priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+querier target
+*/}}
+{{- define "loki.querierTarget" -}}
+querier{{- if .Values.loki.ui.enabled -}},ui{{- end -}}
+{{- end -}}

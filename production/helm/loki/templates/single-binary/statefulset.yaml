@@ -42,6 +42,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
+        {{- if .Values.singleBinary.persistence.enabled }}
+        storage/size: {{ .Values.singleBinary.persistence.size | quote }}
+        {{- end }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -62,6 +65,10 @@ spec:
         {{- end }}
         app.kubernetes.io/part-of: memberlist
     spec:
+      {{- with .Values.singleBinary.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
+      {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       {{ include "loki.enableServiceLinks" . }}
@@ -71,7 +78,7 @@ spec:
       {{- end }}
       {{- include "loki.singleBinaryPriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.singleBinary.terminationGracePeriodSeconds }}
       {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.singleBinary.hostUsers) }}
       hostUsers: {{ .Values.singleBinary.hostUsers }}
@@ -88,7 +95,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target={{ .Values.singleBinary.targetModule }}
+            - -target={{ include "loki.singleBinaryTarget" . }}
             {{- with .Values.singleBinary.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -150,11 +157,8 @@ spec:
             {{- toYaml .Values.singleBinary.resources | nindent 12 }}
         {{- if .Values.sidecar.rules.enabled }}
         - name: loki-sc-rules
-          {{- if .Values.sidecar.image.sha }}
-          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
-          {{- else }}
-          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
-          {{- end }}
+          {{- $dict := dict "service" .Values.sidecar.image "global" .Values.global }}
+          image: {{ include "loki.baseImage" $dict }}
           imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
           env:
             - name: METHOD
@@ -180,6 +184,10 @@ spec:
             {{- if .Values.sidecar.skipTlsVerify }}
             - name: SKIP_TLS_VERIFY
               value: "{{ .Values.sidecar.skipTlsVerify }}"
+            {{- end }}
+            {{- if .Values.sidecar.disableX509StrictVerification }}
+            - name: DISABLE_X509_STRICT_VERIFICATION
+              value: "{{ .Values.sidecar.disableX509StrictVerification }}"
             {{- end }}
             {{- if .Values.sidecar.rules.script }}
             - name: SCRIPT
@@ -218,6 +226,8 @@ spec:
           {{- toYaml .Values.sidecar.securityContext | nindent 12 }}
           {{- end }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
             - name: sc-rules-volume
               mountPath: {{ .Values.sidecar.rules.folder | quote }}
         {{- end}}
@@ -230,7 +240,7 @@ spec:
       {{- end }}
       {{- with .Values.singleBinary.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.singleBinary.nodeSelector }}
       nodeSelector:

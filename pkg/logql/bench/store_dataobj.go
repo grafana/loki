@@ -25,7 +25,6 @@ import (
 
 // DataObjStore implements Store using the dataobj format
 type DataObjStore struct {
-	path             string
 	tenant           string
 	builder          *logsobj.Builder
 	buf              *bytes.Buffer
@@ -74,13 +73,14 @@ func NewDataObjStore(dir, tenant string) (*DataObjStore, error) {
 	}
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		TargetPageSize:    2 * 1024 * 1024, // 2MB
-		MaxPageRows:       1000,
-		TargetObjectSize:  128 * 1024 * 1024, // 128MB
-		TargetSectionSize: 16 * 1024 * 1024,  // 16MB
-		BufferSize:        16 * 1024 * 1024,  // 16MB
-
-		SectionStripeMergeLimit: 2,
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          2 * 1024 * 1024, // 2MB
+			MaxPageRows:             1000,
+			TargetObjectSize:        128 * 1024 * 1024, // 128MB
+			TargetSectionSize:       16 * 1024 * 1024,  // 16MB
+			BufferSize:              16 * 1024 * 1024,  // 16MB
+			SectionStripeMergeLimit: 2,
+		},
 	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create builder: %w", err)
@@ -204,7 +204,7 @@ func (s *DataObjStore) buildIndex() error {
 		return nil
 	}
 
-	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:    128 * 1024,        // 128KB
 		TargetObjectSize:  128 * 1024 * 1024, // 128MB
 		TargetSectionSize: 16 * 1024 * 1024,  // 16MB
@@ -224,7 +224,7 @@ func (s *DataObjStore) buildIndex() error {
 			return nil
 		}
 
-		reader, err := dataobj.FromBucket(context.Background(), s.bucket, name)
+		reader, err := dataobj.FromBucket(context.Background(), s.bucket, name, 0)
 		if err != nil {
 			return fmt.Errorf("failed to read object: %w", err)
 		}

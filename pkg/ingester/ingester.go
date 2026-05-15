@@ -63,6 +63,7 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/wal"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -133,6 +134,8 @@ type Config struct {
 
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
 
+	DelegateStreamLimits bool `yaml:"delegate_stream_limits_enabled" doc:"description=When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled."`
+
 	KafkaIngestion KafkaIngestionConfig `yaml:"kafka_ingestion,omitempty"`
 }
 
@@ -157,12 +160,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0.1, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "The maximum number of errors a stream will report to the user when a push fails. 0 to make unlimited.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
-	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with boltdb-shipper/tsdb index and filesystem object store. -1 for infinite.")
+	f.DurationVar(&cfg.QueryStoreMaxLookBackPeriod, "ingester.query-store-max-look-back-period", 0, "How far back should an ingester be allowed to query the store for data, for use only with tsdb index and filesystem object store. -1 for infinite.")
 	f.BoolVar(&cfg.AutoForgetUnhealthy, "ingester.autoforget-unhealthy", false, "Forget about ingesters having heartbeat timestamps older than `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the `/ring` `forget` button in the UI: the ingester is removed from the ring. This is a useful setting when you are sure that an unhealthy node won't return. An example is when not using stateful sets or the equivalent. Use `memberlist.rejoin_interval` > 0 to handle network partition cases when using a memberlist.")
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
+	f.BoolVar(&cfg.DelegateStreamLimits, "ingester.delegate-stream-limits-enabled", false, "When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled.")
 }
 
 func (cfg *Config) Validate() error {
@@ -391,6 +395,8 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers),
 			logger,
 			registerer,
+			i.partitionRingLifecycler,
+			partition.WithHeaderToContextExtractor(validation.IngestionPoliciesKafkaHeadersToContext),
 		)
 		if err != nil {
 			return nil, err
@@ -1000,6 +1006,11 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
+	// Check if disk is too full and throttle writes if needed
+	if i.wal.IsDiskThrottled() {
+		return nil, ErrReadOnly
+	}
+
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
 	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
@@ -1184,20 +1195,21 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	return sendSampleBatches(ctx, it, queryServer)
 }
 
-// asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.
+// asyncStoreMaxLookBack returns a max look back period only if active index type is `tsdb`.
 // max look back is limited to from time of async store config.
 // It considers previous periodic config's from time if that also has async index type.
 // This is to limit the lookback to only async stores where relevant.
 func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 	activePeriodicConfigIndex := config.ActivePeriodConfig(i.periodicConfigs)
 	activePeriodicConfig := i.periodicConfigs[activePeriodicConfigIndex]
-	if activePeriodicConfig.IndexType != types.BoltDBShipperType && activePeriodicConfig.IndexType != types.TSDBType {
+
+	// TODO(chaudum): Always evaluates to `false`, so can be removed.
+	if activePeriodicConfig.IndexType != types.IndexTypeTSDB {
 		return 0
 	}
 
 	startTime := activePeriodicConfig.From
-	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.BoltDBShipperType ||
-		i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.TSDBType) {
+	if activePeriodicConfigIndex != 0 && (i.periodicConfigs[activePeriodicConfigIndex-1].IndexType == types.IndexTypeTSDB) {
 		startTime = i.periodicConfigs[activePeriodicConfigIndex-1].From
 	}
 
@@ -1205,14 +1217,14 @@ func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 	return maxLookBack
 }
 
-// GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
+// GetChunkIDs is meant to be used only when using an async store like tsdb.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
 	gcr, err := i.getChunkIDs(ctx, req)
 	err = server_util.ClientGrpcStatusAndError(err)
 	return gcr, err
 }
 
-// GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
+// GetChunkIDs is meant to be used only when using an async store like tsdb.
 func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
 	orgID, err := tenant.TenantID(ctx)
 	if err != nil {

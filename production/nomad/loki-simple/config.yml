@@ -9,6 +9,8 @@ common:
   replication_factor: 1
   # Tell Loki which address to advertise
   instance_addr: {{ env "NOMAD_IP_grpc" }}
+  # Add the compactor address
+  compactor_address: http://loki-backend.service.consul
   ring:
     # Tell Loki which address to advertise in ring
     instance_addr: {{ env "NOMAD_IP_grpc" }}
@@ -35,7 +37,7 @@ schema_config:
       period: 24h
 
 storage_config:
-  boltdb_shipper:
+  tsdb_shipper:
     # Nomad ephemeral disk is used to store index and cache
     # it will try to preserve /alloc/data between job updates
     active_index_directory: {{ env "NOMAD_ALLOC_DIR" }}/data/index

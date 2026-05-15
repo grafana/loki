@@ -209,10 +209,13 @@ func (r *RunEndEncoded) ValueStr(i int) string {
 }
 
 func (r *RunEndEncoded) String() string {
+	physOffset := r.GetPhysicalOffset()
+	physLength := r.GetPhysicalLength()
+
 	var buf bytes.Buffer
 	buf.WriteByte('[')
-	for i := 0; i < r.ends.Len(); i++ {
-		if i != 0 {
+	for i := physOffset; i < physOffset+physLength; i++ {
+		if i != physOffset {
 			buf.WriteByte(',')
 		}
 
@@ -220,7 +223,17 @@ func (r *RunEndEncoded) String() string {
 		if byts, ok := value.(json.RawMessage); ok {
 			value = string(byts)
 		}
-		fmt.Fprintf(&buf, "{%d -> %v}", r.ends.GetOneForMarshal(i), value)
+
+		var runEnd int
+		switch e := r.ends.GetOneForMarshal(i).(type) {
+		case int16:
+			runEnd = int(e) - r.data.offset
+		case int32:
+			runEnd = int(e) - r.data.offset
+		case int64:
+			runEnd = int(e) - r.data.offset
+		}
+		fmt.Fprintf(&buf, "{%d -> %v}", runEnd, value)
 	}
 
 	buf.WriteByte(']')
@@ -383,6 +396,10 @@ func (b *RunEndEncodedBuilder) AppendNulls(n int) {
 	for i := 0; i < n; i++ {
 		b.AppendNull()
 	}
+}
+
+func (b *RunEndEncodedBuilder) UnsafeAppendBoolToBitmap(v bool) {
+	panic("Calling UnsafeAppendBoolToBitmap on a run-end encoded array is semantically undefined.")
 }
 
 func (b *RunEndEncodedBuilder) NullN() int {

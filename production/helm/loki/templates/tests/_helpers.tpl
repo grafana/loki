@@ -2,7 +2,7 @@
 Docker image name for loki helm test
 */}}
 {{- define "loki.helmTestImage" -}}
-{{- $dict := dict "service" .Values.test.image "global" .Values.global.image "defaultVersion" .Chart.AppVersion -}}
+{{- $dict := dict "service" .Values.test.image "global" .Values.global "defaultVersion" .Chart.AppVersion -}}
 {{- include "loki.baseImage" $dict -}}
 {{- end -}}
 

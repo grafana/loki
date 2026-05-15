@@ -1,0 +1,170 @@
+version: "2"
+run:
+  go: "1.24"
+  tests: true
+  allow-parallel-runners: true
+linters:
+  default: all
+  disable:
+    - cyclop
+    - depguard
+    - err113
+    - exhaustive
+    - exhaustruct
+    - forcetypeassert
+    - funlen
+    - gochecknoglobals
+    - gocognit
+    - godox
+    - gosmopolitan
+    - inamedparam
+    - interfacebloat
+    # Seems unstable. It will sometimes fire and other times not.
+    - ireturn
+    - lll
+    - mnd
+    - nlreturn
+    - noinlineerr
+    - nonamedreturns
+    - paralleltest
+    # Seems to conflict with golines or one of the formatters.
+    - tagalign
+    - testpackage
+    - thelper
+    - varnamelen
+    - wrapcheck
+    - wsl
+    - wsl_v5
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*github.com/oschwald/geoip2-golang/v2.Reader).Close
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+    exhaustive:
+      default-signifies-exhaustive: true
+    forbidigo:
+      forbid:
+        - pattern: Geoip
+          msg: you should use `GeoIP`
+        - pattern: geoIP
+          msg: you should use `geoip`
+        - pattern: Maxmind
+          msg: you should use `MaxMind`
+        - pattern: ^maxMind
+          msg: you should use `maxmind`
+        - pattern: Minfraud
+          msg: you should use `MinFraud`
+        - pattern: ^minFraud
+          msg: you should use `minfraud`
+        - pattern: ^math.Max$
+          msg: you should use the max built-in instead.
+        - pattern: ^math.Min$
+          msg: you should use the min built-in instead.
+        - pattern: ^os.IsNotExist
+          msg: As per their docs, new code should use errors.Is(err, fs.ErrNotExist).
+        - pattern: ^os.IsExist
+          msg: As per their docs, new code should use errors.Is(err, fs.ErrExist)
+    gosec:
+      excludes:
+        - G115
+        # Potential file inclusion via variable - we only open files asked by
+        # the user of the API.
+        - G304
+    govet:
+      disable:
+        - shadow
+      enable-all: true
+    lll:
+      line-length: 120
+      tab-width: 4
+    misspell:
+      locale: US
+      extra-words:
+        - typo: marshall
+          correction: marshal
+        - typo: marshalling
+          correction: marshaling
+        - typo: marshalls
+          correction: marshals
+        - typo: unmarshall
+          correction: unmarshal
+        - typo: unmarshalling
+          correction: unmarshaling
+        - typo: unmarshalls
+          correction: unmarshals
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-no-explanation:
+        - lll
+        - misspell
+      allow-unused: false
+    revive:
+      severity: warning
+      enable-all-rules: true
+      rules:
+        - name: add-constant
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: confusing-naming
+          disabled: true
+        - name: confusing-results
+          disabled: true
+        - name: cyclomatic
+          disabled: true
+        - name: deep-exit
+          disabled: true
+        - name: flag-parameter
+          disabled: true
+        - name: function-length
+          disabled: true
+        - name: function-result-limit
+          disabled: true
+        - name: line-length-limit
+          disabled: true
+        - name: max-public-structs
+          disabled: true
+        - name: nested-structs
+          disabled: true
+        - name: unchecked-type-assertion
+          disabled: true
+        - name: unhandled-error
+          disabled: true
+        - name: package-directory-mismatch
+          arguments:
+            - ignore-directories:
+                - geoip2-golang
+    tagliatelle:
+      case:
+        rules:
+          avro: snake
+          bson: snake
+          env: upperSnake
+          envconfig: upperSnake
+          json: snake
+          mapstructure: snake
+          xml: snake
+          yaml: snake
+    unparam:
+      check-exported: true
+  exclusions:
+    warn-unused: true
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/oschwald/maxminddb-golang)
+    gofumpt:
+      extra-rules: true

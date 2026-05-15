@@ -2,7 +2,6 @@ package indexobj
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -10,13 +9,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-var testBuilderConfig = BuilderConfig{
+var testBuilderConfig = logsobj.BuilderBaseConfig{
 	TargetPageSize:    2048,
 	TargetObjectSize:  1 << 22, // 4 MiB
 	TargetSectionSize: 1 << 21, // 2 MiB
@@ -146,7 +146,7 @@ func TestBuilder_Append(t *testing.T) {
 			MinTimestamp: time.Unix(10, 0).UTC(),
 			MaxTimestamp: time.Unix(20, 0).UTC(),
 		})
-		if errors.Is(err, ErrBuilderFull) {
+		if builder.IsFull() {
 			break
 		}
 		require.NoError(t, err)
@@ -166,10 +166,38 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 		require.NoError(t, ctx.Err())
 
 		err := builder.AppendIndexPointer(testTenant, fmt.Sprintf("test/path-%d", i), time.Unix(10, 0).Add(time.Duration(i)*time.Second).UTC(), time.Unix(20, 0).Add(time.Duration(i)*time.Second).UTC())
-		if errors.Is(err, ErrBuilderFull) {
+		if builder.IsFull() {
 			break
 		}
 		require.NoError(t, err)
 		i++
+	}
+}
+
+func TestBuilder_ObserveLogLine(t *testing.T) {
+	builder, err := NewBuilder(testBuilderConfig, nil)
+	require.NoError(t, err)
+
+	err = builder.ObserveLogLine(testTenant, "test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
+	require.NoError(t, err)
+
+	require.Greater(t, builder.estimatedSize(), 0)
+}
+
+func BenchmarkIndexObjBuilder_ObserveLogLine(b *testing.B) {
+	builder, err := NewBuilder(testBuilderConfig, nil)
+	require.NoError(b, err)
+
+	maxTenants := 1000
+	tenants := make([]string, maxTenants)
+	for i := range tenants {
+		tenants[i] = fmt.Sprintf("test-tenant-%d", i)
+	}
+
+	for b.Loop() {
+		for _, tenant := range tenants {
+			err := builder.ObserveLogLine(tenant, "test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
+			require.NoError(b, err)
+		}
 	}
 }
