@@ -1,6 +1,4 @@
-// Moved a bunch of functions here to keep all BoltDB code local
-// Ideally this would live in its own package.
-package local
+package boltdb
 
 import (
 	"context"

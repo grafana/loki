@@ -16,29 +16,29 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	chunkutil "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	boltdbcommon "github.com/grafana/loki/v3/pkg/storage/common/boltdb"
 )
 
 func AddRecordsToDB(t testing.TB, path string, start, numRecords int, bucketName []byte) {
 	t.Helper()
-	db, err := local.OpenBoltdbFile(path)
+	db, err := boltdbcommon.OpenBoltdbFile(path)
 	require.NoError(t, err)
 
-	batch := local.NewWriteBatch()
+	batch := boltdbcommon.NewWriteBatch()
 	AddRecordsToBatch(batch, "test", start, numRecords)
 
 	if len(bucketName) == 0 {
-		bucketName = local.IndexBucketName
+		bucketName = boltdbcommon.IndexBucketName
 	}
 
-	require.NoError(t, local.WriteToDB(context.Background(), db, bucketName, batch.(*local.BoltWriteBatch).Writes["test"]))
+	require.NoError(t, boltdbcommon.WriteToDB(context.Background(), db, bucketName, batch.(*boltdbcommon.BoltWriteBatch).Writes["test"]))
 
 	require.NoError(t, db.Sync())
 	require.NoError(t, db.Close())
 }
 
-func AddRecordsToBatch(batch local.WriteBatch, tableName string, start, numRecords int) {
+func AddRecordsToBatch(batch boltdbcommon.WriteBatch, tableName string, start, numRecords int) {
 	for i := 0; i < numRecords; i++ {
 		rec := []byte(strconv.Itoa(start + i))
 		batch.Add(tableName, "", rec, rec)
@@ -46,13 +46,13 @@ func AddRecordsToBatch(batch local.WriteBatch, tableName string, start, numRecor
 }
 
 // nolint
-func queryIndexes(t *testing.T, ctx context.Context, queries []local.Query, indexIteratorFunc IndexIteratorFunc, callback local.QueryPagesCallback) {
+func queryIndexes(t *testing.T, ctx context.Context, queries []boltdbcommon.Query, indexIteratorFunc IndexIteratorFunc, callback boltdbcommon.QueryPagesCallback) {
 	userID, err := tenant.TenantID(ctx)
 	require.NoError(t, err)
 
 	for _, query := range queries {
 		err := indexIteratorFunc(ctx, query.TableName, func(boltdb *bbolt.DB) error {
-			return queryBoltDB(ctx, boltdb, []byte(userID), []local.Query{query}, callback)
+			return queryBoltDB(ctx, boltdb, []byte(userID), []boltdbcommon.Query{query}, callback)
 		})
 		require.NoError(t, err)
 	}
@@ -60,7 +60,7 @@ func queryIndexes(t *testing.T, ctx context.Context, queries []local.Query, inde
 
 type IndexIteratorFunc func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error
 
-func VerifyIndexes(t *testing.T, userID string, queries []local.Query, indexIteratorFunc IndexIteratorFunc, start, numRecords int) {
+func VerifyIndexes(t *testing.T, userID string, queries []boltdbcommon.Query, indexIteratorFunc IndexIteratorFunc, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
@@ -71,10 +71,10 @@ func VerifyIndexes(t *testing.T, userID string, queries []local.Query, indexIter
 }
 
 type SingleDBQuerier interface {
-	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query local.Query, callback local.QueryPagesCallback) error
+	QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query boltdbcommon.Query, callback boltdbcommon.QueryPagesCallback) error
 }
 
-func VerifySingleIndexFile(t *testing.T, query local.Query, db *bbolt.DB, bucketName []byte, start, numRecords int) {
+func VerifySingleIndexFile(t *testing.T, query boltdbcommon.Query, db *bbolt.DB, bucketName []byte, start, numRecords int) {
 	t.Helper()
 	minValue := start
 	maxValue := start + numRecords
@@ -83,17 +83,17 @@ func VerifySingleIndexFile(t *testing.T, query local.Query, db *bbolt.DB, bucket
 	err := db.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketName)
 		require.NotNil(t, b)
-		return local.QueryWithCursor(context.Background(), b.Cursor(), query, makeTestCallback(t, minValue, maxValue, fetchedRecords))
+		return boltdbcommon.QueryWithCursor(context.Background(), b.Cursor(), query, makeTestCallback(t, minValue, maxValue, fetchedRecords))
 	})
 
 	require.NoError(t, err)
 	require.Len(t, fetchedRecords, numRecords)
 }
 
-func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) local.QueryPagesCallback {
+func makeTestCallback(t *testing.T, minValue, maxValue int, records map[string]string) boltdbcommon.QueryPagesCallback {
 	t.Helper()
 	recordsMtx := sync.Mutex{}
-	return func(_ local.Query, batch local.ReadBatchResult) (shouldContinue bool) {
+	return func(_ boltdbcommon.Query, batch boltdbcommon.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {
 			require.Equal(t, itr.RangeValue(), itr.Value())
@@ -122,12 +122,12 @@ type DBRecords struct {
 
 func SetupDBsAtPath(t *testing.T, path string, dbs map[string]DBConfig, bucketName []byte) string {
 	t.Helper()
-	boltIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: path})
+	boltIndexClient, err := boltdbcommon.NewBoltDBIndexClient(boltdbcommon.BoltDBConfig{Directory: path})
 	require.NoError(t, err)
 
 	defer boltIndexClient.Stop()
 
-	require.NoError(t, chunk_util.EnsureDirectory(path))
+	require.NoError(t, chunkutil.EnsureDirectory(path))
 
 	for name, dbConfig := range dbs {
 		AddRecordsToDB(t, filepath.Join(path, name), dbConfig.Start, dbConfig.NumRecords, bucketName)
@@ -229,7 +229,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBs
 		}
 	}
 
-	SetupDBsAtPath(t, path, commonDBsWithDefaultBucket, local.IndexBucketName)
+	SetupDBsAtPath(t, path, commonDBsWithDefaultBucket, boltdbcommon.IndexBucketName)
 
 	for dbName, userRecords := range commonDBsWithPerUserBucket {
 		for userID, dbConfig := range userRecords {
@@ -240,7 +240,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig DBsConfig, perUserDBs
 	}
 
 	for userID, dbRecords := range perUserDBs {
-		SetupDBsAtPath(t, filepath.Join(path, userID), dbRecords, local.IndexBucketName)
+		SetupDBsAtPath(t, filepath.Join(path, userID), dbRecords, boltdbcommon.IndexBucketName)
 	}
 }
 
@@ -248,18 +248,18 @@ func BuildUserID(id int) string {
 	return fmt.Sprintf("user-%d", id)
 }
 
-func queryBoltDB(ctx context.Context, db *bbolt.DB, userID []byte, queries []local.Query, callback local.QueryPagesCallback) error {
+func queryBoltDB(ctx context.Context, db *bbolt.DB, userID []byte, queries []boltdbcommon.Query, callback boltdbcommon.QueryPagesCallback) error {
 	return db.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(userID)
 		if bucket == nil {
-			bucket = tx.Bucket(local.IndexBucketName)
+			bucket = tx.Bucket(boltdbcommon.IndexBucketName)
 			if bucket == nil {
 				return nil
 			}
 		}
 
 		for _, query := range queries {
-			if err := local.QueryWithCursor(ctx, bucket.Cursor(), query, callback); err != nil {
+			if err := boltdbcommon.QueryWithCursor(ctx, bucket.Cursor(), query, callback); err != nil {
 				return err
 			}
 		}
