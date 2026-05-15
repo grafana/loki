@@ -233,19 +233,16 @@ func scanForMatches(ctx context.Context, obj *dataobj.Object, tenant string, old
 		}
 		for {
 			n, err := reader.Read(ctx, buf)
-			for i := 0; i < n; i++ {
+			for i := range n {
 				if _, ok := oldSet[buf[i].Path]; ok {
 					return true, nil
 				}
 			}
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
 				return false, errors.Wrap(err, "reading rows")
-			}
-			if n == 0 {
-				break
 			}
 		}
 	}
@@ -270,7 +267,7 @@ func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.
 		}
 		for {
 			n, err := reader.Read(ctx, buf)
-			for i := 0; i < n; i++ {
+			for i := range n {
 				if sectionTenant == tenant {
 					if _, drop := oldSet[buf[i].Path]; drop {
 						continue
@@ -280,14 +277,11 @@ func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.
 					return errors.Wrap(aerr, "replaying index pointer")
 				}
 			}
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
 				return errors.Wrap(err, "reading rows")
-			}
-			if n == 0 {
-				break
 			}
 		}
 	}
