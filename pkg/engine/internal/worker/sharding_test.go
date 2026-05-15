@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -30,8 +31,15 @@ func createTestRecordBatch(t *testing.T, numRows int, timestamps []time.Time, la
 	fields = append(fields, arrow.Field{Name: timestampFQN, Type: arrow.FixedWidthTypes.Timestamp_ns})
 	builders = append(builders, array.NewTimestampBuilder(alloc, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType)))
 
-	// Add label columns
+	// Sort label names for deterministic column order
+	labelNames := make([]string, 0, len(labels))
 	for labelName := range labels {
+		labelNames = append(labelNames, labelName)
+	}
+	slices.Sort(labelNames)
+
+	// Add label columns in sorted order
+	for _, labelName := range labelNames {
 		ident := semconv.NewIdentifier(labelName, types.ColumnTypeLabel, types.Loki.String)
 		fqn := ident.FQN()
 		fields = append(fields, arrow.Field{Name: fqn, Type: arrow.BinaryTypes.String})
@@ -50,9 +58,10 @@ func createTestRecordBatch(t *testing.T, numRows int, timestamps []time.Time, la
 			tsBuilder.AppendNull()
 		}
 
-		// Labels
+		// Labels in sorted order
 		labelIdx := 1
-		for _, values := range labels {
+		for _, labelName := range labelNames {
+			values := labels[labelName]
 			strBuilder := builders[labelIdx].(*array.StringBuilder)
 			if i < len(values) && values[i] != "" {
 				strBuilder.Append(values[i])
@@ -666,8 +675,10 @@ func TestComputeLabelHashShards_WithoutGrouping(t *testing.T) {
 	}
 
 	rec := createTestRecordBatch(t, 4, []time.Time{
-		time.Unix(10, 0), time.Unix(20, 0),
-		time.Unix(30, 0), time.Unix(40, 0),
+		time.Unix(10, 0),
+		time.Unix(20, 0),
+		time.Unix(30, 0),
+		time.Unix(40, 0),
 	}, labels)
 	defer rec.Release()
 
@@ -682,7 +693,7 @@ func TestComputeLabelHashShards_WithoutGrouping(t *testing.T) {
 		},
 	}
 
-	err := computeLabelHashShards(rec, grouping, 3, shardIndices)
+	err := computeLabelHashShards(rec, grouping, 4, shardIndices)
 	require.NoError(t, err)
 
 	// Rows 0 and 1 have same env=prod and region=us/eu, so they might differ
@@ -693,6 +704,6 @@ func TestComputeLabelHashShards_WithoutGrouping(t *testing.T) {
 	// Verify all indices are valid
 	for _, idx := range shardIndices {
 		require.GreaterOrEqual(t, idx, 0)
-		require.Less(t, idx, 3)
+		require.Less(t, idx, 4)
 	}
 }

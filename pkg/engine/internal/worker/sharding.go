@@ -50,11 +50,6 @@ func partitionRecordBatch(rec arrow.RecordBatch, routing *workflow.SinkRouting, 
 
 // computeLabelHashShards computes the shard index for each row based on grouping labels.
 func computeLabelHashShards(rec arrow.RecordBatch, grouping physical.Grouping, numShards int, shardIndices []int) error {
-	if len(grouping.Columns) == 0 {
-		// No grouping columns - all rows go to shard 0
-		return nil
-	}
-
 	var arrays []*array.String
 	var fields []arrow.Field
 	var err error

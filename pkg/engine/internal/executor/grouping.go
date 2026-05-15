@@ -19,7 +19,7 @@ type ExpressionEvaluatorForGrouping interface {
 	EvalForGrouping(expr physical.Expression, rec arrow.RecordBatch) (arrow.Array, error)
 }
 
-func collectGroupingColumns(record arrow.RecordBatch, grouping physical.Grouping, evaluator *expressionEvaluator, identCache *semconv.IdentifierCache) ([]*array.String, []arrow.Field, error) {
+func CollectGroupingColumns(record arrow.RecordBatch, grouping physical.Grouping, evaluator *expressionEvaluator, identCache *semconv.IdentifierCache) ([]*array.String, []arrow.Field, error) {
 	if grouping.Without {
 		return CollectWithoutGroupingColumns(record, grouping, identCache)
 	}

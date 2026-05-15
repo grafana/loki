@@ -185,7 +185,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 			assertions.CheckLabelValuesDuplicates(record)
 
-			arrays, groupingFields, err := collectGroupingColumns(record, r.opts.grouping, r.evaluator, r.identCache)
+			arrays, groupingFields, err := CollectGroupingColumns(record, r.opts.grouping, r.evaluator, r.identCache)
 			if err != nil {
 				return nil, err
 			}
