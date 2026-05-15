@@ -158,21 +158,6 @@ func buildRangeAggregationGrouping() physical.Grouping {
 	}
 }
 
-// benchmarkRangeAggregationWindows builds query windows the same way as rangeAggregationPipeline.init.
-func benchmarkRangeAggregationWindows(opts rangeAggregationOptions) []window {
-	windows := []window{}
-	cur := opts.startTs
-	endUnix := opts.endTs.UnixNano()
-	for cur.UnixNano() <= endUnix {
-		windows = append(windows, window{start: cur.Add(-opts.rangeInterval), end: cur})
-		if opts.step == 0 {
-			break
-		}
-		cur = cur.Add(opts.step)
-	}
-	return windows
-}
-
 func buildRangeAggregationInput() (*arrow.Schema, []arrowtest.Rows) {
 	fields := []arrow.Field{
 		semconv.FieldFromFQN(colTs, false),
@@ -193,7 +178,7 @@ func buildRangeAggregationInput() (*arrow.Schema, []arrowtest.Rows) {
 		for i := range rowsPerBatch {
 			offset := batch*rowsPerBatch + i
 			batchRows[i] = arrowtest.Row{
-				colTs:  base.Add(time.Duration(offset%28) * time.Second),
+				colTs:  base.Add(time.Duration(offset) * time.Second),
 				colEnv: []string{"prod", "dev", "staging"}[offset%3],
 				colSvc: []string{"app1", "app2", "app3", "app4"}[offset%4],
 			}
