@@ -13,10 +13,8 @@ type rule interface {
 
 func WorkflowOptimizations(plan *Plan) []*Optimization {
 	return []*Optimization{
-		newOptimization("ClampPredicates", plan).withRules(
-			&clampPredicates{plan: plan}),
-		newOptimization("ScanTimeRangePushup", plan).withRules(
-			&scanTimeRangePushup{plan: plan}),
+		newOptimization("ClampTimeRangesToScan", plan).withRules(
+			&clampTimeRangesToScan{plan: plan}),
 	}
 }
 
