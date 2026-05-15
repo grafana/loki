@@ -175,7 +175,7 @@ type openedPage struct {
 // After the page has been fully consumed, call the returned io.Closer to
 // release resources associated with the page. The openedPage must not be
 // used after closing.
-func (p *MemPage) open(compression datasetmd.CompressionType) (openedPage, io.Closer, error) {
+func (p *MemPage) open(compression datasetmd.CompressionType) (page openedPage, values io.ReadCloser, err error) {
 	if actual := crc32.Checksum(p.Bytes(), checksumTable); p.Desc.CRC32 != actual {
 		return openedPage{}, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, p.Desc.CRC32)
 	}
@@ -186,8 +186,8 @@ func (p *MemPage) open(compression datasetmd.CompressionType) (openedPage, io.Cl
 	}
 
 	var (
-		presenceData         = p.Data[n : n+int(bitmapSize)]
-		compressedValuesData = p.Data[n+int(bitmapSize):]
+		presenceData         = p.Bytes()[n : n+int(bitmapSize)]
+		compressedValuesData = p.Bytes()[n+int(bitmapSize):]
 	)
 
 	switch compression {
