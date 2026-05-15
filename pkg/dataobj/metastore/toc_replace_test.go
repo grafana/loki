@@ -50,7 +50,7 @@ func readToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path str
 		require.NoError(t, reader.Open(ctx))
 		for {
 			n, err := reader.Read(ctx, buf)
-			for i := 0; i < n; i++ {
+			for i := range n {
 				rows = append(rows, tocRow{
 					Tenant:    section.Tenant,
 					Path:      buf[i].Path,
@@ -136,56 +136,99 @@ func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
 }
 
 func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
-	ctx := context.Background()
-	window := unixTime(0)
-	bucket := objstore.NewInMemBucket()
-
-	// Three tenants, each with three rows at well-separated time ranges.
-	seedRows := []tocRow{
-		{"tenantA", "idx/a-0", 10, 20},
-		{"tenantA", "idx/a-1", 30, 40},
-		{"tenantA", "idx/a-2", 50, 60},
-		{"tenantB", "idx/b-0", 11, 21},
-		{"tenantB", "idx/b-1", 31, 41},
-		{"tenantB", "idx/b-2", 51, 61},
-		{"tenantC", "idx/c-0", 12, 22},
-		{"tenantC", "idx/c-1", 32, 42},
-		{"tenantC", "idx/c-2", 52, 62},
-	}
-	seedToC(t, bucket, window, seedRows)
-
-	// Capture B and C rows from the pre-swap state to compare verbatim.
-	preSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
-	bcRowsBefore := filterRows(preSwap, "tenantB", "tenantC")
-
-	writer := &TableOfContentsWriter{
-		bucket:      bucket,
-		metrics:     newTableOfContentsMetrics(),
-		logger:      log.NewNopLogger(),
-		builderOnce: sync.Once{},
-	}
-
-	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
-		[]string{"idx/a-0", "idx/a-1", "idx/a-2"},
-		[]TableOfContentsEntry{
-			{Path: "idx/a-merged", StartTime: unixTime(10), EndTime: unixTime(60)},
+	tests := []struct {
+		name           string
+		seedRows       []tocRow
+		targetTenant   string
+		oldPaths       []string
+		newEntries     []TableOfContentsEntry
+		wantTargetRows []tocRow
+		otherTenants   []string
+	}{
+		{
+			// Disjoint per-tenant index paths: each tenant owns its own set
+			// of idx/... paths. This is the L1 → L1 re-compaction shape.
+			name: "disjoint indexes per tenant",
+			seedRows: []tocRow{
+				{"tenantA", "idx/a-0", 10, 20},
+				{"tenantA", "idx/a-1", 30, 40},
+				{"tenantA", "idx/a-2", 50, 60},
+				{"tenantB", "idx/b-0", 11, 21},
+				{"tenantB", "idx/b-1", 31, 41},
+				{"tenantB", "idx/b-2", 51, 61},
+				{"tenantC", "idx/c-0", 12, 22},
+				{"tenantC", "idx/c-1", 32, 42},
+				{"tenantC", "idx/c-2", 52, 62},
+			},
+			targetTenant: "tenantA",
+			oldPaths:     []string{"idx/a-0", "idx/a-1", "idx/a-2"},
+			newEntries: []TableOfContentsEntry{
+				{Path: "idx/a-merged", StartTime: unixTime(10), EndTime: unixTime(60)},
+			},
+			wantTargetRows: []tocRow{{"tenantA", "idx/a-merged", 10, 60}},
+			otherTenants:   []string{"tenantB", "tenantC"},
 		},
-	)
-	require.NoError(t, err)
-	require.True(t, swapped, "expected tenantA swap to apply")
+		{
+			// L0 → L1 compaction shape: L0 indexes are multi-tenant — the
+			// same idx/... path is referenced from multiple tenants' sections.
+			// Compacting tenantA must drop those paths from tenantA's section
+			// ONLY; tenantB's references to the same shared L0 paths must
+			// remain. This exercises the `sectionTenant == tenant` guard.
+			name: "shared L0 indexes across tenants",
+			seedRows: []tocRow{
+				{"tenantA", "idx/l0-shared-0", 10, 20},
+				{"tenantB", "idx/l0-shared-0", 10, 20},
+				{"tenantA", "idx/l0-shared-1", 30, 40},
+				{"tenantB", "idx/l0-shared-1", 30, 40},
+				{"tenantC", "idx/c-0", 12, 22},
+			},
+			targetTenant: "tenantA",
+			oldPaths:     []string{"idx/l0-shared-0", "idx/l0-shared-1"},
+			newEntries: []TableOfContentsEntry{
+				{Path: "idx/a-l1", StartTime: unixTime(10), EndTime: unixTime(40)},
+			},
+			wantTargetRows: []tocRow{{"tenantA", "idx/a-l1", 10, 40}},
+			otherTenants:   []string{"tenantB", "tenantC"},
+		},
+	}
 
-	postSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			window := unixTime(0)
+			bucket := objstore.NewInMemBucket()
+			seedToC(t, bucket, window, tt.seedRows)
 
-	// 1. Tenant A is exactly the new single row.
-	aAfter := filterRows(postSwap, "tenantA")
-	require.Equal(t, []tocRow{
-		{"tenantA", "idx/a-merged", 10, 60},
-	}, aAfter)
+			// Capture other-tenant rows pre-swap so we can compare verbatim.
+			preSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
+			otherRowsBefore := filterRows(preSwap, tt.otherTenants...)
 
-	// 2. Tenants B and C are byte-equivalent (same rows, same time ranges) to pre-swap.
-	bcRowsAfter := filterRows(postSwap, "tenantB", "tenantC")
-	require.Equal(t, bcRowsBefore, bcRowsAfter,
-		"non-target tenant rows must be preserved unchanged")
+			writer := &TableOfContentsWriter{
+				bucket:      bucket,
+				metrics:     newTableOfContentsMetrics(),
+				logger:      log.NewNopLogger(),
+				builderOnce: sync.Once{},
+			}
+
+			swapped, err := writer.ReplaceIndexPointers(ctx, window,
+				tt.targetTenant, tt.oldPaths, tt.newEntries,
+			)
+			require.NoError(t, err)
+			require.True(t, swapped, "expected %s swap to apply", tt.targetTenant)
+
+			postSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
+
+			// 1. Target tenant ends up with exactly the expected rows.
+			targetAfter := filterRows(postSwap, tt.targetTenant)
+			require.Equal(t, tt.wantTargetRows, targetAfter)
+
+			// 2. Other tenants' rows are unchanged, including any that share
+			//    paths with oldPaths in their own sections.
+			otherRowsAfter := filterRows(postSwap, tt.otherTenants...)
+			require.Equal(t, otherRowsBefore, otherRowsAfter,
+				"non-target tenant rows must be preserved unchanged")
+		})
+	}
 }
 
 func filterRows(rows []tocRow, tenants ...string) []tocRow {
