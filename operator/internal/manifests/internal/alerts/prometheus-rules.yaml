@@ -26,37 +26,37 @@ groups:
 - name: loki_operator.telemetry
   rules:
   # Storage backend and credential mode
-  - record: loki_operator:lokistack_storage_info:count
+  - record: openshift_logging:lokistack_storage_info:count
     expr: |
       count(
         lokistack_storage_info
       ) by (backend_type, credential_mode)
   # Storage schema version
-  - record: loki_operator:lokistack_storage_schema_version:count
+  - record: openshift_logging:lokistack_storage_schema_version:count
     expr: |
       count(
         lokistack_storage_schema_version
       ) by (version)
   # Total LokiStack instances by size
-  - record: loki_operator:lokistack_info:count
+  - record: openshift_logging:lokistack_info:count
     expr: |
       count(
         lokistack_info
       ) by (size)
-  # Component replicas: count stacks with custom replicas per component
-  - record: loki_operator:lokistack_component_custom_replicas:count
+  # Component replicas: count stacks with user-configured replicas per component
+  - record: openshift_logging:lokistack_component_custom_replicas:count
     expr: |
       count(
-        lokistack_component_replicas
+        lokistack_component_custom_replicas
       ) by (component)
-  # Average set ingestion rate limit
-  - record: loki_operator:lokistack_global_ingestion_rate_limit_mb:avg
+  # Average user-configured ingestion rate limit
+  - record: openshift_logging:lokistack_global_ingestion_rate_limit_mb:avg
     expr: |
       avg(
         lokistack_global_ingestion_rate_limit_mb
       )
   # Ingester CPU usage per LokiStack (cores)
-  - record: loki_operator:lokistack_ingester_cpu_cores:sum
+  - record: openshift_logging:lokistack_ingester_cpu_cores:sum
     expr: |
       sum by (stack_namespace, stack_name) (
         label_replace(
@@ -77,7 +77,7 @@ groups:
         )
       )
   # Ingester memory usage per LokiStack (bytes)
-  - record: loki_operator:lokistack_ingester_memory_working_set_bytes:sum
+  - record: openshift_logging:lokistack_ingester_memory_working_set_bytes:sum
     expr: |
       sum by (stack_namespace, stack_name) (
         label_replace(
@@ -98,7 +98,7 @@ groups:
         )
       )
   # Observed ingestion rate (received - discarded) per LokiStack (MB/s)
-  - record: loki_operator:lokistack_ingestion_rate_mb_per_second:sum
+  - record: openshift_logging:lokistack_ingestion_rate_mb_per_second:sum
     expr: |
       sum by (stack_namespace, stack_name) (
         label_replace(
