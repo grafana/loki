@@ -42,6 +42,19 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
+	// TODO: In future, we want to be able to compose this with the middleware pattern,
+	// but this requires refactor of this file to support next handlers. We will do
+	// this at a later time.
+	var circuitBreakerDoneFunc func(err error)
+	if d.circuitBreaker != nil {
+		var ok bool
+		ok, circuitBreakerDoneFunc = d.circuitBreaker.Allow()
+		if !ok {
+			errorWriter(w, "circuit breaker open, request denied", http.StatusServiceUnavailable, logger)
+			return
+		}
+	}
+
 	if d.RequestParserWrapper != nil {
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
@@ -152,6 +165,9 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	}
 
 	_, err = d.PushWithResolver(r.Context(), req, streamResolver, format)
+	if circuitBreakerDoneFunc != nil {
+		circuitBreakerDoneFunc(err)
+	}
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(

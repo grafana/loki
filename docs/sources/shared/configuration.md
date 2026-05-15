@@ -3452,6 +3452,23 @@ dataobj_tee:
   # used instead.
   # CLI flag: -distributor.dataobj-tee.use-rendezvous-hashing
   [use_rendezvous_hashing: <boolean> | default = false]
+
+circuit_breaker:
+  # Enable circuit breakers.
+  # CLI flag: -distributor.circuit-breaker.enabled
+  [enabled: <boolean> | default = false]
+
+  # The open period.
+  # CLI flag: -distributor.circuit-breaker.open-period
+  [open_period: <duration> | default = 1s]
+
+  # The half-open period.
+  # CLI flag: -distributor.circuit-breaker.half-open-period
+  [half_open_period: <duration> | default = 30s]
+
+  # The maximum number of requests permitted at a time in the half-open period.
+  # CLI flag: -distributor.circuit-breaker.max-requests
+  [max_requests: <int> | default = 100]
 ```
 
 ### etcd

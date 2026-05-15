@@ -113,7 +113,8 @@ type Config struct {
 
 	KafkaConfig kafka.Config `yaml:"-"`
 
-	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
+	DataObjTeeConfig DataObjTeeConfig     `yaml:"dataobj_tee"`
+	CircuitBreaker   CircuitBreakerConfig `yaml:"circuit_breaker"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -121,6 +122,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.DataObjTeeConfig.RegisterFlags(fs)
+	cfg.CircuitBreaker.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
@@ -139,9 +141,42 @@ func (cfg *Config) Validate() error {
 	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
 		return err
 	}
+	if err := cfg.CircuitBreaker.Validate(); err != nil {
+		return err
+	}
 	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
 	if cfg.MaxDecompressedSize == 0 && cfg.MaxRecvMsgSize > 0 {
 		cfg.MaxDecompressedSize = int64(cfg.MaxRecvMsgSize) * 50
+	}
+	return nil
+}
+
+type CircuitBreakerConfig struct {
+	Enabled        bool          `yaml:"enabled"`
+	OpenPeriod     time.Duration `yaml:"open_period"`
+	HalfOpenPeriod time.Duration `yaml:"half_open_period"`
+	MaxRequests    int           `yaml:"max_requests"`
+}
+
+func (cfg *CircuitBreakerConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enabled, "distributor.circuit-breaker.enabled", false, "Enable circuit breakers.")
+	f.DurationVar(&cfg.OpenPeriod, "distributor.circuit-breaker.open-period", time.Second, "The open period.")
+	f.DurationVar(&cfg.HalfOpenPeriod, "distributor.circuit-breaker.half-open-period", 30*time.Second, "The half-open period.")
+	f.IntVar(&cfg.MaxRequests, "distributor.circuit-breaker.max-requests", 100, "The maximum number of requests permitted at a time in the half-open period.")
+}
+
+func (cfg *CircuitBreakerConfig) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.OpenPeriod < 0 {
+		return errors.New("the open period must be a positive duration")
+	}
+	if cfg.HalfOpenPeriod <= 0 {
+		return errors.New("the half-open period must be a positive duration")
+	}
+	if cfg.MaxRequests <= 0 {
+		return errors.New("the max requests in half-open period cannot be less than or equal to zero")
 	}
 	return nil
 }
@@ -297,6 +332,7 @@ type Distributor struct {
 	// Track the max inflight bytes in the last 1 minute.
 	inflightBytesHighWatermark prometheus.Summary
 	inflightBytes              atomic.Int64
+	circuitBreaker             circuitBreaker
 }
 
 // New a distributor creates.
@@ -450,6 +486,19 @@ func New(
 			Objectives: map[float64]float64{1.0: 0.1},
 			MaxAge:     time.Minute,
 		}),
+	}
+
+	if cfg.CircuitBreaker.Enabled {
+		circuitBreaker := newLinearRampCircuitBreaker(
+			cfg.CircuitBreaker.OpenPeriod,
+			cfg.CircuitBreaker.HalfOpenPeriod,
+			func(err error) bool {
+				return errors.Is(err, kgo.ErrMaxBuffered)
+			},
+			cfg.CircuitBreaker.MaxRequests,
+		)
+		registerer.MustRegister(circuitBreaker)
+		d.circuitBreaker = circuitBreaker
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
