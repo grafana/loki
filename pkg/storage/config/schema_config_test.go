@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
@@ -238,104 +237,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 				},
 			},
 			err: nil,
-		},
-		"should fail if chunks prefix is missing on IndexType: aws-dynamo": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "aws-dynamo",
-						ObjectType: "aws-dynamo",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: cassandra": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "cassandra",
-						ObjectType: "cassandra",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: bigtable-hashed": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "bigtable-hashed",
-						ObjectType: "bigtable-hashed",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: gcp": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "gcp",
-						ObjectType: "gcp",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: gcp-columnkey": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "gcp-columnkey",
-						ObjectType: "gcp-columnkey",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: bigtable": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "bigtable",
-						ObjectType: "bigtable",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: grpc-store": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:     "v10",
-						IndexType:  "grpc-store",
-						ObjectType: "grpc-store",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
 		},
 		"invalid schema with same from time configs": {
 			config: &SchemaConfig{
@@ -704,23 +605,12 @@ store: boltdb-shipper
 func TestUsingObjectStorageIndex(t *testing.T) {
 	var cfg SchemaConfig
 
-	// just one PeriodConfig in the past using boltdb-shipper
 	cfg.Configs = []PeriodConfig{{
 		From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
-		IndexType: "boltdb-shipper",
-	}}
-	assert.Equal(t, true, UsingObjectStorageIndex(cfg.Configs))
-
-	// just one PeriodConfig in the past not using object storge index
-	cfg.Configs[0].IndexType = "boltdb"
-	assert.Equal(t, false, UsingObjectStorageIndex(cfg.Configs))
-
-	// add a newer PeriodConfig in the future using tsdb
-	cfg.Configs = append(cfg.Configs, PeriodConfig{
-		From:      DayTime{Time: model.Now().Add(time.Hour)},
 		IndexType: "tsdb",
-	})
-	assert.Equal(t, true, UsingObjectStorageIndex(cfg.Configs))
+	}}
+
+	require.Equal(t, true, UsingObjectStorageIndex(cfg.Configs))
 }
 
 func TestActiveIndexType(t *testing.T) {
@@ -747,129 +637,6 @@ func TestActiveIndexType(t *testing.T) {
 		IndexType: "third",
 	})
 	assert.Equal(t, 1, ActivePeriodConfig(cfg.Configs))
-}
-
-func TestSchemaConfig_ValidateBoltdb(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		configs []PeriodConfig
-		err     error
-	}{
-		{
-			name:    "empty",
-			configs: []PeriodConfig{},
-			err:     errZeroLengthConfig,
-		},
-		{
-			name: "NOT using boltdb-shipper",
-			configs: []PeriodConfig{{
-				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
-				IndexType: "boltdb",
-				Schema:    "v9",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Period: 7 * 24 * time.Hour,
-					}},
-			}},
-		},
-		{
-			name: "current config boltdb-shipper with 7 days periodic config, without future index type changes",
-			configs: []PeriodConfig{{
-				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
-				IndexType: "boltdb-shipper",
-				Schema:    "v9",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Period: 7 * 24 * time.Hour,
-					}},
-			}},
-			err: errCurrentBoltdbShipperNon24Hours,
-		},
-		{
-			name: "current config boltdb-shipper with 1 day periodic config, without future index type changes",
-			configs: []PeriodConfig{{
-				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
-				IndexType: "boltdb-shipper",
-				Schema:    "v9",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Period: 24 * time.Hour,
-					}},
-			}},
-		},
-		{
-			name: "current config boltdb-shipper with 7 days periodic config, upcoming config NOT boltdb-shipper",
-			configs: []PeriodConfig{{
-				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
-				IndexType: "boltdb-shipper",
-				Schema:    "v9",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Period: 24 * time.Hour,
-					}},
-			}, {
-				From:      DayTime{Time: model.Now().Add(time.Hour)},
-				IndexType: "boltdb",
-				Schema:    "v9",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Period: 7 * 24 * time.Hour,
-					}},
-			}},
-		},
-		{
-			name: "current and upcoming config boltdb-shipper with 7 days periodic config",
-			configs: []PeriodConfig{{
-				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
-				IndexType: "boltdb-shipper",
-				Schema:    "v9",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Period: 24 * time.Hour,
-					}},
-			}, {
-				From:      DayTime{Time: model.Now().Add(time.Hour)},
-				IndexType: "boltdb-shipper",
-				Schema:    "v9",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Period: 7 * 24 * time.Hour,
-					}},
-			}},
-			err: errUpcomingBoltdbShipperNon24Hours,
-		},
-		{
-			name: "current config NOT boltdb-shipper, upcoming config boltdb-shipper with 7 days periodic config",
-			configs: []PeriodConfig{{
-				From:      DayTime{Time: model.Now().Add(-24 * time.Hour)},
-				IndexType: "boltdb",
-				Schema:    "v9",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Period: 24 * time.Hour,
-					}},
-			}, {
-				From:      DayTime{Time: model.Now().Add(time.Hour)},
-				IndexType: "boltdb-shipper",
-				Schema:    "v9",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Period: 7 * 24 * time.Hour,
-					}},
-			}},
-			err: errUpcomingBoltdbShipperNon24Hours,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg := SchemaConfig{Configs: tc.configs}
-			err := cfg.Validate()
-			if tc.err == nil {
-				require.NoError(t, err)
-			} else {
-				require.EqualError(t, err, tc.err.Error())
-			}
-		})
-	}
 }
 
 func TestTableRanges_TableInRange(t *testing.T) {
@@ -1015,43 +782,8 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 	schemaConfig := SchemaConfig{
 		Configs: []PeriodConfig{
 			{
-				From:       DayTime{Time: now.Add(30 * 24 * time.Hour)},
-				IndexType:  types.BoltDBShipperType,
-				ObjectType: types.StorageTypeFileSystem,
-				Schema:     "v9",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					}},
-			},
-			{
-				From:       DayTime{Time: now.Add(20 * 24 * time.Hour)},
-				IndexType:  types.BoltDBShipperType,
-				ObjectType: types.StorageTypeFileSystem,
-				Schema:     "v11",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					}},
-				RowShards: 2,
-			},
-			{
 				From:       DayTime{Time: now.Add(15 * 24 * time.Hour)},
-				IndexType:  types.TSDBType,
-				ObjectType: types.StorageTypeFileSystem,
-				Schema:     "v11",
-				IndexTables: IndexPeriodicTableConfig{
-					PeriodicTableConfig: PeriodicTableConfig{
-						Prefix: "index_",
-						Period: time.Hour * 24,
-					}},
-				RowShards: 2,
-			},
-			{
-				From:       DayTime{Time: now.Add(10 * 24 * time.Hour)},
-				IndexType:  types.StorageTypeBigTable,
+				IndexType:  types.IndexTypeTSDB,
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v11",
 				IndexTables: IndexPeriodicTableConfig{
@@ -1063,7 +795,7 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			},
 			{
 				From:       DayTime{Time: now.Add(5 * 24 * time.Hour)},
-				IndexType:  types.TSDBType,
+				IndexType:  types.IndexTypeTSDB,
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v11",
 				IndexTables: IndexPeriodicTableConfig{
@@ -1076,6 +808,9 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 		},
 	}
 
+	var zero TableRanges
+	require.Equal(t, zero, GetIndexStoreTableRanges("unknown-index-type", schemaConfig.Configs))
+
 	require.Equal(t, TableRanges{
 		{
 			Start:        schemaConfig.Configs[0].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
@@ -1084,45 +819,11 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 		},
 		{
 			Start:        schemaConfig.Configs[1].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			End:          schemaConfig.Configs[2].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			End:          model.Time(math.MaxInt64).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
 			PeriodConfig: &schemaConfig.Configs[1],
 		},
-	}, GetIndexStoreTableRanges(types.BoltDBShipperType, schemaConfig.Configs))
-
-	require.Equal(t, TableRanges{
-		{
-			Start:        schemaConfig.Configs[3].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			End:          schemaConfig.Configs[4].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[3],
-		},
-	}, GetIndexStoreTableRanges(types.StorageTypeBigTable, schemaConfig.Configs))
-
-	require.Equal(t, TableRanges{
-		{
-			Start:        schemaConfig.Configs[2].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			End:          schemaConfig.Configs[3].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[2],
-		},
-		{
-			Start:        schemaConfig.Configs[4].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			End:          model.Time(math.MaxInt64).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[4],
-		},
-	}, GetIndexStoreTableRanges(types.TSDBType, schemaConfig.Configs))
+	}, GetIndexStoreTableRanges(types.IndexTypeTSDB, schemaConfig.Configs))
 }
-
-const (
-	fixedTimestamp = model.Time(1557654321000)
-	userID         = "userID"
-)
-
-var (
-	labelsForDummyChunks = labels.New(
-		labels.Label{Name: model.MetricNameLabel, Value: "foo"},
-		labels.Label{Name: "bar", Value: "baz"},
-		labels.Label{Name: "toms", Value: "code"},
-	)
-)
 
 func TestChunkKeys(t *testing.T) {
 	for _, tc := range []struct {

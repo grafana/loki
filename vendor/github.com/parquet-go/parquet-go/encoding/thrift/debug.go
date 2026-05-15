@@ -124,6 +124,10 @@ func (d *debugReader) ReadMap() (Map, error) {
 	return v, err
 }
 
+func (d *debugReader) BytesRead() int {
+	return d.r.BytesRead()
+}
+
 type debugWriter struct {
 	w Writer
 	l *log.Logger

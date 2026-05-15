@@ -35,7 +35,7 @@ type FlattenOpts struct {
 	_ struct{} // require keys
 }
 
-// ExpandOpts creates a spec.ExpandOptions to configure expanding a specification document.
+// ExpandOpts creates a spec.[spec.ExpandOptions] to configure expanding a specification document.
 func (f *FlattenOpts) ExpandOpts(skipSchemas bool) *spec.ExpandOptions {
 	return &spec.ExpandOptions{
 		RelativeBase:    f.BasePath,

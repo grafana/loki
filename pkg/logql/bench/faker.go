@@ -187,13 +187,6 @@ var (
 		"file not found",
 		"invalid request",
 	}
-	nginxErrors = []string{
-		"access forbidden by rule",
-		"client closed connection while reading request headers",
-		"upstream timed out (110: Connection timed out)",
-		"file not found",
-		"client sent invalid request",
-	}
 	kafkaTopics = []string{
 		"users",
 		"orders",
@@ -507,7 +500,7 @@ var defaultApplications = []Service{
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
-				`{"level":"%s","ts":"%s","msg":"HTTP request","method":"%s","path":"%s","status":%d,"duration":%d,"user_agent":"%s","client_ip":"%s"`,
+				`{"level":"%s","ts":"%s","msg":"HTTP request","method":"%s","path":"%s","status":%d,"duration_ms":%d,"user_agent":"%s","client_ip":"%s"`,
 				level, ts.Format(time.RFC3339), f.Method(), f.Path(), f.Status(), f.Duration().Milliseconds(), f.UserAgent(), f.IP(),
 			)
 
@@ -543,7 +536,7 @@ var defaultApplications = []Service{
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
-				`{"level":"%s","ts":"%s","msg":"Query executed","query_type":"%s","table":"%s","duration":%d,"rows_affected":%d`,
+				`{"level":"%s","ts":"%s","msg":"Query executed","query_type":"%s","table":"%s","duration_ms":%d,"rows_affected":%d`,
 				level, ts.Format(time.RFC3339), f.QueryType(), f.Table(), f.Duration().Milliseconds(), f.RowsAffected(),
 			)
 
@@ -752,6 +745,11 @@ var defaultApplications = []Service{
 				baseLogfmt += fmt.Sprintf(` streams=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
 			}
 
+			// Add size for some logs (e.g. uncompressed request size)
+			if f.rnd.Float32() < 0.5 {
+				baseLogfmt += fmt.Sprintf(` size=%d`, f.rnd.Intn(10000))
+			}
+
 			// Add error for error level logs
 			if level == errorLevel {
 				baseLogfmt += fmt.Sprintf(` error="failed to %s: %s"`, f.GRPCMethod(), f.ErrorMessage())
@@ -794,6 +792,11 @@ var defaultApplications = []Service{
 			// Add metrics for some logs
 			if f.rnd.Float32() < 0.5 {
 				baseLogfmt += fmt.Sprintf(` streams=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
+			}
+
+			// Add size for some logs (e.g. uncompressed request size)
+			if f.rnd.Float32() < 0.5 {
+				baseLogfmt += fmt.Sprintf(` size=%d`, f.rnd.Intn(10000))
 			}
 
 			// Add error for error level logs
@@ -842,7 +845,7 @@ var defaultApplications = []Service{
 
 			// Add metrics for some logs
 			if f.rnd.Float32() < 0.5 {
-				baseLogfmt += fmt.Sprintf(` spans=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
+				baseLogfmt += fmt.Sprintf(` streams=%d bytes=%d`, f.rnd.Intn(1000), f.rnd.Intn(10000000))
 			}
 
 			// Add error for error level logs

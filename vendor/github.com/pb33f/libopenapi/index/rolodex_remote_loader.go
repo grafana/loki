@@ -230,8 +230,9 @@ func detectRemoteContentType(url string, handler utils.RemoteURLHandler, logger 
 	return detectedType
 }
 
-// clearContentDetectionCache clears the content detection cache
-func clearContentDetectionCache() {
+// ClearContentDetectionCache clears the content detection cache.
+// Call this between document lifecycles in long-running processes to bound memory.
+func ClearContentDetectionCache() {
 	contentDetectionMutex.Lock()
 	contentDetectionCache = make(map[string]FileExtension)
 	contentDetectionMutex.Unlock()

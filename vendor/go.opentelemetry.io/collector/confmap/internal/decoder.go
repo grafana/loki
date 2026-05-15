@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 
+	"go.opentelemetry.io/collector/confmap/internal/metadata"
 	"go.opentelemetry.io/collector/confmap/internal/third_party/composehook"
 )
 
@@ -87,7 +88,10 @@ func Decode(input, result any, settings UnmarshalOptions, skipTopLevelUnmarshale
 
 // When a value has been loaded from an external source via a provider, we keep both the
 // parsed value and the original string value. This allows us to expand the value to its
-// original string representation when decoding into a string field, and use the original otherwise.
+// original string representation when decoding into a string field, and use the parsed value otherwise.
+//
+// Fields containing a pointer to a string will also be set to the original string representation,
+// except when the parsed value is nil (i.e. parsed from YAML `null`, `NULL`, `~`, the empty string, etc.)
 func useExpandValue() mapstructure.DecodeHookFuncType {
 	return func(
 		_ reflect.Type,
@@ -95,7 +99,26 @@ func useExpandValue() mapstructure.DecodeHookFuncType {
 		data any,
 	) (any, error) {
 		if exp, ok := data.(ExpandedValue); ok {
-			v := castTo(exp, to.Kind() == reflect.String)
+			var useOriginal bool
+			if metadata.ConfmapNewExpandedValueSanitizerFeatureGate.IsEnabled() {
+				// Check if the target field is string, *string, **string, etc.
+				baseType := to
+				pointed := false
+				for baseType.Kind() == reflect.Pointer {
+					baseType = baseType.Elem()
+					pointed = true
+				}
+				useOriginal = baseType.Kind() == reflect.String
+
+				// If the parsed value is nil and the target is a pointer, use the parsed value.
+				if pointed && exp.Value == nil {
+					useOriginal = false
+				}
+			} else {
+				useOriginal = to.Kind() == reflect.String
+			}
+
+			v := castTo(exp, useOriginal)
 			// See https://github.com/open-telemetry/opentelemetry-collector/issues/10949
 			// If the `to.Kind` is not a string, then expandValue's original value is useless and
 			// the casted-to value will be nil. In that scenario, we need to use the default value of `to`'s kind.
@@ -105,7 +128,7 @@ func useExpandValue() mapstructure.DecodeHookFuncType {
 			return v, nil
 		}
 
-		if !NewExpandedValueSanitizer.IsEnabled() {
+		if !metadata.ConfmapNewExpandedValueSanitizerFeatureGate.IsEnabled() {
 			switch to.Kind() {
 			case reflect.Array, reflect.Slice, reflect.Map:
 				if isStringyStructure(to) {

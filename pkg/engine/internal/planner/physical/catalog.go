@@ -17,8 +17,6 @@ var (
 		types.BinaryOpMatchRe:    labels.MatchRegexp,
 		types.BinaryOpNotMatchRe: labels.MatchNotRegexp,
 	}
-
-	noShard = ShardInfo{Shard: 0, Of: 1}
 )
 
 type ShardInfo struct {

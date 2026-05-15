@@ -18,6 +18,8 @@ local dockerPluginDir = 'clients/cmd/docker-driver';
       imagePrefix='trevorwhitney075',
       releaseLibRef='main',
       releaseRepo='grafana/loki-release',
+      distRunsOn='ubuntu-26.04',
+      distOptionalTargets=['dist/loki-linux-riscv64'],
       skipValidation=false,
       versioningStrategy='always-bump-patch',
     ) + {

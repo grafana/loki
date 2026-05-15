@@ -41,7 +41,6 @@ type markerStorageWriter struct {
 	count               int64
 	currentFileCount    int64
 	curFileName         string
-	workDir             string
 	markerStorageClient client.ObjectClient
 
 	buf []byte

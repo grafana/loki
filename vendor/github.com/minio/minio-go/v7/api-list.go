@@ -404,7 +404,7 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 		}
 
 		var (
-			keyMarker       = ""
+			keyMarker       = opts.StartAfter
 			versionIDMarker = ""
 			preName         = ""
 			preKey          = ""
@@ -432,12 +432,18 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 					UserMetadata:      version.UserMetadata,
 					Internal:          version.Internal,
 					NumVersions:       numVersions,
+					ChecksumAlgorithm: version.ChecksumAlgorithm,
 					ChecksumMode:      version.ChecksumType,
 					ChecksumCRC32:     version.ChecksumCRC32,
 					ChecksumCRC32C:    version.ChecksumCRC32C,
 					ChecksumSHA1:      version.ChecksumSHA1,
 					ChecksumSHA256:    version.ChecksumSHA256,
 					ChecksumCRC64NVME: version.ChecksumCRC64NVME,
+					ChecksumMD5:       version.ChecksumMD5,
+					ChecksumSHA512:    version.ChecksumSHA512,
+					ChecksumXXHash64:  version.ChecksumXXHash64,
+					ChecksumXXHash3:   version.ChecksumXXHash3,
+					ChecksumXXHash128: version.ChecksumXXHash128,
 				}
 				if !yield(info) {
 					return false

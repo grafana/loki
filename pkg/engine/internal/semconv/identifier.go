@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"go.uber.org/atomic"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -39,7 +41,7 @@ type Identifier struct {
 	dataType   types.DataType
 
 	// fqn is the cached fully qualified name to avoid allocations when calling FQN() multiple times
-	fqn string
+	fqn atomic.String
 }
 
 // DataType returns the Loki data type of the identifier.
@@ -85,10 +87,12 @@ func (i *Identifier) String() string {
 
 // FQN returns the fully qualified name of the identifier.
 func (i *Identifier) FQN() string {
-	if i.fqn == "" {
-		i.fqn = fmt.Sprintf("%s.%s.%s", i.dataType, i.columnType, i.columnName)
+	v := i.fqn.Load()
+	if v == "" {
+		v = fmt.Sprintf("%s.%s.%s", i.dataType, i.columnType, i.columnName)
+		i.fqn.Store(v)
 	}
-	return i.fqn
+	return v
 }
 
 // Equal checks equality of the identifier against a second identifier.
@@ -142,12 +146,14 @@ func ParseFQN(fqn string) (*Identifier, error) {
 	}
 	columnType := types.ColumnTypeFromString(ct)
 
-	return &Identifier{
+	ret := &Identifier{
 		columnName: columnName,
 		columnType: columnType,
 		dataType:   dataType,
-		fqn:        fqn,
-	}, nil
+	}
+	ret.fqn.Store(fqn)
+
+	return ret, nil
 }
 
 // ParseFQN returns an [Identifier] from the given fully qualified name.

@@ -27,7 +27,6 @@ type RingCount interface {
 }
 
 type Limits interface {
-	UnorderedWrites(userID string) bool
 	UseOwnedStreamCount(userID string) bool
 	MaxLocalStreamsPerUser(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
@@ -80,16 +79,6 @@ func NewLimiter(limits Limits, metrics *ingesterMetrics, ingesterRingLimiterStra
 		metrics:           metrics,
 		rateLimitStrategy: rateLimitStrategy,
 	}
-}
-
-func (l *Limiter) UnorderedWrites(userID string) bool {
-	// WAL replay should not discard previously ack'd writes,
-	// so allow out of order writes while the limiter is disabled.
-	// This allows replaying unordered WALs into ordered configurations.
-	if l.disabled {
-		return true
-	}
-	return l.limits.UnorderedWrites(userID)
 }
 
 func (l *Limiter) GetStreamCountLimit(tenantID string, policy string) (calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit int) {
@@ -209,22 +198,27 @@ type streamCountLimiter struct {
 	limiter                    *Limiter
 	defaultStreamCountSupplier supplier[int]
 	ownedStreamSvc             *ownedStreamService
+	delegateStreamLimits       bool
 }
 
 var noopFixedLimitSupplier = func() int {
 	return 0
 }
 
-func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[int], limiter *Limiter, service *ownedStreamService) *streamCountLimiter {
+func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[int], limiter *Limiter, service *ownedStreamService, delegateStreamLimits bool) *streamCountLimiter {
 	return &streamCountLimiter{
 		tenantID:                   tenantID,
 		limiter:                    limiter,
 		defaultStreamCountSupplier: defaultStreamCountSupplier,
 		ownedStreamSvc:             service,
+		delegateStreamLimits:       delegateStreamLimits,
 	}
 }
 
 func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string, policy string) error {
+	if l.delegateStreamLimits {
+		return nil
+	}
 	streamCountSupplier, fixedLimitSupplier := l.getSuppliers(tenantID, policy)
 	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit := l.getCurrentLimit(tenantID, policy, fixedLimitSupplier)
 	actualStreamsCount := streamCountSupplier()

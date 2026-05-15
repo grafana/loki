@@ -105,6 +105,13 @@ type DocumentConfiguration struct {
 	// passed in and used. Only enable this when parsing non openapi documents.
 	BypassDocumentCheck bool
 
+	// SkipJSONConversion skips the YAML-to-JSON conversion during spec parsing.
+	// SpecJSON and SpecJSONBytes on SpecInfo will be nil when enabled.
+	// This also skips structural validation that parseJSON performs (e.g., duplicate key detection).
+	// Safe when document-level schema validation rules are not running and no custom
+	// functions depend on the JSON representation.
+	SkipJSONConversion bool
+
 	// IgnorePolymorphicCircularReferences will skip over checking for circular references in polymorphic schemas.
 	// A polymorphic schema is any schema that is composed other schemas using references via `oneOf`, `anyOf` of `allOf`.
 	// This is disabled by default, which means polymorphic circular references will be checked.
@@ -202,6 +209,10 @@ type DocumentConfiguration struct {
 	// - OverwriteWithRemote: Referenced properties overwrite local properties
 	// - RejectConflicts: Throw error when properties conflict
 	PropertyMergeStrategy PropertyMergeStrategy
+
+	// ResolveNestedRefsWithDocumentContext uses the referenced document's path/index as the base for nested refs.
+	// This controls how nested relative references are interpreted during reference resolution.
+	ResolveNestedRefsWithDocumentContext bool
 }
 
 func NewDocumentConfiguration() *DocumentConfiguration {

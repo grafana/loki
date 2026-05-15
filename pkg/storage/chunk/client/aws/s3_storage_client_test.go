@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"syscall"
 	"testing"
@@ -29,6 +30,20 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 )
+
+func TestMain(m *testing.M) {
+	// Prevent tests from loading the host's AWS config, which may have profiles
+	// that fail validation (e.g. SSO profiles missing required fields).
+	for _, env := range os.Environ() {
+		if strings.HasPrefix(env, "AWS_") {
+			os.Unsetenv(strings.SplitN(env, "=", 2)[0])
+		}
+	}
+	os.Setenv("AWS_CONFIG_FILE", "/dev/null")
+	os.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
+	os.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+	os.Exit(m.Run())
+}
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
 

@@ -51,31 +51,36 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 				return blocked
 			}
 
-			return false
+			continue
 		}
+
+		// Use local copies to avoid mutating the shared config object.
+		// This makes `isBlocked` safe to be called concurrently.
+		pattern := b.Pattern
+		isRegex := b.Regex
 
 		// if no pattern is given, assume we want to match all queries
-		if b.Pattern == "" {
-			b.Pattern = ".*"
-			b.Regex = true
+		if pattern == "" {
+			pattern = ".*"
+			isRegex = true
 		}
 
-		if strings.TrimSpace(b.Pattern) == strings.TrimSpace(query) {
+		if strings.TrimSpace(pattern) == strings.TrimSpace(query) {
 			typesMatched, tagsMatched, blocked := qb.block(ctx, b, typ, logger)
 			level.Warn(logger).Log("msg", "query blocker matched with exact match policy", "query", query, "typesMatched", typesMatched, "tagsMatched", tagsMatched, "blocked", blocked)
 			return blocked
 		}
 
-		if b.Regex {
-			r, err := regexp.Compile(b.Pattern)
+		if isRegex {
+			r, err := regexp.Compile(pattern)
 			if err != nil {
-				level.Error(logger).Log("msg", "query blocker regex does not compile", "pattern", b.Pattern, "err", err)
+				level.Error(logger).Log("msg", "query blocker regex does not compile", "pattern", pattern, "err", err)
 				continue
 			}
 
 			if r.MatchString(query) {
 				typesMatched, tagsMatched, blocked := qb.block(ctx, b, typ, logger)
-				level.Warn(logger).Log("msg", "query blocker matched with regex policy", "pattern", b.Pattern, "query", query, "typesMatched", typesMatched, "tagsMatched", tagsMatched, "blocked", blocked)
+				level.Warn(logger).Log("msg", "query blocker matched with regex policy", "pattern", pattern, "query", query, "typesMatched", typesMatched, "tagsMatched", tagsMatched, "blocked", blocked)
 				return blocked
 			}
 		}

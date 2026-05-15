@@ -108,13 +108,7 @@ func (m *ComputeInputPayloadChecksum) HandleFinalize(
 	out middleware.FinalizeOutput, metadata middleware.Metadata, err error,
 ) {
 	var checksum string
-	algorithm, ok, err := getInputAlgorithm(ctx)
-	if err != nil {
-		return out, metadata, err
-	}
-	if !ok {
-		return next.HandleFinalize(ctx, in)
-	}
+	var algorithm Algorithm
 
 	req, ok := in.Request.(*smithyhttp.Request)
 	if !ok {
@@ -137,11 +131,19 @@ func (m *ComputeInputPayloadChecksum) HandleFinalize(
 	// If any checksum header is already set nothing to do.
 	for header := range req.Header {
 		h := strings.ToUpper(header)
-		if strings.HasPrefix(h, "X-AMZ-CHECKSUM-") {
-			algorithm = Algorithm(strings.TrimPrefix(h, "X-AMZ-CHECKSUM-"))
+		if after, ok0 := strings.CutPrefix(h, "X-AMZ-CHECKSUM-"); ok0 {
+			algorithm = Algorithm(after)
 			checksum = req.Header.Get(header)
 			return next.HandleFinalize(ctx, in)
 		}
+	}
+
+	algorithm, ok, err = getInputAlgorithm(ctx)
+	if err != nil {
+		return out, metadata, err
+	}
+	if !ok {
+		return next.HandleFinalize(ctx, in)
 	}
 
 	computePayloadHash := m.EnableComputePayloadHash
@@ -263,16 +265,6 @@ func (m *AddInputChecksumTrailer) HandleFinalize(
 ) (
 	out middleware.FinalizeOutput, metadata middleware.Metadata, err error,
 ) {
-	algorithm, ok, err := getInputAlgorithm(ctx)
-	if err != nil {
-		return out, metadata, computeInputTrailingChecksumError{
-			Msg: "failed to get algorithm",
-			Err: err,
-		}
-	} else if !ok {
-		return next.HandleFinalize(ctx, in)
-	}
-
 	if enabled, _ := middleware.GetStackValue(ctx, useTrailer{}).(bool); !enabled {
 		return next.HandleFinalize(ctx, in)
 	}
@@ -295,6 +287,16 @@ func (m *AddInputChecksumTrailer) HandleFinalize(
 		if strings.HasPrefix(strings.ToLower(header), "x-amz-checksum-") {
 			return next.HandleFinalize(ctx, in)
 		}
+	}
+
+	algorithm, ok, err := getInputAlgorithm(ctx)
+	if err != nil {
+		return out, metadata, computeInputTrailingChecksumError{
+			Msg: "failed to get algorithm",
+			Err: err,
+		}
+	} else if !ok {
+		return next.HandleFinalize(ctx, in)
 	}
 
 	stream := req.GetStream()

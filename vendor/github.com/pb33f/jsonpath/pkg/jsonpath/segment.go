@@ -77,10 +77,12 @@ func (s innerSegment) ToString() string {
     return builder.String()
 }
 
-func descend(value *yaml.Node, root *yaml.Node) []*yaml.Node {
-    result := []*yaml.Node{value}
-    for _, child := range value.Content {
-        result = append(result, descend(child, root)...)
+func descendApply(value *yaml.Node, apply func(*yaml.Node)) {
+    if value == nil {
+        return
     }
-    return result
+    apply(value)
+    for _, child := range value.Content {
+        descendApply(child, apply)
+    }
 }

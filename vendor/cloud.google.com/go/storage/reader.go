@@ -154,6 +154,73 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 	return r, err
 }
 
+// MRDOption is an option for MultiRangeDownloader.
+type MRDOption interface {
+	apply(*newMultiRangeDownloaderParams)
+}
+
+type minConnections int
+
+func (c minConnections) apply(params *newMultiRangeDownloaderParams) {
+	params.minConnections = int(c)
+}
+
+// WithMinConnections returns an MRDOption which sets minimum connections
+// on the MRD to c. The call to NewMultiRangeDownloader will create one connection
+// and return with an MRD. The remaining connections will be created in the background
+// to avoid open latency.
+func WithMinConnections(c int) MRDOption {
+	return minConnections(c)
+}
+
+type maxConnections int
+
+func (c maxConnections) apply(params *newMultiRangeDownloaderParams) {
+	params.maxConnections = int(c)
+}
+
+// WithMaxConnections returns an MRDOption which sets maximum connections
+// on the MRD to c. The number of connections will not exceed this number.
+// The connections will range between minimum connections and maximum connections
+// based on the load.
+func WithMaxConnections(c int) MRDOption {
+	return maxConnections(c)
+}
+
+type targetPendingRanges int
+
+func (c targetPendingRanges) apply(params *newMultiRangeDownloaderParams) {
+	params.targetPendingRanges = int(c)
+}
+
+// WithTargetPendingRanges returns an MRDOption which sets target pending
+// ranges on the MRD to c. If number of connections in the MRD is less than
+// maximum connections, MRD will trigger creation of a new connection when
+// pending ranges on all existing streams exceed c.
+//
+// Note: A new connection can be triggered by either the pending byte threshold
+// (WithTargetPendingBytes) or the pending range threshold (WithTargetPendingRanges).
+func WithTargetPendingRanges(c int) MRDOption {
+	return targetPendingRanges(c)
+}
+
+type targetPendingBytes int
+
+func (c targetPendingBytes) apply(params *newMultiRangeDownloaderParams) {
+	params.targetPendingBytes = int(c)
+}
+
+// WithTargetPendingBytes returns an MRDOption that sets target pending
+// bytes on the MRD to c. If number of connections in the MRD is less than
+// maximum connections, MRD will trigger creation of a new connection when
+// outstanding bytes on all existing streams exceed c.
+//
+// Note: A new connection can be triggered by either the pending byte threshold
+// (WithTargetPendingBytes) or the pending range threshold (WithTargetPendingRanges).
+func WithTargetPendingBytes(c int) MRDOption {
+	return targetPendingBytes(c)
+}
+
 // NewMultiRangeDownloader creates a multi-range reader for an object.
 // Must be called on a gRPC client created using [NewGRPCClient].
 //
@@ -164,7 +231,7 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 
 // NewMultiRangeDownloader creates a multi-range reader for an object.
 // Must be called on a gRPC client created using [NewGRPCClient].
-func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiRangeDownloader, err error) {
+func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context, opts ...MRDOption) (mrd *MultiRangeDownloader, err error) {
 	// This span covers the life of the MRD. It is closed via the context
 	// in MultiRangeDownloader.Close.
 	var spanCtx context.Context
@@ -184,7 +251,7 @@ func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiR
 		}
 	}
 
-	opts := makeStorageOpts(true, o.retry, o.userProject)
+	storageOpts := makeStorageOpts(true, o.retry, o.userProject)
 
 	params := &newMultiRangeDownloaderParams{
 		bucket:        o.bucket,
@@ -194,9 +261,15 @@ func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiR
 		object:        o.object,
 		handle:        &o.readHandle,
 	}
-
+	// Process configured options
+	for _, opt := range opts {
+		opt.apply(params)
+	}
+	if params.minConnections > 1 || params.maxConnections > 1 {
+		spanCtx = addFeatureAttributes(spanCtx, featureMultistreamInMRD)
+	}
 	// This call will return the *MultiRangeDownloader with the .impl field set.
-	return o.c.tc.NewMultiRangeDownloader(spanCtx, params, opts...)
+	return o.c.tc.NewMultiRangeDownloader(spanCtx, params, storageOpts...)
 }
 
 // decompressiveTranscoding returns true if the request was served decompressed

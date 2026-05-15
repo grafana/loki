@@ -8,14 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/util"
-
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-
-	"github.com/grafana/regexp/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -1037,11 +1033,6 @@ func (j *JSONExpressionParserExpr) String() string {
 	return sb.String()
 }
 
-type internedStringSet map[string]struct {
-	s  string
-	ok bool
-}
-
 type LogfmtExpressionParserExpr struct {
 	Expressions       []log.LabelExtractionExpr
 	Strict, KeepEmpty bool
@@ -1105,30 +1096,6 @@ func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
 	}
 	return m
-}
-
-// simplify will return an equals matcher if there is a regex matching a literal
-func simplify(typ labels.MatchType, name string, reg *syntax.Regexp) (*labels.Matcher, bool) {
-	switch reg.Op {
-	case syntax.OpLiteral:
-		if !util.IsCaseInsensitive(reg) {
-			t := labels.MatchEqual
-			if typ == labels.MatchNotRegexp {
-				t = labels.MatchNotEqual
-			}
-			return labels.MustNewMatcher(t, name, string(reg.Rune)), true
-		}
-		return nil, false
-	}
-	return nil, false
-}
-
-func mustNewFloat(s string) float64 {
-	n, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		panic(logqlmodel.NewParseError(fmt.Sprintf("unable to parse float: %s", err.Error()), 0, 0))
-	}
-	return n
 }
 
 type UnwrapExpr struct {

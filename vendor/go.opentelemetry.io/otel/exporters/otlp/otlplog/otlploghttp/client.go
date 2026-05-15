@@ -45,6 +45,8 @@ func newNoopClient() *client {
 
 var exporterN atomic.Int64
 
+var errInsecureEndpointWithTLS = errors.New("insecure HTTP endpoint cannot use TLS client configuration")
+
 // nextExporterID returns the next unique ID for an exporter.
 func nextExporterID() int64 {
 	const inc = 1
@@ -53,6 +55,10 @@ func nextExporterID() int64 {
 
 // newHTTPClient creates a new HTTP log client.
 func newHTTPClient(cfg config) (*client, error) {
+	if cfg.insecure.Value && cfg.tlsCfg.Value != nil {
+		return nil, errInsecureEndpointWithTLS
+	}
+
 	hc := cfg.httpClient
 	if hc == nil {
 		hc = &http.Client{
@@ -165,6 +171,7 @@ func (c *httpClient) uploadLogs(ctx context.Context, data []*logpb.ResourceLogs)
 		}
 
 		request.reset(iCtx)
+		// nolint:gosec // URL is constructed from validated OTLP endpoint configuration
 		resp, err := c.client.Do(request.Request)
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) && urlErr.Temporary() {

@@ -26,6 +26,10 @@ func (index *SpecIndex) FindComponent(ctx context.Context, componentId string) *
 		return nil
 	}
 
+	if resolved := index.ResolveRefViaSchemaId(componentId); resolved != nil {
+		return resolved
+	}
+
 	if strings.HasPrefix(componentId, "/") {
 		baseUri, fragment := SplitRefFragment(componentId)
 		if resolved := index.resolveRefViaSchemaIdPath(baseUri); resolved != nil {
@@ -91,7 +95,7 @@ func FindComponent(_ context.Context, root *yaml.Node, componentId, absoluteFile
 	if friendlySearch == "$." {
 		friendlySearch = "$"
 	}
-	path, err := jsonpath.NewPath(friendlySearch, jsonpathconfig.WithPropertyNameExtension())
+	path, err := jsonpath.NewPath(friendlySearch, jsonpathconfig.WithPropertyNameExtension(), jsonpathconfig.WithLazyContextTracking())
 	if path == nil || err != nil || root == nil {
 		return nil // no component found
 	}

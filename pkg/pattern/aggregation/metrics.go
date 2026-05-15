@@ -15,8 +15,6 @@ var (
 )
 
 type Metrics struct {
-	reg prometheus.Registerer
-
 	// push operation
 	pushErrors  *prometheus.CounterVec
 	payloadSize *prometheus.HistogramVec

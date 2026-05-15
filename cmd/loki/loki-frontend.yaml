@@ -1,0 +1,93 @@
+target: query-frontend
+auth_enabled: true  # match prod
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /tmp/loki
+  storage:
+    filesystem:
+      chunks_directory: /tmp/loki/chunks
+      rules_directory: /tmp/loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  compactor_address: http://localhost:3102
+
+frontend:
+  downstream_url: http://localhost:3101
+
+## Disable result cache to avoid needing memcached
+#query_range:
+#  results_cache:
+#    cache:
+#      enable_fifocache: true  # in-memory, no external deps
+
+query_range:
+  align_queries_with_step: true
+  cache_index_stats_results: true
+  cache_results: true
+  cache_volume_results: true
+  cache_series_results: true
+  cache_instant_metric_results: true
+  instant_metric_query_split_align: true
+  instant_metric_results_cache:
+    cache:
+      default_validity: 12h
+      memcached_client:
+        consistent_hash: true
+        addresses: "dns+localhost:11211"
+        max_idle_conns: 16
+        timeout: 500ms
+        update_interval: 1m
+  series_results_cache:
+    cache:
+      default_validity: 12h
+      memcached_client:
+        consistent_hash: true
+        addresses: "dns+localhost:11211"
+        max_idle_conns: 16
+        timeout: 500ms
+        update_interval: 1m
+  index_stats_results_cache:
+    cache:
+      default_validity: 12h
+      memcached_client:
+        consistent_hash: true
+        addresses: "dns+localhost:11211"
+        max_idle_conns: 16
+        timeout: 500ms
+        update_interval: 1m
+  max_retries: 5
+  results_cache:
+    cache:
+      default_validity: 12h
+      memcached_client:
+        consistent_hash: true
+        addresses: "dns+localhost:11211"
+        max_idle_conns: 16
+        timeout: 500ms
+        update_interval: 1m
+  volume_results_cache:
+    cache:
+      default_validity: 12h
+      memcached_client:
+        consistent_hash: true
+        addresses: "dns+localhost:11211"
+        max_idle_conns: 16
+        timeout: 500ms
+        update_interval: 1m
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h

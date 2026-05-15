@@ -4,11 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,8 +47,31 @@ type cachedJSONPath struct {
 	err  error
 }
 
-// jsonPathCache stores compiled JSONPath expressions keyed by normalized string.
-var jsonPathCache sync.Map
+// JSONPathLookupOptions configures JSONPath lookup behavior.
+type JSONPathLookupOptions struct {
+	// Timeout controls maximum execution time for JSONPath lookup.
+	// If zero or negative, a default of 500ms is used.
+	Timeout time.Duration
+
+	// LazyContextTracking toggles on-demand tracking for JSONPath context variables.
+	// If nil, the package default (true) is used to preserve existing behavior.
+	LazyContextTracking *bool
+}
+
+// jsonPathCacheLazy stores compiled JSONPath expressions keyed by normalized string
+// when lazy context tracking is enabled.
+var jsonPathCacheLazy sync.Map
+
+// jsonPathCacheEager stores compiled JSONPath expressions keyed by normalized string
+// when lazy context tracking is disabled.
+var jsonPathCacheEager sync.Map
+
+// ClearJSONPathCache resets the compiled JSONPath cache.
+// Call this between document lifecycles in long-running processes to bound memory.
+func ClearJSONPathCache() {
+	jsonPathCacheLazy.Clear()
+	jsonPathCacheEager.Clear()
+}
 
 var jsonPathQuery = func(path *jsonpath.JSONPath, node *yaml.Node) []*yaml.Node {
 	return path.Query(node)
@@ -56,14 +79,32 @@ var jsonPathQuery = func(path *jsonpath.JSONPath, node *yaml.Node) []*yaml.Node 
 
 // getJSONPath returns a cached JSONPath when available, compiling and caching otherwise.
 func getJSONPath(rawPath string) (*jsonpath.JSONPath, error) {
+	return getJSONPathWithOptions(rawPath, defaultJSONPathLookupOptions())
+}
+
+// getJSONPathWithOptions returns a cached JSONPath using the provided options.
+func getJSONPathWithOptions(rawPath string, options JSONPathLookupOptions) (*jsonpath.JSONPath, error) {
 	cleaned := FixContext(rawPath)
-	if cached, ok := jsonPathCache.Load(cleaned); ok {
+	lazy := true
+	if options.LazyContextTracking != nil {
+		lazy = *options.LazyContextTracking
+	}
+	cache := &jsonPathCacheLazy
+	if !lazy {
+		cache = &jsonPathCacheEager
+	}
+	if cached, ok := cache.Load(cleaned); ok {
 		entry := cached.(cachedJSONPath)
 		return entry.path, entry.err
 	}
 
-	path, err := jsonpath.NewPath(cleaned, jsonpathconfig.WithPropertyNameExtension())
-	jsonPathCache.Store(cleaned, cachedJSONPath{
+	pathOptions := []jsonpathconfig.Option{jsonpathconfig.WithPropertyNameExtension()}
+	if lazy {
+		pathOptions = append(pathOptions, jsonpathconfig.WithLazyContextTracking())
+	}
+
+	path, err := jsonpath.NewPath(cleaned, pathOptions...)
+	cache.Store(cleaned, cachedJSONPath{
 		path: path,
 		err:  err,
 	})
@@ -142,7 +183,16 @@ func FindNodesWithoutDeserializing(node *yaml.Node, jsonPath string) ([]*yaml.No
 // FindNodesWithoutDeserializingWithTimeout will find a node based on JSONPath, without deserializing from yaml/json
 // This function can be customized with a timeout.
 func FindNodesWithoutDeserializingWithTimeout(node *yaml.Node, jsonPath string, timeout time.Duration) ([]*yaml.Node, error) {
-	path, err := getJSONPath(jsonPath)
+	options := defaultJSONPathLookupOptions()
+	options.Timeout = timeout
+	return FindNodesWithoutDeserializingWithOptions(node, jsonPath, options)
+}
+
+// FindNodesWithoutDeserializingWithOptions will find a node based on JSONPath, without deserializing from yaml/json.
+// Behavior can be customized using JSONPathLookupOptions.
+func FindNodesWithoutDeserializingWithOptions(node *yaml.Node, jsonPath string, options JSONPathLookupOptions) ([]*yaml.Node, error) {
+	options = normalizeJSONPathLookupOptions(options)
+	path, err := getJSONPathWithOptions(jsonPath, options)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +200,7 @@ func FindNodesWithoutDeserializingWithTimeout(node *yaml.Node, jsonPath string, 
 	// this can spin out, to lets gatekeep it.
 	done := make(chan struct{}, 1)
 	var results []*yaml.Node
-	timer := time.NewTimer(timeout)
+	timer := time.NewTimer(options.Timeout)
 	defer timer.Stop()
 	queryFn := jsonPathQuery
 	go func() {
@@ -162,8 +212,27 @@ func FindNodesWithoutDeserializingWithTimeout(node *yaml.Node, jsonPath string, 
 	case <-done:
 		return results, nil
 	case <-timer.C:
-		return nil, fmt.Errorf("node lookup timeout exceeded (%v)", timeout)
+		return nil, fmt.Errorf("node lookup timeout exceeded (%v)", options.Timeout)
 	}
+}
+
+func defaultJSONPathLookupOptions() JSONPathLookupOptions {
+	defaultLazy := true
+	return JSONPathLookupOptions{
+		Timeout:             500 * time.Millisecond,
+		LazyContextTracking: &defaultLazy,
+	}
+}
+
+func normalizeJSONPathLookupOptions(options JSONPathLookupOptions) JSONPathLookupOptions {
+	defaults := defaultJSONPathLookupOptions()
+	if options.Timeout <= 0 {
+		options.Timeout = defaults.Timeout
+	}
+	if options.LazyContextTracking == nil {
+		options.LazyContextTracking = defaults.LazyContextTracking
+	}
+	return options
 }
 
 // ConvertInterfaceIntoStringMap will convert an unknown input into a string map.
@@ -252,14 +321,26 @@ func ExtractValueFromInterfaceMap(name string, raw interface{}) interface{} {
 	return nil
 }
 
+// leadingMergeContent unwraps a leading YAML merge key when it has a corresponding value node.
+// Malformed YAML can produce a bare `<<` node with no value; in that case we leave the original
+// node slice intact and let higher-level validation return an error instead of panicking.
+func leadingMergeContent(nodes []*yaml.Node) []*yaml.Node {
+	if len(nodes) < 2 || nodes[0] == nil || nodes[0].Tag != "!!merge" {
+		return nodes
+	}
+	merged := NodeAlias(nodes[1])
+	if merged == nil {
+		return nodes
+	}
+	return merged.Content
+}
+
 // FindFirstKeyNode will locate the first key and value yaml.Node based on a key.
 func FindFirstKeyNode(key string, nodes []*yaml.Node, depth int) (keyNode *yaml.Node, valueNode *yaml.Node) {
 	if depth > 40 {
 		return nil, nil
 	}
-	if nodes != nil && len(nodes) > 0 && nodes[0].Tag == "!!merge" {
-		nodes = NodeAlias(nodes[1]).Content
-	}
+	nodes = leadingMergeContent(nodes)
 	for i, v := range nodes {
 		if key != "" && key == v.Value {
 			if i+1 >= len(nodes) {
@@ -297,9 +378,7 @@ type KeyNodeSearch struct {
 // FindKeyNodeTop is a non-recursive search of top level nodes for a key, will not look at content.
 // Returns the key and value
 func FindKeyNodeTop(key string, nodes []*yaml.Node) (keyNode *yaml.Node, valueNode *yaml.Node) {
-	if nodes != nil && len(nodes) > 0 && nodes[0].Tag == "!!merge" {
-		nodes = NodeAlias(nodes[1]).Content
-	}
+	nodes = leadingMergeContent(nodes)
 	for i := 0; i < len(nodes); i++ {
 		v := nodes[i]
 		if i%2 != 0 {
@@ -318,9 +397,7 @@ func FindKeyNodeTop(key string, nodes []*yaml.Node) (keyNode *yaml.Node, valueNo
 // FindKeyNode is a non-recursive search of a *yaml.Node Content for a child node with a key.
 // Returns the key and value
 func FindKeyNode(key string, nodes []*yaml.Node) (keyNode *yaml.Node, valueNode *yaml.Node) {
-	if nodes != nil && len(nodes) > 0 && nodes[0].Tag == "!!merge" {
-		nodes = NodeAlias(nodes[1]).Content
-	}
+	nodes = leadingMergeContent(nodes)
 	for i, v := range nodes {
 		if i%2 == 0 && key == v.Value {
 			if len(nodes) <= i+1 {
@@ -350,9 +427,7 @@ func FindKeyNode(key string, nodes []*yaml.Node) (keyNode *yaml.Node, valueNode 
 // generally different things are required from different node trees, so depending on what this function is looking at
 // it will return different things.
 func FindKeyNodeFull(key string, nodes []*yaml.Node) (keyNode *yaml.Node, labelNode *yaml.Node, valueNode *yaml.Node) {
-	if nodes != nil && len(nodes) > 0 && nodes[0].Tag == "!!merge" {
-		nodes = NodeAlias(nodes[1]).Content
-	}
+	nodes = leadingMergeContent(nodes)
 	for i := 0; i < len(nodes); i++ {
 		if i%2 == 0 && key == nodes[i].Value {
 			if i+1 >= len(nodes) {
@@ -391,9 +466,7 @@ func FindKeyNodeFull(key string, nodes []*yaml.Node) (keyNode *yaml.Node, labelN
 // FindKeyNodeFullTop is an overloaded version of FindKeyNodeFull. This version only looks at the top
 // level of the node and not the children.
 func FindKeyNodeFullTop(key string, nodes []*yaml.Node) (keyNode *yaml.Node, labelNode *yaml.Node, valueNode *yaml.Node) {
-	if nodes != nil && len(nodes) >= 0 && nodes[0].Tag == "!!merge" {
-		nodes = NodeAlias(nodes[1]).Content
-	}
+	nodes = leadingMergeContent(nodes)
 	for i := 0; i < len(nodes); i++ {
 		v := nodes[i]
 		if i%2 == 0 {
@@ -410,6 +483,9 @@ func FindKeyNodeFullTop(key string, nodes []*yaml.Node) (keyNode *yaml.Node, lab
 			continue
 		}
 		if i%2 == 0 && key == nodes[i].Value {
+			if i+1 >= len(nodes) {
+				return NodeAlias(nodes[i]), NodeAlias(nodes[i]), NodeAlias(nodes[i])
+			}
 			return NodeAlias(nodes[i]), NodeAlias(nodes[i]), NodeAlias(nodes[i+1]) // next node is what we need.
 		}
 	}
@@ -657,7 +733,7 @@ func FixContext(context string) string {
 	for i, t := range tokens {
 		if v, err := strconv.Atoi(t); err == nil {
 			if v < 200 { // codes start here
-				if cleaned[i-1] != "" {
+				if i-1 >= 0 && i-1 < len(cleaned) && cleaned[i-1] != "" {
 					cleaned[i-1] += fmt.Sprintf("[%v]", t)
 				}
 			} else {
@@ -812,6 +888,22 @@ func appendSegmentOptimized(segs []string, cleaned []string, i int, wrapInQuotes
 	cleaned[len(cleaned)-1] = builder.String()
 }
 
+// parseSmallUint returns the unsigned integer value and true if s is a string of
+// digits representing a non-negative integer. Returns 0, false otherwise.
+func parseSmallUint(s string) (int, bool) {
+	if len(s) == 0 {
+		return 0, false
+	}
+	n := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return 0, false
+		}
+		n = n*10 + int(s[i]-'0')
+	}
+	return n, true
+}
+
 // ConvertComponentIdIntoFriendlyPathSearch will convert a JSON Path into a friendly path search string.
 // the friendliness comes from it being suitable for use with any JSON Path parser.
 //
@@ -823,7 +915,14 @@ func ConvertComponentIdIntoFriendlyPathSearch(id string) (string, string) {
 		return "", "$."
 	}
 	segs := strings.Split(id, "/")
-	name, _ := url.QueryUnescape(strings.ReplaceAll(segs[len(segs)-1], "~1", "/"))
+	lastSeg := segs[len(segs)-1]
+	if strings.Contains(lastSeg, "~1") {
+		lastSeg = strings.ReplaceAll(lastSeg, "~1", "/")
+	}
+	if strings.ContainsRune(lastSeg, '%') {
+		lastSeg, _ = url.QueryUnescape(lastSeg)
+	}
+	name := lastSeg
 
 	// Pre-allocate with estimated capacity
 	estimatedCap := len(segs) + (len(segs) / 2)
@@ -836,7 +935,12 @@ func ConvertComponentIdIntoFriendlyPathSearch(id string) (string, string) {
 		}
 		if !isPathChar(segs[i]) {
 
-			segs[i], _ = url.QueryUnescape(strings.ReplaceAll(segs[i], "~1", "/"))
+			if strings.Contains(segs[i], "~1") {
+				segs[i] = strings.ReplaceAll(segs[i], "~1", "/")
+			}
+			if strings.ContainsRune(segs[i], '%') {
+				segs[i], _ = url.QueryUnescape(segs[i])
+			}
 
 			// Use string builder for bracket wrapping
 			var bracketBuilder strings.Builder
@@ -882,8 +986,8 @@ func ConvertComponentIdIntoFriendlyPathSearch(id string) (string, string) {
 				continue
 			}
 
-			intVal, err := strconv.Atoi(segs[i])
-			if err == nil {
+			intVal, isNum := parseSmallUint(segs[i])
+			if isNum {
 				if intVal <= 99 {
 					if len(cleaned) > 0 {
 						appendSegmentOptimized(segs, cleaned, i, false)
@@ -1082,21 +1186,50 @@ func CheckEnumForDuplicates(seq []*yaml.Node) []*yaml.Node {
 	return res
 }
 
-var whitespaceExp = regexp.MustCompile(`\n( +)`)
+// DetermineWhitespaceLengthBytes determines the minimum leading-space indentation
+// in the input, working directly on []byte without allocating strings or regex matches.
+// Matches the semantics of the regex `\n( +)`: only considers lines after a newline.
+func DetermineWhitespaceLengthBytes(input []byte) int {
+	minIndent := math.MaxInt
+	i := 0
+
+	// Skip the first line — the original regex `\n( +)` only matches after newlines.
+	for i < len(input) && input[i] != '\n' {
+		i++
+	}
+
+	// Process remaining lines: at the top of each iteration, i is at a '\n'.
+	for i < len(input) {
+		i++ // skip the '\n'
+
+		// Count leading spaces on this line.
+		spaces := 0
+		for i < len(input) && input[i] == ' ' {
+			spaces++
+			i++
+		}
+		// Only consider lines that have at least one leading space followed by
+		// non-whitespace content (matching the original regex `\n( +)` semantics).
+		if spaces > 0 && i < len(input) && input[i] != '\n' && input[i] != '\r' {
+			if spaces < minIndent {
+				minIndent = spaces
+			}
+		}
+
+		// Advance to end of this line.
+		for i < len(input) && input[i] != '\n' {
+			i++
+		}
+	}
+	if minIndent == math.MaxInt {
+		return 0
+	}
+	return minIndent
+}
 
 // DetermineWhitespaceLength will determine the length of the whitespace for a JSON or YAML file.
 func DetermineWhitespaceLength(input string) int {
-	whiteSpace := whitespaceExp.FindAllStringSubmatch(input, -1)
-	var filtered []string
-	for i := range whiteSpace {
-		filtered = append(filtered, whiteSpace[i][1])
-	}
-	sort.Strings(filtered)
-	if len(filtered) > 0 {
-		return len(filtered[0])
-	} else {
-		return 0
-	}
+	return DetermineWhitespaceLengthBytes([]byte(input))
 }
 
 // CheckForMergeNodes will check the top level of the schema for merge nodes. If any are found, then the merged nodes
@@ -1110,7 +1243,7 @@ func CheckForMergeNodes(node *yaml.Node) {
 	for i := 0; i < total; i++ {
 		mn := node.Content[i]
 		if i%2 == 0 {
-			if mn.Tag == "!!merge" {
+			if mn.Tag == "!!merge" && i+1 < len(node.Content) {
 				an := node.Content[i+1].Alias
 				if an != nil {
 					node.Content = append(node.Content, an.Content...) // append the merged nodes

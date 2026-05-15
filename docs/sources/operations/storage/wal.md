@@ -101,7 +101,7 @@ Also you can set the `--ingester.flush-on-shutdown` flag to `true`. This enables
 
 ### Kubernetes hacking
 
-StatefulSets are significantly more cumbersome to work with, upgrade, and so on. Much of this stems from immutable fields on the specification. For example, if one wants to start using the WAL with single store Loki and wants separate volume mounts for the WAL and the boltdb-shipper, you may see immutability errors when attempting updates the Kubernetes StatefulSets.
+StatefulSets are significantly more cumbersome to work with, upgrade, and so on. Much of this stems from immutable fields on the specification. For example, if one wants to start using the WAL with single store Loki and wants separate volume mounts for the WAL and the TSDB, you may see immutability errors when attempting updates the Kubernetes StatefulSets.
 
 In this case, try `kubectl -n <namespace> delete sts ingester --cascade=false`.
 This will leave the Pods alive but delete the StatefulSet.

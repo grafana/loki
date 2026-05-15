@@ -254,6 +254,25 @@ func (c *Client) Metrics() (string, error) {
 	return sb.String(), nil
 }
 
+// FlushDataobj triggers a flush of the in-memory dataobj consumer.
+func (c *Client) FlushDataobj() error {
+	req, err := c.request(context.Background(), "POST", fmt.Sprintf("%s/dataobj-consumer/flush", c.baseURL))
+	if err != nil {
+		return err
+	}
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode/100 == 2 {
+		return nil
+	}
+	return fmt.Errorf("request failed with status code %d", res.StatusCode)
+}
+
 // Flush all in-memory chunks held by the ingesters to the backing store
 func (c *Client) Flush() error {
 	req, err := c.request(context.Background(), "POST", fmt.Sprintf("%s/flush", c.baseURL))

@@ -52,9 +52,11 @@ import (
 //     information about permissions, see [Managing access permissions to your Amazon S3 resources]in the Amazon S3 User Guide.
 //
 //   - Directory bucket permissions - You must have the s3express:CreateSession
-//     permission in the Action element of a policy. By default, the session is in
-//     the ReadWrite mode. If you want to restrict the access, you can explicitly set
-//     the s3express:SessionMode condition key to ReadOnly on the bucket.
+//     permission in the Action element of a policy. If no session mode is specified,
+//     the session will be created with the maximum allowable privilege, attempting
+//     ReadWrite first, then ReadOnly if ReadWrite is not permitted. If you want to
+//     explicitly restrict the access to be read-only, you can set the
+//     s3express:SessionMode condition key to ReadOnly on the bucket.
 //
 // For more information about example bucket policies, see [Example bucket policies for S3 Express One Zone]and [Amazon Web Services Identity and Access Management (IAM) identity-based policies for S3 Express One Zone]in the Amazon S3
 //
@@ -229,7 +231,7 @@ func (c *Client) addOperationHeadBucketMiddlewares(stack *middleware.Stack, opti
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -254,9 +256,6 @@ func (c *Client) addOperationHeadBucketMiddlewares(stack *middleware.Stack, opti
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

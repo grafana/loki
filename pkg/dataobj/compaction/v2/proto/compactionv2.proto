@@ -1,0 +1,48 @@
+// compactionv2.proto declares the schema for the v2 compaction planner's data
+// structures. SectionRef points to one section inside a dataobj in object
+// storage with its sort-key bounds; RunRef groups sorted non-overlapping
+// sections into piles; TaskSpec is one K-way merge task — K piles bundled
+// together for a single worker.
+syntax = "proto3";
+
+package proto;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto";
+
+// SectionRef identifies one section in object storage with its sort-key bounds.
+//
+// The section's sort-key is the tuple (sort_schema_label_values, __timestamp__)
+// per the tenant's sort_schema. To order sections correctly without imposing
+// encoding contracts on the caller, the proto splits this tuple across two
+// field categories:
+//
+//   - min_key / max_key carry the sort_schema LABEL columns only, in schema
+//   order. Each element is one column value. - min_timestamp / max_timestamp
+//   carry the __timestamp__ column as a typed int64 (nanoseconds since epoch).
+//   Storing as int64 -- rather than as a trailing string element of
+//   min_key/max_key -- avoids lexicographic sorting problems that can arise
+//   from comparing timestamps as strings.
+//
+// The composite sort key compared across sections is (min_key, min_timestamp)
+// and (max_key, max_timestamp) -- label tuple first, then timestamp.
+message SectionRef {
+  string object_path = 1 [(gogoproto.jsontag) = "object_path"];
+  int32 section_index = 2 [(gogoproto.jsontag) = "section_index"];
+  repeated string min_key = 3 [(gogoproto.jsontag) = "min_key"];
+  repeated string max_key = 4 [(gogoproto.jsontag) = "max_key"];
+  int64 min_timestamp = 5 [(gogoproto.jsontag) = "min_timestamp"];
+  int64 max_timestamp = 6 [(gogoproto.jsontag) = "max_timestamp"];
+}
+
+// RunRef is one pile: a sorted, non-overlapping section sequence.
+message RunRef {
+  repeated SectionRef sections = 1 [(gogoproto.jsontag) = "sections"];
+}
+
+// TaskSpec is one K-way merge task: K piles bundled together for one worker.
+message TaskSpec {
+  string tenant = 1 [(gogoproto.jsontag) = "tenant"];
+  repeated RunRef runs = 2 [(gogoproto.jsontag) = "runs"];
+}

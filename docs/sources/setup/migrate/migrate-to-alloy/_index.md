@@ -6,7 +6,7 @@ weight: 100
 
 # Migrate to Alloy
 
-Grafana Alloy is the new name for the Grafana Labs distribution of the OpenTelemetry collector. Grafana Agent Static, Grafana Agent Flow, and Grafana Agent Operator have been deprecated and are in Long-Term Support (LTS) through October 31, 2025. They will reach an End-of-Life (EOL) on November 1, 2025. Grafana Labs has provided tools and migration documentation to assist you in migrating to Grafana Alloy.
+Grafana Alloy is the new name for the Grafana Labs distribution of the OpenTelemetry collector. Grafana Agent Static, Grafana Agent Flow, and Grafana Agent Operator reached End-of-Life (EOL) on November 1, 2025. Grafana Labs has provided tools and migration documentation to assist you in migrating to Grafana Alloy.
 
 Read more about why we recommend migrating to [Grafana Alloy](https://grafana.com/blog/2024/04/09/grafana-alloy-opentelemetry-collector-with-prometheus-pipelines/).
 

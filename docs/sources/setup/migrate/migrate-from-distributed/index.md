@@ -55,7 +55,7 @@ This leverages the fact that the new deployment adds a `app.kubernetes.io/compon
 
 1. Convert all Clients to Push Logs to New `loki` Deployment
 
-   Assuming everything is working as expected, you can now modify the `clients` section of your Grafana Agent or Promtail configuration to push logs to the new deployment. After this change is made, the `loki-distributed` cluster will no longer recieve new logs and can be carefully scaled down.
+   Assuming everything is working as expected, you can now modify the `clients` section of your Grafana Agent or Promtail configuration to push logs to the new deployment. After this change is made, the `loki-distributed` cluster will no longer receive new logs and can be carefully scaled down.
 
    Once this has deployed, query the new `loki` cluster's Loki data source for new logs to make sure they're still being ingested.
 

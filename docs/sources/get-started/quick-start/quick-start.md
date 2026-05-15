@@ -17,7 +17,7 @@ killercoda:
       - regexp: evaluate-loki-([^-]+)-
         replacement: evaluate-loki_${1}_
   title: Loki Quickstart Demo
-  description: This sandbox provides an online enviroment for testing the Loki quickstart demo.
+  description: This sandbox provides an online environment for testing the Loki quickstart demo.
   details:
     intro:
       foreground: setup.sh

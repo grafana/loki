@@ -23,7 +23,7 @@ import (
 func TestIndexSectionsReader_NoSelectorReturnsEOF(t *testing.T) {
 	t.Parallel()
 
-	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil)
+	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192)
 	require.NoError(t, r.Open(context.Background()))
 
 	rec, err := r.Read(context.Background())
@@ -34,7 +34,7 @@ func TestIndexSectionsReader_NoSelectorReturnsEOF(t *testing.T) {
 func TestIndexSectionsReader_ReadBeforeOpenReturnsError(t *testing.T) {
 	t.Parallel()
 
-	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil)
+	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192)
 
 	rec, err := r.Read(context.Background())
 	require.ErrorIs(t, err, errIndexSectionsReaderNotOpen)
@@ -72,7 +72,7 @@ func TestIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 	end := now.Add(-time.Hour)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192)
 
 	// Context without org ID should fail during Open.
 	require.Error(t, r.Open(context.Background()))
@@ -120,7 +120,7 @@ func TestIndexSectionsReader_FiltersByStreamMatcherAndTime(t *testing.T) {
 	end := now.Add(-time.Hour)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -173,7 +173,7 @@ func TestIndexSectionsReader_NoPredicatesPassthrough(t *testing.T) {
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
 	// No predicates - should pass through all matching records
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -228,7 +228,7 @@ func TestIndexSectionsReader_IgnoresNonEqualPredicates(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchRegexp, "traceID", "abcd"),
 	}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -277,7 +277,7 @@ func TestIndexSectionsReader_FiltersByBloomOnSectionKey(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
 	}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -338,7 +338,7 @@ func TestIndexSectionsReader_PredicateMissReturnsEOF(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "traceID", "doesnotexist"),
 	}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -392,7 +392,7 @@ func TestIndexSectionsReader_LabelPredicatesFiltered(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 	}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -475,6 +475,7 @@ func TestIndexSectionsReader_MultipleBlooms(t *testing.T) {
 					labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
 					labels.MustNewMatcher(labels.MatchEqual, "userID", tc.userIDValue),
 				},
+				8192,
 			)
 			t.Cleanup(r.Close)
 			require.NoError(t, r.Open(ctx))
@@ -496,7 +497,7 @@ func TestIndexSectionsReader_MultipleBlooms(t *testing.T) {
 func TestIndexSectionsReader_Read_SkipsNilStreamsReader(t *testing.T) {
 	t.Parallel()
 
-	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil)
+	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192)
 	r.initialized = true
 	r.streamsReaders = []*streams.Reader{nil}
 	t.Cleanup(r.Close)
@@ -515,7 +516,7 @@ func TestIndexSectionsReader_Read_SkipsNilStreamsReader(t *testing.T) {
 func TestIndexSectionsReader_Read_SkipsNilPointersReader(t *testing.T) {
 	t.Parallel()
 
-	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil)
+	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192)
 	r.initialized = true
 	r.readStreams = true
 	r.hasData = true
@@ -543,6 +544,7 @@ func TestIndexSectionsReader_ReadMatchedSectionKeys_SkipsNilBloomReader(t *testi
 		now,
 		nil,
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd")},
+		8192,
 	)
 	r.bloomReaders = []*pointers.Reader{nil}
 

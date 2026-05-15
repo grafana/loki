@@ -9,7 +9,7 @@ weight: 400
 
 # Modify default OpenTelemetry labels
 
-When Grafana Loki first started supporting OpenTelemetry, we selected a set of [default resource attributes to promote to labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/#default-labels-for-opentelemetry). We included some labels such as k8s.pod.name to be consistent with the scrape configs we have been suggesting for many years for Promtail and Grafana Alloy. However, Loki has evolved a lot over the years and with the introduction of Structured Metadata we no longer recommend indexing a few of the labels we included in the defaults as they often have very high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/) and Structured Metadata is a much better place for them. We no longer recommend the following as default labels:
+When Grafana Loki first started supporting OpenTelemetry, we selected a set of [default resource attributes to promote to labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/#default-labels-for-opentelemetry). We included some labels such as k8s.pod.name to be consistent with the scrape configs we have been suggesting for many years for Grafana Alloy. However, Loki has evolved a lot over the years and with the introduction of Structured Metadata we no longer recommend indexing a few of the labels we included in the defaults as they often have very high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/) and Structured Metadata is a much better place for them. We no longer recommend the following as default labels:
 
 - `k8s.pod.name`
 - `service.instance.id`
@@ -120,7 +120,7 @@ If you are using the [Kubernetes Monitoring Helm chart](https://grafana.com/docs
 podLogs:
   enabled: true
   collector: alloy-singleton
-  #List of attributes to use as index labels in oki
+  #List of attributes to use as index labels in loki
   labelsToKeep:
     - app
     - app_kubernetes_io_name
@@ -151,7 +151,7 @@ distributor:
   otlp_config:
     # List of default otlp resource attributes to be picked as index labels - EDIT TO REMOVE k8s.pod.name AND service.instance.id FROM THE LIST
     # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
-      default_resource_attributes_as_index_labels: [service.name service.namespace deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]
+    default_resource_attributes_as_index_labels: [service.name service.namespace deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]
 
 ```
 

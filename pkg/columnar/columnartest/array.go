@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -17,7 +18,7 @@ import (
 // If alloc is nil, a new allocator will be created for the returned array.
 //
 // If a value cannot be represented as the kind provided, Array fails t.
-func Array(t testing.TB, kind columnar.Kind, alloc *memory.Allocator, values ...any) columnar.Array {
+func Array(t testing.TB, kind types.Kind, alloc *memory.Allocator, values ...any) columnar.Array {
 	t.Helper()
 
 	if alloc == nil {
@@ -25,16 +26,22 @@ func Array(t testing.TB, kind columnar.Kind, alloc *memory.Allocator, values ...
 	}
 
 	switch kind {
-	case columnar.KindNull:
+	case types.KindNull:
 		return arrayNull(t, alloc, values...)
-	case columnar.KindBool:
+	case types.KindBool:
 		return arrayBool(t, alloc, values...)
-	case columnar.KindInt64:
+	case types.KindInt32:
+		return arrayNumber[int32](t, alloc, values...)
+	case types.KindInt64:
 		return arrayNumber[int64](t, alloc, values...)
-	case columnar.KindUint64:
+	case types.KindUint32:
+		return arrayNumber[uint32](t, alloc, values...)
+	case types.KindUint64:
 		return arrayNumber[uint64](t, alloc, values...)
-	case columnar.KindUTF8:
+	case types.KindUTF8:
 		return arrayUTF8(t, alloc, values...)
+	case types.KindStruct:
+		return arrayStruct(t, alloc, values...)
 	default:
 		require.FailNow(t, "unsupported kind", "kind %s is currently not supported", kind)
 		panic("unreachable")
@@ -98,6 +105,24 @@ func arrayNumber[T columnar.Numeric](t testing.TB, alloc *memory.Allocator, valu
 	}
 
 	return builder.Build()
+}
+
+func arrayStruct(t testing.TB, alloc *memory.Allocator, values ...any) *columnar.Struct {
+	t.Helper()
+
+	if len(values) == 0 {
+		return columnar.NewStruct(columnar.NewSchema(nil), nil, 0, memory.Bitmap{})
+	}
+
+	arrays := make([]columnar.Array, len(values))
+	for i, v := range values {
+		require.IsType(t, (*columnar.Struct)(nil), v, "all values must be *columnar.Struct for struct array, found %T", v)
+		arrays[i] = v.(*columnar.Struct)
+	}
+
+	result, err := columnar.Concat(alloc, arrays)
+	require.NoError(t, err)
+	return result.(*columnar.Struct)
 }
 
 func arrayUTF8(t testing.TB, alloc *memory.Allocator, values ...any) *columnar.UTF8 {

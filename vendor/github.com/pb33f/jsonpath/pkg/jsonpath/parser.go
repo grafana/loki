@@ -30,17 +30,19 @@ var contextVarTokenMap = map[token.Token]contextVarKind{
 
 // JSONPath represents a JSONPath parser.
 type JSONPath struct {
-    tokenizer *token.Tokenizer
-    tokens    []token.TokenInfo
-    ast       jsonPathAST
-    current   int
-    mode      []mode
-    config    config.Config
+    tokenizer   *token.Tokenizer
+    tokens      []token.TokenInfo
+    ast         jsonPathAST
+    current     int
+    mode        []mode
+    config      config.Config
+    filterDepth int // tracks nesting depth inside filter expressions
 }
 
 // newParserPrivate creates a new JSONPath with the given tokens.
 func newParserPrivate(tokenizer *token.Tokenizer, tokens []token.TokenInfo, opts ...config.Option) *JSONPath {
-    return &JSONPath{tokenizer, tokens, jsonPathAST{}, 0, []mode{modeNormal}, config.New(opts...)}
+    cfg := config.New(opts...)
+    return &JSONPath{tokenizer, tokens, jsonPathAST{lazyContextTracking: cfg.LazyContextTrackingEnabled(), jsonPathPlus: cfg.JSONPathPlusEnabled()}, 0, []mode{modeNormal}, cfg, 0}
 }
 
 // parse parses the JSONPath tokens and returns the root node of the AST.
@@ -154,6 +156,12 @@ func (p *JSONPath) parseInnerSegment() (retValue *innerSegment, err error) {
         dotName := p.tokens[p.current].Literal
         p.current += 1
         return &innerSegment{segmentDotMemberName, dotName, nil}, nil
+    } else if firstToken.Token == token.INTEGER && p.config.JSONPathPlusEnabled() && p.current >= 3 {
+        // JSONPath Plus: treat .201 as a member name (common for HTTP status codes in OpenAPI).
+        // Only when we're past the root (p.current >= 3 means at least $, ., and something before this).
+        dotName := p.tokens[p.current].Literal
+        p.current += 1
+        return &innerSegment{segmentDotMemberName, dotName, nil}, nil
     } else if firstToken.Token == token.BRACKET_LEFT {
         prior := p.current
         p.current += 1
@@ -243,7 +251,7 @@ func (p *JSONPath) parseSelector() (retSelector *selector, err error) {
 
         p.current++
 
-        return &selector{kind: selectorSubKindArrayIndex, index: i}, nil
+        return &selector{kind: selectorSubKindArrayIndex, index: i, jsonPathPlus: p.config.JSONPathPlusEnabled() && p.filterDepth == 0}, nil
     } else if p.tokens[p.current].Token == token.ARRAY_SLICE {
         slice, err := p.parseSliceSelector()
         if err != nil {
@@ -340,6 +348,8 @@ func (p *JSONPath) parseFilterSelector() (*selector, error) {
         return nil, p.parseFailure(&p.tokens[p.current], "expected '?'")
     }
     p.current++
+    p.filterDepth++
+    defer func() { p.filterDepth-- }()
 
     expr, err := p.parseLogicalOrExpr()
     if err != nil {
@@ -563,7 +573,10 @@ func (p *JSONPath) parseTestExpr() (*testExpr, error) {
         if err != nil {
             return nil, err
         }
-        return &testExpr{filterQuery: &filterQuery{jsonPathQuery: &jsonPathAST{segments: query.segments}}, not: not}, nil
+        return &testExpr{filterQuery: &filterQuery{jsonPathQuery: &jsonPathAST{
+            segments:            query.segments,
+            lazyContextTracking: p.config.LazyContextTrackingEnabled(),
+        }}, not: not}, nil
     default:
         funcExpr, err := p.parseFunctionExpr()
         if err != nil {
@@ -717,7 +730,10 @@ func (p *JSONPath) parseFunctionArgument(single bool) (*functionArgument, error)
         if err != nil {
             return nil, err
         }
-        return &functionArgument{filterQuery: &filterQuery{jsonPathQuery: &jsonPathAST{segments: query.segments}}}, nil
+        return &functionArgument{filterQuery: &filterQuery{jsonPathQuery: &jsonPathAST{
+            segments:            query.segments,
+            lazyContextTracking: p.config.LazyContextTrackingEnabled(),
+        }}}, nil
     }
 
     // Check for JSONPath Plus context variables as function arguments
@@ -776,7 +792,9 @@ func (p *JSONPath) parseLiteral() (*literal, error) {
 
 type jsonPathAST struct {
     // "$"
-    segments []*segment
+    segments            []*segment
+    lazyContextTracking bool
+    jsonPathPlus        bool // JSONPath Plus extensions enabled (unquoted brackets, mapping index fallback)
 }
 
 func (q jsonPathAST) ToString() string {

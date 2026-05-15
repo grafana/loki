@@ -50,6 +50,23 @@ func (h *Hasher) Reset() {
 	h.len = 0
 }
 
+// ResetSeed will reset the hash and set a new seed.
+// This will change the original state used by Reset.
+func (h *Hasher) ResetSeed(seed uint64) {
+	h.Reset()
+	// Set key if not set before.
+	if h.seed == 0 && seed != 0 {
+		h.key = ptr(&[secretSize]byte{})
+	}
+	// Re-init seed.
+	if seed == 0 {
+		h.key = nil
+	} else if seed != h.seed {
+		initSecret(h.key, seed)
+	}
+	h.seed = seed
+}
+
 // BlockSize returns the hash's underlying block size.
 // The Write method will accept any amount of data, but
 // it may operate more efficiently if all writes are a
@@ -94,10 +111,14 @@ func (h *Hasher) updateString(buf string) {
 
 	// On first write, if more than 1 block, process without copy.
 	for h.len == 0 && len(buf) > len(h.buf) {
-		if hasAVX2 {
+		if hasAVX512 {
+			accumBlockAVX512(&h.acc, *(*ptr)(ptr(&buf)), h.key)
+		} else if hasAVX2 {
 			accumBlockAVX2(&h.acc, *(*ptr)(ptr(&buf)), h.key)
 		} else if hasSSE2 {
 			accumBlockSSE(&h.acc, *(*ptr)(ptr(&buf)), h.key)
+		} else if hasNEON {
+			accumBlockNEON(&h.acc, *(*ptr)(ptr(&buf)), h.key)
 		} else {
 			accumBlockScalar(&h.acc, *(*ptr)(ptr(&buf)), h.key)
 		}
@@ -113,10 +134,14 @@ func (h *Hasher) updateString(buf string) {
 			continue
 		}
 
-		if hasAVX2 {
+		if hasAVX512 {
+			accumBlockAVX512(&h.acc, ptr(&h.buf), h.key)
+		} else if hasAVX2 {
 			accumBlockAVX2(&h.acc, ptr(&h.buf), h.key)
 		} else if hasSSE2 {
 			accumBlockSSE(&h.acc, ptr(&h.buf), h.key)
+		} else if hasNEON {
+			accumBlockNEON(&h.acc, ptr(&h.buf), h.key)
 		} else {
 			accumBlockScalar(&h.acc, ptr(&h.buf), h.key)
 		}
@@ -151,6 +176,8 @@ func (h *Hasher) Sum64() uint64 {
 			accumAVX2(&accs, ptr(&h.buf[0]), h.key, h.len)
 		} else if hasSSE2 {
 			accumSSE(&accs, ptr(&h.buf[0]), h.key, h.len)
+		} else if hasNEON {
+			accumNEON(&accs, ptr(&h.buf[0]), h.key, h.len)
 		} else {
 			accumScalar(&accs, ptr(&h.buf[0]), h.key, h.len)
 		}
@@ -198,6 +225,8 @@ func (h *Hasher) Sum128() Uint128 {
 			accumAVX2(&accs, ptr(&h.buf[0]), h.key, h.len)
 		} else if hasSSE2 {
 			accumSSE(&accs, ptr(&h.buf[0]), h.key, h.len)
+		} else if hasNEON {
+			accumNEON(&accs, ptr(&h.buf[0]), h.key, h.len)
 		} else {
 			accumScalar(&accs, ptr(&h.buf[0]), h.key, h.len)
 		}

@@ -8,9 +8,17 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
 
+// created for and scoped to each logs section
 type streamStatisticsCalculation struct{}
 
-func (c *streamStatisticsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
+func (c *streamStatisticsCalculation) Name() string { return "stream_statistics" }
+
+// ProcessBatchNeedsBuilderLock reports whether ProcessBatch mutates the shared
+// builder. Stream statistics calls builder.ObserveLogLine per row, so it must
+// run under the builder lock.
+func (c *streamStatisticsCalculation) ProcessBatchNeedsBuilderLock() bool { return true }
+
+func (c *streamStatisticsCalculation) Prepare(_ context.Context, _ *logsCalculationContext, _ *dataobj.Section, _ logs.Stats) error {
 	return nil
 }
 

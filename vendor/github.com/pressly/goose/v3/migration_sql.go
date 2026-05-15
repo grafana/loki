@@ -94,7 +94,7 @@ const (
 	resetColor = "\033[00m"
 )
 
-func verboseInfo(s string, args ...interface{}) {
+func verboseInfo(s string, args ...any) {
 	if verbose {
 		if noColor {
 			log.Printf(s, args...)

@@ -770,10 +770,13 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 	receivedQueries := []string{}
 
 	step := "60s"
-	stepMs := int64(60000)
 
-	// Calculate the split boundary: step-aligned threshold + step
-	splitBoundary := stepAlignUp(threshold, stepMs).Add(time.Duration(stepMs) * time.Millisecond)
+	// The split boundary sits midway between threshold and the recent portion
+	// of the spans-threshold subtests (threshold + 1h). A generous margin keeps
+	// the boundary stable even when v2End drifts: the engine router computes
+	// v2End from time.Now() at request time, while threshold here is captured
+	// at test setup, and logs queries don't step-align v2End.
+	splitBoundary := threshold.Add(30 * time.Minute)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -784,10 +787,10 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		require.NoError(t, err)
 		endTime := rangeQuery.End
 
-		// If end time is before or at split boundary, return old response
-		// Otherwise return recent response
+		// If end time is before the split boundary, return the old response.
+		// Otherwise return the recent response.
 		w.WriteHeader(200)
-		if endTime.Before(splitBoundary) || endTime.Equal(splitBoundary) {
+		if endTime.Before(splitBoundary) {
 			_, _ = w.Write([]byte(oldResponseBody))
 		} else {
 			_, _ = w.Write([]byte(recentResponseBody))
@@ -884,17 +887,10 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 
 		assert.Equal(t, 3, len(receivedQueries), "expected 3 queries, 1 for the recent portion, and 1 to both v1 and v2 for comparison, got %d", len(receivedQueries))
 
-		// Verify that old queries go to both backends
-		// Step is 60s = 60000ms from the test query
-		stepMs := int64(60000)
-
-		// Align threshold UP (as it's treated as an end boundary in alignStartEnd)
-		// This is v2End in the engine_router
-		alignedThreshold := stepAlignUp(threshold, stepMs)
-
-		// Based on observed behavior, old queries end at alignedThreshold + gap
-		oldQueryBoundary := alignedThreshold.Add(time.Duration(stepMs) * time.Millisecond)
-
+		// Classify queries by whether their end time matches the request's end:
+		// the post-v2 (recent) split runs to the request end, while the v2 (old)
+		// split ends at v2End, which is computed dynamically from time.Now() and
+		// can drift relative to `threshold` captured at test setup.
 		oldQueries := 0
 		recentQueries := 0
 		for _, q := range receivedQueries {
@@ -902,11 +898,10 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 				endStr := extractQueryParam(q, "end")
 				endTime, _ := parseTimestamp(endStr)
 
-				// Queries ending at or before oldQueryBoundary are "old"
-				if endTime.Before(oldQueryBoundary) || endTime.Equal(oldQueryBoundary) {
-					oldQueries++
-				} else {
+				if endTime.Equal(end) {
 					recentQueries++
+				} else {
+					oldQueries++
 				}
 			}
 		}
@@ -962,11 +957,8 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// - 3 queries total: 1 for recent portion (v1 only), 2 for old portion (v1 and v2 for comparison)
 		assert.Equal(t, 3, len(receivedQueries), "expected 3 queries for v2 metric query, 1 for recent portion and 2 for old portion comparison, got %d", len(receivedQueries))
 
-		// Verify that old queries go to both backends
-		stepMs := int64(60000)
-		alignedThreshold := stepAlignUp(threshold, stepMs)
-		oldQueryBoundary := alignedThreshold.Add(time.Duration(stepMs) * time.Millisecond)
-
+		// Classify queries by whether their end time matches the request's end
+		// (the recent portion) or not (the old portion sent to both backends).
 		oldQueries := 0
 		recentQueries := 0
 		for _, q := range receivedQueries {
@@ -974,10 +966,10 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 				endStr := extractQueryParam(q, "end")
 				endTime, _ := parseTimestamp(endStr)
 
-				if endTime.Before(oldQueryBoundary) || endTime.Equal(oldQueryBoundary) {
-					oldQueries++
-				} else {
+				if endTime.Equal(end) {
 					recentQueries++
+				} else {
+					oldQueries++
 				}
 			}
 		}
@@ -1018,15 +1010,6 @@ func parseTimestamp(value string) (time.Time, error) {
 	return time.Unix(0, nanos), nil
 }
 
-// stepAlignUp aligns a timestamp up to the nearest step boundary
-func stepAlignUp(t time.Time, stepMs int64) time.Time {
-	timestampMs := t.UnixMilli()
-	if mod := timestampMs % stepMs; mod != 0 {
-		timestampMs += stepMs - mod
-	}
-	return time.Unix(0, timestampMs*1e6)
-}
-
 // Helper function to extract query parameters from a query string
 func extractQueryParam(queryString, param string) string {
 	parts := strings.SplitSeq(queryString, "&")
@@ -1065,4 +1048,116 @@ func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 
 func formatTime(t time.Time) string {
 	return strconv.FormatInt(t.UnixNano(), 10)
+}
+
+// Test_ProxyEndpoint_WritePath_GoldfishCorrelationIDHeader tests that the goldfish correlation ID
+// header is set (or absent) in responses for write requests depending on the sampling decision.
+func Test_ProxyEndpoint_WritePath_GoldfishCorrelationIDHeader(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	backend1 := httptest.NewServer(handler)
+	defer backend1.Close()
+	backendURL1, err := url.Parse(backend1.URL)
+	require.NoError(t, err)
+
+	proxyBackend1, err := NewProxyBackend("backend-1", backendURL1, time.Second, true)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{proxyBackend1}
+
+	tests := []struct {
+		name           string
+		shouldSample   bool
+		correlationID  string
+		expectHeader   bool
+		expectedHeader string
+	}{
+		{
+			name:           "sampled write sets goldfish header",
+			shouldSample:   true,
+			correlationID:  "test-uuid-sampled",
+			expectHeader:   true,
+			expectedHeader: "test-uuid-sampled",
+		},
+		{
+			name:          "non-sampled write omits goldfish header",
+			shouldSample:  false,
+			correlationID: "",
+			expectHeader:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			goldfishManager := &mockGoldfishManager{
+				shouldSampleResult:  tc.shouldSample,
+				correlationIDResult: tc.correlationID,
+			}
+
+			metrics := NewProxyMetrics(nil)
+			logger := log.NewNopLogger()
+			endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
+			endpoint.WithGoldfish(goldfishManager)
+
+			req, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+			require.NoError(t, err)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+			w := httptest.NewRecorder()
+			endpoint.ServeHTTP(w, req)
+
+			if tc.expectHeader {
+				require.Equal(t, tc.expectedHeader, w.Header().Get(querytee_goldfish.GoldfishCorrelationIDHeader),
+					"expected goldfish header to be set")
+			} else {
+				require.Empty(t, w.Header().Get(querytee_goldfish.GoldfishCorrelationIDHeader),
+					"expected goldfish header to be absent")
+			}
+		})
+	}
+}
+
+// Test_ProxyEndpoint_WritePath_GoldfishHeaderOnErrorResponse tests that the goldfish correlation ID
+// header survives error responses on the writes path. When a sampled request results in a backend
+// error, the client should still receive the header so it can correlate the request.
+func Test_ProxyEndpoint_WritePath_GoldfishHeaderOnErrorResponse(t *testing.T) {
+	// Backend returns 500 to simulate an error
+	errorHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("internal server error"))
+	})
+	errorBackend := httptest.NewServer(errorHandler)
+	defer errorBackend.Close()
+	errorBackendURL, err := url.Parse(errorBackend.URL)
+	require.NoError(t, err)
+
+	proxyBackend, err := NewProxyBackend("backend-1", errorBackendURL, time.Second, true)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{proxyBackend}
+
+	goldfishManager := &mockGoldfishManager{
+		shouldSampleResult:  true,
+		correlationIDResult: "error-test-uuid",
+	}
+
+	metrics := NewProxyMetrics(nil)
+	logger := log.NewNopLogger()
+	endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
+	endpoint.WithGoldfish(goldfishManager)
+
+	req, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+	w := httptest.NewRecorder()
+	endpoint.ServeHTTP(w, req)
+
+	// The response should be a 500 error
+	require.Equal(t, http.StatusInternalServerError, w.Code, "backend error should be propagated")
+
+	// The goldfish header should still be present despite the error
+	require.Equal(t, "error-test-uuid", w.Header().Get(querytee_goldfish.GoldfishCorrelationIDHeader),
+		"goldfish header must survive error responses so clients can correlate sampled requests")
 }
