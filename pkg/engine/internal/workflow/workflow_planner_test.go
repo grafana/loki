@@ -179,20 +179,18 @@ func Test_planWorkflow(t *testing.T) {
 │ Batching batch_size=500
 │ │   ├── @sink stream=00000000000000000000000009
 │ │   └── @sink stream=0000000000000000000000000B
-│ └── Batching batch_size=500
-│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
-│         └── DataObjScan location= streams=0 section_id=0 projections=()
-│                 └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── DataObjScan location= streams=0 section_id=0 projections=()
+│             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
 ┌ Task 00000000000000000000000005
 │ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000007
-│ └── Batching batch_size=500
-│     └── VectorAggregation operation=invalid group_by=()
-│             ├── @source stream=0000000000000000000000000A
-│             └── @source stream=0000000000000000000000000B
+│ └── VectorAggregation operation=invalid group_by=()
+│         ├── @source stream=0000000000000000000000000A
+│         └── @source stream=0000000000000000000000000B
 └
 `)
 
@@ -247,24 +245,22 @@ func Test_planWorkflow(t *testing.T) {
 │ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 │ @sink_routing strategy=label_hash
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=5cc7a7bc4d6240d5 key= |>>| Batching |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:30Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=0dbee591f4bc143d key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:30Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
 │ │   ├── @sink stream=00000000000000000000000009
 │ │   └── @sink stream=0000000000000000000000000B
 │ └── Batching batch_size=500
-│     └── Batching batch_size=500
-│         └── RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
-│             └── DataObjScan location= streams=0 section_id=0 projections=()
-│                     └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         └── DataObjScan location= streams=0 section_id=0 projections=()
+│                 └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
 ┌ Task 00000000000000000000000005
 │ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000007
-│ └── Batching batch_size=500
-│     └── VectorAggregation operation=invalid group_by=()
-│             ├── @source stream=0000000000000000000000000A
-│             └── @source stream=0000000000000000000000000B
+│ └── VectorAggregation operation=invalid group_by=()
+│         ├── @source stream=0000000000000000000000000A
+│         └── @source stream=0000000000000000000000000B
 └
 `)
 
@@ -417,21 +413,19 @@ func Test_planWorkflow(t *testing.T) {
 │ Batching batch_size=500
 │ │   ├── @sink stream=0000000000000000000000000C
 │ │   └── @sink stream=0000000000000000000000000M
-│ └── Batching batch_size=500
-│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
-│             ├── @source stream=0000000000000000000000000G
-│             ├── @source stream=0000000000000000000000000H
-│             └── @source stream=0000000000000000000000000J
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         ├── @source stream=0000000000000000000000000G
+│         ├── @source stream=0000000000000000000000000H
+│         └── @source stream=0000000000000000000000000J
 └
 ┌ Task 00000000000000000000000008
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=0000000000000000000000000A
-│ └── Batching batch_size=500
-│     └── VectorAggregation operation=invalid group_by=()
-│             ├── @source stream=0000000000000000000000000K
-│             └── @source stream=0000000000000000000000000M
+│ └── VectorAggregation operation=invalid group_by=()
+│         ├── @source stream=0000000000000000000000000K
+│         └── @source stream=0000000000000000000000000M
 └
 `)
 
@@ -530,21 +524,19 @@ func Test_planWorkflow(t *testing.T) {
 │ Batching batch_size=500
 │ │   ├── @sink stream=0000000000000000000000000C
 │ │   └── @sink stream=0000000000000000000000000M
-│ └── Batching batch_size=500
-│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
-│             ├── @source stream=0000000000000000000000000G
-│             ├── @source stream=0000000000000000000000000H
-│             └── @source stream=0000000000000000000000000J
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│         ├── @source stream=0000000000000000000000000G
+│         ├── @source stream=0000000000000000000000000H
+│         └── @source stream=0000000000000000000000000J
 └
 ┌ Task 00000000000000000000000008
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=0000000000000000000000000A
-│ └── Batching batch_size=500
-│     └── VectorAggregation operation=invalid group_by=()
-│             ├── @source stream=0000000000000000000000000K
-│             └── @source stream=0000000000000000000000000M
+│ └── VectorAggregation operation=invalid group_by=()
+│         ├── @source stream=0000000000000000000000000K
+│         └── @source stream=0000000000000000000000000M
 └
 `)
 
@@ -646,10 +638,9 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000007
-│ └── Batching batch_size=500
-│     └── VectorAggregation operation=sum group_by=()
-│             ├── @source stream=0000000000000000000000000A
-│             └── @source stream=0000000000000000000000000B
+│ └── VectorAggregation operation=sum group_by=()
+│         ├── @source stream=0000000000000000000000000A
+│         └── @source stream=0000000000000000000000000B
 └
 `)
 
@@ -718,10 +709,9 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000007
-│ └── Batching batch_size=500
-│     └── VectorAggregation operation=sum group_by=()
-│             ├── @source stream=0000000000000000000000000A
-│             └── @source stream=0000000000000000000000000B
+│ └── VectorAggregation operation=sum group_by=()
+│         ├── @source stream=0000000000000000000000000A
+│         └── @source stream=0000000000000000000000000B
 └
 `)
 
@@ -969,11 +959,10 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000008
-│ └── Batching batch_size=500
-│     └── VectorAggregation operation=invalid group_by=()
-│             ├── @source stream=0000000000000000000000000C
-│             ├── @source stream=0000000000000000000000000D
-│             └── @source stream=0000000000000000000000000E
+│ └── VectorAggregation operation=invalid group_by=()
+│         ├── @source stream=0000000000000000000000000C
+│         ├── @source stream=0000000000000000000000000D
+│         └── @source stream=0000000000000000000000000E
 └
 `)
 

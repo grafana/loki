@@ -992,17 +992,11 @@ func (p *planner) processShardedAggregation(node physical.Node) ([]*Task, *SinkR
 	// Create N-1 more aggregation shard tasks (we already have one from baseTasks)
 	allShardTasks := []*Task{baseAggTask}
 	for i := 1; i < numShards; i++ {
-		// Clone the aggregation task's fragment for each additional shard
+		// Clone the aggregation task's fragment for each additional shard.
+		// The cloned fragment already has batching applied from baseAggTask (via processNode),
+		// so we don't need to wrap it again.
 		shardPlan := baseAggTask.Fragment.Graph().Clone()
 		shardFragment := physical.FromGraph(*shardPlan)
-
-		// Apply batching if configured
-		if p.batchSize > 0 {
-			var err error
-			if shardFragment, err = physical.WrapWithBatching(shardFragment, p.batchSize); err != nil {
-				return nil, nil, fmt.Errorf("wrapping shard with batching: %w", err)
-			}
-		}
 
 		// Set MaxTimeRange based on sharding strategy
 		var maxTimeRange physical.TimeRange
