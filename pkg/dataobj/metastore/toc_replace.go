@@ -165,6 +165,18 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 
 			newObj, closer, ferr := builder.Flush()
 			if ferr != nil {
+				// Full drain: every row in every section was filtered out and
+				// no newEntries were appended, so the rebuilt ToC would be
+				// empty. Treat this as a successful swap and abort the
+				// conditional PUT — leaving the existing ToC in place is
+				// acceptable here because the original entries are gone in
+				// the caller's view and a future cycle will replace the ToC
+				// when fresh content arrives. A full-drain ToC delete would
+				// be a separate primitive.
+				if stderrors.Is(ferr, indexobj.ErrBuilderEmpty) {
+					swapped = true
+					return nil, errReplaceNoOp
+				}
 				return nil, errors.Wrap(ferr, "flushing rebuilt ToC")
 			}
 			reader, rerr := newObj.Reader(ctx)
@@ -188,7 +200,9 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 			return swapped, nil
 		}
 		if stderrors.Is(err, errReplaceNoOp) {
-			return false, nil
+			// swapped is true only in the full-drain path; all other sentinel
+			// callers (missing ToC, zero-match race-loss) leave it false.
+			return swapped, nil
 		}
 		lastErr = err
 		b.Wait()

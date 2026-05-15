@@ -466,6 +466,8 @@ func TestReplaceIndexPointers_DeleteOnly(t *testing.T) {
 	window := unixTime(0)
 	bucket := objstore.NewInMemBucket()
 
+	// Tenant B is intentionally seeded so the rebuilt ToC retains at least one row;
+	// the single-tenant-full-drain edge case is covered separately below.
 	seedToC(t, bucket, window, []tocRow{
 		{"tenantA", "idx/a-0", 10, 20},
 		{"tenantA", "idx/a-1", 30, 40},
@@ -492,4 +494,34 @@ func TestReplaceIndexPointers_DeleteOnly(t *testing.T) {
 	require.Equal(t, []tocRow{
 		{"tenantB", "idx/b-0", 11, 21},
 	}, got, "tenant A must be fully drained; tenant B preserved")
+}
+
+// TestReplaceIndexPointers_DeleteOnly_SingleTenantFullDrain covers the edge case
+// where the target tenant is the only tenant in the ToC and all its rows are
+// listed in oldPaths with no newEntries. The naive rebuild path would feed an
+// empty builder to Flush() and trip ErrBuilderEmpty; the primitive must instead
+// treat this as a successful swap.
+func TestReplaceIndexPointers_DeleteOnly_SingleTenantFullDrain(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	bucket := objstore.NewInMemBucket()
+
+	seedToC(t, bucket, window, []tocRow{
+		{"tenantA", "idx/a-0", 10, 20},
+		{"tenantA", "idx/a-1", 30, 40},
+	})
+
+	writer := &TableOfContentsWriter{
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		[]string{"idx/a-0", "idx/a-1"},
+		nil,
+	)
+	require.NoError(t, err, "single-tenant full drain must succeed, not hit ErrBuilderEmpty")
+	require.True(t, swapped, "single-tenant full drain is a successful swap from caller's perspective")
 }
