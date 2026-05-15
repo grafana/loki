@@ -196,7 +196,8 @@ func (n *AggregateRange) UnmarshalPhysical(from physical.Node) error {
 	return nil
 }
 
-func unmarshalGrouping(g physical.Grouping) (*Grouping, error) {
+// UnmarshalGrouping converts a physical Grouping into a protobuf Grouping.
+func UnmarshalGrouping(g physical.Grouping) (*Grouping, error) {
 	columns, err := unmarshalColumnExpressions(g.Columns)
 	if err != nil {
 		return nil, err
@@ -206,6 +207,11 @@ func unmarshalGrouping(g physical.Grouping) (*Grouping, error) {
 		Columns: columns,
 		Without: g.Without,
 	}, nil
+}
+
+// For backwards compatibility, keep the unexported version as an alias
+func unmarshalGrouping(g physical.Grouping) (*Grouping, error) {
+	return UnmarshalGrouping(g)
 }
 
 func unmarshalColumnExpressions(from []physical.ColumnExpression) ([]*expressionpb.ColumnExpression, error) {

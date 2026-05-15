@@ -290,6 +290,11 @@ func (c *protobufCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 		return nil, fmt.Errorf("failed to unmarshal cached sources: %w", err)
 	}
 
+	sinkRouting, err := c.sinkRoutingFromPb(t.SinkRouting)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal sink routing: %w", err)
+	}
+
 	return &workflow.Task{
 		ULID:          ulid.ULID(t.Ulid),
 		TenantID:      t.TenantId,
@@ -301,6 +306,7 @@ func (c *protobufCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 			Start: t.MaxTimeRange.Start,
 			End:   t.MaxTimeRange.End,
 		},
+		SinkRouting: sinkRouting,
 	}, nil
 }
 
@@ -616,6 +622,10 @@ func (c *protobufCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) 
 	}
 
 	cachedSources := c.cachedSourcesToPb(from.CachedSources)
+	sinkRouting, err := c.sinkRoutingToPb(from.SinkRouting)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal sink routing: %w", err)
+	}
 
 	return &wirepb.Task{
 		Ulid:          protoUlid.ULID(from.ULID),
@@ -628,6 +638,7 @@ func (c *protobufCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) 
 			Start: from.MaxTimeRange.Start,
 			End:   from.MaxTimeRange.End,
 		},
+		SinkRouting: sinkRouting,
 	}, nil
 }
 
@@ -723,4 +734,99 @@ func (c *protobufCodec) cachedSourcesToPb(srcs map[physical.Node]workflow.Cached
 		result[node.ID().String()] = &wirepb.CachedSources{CachedSource: cs}
 	}
 	return result
+}
+
+func (c *protobufCodec) sinkRoutingStrategyToPb(strategy workflow.SinkRoutingStrategy) wirepb.SinkRoutingStrategy {
+	switch strategy {
+	case workflow.SinkRoutingStrategyBroadcast:
+		return wirepb.SINK_ROUTING_STRATEGY_BROADCAST
+	case workflow.SinkRoutingStrategyLabelHash:
+		return wirepb.SINK_ROUTING_STRATEGY_LABEL_HASH
+	case workflow.SinkRoutingStrategyTimeShard:
+		return wirepb.SINK_ROUTING_STRATEGY_TIME_SHARD
+	default:
+		return wirepb.SINK_ROUTING_STRATEGY_INVALID
+	}
+}
+
+func (c *protobufCodec) sinkRoutingStrategyFromPb(strategy wirepb.SinkRoutingStrategy) (workflow.SinkRoutingStrategy, error) {
+	switch strategy {
+	case wirepb.SINK_ROUTING_STRATEGY_BROADCAST:
+		return workflow.SinkRoutingStrategyBroadcast, nil
+	case wirepb.SINK_ROUTING_STRATEGY_LABEL_HASH:
+		return workflow.SinkRoutingStrategyLabelHash, nil
+	case wirepb.SINK_ROUTING_STRATEGY_TIME_SHARD:
+		return workflow.SinkRoutingStrategyTimeShard, nil
+	default:
+		return workflow.SinkRoutingStrategyBroadcast, fmt.Errorf("unknown sink routing strategy: %v", strategy)
+	}
+}
+
+func (c *protobufCodec) sinkRoutingToPb(routing *workflow.SinkRouting) (*wirepb.SinkRouting, error) {
+	if routing == nil {
+		return nil, nil
+	}
+
+	pbRouting := &wirepb.SinkRouting{
+		Strategy: c.sinkRoutingStrategyToPb(routing.Strategy),
+	}
+
+	// Unmarshal grouping if present (convert from physical to protobuf)
+	if len(routing.Grouping.Columns) > 0 {
+		pbGrouping, err := physicalpb.UnmarshalGrouping(routing.Grouping)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal grouping: %w", err)
+		}
+		pbRouting.Grouping = pbGrouping
+	}
+
+	// Marshal time ranges if present
+	if len(routing.TimeRanges) > 0 {
+		pbRouting.TimeRanges = make([]*physicalpb.TimeRange, len(routing.TimeRanges))
+		for i, tr := range routing.TimeRanges {
+			pbRouting.TimeRanges[i] = &physicalpb.TimeRange{
+				Start: tr.Start,
+				End:   tr.End,
+			}
+		}
+	}
+
+	return pbRouting, nil
+}
+
+func (c *protobufCodec) sinkRoutingFromPb(pbRouting *wirepb.SinkRouting) (*workflow.SinkRouting, error) {
+	if pbRouting == nil {
+		return nil, nil
+	}
+
+	strategy, err := c.sinkRoutingStrategyFromPb(pbRouting.Strategy)
+	if err != nil {
+		return nil, err
+	}
+
+	routing := &workflow.SinkRouting{
+		Strategy: strategy,
+	}
+
+	// Marshal grouping if present (convert from protobuf to physical)
+	if pbRouting.Grouping != nil {
+		grouping, err := physicalpb.MarshalGrouping(pbRouting.Grouping)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal grouping: %w", err)
+		}
+		routing.Grouping = grouping
+	}
+
+	// Unmarshal time ranges if present
+	if len(pbRouting.TimeRanges) > 0 {
+		routing.TimeRanges = make([]physical.TimeRange, len(pbRouting.TimeRanges))
+		for i, pbTr := range pbRouting.TimeRanges {
+			routing.TimeRanges[i] = physical.TimeRange{
+				Start: pbTr.Start,
+				End:   pbTr.End,
+			}
+		}
+	}
+
+	return routing, nil
 }

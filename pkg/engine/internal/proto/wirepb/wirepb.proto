@@ -176,6 +176,20 @@ message StreamStatusMessage {
   StreamState state = 2;
 }
 
+// SinkRouting defines how records from a task should be distributed to its sinks.
+message SinkRouting {
+  SinkRoutingStrategy strategy = 1;
+
+  // Grouping specifies the columns to use for label-based sharding.
+  // Only used when strategy is SINK_ROUTING_STRATEGY_LABEL_HASH.
+  loki.physical.Grouping grouping = 2;
+
+  // TimeRanges specifies the time range for each shard.
+  // Only used when strategy is SINK_ROUTING_STRATEGY_TIME_SHARD.
+  // The order matches the order of sinks: time_ranges[i] corresponds to sinks[i].
+  repeated loki.physical.TimeRange time_ranges = 3;
+}
+
 // Task is a single unit of work within a workflow.
 message Task {
   ulid.loki.v1.ProtoULID ulid = 1 [
@@ -207,6 +221,10 @@ message Task {
   // The key is the node ID string representation.
   // The arrow batches are retrieved from the task result cache by the scheduler and passed to the workers here.
   map<string, CachedSources> cached_sources = 7;
+
+  // SinkRouting defines how records should be routed to the task's sinks.
+  // nil means broadcast mode (send all records to all sinks).
+  SinkRouting sink_routing = 8;
 }
 
 // StreamList is a list of streams, used in Task's sources and sinks maps.
@@ -274,4 +292,12 @@ enum StreamState {
   STREAM_STATE_OPEN = 2; // Stream open and transmitting data.
   STREAM_STATE_BLOCKED = 3; // Stream blocked by backpressure.
   STREAM_STATE_CLOSED = 4; // Stream closed, no longer transmitting.
+}
+
+// SinkRoutingStrategy defines the strategy for routing records to sinks.
+enum SinkRoutingStrategy {
+  SINK_ROUTING_STRATEGY_INVALID = 0; // Invalid/unspecified strategy.
+  SINK_ROUTING_STRATEGY_BROADCAST = 1; // Send all records to all sinks.
+  SINK_ROUTING_STRATEGY_LABEL_HASH = 2; // Route records to sinks based on a hash of grouping labels.
+  SINK_ROUTING_STRATEGY_TIME_SHARD = 3; // Route records to sinks based on timestamp.
 }
