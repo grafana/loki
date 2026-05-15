@@ -42,7 +42,7 @@ func GetPeriodConfigForTableNumber(table string, periodicConfigs []config.Period
 	}
 
 	for i, periodCfg := range periodicConfigs {
-		if periodCfg.IndexType != types.TSDBType {
+		if periodCfg.IndexType != types.IndexTypeTSDB {
 			continue
 		}
 

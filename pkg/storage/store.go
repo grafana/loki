@@ -263,7 +263,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	indexClientReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, s.registerer)
 	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
 
-	if p.IndexType == types.TSDBType {
+	if p.IndexType == types.IndexTypeTSDB {
 		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
 			// inject the index-gateway client into the index store
 			gw, err := indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
