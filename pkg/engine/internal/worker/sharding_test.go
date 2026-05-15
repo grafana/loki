@@ -656,3 +656,43 @@ func TestComputeTimeShards_NoTimestampColumn(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []int{0, 0}, shardIndices)
 }
+
+func TestComputeLabelHashShards_WithoutGrouping(t *testing.T) {
+	// Create a record with 4 rows and 3 label columns
+	labels := map[string][]string{
+		"app":    {"web", "web", "api", "api"},
+		"env":    {"prod", "prod", "prod", "dev"},
+		"region": {"us", "eu", "us", "us"},
+	}
+
+	rec := createTestRecordBatch(t, 4, []time.Time{
+		time.Unix(10, 0), time.Unix(20, 0),
+		time.Unix(30, 0), time.Unix(40, 0),
+	}, labels)
+	defer rec.Release()
+
+	shardIndices := make([]int, rec.NumRows())
+
+	// Use "without" grouping to exclude "app" column
+	// This means rows with same env+region should go to same shard
+	grouping := physical.Grouping{
+		Without: true,
+		Columns: []physical.ColumnExpression{
+			&physical.ColumnExpr{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+		},
+	}
+
+	err := computeLabelHashShards(rec, grouping, 3, shardIndices)
+	require.NoError(t, err)
+
+	// Rows 0 and 1 have same env=prod and region=us/eu, so they might differ
+	// But row 0 (web, prod, us) and row 2 (api, prod, us) should go to the SAME shard
+	// because they have the same env+region (everything except app)
+	require.Equal(t, shardIndices[0], shardIndices[2], "rows with same env+region should go to same shard")
+
+	// Verify all indices are valid
+	for _, idx := range shardIndices {
+		require.GreaterOrEqual(t, idx, 0)
+		require.Less(t, idx, 3)
+	}
+}

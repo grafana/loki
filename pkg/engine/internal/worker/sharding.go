@@ -55,11 +55,21 @@ func computeLabelHashShards(rec arrow.RecordBatch, grouping physical.Grouping, n
 		return nil
 	}
 
-	// Use the shared grouping column collection logic
-	// We need an evaluator for collectByGroupingColumns, but for sharding we can use a simple one
-	// that just looks up column references
-	evaluator := &simpleEvaluatorForSharding{rec: rec}
-	arrays, fields, err := executor.CollectByGroupingColumns(rec, grouping, evaluator)
+	var arrays []*array.String
+	var fields []arrow.Field
+	var err error
+
+	// Use the same logic as the aggregator to collect grouping columns.
+	if grouping.Without {
+		identCache := semconv.NewIdentifierCache()
+		arrays, fields, err = executor.CollectWithoutGroupingColumns(rec, grouping, identCache)
+	} else {
+		// We need an evaluator for CollectByGroupingColumns, but for sharding we can use a simple one
+		// that just looks up column references
+		evaluator := &simpleEvaluatorForSharding{rec: rec}
+		arrays, fields, err = executor.CollectByGroupingColumns(rec, grouping, evaluator)
+	}
+
 	if err != nil {
 		// If we can't collect grouping columns, fall back to shard 0 for all rows
 		return nil

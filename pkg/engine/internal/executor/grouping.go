@@ -21,7 +21,7 @@ type ExpressionEvaluatorForGrouping interface {
 
 func collectGroupingColumns(record arrow.RecordBatch, grouping physical.Grouping, evaluator *expressionEvaluator, identCache *semconv.IdentifierCache) ([]*array.String, []arrow.Field, error) {
 	if grouping.Without {
-		return collectWithoutGroupingColumns(record, grouping, identCache)
+		return CollectWithoutGroupingColumns(record, grouping, identCache)
 	}
 	return CollectByGroupingColumns(record, grouping, evaluator)
 }
@@ -59,7 +59,7 @@ func CollectByGroupingColumns(record arrow.RecordBatch, grouping physical.Groupi
 	return arrays, fields, nil
 }
 
-// collectWithoutGroupingColumns collects columns from the input record excluding
+// CollectWithoutGroupingColumns collects columns from the input record excluding
 // those that match the grouping expressions.
 //
 // The returned fields & arrays are sorted in the order of their column names.
@@ -69,7 +69,7 @@ func CollectByGroupingColumns(record arrow.RecordBatch, grouping physical.Groupi
 // And columns with the same short name are coalesced into a single array.
 // Without this, columns with same short name but different [types.ColumnType]
 // would be treated as separate grouping keys, which is not the intended behavior.
-func collectWithoutGroupingColumns(record arrow.RecordBatch, grouping physical.Grouping, identCache *semconv.IdentifierCache) ([]*array.String, []arrow.Field, error) {
+func CollectWithoutGroupingColumns(record arrow.RecordBatch, grouping physical.Grouping, identCache *semconv.IdentifierCache) ([]*array.String, []arrow.Field, error) {
 	shortNames := make([]string, 0)
 	columns := make(map[string][]*columnWithType)
 
