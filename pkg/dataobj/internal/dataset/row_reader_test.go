@@ -603,7 +603,7 @@ func BenchmarkReader(b *testing.B) {
 				reader.Close()
 
 			}
-			b.ReportMetric(float64(rowsRead), "rows/op")
+			b.ReportMetric(float64(rowsRead)/float64(b.N), "rows/op")
 		})
 	}
 }
