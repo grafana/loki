@@ -23,10 +23,6 @@ func (c *Chunk) GetThrough() model.Time {
 	return c.Through
 }
 
-func (c *Chunk) GetIngestedAt() model.Time {
-	return c.IngestedAt
-}
-
 func (c *Chunk) GetSize() uint32 {
 	return c.KB
 }

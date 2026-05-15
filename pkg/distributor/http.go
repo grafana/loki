@@ -36,8 +36,8 @@ func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
 
 func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, errorWriter push.ErrorWriter, format string) {
 	ctx := r.Context()
-	if r.Header.Get(httpreq.AdaptiveTelemetryReplayHeader) == "true" {
-		ctx = httpreq.InjectHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader, "true")
+	if r.Header.Get(httpreq.AdaptiveTelemetryReplayHeader) == httpreq.AdaptiveTelemetryReplayHeaderValue {
+		ctx = httpreq.InjectHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader, httpreq.AdaptiveTelemetryReplayHeaderValue)
 		r = r.WithContext(ctx)
 	}
 

@@ -1028,7 +1028,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 }
 
 func injectReplayHeaderFromGRPCMetadata(ctx context.Context) context.Context {
-	if httpreq.ExtractHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader) == "true" {
+	if httpreq.ExtractHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader) == httpreq.AdaptiveTelemetryReplayHeaderValue {
 		return ctx
 	}
 
@@ -1038,11 +1038,11 @@ func injectReplayHeaderFromGRPCMetadata(ctx context.Context) context.Context {
 	}
 
 	values := md.Get(server_util.LokiReplayGRPCMetadataKey)
-	if len(values) == 0 || values[0] != "true" {
+	if len(values) == 0 || values[0] != httpreq.AdaptiveTelemetryReplayHeaderValue {
 		return ctx
 	}
 
-	return httpreq.InjectHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader, "true")
+	return httpreq.InjectHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader, httpreq.AdaptiveTelemetryReplayHeaderValue)
 }
 
 // GetStreamRates returns a response containing all streams and their current rate

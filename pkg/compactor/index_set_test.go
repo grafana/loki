@@ -114,9 +114,6 @@ func (c dummyChunk) GetThrough() model.Time {
 	return c.through
 }
 
-func (c dummyChunk) GetIngestedAt() model.Time {
-	return c.ingestedAt
-}
 
 func (c dummyChunk) GetFingerprint() uint64 {
 	return c.fingerprint

@@ -31,7 +31,6 @@ type GetChunkClientForTableFunc func(table string) (client.Client, error)
 type Chunk interface {
 	GetFrom() model.Time
 	GetThrough() model.Time
-	GetIngestedAt() model.Time
 	GetFingerprint() uint64
 	GetChecksum() uint32
 	GetSize() uint32
@@ -166,7 +165,6 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 			newChunkStart,
 			newChunkEnd,
 		)
-		newChunk.IngestedAt = chks[0].IngestedAt
 
 		err = newChunk.Encode()
 		if err != nil {
@@ -184,7 +182,6 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		updates.RebuiltChunks[chunkID] = &deletionproto.Chunk{
 			From:        newChunk.From,
 			Through:     newChunk.Through,
-			IngestedAt:  newChunk.IngestedAt,
 			Fingerprint: newChunk.Fingerprint,
 			Checksum:    newChunk.Checksum,
 			KB:          uint32(math.Round(float64(newChunk.Data.UncompressedSize()) / float64(1<<10))),

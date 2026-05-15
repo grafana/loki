@@ -66,7 +66,7 @@ type validationContext struct {
 
 func (v Validator) getValidationContextForTime(ctx context.Context, now time.Time, userID string) validationContext {
 	rejectOldSample := v.RejectOldSamples(userID)
-	if httpreq.ExtractHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader) == "true" {
+	if httpreq.ExtractHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader) == httpreq.AdaptiveTelemetryReplayHeaderValue {
 		rejectOldSample = false
 	}
 

@@ -83,10 +83,6 @@ message Chunk {
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
     (gogoproto.nullable) = false
   ];
-  int64 ingestedAt = 7 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
-  ];
   uint64 fingerprint = 3;
   uint32 checksum = 4;
   uint32 KB = 5;
