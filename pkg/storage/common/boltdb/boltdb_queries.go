@@ -75,11 +75,11 @@ func (f *readBatchDeduper) Next() bool {
 		hashes, ok := f.seen[f.hashValue]
 		if !ok {
 			hashes = map[string]struct{}{}
-			hashes[GetUnsafeString(rangeValue)] = struct{}{}
+			hashes[getUnsafeString(rangeValue)] = struct{}{}
 			f.seen[f.hashValue] = hashes
 			return true
 		}
-		h := GetUnsafeString(rangeValue)
+		h := getUnsafeString(rangeValue)
 		if _, loaded := hashes[h]; loaded {
 			continue
 		}
@@ -111,7 +111,7 @@ func (f *readBatchDeduperSync) Next() bool {
 		f.rw.RLock()
 		hashes, ok := f.seen[f.hashValue]
 		if ok {
-			h := GetUnsafeString(rangeValue)
+			h := getUnsafeString(rangeValue)
 			if _, loaded := hashes[h]; loaded {
 				f.rw.RUnlock()
 				continue
@@ -133,7 +133,7 @@ func (f *readBatchDeduperSync) Next() bool {
 			continue
 		}
 		f.seen[f.hashValue] = map[string]struct{}{
-			GetUnsafeString(rangeValue): {},
+			getUnsafeString(rangeValue): {},
 		}
 		f.rw.Unlock()
 		return true
@@ -166,10 +166,6 @@ func doParallelQueries(ctx context.Context, queryIndex QueryIndexFunc, queries [
 	})
 }
 
-func GetUnsafeBytes(s string) []byte {
-	return *((*[]byte)(unsafe.Pointer(&s))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
-}
-
-func GetUnsafeString(buf []byte) string {
+func getUnsafeString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
