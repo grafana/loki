@@ -224,9 +224,9 @@ func benchmarkBitmapEncoder(b *testing.B, width int) {
 		b.Run(name, func(b *testing.B) {
 			// Pre-compute values so we're not benchmarking generation or conversion to Value type.
 			const numValues = 32768 // Enough to defeat the CPU branch predictor
-			values := make([]Value, width)
+			values := make([]Value, numValues)
 			for i := range values {
-				values[i] = Uint64Value(m(i, width))
+				values[i] = Uint64Value(m(i, numValues))
 			}
 
 			var cw countingWriter
