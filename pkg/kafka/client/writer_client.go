@@ -238,7 +238,7 @@ type Producer struct {
 
 	// Custom metrics.
 	bufferedProduceBytesLimit prometheus.Gauge
-	produceRequestsTotal      prometheus.Counter
+	produceRecordsTotal       prometheus.Counter
 	produceFailuresTotal      *prometheus.CounterVec
 }
 
@@ -270,15 +270,15 @@ func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, r
 				Name:      "buffered_produce_bytes_limit",
 				Help:      "The bytes limit on buffered produce records. Produce requests fail once this limit is reached.",
 			}),
-		produceRequestsTotal: promauto.With(wrappedRegisterer).NewCounter(prometheus.CounterOpts{
+		produceRecordsTotal: promauto.With(wrappedRegisterer).NewCounter(prometheus.CounterOpts{
 			Namespace: "kafka_client",
-			Name:      "produce_requests_total",
-			Help:      "Total number of produce requests issued to Kafka.",
+			Name:      "produce_records_total",
+			Help:      "Total number of records produced.",
 		}),
 		produceFailuresTotal: promauto.With(wrappedRegisterer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "kafka_client",
 			Name:      "produce_failures_total",
-			Help:      "Total number of failed produce requests issued to Kafka.",
+			Help:      "Total number of records that failed to be produced.",
 		}, []string{"reason"}),
 	}
 
@@ -302,7 +302,7 @@ func (c *Producer) Close() {
 // This function honors the configure max buffered bytes and refuse to produce a record, returnin kgo.ErrMaxBuffered,
 // if the configured limit is reached.
 func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.ProduceResults {
-	c.produceRequestsTotal.Add(float64(len(records)))
+	c.produceRecordsTotal.Add(float64(len(records)))
 
 	// Call interceptor with all records if configured.
 	if c.recordsInterceptor != nil {
