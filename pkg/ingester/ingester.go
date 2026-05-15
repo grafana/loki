@@ -32,6 +32,8 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	grpcmetadata "google.golang.org/grpc/metadata"
+
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -65,7 +67,6 @@ import (
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/wal"
 	"github.com/grafana/loki/v3/pkg/validation"
-	grpcmetadata "google.golang.org/grpc/metadata"
 )
 
 const (

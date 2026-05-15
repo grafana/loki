@@ -601,7 +601,7 @@ func TestSearchWithPageMarkers(t *testing.T) {
 					dec := newDecoder(nil, 0)
 					dst := []ChunkMeta{}
 					require.Nil(t, dec.readChunksV3(version, &decbuf, tc.mint, tc.maxt, &dst))
-						require.Equal(t, tc.exp, dst)
+					require.Equal(t, tc.exp, dst)
 				})
 			}
 		}
