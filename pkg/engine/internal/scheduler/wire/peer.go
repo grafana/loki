@@ -20,12 +20,11 @@ import (
 //
 // Callers must call [Peer.Serve] to run the peer.
 type Peer struct {
-	Logger    log.Logger
-	Metrics   *Metrics
-	Collector *Collector
-	Conn      Conn    // Connection to use for communication.
-	Handler   Handler // Handler for incoming messages from the remote peer.
-	Buffer    int     // Buffer size for incoming and outgoing messages.
+	Logger  log.Logger
+	Metrics *Metrics
+	Conn    Conn    // Connection to use for communication.
+	Handler Handler // Handler for incoming messages from the remote peer.
+	Buffer  int     // Buffer size for incoming and outgoing messages.
 
 	done     chan struct{}     // Closed when the peer connection is closed.
 	incoming chan MessageFrame // Buffered frame of incoming messages.
@@ -51,11 +50,6 @@ type Handler func(ctx context.Context, peer *Peer, message Message) error
 // Serve runs the peer, blocking until the provided context is canceled.
 func (p *Peer) Serve(ctx context.Context) error {
 	p.lazyInit()
-
-	if p.Collector != nil {
-		p.Collector.addPeer(p)
-		defer p.Collector.removePeer(p)
-	}
 
 	// Defer connection close here in Serve since Peer does not have an explicit Close method.
 	defer p.Conn.Close()
@@ -95,6 +89,7 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 		switch frame := frame.(type) {
 		case MessageFrame:
 			// Queue the message for processing.
+			p.Metrics.observeIncomingQueueDepth(float64(len(p.incoming)))
 			start := time.Now()
 			select {
 			case p.incoming <- frame:
@@ -276,6 +271,7 @@ func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 
 // enqueueFrame enqueues a frame to be sent to the remote peer.
 func (p *Peer) enqueueFrame(ctx context.Context, frame Frame) error {
+	p.Metrics.observeOutgoingQueueDepth(float64(len(p.outgoing)))
 	start := time.Now()
 
 	select {

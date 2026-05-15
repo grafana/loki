@@ -110,10 +110,9 @@ type Worker struct {
 	sinks        map[ulid.ULID]*streamSink
 	jobs         map[ulid.ULID]*threadJob
 
-	wireMetrics   *wire.Metrics
-	wireCollector *wire.Collector
-	metrics       *metrics
-	collector     *collector
+	wireMetrics *wire.Metrics
+	metrics     *metrics
+	collector   *collector
 
 	// jobManager used to manage task assignments.
 	jobManager *jobManager
@@ -143,12 +142,11 @@ func New(config Config) (*Worker, error) {
 	}
 
 	return &Worker{
-		config:        config,
-		logger:        config.Logger,
-		wireMetrics:   wire.NewMetrics(),
-		wireCollector: wire.NewCollector(),
-		numThreads:    numThreads,
-		taskCaches:    config.TaskCaches,
+		config:      config,
+		logger:      config.Logger,
+		wireMetrics: wire.NewMetrics(),
+		numThreads:  numThreads,
+		taskCaches:  config.TaskCaches,
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
@@ -280,10 +278,9 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 	level.Info(logger).Log("msg", "handling connection")
 
 	peer := &wire.Peer{
-		Logger:    logger,
-		Metrics:   w.wireMetrics,
-		Collector: w.wireCollector,
-		Conn:      conn,
+		Logger:  logger,
+		Metrics: w.wireMetrics,
+		Conn:    conn,
 
 		// Allow for a backlog of 8 frames before backpressure is applied.
 		Buffer: 8,
@@ -379,10 +376,9 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	}
 
 	peer := &wire.Peer{
-		Logger:    logger,
-		Metrics:   w.wireMetrics,
-		Collector: w.wireCollector,
-		Conn:      conn,
+		Logger:  logger,
+		Metrics: w.wireMetrics,
+		Conn:    conn,
 
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
@@ -630,7 +626,6 @@ func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
 	errs = append(errs, reg.Register(w.collector))
 	errs = append(errs, w.metrics.Register(reg))
 	errs = append(errs, w.wireMetrics.Register(reg))
-	errs = append(errs, reg.Register(w.wireCollector))
 
 	return errors.Join(errs...)
 }
@@ -640,5 +635,4 @@ func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
 	reg.Unregister(w.collector)
 	w.metrics.Unregister(reg)
 	w.wireMetrics.Unregister(reg)
-	reg.Unregister(w.wireCollector)
 }

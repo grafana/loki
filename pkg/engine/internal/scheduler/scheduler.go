@@ -63,8 +63,7 @@ type Scheduler struct {
 	assignSema chan struct{}       // assignSema signals that task assignment is ready.
 	tasksCh    chan taskAssignment // channel for sending task assignments to worker routines.
 
-	wireMetrics   *wire.Metrics
-	wireCollector *wire.Collector
+	wireMetrics *wire.Metrics
 }
 
 // taskAssignment holds a popped task ready for assignment to a worker.
@@ -100,8 +99,7 @@ func New(config Config) (*Scheduler, error) {
 		assignSema: make(chan struct{}, 1),
 		tasksCh:    make(chan taskAssignment),
 
-		wireMetrics:   wire.NewMetrics(),
-		wireCollector: wire.NewCollector(),
+		wireMetrics: wire.NewMetrics(),
 	}
 
 	s.metrics = newMetrics()
@@ -155,10 +153,9 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	s.metrics.connsTotal.Inc()
 
 	peer := &wire.Peer{
-		Logger:    logger,
-		Metrics:   s.wireMetrics,
-		Collector: s.wireCollector,
-		Conn:      conn,
+		Logger:  logger,
+		Metrics: s.wireMetrics,
+		Conn:    conn,
 
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
@@ -1179,7 +1176,6 @@ func (s *Scheduler) RegisterMetrics(reg prometheus.Registerer) error {
 	errs = append(errs, reg.Register(s.collector))
 	errs = append(errs, s.metrics.Register(reg))
 	errs = append(errs, s.wireMetrics.Register(reg))
-	errs = append(errs, reg.Register(s.wireCollector))
 
 	return errors.Join(errs...)
 }
@@ -1189,5 +1185,4 @@ func (s *Scheduler) UnregisterMetrics(reg prometheus.Registerer) {
 	reg.Unregister(s.collector)
 	s.metrics.Unregister(reg)
 	s.wireMetrics.Unregister(reg)
-	reg.Unregister(s.wireCollector)
 }

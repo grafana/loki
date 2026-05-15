@@ -16,6 +16,8 @@ type Metrics struct {
 	messageRTTSeconds      prometheus.Histogram
 	enqueueOutgoingSeconds prometheus.Histogram
 	enqueueIncomingSeconds prometheus.Histogram
+	incomingQueueDepth     prometheus.Histogram
+	outgoingQueueDepth     prometheus.Histogram
 }
 
 func NewMetrics() *Metrics {
@@ -52,6 +54,20 @@ func NewMetrics() *Metrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}),
+		incomingQueueDepth: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_engine_wire_incoming_queue_depth",
+			Help:                            "Distribution of per-peer incoming queue depth at enqueue time",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+		}),
+		outgoingQueueDepth: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_engine_wire_outgoing_queue_depth",
+			Help:                            "Distribution of per-peer outgoing queue depth at enqueue time",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+		}),
 	}
 }
 
@@ -76,4 +92,12 @@ func (m *Metrics) observeEnqueueOutgoing(duration time.Duration) {
 
 func (m *Metrics) observeEnqueueIncoming(duration time.Duration) {
 	m.enqueueIncomingSeconds.Observe(duration.Seconds())
+}
+
+func (m *Metrics) observeIncomingQueueDepth(depth float64) {
+	m.incomingQueueDepth.Observe(depth)
+}
+
+func (m *Metrics) observeOutgoingQueueDepth(depth float64) {
+	m.outgoingQueueDepth.Observe(depth)
 }
