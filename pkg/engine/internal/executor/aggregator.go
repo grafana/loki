@@ -22,6 +22,11 @@ type groupState struct {
 	count int64   // values counter
 }
 
+type groupKey struct {
+	timestamp time.Time
+	key       uint64
+}
+
 type aggregationOperation int
 
 const (
@@ -37,11 +42,11 @@ const (
 
 // aggregator is used to aggregate sample values by a set of grouping keys for each point in time.
 type aggregator struct {
-	points            map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
-	digest            *xxhash.Digest                       // used to compute key for each group
-	operation         aggregationOperation                 // aggregation type
-	labels            map[string]arrow.Field               // combined list of all label fields for all sample values
-	clonedLabelValues map[string]string                    // cache of cloned strings to reduce allocations for repeated values
+	points            map[groupKey]*groupState // holds the groupState for each point in time series
+	digest            *xxhash.Digest           // used to compute key for each group
+	operation         aggregationOperation     // aggregation type
+	labels            map[string]arrow.Field   // combined list of all label fields for all sample values
+	clonedLabelValues map[string]string        // cache of cloned strings to reduce allocations for repeated values
 
 	// Track unique series across all timestamps to enforce maxSeries limit
 	maxSeries    int                          // maximum number of unique series allowed (0 means no limit)
@@ -64,9 +69,9 @@ func newAggregator(pointsSizeHint int, operation aggregationOperation) *aggregat
 	}
 
 	if pointsSizeHint > 0 {
-		a.points = make(map[time.Time]map[uint64]*groupState, pointsSizeHint)
+		a.points = make(map[groupKey]*groupState, pointsSizeHint)
 	} else {
-		a.points = make(map[time.Time]map[uint64]*groupState)
+		a.points = make(map[groupKey]*groupState)
 	}
 
 	return &a
@@ -120,26 +125,25 @@ func (a *aggregator) computeKey(labels []arrow.Field, labelValues []string) uint
 // Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
 // It expects labelValues to be in the same order as the groupBy columns.
 func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) error {
-	if len(labels) != len(labelValues) {
-		panic("len(labels) != len(labelValues)")
-	}
-
 	var key uint64
-	if a.memoizedKey != 0 {
+	switch {
+	case a.memoizedLabels != nil:
 		key = a.memoizedKey
 		labels = a.memoizedLabels
 		labelValues = a.memoizedLabelValues
-	} else {
+	case len(labels) == 0:
+		// Aggregation without grouping; all samples share key 0.
+		key = 0
+	case len(labels) != len(labelValues):
+		panic("len(labels) != len(labelValues)")
+	default:
 		key = a.computeKey(labels, labelValues)
 	}
 
-	point, ok := a.points[ts]
-	if !ok {
-		point = make(map[uint64]*groupState)
-		a.points[ts] = point
-	}
+	groupKey := groupKey{timestamp: ts, key: key}
+	state, ok := a.points[groupKey]
 
-	if state, ok := point[key]; ok {
+	if ok {
 		// TODO: handle hash collisions
 
 		// accumulate value based on aggregation type
@@ -184,10 +188,11 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 			a.uniqueSeries[key] = series
 		}
 
-		point[key] = &groupState{
+		state = &groupState{
 			value: value,
 			count: int64(1),
 		}
+		a.points[groupKey] = state
 	}
 	return nil
 }
@@ -204,42 +209,47 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 	schema := arrow.NewSchema(fields, nil)
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
 
-	// emit aggregated results in sorted order of timestamp
-	sortedTimestamps := a.getSortedTimestamps()
+	// Emit aggregated results in sorted timestamp order.
+	sortedKeys := slices.SortedFunc(maps.Keys(a.points), func(a, b groupKey) int {
+		if c := a.timestamp.Compare(b.timestamp); c != 0 {
+			return c
+		}
+		if a.key < b.key {
+			return -1
+		}
+		if a.key > b.key {
+			return 1
+		}
+		return 0
+	})
 
-	// preallocate all builders to the total amount of rows
-	total := 0
-	for _, ts := range sortedTimestamps {
-		total += len(a.points[ts])
-	}
-	rb.Reserve(total)
+	rb.Reserve(len(sortedKeys))
 
-	for _, ts := range sortedTimestamps {
-		tsValue, _ := arrow.TimestampFromTime(ts, arrow.Nanosecond)
+	for _, gk := range sortedKeys {
+		entry := a.points[gk]
+		tsValue, _ := arrow.TimestampFromTime(gk.timestamp, arrow.Nanosecond)
 
-		for key, entry := range a.points[ts] {
-			var value float64
-			switch a.operation {
-			case aggregationOperationAvg:
-				value = entry.value / float64(entry.count)
-			case aggregationOperationCount:
-				value = float64(entry.count)
-			default:
-				value = entry.value
-			}
+		var value float64
+		switch a.operation {
+		case aggregationOperationAvg:
+			value = entry.value / float64(entry.count)
+		case aggregationOperationCount:
+			value = float64(entry.count)
+		default:
+			value = entry.value
+		}
 
-			rb.Field(0).(*array.TimestampBuilder).Append(tsValue)
-			rb.Field(1).(*array.Float64Builder).Append(value)
+		rb.Field(0).(*array.TimestampBuilder).Append(tsValue)
+		rb.Field(1).(*array.Float64Builder).Append(value)
 
-			series := a.uniqueSeries[key]
-			for i := 2; i < len(fields); i++ { // offset by 2 as the first 2 fields are timestamp and value
-				builder := rb.Field(i)
+		series := a.uniqueSeries[gk.key]
+		for i := 2; i < len(fields); i++ { // offset by 2 as the first 2 fields are timestamp and value
+			builder := rb.Field(i)
 
-				if v, ok := series[fields[i].Name]; ok {
-					builder.(*array.StringBuilder).Append(v)
-				} else {
-					builder.(*array.StringBuilder).AppendNull()
-				}
+			if v, ok := series[fields[i].Name]; ok {
+				builder.(*array.StringBuilder).Append(v)
+			} else {
+				builder.(*array.StringBuilder).AppendNull()
 			}
 		}
 	}
@@ -249,18 +259,8 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 
 func (a *aggregator) Reset() {
 	a.digest.Reset()
-	// keep the timestamps but clear the aggregated values
-	for _, point := range a.points {
-		clear(point)
-	}
-
+	clear(a.points)
 	clear(a.uniqueSeries)
 	clear(a.clonedLabelValues)
-}
-
-// getSortedTimestamps returns all timestamps in sorted order
-func (a *aggregator) getSortedTimestamps() []time.Time {
-	return slices.SortedFunc(maps.Keys(a.points), func(a, b time.Time) int {
-		return a.Compare(b)
-	})
+	a.unbindLabels()
 }
