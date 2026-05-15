@@ -408,3 +408,88 @@ func TestReplaceIndexPointers_RetryExhaustion(t *testing.T) {
 	require.ErrorIs(t, err, errPreconditionFailed)
 	require.False(t, swapped)
 }
+
+// countingFailBucket wraps an objstore.Bucket and tracks the number of
+// GetAndReplace calls. Used to prove the empty-oldPaths fast-path bypasses
+// storage entirely.
+type countingFailBucket struct {
+	objstore.Bucket
+	mu    sync.Mutex
+	calls int
+}
+
+func (b *countingFailBucket) GetAndReplace(_ context.Context, _ string, _ func(io.ReadCloser) (io.ReadCloser, error)) error {
+	b.mu.Lock()
+	b.calls++
+	b.mu.Unlock()
+	return errPreconditionFailed
+}
+
+func TestReplaceIndexPointers_EmptyOldPaths_BypassesStorage(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	bucket := &countingFailBucket{Bucket: objstore.NewInMemBucket()}
+
+	writer := &TableOfContentsWriter{
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	// Even with a permanently-failing bucket, empty oldPaths must no-op
+	// without touching storage. This is the deterministic-no-op contract.
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		nil,
+		[]TableOfContentsEntry{
+			{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)},
+		},
+	)
+	require.NoError(t, err)
+	require.False(t, swapped)
+	require.Equal(t, 0, bucket.calls, "empty oldPaths must bypass GetAndReplace entirely")
+
+	// Same property for empty slice (not nil).
+	swapped, err = writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		[]string{},
+		[]TableOfContentsEntry{
+			{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110)},
+		},
+	)
+	require.NoError(t, err)
+	require.False(t, swapped)
+	require.Equal(t, 0, bucket.calls)
+}
+
+func TestReplaceIndexPointers_DeleteOnly(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	bucket := objstore.NewInMemBucket()
+
+	seedToC(t, bucket, window, []tocRow{
+		{"tenantA", "idx/a-0", 10, 20},
+		{"tenantA", "idx/a-1", 30, 40},
+		{"tenantB", "idx/b-0", 11, 21},
+	})
+
+	writer := &TableOfContentsWriter{
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	// Remove tenant A's pointers without adding anything. Valid use case for
+	// callers that need to drop stale entries (e.g. retention).
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		[]string{"idx/a-0", "idx/a-1"},
+		nil,
+	)
+	require.NoError(t, err)
+	require.True(t, swapped, "delete-only swap must apply when oldPaths match")
+
+	got := readToC(ctx, t, bucket, TableOfContentsPath(window))
+	require.Equal(t, []tocRow{
+		{"tenantB", "idx/b-0", 11, 21},
+	}, got, "tenant A must be fully drained; tenant B preserved")
+}

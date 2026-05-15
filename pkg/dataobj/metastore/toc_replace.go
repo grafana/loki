@@ -49,6 +49,16 @@ var errReplaceNoOp = stderrors.New("replace-index-pointers: no-op")
 // already-converged case, or the ToC is missing entirely), or (false, err)
 // on any error including retry exhaustion.
 //
+// Race-loss is detected on an ANY-match basis: if ANY oldPath is still
+// present in the target tenant's current section, the swap proceeds and
+// drops the matched subset (leaving non-matched oldPaths' replacements, if
+// they were already swapped in by a concurrent coordinator, untouched).
+// Only when ZERO oldPaths match is the call treated as a no-op. Callers
+// orchestrating per-cycle plans against a single ToC snapshot will see
+// all-or-nothing matches in practice; partial overlaps can only occur in
+// rare cross-cycle races and produce bounded duplicate index entries that
+// the next cycle's plan will re-merge.
+//
 // The primitive is idempotent: re-invoking it with already-applied
 // oldPaths/newEntries is a no-op.
 //
@@ -64,6 +74,13 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	oldPaths []string,
 	newEntries []TableOfContentsEntry,
 ) (bool, error) {
+	// Deterministic fast-path: with no oldPaths to remove, the call would always
+	// converge to a sentinel-aborted no-op inside the callback. Returning here
+	// makes the no-op behavior independent of bucket availability so callers can
+	// rely on (false, nil) without error-handling for transient storage issues.
+	if len(oldPaths) == 0 {
+		return false, nil
+	}
 	return m.replaceIndexPointers(ctx, window, tenant, oldPaths, newEntries, replaceBackoffConfig)
 }
 
