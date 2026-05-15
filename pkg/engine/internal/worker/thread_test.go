@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -16,10 +17,22 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
+
+// blockingPipeline blocks in Read until the context is canceled, simulating an
+// operation that never completes.
+type blockingPipeline struct{}
+
+func (blockingPipeline) Open(_ context.Context) error { return nil }
+func (blockingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	<-ctx.Done()
+	return nil, util.CauseError(ctx)
+}
+func (blockingPipeline) Close() {}
 
 // mockRecordSink records each Send call and total rows for testing.
 // RecordedFieldNames is the list of field names (in order) for each received record.
@@ -82,6 +95,32 @@ func TestThread_drainPipeline(t *testing.T) {
 	defer sink.mu.Unlock()
 	require.Equal(t, 3, sink.SendCount, "one send per record")
 	require.Equal(t, int64(3), sink.TotalRows)
+}
+
+func TestThread_drainPipeline_Timeout(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+
+	sink := &mockRecordSink{}
+	th := &thread{Logger: log.NewNopLogger(), Metrics: newMetrics()}
+	totalRows, err := th.drainPipeline(ctx, blockingPipeline{}, []recordSink{sink}, log.NewNopLogger())
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Equal(t, 0, totalRows)
+}
+
+func TestThread_drainPipeline_ContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(t.Context())
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel(fmt.Errorf("Test cancel: %w", context.Canceled))
+	}()
+
+	sink := &mockRecordSink{}
+	th := &thread{Logger: log.NewNopLogger(), Metrics: newMetrics()}
+	totalRows, err := th.drainPipeline(ctx, blockingPipeline{}, []recordSink{sink}, log.NewNopLogger())
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 0, totalRows)
 }
 
 func TestThread_runJob_IgnoresClosedSourceBindErrors(t *testing.T) {
