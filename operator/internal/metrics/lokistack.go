@@ -45,12 +45,12 @@ var (
 	lokiStackStorageSchemaVersionDesc = prometheus.NewDesc(
 		metricsPrefix+"storage_schema_version",
 		"Storage schema versions configured for the LokiStack",
-		append(metricsCommonLabels, "version", "effective_date"), nil,
+		append(metricsCommonLabels, "version"), nil,
 	)
 
-	lokiStackComponentReplicasDesc = prometheus.NewDesc(
-		metricsPrefix+"component_replicas",
-		"Replica count for components (only when different from size defaults)",
+	lokiStackComponentCustomReplicasDesc = prometheus.NewDesc(
+		metricsPrefix+"component_custom_replicas",
+		"User configured replica count for components",
 		append(metricsCommonLabels, "component"), nil,
 	)
 
@@ -83,7 +83,7 @@ func (l *lokiStackCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- lokiStackConditionsCountDesc
 	ch <- lokiStackStorageInfoDesc
 	ch <- lokiStackStorageSchemaVersionDesc
-	ch <- lokiStackComponentReplicasDesc
+	ch <- lokiStackComponentCustomReplicasDesc
 	ch <- lokiStackIngestionRateLimitDesc
 }
 
@@ -136,25 +136,21 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 		storageLabels := append(labels, string(stack.Spec.Storage.Secret.Type), getStorageCredentialsMode(&stack))
 		m <- prometheus.MustNewConstMetric(
 			lokiStackStorageInfoDesc,
-			prometheus.GaugeValue,
-			1.0,
+			prometheus.GaugeValue, 1.0,
 			storageLabels...)
 
-		if len(stack.Spec.Storage.Schemas) > 0 {
-			for _, schema := range stack.Spec.Storage.Schemas {
-				schemaLabels := append(labels, string(schema.Version), string(schema.EffectiveDate))
-				m <- prometheus.MustNewConstMetric(lokiStackStorageSchemaVersionDesc,
-					prometheus.GaugeValue,
-					1.0,
-					schemaLabels...)
-			}
+		for _, schema := range stack.Spec.Storage.Schemas {
+			schemaLabels := append(labels, string(schema.Version))
+			m <- prometheus.MustNewConstMetric(lokiStackStorageSchemaVersionDesc,
+				prometheus.GaugeValue, 1.0,
+				schemaLabels...)
 		}
 
-		customReplicas := getCustomReplicas(&stack)
-		for component, replicas := range customReplicas {
+		componentCustomReplicas := getComponentCustomReplicas(&stack)
+		for component, replicas := range componentCustomReplicas {
 			componentLabels := append(labels, component)
 			m <- prometheus.MustNewConstMetric(
-				lokiStackComponentReplicasDesc,
+				lokiStackComponentCustomReplicasDesc,
 				prometheus.GaugeValue,
 				float64(replicas),
 				componentLabels...)
@@ -189,7 +185,7 @@ func getGlobalIngestionRateLimit(stack *lokiv1.LokiStack) int32 {
 	return stack.Spec.Limits.Global.IngestionLimits.IngestionRate
 }
 
-func getCustomReplicas(stack *lokiv1.LokiStack) map[string]int32 {
+func getComponentCustomReplicas(stack *lokiv1.LokiStack) map[string]int32 {
 	customReplicas := make(map[string]int32)
 
 	defaults := manifests.DefaultLokiStackSpec(stack.Spec.Size)

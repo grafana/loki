@@ -247,8 +247,8 @@ lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_nam
 lokistack_storage_info{backend_type="s3",credential_mode="token",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 1
 # HELP lokistack_storage_schema_version Storage schema versions configured for the LokiStack
 # TYPE lokistack_storage_schema_version gauge
-lokistack_storage_schema_version{effective_date="2024-01-01",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns",version="v12"} 1
-lokistack_storage_schema_version{effective_date="2025-01-01",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns",version="v13"} 1
+lokistack_storage_schema_version{size="1x.small",stack_name="storage-stack",stack_namespace="test-ns",version="v12"} 1
+lokistack_storage_schema_version{size="1x.small",stack_name="storage-stack",stack_namespace="test-ns",version="v13"} 1
 `,
 		},
 		{
@@ -287,10 +287,10 @@ lokistack_storage_schema_version{effective_date="2025-01-01",size="1x.small",sta
 					},
 				},
 			},
-			wantMetrics: `# HELP lokistack_component_replicas Replica count for components (only when different from size defaults)
-# TYPE lokistack_component_replicas gauge
-lokistack_component_replicas{component="ingester",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 5
-lokistack_component_replicas{component="querier",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 4
+			wantMetrics: `# HELP lokistack_component_custom_replicas User configured replica count for components
+# TYPE lokistack_component_custom_replicas gauge
+lokistack_component_custom_replicas{component="ingester",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 5
+lokistack_component_custom_replicas{component="querier",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 4
 # HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
 lokistack_info{size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 1
@@ -309,7 +309,7 @@ lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_nam
 lokistack_storage_info{backend_type="gcs",credential_mode="static",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 1
 # HELP lokistack_storage_schema_version Storage schema versions configured for the LokiStack
 # TYPE lokistack_storage_schema_version gauge
-lokistack_storage_schema_version{effective_date="2025-01-01",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns",version="v13"} 1
+lokistack_storage_schema_version{size="1x.small",stack_name="custom-stack",stack_namespace="test-ns",version="v13"} 1
 `,
 		},
 		{
