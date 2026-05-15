@@ -2,6 +2,7 @@ package log
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -70,12 +71,12 @@ var (
 		"unixToTime":       unixToTime,
 		"alignLeft":        alignLeft,
 		"alignRight":       alignRight,
+		"b64dec":           base64Decode,
 	}
 
 	// sprig template functions
 	templateFunctions = []string{
 		"b64enc",
-		"b64dec",
 		"lower",
 		"upper",
 		"title",
@@ -177,6 +178,19 @@ func toDateInZone(fmt, zone, str string) time.Time {
 	}
 	t, _ := time.ParseInLocation(fmt, str, loc)
 	return t
+}
+
+func base64Decode(v string) string {
+	if remainder := len(v) % 4; remainder != 0 && remainder != 1 {
+		v += strings.Repeat("=", 4-remainder)
+	}
+
+	data, err := base64.StdEncoding.DecodeString(v)
+	if err != nil {
+		return err.Error()
+	}
+
+	return string(data)
 }
 
 func init() {
