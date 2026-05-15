@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"net"
 	"testing"
 	"time"
 
@@ -16,7 +15,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -29,22 +27,6 @@ type mockIndexGatewayServer struct {
 
 func (m mockIndexGatewayServer) GetChunkRef(context.Context, *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
 	return &logproto.GetChunkRefResponse{}, nil
-}
-
-func createTestGrpcServer(t *testing.T) (func(), string) {
-	var server mockIndexGatewayServer
-	lis, err := net.Listen("tcp", "localhost:0")
-	require.NoError(t, err)
-	s := grpc.NewServer()
-
-	logproto.RegisterIndexGatewayServer(s, &server)
-	go func() {
-		if err := s.Serve(lis); err != nil {
-			t.Logf("Failed to serve: %v", err)
-		}
-	}()
-
-	return s.GracefulStop, lis.Addr().String()
 }
 
 type mockTenantLimits map[string]*validation.Limits

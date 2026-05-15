@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"unsafe"
+
+	"github.com/grafana/dskit/concurrency"
 )
 
 const (
@@ -138,6 +140,30 @@ func (f *readBatchDeduperSync) Next() bool {
 	}
 
 	return false
+}
+
+// TOOD(chaudum): Find a better name
+// TODO(chaudum): This function is only used in tests
+// Prior to this change, there where two exported functions DoParallelQueries in different packages:
+// * pkg/storage/chunk/client/util/util.go
+// * pkg/storage/stores/shipper/indexshipper/util/queries.go
+// This function comes fro the latter.
+func doParallelQueries(ctx context.Context, queryIndex QueryIndexFunc, queries []Query, callback QueryPagesCallback) error {
+	if len(queries) == 0 {
+		return nil
+	}
+	if len(queries) <= maxQueriesBatch {
+		return queryIndex(ctx, queries, NewCallbackDeduper(callback, len(queries)))
+	}
+
+	jobsCount := len(queries) / maxQueriesBatch
+	if len(queries)%maxQueriesBatch != 0 {
+		jobsCount++
+	}
+	callback = NewSyncCallbackDeduper(callback, len(queries))
+	return concurrency.ForEachJob(ctx, jobsCount, maxConcurrency, func(ctx context.Context, idx int) error {
+		return queryIndex(ctx, queries[idx*maxQueriesBatch:min((idx+1)*maxQueriesBatch, len(queries))], callback)
+	})
 }
 
 func GetUnsafeBytes(s string) []byte {

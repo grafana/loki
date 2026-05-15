@@ -35,8 +35,7 @@ type MockStorage struct {
 	tables    map[string]*mockTable
 	schemaCfg config.SchemaConfig
 
-	numIndexWrites int
-	mode           MockStorageMode
+	mode MockStorageMode
 }
 
 // compiler check
@@ -59,13 +58,7 @@ func (m *InMemoryObjectClient) Internals() map[string][]byte {
 }
 
 type mockTable struct {
-	items       map[string][]mockItem
 	write, read int64
-}
-
-type mockItem struct {
-	rangeValue []byte
-	value      []byte
 }
 
 var singleton *MockStorage
@@ -151,7 +144,6 @@ func (m *MockStorage) CreateTable(_ context.Context, desc config.TableDesc) erro
 	}
 
 	m.tables[desc.Name] = &mockTable{
-		items: map[string][]mockItem{},
 		write: desc.ProvisionedWrite,
 		read:  desc.ProvisionedRead,
 	}

@@ -34,11 +34,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/jumphash"
 )
 
-const (
-	maxQueriesPerGrpc      = 100
-	maxConcurrentGrpcCalls = 10
-)
-
 // ClientConfig configures the Index Gateway client used to communicate with
 // the Index Gateway server.
 type ClientConfig struct {
@@ -546,5 +541,3 @@ func addressesForQueryEndTime(addrs []string, t time.Time, buckets []time.Durati
 
 	return addrs[start:end]
 }
-
-func noFilter(addrs []string) []string { return addrs }

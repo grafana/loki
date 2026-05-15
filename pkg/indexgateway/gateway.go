@@ -35,10 +35,6 @@ import (
 
 var tracer = otel.Tracer("pkg/indexgateway")
 
-const (
-	maxIndexEntriesPerResponse = 1000
-)
-
 type IndexQuerier interface {
 	stores.ChunkFetcher
 	index.BaseReader
