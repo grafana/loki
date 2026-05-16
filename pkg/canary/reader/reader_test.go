@@ -96,6 +96,38 @@ func TestBuildLabelSelector(t *testing.T) {
 	}
 }
 
+func TestNewReaderDisableTail(t *testing.T) {
+	recv := make(chan time.Time, 1)
+	r, err := NewReader(
+		io.Discard,
+		recv,
+		false, nil,
+		"", "", "",
+		"localhost:3100",
+		"", "", "", "",
+		5*time.Second,
+		"name", "loki-canary",
+		"stream", "stdout",
+		time.Second,
+		"", "",
+		false,
+		true,
+	)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		r.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Stop() did not complete within timeout")
+	}
+}
+
 func TestBuildMetricQuery(t *testing.T) {
 	r := &Reader{
 		labelSelector: `{service_name="containerd",namespace="loki"}`,
@@ -241,7 +273,7 @@ func TestOTLPValidationTailAndQuery(t *testing.T) {
 	received := make(chan time.Time, 3)
 	before := testutil.ToFloat64(otlpValidationErrors)
 	r, err := NewReader(io.Discard, received, false, nil, "", "", "", strings.TrimPrefix(server.URL, "http://"), "",
-		"user", "password", "tenant", time.Second, "pod", "canary", "stream", "otlp", time.Minute, "", "", true)
+		"user", "password", "tenant", time.Second, "pod", "canary", "stream", "otlp", time.Minute, "", "", true, false)
 	require.NoError(t, err)
 	defer r.Stop()
 	want := start.Add(2 * time.Nanosecond)
