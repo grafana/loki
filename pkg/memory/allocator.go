@@ -4,7 +4,7 @@ import (
 	"errors"
 	"unsafe"
 
-	"go.uber.org/atomic"
+	"sync/atomic"
 
 	"github.com/grafana/loki/v3/pkg/memory/internal/memalign"
 )
