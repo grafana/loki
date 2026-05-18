@@ -1,6 +1,7 @@
 package rendezvous
 
 import (
+	"errors"
 	"hash/crc64"
 	"sort"
 	"strconv"
@@ -23,7 +24,10 @@ func NewShuffleSharder(partitions []int32) ShuffleSharder {
 	return ShuffleSharder{partitions, hashes}
 }
 
-func (r ShuffleSharder) Shard(key uint32) int32 {
+func (r ShuffleSharder) Shard(key uint32) (int32, error) {
+	if len(r.partitions) == 0 {
+		return 0, errors.New("no active partitions")
+	}
 	var maxPartition int32
 	var maxHash uint64
 	for i, partition := range r.partitions {
@@ -33,7 +37,7 @@ func (r ShuffleSharder) Shard(key uint32) int32 {
 			maxHash = hash
 		}
 	}
-	return maxPartition
+	return maxPartition, nil
 }
 
 func (r ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) ShuffleSharder {
@@ -63,6 +67,10 @@ func (r ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) Shuf
 		subHashesSet[i] = hashes[i].originalHash
 	}
 	return ShuffleSharder{subpartitions, subHashesSet}
+}
+
+func (r ShuffleSharder) Size() int {
+	return len(r.partitions)
 }
 
 type partitionAndHash struct {

@@ -2,14 +2,16 @@ package rendezvous
 
 import (
 	"context"
+	"time"
+
+	"go.uber.org/atomic"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
-	"sync/atomic"
-	"time"
 )
 
 // PartitionWatcher is a Service that maintains an in-memory copy of ring membership
@@ -70,12 +72,12 @@ func (s *PartitionWatcher) loop(ctx context.Context) error {
 
 func (s *PartitionWatcher) updateShuffleSharder(ringDesc *ring.PartitionRingDesc) {
 	partitions := ringDesc.Partitions
-	partitionIds := make([]int32, 0, len(partitions))
+	partitionIDs := make([]int32, 0, len(partitions))
 	for _, partition := range partitions {
 		if partition.State == ring.PartitionActive {
-			partitionIds = append(partitionIds, partition.Id)
+			partitionIDs = append(partitionIDs, partition.Id)
 		}
 	}
-	sharder := NewShuffleSharder(partitionIds)
+	sharder := NewShuffleSharder(partitionIDs)
 	s.sharder.Store(&sharder)
 }
