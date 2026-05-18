@@ -131,20 +131,14 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 }
 
 type TeeConfig struct {
-	BatchSize          int           `yaml:"batch_size"`
 	BatchFlushInterval time.Duration `yaml:"batch_flush_interval"`
 	FlushQueueSize     int           `yaml:"flush_queue_size"`
 	FlushWorkerCount   int           `yaml:"flush_worker_count"`
+	MaxBufferedBytes   int           `yaml:"max_buffered_bytes"`
 	StopFlushTimeout   time.Duration `yaml:"stop_flush_timeout"`
 }
 
 func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
-	f.IntVar(
-		&cfg.BatchSize,
-		prefix+"tee.batch-size",
-		5000,
-		"The size of the batch of raw logs to send for template mining",
-	)
 	f.DurationVar(
 		&cfg.BatchFlushInterval,
 		prefix+"tee.batch-flush-interval",
@@ -162,6 +156,12 @@ func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 		prefix+"tee.flush-worker-count",
 		100,
 		"the number of concurrent workers sending logs to the template service",
+	)
+	f.IntVar(
+		&cfg.MaxBufferedBytes,
+		prefix+"tee.max-buffered-bytes",
+		0,
+		"The maximum number of bytes that can be buffered before dropping, 0 means disabled",
 	)
 	f.DurationVar(
 		&cfg.StopFlushTimeout,

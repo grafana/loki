@@ -62,7 +62,6 @@ type limits struct {
 	// Use pointers so nil value can indicate if the value was set.
 	splitDuration       *time.Duration
 	maxQueryParallelism *int
-	maxQueryBytesRead   *int
 }
 
 func (l limits) QuerySplitDuration(user string) time.Duration {
@@ -382,7 +381,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		level.Warn(log).Log("msg", "failed to get schema config, not applying querySizeLimit", "err", err)
 		return q.next.Do(ctx, r)
 	}
-	if schemaCfg.IndexType != types.TSDBType {
+	if schemaCfg.IndexType != types.IndexTypeTSDB {
 		return q.next.Do(ctx, r)
 	}
 
@@ -684,7 +683,7 @@ func WeightedParallelism(
 	// the active configuration
 	if start.Equal(end) {
 		switch configs[i].IndexType {
-		case types.TSDBType:
+		case types.IndexTypeTSDB:
 			return l.TSDBMaxQueryParallelism(ctx, user)
 		}
 		return l.MaxQueryParallelism(ctx, user)
@@ -705,7 +704,7 @@ func WeightedParallelism(
 		if i+1 < len(configs) && configs[i+1].From.Time.Before(end) {
 			dur = configs[i+1].From.Sub(from)
 		}
-		if ty := configs[i].IndexType; ty == types.TSDBType {
+		if ty := configs[i].IndexType; ty == types.IndexTypeTSDB {
 			tsdbDur += dur
 		} else {
 			otherDur += dur

@@ -765,12 +765,6 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 	}
 }
 
-type fakeRetention struct{}
-
-func (f fakeRetention) RetentionPeriodFor(_ string, _ labels.Labels) time.Duration {
-	return time.Hour
-}
-
 func TestOtlpError(t *testing.T) {
 	for _, tc := range []struct {
 		name         string

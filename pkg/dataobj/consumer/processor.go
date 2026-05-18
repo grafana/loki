@@ -46,8 +46,6 @@ type processor struct {
 	decoder        *kafka.Decoder
 	records        chan *kgo.Record
 	flushCommitter flushCommitter
-	// flushRequests is used to safely trigger a flush from outside the Run loop.
-	flushRequests chan flushRequest
 
 	// lastOffset contains the offset of the last record appended to the data object
 	// builder. It is used to commit the correct offset after a flush.
@@ -84,6 +82,10 @@ type processor struct {
 	// per flush with 12 hour windows.
 	timePartitionedEstimates map[time.Time]struct{}
 
+	// flushRequests is used to safely trigger a flush from outside the Run loop.
+	mode          IngestMode
+	flushRequests chan flushRequest
+
 	metrics *metrics
 	logger  log.Logger
 }
@@ -94,6 +96,7 @@ func newProcessor(
 	flushCommitter flushCommitter,
 	idleFlushTimeout time.Duration,
 	maxBuilderAge time.Duration,
+	mode IngestMode,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) *processor {
@@ -112,6 +115,7 @@ func newProcessor(
 		metrics:                  newMetrics(reg),
 		logger:                   logger,
 		timePartitionedEstimates: make(map[time.Time]struct{}),
+		mode:                     mode,
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p
@@ -137,42 +141,8 @@ func (p *processor) running(ctx context.Context) error {
 // The records channel remains open (owned by Service) and may still have
 // buffered records written by the distributor before the push timeout fired.
 func (p *processor) stopping(_ error) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	dropped := 0
-drain:
-	for {
-		select {
-		case rec, ok := <-p.records:
-			if !ok {
-				break drain
-			}
-			if err := p.processRecord(ctx, rec); err != nil {
-				level.Error(p.logger).Log("msg", "failed to process record during shutdown drain", "err", err)
-				p.observeRecordErr(rec)
-			}
-		case <-ctx.Done():
-			// Drain timed out — count remaining buffered records as dropped.
-			dropped = len(p.records)
-			break drain
-		default:
-			// Channel is empty — drain complete.
-			break drain
-		}
-	}
-
-	if dropped > 0 {
-		level.Warn(p.logger).Log("msg", "inmemory drain timed out, records dropped", "count", dropped)
-	} else {
-		level.Info(p.logger).Log("msg", "inmemory channel drained cleanly on shutdown")
-	}
-
-	// Flush whatever was accumulated during drain.
-	if !p.lastAppend.IsZero() && p.builder.GetEstimatedSize() > 0 {
-		if err := p.flush(ctx, "shutdown"); err != nil {
-			level.Error(p.logger).Log("msg", "failed to flush during shutdown drain", "err", err)
-		}
+	if p.mode == IngestModeInMemory {
+		p.drainOnShutdown()
 	}
 	return nil
 }
@@ -352,4 +322,44 @@ func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
 func (p *processor) observeRecordErr(rec *kgo.Record) {
 	p.metrics.recordFailures.Inc()
 	p.metrics.discardedBytes.Add(float64(len(rec.Value)))
+}
+
+func (p *processor) drainOnShutdown() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	dropped := 0
+drain:
+	for {
+		select {
+		case rec, ok := <-p.records:
+			if !ok {
+				break drain
+			}
+			if err := p.processRecord(ctx, rec); err != nil {
+				level.Error(p.logger).Log("msg", "failed to process record during shutdown drain", "err", err)
+				p.observeRecordErr(rec)
+			}
+		case <-ctx.Done():
+			// Drain timed out — count remaining buffered records as dropped.
+			dropped = len(p.records)
+			break drain
+		default:
+			// Channel is empty — drain complete.
+			break drain
+		}
+	}
+
+	if dropped > 0 {
+		level.Warn(p.logger).Log("msg", "inmemory drain timed out, records dropped", "count", dropped)
+	} else {
+		level.Info(p.logger).Log("msg", "inmemory channel drained cleanly on shutdown")
+	}
+
+	// Flush whatever was accumulated during drain.
+	if !p.lastAppend.IsZero() && p.builder.GetEstimatedSize() > 0 {
+		if err := p.flush(ctx, "shutdown"); err != nil {
+			level.Error(p.logger).Log("msg", "failed to flush during shutdown drain", "err", err)
+		}
+	}
 }

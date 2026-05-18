@@ -150,6 +150,13 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		_, correlationID = h.shouldSample(tenants, httpReq)
 	}
 
+	if correlationID != "" {
+		httpreq.AppendQueryTagsHeader(
+			httpReq.Header,
+			fmt.Sprintf("%s=%s", goldfish.GoldfishCorrelationIDQueryTagKey, correlationID),
+		)
+	}
+
 	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
 	collected := make([]*backendResult, 0, len(h.backends))
 

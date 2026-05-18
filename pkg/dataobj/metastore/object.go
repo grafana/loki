@@ -15,8 +15,6 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -41,7 +39,11 @@ import (
 )
 
 const (
-	metastoreWindowSize = 12 * time.Hour
+	// MetastoreWindowSize is the duration covered by a single Table of
+	// Contents file in the metastore. ToC files are aligned to multiples of
+	// this duration. Exported so external packages (e.g. the dataobj
+	// compactor) can iterate over the same time windows used internally.
+	MetastoreWindowSize = 12 * time.Hour
 
 	// TocPrefix is the prefix under which ToC files are stored in the object storage.
 	TocPrefix = "tocs/"
@@ -123,22 +125,27 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls [
 	d.AmbiguousPredicatesByStream[pointer.StreamIDRef] = curLbls
 }
 
-// Table of Content files are stored in well-known locations that can be computed from a known time.
-func tableOfContentsPath(window time.Time) string {
+// TableOfContentsPath returns the object-storage path of the ToC file that
+// covers the given window-aligned time. The path layout is part of the
+// metastore's on-disk contract; callers must align window to MetastoreWindowSize.
+func TableOfContentsPath(window time.Time) string {
 	return fmt.Sprintf("%s%s.toc", TocPrefix, strings.ReplaceAll(window.Format(time.RFC3339), ":", "_"))
 }
 
-func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
-	minTocWindow := start.Truncate(metastoreWindowSize).UTC()
-	maxTocWindow := end.Truncate(metastoreWindowSize).UTC()
+// IterTableOfContentsPaths returns a sequence of (path, time-range) pairs
+// covering every ToC window that overlaps [start, end]. start and end may
+// be unaligned; the iterator truncates them to MetastoreWindowSize boundaries.
+func IterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
+	minTocWindow := start.Truncate(MetastoreWindowSize).UTC()
+	maxTocWindow := end.Truncate(MetastoreWindowSize).UTC()
 
 	return func(yield func(t string, timeRange multitenancy.TimeRange) bool) {
-		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(metastoreWindowSize) {
+		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(MetastoreWindowSize) {
 			tocTimeRange := multitenancy.TimeRange{
 				MinTime: tocWindow,
-				MaxTime: tocWindow.Add(metastoreWindowSize),
+				MaxTime: tocWindow.Add(MetastoreWindowSize),
 			}
-			if !yield(tableOfContentsPath(tocWindow), tocTimeRange) {
+			if !yield(TableOfContentsPath(tocWindow), tocTimeRange) {
 				return
 			}
 		}
@@ -189,7 +196,7 @@ func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, mat
 	var (
 		tablePaths []string
 	)
-	for path := range iterTableOfContentsPaths(start, end) {
+	for path := range IterTableOfContentsPaths(start, end) {
 		tablePaths = append(tablePaths, path)
 	}
 
@@ -217,7 +224,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 
 	// Get all metastore paths for the time range
 	var tablePaths []string
-	for path := range iterTableOfContentsPaths(start, end) {
+	for path := range IterTableOfContentsPaths(start, end) {
 		tablePaths = append(tablePaths, path)
 	}
 
@@ -448,86 +455,6 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, 
 	return entries, nil
 }
 
-// forEachStreamWithColumns iterates over the streams in the object and calls the callback function for each stream that matches the matchers and includes the requested columns
-// requestedColumnValues is a map of key-value pairs for the requested columns. Columns that are not present for this stream will not have an entry in the map.
-// The requestedColumnValues map is only valid for the duration of the callback function.
-func forEachStreamWithColumns(ctx context.Context, object *dataobj.Object, matchers []*labels.Matcher, sStart, sEnd *scalar.Timestamp, includeColumns func(*streams.Column) bool, f func(streamID int64, requestedColumnValues map[string]string)) error {
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return fmt.Errorf("extracting org ID: %w", err)
-	}
-	var reader streams.Reader
-	defer reader.Close()
-
-	for _, section := range object.Sections().Filter(streams.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
-
-		sec, err := streams.Open(ctx, section)
-		if err != nil {
-			return fmt.Errorf("opening section: %w", err)
-		}
-
-		predicates, err := buildStreamReaderPredicate(sec, sStart, sEnd, matchers)
-		if err != nil {
-			return err
-		}
-
-		// All columns to read
-		targetColumns := make([]*streams.Column, 0, 1)
-
-		// Additional requested columns
-		requestedColumns := make([]*streams.Column, 0, 2)
-		requestedColumnIndexes := make(map[string]int, 2)
-
-		for _, column := range sec.Columns() {
-			if column.Type == streams.ColumnTypeStreamID {
-				targetColumns = append(targetColumns, column)
-			} else if includeColumns(column) {
-				targetColumns = append(targetColumns, column)
-				requestedColumns = append(requestedColumns, column)
-				requestedColumnIndexes[column.Name] = len(requestedColumns)
-			}
-		}
-
-		readerOpts := streams.ReaderOptions{
-			Columns:    targetColumns,
-			Predicates: predicates,
-			Allocator:  memory.DefaultAllocator,
-		}
-		reader.Reset(readerOpts)
-
-		if err := reader.Open(ctx); err != nil {
-			return fmt.Errorf("opening streams reader: %w", err)
-		}
-
-		requestedColumnValues := make(map[string]string, len(requestedColumns))
-		for {
-			rec, err := reader.Read(ctx, 8192)
-			if err != nil && !errors.Is(err, io.EOF) {
-				return err
-			} else if err != nil {
-				// EOF
-				break
-			}
-
-			for i := range rec.NumRows() {
-				streamID := rec.Column(0).(*array.Int64).Value(int(i))
-				// This doesn't differentiate between null and empty columns. But neither does LogQL, so that's fine.
-				for _, column := range requestedColumns {
-					if targetColumnIndex, ok := requestedColumnIndexes[column.Name]; ok {
-						requestedColumnValues[column.Name] = rec.Column(targetColumnIndex).(*array.String).Value(int(i))
-					}
-				}
-				f(streamID, requestedColumnValues)
-				clear(requestedColumnValues)
-			}
-		}
-	}
-	return nil
-}
-
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -724,7 +651,7 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	resp := GetIndexesResponse{}
 
 	// Get all metastore paths for the time range
-	for path := range iterTableOfContentsPaths(req.Start, req.End) {
+	for path := range IterTableOfContentsPaths(req.Start, req.End) {
 		resp.TableOfContentsPaths = append(resp.TableOfContentsPaths, path)
 	}
 

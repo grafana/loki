@@ -84,9 +84,6 @@ type Compactor struct {
 	services.Service
 
 	cfg                       Config
-	indexStorageClient        storage.Client
-	tableMarker               retention.TableMarker
-	sweeper                   *retention.Sweeper
 	deleteRequestsStore       deletion.DeleteRequestsStore
 	DeleteRequestsHandler     *deletion.DeleteRequestHandler
 	DeleteRequestsGRPCHandler *deletion.GRPCRequestHandler
@@ -94,7 +91,6 @@ type Compactor struct {
 	expirationChecker         retention.ExpirationChecker
 	metrics                   *metrics
 	running                   bool
-	wg                        sync.WaitGroup
 	indexCompactors           map[string]IndexCompactor
 	schemaConfig              config.SchemaConfig
 	limits                    Limits

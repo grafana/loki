@@ -27,7 +27,6 @@ type recalculateOwnedStreamsSvc struct {
 
 	ownershipStrategy ownershipStrategy
 	instancesSupplier func() []*instance
-	ticker            *time.Ticker
 }
 
 func newRecalculateOwnedStreamsSvc(instancesSupplier func() []*instance, ownershipStrategy ownershipStrategy, ringPollInterval time.Duration, logger log.Logger) *recalculateOwnedStreamsSvc {

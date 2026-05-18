@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
@@ -267,8 +266,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 
 	t.Run("IndexGateway client is enabled when running querier target", func(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Querier)
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
-		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		c, err := New(cfg)
 		require.NoError(t, err)
 
@@ -280,7 +277,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		}()
 
 		require.NoError(t, err)
-		assert.False(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
 		assert.False(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
 	})
 
@@ -288,8 +284,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Read, func(cfg *Config) {
 			cfg.LegacyReadTarget = true
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
-		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -302,7 +296,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		}()
 
 		require.NoError(t, err)
-		assert.True(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
 		assert.True(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
 	})
 
@@ -310,8 +303,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Read, func(cfg *Config) {
 			cfg.LegacyReadTarget = false
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
-		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -324,7 +315,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		}()
 
 		require.NoError(t, err)
-		assert.False(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
 		assert.False(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
 	})
 
@@ -332,8 +322,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		cfg := minimalWorkingConfig(t, dir, Backend, func(cfg *Config) {
 			cfg.LegacyReadTarget = false
 		})
-		cfg.SchemaConfig.Configs[0].IndexType = types.BoltDBShipperType
-		cfg.SchemaConfig.Configs[0].IndexTables.Period = 24 * time.Hour
 		cfg.CompactorConfig.WorkingDirectory = dir
 		c, err := New(cfg)
 		require.NoError(t, err)
@@ -346,7 +334,6 @@ func TestIndexGatewayClientConfig(t *testing.T) {
 		}()
 
 		require.NoError(t, err)
-		assert.True(t, c.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled)
 		assert.True(t, c.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled)
 	})
 }
@@ -411,13 +398,11 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 			WorkingDirectory:    []string{filepath.Join(dir, "blooms")},
 			DownloadParallelism: 1,
 		},
-		BoltDBShipperConfig: boltdb.IndexCfg{
-			Config: indexshipper.Config{
-				ActiveIndexDirectory: filepath.Join(dir, "index"),
-				CacheLocation:        filepath.Join(dir, "cache"),
-				Mode:                 indexshipper.ModeWriteOnly,
-				ResyncInterval:       24 * time.Hour,
-			},
+		TSDBShipperConfig: indexshipper.Config{
+			ActiveIndexDirectory: filepath.Join(dir, "index"),
+			CacheLocation:        filepath.Join(dir, "cache"),
+			Mode:                 indexshipper.ModeWriteOnly,
+			ResyncInterval:       24 * time.Hour,
 		},
 	}
 
@@ -430,7 +415,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.SchemaConfig = config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				IndexType:  types.BoltDBShipperType,
+				IndexType:  types.IndexTypeTSDB,
 				ObjectType: types.StorageTypeFileSystem,
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{

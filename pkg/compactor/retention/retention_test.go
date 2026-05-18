@@ -2,15 +2,11 @@ package retention
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -310,49 +306,6 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	c := chunk.NewChunk(userID, fp, metric, chunkenc.NewFacade(chunkEnc, blockSize, targetSize), from, through)
 	require.NoError(t, c.Encode())
 	return c
-}
-
-func labelsSeriesID(ls labels.Labels) []byte {
-	h := sha256.Sum256([]byte(labelsString(ls)))
-	return encodeBase64Bytes(h[:])
-}
-
-func encodeBase64Bytes(bytes []byte) []byte {
-	encodedLen := base64.RawStdEncoding.EncodedLen(len(bytes))
-	encoded := make([]byte, encodedLen)
-	base64.RawStdEncoding.Encode(encoded, bytes)
-	return encoded
-}
-
-// Backwards-compatible with model.Metric.String()
-func labelsString(ls labels.Labels) string {
-	metricName := ls.Get(model.MetricNameLabel)
-	if metricName != "" && ls.Len() == 1 {
-		return metricName
-	}
-	var b strings.Builder
-	b.Grow(1000)
-
-	b.WriteString(metricName)
-	b.WriteByte('{')
-	i := 0
-	ls.Range(func(l labels.Label) {
-		if l.Name == model.MetricNameLabel {
-			return
-		}
-		if i > 0 {
-			b.WriteByte(',')
-			b.WriteByte(' ')
-		}
-		b.WriteString(l.Name)
-		b.WriteByte('=')
-		var buf [1000]byte
-		b.Write(strconv.AppendQuote(buf[:0], l.Value))
-		i++
-	})
-	b.WriteByte('}')
-
-	return b.String()
 }
 
 func TestChunkRewriter(t *testing.T) {

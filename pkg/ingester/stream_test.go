@@ -74,7 +74,6 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				"fake",
 				model.Fingerprint(0),
 				labels.FromStrings("foo", "bar"),
-				true,
 				NewStreamRateCalculator(),
 				NilMetrics,
 				nil,
@@ -128,7 +127,6 @@ func TestPushDeduplication(t *testing.T) {
 		"fake",
 		model.Fingerprint(0),
 		labels.FromStrings("foo", "bar"),
-		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -188,7 +186,6 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 		"fake",
 		model.Fingerprint(0),
 		labels.FromStrings("foo", "bar"),
-		true,
 		NewStreamRateCalculator(),
 		metrics,
 		manager,
@@ -234,7 +231,6 @@ func TestPushRejectOldCounter(t *testing.T) {
 		"fake",
 		model.Fingerprint(0),
 		labels.FromStrings("foo", "bar"),
-		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -342,7 +338,6 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 		"fake",
 		model.Fingerprint(0),
 		labels.FromStrings("foo", "bar"),
-		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -381,7 +376,6 @@ func TestUnorderedPush(t *testing.T) {
 		"fake",
 		model.Fingerprint(0),
 		labels.FromStrings("foo", "bar"),
-		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -484,7 +478,6 @@ func TestPushRateLimit(t *testing.T) {
 		"fake",
 		model.Fingerprint(0),
 		labels.FromStrings("foo", "bar"),
-		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -525,7 +518,6 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		"fake",
 		model.Fingerprint(0),
 		labels.FromStrings("foo", "bar"),
-		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -565,7 +557,6 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		"fake",
 		model.Fingerprint(0),
 		labels.FromStrings("foo", "bar"),
-		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
@@ -622,7 +613,7 @@ func Benchmark_PushStream(b *testing.B) {
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	chunkfmt, headfmt := defaultChunkFormat(b)
 	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
-	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
 	expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, &fakeTailServer{}, 10)

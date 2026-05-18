@@ -29,7 +29,12 @@ type statsAggregate struct {
 
 func (c *statsCalculation) Name() string { return "stats" }
 
-func (c *statsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
+// ProcessBatchNeedsBuilderLock reports whether ProcessBatch mutates the shared
+// builder. Stats aggregates into step-local state during ProcessBatch;
+// shared-builder writes happen in Flush, so no lock is required.
+func (c *statsCalculation) ProcessBatchNeedsBuilderLock() bool { return false }
+
+func (c *statsCalculation) Prepare(_ context.Context, _ *logsCalculationContext, _ *dataobj.Section, _ logs.Stats) error {
 	c.aggregates = make(map[uint64]*statsAggregate)
 	return nil
 }

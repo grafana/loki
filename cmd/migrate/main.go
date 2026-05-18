@@ -90,22 +90,15 @@ func main() {
 	destConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient
 	destConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis
 
-	// Don't keep fetched index files for very long
-	sourceConfig.StorageConfig.BoltDBShipperConfig.CacheTTL = 30 * time.Minute
-
-	sourceConfig.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	sourceConfig.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 
 	// Shorten these timers up so we resync a little faster and clear index files a little quicker
 	destConfig.StorageConfig.IndexCacheValidity = 1 * time.Minute
-	destConfig.StorageConfig.BoltDBShipperConfig.ResyncInterval = 1 * time.Minute
 	destConfig.StorageConfig.TSDBShipperConfig.ResyncInterval = 1 * time.Minute
 
 	// Don't want to use the index gateway for this, this makes sure the index files are properly uploaded when the store is stopped.
-	sourceConfig.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 	sourceConfig.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
-	destConfig.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 	destConfig.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
 	// The long nature of queries requires stretching out the cardinality limit some and removing the query length limit
