@@ -197,20 +197,6 @@ func TestPartitionRecordBatch_TimeShard(t *testing.T) {
 	}
 }
 
-func TestComputeLabelHashShards_NoGrouping(t *testing.T) {
-	rec := createTimestampRecordBatch(t, []time.Time{
-		time.Unix(10, 0),
-		time.Unix(20, 0),
-		time.Unix(30, 0),
-	})
-	defer rec.Release()
-
-	shardIndices := make([]int, rec.NumRows())
-
-	err := computeLabelHashShards(rec, physical.Grouping{}, 2, shardIndices)
-	require.Error(t, err)
-}
-
 func TestComputeLabelHashShards_SingleLabel(t *testing.T) {
 	labels := map[string][]string{
 		"app": {"web", "api", "db", "web"},

@@ -128,15 +128,6 @@ func CollectWithoutGroupingColumns(record arrow.RecordBatch, grouping physical.G
 		arrays = append(arrays, arr.(*array.String))
 
 		// always set to ambiguous type.
-		// Imagine two records with the same short name but different types.
-		// Record 1 has `utf8.label.env`
-		// Record 2 has `utf8.metadata.env`
-		//
-		// If the original type is preserved, aggregation will treat them
-		// as different groups, which is not the intended behavior.
-		//
-		// TODO: aggregator.go should be updated to use short names
-		// instead of full identifiers for grouping keys.
 		ident := semconv.NewIdentifier(shortName, types.ColumnTypeAmbiguous, types.Loki.String)
 		fields = append(fields, semconv.FieldFromIdent(ident, true))
 	}
