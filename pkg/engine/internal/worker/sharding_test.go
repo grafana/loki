@@ -602,7 +602,7 @@ func TestSimpleEvaluatorForSharding(t *testing.T) {
 	}, labels)
 	defer rec.Release()
 
-	eval := &simpleEvaluatorForSharding{rec: rec}
+	eval := &simpleEvaluatorForSharding{}
 
 	t.Run("column expression returns array", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{

@@ -61,7 +61,7 @@ func computeLabelHashShards(rec arrow.RecordBatch, grouping physical.Grouping, n
 	} else {
 		// We need an evaluator for CollectByGroupingColumns, but for sharding we can use a simple one
 		// that just looks up column references
-		evaluator := &simpleEvaluatorForSharding{rec: rec}
+		evaluator := &simpleEvaluatorForSharding{}
 		arrays, fields, err = executor.CollectByGroupingColumns(rec, grouping, evaluator)
 	}
 
@@ -86,7 +86,6 @@ func computeLabelHashShards(rec arrow.RecordBatch, grouping physical.Grouping, n
 // simpleEvaluatorForSharding is a minimal expression evaluator that only supports
 // column reference lookups for use in sharding.
 type simpleEvaluatorForSharding struct {
-	rec arrow.RecordBatch
 }
 
 func (e *simpleEvaluatorForSharding) EvalForGrouping(expr physical.Expression, rec arrow.RecordBatch) (arrow.Array, error) {
@@ -134,6 +133,7 @@ func computeTimeShards(rec arrow.RecordBatch, timeRanges []physical.TimeRange, s
 		ts := timestampCol.Value(rowIdx).ToTime(arrow.Nanosecond)
 
 		// Find which time range this timestamp belongs to
+		// If not found, will go to shard 0
 		shardIdx := 0
 		for i, tr := range timeRanges {
 			if (ts.Equal(tr.Start) || ts.After(tr.Start)) && ts.Before(tr.End) {

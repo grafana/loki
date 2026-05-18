@@ -419,13 +419,8 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			// Partition the record batch by shard
 			shardedBatches, partErr := partitionRecordBatch(rec, routing, len(sinks))
 			if partErr != nil {
-				level.Warn(logger).Log("msg", "failed to partition record batch, falling back to broadcast", "err", partErr)
-				// Fallback to broadcast
-				for _, sink := range sinks {
-					if err := sink.Send(ctx, rec); err != nil {
-						level.Warn(logger).Log("msg", "failed to send result", "err", err)
-					}
-				}
+				level.Error(logger).Log("msg", "failed to partition record batch", "err", partErr)
+				return totalRows, partErr
 			} else {
 				// Send each sharded batch to its corresponding sink
 				for shardIdx, shardBatch := range shardedBatches {
@@ -435,7 +430,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 
 					if shardIdx < len(sinks) {
 						if err := sinks[shardIdx].Send(ctx, shardBatch); err != nil {
-							level.Warn(logger).Log("msg", "failed to send result to shard", "shard", shardIdx, "err", err)
+							level.Error(logger).Log("msg", "failed to send result to shard", "shard", shardIdx, "err", err)
 						}
 						region.Record(xcap.TaskRecordsSent.Observe(1))
 						region.Record(xcap.TaskRowsSent.Observe(shardBatch.NumRows()))
