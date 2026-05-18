@@ -8,7 +8,7 @@ weight:
 
 Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster.  
 This component emits and periodically queries for logs, making sure that Loki is ingesting logs without any data loss.
-When something is wrong with Loki, the Canary often provides the first indication. 
+When something is wrong with Loki, the Canary often provides the first indication.
 
 Loki Canary generates artificial log lines.
 These log lines are sent to the Loki cluster.
@@ -17,7 +17,15 @@ artificial log lines,
 such that Loki Canary forms information about the performance of the Loki cluster.
 The information is available as Prometheus time series metrics.
 
-{{< figure max-width="75%" src="./loki-canary-block.png" alt="Loki canary">}}
+```mermaid
+graph LR
+    subgraph nodes["x Node"]
+        lc["loki-canary"] --> lf["log file"] --> al["Alloy"]
+    end
+
+    al -->|push| loki
+    lc -->|websocket| loki
+```
 
 Loki Canary writes a log to standard output and stores the timestamp in an internal
 array. The contents look something like this:
@@ -56,9 +64,9 @@ determine if they are truly missing or only missing from the WebSocket. If
 missing entries are not found in the direct query, the `missing_entries` counter
 is incremented.
 
-### Additional Queries
+## Additional Queries
 
-#### Spot Check
+### Spot Check
 
 Starting with version 1.6.0, the canary will spot check certain results over time
 to make sure they are present in Loki, this is helpful for testing the transition
@@ -82,12 +90,11 @@ log lines be sure not to set the two out of order time range flags too far in th
 The defaults are already enough to test this functionality properly, and setting them
 too far in the past can cause issues with the spot check test.
 
-
 When using `out-of-order-percentage` you also need to make use of pipeline stages
 in your Alloy configuration in order to set the timestamps correctly as the logs are pushed
 to Loki. The [Alloy `loki.process`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/) docs have examples of how to do this.
 
-#### Metric Test
+### Metric Test
 
 Loki Canary will run a metric query `count_over_time` to
 verify that the rate of logs being stored in Loki corresponds to the rate they are being
@@ -171,11 +178,12 @@ loki_canary {
   }
 }
 ```
+
 #### Examples
 
 Standalone Pod Implementation of loki-canary
 
-```
+```yaml
 ---
 apiVersion: v1
 kind: Pod
@@ -212,7 +220,7 @@ spec:
 
 DaemonSet Implementation of loki-canary
 
-```
+```yaml
 ---
 kind: DaemonSet
 apiVersion: extensions/v1beta1
@@ -252,7 +260,6 @@ spec:
     port: 3500
     targetPort: 3500
 ```
-
 
 ### From Source
 
