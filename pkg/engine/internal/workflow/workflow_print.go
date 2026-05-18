@@ -39,6 +39,38 @@ func Fprint(w io.Writer, wf *Workflow) error {
 
 			fmt.Fprintf(w, "┌ Task %s\n", n.ID())
 			fmt.Fprintf(w, "│ @max_time_range start=%s end=%s\n", n.MaxTimeRange.Start.Format(time.RFC3339Nano), n.MaxTimeRange.End.Format(time.RFC3339Nano))
+
+			// Print sink routing information if present
+			if n.SinkRouting != nil {
+				fmt.Fprintf(w, "│ @sink_routing strategy=%s", n.SinkRouting.Strategy.String())
+				switch n.SinkRouting.Strategy {
+				case SinkRoutingStrategyLabelHash:
+					if len(n.SinkRouting.Grouping.Columns) > 0 {
+						groupCols := make([]string, 0, len(n.SinkRouting.Grouping.Columns))
+						for _, col := range n.SinkRouting.Grouping.Columns {
+							if colExpr, ok := col.(*physical.ColumnExpr); ok {
+								groupCols = append(groupCols, colExpr.Ref.Column)
+							}
+						}
+						if len(groupCols) > 0 {
+							fmt.Fprintf(w, " grouping=%s", strings.Join(groupCols, ","))
+						}
+					}
+				case SinkRoutingStrategyTimeShard:
+					if len(n.SinkRouting.TimeRanges) > 0 {
+						fmt.Fprintf(w, " shards=%d", len(n.SinkRouting.TimeRanges))
+						// Print each time range on its own line
+						for i, tr := range n.SinkRouting.TimeRanges {
+							fmt.Fprintf(w, "\n│     shard[%d]: %s..%s",
+								i,
+								tr.Start.Format(time.RFC3339),
+								tr.End.Format(time.RFC3339))
+						}
+					}
+				}
+				fmt.Fprintln(w)
+			}
+
 			fmt.Fprintln(w, "│")
 
 			var sb strings.Builder
