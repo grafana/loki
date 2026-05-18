@@ -250,7 +250,6 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseRepo,
       common.setupNode,
       common.extractBranchName,
-      common.fetchAppCredentials,
       common.githubAppToken,
       common.setToken,
       releaseLibStep('get release version')
