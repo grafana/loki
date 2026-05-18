@@ -6,14 +6,6 @@ package wirepb
 import (
 	bytes "bytes"
 	fmt "fmt"
-	io "io"
-	math "math"
-	math_bits "math/bits"
-	reflect "reflect"
-	strconv "strconv"
-	strings "strings"
-	time "time"
-
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
@@ -23,6 +15,13 @@ import (
 	physicalpb "github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	_ "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
 	github_com_grafana_loki_v3_pkg_engine_internal_proto_ulid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
+	io "io"
+	math "math"
+	math_bits "math/bits"
+	reflect "reflect"
+	strconv "strconv"
+	strings "strings"
+	time "time"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
