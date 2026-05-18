@@ -10,12 +10,8 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
-// TestCompactionMerge_CloneIsDeepCopy verifies that Clone() produces a node
-// whose Runs and SectionRefs can be mutated without affecting the original.
-// This is the only non-trivial behavior in the node; the other interface
-// methods are pure getters.
-func TestCompactionMerge_CloneIsDeepCopy(t *testing.T) {
-	orig := &CompactionMerge{
+func TestLogMerge_CloneIsDeepCopy(t *testing.T) {
+	orig := &LogMerge{
 		NodeID:         ulid.Make(),
 		Tenant:         "tenant-29",
 		ToCWindowStart: 1715126400_000_000_000,
@@ -31,27 +27,38 @@ func TestCompactionMerge_CloneIsDeepCopy(t *testing.T) {
 		TaskTTL:          10 * time.Minute,
 	}
 
-	clone := orig.Clone().(*CompactionMerge)
+	clone := orig.Clone().(*LogMerge)
 
 	require.NotEqual(t, orig.ID(), clone.ID(), "Clone must produce a fresh ULID")
 
-	// Mutate the clone's nested structures; assert original is untouched.
 	clone.Runs[0].Sections[0].MinKey[0] = "MUTATED"
+	clone.Runs[0].Sections[0].MaxKey[0] = "MUTATED"
 	clone.SourceIndexPaths[0] = "MUTATED"
 
 	require.Equal(t, []string{"a"}, orig.Runs[0].Sections[0].MinKey,
-		"Clone must deep-copy nested SectionRefs; observed shallow alias")
+		"Clone must deep-copy nested SectionRef.MinKey")
+	require.Equal(t, []string{"f"}, orig.Runs[0].Sections[0].MaxKey,
+		"Clone must deep-copy nested SectionRef.MaxKey")
 	require.Equal(t, "idx/x.idx", orig.SourceIndexPaths[0],
 		"Clone must deep-copy SourceIndexPaths")
 }
 
-// TestCompactionMerge_Clone_AllowsNilRuns mirrors
-// TestPointersScan_Clone_AllowsNilSelector: a node whose nilable slice
-// field is nil must clone to a node whose corresponding field is also
-// nil (no make-empty-slice surprise).
-func TestCompactionMerge_Clone_AllowsNilRuns(t *testing.T) {
-	orig := &CompactionMerge{NodeID: ulid.Make()}
-	cloned := orig.Clone().(*CompactionMerge)
+// TestLogMerge_Clone_TolerateNilElements verifies cloneRuns does not
+// panic on nil *RunRef or nil *SectionRef entries.
+func TestLogMerge_Clone_TolerateNilElements(t *testing.T) {
+	orig := &LogMerge{
+		NodeID: ulid.Make(),
+		Runs: []*compactionv2pb.RunRef{
+			nil,
+			{Sections: []*compactionv2pb.SectionRef{nil}},
+		},
+	}
+	require.NotPanics(t, func() { _ = orig.Clone() })
+}
+
+func TestLogMerge_Clone_AllowsNilRuns(t *testing.T) {
+	orig := &LogMerge{NodeID: ulid.Make()}
+	cloned := orig.Clone().(*LogMerge)
 	require.Nil(t, cloned.Runs)
 	require.Nil(t, cloned.SourceIndexPaths)
 }

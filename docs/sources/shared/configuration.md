@@ -1612,9 +1612,9 @@ dataobj:
     # CLI flag: -dataobj.compaction.enabled
     [enabled: <boolean> | default = false]
 
-    # Experimental: Per-workflow cap on concurrent CompactionMerge tasks.
-    # Currently unused; reserved for the engine scheduler's compaction admission
-    # lane added in a follow-up change.
+    # Experimental: Per-workflow cap on concurrent compaction tasks (IndexMerge
+    # / LogMerge). Currently unused; reserved for the engine scheduler's
+    # compaction admission lane added in a follow-up change.
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
 
