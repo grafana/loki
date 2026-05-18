@@ -176,15 +176,15 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			if err != nil {
 				return nil, nil, fmt.Errorf("opening stats section for validation: %w", err)
 			}
-			
+
 			reader := newStatsPileReader(sec)
 			row, err := reader.Next(ctx)
 			reader.Close()
-			
+
 			if err != nil && !errors.Is(err, io.EOF) {
 				return nil, nil, fmt.Errorf("reading stats section %d for validation: %w", i, err)
 			}
-			
+
 			if i == 0 {
 				firstSortSchema = row.SortSchema
 			} else if row.SortSchema != firstSortSchema {

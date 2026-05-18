@@ -14,6 +14,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -614,12 +615,12 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 		Tenant:          "tenant-1",
 		OutputIndexPath: outputPath,
 		TaskTTL:         time.Minute,
-		Runs: []*physical.RunRef{
-			{Sections: []*physical.SectionRef{
-				{ObjectPath: srcPath, SectionIndex: int64(postingsIdx)},
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{
+				{ObjectPath: srcPath, SectionIndex: int32(postingsIdx)},
 			}},
-			{Sections: []*physical.SectionRef{
-				{ObjectPath: srcPath, SectionIndex: int64(statsIdx)},
+			{Sections: []*compactionv2pb.SectionRef{
+				{ObjectPath: srcPath, SectionIndex: int32(statsIdx)},
 			}},
 		},
 	}
@@ -1033,9 +1034,9 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
 		TaskTTL:         time.Minute,
-		Runs: []*physical.RunRef{
+		Runs: []*compactionv2pb.RunRef{
 			{
-				Sections: []*physical.SectionRef{
+				Sections: []*compactionv2pb.SectionRef{
 					{ObjectPath: sourceAPath, SectionIndex: 0},
 					{ObjectPath: sourceBPath, SectionIndex: 0},
 				},
@@ -1128,9 +1129,9 @@ func TestExecuteIndexMerge_StatsAggregation(t *testing.T) {
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
 		TaskTTL:         time.Minute,
-		Runs: []*physical.RunRef{
+		Runs: []*compactionv2pb.RunRef{
 			{
-				Sections: []*physical.SectionRef{
+				Sections: []*compactionv2pb.SectionRef{
 					{ObjectPath: sourceAPath, SectionIndex: 0},
 					{ObjectPath: sourceBPath, SectionIndex: 0},
 				},
@@ -1201,14 +1202,14 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
 		TaskTTL:         time.Minute,
-		Runs: []*physical.RunRef{
+		Runs: []*compactionv2pb.RunRef{
 			{
-				Sections: []*physical.SectionRef{
+				Sections: []*compactionv2pb.SectionRef{
 					{ObjectPath: postingsPath, SectionIndex: 0},
 				},
 			},
 			{
-				Sections: []*physical.SectionRef{
+				Sections: []*compactionv2pb.SectionRef{
 					{ObjectPath: statsPath, SectionIndex: 0},
 				},
 			},
@@ -1281,9 +1282,9 @@ func TestExecuteIndexMerge_ExistenceShortCircuit(t *testing.T) {
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
 		TaskTTL:         time.Minute,
-		Runs: []*physical.RunRef{
+		Runs: []*compactionv2pb.RunRef{
 			{
-				Sections: []*physical.SectionRef{
+				Sections: []*compactionv2pb.SectionRef{
 					{ObjectPath: sourcePath, SectionIndex: 0},
 				},
 			},
@@ -1332,9 +1333,9 @@ func TestExecuteIndexMerge_TaskTTLExceeded(t *testing.T) {
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
 		TaskTTL:         1 * time.Microsecond, // Very tight deadline.
-		Runs: []*physical.RunRef{
+		Runs: []*compactionv2pb.RunRef{
 			{
-				Sections: []*physical.SectionRef{
+				Sections: []*compactionv2pb.SectionRef{
 					{ObjectPath: sourcePath, SectionIndex: 0},
 				},
 			},
@@ -1387,9 +1388,9 @@ func TestExecuteIndexMerge_RowCountSum(t *testing.T) {
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
 		TaskTTL:         time.Minute,
-		Runs: []*physical.RunRef{
+		Runs: []*compactionv2pb.RunRef{
 			{
-				Sections: []*physical.SectionRef{},
+				Sections: []*compactionv2pb.SectionRef{},
 			},
 		},
 	}
@@ -1397,7 +1398,7 @@ func TestExecuteIndexMerge_RowCountSum(t *testing.T) {
 	for i := 0; i < sourceCount; i++ {
 		path := fmt.Sprintf("source/index-%d.dat", i)
 		node.Runs[0].Sections = append(node.Runs[0].Sections,
-			&physical.SectionRef{ObjectPath: path, SectionIndex: 0})
+			&compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: 0})
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
@@ -1430,7 +1431,7 @@ func TestExecuteIndexMerge_EmptyInputs(t *testing.T) {
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
 		TaskTTL:         time.Minute,
-		Runs: []*physical.RunRef{
+		Runs: []*compactionv2pb.RunRef{
 			{
 				Sections: nil, // Empty input
 			},
@@ -1544,9 +1545,9 @@ func TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly(t *testing.T) {
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
 		TaskTTL:         time.Minute,
-		Runs: []*physical.RunRef{
+		Runs: []*compactionv2pb.RunRef{
 			{
-				Sections: []*physical.SectionRef{
+				Sections: []*compactionv2pb.SectionRef{
 					{ObjectPath: sourceAPath, SectionIndex: 0},
 					{ObjectPath: sourceBPath, SectionIndex: 0},
 				},
