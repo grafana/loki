@@ -2,9 +2,8 @@ package memory
 
 import (
 	"errors"
-	"unsafe"
-
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/memory/internal/memalign"
 )

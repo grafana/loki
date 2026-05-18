@@ -6,10 +6,10 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/atomic"
 )
 
 // Source is an interface that provides a value for an EWMA calculation.
