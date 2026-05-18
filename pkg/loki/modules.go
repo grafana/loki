@@ -49,6 +49,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/distributor/rendezvous"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -381,6 +382,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.ingestLimitsFrontendRing,
 		t.Cfg.IngestLimits.NumPartitions,
 		t.dataObjConsumerPartitionRing,
+		t.rendezvousPartitionWatcher,
 		logger,
 	)
 	if err != nil {
@@ -2297,6 +2299,15 @@ func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
 		t.DataObjConsumerPartitionRingWatcher,
 		t.dataObjConsumerRing,
 		t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.HeartbeatTimeout,
+	)
+
+	t.rendezvousPartitionWatcher = rendezvous.New(
+		rendezvous.Config{
+			HeartbeatTimeout: t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.HeartbeatTimeout,
+			Key:              consumer.PartitionRingKey,
+		},
+		kvClient,
+		util_log.Logger,
 	)
 
 	// Expose a web page to view the partitions ring state.

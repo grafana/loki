@@ -40,6 +40,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v3/pkg/distributor/rendezvous"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -243,6 +244,7 @@ func New(
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
 	dataObjConsumerPartitionRing ring.PartitionRingReader,
+	rendezvousPartitionWatcher *rendezvous.PartitionWatcher,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -309,9 +311,13 @@ func New(
 		)
 
 		if cfg.DataObjTeeConfig.Enabled {
+			if rendezvousPartitionWatcher != nil {
+				servs = append(servs, rendezvousPartitionWatcher)
+			}
 			resolver := newSegmentationPartitionResolver(
 				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
 				dataObjConsumerPartitionRing,
+				rendezvousPartitionWatcher,
 				registerer,
 				logger,
 			)

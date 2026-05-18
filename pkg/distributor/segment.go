@@ -43,6 +43,7 @@ func getSegmentationKey(stream KeyedStream) (segmentationKey, error) {
 type segmentationPartitionResolver struct {
 	perPartitionRateBytes uint64
 	ringReader            ring.PartitionRingReader
+	partitionWatcher      *rendezvous.PartitionWatcher
 	logger                log.Logger
 
 	// Metrics.
@@ -51,10 +52,16 @@ type segmentationPartitionResolver struct {
 }
 
 // newSegmentationPartitionResolver returns a new segmentationPartitionResolver.
-func newSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *segmentationPartitionResolver {
+func newSegmentationPartitionResolver(
+	perPartitionRateBytes uint64,
+	ringReader ring.PartitionRingReader,
+	partitionWatcher *rendezvous.PartitionWatcher,
+	reg prometheus.Registerer,
+	logger log.Logger) *segmentationPartitionResolver {
 	return &segmentationPartitionResolver{
 		perPartitionRateBytes: perPartitionRateBytes,
 		ringReader:            ringReader,
+		partitionWatcher:      partitionWatcher,
 		resolveFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_failed_total",
 			Help: "Total number of segmentation keys that could not be resolved.",
@@ -86,7 +93,8 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 	for i, partition := range partitionRing.Partitions() {
 		activePartitions[i] = partition
 	}
-	shuffleSharder := rendezvous.NewShuffleSharder(activePartitions)
+
+	shuffleSharder := *r.partitionWatcher.Sharder()
 
 	// Shuffle shard for the tenant based on their ingestion rate limit.
 	// This ensures that streams are not only co-located within the same
@@ -103,7 +111,7 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		shuffleSharder = shuffleSharder.ShuffleShard(string(key), numSegKeyShuffleShardPartitions)
 	}
 
-	return shuffleSharder.Shard(hashKey).Id, nil
+	return shuffleSharder.Shard(hashKey), nil
 }
 
 // numPartitionsForRate returns the number of partitions needed to keep within

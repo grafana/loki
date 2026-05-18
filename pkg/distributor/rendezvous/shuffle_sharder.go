@@ -6,26 +6,25 @@ import (
 	"strconv"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/grafana/dskit/ring"
 )
 
 var table = crc64.MakeTable(crc64.ECMA)
 
 type ShuffleSharder struct {
-	partitions []ring.PartitionDesc
+	partitions []int32
 	hashes     []uint64
 }
 
-func NewShuffleSharder(partitions []ring.PartitionDesc) ShuffleSharder {
+func NewShuffleSharder(partitions []int32) ShuffleSharder {
 	hashes := make([]uint64, len(partitions))
 	for i, partition := range partitions {
-		hashes[i] = xxhash.Sum64String("loki-distributor-" + strconv.Itoa(int(partition.Id)))
+		hashes[i] = xxhash.Sum64String("loki-distributor-" + strconv.Itoa(int(partition)))
 	}
 	return ShuffleSharder{partitions, hashes}
 }
 
-func (r ShuffleSharder) Shard(key uint32) ring.PartitionDesc {
-	var maxPartition ring.PartitionDesc
+func (r ShuffleSharder) Shard(key uint32) int32 {
+	var maxPartition int32
 	var maxHash uint64
 	for i, partition := range r.partitions {
 		hash := xorshiftMult64(uint64(key) ^ r.hashes[i])
@@ -57,7 +56,7 @@ func (r ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) Shuf
 		return hashes[i].hash < hashes[j].hash
 	})
 
-	subpartitions := make([]ring.PartitionDesc, numShards)
+	subpartitions := make([]int32, numShards)
 	subHashesSet := make([]uint64, numShards)
 	for i := 0; i < numShards; i++ {
 		subpartitions[i] = hashes[i].partition
@@ -67,7 +66,7 @@ func (r ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) Shuf
 }
 
 type partitionAndHash struct {
-	partition    ring.PartitionDesc
+	partition    int32
 	hash         uint64
 	originalHash uint64
 }
