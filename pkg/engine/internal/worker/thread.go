@@ -421,21 +421,21 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			if partErr != nil {
 				level.Error(logger).Log("msg", "failed to partition record batch", "err", partErr)
 				return totalRows, partErr
-			} else {
-				// Send each sharded batch to its corresponding sink
-				for shardIdx, shardBatch := range shardedBatches {
-					if shardBatch == nil || shardBatch.NumRows() == 0 {
-						continue
-					}
+			}
 
-					if shardIdx < len(sinks) {
-						if err := sinks[shardIdx].Send(ctx, shardBatch); err != nil {
-							level.Error(logger).Log("msg", "failed to send result to shard", "shard", shardIdx, "err", err)
-						}
-						region.Record(xcap.TaskRecordsSent.Observe(1))
-						region.Record(xcap.TaskRowsSent.Observe(shardBatch.NumRows()))
-						region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(shardBatch)))
+			// Send each sharded batch to its corresponding sink
+			for shardIdx, shardBatch := range shardedBatches {
+				if shardBatch == nil || shardBatch.NumRows() == 0 {
+					continue
+				}
+
+				if shardIdx < len(sinks) {
+					if err := sinks[shardIdx].Send(ctx, shardBatch); err != nil {
+						level.Error(logger).Log("msg", "failed to send result to shard", "shard", shardIdx, "err", err)
 					}
+					region.Record(xcap.TaskRecordsSent.Observe(1))
+					region.Record(xcap.TaskRowsSent.Observe(shardBatch.NumRows()))
+					region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(shardBatch)))
 				}
 			}
 		} else {
