@@ -440,7 +440,7 @@ func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*l
 		}
 		query, ok := queryKeyQueryMap[resp.QueryKey]
 		if !ok {
-			level.Error(s.logger).Log("msg", fmt.Sprintf("unexpected %s QueryKey received, expected queries %s", resp.QueryKey, fmt.Sprint(queryKeyQueryMap)))
+			level.Error(s.logger).Log("msg", "unexpected QueryKey received", "query_key", resp.QueryKey, "expected_queries", fmt.Sprint(queryKeyQueryMap))
 			return fmt.Errorf("unexpected %s QueryKey received", resp.QueryKey)
 		}
 		if !callback(query, &readBatch{resp}) {
@@ -473,7 +473,7 @@ func (s *GatewayClient) poolDoWithStrategy(
 	}
 
 	if len(addrs) == 0 {
-		level.Error(s.logger).Log("msg", fmt.Sprintf("no index gateway instances found for tenant %s", userID))
+		level.Error(s.logger).Log("msg", "no index gateway instances found for tenant", "tenant", userID)
 		return fmt.Errorf("no index gateway instances found for tenant %s", userID)
 	}
 
@@ -496,14 +496,14 @@ func (s *GatewayClient) poolDoWithStrategy(
 
 		genericClient, err := s.pool.GetClientFor(addr)
 		if err != nil {
-			level.Error(s.logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", addr), "err", err)
+			level.Error(s.logger).Log("msg", "failed to get client for instance", "addr", addr, "err", err)
 			continue
 		}
 
 		client := (genericClient.(logproto.IndexGatewayClient))
 		if err := callback(client); err != nil {
 			lastErr = err
-			level.Error(s.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
+			level.Error(s.logger).Log("msg", "client request failed for instance", "addr", addr, "err", err)
 
 			if !shouldRetry(err) {
 				return err
