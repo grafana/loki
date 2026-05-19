@@ -44,7 +44,7 @@ var (
 
 	lokiStackStorageSchemaVersionDesc = prometheus.NewDesc(
 		metricsPrefix+"storage_schema_version",
-		"Storage schema versions configured for the LokiStack",
+		"Storage schema versions configured for the LokiStack.",
 		append(metricsCommonLabels, "version"), nil,
 	)
 
