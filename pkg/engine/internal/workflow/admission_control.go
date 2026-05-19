@@ -14,7 +14,7 @@ const (
 	taskTypeScan  taskType = "scan"
 	taskTypeOther taskType = "other"
 
-	// taskTypeCompaction is the admission lane for compaction tasks (CompactionMerge nodes).
+	// taskTypeCompaction is the admission lane for compaction tasks
 	taskTypeCompaction taskType = "compaction"
 )
 
@@ -106,7 +106,8 @@ func isScanTask(task *Task) bool {
 
 func isCompactionTask(task *Task) bool {
 	for node := range task.Fragment.Graph().Nodes() {
-		if node.Type() == physical.NodeTypeCompactionMerge {
+		switch node.Type() {
+		case physical.NodeTypeIndexMerge, physical.NodeTypeLogMerge:
 			return true
 		}
 	}
