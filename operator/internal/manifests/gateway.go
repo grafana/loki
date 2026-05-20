@@ -28,7 +28,7 @@ const (
 
 var (
 	logsEndpointRe        = regexp.MustCompile(`^--logs\.(?:read|tail|write|rules)\.endpoint=http://.+`)
-	passthroughUpstreamRe = regexp.MustCompile(`^--(?:read|write)-upstream-endpoint=http://.+`)
+	passthroughUpstreamRe = regexp.MustCompile(`^-loki-(?:distributor|query-frontend)-endpoint=http://.+`)
 	defaultAdminGroups    = []string{
 		"system:cluster-admins",
 		"cluster-admin",
@@ -300,14 +300,14 @@ func NewPassthroughGatewayDeployment(opts Options) *appsv1.Deployment {
 	a := gatewayAnnotations("", opts.CertRotationRequiredAt)
 
 	args := []string{
-		fmt.Sprintf("--listen-addr=:%d", gatewayHTTPPort),
-		fmt.Sprintf("--metrics-addr=:%d", gatewayInternalPort),
-		fmt.Sprintf("--write-upstream-endpoint=http://%s:%d", fqdn(serviceNameDistributorHTTP(opts.Name), opts.Namespace), httpPort),
-		fmt.Sprintf("--read-upstream-endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
+		fmt.Sprintf("-listen-addr=:%d", gatewayHTTPPort),
+		fmt.Sprintf("-admin-addr=:%d", gatewayInternalPort),
+		fmt.Sprintf("-loki-distributor-endpoint=http://%s:%d", fqdn(serviceNameDistributorHTTP(opts.Name), opts.Namespace), httpPort),
+		fmt.Sprintf("-loki-query-frontend-endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 	}
 
 	if opts.Stack.Tenants != nil && opts.Stack.Tenants.Passthrough != nil && opts.Stack.Tenants.Passthrough.DefaultTenant != "" {
-		args = append(args, fmt.Sprintf("--default-tenant=%s", opts.Stack.Tenants.Passthrough.DefaultTenant))
+		args = append(args, fmt.Sprintf("-default-tenant=%s", opts.Stack.Tenants.Passthrough.DefaultTenant))
 	}
 
 	podSpec := corev1.PodSpec{
@@ -793,15 +793,15 @@ func configurePassGatewayServerPKI(
 	clientCADir := path.Join(caBundleDir, "client")
 
 	gwArgs = append(gwArgs,
-		fmt.Sprintf("--tls-cert-file=%s", gatewayServerHTTPTLSCert()),
-		fmt.Sprintf("--tls-key-file=%s", gatewayServerHTTPTLSKey()),
-		fmt.Sprintf("--upstream-ca-file=%s", gatewayUpstreamCAPath()),
-		fmt.Sprintf("--upstream-cert-file=%s", gatewayUpstreamHTTPTLSCert()),
-		fmt.Sprintf("--upstream-key-file=%s", gatewayUpstreamHTTPTLSKey()),
-		"--tls-client-auth=RequireAndVerifyClientCert",
-		fmt.Sprintf("--tls-client-ca-file=%s/%s", clientCADir, clientCAs.Key),
-		fmt.Sprintf("--tls-min-version=%s", minTLSVersion),
-		fmt.Sprintf("--tls-cipher-suites=%s", ciphers),
+		fmt.Sprintf("-tls-cert-file=%s", gatewayServerHTTPTLSCert()),
+		fmt.Sprintf("-tls-key-file=%s", gatewayServerHTTPTLSKey()),
+		fmt.Sprintf("-loki-ca-file=%s", gatewayUpstreamCAPath()),
+		fmt.Sprintf("-loki-cert-file=%s", gatewayUpstreamHTTPTLSCert()),
+		fmt.Sprintf("-loki-key-file=%s", gatewayUpstreamHTTPTLSKey()),
+		"-tls-client-auth=RequireAndVerifyClientCert",
+		fmt.Sprintf("-tls-client-ca-file=%s/%s", clientCADir, clientCAs.Key),
+		fmt.Sprintf("-tls-min-version=%s", minTLSVersion),
+		fmt.Sprintf("-tls-cipher-suites=%s", ciphers),
 	)
 
 	gwContainer.ReadinessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
