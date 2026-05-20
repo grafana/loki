@@ -210,7 +210,7 @@ func (c *coordinator) runTenantCycle(
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("phase1: %w", err)
+		return fmt.Errorf("failed to execute compaction tasks: %w", err)
 	}
 
 	// Replace index pointers with new indexes
@@ -224,7 +224,7 @@ func (c *coordinator) runTenantCycle(
 	defer cancel()
 	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
 	if err != nil {
-		return fmt.Errorf("phase2 ReplaceIndexPointers: %w", err)
+		return fmt.Errorf("failed to replace index pointers after compaction: %w", err)
 	}
 	if !swapped {
 		level.Debug(c.logger).Log("msg", "ToC replace race-loss / already-converged",
@@ -233,7 +233,7 @@ func (c *coordinator) runTenantCycle(
 	}
 	level.Info(c.logger).Log("msg", "tenant cycle complete",
 		"tenant", tenant, "window", window,
-		"phase1_tasks", len(tasks),
+		"tasks", len(tasks),
 		"removed_indexes", len(oldPaths),
 		"added_indexes", len(outputs),
 	)
