@@ -439,6 +439,11 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 					ChecksumSHA1:      version.ChecksumSHA1,
 					ChecksumSHA256:    version.ChecksumSHA256,
 					ChecksumCRC64NVME: version.ChecksumCRC64NVME,
+					ChecksumMD5:       version.ChecksumMD5,
+					ChecksumSHA512:    version.ChecksumSHA512,
+					ChecksumXXHash64:  version.ChecksumXXHash64,
+					ChecksumXXHash3:   version.ChecksumXXHash3,
+					ChecksumXXHash128: version.ChecksumXXHash128,
 				}
 				if !yield(info) {
 					return false

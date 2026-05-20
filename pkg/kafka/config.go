@@ -12,11 +12,6 @@ import (
 )
 
 const (
-	consumeFromLastOffset = "last-offset"
-	consumeFromStart      = "start"
-	consumeFromEnd        = "end"
-	consumeFromTimestamp  = "timestamp"
-
 	// ProducerBatchMaxBytes is the max allowed size of a batch of Kafka records.
 	ProducerBatchMaxBytes = 16_000_000
 

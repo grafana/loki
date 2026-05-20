@@ -12,8 +12,6 @@ import (
 
 const (
 	TimeResolution = model.Time(int64(time.Second*10) / 1e6)
-
-	defaultVolumeSize = 500
 )
 
 type Chunks []Chunk

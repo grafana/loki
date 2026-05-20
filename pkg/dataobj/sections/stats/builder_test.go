@@ -2,24 +2,98 @@ package stats
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
-func TestBuilder_Empty(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
-	sections, err := b.Flush(context.Background())
+// defaultEncoder is a SectionEncoder using default page sizes for testing.
+var defaultEncoder = ColumnarSectionEncoder(1024*1024, 10000)
+
+// buildObject flushes the builder into a dataobj.Object using dataobj.Builder.
+func buildObject(t *testing.T, b *Builder) (*dataobj.Object, io.Closer) {
+	t.Helper()
+	b.SetTenant("test-tenant")
+	objBuilder := dataobj.NewBuilder(nil)
+	err := objBuilder.Append(b)
 	require.NoError(t, err)
-	require.Empty(t, sections, "empty builder should produce no sections")
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	return obj, closer
 }
 
+// readTable drains a Reader into an arrow.Table, mirroring streams/reader_test.go.
+func readTable(ctx context.Context, r *Reader) (arrow.Table, error) {
+	var recs []arrow.RecordBatch
+	for {
+		rec, err := r.Read(ctx, 128)
+		if rec != nil && rec.NumRows() > 0 {
+			recs = append(recs, rec)
+		}
+		if err != nil && errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+	}
+	if len(recs) == 0 {
+		return nil, io.EOF
+	}
+	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
+}
+
+// readAllRowsFromObject opens every stats section in obj and concatenates
+// all rows in obj.Sections() order (stable).
+func readAllRowsFromObject(t *testing.T, obj *dataobj.Object) arrowtest.Rows {
+	t.Helper()
+	var all arrowtest.Rows
+	for _, s := range obj.Sections() {
+		if !CheckSection(s) {
+			continue
+		}
+		sec, err := Open(context.Background(), s)
+		require.NoError(t, err)
+
+		r := NewReader(ReaderOptions{
+			Columns:   sec.Columns(),
+			Allocator: memory.DefaultAllocator,
+		})
+		require.NoError(t, r.Open(context.Background()))
+		t.Cleanup(func() { _ = r.Close() })
+
+		tbl, err := readTable(context.Background(), r)
+		if errors.Is(err, io.EOF) {
+			continue
+		}
+		require.NoError(t, err)
+
+		rows, err := arrowtest.TableRows(memory.DefaultAllocator, tbl)
+		require.NoError(t, err)
+		all = append(all, rows...)
+	}
+	return all
+}
+
+// TestBuilder_Empty verifies that an empty builder produces no sections.
+func TestBuilder_Empty(t *testing.T) {
+	b := NewBuilder(nil, defaultEncoder)
+	require.Zero(t, b.EstimatedSize(), "empty builder should have zero size")
+	require.Empty(t, b.rows, "empty builder should have no rows")
+}
+
+// TestBuilder_RoundTrip verifies stats round-trip correctly through on-disk encoding.
 func TestBuilder_RoundTrip(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	input := []Stat{
 		{
@@ -58,40 +132,50 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		b.Append(s)
 	}
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Len(t, sections, 1)
+	obj, closer := buildObject(t, b)
+	t.Cleanup(func() { _ = closer.Close() })
 
-	rr, err := NewRowReader(&sections[0])
-	require.NoError(t, err)
-	defer rr.Close()
-
-	got := make([]Stat, 10)
-	n, err := rr.Read(context.Background(), got)
-	require.ErrorIs(t, err, io.EOF)
-	require.Equal(t, 3, n)
-	got = got[:n]
-
-	// All rows should round-trip; sort order is by service_name then MinTimestamp.
-	// bar < baz < foo
-	require.Equal(t, "bar", got[0].Labels["service_name"])
-	require.Equal(t, "baz", got[1].Labels["service_name"])
-	require.Equal(t, "foo", got[2].Labels["service_name"])
-
-	// Verify all fields for the "foo" stat (last after sort).
-	fooStat := got[2]
-	require.Equal(t, "/tenant/abc/obj1", fooStat.ObjectPath)
-	require.Equal(t, int64(0), fooStat.SectionIndex)
-	require.Equal(t, "service_name", fooStat.SortSchema)
-	require.Equal(t, "foo", fooStat.Labels["service_name"])
-	require.Equal(t, int64(1000), fooStat.MinTimestamp)
-	require.Equal(t, int64(2000), fooStat.MaxTimestamp)
-	require.Equal(t, int64(100), fooStat.RowCount)
-	require.Equal(t, int64(8192), fooStat.UncompressedSize)
+	actual := readAllRowsFromObject(t, obj)
+	// Sort order: bar < baz < foo
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        "/tenant/abc/obj2",
+			"section_index.int64":     int64(1),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 500).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 1500).UTC(),
+			"row_count.int64":         int64(50),
+			"uncompressed_size.int64": int64(4096),
+			"service_name.label.utf8": "bar",
+		},
+		{
+			"object_path.utf8":        "/tenant/abc/obj3",
+			"section_index.int64":     int64(2),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 3000).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 4000).UTC(),
+			"row_count.int64":         int64(200),
+			"uncompressed_size.int64": int64(16384),
+			"service_name.label.utf8": "baz",
+		},
+		{
+			"object_path.utf8":        "/tenant/abc/obj1",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 1000).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 2000).UTC(),
+			"row_count.int64":         int64(100),
+			"uncompressed_size.int64": int64(8192),
+			"service_name.label.utf8": "foo",
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
+// TestBuilder_SortOrder verifies the sort order: label values in sort-schema order,
+// then MinTimestamp, then MaxTimestamp.
 func TestBuilder_SortOrder(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	// Intentionally appended out of order.
 	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "beta"}, MinTimestamp: 200})
@@ -100,96 +184,163 @@ func TestBuilder_SortOrder(t *testing.T) {
 	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "gamma"}, MinTimestamp: 50})
 	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 200})
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Len(t, sections, 1)
+	obj, closer := buildObject(t, b)
+	t.Cleanup(func() { _ = closer.Close() })
 
-	rr, err := NewRowReader(&sections[0])
-	require.NoError(t, err)
-	defer rr.Close()
-
-	got := make([]Stat, 10)
-	n, err := rr.Read(context.Background(), got)
-	require.ErrorIs(t, err, io.EOF)
-	require.Equal(t, 5, n)
-	got = got[:n]
-
+	actual := readAllRowsFromObject(t, obj)
 	// Verify sort order: alpha(100), alpha(200), alpha(300), beta(200), gamma(50).
-	require.Equal(t, "alpha", got[0].Labels["service_name"])
-	require.Equal(t, int64(100), got[0].MinTimestamp)
-	require.Equal(t, "alpha", got[1].Labels["service_name"])
-	require.Equal(t, int64(200), got[1].MinTimestamp)
-	require.Equal(t, "alpha", got[2].Labels["service_name"])
-	require.Equal(t, int64(300), got[2].MinTimestamp)
-	require.Equal(t, "beta", got[3].Labels["service_name"])
-	require.Equal(t, int64(200), got[3].MinTimestamp)
-	require.Equal(t, "gamma", got[4].Labels["service_name"])
-	require.Equal(t, int64(50), got[4].MinTimestamp)
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "alpha",
+		},
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "alpha",
+		},
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "alpha",
+		},
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "beta",
+		},
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 50).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "gamma",
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
+// TestBuilder_AllSameServiceName verifies that rows with identical service_name
+// are sorted by MinTimestamp.
 func TestBuilder_AllSameServiceName(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	// Multiple rows with the same service_name, different timestamps.
 	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 300, ObjectPath: "c"})
 	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100, ObjectPath: "a"})
 	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 200, ObjectPath: "b"})
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Len(t, sections, 1)
+	obj, closer := buildObject(t, b)
+	t.Cleanup(func() { _ = closer.Close() })
 
-	rr, err := NewRowReader(&sections[0])
-	require.NoError(t, err)
-	defer rr.Close()
-
-	got := make([]Stat, 10)
-	n, err := rr.Read(context.Background(), got)
-	require.ErrorIs(t, err, io.EOF)
-	require.Equal(t, 3, n)
-	got = got[:n]
-
+	actual := readAllRowsFromObject(t, obj)
 	// Sort is by MinTimestamp within the same service_name.
-	require.Equal(t, int64(100), got[0].MinTimestamp)
-	require.Equal(t, int64(200), got[1].MinTimestamp)
-	require.Equal(t, int64(300), got[2].MinTimestamp)
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        "a",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "svc",
+		},
+		{
+			"object_path.utf8":        "b",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "svc",
+		},
+		{
+			"object_path.utf8":        "c",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "svc",
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
+// TestBuilder_MissingServiceName verifies rows with empty/missing label values sort before non-empty ones.
 func TestBuilder_MissingServiceName(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": ""}, ObjectPath: "obj1", MinTimestamp: 100})
 	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, ObjectPath: "obj2", MinTimestamp: 200})
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Len(t, sections, 1)
+	obj, closer := buildObject(t, b)
+	t.Cleanup(func() { _ = closer.Close() })
 
-	rr, err := NewRowReader(&sections[0])
-	require.NoError(t, err)
-	defer rr.Close()
-
-	got := make([]Stat, 10)
-	n, err := rr.Read(context.Background(), got)
-	require.ErrorIs(t, err, io.EOF)
-	require.Equal(t, 2, n)
-	got = got[:n]
-
+	actual := readAllRowsFromObject(t, obj)
 	// Empty string sorts before "svc".
-	require.Equal(t, "", got[0].Labels["service_name"])
-	require.Equal(t, "svc", got[1].Labels["service_name"])
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        "obj1",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "",
+		},
+		{
+			"object_path.utf8":        "obj2",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "svc",
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
+// TestBuilder_SectionSplitting verifies the mid-accumulation flush pattern using dataobj.Builder:
+// append rows, flush via dataobjBuilder.Append, append more, verify 2 sections.
 func TestBuilder_SectionSplitting(t *testing.T) {
-	// Use a very small targetSectionSize to force splitting.
-	// Each row with ObjectPath="x" (1 byte) + SortSchema="service_name" (12 bytes) + Labels key "service_name" (12 bytes) + value "svc" (3 bytes):
-	// Per-row size: 6*8 (int64s) + len("x") + len("service_name") + len("service_name") + len("svc")
-	//             = 48 + 1 + 12 + 12 + 3 = 76 bytes.
-	// targetSectionSize=100: each row fits alone (76 < 100) but two don't (152 > 100),
-	// so 6 rows produce exactly 6 sections of 1 row each.
-	b := NewBuilder(100, ColumnarEncoder)
+	// Use a very small page size to force multiple pages.
+	smallEncoder := ColumnarSectionEncoder(100, 2)
+	b := NewBuilder(nil, smallEncoder)
+	b.SetTenant("test-tenant")
 
-	for i := range 6 {
+	// Append first batch.
+	for i := range 3 {
 		b.Append(Stat{
 			ObjectPath:   "x",
 			SortSchema:   "service_name",
@@ -198,37 +349,45 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 		})
 	}
 
-	sections, err := b.Flush(context.Background())
+	objBuilder := dataobj.NewBuilder(nil)
+
+	// Flush first batch into objBuilder.
+	require.NoError(t, objBuilder.Append(b))
+
+	// Append second batch.
+	for i := range 3 {
+		b.Append(Stat{
+			ObjectPath:   "y",
+			SortSchema:   "service_name",
+			Labels:       map[string]string{"service_name": "svc"},
+			MinTimestamp: int64((i + 3) * 100),
+		})
+	}
+
+	// Flush second batch into objBuilder.
+	require.NoError(t, objBuilder.Append(b))
+
+	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err)
-	require.Len(t, sections, 6, "6 rows at 76 bytes each with targetSectionSize=100 should produce 6 sections")
+	t.Cleanup(func() { _ = closer.Close() })
 
-	// Collect all rows across sections and verify total count.
-	var allStats []Stat
-	for _, sec := range sections {
-		rr, err := NewRowReader(&sec)
-		require.NoError(t, err)
-		defer rr.Close()
-
-		buf := make([]Stat, 10)
-		for {
-			n, err := rr.Read(context.Background(), buf)
-			allStats = append(allStats, buf[:n]...)
-			if err == io.EOF {
-				break
-			}
-			require.NoError(t, err)
+	// Verify 2 sections were created.
+	var statsSections []*dataobj.Section
+	for _, s := range obj.Sections() {
+		if CheckSection(s) {
+			statsSections = append(statsSections, s)
 		}
 	}
-	require.Len(t, allStats, 6)
+	require.Len(t, statsSections, 2, "expected 2 stats sections after two flushes")
 
-	// Rows should be in sorted order across sections.
-	for i := 1; i < len(allStats); i++ {
-		require.LessOrEqual(t, allStats[i-1].MinTimestamp, allStats[i].MinTimestamp)
-	}
+	// Collect all rows from both sections.
+	actual := readAllRowsFromObject(t, obj)
+	require.Len(t, actual, 6)
 }
 
+// TestBuilder_LargeValues verifies large label and path values round-trip correctly.
 func TestBuilder_LargeValues(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
 	longPath := "/" + strings.Repeat("a", 10000)
 	longLabel := strings.Repeat("b", 5000)
@@ -245,138 +404,124 @@ func TestBuilder_LargeValues(t *testing.T) {
 		UncompressedSize: 1_000_000_000,
 	})
 
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Len(t, sections, 1)
+	obj, closer := buildObject(t, b)
+	t.Cleanup(func() { _ = closer.Close() })
 
-	rr, err := NewRowReader(&sections[0])
-	require.NoError(t, err)
-	defer rr.Close()
+	actual := readAllRowsFromObject(t, obj)
+	require.Len(t, actual, 1)
 
-	got := make([]Stat, 2)
-	n, err := rr.Read(context.Background(), got)
-	require.ErrorIs(t, err, io.EOF)
-	require.Equal(t, 1, n)
-
-	stat := got[0]
-	require.Equal(t, longPath, stat.ObjectPath)
-	require.Equal(t, longSchema, stat.SortSchema)
-	require.Equal(t, longLabel, stat.Labels[longSchema])
-	require.Equal(t, int64(99), stat.SectionIndex)
-	require.Equal(t, int64(1_000_000), stat.MinTimestamp)
-	require.Equal(t, int64(2_000_000), stat.MaxTimestamp)
-	require.Equal(t, int64(99999), stat.RowCount)
-	require.Equal(t, int64(1_000_000_000), stat.UncompressedSize)
+	// Build the expected label column name dynamically
+	labelColName := longSchema + ".label.utf8"
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        longPath,
+			"section_index.int64":     int64(99),
+			"sort_schema.utf8":        longSchema,
+			"min_timestamp.timestamp": time.Unix(0, 1_000_000).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 2_000_000).UTC(),
+			"row_count.int64":         int64(99999),
+			"uncompressed_size.int64": int64(1_000_000_000),
+			labelColName:              longLabel,
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
+// TestBuilder_ResetAndReuse verifies that Reset clears all rows and the builder can be reused.
 func TestBuilder_ResetAndReuse(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(nil, defaultEncoder)
+	b.SetTenant("test-tenant")
 
 	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "first"}, MinTimestamp: 100})
 	b.Reset()
 
-	// After Reset, Flush should produce no sections.
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Empty(t, sections)
+	// After Reset, builder should be empty and produce no sections when flushed.
+	require.Empty(t, b.rows, "builder should be empty after reset")
+	require.Zero(t, b.EstimatedSize(), "estimated size should be zero after reset")
 
-	// Add new data after reset.
+	// Add new data after reset and flush.
 	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "second"}, MinTimestamp: 200})
-	sections, err = b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Len(t, sections, 1)
 
-	rr, err := NewRowReader(&sections[0])
-	require.NoError(t, err)
-	defer rr.Close()
+	obj, closer := buildObject(t, b)
+	t.Cleanup(func() { _ = closer.Close() })
 
-	got := make([]Stat, 5)
-	n, err := rr.Read(context.Background(), got)
-	require.ErrorIs(t, err, io.EOF)
-	require.Equal(t, 1, n)
-	require.Equal(t, "second", got[0].Labels["service_name"])
+	actual := readAllRowsFromObject(t, obj)
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        "",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        "service_name",
+			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "second",
+		},
+	}
+	require.Equal(t, expected, actual)
 }
 
+// TestBuilder_EstimatedSize verifies EstimatedSize returns non-zero after appending.
 func TestBuilder_EstimatedSize(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 
-	require.Equal(t, 0, b.EstimatedSize(), "empty builder should have zero estimated size")
+	require.Zero(t, b.EstimatedSize(), "empty builder should have zero estimated size")
 
 	b.Append(Stat{
 		ObjectPath: "obj",                           // 3 bytes
 		SortSchema: "sch",                           // 3 bytes
 		Labels:     map[string]string{"sch": "svc"}, // key: 3 bytes, value: 3 bytes
 	})
+
 	// 5 * 8 = 40 for int64s (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
 	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 52
 	require.Equal(t, 52, b.EstimatedSize())
 }
 
+// TestBuilder_FlushResetsBuilder verifies that a flush resets the builder state.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100})
 
-	_, err := b.Flush(context.Background())
-	require.NoError(t, err)
+	obj, closer := buildObject(t, b)
+	closer.Close()
+	require.Len(t, obj.Sections(), 1)
 
-	// After flush, builder should be empty.
-	require.Equal(t, 0, b.EstimatedSize())
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Empty(t, sections)
+	// After flush, builder should be empty (Reset was called).
+	require.Empty(t, b.rows, "builder should be empty after flush")
+	require.Zero(t, b.EstimatedSize(), "builder should have zero estimated size after flush")
 }
 
+// TestBuilder_Type verifies that the section type is correct.
 func TestBuilder_Type(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
+	b := NewBuilder(nil, defaultEncoder)
 	require.Equal(t, sectionType, b.Type())
 }
 
-func TestRowReader_SmallBuffer(t *testing.T) {
-	b := NewBuilder(0, ColumnarEncoder)
-
-	// Append 5 rows.
-	for i := range 5 {
-		b.Append(Stat{
-			ObjectPath:   "obj",
-			SortSchema:   "service_name",
-			Labels:       map[string]string{"service_name": "svc"},
-			MinTimestamp: int64(i * 100),
-		})
+// TestOpen_WrongSectionType verifies that Open rejects sections with the wrong type.
+func TestOpen_WrongSectionType(t *testing.T) {
+	wrongType := &dataobj.Section{
+		Type: dataobj.SectionType{
+			Namespace: "github.com/grafana/loki",
+			Kind:      "postings",
+			Version:   1,
+		},
 	}
-
-	sections, err := b.Flush(context.Background())
-	require.NoError(t, err)
-	require.Len(t, sections, 1)
-
-	rr, err := NewRowReader(&sections[0])
-	require.NoError(t, err)
-	defer rr.Close()
-
-	// Read with a buffer smaller than the section row count. This must not
-	// panic even though the underlying column reader returns all rows at once.
-	buf := make([]Stat, 2)
-	n, err := rr.Read(context.Background(), buf)
-	require.NoError(t, err)
-	require.Equal(t, 2, n, "should read exactly len(buf) rows")
-
-	// A second read should return the remaining rows.
-	// Note: With the current sliceColumnReader (returns all data on first
-	// call, EOF on second), subsequent reads return 0, io.EOF. This is
-	// acceptable — the important invariant is no panic on the first read.
+	_, err := Open(context.Background(), wrongType)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "section type mismatch")
 }
 
-func TestCheckSection(t *testing.T) {
-	t.Run("returns true for stats section type", func(t *testing.T) {
-		sec := &dataobj.Section{Type: sectionType}
-		require.True(t, CheckSection(sec))
-	})
-
-	t.Run("returns false for non-stats section type", func(t *testing.T) {
-		sec := &dataobj.Section{Type: dataobj.SectionType{
+// TestOpen_WrongVersion verifies that Open rejects sections with the wrong version.
+func TestOpen_WrongVersion(t *testing.T) {
+	wrongVersion := &dataobj.Section{
+		Type: dataobj.SectionType{
 			Namespace: "github.com/grafana/loki",
-			Kind:      "streams",
-			Version:   1,
-		}}
-		require.False(t, CheckSection(sec))
-	})
+			Kind:      "stats",
+			Version:   99,
+		},
+	}
+	_, err := Open(context.Background(), wrongVersion)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported section version")
 }

@@ -71,7 +71,7 @@ An alternative to changing the scheduling mechanism is to handle QoS control via
 
 ### Proposal 1: Add fixed second level to scheduler
 
-The current scheduler is implemented in a way that it maintains a separate FIFO queue for each tenant. When a request (sub-query) is enqueued, the scheduler puts it into the existing queue for that tenant. If the queue does not exist yet, it creates it first and re-assignes the connected querier workers to the available tenant queues. Each querier worker pulls round-robin from the assigned queues in a loop.
+The current scheduler is implemented in a way that it maintains a separate FIFO queue for each tenant. When a request (sub-query) is enqueued, the scheduler puts it into the existing queue for that tenant. If the queue does not exist yet, it creates it first and re-assigns the connected querier workers to the available tenant queues. Each querier worker pulls round-robin from the assigned queues in a loop.
 
 Now, instead of enqueuing and pulling directly from the per-tenant queue, requests get enqueued in per-user queues and the per-tenant queue pulls round-robin from the user queues that are assigned to the tenant queues.
 
@@ -160,7 +160,7 @@ type LeafQueue struct {
 Another option to keep the concept of users out of Loki and still provide some query fairness guarantees would be to simply shard request across multiple sub-queues within a tenant's queue. The shard size could be a per-tenant setting to account for different tenant sizes.
 
 This is similar to Proposal 1, in the sense of adding another fixed level of sub-queues.
-However, with the difference, that in this case, a single query request is assigned a random identifier that is hashed. When the query is split, the sub-requests maintain the same hashed identifier. The modulor of the hash defines to which sub-queue of a tenant requests will be enqueued.
+However, with the difference, that in this case, a single query request is assigned a random identifier that is hashed. When the query is split, the sub-requests maintain the same hashed identifier. The modulo of the hash defines to which sub-queue of a tenant requests will be enqueued.
 
 **Pros:**
 * User agnostic per-request QoS control

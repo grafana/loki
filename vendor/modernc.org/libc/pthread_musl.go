@@ -483,6 +483,65 @@ func _pthread_sigmask(tls *TLS, now int32, set, old uintptr) int32 {
 	return 0
 }
 
+type barrierState struct {
+	mu         sync.Mutex
+	cond       *sync.Cond
+	count      uint32
+	tripCount  uint32
+	generation uint32
+}
+
+var (
+	barriers   = map[uintptr]*barrierState{}
+	barriersMu sync.Mutex
+)
+
+// int pthread_barrier_init(pthread_barrier_t *restrict barrier, const pthread_barrierattr_t *restrict attr, unsigned count);
+func Xpthread_barrier_init(tls *TLS, barrier, attr uintptr, count uint32) int32 {
+	if count == 0 {
+		return EINVAL
+	}
+	barriersMu.Lock()
+	defer barriersMu.Unlock()
+	state := &barrierState{tripCount: count}
+	state.cond = sync.NewCond(&state.mu)
+	barriers[barrier] = state
+	return 0
+}
+
+// int pthread_barrier_destroy(pthread_barrier_t *barrier);
+func Xpthread_barrier_destroy(tls *TLS, barrier uintptr) int32 {
+	barriersMu.Lock()
+	defer barriersMu.Unlock()
+	delete(barriers, barrier)
+	return 0
+}
+
+// int pthread_barrier_wait(pthread_barrier_t *barrier);
+func Xpthread_barrier_wait(tls *TLS, barrier uintptr) int32 {
+	barriersMu.Lock()
+	state := barriers[barrier]
+	barriersMu.Unlock()
+	if state == nil {
+		return EINVAL
+	}
+	state.mu.Lock()
+	gen := state.generation
+	state.count++
+	if state.count >= state.tripCount {
+		state.count = 0
+		state.generation++
+		state.cond.Broadcast()
+		state.mu.Unlock()
+		return -1 // PTHREAD_BARRIER_SERIAL_THREAD
+	}
+	for gen == state.generation {
+		state.cond.Wait()
+	}
+	state.mu.Unlock()
+	return 0
+}
+
 // 202402251838      all_test.go:589: files=36 buildFails=30 execFails=2 pass=4
 // 202402262246      all_test.go:589: files=36 buildFails=26 execFails=2 pass=8
 // 202403041858 all_musl_test.go:640: files=36 buildFails=22 execFails=4 pass=10

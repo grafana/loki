@@ -68,7 +68,7 @@ type DataObjTee struct {
 	limitsClient *ingestLimits
 	rateBatcher  *rateBatcher // nil if batching is disabled
 	limits       Limits
-	kafkaClient  *kgo.Client
+	kafkaClient  KafkaProducer
 	resolver     *segmentationPartitionResolver
 	logger       log.Logger
 
@@ -86,7 +86,7 @@ func NewDataObjTee(
 	resolver *segmentationPartitionResolver,
 	limitsClient *ingestLimits,
 	limits Limits,
-	kafkaClient *kgo.Client,
+	kafkaClient KafkaProducer,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*DataObjTee, error) {
@@ -221,9 +221,11 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmen
 		return
 	}
 
-	results := t.kafkaClient.ProduceSync(ctx, records...)
+	results := t.kafkaClient.ProduceSync(ctx, records)
 	if err := results.FirstErr(); err != nil {
-		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
+		if !errors.Is(err, kgo.ErrMaxBuffered) {
+			level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
+		}
 		t.streamFailures.Inc()
 		pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to tee error: %d", TeeCouldntProduceRecordsError))
 		return

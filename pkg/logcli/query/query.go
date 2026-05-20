@@ -468,8 +468,6 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if err != nil {
 		return err
 	}
-	conf.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
-	conf.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 	conf.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	conf.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 

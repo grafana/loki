@@ -77,7 +77,6 @@ type stream struct {
 	// introduced to facilitate removing the ordering constraint.
 	entryCt int64
 
-	unorderedWrites      bool
 	streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
@@ -114,7 +113,6 @@ func newStream(
 	tenant string,
 	fp model.Fingerprint,
 	ls labels.Labels,
-	unorderedWrites bool,
 	streamRateCalculator *StreamRateCalculator,
 	metrics *ingesterMetrics,
 	writeFailures *writefailures.Manager,
@@ -136,7 +134,6 @@ func newStream(
 		tenant:               tenant,
 		streamRateCalculator: streamRateCalculator,
 
-		unorderedWrites:      unorderedWrites,
 		writeFailures:        writeFailures,
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
@@ -145,23 +142,6 @@ func newStream(
 		retentionHours: retentionHours,
 		policy:         policy,
 	}
-}
-
-// consumeChunk manually adds a chunk to the stream that was received during
-// ingester chunk transfer.
-// Must hold chunkMtx
-// DEPRECATED: chunk transfers are no longer suggested and remain for compatibility.
-func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
-	c, err := chunkenc.NewByteChunk(chunk.Data, s.cfg.BlockSize, s.cfg.TargetChunkSize)
-	if err != nil {
-		return err
-	}
-
-	s.chunks = append(s.chunks, chunkDesc{
-		chunk: c,
-	})
-	s.metrics.chunksCreatedTotal.Inc()
-	return nil
 }
 
 // setChunks is used during checkpoint recovery
@@ -441,7 +421,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
-		if !isReplay && s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
+		if !isReplay && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++
@@ -492,10 +472,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 
 func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes int, usageTracker push.UsageTracker, format string) {
 	if outOfOrderSamples > 0 {
-		name := validation.OutOfOrder
-		if s.unorderedWrites {
-			name = validation.TooFarBehind
-		}
+		name := validation.TooFarBehind
 		validation.DiscardedSamples.WithLabelValues(name, s.tenant, s.retentionHours, s.policy, format).Add(float64(outOfOrderSamples))
 		validation.DiscardedBytes.WithLabelValues(name, s.tenant, s.retentionHours, s.policy, format).Add(float64(outOfOrderBytes))
 		if usageTracker != nil {
@@ -666,15 +643,6 @@ func (s *stream) addTailer(t *tailer) {
 	defer s.tailerMtx.Unlock()
 
 	s.tailers[t.getID()] = t
-}
-
-func headBlockType(chunkfmt byte, unorderedWrites bool) chunkenc.HeadBlockFmt {
-	if unorderedWrites {
-		if chunkfmt >= chunkenc.ChunkFormatV3 {
-			return chunkenc.ChunkHeadFormatFor(chunkfmt)
-		}
-	}
-	return chunkenc.OrderedHeadBlockFmt
 }
 
 func labelsEqual(a, b pushtypes.LabelsAdapter) bool {

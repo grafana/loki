@@ -1,57 +1,38 @@
 package postings
 
 import (
-	"context"
 	"fmt"
 	"sort"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
-// columnName constants for each column in the postings section.
-const (
-	colKind             = "kind"
-	colObjectPath       = "object_path"
-	colSectionIndex     = "section_index"
-	colColumnName       = "column_name"
-	colLabelValue       = "label_value"
-	colBloomFilter      = "bloom_filter"
-	colStreamIDBitmap   = "stream_id_bitmap"
-	colUncompressedSize = "uncompressed_size"
-	colMinTimestamp     = "min_timestamp"
-	colMaxTimestamp     = "max_timestamp"
-)
-
-// Builder accumulates [Posting] rows and encodes them into columnar arrays.
-//
-// Flush writes are done via [Builder.Flush], which encodes all accumulated
-// rows into a set of [Section] values that can be read back via a [Reader].
-//
-// TODO(twhitney): Implement the [dataobj.SectionBuilder] interface by changing
-// Flush to accept a [dataobj.SectionWriter] and encode via [columnar.Encoder].
-// This should be done alongside the stats builder when on-disk serialization lands.
+// Builder aggregates posting observations and builds bitmaps and bloom filters
+// incrementally. Call [Builder.Flush] to encode all accumulated data and write
+// a postings section to the provided [dataobj.SectionWriter].
 type Builder struct {
-	tenant            string
-	targetSectionSize int
-	encode            SectionEncoder
+	metrics *Metrics
+	tenant  string
+	labels  *labelAggregator
+	blooms  *bloomAggregator
 
-	rows []Posting
+	pageSizeHint    int
+	pageMaxRowCount int
 }
 
-// defaultTargetSectionSize is used when no target section size is provided
-// (e.g., in tests). Production callers always pass TargetSectionSize from config.
-const defaultTargetSectionSize = 256 * 1024 * 1024 // 256 MiB
-
-// NewBuilder creates a new Builder. targetSectionSize controls when accumulated
-// data is large enough to split into multiple sections; use 0 for the default.
-// encode is the SectionEncoder to use for encoding rows.
-func NewBuilder(targetSectionSize int, encode SectionEncoder) *Builder {
-	if targetSectionSize <= 0 {
-		targetSectionSize = defaultTargetSectionSize
-	}
+// pageSizeHint and pageMaxRowCount control page splitting of the underlying
+// column builders (0 means use defaults).
+// metrics may be nil to disable instrumentation.
+func NewBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount int) *Builder {
 	return &Builder{
-		targetSectionSize: targetSectionSize,
-		encode:            encode,
+		metrics:         metrics,
+		labels:          newLabelAggregator(),
+		blooms:          newBloomAggregator(),
+		pageSizeHint:    pageSizeHint,
+		pageMaxRowCount: pageMaxRowCount,
 	}
 }
 
@@ -64,103 +45,100 @@ func (b *Builder) Tenant() string { return b.tenant }
 // Type returns the [dataobj.SectionType] of the postings builder.
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
-// Append adds a [Posting] row to the builder.
-// TODO(twhitney): revisit overhead of accumulating all postings for the lifetime of
-// a builder after implementing serialization.
-func (b *Builder) Append(p Posting) {
-	b.rows = append(b.rows, p)
+// PrepareBloomColumn initializes the bloom filter for a specific column. Must
+// be called before any ObserveBloomPosting calls for the given
+// (objectPath, sectionIndex, columnName) combination.
+func (b *Builder) PrepareBloomColumn(objectPath string, sectionIndex int64, columnName string, estimatedCardinality uint) {
+	b.blooms.PrepareColumn(objectPath, sectionIndex, columnName, estimatedCardinality)
 }
 
-// comparePostings returns true if a should sort before b, using the sort order
-// [Kind, ColumnName, LabelValue, MinTimestamp, MaxTimestamp]. All comparisons
-// are lexicographic. Empty LabelValue (used by Bloom entries) sorts before any
-// non-empty value for the same column_name.
-func comparePostings(a, b Posting) bool {
-	if a.Kind != b.Kind {
-		return a.Kind < b.Kind
-	}
-	if a.ColumnName != b.ColumnName {
-		return a.ColumnName < b.ColumnName
-	}
-	if a.LabelValue != b.LabelValue {
-		return a.LabelValue < b.LabelValue
-	}
-	if a.MinTimestamp != b.MinTimestamp {
-		return a.MinTimestamp < b.MinTimestamp
-	}
-	return a.MaxTimestamp < b.MaxTimestamp
+// ObserveLabelPosting records a label posting observation. Multiple
+// observations for the same
+// (ObjectPath, SectionIndex, ColumnName, LabelValue) key are aggregated into a
+// single posting.
+func (b *Builder) ObserveLabelPosting(obs LabelObservation) {
+	b.labels.Observe(obs)
+}
+
+// ObserveBloomPosting records a bloom posting observation. Returns an error if
+// the column has not been prepared via PrepareBloomColumn.
+func (b *Builder) ObserveBloomPosting(obs BloomObservation) error {
+	return b.blooms.Observe(obs)
+}
+
+// BloomBytes returns the marshaled bloom filter bytes for a specific column.
+// Returns an error if the column has not been prepared.
+func (b *Builder) BloomBytes(objectPath string, sectionIndex int64, columnName string) ([]byte, error) {
+	return b.blooms.BloomBytes(objectPath, sectionIndex, columnName)
 }
 
 // EstimatedSize returns an estimate of the encoded size of the accumulated
-// rows in bytes.
+// data in bytes.
 func (b *Builder) EstimatedSize() int {
-	var total int
-	for _, r := range b.rows {
-		total += r.Size()
-	}
-	return total
+	return b.labels.EstimatedSize() + b.blooms.EstimatedSize()
 }
 
-// Reset clears all accumulated rows and resets the builder to a fresh state.
+// Reset clears all accumulated data and resets the builder to a fresh state.
 func (b *Builder) Reset() {
-	b.rows = b.rows[:0]
+	b.labels.Reset()
+	b.blooms.Reset()
 }
 
-// Flush sorts the accumulated rows by [Kind, ColumnName, LabelValue,
-// MinTimestamp, MaxTimestamp], encodes them column-by-column into [Section]
-// values, and returns one or more [Section] values.
+// Flush encodes all accumulated observations into the provided
+// [dataobj.SectionWriter] and returns the number of bytes written.
 //
 // After a successful flush, the builder is reset.
-func (b *Builder) Flush(ctx context.Context) ([]Section, error) {
-	if len(b.rows) == 0 {
-		return nil, nil
+func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
+	labelEntries := b.labels.Entries()
+	bloomEntries := b.blooms.Entries()
+
+	if len(labelEntries) == 0 && len(bloomEntries) == 0 {
+		return 0, nil
 	}
 
-	// Sort rows by [Kind, ColumnName, LabelValue, MinTimestamp, MaxTimestamp] (lexicographic).
-	sort.SliceStable(b.rows, func(i, j int) bool {
-		return comparePostings(b.rows[i], b.rows[j])
+	if b.metrics != nil {
+		timer := prometheus.NewTimer(b.metrics.encodeSeconds)
+		defer timer.ObserveDuration()
+	}
+
+	// Sort label entries by [objectPath, sectionIndex, columnName, labelValue].
+	sort.SliceStable(labelEntries, func(i, j int) bool {
+		a, bEntry := labelEntries[i], labelEntries[j]
+		if a.ObjectPath != bEntry.ObjectPath {
+			return a.ObjectPath < bEntry.ObjectPath
+		}
+		if a.SectionIndex != bEntry.SectionIndex {
+			return a.SectionIndex < bEntry.SectionIndex
+		}
+		if a.ColumnName != bEntry.ColumnName {
+			return a.ColumnName < bEntry.ColumnName
+		}
+		return a.LabelValue < bEntry.LabelValue
 	})
 
-	// Determine section splits based on targetSectionSize.
-	splits := b.computeSplits()
-
-	sections := make([]Section, 0, len(splits))
-	for _, chunk := range splits {
-		sec, err := b.encode(ctx, chunk)
-		if err != nil {
-			return nil, fmt.Errorf("encoding postings rows: %w", err)
+	// Sort bloom entries by [objectPath, sectionIndex, columnName].
+	sort.SliceStable(bloomEntries, func(i, j int) bool {
+		a, bEntry := bloomEntries[i], bloomEntries[j]
+		if a.ObjectPath != bEntry.ObjectPath {
+			return a.ObjectPath < bEntry.ObjectPath
 		}
-		sections = append(sections, sec)
-	}
-
-	b.Reset()
-	return sections, nil
-}
-
-// computeSplits divides b.rows into chunks, each estimated to be at most
-// targetSectionSize bytes. Returns at least one chunk.
-func (b *Builder) computeSplits() [][]Posting {
-	if len(b.rows) == 0 {
-		return nil
-	}
-
-	var (
-		chunks     [][]Posting
-		chunkStart = 0
-		chunkSize  = 0
-	)
-
-	for i, r := range b.rows {
-		rowSize := r.Size()
-		if chunkSize+rowSize > b.targetSectionSize && chunkSize > 0 {
-			chunks = append(chunks, b.rows[chunkStart:i])
-			chunkStart = i
-			chunkSize = 0
+		if a.SectionIndex != bEntry.SectionIndex {
+			return a.SectionIndex < bEntry.SectionIndex
 		}
-		chunkSize += rowSize
+		return a.ColumnName < bEntry.ColumnName
+	})
+
+	var enc columnar.Encoder
+	defer enc.Reset()
+
+	if err := columnarEncode(bloomEntries, labelEntries, &enc, b.pageSizeHint, b.pageMaxRowCount); err != nil {
+		return 0, fmt.Errorf("encoding postings: %w", err)
 	}
 
-	// Append final chunk.
-	chunks = append(chunks, b.rows[chunkStart:])
-	return chunks
+	enc.SetTenant(b.tenant)
+	n, err = enc.Flush(w)
+	if err == nil {
+		b.Reset()
+	}
+	return n, err
 }

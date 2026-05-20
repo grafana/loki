@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -151,6 +152,37 @@ func TestProducer(t *testing.T) {
 		require.EqualError(t, results[0].Err, "context canceled")
 		require.Equal(t, rec2, results[1].Record)
 		require.EqualError(t, results[1].Err, "context canceled")
+	})
+
+	t.Run("records are failed if total exceeds buffer size", func(t *testing.T) {
+		_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
+		client, err := NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+		require.NoError(t, err)
+
+		// Set a 1KB limit on buffered records.
+		producer := NewProducer("test-producer", client, 1024, prometheus.NewRegistry())
+
+		rec1 := &kgo.Record{Key: []byte("key1"), Value: []byte(strings.Repeat("a", 1024))}
+		rec2 := &kgo.Record{Key: []byte("key2"), Value: []byte("b")}
+		results := producer.ProduceSync(t.Context(), []*kgo.Record{rec1, rec2})
+		require.Len(t, results, 2)
+
+		// All records should fail.
+		require.Equal(t, rec1, results[0].Record)
+		require.EqualError(t, results[0].Err, "the maximum amount of records are buffered, cannot buffer more")
+		require.Equal(t, rec2, results[1].Record)
+		require.EqualError(t, results[1].Err, "the maximum amount of records are buffered, cannot buffer more")
+
+		// Should be able to produce either record individually.
+		results = producer.ProduceSync(t.Context(), []*kgo.Record{rec1})
+		require.Len(t, results, 1)
+		require.Equal(t, rec1, results[0].Record)
+		require.NoError(t, results[0].Err)
+
+		results = producer.ProduceSync(t.Context(), []*kgo.Record{rec2})
+		require.Len(t, results, 1)
+		require.Equal(t, rec2, results[0].Record)
+		require.NoError(t, results[0].Err)
 	})
 }
 
