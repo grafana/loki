@@ -803,7 +803,7 @@ func TestGetGatewayImage(t *testing.T) {
 				},
 			},
 			envPassthrough: "",
-			wantImage:      "quay.io/jmarcal/passthrough-gateway:latest",
+			wantImage:      "quay.io/openshift-logging/passthrough-gateway:latest",
 		},
 	}
 

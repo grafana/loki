@@ -15,4 +15,4 @@ spec:
           - name: RELATED_IMAGE_OPA
             value: quay.io/observatorium/opa-openshift:latest
           - name: RELATED_IMAGE_PASSTHROUGH_GATEWAY
-            value: quay.io/jmarcal/passthrough-gateway:latest
+            value: quay.io/openshift-logging/passthrough-gateway:latest

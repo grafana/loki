@@ -70,7 +70,7 @@ const (
 
 	// DefaultPassthroughGatewayImage declares the default image for passthrough gateway.
 	// TODO(JoaoBraveCoding) Update to openshift-logging image
-	DefaultPassthroughGatewayImage = "quay.io/jmarcal/passthrough-gateway:latest"
+	DefaultPassthroughGatewayImage = "quay.io/openshift-logging/passthrough-gateway:latest"
 
 	// PrometheusCAFile declares the path for prometheus CA file for service monitors.
 	PrometheusCAFile string = "/etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt"

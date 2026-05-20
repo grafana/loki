@@ -1982,7 +1982,7 @@ spec:
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
                 - name: RELATED_IMAGE_PASSTHROUGH_GATEWAY
-                  value: quay.io/jmarcal/passthrough-gateway:latest
+                  value: quay.io/openshift-logging/passthrough-gateway:latest
                 image: docker.io/grafana/loki-operator:0.10.1
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
@@ -2081,7 +2081,7 @@ spec:
     name: gateway
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
-  - image: quay.io/jmarcal/passthrough-gateway:latest
+  - image: quay.io/openshift-logging/passthrough-gateway:latest
     name: passthrough-gateway
   replaces: loki-operator.v0.10.0
   version: 0.10.1
