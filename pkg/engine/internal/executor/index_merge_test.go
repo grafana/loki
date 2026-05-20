@@ -227,7 +227,7 @@ func TestPostingsPileReader_RoundTrip(t *testing.T) {
 	ts := time.Unix(0, 0).UTC()
 
 	// Add a label entry
-	err := b.ObserveLabelPosting(postings.LabelObservation{
+	b.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "/obj",
 		SectionIndex:     0,
 		ColumnName:       "env",
@@ -236,12 +236,11 @@ func TestPostingsPileReader_RoundTrip(t *testing.T) {
 		Timestamp:        ts,
 		UncompressedSize: 100,
 	})
-	require.NoError(t, err)
 
 	// Add a bloom entry
 	b.PrepareBloomColumn("/obj", 0, "trace_id", 1000)
 
-	err = b.ObserveBloomPosting(postings.BloomObservation{
+	err := b.ObserveBloomPosting(postings.BloomObservation{
 		ObjectPath:       "/obj",
 		SectionIndex:     0,
 		ColumnName:       "trace_id",
@@ -524,7 +523,7 @@ func TestPostingsPileReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 	ts := time.Unix(0, 0).UTC()
 
 	// Add a label entry with known stream ID
-	err := b.ObserveLabelPosting(postings.LabelObservation{
+	b.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "/obj",
 		SectionIndex:     0,
 		ColumnName:       "env",
@@ -533,10 +532,9 @@ func TestPostingsPileReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 		Timestamp:        ts,
 		UncompressedSize: 100,
 	})
-	require.NoError(t, err)
 
 	// Add another label entry with different stream ID
-	err = b.ObserveLabelPosting(postings.LabelObservation{
+	b.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "/obj",
 		SectionIndex:     0,
 		ColumnName:       "env",
@@ -545,7 +543,6 @@ func TestPostingsPileReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 		Timestamp:        ts,
 		UncompressedSize: 100,
 	})
-	require.NoError(t, err)
 
 	// Flush to a dataobj
 	objBuilder := dataobj.NewBuilder(nil)
@@ -660,7 +657,7 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, _, path
 	postingsBuilder := postings.NewBuilder(nil, 0, 0)
 	ts := time.Unix(0, 1_000_000)
 
-	err := postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+	postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "log-A",
 		SectionIndex:     0,
 		ColumnName:       "service",
@@ -669,7 +666,6 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, _, path
 		Timestamp:        ts,
 		UncompressedSize: 100,
 	})
-	require.NoError(t, err)
 
 	// Build stats section with one stat row
 	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
@@ -775,8 +771,7 @@ func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, _, path str
 
 	postingsBuilder := postings.NewBuilder(nil, 0, 0)
 	for _, obs := range observations {
-		err := postingsBuilder.ObserveLabelPosting(obs)
-		require.NoError(t, err)
+		postingsBuilder.ObserveLabelPosting(obs)
 	}
 
 	objBuilder := dataobj.NewBuilder(nil)

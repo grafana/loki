@@ -206,7 +206,7 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 // requires all observations for a section to be present before encoding
 // (bitmap normalization, bloom filter construction). The builderFull flag
 // provides back-pressure via TargetObjectSize.
-func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObservation) error {
+func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObservation) {
 	// Postings are observed per (record × stream label), so this method runs in
 	// a hot loop that fires hundreds of thousands of times per logs section.
 	// Per-call prometheus.NewTimer / Histogram.Observe / sizeEstimate.Set were
@@ -218,9 +218,7 @@ func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObserva
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
 	preSize := tenantPostings.EstimatedSize()
 
-	if err := tenantPostings.ObserveLabelPosting(obs); err != nil {
-		return err
-	}
+	tenantPostings.ObserveLabelPosting(obs)
 
 	postSize := tenantPostings.EstimatedSize()
 	b.unflushedSizeEstimate += postSize - preSize
@@ -229,7 +227,6 @@ func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObserva
 	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
 	}
-	return nil
 }
 
 // PrepareBloomColumn initializes the bloom filter for a specific column.
@@ -242,8 +239,7 @@ func (b *Builder) PrepareBloomColumn(tenantID, objectPath string, sectionIdx int
 
 // ObserveBloomPosting records a bloom-filter posting observation for a data
 // object column. Returns an error if the column has not been prepared via
-// PrepareBloomColumn, or if the same (objectPath, sectionIdx, columnName) key
-// was previously added via AppendBloomEntry. The aggregated postings are flushed when
+// PrepareBloomColumn. The aggregated postings are flushed when
 // [Builder.Flush] is called.
 func (b *Builder) ObserveBloomPosting(tenantID string, obs postings.BloomObservation) error {
 	// See ObserveLabelPosting for why metrics.appendTime / sizeEstimate.Set are
@@ -272,50 +268,6 @@ func (b *Builder) ObserveBloomPosting(tenantID string, obs postings.BloomObserva
 func (b *Builder) BloomBytes(tenantID, objectPath string, sectionIdx int64, columnName string) ([]byte, error) {
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
 	return tenantPostings.BloomBytes(objectPath, sectionIdx, columnName)
-}
-
-// AppendPostingsLabelEntry appends a pre-aggregated label posting entry directly
-// to the builder without going through the per-observation aggregation path.
-func (b *Builder) AppendPostingsLabelEntry(tenantID string, entry postings.LabelEntry) error {
-	b.metrics.appendsTotal.Inc()
-
-	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
-	preSize := tenantPostings.EstimatedSize()
-
-	if err := tenantPostings.AppendLabelEntry(entry); err != nil {
-		return err
-	}
-
-	postSize := tenantPostings.EstimatedSize()
-	b.unflushedSizeEstimate += postSize - preSize
-	b.currentSizeEstimate += postSize - preSize
-	b.state = builderStateDirty
-	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
-		b.builderFull = true
-	}
-	return nil
-}
-
-// AppendPostingsBloomEntry appends a pre-aggregated bloom posting entry directly
-// to the builder without going through the per-observation aggregation path.
-func (b *Builder) AppendPostingsBloomEntry(tenantID string, entry postings.BloomEntry) error {
-	b.metrics.appendsTotal.Inc()
-
-	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
-	preSize := tenantPostings.EstimatedSize()
-
-	if err := tenantPostings.AppendBloomEntry(entry); err != nil {
-		return err
-	}
-
-	postSize := tenantPostings.EstimatedSize()
-	b.unflushedSizeEstimate += postSize - preSize
-	b.currentSizeEstimate += postSize - preSize
-	b.state = builderStateDirty
-	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
-		b.builderFull = true
-	}
-	return nil
 }
 
 func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {

@@ -58,7 +58,7 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 	}
 
 	// Create index object builder
-	builder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore)
+	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore)
 	if err != nil {
 		return fmt.Errorf("creating index builder: %w", err)
 	}
@@ -206,7 +206,7 @@ type runSection struct {
 
 // mergePostingsIntoBuilder merges postings sections using a K-way merge heap and
 // feeds results into the builder. Uses D2 last-wins reduction.
-func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, sections []runSection, builder *indexobj.Builder) error {
+func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, sections []runSection, builder *indexobj.MergeBuilder) error {
 	if len(sections) == 0 {
 		return nil
 	}
@@ -256,7 +256,7 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 	return emitErr
 }
 
-func (c *Context) writePostingsRow(builder *indexobj.Builder, tenant string, row postingsRow) error {
+func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string, row postingsRow) error {
 	switch row.Kind {
 	case postings.KindLabel:
 		entry := postings.LabelEntry{
@@ -291,7 +291,7 @@ func (c *Context) writePostingsRow(builder *indexobj.Builder, tenant string, row
 
 // mergeStatsIntoBuilder merges stats sections using a K-way merge heap and
 // feeds results into the builder. Uses D3 aggregation with schema/label validation.
-func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sections []runSection, builder *indexobj.Builder) error {
+func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sections []runSection, builder *indexobj.MergeBuilder) error {
 	if len(sections) == 0 {
 		return nil
 	}

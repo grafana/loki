@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
-	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 // Builder aggregates posting observations and builds bitmaps and bloom filters
@@ -55,18 +53,14 @@ func (b *Builder) PrepareBloomColumn(objectPath string, sectionIndex int64, colu
 }
 
 // ObserveLabelPosting records a label posting observation. Multiple
-// observations for the same
-// (ObjectPath, SectionIndex, ColumnName, LabelValue) key are aggregated into a
-// single posting. Returns an error if the key was already added via
-// AppendLabelEntry.
-func (b *Builder) ObserveLabelPosting(obs LabelObservation) error {
-	return b.labels.Observe(obs)
+// observations for the same (ObjectPath, SectionIndex, ColumnName, LabelValue)
+// key are aggregated into a single posting.
+func (b *Builder) ObserveLabelPosting(obs LabelObservation) {
+	b.labels.Observe(obs)
 }
 
 // ObserveBloomPosting records a bloom posting observation. Returns an error if
-// the column has not been prepared via PrepareBloomColumn, or if the same
-// (ObjectPath, SectionIndex, ColumnName) key was previously added via
-// AppendBloomEntry.
+// the column has not been prepared via PrepareBloomColumn.
 func (b *Builder) ObserveBloomPosting(obs BloomObservation) error {
 	return b.blooms.Observe(obs)
 }
@@ -75,74 +69,6 @@ func (b *Builder) ObserveBloomPosting(obs BloomObservation) error {
 // Returns an error if the column has not been prepared.
 func (b *Builder) BloomBytes(objectPath string, sectionIndex int64, columnName string) ([]byte, error) {
 	return b.blooms.BloomBytes(objectPath, sectionIndex, columnName)
-}
-
-// AppendLabelEntry appends a pre-aggregated label posting entry directly to
-// the builder, bypassing the per-observation aggregation path. This is useful
-// when replaying pre-aggregated rows from source sections, as it prevents
-// double-counting of UncompressedSize. Returns an error if an entry with the
-// same (ObjectPath, SectionIndex, ColumnName, LabelValue) key already exists.
-func (b *Builder) AppendLabelEntry(entry LabelEntry) error {
-	// Reconstruct the bitmap from raw bytes
-	internalEntry := &labelPostingEntry{
-		ObjectPath:       entry.ObjectPath,
-		SectionIndex:     entry.SectionIndex,
-		ColumnName:       entry.ColumnName,
-		LabelValue:       entry.LabelValue,
-		MinTimestamp:     entry.MinTimestamp.UnixNano(),
-		MaxTimestamp:     entry.MaxTimestamp.UnixNano(),
-		UncompressedSize: entry.UncompressedSize,
-	}
-
-	// Reconstruct the bitmap from the provided bytes
-	if len(entry.StreamIDBitmap) == 0 {
-		// Empty bitmap
-		internalEntry.bitmap = memory.NewBitmap(nil, 0)
-	} else {
-		// Create a bitmap from the raw bytes
-		// Calculate the bitmap length from the bytes
-		bitmapLen := len(entry.StreamIDBitmap) * 8
-		internalEntry.bitmap = memory.BitmapFrom(entry.StreamIDBitmap, bitmapLen, 0)
-	}
-
-	return b.labels.AppendEntry(internalEntry)
-}
-
-// AppendBloomEntry appends a pre-aggregated bloom posting entry directly to
-// the builder, bypassing the per-observation aggregation path. This is useful
-// when replaying pre-aggregated rows from source sections, as it prevents
-// double-counting of UncompressedSize. Returns an error if an entry with the
-// same (ObjectPath, SectionIndex, ColumnName) key already exists.
-func (b *Builder) AppendBloomEntry(entry BloomEntry) error {
-	// Unmarshal the bloom filter from the provided bytes
-	bloomFilter := &bloom.BloomFilter{}
-	if err := bloomFilter.UnmarshalBinary(entry.BloomFilter); err != nil {
-		return fmt.Errorf("unmarshaling bloom filter: %w", err)
-	}
-
-	// Reconstruct the bitmap from raw bytes
-	internalEntry := &bloomPostingEntry{
-		ObjectPath:       entry.ObjectPath,
-		SectionIndex:     entry.SectionIndex,
-		ColumnName:       entry.ColumnName,
-		bloomFilter:      bloomFilter,
-		MinTimestamp:     entry.MinTimestamp.UnixNano(),
-		MaxTimestamp:     entry.MaxTimestamp.UnixNano(),
-		UncompressedSize: entry.UncompressedSize,
-	}
-
-	// Reconstruct the bitmap from the provided bytes
-	if len(entry.StreamIDBitmap) == 0 {
-		// Empty bitmap
-		internalEntry.bitmap = memory.NewBitmap(nil, 0)
-	} else {
-		// Create a bitmap from the raw bytes
-		// Calculate the bitmap length from the bytes
-		bitmapLen := len(entry.StreamIDBitmap) * 8
-		internalEntry.bitmap = memory.BitmapFrom(entry.StreamIDBitmap, bitmapLen, 0)
-	}
-
-	return b.blooms.AppendEntry(internalEntry)
 }
 
 // EstimatedSize returns an estimate of the encoded size of the accumulated
