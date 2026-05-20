@@ -68,11 +68,9 @@ func TestIndexMergePath_Build_AnyInputChangeChangesPath(t *testing.T) {
 	}
 }
 
-// TestIndexMergePath_Build_ResultIndependentOfReuse pins the contract the
-// coordinator's hot loop relies on: a path returned from an earlier Build
-// call is safe to retain across subsequent Build calls on the same value.
-// If the path string ever aliased indexMergePath.buf or .hexBuf, a
-// subsequent call would corrupt the stored output.
+// TestIndexMergePath_Build_ResultIndependentOfReuse tests that a path returned
+// from an earlier Build call is safe to retain across subsequent Build calls on
+// the same value.
 func TestIndexMergePath_Build_ResultIndependentOfReuse(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
 
@@ -85,75 +83,64 @@ func TestIndexMergePath_Build_ResultIndependentOfReuse(t *testing.T) {
 	got := reuser.Build("tenant-a", window, 1, 0, []string{"i0#0", "i1#0"})
 	require.Equal(t, want, got, "fresh and reused builders must agree on the same inputs")
 
-	// Reuse the builder with very different inputs that grow buf and
-	// rewrite hexBuf. The previously-returned string must remain byte-equal
-	// to the reference.
-	for i := 0; i < 8; i++ {
-		reuser.Build("tenant-b", window, 7, i, []string{"x#0", "y#0", "z#0", "w#0"})
+	// Reuse the builder with different inputs. The previously-returned string
+	// must remain equal to the reference.
+	for i := range 8 {
+		reused := reuser.Build("tenant-b", window, 7, i, []string{"x#0", "y#0", "z#0", "w#0"})
+		require.NotEqual(t, got, reused)
 	}
 	require.Equal(t, want, got,
 		"path string must not be aliased to indexMergePath internal buffers")
 }
 
-// BenchmarkIndexMergePath_Build_FreshBuilder measures the cost of throwing
-// away the builder after every call — the anti-pattern. Production hot loops
-// (coordinator) must instead hold one indexMergePath across calls. See
-// BenchmarkIndexMergePath_Build_ReusedBuilder for the intended cost.
-func BenchmarkIndexMergePath_Build_FreshBuilder(b *testing.B) {
+// BenchmarkIndexMergePath_Build illustrates the benefit of reusing an
+// indexMergePath across Build calls. The three subcases share inputs:
+//
+//   - fresh_per_call: construct a new indexMergePath for every Build call.
+//     Each call grows its internal scratch from zero and lets it be GC'd.
+//   - reused_builder: declare the indexMergePath once, call Build many
+//     times. The coordinator's hot loop pattern — scratch buffers reach
+//     their high-water mark on the first call and stay there.
+//   - per_cycle_batch_16: realistic per-coordinator-cycle shape — a fresh
+//     indexMergePath per cycle, reused across 16 tasks within that cycle.
+func BenchmarkIndexMergePath_Build(b *testing.B) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
 	ids := []string{
 		"indexes/aa/src-0#0", "indexes/bb/src-1#0", "indexes/cc/src-2#0",
 		"indexes/dd/src-3#0", "indexes/ee/src-4#0", "indexes/ff/src-5#0",
 		"indexes/gg/src-6#0", "indexes/hh/src-7#0",
 	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	var sink string
-	for i := 0; i < b.N; i++ {
-		var bldr indexMergePath
-		sink = bldr.Build("tenant-29", window, 1, i&0xff, ids)
-	}
-	_ = sink
-}
 
-// BenchmarkIndexMergePath_Build_ReusedBuilder measures the production-hot-loop
-// cost: one indexMergePath, many Build calls.
-func BenchmarkIndexMergePath_Build_ReusedBuilder(b *testing.B) {
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
-	ids := []string{
-		"indexes/aa/src-0#0", "indexes/bb/src-1#0", "indexes/cc/src-2#0",
-		"indexes/dd/src-3#0", "indexes/ee/src-4#0", "indexes/ff/src-5#0",
-		"indexes/gg/src-6#0", "indexes/hh/src-7#0",
-	}
-	var bldr indexMergePath
-	b.ReportAllocs()
-	b.ResetTimer()
-	var sink string
-	for i := 0; i < b.N; i++ {
-		sink = bldr.Build("tenant-29", window, 1, i&0xff, ids)
-	}
-	_ = sink
-}
-
-// BenchmarkIndexMergePath_Build_CycleBatch simulates a realistic per-cycle
-// batch: a tenant with N tasks, all paths computed in sequence from one
-// builder.
-func BenchmarkIndexMergePath_Build_CycleBatch(b *testing.B) {
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
-	const tasksPerCycle = 16
-	ids := []string{
-		"indexes/aa/src-0#0", "indexes/bb/src-1#0", "indexes/cc/src-2#0",
-		"indexes/dd/src-3#0", "indexes/ee/src-4#0", "indexes/ff/src-5#0",
-		"indexes/gg/src-6#0", "indexes/hh/src-7#0",
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		var bldr indexMergePath
+	b.Run("fresh_per_call", func(b *testing.B) {
+		b.ReportAllocs()
 		var sink string
-		for i := 0; i < tasksPerCycle; i++ {
-			sink = bldr.Build(fmt.Sprintf("tenant-%d", n&0xff), window, 1, i, ids)
+		for i := 0; b.Loop(); i++ {
+			var bldr indexMergePath
+			sink = bldr.Build("tenant-29", window, 1, i&0xff, ids)
 		}
 		_ = sink
-	}
+	})
+
+	b.Run("reused_builder", func(b *testing.B) {
+		var bldr indexMergePath
+		b.ReportAllocs()
+		var sink string
+		for i := 0; b.Loop(); i++ {
+			sink = bldr.Build("tenant-29", window, 1, i&0xff, ids)
+		}
+		_ = sink
+	})
+
+	b.Run("per_cycle_batch_16", func(b *testing.B) {
+		const tasksPerCycle = 16
+		b.ReportAllocs()
+		var sink string
+		for n := 0; b.Loop(); n++ {
+			var bldr indexMergePath
+			for i := 0; i < tasksPerCycle; i++ {
+				sink = bldr.Build(fmt.Sprintf("tenant-%d", n&0xff), window, 1, i, ids)
+			}
+		}
+		_ = sink
+	})
 }
