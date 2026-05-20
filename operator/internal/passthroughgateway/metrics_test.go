@@ -11,16 +11,16 @@ import (
 
 func TestMetricsRequestsTotal(t *testing.T) {
 	registry := prometheus.NewPedanticRegistry()
-	metrics := NewMetrics(registry)
+	metrics := newMetrics(registry)
 
-	metrics.RequestsTotal.WithLabelValues("GET", "200").Inc()
-	metrics.RequestsTotal.WithLabelValues("POST", "201").Inc()
+	metrics.RequestsTotal.WithLabelValues("GET", "read", "200").Inc()
+	metrics.RequestsTotal.WithLabelValues("POST", "write", "201").Inc()
 
 	expected := `
 # HELP lokistack_gateway_requests_total Total number of requests processed by the LokiStack gateway.
 # TYPE lokistack_gateway_requests_total counter
-lokistack_gateway_requests_total{code="200",method="GET"} 1
-lokistack_gateway_requests_total{code="201",method="POST"} 1
+lokistack_gateway_requests_total{code="200",method="GET",route="read"} 1
+lokistack_gateway_requests_total{code="201",method="POST",route="write"} 1
 `
 
 	err := testutil.CollectAndCompare(metrics.RequestsTotal, strings.NewReader(expected))
@@ -29,7 +29,7 @@ lokistack_gateway_requests_total{code="201",method="POST"} 1
 
 func TestMetricsRequestDuration(t *testing.T) {
 	registry := prometheus.NewPedanticRegistry()
-	metrics := NewMetrics(registry)
+	metrics := newMetrics(registry)
 
 	metrics.RequestDuration.WithLabelValues("GET", "/api/logs").Observe(0.5)
 
@@ -39,16 +39,17 @@ func TestMetricsRequestDuration(t *testing.T) {
 
 func TestMetricsRequestsInFlight(t *testing.T) {
 	registry := prometheus.NewPedanticRegistry()
-	metrics := NewMetrics(registry)
+	metrics := newMetrics(registry)
 
-	metrics.RequestsInFlight.Inc()
-	metrics.RequestsInFlight.Inc()
-	metrics.RequestsInFlight.Dec()
+	metrics.RequestsInFlight.WithLabelValues("read").Inc()
+	metrics.RequestsInFlight.WithLabelValues("write").Inc()
+	metrics.RequestsInFlight.WithLabelValues("read").Dec()
 
 	expected := `
 # HELP lokistack_gateway_requests_in_flight Current number of requests being processed by the LokiStack gateway.
 # TYPE lokistack_gateway_requests_in_flight gauge
-lokistack_gateway_requests_in_flight 1
+lokistack_gateway_requests_in_flight{route="read"} 0
+lokistack_gateway_requests_in_flight{route="write"} 1
 `
 
 	err := testutil.CollectAndCompare(metrics.RequestsInFlight, strings.NewReader(expected))

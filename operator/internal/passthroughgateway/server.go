@@ -16,14 +16,14 @@ import (
 type Server struct {
 	config       *Config
 	logger       logr.Logger
-	metrics      *Metrics
+	metrics      *metrics
 	proxyServer  *http.Server
 	adminServer  *http.Server
 	shuttingDown *atomic.Bool
 }
 
 func NewServer(cfg *Config, logger logr.Logger, reg prometheus.Registerer) (*Server, error) {
-	metrics := NewMetrics(reg)
+	metrics := newMetrics(reg)
 
 	router, err := NewLokiRouter(cfg, logger)
 	if err != nil {

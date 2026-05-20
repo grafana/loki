@@ -18,6 +18,7 @@ var lokiWritePaths = []string{
 	"/otlp/v1/logs",
 }
 
+// lokiRouter directs requests to the appropriate Loki upstream (distributor or query-frontend).
 type lokiRouter struct {
 	writeProxy    *httputil.ReverseProxy
 	readProxy     *httputil.ReverseProxy
@@ -46,7 +47,7 @@ func (rw *responseWriter) Unwrap() http.ResponseWriter {
 }
 
 // NewLokiRouter creates a new router that directs requests to the appropriate upstream.
-func NewLokiRouter(cfg *Config, logger logr.Logger) (*LokiRouter, error) {
+func NewLokiRouter(cfg *Config, logger logr.Logger) (*lokiRouter, error) {
 	transport, err := newTransport(cfg)
 	if err != nil {
 		return nil, err
@@ -62,7 +63,7 @@ func NewLokiRouter(cfg *Config, logger logr.Logger) (*LokiRouter, error) {
 		return nil, err
 	}
 
-	return &LokiRouter{
+	return &lokiRouter{
 		writeProxy:    writeProxy,
 		readProxy:     readProxy,
 		logger:        logger,
@@ -111,7 +112,7 @@ func isWritePath(path string) bool {
 	})
 }
 
-func (r *LokiRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (r *lokiRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Header.Get("X-Scope-OrgID") == "" {
 		if r.defaultTenant == "" {
 			r.logger.Error(nil, "missing required header", "header", "X-Scope-OrgID", "path", req.URL.Path, "method", req.Method)
@@ -130,23 +131,24 @@ func (r *LokiRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 // instrumentedHandler wraps an http.Handler with metrics instrumentation.
-func instrumentedHandler(handler http.Handler, metrics *Metrics) http.Handler {
+func instrumentedHandler(handler http.Handler, metrics *metrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		metrics.RequestsInFlight.Inc()
-		defer metrics.RequestsInFlight.Dec()
+		route := "read"
+		if isWritePath(r.URL.Path) {
+			route = "write"
+		}
+
+		inFlight := metrics.RequestsInFlight.WithLabelValues(route)
+		inFlight.Inc()
+		defer inFlight.Dec()
 
 		start := time.Now()
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		handler.ServeHTTP(wrapped, r)
 
-		route := "read"
-		if isWritePath(r.URL.Path) {
-			route = "write"
-		}
-
 		duration := time.Since(start).Seconds()
 		metrics.RequestDuration.WithLabelValues(r.Method, route).Observe(duration)
-		metrics.RequestsTotal.WithLabelValues(r.Method, strconv.Itoa(wrapped.statusCode)).Inc()
+		metrics.RequestsTotal.WithLabelValues(r.Method, route, strconv.Itoa(wrapped.statusCode)).Inc()
 	})
 }

@@ -150,9 +150,10 @@ func parseClientAuthType(authType string) (tls.ClientAuthType, error) {
 }
 
 func buildTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
-	tlsConfig := &tls.Config{}
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
 
-	tlsConfig.MinVersion = tls.VersionTLS12
 	if cfg.MinVersion != "" {
 		minVersion, err := parseTLSVersion(cfg.MinVersion)
 		if err != nil {

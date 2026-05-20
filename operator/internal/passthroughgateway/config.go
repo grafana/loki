@@ -32,18 +32,18 @@ type Config struct {
 	// Generic TLS configuration
 	TLSMinVersion   string
 	TLSMaxVersion   string
-	TLSCipherSuites stringSlice
-	TLSCurvePrefs   stringSlice
+	TLSCipherSuites StringSlice
+	TLSCurvePrefs   StringSlice
 }
 
-// stringSlice is a custom flag type for comma-separated strings.
-type stringSlice []string
+// StringSlice is a custom flag type for comma-separated strings.
+type StringSlice []string
 
-func (s *stringSlice) String() string {
+func (s *StringSlice) String() string {
 	return strings.Join(*s, ",")
 }
 
-func (s *stringSlice) Set(value string) error {
+func (s *StringSlice) Set(value string) error {
 	if value == "" {
 		return nil
 	}
@@ -113,7 +113,7 @@ func (c *Config) Validate() error {
 		return kverrors.New("-loki-query-frontend-endpoint is missing a host", "endpoint", c.Loki.QueryFrontendEndpoint)
 	}
 
-	if c.DefaultTenant != "" && strings.ContainsAny(c.DefaultTenant, "\r\n") {
+	if c.DefaultTenant != "" && strings.ContainsAny(c.DefaultTenant, "\n") {
 		return kverrors.New("-default-tenant must not contain newline characters")
 	}
 

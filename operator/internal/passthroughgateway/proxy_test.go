@@ -43,30 +43,35 @@ func TestInstrumentedHandler(t *testing.T) {
 		name          string
 		method        string
 		path          string
+		route         string
 		handlerStatus int
 	}{
 		{
 			name:          "read request with GET",
 			method:        http.MethodGet,
 			path:          "/loki/api/v1/query",
+			route:         "read",
 			handlerStatus: http.StatusOK,
 		},
 		{
 			name:          "write request with POST",
 			method:        http.MethodPost,
 			path:          "/loki/api/v1/push",
+			route:         "write",
 			handlerStatus: http.StatusNoContent,
 		},
 		{
 			name:          "write request otlp",
 			method:        http.MethodPost,
 			path:          "/otlp/v1/logs",
+			route:         "write",
 			handlerStatus: http.StatusOK,
 		},
 		{
 			name:          "read request with error status",
 			method:        http.MethodGet,
 			path:          "/loki/api/v1/labels",
+			route:         "read",
 			handlerStatus: http.StatusInternalServerError,
 		},
 	}
@@ -74,7 +79,7 @@ func TestInstrumentedHandler(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			registry := prometheus.NewPedanticRegistry()
-			metrics := NewMetrics(registry)
+			metrics := newMetrics(registry)
 
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tc.handlerStatus)
@@ -92,19 +97,20 @@ func TestInstrumentedHandler(t *testing.T) {
 			expectedTotal := fmt.Sprintf(`
 # HELP lokistack_gateway_requests_total Total number of requests processed by the LokiStack gateway.
 # TYPE lokistack_gateway_requests_total counter
-lokistack_gateway_requests_total{code="%d",method="%s"} 1
-`, tc.handlerStatus, tc.method)
+lokistack_gateway_requests_total{code="%d",method="%s",route="%s"} 1
+`, tc.handlerStatus, tc.method, tc.route)
 			err := testutil.CollectAndCompare(metrics.RequestsTotal, strings.NewReader(expectedTotal))
 			require.NoError(t, err)
 
 			durationCount := testutil.CollectAndCount(metrics.RequestDuration)
 			require.Equal(t, 1, durationCount)
 
-			err = testutil.CollectAndCompare(metrics.RequestsInFlight, strings.NewReader(`
+			expectedInFlight := fmt.Sprintf(`
 # HELP lokistack_gateway_requests_in_flight Current number of requests being processed by the LokiStack gateway.
 # TYPE lokistack_gateway_requests_in_flight gauge
-lokistack_gateway_requests_in_flight 0
-`))
+lokistack_gateway_requests_in_flight{route="%s"} 0
+`, tc.route)
+			err = testutil.CollectAndCompare(metrics.RequestsInFlight, strings.NewReader(expectedInFlight))
 			require.NoError(t, err)
 		})
 	}

@@ -85,7 +85,7 @@ ifeq ($(USE_IMAGE_DIGESTS), true)
 endif
 
 CALCULATOR_IMG ?= $(REGISTRY_BASE)/storage-size-calculator:latest
-PASSTHROUGH_GATEWAY_IMG ?= $(REGISTRY_BASE)/passthrough-gateway:latest
+PASSTHROUGH_GATEWAY_IMG ?= $(REGISTRY_BASE_OPENSHIFT)/passthrough-gateway:latest
 
 GO_FILES := $(shell find . -type f -name '*.go')
 
