@@ -112,8 +112,6 @@ type Config struct {
 	KafkaConfig kafka.Config `yaml:"-"`
 
 	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
-
-	InMemoryPushTimeout time.Duration `yaml:"inmemory_dataobj_push_timeout"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -130,20 +128,18 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
-	fs.DurationVar(&cfg.InMemoryPushTimeout, "distributor.inmemory-dataobj-push-timeout", 5*time.Second,
-		"Timeout for sending a record to the in-memory queue before returning backpressure to the caller. Defaults to 5s. Set to 0 for no timeout.")
 }
 
 func (cfg *Config) Validate() error {
+	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
+		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
+	}
 	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
 		return err
 	}
 	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
 	if cfg.MaxDecompressedSize == 0 && cfg.MaxRecvMsgSize > 0 {
 		cfg.MaxDecompressedSize = int64(cfg.MaxRecvMsgSize) * 50
-	}
-	if cfg.InMemoryPushTimeout < 0 {
-		return errors.New("distributor.inmemory-dataobj-push-timeout must be >= 0")
 	}
 	return nil
 }
