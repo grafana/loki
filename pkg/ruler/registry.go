@@ -35,8 +35,11 @@ type walRegistry struct {
 	logger  log.Logger
 	manager instance.Manager
 
-	metrics     *storageRegistryMetrics
-	overridesMu sync.Mutex
+	metrics *storageRegistryMetrics
+
+	// mu guards config, overrides, and lastUpdateTime.
+	// Don't hold across configureTenantStorage — it re-enters via getTenantConfig.
+	mu sync.Mutex
 
 	config         Config
 	overrides      RulesLimits
@@ -131,10 +134,10 @@ func (r *walRegistry) get(tenant string) storage.Storage {
 
 func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
 	// concurrency-safe retrieval of remote-write config for this tenant, using the global remote-write for defaults
-	r.overridesMu.Lock()
+	r.mu.Lock()
 	tenant, _ := user.ExtractOrgID(ctx)
 	rwCfg, err := r.getTenantRemoteWriteConfig(tenant, r.config.RemoteWrite)
-	r.overridesMu.Unlock()
+	r.mu.Unlock()
 
 	if err != nil {
 		level.Error(r.logger).Log("msg", "error retrieving remote-write config; discarding samples", "user", tenant, "err", err)
@@ -154,12 +157,12 @@ func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
 	// we should reconfigure the storage whenever this appender is requested, but since
 	// this can request an appender very often, we hide this behind a gate
 	now := time.Now()
-	r.overridesMu.Lock()
+	r.mu.Lock()
 	shouldUpdate := r.lastUpdateTime.Before(now.Add(-r.config.RemoteWrite.ConfigRefreshPeriod))
 	if shouldUpdate {
 		r.lastUpdateTime = now
 	}
-	r.overridesMu.Unlock()
+	r.mu.Unlock()
 
 	if shouldUpdate {
 		level.Debug(r.logger).Log("user", tenant, "msg", "refreshing remote-write configuration")
@@ -190,8 +193,8 @@ func (r *walRegistry) stop() {
 }
 
 func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
-	r.overridesMu.Lock()
-	defer r.overridesMu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	conf, err := r.config.WAL.Clone()
 	if err != nil {
