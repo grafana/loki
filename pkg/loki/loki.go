@@ -860,10 +860,6 @@ func (t *Loki) setupModuleManager() error {
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}
 
-	if t.Cfg.IngestLimits.Enabled {
-		deps[All] = append(deps[All], IngestLimits, IngestLimitsFrontend)
-	}
-
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
 		level.Debug(util_log.Logger).Log("msg", "per-query request limits support enabled")
 		mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
