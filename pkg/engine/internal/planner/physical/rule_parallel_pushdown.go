@@ -72,26 +72,6 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 		}
 		p.pushed[node] = struct{}{}
 		return true
-
-	case *RangeAggregation:
-		vecAgg := p.findParentVectorAggregation(node)
-		if vecAgg == nil {
-			return false // No VectorAgg parent - don't shift
-		}
-
-		// RangeAggregation can be parallelized only when the operation
-		// is associative and commutative with the parent vector aggregation.
-		if !p.canShardAggregation(vecAgg, node) {
-			return false
-		}
-
-		// Shift: move RangeAgg into Parallelize, eliminate original
-		for _, parallelize := range p.plan.Children(node) {
-			p.plan.graph.Inject(parallelize, node.Clone())
-		}
-		p.plan.graph.Eliminate(node)
-		p.pushed[node] = struct{}{}
-		return true
 	}
 
 	return false
