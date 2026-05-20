@@ -39,54 +39,68 @@ Install `jsonnet-bundler` (`jb`), find instructions for your platform in Tanka's
 
 ## Deploying
 
-Download and install the Loki and Promtail module using `jb` (version v0.6.0 or a more recent version):
+Download and install the Loki module using `jb` (version v0.6.0 or a more recent version):
 
 ```bash
 jb init  # not required if you already ran `tk init`
 jb install github.com/grafana/loki/production/ksonnet/loki@main
-jb install github.com/grafana/loki/production/ksonnet/promtail@main
 ```
+
+## Install a log-shipping agent
+
+The ksonnet Promtail module has been removed and is no longer available. Use [Grafana Alloy](https://grafana.com/docs/alloy/latest/set-up/) to ship logs to Loki.
+
+For installation and migration guidance, refer to:
+
+- [Install Grafana Alloy](https://grafana.com/docs/alloy/latest/set-up/install/)
+- [Install Alloy on Kubernetes](https://grafana.com/docs/alloy/latest/set-up/install/kubernetes/)
+- [Migrate from Promtail to Alloy](https://grafana.com/docs/alloy/latest/set-up/migrate/from-promtail/)
 
 Revise the YAML contents of `environments/loki/main.jsonnet`, updating these variables:
 
 - Update the `username`, `password`, and the relevant `htpasswd` variable values.
-- Update the S3 or GCS variable values, depending on your object storage type. See [storage_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#storage_config) for more configuration details.
-- Remove from the configuration the S3 or GCS object storage variables that are not part of your setup.
-- Update the Promtail configuration `container_root_path` variable's value to reflect your root path for the Docker daemon. Run `docker info | grep "Root Dir"` to acquire your root path.
-- Update the `from` value in the Loki `schema_config` section to no more than 14 days prior to the current date. The `from` date represents the first day for which the `schema_config` section is valid. For example, if today is `2021-01-15`, set `from` to `2021-01-01`. This recommendation is based on the Loki default acceptance of log lines up to 14 days in the past. The `reject_old_samples_max_age` configuration variable controls the acceptance range.
+- Update object storage variables for one backend (`s3`, `gcs`, or `azure`) and remove variables for backends that are not part of your setup. In this module, `storage_backend` must be a single value. Refer to [storage_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#storage_config) for configuration details.
+- Update the `from` value in the Loki `schema_config` section to no more than 14 days prior to the current date. The `from` date represents the first day for which the `schema_config` section is valid. For example, if today is `2021-01-15`, set `from` to `2021-01-01`. This recommendation is based on the Loki default acceptance of log lines up to 14 days in the past. The `reject_old_samples_max_age` configuration variable controls the acceptance range. Use TSDB (`store: tsdb`, `schema: v13`) for new installs.
 
 ```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
 local loki = import 'loki/loki.libsonnet';
-local promtail = import 'promtail/promtail.libsonnet';
 
-loki + promtail + gateway {
+loki + gateway {
   _config+:: {
     namespace: 'loki',
     htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
 
-    // S3 variables -- Remove if not using s3
-    storage_backend: 's3,dynamodb',
+    // Use TSDB shipper
+    using_tsdb_shipper: true
+
+    // Pick one object storage backend: 's3', 'gcs', or 'azure'
+    storage_backend: 's3',
+
+    // S3 variables (used when storage_backend = 's3')
     s3_access_key: 'key',
     s3_secret_access_key: 'secret access key',
     s3_address: 'url',
-    s3_bucket_name: 'loki-test',
-    dynamodb_region: 'region',
+    s3_bucket_name: 'loki-chunks',
+    s3_bucket_region: 'us-east-1',
+    s3_path_style: false,
 
-    // GCS variables -- Remove if not using gcs
-    storage_backend: 'bigtable,gcs',
-    bigtable_instance: 'instance',
-    bigtable_project: 'project',
-    gcs_bucket_name: 'bucket',
+    // GCS variables (used when storage_backend = 'gcs')
+    // gcs_bucket_name: 'loki-chunks',
 
-    //Update the object_store and from fields
+    // Azure variables (used when storage_backend = 'azure')
+    // azure_container_name: 'loki-chunks',
+    // azure_account_name: 'account',
+    // azure_account_key: 'key',
+
+    // TSDB index store configuration
     loki+: {
       schema_config: {
         configs: [{
           from: 'YYYY-MM-DD',
-          store: 'boltdb-shipper',
-          object_store: 'my-object-storage-backend-type',
-          schema: 'v11',
+          store: 'tsdb',
+          object_store: $._config.storage_backend,
+          schema: 'v13',
           index: {
             prefix: '%s_index_' % $._config.table_prefix,
             period: '%dh' % $._config.index_period_hours,
@@ -95,19 +109,8 @@ loki + promtail + gateway {
       },
     },
 
-    //Update the container_root_path if necessary
-    promtail_config+: {
-      clients: [{
-        scheme:: 'http',
-        hostname:: 'gateway.%(namespace)s.svc' % $._config,
-        username:: 'loki',
-        password:: 'password',
-        container_root_path:: '/var/lib/docker',
-      }],
-    },
-
     replication_factor: 3,
-    consul_replicas: 1,
+    memberlist_ring_enabled: true,
   },
 }
 ```

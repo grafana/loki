@@ -1,14 +1,11 @@
 package testutils
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"strconv"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -43,32 +40,6 @@ func (f CloserFunc) Close() error {
 // DefaultSchemaConfig returns default schema for use in test fixtures
 func DefaultSchemaConfig(kind string) config.SchemaConfig {
 	return SchemaConfig(kind, "v9", model.Now().Add(-time.Hour*2))
-}
-
-// Setup a fixture with initial tables
-func Setup(fixture Fixture, tableName string) (index.Client, chunkclient.Client, io.Closer, error) {
-	var tbmConfig index.TableManagerConfig
-	flagext.DefaultValues(&tbmConfig)
-	indexClient, chunkClient, tableClient, schemaConfig, closer, err := fixture.Clients()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	tableManager, err := index.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil, nil, nil, log.NewNopLogger())
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	err = tableManager.SyncTables(context.Background())
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	err = tableClient.CreateTable(context.Background(), config.TableDesc{
-		Name: tableName,
-	})
-
-	return indexClient, chunkClient, closer, err
 }
 
 // CreateChunks creates some chunks for testing

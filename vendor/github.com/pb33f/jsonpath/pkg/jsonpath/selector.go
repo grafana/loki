@@ -23,11 +23,12 @@ type slice struct {
 }
 
 type selector struct {
-	kind   selectorSubKind
-	name   string
-	index  int64
-	slice  *slice
-	filter *filterSelector
+	kind         selectorSubKind
+	name         string
+	index        int64
+	slice        *slice
+	filter       *filterSelector
+	jsonPathPlus bool // when true, enables MappingNode fallback for array index selectors
 }
 
 func (s selector) ToString() string {

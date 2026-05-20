@@ -123,8 +123,13 @@ func TestManager_ShouldSample(t *testing.T) {
 			manager, err := NewManager(tt.config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
-			got := manager.ShouldSample(tt.tenantID)
-			assert.Equal(t, tt.wantSample, got)
+			sampled, correlationID := manager.ShouldSample(tt.tenantID)
+			assert.Equal(t, tt.wantSample, sampled)
+			if tt.wantSample {
+				assert.NotEmpty(t, correlationID)
+			} else {
+				assert.Empty(t, correlationID)
+			}
 		})
 	}
 }
@@ -156,13 +161,13 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	cellBResp := &BackendResponse{
 		BackendName: "cell-b",
 		Status:      200,
-		Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.12,"queueTime":0.06,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":8333,"linesProcessedPerSecond":833,"totalEntriesReturned":5,"splits":1,"shards":2}}},"warnings":["Query was executed using the new experimental query engine and dataobj storage."]}`),
+		Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.12,"queueTime":0.06,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":8333,"linesProcessedPerSecond":833,"totalEntriesReturned":5,"splits":1,"shards":2},"querier":{"store":{"queryUsedV2Engine":true}}}}}`),
 		Duration:    120 * time.Millisecond,
 		TraceID:     "",
 		SpanID:      "",
 	}
 
-	manager.SendToGoldfish(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 	// Give async processing time to complete
 	time.Sleep(100 * time.Millisecond)
@@ -259,7 +264,7 @@ func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
 		SpanID:      "",
 	}
 
-	manager.SendToGoldfish(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 	// Give async processing time to complete
 	time.Sleep(100 * time.Millisecond)
@@ -341,7 +346,7 @@ func TestProcessQueryPairCapturesUser(t *testing.T) {
 				SpanID:      "",
 			}
 
-			manager.SendToGoldfish(req, cellAResp, cellBResp)
+			manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 			// Give async processing time to complete
 			time.Sleep(100 * time.Millisecond)
@@ -475,7 +480,7 @@ func TestProcessQueryPair_CapturesLogsDrilldown(t *testing.T) {
 				SpanID:      "",
 			}
 
-			manager.SendToGoldfish(req, cellAResp, cellBResp)
+			manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 			// Give async processing time to complete
 			time.Sleep(100 * time.Millisecond)
@@ -569,7 +574,7 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 				SpanID:      "",
 			}
 
-			manager.SendToGoldfish(req, cellA, cellB)
+			manager.SendToGoldfish(req, cellA, cellB, "test-correlation-id")
 
 			// Give async processing time to complete
 			time.Sleep(100 * time.Millisecond)
@@ -698,7 +703,7 @@ func TestManager_StoreQuerySample_UsesComparatorResult(t *testing.T) {
 			req, _ := http.NewRequest("GET", constants.PathLokiQueryRange+"?query=test", nil)
 
 			// Process the query pair
-			m.SendToGoldfish(req, cellAResp, cellBResp)
+			m.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 			// Give async processing time to complete
 			time.Sleep(100 * time.Millisecond)

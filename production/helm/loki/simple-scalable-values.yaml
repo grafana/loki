@@ -1,4 +1,7 @@
 ---
+commonLabels:
+  labelA: valueA
+  labelA: valueB
 loki:
   schemaConfig:
     configs:

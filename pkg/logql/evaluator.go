@@ -1468,11 +1468,10 @@ func (ev *DefaultEvaluator) newVariantsEvaluator(
 }
 
 type bufferedVariantsIterator struct {
-	iter          iter.PeekingSampleIterator
-	buffer        map[int][]sampleWithLabelsAndStreamHash
-	current       sampleWithLabelsAndStreamHash
-	currentLabels string
-	err           error
+	iter    iter.PeekingSampleIterator
+	buffer  map[int][]sampleWithLabelsAndStreamHash
+	current sampleWithLabelsAndStreamHash
+	err     error
 }
 
 type sampleWithLabelsAndStreamHash struct {

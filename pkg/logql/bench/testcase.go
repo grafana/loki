@@ -2,11 +2,17 @@ package bench
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+)
+
+const (
+	kindLog    = "log"
+	kindMetric = "metric"
 )
 
 // TestCase represents a LogQL test case for benchmarking and testing
@@ -18,6 +24,17 @@ type TestCase struct {
 	Step      time.Duration // Step size for metric queries
 	Source    string        // Source location (suite/file.yaml:line)
 	QueryDesc string        // Query description from YAML
+	Tags      []string
+}
+
+// Equal returns true if two TestCases represent the same query execution.
+func (c TestCase) Equal(other TestCase) bool {
+	return c.Query == other.Query &&
+		c.Start.Equal(other.Start) &&
+		c.End.Equal(other.End) &&
+		c.Step == other.Step &&
+		c.Direction == other.Direction &&
+		slices.Equal(c.Tags, other.Tags)
 }
 
 // Name returns a descriptive name for the test case.
@@ -41,9 +58,9 @@ func (c TestCase) Kind() string {
 		return "invalid"
 	}
 	if _, ok := expr.(syntax.SampleExpr); ok {
-		return "metric"
+		return kindMetric
 	}
-	return "log"
+	return kindLog
 }
 
 // Description returns a detailed description of the test case including time range

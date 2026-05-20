@@ -53,6 +53,9 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer RequestStreamFilterer `yaml:"-"`
+
+	// TaskCaches is an optional registry mapping cache types to their backing stores.
+	TaskCaches TaskCacheRegistry
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
@@ -67,6 +70,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		evaluator:          newExpressionEvaluator(),
 		getExternalInputs:  cfg.GetExternalInputs,
 		streamFilterer:     cfg.StreamFilterer,
+		taskCaches:         cfg.TaskCaches,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -95,6 +99,7 @@ type Context struct {
 	mergePrefetchCount int
 
 	streamFilterer RequestStreamFilterer
+	taskCaches     TaskCacheRegistry
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -139,8 +144,22 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeMerge(ctx, n, inputs))
 	case *physical.Parallelize:
 		return c.executeParallelize(ctx, n, inputs)
+	case *physical.Batching:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeBatching(ctx, n, inputs))
+	case *physical.Cache:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeCache(ctx, n, inputs))
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
+	case *physical.IndexMerge:
+		// IndexMerge ships with a stub executor that writes a zero-byte object at
+		// OutputIndexPath. The real K-way merge over index sections lands in a
+		// later PR.
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexMergeStub(n))
+	case *physical.LogMerge:
+		// LogMerge ships with a stub executor that writes a zero-byte object at
+		// OutputPath. The real K-way merge over log sections lands in a later PR,
+		// after we ship IndeXMerge.
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMergeStub(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -325,6 +344,7 @@ func (c *Context) executePointersScan(ctx context.Context, node *physical.Pointe
 			location:      string(node.Location),
 			req:           req,
 			prefetchBytes: c.prefetchBytes,
+			batchSize:     int(c.batchSize),
 		})
 		if err != nil {
 			return errorPipeline(ctx, err)
@@ -472,6 +492,26 @@ func (c *Context) executeParallelize(ctx context.Context, _ *physical.Paralleliz
 	// see an Parallelize node in the plan, we ignore it and immediately
 	// propagate up the input.
 	return inputs[0]
+}
+
+func (c *Context) executeBatching(ctx context.Context, node *physical.Batching, inputs []Pipeline) Pipeline {
+	if len(inputs) != 1 {
+		return errorPipeline(ctx, fmt.Errorf("batching expects exactly one input, got %d", len(inputs)))
+	}
+	return NewBatchingPipeline(inputs[0], node.BatchSize)
+}
+
+func (c *Context) executeCache(ctx context.Context, node *physical.Cache, inputs []Pipeline) Pipeline {
+	if len(inputs) != 1 {
+		return errorPipeline(ctx, fmt.Errorf("cache expects exactly one input, got %d", len(inputs)))
+	}
+
+	cache, cacheStats, err := c.taskCaches.GetForType(node.CacheName)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "cache lookup failed when executing the cache pipeline, skipping cache", "err", err)
+	}
+
+	return newCachingPipeline(cache, inputs[0], node.Key, node.MaxSizeBytes, node.Compression, c.logger, cacheStats, node.CacheName)
 }
 
 func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {

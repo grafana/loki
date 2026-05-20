@@ -209,6 +209,10 @@ type DocumentConfiguration struct {
 	// - OverwriteWithRemote: Referenced properties overwrite local properties
 	// - RejectConflicts: Throw error when properties conflict
 	PropertyMergeStrategy PropertyMergeStrategy
+
+	// ResolveNestedRefsWithDocumentContext uses the referenced document's path/index as the base for nested refs.
+	// This controls how nested relative references are interpreted during reference resolution.
+	ResolveNestedRefsWithDocumentContext bool
 }
 
 func NewDocumentConfiguration() *DocumentConfiguration {

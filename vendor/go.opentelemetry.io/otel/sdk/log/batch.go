@@ -335,7 +335,7 @@ func (q *queue) TryDequeue(buf []Record, write func([]Record) bool) int {
 
 	n := min(len(buf), q.len)
 	for i := range n {
-		buf[i] = q.read.Value
+		buf[i] = q.read.Value // nolint:gosec // n is bounded by len(buf)
 		q.read = q.read.Next()
 	}
 

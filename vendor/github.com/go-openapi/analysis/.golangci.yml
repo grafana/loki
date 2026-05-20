@@ -5,6 +5,7 @@ linters:
     - depguard
     - funlen
     - godox
+    - gomoddirectives
     - exhaustruct
     - nlreturn
     - nonamedreturns
@@ -12,7 +13,7 @@ linters:
     - paralleltest
     - recvcheck
     - testpackage
-    - thelper # investigate how to parameterize / fix. Temporarily disabled.
+    - thelper
     - tparallel
     - varnamelen
     - whitespace

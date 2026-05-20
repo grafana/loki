@@ -6,7 +6,7 @@ queries:
     kind: log
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
       structured_metadata:
         - detected_level
@@ -19,7 +19,7 @@ queries:
     kind: log
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
       log_format: logfmt
       structured_metadata:
@@ -34,7 +34,7 @@ queries:
     kind: log
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
       log_format: logfmt
       structured_metadata:
@@ -49,7 +49,7 @@ queries:
     kind: log
     time_range:
       length: 24h
-    directions: both
+    directions: backward # forward log queries unsupported by v2 engine
     requires:
       log_format: json
       structured_metadata:

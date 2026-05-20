@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"runtime/pprof"
+	gotrace "runtime/trace"
 	"sync"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
@@ -19,10 +19,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
@@ -81,6 +81,7 @@ type thread struct {
 	Metastore      metastore.Metastore
 	Logger         log.Logger
 	StreamFilterer executor.RequestStreamFilterer
+	TaskCaches     executor.TaskCacheRegistry
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -124,6 +125,9 @@ func (t *thread) setState(state threadState) {
 func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer job.Close()
 
+	ctx, task := gotrace.NewTask(ctx, "thread.runJob")
+	defer task.End()
+
 	logger := log.With(t.Logger, "task_id", job.Task.ULID)
 	logger = utillog.WithContext(ctx, logger) // Extract trace ID
 
@@ -138,12 +142,15 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 	// Count external sources and sinks for observability.
 	// This is useful to know which tasks are scan tasks (no sources)
-	var countSources, countSinks int
+	var countSources, countCachedSources, countSinks int
 	for _, streams := range job.Task.Sources {
 		countSources += len(streams)
 	}
 	for _, streams := range job.Task.Sinks {
 		countSinks += len(streams)
+	}
+	for _, streams := range job.Task.CachedSources {
+		countCachedSources += len(streams)
 	}
 
 	startTime := time.Now()
@@ -151,6 +158,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		"msg", "starting task",
 		"plan", physical.PrintAsTree(job.Task.Fragment),
 		"external_sources", countSources,
+		"cached_sources", countCachedSources,
 		"external_sinks", countSinks,
 	)
 
@@ -160,22 +168,32 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		Bucket:         bucket.NewXCapBucket(t.Bucket),
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,
+		TaskCaches:     t.TaskCaches,
 
-		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
+		GetExternalInputs: func(fnCtx context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
-			if len(streams) == 0 {
+			nodeCachedSrcs := job.Task.CachedSources[node]
+
+			if len(streams) == 0 && len(nodeCachedSrcs) == 0 {
 				return nil
 			}
 
-			// Create a single nodeSource for all streams. Having streams
-			// forward to a node source allows for backpressure to be applied
-			// based on the number of nodeSource (typically 1) rather than the
-			// number of source streams (unbounded).
+			level.Debug(logger).Log(
+				"msg", "getting external inputs for node",
+				"node", node.ID(),
+				"node_type", node.Type(),
+				"external_sources", len(streams),
+				"cached_sources", len(nodeCachedSrcs),
+			)
+
+			// Create a single nodeSource for all inputs (live streams and/or
+			// cached sources). A single pipeline avoids "got N inputs" errors
+			// from operators that expect exactly one upstream.
 			//
-			// Binding the [streamSource] to the input in the loop below
-			// increases the reference count. As sources are closed, the
-			// reference count decreases. Once the reference count reaches 0,
-			// the nodeSource is closed, and reads return EOF.
+			// Binding a [streamSource] increases the reference count; each
+			// source decrements it when done. Spawning drainCachedSources also
+			// increments the count once and decrements it on return. When the
+			// count reaches zero, the nodeSource closes automatically.
 			input := new(nodeSource)
 
 			var errs []error
@@ -203,8 +221,14 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 				// Since we're returning an error pipeline, we need to close
 				// input so that writing to any already bound streams doesn't
 				// block.
+				level.Error(logger).Log("msg", "failed to bind external sources", "errors", errors.Join(errs...))
 				input.Close()
 				return []executor.Pipeline{errorPipeline(errs)}
+			}
+
+			if len(nodeCachedSrcs) > 0 {
+				input.Add(1)
+				go drainCachedSources(fnCtx, input, nodeCachedSrcs, logger)
 			}
 
 			return []executor.Pipeline{executor.NewObservedPipeline("nodeSource", nil, input)}
@@ -222,6 +246,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer span.End()
 
 	span.Record(xcap.TaskExternalSourcesCount.Observe(int64(countSources)))
+	span.Record(xcap.TaskCachedSourcesCount.Observe(int64(countCachedSources)))
 	span.Record(xcap.TaskExternalSinksCount.Observe(int64(countSinks)))
 
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
@@ -259,25 +284,27 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
 
-	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), t.BatchSize, logger)
-	if err != nil {
-		level.Warn(logger).Log("msg", "task failed", "err", err)
-		_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
-			ID: job.Task.ULID,
-			Status: workflow.TaskStatus{
-				State: workflow.TaskStateFailed,
-				Error: err,
-			},
-		})
+	gotrace.Log(ctx, "drain_pipeline", "start")
+	_, drainErr := t.drainPipeline(ctx, pipeline, sinksForJob(job), logger)
+	gotrace.Log(ctx, "drain_pipeline", "done")
 
-		pipeline.Close()
-		return
+	var terminalStatus workflow.TaskStatus
+	switch {
+	case drainErr == nil:
+		terminalStatus = workflow.TaskStatus{State: workflow.TaskStateCompleted}
+	case errors.Is(drainErr, context.Canceled) && job.interrupted.Load():
+		// Context cancellation only counts as a task cancellation if the scheduler
+		// specifically requested it. In all other cases we treat it as a failure.
+		terminalStatus = workflow.TaskStatus{State: workflow.TaskStateCancelled}
+		level.Info(logger).Log("msg", "task cancelled", "err", drainErr)
+	default:
+		terminalStatus = workflow.TaskStatus{State: workflow.TaskStateFailed, Error: drainErr}
+		level.Warn(logger).Log("msg", "task failed", "err", drainErr)
 	}
 
-	// Finally, close all sinks.
+	// Close all sinks regardless of outcome so downstream tasks unblock.
 	for _, sink := range job.Sinks {
-		err := sink.Close(ctx)
-		if err != nil {
+		if err := sink.Close(ctx); err != nil {
 			level.Warn(logger).Log("msg", "failed to close sink", "err", err)
 		}
 	}
@@ -288,83 +315,68 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	// to finalize the capture before it's included in the TaskStatusMessage.
 	span.End()
 	capture.End()
+	terminalStatus.Capture = capture
 
 	duration := time.Since(startTime)
 
 	logValues := []any{
 		"msg", "task completed",
 		"duration", duration,
+		"status", terminalStatus.State,
 	}
 	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
 
 	level.Info(logger).Log(logValues...)
 	t.Metrics.taskExecSeconds.Observe(duration.Seconds())
 
-	// Wait for the scheduler to confirm the task has completed before
-	// requesting a new one. This allows the scheduler to update its bookkeeping
-	// for how many threads have capacity for requesting tasks.
-	err = job.Scheduler.SendMessage(ctx, wire.TaskStatusMessage{
+	// Send the terminal status synchronously so the scheduler can update its
+	// thread-capacity bookkeeping and merge the Capture before the worker
+	// thread requests its next job.
+	//
+	// We use a detached context so a cancelled job context does not prevent us
+	// from delivering the final status (and in particular, the Capture).
+	sendCtx := context.WithoutCancel(ctx)
+	if err := job.Scheduler.SendMessage(sendCtx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
-		Status: workflow.TaskStatus{State: workflow.TaskStateCompleted, Capture: capture},
-	})
-	if err != nil {
+		Status: terminalStatus,
+	}); err != nil {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
 }
 
-func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, batchSizeRecords int64, logger log.Logger) (int, error) {
+// recordBatchBytes returns the total in-memory size in bytes of all column
+// buffers in a RecordBatch.
+func recordBatchBytes(rec arrow.RecordBatch) int64 {
+	var n int64
+	for i := 0; i < int(rec.NumCols()); i++ {
+		n += int64(rec.Column(i).Data().SizeInBytes())
+	}
+	return n
+}
+
+func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
+	startRead := time.Now()
 	if err := pipeline.Open(ctx); err != nil {
 		return 0, err
 	}
+	readDuration := time.Since(startRead)
 
-	var totalRows int
-	var currentBatchRecordCount int64
-	batchAggregator := arrowagg.NewRecords(memory.DefaultAllocator)
-
-	// When batchSizeRecords <= 0, no batching: each record is sent alone.
-	flush := func(toSend arrow.RecordBatch) {
-		startSend := time.Now()
-		for _, sink := range sinks {
-			// If a sink doesn't accept the result, we'll continue
-			// best-effort processing our task. It's possible that one of
-			// the receiving sinks got canceled, and other sinks may still
-			// need data.
-			err := sink.Send(ctx, toSend)
-			if err != nil {
-				level.Warn(logger).Log("msg", "failed to send result", "err", err)
-				continue
-			}
-		}
-		region.Record(xcap.TaskRecordsSent.Observe(1))
-		region.Record(xcap.TaskRowsSent.Observe(toSend.NumRows()))
-		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
-	}
-
-	// flushBatch flushes the batch aggregator's accumulated records (aggregate with schema reconciliation and send), then resets it.
-	flushBatch := func() {
-		if currentBatchRecordCount == 0 {
-			return
-		}
-
-		combined, err := batchAggregator.Aggregate()
-
-		// Regardless of errors, reset the aggregator to prepare for the next batch.
-		batchAggregator.Reset()
-		currentBatchRecordCount = 0
-
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to aggregate record batch", "err", err)
-			return
-		}
-
-		region.Record(xcap.TaskDrainBatchesProduced.Observe(1))
-		flush(combined)
-	}
+	var (
+		totalRows        int
+		totalComputeTime time.Duration
+		totalWriteTime   time.Duration
+	)
 
 	for {
+		startCompute := time.Now()
 		rec, err := pipeline.Read(ctx)
+		computeDuration := time.Since(startCompute)
+		if err == nil || errors.Is(err, executor.EOF) {
+			t.Metrics.passComputeSeconds.Observe(computeDuration.Seconds())
+			totalComputeTime += computeDuration
+		}
 		if err != nil && errors.Is(err, executor.EOF) {
 			break
 		} else if err != nil {
@@ -379,24 +391,36 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			continue
 		}
 
-		// If batching is disabled, send this record alone.
-		if batchSizeRecords <= 0 {
-			flush(rec)
-			continue
+		startSend := time.Now()
+		for _, sink := range sinks {
+			// If a sink doesn't accept the result, we'll continue
+			// best-effort processing our task. It's possible that one of
+			// the receiving sinks got canceled, and other sinks may still
+			// need data.
+			if err := sink.Send(ctx, rec); err != nil {
+				level.Warn(logger).Log("msg", "failed to send result", "err", err)
+			}
 		}
+		writeDuration := time.Since(startSend)
+		t.Metrics.passWriteSeconds.Observe(writeDuration.Seconds())
+		totalWriteTime += writeDuration
 
-		// If adding this record would exceed the batch size, flush before the next iteration.
-		if currentBatchRecordCount+rec.NumRows() > batchSizeRecords {
-			flushBatch()
-		}
-
-		// Add the record to the batch aggregator.
-		batchAggregator.Append(rec)
-		currentBatchRecordCount += rec.NumRows()
+		region.Record(xcap.TaskRecordsSent.Observe(1))
+		region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
+		region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(rec)))
+		region.Record(xcap.TaskSendDuration.Observe(writeDuration.Seconds()))
 	}
 
-	// Flush any remaining batch.
-	flushBatch()
+	// Task-wide phase durations.
+	t.Metrics.taskReadSeconds.Observe(readDuration.Seconds())
+	t.Metrics.taskComputeSeconds.Observe(totalComputeTime.Seconds())
+	t.Metrics.taskWriteSeconds.Observe(totalWriteTime.Seconds())
+
+	// Record execution sub-phase durations on the task region so the workflow
+	// can include them in the per-task summary log.
+	region.Record(workerstat.TaskExecutionOpenDuration.Observe(readDuration.Nanoseconds()))
+	region.Record(workerstat.TaskExecutionReadDuration.Observe(totalComputeTime.Nanoseconds()))
+	region.Record(workerstat.TaskExecutionSendDuration.Observe(totalWriteTime.Nanoseconds()))
 
 	return totalRows, nil
 }

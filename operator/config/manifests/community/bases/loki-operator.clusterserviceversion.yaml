@@ -4,9 +4,9 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Full Lifecycle
-    categories: OpenShift Optional, Logging & Tracing
+    categories: OpenShift Optional, Logging & Tracing, Observability
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:0.9.0
+    containerImage: docker.io/grafana/loki-operator:0.10.1
     createdAt: "2022-12-22T13:28:40+00:00"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
@@ -1961,7 +1961,7 @@ spec:
         path: remoteWrite.client.authorization
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:basic
-        - urn:alm:descriptor:com.tectonic.ui:select:header
+        - urn:alm:descriptor:com.tectonic.ui:select:bearer
       - description: Name of a secret in the namespace configured for authorization
           secrets.
         displayName: Authorization Secret Name
@@ -2405,7 +2405,7 @@ spec:
         path: remoteWrite.client.authorization
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:basic
-        - urn:alm:descriptor:com.tectonic.ui:select:header
+        - urn:alm:descriptor:com.tectonic.ui:select:bearer
       - description: Name of a secret in the namespace configured for authorization
           secrets.
         displayName: Authorization Secret Name
@@ -2575,5 +2575,5 @@ spec:
   minKubeVersion: 1.21.1
   provider:
     name: Grafana Loki SIG Operator
-  replaces: loki-operator.v0.8.0
+  replaces: loki-operator.v0.10.0
   version: 0.0.0

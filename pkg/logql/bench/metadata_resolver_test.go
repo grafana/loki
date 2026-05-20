@@ -2,26 +2,11 @@ package bench
 
 import (
 	"math/rand"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
-
-// extractServiceName is a helper to extract service_name from a query for testing
-func extractServiceName(query string) string {
-	if strings.Contains(query, `service_name="loki"`) {
-		return "loki"
-	}
-	if strings.Contains(query, `service_name="database"`) {
-		return "database"
-	}
-	if strings.Contains(query, `service_name="web-server"`) {
-		return "web-server"
-	}
-	return ""
-}
 
 func TestMetadataVariableResolver_ResolveQuery(t *testing.T) {
 	// Create test metadata with known selectors and capabilities
@@ -49,9 +34,9 @@ func TestMetadataVariableResolver_ResolveQuery(t *testing.T) {
 			},
 		},
 		ByUnwrappableField: map[string][]string{
-			"rows_affected": {`{service_name="database"}`},
-			"duration":      {`{service_name="loki"}`, `{service_name="web-server"}`},
-			"status":        {`{service_name="web-server"}`},
+			"duration":    {`{service_name="loki"}`},
+			"duration_ms": {`{service_name="database"}`, `{service_name="web-server"}`},
+			"status":      {`{service_name="web-server"}`},
 		},
 		ByLabelKey: map[string][]string{
 			"pod":     {`{service_name="loki"}`, `{service_name="database"}`, `{service_name="web-server"}`},
@@ -103,14 +88,18 @@ func TestMetadataVariableResolver_ResolveQuery(t *testing.T) {
 		},
 		{
 			name:  "unwrappable field requirement",
-			query: `${SELECTOR} | json | unwrap rows_affected`,
+			query: `${SELECTOR} | json | unwrap duration_ms`,
 			requirements: QueryRequirements{
 				LogFormat:         "json",
-				UnwrappableFields: []string{"rows_affected"},
+				UnwrappableFields: []string{"duration_ms"},
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				require.Equal(t, `{service_name="database"} | json | unwrap rows_affected`, result)
+				// Should match one of the JSON format selectors that have duration_ms
+				require.Contains(t, []string{
+					`{service_name="database"} | json | unwrap duration_ms`,
+					`{service_name="web-server"} | json | unwrap duration_ms`,
+				}, result)
 			},
 		},
 		{
@@ -127,15 +116,15 @@ func TestMetadataVariableResolver_ResolveQuery(t *testing.T) {
 		},
 		{
 			name:  "multiple requirements - intersection",
-			query: `${SELECTOR} | json | unwrap duration | pod != ""`,
+			query: `${SELECTOR} | json | unwrap duration_ms | pod != ""`,
 			requirements: QueryRequirements{
 				LogFormat:         "json",
-				UnwrappableFields: []string{"duration"},
+				UnwrappableFields: []string{"duration_ms"},
 				Labels:            []string{"pod"},
 			},
 			wantErr: false,
 			validate: func(t *testing.T, result string) {
-				// web-server has json + duration + pod
+				// web-server has json + duration_ms + pod
 				require.Contains(t, result, `{service_name="web-server"}`)
 			},
 		},
@@ -169,10 +158,10 @@ func TestMetadataVariableResolver_ResolveQuery(t *testing.T) {
 		},
 		{
 			name:  "impossible requirements - no match",
-			query: `${SELECTOR} | json | unwrap rows_affected`,
+			query: `${SELECTOR} | json | unwrap status`,
 			requirements: QueryRequirements{
-				LogFormat:         "logfmt", // database is JSON, not logfmt
-				UnwrappableFields: []string{"rows_affected"},
+				LogFormat:         "logfmt", // web-server (which has status) is JSON, not logfmt
+				UnwrappableFields: []string{"status"},
 			},
 			wantErr: true,
 		},
@@ -626,7 +615,7 @@ func TestMetadataVariableResolver_DetectedFields(t *testing.T) {
 			DetectedFields: []string{"level"},
 		}
 
-		selector, err := resolver.resolveLabelSelector(requirements)
+		selector, err := resolver.resolveLabelSelector(requirements, false, false)
 		require.NoError(t, err)
 
 		// Should match database or loki, not nginx
@@ -640,7 +629,7 @@ func TestMetadataVariableResolver_DetectedFields(t *testing.T) {
 			DetectedFields: []string{"query_type"},
 		}
 
-		selector, err := resolver.resolveLabelSelector(requirements)
+		selector, err := resolver.resolveLabelSelector(requirements, false, false)
 		require.NoError(t, err)
 		require.Equal(t, `{service_name="loki"}`, selector)
 	})
@@ -651,7 +640,7 @@ func TestMetadataVariableResolver_DetectedFields(t *testing.T) {
 			DetectedFields: []string{"level"},
 		}
 
-		selector, err := resolver.resolveLabelSelector(requirements)
+		selector, err := resolver.resolveLabelSelector(requirements, false, false)
 		require.NoError(t, err)
 		require.Equal(t, `{service_name="loki"}`, selector)
 	})
@@ -662,7 +651,7 @@ func TestMetadataVariableResolver_DetectedFields(t *testing.T) {
 			DetectedFields: []string{"level"},
 		}
 
-		_, err := resolver.resolveLabelSelector(requirements)
+		_, err := resolver.resolveLabelSelector(requirements, false, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "no streams with detected field")
 	})
@@ -672,7 +661,7 @@ func TestMetadataVariableResolver_DetectedFields(t *testing.T) {
 			DetectedFields: []string{"level", "query_type"},
 		}
 
-		selector, err := resolver.resolveLabelSelector(requirements)
+		selector, err := resolver.resolveLabelSelector(requirements, false, false)
 		require.NoError(t, err)
 		// Only loki has both level and query_type
 		require.Equal(t, `{service_name="loki"}`, selector)

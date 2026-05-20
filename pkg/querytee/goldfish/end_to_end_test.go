@@ -39,9 +39,15 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	defer manager.Close()
 
 	// Test sampling decisions
-	assert.True(t, manager.ShouldSample("tenant1"))
-	assert.False(t, manager.ShouldSample("tenant2"))
-	assert.True(t, manager.ShouldSample("tenant3")) // Uses default rate
+	sampled1, corrID1 := manager.ShouldSample("tenant1")
+	assert.True(t, sampled1)
+	assert.NotEmpty(t, corrID1)
+	sampled2, corrID2 := manager.ShouldSample("tenant2")
+	assert.False(t, sampled2)
+	assert.Empty(t, corrID2)
+	sampled3, corrID3 := manager.ShouldSample("tenant3") // Uses default rate
+	assert.True(t, sampled3)
+	assert.NotEmpty(t, corrID3)
 
 	// Create test HTTP request
 	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}&start=1700000000&end=1700001000", nil)
@@ -121,7 +127,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	}
 
 	// Send to Goldfish for processing
-	manager.SendToGoldfish(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 	// Wait for async processing
 	time.Sleep(100 * time.Millisecond)
@@ -146,8 +152,8 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	assert.NotEmpty(t, sample.CellAResponseHash)
 	assert.NotEmpty(t, sample.CellBResponseHash)
 	// Verify engine tracking fields are populated
-	assert.False(t, sample.CellAUsedNewEngine) // No new engine warning in response
-	assert.False(t, sample.CellBUsedNewEngine) // No new engine warning in response
+	assert.False(t, sample.CellAUsedNewEngine) // No v2 engine flag in stats
+	assert.False(t, sample.CellBUsedNewEngine) // No v2 engine flag in stats
 
 	// Check the comparison result
 	result := storage.results[0]
@@ -241,7 +247,7 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 		SpanID:      "",
 	}
 
-	manager.SendToGoldfish(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -331,7 +337,7 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 		SpanID:      "",
 	}
 
-	manager.SendToGoldfish(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -362,7 +368,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 	req := httptest.NewRequest("GET", constants.PathLokiQueryRange+"?query={job=\"test\"}", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
-	// Cell A response with new engine warning
+	// Cell A response with the v2 engine flag in query stats
 	responseBodyA := []byte(`{
 		"status": "success",
 		"data": {
@@ -382,15 +388,17 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 					"totalEntriesReturned": 1,
 					"splits": 1,
 					"shards": 1
+				},
+				"querier": {
+					"store": {
+						"queryUsedV2Engine": true
+					}
 				}
 			}
-		},
-		"warnings": [
-			"Query was executed using the new experimental query engine and dataobj storage."
-		]
+		}
 	}`)
 
-	// Cell B response without new engine warning
+	// Cell B response without the v2 engine flag
 	responseBodyB := []byte(`{
 		"status": "success",
 		"data": {
@@ -433,7 +441,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 		SpanID:      "",
 	}
 
-	manager.SendToGoldfish(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp, "test-correlation-id")
 
 	time.Sleep(100 * time.Millisecond)
 

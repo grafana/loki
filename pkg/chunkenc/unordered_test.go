@@ -148,7 +148,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 				{0, "a", labels.EmptyLabels()}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
 			},
 			exp: []entry{
-				{1, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
+				{1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")}, {0, "a", labels.EmptyLabels()},
 			},
 			dir:       logproto.BACKWARD,
 			forFormat: UnorderedWithStructuredMetadataHeadBlockFmt,
@@ -186,6 +186,8 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			},
 		},
 		{
+			// For UnorderedHeadBlockFmt, structured metadata is stripped so both ts=0 entries share
+			// the same stream and are returned in reverse insertion order.
 			desc: "ts collision backward",
 			input: []entry{
 				{0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()},
@@ -193,7 +195,22 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
 			},
-			dir: logproto.BACKWARD,
+			dir:       logproto.BACKWARD,
+			forFormat: UnorderedHeadBlockFmt,
+		},
+		{
+			// For UnorderedWithStructuredMetadataHeadBlockFmt, the two ts=0 entries have different
+			// structured metadata so they end up in different streams. Tie-breaking by label string
+			// puts {a="b"} before {} (since 'a' < '}' in ASCII).
+			desc: "ts collision backward",
+			input: []entry{
+				{0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()},
+			},
+			exp: []entry{
+				{1, "c", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.EmptyLabels()},
+			},
+			dir:       logproto.BACKWARD,
+			forFormat: UnorderedWithStructuredMetadataHeadBlockFmt,
 		},
 		{
 			desc: "ts remove exact dupe forward",

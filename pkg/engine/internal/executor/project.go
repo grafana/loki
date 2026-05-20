@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator) (Pipeline, error) {
@@ -75,7 +76,7 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 
 	// Create EXPAND projection pipeline:
 	// Keep all columns and expand the ones referenced in proj.Expressions.
-	// TODO: as implemented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
+	// TODO: as implemented, expanding and keeping/dropping cannot happen in the same projection. Is this desired?
 	if proj.All && proj.Expand && len(expandExprs) > 0 {
 		return newExpandPipeline(expandExprs[0], evaluator, input)
 	}
@@ -123,6 +124,7 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 
 func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
 	identCache := semconv.NewIdentifierCache()
+	renamedLabelSources := labelFmtRenameSources(expr)
 
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
@@ -149,7 +151,9 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 			if err != nil {
 				return nil, err
 			}
-			if !ident.Equal(semconv.ColumnIdentValue) {
+			_, shouldDelete := renamedLabelSources[ident.ShortName()]
+			shouldDelete = shouldDelete && ident.ColumnType() == types.ColumnTypeLabel // only overwrite labels, not other column types
+			if !ident.Equal(semconv.ColumnIdentValue) && !shouldDelete {
 				outputCols = append(outputCols, batch.Column(i))
 				outputFields = append(outputFields, field)
 			}
@@ -195,6 +199,31 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 	}, input), nil
 }
 
+func labelFmtRenameSources(expr physical.Expression) map[string]struct{} {
+	parseExpr, ok := expr.(*physical.VariadicExpr)
+	if !ok || parseExpr.Op != types.VariadicOpParseLabelfmt || len(parseExpr.Expressions) < 3 {
+		return nil
+	}
+	labelFmtsLiteral, ok := parseExpr.Expressions[2].(*physical.LiteralExpr)
+	if !ok {
+		return nil
+	}
+	labelFmts, ok := labelFmtsLiteral.Literal().Any().([]log.LabelFmt)
+	if !ok {
+		return nil
+	}
+	renameSources := make(map[string]struct{})
+	for _, labelFmt := range labelFmts {
+		if labelFmt.Rename {
+			renameSources[labelFmt.Value] = struct{}{}
+		}
+	}
+	if len(renameSources) == 0 {
+		return nil
+	}
+	return renameSources
+}
+
 // mergeColumns merges two columns by preferring non-null and non-empty values from the new column (b).
 // If b has a null or empty value at index i, keep the value from a at that index.
 // If b has a non-null and non-empty value at index i, use the value from b (overwriting a).
@@ -223,6 +252,5 @@ func mergeColumns(a, b arrow.Array) arrow.Array {
 			builder.Append(bStr.Value(i))
 		}
 	}
-
 	return builder.NewStringArray()
 }

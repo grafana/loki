@@ -251,7 +251,7 @@ func (b *outlierDetectionBalancer) onIntervalConfig() {
 	var interval time.Duration
 	if b.timerStartTime.IsZero() {
 		b.timerStartTime = time.Now()
-		for _, epInfo := range b.endpoints.Values() {
+		for _, epInfo := range b.endpoints.All() {
 			epInfo.callCounter.clear()
 		}
 		interval = time.Duration(b.cfg.Interval)
@@ -274,7 +274,7 @@ func (b *outlierDetectionBalancer) onNoopConfig() {
 	// do the following:"
 	// "Unset the timer start timestamp."
 	b.timerStartTime = time.Time{}
-	for _, epInfo := range b.endpoints.Values() {
+	for _, epInfo := range b.endpoints.All() {
 		// "Uneject all currently ejected endpoints."
 		if !epInfo.latestEjectionTimestamp.IsZero() {
 			b.unejectEndpoint(epInfo)
@@ -326,7 +326,7 @@ func (b *outlierDetectionBalancer) UpdateClientConnState(s balancer.ClientConnSt
 		}
 	}
 
-	for _, ep := range b.endpoints.Keys() {
+	for ep := range b.endpoints.All() {
 		if _, ok := newEndpoints.Get(ep); !ok {
 			b.endpoints.Delete(ep)
 		}
@@ -657,7 +657,7 @@ func (b *outlierDetectionBalancer) intervalTimerAlgorithm() {
 	defer b.mu.Unlock()
 	b.timerStartTime = time.Now()
 
-	for _, epInfo := range b.endpoints.Values() {
+	for _, epInfo := range b.endpoints.All() {
 		epInfo.callCounter.swap()
 	}
 
@@ -669,7 +669,7 @@ func (b *outlierDetectionBalancer) intervalTimerAlgorithm() {
 		b.failurePercentageAlgorithm()
 	}
 
-	for _, epInfo := range b.endpoints.Values() {
+	for _, epInfo := range b.endpoints.All() {
 		if epInfo.latestEjectionTimestamp.IsZero() && epInfo.ejectionTimeMultiplier > 0 {
 			epInfo.ejectionTimeMultiplier--
 			continue
@@ -701,7 +701,7 @@ func (b *outlierDetectionBalancer) intervalTimerAlgorithm() {
 // Caller must hold b.mu.
 func (b *outlierDetectionBalancer) endpointsWithAtLeastRequestVolume(requestVolume uint32) []*endpointInfo {
 	var endpoints []*endpointInfo
-	for _, epInfo := range b.endpoints.Values() {
+	for _, epInfo := range b.endpoints.All() {
 		bucket1 := epInfo.callCounter.inactiveBucket
 		rv := bucket1.numSuccesses + bucket1.numFailures
 		if rv >= requestVolume {

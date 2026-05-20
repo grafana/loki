@@ -633,19 +633,9 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "bigtable",
+					IndexType: "boltdb",
 				},
 			},
-		},
-		{
-			name: "just one periodic config with boltdb-shipper",
-			periodicConfigs: []config.PeriodConfig{
-				{
-					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "boltdb-shipper",
-				},
-			},
-			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
 		},
 		{
 			name: "just one periodic config with tsdb",
@@ -658,25 +648,11 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
 		},
 		{
-			name: "active config boltdb-shipper, previous config non async index store",
-			periodicConfigs: []config.PeriodConfig{
-				{
-					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
-					IndexType: "bigtable",
-				},
-				{
-					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "boltdb-shipper",
-				},
-			},
-			expectedMaxLookBack: time.Since(now.Add(-24 * time.Hour).Time()),
-		},
-		{
 			name: "current and previous config both using async index store",
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
-					IndexType: "boltdb-shipper",
+					IndexType: "tsdb",
 				},
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
@@ -684,19 +660,6 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 				},
 			},
 			expectedMaxLookBack: time.Since(now.Add(-48 * time.Hour).Time()),
-		},
-		{
-			name: "active config non async index store, previous config tsdb",
-			periodicConfigs: []config.PeriodConfig{
-				{
-					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
-					IndexType: "tsdb",
-				},
-				{
-					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "bigtable",
-				},
-			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

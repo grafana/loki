@@ -50,6 +50,8 @@ message Node {
     Join join = 12;
     Merge merge = 13;
     PointersScan pointers_scan = 14;
+    Batching batching = 15;
+    Cache cache = 16;
   }
 }
 
@@ -282,3 +284,23 @@ message PointersScan {
 // Join represents a join operation in the physical plan.
 // For now it is only an inner join on `timestamp`. Will be expanded later.
 message Join {}
+
+// Batching controls how records are grouped into output batches.
+// It wraps the root of the plan and is added after optimization.
+message Batching {
+  int64 batch_size = 1;
+}
+
+// Cache controls Task-level caching.
+// The Cache pipeline will check the key against the cache identified by the `cache_name` field.
+// The cache stores all record batches produced by the inner pipeline.
+// If the `key` is empty no caching is done.
+// If max_cacheable_size_bytes > 0, the Cache pipeline will store results
+// that are at most max_cacheable_size_bytes in size.
+// If `compression` is set, the compression method identified by it will be used to encode records in the cache.
+message Cache {
+  string key = 1;
+  string cache_name = 2;
+  uint64 max_cacheable_size_bytes = 3;
+  string compression = 4;
+}

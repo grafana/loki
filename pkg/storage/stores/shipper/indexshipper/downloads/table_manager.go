@@ -164,7 +164,6 @@ func (tm *tableManager) Stop() {
 	}
 }
 
-// Only used by TSDB. boltdb-shipper manages concurrency elsewhere
 func (tm *tableManager) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
 	table, err := tm.getOrCreateTable(tableName)
 	if err != nil {

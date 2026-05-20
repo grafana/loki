@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Full Lifecycle
-    categories: OpenShift Optional, Logging & Tracing
+    categories: OpenShift Optional, Logging & Tracing, Observability
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
     description: |
@@ -1980,7 +1980,7 @@ spec:
         path: remoteWrite.client.authorization
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:basic
-        - urn:alm:descriptor:com.tectonic.ui:select:header
+        - urn:alm:descriptor:com.tectonic.ui:select:bearer
       - description: Name of a secret in the namespace configured for authorization
           secrets.
         displayName: Authorization Secret Name
@@ -2424,7 +2424,7 @@ spec:
         path: remoteWrite.client.authorization
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:basic
-        - urn:alm:descriptor:com.tectonic.ui:select:header
+        - urn:alm:descriptor:com.tectonic.ui:select:bearer
       - description: Name of a secret in the namespace configured for authorization
           secrets.
         displayName: Authorization Secret Name

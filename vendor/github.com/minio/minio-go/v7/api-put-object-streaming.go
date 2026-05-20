@@ -259,6 +259,11 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 				ChecksumSHA1:      uploadRes.Part.ChecksumSHA1,
 				ChecksumSHA256:    uploadRes.Part.ChecksumSHA256,
 				ChecksumCRC64NVME: uploadRes.Part.ChecksumCRC64NVME,
+				ChecksumMD5:       uploadRes.Part.ChecksumMD5,
+				ChecksumSHA512:    uploadRes.Part.ChecksumSHA512,
+				ChecksumXXHash64:  uploadRes.Part.ChecksumXXHash64,
+				ChecksumXXHash3:   uploadRes.Part.ChecksumXXHash3,
+				ChecksumXXHash128: uploadRes.Part.ChecksumXXHash128,
 			})
 		}
 	}
@@ -418,6 +423,11 @@ func (c *Client) putObjectMultipartStreamOptionalChecksum(ctx context.Context, b
 			ChecksumSHA1:      part.ChecksumSHA1,
 			ChecksumSHA256:    part.ChecksumSHA256,
 			ChecksumCRC64NVME: part.ChecksumCRC64NVME,
+			ChecksumMD5:       part.ChecksumMD5,
+			ChecksumSHA512:    part.ChecksumSHA512,
+			ChecksumXXHash64:  part.ChecksumXXHash64,
+			ChecksumXXHash3:   part.ChecksumXXHash3,
+			ChecksumXXHash128: part.ChecksumXXHash128,
 		})
 	}
 
@@ -525,7 +535,7 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 			break
 		}
 
-		if rerr != nil && rerr != io.ErrUnexpectedEOF && err != io.EOF {
+		if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
 			cancel()
 			wg.Wait()
 			return UploadInfo{}, rerr
@@ -617,6 +627,11 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 			ChecksumSHA1:      part.ChecksumSHA1,
 			ChecksumSHA256:    part.ChecksumSHA256,
 			ChecksumCRC64NVME: part.ChecksumCRC64NVME,
+			ChecksumMD5:       part.ChecksumMD5,
+			ChecksumSHA512:    part.ChecksumSHA512,
+			ChecksumXXHash64:  part.ChecksumXXHash64,
+			ChecksumXXHash3:   part.ChecksumXXHash3,
+			ChecksumXXHash128: part.ChecksumXXHash128,
 		})
 	}
 
@@ -796,6 +811,11 @@ func (c *Client) putObjectDo(ctx context.Context, bucketName, objectName string,
 		ChecksumSHA1:      h.Get(ChecksumSHA1.Key()),
 		ChecksumSHA256:    h.Get(ChecksumSHA256.Key()),
 		ChecksumCRC64NVME: h.Get(ChecksumCRC64NVME.Key()),
+		ChecksumMD5:       h.Get(ChecksumMD5.Key()),
+		ChecksumSHA512:    h.Get(ChecksumSHA512.Key()),
+		ChecksumXXHash64:  h.Get(ChecksumXXHash64.Key()),
+		ChecksumXXHash3:   h.Get(ChecksumXXHash3.Key()),
+		ChecksumXXHash128: h.Get(ChecksumXXHash128.Key()),
 		ChecksumMode:      h.Get(ChecksumFullObjectMode.Key()),
 	}, nil
 }

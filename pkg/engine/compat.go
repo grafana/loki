@@ -60,6 +60,10 @@ type rowBuilder struct {
 	metadataBuilder *labels.Builder
 	parsedBuilder   *labels.Builder
 	parsedEmptyKeys []string
+	// errorLabelKeys tracks error label names (__error__, __error_details__) that were added
+	// to lbsBuilder. These are excluded from the stream grouping key but included in stream
+	// labels for display, matching classic Loki engine behavior.
+	errorLabelKeys []string
 }
 
 func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
@@ -115,7 +119,12 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 		case ident.ColumnType() == types.ColumnTypeLabel:
 			labelCol := col.(*array.String)
 			forEachNotNullRowColValue(numRows, labelCol, func(rowIdx int) {
-				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, labelCol.Value(rowIdx))
+				val := labelCol.Value(rowIdx)
+				if val == "" {
+					// We also drop empty labels from stream labels to match classic Loki engine behavior.
+					return
+				}
+				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, val)
 			})
 
 		// One of the metadata columns
@@ -131,11 +140,11 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 
 		// One of the parsed columns
 		case ident.ColumnType() == types.ColumnTypeParsed || (ident.ColumnType() == types.ColumnTypeGenerated &&
-			shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails):
+			(shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails)):
 			parsedCol := col.(*array.String)
 
 			isErrorColumn := ident.ColumnType() == types.ColumnTypeGenerated &&
-				shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails
+				(shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails)
 
 			forEachNotNullRowColValue(numRows, parsedCol, func(rowIdx int) {
 				parsedVal := parsedCol.Value(rowIdx)
@@ -146,6 +155,11 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 				b.rowBuilders[rowIdx].parsedBuilder.Set(shortName, parsedVal)
 				if !b.categorizeLabels {
 					b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
+					// Track error labels separately - they're included in stream labels for display
+					// but excluded from stream grouping key to match classic Loki behavior.
+					if isErrorColumn {
+						b.rowBuilders[rowIdx].errorLabelKeys = append(b.rowBuilders[rowIdx].errorLabelKeys, shortName)
+					}
 				}
 				if b.rowBuilders[rowIdx].metadataBuilder.Get(shortName) != "" {
 					b.rowBuilders[rowIdx].metadataBuilder.Del(shortName)
@@ -192,6 +206,28 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 			lbsString = lbs.String()
 		}
 
+		// Compute stream grouping key by excluding error labels.
+		// Error labels are included in stream labels for display but excluded from grouping
+		// so that entries with different error details stay in the same stream.
+		streamKey := lbsString
+		if len(b.rowBuilders[rowIdx].errorLabelKeys) > 0 {
+			keyBuilder := labels.NewScratchBuilder(lbs.Len())
+			lbs.Range(func(label labels.Label) {
+				for _, errKey := range b.rowBuilders[rowIdx].errorLabelKeys {
+					if label.Name == errKey {
+						return // skip error labels in grouping key
+					}
+				}
+				keyBuilder.Add(label.Name, label.Value)
+			})
+			// Also add empty parsed keys (excluding error labels)
+			for _, key := range b.rowBuilders[rowIdx].parsedEmptyKeys {
+				keyBuilder.Add(key, "")
+			}
+			keyBuilder.Sort()
+			streamKey = keyBuilder.Labels().String()
+		}
+
 		entry := logproto.Entry{
 			Timestamp:          ts,
 			Line:               line,
@@ -201,12 +237,11 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 		b.resetRowBuilder(rowIdx)
 
 		// Add entry to appropriate stream
-		key := lbsString
-		idx, ok := b.streams[key]
+		idx, ok := b.streams[streamKey]
 		if !ok {
 			idx = len(b.data)
-			b.streams[key] = idx
-			b.data = append(b.data, push.Stream{Labels: key})
+			b.streams[streamKey] = idx
+			b.data = append(b.data, push.Stream{Labels: lbsString})
 		}
 		b.data[idx].Entries = append(b.data[idx].Entries, entry)
 		b.count++
@@ -236,6 +271,7 @@ func (b *streamsResultBuilder) ensureRowBuilders(newLen int) {
 			metadataBuilder: labels.NewBuilder(labels.EmptyLabels()),
 			parsedBuilder:   labels.NewBuilder(labels.EmptyLabels()),
 			parsedEmptyKeys: make([]string, 0),
+			errorLabelKeys:  make([]string, 0),
 		}
 	}
 }
@@ -247,6 +283,7 @@ func (b *streamsResultBuilder) resetRowBuilder(i int) {
 	b.rowBuilders[i].metadataBuilder.Reset(labels.EmptyLabels())
 	b.rowBuilders[i].parsedBuilder.Reset(labels.EmptyLabels())
 	b.rowBuilders[i].parsedEmptyKeys = b.rowBuilders[i].parsedEmptyKeys[:0]
+	b.rowBuilders[i].errorLabelKeys = b.rowBuilders[i].errorLabelKeys[:0]
 }
 
 func forEachNotNullRowColValue(numRows int, col arrow.Array, f func(rowIdx int)) {
@@ -445,6 +482,13 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.RecordBatch, i int
 	var sample promql.Sample
 	builder.Reset(labels.EmptyLabels())
 
+	// emptyParsedKeys collects label names whose value is the empty string (not NULL).
+	// Pipeline stages such as `| json` can produce parsed labels with empty values, and
+	// these must appear in the result to match classic Loki engine behaviour.
+	// The Prometheus labels.Builder treats Set(name, "") as a deletion, so we handle
+	// these labels separately using labels.NewScratchBuilder at the end.
+	var emptyParsedKeys []string
+
 	// TODO: we add a lot of overhead by reading row by row. Switch to vectorized conversion.
 	for colIdx := range int(rec.NumCols()) {
 		col := rec.Column(colIdx)
@@ -482,13 +526,45 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.RecordBatch, i int
 
 		// allow any string columns
 		if ident.DataType() == types.Loki.String {
-			val := col.(*array.String).Value(i)
-			if val != "" {
-				builder.Set(shortName, val)
+			// The aggregator schema contains every label seen across all series. For a
+			// series that doesn't have a particular label, BuildRecord calls AppendNull,
+			// so IsNull(i)==true here means this label is simply absent for this series.
+			// Skip it rather than treating the empty string returned by Value(i) as a
+			// genuine empty label value.
+			if col.IsNull(i) {
+				continue
 			}
+			val := col.(*array.String).Value(i)
+			if val == "" {
+				// Stream labels and structured metadata should ideally never carry empty values:
+				// Loki removes them at ingestion time. Parsed labels (and ambiguous columns that
+				// originate from parsed labels) can legitimately be empty; we track them
+				// to add them back below after the Prometheus builder has finished.
+				if ident.ColumnType() != types.ColumnTypeLabel &&
+					ident.ColumnType() != types.ColumnTypeMetadata {
+					emptyParsedKeys = append(emptyParsedKeys, shortName)
+				}
+				continue
+			}
+			builder.Set(shortName, val)
 		}
 	}
 
-	sample.Metric = builder.Labels()
+	if len(emptyParsedKeys) > 0 {
+		// labels.Builder silently drops empty-valued labels, so we build the final
+		// label set manually when there are empty parsed labels.
+		lbs := builder.Labels()
+		scratch := labels.NewScratchBuilder(lbs.Len() + len(emptyParsedKeys))
+		lbs.Range(func(l labels.Label) {
+			scratch.Add(l.Name, l.Value)
+		})
+		for _, key := range emptyParsedKeys {
+			scratch.Add(key, "")
+		}
+		scratch.Sort()
+		sample.Metric = scratch.Labels()
+	} else {
+		sample.Metric = builder.Labels()
+	}
 	return sample, true
 }

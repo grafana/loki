@@ -1,0 +1,117 @@
+# Single-binary Loki with dataobjects, no Kafka.
+# Writes go to the in-process stream sink -> dataobj consumer -> object storage.
+# No ingester/chunk writes; query via v2 engine (dataobjects).
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: info
+  grpc_server_max_concurrent_streams: 1000
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /tmp/loki
+  scratch_path: /tmp/loki/scratch
+  storage:
+    filesystem:
+      chunks_directory: /tmp/loki/chunks
+      rules_directory: /tmp/loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# Dataobj: in-memory ingest (no Kafka)
+dataobj:
+  enabled: true
+  storage_bucket_prefix: "dataobj/"
+  consumer:
+    ingest_mode: inmemory
+    idle_flush_timeout: 2m
+    max_builder_age: 5m
+    # Optional: inmemory_channel_capacity: 10000, inmemory_push_timeout: 5s
+  metastore:
+    index_storage_prefix: "index/v0"
+    partition_ratio: 10
+
+# No Kafka
+# kafka_config is omitted; not used when ingest_mode=inmemory
+
+# Querier
+querier:
+  query_partition_ingesters: false
+
+# V2 query engine: use dataobjects for all data (storage_lag=0 so no cutoff to chunks)
+query_engine:
+  enable: true
+  enable_engine_router: false
+  storage_lag: 0
+
+# Ingest limits off (they use Kafka)
+ingest_limits:
+  enabled: false
+
+ingest_limits_frontend:
+  num_partitions: 1
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+
+# Ingester not used for writes (distributor sends only to dataobj stream sink)
+ingester:
+  wal:
+    enabled: false
+  kafka_ingestion:
+    enabled: false
+  lifecycler:
+    id: "loki.local"
+
+# Distributor: only dataobj in-memory sink (no Kafka, no ingester)
+distributor:
+  kafka_writes_enabled: false
+  ingester_writes_enabled: false
+  ingest_limits_enabled: false
+  ingest_limits_dry_run_enabled: false
+
+# Query range
+query_range:
+  cache_volume_results: false
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: false
+        max_size_mb: 100
+
+limits_config:
+  metric_aggregation_enabled: true
+  max_global_streams_per_user: 1000
+
+# Schema: TSDB + filesystem object store (dataobj uses this for objects/index)
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  object_store:
+    filesystem:
+      dir: /tmp/loki
+
+# Disabled to avoid internal push load while testing single-binary dataobj
+pattern_ingester:
+  enabled: false
+
+ruler:
+  alertmanager_url: http://localhost:9093
+
+frontend:
+  encoding: protobuf

@@ -31,7 +31,7 @@ permissions: {}
 jobs:
   generate-testdata:
     name: Generate test data
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     steps:
       - name: Checkout code
         id: checkout
@@ -42,7 +42,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.24.9"
+          go-version: "1.26.2"
 
       # The metastore generates invalid filenames for Windows (with colons),
       # which get rejected by upload-artifact. We zip these files to avoid this
@@ -61,7 +61,7 @@ jobs:
   setup-matrix:
     name: Setup matrix
     needs: generate-testdata
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-x64
     outputs:
       matrix: ${{ steps.generate.outputs.matrix }}
     steps:
@@ -105,7 +105,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.24.9"
+          go-version: "1.26.2"
 
       - name: Create results directory
         run: mkdir -p ./pkg/logql/bench/results

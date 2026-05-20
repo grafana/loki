@@ -14,6 +14,56 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
+func TestToRecordBatch_int32(t *testing.T) {
+	alloc := memory.NewAllocator(nil)
+	srcInt32 := []int32{1, 2, 3, 4, 0, 0, 0, 100, 500}
+	validity := memory.NewBitmap(alloc, len(srcInt32))
+	validity.Resize(len(srcInt32))
+	validity.SetRange(0, len(srcInt32), true)
+	validity.Set(4, false)
+	validity.Set(5, false)
+	int32Arr := columnar.NewNumber[int32](srcInt32, validity)
+	src := columnar.NewRecordBatch(nil, int64(len(srcInt32)), []columnar.Array{int32Arr})
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "myint32", Type: arrow.PrimitiveTypes.Int32},
+	}, nil)
+
+	res, err := arrowconv.ToRecordBatch(src, schema)
+
+	require.NoError(t, err)
+	col := res.Column(0).(*array.Int32)
+	require.Equal(t, srcInt32, col.Values())
+	require.True(t, col.IsNull(4))
+	require.True(t, col.IsNull(5))
+	require.False(t, col.IsNull(0))
+}
+
+func TestToRecordBatch_uint32(t *testing.T) {
+	alloc := memory.NewAllocator(nil)
+	srcUint32 := []uint32{1, 2, 3, 4, 0, 0, 0, 100, 500}
+	validity := memory.NewBitmap(alloc, len(srcUint32))
+	validity.Resize(len(srcUint32))
+	validity.SetRange(0, len(srcUint32), true)
+	validity.Set(4, false)
+	validity.Set(5, false)
+	uint32Arr := columnar.NewNumber[uint32](srcUint32, validity)
+	src := columnar.NewRecordBatch(nil, int64(len(srcUint32)), []columnar.Array{uint32Arr})
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "myuint32", Type: arrow.PrimitiveTypes.Uint32},
+	}, nil)
+
+	res, err := arrowconv.ToRecordBatch(src, schema)
+
+	require.NoError(t, err)
+	col := res.Column(0).(*array.Uint32)
+	require.Equal(t, srcUint32, col.Values())
+	require.True(t, col.IsNull(4))
+	require.True(t, col.IsNull(5))
+	require.False(t, col.IsNull(0))
+}
+
 func TestToRecordBatch_int64(t *testing.T) {
 	alloc := memory.NewAllocator(nil)
 	srcInt64 := []int64{1, 2, 3, 4, 0, 0, 0, 100, 500}
@@ -165,6 +215,16 @@ func TestToRecordBatch_timestamp(t *testing.T) {
 	}
 }
 
+func BenchmarkToRecordBatch_int32(b *testing.B) {
+	src, schema := makeInt32BenchmarkBatch(b, benchmarkRows)
+	benchmarkToRecordBatch(b, src, schema)
+}
+
+func BenchmarkToRecordBatch_uint32(b *testing.B) {
+	src, schema := makeUint32BenchmarkBatch(b, benchmarkRows)
+	benchmarkToRecordBatch(b, src, schema)
+}
+
 func BenchmarkToRecordBatch_int64(b *testing.B) {
 	src, schema := makeInt64BenchmarkBatch(b, benchmarkRows)
 	benchmarkToRecordBatch(b, src, schema)
@@ -203,6 +263,38 @@ func benchmarkToRecordBatch(b *testing.B, src *columnar.RecordBatch, schema *arr
 		}
 		res.Release()
 	}
+}
+
+func makeInt32BenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arrow.Schema) {
+	b.Helper()
+	alloc := memory.NewAllocator(nil)
+	values := make([]int32, n)
+	for i := range values {
+		values[i] = int32(i * 3)
+	}
+	validity := makeValidity(alloc, n, 10)
+	int32Arr := columnar.NewNumber[int32](values, validity)
+	src := columnar.NewRecordBatch(nil, int64(n), []columnar.Array{int32Arr})
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "myint32", Type: arrow.PrimitiveTypes.Int32},
+	}, nil)
+	return src, schema
+}
+
+func makeUint32BenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arrow.Schema) {
+	b.Helper()
+	alloc := memory.NewAllocator(nil)
+	values := make([]uint32, n)
+	for i := range values {
+		values[i] = uint32(i * 7)
+	}
+	validity := makeValidity(alloc, n, 10)
+	uint32Arr := columnar.NewNumber[uint32](values, validity)
+	src := columnar.NewRecordBatch(nil, int64(n), []columnar.Array{uint32Arr})
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "myuint32", Type: arrow.PrimitiveTypes.Uint32},
+	}, nil)
+	return src, schema
 }
 
 func makeInt64BenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arrow.Schema) {

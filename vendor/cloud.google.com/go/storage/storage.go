@@ -408,7 +408,7 @@ func (s bucketBoundHostname) path(bucket, object string) string {
 }
 
 // PathStyle is the default style, and will generate a URL of the form
-// "<host-name>/<bucket-name>/<object-name>". By default, <host-name> is
+// "{host-name}/{bucket-name}/{object-name}". By default, {host-name} is
 // storage.googleapis.com, but setting an endpoint on the storage Client or
 // through STORAGE_EMULATOR_HOST overrides this. Setting Hostname on
 // SignedURLOptions or PostPolicyV4Options overrides everything else.
@@ -417,7 +417,7 @@ func PathStyle() URLStyle {
 }
 
 // VirtualHostedStyle generates a URL relative to the bucket's virtual
-// hostname, e.g. "<bucket-name>.storage.googleapis.com/<object-name>".
+// hostname, e.g. "{bucket-name}.storage.googleapis.com/{object-name}".
 func VirtualHostedStyle() URLStyle {
 	return virtualHostedStyle{}
 }
@@ -425,7 +425,7 @@ func VirtualHostedStyle() URLStyle {
 // BucketBoundHostname generates a URL with a custom hostname tied to a
 // specific GCS bucket. The desired hostname should be passed in using the
 // hostname argument. Generated urls will be of the form
-// "<bucket-bound-hostname>/<object-name>". See
+// "{bucket-bound-hostname}/{object-name}". See
 // https://cloud.google.com/storage/docs/request-endpoints#cname and
 // https://cloud.google.com/load-balancing/docs/https/adding-backend-buckets-to-load-balancers
 // for details. Note that for CNAMEs, only HTTP is supported, so Insecure must
@@ -452,7 +452,7 @@ type SignedURLOptions struct {
 
 	// PrivateKey is the Google service account private key. It is obtainable
 	// from the Google Developers Console.
-	// At https://console.developers.google.com/project/<your-project-id>/apiui/credential,
+	// At https://console.developers.google.com/project/{your-project-id}/apiui/credential,
 	// create a service account client ID or reuse one of your existing service account
 	// credentials. Click on the "Generate new P12 key" to generate and download
 	// a new private key. Once you download the P12 file, use the following command
@@ -1550,7 +1550,7 @@ type ObjectAttrs struct {
 
 	// Owner is the owner of the object. This field is read-only.
 	//
-	// If non-zero, it is in the form of "user-<userId>".
+	// If non-zero, it is in the form of "user-{userId}".
 	Owner string
 
 	// Size is the length of the object's content. This field is read-only.
@@ -2562,6 +2562,23 @@ func (ws *withPolicy) apply(config *retryConfig) {
 	config.policy = ws.policy
 }
 
+// RetryContext provides comprehensive context about a retry attempt.
+// It is passed to custom retry functions configured via WithErrorFuncWithContext.
+type RetryContext struct {
+	// Attempt is the current attempt number (1-based, so first call is attempt 1).
+	Attempt int
+	// InvocationID is a unique identifier for the current operation invocation.
+	// This will be same for all attempts of the same operation, used to correlate
+	// retries of the same operation together.
+	InvocationID string
+	// Operation describes the operation being performed (e.g., "GetObject", "DeleteObject").
+	Operation string
+	// Bucket is the name of the bucket involved in the operation, empty if not applicable.
+	Bucket string
+	// Object is the name of the object involved in the operation, empty if not applicable.
+	Object string
+}
+
 // WithErrorFunc allows users to pass a custom function to the retryer. Errors
 // will be retried if and only if `shouldRetry(err)` returns true.
 // By default, the following errors are retried (see ShouldRetry for the default
@@ -2589,13 +2606,61 @@ type withErrorFunc struct {
 }
 
 func (wef *withErrorFunc) apply(config *retryConfig) {
+	// Wrap legacy signature to new signature
+	config.shouldRetry = func(err error, retryCtx *RetryContext) bool {
+		return wef.shouldRetry(err)
+	}
+}
+
+// WithErrorFuncWithContext allows users to pass a custom function to the retryer
+// with access to comprehensive retry context. This option is currently experimental
+// and subject to change. Errors will be retried if and only if `shouldRetry(err, retryCtx)`
+// returns true.
+//
+// The RetryContext provides:
+// - Attempt: current attempt number (1-based)
+// - InvocationID: unique identifier for the operation invocation
+// - Operation: the operation being performed (e.g., "GetObject", "UpdateBucket")
+// - Bucket: name of the bucket involved in the operation
+// - Object: name of the object involved in the operation
+//
+// By default, the following errors are retried (see ShouldRetry for the default
+// function):
+//
+// - HTTP responses with codes 408, 429, 502, 503, and 504.
+//
+// - Transient network errors such as connection reset and io.ErrUnexpectedEOF.
+//
+// - Errors which are considered transient using the Temporary() interface.
+//
+// - Wrapped versions of these errors.
+//
+// This option can be used to retry on a different set of errors than the
+// default. Users can use the default ShouldRetry function inside their custom
+// function if they only want to make minor modifications to default behavior.
+// RetryContext can be used to improve observability by logging InvocationID to
+// correlate retries of the same operation together, or to implement more complex
+// retry logic such as conditional retries based on the operation type or attempt.
+// Note: the retryCtx may be nil for some unimplemented methods so always a good
+// practice to defensively check for nil before accessing its fields.
+func WithErrorFuncWithContext(shouldRetry func(err error, retryCtx *RetryContext) bool) RetryOption {
+	return &withErrorFuncWithContext{
+		shouldRetry: shouldRetry,
+	}
+}
+
+type withErrorFuncWithContext struct {
+	shouldRetry func(err error, retryCtx *RetryContext) bool
+}
+
+func (wef *withErrorFuncWithContext) apply(config *retryConfig) {
 	config.shouldRetry = wef.shouldRetry
 }
 
 type retryConfig struct {
 	backoff     *gax.Backoff
 	policy      RetryPolicy
-	shouldRetry func(err error) bool
+	shouldRetry func(error, *RetryContext) bool
 	maxAttempts *int
 	// maxRetryDuration, if set, specifies a deadline after which the request
 	// will no longer be retried. A value of 0 allows infinite retries.

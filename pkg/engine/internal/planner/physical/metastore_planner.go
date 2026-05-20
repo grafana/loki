@@ -13,11 +13,13 @@ import (
 
 type MetastorePlanner struct {
 	metastore metastore.Metastore
+	batchSize int
 }
 
-func NewMetastorePlanner(metastore metastore.Metastore) MetastorePlanner {
+func NewMetastorePlanner(metastore metastore.Metastore, batchSize int) MetastorePlanner {
 	return MetastorePlanner{
 		metastore: metastore,
+		batchSize: batchSize,
 	}
 }
 
@@ -49,18 +51,28 @@ func (p MetastorePlanner) Plan(ctx context.Context, selector Expression, predica
 	}
 	plan.graph.Add(scanSet)
 
-	for _, indexPath := range indexesResp.IndexesPaths {
+	for _, entry := range indexesResp.Indexes {
+		// Clamp the scan Start/End to the intersection of [query_start, query_end] ∩ [index_start, index_end].
+		scanStart := entry.Start
+		if start.After(scanStart) {
+			scanStart = start
+		}
+		scanEnd := entry.End
+		if end.Before(scanEnd) {
+			scanEnd = end
+		}
+
 		scanSet.Targets = append(scanSet.Targets, &ScanTarget{
 			Type: ScanTypePointers,
 			Pointers: &PointersScan{
 				NodeID:   ulid.Make(),
-				Location: DataObjLocation(indexPath),
+				Location: DataObjLocation(entry.Path),
 
 				Selector:   selector,
 				Predicates: predicates,
 
-				Start: start,
-				End:   end,
+				Start: scanStart,
+				End:   scanEnd,
 			},
 		})
 	}
@@ -73,5 +85,5 @@ func (p MetastorePlanner) Plan(ctx context.Context, selector Expression, predica
 		return nil, err
 	}
 
-	return plan, nil
+	return WrapWithBatching(plan, p.batchSize)
 }

@@ -1,16 +1,12 @@
 package wire
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 
-	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/ipc"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/oklog/ulid/v2"
@@ -19,18 +15,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	protoUlid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb"
+	arrowcodec "github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire/arrow"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-var defaultFrameCodec = &protobufCodec{
-	allocator: memory.DefaultAllocator,
+var DefaultFrameCodec = &protobufCodec{
+	ArrowCodec: arrowcodec.DefaultArrowCodec,
 }
 
 // protobufCodec implements a protobuf-based codec for frames.
 // Messages are length-prefixed: [uvarint length][protobuf payload]
 type protobufCodec struct {
-	allocator memory.Allocator
+	*arrowcodec.ArrowCodec
 }
 
 // byteReaderAdapter adapts an io.Reader to io.ByteReader without buffering.
@@ -244,7 +241,7 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 		}, nil
 
 	case *wirepb.MessageFrame_StreamData:
-		record, err := c.deserializeArrowRecord(k.StreamData.Data)
+		record, err := c.DeserializeArrowRecord(k.StreamData.Data)
 		if err != nil {
 			return nil, fmt.Errorf("failed to deserialize arrow record: %w", err)
 		}
@@ -288,12 +285,18 @@ func (c *protobufCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 		return nil, fmt.Errorf("failed to marshal sinks: %w", err)
 	}
 
+	cachedSources, err := c.cachedSourcesFromPb(t.CachedSources, fragment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal cached sources: %w", err)
+	}
+
 	return &workflow.Task{
-		ULID:     ulid.ULID(t.Ulid),
-		TenantID: t.TenantId,
-		Fragment: fragment,
-		Sources:  sources,
-		Sinks:    sinks,
+		ULID:          ulid.ULID(t.Ulid),
+		TenantID:      t.TenantId,
+		Fragment:      fragment,
+		Sources:       sources,
+		Sinks:         sinks,
+		CachedSources: cachedSources,
 		MaxTimeRange: physical.TimeRange{
 			Start: t.MaxTimeRange.Start,
 			End:   t.MaxTimeRange.End,
@@ -403,6 +406,34 @@ func (c *protobufCodec) nodeStreamMapFromPbNodeStreamList(pbMap map[string]*wire
 		result[node] = streams
 	}
 
+	return result, nil
+}
+
+func (c *protobufCodec) cachedSourcesFromPb(pbMap map[string]*wirepb.CachedSources, fragment *physical.Plan) (map[physical.Node]workflow.CachedSources, error) {
+	if len(pbMap) == 0 {
+		return nil, nil
+	}
+
+	nodeByID := make(map[ulid.ULID]physical.Node)
+	for node := range fragment.Graph().Nodes() {
+		nodeByID[node.ID()] = node
+	}
+
+	result := make(map[physical.Node]workflow.CachedSources, len(pbMap))
+	for nodeIDStr, cs := range pbMap {
+		nodeID, err := ulid.Parse(nodeIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cached-source node ID %q: %w", nodeIDStr, err)
+		}
+		node, ok := nodeByID[nodeID]
+		if !ok {
+			return nil, fmt.Errorf("cached-source node ID %q not found in fragment", nodeIDStr)
+		}
+		if cs == nil {
+			return nil, fmt.Errorf("cached-source entry for node ID %q is nil", nodeIDStr)
+		}
+		result[node] = cs.CachedSource
+	}
 	return result, nil
 }
 
@@ -538,7 +569,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 
 	case StreamDataMessage:
 		// Serialize Arrow record to bytes
-		data, err := c.serializeArrowRecord(v.Data)
+		data, err := c.SerializeArrowRecord(v.Data)
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize arrow record: %w", err)
 		}
@@ -584,12 +615,15 @@ func (c *protobufCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) 
 		return nil, fmt.Errorf("failed to unmarshal sinks: %w", err)
 	}
 
+	cachedSources := c.cachedSourcesToPb(from.CachedSources)
+
 	return &wirepb.Task{
-		Ulid:     protoUlid.ULID(from.ULID),
-		TenantId: from.TenantID,
-		Fragment: fragment,
-		Sources:  sources,
-		Sinks:    sinks,
+		Ulid:          protoUlid.ULID(from.ULID),
+		TenantId:      from.TenantID,
+		Fragment:      fragment,
+		Sources:       sources,
+		Sinks:         sinks,
+		CachedSources: cachedSources,
 		MaxTimeRange: &physicalpb.TimeRange{
 			Start: from.MaxTimeRange.Start,
 			End:   from.MaxTimeRange.End,
@@ -680,51 +714,13 @@ func (c *protobufCodec) nodeStreamMapToPbNodeStreamList(nodeMap map[physical.Nod
 	return result, nil
 }
 
-// serializeArrowRecord serializes an Arrow record to bytes using IPC format.
-func (c *protobufCodec) serializeArrowRecord(record arrow.RecordBatch) ([]byte, error) {
-	if record == nil {
-		return nil, errors.New("nil arrow record")
+func (c *protobufCodec) cachedSourcesToPb(srcs map[physical.Node]workflow.CachedSources) map[string]*wirepb.CachedSources {
+	if len(srcs) == 0 {
+		return nil
 	}
-
-	var buf bytes.Buffer
-	writer := ipc.NewWriter(&buf,
-		ipc.WithSchema(record.Schema()),
-		ipc.WithAllocator(c.allocator),
-	)
-	defer writer.Close()
-
-	if err := writer.Write(record); err != nil {
-		return nil, err
+	result := make(map[string]*wirepb.CachedSources, len(srcs))
+	for node, cs := range srcs {
+		result[node.ID().String()] = &wirepb.CachedSources{CachedSource: cs}
 	}
-
-	if err := writer.Close(); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
-}
-
-// deserializeArrowRecord deserializes an Arrow record from bytes using IPC format.
-func (c *protobufCodec) deserializeArrowRecord(data []byte) (arrow.RecordBatch, error) {
-	if len(data) == 0 {
-		return nil, errors.New("empty arrow data")
-	}
-
-	reader, err := ipc.NewReader(
-		bytes.NewReader(data),
-		ipc.WithAllocator(c.allocator),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if !reader.Next() {
-		if err := reader.Err(); err != nil {
-			return nil, err
-		}
-		return nil, errors.New("no record in arrow data")
-	}
-
-	rec := reader.RecordBatch()
-	return rec, nil
+	return result
 }
