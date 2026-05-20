@@ -1636,12 +1636,12 @@ func TestBuildGateway_PassthroughMode_DeploymentArgs(t *testing.T) {
 
 	c := dpl.Spec.Template.Spec.Containers[0]
 
-	require.Contains(t, c.Args, "--listen-addr=:8080")
-	require.Contains(t, c.Args, "--metrics-addr=:8081")
-	require.Contains(t, c.Args, "--write-upstream-endpoint=http://abcd-distributor-http.efgh.svc.cluster.local:3100")
-	require.Contains(t, c.Args, "--read-upstream-endpoint=http://abcd-query-frontend-http.efgh.svc.cluster.local:3100")
+	require.Contains(t, c.Args, "-listen-addr=:8080")
+	require.Contains(t, c.Args, "-admin-addr=:8081")
+	require.Contains(t, c.Args, "-loki-distributor-endpoint=http://abcd-distributor-http.efgh.svc.cluster.local:3100")
+	require.Contains(t, c.Args, "-loki-query-frontend-endpoint=http://abcd-query-frontend-http.efgh.svc.cluster.local:3100")
 
-	require.NotContains(t, c.Args, "--default-tenant")
+	require.NotContains(t, c.Args, "-default-tenant")
 }
 
 func TestBuildGateway_PassthroughMode_WithDefaultTenant(t *testing.T) {
@@ -1674,7 +1674,7 @@ func TestBuildGateway_PassthroughMode_WithDefaultTenant(t *testing.T) {
 	require.NotNil(t, dpl)
 
 	c := dpl.Spec.Template.Spec.Containers[0]
-	require.Contains(t, c.Args, "--default-tenant=my-default-tenant")
+	require.Contains(t, c.Args, "-default-tenant=my-default-tenant")
 }
 
 func TestBuildGateway_PassthroughMode_WithHTTPEncryption(t *testing.T) {
@@ -1718,21 +1718,21 @@ func TestBuildGateway_PassthroughMode_WithHTTPEncryption(t *testing.T) {
 	c := dpl.Spec.Template.Spec.Containers[0]
 
 	// Verify HTTPS upstream endpoints
-	require.Contains(t, c.Args, "--write-upstream-endpoint=https://abcd-distributor-http.efgh.svc.cluster.local:3100")
-	require.Contains(t, c.Args, "--read-upstream-endpoint=https://abcd-query-frontend-http.efgh.svc.cluster.local:3100")
+	require.Contains(t, c.Args, "-loki-distributor-endpoint=https://abcd-distributor-http.efgh.svc.cluster.local:3100")
+	require.Contains(t, c.Args, "-loki-query-frontend-endpoint=https://abcd-query-frontend-http.efgh.svc.cluster.local:3100")
 
 	// Verify TLS args are present
-	require.Contains(t, c.Args, "--tls-cert-file=/var/run/tls/http/server/tls.crt")
-	require.Contains(t, c.Args, "--tls-key-file=/var/run/tls/http/server/tls.key")
-	require.Contains(t, c.Args, "--tls-client-auth=RequireAndVerifyClientCert")
-	require.Contains(t, c.Args, "--tls-client-ca-file=/var/run/ca/client/ca.crt")
-	require.Contains(t, c.Args, "--tls-min-version=VersionTLS12")
-	require.Contains(t, c.Args, "--tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
+	require.Contains(t, c.Args, "-tls-cert-file=/var/run/tls/http/server/tls.crt")
+	require.Contains(t, c.Args, "-tls-key-file=/var/run/tls/http/server/tls.key")
+	require.Contains(t, c.Args, "-tls-client-auth=RequireAndVerifyClientCert")
+	require.Contains(t, c.Args, "-tls-client-ca-file=/var/run/ca/client/ca.crt")
+	require.Contains(t, c.Args, "-tls-min-version=VersionTLS12")
+	require.Contains(t, c.Args, "-tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
 
 	// Verify upstream TLS args
-	require.Contains(t, c.Args, "--upstream-ca-file=/var/run/ca/upstream/service-ca.crt")
-	require.Contains(t, c.Args, "--upstream-cert-file=/var/run/tls/http/upstream/tls.crt")
-	require.Contains(t, c.Args, "--upstream-key-file=/var/run/tls/http/upstream/tls.key")
+	require.Contains(t, c.Args, "-loki-ca-file=/var/run/ca/upstream/service-ca.crt")
+	require.Contains(t, c.Args, "-loki-cert-file=/var/run/tls/http/upstream/tls.crt")
+	require.Contains(t, c.Args, "-loki-key-file=/var/run/tls/http/upstream/tls.key")
 
 	// Verify probes use HTTPS
 	require.Equal(t, corev1.URISchemeHTTPS, c.ReadinessProbe.HTTPGet.Scheme)
