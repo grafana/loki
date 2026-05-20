@@ -2813,13 +2813,12 @@ func TestConfig_Validate(t *testing.T) {
 			expectedMaxDecompressedSize: 0, // Should remain 0
 		},
 		{
-			// kafka=false + ingester=false is now allowed: in inmemory mode the tee is
-			// wired programmatically and does not require either flag.
-			name: "kafka=false ingester=false is valid (inmemory mode uses programmatic tee)",
+			name: "validates kafka and ingester enabled",
 			cfg: Config{
 				KafkaEnabled:    false,
 				IngesterEnabled: false,
 			},
+			expectedError: "at least one of kafka and ingestor writes must be enabled",
 		},
 	}
 
