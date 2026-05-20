@@ -1,6 +1,7 @@
 package logs
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -172,7 +173,7 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 		// We might want these evaluated towards the end.
 		return selectivityScore(0.7)
 	default:
-		panic("unknown predicate type")
+		panic(fmt.Sprintf("unknown predicate type: %T", p))
 	}
 }
 

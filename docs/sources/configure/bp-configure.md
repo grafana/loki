@@ -108,7 +108,6 @@ limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 168h  # 7 days
   creation_grace_period: 10m
-  unordered_writes: true
 ```
 
 ## Recommended Ingester configuration

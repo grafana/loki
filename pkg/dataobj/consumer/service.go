@@ -53,6 +53,7 @@ type Service struct {
 	watcher                     *services.FailureWatcher
 	logger                      log.Logger
 	reg                         prometheus.Registerer
+	builderFactory              *logsobj.BuilderFactory
 
 	// recordsChan is set only in inmemory mode. Callers send *kgo.Record values
 	// here instead of through Kafka.
@@ -173,7 +174,7 @@ func NewInMemory(cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scra
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
-	builderFactory := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore)
+	builderFactory := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore, logger)
 	sorter := logsobj.NewSorter(builderFactory, reg)
 	s.flusher = newFlusher(sorter, uploader, logger, reg)
 
@@ -263,7 +264,7 @@ func (s *Service) inMemoryStopping(failureCase error) error {
 	return failureCase
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) (*Service, error) {
+func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
 	logger = log.With(logger, "component", "dataobj-consumer")
 
 	s := &Service{
@@ -360,13 +361,19 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
-	builderFactory := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore)
-	sorter := logsobj.NewSorter(builderFactory, reg)
+	s.builderFactory = logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore, logger)
+	if overrides != nil {
+		s.builderFactory.SetOverrides(overrides)
+		level.Info(logger).Log("msg", "sort schema overrides wired to builder factory at construction")
+	} else {
+		level.Warn(logger).Log("msg", "sort schema overrides not provided at construction; schema sort will not apply to the initial builder")
+	}
+	sorter := logsobj.NewSorter(s.builderFactory, reg)
 	s.flusher = newFlusher(sorter, uploader, logger, reg)
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
 		"partition": strconv.Itoa(int(partitionID)),
 	}, reg)
-	builder, err := builderFactory.NewBuilder(wrapped)
+	builder, err := s.builderFactory.NewBuilder(wrapped)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
 	}

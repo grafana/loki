@@ -65,6 +65,36 @@ type (
 		// data types.
 		Validity Spec
 	}
+
+	// SpecZstd encodes variable-length data with zstd compression on the
+	// data buffer. Structure mirrors [SpecBinary].
+	SpecZstd struct {
+		// Spec for how to encode offset information, where the half-open range
+		// (offsets[i], offsets[i+1]] specifies where the offsets where element
+		// i.
+		Offsets Spec
+
+		// Spec for how to encode validity data. Must only be set for nullable
+		// data types.
+		Validity Spec
+	}
+
+	// SpecZigZag encodes signed integer values by mapping them to unsigned
+	// integers using zigzag encoding. The unsigned data is then encoded
+	// according to the Data spec. Nullability is passed through to the
+	// Data child.
+	SpecZigZag struct {
+		// Spec for how to encode the zigzag-encoded unsigned data.
+		Data Spec
+	}
+
+	// SpecDelta encodes integer values by storing differences between
+	// consecutive values. The delta data is then encoded according to the
+	// Data spec. Nullability is passed through to the Data child.
+	SpecDelta struct {
+		// Spec for how to encode the delta-encoded data.
+		Data Spec
+	}
 )
 
 // Kind returns [EncodingKindBool].
@@ -87,6 +117,21 @@ func (spec *SpecBitpacked) Kind() EncodingKind {
 	return EncodingKindBitpacked
 }
 
+// Kind returns [EncodingKindZstd].
+func (spec *SpecZstd) Kind() EncodingKind {
+	return EncodingKindZstd
+}
+
+// Kind returns [EncodingKindZigZag].
+func (spec *SpecZigZag) Kind() EncodingKind {
+	return EncodingKindZigZag
+}
+
+// Kind returns [EncodingKindDelta].
+func (spec *SpecDelta) Kind() EncodingKind {
+	return EncodingKindDelta
+}
+
 //
 // Sealed marker implementations.
 //
@@ -95,3 +140,6 @@ func (spec *SpecBool) isSpec()      {}
 func (spec *SpecPlain) isSpec()     {}
 func (spec *SpecBinary) isSpec()    {}
 func (spec *SpecBitpacked) isSpec() {}
+func (spec *SpecZstd) isSpec()      {}
+func (spec *SpecZigZag) isSpec()    {}
+func (spec *SpecDelta) isSpec()     {}

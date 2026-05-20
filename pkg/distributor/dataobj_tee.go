@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
@@ -222,7 +223,9 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmen
 
 	results := t.kafkaClient.ProduceSync(ctx, records)
 	if err := results.FirstErr(); err != nil {
-		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
+		if !errors.Is(err, kgo.ErrMaxBuffered) {
+			level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
+		}
 		t.streamFailures.Inc()
 		pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to tee error: %d", TeeCouldntProduceRecordsError))
 		return

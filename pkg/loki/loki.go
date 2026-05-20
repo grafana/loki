@@ -325,9 +325,6 @@ func (c *Config) Validate() error {
 	if err := c.Worker.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid frontend_worker config"))
 	}
-	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid boltdb_shipper config"))
-	}
 	if err := c.IndexGateway.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid index_gateway config"))
 	}
@@ -448,6 +445,7 @@ type Loki struct {
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
 	dataObjIndexBuilder                 *dataobjindex.Builder
 	dataObjCompactionPlanner            *enginecompactor.Planner
+	dataObjCompactionWorker             *enginecompactor.Worker
 	scratchStore                        scratch.Store
 	queryEngineV2                       *engine.Engine
 	queryEngineV2Scheduler              *engine.Scheduler
@@ -808,6 +806,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
 	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner)
+	mm.RegisterModule(DataObjCompactionWorker, t.initDataObjCompactionWorker)
 	mm.RegisterModule(ScratchStore, t.initScratchStore)
 
 	mm.RegisterModule(All, nil)
@@ -857,9 +856,10 @@ func (t *Loki) setupModuleManager() error {
 		DataObjExplorer:              {Server, UIRing},
 		DataObjConsumerRing:          {RuntimeConfig, Server, MemberlistKV},
 		DataObjConsumerPartitionRing: {MemberlistKV, Server, Ring},
-		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UI},
+		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UI, Overrides},
 		DataObjIndexBuilder:          {ScratchStore, Server, UIRing},
 		DataObjCompactionPlanner:     {Server, UIRing},
+		DataObjCompactionWorker:      {Server, UIRing},
 		ScratchStore:                 {},
 
 		Read:    {QueryFrontend, Querier},

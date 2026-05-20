@@ -592,7 +592,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v11",
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -603,7 +603,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v11",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -616,7 +616,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v12",
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -627,7 +627,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v12",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -640,7 +640,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v13",
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -651,7 +651,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v13",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{

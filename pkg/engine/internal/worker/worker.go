@@ -577,6 +577,10 @@ func (w *Worker) handleCancelMessage(msg wire.TaskCancelMessage) error {
 		return fmt.Errorf("task %s not found", msg.ID)
 	}
 
+	// Mark the job as interrupted before cancelling the context so we can
+	// differentiate between an expected cancellation an unexpected context
+	// cancellation (which results in a task failure).
+	job.interrupted.Store(true)
 	job.Cancel()
 	return nil
 }

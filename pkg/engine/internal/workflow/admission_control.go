@@ -14,12 +14,7 @@ const (
 	taskTypeScan  taskType = "scan"
 	taskTypeOther taskType = "other"
 
-	// taskTypeCompaction is reserved for tasks whose fragments contain
-	// dataobj-compaction nodes. The lane is wired through admissionControl
-	// and dispatchTasks but currently dormant: typeFor does not yet
-	// classify any task as taskTypeCompaction. The lane activates once
-	// dataobj-compaction physical-plan node types are introduced and
-	// typeFor is extended to recognize them.
+	// taskTypeCompaction is the admission lane for compaction tasks
 	taskTypeCompaction taskType = "compaction"
 )
 
@@ -80,12 +75,12 @@ func (ac *admissionControl) groupByType(tasks []*Task) map[taskType][]*Task {
 }
 
 // typeFor classifies a task by inspecting its fragment.
-//
-// The taskTypeCompaction return is intentionally absent: it will be
-// added once dataobj-compaction physical-plan node types are introduced
-// and this function is extended to recognize them. Until then the third
-// lane is dormant.
+// Compaction is checked first so hypothetical hybrid plans are constrained
+// by the compaction lane rather than the scan lane.
 func (ac *admissionControl) typeFor(task *Task) taskType {
+	if isCompactionTask(task) {
+		return taskTypeCompaction
+	}
 	if isScanTask(task) {
 		return taskTypeScan
 	}
@@ -103,6 +98,16 @@ func (ac *admissionControl) get(ty taskType) *admissionLane {
 func isScanTask(task *Task) bool {
 	for node := range task.Fragment.Graph().Nodes() {
 		if node.Type() == physical.NodeTypeDataObjScan || node.Type() == physical.NodeTypePointersScan {
+			return true
+		}
+	}
+	return false
+}
+
+func isCompactionTask(task *Task) bool {
+	for node := range task.Fragment.Graph().Nodes() {
+		switch node.Type() {
+		case physical.NodeTypeIndexMerge, physical.NodeTypeLogMerge:
 			return true
 		}
 	}

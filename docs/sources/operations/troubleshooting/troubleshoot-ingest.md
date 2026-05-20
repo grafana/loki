@@ -284,25 +284,22 @@ loki.source.file "logs" {
 - HTTP status: 400 Bad Request
 - Configurable per tenant: No
 
-### Error: `out_of_order` / `too_far_behind`
+### Error: `too_far_behind`
 
 These errors occur when log entries arrive in the wrong chronological order.
 
 **Error messages:**
 
-- When `unordered_writes: false`: `entry out of order`
-- When `unordered_writes: true`: `entry too far behind, entry timestamp is: <timestamp>, oldest acceptable timestamp is: <cutoff>`
+- `entry too far behind, entry timestamp is: <timestamp>, oldest acceptable timestamp is: <cutoff>`
 
 **Cause:**
 
 Logs are being ingested with timestamps that violate Loki's ordering constraints:
 
-- With `unordered_writes: false`: Any log older than the most recent log in the stream is rejected
-- With `unordered_writes: true` (default): Logs older than half of `max_chunk_age` from the newest entry are rejected
+- Logs older than half of `max_chunk_age` from the newest entry are rejected
 
 **Default configuration:**
 
-- `unordered_writes`: true (since Loki 2.4)
 - `max_chunk_age`: 2 hours
 - Acceptable timestamp window: 1 hour behind the newest entry (half of `max_chunk_age`)
 
