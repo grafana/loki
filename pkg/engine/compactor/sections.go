@@ -88,15 +88,12 @@ func loadTenantIndexes(
 
 // readAllIndexPointers decodes every row of one indexpointers section into
 // indexEntry values. The caller owns the Reader and scratch slice; both are
-// reused across section iterations so a ToC with N tenants pays one
-// Reader-construction + one batch-buffer allocation, not N.
+// reused across section iterations.
 //
 // Mirrors pkg/dataobj/metastore.forEachIndexPointer's structure but drops
 // the user.ExtractOrgID tenant filter and the WhereTimeRangeOverlapsWith
 // predicate — the compactor reads every row from every tenant in the
-// most-recent ToC. The per-row switch below handles missing / unrecognized
-// columns by ignoring them, and the indexpointers writer guarantees
-// Path / Min / MaxTimestamp are present at write time.
+// most-recent ToC.
 func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scratch []indexEntry, section *dataobj.Section) ([]indexEntry, error) {
 	sec, err := indexpointers.Open(ctx, section)
 	if err != nil {
