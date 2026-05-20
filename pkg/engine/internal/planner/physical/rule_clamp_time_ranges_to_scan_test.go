@@ -195,7 +195,7 @@ func TestScanTimeRangePushup(t *testing.T) {
 	})
 }
 
-func TestClampPredicates(t *testing.T) {
+func TestClampTimeRangesToScan(t *testing.T) {
 	t.Run("DataObjScan limit applies to parent Filter node", func(t *testing.T) {
 		start := time.Date(2026, 3, 11, 12, 41, 44, 0, time.UTC)
 		end := time.Date(2026, 3, 11, 12, 41, 46, 0, time.UTC)
@@ -222,8 +222,8 @@ func TestClampPredicates(t *testing.T) {
 
 		// apply optimisations
 		optimizations := []*Optimization{
-			newOptimization("clamp predicates", plan).withRules(
-				&clampPredicates{plan: plan},
+			newOptimization("clamp time ranges to scan", plan).withRules(
+				&clampTimeRangesToScan{plan: plan},
 			),
 		}
 		o := NewOptimizer(plan, optimizations)
@@ -254,7 +254,7 @@ func TestClampPredicates(t *testing.T) {
 
 }
 
-func TestClampPredicates_ClampExpression(t *testing.T) {
+func TestClampTimeRangesToScan_ClampExpression(t *testing.T) {
 	col := newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
 	early := types.Timestamp(time.Date(2026, 3, 11, 12, 41, 44, 719000000, time.UTC).UnixNano())
 	late := types.Timestamp(time.Date(2026, 3, 18, 9, 41, 44, 976217699, time.UTC).UnixNano())
@@ -333,7 +333,7 @@ func TestClampPredicates_ClampExpression(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			got, clamped := (&clampPredicates{}).clampExpression(tt.e, tt.tr)
+			got, clamped := (&clampTimeRangesToScan{}).clampExpression(tt.e, tt.tr)
 			require.Equal(t, tt.clamped, clamped)
 			require.Equal(t, tt.want, got.String())
 		})
