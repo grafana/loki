@@ -161,7 +161,7 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	cellBResp := &BackendResponse{
 		BackendName: "cell-b",
 		Status:      200,
-		Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.12,"queueTime":0.06,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":8333,"linesProcessedPerSecond":833,"totalEntriesReturned":5,"splits":1,"shards":2}}},"warnings":["Query was executed using the next-generation Loki query engine."]}`),
+		Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.12,"queueTime":0.06,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":8333,"linesProcessedPerSecond":833,"totalEntriesReturned":5,"splits":1,"shards":2},"querier":{"store":{"queryUsedV2Engine":true}}}}}`),
 		Duration:    120 * time.Millisecond,
 		TraceID:     "",
 		SpanID:      "",

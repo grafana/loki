@@ -18,7 +18,7 @@ func (c *streamStatisticsCalculation) Name() string { return "stream_statistics"
 // run under the builder lock.
 func (c *streamStatisticsCalculation) ProcessBatchNeedsBuilderLock() bool { return true }
 
-func (c *streamStatisticsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
+func (c *streamStatisticsCalculation) Prepare(_ context.Context, _ *logsCalculationContext, _ *dataobj.Section, _ logs.Stats) error {
 	return nil
 }
 

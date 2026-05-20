@@ -947,44 +947,44 @@ storage_config:
 		})
 	})
 
-	t.Run("boltdb shipper apply common path prefix", func(t *testing.T) {
+	t.Run("tsdb shipper apply common path prefix", func(t *testing.T) {
 		t.Run("if path prefix provided in common config, default active_index_directory and cache_location", func(t *testing.T) {
 
-			const boltdbSchemaConfig = `---
+			const schemaCfg = `---
 common:
   path_prefix: /opt/loki
 schema_config:
   configs:
     - from: 2021-08-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: gcs
       schema: v11
       index:
         prefix: index_
         period: 24h`
-			config, _ := testContext(boltdbSchemaConfig, nil)
+			config, _ := testContext(schemaCfg, nil)
 
-			assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
-			assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+			assert.Equal(t, "/opt/loki/tsdb-shipper-active", config.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory)
+			assert.Equal(t, "/opt/loki/tsdb-shipper-cache", config.StorageConfig.TSDBShipperConfig.CacheLocation)
 		})
 
-		t.Run("boltdb shipper directories correctly handle trailing slash in path prefix", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
+		t.Run("tsdb shipper directories correctly handle trailing slash in path prefix", func(t *testing.T) {
+			const schemaCfg = `---
 common:
   path_prefix: /opt/loki/
 schema_config:
   configs:
     - from: 2021-08-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: gcs
       schema: v11
       index:
         prefix: index_
         period: 24h`
-			config, _ := testContext(boltdbSchemaConfig, nil)
+			config, _ := testContext(schemaCfg, nil)
 
-			assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
-			assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+			assert.Equal(t, "/opt/loki/tsdb-shipper-active", config.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory)
+			assert.Equal(t, "/opt/loki/tsdb-shipper-cache", config.StorageConfig.TSDBShipperConfig.CacheLocation)
 
 		})
 	})
@@ -2007,33 +2007,6 @@ func Test_applyChunkRetain(t *testing.T) {
 		config, defaults, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, defaults.Ingester.RetainPeriod, config.Ingester.RetainPeriod)
-	})
-
-	t.Run("chunk retain is set to IndexCacheValidity + 1 minute", func(t *testing.T) {
-		yamlContent := `
-schema_config:
-  configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v12
-      index:
-        prefix: index_
-        period: 24h
-storage_config:
-  index_cache_validity: 10m
-  index_queries_cache_config:
-    memcached:
-      batch_size: 256
-      parallelism: 10
-    memcached_client:
-      consistent_hash: true
-      host: memcached-index-queries.loki.svc.cluster.local
-      service: memcached-client
-`
-		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
-		assert.NoError(t, err)
-		assert.Equal(t, 11*time.Minute, config.Ingester.RetainPeriod)
 	})
 
 	t.Run("chunk retain is not changed for tsdb index type", func(t *testing.T) {

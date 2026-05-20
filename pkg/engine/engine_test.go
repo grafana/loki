@@ -1,20 +1,19 @@
 package engine
 
 import (
-	"context"
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 type fakeLimits struct {
@@ -50,7 +49,7 @@ func minimalPlan() *physical.Plan {
 }
 
 func TestEngine_AdmissionLanes(t *testing.T) {
-	const tenant = "test-tenant"
+	const tenantID = "test-tenant"
 	const parallelism = 42
 
 	limits := &fakeLimits{
@@ -78,7 +77,13 @@ func TestEngine_AdmissionLanes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t, limits)
-			wf, _, err := e.buildWorkflow(context.Background(), tenant, log.NewNopLogger(), minimalPlan(), tt.useAdmissionLanes, false)
+
+			ctx := user.InjectOrgID(t.Context(), tenantID)
+			q, ctx, err := e.newQuery(ctx, log.NewNopLogger(), "test", false)
+			require.NoError(t, err)
+			defer q.Close()
+
+			wf, err := q.Prepare(ctx, minimalPlan(), tt.useAdmissionLanes)
 			require.NoError(t, err)
 			defer wf.Close()
 

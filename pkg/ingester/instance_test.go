@@ -70,7 +70,7 @@ func MustParseDayTime(s string) config.DayTime {
 var defaultPeriodConfigs = []config.PeriodConfig{
 	{
 		From:      MustParseDayTime("1900-01-01"),
-		IndexType: types.TSDBType,
+		IndexType: types.IndexTypeTSDB,
 		Schema:    "v13",
 	},
 }
@@ -322,7 +322,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 		require.NoError(t, err)
 		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
 		require.NoError(t, err)
-		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, labels.EmptyLabels(), true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, stream.policy).NewChunk()
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, labels.EmptyLabels(), NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, stream.policy).NewChunk()
 		for _, entry := range testStream.Entries {
 			dup, err := chunk.Append(&entry)
 			require.False(t, dup)
@@ -585,7 +585,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, policy))
+			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, policy))
 		}
 	})
 }

@@ -105,7 +105,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
-	for tocPath, tocTimeRange := range iterTableOfContentsPaths(globalMinTime, globalMaxTime) {
+	for tocPath, tocTimeRange := range IterTableOfContentsPaths(globalMinTime, globalMaxTime) {
 		b := backoff.New(ctx, backoff.Config{
 			MinBackoff: 50 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
