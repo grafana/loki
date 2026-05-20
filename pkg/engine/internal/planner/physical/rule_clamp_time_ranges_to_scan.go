@@ -67,14 +67,22 @@ func (r *clampTimeRangesToScan) applyToTargets(node Node, timeRange TimeRange) b
 	switch node := node.(type) {
 	case *RangeAggregation:
 		if node.Step > 0 { // only apply optimization to range queries
+			// Align the start time to the step, rounding down, to ensure we don't accidentally exclude any data.
+			// We use nanoseconds for the calculation to avoid dividing by zero if the step is less than 1 ms.
 			trSteppedStart := time.UnixMilli((timeRange.Start.UnixNano() / node.Step.Nanoseconds()) * node.Step.Nanoseconds() / 1000000).UTC()
 
+			// Align the end time to the step plus range, to ensure we include all the data in the range of the query.
+			// We use nanoseconds for the calculation to avoid dividing by zero if the step is less than 1 ms.
 			endPlusRange := timeRange.End.Add(node.Range)
 			trSteppedEnd := time.UnixMilli((endPlusRange.UnixNano() / node.Step.Nanoseconds()) * node.Step.Nanoseconds() / 1000000).UTC()
+			// We rounded down when aligning the end time earlier, so now we may need to round up
+			// to ensure we include all the data in the range of the query.
 			if trSteppedEnd.Compare(endPlusRange) < 0 {
 				steps := endPlusRange.Sub(trSteppedEnd)/node.Step + 1
 				trSteppedEnd = trSteppedEnd.Add(steps * node.Step)
 			}
+
+			// Compare our aligned start and end times from the timeRange against the node start and end times.
 			if node.Start.Compare(trSteppedStart) < 0 {
 				node.Start = trSteppedStart
 				changed = true
