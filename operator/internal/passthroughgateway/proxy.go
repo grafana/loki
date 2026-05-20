@@ -18,7 +18,7 @@ var lokiWritePaths = []string{
 	"/otlp/v1/logs",
 }
 
-type LokiRouter struct {
+type lokiRouter struct {
 	writeProxy    *httputil.ReverseProxy
 	readProxy     *httputil.ReverseProxy
 	logger        logr.Logger

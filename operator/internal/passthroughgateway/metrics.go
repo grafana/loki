@@ -5,13 +5,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-type Metrics struct {
+type metrics struct {
 	RequestsTotal    *prometheus.CounterVec
 	RequestDuration  *prometheus.HistogramVec
 	RequestsInFlight prometheus.Gauge
 }
 
-func NewMetrics(reg prometheus.Registerer) *Metrics {
+func newMetrics(reg prometheus.Registerer) *Metrics {
 	factory := promauto.With(reg)
 
 	return &Metrics{
@@ -20,7 +20,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 				Name: "lokistack_gateway_requests_total",
 				Help: "Total number of requests processed by the LokiStack gateway.",
 			},
-			[]string{"method", "code"},
+			[]string{"method", "route", "code"},
 		),
 		RequestDuration: factory.NewHistogramVec(
 			prometheus.HistogramOpts{
