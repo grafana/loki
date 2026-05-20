@@ -18,8 +18,9 @@ package arrow
 
 import (
 	"fmt"
-	"hash/maphash"
 	"strings"
+
+	"github.com/apache/arrow-go/v18/internal/utils/maphash"
 
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 )
@@ -227,7 +228,7 @@ type OffsetsDataType interface {
 }
 
 func HashType(seed maphash.Seed, dt DataType) uint64 {
-	var h maphash.Hash
+	var h maphash.MapHash
 	h.SetSeed(seed)
 	h.WriteString(dt.Fingerprint())
 	return h.Sum64()

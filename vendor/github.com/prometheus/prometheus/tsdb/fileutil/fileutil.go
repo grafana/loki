@@ -1,4 +1,4 @@
-// Copyright 2018 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -78,7 +78,7 @@ func readDirs(src string) ([]string, error) {
 
 	err := filepath.Walk(src, func(path string, _ os.FileInfo, _ error) error {
 		relativePath := strings.TrimPrefix(path, src)
-		if len(relativePath) > 0 {
+		if relativePath != "" {
 			files = append(files, relativePath)
 		}
 		return nil

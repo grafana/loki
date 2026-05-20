@@ -166,7 +166,7 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 			var metric labels.Labels
 			if metric, ok = r.metrics[lbs]; !ok {
 				var err error
-				metric, err = promql_parser.ParseMetric(lbs)
+				metric, err = promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
 				if err != nil {
 					_ = r.iter.Next()
 					continue
@@ -512,7 +512,6 @@ type streamRangeVectorIterator struct {
 	r                                    *syntax.RangeAggregationExpr
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
-	agg                                  BatchRangeVectorAggregator
 }
 
 func (r *streamRangeVectorIterator) Next() bool {
@@ -559,7 +558,7 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 			var metric labels.Labels
 			if _, ok = r.metrics[lbs]; !ok {
 				var err error
-				metric, err = promql_parser.ParseMetric(lbs)
+				metric, err = promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
 				if err != nil {
 					_ = r.iter.Next()
 					continue

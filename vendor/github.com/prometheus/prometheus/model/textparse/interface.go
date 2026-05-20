@@ -1,4 +1,4 @@
-// Copyright 2018 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -76,9 +76,9 @@ type Parser interface {
 	// retrieved (including the case where no exemplars exist at all).
 	Exemplar(l *exemplar.Exemplar) bool
 
-	// StartTimestamp returns the created timestamp (in milliseconds) for the
+	// StartTimestamp returns the start timestamp (in milliseconds) for the
 	// current sample. It returns 0 if it is unknown e.g. if it wasn't set or
-	// if the scrape protocol or metric type does not support created timestamps.
+	// if the scrape protocol or metric type does not support start timestamps.
 	StartTimestamp() int64
 
 	// Next advances the parser to the next sample.

@@ -1,4 +1,4 @@
-// Copyright 2015 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -87,4 +87,10 @@ func (m *RefreshMetricsVecs) Register() error {
 // Unregister implements discovery.DiscovererMetrics.
 func (m *RefreshMetricsVecs) Unregister() {
 	m.metricRegisterer.UnregisterMetrics()
+}
+
+// DeleteLabelValues deletes refresh metrics for a specific mechanism and config. Smart to use this when a scrape job is removed.
+func (m *RefreshMetricsVecs) DeleteLabelValues(mech, config string) {
+	m.failuresVec.DeleteLabelValues(mech, config)
+	m.durationVec.DeleteLabelValues(mech, config)
 }

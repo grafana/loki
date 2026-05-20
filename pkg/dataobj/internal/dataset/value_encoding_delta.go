@@ -1,7 +1,6 @@
 package dataset
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -127,7 +126,7 @@ func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Ar
 	}
 
 	for i := range count {
-		delta, n := binary.Varint(buf[off:])
+		delta, n := varint(buf[off:])
 		if n <= 0 {
 			valuesBuf.Resize(i)
 			return columnar.NewNumber[int64](values[:i], memory.Bitmap{}), io.EOF

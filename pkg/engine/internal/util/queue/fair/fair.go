@@ -19,6 +19,14 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
+// Position is an opaque token representing a value's original queue position.
+// It is returned by [Queue.Pop] and can be passed to [Queue.Requeue] to
+// restore the value at its original position.
+type Position struct {
+	rank int64
+	id   int64
+}
+
 // Queue is a hierarchical fair priority queue. It is composed of a tree of
 // [Scope]s, where each scope holds other scopes or enqueued items.
 //
@@ -181,6 +189,32 @@ func (q *Queue[T]) Push(scope Scope, value T) error {
 	return nil
 }
 
+// Requeue re-inserts a value at its original position within the scope. The
+// pos argument must have been obtained from a previous call to [Queue.Pop].
+//
+// This is used to re-insert a value that was popped but needs to be retried.
+// The value is restored at its original priority, preserving ordering relative
+// to other values in the same scope.
+//
+// Requeue returns [ErrNotFound] if the scope does not exist.
+func (q *Queue[T]) Requeue(scope Scope, value T, pos Position) error {
+	q.init()
+
+	parent, err := q.findScope(scope)
+	if err != nil {
+		return err
+	}
+
+	_ = parent.CreateValueAt(value, pos.rank, pos.id)
+
+	// Now that our scope has a value, we need to make sure that our scope is
+	// present in the pqueue heap of all its parent (recursively).
+	q.markAlive(parent)
+
+	q.len++
+	return nil
+}
+
 // markAlive marks the provided scopeNode as alive, allowing it to be traversed
 // from the root.
 //
@@ -229,7 +263,7 @@ func (q *Queue[T]) Peek() (T, Scope) {
 }
 
 // Pop removes and returns the next value with the highest priority along with
-// its scope.
+// its scope and position.
 //
 // Priority is determined by traversing the scope tree, selecting the scope with
 // the lowest rank at each traversal, followed by the lowest rank of the
@@ -239,8 +273,12 @@ func (q *Queue[T]) Peek() (T, Scope) {
 // fairness, call [Queue.AdjustScope] with the returned scope to adjust its priority
 // based on some cost of the returned value.
 //
-// If q is empty, Pop returns the zero value for T and a nil path.
-func (q *Queue[T]) Pop() (T, Scope) {
+// The returned [Position] can be passed to [Queue.Requeue] to restore the
+// value at its original position if the assignment fails.
+//
+// If q is empty, Pop returns the zero value for T, a nil Scope, and a zero
+// Position.
+func (q *Queue[T]) Pop() (T, Scope, Position) {
 	q.init()
 
 	cur := &q.root
@@ -248,7 +286,7 @@ func (q *Queue[T]) Pop() (T, Scope) {
 	for {
 		if cur.Len() == 0 {
 			var zero T
-			return zero, nil
+			return zero, nil, Position{}
 		}
 
 		// We don't want to Pop yet: we want to Pop the queued element,
@@ -256,7 +294,7 @@ func (q *Queue[T]) Pop() (T, Scope) {
 		minValue, scope := cur.Peek()
 		switch k := minValue.value.(type) {
 		case T:
-			_, _ = cur.Pop()
+			_, _, pos := cur.Pop()
 
 			if cur.Len() == 0 {
 				// We just removed the final child, so now we need to tombstone
@@ -266,7 +304,7 @@ func (q *Queue[T]) Pop() (T, Scope) {
 			}
 
 			q.len--
-			return k, scope
+			return k, scope, pos
 		case *pqueue[T]:
 			cur = minValue
 		default:

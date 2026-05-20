@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 )
 
 // PipelineStages contains configuration for each stage within a pipeline
@@ -140,8 +140,8 @@ func (p *Pipeline) Name() string {
 }
 
 // Wrap implements EntryMiddleware
-func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
-	handlerIn := make(chan api.Entry)
+func (p *Pipeline) Wrap(next util.EntryHandler) util.EntryHandler {
+	handlerIn := make(chan util.Entry)
 	nextChan := next.Chan()
 	wg, once := sync.WaitGroup{}, sync.Once{}
 	pipelineIn := make(chan Entry)
@@ -173,7 +173,7 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 			}
 		}
 	}()
-	return api.NewEntryHandler(handlerIn, func() {
+	return util.NewEntryHandler(handlerIn, func() {
 		once.Do(func() { close(handlerIn) })
 		wg.Wait()
 		p.Cleanup()

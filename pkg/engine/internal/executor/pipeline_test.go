@@ -14,7 +14,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // CSVToArrow converts a CSV string to an Arrow record based on the provided schema.
@@ -122,14 +121,6 @@ func (i *instrumentedPipeline) Close() {
 func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	i.callCount["Read"]++
 	return i.inner.Read(ctx)
-}
-
-// Region implements RegionProvider.
-func (i *instrumentedPipeline) Region() *xcap.Region {
-	if provider, ok := i.inner.(RegionProvider); ok {
-		return provider.Region()
-	}
-	return nil
 }
 
 var _ Pipeline = (*instrumentedPipeline)(nil)

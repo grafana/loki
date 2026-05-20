@@ -24,6 +24,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"cloud.google.com/go/iam/apiv1/iampb"
 	gapic "cloud.google.com/go/storage/internal/apiv2"
@@ -67,6 +68,12 @@ const (
 	// Default value for Read ID on BidiReadObject streams. Used for NewRangeReader
 	// which only does a single read per stream.
 	defaultReadID = 1
+
+	forceDirectConnectivityEnforced       = "ENFORCED"
+	directConnectivityHeaderKey           = "force_direct_connectivity"
+	directConnectivityDiagnosticHeaderKey = "direct_connectivity_diagnostic"
+	requestParamsHeaderKey                = "x-goog-request-params"
+	directPathEndpointPrefix              = "google-c2p:///"
 )
 
 // defaultGRPCOptions returns a set of the default client options
@@ -116,6 +123,11 @@ type grpcStorageClient struct {
 	raw      *gapic.Client
 	settings *settings
 	config   *storageConfig
+	dpDiag   string
+
+	// configFeatureAttributes tracks client-level features that are enabled for this
+	// client instance.
+	configFeatureAttributes uint32
 }
 
 func enableClientMetrics(ctx context.Context, s *settings, config storageConfig) (*metricsContext, error) {
@@ -160,16 +172,90 @@ func newGRPCStorageClient(ctx context.Context, opts ...storageOption) (*grpcStor
 			log.Printf("Failed to enable client metrics: %v", err)
 		}
 	}
+	c := &grpcStorageClient{
+		settings: s,
+		config:   &config,
+	}
+	// Add routing interceptors to inject headers.
+	ui, si := c.routingInterceptors()
+	s.clientOption = append(s.clientOption,
+		option.WithGRPCDialOption(grpc.WithChainUnaryInterceptor(ui)),
+		option.WithGRPCDialOption(grpc.WithChainStreamInterceptor(si)),
+	)
+	c.dpDiag = directPathDiagnostic(ctx, s.clientOption...)
 	g, err := gapic.NewClient(ctx, s.clientOption...)
 	if err != nil {
 		return nil, err
 	}
+	c.raw = g
+	return c, nil
+}
 
-	return &grpcStorageClient{
-		raw:      g,
-		settings: s,
-		config:   &config,
-	}, nil
+func (c *grpcStorageClient) routingInterceptors() (grpc.UnaryClientInterceptor, grpc.StreamClientInterceptor) {
+	unary := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		ctx, err := c.prepareDirectPathMetadata(ctx, cc.Target())
+		if err != nil {
+			return err
+		}
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+
+	stream := func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		ctx, err := c.prepareDirectPathMetadata(ctx, cc.Target())
+		if err != nil {
+			return nil, err
+		}
+		return streamer(ctx, desc, cc, method, opts...)
+	}
+
+	return unary, stream
+}
+
+func (c *grpcStorageClient) prepareDirectPathMetadata(ctx context.Context, target string) (context.Context, error) {
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		md = metadata.MD{}
+	}
+
+	// Determine the intended mode based on user configuration.
+	value := ""
+	if c.config.grpcDirectPathEnforced {
+		value = forceDirectConnectivityEnforced
+	}
+
+	dc := directConnectivityHeaderKey + "=" + value
+
+	// Inject the header only if we have a value to set.
+	if value != "" {
+		if vals := md.Get(requestParamsHeaderKey); len(vals) > 0 {
+			md.Set(requestParamsHeaderKey, vals[0]+"&"+dc)
+		} else {
+			md.Set(requestParamsHeaderKey, dc)
+		}
+	}
+	// Check if the connection target supports DirectPath.
+	// Target should not be empty in a normal scenario, but treat empty target
+	// as DirectPath incompatible.
+	if !strings.HasPrefix(target, directPathEndpointPrefix) {
+		reason := directConnectivityDiagnosticHeaderKey + "=" + c.dpDiag
+		if vals := md.Get(requestParamsHeaderKey); len(vals) > 0 {
+			md.Set(requestParamsHeaderKey, vals[0]+"&"+reason)
+		} else {
+			md.Set(requestParamsHeaderKey, reason)
+		}
+	}
+
+	// Client level feature tracking.
+	features := featureAttributes(ctx)
+	features |= c.configFeatureAttributes
+	// Merge all existing headers for this key from metadata.
+	features |= mergeFeatureAttributes(md[featureTrackerHeaderName])
+
+	if features > 0 {
+		md.Set(featureTrackerHeaderName, encodeUint32(features))
+	}
+
+	return metadata.NewOutgoingContext(ctx, md), nil
 }
 
 func (c *grpcStorageClient) Close() error {
@@ -355,7 +441,16 @@ func (c *grpcStorageClient) UpdateBucket(ctx context.Context, bucket string, uat
 		fieldMask.Paths = append(fieldMask.Paths, "iam_config")
 	}
 	if uattrs.Encryption != nil {
-		fieldMask.Paths = append(fieldMask.Paths, "encryption")
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.default_kms_key")
+	}
+	if uattrs.GoogleManagedEncryptionEnforcementConfig != nil {
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.google_managed_encryption_enforcement_config")
+	}
+	if uattrs.CustomerManagedEncryptionEnforcementConfig != nil {
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.customer_managed_encryption_enforcement_config")
+	}
+	if uattrs.CustomerSuppliedEncryptionEnforcementConfig != nil {
+		fieldMask.Paths = append(fieldMask.Paths, "encryption.customer_supplied_encryption_enforcement_config")
 	}
 	if uattrs.Lifecycle != nil {
 		fieldMask.Paths = append(fieldMask.Paths, "lifecycle")
@@ -517,7 +612,7 @@ func (c *grpcStorageClient) DeleteObject(ctx context.Context, bucket, object str
 	}
 	err := run(ctx, func(ctx context.Context) error {
 		return c.raw.DeleteObject(ctx, req, s.gax...)
-	}, s.retry, s.idempotent)
+	}, s.retry, s.idempotent, withOperation("DeleteObject"), withBucket(bucket), withObject(object))
 	if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
 		return formatObjectErr(err)
 	}
@@ -551,7 +646,7 @@ func (c *grpcStorageClient) GetObject(ctx context.Context, params *getObjectPara
 		attrs = newObjectFromProto(res)
 
 		return err
-	}, s.retry, s.idempotent)
+	}, s.retry, s.idempotent, withOperation("GetObject"), withBucket(params.bucket), withObject(params.object))
 
 	if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
 		return nil, formatObjectErr(err)
@@ -660,7 +755,7 @@ func (c *grpcStorageClient) UpdateObject(ctx context.Context, params *updateObje
 		res, err := c.raw.UpdateObject(ctx, req, s.gax...)
 		attrs = newObjectFromProto(res)
 		return err
-	}, s.retry, s.idempotent)
+	}, s.retry, s.idempotent, withOperation("UpdateObject"), withBucket(params.bucket), withObject(params.object))
 	if e, ok := status.FromError(err); ok && e.Code() == codes.NotFound {
 		return nil, formatObjectErr(err)
 	}
@@ -687,7 +782,7 @@ func (c *grpcStorageClient) RestoreObject(ctx context.Context, params *restoreOb
 		res, err := c.raw.RestoreObject(ctx, req, s.gax...)
 		attrs = newObjectFromProto(res)
 		return err
-	}, s.retry, s.idempotent)
+	}, s.retry, s.idempotent, withOperation("RestoreObject"), withBucket(params.bucket), withObject(params.object))
 	if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
 		return nil, formatObjectErr(err)
 	}
@@ -717,7 +812,7 @@ func (c *grpcStorageClient) MoveObject(ctx context.Context, params *moveObjectPa
 		res, err := c.raw.MoveObject(ctx, req, s.gax...)
 		attrs = newObjectFromProto(res)
 		return err
-	}, s.retry, s.idempotent)
+	}, s.retry, s.idempotent, withOperation("MoveObject"), withBucket(params.bucket), withObject(params.srcObject))
 	if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
 		return nil, formatObjectErr(err)
 	}
@@ -926,6 +1021,9 @@ func (c *grpcStorageClient) ComposeObject(ctx context.Context, req *composeObjec
 	dstObjPb.Name = req.dstObject.name
 
 	if req.sendCRC32C {
+		if dstObjPb.Checksums == nil {
+			dstObjPb.Checksums = &storagepb.ObjectChecksums{}
+		}
 		dstObjPb.Checksums.Crc32C = &req.dstObject.attrs.CRC32C
 	}
 
@@ -960,7 +1058,7 @@ func (c *grpcStorageClient) ComposeObject(ctx context.Context, req *composeObjec
 	if err := run(ctx, func(ctx context.Context) error {
 		obj, err = c.raw.ComposeObject(ctx, rawReq, s.gax...)
 		return err
-	}, s.retry, s.idempotent); err != nil {
+	}, s.retry, s.idempotent, withOperation("ComposeObject"), withBucket(req.dstObject.bucket), withObject(req.dstObject.name)); err != nil {
 		if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
 			return nil, formatObjectErr(err)
 		}
@@ -1022,7 +1120,7 @@ func (c *grpcStorageClient) RewriteObject(ctx context.Context, req *rewriteObjec
 
 	retryCall := func(ctx context.Context) error { res, err = c.raw.RewriteObject(ctx, call, s.gax...); return err }
 
-	if err := run(ctx, retryCall, s.retry, s.idempotent); err != nil {
+	if err := run(ctx, retryCall, s.retry, s.idempotent, withOperation("RewriteObject"), withBucket(req.srcObject.bucket), withObject(req.srcObject.name)); err != nil {
 		if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
 			return nil, formatObjectErr(err)
 		}
@@ -1627,7 +1725,7 @@ func (r *gRPCReader) recv() error {
 	err := r.stream.RecvMsg(&databufs)
 	// If we get a mid-stream error on a recv call, reopen the stream.
 	// ABORTED could indicate a redirect so should also trigger a reopen.
-	if err != nil && (r.settings.retry.runShouldRetry(err) || status.Code(err) == codes.Aborted) {
+	if err != nil && (r.settings.retry.runShouldRetry(err, nil) || status.Code(err) == codes.Aborted) {
 		// This will "close" the existing stream and immediately attempt to
 		// reopen the stream, but will backoff if further attempts are necessary.
 		// Reopening the stream Recvs the first message, so if retrying is

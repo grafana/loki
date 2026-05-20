@@ -944,10 +944,10 @@ func (f *FilePages) readDictionary() error {
 }
 
 func (f *FilePages) readDictionaryPage(header *format.PageHeader, page *buffer[byte]) error {
-	if header.DictionaryPageHeader == nil {
+	if !header.DictionaryPageHeader.Valid {
 		return ErrMissingPageHeader
 	}
-	d, err := f.chunk.column.decodeDictionary(DictionaryPageHeader{header.DictionaryPageHeader}, page, header.UncompressedPageSize)
+	d, err := f.chunk.column.decodeDictionary(DictionaryPageHeader{&header.DictionaryPageHeader.V}, page, header.UncompressedPageSize)
 	if err != nil {
 		return err
 	}
@@ -956,22 +956,22 @@ func (f *FilePages) readDictionaryPage(header *format.PageHeader, page *buffer[b
 }
 
 func (f *FilePages) readDataPageV1(header *format.PageHeader, page *buffer[byte]) (Page, error) {
-	if header.DataPageHeader == nil {
+	if !header.DataPageHeader.Valid {
 		return nil, ErrMissingPageHeader
 	}
-	if isDictionaryFormat(header.DataPageHeader.Encoding) && f.dictionary == nil {
+	if isDictionaryFormat(header.DataPageHeader.V.Encoding) && f.dictionary == nil {
 		if err := f.readDictionary(); err != nil {
 			return nil, err
 		}
 	}
-	return f.chunk.column.decodeDataPageV1(DataPageHeaderV1{header.DataPageHeader}, page, f.dictionary, header.UncompressedPageSize)
+	return f.chunk.column.decodeDataPageV1(DataPageHeaderV1{&header.DataPageHeader.V}, page, f.dictionary, header.UncompressedPageSize)
 }
 
 func (f *FilePages) readDataPageV2(header *format.PageHeader, page *buffer[byte]) (Page, error) {
-	if header.DataPageHeaderV2 == nil {
+	if !header.DataPageHeaderV2.Valid {
 		return nil, ErrMissingPageHeader
 	}
-	if isDictionaryFormat(header.DataPageHeaderV2.Encoding) && f.dictionary == nil {
+	if isDictionaryFormat(header.DataPageHeaderV2.V.Encoding) && f.dictionary == nil {
 		// If the program seeked to a row passed the first page, the dictionary
 		// page may not have been seen, in which case we have to lazily load it
 		// from the beginning of column chunk.
@@ -979,7 +979,7 @@ func (f *FilePages) readDataPageV2(header *format.PageHeader, page *buffer[byte]
 			return nil, err
 		}
 	}
-	return f.chunk.column.decodeDataPageV2(DataPageHeaderV2{header.DataPageHeaderV2}, page, f.dictionary, header.UncompressedPageSize)
+	return f.chunk.column.decodeDataPageV2(DataPageHeaderV2{&header.DataPageHeaderV2.V}, page, f.dictionary, header.UncompressedPageSize)
 }
 
 func (f *FilePages) readPage(header *format.PageHeader, reader *bufio.Reader) (*buffer[byte], error) {

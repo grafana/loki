@@ -1,15 +1,56 @@
 // Package xcap provides a utility to capture statistical information about the
 // lifetime of a query.
 //
-// Basic usage:
+// xcap can be used in two ways, both starting with a [Capture]:
 //
-//	ctx, capture := xcap.NewCapture(context.Background(), nil)
+// # Standalone: regions and log summaries
+//
+// Use [StartRegion] when you only need observation aggregation and
+// structured log output, without creating OTel spans.
+//
+//	// Create a capture to collect observations.
+//	ctx, capture := xcap.NewCapture(ctx, nil)
 //	defer capture.End()
 //
-//	ctx, region := xcap.StartRegion(ctx, "work")
+//	// Create a named region to scope observations.
+//	ctx, region := xcap.StartRegion(ctx, "DataObjScan")
 //	defer region.End()
 //
-//	region.Record(bytesRead.Observe(1024))
+//	// Record observations — multiple calls aggregate by statistic.
+//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
+//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
+//	// pages.scanned is now 2 (sum aggregation)
+//
+//	// After the capture ends, summarise all observations as log values.
+//	logValues := xcap.SummaryLogValues(capture)
+//	level.Info(logger).Log(logValues...)
+//
+// # With OTel tracing: spans, observations and log summaries
+//
+// Use [StartSpan] when you want observations flushed as OTel span
+// attributes in addition to the log summary. [StartSpan] takes a
+// standard [trace.Tracer] and returns a [Span] whose End method writes
+// the aggregated observations as span attributes before ending the
+// span. The observations are also registered with the [Capture] for
+// log summaries.
+//
+//	// Create a capture to collect observations.
+//	ctx, capture := xcap.NewCapture(ctx, nil)
+//	defer capture.End()
+//
+//	// Start a span — this also creates a linked region.
+//	ctx, span := xcap.StartSpan(ctx, otel.Tracer("engine"), "DataObjScan",
+//	    trace.WithAttributes(attribute.Int("num_targets", 5)),
+//	)
+//	defer span.End()
+//
+//	// Deep in the call stack, retrieve the region from context.
+//	region := xcap.RegionFromContext(ctx)
+//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
+//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
+//	// When span.End() is called:
+//	//   1. pages.scanned=2 is set as a span attribute.
+//	//   2. The observation is also available via SummaryLogValues(capture).
 package xcap
 
 import (
@@ -99,34 +140,50 @@ func (c *Capture) LinkParent(parent *Region) {
 	}
 }
 
-// GetAllStatistics returns statistics used across all regions
+// Merge incorporates all regions from src into c. If parent is non-nil, the
+// root regions of src are re-parented onto it before being added to c,
+// preserving the parent/child relationships when src's data is presented as
+// part of c's hierarchy.
+//
+// Regions are shared by reference between c and src after Merge returns.
+//
+// Merge is a no-op if c or src is nil, or if c has already been ended.
+func (c *Capture) Merge(parent *Region, src *Capture) {
+	if c == nil || src == nil {
+		return
+	}
+
+	if parent != nil {
+		src.LinkParent(parent)
+	}
+
+	for _, region := range src.Regions() {
+		c.AddRegion(region)
+	}
+}
+
+// getAllStatistics returns statistics used across all regions
 // in this capture.
-func (c *Capture) getAllStatistics() []Statistic {
+func (c *Capture) getAllStatistics() map[StatisticKey]Statistic {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	statistics := make(map[StatisticKey]Statistic)
+	stats := make(map[StatisticKey]Statistic)
 	for _, region := range c.regions {
 		region.mu.RLock()
 		for key, obs := range region.observations {
-			// Statistics with the same definition will have the same key.
-			if _, exists := statistics[key]; !exists {
-				statistics[key] = obs.Statistic
+			if _, exists := stats[key]; !exists {
+				stats[key] = obs.Statistic
 			}
 		}
 		region.mu.RUnlock()
 	}
-
-	result := make([]Statistic, 0, len(statistics))
-	for _, stat := range statistics {
-		result = append(result, stat)
-	}
-
-	return result
+	return stats
 }
 
 // MarshalBinary implements encoding.BinaryMarshaler for Capture.
-// It serializes the Capture to its protobuf representation and returns the binary data.
+// It serializes the Capture to its protobuf representation and returns
+// the binary data.
 func (c *Capture) MarshalBinary() ([]byte, error) {
 	if c == nil {
 		return nil, nil
@@ -167,4 +224,60 @@ func (c *Capture) UnmarshalBinary(data []byte) error {
 	}
 
 	return nil
+}
+
+// Value computes the value of a statistic from the capture, rolling up from all
+// regions. If the statistic is not present in any region, Value returns nil.
+func (c *Capture) Value(stat Statistic) *AggregatedObservation {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	key := stat.Key()
+	var rolled *AggregatedObservation
+
+	for _, region := range c.regions {
+		region.mu.RLock()
+		obs, ok := region.observations[key]
+		if !ok {
+			region.mu.RUnlock()
+			continue
+		}
+		if rolled == nil {
+			rolled = &AggregatedObservation{
+				Statistic: obs.Statistic,
+				Value:     obs.Value,
+				Count:     obs.Count,
+			}
+		} else {
+			rolled.Merge(obs)
+		}
+		region.mu.RUnlock()
+	}
+
+	return rolled
+}
+
+// Value gets a typed value from a capture. If the statistic it not present in
+// any region from the capture, or the statistic is not of type T, Value returns
+// the zero value for T.
+//
+// Use [TryValue] if you need to distinguish between a missing statistic and a
+// zero value.
+func Value[T any](c *Capture, stat Statistic) T {
+	v, _ := TryValue[T](c, stat)
+	return v
+}
+
+// TryValue gets a typed value from a capture, returning both the value and a
+// boolean indicating whether the statistic was present in the capture and
+// matching type T.
+func TryValue[T any](c *Capture, stat Statistic) (T, bool) {
+	rolled := c.Value(stat)
+	if rolled == nil {
+		var zero T
+		return zero, false
+	}
+
+	val, ok := rolled.Value.(T)
+	return val, ok
 }

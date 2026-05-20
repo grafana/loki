@@ -168,7 +168,7 @@ func newInstance(
 
 		tailers:            map[uint32]*tailer{},
 		limiter:            limiter,
-		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc),
+		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc, cfg.DelegateStreamLimits),
 		ownedStreamsSvc:    ownedStreamsSvc,
 		configs:            configs,
 
@@ -192,35 +192,6 @@ func newInstance(
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 
 	return i, err
-}
-
-// consumeChunk manually adds a chunk that was received during ingester chunk
-// transfer.
-func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *logproto.Chunk) error {
-	fp := i.getHashForLabels(ls)
-
-	s, _, _ := i.streams.LoadOrStoreNewByFP(fp,
-		func() (*stream, error) {
-			s, err := i.createStreamByFP(ctx, ls, fp)
-			s.chunkMtx.Lock() // Lock before return, because we have defer that unlocks it.
-			if err != nil {
-				return nil, err
-			}
-			return s, nil
-		},
-		func(s *stream) error {
-			s.chunkMtx.Lock()
-			return nil
-		},
-	)
-	defer s.chunkMtx.Unlock()
-
-	err := s.consumeChunk(ctx, chunk)
-	if err == nil {
-		i.metrics.memoryChunks.Inc()
-	}
-
-	return err
 }
 
 // Push will iterate over the given streams present in the PushRequest and attempt to store them.
@@ -318,7 +289,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -412,7 +383,7 @@ func (i *instance) createStreamByFP(ctx context.Context, ls labels.Labels, fp mo
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, ls))
 	policy := i.resolvePolicyForStream(ctx, ls)
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
 
 	i.onStreamCreated(s)
 

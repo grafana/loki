@@ -100,7 +100,6 @@ type KafkaReader struct {
 	client                   *kgo.Client
 	topic                    string
 	partitionID              int32
-	consumerGroup            string
 	metrics                  *ReaderMetrics
 	phase                    string
 	partitionStateMu         sync.RWMutex
@@ -220,7 +219,12 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 			return
 		}
 
+		// The record context is optional, such that it can be nil (i.e. when tracing
+		// is disabled).
 		recCtx := rec.Context
+		if recCtx == nil {
+			recCtx = context.Background()
+		}
 		if r.headerToContextExtractor != nil {
 			recCtx = r.headerToContextExtractor(recCtx, rec.Headers)
 		}

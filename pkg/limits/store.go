@@ -36,9 +36,6 @@ var (
 	)
 )
 
-// iterateFunc is a closure called for each stream.
-type iterateFunc func(tenant string, partition int32, stream streamUsage)
-
 // getPolicyBucketAndLimit determines which policy bucket to use and the max streams limit
 // for a given tenant and policy. Returns the policy bucket name and the max streams limit.
 // The policy bucket will be the input policy name only if the max streams limit is overridden for the policy.
@@ -419,7 +416,13 @@ func (s *usageStore) updateWithBuckets(i int, tenant string, partition int32, po
 		stream.totalSize = 0
 		stream.policy = policyBucket
 		stream.rateBuckets = make([]rateBucket, s.numBuckets)
+	} else if len(stream.rateBuckets) == 0 {
+		// If the stream exists but rateBuckets is not initialized (e.g., created via Update()),
+		// initialize it now. This can happen when ExceedsLimits creates a stream, then
+		// UpdateRates is called for the same stream.
+		stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
+
 	seenAtUnixNano := seenAt.UnixNano()
 	if stream.lastSeenAt <= seenAtUnixNano {
 		stream.lastSeenAt = seenAtUnixNano

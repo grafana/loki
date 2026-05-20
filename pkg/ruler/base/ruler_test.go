@@ -12,7 +12,6 @@ import (
 	"os"
 	"reflect"
 	"sort"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -211,7 +210,7 @@ func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetri
 	require.NoError(t, rulerConfig.Validate(log.NewNopLogger()))
 
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, q)
-	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, promRules.FileLoader{}, log.NewNopLogger())
+	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, newDefaultFileLoader(), log.NewNopLogger())
 	require.NoError(t, err)
 
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, reg, constants.Loki)
@@ -281,11 +280,9 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	wg.Wait()
 
 	// Ensure we have metrics in the notifier.
-	assert.NoError(t, prom_testutil.GatherAndCompare(manager.registry.(*prometheus.Registry), strings.NewReader(`
-		# HELP loki_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
-		# TYPE loki_prometheus_notifications_dropped_total counter
-		loki_prometheus_notifications_dropped_total{user="1"} 0
-	`), "loki_prometheus_notifications_dropped_total"))
+	count, err := prom_testutil.GatherAndCount(manager.registry.(*prometheus.Registry), "loki_prometheus_notifications_dropped_total")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, count)
 }
 
 func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {

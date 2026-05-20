@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/encoding/thrift"
 )
 
 // Types supported by Parquet. These types are intended to be used in combination
@@ -114,14 +115,14 @@ type SizeStatistics struct {
 // Bounding box for GEOMETRY or GEOGRAPHY type in the representation of min/max
 // value pair of coordinates from each axis.
 type BoundingBox struct {
-	XMin float64  `thrift:"1,required"`
-	XMax float64  `thrift:"2,required"`
-	YMin float64  `thrift:"3,required"`
-	YMax float64  `thrift:"4,required"`
-	ZMin *float64 `thrift:"5,optional"`
-	ZMax *float64 `thrift:"6,optional"`
-	MMin *float64 `thrift:"7,optional"`
-	MMax *float64 `thrift:"8,optional"`
+	XMin float64              `thrift:"1,required"`
+	XMax float64              `thrift:"2,required"`
+	YMin float64              `thrift:"3,required"`
+	YMax float64              `thrift:"4,required"`
+	ZMin thrift.Null[float64] `thrift:"5,optional"`
+	ZMax thrift.Null[float64] `thrift:"6,optional"`
+	MMin thrift.Null[float64] `thrift:"7,optional"`
+	MMax thrift.Null[float64] `thrift:"8,optional"`
 }
 
 // Statistics specific to Geometry and Geography logical types
@@ -488,17 +489,17 @@ func (t *LogicalType) String() string {
 // The nodes are listed in depth first traversal order.
 type SchemaElement struct {
 	// Data type for this field. Not set if the current element is a non-leaf node.
-	Type *Type `thrift:"1,optional"`
+	Type thrift.Null[Type] `thrift:"1,optional"`
 
 	// If type is FixedLenByteArray, this is the byte length of the values.
 	// Otherwise, if specified, this is the maximum bit length to store any of the values.
 	// (e.g. a low cardinality INT col could have this set to 3).  Note that this is
 	// in the schema, and therefore fixed for the entire file.
-	TypeLength *int32 `thrift:"2,optional"`
+	TypeLength thrift.Null[int32] `thrift:"2,optional"`
 
 	// repetition of the field. The root of the schema does not have a repetition_type.
 	// All other nodes must have one.
-	RepetitionType *FieldRepetitionType `thrift:"3,optional"`
+	RepetitionType thrift.Null[FieldRepetitionType] `thrift:"3,optional"`
 
 	// Name of the field in the schema.
 	Name string `thrift:"4,required"`
@@ -507,20 +508,20 @@ type SchemaElement struct {
 	// the nesting is flattened to a single list by a depth-first traversal.
 	// The children count is used to construct the nested relationship.
 	// This field is not set when the element is a primitive type
-	NumChildren *int32 `thrift:"5,optional"`
+	NumChildren thrift.Null[int32] `thrift:"5,optional"`
 
 	// DEPRECATED: When the schema is the result of a conversion from another model.
 	// Used to record the original type to help with cross conversion.
 	//
 	// This is superseded by logicalType.
-	ConvertedType *deprecated.ConvertedType `thrift:"6,optional"`
+	ConvertedType thrift.Null[deprecated.ConvertedType] `thrift:"6,optional"`
 
 	// DEPRECATED: Used when this column contains decimal data.
 	// See the DECIMAL converted type for more details.
 	//
 	// This is superseded by using the DecimalType annotation in logicalType.
-	Scale     *int32 `thrift:"7,optional"`
-	Precision *int32 `thrift:"8,optional"`
+	Scale     thrift.Null[int32] `thrift:"7,optional"`
+	Precision thrift.Null[int32] `thrift:"8,optional"`
 
 	// When the original schema supports field ids, this will save the
 	// original field id in the parquet schema.
@@ -530,7 +531,7 @@ type SchemaElement struct {
 	//
 	// LogicalType replaces ConvertedType, but ConvertedType is still required
 	// for some logical types to ensure forward-compatibility in format v1.
-	LogicalType *LogicalType `thrift:"10,optional"`
+	LogicalType thrift.Null[LogicalType] `thrift:"10,optional"`
 }
 
 // Encodings supported by Parquet. Not all encodings are valid for all types.
@@ -775,7 +776,7 @@ type DataPageHeaderV2 struct {
 	// definition_levels_byte_length + repetition_levels_byte_length + 1 and compressed_page_size (included)
 	// is compressed with the compression_codec.
 	// If missing it is considered compressed.
-	IsCompressed *bool `thrift:"7,optional"`
+	IsCompressed thrift.Null[bool] `thrift:"7,optional"`
 
 	// Optional statistics for the data in this page.
 	// The writezero tag supports writezero fields of Statistics.
@@ -858,10 +859,10 @@ type PageHeader struct {
 	CRC int32 `thrift:"4,optional"`
 
 	// Headers for page specific data. One only will be set.
-	DataPageHeader       *DataPageHeader       `thrift:"5,optional"`
-	IndexPageHeader      *IndexPageHeader      `thrift:"6,optional"`
-	DictionaryPageHeader *DictionaryPageHeader `thrift:"7,optional"`
-	DataPageHeaderV2     *DataPageHeaderV2     `thrift:"8,optional"`
+	DataPageHeader       thrift.Null[DataPageHeader]       `thrift:"5,optional"`
+	IndexPageHeader      thrift.Null[IndexPageHeader]      `thrift:"6,optional"`
+	DictionaryPageHeader thrift.Null[DictionaryPageHeader] `thrift:"7,optional"`
+	DataPageHeaderV2     thrift.Null[DataPageHeaderV2]     `thrift:"8,optional"`
 }
 
 // Wrapper struct to store key values.
@@ -902,10 +903,10 @@ type ColumnMetaData struct {
 
 	// Set of all encodings used for this column. The purpose is to validate
 	// whether we can decode those pages.
-	Encoding []Encoding `thrift:"2,required"`
+	Encoding thrift.Slice[Encoding] `thrift:"2,required"`
 
 	// Path in schema.
-	PathInSchema []string `thrift:"3,required"`
+	PathInSchema thrift.Slice[string] `thrift:"3,required"`
 
 	// Compression codec.
 	Codec CompressionCodec `thrift:"4,required"`
@@ -1011,7 +1012,7 @@ type ColumnChunk struct {
 type RowGroup struct {
 	// Metadata for each column chunk in this row group.
 	// This list must have the same order as the SchemaElement list in FileMetaData.
-	Columns []ColumnChunk `thrift:"1,required"`
+	Columns thrift.Slice[ColumnChunk] `thrift:"1,required"`
 
 	// Total byte size of all the uncompressed column data in this row group.
 	TotalByteSize int64 `thrift:"2,required"`
@@ -1036,6 +1037,17 @@ type RowGroup struct {
 	// would be omitted while Ordinal=1,2,... would be written, which breaks
 	// readers with strict validation for row group ordinals.
 	Ordinal int16 `thrift:"7,optional,writezero"`
+}
+
+func (r *RowGroup) Reset() {
+	r.FileOffset = 0
+	r.NumRows = 0
+	r.TotalByteSize = 0
+	r.SortingColumns = r.SortingColumns[:0]
+	r.Columns = r.Columns[:0]
+	r.Ordinal = 0
+	r.TotalByteSize = 0
+	r.TotalCompressedSize = 0
 }
 
 // Empty struct to signal the order defined by the physical or logical type.
@@ -1125,6 +1137,16 @@ type OffsetIndex struct {
 	UnencodedByteArrayDataBytes []int64 `thrift:"2,optional"`
 }
 
+func (o *OffsetIndex) Reset() {
+	for k := range o.PageLocations {
+		o.PageLocations[k].Offset = 0
+		o.PageLocations[k].CompressedPageSize = 0
+		o.PageLocations[k].FirstRowIndex = 0
+	}
+	o.PageLocations = o.PageLocations[:0]
+	o.UnencodedByteArrayDataBytes = o.UnencodedByteArrayDataBytes[:0]
+}
+
 // Description for ColumnIndex.
 // Each <array-field>[i] refers to the page at OffsetIndex.PageLocations[i]
 type ColumnIndex struct {
@@ -1174,6 +1196,22 @@ type ColumnIndex struct {
 	DefinitionLevelHistogram []int64 `thrift:"7,optional"`
 }
 
+func (c *ColumnIndex) Reset() {
+	c.DefinitionLevelHistogram = c.DefinitionLevelHistogram[:0]
+	c.RepetitionLevelHistogram = c.RepetitionLevelHistogram[:0]
+	c.NullCounts = c.NullCounts[:0]
+	c.NullPages = c.NullPages[:0]
+	c.BoundaryOrder = 0
+	for k := range c.MaxValues {
+		c.MaxValues[k] = c.MaxValues[k][:0]
+	}
+	c.MaxValues = c.MaxValues[:0]
+	for k := range c.MinValues {
+		c.MinValues[k] = c.MinValues[k][:0]
+	}
+	c.MinValues = c.MinValues[:0]
+}
+
 type AesGcmV1 struct {
 	// AAD prefix.
 	AadPrefix []byte `thrift:"1,optional"`
@@ -1214,13 +1252,13 @@ type FileMetaData struct {
 	// The column metadata contains the path in the schema for that column which can be
 	// used to map columns to nodes in the schema.
 	// The first element is the root.
-	Schema []SchemaElement `thrift:"2,required"`
+	Schema thrift.Slice[SchemaElement] `thrift:"2,required"`
 
 	// Number of rows in this file.
 	NumRows int64 `thrift:"3,required"`
 
 	// Row groups in this file.
-	RowGroups []RowGroup `thrift:"4,required"`
+	RowGroups thrift.Slice[RowGroup] `thrift:"4,required"`
 
 	// Optional key/value metadata.
 	KeyValueMetadata []KeyValue `thrift:"5,optional"`

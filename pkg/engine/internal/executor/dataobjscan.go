@@ -13,13 +13,14 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type dataobjScanOptions struct {
@@ -35,7 +36,6 @@ type dataobjScanOptions struct {
 type dataobjScan struct {
 	opts   dataobjScanOptions
 	logger log.Logger
-	region *xcap.Region
 
 	initialized     bool
 	initializedAt   time.Time
@@ -51,11 +51,10 @@ var _ Pipeline = (*dataobjScan)(nil)
 // [arrow.RecordBatch] composed of the requested log section in a data object. Rows
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
-func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger, region *xcap.Region) *dataobjScan {
+func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
 	return &dataobjScan{
 		opts:   opts,
 		logger: logger,
-		region: region,
 	}
 }
 
@@ -67,7 +66,12 @@ func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if !s.initialized {
 		return nil, errPipelineNotOpen
 	}
-	return s.read(xcap.ContextWithRegion(ctx, s.region))
+
+	rec, err := s.read(ctx)
+
+	assertions.CheckColumnDuplicates(rec)
+
+	return rec, err
 }
 
 func (s *dataobjScan) init(ctx context.Context) error {
@@ -75,13 +79,40 @@ func (s *dataobjScan) init(ctx context.Context) error {
 		return nil
 	}
 
-	// [dataobjScan.initLogs] depends on the result of [dataobjScan.initStreams]
-	// (to know whether label columns are needed), so we must initialize streams
-	// first.
-	if err := s.initStreams(ctx); err != nil {
-		return fmt.Errorf("initializing streams: %w", err)
-	} else if err := s.initLogs(ctx); err != nil {
-		return fmt.Errorf("initializing logs: %w", err)
+	columnsToRead := projectedLabelColumns(s.opts.StreamsSection, s.opts.Projections)
+	includeStreamID := len(columnsToRead) > 0 || len(s.opts.StreamIDs) > 0
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		streams, streamsInjector, err := s.initStreams(ctx, columnsToRead)
+		if err != nil {
+			return fmt.Errorf("initializing streams: %w", err)
+		}
+
+		s.streams = streams
+		s.streamsInjector = streamsInjector
+		return nil
+	})
+
+	g.Go(func() error {
+		reader, desiredSchema, err := s.initLogs(ctx, includeStreamID)
+		if err != nil {
+			return fmt.Errorf("initializing logs: %w", err)
+		}
+		s.reader = reader
+		s.desiredSchema = desiredSchema
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		if s.streams != nil {
+			s.streams.Close()
+		}
+		if s.reader != nil {
+			_ = s.reader.Close()
+		}
+		return err
 	}
 
 	s.initialized = true
@@ -89,29 +120,25 @@ func (s *dataobjScan) init(ctx context.Context) error {
 	return nil
 }
 
-func (s *dataobjScan) initStreams(ctx context.Context) error {
+func (s *dataobjScan) initStreams(ctx context.Context, columnsToRead []*streams.Column) (*streamsView, *streamInjector, error) {
 	if s.opts.StreamsSection == nil {
-		return fmt.Errorf("no streams section provided")
+		return nil, nil, fmt.Errorf("no streams section provided")
 	}
 
-	columnsToRead := projectedLabelColumns(s.opts.StreamsSection, s.opts.Projections)
 	if len(columnsToRead) == 0 {
-		s.streams = nil
-		s.streamsInjector = nil
-		return nil
+		return nil, nil, nil
 	}
 
-	s.streams = newStreamsView(s.opts.StreamsSection, &streamsViewOptions{
+	streamsView := newStreamsView(s.opts.StreamsSection, &streamsViewOptions{
 		StreamIDs:    s.opts.StreamIDs,
 		LabelColumns: columnsToRead,
 		BatchSize:    int(s.opts.BatchSize),
 	})
-	if err := s.streams.Open(ctx); err != nil {
-		return fmt.Errorf("opening streams view: %w", err)
+	if err := streamsView.Open(ctx); err != nil {
+		return nil, nil, fmt.Errorf("opening streams view: %w", err)
 	}
 
-	s.streamsInjector = newStreamInjector(s.streams)
-	return nil
+	return streamsView, newStreamInjector(streamsView), nil
 }
 
 // projectedLabelColumns returns the label columns to read from the given
@@ -169,17 +196,17 @@ func projectedLabelColumns(sec *streams.Section, projections []physical.ColumnEx
 	return found
 }
 
-func (s *dataobjScan) initLogs(ctx context.Context) error {
+func (s *dataobjScan) initLogs(ctx context.Context, includeStreamID bool) (*logs.Reader, *arrow.Schema, error) {
 	if s.opts.LogsSection == nil {
-		return fmt.Errorf("no logs section provided")
+		return nil, nil, fmt.Errorf("no logs section provided")
 	}
 
 	predicates := s.opts.Predicates
 
 	var columnsToRead []*logs.Column
 
-	if s.streams != nil || len(s.opts.StreamIDs) > 0 {
-		// We're reading sreams, so we need to include the stream ID column.
+	if includeStreamID {
+		// We're reading streams, so we need to include the stream ID column.
 		var streamIDColumn *logs.Column
 
 		for _, col := range s.opts.LogsSection.Columns() {
@@ -191,7 +218,7 @@ func (s *dataobjScan) initLogs(ctx context.Context) error {
 		}
 
 		if streamIDColumn == nil {
-			return fmt.Errorf("logs section does not contain stream ID column")
+			return nil, nil, fmt.Errorf("logs section does not contain stream ID column")
 		}
 
 		if len(s.opts.StreamIDs) > 0 {
@@ -206,7 +233,7 @@ func (s *dataobjScan) initLogs(ctx context.Context) error {
 
 	columnsToRead = append(columnsToRead, projectedLogsColumns(s.opts.LogsSection, s.opts.Projections)...)
 
-	s.reader = logs.NewReader(logs.ReaderOptions{
+	reader := logs.NewReader(logs.ReaderOptions{
 		// TODO(rfratto): is it possible to hit an edge case where len(columnsToRead)
 		// == 0, indicating that we don't need to read any logs at all? How should we
 		// handle that?
@@ -215,14 +242,15 @@ func (s *dataobjScan) initLogs(ctx context.Context) error {
 		Predicates: predicates,
 		Allocator:  memory.DefaultAllocator,
 	})
-	if err := s.reader.Open(ctx); err != nil {
-		return fmt.Errorf("opening logs reader: %w", err)
+	if err := reader.Open(ctx); err != nil {
+		return nil, nil, fmt.Errorf("opening logs reader: %w", err)
 	}
 
 	// Create the engine-compatible expected schema for the logs section.
-	origSchema := s.reader.Schema()
+	origSchema := reader.Schema()
 	if got, want := origSchema.NumFields(), len(columnsToRead); got != want {
-		return fmt.Errorf("logs.Reader returned schema with %d fields, expected %d", got, want)
+		_ = reader.Close()
+		return nil, nil, fmt.Errorf("logs.Reader returned schema with %d fields, expected %d", got, want)
 	}
 
 	// Convert the logs columns to engine-compatible fields.
@@ -230,13 +258,13 @@ func (s *dataobjScan) initLogs(ctx context.Context) error {
 	for _, col := range columnsToRead {
 		field, err := logsColumnToEngineField(col)
 		if err != nil {
-			return err
+			_ = reader.Close()
+			return nil, nil, err
 		}
 		desiredFields = append(desiredFields, field)
 	}
 
-	s.desiredSchema = arrow.NewSchema(desiredFields, nil)
-	return nil
+	return reader, arrow.NewSchema(desiredFields, nil), nil
 }
 
 func makeScalars[S ~[]E, E any](s S) []scalar.Scalar {
@@ -386,9 +414,6 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	if s.region != nil {
-		s.region.End()
-	}
 	if s.streams != nil {
 		s.streams.Close()
 	}
@@ -400,10 +425,4 @@ func (s *dataobjScan) Close() {
 	s.streams = nil
 	s.streamsInjector = nil
 	s.reader = nil
-	s.region = nil
-}
-
-// Region implements RegionProvider.
-func (s *dataobjScan) Region() *xcap.Region {
-	return s.region
 }

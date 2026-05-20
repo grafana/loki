@@ -7,9 +7,12 @@ import (
 	"io"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -20,11 +23,23 @@ import (
 )
 
 type logsIndexCalculation interface {
+	// Name returns a short identifier for this calculation step, used for metrics labels.
+	Name() string
 	// Prepare is called before the first batch of logs is processed in order to initialize any state.
-	Prepare(ctx context.Context, section *dataobj.Section, stats logs.Stats) error
+	Prepare(ctx context.Context, calcCtx *logsCalculationContext, section *dataobj.Section, stats logs.Stats) error
 	// ProcessBatch is called for each batch of logs records.
-	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
+	//
+	// If ProcessBatchNeedsBuilderLock returns true, implementations can assume
+	// to have exclusive access to the builder via the calculation context and
+	// must not retain references to it after the call returns. If false, the
+	// implementation MUST NOT touch the shared builder during ProcessBatch;
+	// all shared-state mutation must be deferred to Flush.
 	ProcessBatch(ctx context.Context, context *logsCalculationContext, batch []logs.Record) error
+	// ProcessBatchNeedsBuilderLock reports whether ProcessBatch mutates the
+	// shared builder. When false, ProcessBatch is safe to run concurrently
+	// with other sections' lock-free ProcessBatch calls (each section has its
+	// own calculation-step state, so there is no cross-section sharing).
+	ProcessBatchNeedsBuilderLock() bool
 	// Flush is called after all logs in a section have been processed.
 	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
 	Flush(ctx context.Context, context *logsCalculationContext) error
@@ -35,7 +50,11 @@ type logsCalculationContext struct {
 	objectPath     string
 	sectionIdx     int64
 	streamIDLookup map[int64]int64
-	builder        *indexobj.Builder
+	// TODO(twhitney): monitor the memory of this. [streamLabels] is passed in from Calculate,
+	// and is thus object scoped. As longs as streams sections stay small enough this shouldn't
+	// be a problem.
+	streamLabels map[int64]labels.Labels // source stream ID -> labels
+	builder      *indexobj.Builder
 }
 
 // These steps are applied to all logs and are unique to a section
@@ -43,6 +62,8 @@ func getLogsCalculationSteps() []logsIndexCalculation {
 	return []logsIndexCalculation{
 		&streamStatisticsCalculation{},
 		&columnValuesCalculation{},
+		&statsCalculation{sortSchemaKeys: defaultSortSchemaKeys},
+		&labelPostingsCalculation{},
 	}
 }
 
@@ -51,10 +72,24 @@ func getLogsCalculationSteps() []logsIndexCalculation {
 type Calculator struct {
 	indexobjBuilder *indexobj.Builder
 	builderMtx      sync.Mutex
+	metrics         *calculatorMetrics
 }
 
 func NewCalculator(indexobjBuilder *indexobj.Builder) *Calculator {
-	return &Calculator{indexobjBuilder: indexobjBuilder}
+	return &Calculator{
+		indexobjBuilder: indexobjBuilder,
+		metrics:         newCalculatorMetrics(),
+	}
+}
+
+// RegisterMetrics registers the calculator's prometheus metrics with the given registerer.
+func (c *Calculator) RegisterMetrics(reg prometheus.Registerer) error {
+	return c.metrics.register(reg)
+}
+
+// UnregisterMetrics unregisters the calculator's prometheus metrics.
+func (c *Calculator) UnregisterMetrics(reg prometheus.Registerer) {
+	c.metrics.unregister(reg)
 }
 
 func (c *Calculator) Reset() {
@@ -79,17 +114,24 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	g, streamsCtx := errgroup.WithContext(ctx)
 	g.SetLimit(runtime.GOMAXPROCS(0))
 	streamIDLookupByTenant := sync.Map{}
+	streamLabelsByTenant := sync.Map{}
 
 	// Streams Section: process these first to ensure all streams have been added to the builder and are given new IDs.
 	for i, section := range reader.Sections().Filter(streams.CheckSection) {
 		g.Go(func() error {
 			streamIDLookup := make(map[int64]int64)
-			if err := c.processStreamsSection(streamsCtx, section, streamIDLookup); err != nil {
+			streamLabels, err := c.processStreamsSection(streamsCtx, section, streamIDLookup)
+			if err != nil {
 				return fmt.Errorf("failed to process stream section path=%s section=%d: %w", objectPath, i, err)
 			}
 			// This is safe as each data object has just one streams section per tenant, which means different sections cannot overwrite the results of each other.
 			_, exists := streamIDLookupByTenant.LoadOrStore(section.Tenant, streamIDLookup)
 			if exists {
+				panic("multiple streams sections for the same tenant within one data object")
+			}
+
+			_, labelsExist := streamLabelsByTenant.LoadOrStore(section.Tenant, streamLabels)
+			if labelsExist {
 				panic("multiple streams sections for the same tenant within one data object")
 			}
 			return nil
@@ -112,9 +154,13 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 			if !ok {
 				return fmt.Errorf("stream ID lookup not found for tenant %s", section.Tenant)
 			}
+			streamLabelsVal, ok := streamLabelsByTenant.Load(section.Tenant)
+			if !ok {
+				return fmt.Errorf("stream labels not found for tenant %s", section.Tenant)
+			}
 			// 1. A bloom filter for each column in the logs section.
 			// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
-			if err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup.(map[int64]int64)); err != nil {
+			if err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup.(map[int64]int64), streamLabelsVal.(map[int64]labels.Labels)); err != nil {
 				return fmt.Errorf("failed to process logs section path=%s section=%d: %w", objectPath, i, err)
 			}
 			return nil
@@ -128,24 +174,25 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	return nil
 }
 
-func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section, streamIDLookup map[int64]int64) error {
+func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section, streamIDLookup map[int64]int64) (map[int64]labels.Labels, error) {
 	streamSection, err := streams.Open(ctx, section)
 	if err != nil {
-		return fmt.Errorf("failed to open stream section: %w", err)
+		return nil, fmt.Errorf("failed to open stream section: %w", err)
 	}
 
 	rowReader := streams.NewRowReader(streamSection)
 	defer rowReader.Close()
 
 	if err := rowReader.Open(ctx); err != nil {
-		return fmt.Errorf("failed to open stream row reader: %w", err)
+		return nil, fmt.Errorf("failed to open stream row reader: %w", err)
 	}
 
 	streamBuf := make([]streams.Stream, 8192)
+	streamLabels := map[int64]labels.Labels{}
 	for {
 		n, err := rowReader.Read(ctx, streamBuf)
 		if err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("failed to read stream section: %w", err)
+			return nil, fmt.Errorf("failed to read stream section: %w", err)
 		}
 		if n == 0 && errors.Is(err, io.EOF) {
 			break
@@ -159,18 +206,19 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 					return fmt.Errorf("failed to append to stream: %w", err)
 				}
 				streamIDLookup[stream.ID] = newStreamID
+				streamLabels[stream.ID] = stream.Labels
 			}
 			return nil
 		}()
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return streamLabels, nil
 }
 
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
-func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64) error {
+func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64, streamLabels map[int64]labels.Labels) error {
 	logsBuf := make([]logs.Record, 8192)
 
 	logsSection, err := logs.Open(ctx, section)
@@ -191,16 +239,36 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		objectPath:     objectPath,
 		sectionIdx:     sectionIdx,
 		streamIDLookup: streamIDLookup,
+		streamLabels:   streamLabels,
 		builder:        c.indexobjBuilder,
 	}
 
+	// Lock-free steps run without builderMtx held, so they must not touch the
+	// shared builder. We pass them a context with builder=nil to turn any
+	// accidental access into an immediate nil-pointer panic instead of a
+	// silent data race.
+	lockFreeContext := *calculationContext
+	lockFreeContext.builder = nil
+
 	calculationSteps := getLogsCalculationSteps()
 
+	// Track cumulative duration per calculation step across all batches + flush.
+	stepDurations := make([]time.Duration, len(calculationSteps))
+
+	// Lock the builder during Prepare because some calculations (e.g.,
+	// columnValuesCalculation) mutate shared builder state via
+	// PrepareBloomColumn. The Calculate method dispatches one goroutine per
+	// logs section (see g.Go in Calculate), so two processLogsSection calls
+	// for sections of the same tenant within one data object run
+	// concurrently against the same per-tenant postings builder.
+	c.builderMtx.Lock()
 	for _, calculation := range calculationSteps {
-		if err := calculation.Prepare(ctx, section, stats); err != nil {
+		if err := calculation.Prepare(ctx, calculationContext, section, stats); err != nil {
+			c.builderMtx.Unlock()
 			return fmt.Errorf("failed to prepare calculation: %w", err)
 		}
 	}
+	c.builderMtx.Unlock()
 
 	// TODO(benclive): Switch to a columnar reader instead of row based
 	rowReader := logs.NewRowReader(logsSection)
@@ -221,24 +289,57 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		}
 
 		cnt += n
+
+		// First pass: run lock-free steps. Each calculation-step instance is
+		// owned by this section goroutine (see getLogsCalculationSteps above),
+		// and these steps do not touch the shared builder until Flush, so no
+		// locking is required here.
+		for i, calculation := range calculationSteps {
+			if calculation.ProcessBatchNeedsBuilderLock() {
+				continue
+			}
+			start := time.Now()
+			if err := calculation.ProcessBatch(ctx, &lockFreeContext, logsBuf[:n]); err != nil {
+				return fmt.Errorf("failed to process batch: %w", err)
+			}
+			stepDurations[i] += time.Since(start)
+		}
+
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		// Second pass: run steps that require exclusive access to the shared
+		// builder under builderMtx.
 		c.builderMtx.Lock()
-		for _, calculation := range calculationSteps {
+		for i, calculation := range calculationSteps {
+			if !calculation.ProcessBatchNeedsBuilderLock() {
+				continue
+			}
+			start := time.Now()
 			if err := calculation.ProcessBatch(ctx, calculationContext, logsBuf[:n]); err != nil {
 				c.builderMtx.Unlock()
 				return fmt.Errorf("failed to process batch: %w", err)
 			}
+			stepDurations[i] += time.Since(start)
 		}
 		c.builderMtx.Unlock()
 	}
 
 	c.builderMtx.Lock()
-	for _, calculation := range calculationSteps {
+	for i, calculation := range calculationSteps {
+		start := time.Now()
 		if err := calculation.Flush(ctx, calculationContext); err != nil {
 			c.builderMtx.Unlock()
 			return fmt.Errorf("failed to flush calculation results: %w", err)
 		}
+		stepDurations[i] += time.Since(start)
 	}
 	c.builderMtx.Unlock()
+
+	for i, calculation := range calculationSteps {
+		c.metrics.observeStepDuration(calculation.Name(), stepDurations[i])
+	}
 
 	level.Info(sectionLogger).Log("msg", "finished processing logs section", "rowsProcessed", cnt)
 	return nil

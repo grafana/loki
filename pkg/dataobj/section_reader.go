@@ -14,6 +14,9 @@ type sectionReader struct {
 	md  *filemd.Metadata
 	sec *filemd.SectionInfo
 
+	// startOff holds the offset to shift all other offsets by.
+	startOff int64
+
 	extensionData []byte
 }
 
@@ -42,7 +45,7 @@ func (sr *sectionReader) DataRange(ctx context.Context, offset, length int64) (i
 		return nil, fmt.Errorf("section data is invalid: start=%d end=%d length=%d", start, end, region.Length)
 	}
 
-	absoluteOffset := int64(region.Offset) + offset
+	absoluteOffset := sr.startOff + int64(region.Offset) + offset
 	return sr.rr.ReadRange(ctx, absoluteOffset, length)
 }
 
@@ -65,7 +68,7 @@ func (sr *sectionReader) MetadataRange(ctx context.Context, offset, length int64
 		return nil, fmt.Errorf("section data is invalid: start=%d end=%d length=%d", start, end, metadataRegion.Length)
 	}
 
-	absoluteOffset := int64(metadataRegion.Offset) + offset
+	absoluteOffset := sr.startOff + int64(metadataRegion.Offset) + offset
 	return sr.rr.ReadRange(ctx, absoluteOffset, length)
 }
 

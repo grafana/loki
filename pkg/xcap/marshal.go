@@ -3,19 +3,28 @@ package xcap
 import (
 	"fmt"
 
-	"go.opentelemetry.io/otel/attribute"
-
 	"github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
 
 // toProtoCapture converts a Capture to its protobuf representation.
+//
+// Marshalling is intended to happen after the capture lifecycle is
+// complete. toProtoCapture marks the capture and all its regions
+// as ended to prevent further recording while marshalling is in progress.
 func toProtoCapture(c *Capture) (*proto.Capture, error) {
 	if c == nil {
 		return nil, nil
 	}
 
+	// end the capture and its regions. This operation is idempotent.
+	c.End()
+	for _, region := range c.regions {
+		region.End()
+	}
+
+	// Build the statistics index from deduplicated statistics.
 	statistics := c.getAllStatistics()
-	statsIndex := make(map[StatisticKey]uint32)
+	statsIndex := make(map[StatisticKey]uint32, len(statistics))
 	protoStats := make([]*proto.Statistic, 0, len(statistics))
 
 	for _, stat := range statistics {
@@ -67,65 +76,12 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*proto.R
 		})
 	}
 
-	// Convert attributes to proto attributes
-	protoAttributes := make([]*proto.Attribute, 0, len(region.attributes))
-	for _, attr := range region.attributes {
-		protoAttr, err := marshalAttribute(attr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal attribute %s: %w", attr.Key, err)
-		}
-		protoAttributes = append(protoAttributes, protoAttr)
-	}
-
-	// Convert events to proto events
-	protoEvents := make([]*proto.Event, 0, len(region.events))
-	for _, event := range region.events {
-		protoEvent, err := marshalEvent(event)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal event %s: %w", event.Name, err)
-		}
-		protoEvents = append(protoEvents, protoEvent)
-	}
-
-	protoRegion := &proto.Region{
+	return &proto.Region{
 		Name:         region.name,
-		StartTime:    region.startTime,
-		EndTime:      region.endTime,
 		Observations: protoObservations,
 		Id:           region.id[:],
 		ParentId:     region.parentID[:],
-		Attributes:   protoAttributes,
-		Events:       protoEvents,
-		Status:       marshalStatus(region.status),
-	}
-
-	return protoRegion, nil
-}
-
-// marshalEvent converts an Event to its protobuf representation.
-func marshalEvent(event Event) (*proto.Event, error) {
-	protoAttributes := make([]*proto.Attribute, 0, len(event.Attributes))
-	for _, attr := range event.Attributes {
-		protoAttr, err := marshalAttribute(attr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal event attribute %s: %w", attr.Key, err)
-		}
-		protoAttributes = append(protoAttributes, protoAttr)
-	}
-
-	return &proto.Event{
-		Name:       event.Name,
-		Timestamp:  event.Timestamp,
-		Attributes: protoAttributes,
 	}, nil
-}
-
-// marshalStatus converts a Status to its protobuf representation.
-func marshalStatus(status Status) *proto.Status {
-	return &proto.Status{
-		Code:    uint32(status.Code),
-		Message: status.Message,
-	}
 }
 
 // marshalObservationValue converts an observation value to proto ObservationValue.
@@ -182,31 +138,4 @@ func marshalAggregationType(agg AggregationType) proto.AggregationType {
 	default:
 		return proto.AGGREGATION_TYPE_INVALID
 	}
-}
-
-// marshalAttribute converts an OpenTelemetry attribute to its protobuf representation.
-func marshalAttribute(attr attribute.KeyValue) (*proto.Attribute, error) {
-	if !attr.Valid() {
-		return nil, fmt.Errorf("invalid attribute")
-	}
-
-	protoValue := &proto.AttributeValue{}
-	switch attr.Value.Type() {
-	case attribute.STRING:
-		protoValue.Kind = &proto.AttributeValue_StringValue{StringValue: attr.Value.AsString()}
-	case attribute.INT64:
-		protoValue.Kind = &proto.AttributeValue_IntValue{IntValue: attr.Value.AsInt64()}
-	case attribute.FLOAT64:
-		protoValue.Kind = &proto.AttributeValue_FloatValue{FloatValue: attr.Value.AsFloat64()}
-	case attribute.BOOL:
-		protoValue.Kind = &proto.AttributeValue_BoolValue{BoolValue: attr.Value.AsBool()}
-	default:
-		// For unsupported types (like slices), convert to string
-		protoValue.Kind = &proto.AttributeValue_StringValue{StringValue: attr.Value.Emit()}
-	}
-
-	return &proto.Attribute{
-		Key:   string(attr.Key),
-		Value: protoValue,
-	}, nil
 }

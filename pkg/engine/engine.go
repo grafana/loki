@@ -5,30 +5,34 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/http"
-	"strconv"
+	gotrace "runtime/trace"
 	"strings"
 	"time"
 
+	"github.com/alecthomas/units"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -61,6 +65,10 @@ type ExecutorConfig struct {
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
 
+	// PrefetchBytes controls the number of bytes read ahead from a data object
+	// when opening it.
+	PrefetchBytes flagext.Bytes `yaml:"prefetch_bytes" category:"experimental"`
+
 	// MergePrefetchCount controls the number of inputs that are prefetched simultaneously by any Merge node.
 	MergePrefetchCount int `yaml:"merge_prefetch_count" category:"experimental"`
 
@@ -70,12 +78,46 @@ type ExecutorConfig struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
+
+	// TaskResultsCache configures the backing cache for task results.
+	TaskResultsCache TaskCacheConfig `yaml:"task_results_cache" category:"experimental"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.PrefetchBytes = flagext.Bytes(16 * units.KiB)
+
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
+	f.Var(&cfg.PrefetchBytes, prefix+"prefetch-bytes", "Experimental: Number of bytes to prefetch when opening a data object for decoding metadata and overlapping section reads. Clamps to at least 16KiB.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
+	cfg.TaskResultsCache.RegisterFlagsWithPrefix(prefix+"task-results-cache.", f)
+}
+
+// TaskCacheConfig extends resultscache.Config with additional task-cache-specific settings.
+type TaskCacheConfig struct {
+	resultscache.Config               `yaml:",inline"`
+	TaskResultMaxCacheableSize        flagext.Bytes `yaml:"task_result_max_cacheable_size" category:"experimental"`
+	DataObjScanResultMaxCacheableSize flagext.Bytes `yaml:"dataobjscan_result_max_cacheable_size" category:"experimental"`
+	PruneEmptyCachedTasks             bool          `yaml:"prune_empty_cached_tasks" category:"experimental"`
+	PruneCachedTasksMaxSize           flagext.Bytes `yaml:"prune_cached_tasks_max_size" category:"experimental"`
+	PruneCachedTasksFetchTimeout      time.Duration `yaml:"prune_cached_tasks_fetch_timeout" category:"experimental"`
+}
+
+// RegisterFlagsWithPrefix registers flags for TaskCacheConfig with the given prefix.
+func (cfg *TaskCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.Config.RegisterFlagsWithPrefix(f, prefix)
+	f.Var(&cfg.TaskResultMaxCacheableSize, prefix+"task-result-max-cacheable-size",
+		"Experimental: Maximum size for a task result to be cacheable. 0 means only empty responses are cached.")
+	f.Var(&cfg.DataObjScanResultMaxCacheableSize, prefix+"dataobjscan-result-max-cacheable-size",
+		"Experimental: Maximum size for a DataObjScan result to be cacheable. 0 means only empty responses are cached.")
+	f.BoolVar(&cfg.PruneEmptyCachedTasks, prefix+"prune-empty-cached-tasks", false,
+		"Experimental: When enabled, the scheduler checks cached results at plan time and prunes tasks whose cached result is known to be empty.")
+	f.Var(&cfg.PruneCachedTasksMaxSize, prefix+"prune-cached-tasks-max-size",
+		"Experimental: Maximum total size of non-empty cached task results embedded in task assignments. "+
+			"Results that would exceed the budget are skipped (smaller results that fit are still included). "+
+			"0 disables non-empty task pruning.")
+	f.DurationVar(&cfg.PruneCachedTasksFetchTimeout, prefix+"prune-cached-tasks-fetch-timeout", time.Second,
+		"Experimental: Timeout for cache fetch operations during cached-task pruning at plan time. 0 disables the timeout.")
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -121,13 +163,23 @@ type Engine struct {
 	limits       logql.Limits    // Limits to apply to engine queries.
 	deleteGetter deletion.Getter // DeleteGetter to fetch delete requests for query-time filtering.
 
-	metastore metastore.Metastore
+	metastore  metastore.Metastore
+	taskCaches executor.TaskCacheRegistry
 }
 
 // New creates a new Engine.
 func New(params Params) (*Engine, error) {
 	if err := params.validate(); err != nil {
 		return nil, err
+	}
+
+	var taskCaches executor.TaskCacheRegistry
+	if params.Config.Executor.TaskResultsCache.PruneEmptyCachedTasks {
+		var err error
+		taskCaches, err = executor.NewTaskCacheRegistry(params.Config.Executor.TaskResultsCache.Config, params.Registerer, params.Logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating task cache registry: %w", err)
+		}
 	}
 
 	e := &Engine{
@@ -139,7 +191,8 @@ func New(params Params) (*Engine, error) {
 		limits:       params.Limits,
 		deleteGetter: params.DeleteGetter,
 
-		metastore: params.Metastore,
+		metastore:  params.Metastore,
+		taskCaches: taskCaches,
 	}
 
 	return e, nil
@@ -156,108 +209,123 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// This pain point will eventually go away as remaining usages of
 	// [logql.Engine] disappear.
 
-	ctx, capture := xcap.NewCapture(ctx, nil)
-	defer capture.End()
-	startTime := time.Now()
-
-	tenantID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return logqlmodel.Result{}, httpgrpc.Error(http.StatusBadRequest, err.Error())
-	}
-
-	ctx, region := xcap.StartRegion(ctx, "Engine.Execute", xcap.WithRegionAttributes(
-		attribute.String("type", string(logql.GetRangeType(params))),
-		attribute.String("query", params.QueryString()),
-		attribute.Stringer("start", params.Start()),
-		attribute.Stringer("end", params.End()),
-		attribute.Stringer("step", params.Step()),
-		attribute.Stringer("length", params.End().Sub(params.Start())),
-		attribute.StringSlice("shards", params.Shards()),
-	))
-	defer region.End()
+	cacheEnabled := cache.IsCacheConfigured(e.cfg.Executor.TaskResultsCache.CacheConfig) && !params.CachingOptions().Disabled
 
 	ctx = e.buildContext(ctx)
 	logger := util_log.WithContext(ctx, e.logger)
 	logger = log.With(logger, "engine", "v2")
 	logger = injectQueryTags(ctx, logger)
 
-	level.Info(logger).Log("msg", "starting query", "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","))
+	q, ctx, err := e.newQuery(ctx, logger, logqlQueryType(params.GetExpression()), cacheEnabled)
+	if err != nil {
+		return logqlmodel.Result{}, err
+	}
+	defer q.Close()
 
-	logicalPlan, durLogicalPlanning, err := e.buildLogicalPlan(ctx, logger, params)
+	// We save the pre-query logger so we can pass it to buildPhysicalPlan,
+	// which creates a subquery.
+	engineLogger := logger
+	logger = q.Logger()
+
+	level.Info(logger).Log(
+		"msg", "logql-query-start",
+
+		"type", string(logql.GetRangeType(params)),
+		"query", params.QueryString(),
+		"start", params.Start().Format(time.RFC3339Nano),
+		"end", params.End().Format(time.RFC3339Nano),
+		"step_ms", params.Step().Milliseconds(),
+		"length_ms", params.End().Sub(params.Start()).Milliseconds(),
+		"shards", strings.Join(params.Shards(), ","),
+		"cache_enabled", cacheEnabled,
+	)
+
+	ctx, task := gotrace.NewTask(ctx, "Engine.Execute")
+	defer task.End()
+
+	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.Execute",
+		trace.WithAttributes(
+			attribute.String("type", string(logql.GetRangeType(params))),
+			attribute.String("query", params.QueryString()),
+			attribute.Stringer("start", params.Start()),
+			attribute.Stringer("end", params.End()),
+			attribute.Stringer("step", params.Step()),
+			attribute.Stringer("length", params.End().Sub(params.Start())),
+			attribute.StringSlice("shards", params.Shards()),
+			attribute.Bool("cache_enabled", cacheEnabled),
+		),
+	)
+	defer span.End()
+
+	logicalPlan, err := e.buildLogicalPlan(ctx, q, params)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
-		region.SetStatus(codes.Error, "failed to create logical plan")
+		q.RecordError(ctx, errors.New("failed to create logical plan"))
 		return logqlmodel.Result{}, ErrNotSupported
 	}
+	gotrace.Log(ctx, "logical_planning", "done")
 
-	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan)
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, q, engineLogger, cacheEnabled))
+	physicalPlan, err := e.buildPhysicalPlan(ctx, q, params, catalog, logicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		region.SetStatus(codes.Error, "failed to create physical plan")
+		q.RecordError(ctx, errors.New("failed to create physical plan"))
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
+	gotrace.Log(ctx, "physical_planning", "done")
 
-	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
+	// Enable admission lanes only for log queries
+	useAdmissionLanes := !isMetricQuery(params.GetExpression())
+
+	wf, err := q.Prepare(ctx, physicalPlan, useAdmissionLanes)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		region.SetStatus(codes.Error, "failed to create execution plan")
+		q.RecordError(ctx, errors.New("failed to create execution plan"))
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 	defer wf.Close()
+	gotrace.Log(ctx, "workflow_planning", "done")
 
 	pipeline, err := wf.Run(ctx)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to execute query", "err", err)
 
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		region.SetStatus(codes.Error, "failed to execute query")
+		q.RecordError(ctx, errors.New("failed to execute query"))
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
 	defer pipeline.Close()
 
-	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
+	gotrace.Log(ctx, "collect_result", "start")
+	builder, err := e.execute(ctx, q, params, pipeline)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		region.SetStatus(codes.Error, "error during query execution")
+		q.RecordError(ctx, errors.New("error during query execution"))
 		return logqlmodel.Result{}, err
 	}
-
-	durFull := time.Since(startTime)
-	logValues := []any{
-		"msg", "finished executing",
-		"query", params.QueryString(),
-		"length", params.End().Sub(params.Start()).String(),
-		"step", params.Step().String(),
-		"duration_logical_planning", durLogicalPlanning,
-		"duration_physical_planning", durPhysicalPlanning,
-		"duration_workflow_planning", durWorkflowPlanning,
-		"duration_execution", durExecution,
-		"duration_full", durFull,
-	}
+	gotrace.Log(ctx, "collect_result", "done")
 
 	// Close the pipeline to calculate the stats.
 	pipeline.Close()
-
-	region.SetStatus(codes.Ok, "")
+	span.SetStatus(codes.Ok, "")
 
 	// explicitly call End() before exporting even though we have a defer above.
 	// It is safe to call End() multiple times.
-	region.End()
-	capture.End()
+	span.End()
+	q.Close()
 
-	xcap.ExportTrace(ctx, capture, logger)
-	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
-	level.Info(logger).Log(
-		logValues...,
-	)
-
-	// TODO: capture and report queue time
-	md := metadata.FromContext(ctx)
-	stats := capture.ToStatsSummary(durFull, 0, builder.Len())
-	result := builder.Build(stats, md)
-
-	logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), stats, result.Data)
+	totalQueueTime := xcap.Value[int64](q.capture, schedulerstat.TaskQueueDuration)
+	stats := q.capture.ToStatsSummary(q.Duration(), time.Duration(totalQueueTime), builder.Len())
+	result := builder.Build(stats, metadata.FromContext(ctx))
 	return result, nil
+}
+
+func logqlQueryType(expr syntax.Expr) string {
+	_, ok := expr.(syntax.SampleExpr)
+	if ok {
+		return "metrics"
+	}
+	return "logs"
 }
 
 // buildContext initializes a request-scoped context prior to execution.
@@ -268,7 +336,7 @@ func (e *Engine) buildContext(ctx context.Context) context.Context {
 	// [rangeio.ReadRanges] to make use of.
 	ctx = rangeio.WithConfig(ctx, &e.cfg.Executor.RangeConfig)
 
-	metadataContext.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
+	metadataContext.AddWarning("Query was executed using the next-generation Loki query engine.")
 	return ctx
 }
 
@@ -283,9 +351,18 @@ func injectQueryTags(ctx context.Context, logger log.Logger) log.Logger {
 	return log.With(logger, httpreq.TagsToKeyValues(tags)...)
 }
 
+// isMetricQuery returns true if the given expression is a metric query,
+// false if it is a log query.
+func isMetricQuery(expr syntax.Expr) bool {
+	_, ok := expr.(syntax.SampleExpr)
+	return ok
+}
+
 // buildLogicalPlan builds a logical plan from the given params.
-func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params logql.Params) (*logical.Plan, time.Duration, error) {
-	region := xcap.RegionFromContext(ctx)
+func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Params) (*logical.Plan, error) {
+	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.buildLogicalPlan")
+	defer span.End()
+
 	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
 
 	var deleteReqs []*deletion.Request
@@ -293,43 +370,47 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 		var err error
 		deleteReqs, err = deletion.DeletesForUser(ctx, params.Start(), params.End(), e.deleteGetter)
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to get delete requests: %w", err)
+			q.RecordError(ctx, err)
+			return nil, fmt.Errorf("failed to get delete requests: %w", err)
 		}
 	}
 
 	logicalPlan, err := logical.BuildPlanWithDeletes(ctx, params, deleteReqs)
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
-		region.RecordError(err)
-		return nil, 0, ErrNotSupported
+		level.Warn(q.Logger()).Log("msg", "failed to create logical plan", "err", err)
+		q.RecordError(ctx, err)
+		return nil, ErrNotSupported
 	}
 
 	if err := logical.Optimize(logicalPlan); err != nil {
-		level.Warn(logger).Log("msg", "failed to optimize logical plan", "err", err)
-		region.RecordError(err)
-		return nil, 0, ErrNotSupported
+		level.Warn(q.Logger()).Log("msg", "failed to optimize logical plan", "err", err)
+		q.RecordError(ctx, err)
+		return nil, ErrNotSupported
 	}
 
 	duration := timer.ObserveDuration()
-	level.Info(logger).Log(
-		"msg", "finished logical planning",
+	span.Record(statLogicalPlanDuration.Observe(int64(duration)))
+
+	level.Info(q.logger).Log(
+		"msg", "logical-plan-summary",
+
 		"plan", logicalPlan.String(),
-		"duration", duration.String(),
+		"duration_ms", duration.Milliseconds(),
+	)
+	span.SetAttributes(
+		attribute.Stringer("plan", logicalPlan),
 	)
 
-	region.AddEvent("finished logical planning",
-		attribute.Stringer("plan", logicalPlan),
-		attribute.Stringer("duration", duration),
-	)
-	return logicalPlan, duration, nil
+	span.SetStatus(codes.Ok, "")
+	return logicalPlan, nil
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
-func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
-	region := xcap.RegionFromContext(ctx)
-	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
+func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.Params, catalog *physical.MetastoreCatalog, logicalPlan *logical.Plan) (*physical.Plan, error) {
+	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.buildPhysicalPlan")
+	defer span.End()
 
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID))
+	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -338,127 +419,180 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 
 	// Get the tenant's MaxQuerySeries limit and pass it to the planner context if enforcement is enabled
 	if e.cfg.EnforceQuerySeriesLimit {
-		plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(ctx, tenantID))
+		plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(ctx, q.TenantID()))
 	}
 
 	planner := physical.NewPlanner(plannerCtx, catalog)
 	physicalPlan, err := planner.Build(logicalPlan)
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
-		region.RecordError(err)
-		return nil, 0, ErrNotSupported
+		level.Warn(q.Logger()).Log("msg", "failed to create physical plan", "err", err)
+		q.RecordError(ctx, err)
+		return nil, ErrNotSupported
 	}
 
-	physicalPlan, err = planner.Optimize(physicalPlan)
+	{
+		optimizeStart := time.Now()
+
+		physicalPlan, err = planner.Optimize(physicalPlan)
+		if err != nil {
+			level.Warn(q.Logger()).Log("msg", "failed to optimize physical plan", "err", err)
+			q.RecordError(ctx, err)
+			return nil, ErrNotSupported
+		}
+
+		optimizeDuration := time.Since(optimizeStart)
+		span.Record(statPhysicalOptimizeDuration.Observe(int64(optimizeDuration)))
+	}
+
+	physicalPlan, err = physical.WrapWithBatching(physicalPlan, e.cfg.Executor.BatchSize)
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
-		region.RecordError(err)
-		return nil, 0, ErrNotSupported
+		level.Warn(q.Logger()).Log("msg", "failed to wrap physical plan with batching", "err", err)
+		q.RecordError(ctx, err)
+		return nil, ErrNotSupported
 	}
 
 	duration := timer.ObserveDuration()
-	level.Info(logger).Log(
-		"msg", "finished physical planning",
-		"plan", physical.PrintAsTree(physicalPlan),
-		"duration", duration.String(),
+	span.Record(statPhysicalPlanDuration.Observe(int64(duration)))
+
+	printPhysicalPlanSummary(q, physicalPlan, duration)
+	span.SetAttributes(
+		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
 	)
 
-	region.AddEvent("finished physical planning", attribute.Stringer("duration", duration))
-	return physicalPlan, duration, nil
+	span.SetStatus(codes.Ok, "")
+	return physicalPlan, nil
 }
 
-func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string) physical.MetastoreSectionsResolver {
-	planner := physical.NewMetastorePlanner(e.metastore)
-	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
-		ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
-		defer region.End()
+// printExecutionSummary prints a general summary of the execution, including
+// timing and cache information.
+func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Duration) {
+	var (
+		indexQueryDuration, _ = q.capture.Value(statPhysicalIndexQueryDuration).Int64()
+		optimizeDuration, _   = q.capture.Value(statPhysicalOptimizeDuration).Int64()
 
-		plan, err := planner.Plan(ctx, selector, predicates, start, end)
+		otherDuration = calculateResidual(duration, indexQueryDuration, optimizeDuration)
+	)
+
+	level.Info(q.Logger()).Log(
+		"msg", "physical-plan-summary",
+
+		"plan", physical.PrintAsTree(plan),
+
+		// Plan stats.
+		"duration_ms", duration.Milliseconds(),
+		"plan_node_count", plan.Len(),
+
+		// Timing info
+		"duration_index_query_ms", time.Duration(indexQueryDuration).Milliseconds(),
+		"duration_optimize_ms", time.Duration(optimizeDuration).Milliseconds(),
+		"duration_other_ms", otherDuration.Milliseconds(),
+
+		"dominant_phase", calculateDominantPhase(map[string]time.Duration{
+			"index_query": time.Duration(indexQueryDuration),
+			"optimize":    time.Duration(optimizeDuration),
+			"other":       otherDuration,
+		}),
+
+		// TODO(rfratto): include stats on which optimization passes applied/didn't apply
+	)
+}
+
+func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, logger log.Logger, cacheEnabled bool) physical.MetastoreSectionsResolver {
+	planner := physical.NewMetastorePlanner(e.metastore, e.cfg.Executor.BatchSize)
+	logger = log.With(logger, "subcomponent", "metastore")
+
+	if parent != nil {
+		logger = log.With(logger, "parent_query_id", parent.ID())
+	}
+
+	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+		q, ctx, err := e.newQuery(ctx, logger, "index", cacheEnabled)
 		if err != nil {
-			return nil, fmt.Errorf("metastore: build plan: %w", err)
+			return nil, fmt.Errorf("creating index query: %w", err)
+		}
+		defer func() {
+			q.Close()
+
+			// Record how long this query took to execute on the parent query.
+			if parent != nil {
+				queryTime := q.Duration()
+				parent.rootRegion.Record(statPhysicalIndexQueryDuration.Observe(int64(queryTime)))
+			}
+		}()
+
+		var plan *physical.Plan
+		{
+			timer := prometheus.NewTimer(e.metrics.physicalPlanning)
+
+			plan, err = planner.Plan(ctx, selector, predicates, start, end)
+			if err != nil {
+				q.RecordError(ctx, err)
+				return nil, fmt.Errorf("index query: build plan: %w", err)
+			}
+
+			duration := timer.ObserveDuration()
+			q.rootRegion.Record(statPhysicalPlanDuration.Observe(int64(duration)))
+
+			printPhysicalPlanSummary(q, plan, duration)
 		}
 
-		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan)
+		// Disable admission lanes for metastore queries
+		useAdmissionLanes := false
+		wf, err := q.Prepare(ctx, plan, useAdmissionLanes)
 		if err != nil {
-			return nil, fmt.Errorf("metastore: build workflow: %w", err)
+			q.RecordError(ctx, err)
+			return nil, fmt.Errorf("index query: build workflow: %w", err)
 		}
 		defer wf.Close()
 
 		pipeline, err := wf.Run(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("metastore: run workflow: %w", err)
+			q.RecordError(ctx, err)
+			return nil, fmt.Errorf("index query: run workflow: %w", err)
 		}
 		reader := executor.TranslateEOF(pipeline)
 		defer reader.Close()
 
 		if err := reader.Open(ctx); err != nil {
-			return nil, fmt.Errorf("metastore: open pipeline: %w", err)
+			q.RecordError(ctx, err)
+			return nil, fmt.Errorf("index query: open pipeline: %w", err)
 		}
 
-		resp, err := e.metastore.CollectSections(ctx, metastore.CollectSectionsRequest{
-			// externalize EOFs returned by executor pipelines (executor.EOF -> io.EOF)
-			// because metastore is not aware about executor implementation details
-			Reader: reader,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("metastore: collect sections: %w", err)
+		var resp metastore.CollectSectionsResponse
+		{
+			timer := prometheus.NewTimer(e.metrics.execution)
+
+			resp, err = e.metastore.CollectSections(ctx, metastore.CollectSectionsRequest{
+				// externalize EOFs returned by executor pipelines (executor.EOF -> io.EOF)
+				// because metastore is not aware about executor implementation details
+				Reader: reader,
+			})
+			if err != nil {
+				q.RecordError(ctx, err)
+				return nil, fmt.Errorf("index query: collect sections: %w", err)
+			}
+
+			executionDuration := timer.ObserveDuration()
+			q.rootRegion.Record(statExecutionDuration.Observe(int64(executionDuration)))
+
+			printExecutionSummary(q, executionDuration)
 		}
 
-		// close to report the stats
-		reader.Close()
 		return resp.SectionsResponse.Sections, nil
 	}
 }
 
-// buildWorkflow builds a workflow from the given physical plan.
-func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan) (*workflow.Workflow, time.Duration, error) {
-	region := xcap.RegionFromContext(ctx)
-	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
+// execute reads from the pipeline and produces a result.
+func (e *Engine) execute(ctx context.Context, q *query, params logql.Params, pipeline executor.Pipeline) (ResultBuilder, error) {
+	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.execute")
+	defer span.End()
 
-	opts := workflow.Options{
-		Tenant: tenantID,
-		Actor:  httpreq.ExtractActorPath(ctx),
-
-		MaxRunningScanTasks:  e.limits.MaxScanTaskParallelism(tenantID),
-		MaxRunningOtherTasks: 0,
-
-		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
-		DebugStreams: e.limits.DebugEngineStreams(tenantID),
-	}
-	wf, err := workflow.New(opts, logger, e.scheduler.inner, physicalPlan)
-	if err != nil {
-		level.Warn(logger).Log("msg", "failed to create workflow", "err", err)
-		region.RecordError(err)
-		return nil, 0, ErrNotSupported
-	}
-
-	duration := timer.ObserveDuration()
-
-	// The execution plan can be way more verbose than the physical plan, so we
-	// only log it at debug level.
-	level.Debug(logger).Log(
-		"msg", "generated execution plan",
-		"plan", workflow.Sprint(wf),
-	)
-	level.Info(logger).Log(
-		"msg", "finished execution planning",
-		"duration", duration.String(),
-		"tasks", wf.Len(),
-	)
-
-	region.AddEvent("finished execution planning", attribute.Stringer("duration", duration))
-	return wf, duration, nil
-}
-
-// collectResult processes the results of the execution plan.
-func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params logql.Params, pipeline executor.Pipeline) (ResultBuilder, time.Duration, error) {
-	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.execution)
-	encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)
 
 	var builder ResultBuilder
 	switch params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
+		encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)
 		builder = newStreamsResultBuilder(params.Direction(), encodingFlags.Has(httpreq.FlagCategorizeLabels))
 	case syntax.SampleExpr:
 		if params.Step() > 0 {
@@ -473,33 +607,108 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 	}
 
 	if err := pipeline.Open(ctx); err != nil {
-		return nil, time.Duration(0), err
+		return nil, err
 	}
 
+	var (
+		totalReadBatchTime    time.Duration
+		totalProcessBatchTime time.Duration
+	)
+
 	for {
+		startTime := time.Now()
+
 		rec, err := pipeline.Read(ctx)
+		totalReadBatchTime += time.Since(startTime)
 		if err != nil {
 			if errors.Is(err, executor.EOF) {
 				break
 			}
 
-			level.Warn(logger).Log(
+			level.Warn(q.Logger()).Log(
 				"msg", "error during execution",
 				"err", err,
 			)
-			return builder, time.Duration(0), err
+			return builder, err
 		}
 
+		startTime = time.Now()
 		builder.CollectRecord(rec)
-		rec.Release()
+		totalProcessBatchTime += time.Since(startTime)
 	}
 
 	duration := timer.ObserveDuration()
+	span.Record(statExecutionDuration.Observe(int64(duration)))
+	span.Record(statReadBatchDuration.Observe(int64(totalReadBatchTime)))
+	span.Record(statProcessBatchDuration.Observe(int64(totalProcessBatchTime)))
 
-	// We don't log an event here because a final event will be logged by the
-	// caller noting that execution completed.
-	region.AddEvent("finished execution",
-		attribute.Stringer("duration", duration),
+	printExecutionSummary(q, duration)
+
+	span.SetStatus(codes.Ok, "")
+	return builder, nil
+}
+
+// printExecutionSummary prints a general summary of the execution, including
+// timing and cache information.
+//
+// Stats that are not reported in the capture are left empty.
+func printExecutionSummary(q *query, duration time.Duration) {
+	var (
+		readBatchDuration, _    = q.capture.Value(statReadBatchDuration).Int64()
+		processBatchDuration, _ = q.capture.Value(statProcessBatchDuration).Int64()
+		otherDuration           = calculateResidual(duration, readBatchDuration, processBatchDuration)
+
+		tasksPruned           = xcap.Value[int64](q.capture, workflow.StatPrunedTasks)
+		tasksPlanned          = xcap.Value[int64](q.capture, scheduler.StatPlannedTasks)
+		tasksQueued           = xcap.Value[int64](q.capture, scheduler.StatQueuedTasks)
+		tasksAssigned         = xcap.Value[int64](q.capture, scheduler.StatAssignedTasks)
+		tasksExecuted         = xcap.Value[int64](q.capture, scheduler.StatExecutedTasks)
+		tasksFailed           = xcap.Value[int64](q.capture, scheduler.StatFailedTasks)
+		tasksCanceledPending  = xcap.Value[int64](q.capture, scheduler.StatCanceledPendingTasks)
+		tasksCanceledQueued   = xcap.Value[int64](q.capture, scheduler.StatCanceledQueuedTasks)
+		tasksCanceledAssigned = xcap.Value[int64](q.capture, scheduler.StatCanceledAssignedTasks)
+		tasksTotal            = tasksPruned + tasksPlanned
+		totalTasksCanceled    = tasksCanceledPending + tasksCanceledQueued + tasksCanceledAssigned
+
+		// tasksExecuted, tasksFailed, and totalTasksCanceled tracks the number
+		// of tasks that reached a terminal state. The remainder from
+		// tasksPlanned determines the number of tasks where information got
+		// lost.
+		tasksUnkownStatus = (tasksPlanned - tasksExecuted - tasksFailed - totalTasksCanceled)
 	)
-	return builder, duration, nil
+
+	level.Info(q.Logger()).Log(
+		"msg", "execution-summary",
+
+		// Stats
+		"duration_ms", duration.Milliseconds(),
+
+		// Timing info
+		"duration_read_batch_ms", time.Duration(readBatchDuration).Milliseconds(),
+		"duration_process_batch_ms", time.Duration(processBatchDuration).Milliseconds(),
+		"duration_other_ms", otherDuration.Milliseconds(),
+
+		"dominant_phase", calculateDominantPhase(map[string]time.Duration{
+			"read_batch":    time.Duration(readBatchDuration),
+			"process_batch": time.Duration(processBatchDuration),
+			"other":         otherDuration,
+		}),
+
+		// Cache information
+		"task_neg_result_cache_hits", xcap.Value[int64](q.capture, workflow.StatNegativeCacheHits),
+		"task_pos_result_cache_hits", xcap.Value[int64](q.capture, workflow.StatPositiveCacheHits),
+
+		// Task fan-out
+		"tasks_total", tasksTotal,
+		"tasks_pruned", tasksPruned,
+		"tasks_planned", tasksPlanned,
+		"tasks_queued", tasksQueued,
+		"tasks_assigned", tasksAssigned,
+		"tasks_executed", tasksExecuted,
+		"tasks_failed", tasksFailed,
+		"tasks_canceled_pending", tasksCanceledPending,
+		"tasks_canceled_queued", tasksCanceledQueued,
+		"tasks_canceled_assigned", tasksCanceledAssigned,
+		"tasks_unknown_status", tasksUnkownStatus,
+	)
 }

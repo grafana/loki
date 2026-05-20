@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"context"
+	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
@@ -128,6 +129,16 @@ func newRowReaderDownloader(dset Dataset) *rowReaderDownloader {
 	var rd rowReaderDownloader
 	rd.Reset(dset)
 	return &rd
+}
+
+// Prefetch will download an initial batch of pages.
+func (dl *rowReaderDownloader) Prefetch(ctx context.Context) error {
+	oldReadRange := dl.readRange
+	defer func() { dl.readRange = oldReadRange }()
+
+	// Temporarily set the read range to the entire dataset to ensure that we download everything.
+	dl.readRange = rangeset.Range{Start: 0, End: math.MaxUint64}
+	return dl.downloadBatch(ctx, nil)
 }
 
 // AddColumn adds a column to the rowReaderDownloader. This should be called
@@ -276,13 +287,20 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 	}
 
 	// Always add the requestor page to the batch if it's uncached.
-	if len(requestor.data) == 0 {
+	if requestor != nil && len(requestor.data) == 0 {
 		pageBatch = append(pageBatch, requestor)
+	}
+
+	// If we're not calling buildDownloadBatch due to a page read, we'll assume
+	// it's a primary page so we can fill as much data as possible.
+	isPrimary := true
+	if requestor != nil {
+		isPrimary = requestor.column.primary
 	}
 
 	// Add uncached P1 pages to the batch. We add all P1 pages, even if it would
 	// exceed the target size.
-	for result := range dl.iterP1Pages(ctx, requestor.column.primary) {
+	for result := range dl.iterP1Pages(ctx, isPrimary) {
 		page, err := result.Value()
 		if err != nil {
 			return nil, err
@@ -306,7 +324,7 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 
 	var targetReached bool
 
-	for result := range dl.iterP2Pages(ctx, requestor.column.primary) {
+	for result := range dl.iterP2Pages(ctx, isPrimary) {
 		page, err := result.Value()
 		if err != nil {
 			return nil, err
@@ -322,7 +340,7 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 		return pageBatch, nil
 	}
 
-	for result := range dl.iterP3Pages(ctx, requestor.column.primary) {
+	for result := range dl.iterP3Pages(ctx, isPrimary) {
 		page, err := result.Value()
 		if err != nil {
 			return nil, err

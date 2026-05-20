@@ -8,7 +8,7 @@ local k = import 'ksonnet-util/kausal.libsonnet',
 
 loki {
   _images+:: {
-    loki: 'grafana/loki:2.9.2',
+    loki: 'grafana/loki:3.7.1',
   },
 
   _config+:: {
@@ -45,10 +45,10 @@ loki {
       },
       schema_config: {
         configs: [{
-          from: '2021-09-12',
-          store: 'boltdb-shipper',
+          from: '2026-04-01',
+          store: 'tsdb',
           object_store: 's3',
-          schema: 'v11',
+          schema: 'v13',
           index: {
             prefix: '%s_index_' % namespace,
             period: '24h',

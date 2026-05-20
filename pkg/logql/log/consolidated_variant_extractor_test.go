@@ -130,7 +130,6 @@ func (m *MockVariantSpecificExtractor) ForStream(lbls labels.Labels) StreamSampl
 }
 
 type mockVariantSpecificStreamExtractor struct {
-	variantIndex   int
 	valueToExtract float64
 	shouldExtract  bool
 	labels         LabelsResult

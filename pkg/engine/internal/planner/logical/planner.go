@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -14,12 +16,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var (
 	errUnimplemented     = errors.New("query contains unimplemented features")
 	unimplementedFeature = func(s string) error { return fmt.Errorf("%w: %s", errUnimplemented, s) }
+
+	tracer = otel.Tracer("pkg/engine/internal/planner/logical")
 )
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
@@ -77,6 +80,7 @@ func buildPlanForLogQuery(
 		hasLogfmtParser  bool
 		hasJSONParser    bool
 		hasRegexParser   bool
+		hasFmtExpr       bool
 	)
 
 	// Do the first pass to collect the stream selector, line filters, and predicates. Only predicates listed
@@ -105,7 +109,7 @@ func buildPlanForLogQuery(
 			}
 		case *syntax.LabelFilterExpr:
 			// Collect following filters only before we met any parse stage.
-			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
+			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser && !hasFmtExpr {
 				val, innerErr := convertLabelFilter(e.LabelFilterer)
 				if innerErr != nil {
 					err = innerErr
@@ -115,6 +119,12 @@ func buildPlanForLogQuery(
 				predicates = append(predicates, val)
 			}
 
+			return true
+		case *syntax.LineFmtExpr:
+			hasFmtExpr = true
+			return true
+		case *syntax.LabelFmtExpr:
+			hasFmtExpr = true
 			return true
 		}
 		return true
@@ -173,6 +183,7 @@ func buildPlanForLogQuery(
 	hasLogfmtParser = false
 	hasJSONParser = false
 	hasRegexParser = false
+	hasFmtExpr = false
 
 	// TODO(chaudum): Implement a Walk function that can return an error
 	expr.Walk(func(e syntax.Expr) bool {
@@ -215,7 +226,7 @@ func buildPlanForLogQuery(
 			}
 		case *syntax.LabelFilterExpr:
 			// Add following filters only after we met any parse stage.
-			if hasLogfmtParser || hasJSONParser || hasRegexParser {
+			if hasLogfmtParser || hasJSONParser || hasRegexParser || hasFmtExpr {
 				val, innerErr := convertLabelFilter(e.LabelFilterer)
 				if innerErr != nil {
 					err = innerErr
@@ -229,10 +240,12 @@ func buildPlanForLogQuery(
 			err = errUnimplemented
 			return false // do not traverse children
 		case *syntax.LineFmtExpr:
-			err = unimplementedFeature("line_format")
-			return false // do not traverse children
+			hasFmtExpr = true
+			builder = builder.Format(types.VariadicOpParseLinefmt, NewLiteral(e.Value))
+			return true
 		case *syntax.LabelFmtExpr:
-			err = unimplementedFeature("label_format")
+			hasFmtExpr = true
+			builder = builder.Format(types.VariadicOpParseLabelfmt, NewLiteral(e.Formats))
 			return false // do not traverse children
 		case *syntax.KeepLabelsExpr:
 			err = unimplementedFeature("keep")
@@ -527,6 +540,16 @@ func convertMatcherType(t labels.MatchType) types.BinaryOp {
 }
 
 func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
+	current := convertLineFilter(expr.LineFilter)
+
+	if expr.Or != nil {
+		current = &BinOp{
+			Left:  current,
+			Right: convertLineFilterExpr(expr.Or),
+			Op:    types.BinaryOpOr,
+		}
+	}
+
 	if expr.Left != nil {
 		op := types.BinaryOpAnd
 		if expr.IsOrChild {
@@ -534,11 +557,12 @@ func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
 		}
 		return &BinOp{
 			Left:  convertLineFilterExpr(expr.Left),
-			Right: convertLineFilter(expr.LineFilter),
+			Right: current,
 			Op:    op,
 		}
 	}
-	return convertLineFilter(expr.LineFilter)
+
+	return current
 }
 
 func convertLineFilter(filter syntax.LineFilter) Value {
@@ -720,8 +744,8 @@ func parseShards(shards []string) (*ShardInfo, error) {
 // There is not need to explicitly signal the optimizer to not push these predicates down,
 // canApplyPredicate already correctly handles this by returning an error if there is a label column ref.
 func buildDeletePredicates(ctx context.Context, deletes []*deletion.Request, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
-	_, region := xcap.StartRegion(ctx, "buildDeletePredicates")
-	defer region.End()
+	_, span := tracer.Start(ctx, "logical.buildDeletePredicates")
+	defer span.End()
 
 	var predicates []Value
 
@@ -868,6 +892,9 @@ func buildDeletePredicates(ctx context.Context, deletes []*deletion.Request, par
 		predicates = append(predicates, p)
 	}
 
-	region.Record(xcap.StatDeletePredicates.Observe(int64(len(predicates))))
+	span.SetAttributes(
+		attribute.Int("predicates", len(predicates)),
+	)
+
 	return predicates, nil
 }

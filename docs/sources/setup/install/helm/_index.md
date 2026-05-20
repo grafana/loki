@@ -16,11 +16,15 @@ keywords:
 
 The [Helm](https://helm.sh/) chart lets you configure, install, and upgrade Grafana Loki within a Kubernetes cluster.
 
-This guide references the Loki Helm chart version 3.0 or greater and contains the following sections:
+This guide references the Loki community Helm chart and contains the following sections:
 
 {{< section menuTitle="true" >}}
 
 If you are installing Grafana Enterprise Logs, follow the [GEL Helm installation](https://grafana.com/docs/enterprise-logs/<ENTERPRISE_LOGS_VERSION>/setup/helm/).
+
+{{< admonition type="note" >}}
+Grafana Labs maintains the GEL Helm charts in the Loki repository.  Grafana Community Champions now maintain the Loki Helm charts in the [Grafana-community/helm-charts repo](https://github.com/grafana-community/helm-charts). Issues and pull requests for the Loki chart should be opened against the community repository.
+{{< /admonition >}}
 
 ## Deployment Recommendations
 
@@ -42,4 +46,4 @@ The following guides provide step-by-step instructions for deploying Loki on clo
 
 ## Reference
 
-[Values reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/)
+You can find reference documentation for the Loki Helm chart in the [values.yaml file](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml).

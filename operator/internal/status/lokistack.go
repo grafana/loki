@@ -204,6 +204,8 @@ func generateWarnings(stack *lokiv1.LokiStack) []metav1.Condition {
 	rf := manifests.DefaultLokiStackSpec(stack.Spec.Size).Replication.Factor
 	if stack.Spec.Replication != nil && stack.Spec.Replication.Factor > 0 {
 		rf = stack.Spec.Replication.Factor
+	} else if stack.Spec.ReplicationFactor > 0 { // nolint:staticcheck
+		rf = stack.Spec.ReplicationFactor // nolint:staticcheck
 	}
 	replicas := manifests.DefaultLokiStackSpec(stack.Spec.Size).Template.Ingester.Replicas
 	if stack.Spec.Template != nil && stack.Spec.Template.Ingester != nil && stack.Spec.Template.Ingester.Replicas > 0 {

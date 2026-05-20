@@ -15,11 +15,6 @@ If you have a lifecycle policy configured on the object store, please ensure tha
 
 Granular retention policies to apply retention at per tenant or per stream level are also supported by the Compactor.
 
-{{< admonition type="note" >}}
-The Compactor does not support retention on [legacy index types](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage). Please use the [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) when using legacy index types.
-Both the Table manager and legacy index types are deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
 ## Compactor
 
 The Compactor is responsible for compaction of index files and applying log retention.
@@ -72,24 +67,24 @@ compactor:
   retention_delete_worker_count: 150
   delete_request_store: gcs
 schema_config:
-    configs:
-      - from: "2020-07-31"
-        index:
-            period: 24h
-            prefix: index_
-        object_store: gcs
-        schema: v13
-        store: tsdb
+  configs:
+    - from: "2020-07-31"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: gcs
+      schema: v13
+      store: tsdb
 storage_config:
-    tsdb_shipper:
-        active_index_directory: /data/index
-        cache_location: /data/index_cache
-    gcs:
-        bucket_name: loki
+  tsdb_shipper:
+    active_index_directory: /data/index
+    cache_location: /data/index_cache
+  gcs:
+    bucket_name: loki
 ```
 
 {{< admonition type="note" >}}
-Retention is only available if the index period is 24h. Single store TSDB and single store BoltDB require 24h index period.
+Retention is only available if the index period is 24h. Single store TSDB requires a 24h index period.
 {{< /admonition >}}
 
 `retention_enabled` should be set to true. Without this, the Compactor will only compact tables.
@@ -161,7 +156,7 @@ Retention period for a given stream is decided based on the first match in this 
 2. If multiple global `retention_stream` selectors match the stream, retention period with the highest priority is picked. This value is not considered if per-tenant `retention_stream` is set.
 3. If a per-tenant `retention_period` is specified, it will be applied.
 4. The global `retention_period` will be applied if none of the above match.
-5. If no global `retention_period` is specified, the default value of `744h` (30days) retention is used.
+5. If no global `retention_period` is specified, the default value of `0s` is used, which means logs are kept indefinitely.
 
 {{< admonition type="note" >}}
 The larger the priority value, the higher the priority.
@@ -191,48 +186,6 @@ The example configurations defined above will result in the following retention 
 If you are a Grafana Cloud customer, you can use the [config self-serve API](https://grafana.com/docs/grafana-cloud/send-data/logs/config-self-serve/#configure-retention) to configure your tenant retention.
 {{< /admonition >}}
 
-## Table Manager (deprecated)
-
-Retention through the [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) is
-achieved by relying on the object store TTL feature, and will work for both
-[boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) store and chunk/index stores.
-
-In order to enable the retention support, the Table Manager needs to be
-configured to enable deletions and a retention period. Please refer to the
-[`table_manager`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#table_manager)
-section of the Loki configuration reference for all available options.
-Alternatively, the `table-manager.retention-period` and
-`table-manager.retention-deletes-enabled` command line flags can be used. The
-provided retention period needs to be a duration represented as a string that
-can be parsed using the Prometheus common model [ParseDuration](https://pkg.go.dev/github.com/prometheus/common/model#ParseDuration). Examples: `7d`, `1w`, `168h`.
-
-{{< admonition type="warning" >}}
-The retention period must be a multiple of the index and chunks table
-`period`, configured in the [`period_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) block.
-See the [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/#retention) documentation for
-more information.
-{{< /admonition >}}
-
-{{< admonition type="note" >}}
-To avoid querying of data beyond the retention period,`max_query_lookback` config in [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) must be set to a value less than or equal to what is set in `table_manager.retention_period`.
-{{< /admonition >}}
-
-When using S3 or GCS, the bucket storing the chunks needs to have the expiry
-policy set correctly. For more details check
-[S3's documentation](https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lifecycle-mgmt.html)
-or
-[GCS's documentation](https://cloud.google.com/storage/docs/managing-lifecycles).
-
-If you must delete ingested logs, you can delete old chunks in your object store. Note,
-however, that this only deletes the log content and keeps the label index
-intact; you will still be able to see related labels but will be unable to
-retrieve the deleted log content.
-
-For further details on the Table Manager internals, refer to the
-[Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) documentation.
-
-Alternatively, if the BoltDB Shipper is configured for the index store, you can enable [Log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) to delete log entries from a specific stream.
-
 ## Example Configuration
 
 Example configuration with GCS with a 28 day retention:
@@ -240,13 +193,13 @@ Example configuration with GCS with a 28 day retention:
 ```yaml
 schema_config:
   configs:
-  - from: 2018-04-15
-    store: tsdb
-    object_store: gcs
-    schema: v13
-    index:
-      prefix: loki_index_
-      period: 24h
+    - from: 2018-04-15
+      store: tsdb
+      object_store: gcs
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
 
 storage_config:
   tsdb_shipper:

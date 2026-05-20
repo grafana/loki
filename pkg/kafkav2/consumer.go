@@ -208,7 +208,7 @@ func (c *SinglePartitionConsumer) GetInitialOffset() int64 {
 // SetInitialOffset sets the initial offset for the consumer. It cannot
 // be called after the service has started.
 func (c *SinglePartitionConsumer) SetInitialOffset(offset int64) error {
-	if c.BasicService.State() != services.New {
+	if c.State() != services.New {
 		return errors.New("cannot set initial offset after service has started")
 	}
 	c.initialOffset = offset

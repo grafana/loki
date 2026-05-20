@@ -179,6 +179,11 @@ func isValidEndpointURL(endpointURL url.URL) error {
 			return errInvalidArgument("Google Cloud Storage endpoint should be 'storage.googleapis.com'.")
 		}
 	}
+	if strings.Contains(host, "s3-outposts") {
+		if !s3utils.IsAmazonOutpostsEndpoint(endpointURL) {
+			return errInvalidArgument("S3 Outposts endpoint must match <prefix>.s3-outposts.<region>.amazonaws.com")
+		}
+	}
 	return nil
 }
 
@@ -304,6 +309,21 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 			Region:     h.Get("x-amz-bucket-region"),
 		}
 	}
+	mtimeStr := h.Get("X-Minio-Source-Mtime")
+	if mtimeStr != "" {
+		mtime, err = time.Parse(time.RFC3339Nano, mtimeStr)
+		if err != nil {
+			return ObjectInfo{}, ErrorResponse{
+				Code:       InternalError,
+				Message:    fmt.Sprintf("X-Minio-Source-Mtime is not in supported format: %v", err),
+				BucketName: bucketName,
+				Key:        objectName,
+				RequestID:  h.Get("x-amz-request-id"),
+				HostID:     h.Get("x-amz-id-2"),
+				Region:     h.Get("x-amz-bucket-region"),
+			}
+		}
+	}
 
 	// Fetch content type if any present.
 	contentType := strings.TrimSpace(h.Get("Content-Type"))
@@ -381,6 +401,7 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 		Size:              size,
 		LastModified:      mtime,
 		ContentType:       contentType,
+		ContentEncoding:   strings.TrimSpace(h.Get("Content-Encoding")),
 		Expires:           expiry,
 		VersionID:         h.Get(amzVersionID),
 		IsDeleteMarker:    deleteMarker,
@@ -402,6 +423,12 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 		ChecksumSHA1:      h.Get(ChecksumSHA1.Key()),
 		ChecksumSHA256:    h.Get(ChecksumSHA256.Key()),
 		ChecksumCRC64NVME: h.Get(ChecksumCRC64NVME.Key()),
+		ChecksumMD5:       h.Get(ChecksumMD5.Key()),
+		ChecksumSHA512:    h.Get(ChecksumSHA512.Key()),
+		ChecksumXXHash64:  h.Get(ChecksumXXHash64.Key()),
+		ChecksumXXHash3:   h.Get(ChecksumXXHash3.Key()),
+		ChecksumXXHash128: h.Get(ChecksumXXHash128.Key()),
+		ChecksumAlgorithm: h.Get(amzChecksumAlgo),
 		ChecksumMode:      h.Get(ChecksumFullObjectMode.Key()),
 	}, nil
 }

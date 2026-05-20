@@ -1,10 +1,65 @@
 package index
 
 import (
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+var (
+	processingDelayDesc = prometheus.NewDesc(
+		"loki_index_builder_latest_processing_delay_seconds",
+		"Latest time difference between record timestamp and processing time in seconds",
+		[]string{"partition"},
+		nil,
+	)
+)
+
+// processingDelayCollector implements prometheus.Collector to dynamically report
+// processing delay only for active partitions, preventing cardinality explosion.
+type processingDelayCollector struct {
+	mtx    sync.RWMutex
+	delays map[int32]float64 // partition -> delay in seconds
+}
+
+func newProcessingDelayCollector() *processingDelayCollector {
+	return &processingDelayCollector{
+		delays: make(map[int32]float64),
+	}
+}
+
+// Describe implements prometheus.Collector.
+func (c *processingDelayCollector) Describe(descs chan<- *prometheus.Desc) {
+	descs <- processingDelayDesc
+}
+
+// Collect implements prometheus.Collector.
+func (c *processingDelayCollector) Collect(metrics chan<- prometheus.Metric) {
+	c.mtx.RLock()
+	defer c.mtx.RUnlock()
+	for partition, delay := range c.delays {
+		metrics <- prometheus.MustNewConstMetric(
+			processingDelayDesc,
+			prometheus.GaugeValue,
+			delay,
+			strconv.Itoa(int(partition)),
+		)
+	}
+}
+
+func (c *processingDelayCollector) set(partition int32, delay float64) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.delays[partition] = delay
+}
+
+func (c *processingDelayCollector) delete(partition int32) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	delete(c.delays, partition)
+}
 
 type builderMetrics struct {
 	// Error counters
@@ -14,7 +69,7 @@ type builderMetrics struct {
 	commitsTotal prometheus.Counter
 
 	// Processing delay metrics
-	processingDelay prometheus.Gauge // Latest delta between record timestamp and current time
+	processingDelay *processingDelayCollector
 }
 
 func newBuilderMetrics() *builderMetrics {
@@ -27,10 +82,7 @@ func newBuilderMetrics() *builderMetrics {
 			Name: "loki_index_builder_commits_total",
 			Help: "Total number of commits",
 		}),
-		processingDelay: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "loki_index_builder_latest_processing_delay_seconds",
-			Help: "Latest time difference between record timestamp and processing time in seconds",
-		}),
+		processingDelay: newProcessingDelayCollector(),
 	}
 
 	return p
@@ -53,18 +105,6 @@ func (p *builderMetrics) register(reg prometheus.Registerer) error {
 	return nil
 }
 
-func (p *builderMetrics) unregister(reg prometheus.Registerer) {
-	collectors := []prometheus.Collector{
-		p.commitFailures,
-		p.commitsTotal,
-		p.processingDelay,
-	}
-
-	for _, collector := range collectors {
-		reg.Unregister(collector)
-	}
-}
-
 func (p *builderMetrics) incCommitFailures() {
 	p.commitFailures.Inc()
 }
@@ -73,11 +113,14 @@ func (p *builderMetrics) incCommitsTotal() {
 	p.commitsTotal.Inc()
 }
 
-func (p *builderMetrics) setProcessingDelay(recordTimestamp time.Time) {
-	// Convert milliseconds to seconds and calculate delay
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.processingDelay.Set(time.Since(recordTimestamp).Seconds())
+func (p *builderMetrics) setProcessingDelay(partition int32, recordTimestamp time.Time) {
+	if !recordTimestamp.IsZero() {
+		p.processingDelay.set(partition, time.Since(recordTimestamp).Seconds())
 	}
+}
+
+func (p *builderMetrics) deletePartitionMetrics(partition int32) {
+	p.processingDelay.delete(partition)
 }
 
 type indexerMetrics struct {
@@ -141,20 +184,6 @@ func (m *indexerMetrics) register(reg prometheus.Registerer) error {
 	return nil
 }
 
-func (m *indexerMetrics) unregister(reg prometheus.Registerer) {
-	collectors := []prometheus.Collector{
-		m.totalRequests,
-		m.totalBuilds,
-		m.buildTimeSeconds,
-		m.queueDepth,
-		m.endToEndProcessingTime,
-	}
-
-	for _, collector := range collectors {
-		reg.Unregister(collector)
-	}
-}
-
 func (m *indexerMetrics) incRequests() {
 	m.totalRequests.Inc()
 }
@@ -173,4 +202,35 @@ func (m *indexerMetrics) setQueueDepth(depth int) {
 
 func (m *indexerMetrics) setEndToEndProcessingTime(duration time.Duration) {
 	m.endToEndProcessingTime.Set(duration.Seconds())
+}
+
+type calculatorMetrics struct {
+	calculationStepDuration *prometheus.HistogramVec
+}
+
+func newCalculatorMetrics() *calculatorMetrics {
+	return &calculatorMetrics{
+		calculationStepDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "loki_index_calculator_step_duration_seconds",
+			Help:    "Time spent in each index calculation step (ProcessBatch + Flush) per logs section.",
+			Buckets: prometheus.DefBuckets,
+		}, []string{"step"}),
+	}
+}
+
+func (m *calculatorMetrics) register(reg prometheus.Registerer) error {
+	if err := reg.Register(m.calculationStepDuration); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *calculatorMetrics) unregister(reg prometheus.Registerer) {
+	reg.Unregister(m.calculationStepDuration)
+}
+
+func (m *calculatorMetrics) observeStepDuration(step string, duration time.Duration) {
+	m.calculationStepDuration.WithLabelValues(step).Observe(duration.Seconds())
 }

@@ -59,7 +59,8 @@ type ObjectSummaryType struct {
 	StorageClass string    `json:"storageClass"`
 	Owner        OwnerType `json:"owner"`
 	VersionId    string    `json:"versionId,omitempty"`
-	IsLatest     int       `json:"isLatest,omitempty"`
+	IsLatest     bool      `json:"isLatest,omitempty"`
+	DeleteMarker bool      `json:"deleteMarker,omitempty"`
 }
 
 type PrefixType struct {
@@ -368,6 +369,7 @@ type CopyObjectArgs struct {
 	ContentCrc32cFlag bool
 	ObjectExpires     int
 	ContentCrc64ECMA  string
+	SrcVersionId      string
 	// please set other header/params of http request By Option
 	// alternative Options please refer to service/bos/api/option.go
 }

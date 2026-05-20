@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -111,30 +110,4 @@ func Test_encoder_typeRefs(t *testing.T) {
 		assert.Equal(t, tc.expectNameRef, nameRef, "unexpected name ref for %s", tc.name)
 	}
 
-}
-
-func Test_encoder_ObjectSize(t *testing.T) {
-	store := scratch.NewMemory()
-	enc := newEncoder(store)
-
-	var (
-		sectionType = SectionType{
-			Namespace: "github.com/grafana/loki",
-			Kind:      "test",
-		}
-
-		data     = []byte("test data content")
-		metadata = []byte("test metadata")
-	)
-
-	enc.AppendSection(sectionType, nil, data, metadata)
-
-	snapshot, err := enc.Flush()
-	assert.NoError(t, err)
-	defer snapshot.Close()
-
-	computedMetadata, err := enc.Metadata()
-	require.NoError(t, err)
-	require.Greater(t, computedMetadata.ObjectSize, int64(0), "ObjectSize should be greater than zero")
-	require.Equal(t, snapshot.Size(), computedMetadata.ObjectSize, "ObjectSize in metadata should match the actual encoded snapshot size")
 }

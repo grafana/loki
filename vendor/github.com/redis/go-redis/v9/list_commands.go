@@ -77,6 +77,10 @@ func (c cmdable) BRPop(ctx context.Context, timeout time.Duration, keys ...strin
 	return cmd
 }
 
+// BRPopLPush pops an element from a list, pushes it to another list and returns it.
+// Blocks until an element is available or timeout is reached.
+//
+// Deprecated: Use BLMove with RIGHT and LEFT arguments instead as of Redis 6.2.0.
 func (c cmdable) BRPopLPush(ctx context.Context, source, destination string, timeout time.Duration) *StringCmd {
 	cmd := NewStringCmd(
 		ctx,
@@ -247,6 +251,10 @@ func (c cmdable) RPopCount(ctx context.Context, key string, count int) *StringSl
 	return cmd
 }
 
+// RPopLPush atomically returns and removes the last element of the source list,
+// and pushes the element as the first element of the destination list.
+//
+// Deprecated: Use LMove with RIGHT and LEFT arguments instead as of Redis 6.2.0.
 func (c cmdable) RPopLPush(ctx context.Context, source, destination string) *StringCmd {
 	cmd := NewStringCmd(ctx, "rpoplpush", source, destination)
 	_ = c(ctx, cmd)

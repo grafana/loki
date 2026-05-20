@@ -303,6 +303,12 @@ type newMultiRangeDownloaderParams struct {
 	gen           int64
 	object        string
 	handle        *ReadHandle
+
+	// Multistream settings.
+	minConnections      int
+	maxConnections      int
+	targetPendingRanges int
+	targetPendingBytes  int
 }
 
 type newRangeReaderParams struct {

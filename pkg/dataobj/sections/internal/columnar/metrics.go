@@ -241,21 +241,6 @@ func (m *Metrics) Observe(ctx context.Context, section *Section) error {
 	return nil
 }
 
-func physicalTypeFriendlyName(ty datasetmd.PhysicalType) string {
-	switch ty {
-	case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
-		return "invalid"
-	case datasetmd.PHYSICAL_TYPE_INT64:
-		return "int64"
-	case datasetmd.PHYSICAL_TYPE_UINT64:
-		return "uint64"
-	case datasetmd.PHYSICAL_TYPE_BINARY:
-		return "binary"
-	}
-
-	return "<unknown>"
-}
-
 func newNativeHistogram(opts prometheus.HistogramOpts) prometheus.Histogram {
 	opts.NativeHistogramBucketFactor = 1.1
 	opts.NativeHistogramMaxBucketNumber = 100

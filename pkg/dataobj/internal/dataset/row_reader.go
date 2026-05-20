@@ -7,6 +7,7 @@ import (
 	"io"
 	"iter"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
@@ -50,8 +51,6 @@ type RowReader struct {
 	row    int64                // The current row being read.
 	inner  *basicRowReader      // Underlying reader that reads from columns.
 	ranges rangeset.Set         // Valid ranges to read across the entire dataset.
-
-	region *xcap.Region // Region for recording statistics.
 }
 
 var errRowReaderNotOpen = errors.New("row reader not opened")
@@ -95,8 +94,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 		return 0, errRowReaderNotOpen
 	}
 
-	r.region.Record(xcap.StatDatasetReadCalls.Observe(1))
-	ctx = xcap.ContextWithRegion(ctx, r.region)
+	region := xcap.RegionFromContext(ctx)
+	region.Record(xcap.StatDatasetReadCalls.Observe(1))
 
 	// Our Read implementation works by:
 	//
@@ -169,8 +168,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 			primaryColumnBytes += s[i].Size()
 		}
 
-		r.region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
-		r.region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
+		region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+		region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 	} else {
 		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize])
 		if err != nil {
@@ -202,8 +201,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
 
-		r.region.Record(xcap.StatDatasetSecondaryRowsRead.Observe(int64(count)))
-		r.region.Record(xcap.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
+		region.Record(xcap.StatDatasetSecondaryRowsRead.Observe(int64(count)))
+		region.Record(xcap.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
 	}
 
 	// We only advance r.row after we successfully read and filled rows. This
@@ -288,8 +287,9 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 		readSize = passCount
 	}
 
-	r.region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
-	r.region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
+	region := xcap.RegionFromContext(ctx)
+	region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+	region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 
 	return rowsRead, passCount, nil
 }
@@ -415,8 +415,6 @@ func buildMask(full rangeset.Range, s []Row) iter.Seq[rangeset.Range] {
 // Close closes the RowReader. Closed RowReaders can be reused by calling
 // [RowReader.Reset].
 func (r *RowReader) Close() error {
-	r.region.End()
-
 	if r.inner != nil {
 		return r.inner.Close()
 	}
@@ -445,14 +443,11 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 	r.ranges.Reset()
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.ready = false
-	r.region = nil
 }
 
 func (r *RowReader) init(ctx context.Context) error {
 	// RowReader.init is kept close to the defition of RowReader.Reset to make it
 	// easier to follow the correctness of resetting + initializing.
-
-	_, r.region = xcap.StartRegion(ctx, "dataset.RowReader")
 
 	// r.validatePredicate must be called before initializing anything else; for
 	// simplicity, other functions assume that the predicate is valid and can
@@ -464,6 +459,9 @@ func (r *RowReader) init(ctx context.Context) error {
 	if err := r.initDownloader(ctx); err != nil {
 		return err
 	}
+	if err := r.prefetchPages(ctx); err != nil {
+		return fmt.Errorf("prefetching pages: %w", err)
+	}
 
 	if r.inner == nil {
 		r.inner = newBasicRowReader(r.allColumns())
@@ -473,6 +471,13 @@ func (r *RowReader) init(ctx context.Context) error {
 
 	r.ready = true
 	return nil
+}
+
+func (r *RowReader) prefetchPages(ctx context.Context) error {
+	if !r.opts.Prefetch {
+		return nil
+	}
+	return r.dl.Prefetch(ctx)
 }
 
 // allColumns returns the full set of column to read. If r was configured with
@@ -557,6 +562,8 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 	//   2. Add columns with a flag of whether a column is primary or secondary.
 	//   3. Provide the overall dataset row ranges that will be valid to read.
 
+	region := xcap.RegionFromContext(ctx)
+
 	if r.dl == nil {
 		r.dl = newRowReaderDownloader(r.opts.Dataset)
 	} else {
@@ -570,13 +577,16 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		primary := mask.Test(i)
 		r.dl.AddColumn(column, primary)
 
+		pageCount := int64(column.ColumnDesc().PagesCount)
+		region.Record(dataobj.StatDatasetPagesTotal.Observe(pageCount))
+
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
-			r.region.Record(xcap.StatDatasetPrimaryColumns.Observe(1))
-			r.region.Record(xcap.StatDatasetPrimaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
+			region.Record(xcap.StatDatasetPrimaryColumns.Observe(1))
+			region.Record(xcap.StatDatasetPrimaryColumnPages.Observe(pageCount))
 		} else {
-			r.region.Record(xcap.StatDatasetSecondaryColumns.Observe(1))
-			r.region.Record(xcap.StatDatasetSecondaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
+			region.Record(xcap.StatDatasetSecondaryColumns.Observe(1))
+			region.Record(xcap.StatDatasetSecondaryColumnPages.Observe(pageCount))
 		}
 	}
 
@@ -610,8 +620,8 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 	}
 
-	r.region.Record(xcap.StatDatasetMaxRows.Observe(int64(rowsCount)))
-	r.region.Record(xcap.StatDatasetRowsAfterPruning.Observe(int64(ranges.Len())))
+	region.Record(xcap.StatDatasetMaxRows.Observe(int64(rowsCount)))
+	region.Record(xcap.StatDatasetRowsAfterPruning.Observe(int64(ranges.Len())))
 
 	return nil
 }
@@ -813,6 +823,8 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 		return rangeset.Set{}, fmt.Errorf("column %v not found in RowReader columns", c)
 	}
 
+	region := xcap.RegionFromContext(ctx)
+
 	var ranges rangeset.Set
 
 	var (
@@ -868,6 +880,12 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 		if include {
 			ranges.Add(pageRange)
+		} else {
+			// Page-level stats were present and the predicate ruled out the page,
+			// so the page will not be downloaded for this predicate. Pages without
+			// stats short-circuit above (they are always included) and are not
+			// counted here.
+			region.Record(dataobj.StatDatasetPagesPruned.Observe(1))
 		}
 	}
 

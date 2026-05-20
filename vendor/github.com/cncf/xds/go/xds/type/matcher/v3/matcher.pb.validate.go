@@ -185,7 +185,7 @@ type MatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m MatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -387,7 +387,7 @@ type Matcher_OnMatchMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Matcher_OnMatchMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -532,7 +532,7 @@ type Matcher_MatcherListMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Matcher_MatcherListMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -816,7 +816,7 @@ type Matcher_MatcherTreeMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Matcher_MatcherTreeMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1102,7 +1102,7 @@ type Matcher_MatcherList_PredicateMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Matcher_MatcherList_PredicateMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1287,7 +1287,7 @@ type Matcher_MatcherList_FieldMatcherMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Matcher_MatcherList_FieldMatcherMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1533,7 +1533,7 @@ type Matcher_MatcherList_Predicate_SinglePredicateMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Matcher_MatcherList_Predicate_SinglePredicateMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1687,7 +1687,7 @@ type Matcher_MatcherList_Predicate_PredicateListMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Matcher_MatcherList_Predicate_PredicateListMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -1847,7 +1847,7 @@ type Matcher_MatcherTree_MatchMapMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m Matcher_MatcherTree_MatchMapMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

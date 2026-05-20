@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"sort"
 	"strconv"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
@@ -40,8 +41,7 @@ func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64
 	// Calculate response size
 	responseSize := int64(len(responseBody))
 
-	// Check if new engine was used by looking for the specific warning
-	usedNewEngine := e.checkForNewEngineWarning(queryResp.Warnings)
+	usedNewEngine := queryResp.Data.Statistics.QueryUsedV2Engine()
 
 	return queryStats, responseHash, responseSize, usedNewEngine, queryResp.Data.ResultType, nil
 }
@@ -70,19 +70,24 @@ type hashableResponse struct {
 	} `json:"data"`
 }
 
-// generateResponseHash creates a content-sensitive hash by removing only performance statistics
+// generateResponseHash creates a content-sensitive hash by removing only performance statistics.
+// For streams results, entries within each stream are sorted by (timestamp, line)
+// before hashing so that different tie-breaking orders for same-timestamp entries
+// across engines do not produce false mismatches.
 func (e *StatsExtractor) generateResponseHash(resp loghttp.QueryResponse) string {
-	// Create a copy of the response without statistics (which contain timing info)
 	hashableResp := hashableResponse{
 		Status: resp.Status,
 	}
 	hashableResp.Data.ResultType = string(resp.Data.ResultType)
-	hashableResp.Data.Result = resp.Data.Result
 
-	// Generate hash from the response content (excluding statistics)
+	result := resp.Data.Result
+	if streams, ok := result.(loghttp.Streams); ok {
+		result = normalizeStreamsOrder(streams)
+	}
+	hashableResp.Data.Result = result
+
 	responseBytes, err := json.Marshal(hashableResp)
 	if err != nil {
-		// Fallback to empty string if marshaling fails
 		return ""
 	}
 
@@ -90,7 +95,30 @@ func (e *StatsExtractor) generateResponseHash(resp loghttp.QueryResponse) string
 	h.Write(responseBytes)
 
 	return strconv.FormatUint(uint64(h.Sum32()), 16)
+}
 
+// normalizeStreamsOrder returns a copy of the streams with entries within each
+// stream sorted by (timestamp, line). This makes the hash order-agnostic for
+// entries that share the same nanosecond timestamp, which different engines may
+// return in different but equally valid orders.
+func normalizeStreamsOrder(streams loghttp.Streams) loghttp.Streams {
+	normalized := make(loghttp.Streams, len(streams))
+	for i, s := range streams {
+		entries := make([]loghttp.Entry, len(s.Entries))
+		copy(entries, s.Entries)
+		sort.Slice(entries, func(a, b int) bool {
+			ta, tb := entries[a].Timestamp, entries[b].Timestamp
+			if ta.Equal(tb) {
+				return entries[a].Line < entries[b].Line
+			}
+			return ta.Before(tb)
+		})
+		normalized[i] = loghttp.Stream{
+			Labels:  s.Labels,
+			Entries: entries,
+		}
+	}
+	return normalized
 }
 
 // CompareStats compares two QueryStats and returns performance differences.
@@ -194,16 +222,4 @@ func (e *StatsExtractor) CompareStats(cellA, cellB goldfish.QueryStats) map[stri
 	}
 
 	return differences
-}
-
-// checkForNewEngineWarning checks if the warnings contain the new engine warning
-func (e *StatsExtractor) checkForNewEngineWarning(warnings []string) bool {
-	const newEngineWarning = "Query was executed using the new experimental query engine and dataobj storage."
-
-	for _, warning := range warnings {
-		if warning == newEngineWarning {
-			return true
-		}
-	}
-	return false
 }

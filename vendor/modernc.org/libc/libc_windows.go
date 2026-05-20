@@ -7,7 +7,6 @@ package libc // import "modernc.org/libc"
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/sys/windows"
 	"math"
 	mbits "math/bits"
 	"os"
@@ -24,6 +23,7 @@ import (
 	"unsafe"
 
 	"github.com/ncruces/go-strftime"
+	"golang.org/x/sys/windows"
 	"modernc.org/libc/errno"
 	"modernc.org/libc/fcntl"
 	"modernc.org/libc/limits"
@@ -128,6 +128,7 @@ var (
 	procGetModuleFileNameW         = modkernel32.NewProc("GetModuleFileNameW")
 	procGetModuleHandleA           = modkernel32.NewProc("GetModuleHandleA")
 	procGetModuleHandleW           = modkernel32.NewProc("GetModuleHandleW")
+	procGetNativeSystemInfo        = modkernel32.NewProc("GetNativeSystemInfo")
 	procGetPrivateProfileStringA   = modkernel32.NewProc("GetPrivateProfileStringA")
 	procGetProcAddress             = modkernel32.NewProc("GetProcAddress")
 	procGetProcessHeap             = modkernel32.NewProc("GetProcessHeap")
@@ -253,6 +254,7 @@ var (
 	procWfindfirst64i32 = moducrt.NewProc("_wfindfirst64i32")
 	procWfindnext32     = moducrt.NewProc("_wfindnext32")
 	procWfindnext64i32  = moducrt.NewProc("_wfindnext64i32")
+	procWfullpath       = moducrt.NewProc("_wfullpath")
 	procWmkdir          = moducrt.NewProc("_wmkdir")
 	procWstat32         = moducrt.NewProc("_wstat32")
 	procWstat64i32      = moducrt.NewProc("_wstat64i32")
@@ -1681,11 +1683,15 @@ func Xdlsym(t *TLS, handle, symbol uintptr) uintptr {
 }
 
 // void perror(const char *s);
-func Xperror(t *TLS, s uintptr) {
+func Xperror(tls *TLS, msg uintptr) {
 	if __ccgo_strace {
-		trc("t=%v s=%v, (%v:)", t, s, origin(2))
+		trc("tls=%v msg=%v, (%v:)", tls, msg, origin(2))
 	}
-	panic(todo(""))
+	if msg != 0 && *(*int8)(unsafe.Pointer(msg)) != 0 {
+		fmt.Fprintf(os.Stderr, "%s: ", GoString(msg))
+	}
+	errstr := Xstrerror(tls, *(*int32)(unsafe.Pointer(X__errno_location(tls))))
+	fmt.Fprintf(os.Stderr, "%s\n", GoString(errstr))
 }
 
 // int pclose(FILE *stream);
@@ -3826,6 +3832,18 @@ func XRtlGetVersion(t *TLS, lpVersionInformation uintptr) uintptr {
 		trc("t=%v lpVersionInformation=%v, (%v:)", t, lpVersionInformation, origin(2))
 	}
 	panic(todo(""))
+}
+
+// void GetNativeSystemInfo(
+//
+//	LPSYSTEM_INFO lpSystemInfo
+//
+// );
+func XGetNativeSystemInfo(t *TLS, lpSystemInfo uintptr) {
+	if __ccgo_strace {
+		trc("t=%v lpSystemInfo=%v, (%v:)", t, lpSystemInfo, origin(2))
+	}
+	procGetNativeSystemInfo.Call(lpSystemInfo, 0, 0)
 }
 
 // void GetSystemInfo(
@@ -6032,7 +6050,10 @@ func Xputchar(t *TLS, c int32) int32 {
 	if __ccgo_strace {
 		trc("t=%v c=%v, (%v:)", t, c, origin(2))
 	}
-	panic(todo(""))
+	if _, err := fwrite(unistd.STDOUT_FILENO, []byte{byte(c)}); err != nil {
+		return -1
+	}
+	return int32(byte(c))
 }
 
 // void _assert(
@@ -7695,17 +7716,6 @@ func X__mingw_strtod(t *TLS, s uintptr, p uintptr) float64 {
 	return Xstrtod(t, s, p)
 }
 
-func Xstrtod(t *TLS, s uintptr, p uintptr) float64 {
-	if __ccgo_strace {
-		trc("tls=%v s=%v p=%v, (%v:)", t, s, p, origin(2))
-	}
-	r0, _, err := procStrtod.Call(uintptr(s), uintptr(p))
-	if err != windows.NOERROR {
-		t.setErrno(err)
-	}
-	return math.Float64frombits(uint64(r0))
-}
-
 // int vsnprintf(char *str, size_t size, const char *format, va_list ap);
 func X_vsnprintf(t *TLS, str uintptr, size types.Size_t, format, ap uintptr) int32 {
 	if __ccgo_strace {
@@ -7802,6 +7812,19 @@ func X_wfindnext64i32(tls *TLS, handle types.Intptr_t, fileinfo uintptr) (r int3
 	return int32(r0)
 }
 
+// wchar_t *_wfullpath(
+//    wchar_t *absPath,
+//    const wchar_t *relPath,
+//    size_t maxLength
+// );
+func X_wfullpath(tls *TLS, absPath, relPath uintptr, maxLength Tsize_t) (r uintptr) {
+	r0, _, err := procWfullpath.Call(absPath, relPath, uintptr(maxLength))
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return r0
+}
+
 // int _wchmod( const wchar_t *filename, int pmode );
 func X_wchmod(tls *TLS, filename uintptr, pmode int32) (r int32) {
 	r0, _, err := procWchmod.Call(filename, uintptr(pmode))
@@ -7854,4 +7877,27 @@ func X_wstat32(tls *TLS, path, buffer uintptr) (r int32) {
 		tls.setErrno(int32(err.(windows.Errno)))
 	}
 	return int32(r0)
+}
+
+func Xbsearch(tls *TLS, key uintptr, base uintptr, nel Tsize_t, width Tsize_t, cmp uintptr) uintptr {
+	if __ccgo_strace {
+		trc("tls=%v key=%v base=%v nel=%v width=%v cmp=%v, (%v:)", tls, key, base, nel, width, cmp, origin(2))
+	}
+	var try uintptr
+	var sign int32
+	for nel > 0 {
+		try = base + uintptr(width*(nel/2))
+		sign = (*struct {
+			f func(*TLS, uintptr, uintptr) int32
+		})(unsafe.Pointer(&struct{ uintptr }{cmp})).f(tls, key, try)
+		if sign < 0 {
+			nel /= 2
+		} else if sign > 0 {
+			base = try + uintptr(width)
+			nel -= nel/2 + 1
+		} else {
+			return try
+		}
+	}
+	return 0
 }

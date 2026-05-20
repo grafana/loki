@@ -1,7 +1,13 @@
 ## Changelog
 
 
+## v2.37.0
+
+- suport HEXPIRE (thanks @mojixcoder)
+
+
 ## v2.36.1
+
 - support CLUSTER SHARDS (thanks @dadrus)
 
 

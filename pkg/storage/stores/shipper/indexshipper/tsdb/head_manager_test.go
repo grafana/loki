@@ -434,6 +434,42 @@ func Test_HeadManager_QueryAfterRotate(t *testing.T) {
 
 }
 
+func Test_HeadManager_ChunkFilterer(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, mgr.Rotate(now))
+
+	user := "tenant1"
+	ls := mustParseLabels(`{foo="bar"}`)
+	chks := []index.ChunkMeta{{MinTime: 1, MaxTime: 10, Checksum: 1}}
+	require.Nil(t, mgr.Append(user, ls, labels.StableHash(ls), chks))
+
+	matchAll := labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+")
+	nextPeriod := time.Now().Add(time.Duration(mgr.period))
+	mgr.tick(nextPeriod) // rotate so data moves to prevHeads, queryable via lazy index
+
+	// Confirm data is reachable via GetChunkRefs before testing Series.
+	refs, err := mgr.GetChunkRefs(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
+	require.Nil(t, err)
+	require.Len(t, refs, 1)
+
+	// Without a filterer, Series returns the appended series.
+	series, err := mgr.Series(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
+	require.Nil(t, err)
+	require.Len(t, series, 1)
+
+	// With a filterAll filterer, Series returns no results.
+	mgr.SetChunkFilterer(&filterAll{})
+	series, err = mgr.Series(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
+	require.Nil(t, err)
+	require.Len(t, series, 0)
+}
+
 // test mgr recover from multiple wals across multiple periods
 func Test_HeadManager_Lifecycle(t *testing.T) {
 	dir := t.TempDir()
@@ -556,7 +592,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v11",
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -567,7 +603,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v11",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -580,7 +616,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v12",
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -591,7 +627,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v12",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -604,7 +640,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			Configs: []config.PeriodConfig{
 				{
 					Schema:     "v13",
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{
@@ -615,7 +651,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 				{
 					Schema:     "v13",
 					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-					IndexType:  types.TSDBType,
+					IndexType:  types.IndexTypeTSDB,
 					ObjectType: types.StorageTypeFileSystem,
 					IndexTables: config.IndexPeriodicTableConfig{
 						PeriodicTableConfig: config.PeriodicTableConfig{

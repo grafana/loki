@@ -10,19 +10,19 @@ import (
 
 type int32Type struct{}
 
-func (t int32Type) String() string                   { return "INT32" }
-func (t int32Type) Kind() Kind                       { return Int32 }
-func (t int32Type) Length() int                      { return 32 }
-func (t int32Type) EstimateSize(n int) int           { return 4 * n }
-func (t int32Type) EstimateNumValues(n int) int      { return n / 4 }
-func (t int32Type) Compare(a, b Value) int           { return compareInt32(a.int32(), b.int32()) }
-func (t int32Type) ColumnOrder() *format.ColumnOrder { return &typeDefinedColumnOrder }
-func (t int32Type) LogicalType() *format.LogicalType {
-	return &format.LogicalType{Integer: &format.IntType{
-		BitWidth: 32,
-		IsSigned: true,
-	}}
-}
+var int32LogicalType = format.LogicalType{Integer: &format.IntType{
+	BitWidth: 32,
+	IsSigned: true,
+}}
+
+func (t int32Type) String() string                           { return "INT32" }
+func (t int32Type) Kind() Kind                               { return Int32 }
+func (t int32Type) Length() int                              { return 32 }
+func (t int32Type) EstimateSize(n int) int                   { return 4 * n }
+func (t int32Type) EstimateNumValues(n int) int              { return n / 4 }
+func (t int32Type) Compare(a, b Value) int                   { return compareInt32(a.int32(), b.int32()) }
+func (t int32Type) ColumnOrder() *format.ColumnOrder         { return &typeDefinedColumnOrder }
+func (t int32Type) LogicalType() *format.LogicalType         { return &int32LogicalType }
 func (t int32Type) ConvertedType() *deprecated.ConvertedType { return nil }
 func (t int32Type) PhysicalType() *format.Type               { return &physicalTypes[Int32] }
 
@@ -61,9 +61,9 @@ func (t int32Type) EstimateDecodeSize(numValues int, src []byte, enc encoding.En
 func (t int32Type) AssignValue(dst reflect.Value, src Value) error {
 	v := src.int32()
 	switch dst.Kind() {
-	case reflect.Int8, reflect.Int16, reflect.Int32:
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int, reflect.Int64:
 		dst.SetInt(int64(v))
-	case reflect.Uint8, reflect.Uint16, reflect.Uint32:
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint, reflect.Uint64, reflect.Uintptr:
 		dst.SetUint(uint64(v))
 	default:
 		dst.Set(reflect.ValueOf(v))
@@ -116,4 +116,17 @@ func (t uint32Type) NewDictionary(columnIndex, numValues int, data encoding.Valu
 
 func (t uint32Type) NewPage(columnIndex, numValues int, data encoding.Values) Page {
 	return newUint32Page(t, makeColumnIndex(columnIndex), makeNumValues(numValues), data)
+}
+
+func (t uint32Type) AssignValue(dst reflect.Value, src Value) error {
+	v := src.uint32()
+	switch dst.Kind() {
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int, reflect.Int64:
+		dst.SetInt(int64(v))
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint, reflect.Uint64, reflect.Uintptr:
+		dst.SetUint(uint64(v))
+	default:
+		dst.Set(reflect.ValueOf(v))
+	}
+	return nil
 }

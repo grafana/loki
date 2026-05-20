@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kerr"
@@ -45,12 +46,15 @@ func (g *groupConsumer) manage848() {
 		serverAssignor = "range"
 	}
 
-	var known848Support bool
+	// fallbackToClassic is set when manage848 hands off to the classic
+	// manage() goroutine, which takes ownership of closing manageDone.
+	var fallbackToClassic bool
 	defer func() {
-		if known848Support {
+		if !fallbackToClassic {
 			close(g.manageDone)
 		}
 	}()
+	var known848Support bool
 	optInKnown := func() {
 		if known848Support {
 			return
@@ -71,7 +75,6 @@ func (g *groupConsumer) manage848() {
 	g.memberGen.store(newStringUUID(), 0) // 0 joins the group
 
 	var consecutiveErrors int
-	var initialFences int
 outer:
 	for {
 		initialHb, err := g848.initialJoin()
@@ -92,6 +95,7 @@ outer:
 						g.is848 = false
 						g.mu.Unlock()
 						g.cfg.logger.Log(LogLevelInfo, "falling back to standard consumer group management due to lack of broker support", "group", g.cfg.group)
+						fallbackToClassic = true
 						go g.manage()
 						return
 					}
@@ -103,37 +107,10 @@ outer:
 			}
 		}
 
-		// !!! TODO THIS BLOCK SHOULD NOT BE NECESSARY !!!
-		if errors.Is(err, kerr.FencedMemberEpoch) && initialFences < 1 {
-			lastMember, gen := g.memberGen.load()
-			newMember := newStringUUID()
-			g.memberGen.store(newMember, 0)
-			g.cfg.logger.Log(LogLevelInfo, "received fenced member epoch with epoch 0; clearing member ID to forcefully join as a new member",
-				"group", g.cfg.group,
-				"prior_member_id", lastMember,
-				"prior_generation", gen,
-				"new_member_id", newMember,
-				"new_generation", 0,
-			)
-			after := time.NewTimer(time.Second)
-			select {
-			case <-after.C:
-				initialFences++
-				continue outer
-			case <-g.cl.ctx.Done():
-				after.Stop()
-			}
-		}
-
 		for err == nil {
-			initialFences = 0
 			consecutiveErrors = 0
 			var nowAssigned map[string][]int32
-			// setupAssignedAndHeartbeat
-			// * First revokes partitions we lost from our last session
-			// * Starts heartbeating
-			// * Starts fetching offsets for what new we're assigned
-			//
+
 			// In heartbeating, if we lose or gain partitions, we need to
 			// exit the old heartbeat and re-enter setupAssignedAndHeartbeat.
 			// Otherwise, we heartbeat exactly the same as the old.
@@ -141,11 +118,21 @@ outer:
 			// This results in a few more heartbeats than necessary
 			// when things are changing, but keeps all the old
 			// logic that handles all edge conditions.
+			//
+			// setupAssignedAndHeartbeat starts prerevoke (for
+			// lost partitions) and heartbeating concurrently.
+			// While prerevoking, the heartbeat sends keepalive
+			// (Topics=nil) so the server does not see partitions
+			// released before the user commits their offsets in
+			// any OnPartitionsRevoked callback.
+			// The prerevoke goroutine clears prerevoking when
+			// revocation and offset commits are complete, and
+			// subsequent heartbeats resume sending full requests.
 			_, err = g.setupAssignedAndHeartbeat(initialHb, func() (time.Duration, error) {
 				req := g848.mkreq()
-				dup := *req
-				if reflect.DeepEqual(g848.lastSubscribedTopics, req.SubscribedTopicNames) && reflect.DeepEqual(g848.lastTopics, req.Topics) {
+				if g848.prerevoking.Load() || (reflect.DeepEqual(g848.lastSubscribedTopics, req.SubscribedTopicNames) && reflect.DeepEqual(g848.lastTopics, req.Topics)) {
 					req.InstanceID = nil
+					req.RackID = nil
 					req.RebalanceTimeoutMillis = -1
 					req.ServerAssignor = nil
 					req.SubscribedTopicRegex = nil
@@ -155,30 +142,6 @@ outer:
 				resp, err := req.RequestWith(g.ctx, g.cl)
 				if err != nil {
 					return g.cfg.heartbeatInterval, err
-				}
-
-				// !!! TODO BEFORE OPTING IN BY DEFAULT !!!
-				// !!! ALSO EVALUATE COMMIT LOGIC       !!!
-				//
-				// See how the tests perform when the beartbeat is duplicated!
-				// I deliberately am not opting into next gen rebalancing until
-				// tests are reliably stable with the following lines uncommented!
-				//
-				// _, _ = resp, err
-				// resp, err = req.RequestWith(g.ctx, g.cl)
-				// if err != nil {
-				// 	return g.cfg.heartbeatInterval, err
-				// }
-				//
-				// !!! TODO DELETE
-
-				err = errCodeMessage(resp.ErrorCode, resp.ErrorMessage)
-				if errors.Is(err, kerr.FencedMemberEpoch) {
-					req = &dup
-					resp, err = req.RequestWith(g.ctx, g.cl)
-					if err != nil {
-						return g.cfg.heartbeatInterval, err
-					}
 				}
 
 				err = errCodeMessage(resp.ErrorCode, resp.ErrorMessage)
@@ -193,23 +156,39 @@ outer:
 				}
 				return sleep, err
 			})
+
 			switch {
-			case errors.Is(err, kerr.FencedMemberEpoch):
-				member, gen := g.memberGen.load()
-				g.cfg.logger.Log(LogLevelInfo, "consumer group heartbeat saw fenced member epoch, abandoning assignment and rejoining",
+			case errors.Is(err, kerr.RebalanceInProgress):
+				err = nil
+
+			case err != nil && isRetryableBrokerErr(err):
+				g.cfg.logger.Log(LogLevelInfo, "consumer group heartbeat hit retriable broker error, retrying",
 					"group", g.cfg.group,
-					"member_id", member,
-					"generation", gen,
+					"err", err,
 				)
-				nowAssigned = make(map[string][]int32)
-				g.nowAssigned.store(nil)
-				continue outer
+				err = nil
 
 			case errors.Is(err, kerr.UnknownMemberID):
 				g.memberGen.store(newStringUUID(), 0)
 
-			case errors.Is(err, kerr.RebalanceInProgress):
-				err = nil
+			case errors.Is(err, kerr.FencedMemberEpoch),
+				errors.Is(err, kerr.GroupMaxSizeReached),
+				errors.Is(err, kerr.UnsupportedAssignor):
+				lvl := LogLevelInfo
+				if errors.Is(err, kerr.GroupMaxSizeReached) {
+					lvl = LogLevelWarn
+				} else if errors.Is(err, kerr.UnsupportedAssignor) {
+					lvl = LogLevelError
+				}
+				member, gen := g.memberGen.load()
+				g.cfg.logger.Log(lvl, "consumer group heartbeat error, abandoning assignment and rejoining",
+					"group", g.cfg.group,
+					"member_id", member,
+					"generation", gen,
+					"err", err,
+				)
+				g.nowAssigned.store(nil)
+				continue outer
 			}
 
 			if nowAssigned != nil {
@@ -247,10 +226,6 @@ outer:
 }
 
 func (g *groupConsumer) leave848(ctx context.Context) {
-	if g.cfg.instanceID != nil {
-		return
-	}
-
 	memberID := g.memberGen.memberID()
 	g.cfg.logger.Log(LogLevelInfo, "leaving next-gen group",
 		"group", g.cfg.group,
@@ -261,7 +236,7 @@ func (g *groupConsumer) leave848(ctx context.Context) {
 	// we can do. We may as well just return.
 	req := kmsg.NewPtrConsumerGroupHeartbeatRequest()
 	req.Group = g.cfg.group
-	req.MemberID = g.memberGen.memberID()
+	req.MemberID = memberID
 	req.MemberEpoch = -1
 	if g.cfg.instanceID != nil {
 		req.MemberEpoch = -2
@@ -282,6 +257,14 @@ type g848 struct {
 
 	lastSubscribedTopics []string
 	lastTopics           []kmsg.ConsumerGroupHeartbeatRequestTopic
+
+	// prerevoking is true while prerevoke is running: the
+	// assignment has changed and lost partitions are being
+	// revoked and their offsets committed. While true, the
+	// heartbeat closure sends keepalive (Topics=nil) so the
+	// server does not see partitions as released before offsets
+	// are committed. Cleared by the prerevoke goroutine.
+	prerevoking atomic.Bool
 }
 
 // v1+ requires the end user to generate their own MemberID, with the
@@ -298,6 +281,7 @@ func (g *g848) initialJoin() (time.Duration, error) {
 	g.g.memberGen.storeGeneration(0)
 	g.lastSubscribedTopics = nil
 	g.lastTopics = nil
+	g.prerevoking.Store(false)
 	req := g.mkreq()
 	resp, err := req.RequestWith(g.g.ctx, g.g.cl)
 	if err == nil {
@@ -336,8 +320,21 @@ func (g *g848) handleResp(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.Co
 	id2t := g.g.cl.id2tMap()
 	newAssigned := make(map[string][]int32)
 
-	g.lastSubscribedTopics = req.SubscribedTopicNames
-	g.lastTopics = req.Topics
+	// Only update the last-sent fields when Topics was actually
+	// included in the request. When the request was a keepalive
+	// (Topics=nil), we preserve the previous values so the next
+	// comparison still matches and produces another keepalive.
+	// Without this guard, storing nil after a keepalive causes
+	// DeepEqual(nil, []) to fail on the next heartbeat, re-sending
+	// Topics=[] - creating an alternating full/keepalive pattern.
+	// The server clears pendingRevocations when Topics does not
+	// contain a pending partition, so the alternating stale full
+	// heartbeats can cause premature revocation clearing and dual
+	// assignment.
+	if req.Topics != nil {
+		g.lastSubscribedTopics = req.SubscribedTopicNames
+		g.lastTopics = req.Topics
+	}
 
 	if resp.Assignment == nil {
 		return nil
@@ -391,7 +388,18 @@ func (g *g848) mkreq() *kmsg.ConsumerGroupHeartbeatRequest {
 	req.ServerAssignor = &g.serverAssignor
 
 	tps := g.g.tps.load()
-	if g.g.cl.cfg.regex {
+	if g.g.cl.cfg.regex && len(g.g.cl.cfg.excludeTopics) > 0 {
+		// KIP-848's SubscribedTopicRegex is include-only with no exclude
+		// counterpart. When excludes are configured, fall back to sending
+		// the already-resolved topic names from g.tps (which
+		// filterMetadataAllTopics populates with excludes applied).
+		// New topics are picked up on the next metadata refresh.
+		subscribedTopics := make([]string, 0, len(tps))
+		for t := range tps {
+			subscribedTopics = append(subscribedTopics, t)
+		}
+		req.SubscribedTopicNames = subscribedTopics
+	} else if g.g.cl.cfg.regex {
 		topics := g.g.cl.cfg.topics
 		patterns := make([]string, 0, len(topics))
 		for topic := range topics {
@@ -408,7 +416,11 @@ func (g *g848) mkreq() *kmsg.ConsumerGroupHeartbeatRequest {
 		}
 		req.SubscribedTopicNames = subscribedTopics
 	}
-	nowAssigned := g.g.nowAssigned.clone()                   // always returns non-nil
+	// Build Topics from our current assignment. The heartbeat closure
+	// uses prerevoking to strip this to nil during prerevoke,
+	// preventing the server from seeing released partitions before
+	// offsets are committed.
+	nowAssigned := g.g.nowAssigned.read()
 	req.Topics = []kmsg.ConsumerGroupHeartbeatRequestTopic{} // ALWAYS initialize: len 0 is significantly different than nil (nil means same as last time)
 	for t, ps := range nowAssigned {
 		rt := kmsg.NewConsumerGroupHeartbeatRequestTopic()

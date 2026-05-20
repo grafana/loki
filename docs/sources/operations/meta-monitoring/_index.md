@@ -55,6 +55,8 @@ All components of Loki expose the following metrics:
 | `loki_internal_log_messages_total` | Counter     | Total number of log messages created by Loki itself.                    |
 | `loki_request_duration_seconds`    | Histogram   | Number of received HTTP requests.                                       |
 
+For a deeper look at which metrics are most important for detecting negative trends and abnormal behavior, refer to [Key metrics for monitoring Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/metrics/).
+
 Note that most of the metrics are counters and should continuously increase during normal operations.
 
 1. Your app emits a log line to a file that is tracked by Alloy.
@@ -69,7 +71,12 @@ exposed by Alloy at its `/metrics` endpoint.
 
 ### Metrics cardinality
 
-Some of the Loki observability metrics are emitted per tracked file (active), with the file path included in labels. This increases the quantity of label values across the environment, thereby increasing cardinality. Best practices with Prometheus labels discourage increasing cardinality in this way. The Kubernetes Monitoring Helm chart provides best practices for monitoring Loki, including how to manage cardinality, however it is important to be aware of cardinality when implementing auto scaling of components in your Loki cluster.
+Some metrics carry labels that increase cardinality in large environments:
+
+- **Client-side:** Alloy and Promtail emit per-file metrics using a `filename` label. In environments with many tracked files, this can produce a large number of unique time series.
+- **Server-side:** Loki metrics such as `loki_discarded_samples_total` and `loki_ingester_chunks_stored_total` include a `tenant` label. Multi-tenant deployments with many tenants see proportional cardinality growth.
+
+The Kubernetes Monitoring Helm chart includes metric relabeling rules to manage cardinality. If you auto-scale Loki components, be aware that each new pod adds its own set of per-instance time series.
 
 ## Example Loki log line: metrics.go
 

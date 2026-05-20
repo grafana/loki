@@ -13,7 +13,7 @@ type InputMiddlewareOptions struct {
 	//
 	// Given the input parameter value, the function must return the algorithm
 	// and true, or false if no algorithm is specified.
-	GetAlgorithm func(interface{}) (string, bool)
+	GetAlgorithm func(any) (string, bool)
 
 	// RequireChecksum indicates whether operation model forces middleware to compute the input payload's checksum.
 	// If RequireChecksum is set to true, checksum will be calculated and RequestChecksumCalculation will be ignored,
@@ -111,10 +111,10 @@ type OutputMiddlewareOptions struct {
 	//
 	// Given the input parameter value, the function must return the validation
 	// mode and true, or false if no mode is specified.
-	GetValidationMode func(interface{}) (string, bool)
+	GetValidationMode func(any) (string, bool)
 
 	// SetValidationMode is a function to set the checksum validation mode of input parameters
-	SetValidationMode func(interface{}, string)
+	SetValidationMode func(any, string)
 
 	// ResponseChecksumValidation is the user config to opt-in/out response checksum validation
 	ResponseChecksumValidation aws.ResponseChecksumValidation

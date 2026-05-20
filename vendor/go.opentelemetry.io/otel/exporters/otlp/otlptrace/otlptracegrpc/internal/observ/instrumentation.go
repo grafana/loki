@@ -18,8 +18,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc/internal/x"
 	"go.opentelemetry.io/otel/internal/global"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
-	"go.opentelemetry.io/otel/semconv/v1.37.0/otelconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/semconv/v1.40.0/otelconv"
 )
 
 const (
@@ -116,7 +116,9 @@ func NewInstrumentation(id int64, target string) (*Instrumentation, error) {
 		// Do not modify attrs (NewSet sorts in-place), make a new slice.
 		recOpt: metric.WithAttributeSet(attribute.NewSet(append(
 			// Default to OK status code.
-			[]attribute.KeyValue{semconv.RPCGRPCStatusCodeOk},
+			[]attribute.KeyValue{
+				semconv.RPCResponseStatusCode(codes.OK.String()),
+			},
 			attrs...,
 		)...)),
 	}
@@ -206,10 +208,12 @@ func BaseAttrs(id int64, target string) []attribute.KeyValue {
 func (i *Instrumentation) ExportSpans(ctx context.Context, nSpans int) ExportOp {
 	start := time.Now()
 
-	addOpt := get[metric.AddOption](addOptPool)
-	defer put(addOptPool, addOpt)
-	*addOpt = append(*addOpt, i.addOpt)
-	i.inflightSpans.Add(ctx, int64(nSpans), *addOpt...)
+	if i.inflightSpans.Enabled(ctx) {
+		addOpt := get[metric.AddOption](addOptPool)
+		defer put(addOptPool, addOpt)
+		*addOpt = append(*addOpt, i.addOpt)
+		i.inflightSpans.Add(ctx, int64(nSpans), *addOpt...)
+	}
 
 	return ExportOp{
 		ctx:    ctx,
@@ -242,14 +246,18 @@ func (e ExportOp) End(err error, code codes.Code) {
 	defer put(addOptPool, addOpt)
 	*addOpt = append(*addOpt, e.inst.addOpt)
 
-	e.inst.inflightSpans.Add(e.ctx, -e.nSpans, *addOpt...)
+	if e.inst.inflightSpans.Enabled(e.ctx) {
+		e.inst.inflightSpans.Add(e.ctx, -e.nSpans, *addOpt...)
+	}
 
 	success := successful(e.nSpans, err)
 	// Record successfully exported spans, even if the value is 0 which are
 	// meaningful to distribution aggregations.
-	e.inst.exportedSpans.Add(e.ctx, success, *addOpt...)
+	if e.inst.exportedSpans.Enabled(e.ctx) {
+		e.inst.exportedSpans.Add(e.ctx, success, *addOpt...)
+	}
 
-	if err != nil {
+	if err != nil && e.inst.exportedSpans.Enabled(e.ctx) {
 		attrs := get[attribute.KeyValue](measureAttrsPool)
 		defer put(measureAttrsPool, attrs)
 		*attrs = append(*attrs, e.inst.attrs...)
@@ -264,12 +272,14 @@ func (e ExportOp) End(err error, code codes.Code) {
 		e.inst.exportedSpans.Add(e.ctx, e.nSpans-success, *addOpt...)
 	}
 
-	recOpt := get[metric.RecordOption](recordOptPool)
-	defer put(recordOptPool, recOpt)
-	*recOpt = append(*recOpt, e.inst.recordOption(err, code))
+	if e.inst.opDuration.Enabled(e.ctx) {
+		recOpt := get[metric.RecordOption](recordOptPool)
+		defer put(recordOptPool, recOpt)
+		*recOpt = append(*recOpt, e.inst.recordOption(err, code))
 
-	d := time.Since(e.start).Seconds()
-	e.inst.opDuration.Record(e.ctx, d, *recOpt...)
+		d := time.Since(e.start).Seconds()
+		e.inst.opDuration.Record(e.ctx, d, *recOpt...)
+	}
 }
 
 // recordOption returns a RecordOption with attributes representing the
@@ -291,8 +301,7 @@ func (i *Instrumentation) recordOption(err error, code codes.Code) metric.Record
 	defer put(measureAttrsPool, attrs)
 	*attrs = append(*attrs, i.attrs...)
 
-	c := int64(code) // uint32 -> int64.
-	*attrs = append(*attrs, semconv.RPCGRPCStatusCodeKey.Int64(c))
+	*attrs = append(*attrs, semconv.RPCResponseStatusCode(code.String()))
 	if err != nil {
 		*attrs = append(*attrs, semconv.ErrorType(err))
 	}

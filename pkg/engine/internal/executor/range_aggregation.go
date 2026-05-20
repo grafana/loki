@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -30,16 +30,14 @@ type rangeAggregationOptions struct {
 	maxQuerySeries int // maximum number of unique series allowed
 }
 
-var (
-	// rangeAggregationOperations holds the mapping of range aggregation types to operations for an aggregator.
-	rangeAggregationOperations = map[types.RangeAggregationType]aggregationOperation{
-		types.RangeAggregationTypeSum:   aggregationOperationSum,
-		types.RangeAggregationTypeCount: aggregationOperationCount,
-		types.RangeAggregationTypeMax:   aggregationOperationMax,
-		types.RangeAggregationTypeMin:   aggregationOperationMin,
-		types.RangeAggregationTypeAvg:   aggregationOperationAvg,
-	}
-)
+// rangeAggregationOperations holds the mapping of range aggregation types to operations for an aggregator.
+var rangeAggregationOperations = map[types.RangeAggregationType]aggregationOperation{
+	types.RangeAggregationTypeSum:   aggregationOperationSum,
+	types.RangeAggregationTypeCount: aggregationOperationCount,
+	types.RangeAggregationTypeMax:   aggregationOperationMax,
+	types.RangeAggregationTypeMin:   aggregationOperationMin,
+	types.RangeAggregationTypeAvg:   aggregationOperationAvg,
+}
 
 // window is a time interval where start is exclusive and end is inclusive
 // Refer to [logql.batchRangeVectorIterator].
@@ -51,6 +49,16 @@ type window struct {
 // The window start is exclusive, the window end is inclusive.
 func (w window) Contains(t time.Time) bool {
 	return t.After(w.start) && !t.After(w.end)
+}
+
+// cmpWindowStartTime compares a window's lower bound to t for [slices.BinarySearchFunc].
+func cmpWindowStartTime(w window, t time.Time) int {
+	return w.start.Compare(t)
+}
+
+// cmpWindowEndTime compares a window's upper bound to t for [slices.BinarySearchFunc].
+func cmpWindowEndTime(w window, t time.Time) int {
+	return w.end.Compare(t)
 }
 
 // timestampMatchingWindowsFunc resolves matching range interval windows for a specific timestamp.
@@ -72,16 +80,14 @@ type rangeAggregationPipeline struct {
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           *expressionEvaluator         // used to evaluate column expressions
 	opts                rangeAggregationOptions
-	region              *xcap.Region
 	identCache          *semconv.IdentifierCache
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
 		opts:       opts,
-		region:     region,
 		identCache: semconv.NewIdentifierCache(),
 	}
 	r.init()
@@ -116,12 +122,7 @@ func (r *rangeAggregationPipeline) init() {
 
 // Open opens all input pipelines.
 func (r *rangeAggregationPipeline) Open(ctx context.Context) error {
-	for _, input := range r.inputs {
-		if err := input.Open(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
+	return openInputsConcurrently(ctx, r.inputs)
 }
 
 // Read reads the next value into its state.
@@ -132,7 +133,12 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch,
 		return nil, EOF
 	}
 
-	return r.read(ctx)
+	rec, err := r.read(ctx)
+
+	assertions.CheckColumnDuplicates(rec)
+	assertions.CheckLabelValuesDuplicates(rec)
+
+	return rec, err
 }
 
 // TODOs:
@@ -179,76 +185,16 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			}
 
 			inputsExhausted = false
-
 			if record.NumRows() == 0 {
 				// Nothing to process
 				continue
 			}
 
-			// extract all the columns that are used for grouping
-			var arrays []*array.String
-			var groupingFields []arrow.Field
-			if r.opts.grouping.Without {
-				// Grouping without a lable set. Exclude lables from that set.
-				schema := record.Schema()
-				for i, field := range schema.Fields() {
-					ident, err := r.identCache.ParseFQN(field.Name)
-					if err != nil {
-						return nil, err
-					}
+			assertions.CheckLabelValuesDuplicates(record)
 
-					if ident.ColumnType() == types.ColumnTypeLabel ||
-						ident.ColumnType() == types.ColumnTypeMetadata ||
-						ident.ColumnType() == types.ColumnTypeParsed {
-						found := false
-						for _, g := range r.opts.grouping.Columns {
-							colExpr, ok := g.(*physical.ColumnExpr)
-							if !ok {
-								return nil, fmt.Errorf("unknown column expression %v", g)
-							}
-
-							// Match ambiguous columns only by name
-							if colExpr.Ref.Type == types.ColumnTypeAmbiguous && colExpr.Ref.Column == ident.ShortName() {
-								found = true
-								break
-							}
-
-							// Match all other columns by name and type
-							if colExpr.Ref.Column == ident.ShortName() && colExpr.Ref.Type == ident.ColumnType() {
-								found = true
-								break
-							}
-						}
-						if !found {
-							arrays = append(arrays, record.Column(i).(*array.String))
-							groupingFields = append(groupingFields, field)
-						}
-					}
-				}
-			} else {
-				groupingFields = make([]arrow.Field, 0, len(r.opts.grouping.Columns))
-
-				// Gouping by a label set. Take only labels from that set.
-				for _, columnExpr := range r.opts.grouping.Columns {
-					vec, err := r.evaluator.eval(columnExpr, record)
-					if err != nil {
-						return nil, err
-					}
-
-					if vec.DataType().ID() != types.Arrow.String.ID() {
-						return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
-					}
-
-					arr := vec.(*array.String)
-					arrays = append(arrays, arr)
-
-					colExpr, ok := columnExpr.(*physical.ColumnExpr)
-					if !ok {
-						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
-					}
-					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
-					groupingFields = append(groupingFields, semconv.FieldFromIdent(ident, true))
-				}
+			arrays, groupingFields, err := collectGroupingColumns(record, r.opts.grouping, r.evaluator, r.identCache)
+			if err != nil {
+				return nil, err
 			}
 
 			r.aggregator.AddLabels(groupingFields)
@@ -271,6 +217,11 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			}
 
 			for row := range int(record.NumRows()) {
+				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
+				if len(windows) == 0 {
+					continue // out of range, skip this row
+				}
+
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
 					if valArr.IsNull(row) {
@@ -278,11 +229,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 					}
 
 					value = valArr.Value(row)
-				}
-
-				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
-				if len(windows) == 0 {
-					continue // out of range, skip this row
 				}
 
 				labelValues := labelValuesCache.getLabelValues(arrays, row)
@@ -299,30 +245,23 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 	r.inputsExhausted = true
 
-	if r.region != nil {
+	rec, err := r.aggregator.BuildRecord()
+
+	if region := xcap.RegionFromContext(ctx); region != nil {
 		computeTime := time.Since(startedAt) - inputReadTime
-		r.region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
+		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
 	}
 
-	return r.aggregator.BuildRecord()
+	return rec, err
 }
 
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
 	r.aggregator.Reset()
-
-	if r.region != nil {
-		r.region.End()
-	}
 	for _, input := range r.inputs {
 		input.Close()
 	}
-}
-
-// Region implements RegionProvider.
-func (r *rangeAggregationPipeline) Region() *xcap.Region {
-	return r.region
 }
 
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {
@@ -453,28 +392,24 @@ func (f *matcherFactory) createOverlappingMatcher(windows []window) timestampMat
 		}
 
 		// Find the last window that could contain the timestamp.
-		// We need to find the last window where t > window.startTs
-		// so search for the first window where t <= window.startTs
-		firstOOBIndex := sort.Search(len(windows), func(i int) bool {
-			return t.Compare(windows[i].start) <= 0
-		})
+		// We need the last window where t > window.start, i.e. the index before
+		// the first window where t <= window.start. Use BinarySearchFunc with a
+		// package-level cmp so we do not allocate a closure per call (unlike sort.Search).
+		firstOOBIndex, _ := slices.BinarySearchFunc(windows, t, cmpWindowStartTime)
 
 		windowIndex := firstOOBIndex - 1
 		if windowIndex < 0 {
 			return nil
 		}
 
-		// Iterate backwards from last matching window to find all matches
-		var result []window
-		for _, window := range slices.Backward(windows[:windowIndex+1]) {
-			if t.Compare(window.start) > 0 && t.Compare(window.end) <= 0 {
-				result = append(result, window)
-			} else if t.Compare(window.end) > 0 {
-				// we've gone past all possible matches
-				break
-			}
+		// For every i in [0, windowIndex], t > windows[i].start (by definition of windowIndex).
+		// Containment is therefore equivalent to t <= windows[i].end. Ends are non-decreasing
+		// in i, so matching indices are always a suffix [low, windowIndex] of that prefix.
+		prefix := windows[:windowIndex+1]
+		low, _ := slices.BinarySearchFunc(prefix, t, cmpWindowEndTime)
+		if low > windowIndex {
+			return nil
 		}
-
-		return result
+		return windows[low : windowIndex+1]
 	}
 }

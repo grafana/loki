@@ -74,7 +74,7 @@ const (
 	resetColor = "\033[00m"
 )
 
-func (s *stateMachine) print(msg string, args ...interface{}) {
+func (s *stateMachine) print(msg string, args ...any) {
 	msg = "StateMachine: " + msg
 	if s.verbose {
 		log.Printf(grayColor+msg+resetColor, args...)
@@ -84,7 +84,7 @@ func (s *stateMachine) print(msg string, args ...interface{}) {
 const scanBufSize = 4 * 1024 * 1024
 
 var bufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		buf := make([]byte, scanBufSize)
 		return &buf
 	},

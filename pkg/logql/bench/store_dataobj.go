@@ -25,7 +25,6 @@ import (
 
 // DataObjStore implements Store using the dataobj format
 type DataObjStore struct {
-	path             string
 	tenant           string
 	builder          *logsobj.Builder
 	buf              *bytes.Buffer
@@ -225,7 +224,7 @@ func (s *DataObjStore) buildIndex() error {
 			return nil
 		}
 
-		reader, err := dataobj.FromBucket(context.Background(), s.bucket, name)
+		reader, err := dataobj.FromBucket(context.Background(), s.bucket, name, 0)
 		if err != nil {
 			return fmt.Errorf("failed to read object: %w", err)
 		}

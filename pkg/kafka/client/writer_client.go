@@ -207,10 +207,12 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 		opts = append(opts, kgo.AllowAutoTopicCreation())
 	}
 
-	tracer := kotel.NewTracer(
-		kotel.TracerPropagator(propagation.NewCompositeTextMapPropagator(onlySampledTraces{propagation.TraceContext{}})),
-	)
-	opts = append(opts, kgo.WithHooks(kotel.NewKotel(kotel.WithTracer(tracer)).Hooks()...))
+	if cfg.TracingEnabled {
+		tracer := kotel.NewTracer(
+			kotel.TracerPropagator(propagation.NewCompositeTextMapPropagator(onlySampledTraces{propagation.TraceContext{}})),
+		)
+		opts = append(opts, kgo.WithHooks(kotel.NewKotel(kotel.WithTracer(tracer)).Hooks()...))
+	}
 
 	if metrics != nil {
 		opts = append(opts, kgo.WithHooks(metrics))
@@ -303,12 +305,7 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 	// Call interceptor with all records if configured
 	if c.recordsInterceptor != nil {
 		if err := c.recordsInterceptor(ctx, records); err != nil {
-			// If interceptor fails, return error for all records
-			results := make(kgo.ProduceResults, len(records))
-			for i, record := range records {
-				results[i] = kgo.ProduceResult{Record: record, Err: err}
-			}
-			return results
+			return produceResultsForErr(records, err)
 		}
 	}
 
@@ -342,32 +339,53 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		}
 	}
 
+	// Check that all records can fit within the limit.
+	var totalSize int64
 	for _, record := range records {
-		// Fast fail if the Kafka client buffer is full. Buffered bytes counter is decreased onProducerDone().
-		if c.maxBufferedBytes > 0 && c.bufferedBytes.Add(int64(len(record.Value))) > c.maxBufferedBytes {
-			onProduceDone(record, kgo.ErrMaxBuffered)
-			continue
-		}
+		totalSize += int64(len(record.Value))
+	}
 
-		// We use a new context to avoid that other Produce() may be cancelled when this call's context is
-		// canceled. It's important to note that cancelling the context passed to Produce() doesn't actually
-		// prevent the data to be sent over the wire (because it's never removed from the buffer) but in some
-		// cases may cause all requests to fail with context cancelled.
-		//
-		// Produce() may theoretically block if the buffer is full, but we configure the Kafka client with
-		// unlimited buffer because we implement the buffer limit ourselves (see maxBufferedBytes). This means
-		// Produce() should never block for us in practice.
-		c.Produce(context.WithoutCancel(ctx), record, onProduceDone)
+	if c.maxBufferedBytes > 0 && c.bufferedBytes.Add(totalSize) > c.maxBufferedBytes {
+		// The records exceed what is left of the limit, we must fail them.
+		for _, record := range records {
+			// onProduceDone will dec the counter.
+			onProduceDone(record, kgo.ErrMaxBuffered)
+		}
+	} else {
+		for _, record := range records {
+			// We use a new context to avoid that other Produce() may be cancelled when this call's context is
+			// canceled. It's important to note that cancelling the context passed to Produce() doesn't actually
+			// prevent the data to be sent over the wire (because it's never removed from the buffer) but in some
+			// cases may cause all requests to fail with context cancelled.
+			//
+			// Produce() may theoretically block if the buffer is full, but we configure the Kafka client with
+			// unlimited buffer because we implement the buffer limit ourselves (see maxBufferedBytes). This means
+			// Produce() should never block for us in practice.
+			c.Produce(context.WithoutCancel(ctx), record, onProduceDone)
+		}
 	}
 
 	// Wait for a response or until the context has done.
 	select {
 	case <-ctx.Done():
-		return kgo.ProduceResults{{Err: context.Cause(ctx)}}
+		return produceResultsForErr(records, context.Cause(ctx))
 	case <-done:
 		// Once we're done, it's guaranteed that no more results will be appended, so we can safely return it.
 		return res
 	}
+}
+
+// produceResultsForErr returns a [kgo.ProduceResults] that contains all records and
+// the error.
+func produceResultsForErr(records []*kgo.Record, err error) kgo.ProduceResults {
+	results := make(kgo.ProduceResults, 0, len(records))
+	for _, record := range records {
+		results = append(results, kgo.ProduceResult{
+			Record: record,
+			Err:    err,
+		})
+	}
+	return results
 }
 
 func produceErrReason(err error) string {

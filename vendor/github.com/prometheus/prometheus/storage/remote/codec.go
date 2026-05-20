@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -564,6 +564,12 @@ func (c *concreteSeriesIterator) AtT() int64 {
 	return c.series.floats[c.floatsCur].Timestamp
 }
 
+// TODO(krajorama): implement AtST. Maybe. concreteSeriesIterator is used
+// for turning query results into an iterable, but query results do not have ST.
+func (*concreteSeriesIterator) AtST() int64 {
+	return 0
+}
+
 const noTS = int64(math.MaxInt64)
 
 // Next implements chunkenc.Iterator.
@@ -832,6 +838,11 @@ func (it *chunkedSeriesIterator) AtT() int64 {
 	return it.cur.AtT()
 }
 
+// TODO(krajorama): test AtST once we have a chunk format that provides ST.
+func (it *chunkedSeriesIterator) AtST() int64 {
+	return it.cur.AtST()
+}
+
 func (it *chunkedSeriesIterator) Err() error {
 	return it.err
 }
@@ -989,7 +1000,7 @@ func DecodeOTLPWriteRequest(r *http.Request) (pmetricotlp.ExportRequest, error) 
 		return pmetricotlp.NewExportRequest(), fmt.Errorf("unsupported compression: %s. Only \"gzip\" or no compression supported", r.Header.Get("Content-Encoding"))
 	}
 
-	body, err := io.ReadAll(reader)
+	body, err := io.ReadAll(io.LimitReader(reader, decodeReadLimit))
 	if err != nil {
 		r.Body.Close()
 		return pmetricotlp.NewExportRequest(), err

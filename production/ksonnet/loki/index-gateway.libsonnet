@@ -6,11 +6,6 @@
 
     loki+: {
       storage_config+: if $._config.use_index_gateway then {
-        boltdb_shipper+: {
-          index_gateway_client+: {
-            server_address: 'dns+index-gateway-headless.%s.svc.cluster.local:9095' % $._config.namespace,
-          },
-        },
         tsdb_shipper+: {
           index_gateway_client+: {
             server_address: 'dns+index-gateway-headless.%s.svc.cluster.local:9095' % $._config.namespace,

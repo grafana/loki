@@ -342,6 +342,11 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
+
+		req.CachingOptions = queryrangebase.CachingOptions{
+			Disabled: disableCacheReq,
+		}
+
 		return req, nil
 	case InstantQueryOp:
 		req, err := parseInstantQuery(r)
@@ -1265,6 +1270,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 		return resp.GetStats().WithHeaders(headers), nil
 	case *logproto.ShardsRequest:
 		return resp.GetShardsResponse().WithHeaders(headers), nil
+	case *DetectedLabelsRequest:
+		return resp.GetDetectedLabels().WithHeaders(headers), nil
 	default:
 		switch concrete := resp.Response.(type) {
 		case *QueryResponse_Prom:
@@ -1879,7 +1886,7 @@ func (p paramsRangeWrapper) Shards() []string {
 }
 
 func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {
-	return resultscache.CachingOptions{}
+	return p.LokiRequest.CachingOptions
 }
 
 type paramsInstantWrapper struct {

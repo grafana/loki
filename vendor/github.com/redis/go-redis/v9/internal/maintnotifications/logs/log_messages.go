@@ -121,6 +121,9 @@ const (
 	UnrelaxedTimeoutMessage                       = "clearing relaxed timeout"
 	ManagerNotInitializedMessage                  = "manager not initialized"
 	FailedToMarkForHandoffMessage                 = "failed to mark connection for handoff"
+	InvalidSeqIDInSMigratingNotificationMessage   = "invalid SeqID in SMIGRATING notification"
+	InvalidSeqIDInSMigratedNotificationMessage    = "invalid SeqID in SMIGRATED notification"
+	TriggeringClusterStateReloadMessage           = "triggering cluster state reload"
 
 	// ========================================
 	// used in pool/conn
@@ -288,19 +291,29 @@ func OperationNotTracked(connID uint64, seqID int64) string {
 
 // Connection pool functions
 func RemovingConnectionFromPool(connID uint64, reason error) string {
-	message := fmt.Sprintf("conn[%d] %s due to: %v", connID, RemovingConnectionFromPoolMessage, reason)
-	return appendJSONIfDebug(message, map[string]interface{}{
+	metadata := map[string]interface{}{
 		"connID": connID,
-		"reason": reason.Error(),
-	})
+		"reason": "unknown", // this will be overwritten if reason is not nil
+	}
+	if reason != nil {
+		metadata["reason"] = reason.Error()
+	}
+
+	message := fmt.Sprintf("conn[%d] %s due to: %v", connID, RemovingConnectionFromPoolMessage, reason)
+	return appendJSONIfDebug(message, metadata)
 }
 
 func NoPoolProvidedCannotRemove(connID uint64, reason error) string {
-	message := fmt.Sprintf("conn[%d] %s due to: %v", connID, NoPoolProvidedMessageCannotRemoveMessage, reason)
-	return appendJSONIfDebug(message, map[string]interface{}{
+	metadata := map[string]interface{}{
 		"connID": connID,
-		"reason": reason.Error(),
-	})
+		"reason": "unknown", // this will be overwritten if reason is not nil
+	}
+	if reason != nil {
+		metadata["reason"] = reason.Error()
+	}
+
+	message := fmt.Sprintf("conn[%d] %s due to: %v", connID, NoPoolProvidedMessageCannotRemoveMessage, reason)
+	return appendJSONIfDebug(message, metadata)
 }
 
 // Circuit breaker functions
@@ -622,4 +635,29 @@ func ExtractDataFromLogMessage(logMessage string) map[string]interface{} {
 
 	// If JSON parsing fails, return empty map
 	return result
+}
+
+// Cluster notification functions
+func InvalidSeqIDInSMigratingNotification(seqID interface{}) string {
+	message := fmt.Sprintf("%s: %v", InvalidSeqIDInSMigratingNotificationMessage, seqID)
+	return appendJSONIfDebug(message, map[string]interface{}{
+		"seqID": fmt.Sprintf("%v", seqID),
+	})
+}
+
+func InvalidSeqIDInSMigratedNotification(seqID interface{}) string {
+	message := fmt.Sprintf("%s: %v", InvalidSeqIDInSMigratedNotificationMessage, seqID)
+	return appendJSONIfDebug(message, map[string]interface{}{
+		"seqID": fmt.Sprintf("%v", seqID),
+	})
+}
+
+// TriggeringClusterStateReload logs when cluster state reload is triggered (deduplicated, once per seqID)
+func TriggeringClusterStateReload(seqID int64, hostPort string, slotRanges []string) string {
+	message := fmt.Sprintf("%s seqID=%d host:port=%s slots=%v", TriggeringClusterStateReloadMessage, seqID, hostPort, slotRanges)
+	return appendJSONIfDebug(message, map[string]interface{}{
+		"seqID":      seqID,
+		"hostPort":   hostPort,
+		"slotRanges": slotRanges,
+	})
 }

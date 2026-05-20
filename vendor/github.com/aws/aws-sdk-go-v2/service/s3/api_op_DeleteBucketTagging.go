@@ -19,9 +19,6 @@ import (
 // (ABAC) is not enabled for the bucket. When you [enable ABAC for a general purpose bucket], you can no longer use this
 // operation for that bucket and must use [UntagResource]instead.
 //
-// if ABAC is not enabled for the bucket. When you [enable ABAC for a general purpose bucket], you can no longer use this
-// operation for that bucket and must use [UntagResource]instead.
-//
 // To use this operation, you must have permission to perform the
 // s3:PutBucketTagging action. By default, the bucket owner has this permission and
 // can grant this permission to others.
@@ -117,7 +114,7 @@ func (c *Client) addOperationDeleteBucketTaggingMiddlewares(stack *middleware.St
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -142,9 +139,6 @@ func (c *Client) addOperationDeleteBucketTaggingMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

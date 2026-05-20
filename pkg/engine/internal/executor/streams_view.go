@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // streamsView provides a view of the streams in a section, allowing for
@@ -95,9 +94,6 @@ func (v *streamsView) Open(ctx context.Context) error {
 	if v.initialized {
 		return nil
 	}
-
-	ctx, region := xcap.StartRegion(ctx, "streamsView.init")
-	defer region.End()
 
 	if v.idColumn == nil { // Initialized in [newStreamsView].
 		// The streams builder always produces a section with a streams ID column.
@@ -182,6 +178,11 @@ func (v *streamsView) Labels(ctx context.Context, id int64) ([]labels.Label, err
 			label.Value = string(colValues.Value(rowArrayIndex))
 		default:
 			panic(fmt.Sprintf("unexpected column type %T for labels", colValues))
+		}
+
+		// Drop labels with empty values to match classic Loki engine behavior.
+		if label.Value == "" {
+			continue
 		}
 
 		lbs = append(lbs, label)

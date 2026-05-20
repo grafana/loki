@@ -9,11 +9,13 @@ import (
 	"math"
 	"sync/atomic"
 	"unsafe"
-
-	"golang.org/x/exp/constraints"
 )
 
-func X__sync_add_and_fetch[T constraints.Integer](t *TLS, p uintptr, v T) T {
+type integer interface {
+	~int | ~int32 | ~int64 | ~uint | ~uint32 | ~uint64 | ~uintptr
+}
+
+func X__sync_add_and_fetch[T integer](t *TLS, p uintptr, v T) T {
 	switch unsafe.Sizeof(v) {
 	case 4:
 		return T(atomic.AddInt32((*int32)(unsafe.Pointer(p)), int32(v)))
@@ -24,7 +26,7 @@ func X__sync_add_and_fetch[T constraints.Integer](t *TLS, p uintptr, v T) T {
 	}
 }
 
-func X__sync_sub_and_fetch[T constraints.Integer](t *TLS, p uintptr, v T) T {
+func X__sync_sub_and_fetch[T integer](t *TLS, p uintptr, v T) T {
 	switch unsafe.Sizeof(v) {
 	case 4:
 		return T(atomic.AddInt32((*int32)(unsafe.Pointer(p)), -int32(v)))
@@ -41,11 +43,11 @@ func GoString(s uintptr) string {
 		return ""
 	}
 
-	p := s
-	for *(*byte)(unsafe.Pointer(p)) != 0 {
-		p++
+	if n := strlen(s); n != 0 {
+		return string(unsafe.Slice((*byte)(unsafe.Pointer(s)), n))
 	}
-	return string(unsafe.Slice((*byte)(unsafe.Pointer(s)), p-s))
+
+	return ""
 }
 
 // GoBytes returns a byte slice from a C char* having length len bytes.
@@ -76,4 +78,45 @@ func X__isfinitel(tls *TLS, d float64) int32 {
 	}
 
 	return 0
+}
+
+func strlen(s uintptr) (r Tsize_t) {
+	if s == 0 {
+		return 0
+	}
+
+	for ; *(*int8)(unsafe.Pointer(s)) != 0; s++ {
+		r++
+	}
+
+	return r
+}
+
+// size_t strlen(const char *s)
+func Xstrlen(t *TLS, s uintptr) (r Tsize_t) {
+	if __ccgo_strace {
+		trc("t=%v s=%v, (%v:)", t, s, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	return strlen(s)
+
+}
+
+func _strlen(t *TLS, s uintptr) (r Tsize_t) {
+	return strlen(s)
+}
+
+func X__builtin_ilogb(tls *TLS, x float64) int32 {
+	return int32(math.Ilogb(x))
+}
+
+func X__builtin_ilogbl(tls *TLS, x float64) int32 {
+	return int32(math.Ilogb(x))
+}
+
+func X__builtin_ilogbf(tls *TLS, x float32) int32 {
+	// Casting to float64 is safe and mathematically correct here.
+	// Subnormal float32 values become normal float64 values,
+	// which allows math.Ilogb to correctly return their negative exponent.
+	return int32(math.Ilogb(float64(x)))
 }

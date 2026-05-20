@@ -83,10 +83,7 @@ func (b *bal) setErrorPickerForChild(childName string, err error) {
 }
 
 func (b *bal) updateChildren(s balancer.ClientConnState, newConfig *lbConfig) error {
-	// TODO: Get rid of handling hierarchy in addresses. This LB policy never
-	// gets addresses from the resolver.
-	addressesSplit := hierarchy.Group(s.ResolverState.Addresses)
-	endpointsSplit := hierarchy.GroupEndpoints(s.ResolverState.Endpoints)
+	endpointsSplit := hierarchy.Group(s.ResolverState.Endpoints)
 
 	// Remove sub-balancers that are not in the new list from the aggregator and
 	// balancergroup.
@@ -138,14 +135,13 @@ func (b *bal) updateChildren(s balancer.ClientConnState, newConfig *lbConfig) er
 
 		if err := b.bg.UpdateClientConnState(childName, balancer.ClientConnState{
 			ResolverState: resolver.State{
-				Addresses:     addressesSplit[childName],
 				Endpoints:     endpointsSplit[childName],
 				ServiceConfig: s.ResolverState.ServiceConfig,
 				Attributes:    s.ResolverState.Attributes,
 			},
 			BalancerConfig: lbCfg,
 		}); err != nil {
-			retErr = fmt.Errorf("failed to push new configuration %v to child %q", childCfg.ChildPolicy.Config, childName)
+			retErr = fmt.Errorf("failed to push new configuration %v to child %q: %v", childCfg.ChildPolicy.Config, childName, err)
 			b.setErrorPickerForChild(childName, retErr)
 		}
 

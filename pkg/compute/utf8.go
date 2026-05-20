@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/regexp"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -19,7 +20,7 @@ import (
 //   - If a value in the haystack is null, the result for that value is null.
 //   - If the regexp is null, the result is null.
 func RegexpMatch(alloc *memory.Allocator, haystack columnar.Datum, regexp *regexp.Regexp, selection memory.Bitmap) (columnar.Datum, error) {
-	if haystack.Kind() != columnar.KindUTF8 {
+	if haystack.Kind() != types.KindUTF8 {
 		return nil, fmt.Errorf("haystack must be UTF-8; got %s", haystack.Kind())
 	}
 
@@ -42,7 +43,8 @@ func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *reg
 		return builder.Build(), nil
 	}
 
-	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	// Compute rows to look at by merging selection with input validity.
+	fullSelection, err := computeValidityAA(alloc, haystack.Validity(), selection)
 	if err != nil {
 		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
@@ -50,10 +52,17 @@ func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *reg
 	values := memory.NewBitmap(alloc, haystack.Len())
 	values.Resize(haystack.Len())
 
-	for i := range iterTrue(validity, haystack.Len()) {
+	for i := range iterTrue(fullSelection, haystack.Len()) {
 		values.Set(i, regexp.Match(haystack.Get(i)))
 	}
 
+	var validity memory.Bitmap
+	if haystack.Nulls() > 0 {
+		// Output validity is always based purely on input validity, not
+		// selection.
+		validity = memory.NewBitmap(alloc, haystack.Len())
+		validity.AppendBitmap(haystack.Validity())
+	}
 	return columnar.NewBool(values, validity), nil
 }
 
@@ -73,7 +82,7 @@ func regexpMatchSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, regexp *r
 //   - If a value in the haystack is null, the result for that value is null.
 //   - If the needle is null, the result is null.
 func SubstrInsensitive(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
-	if haystack.Kind() != columnar.KindUTF8 || needle.Kind() != columnar.KindUTF8 {
+	if haystack.Kind() != types.KindUTF8 || needle.Kind() != types.KindUTF8 {
 		return nil, fmt.Errorf("haystack and needle must both be UTF-8; got %s and %s", haystack.Kind(), needle.Kind())
 	}
 
@@ -100,7 +109,8 @@ func substrInsensitiveAS(alloc *memory.Allocator, haystack *columnar.UTF8, needl
 		return builder.Build(), nil
 	}
 
-	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	// Compute rows to look at by merging selection with input validity.
+	fullSelection, err := computeValidityAA(alloc, haystack.Validity(), selection)
 	if err != nil {
 		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
@@ -110,11 +120,18 @@ func substrInsensitiveAS(alloc *memory.Allocator, haystack *columnar.UTF8, needl
 	values := memory.NewBitmap(alloc, haystack.Len())
 	values.Resize(haystack.Len())
 
-	for i := range iterTrue(validity, haystack.Len()) {
+	for i := range iterTrue(fullSelection, haystack.Len()) {
 		haystackValueUpper := bytes.ToUpper(haystack.Get(i))
 		values.Set(i, bytes.Contains(haystackValueUpper, needleUpper))
 	}
 
+	var validity memory.Bitmap
+	if haystack.Nulls() > 0 {
+		// Output validity is always based purely on input validity, not
+		// selection.
+		validity = memory.NewBitmap(alloc, haystack.Len())
+		validity.AppendBitmap(haystack.Validity())
+	}
 	return columnar.NewBool(values, validity), nil
 }
 
@@ -137,7 +154,7 @@ func substrInsensitiveSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, nee
 //   - If a value in the haystack is null, the result for that value is null.
 //   - If the needle is null, the result is null.
 func Substr(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
-	if haystack.Kind() != columnar.KindUTF8 || needle.Kind() != columnar.KindUTF8 {
+	if haystack.Kind() != types.KindUTF8 || needle.Kind() != types.KindUTF8 {
 		return nil, fmt.Errorf("haystack and needle must both be UTF-8; got %s and %s", haystack.Kind(), needle.Kind())
 	}
 
@@ -164,7 +181,8 @@ func substrAS(alloc *memory.Allocator, haystack *columnar.UTF8, needle *columnar
 		return builder.Build(), nil
 	}
 
-	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	// Compute rows to look at by merging selection with input validity.
+	fullSelection, err := computeValidityAA(alloc, haystack.Validity(), selection)
 	if err != nil {
 		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
@@ -172,10 +190,17 @@ func substrAS(alloc *memory.Allocator, haystack *columnar.UTF8, needle *columnar
 	values := memory.NewBitmap(alloc, haystack.Len())
 	values.Resize(haystack.Len())
 
-	for i := range iterTrue(validity, haystack.Len()) {
+	for i := range iterTrue(fullSelection, haystack.Len()) {
 		values.Set(i, bytes.Contains(haystack.Get(i), needle.Value))
 	}
 
+	var validity memory.Bitmap
+	if haystack.Nulls() > 0 {
+		// Output validity is always based purely on input validity, not
+		// selection.
+		validity = memory.NewBitmap(alloc, haystack.Len())
+		validity.AppendBitmap(haystack.Validity())
+	}
 	return columnar.NewBool(values, validity), nil
 }
 
