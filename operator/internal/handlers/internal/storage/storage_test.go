@@ -42,7 +42,7 @@ var (
 		Data: map[string][]byte{
 			"endpoint":          []byte("https://s3.a-region.amazonaws.com"),
 			"region":            []byte("a-region"),
-			"bucketnames":       []byte("bucket1,bucket2"),
+			"bucketnames":       []byte("loki-data"),
 			"access_key_id":     []byte("a-secret-id"),
 			"access_key_secret": []byte("a-secret-key"),
 		},
@@ -54,7 +54,7 @@ var (
 			Namespace: "some-ns",
 		},
 		Data: map[string][]byte{
-			"bucketnames": []byte("bucket1,bucket2"),
+			"bucketnames": []byte("loki-data"),
 			"region":      []byte("a-region"),
 		},
 	}
