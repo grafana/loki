@@ -64,10 +64,20 @@ func loadTenantIndexes(
 		return nil, fmt.Errorf("decode ToC %s: %w", tocPath, err)
 	}
 
+	// Hoist the Reader and the per-batch decode scratch above the section
+	// loop. A ToC has one indexpointers section per tenant; in large
+	// deployments that can be hundreds. Reader.Reset(...) at each iteration
+	// reuses the reader's internal allocator + record-batch state — matches
+	// the upstream pattern in metastore/iter.go's forEachIndexPointer.
+	var reader indexpointers.Reader
+	defer reader.Close()
+	const batchSize = 1024
+	scratch := make([]indexEntry, batchSize)
+
 	out := tenantIndexes{}
 	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
 		tenant := section.Tenant
-		entries, err := readAllIndexPointers(ctx, section)
+		entries, err := readAllIndexPointers(ctx, &reader, scratch, section)
 		if err != nil {
 			return nil, fmt.Errorf("read indexpointers for tenant %s: %w", tenant, err)
 		}
@@ -76,32 +86,30 @@ func loadTenantIndexes(
 	return out, nil
 }
 
-// readAllIndexPointers mirrors pkg/dataobj/metastore.forEachIndexPointer but
-// drops the user.ExtractOrgID tenant filter and the time-range predicate:
-// the compactor needs every row in the section because it's compacting the
-// entire (tenant, window) state the ToC currently advertises.
-func readAllIndexPointers(ctx context.Context, section *dataobj.Section) ([]indexEntry, error) {
+// readAllIndexPointers decodes every row of one indexpointers section into
+// indexEntry values. The caller owns the Reader and scratch slice; both are
+// reused across section iterations so a ToC with N tenants pays one
+// Reader-construction + one batch-buffer allocation, not N.
+//
+// Mirrors pkg/dataobj/metastore.forEachIndexPointer's structure but drops
+// the user.ExtractOrgID tenant filter and the WhereTimeRangeOverlapsWith
+// predicate — the compactor reads every row from every tenant in the
+// most-recent ToC. The per-row switch below handles missing / unrecognized
+// columns by ignoring them, and the indexpointers writer guarantees
+// Path / Min / MaxTimestamp are present at write time.
+func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scratch []indexEntry, section *dataobj.Section) ([]indexEntry, error) {
 	sec, err := indexpointers.Open(ctx, section)
 	if err != nil {
 		return nil, fmt.Errorf("opening indexpointers section: %w", err)
 	}
 
-	// No column resolution / predicate construction: forEachIndexPointer
-	// needs WhereTimeRangeOverlapsWith(colMin, colMax, ...) to filter rows,
-	// but the compactor always reads every row in the most-recent ToC. The
-	// per-row switch below already handles missing/unrecognized columns by
-	// ignoring them, and the indexpointers writer guarantees Path / Min /
-	// MaxTimestamp are present at write time.
-	var reader indexpointers.Reader
-	defer reader.Close()
 	reader.Reset(indexpointers.ReaderOptions{Columns: sec.Columns()})
 	if err := reader.Open(ctx); err != nil {
 		return nil, fmt.Errorf("opening reader: %w", err)
 	}
 
-	const batchSize = 1024
+	batchSize := len(scratch)
 	var out []indexEntry
-	scratch := make([]indexEntry, batchSize)
 	for {
 		rec, readErr := reader.Read(ctx, batchSize)
 		if readErr != nil && !errors.Is(readErr, io.EOF) {

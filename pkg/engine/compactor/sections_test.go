@@ -57,10 +57,10 @@ func TestLoadTenantIndexes_MissingToCReturnsNotFound(t *testing.T) {
 		"missing ToC must surface as IsObjNotFoundErr, got %v", err)
 }
 
-// TestSectionRefsFor_OneRefPerIndex verifies the v1.0 simplification:
-// one SectionRef per index, timestamp-only bounds, empty MinKey/MaxKey.
-// The planner patience-sorts on the composite (MinKey, MinTimestamp) key,
-// so timestamp-only bounds remain a valid (less granular) sort key.
+// TestSectionRefsFor_OneRefPerIndex verifies one SectionRef per index,
+// timestamp-only bounds, empty MinKey/MaxKey. The planner patience-sorts on the
+// composite (MinKey, MinTimestamp) key, so timestamp-only bounds remain a valid
+// (less granular) sort key.
 func TestSectionRefsFor_OneRefPerIndex(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
 	indexes := []indexEntry{
@@ -73,8 +73,8 @@ func TestSectionRefsFor_OneRefPerIndex(t *testing.T) {
 
 	require.Equal(t, "indexes/aa/idx-0", got[0].ObjectPath)
 	require.Equal(t, int32(0), got[0].SectionIndex)
-	require.Empty(t, got[0].MinKey, "v1.0 uses timestamp-only bounds")
-	require.Empty(t, got[0].MaxKey)
+	require.Empty(t, got[0].MinKey, "timestamp-only bounds")
+	require.Empty(t, got[0].MaxKey, "timestamp-only bounds")
 	require.Equal(t, window.Add(1*time.Hour).UnixNano(), got[0].MinTimestamp)
 	require.Equal(t, window.Add(2*time.Hour).UnixNano(), got[0].MaxTimestamp)
 

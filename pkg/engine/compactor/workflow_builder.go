@@ -18,11 +18,8 @@ import (
 )
 
 // buildIndexMergePlan returns a single-root physical.Plan holding exactly one
-// IndexMerge node. Phase 1 of a coordinator cycle runs ⌈P/K⌉ such plans
+// IndexMerge node. Each coordinator cycle runs ⌈P/K⌉ such plans
 // concurrently — one per sorted pile of index sections.
-//
-// Each call mints a fresh NodeID so racing builds don't collide on the
-// scheduler's manifest registry.
 func buildIndexMergePlan(
 	tenant string,
 	window time.Time,
@@ -31,6 +28,8 @@ func buildIndexMergePlan(
 	taskTTL time.Duration,
 ) *physical.Plan {
 	node := &physical.IndexMerge{
+		// Each call mints a fresh NodeID so racing builds don't collide on the
+		// scheduler's manifest registry.
 		NodeID:          ulid.Make(),
 		Tenant:          tenant,
 		ToCWindowStart:  window.UnixNano(),
@@ -45,8 +44,6 @@ func buildIndexMergePlan(
 
 // runPlan constructs a workflow.Workflow from a single-root plan, runs it,
 // and drains the pipeline. Returns when the workflow has fully terminated.
-// Compaction tasks are sink-only (no Arrow record batches), so draining is
-// equivalent to waiting for EOF.
 func runPlan(
 	ctx context.Context,
 	logger log.Logger,
@@ -72,6 +69,8 @@ func runPlan(
 	}
 	for {
 		_, err := reader.Read(ctx)
+		// Compaction tasks are sink-only (no Arrow record batches), so draining is
+		// equivalent to waiting for EOF.
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
