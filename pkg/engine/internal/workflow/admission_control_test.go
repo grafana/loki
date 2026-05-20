@@ -68,12 +68,23 @@ func TestAdmissionControl_CompactionLaneWired(t *testing.T) {
 	require.Empty(t, groups[taskTypeCompaction])
 }
 
-func TestAdmissionControl_typeFor_CompactionMerge(t *testing.T) {
-	// A task whose Fragment contains a CompactionMerge node must be
-	// classified as taskTypeCompaction so the compactor's parallelism is
-	// governed by MaxRunningCompactionTasks.
+func TestAdmissionControl_typeFor_IndexMerge(t *testing.T) {
+	// A task whose Fragment contains an IndexMerge node must be classified
+	// as taskTypeCompaction so the compactor's parallelism is governed by
+	// MaxRunningCompactionTasks.
 	g := dag.Graph[physical.Node]{}
-	g.Add(&physical.CompactionMerge{NodeID: ulid.Make(), Tenant: "tenant-29"})
+	g.Add(&physical.IndexMerge{NodeID: ulid.Make(), Tenant: "tenant-29"})
+	task := &Task{Fragment: physical.FromGraph(g)}
+
+	ac := newAdmissionControl(0, 0, 0)
+	require.Equal(t, taskTypeCompaction, ac.typeFor(task))
+}
+
+func TestAdmissionControl_typeFor_LogMerge(t *testing.T) {
+	// A task whose Fragment contains a LogMerge node must be classified
+	// as taskTypeCompaction.
+	g := dag.Graph[physical.Node]{}
+	g.Add(&physical.LogMerge{NodeID: ulid.Make(), Tenant: "tenant-29"})
 	task := &Task{Fragment: physical.FromGraph(g)}
 
 	ac := newAdmissionControl(0, 0, 0)
