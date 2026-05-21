@@ -124,7 +124,7 @@ func (b *MergeBuilder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 	return nil
 }
 
-// AppendPostingsLabelEntry appends a pre-aggregated label posting entry
+// AppendPostingsLabelEntry appends an aggregated label posting entry
 // directly to the builder.
 func (b *MergeBuilder) AppendPostingsLabelEntry(tenantID string, entry postings.LabelEntry) error {
 	b.metrics.appendsTotal.Inc()
@@ -146,7 +146,7 @@ func (b *MergeBuilder) AppendPostingsLabelEntry(tenantID string, entry postings.
 	return nil
 }
 
-// AppendPostingsBloomEntry appends a pre-aggregated bloom posting entry
+// AppendPostingsBloomEntry appends an aggregated bloom posting entry
 // directly to the builder.
 func (b *MergeBuilder) AppendPostingsBloomEntry(tenantID string, entry postings.BloomEntry) error {
 	b.metrics.appendsTotal.Inc()

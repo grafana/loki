@@ -392,7 +392,6 @@ func TestCheckSection(t *testing.T) {
 	})
 }
 
-
 func TestReader_SmallBatchSize(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 	ts := time.Unix(0, 0)

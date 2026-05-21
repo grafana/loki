@@ -89,7 +89,10 @@ func (b *Builder) Reset() {
 // After a successful flush, the builder is reset.
 func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	labelEntries := b.labels.Entries()
-	bloomEntries := b.blooms.Entries()
+	bloomEntries, err := b.blooms.Entries()
+	if err != nil {
+		return 0, fmt.Errorf("converting bloom entries: %w", err)
+	}
 
 	if len(labelEntries) == 0 && len(bloomEntries) == 0 {
 		return 0, nil

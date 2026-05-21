@@ -97,17 +97,26 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 	entry.UncompressedSize += obs.UncompressedSize
 }
 
-// Entries returns all aggregated entries. Bitmap normalization (padding to
-// equal length) is NOT done here; the caller (columnarEncode) handles it
-// across both label and bloom entries.
-func (a *labelAggregator) Entries() []*labelPostingEntry {
+// Entries returns all aggregated entries converted to public type. Bitmap
+// normalization (padding to equal length) is NOT done here; the caller
+// (columnarEncode) handles it across both label and bloom entries.
+func (a *labelAggregator) Entries() []LabelEntry {
 	if len(a.entries) == 0 {
 		return nil
 	}
 
-	result := make([]*labelPostingEntry, 0, len(a.entries))
+	result := make([]LabelEntry, 0, len(a.entries))
 	for _, entry := range a.entries {
-		result = append(result, entry)
+		result = append(result, LabelEntry{
+			ObjectPath:       entry.ObjectPath,
+			SectionIndex:     entry.SectionIndex,
+			ColumnName:       entry.ColumnName,
+			LabelValue:       entry.LabelValue,
+			StreamIDBitmap:   entry.BitmapBytes(),
+			MinTimestamp:     entry.MinTimestamp,
+			MaxTimestamp:     entry.MaxTimestamp,
+			UncompressedSize: entry.UncompressedSize,
+		})
 	}
 	return result
 }

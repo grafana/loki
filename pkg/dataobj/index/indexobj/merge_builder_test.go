@@ -71,7 +71,7 @@ func TestMergeBuilder_AppendPostingsLabelEntry(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	ts := time.Unix(0, 1000).UTC()
+	ts := int64(1000) // unix nanoseconds
 
 	// Create a valid label entry
 	bitmapBytes := []byte{0x01, 0x00}
@@ -110,7 +110,7 @@ func TestMergeBuilder_AppendPostingsBloomEntry(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	ts := time.Unix(0, 500).UTC()
+	timeVal := time.Unix(0, 500).UTC()
 
 	// Create valid bloom bytes using an observation builder
 	tempBuilder := postings.NewBuilder(nil, 0, 0)
@@ -121,7 +121,7 @@ func TestMergeBuilder_AppendPostingsBloomEntry(t *testing.T) {
 		ColumnName:       "service_name",
 		Value:            "my-service",
 		StreamID:         0,
-		Timestamp:        ts,
+		Timestamp:        timeVal,
 		UncompressedSize: 0,
 	})
 	require.NoError(t, err)
@@ -130,6 +130,7 @@ func TestMergeBuilder_AppendPostingsBloomEntry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Now create the entry
+	ts := int64(500) // unix nanoseconds
 	bitmapBytes := []byte{0x01, 0x00}
 	entry := postings.BloomEntry{
 		ObjectPath:       "/obj2",

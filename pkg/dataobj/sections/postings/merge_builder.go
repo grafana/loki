@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
-	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 // MergeBuilder accumulates posting entries from pre-aggregated rows (e.g., from
@@ -20,8 +18,8 @@ import (
 type MergeBuilder struct {
 	metrics *Metrics
 	tenant  string
-	labels  map[labelPostingKey]*labelPostingEntry
-	blooms  map[bloomPostingKey]*bloomPostingEntry
+	labels  map[labelPostingKey]*LabelEntry
+	blooms  map[bloomPostingKey]*BloomEntry
 
 	pageSizeHint    int
 	pageMaxRowCount int
@@ -37,8 +35,8 @@ type MergeBuilder struct {
 func NewMergeBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount int) *MergeBuilder {
 	return &MergeBuilder{
 		metrics:         metrics,
-		labels:          make(map[labelPostingKey]*labelPostingEntry),
-		blooms:          make(map[bloomPostingKey]*bloomPostingEntry),
+		labels:          make(map[labelPostingKey]*LabelEntry),
+		blooms:          make(map[bloomPostingKey]*BloomEntry),
 		pageSizeHint:    pageSizeHint,
 		pageMaxRowCount: pageMaxRowCount,
 	}
@@ -53,28 +51,10 @@ func (b *MergeBuilder) Tenant() string { return b.tenant }
 // Type returns the [dataobj.SectionType] of the postings builder.
 func (b *MergeBuilder) Type() dataobj.SectionType { return sectionType }
 
-// AppendLabelEntry appends a pre-aggregated label posting entry directly to
-// the builder. Returns an error if an entry with the same
-// (ObjectPath, SectionIndex, ColumnName, LabelValue) key already exists.
+// AppendLabelEntry appends a label posting entry directly to the builder.
+// Returns an error if an entry with the same (ObjectPath, SectionIndex,
+// ColumnName, LabelValue) key already exists.
 func (b *MergeBuilder) AppendLabelEntry(entry LabelEntry) error {
-	internalEntry := &labelPostingEntry{
-		ObjectPath:       entry.ObjectPath,
-		SectionIndex:     entry.SectionIndex,
-		ColumnName:       entry.ColumnName,
-		LabelValue:       entry.LabelValue,
-		MinTimestamp:     entry.MinTimestamp.UnixNano(),
-		MaxTimestamp:     entry.MaxTimestamp.UnixNano(),
-		UncompressedSize: entry.UncompressedSize,
-	}
-
-	// Reconstruct the bitmap from the provided bytes.
-	if len(entry.StreamIDBitmap) == 0 {
-		internalEntry.bitmap = memory.NewBitmap(nil, 0)
-	} else {
-		bitmapLen := len(entry.StreamIDBitmap) * 8
-		internalEntry.bitmap = memory.BitmapFrom(entry.StreamIDBitmap, bitmapLen, 0)
-	}
-
 	key := labelPostingKey{
 		objectPath:   entry.ObjectPath,
 		sectionIndex: entry.SectionIndex,
@@ -86,42 +66,18 @@ func (b *MergeBuilder) AppendLabelEntry(entry LabelEntry) error {
 		return fmt.Errorf("label posting entry with key (%q, %d, %q, %q) already exists", entry.ObjectPath, entry.SectionIndex, entry.ColumnName, entry.LabelValue)
 	}
 
-	b.labels[key] = internalEntry
+	b.labels[key] = &entry
 
 	// Track size: 5 int64 fields + string sizes + bitmap bytes.
-	bitmapBytes := internalEntry.BitmapBytes()
-	b.estimatedSize += 5*8 + len(entry.ObjectPath) + len(entry.ColumnName) + len(entry.LabelValue) + len(bitmapBytes)
+	b.estimatedSize += 5*8 + len(entry.ObjectPath) + len(entry.ColumnName) + len(entry.LabelValue) + len(entry.StreamIDBitmap)
 
 	return nil
 }
 
-// AppendBloomEntry appends a pre-aggregated bloom posting entry directly to
-// the builder. Returns an error if an entry with the same
-// (ObjectPath, SectionIndex, ColumnName) key already exists.
+// AppendBloomEntry appends a bloom posting entry directly to the builder.
+// Returns an error if an entry with the same (ObjectPath, SectionIndex,
+// ColumnName) key already exists.
 func (b *MergeBuilder) AppendBloomEntry(entry BloomEntry) error {
-	bloomFilter := &bloom.BloomFilter{}
-	if err := bloomFilter.UnmarshalBinary(entry.BloomFilter); err != nil {
-		return fmt.Errorf("unmarshaling bloom filter: %w", err)
-	}
-
-	internalEntry := &bloomPostingEntry{
-		ObjectPath:       entry.ObjectPath,
-		SectionIndex:     entry.SectionIndex,
-		ColumnName:       entry.ColumnName,
-		bloomFilter:      bloomFilter,
-		MinTimestamp:     entry.MinTimestamp.UnixNano(),
-		MaxTimestamp:     entry.MaxTimestamp.UnixNano(),
-		UncompressedSize: entry.UncompressedSize,
-	}
-
-	// Reconstruct the bitmap from the provided bytes.
-	if len(entry.StreamIDBitmap) == 0 {
-		internalEntry.bitmap = memory.NewBitmap(nil, 0)
-	} else {
-		bitmapLen := len(entry.StreamIDBitmap) * 8
-		internalEntry.bitmap = memory.BitmapFrom(entry.StreamIDBitmap, bitmapLen, 0)
-	}
-
 	key := bloomPostingKey{
 		objectPath:   entry.ObjectPath,
 		sectionIndex: entry.SectionIndex,
@@ -132,11 +88,10 @@ func (b *MergeBuilder) AppendBloomEntry(entry BloomEntry) error {
 		return fmt.Errorf("bloom posting entry with key (%q, %d, %q) already exists", entry.ObjectPath, entry.SectionIndex, entry.ColumnName)
 	}
 
-	b.blooms[key] = internalEntry
+	b.blooms[key] = &entry
 
-	// Track size: 5 int64 fields + string sizes + bloom filter capacity + bitmap bytes.
-	bitmapBytes := internalEntry.BitmapBytes()
-	b.estimatedSize += 5*8 + len(entry.ObjectPath) + len(entry.ColumnName) + int(bloomFilter.Cap()/8) + len(bitmapBytes)
+	// Track size: 5 int64 fields + string sizes + bloom bytes + bitmap bytes.
+	b.estimatedSize += 5*8 + len(entry.ObjectPath) + len(entry.ColumnName) + len(entry.BloomFilter) + len(entry.StreamIDBitmap)
 
 	return nil
 }
@@ -149,8 +104,8 @@ func (b *MergeBuilder) EstimatedSize() int {
 
 // Reset clears all accumulated data and resets the builder to a fresh state.
 func (b *MergeBuilder) Reset() {
-	b.labels = make(map[labelPostingKey]*labelPostingEntry)
-	b.blooms = make(map[bloomPostingKey]*bloomPostingEntry)
+	b.labels = make(map[labelPostingKey]*LabelEntry)
+	b.blooms = make(map[bloomPostingKey]*BloomEntry)
 	b.estimatedSize = 0
 }
 
@@ -160,14 +115,14 @@ func (b *MergeBuilder) Reset() {
 // After a successful flush, the builder is reset.
 func (b *MergeBuilder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	// Convert maps to slices.
-	labelEntries := make([]*labelPostingEntry, 0, len(b.labels))
+	labelEntries := make([]LabelEntry, 0, len(b.labels))
 	for _, entry := range b.labels {
-		labelEntries = append(labelEntries, entry)
+		labelEntries = append(labelEntries, *entry)
 	}
 
-	bloomEntries := make([]*bloomPostingEntry, 0, len(b.blooms))
+	bloomEntries := make([]BloomEntry, 0, len(b.blooms))
 	for _, entry := range b.blooms {
-		bloomEntries = append(bloomEntries, entry)
+		bloomEntries = append(bloomEntries, *entry)
 	}
 
 	if len(labelEntries) == 0 && len(bloomEntries) == 0 {

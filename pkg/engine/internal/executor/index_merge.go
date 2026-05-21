@@ -265,8 +265,8 @@ func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string
 			ColumnName:       row.ColumnName,
 			LabelValue:       row.LabelValue,
 			StreamIDBitmap:   row.StreamIDBitmap,
-			MinTimestamp:     time.Unix(0, row.MinTimestamp),
-			MaxTimestamp:     time.Unix(0, row.MaxTimestamp),
+			MinTimestamp:     row.MinTimestamp,
+			MaxTimestamp:     row.MaxTimestamp,
 			UncompressedSize: row.UncompressedSize,
 		}
 		return builder.AppendPostingsLabelEntry(tenant, entry)
@@ -278,8 +278,8 @@ func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string
 			ColumnName:       row.ColumnName,
 			BloomFilter:      row.BloomFilter,
 			StreamIDBitmap:   row.StreamIDBitmap,
-			MinTimestamp:     time.Unix(0, row.MinTimestamp),
-			MaxTimestamp:     time.Unix(0, row.MaxTimestamp),
+			MinTimestamp:     row.MinTimestamp,
+			MaxTimestamp:     row.MaxTimestamp,
 			UncompressedSize: row.UncompressedSize,
 		}
 		return builder.AppendPostingsBloomEntry(tenant, entry)

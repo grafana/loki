@@ -17,7 +17,8 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 	b := NewMergeBuilder(nil, 0, 0)
 	b.SetTenant("test-tenant")
 
-	ts := time.Unix(0, 1000).UTC()
+	ts := int64(1000)    // unix nanoseconds
+	timeVal := time.Unix(0, ts).UTC()
 
 	// Create a bitmap with bits 3, 7, 15 set
 	bitmapBytes := make([]byte, 2)
@@ -55,8 +56,8 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 			"label_value.utf8":        "value1",
 			"bloom_filter.binary":     nil,
 			"uncompressed_size.int64": int64(4096),
-			"min_timestamp.timestamp": ts,
-			"max_timestamp.timestamp": ts,
+			"min_timestamp.timestamp": timeVal,
+			"max_timestamp.timestamp": timeVal,
 		},
 	}
 
@@ -79,9 +80,10 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 	b := NewMergeBuilder(nil, 0, 0)
 	b.SetTenant("test-tenant")
 
-	ts := time.Unix(0, 500).UTC()
+	ts := int64(500)         // unix nanoseconds
+	timeVal := time.Unix(0, ts).UTC()
 
-	bloomBytes := mustBuildBloomBytes(t, "/tenant/abc/obj2", 1, "service_name", "my-service", ts)
+	bloomBytes := mustBuildBloomBytes(t, "/tenant/abc/obj2", 1, "service_name", "my-service", timeVal)
 
 	// Create bitmap with bits 0, 2, 8 set
 	bitmapBytes := make([]byte, 2)
@@ -120,8 +122,8 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 			"label_value.utf8":        nil,
 			"bloom_filter.binary":     bloomFilters[0],
 			"uncompressed_size.int64": int64(8192),
-			"min_timestamp.timestamp": ts,
-			"max_timestamp.timestamp": ts,
+			"min_timestamp.timestamp": timeVal,
+			"max_timestamp.timestamp": timeVal,
 		},
 	}
 
@@ -146,7 +148,7 @@ func TestMergeBuilder_AppendLabelEntry_DuplicateKey_Errors(t *testing.T) {
 	b := NewMergeBuilder(nil, 0, 0)
 	b.SetTenant("test-tenant")
 
-	ts := time.Unix(0, 0).UTC()
+	ts := int64(0) // unix nanoseconds
 
 	bitmapBytes := []byte{0x01}
 	entry := LabelEntry{
@@ -174,15 +176,16 @@ func TestMergeBuilder_AppendLabelEntry_DuplicateKey_Errors(t *testing.T) {
 // appending two bloom entries with the same key returns an error on the
 // second append.
 func TestMergeBuilder_AppendBloomEntry_DuplicateKey_Errors(t *testing.T) {
-	ts := time.Unix(0, 0).UTC()
+	timeVal := time.Unix(0, 0).UTC()
 
 	// Generate valid bloom bytes using the helper
-	bloomBytes := mustBuildBloomBytes(t, "/obj", 0, "col", "val", ts)
+	bloomBytes := mustBuildBloomBytes(t, "/obj", 0, "col", "val", timeVal)
 
 	// Now use a fresh builder for the duplicate append test
 	b := NewMergeBuilder(nil, 0, 0)
 	b.SetTenant("test-tenant")
 
+	ts := int64(0) // unix nanoseconds
 	bitmapBytes := []byte{0x01}
 	entry := BloomEntry{
 		ObjectPath:       "/obj",

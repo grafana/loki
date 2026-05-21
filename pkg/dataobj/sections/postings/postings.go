@@ -6,7 +6,6 @@ package postings
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
@@ -105,7 +104,7 @@ const (
 	KindLabel PostingKind = 1
 )
 
-// LabelEntry represents a pre-aggregated label posting entry that can be
+// LabelEntry represents an aggregated label posting entry that can be
 // appended directly to a Builder without going through the per-observation
 // aggregation path.
 type LabelEntry struct {
@@ -119,15 +118,15 @@ type LabelEntry struct {
 	LabelValue string
 	// StreamIDBitmap is the raw bytes of the stream ID bitmap (LSB-encoded).
 	StreamIDBitmap []byte
-	// MinTimestamp is the minimum timestamp of the records in this posting.
-	MinTimestamp time.Time
-	// MaxTimestamp is the maximum timestamp of the records in this posting.
-	MaxTimestamp time.Time
+	// MinTimestamp is the minimum timestamp of the records in this posting (unix nanoseconds since epoch).
+	MinTimestamp int64
+	// MaxTimestamp is the maximum timestamp of the records in this posting (unix nanoseconds since epoch).
+	MaxTimestamp int64
 	// UncompressedSize is the total uncompressed size in bytes.
 	UncompressedSize int64
 }
 
-// BloomEntry represents a pre-aggregated bloom posting entry that can be
+// BloomEntry represents an aggregated bloom posting entry that can be
 // appended directly to a Builder without going through the per-observation
 // aggregation path.
 type BloomEntry struct {
@@ -141,10 +140,10 @@ type BloomEntry struct {
 	BloomFilter []byte
 	// StreamIDBitmap is the raw bytes of the stream ID bitmap (LSB-encoded).
 	StreamIDBitmap []byte
-	// MinTimestamp is the minimum timestamp of the records in this posting.
-	MinTimestamp time.Time
-	// MaxTimestamp is the maximum timestamp of the records in this posting.
-	MaxTimestamp time.Time
+	// MinTimestamp is the minimum timestamp of the records in this posting (unix nanoseconds since epoch).
+	MinTimestamp int64
+	// MaxTimestamp is the maximum timestamp of the records in this posting (unix nanoseconds since epoch).
+	MaxTimestamp int64
 	// UncompressedSize is the total uncompressed size in bytes.
 	UncompressedSize int64
 }
