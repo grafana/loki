@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -39,6 +40,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
 )
@@ -257,6 +259,11 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 }
 
 func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
+	// currently we only support one index type "tsdb" so all the code below here applies to tsdb only. this method will need to be improved should we ever support another type
+	if !slices.Contains(types.SupportedIndexTypes, p.IndexType) {
+		return nil, nil, nil, fmt.Errorf("unsupported index type %s for schema period starting at %s", p.IndexType, p.From.String())
+	}
+
 	component := fmt.Sprintf("index-store-%s-%s", p.IndexType, p.From.String())
 	indexClientReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, s.registerer)
 	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))

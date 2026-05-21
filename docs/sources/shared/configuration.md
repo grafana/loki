@@ -2626,9 +2626,7 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # The CLI flags prefix for this block configuration is: store.chunks-cache-l2
 [chunk_cache_config_l2: <cache_config>]
 
-# Write dedupe cache is deprecated along with legacy index types (aws,
-# aws-dynamo, grpc-store).
-# Consider using TSDB index which does not require a write dedupe cache.
+# Deprecated: the TSDB index does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
 

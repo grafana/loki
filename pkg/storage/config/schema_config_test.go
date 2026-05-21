@@ -579,7 +579,7 @@ index:
   prefix: loki_index_
 object_store: gcs
 schema: v11
-store: boltdb-shipper
+store: tsdb
 `
 
 	var cfg PeriodConfig
@@ -588,7 +588,7 @@ store: boltdb-shipper
 
 	expected := PeriodConfig{
 		From:       DayTime{model.Time(1596153600000)},
-		IndexType:  "boltdb-shipper",
+		IndexType:  "tsdb",
 		ObjectType: "gcs",
 		Schema:     "v11",
 		IndexTables: IndexPeriodicTableConfig{

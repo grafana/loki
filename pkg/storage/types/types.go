@@ -4,19 +4,6 @@ var SupportedIndexTypes = []string{
 	IndexTypeTSDB,
 }
 
-var UnsupportedIndexTypes = []string{
-	IndexTypeBoltDB,
-	StorageTypeAWS,
-	StorageTypeAWSDynamo,
-	StorageTypeBigTable,
-	StorageTypeBigTableHashed,
-	StorageTypeBoltDB,
-	StorageTypeCassandra,
-	StorageTypeGCP,
-	StorageTypeGCPColumnKey,
-	StorageTypeGrpc,
-}
-
 var SupportedStorageTypes = []string{
 	// local file system
 	StorageTypeFileSystem,
@@ -31,37 +18,16 @@ var SupportedStorageTypes = []string{
 	StorageTypeSwift,
 }
 
-var UnsupportedStorageTypes = []string{
-	StorageTypeAWSDynamo,
-	StorageTypeBigTable,
-	StorageTypeBigTableHashed,
-	StorageTypeBoltDB,
-	StorageTypeCassandra,
-	StorageTypeGCP,
-	StorageTypeGCPColumnKey,
-	StorageTypeGrpc,
-}
-
 const (
-	StorageTypeAWS            = "aws"
-	StorageTypeAWSDynamo      = "aws-dynamo"
-	StorageTypeAlibabaCloud   = "alibabacloud"
-	StorageTypeAzure          = "azure"
-	StorageTypeBOS            = "bos"
-	StorageTypeBigTable       = "bigtable"
-	StorageTypeBigTableHashed = "bigtable-hashed"
-	StorageTypeBoltDB         = "boltdb"
-	StorageTypeCOS            = "cos"
-	StorageTypeCassandra      = "cassandra"
-	StorageTypeFileSystem     = "filesystem"
-	StorageTypeGCP            = "gcp"
-	StorageTypeGCPColumnKey   = "gcp-columnkey"
-	StorageTypeGCS            = "gcs"
-	StorageTypeGrpc           = "grpc-store"
-	StorageTypeLocal          = "local"
-	StorageTypeS3             = "s3"
-	StorageTypeSwift          = "swift"
+	StorageTypeAWS          = "aws"
+	StorageTypeAlibabaCloud = "alibabacloud"
+	StorageTypeAzure        = "azure"
+	StorageTypeBOS          = "bos"
+	StorageTypeCOS          = "cos"
+	StorageTypeFileSystem   = "filesystem"
+	StorageTypeGCS          = "gcs"
+	StorageTypeS3           = "s3"
+	StorageTypeSwift        = "swift"
 
-	IndexTypeBoltDB = "boltdb-shipper"
-	IndexTypeTSDB   = "tsdb"
+	IndexTypeTSDB = "tsdb"
 )

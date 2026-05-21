@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -150,11 +151,7 @@ func (ns *NamedStores) populateStoreType() error {
 	ns.storeType = make(map[string]string)
 
 	checkForDuplicates := func(name string) error {
-		switch name {
-		case types.StorageTypeAWS, types.StorageTypeAWSDynamo, types.StorageTypeS3,
-			types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed, types.StorageTypeGCS,
-			types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCassandra,
-			types.StorageTypeFileSystem, types.StorageTypeGrpc:
+		if slices.Contains(types.SupportedStorageTypes, name) {
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
 		}
 
@@ -574,6 +571,6 @@ func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientM
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", storeName, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeFileSystem)
+		return nil, fmt.Errorf("Unrecognized storage client %s, choose one of: %s", storeName, strings.Join(types.SupportedStorageTypes, ", "))
 	}
 }
