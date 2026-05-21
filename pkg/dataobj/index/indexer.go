@@ -192,7 +192,6 @@ func (si *serialIndexer) buildWorker(ctx context.Context) {
 			select {
 			case req.resultChan <- result:
 				// Result delivered successfully
-				// Cancel the context to ensure all the resources are released
 			case <-req.ctx.Done():
 				// Request was cancelled, but we already did the work
 				level.Debug(si.logger).Log("msg", "build request was cancelled after completion",
