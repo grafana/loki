@@ -28,7 +28,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
@@ -333,22 +332,6 @@ func (cfg *Config) Validate() error {
 	}
 
 	return cfg.NamedStores.Validate()
-}
-
-// NewIndexClient creates a new index client of the desired type specified in the PeriodConfig
-func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (index.Client, error) {
-
-	switch true {
-
-	case util.StringsContain(types.SupportedIndexTypes, periodCfg.IndexType):
-		switch periodCfg.IndexType {
-		case types.IndexTypeTSDB:
-			// TODO(chaudum): Move TSDB index client creation into this code path
-			return nil, fmt.Errorf("code path not supported")
-		}
-	}
-
-	return nil, fmt.Errorf("unrecognized index client type %s, choose one of: %s", periodCfg.IndexType, strings.Join(types.SupportedIndexTypes, ","))
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
