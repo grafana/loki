@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"time"
 
 	"github.com/go-kit/log/level"
 
@@ -168,8 +167,12 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			if openErr != nil {
 				return nil, nil, fmt.Errorf("opening stats section for validation: %w", openErr)
 			}
-			reader := newStatsPileReader(sec)
-			row, readErr := reader.Next(ctx)
+			reader := newStatsPileReader(ctx, sec, 0)
+			var row statsRow
+			if reader.Next() {
+				row = reader.Value()
+			}
+			readErr := reader.Err()
 			reader.Close()
 			if readErr != nil && !errors.Is(readErr, io.EOF) {
 				return nil, nil, fmt.Errorf("reading stats section %d for validation: %w", i, readErr)
@@ -202,15 +205,15 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 
 	// Open all postings sections and create pile readers.
 	// Pre-allocate with known capacity to avoid slice growth allocations.
-	pileReaders := make([]pileReader[postingsRow], 0, len(sections))
+	pileReaders := make([]pileSequence[postingsRow], 0, len(sections))
 
-	for _, rs := range sections {
+	for i, rs := range sections {
 		sec, err := postings.Open(ctx, rs.section)
 		if err != nil {
 			return fmt.Errorf("opening postings section from run %d: %w", rs.runIdx, err)
 		}
 
-		reader := newPostingsPileReader(sec)
+		reader := newPostingsPileReader(ctx, sec, i)
 		pileReaders = append(pileReaders, reader)
 	}
 
@@ -287,15 +290,15 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 
 	// Open all stats sections and create pile readers.
 	// Pre-allocate with known capacity to avoid slice growth allocations.
-	pileReaders := make([]pileReader[statsRow], 0, len(sections))
+	pileReaders := make([]pileSequence[statsRow], 0, len(sections))
 
-	for _, rs := range sections {
+	for i, rs := range sections {
 		sec, err := stats.Open(ctx, rs.section)
 		if err != nil {
 			return fmt.Errorf("opening stats section from run %d: %w", rs.runIdx, err)
 		}
 
-		reader := newStatsPileReader(sec)
+		reader := newStatsPileReader(ctx, sec, i)
 		pileReaders = append(pileReaders, reader)
 	}
 
@@ -343,12 +346,17 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 		if reducerErr != nil {
 			return false
 		}
-		if e := builder.AppendStat(tenant, row.ObjectPath, row.SectionIndex,
-			row.SortSchema, row.Labels,
-			time.Unix(0, row.MinTimestamp),
-			time.Unix(0, row.MaxTimestamp),
-			int(row.RowCount),
-			row.UncompressedSize); e != nil {
+		stat := stats.Stat{
+			ObjectPath:       row.ObjectPath,
+			SectionIndex:     row.SectionIndex,
+			SortSchema:       row.SortSchema,
+			Labels:           row.Labels,
+			MinTimestamp:     row.MinTimestamp,
+			MaxTimestamp:     row.MaxTimestamp,
+			RowCount:         int64(row.RowCount),
+			UncompressedSize: row.UncompressedSize,
+		}
+		if e := builder.AppendStat(tenant, stat); e != nil {
 			emitErr = e
 			return false
 		}

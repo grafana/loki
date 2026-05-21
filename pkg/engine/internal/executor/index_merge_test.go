@@ -31,44 +31,87 @@ type intRecord struct {
 	Val string
 }
 
-// testPileReader is a simple pileReader[intRecord] for testing.
+// testPileReader is a simple pileSequence[intRecord] for testing.
 type testPileReader struct {
-	records []intRecord
-	index   int
+	pileIdx   int
+	records   []intRecord
+	index     int
+	cur       intRecord
+	err       error
+	exhausted bool
 }
 
 func newTestPileReader(records ...intRecord) *testPileReader {
 	return &testPileReader{
+		pileIdx: 0,
 		records: records,
 		index:   0,
 	}
 }
 
-func (p *testPileReader) Next(_ context.Context) (intRecord, error) {
-	if p.index >= len(p.records) {
-		return intRecord{}, io.EOF
+func newTestPileReaderWithIndex(pileIdx int, records ...intRecord) *testPileReader {
+	return &testPileReader{
+		pileIdx: pileIdx,
+		records: records,
+		index:   0,
 	}
-	rec := p.records[p.index]
+}
+
+func (p *testPileReader) Next() bool {
+	if p.exhausted {
+		return false
+	}
+	if p.index >= len(p.records) {
+		p.exhausted = true
+		return false
+	}
+	p.cur = p.records[p.index]
 	p.index++
-	return rec, nil
+	return true
+}
+
+func (p *testPileReader) Value() intRecord {
+	return p.cur
+}
+
+func (p *testPileReader) Err() error {
+	return p.err
+}
+
+func (p *testPileReader) PileIdx() int {
+	return p.pileIdx
 }
 
 func (p *testPileReader) Close() error {
 	return nil
 }
 
-// trackingPileReader wraps a pileReader and tracks whether Close() was called.
+var _ pileSequence[intRecord] = (*testPileReader)(nil)
+
+// trackingPileReader wraps a pileSequence and tracks whether Close() was called.
 type trackingPileReader[R any] struct {
-	underlying pileReader[R]
+	underlying pileSequence[R]
 	closed     bool
 }
 
-func newTrackingPileReader[R any](underlying pileReader[R]) *trackingPileReader[R] {
+func newTrackingPileReader[R any](underlying pileSequence[R]) *trackingPileReader[R] {
 	return &trackingPileReader[R]{underlying: underlying, closed: false}
 }
 
-func (p *trackingPileReader[R]) Next(ctx context.Context) (R, error) {
-	return p.underlying.Next(ctx)
+func (p *trackingPileReader[R]) Next() bool {
+	return p.underlying.Next()
+}
+
+func (p *trackingPileReader[R]) Value() R {
+	return p.underlying.Value()
+}
+
+func (p *trackingPileReader[R]) Err() error {
+	return p.underlying.Err()
+}
+
+func (p *trackingPileReader[R]) PileIdx() int {
+	return p.underlying.PileIdx()
 }
 
 func (p *trackingPileReader[R]) Close() error {
@@ -79,6 +122,8 @@ func (p *trackingPileReader[R]) Close() error {
 func (p *trackingPileReader[R]) wasClosed() bool {
 	return p.closed
 }
+
+var _ pileSequence[intRecord] = (*trackingPileReader[intRecord])(nil)
 
 // TestMergeHeap_DistinctKeys tests merging two piles with distinct keys.
 func TestMergeHeap_DistinctKeys(t *testing.T) {
@@ -105,7 +150,7 @@ func TestMergeHeap_DistinctKeys(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileReader[intRecord]{pile1, pile2}, cmp, nil)
+	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
 
 	expected := []intRecord{
 		{Key: 1, Val: "a"},
@@ -130,11 +175,11 @@ func TestMergeHeap_EqualKeysReducer(t *testing.T) {
 	ctx := context.Background()
 
 	// Two piles, each with {1, 3}
-	pile1 := newTestPileReader(
+	pile1 := newTestPileReaderWithIndex(0,
 		intRecord{Key: 1, Val: "a1"},
 		intRecord{Key: 3, Val: "a3"},
 	)
-	pile2 := newTestPileReader(
+	pile2 := newTestPileReaderWithIndex(1,
 		intRecord{Key: 1, Val: "b1"},
 		intRecord{Key: 3, Val: "b3"},
 	)
@@ -153,7 +198,7 @@ func TestMergeHeap_EqualKeysReducer(t *testing.T) {
 		return intRecord{Key: acc.Key, Val: acc.Val + "+" + next.Val}
 	}
 
-	iter := mergeHeap(ctx, []pileReader[intRecord]{pile1, pile2}, cmp, reduce)
+	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, reduce)
 
 	expected := []intRecord{
 		{Key: 1, Val: "a1+b1"},
@@ -185,7 +230,7 @@ func TestMergeHeap_EmptyPiles(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileReader[intRecord]{pile1, pile2}, cmp, nil)
+	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
 
 	var actual []intRecord
 	err := iter(func(rec intRecord) bool {
@@ -213,7 +258,7 @@ func TestMergeHeap_ContextCancelled(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileReader[intRecord]{pile1, pile2}, cmp, nil)
+	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
 
 	err := iter(func(_ intRecord) bool {
 		return true
@@ -273,17 +318,15 @@ func TestPostingsPileReader_RoundTrip(t *testing.T) {
 	require.NotNil(t, sec)
 
 	// Create a pile reader and read all rows
-	pileReader := newPostingsPileReader(sec)
+	pileReader := newPostingsPileReader(ctx, sec, 0)
 	defer pileReader.Close()
 
 	var rows []postingsRow
-	for {
-		row, err := pileReader.Next(ctx)
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		rows = append(rows, row)
+	for pileReader.Next() {
+		rows = append(rows, pileReader.Value())
+	}
+	if pileReader.Err() != nil {
+		require.NoError(t, pileReader.Err())
 	}
 
 	// Verify we got both a label and bloom entry
@@ -354,17 +397,15 @@ func TestStatsPileReader_RoundTrip(t *testing.T) {
 	require.NotNil(t, sec)
 
 	// Create a pile reader and read all rows
-	pileReader := newStatsPileReader(sec)
+	pileReader := newStatsPileReader(ctx, sec, 0)
 	defer pileReader.Close()
 
 	var rows []statsRow
-	for {
-		row, err := pileReader.Next(ctx)
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		rows = append(rows, row)
+	for pileReader.Next() {
+		rows = append(rows, pileReader.Value())
+	}
+	if pileReader.Err() != nil {
+		require.NoError(t, pileReader.Err())
 	}
 
 	// Verify we got both rows
@@ -406,7 +447,7 @@ func TestMergeHeap_ClosesAllPilesOnEarlyStop(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileReader[intRecord]{pile1, pile2}, cmp, nil)
+	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
 
 	// Iterate and stop after the 2nd record
 	var count int
@@ -444,7 +485,7 @@ func TestMergeHeap_ClosesAllPilesOnReadError(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileReader[intRecord]{trackingErrorPile, trackingNormalPile}, cmp, nil)
+	iter := mergeHeap(ctx, []pileSequence[intRecord]{trackingErrorPile, trackingNormalPile}, cmp, nil)
 
 	// Try to iterate; should get an error
 	err := iter(func(_ intRecord) bool {
@@ -480,7 +521,7 @@ func TestMergeHeap_ClosesAllPilesOnContextCancel(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileReader[intRecord]{pile1, pile2}, cmp, nil)
+	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
 
 	// Start iteration and cancel after first record
 	var count int
@@ -498,19 +539,29 @@ func TestMergeHeap_ClosesAllPilesOnContextCancel(t *testing.T) {
 	require.True(t, pile2.wasClosed(), "pile2 should be closed")
 }
 
-// errorPileReader is a test pile reader that always returns an error after the first call.
+// errorPileReader is a test pile reader that always returns an error.
 type errorPileReader[R any] struct {
-	called bool
+	exhausted bool
 }
 
-func (p *errorPileReader[R]) Next(_ context.Context) (R, error) {
-	if p.called {
-		var zero R
-		return zero, io.ErrUnexpectedEOF
+func (p *errorPileReader[R]) Next() bool {
+	if !p.exhausted {
+		p.exhausted = true
 	}
-	p.called = true
+	return false
+}
+
+func (p *errorPileReader[R]) Value() R {
 	var zero R
-	return zero, io.ErrUnexpectedEOF
+	return zero
+}
+
+func (p *errorPileReader[R]) Err() error {
+	return io.ErrUnexpectedEOF
+}
+
+func (p *errorPileReader[R]) PileIdx() int {
+	return 0
 }
 
 func (p *errorPileReader[R]) Close() error {
@@ -567,17 +618,15 @@ func TestPostingsPileReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 	require.NotNil(t, sec)
 
 	// Create a pile reader and read all rows
-	pileReader := newPostingsPileReader(sec)
+	pileReader := newPostingsPileReader(ctx, sec, 0)
 	defer pileReader.Close()
 
 	var rows []postingsRow
-	for {
-		row, err := pileReader.Next(ctx)
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		rows = append(rows, row)
+	for pileReader.Next() {
+		rows = append(rows, pileReader.Value())
+	}
+	if pileReader.Err() != nil {
+		require.NoError(t, pileReader.Err())
 	}
 
 	// Verify we got both label entries
@@ -946,17 +995,15 @@ func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objsto
 
 	require.NotNil(t, sec, "expected postings section in output object")
 
-	pileReader := newPostingsPileReader(sec)
+	pileReader := newPostingsPileReader(ctx, sec, 0)
 	defer pileReader.Close()
 
 	var rows []postingsRow
-	for {
-		row, err := pileReader.Next(ctx)
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		rows = append(rows, row)
+	for pileReader.Next() {
+		rows = append(rows, pileReader.Value())
+	}
+	if pileReader.Err() != nil {
+		require.NoError(t, pileReader.Err())
 	}
 
 	return rows
@@ -982,17 +1029,15 @@ func readStatsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.
 
 	require.NotNil(t, sec, "expected stats section in output object")
 
-	pileReader := newStatsPileReader(sec)
+	pileReader := newStatsPileReader(ctx, sec, 0)
 	defer pileReader.Close()
 
 	var rows []statsRow
-	for {
-		row, err := pileReader.Next(ctx)
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		rows = append(rows, row)
+	for pileReader.Next() {
+		rows = append(rows, pileReader.Value())
+	}
+	if pileReader.Err() != nil {
+		require.NoError(t, pileReader.Err())
 	}
 
 	return rows
@@ -1603,11 +1648,16 @@ func TestStatsPileReader_DottedLabelNames(t *testing.T) {
 	require.NotNil(t, sec)
 
 	// Create a pile reader and read the row
-	pileReader := newStatsPileReader(sec)
+	pileReader := newStatsPileReader(ctx, sec, 0)
 	defer pileReader.Close()
 
-	row, err := pileReader.Next(ctx)
-	require.NoError(t, err)
+	if !pileReader.Next() {
+		require.Fail(t, "expected to read a row")
+	}
+	row := pileReader.Value()
+	if pileReader.Err() != nil {
+		require.NoError(t, pileReader.Err())
+	}
 
 	// Verify the label name is NOT truncated: should be "my.svc", not "my"
 	require.Equal(t, "my.svc", row.SortSchema)

@@ -2,48 +2,34 @@ package executor
 
 import (
 	"context"
-	"errors"
-	"io"
 
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
-// pileReader is one pile cursor; records must be emitted in non-decreasing
-// order according to the comparator passed to mergeHeap.
-type pileReader[R any] interface {
-	Next(ctx context.Context) (R, error) // returns io.EOF when exhausted
+// pileSequence[R] is one pile cursor for the K-way merge. It satisfies
+// loser.Sequence (Next() bool) and exposes the current value via Value().
+// Implementations must store enough state to:
+//   - report the most recently read record via Value()
+//   - report any error that ended iteration via Err() (nil on natural EOF)
+//   - close their underlying reader via Close()
+//   - report the pile's index via PileIdx()
+//
+// Records must be emitted in non-decreasing order according to the comparator
+// passed to mergeHeap.
+type pileSequence[R any] interface {
+	// Next advances the cursor. Returns false on exhaustion (natural EOF or
+	// any error). Subsequent calls to Next continue to return false.
+	Next() bool
+	// Value returns the current record. Undefined if Next has not been called
+	// or if the last Next call returned false.
+	Value() R
+	// Err returns any error that caused iteration to end. nil on natural EOF
+	// (io.EOF from the underlying reader).
+	Err() error
+	// Close releases any resources held by the sequence. Idempotent.
 	Close() error
-}
-
-// pileSeq adapts a pileReader to loser.Sequence. It buffers one record at a
-// time (the current value) plus an optional error from the underlying reader.
-// When exhausted (io.EOF or any other error), Next() returns false and the
-// loser tree treats this sequence as +infinity via the value-wrapper below.
-type pileSeq[R any] struct {
-	ctx       context.Context
-	reader    pileReader[R]
-	pileIdx   int
-	cur       R
-	err       error
-	exhausted bool
-}
-
-func (s *pileSeq[R]) Next() bool {
-	if s.exhausted {
-		return false
-	}
-	rec, err := s.reader.Next(s.ctx)
-	if errors.Is(err, io.EOF) {
-		s.exhausted = true
-		return false
-	}
-	if err != nil {
-		s.err = err
-		s.exhausted = true
-		return false
-	}
-	s.cur = rec
-	return true
+	// PileIdx returns the pile's index in the merge. Used for stable tiebreak ordering.
+	PileIdx() int
 }
 
 // heapVal wraps a record with an "exhausted" flag so we can express "+infinity"
@@ -54,6 +40,26 @@ type heapVal[R any] struct {
 	exhausted bool
 }
 
+// seqWrapper wraps a pileWithExhausted to satisfy the loser.Sequence interface.
+// The loser tree expects sequences to have a Next() bool method.
+type seqWrapper[R any] struct {
+	seq       pileSequence[R]
+	exhausted bool
+}
+
+// Next implements the loser.Sequence interface by delegating to the underlying
+// pileSequence and tracking exhaustion state.
+func (sw *seqWrapper[R]) Next() bool {
+	if sw.exhausted {
+		return false
+	}
+	if !sw.seq.Next() {
+		sw.exhausted = true
+		return false
+	}
+	return true
+}
+
 // mergeHeap returns a yield-style iterator over the sorted K-way merge of the
 // provided piles. If reduce is non-nil, runs of equal-key records (per cmp)
 // are reduced into a single record before being yielded.
@@ -62,26 +68,26 @@ type heapVal[R any] struct {
 // pile's Close is called.
 func mergeHeap[R any](
 	ctx context.Context,
-	piles []pileReader[R],
+	piles []pileSequence[R],
 	cmp func(a, b R) int,
 	reduce func(acc, next R) R,
 ) func(yield func(R) bool) error {
 	return func(yield func(R) bool) error {
-		// Initialize sequences by wrapping each pileReader.
-		seqs := make([]*pileSeq[R], len(piles))
+		// Wrap piles with seqWrapper to satisfy loser.Sequence interface.
+		seqs := make([]*seqWrapper[R], len(piles))
 		for i, p := range piles {
-			seqs[i] = &pileSeq[R]{ctx: ctx, reader: p, pileIdx: i}
+			seqs[i] = &seqWrapper[R]{seq: p, exhausted: false}
 		}
 
 		// maxVal represents exhaustion (treated as +infinity by the loser tree).
 		maxVal := heapVal[R]{exhausted: true}
 
-		// at returns the current value of a sequence.
-		at := func(s *pileSeq[R]) heapVal[R] {
-			if s.exhausted {
+		// at returns the current value of a pile, or maxVal if exhausted/errored.
+		at := func(s *seqWrapper[R]) heapVal[R] {
+			if s.exhausted || s.seq.Err() != nil {
 				return maxVal
 			}
-			return heapVal[R]{rec: s.cur, pileIdx: s.pileIdx, exhausted: false}
+			return heapVal[R]{rec: s.seq.Value(), pileIdx: s.seq.PileIdx(), exhausted: false}
 		}
 
 		// less defines the loser tree ordering. Exhausted sequences sort as +infinity
@@ -103,8 +109,8 @@ func mergeHeap[R any](
 		}
 
 		// closeSeq closes a sequence when the loser tree is done with it.
-		closeSeq := func(s *pileSeq[R]) {
-			_ = s.reader.Close()
+		closeSeq := func(s *seqWrapper[R]) {
+			_ = s.seq.Close()
 		}
 
 		tree := loser.New(seqs, maxVal, at, less, closeSeq)
@@ -122,7 +128,7 @@ func mergeHeap[R any](
 			}
 
 			winner := tree.Winner()
-			rec := winner.cur
+			rec := winner.seq.Value()
 
 			if !havePending {
 				pending = rec
@@ -151,8 +157,8 @@ func mergeHeap[R any](
 
 		// Check for errors that occurred during iteration.
 		for _, s := range seqs {
-			if s.err != nil {
-				return s.err
+			if s.seq.Err() != nil {
+				return s.seq.Err()
 			}
 		}
 

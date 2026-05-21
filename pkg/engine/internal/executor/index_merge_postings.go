@@ -67,31 +67,60 @@ func comparePostingsRow(a, b postingsRow) int {
 
 // postingsPileReader reads postingsRow records from a postings section in order.
 type postingsPileReader struct {
+	ctx       context.Context
+	pileIdx   int
 	reader    *postings.Reader
 	batch     arrow.RecordBatch
 	index     int
 	columns   map[string]int // column name -> field index
 	opened    bool
 	validated bool
+
+	cur       postingsRow // current value, valid between Next() returning true and the next Next() call
+	err       error       // captured if iteration ends with anything other than io.EOF
+	exhausted bool        // set when Next has returned false; further calls return false without work
 }
 
 // newPostingsPileReader creates a new postingsPileReader from a postings section.
-func newPostingsPileReader(sec *postings.Section) *postingsPileReader {
+func newPostingsPileReader(ctx context.Context, sec *postings.Section, pileIdx int) *postingsPileReader {
 	reader := postings.NewReader(postings.ReaderOptions{
 		Columns:   sec.Columns(),
 		Allocator: memory.DefaultAllocator,
 	})
 	return &postingsPileReader{
+		ctx:     ctx,
+		pileIdx: pileIdx,
 		reader:  reader,
 		columns: make(map[string]int),
 	}
 }
 
-// Next reads the next postingsRow from the section. Returns io.EOF when exhausted.
-func (r *postingsPileReader) Next(ctx context.Context) (postingsRow, error) {
+// Next advances the cursor. Returns false on exhaustion (natural EOF or any error).
+// Subsequent calls to Next continue to return false.
+func (r *postingsPileReader) Next() bool {
+	if r.exhausted {
+		return false
+	}
+	rec, err := r.next()
+	if errors.Is(err, io.EOF) {
+		r.exhausted = true
+		return false
+	}
+	if err != nil {
+		r.err = err
+		r.exhausted = true
+		return false
+	}
+	r.cur = rec
+	return true
+}
+
+// next reads the next postingsRow from the section. Returns io.EOF when exhausted.
+// Uses r.ctx instead of accepting a context parameter.
+func (r *postingsPileReader) next() (postingsRow, error) {
 	// Open the reader on first access
 	if !r.opened {
-		if err := r.reader.Open(ctx); err != nil {
+		if err := r.reader.Open(r.ctx); err != nil {
 			return postingsRow{}, fmt.Errorf("opening reader: %w", err)
 		}
 		r.opened = true
@@ -106,7 +135,7 @@ func (r *postingsPileReader) Next(ctx context.Context) (postingsRow, error) {
 		}
 
 		// Read next batch
-		batch, err := r.reader.Read(ctx, 8192)
+		batch, err := r.reader.Read(r.ctx, 8192)
 		if errors.Is(err, io.EOF) && batch == nil {
 			return postingsRow{}, io.EOF
 		}
@@ -143,6 +172,25 @@ func (r *postingsPileReader) Next(ctx context.Context) (postingsRow, error) {
 	r.index++
 	return row, nil
 }
+
+// Value returns the current record. Undefined if Next has not been called
+// or if the last Next call returned false.
+func (r *postingsPileReader) Value() postingsRow {
+	return r.cur
+}
+
+// Err returns any error that caused iteration to end. nil on natural EOF.
+func (r *postingsPileReader) Err() error {
+	return r.err
+}
+
+// PileIdx returns the pile's index in the merge.
+func (r *postingsPileReader) PileIdx() int {
+	return r.pileIdx
+}
+
+// Verify that postingsPileReader implements pileSequence[postingsRow].
+var _ pileSequence[postingsRow] = (*postingsPileReader)(nil)
 
 // Close closes the reader and releases resources.
 func (r *postingsPileReader) Close() error {

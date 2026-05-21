@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -16,7 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// MergeBuilder accumulates pre-aggregated posting and stats entries from
+// MergeBuilder accumulates aggregated posting and stat entries from
 // existing sections for merging. Unlike Builder, which aggregates per-observation,
 // MergeBuilder accepts already-aggregated entries and forwards them to
 // merge-mode sub-builders.
@@ -88,23 +87,13 @@ func (b *MergeBuilder) getPostingsMergeBuilderForTenant(tenantID string) *postin
 }
 
 // AppendStat records a per-sort-key aggregate for a data object section.
-func (b *MergeBuilder) AppendStat(tenantID, objectPath string, sectionIdx int64,
-	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
+func (b *MergeBuilder) AppendStat(tenantID string, stat stats.Stat) error {
 	b.metrics.appendsTotal.Inc()
 
 	tenantStats := b.getStatsBuilderForTenant(tenantID)
 	preAppendSizeEstimate := tenantStats.EstimatedSize()
 
-	tenantStats.Append(stats.Stat{
-		ObjectPath:       objectPath,
-		SectionIndex:     sectionIdx,
-		SortSchema:       sortSchema,
-		Labels:           labels,
-		MinTimestamp:     minTs.UnixNano(),
-		MaxTimestamp:     maxTs.UnixNano(),
-		RowCount:         int64(rows),
-		UncompressedSize: uncompressedSize,
-	})
+	tenantStats.Append(stat)
 
 	postAppendSizeEstimate := tenantStats.EstimatedSize()
 	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
