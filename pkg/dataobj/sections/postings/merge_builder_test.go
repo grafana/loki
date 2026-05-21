@@ -17,7 +17,7 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 	b := NewMergeBuilder(nil, 0, 0)
 	b.SetTenant("test-tenant")
 
-	ts := int64(1000)    // unix nanoseconds
+	ts := int64(1000) // unix nanoseconds
 	timeVal := time.Unix(0, ts).UTC()
 
 	// Create a bitmap with bits 3, 7, 15 set
@@ -80,7 +80,7 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 	b := NewMergeBuilder(nil, 0, 0)
 	b.SetTenant("test-tenant")
 
-	ts := int64(500)         // unix nanoseconds
+	ts := int64(500) // unix nanoseconds
 	timeVal := time.Unix(0, ts).UTC()
 
 	bloomBytes := mustBuildBloomBytes(t, "/tenant/abc/obj2", 1, "service_name", "my-service", timeVal)

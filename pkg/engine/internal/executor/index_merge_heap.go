@@ -1,9 +1,11 @@
 package executor
 
 import (
-	"container/heap"
 	"context"
+	"errors"
 	"io"
+
+	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
 // pileReader is one pile cursor; records must be emitted in non-decreasing
@@ -13,50 +15,43 @@ type pileReader[R any] interface {
 	Close() error
 }
 
-// mergeEntry represents one entry in the merge heap, tracking the record and
-// which pile it came from.
-type mergeEntry[R any] struct {
-	rec  R
-	pile int
+// pileSeq adapts a pileReader to loser.Sequence. It buffers one record at a
+// time (the current value) plus an optional error from the underlying reader.
+// When exhausted (io.EOF or any other error), Next() returns false and the
+// loser tree treats this sequence as +infinity via the value-wrapper below.
+type pileSeq[R any] struct {
+	ctx       context.Context
+	reader    pileReader[R]
+	pileIdx   int
+	cur       R
+	err       error
+	exhausted bool
 }
 
-// mergeHeapImpl is the internal heap implementation for the K-way merge.
-type mergeHeapImpl[R any] struct {
-	entries []mergeEntry[R]
-	cmp     func(a, b R) int
-}
-
-// Len returns the number of entries in the heap.
-func (h *mergeHeapImpl[R]) Len() int { return len(h.entries) }
-
-// Less determines heap ordering. Entries are ordered by the comparator;
-// on exact equality, lower pile index wins (stable tie-breaking).
-func (h *mergeHeapImpl[R]) Less(i, j int) bool {
-	cmpResult := h.cmp(h.entries[i].rec, h.entries[j].rec)
-	if cmpResult != 0 {
-		return cmpResult < 0
+func (s *pileSeq[R]) Next() bool {
+	if s.exhausted {
+		return false
 	}
-	// Tie-break: lower pile index wins
-	return h.entries[i].pile < h.entries[j].pile
+	rec, err := s.reader.Next(s.ctx)
+	if errors.Is(err, io.EOF) {
+		s.exhausted = true
+		return false
+	}
+	if err != nil {
+		s.err = err
+		s.exhausted = true
+		return false
+	}
+	s.cur = rec
+	return true
 }
 
-// Swap exchanges two entries in the heap.
-func (h *mergeHeapImpl[R]) Swap(i, j int) {
-	h.entries[i], h.entries[j] = h.entries[j], h.entries[i]
-}
-
-// Push adds a new entry to the heap (used by heap.Push).
-func (h *mergeHeapImpl[R]) Push(x any) {
-	h.entries = append(h.entries, x.(mergeEntry[R]))
-}
-
-// Pop removes and returns the minimum entry from the heap (used by heap.Pop).
-func (h *mergeHeapImpl[R]) Pop() any {
-	old := h.entries
-	n := len(old)
-	x := old[n-1]
-	h.entries = old[0 : n-1]
-	return x
+// heapVal wraps a record with an "exhausted" flag so we can express "+infinity"
+// to the loser tree without requiring callers to construct a max-value R.
+type heapVal[R any] struct {
+	rec       R
+	pileIdx   int
+	exhausted bool
 }
 
 // mergeHeap returns a yield-style iterator over the sorted K-way merge of the
@@ -72,116 +67,93 @@ func mergeHeap[R any](
 	reduce func(acc, next R) R,
 ) func(yield func(R) bool) error {
 	return func(yield func(R) bool) error {
-		// Check context early
-		if err := ctx.Err(); err != nil {
-			// Close all piles
-			for _, p := range piles {
-				_ = p.Close()
-			}
-			return err
-		}
-
-		// Initialize the heap by reading the first record from each pile
-		h := &mergeHeapImpl[R]{
-			entries: make([]mergeEntry[R], 0, len(piles)),
-			cmp:     cmp,
-		}
-
+		// Initialize sequences by wrapping each pileReader.
+		seqs := make([]*pileSeq[R], len(piles))
 		for i, p := range piles {
-			rec, err := p.Next(ctx)
-			if err == io.EOF {
-				// Pile is empty, skip it
+			seqs[i] = &pileSeq[R]{ctx: ctx, reader: p, pileIdx: i}
+		}
+
+		// maxVal represents exhaustion (treated as +infinity by the loser tree).
+		maxVal := heapVal[R]{exhausted: true}
+
+		// at returns the current value of a sequence.
+		at := func(s *pileSeq[R]) heapVal[R] {
+			if s.exhausted {
+				return maxVal
+			}
+			return heapVal[R]{rec: s.cur, pileIdx: s.pileIdx, exhausted: false}
+		}
+
+		// less defines the loser tree ordering. Exhausted sequences sort as +infinity
+		// (never "less than" anything). For non-exhausted sequences, compare by the
+		// provided comparator; on equality, lower pile index wins (stable tiebreak).
+		less := func(a, b heapVal[R]) bool {
+			if a.exhausted {
+				return false
+			}
+			if b.exhausted {
+				return true
+			}
+			cmpResult := cmp(a.rec, b.rec)
+			if cmpResult != 0 {
+				return cmpResult < 0
+			}
+			// Equal keys: lower pile index wins.
+			return a.pileIdx < b.pileIdx
+		}
+
+		// closeSeq closes a sequence when the loser tree is done with it.
+		closeSeq := func(s *pileSeq[R]) {
+			_ = s.reader.Close()
+		}
+
+		tree := loser.New(seqs, maxVal, at, less, closeSeq)
+
+		defer tree.Close()
+
+		var (
+			havePending bool
+			pending     R
+		)
+
+		for tree.Next() {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+
+			winner := tree.Winner()
+			rec := winner.cur
+
+			if !havePending {
+				pending = rec
+				havePending = true
 				continue
 			}
-			if err != nil {
-				// Error reading from pile, close all and return error
-				for _, pile := range piles {
-					_ = pile.Close()
-				}
-				return err
-			}
-			h.entries = append(h.entries, mergeEntry[R]{rec: rec, pile: i})
-		}
 
-		heap.Init(h)
-
-		// Main merge loop
-		for h.Len() > 0 {
-			// Check context on each iteration
-			if err := ctx.Err(); err != nil {
-				for _, p := range piles {
-					_ = p.Close()
-				}
-				return err
+			// If reduce is set and keys are equal, accumulate.
+			if reduce != nil && cmp(pending, rec) == 0 {
+				pending = reduce(pending, rec)
+				continue
 			}
 
-			// Pop minimum entry from heap
-			entry := heap.Pop(h).(mergeEntry[R])
-			currentRec := entry.rec
-			currentPile := entry.pile
-
-			// If reduce is set, accumulate all equal-key records
-			if reduce != nil {
-				for h.Len() > 0 {
-					// Peek at the next entry without popping
-					nextEntry := h.entries[0]
-					if cmp(currentRec, nextEntry.rec) != 0 {
-						// Different key, stop reducing
-						break
-					}
-
-					// Pop and reduce
-					heap.Pop(h)
-					currentRec = reduce(currentRec, nextEntry.rec)
-
-					// Read next record from the pile we just consumed
-					rec, err := piles[nextEntry.pile].Next(ctx)
-					if err == io.EOF {
-						// Pile exhausted, don't push anything back
-						continue
-					}
-					if err != nil {
-						// Error reading, close all and return error
-						for _, p := range piles {
-							_ = p.Close()
-						}
-						return err
-					}
-					// Push the new record back onto the heap
-					heap.Push(h, mergeEntry[R]{rec: rec, pile: nextEntry.pile})
-				}
-			}
-
-			// Yield the current record
-			if !yield(currentRec) {
-				// Caller stopped iteration
-				for _, p := range piles {
-					_ = p.Close()
-				}
+			// Yield the pending record and start a new one.
+			if !yield(pending) {
 				return nil
 			}
-
-			// Read the next record from the pile we just consumed
-			rec, err := piles[currentPile].Next(ctx)
-			if err == io.EOF {
-				// Pile exhausted, don't push anything back
-				continue
-			}
-			if err != nil {
-				// Error reading, close all and return error
-				for _, p := range piles {
-					_ = p.Close()
-				}
-				return err
-			}
-
-			// Push the new record onto the heap
-			heap.Push(h, mergeEntry[R]{rec: rec, pile: currentPile})
+			pending = rec
+			havePending = true
 		}
 
-		// Close all piles
-		for _, p := range piles {
-			_ = p.Close()
+		// Yield any remaining pending record.
+		if havePending {
+			_ = yield(pending)
+		}
+
+		// Check for errors that occurred during iteration.
+		for _, s := range seqs {
+			if s.err != nil {
+				return s.err
+			}
 		}
 
 		return nil

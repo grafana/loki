@@ -131,7 +131,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 
 	// For each unique source object, scan all of its sections and classify by
 	// type. Unknown section types (streams, pointers, indexPointers) are
-	// skipped silently — they're not our concern for an index merge.
+	// skipped silently — they're not applicable to an index merge.
 	// Iterate in sorted order for deterministic section ordering.
 	paths := make([]string, 0, len(objects))
 	for path := range objects {
@@ -214,10 +214,10 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 		pileReaders = append(pileReaders, reader)
 	}
 
-	// D2: last-wins reducer
+	// last-wins reducer
 	reducer := func(_, next postingsRow) postingsRow {
 		level.Warn(c.logger).Log(
-			"msg", "IndexMerge: postings full-key collision; D2 last-wins reducer fired",
+			"msg", "IndexMerge: postings full-key collision; last-wins reducer fired",
 			"tenant", tenant,
 			"kind", next.Kind,
 			"object_path", next.ObjectPath,
