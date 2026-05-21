@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
@@ -1533,7 +1534,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
-							Scheme: "http",
+							Scheme: ptr.To(monitoringv1.Scheme("http")),
 						},
 					},
 				},
@@ -1555,7 +1556,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
-							Scheme: "http",
+							Scheme: ptr.To(monitoringv1.Scheme("http")),
 						},
 					},
 				},
@@ -1580,18 +1581,26 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 				Spec: monitoringv1.ServiceMonitorSpec{
 					Endpoints: []monitoringv1.Endpoint{
 						{
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
-							},
-							Authorization: &monitoringv1.SafeAuthorization{
-								Type: "Bearer",
-								Credentials: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "abcd-gateway-token",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
 									},
-									Key: corev1.ServiceAccountTokenKey,
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
 							},
 						},
@@ -1602,38 +1611,54 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 				Spec: monitoringv1.ServiceMonitorSpec{
 					Endpoints: []monitoringv1.Endpoint{
 						{
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
-							},
-							Authorization: &monitoringv1.SafeAuthorization{
-								Type: "Bearer",
-								Credentials: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "abcd-gateway-token",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
 									},
-									Key: corev1.ServiceAccountTokenKey,
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
 							},
 						},
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
-							Scheme: "https",
-							Authorization: &monitoringv1.SafeAuthorization{
-								Type: "Bearer",
-								Credentials: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "abcd-gateway-token",
+							Scheme: ptr.To(monitoringv1.Scheme("https")),
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
 									},
-									Key: corev1.ServiceAccountTokenKey,
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
-							},
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
 							},
 						},
 					},
@@ -1660,18 +1685,26 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 				Spec: monitoringv1.ServiceMonitorSpec{
 					Endpoints: []monitoringv1.Endpoint{
 						{
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
-							},
-							Authorization: &monitoringv1.SafeAuthorization{
-								Type: "Bearer",
-								Credentials: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "abcd-gateway-token",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
 									},
-									Key: corev1.ServiceAccountTokenKey,
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
 							},
 						},
@@ -1682,38 +1715,54 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 				Spec: monitoringv1.ServiceMonitorSpec{
 					Endpoints: []monitoringv1.Endpoint{
 						{
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
-							},
-							Authorization: &monitoringv1.SafeAuthorization{
-								Type: "Bearer",
-								Credentials: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "abcd-gateway-token",
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
 									},
-									Key: corev1.ServiceAccountTokenKey,
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
 							},
 						},
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
-							Scheme: "https",
-							Authorization: &monitoringv1.SafeAuthorization{
-								Type: "Bearer",
-								Credentials: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "abcd-gateway-token",
+							Scheme: ptr.To(monitoringv1.Scheme("https")),
+							HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+								HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+									HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+										Authorization: &monitoringv1.SafeAuthorization{
+											Type: "Bearer",
+											Credentials: &corev1.SecretKeySelector{
+												LocalObjectReference: corev1.LocalObjectReference{
+													Name: "abcd-gateway-token",
+												},
+												Key: corev1.ServiceAccountTokenKey,
+											},
+										},
 									},
-									Key: corev1.ServiceAccountTokenKey,
+									TLSConfig: &monitoringv1.TLSConfig{
+										TLSFilesConfig: monitoringv1.TLSFilesConfig{
+											CAFile:   "/path/to/ca/file",
+											CertFile: "/path/to/cert/file",
+											KeyFile:  "/path/to/key/file",
+										},
+									},
 								},
-							},
-							TLSConfig: &monitoringv1.TLSConfig{
-								CAFile:   "/path/to/ca/file",
-								CertFile: "/path/to/cert/file",
-								KeyFile:  "/path/to/key/file",
 							},
 						},
 					},

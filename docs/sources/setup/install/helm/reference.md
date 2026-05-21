@@ -2558,7 +2558,7 @@ false
 		<tr>
 			<td>chunksCache.l2.l2ChunkCacheHandoff</td>
 			<td>string</td>
-			<td>The age of chunks should be transfered from l1 cache to l2 4 days</td>
+			<td>The age of chunks should be transferred from l1 cache to l2 4 days</td>
 			<td><pre lang="json">
 "345600s"
 </pre>
@@ -4027,7 +4027,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.6.7"
+    "tag": "3.6.8"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -4037,7 +4037,7 @@ null
     "affinity": {},
     "annotations": {},
     "apiUrl": "{{ include \"loki.address\" . }}",
-    "enabled": true,
+    "enabled": false,
     "env": [],
     "extraVolumeMounts": [],
     "extraVolumes": [],
@@ -4063,7 +4063,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.6.5"
+  "version": "3.6.8"
 }
 </pre>
 </td>
@@ -4174,7 +4174,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.6.7"
+"3.6.8"
 </pre>
 </td>
 		</tr>
@@ -4192,14 +4192,14 @@ null
 		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
-			<td>Configuration for `provisioner` target Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.</td>
+			<td>Configuration for `provisioner` target Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api. The provisioner is disabled by default because it requires an out-of-band admin token secret (created via GEL `tokengen`) referenced by `enterprise.adminToken.secret`. After creating that secret, set both `enterprise.adminToken.secret` and `enterprise.provisioner.enabled: true`. See production/helm/loki/docs/examples/enterprise/README.md for the full procedure.</td>
 			<td><pre lang="json">
 {
   "additionalTenants": [],
   "affinity": {},
   "annotations": {},
   "apiUrl": "{{ include \"loki.address\" . }}",
-  "enabled": true,
+  "enabled": false,
   "env": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
@@ -4230,7 +4230,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.additionalTenants</td>
 			<td>list</td>
-			<td>Additional tenants to be created. Each tenant will get a read and write policy and associated token. Tenant must have a name and a namespace for the secret containting the token to be created in. For example additionalTenants:   - name: loki     secretNamespace: grafana</td>
+			<td>Additional tenants to be created. Each tenant will get a read and write policy and associated token. Tenant must have a name and a namespace for the secret containing the token to be created in. For example additionalTenants:   - name: loki     secretNamespace: grafana</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4268,7 +4268,7 @@ null
 			<td>bool</td>
 			<td>Whether the job should be part of the deployment</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -4545,7 +4545,7 @@ false
 		<tr>
 			<td>enterpriseGateway.extraContainers</td>
 			<td>list</td>
-			<td>Conifgure optional extraContainers</td>
+			<td>Configure optional extraContainers</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -6649,7 +6649,7 @@ Defaults to allow skew no more than 1 node
 		<tr>
 			<td>ingester.zoneAwareReplication</td>
 			<td>object</td>
-			<td>Enabling zone awareness on ingesters will create 3 statefulests where all writes will send a replica to each zone. This is primarily intended to accelerate rollout operations by allowing for multiple ingesters within a single zone to be shutdown and restart simultaneously (the remaining 2 zones will be guaranteed to have at least one copy of the data). Note: This can be used to run Loki over multiple cloud provider availability zones however this is not currently recommended as Loki is not optimized for this and cross zone network traffic costs can become extremely high extremely quickly. Even with zone awareness enabled, it is recommended to run Loki in a single availability zone.</td>
+			<td>Enabling zone awareness on ingesters will create 3 StatefulSets where all writes will send a replica to each zone. This is primarily intended to accelerate rollout operations by allowing for multiple ingesters within a single zone to be shutdown and restart simultaneously (the remaining 2 zones will be guaranteed to have at least one copy of the data). Note: This can be used to run Loki over multiple cloud provider availability zones however this is not currently recommended as Loki is not optimized for this and cross zone network traffic costs can become extremely high extremely quickly. Even with zone awareness enabled, it is recommended to run Loki in a single availability zone.</td>
 			<td><pre lang="json">
 {
   "enabled": true,
@@ -7043,7 +7043,7 @@ See values.yaml
 		<tr>
 			<td>loki.commonConfig.compactor_grpc_address</td>
 			<td>string</td>
-			<td>The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address. If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.</td>
+			<td>The gRPC address of the compactor. The use of compactor_grpc_address is preferred over compactor_address. If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.</td>
 			<td><pre lang="json">
 "{{ include \"loki.compactorAddress\" . }}"
 </pre>
@@ -7197,7 +7197,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.6.7"
+"3.6.8"
 </pre>
 </td>
 		</tr>
@@ -8230,6 +8230,16 @@ false
   ],
   "drivesPerNode": 2,
   "enabled": false,
+  "image": {
+    "pullPolicy": "IfNotPresent",
+    "repository": "docker.io/pgsty/minio",
+    "tag": "RELEASE.2026-03-14T12-00-00Z"
+  },
+  "mcImage": {
+    "pullPolicy": "IfNotPresent",
+    "repository": "docker.io/pgsty/mc",
+    "tag": "RELEASE.2026-03-13T08-57-32Z"
+  },
   "persistence": {
     "annotations": {},
     "size": "5Gi"
@@ -11665,7 +11675,7 @@ null
 		<tr>
 			<td>read.startupProbe</td>
 			<td>object</td>
-			<td>statup probe for the read pods. If empty, applies no startupProbe</td>
+			<td>startup probe for the read pods. If empty, applies no startupProbe</td>
 			<td><pre lang="json">
 {}
 </pre>

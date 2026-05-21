@@ -4,6 +4,7 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
@@ -145,6 +146,7 @@ func newServiceMonitor(namespace, serviceMonitorName string, labels labels.Set, 
 			NamespaceSelector: monitoringv1.NamespaceSelector{
 				MatchNames: []string{namespace},
 			},
+			ServiceDiscoveryRole: ptr.To(monitoringv1.EndpointSliceRole),
 		},
 	}
 }

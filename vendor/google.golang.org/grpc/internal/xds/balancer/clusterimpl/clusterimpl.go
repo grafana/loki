@@ -122,29 +122,42 @@ type clusterImplBalancer struct {
 	telemetryLabels       map[string]string                 // Telemetry labels to set on picks, from LB config.
 }
 
-// handleDropAndRequestCountLocked compares drop and request counter in newConfig with
-// the one currently used by picker, and is protected by b.mu. It returns a boolean
-// indicating if a new picker needs to be generated.
-func (b *clusterImplBalancer) handleDropAndRequestCountLocked(newConfig *LBConfig) bool {
+// handleDropAndRequestCountLocked compares drop and request counter in new
+// update with the one currently used by picker, and is protected by b.mu. It
+// returns a boolean indicating if a new picker needs to be generated.
+func (b *clusterImplBalancer) handleDropAndRequestCountLocked(clusterConfig xdsresource.ClusterConfig) bool {
+	clusterUpdate := clusterConfig.Cluster
 	var updatePicker bool
-	if !slices.Equal(b.dropCategories, newConfig.DropCategories) {
-		b.dropCategories = newConfig.DropCategories
-		b.drops = make([]*dropper, 0, len(newConfig.DropCategories))
-		for _, c := range newConfig.DropCategories {
-			b.drops = append(b.drops, newDropper(c))
+
+	var newDrops []DropConfig
+	if clusterUpdate.ClusterType == xdsresource.ClusterTypeEDS {
+		edsUpdate := clusterConfig.EndpointConfig.EDSUpdate
+		newDrops = make([]DropConfig, 0, len(edsUpdate.Drops))
+		for _, d := range edsUpdate.Drops {
+			newDrops = append(newDrops, DropConfig{
+				Category:           d.Category,
+				RequestsPerMillion: d.Numerator * million / d.Denominator,
+			})
 		}
-		updatePicker = true
+		if !slices.Equal(b.dropCategories, newDrops) {
+			b.dropCategories = newDrops
+			b.drops = make([]*dropper, 0, len(newDrops))
+			for _, c := range newDrops {
+				b.drops = append(b.drops, newDropper(c))
+			}
+			updatePicker = true
+		}
 	}
 
-	if b.requestCounterCluster != newConfig.Cluster || b.requestCounterService != newConfig.EDSServiceName {
-		b.requestCounterCluster = newConfig.Cluster
-		b.requestCounterService = newConfig.EDSServiceName
-		b.requestCounter = xdsclient.GetClusterRequestsCounter(newConfig.Cluster, newConfig.EDSServiceName)
+	if b.requestCounterCluster != clusterUpdate.ClusterName || b.requestCounterService != clusterUpdate.EDSServiceName {
+		b.requestCounterCluster = clusterUpdate.ClusterName
+		b.requestCounterService = clusterUpdate.EDSServiceName
+		b.requestCounter = xdsclient.GetClusterRequestsCounter(clusterUpdate.ClusterName, clusterUpdate.EDSServiceName)
 		updatePicker = true
 	}
 	var newRequestCountMax uint32 = 1024
-	if newConfig.MaxConcurrentRequests != nil {
-		newRequestCountMax = *newConfig.MaxConcurrentRequests
+	if clusterUpdate.MaxRequests != nil {
+		newRequestCountMax = *clusterUpdate.MaxRequests
 	}
 	if b.requestCountMax != newRequestCountMax {
 		b.requestCountMax = newRequestCountMax
@@ -168,20 +181,20 @@ func (b *clusterImplBalancer) newPickerLocked() *picker {
 
 // updateLoadStore checks the config for load store, and decides whether it
 // needs to restart the load reporting stream.
-func (b *clusterImplBalancer) updateLoadStore(newConfig *LBConfig) error {
+func (b *clusterImplBalancer) updateLoadStore(clusterUpdate *xdsresource.ClusterUpdate) error {
 	var updateLoadClusterAndService bool
 
 	// ClusterName is different, restart. ClusterName is from ClusterName and
 	// EDSServiceName.
 	clusterName := b.getClusterName()
-	if clusterName != newConfig.Cluster {
+	if clusterName != clusterUpdate.ClusterName {
 		updateLoadClusterAndService = true
-		b.setClusterName(newConfig.Cluster)
-		clusterName = newConfig.Cluster
+		b.setClusterName(clusterUpdate.ClusterName)
+		clusterName = clusterUpdate.ClusterName
 	}
-	if b.edsServiceName != newConfig.EDSServiceName {
+	if b.edsServiceName != clusterUpdate.EDSServiceName {
 		updateLoadClusterAndService = true
-		b.edsServiceName = newConfig.EDSServiceName
+		b.edsServiceName = clusterUpdate.EDSServiceName
 	}
 	if updateLoadClusterAndService {
 		// This updates the clusterName and serviceName that will be reported
@@ -202,21 +215,21 @@ func (b *clusterImplBalancer) updateLoadStore(newConfig *LBConfig) error {
 
 	// Check if it's necessary to restart load report.
 	if b.lrsServer == nil {
-		if newConfig.LoadReportingServer != nil {
+		if clusterUpdate.LRSServerConfig != nil {
 			// Old is nil, new is not nil, start new LRS.
-			b.lrsServer = newConfig.LoadReportingServer
+			b.lrsServer = clusterUpdate.LRSServerConfig
 			startNewLoadReport = true
 		}
 		// Old is nil, new is nil, do nothing.
-	} else if newConfig.LoadReportingServer == nil {
+	} else if clusterUpdate.LRSServerConfig == nil {
 		// Old is not nil, new is nil, stop old, don't start new.
-		b.lrsServer = newConfig.LoadReportingServer
+		b.lrsServer = nil
 		stopOldLoadReport = true
 	} else {
 		// Old is not nil, new is not nil, compare string values, if
 		// different, stop old and start new.
-		if !b.lrsServer.Equal(newConfig.LoadReportingServer) {
-			b.lrsServer = newConfig.LoadReportingServer
+		if !b.lrsServer.Equal(clusterUpdate.LRSServerConfig) {
+			b.lrsServer = clusterUpdate.LRSServerConfig
 			stopOldLoadReport = true
 			startNewLoadReport = true
 		}
@@ -276,11 +289,19 @@ func (b *clusterImplBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 		b.xdsClient = c
 	}
 
+	xdsConfig := xdsresource.XDSConfigFromResolverState(s.ResolverState)
+	if xdsConfig == nil {
+		b.logger.Warningf("Received balancer config with no xDS config")
+		return balancer.ErrBadResolverState
+	}
+	clusterCfg := xdsConfig.Clusters[newConfig.Cluster]
+	clusterUpdate := clusterCfg.Config.Cluster
+
 	// Update load reporting config. This needs to be done before updating the
 	// child policy because we need the loadStore from the updated client to be
 	// passed to the ccWrapper, so that the next picker from the child policy
 	// will pick up the new loadStore.
-	if err := b.updateLoadStore(newConfig); err != nil {
+	if err := b.updateLoadStore(clusterUpdate); err != nil {
 		return err
 	}
 
@@ -301,7 +322,7 @@ func (b *clusterImplBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 	})
 
 	b.mu.Lock()
-	b.telemetryLabels = newConfig.TelemetryLabels
+	b.telemetryLabels = clusterUpdate.TelemetryLabels
 	// We want to send a picker update to the parent if one of the two
 	// conditions are met:
 	// - drop/request config has changed *and* there is already a picker from
@@ -309,7 +330,7 @@ func (b *clusterImplBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 	// - there is a pending picker update from the child (and this covers the
 	//   case where the drop/request config has not changed, but the child sent
 	//   a picker update while we were still processing config from our parent).
-	if (b.handleDropAndRequestCountLocked(newConfig) && b.childState.Picker != nil) || b.pendingPickerUpdates {
+	if (b.handleDropAndRequestCountLocked(clusterCfg.Config) && b.childState.Picker != nil) || b.pendingPickerUpdates {
 		b.pendingPickerUpdates = false
 		b.ClientConn.UpdateState(balancer.State{
 			ConnectivityState: b.childState.ConnectivityState,

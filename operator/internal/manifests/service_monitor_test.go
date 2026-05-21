@@ -240,7 +240,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				{
 					Port:   gatewayInternalPortName,
 					Path:   "/metrics",
-					Scheme: "http",
+					Scheme: ptr.To(monitoringv1.Scheme("http")),
 				},
 			},
 		},
@@ -273,27 +273,33 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				{
 					Port:   gatewayInternalPortName,
 					Path:   "/metrics",
-					Scheme: "https",
-					Authorization: &monitoringv1.SafeAuthorization{
-						Type: "Bearer",
-						Credentials: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "test-gateway-token",
-							},
-							Key: corev1.ServiceAccountTokenKey,
-						},
-					},
-					TLSConfig: &monitoringv1.TLSConfig{
-						SafeTLSConfig: monitoringv1.SafeTLSConfig{
-							CA: monitoringv1.SecretOrConfigMap{
-								ConfigMap: &corev1.ConfigMapKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: gatewaySigningCABundleName("test-gateway"),
+					Scheme: ptr.To(monitoringv1.Scheme("https")),
+					HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+						HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+							HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+								Authorization: &monitoringv1.SafeAuthorization{
+									Type: "Bearer",
+									Credentials: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-gateway-token",
+										},
+										Key: corev1.ServiceAccountTokenKey,
 									},
-									Key: caFile,
 								},
 							},
-							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									CA: monitoringv1.SecretOrConfigMap{
+										ConfigMap: &corev1.ConfigMapKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: gatewaySigningCABundleName("test-gateway"),
+											},
+											Key: caFile,
+										},
+									},
+									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+								},
+							},
 						},
 					},
 				},
@@ -344,27 +350,33 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				{
 					Port:   gatewayInternalPortName,
 					Path:   "/metrics",
-					Scheme: "https",
-					Authorization: &monitoringv1.SafeAuthorization{
-						Type: "Bearer",
-						Credentials: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "test-gateway-token",
-							},
-							Key: corev1.ServiceAccountTokenKey,
-						},
-					},
-					TLSConfig: &monitoringv1.TLSConfig{
-						SafeTLSConfig: monitoringv1.SafeTLSConfig{
-							CA: monitoringv1.SecretOrConfigMap{
-								ConfigMap: &corev1.ConfigMapKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "my-custom-ca",
+					Scheme: ptr.To(monitoringv1.Scheme("https")),
+					HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+						HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+							HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+								Authorization: &monitoringv1.SafeAuthorization{
+									Type: "Bearer",
+									Credentials: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-gateway-token",
+										},
+										Key: corev1.ServiceAccountTokenKey,
 									},
-									Key: caFile,
 								},
 							},
-							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									CA: monitoringv1.SecretOrConfigMap{
+										ConfigMap: &corev1.ConfigMapKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "my-custom-ca",
+											},
+											Key: caFile,
+										},
+									},
+									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+								},
+							},
 						},
 					},
 				},
@@ -415,27 +427,33 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				{
 					Port:   gatewayInternalPortName,
 					Path:   "/metrics",
-					Scheme: "https",
-					Authorization: &monitoringv1.SafeAuthorization{
-						Type: "Bearer",
-						Credentials: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "test-gateway-token",
-							},
-							Key: corev1.ServiceAccountTokenKey,
-						},
-					},
-					TLSConfig: &monitoringv1.TLSConfig{
-						SafeTLSConfig: monitoringv1.SafeTLSConfig{
-							CA: monitoringv1.SecretOrConfigMap{
-								Secret: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "my-custom-ca-secret",
+					Scheme: ptr.To(monitoringv1.Scheme("https")),
+					HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+						HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+							HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+								Authorization: &monitoringv1.SafeAuthorization{
+									Type: "Bearer",
+									Credentials: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-gateway-token",
+										},
+										Key: corev1.ServiceAccountTokenKey,
 									},
-									Key: caFile,
 								},
 							},
-							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									CA: monitoringv1.SecretOrConfigMap{
+										Secret: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "my-custom-ca-secret",
+											},
+											Key: caFile,
+										},
+									},
+									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+								},
+							},
 						},
 					},
 				},
@@ -464,12 +482,12 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				{
 					Port:   gatewayInternalPortName,
 					Path:   "/metrics",
-					Scheme: "http",
+					Scheme: ptr.To(monitoringv1.Scheme("http")),
 				},
 				{
 					Port:   "opa-metrics",
 					Path:   "/metrics",
-					Scheme: "http",
+					Scheme: ptr.To(monitoringv1.Scheme("http")),
 				},
 			},
 		},
@@ -502,54 +520,66 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				{
 					Port:   gatewayInternalPortName,
 					Path:   "/metrics",
-					Scheme: "https",
-					Authorization: &monitoringv1.SafeAuthorization{
-						Type: "Bearer",
-						Credentials: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "test-gateway-token",
-							},
-							Key: corev1.ServiceAccountTokenKey,
-						},
-					},
-					TLSConfig: &monitoringv1.TLSConfig{
-						SafeTLSConfig: monitoringv1.SafeTLSConfig{
-							CA: monitoringv1.SecretOrConfigMap{
-								ConfigMap: &corev1.ConfigMapKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: gatewaySigningCABundleName("test-gateway"),
+					Scheme: ptr.To(monitoringv1.Scheme("https")),
+					HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+						HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+							HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+								Authorization: &monitoringv1.SafeAuthorization{
+									Type: "Bearer",
+									Credentials: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-gateway-token",
+										},
+										Key: corev1.ServiceAccountTokenKey,
 									},
-									Key: caFile,
 								},
 							},
-							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									CA: monitoringv1.SecretOrConfigMap{
+										ConfigMap: &corev1.ConfigMapKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: gatewaySigningCABundleName("test-gateway"),
+											},
+											Key: caFile,
+										},
+									},
+									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+								},
+							},
 						},
 					},
 				},
 				{
 					Port:   "opa-metrics",
 					Path:   "/metrics",
-					Scheme: "https",
-					Authorization: &monitoringv1.SafeAuthorization{
-						Type: "Bearer",
-						Credentials: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "test-gateway-token",
-							},
-							Key: corev1.ServiceAccountTokenKey,
-						},
-					},
-					TLSConfig: &monitoringv1.TLSConfig{
-						SafeTLSConfig: monitoringv1.SafeTLSConfig{
-							CA: monitoringv1.SecretOrConfigMap{
-								ConfigMap: &corev1.ConfigMapKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: gatewaySigningCABundleName("test-gateway"),
+					Scheme: ptr.To(monitoringv1.Scheme("https")),
+					HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+						HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+							HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+								Authorization: &monitoringv1.SafeAuthorization{
+									Type: "Bearer",
+									Credentials: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-gateway-token",
+										},
+										Key: corev1.ServiceAccountTokenKey,
 									},
-									Key: caFile,
 								},
 							},
-							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									CA: monitoringv1.SecretOrConfigMap{
+										ConfigMap: &corev1.ConfigMapKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: gatewaySigningCABundleName("test-gateway"),
+											},
+											Key: caFile,
+										},
+									},
+									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+								},
+							},
 						},
 					},
 				},
@@ -578,12 +608,12 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				{
 					Port:   gatewayInternalPortName,
 					Path:   "/metrics",
-					Scheme: "http",
+					Scheme: ptr.To(monitoringv1.Scheme("http")),
 				},
 				{
 					Port:   "opa-metrics",
 					Path:   "/metrics",
-					Scheme: "http",
+					Scheme: ptr.To(monitoringv1.Scheme("http")),
 				},
 			},
 		},
@@ -616,54 +646,66 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				{
 					Port:   gatewayInternalPortName,
 					Path:   "/metrics",
-					Scheme: "https",
-					Authorization: &monitoringv1.SafeAuthorization{
-						Type: "Bearer",
-						Credentials: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "test-gateway-token",
-							},
-							Key: corev1.ServiceAccountTokenKey,
-						},
-					},
-					TLSConfig: &monitoringv1.TLSConfig{
-						SafeTLSConfig: monitoringv1.SafeTLSConfig{
-							CA: monitoringv1.SecretOrConfigMap{
-								ConfigMap: &corev1.ConfigMapKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: gatewaySigningCABundleName("test-gateway"),
+					Scheme: ptr.To(monitoringv1.Scheme("https")),
+					HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+						HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+							HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+								Authorization: &monitoringv1.SafeAuthorization{
+									Type: "Bearer",
+									Credentials: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-gateway-token",
+										},
+										Key: corev1.ServiceAccountTokenKey,
 									},
-									Key: caFile,
 								},
 							},
-							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									CA: monitoringv1.SecretOrConfigMap{
+										ConfigMap: &corev1.ConfigMapKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: gatewaySigningCABundleName("test-gateway"),
+											},
+											Key: caFile,
+										},
+									},
+									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+								},
+							},
 						},
 					},
 				},
 				{
 					Port:   "opa-metrics",
 					Path:   "/metrics",
-					Scheme: "https",
-					Authorization: &monitoringv1.SafeAuthorization{
-						Type: "Bearer",
-						Credentials: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "test-gateway-token",
-							},
-							Key: corev1.ServiceAccountTokenKey,
-						},
-					},
-					TLSConfig: &monitoringv1.TLSConfig{
-						SafeTLSConfig: monitoringv1.SafeTLSConfig{
-							CA: monitoringv1.SecretOrConfigMap{
-								ConfigMap: &corev1.ConfigMapKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: gatewaySigningCABundleName("test-gateway"),
+					Scheme: ptr.To(monitoringv1.Scheme("https")),
+					HTTPConfigWithProxyAndTLSFiles: monitoringv1.HTTPConfigWithProxyAndTLSFiles{
+						HTTPConfigWithTLSFiles: monitoringv1.HTTPConfigWithTLSFiles{
+							HTTPConfigWithoutTLS: monitoringv1.HTTPConfigWithoutTLS{
+								Authorization: &monitoringv1.SafeAuthorization{
+									Type: "Bearer",
+									Credentials: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: "test-gateway-token",
+										},
+										Key: corev1.ServiceAccountTokenKey,
 									},
-									Key: caFile,
 								},
 							},
-							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+							TLSConfig: &monitoringv1.TLSConfig{
+								SafeTLSConfig: monitoringv1.SafeTLSConfig{
+									CA: monitoringv1.SecretOrConfigMap{
+										ConfigMap: &corev1.ConfigMapKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: gatewaySigningCABundleName("test-gateway"),
+											},
+											Key: caFile,
+										},
+									},
+									ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+								},
+							},
 						},
 					},
 				},
@@ -680,6 +722,84 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 			for _, endpoint := range tc.want {
 				require.Contains(t, sm.Spec.Endpoints, endpoint)
 			}
+		})
+	}
+}
+
+func TestServiceMonitorEndpointSlices(t *testing.T) {
+	featureGates := configv1.FeatureGates{
+		BuiltInCertManagement:      configv1.BuiltInCertManagement{Enabled: true},
+		ServiceMonitors:            true,
+		ServiceMonitorTLSEndpoints: true,
+	}
+
+	opts := Options{
+		Name:      "test",
+		Namespace: "test",
+		Image:     "test",
+		Gates:     featureGates,
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Distributor: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ingester: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Querier: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				QueryFrontend: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	}
+
+	serviceMonitors := []struct {
+		name    string
+		monitor *monitoringv1.ServiceMonitor
+	}{
+		{
+			"Distributor", NewDistributorServiceMonitor(opts),
+		},
+		{
+			"Ingester", NewIngesterServiceMonitor(opts),
+		},
+		{
+			"Querier", NewQuerierServiceMonitor(opts),
+		},
+		{
+			"QueryFrontend", NewQueryFrontendServiceMonitor(opts),
+		},
+		{
+			"Compactor", NewCompactorServiceMonitor(opts),
+		},
+		{
+			"Gateway", NewGatewayServiceMonitor(opts),
+		},
+		{
+			"IndexGateway", NewIndexGatewayServiceMonitor(opts),
+		},
+		{
+			"Ruler", NewRulerServiceMonitor(opts),
+		},
+	}
+
+	for _, sm := range serviceMonitors {
+		t.Run(sm.name, func(t *testing.T) {
+			require.NotNil(t, sm.monitor.Spec.ServiceDiscoveryRole)
+			require.Equal(t, monitoringv1.ServiceDiscoveryRole("EndpointSlice"), *sm.monitor.Spec.ServiceDiscoveryRole)
 		})
 	}
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-func dispatchBoolEquality(alloc *memory.Allocator, kernel boolEqualityKernel, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+func dispatchBoolEquality(alloc *memory.Allocator, kernel boolEqualityKernel, left, right columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
 	_, leftScalar := left.(columnar.Scalar)
 	_, rightScalar := right.(columnar.Scalar)
 
@@ -15,17 +15,11 @@ func dispatchBoolEquality(alloc *memory.Allocator, kernel boolEqualityKernel, le
 	case leftScalar && rightScalar:
 		return boolEqualitySS(kernel, left.(*columnar.BoolScalar), right.(*columnar.BoolScalar)), nil
 	case leftScalar && !rightScalar:
-		out := boolEqualitySA(alloc, kernel, left.(*columnar.BoolScalar), right.(*columnar.Bool))
-		return applySelectionToBoolArray(alloc, out, selection)
+		return boolEqualitySA(alloc, kernel, left.(*columnar.BoolScalar), right.(*columnar.Bool)), nil
 	case !leftScalar && rightScalar:
-		out := boolEqualityAS(alloc, kernel, left.(*columnar.Bool), right.(*columnar.BoolScalar))
-		return applySelectionToBoolArray(alloc, out, selection)
+		return boolEqualityAS(alloc, kernel, left.(*columnar.Bool), right.(*columnar.BoolScalar)), nil
 	case !leftScalar && !rightScalar:
-		out, err := boolEqualityAA(alloc, kernel, left.(*columnar.Bool), right.(*columnar.Bool))
-		if err != nil {
-			return nil, err
-		}
-		return applySelectionToBoolArray(alloc, out, selection)
+		return boolEqualityAA(alloc, kernel, left.(*columnar.Bool), right.(*columnar.Bool))
 	}
 
 	panic("unreachable")

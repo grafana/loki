@@ -4,16 +4,36 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// MouseMode represents the mouse mode for the terminal. It is used to enable
-// or disable mouse support on the terminal.
-type MouseMode byte
+// MouseMode represents the mouse tracking mode for the terminal.
+type MouseMode uint8
 
-// Mouse modes.
+// Mouse tracking modes.
+//
+// These determine which mouse events the terminal reports.
 const (
-	MouseModeNone MouseMode = iota
-	MouseModeClick
-	MouseModeDrag
-	MouseModeMotion
+	MouseModeNone   MouseMode = iota // Disable mouse tracking.
+	MouseModePress                   // Press only (DEC mode 9). Reports button press events.
+	MouseModeClick                   // Click tracking (DEC mode 1000). Reports button press and release.
+	MouseModeDrag                    // Drag tracking (DEC mode 1002). Reports press, release, and drag.
+	MouseModeMotion                  // Motion tracking (DEC mode 1003). Reports all mouse events including motion.
+)
+
+// MouseEncoding represents the encoding used for mouse events.
+type MouseEncoding uint8
+
+// Mouse encodings.
+//
+// These determine how mouse coordinates and buttons are encoded in the
+// terminal's escape sequences. The encoding is only meaningful when mouse
+// tracking is enabled via [MouseMode].
+const (
+	MouseEncodingLegacy MouseEncoding = iota // Legacy X10-compatible encoding. Coordinates limited to 223.
+	MouseEncodingSGR                         // SGR encoding (DEC mode 1006). No coordinate limit, distinguishes press/release.
+
+	// TODO: support these additional encodings in the future.
+	// MouseEncodingUTF8                          // UTF-8 encoding (DEC mode 1005). Coordinates limited to 223.
+	// MouseEncodingUrxvt                         // urxvt encoding (DEC mode 1015). No coordinate limit.
+	// MouseEncodingSGRPixel                      // SGR-pixel encoding (DEC mode 1016). Reports pixel coordinates.
 )
 
 // MouseButton represents the button that was pressed during a mouse message.

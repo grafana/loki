@@ -5,7 +5,6 @@ import (
 	"context"
 	crypto_rand "crypto/rand"
 	"encoding/binary"
-	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -18,6 +17,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
 	"github.com/hashicorp/memberlist"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
@@ -184,6 +184,9 @@ type KVConfig struct {
 	// Zone-aware routing configuration.
 	ZoneAwareRouting ZoneAwareRoutingConfig `yaml:"zone_aware_routing"`
 
+	// Propagation delay tracker configuration.
+	PropagationDelayTracker PropagationDelayTrackerConfig `yaml:"propagation_delay_tracker" category:"experimental"`
+
 	MetricsNamespace string `yaml:"-"`
 
 	// Codecs to register. Codecs need to be registered before joining other members.
@@ -235,6 +238,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 
 	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
 	cfg.ZoneAwareRouting.RegisterFlagsWithPrefix(f, prefix+"memberlist.zone-aware-routing.")
+	cfg.PropagationDelayTracker.RegisterFlagsWithPrefix(f, prefix+"memberlist.propagation-delay-tracker.")
 
 	cfg.discoverMembersBackoff = backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
@@ -327,6 +331,9 @@ type KV struct {
 	// closed on shutdown
 	shutdown chan struct{}
 
+	// Propagation delay tracker (nil if disabled).
+	propagationDelayTracker *PropagationDelayTracker
+
 	// metrics
 	numberOfReceivedMessages            prometheus.Counter
 	totalSizeOfReceivedMessages         prometheus.Counter
@@ -417,7 +424,6 @@ var (
 	// if merge fails because of CAS version mismatch, this error is returned. CAS operation reacts on it
 	errVersionMismatch     = errors.New("version mismatch")
 	errNoChangeDetected    = errors.New("no change detected")
-	errTooManyRetries      = errors.New("too many retries")
 	emptySnappyEncodedData = snappy.Encode(nil, []byte{})
 )
 
@@ -447,6 +453,11 @@ func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer 
 
 	for _, c := range cfg.Codecs {
 		mlkv.codecs[c.CodecID()] = c
+	}
+
+	// Register propagation delay tracker codec if enabled.
+	if cfg.PropagationDelayTracker.Enabled {
+		mlkv.codecs[PropagationDelayTrackerCodecID] = GetPropagationDelayTrackerCodec()
 	}
 
 	mlkv.NamedService = services.NewBasicService(mlkv.starting, mlkv.running, mlkv.stopping).WithName("memberlist_kv")
@@ -623,6 +634,22 @@ func (m *KV) running(ctx context.Context) error {
 	ok := m.joinMembersOnStartup(ctx)
 	if !ok && m.cfg.AbortIfJoinFails {
 		return errFailedToJoinCluster
+	}
+
+	// Start propagation delay tracker after joining the cluster, so that the first
+	// WatchKey callback has the full cluster state and correctly skips pre-existing beacons.
+	if m.cfg.PropagationDelayTracker.Enabled {
+		m.propagationDelayTracker = NewPropagationDelayTracker(
+			m,
+			m.cfg.PropagationDelayTracker,
+			m.memberlist.LocalNode().Name,
+			m.logger,
+			m.registerer,
+		)
+		if err := m.propagationDelayTracker.StartAsync(ctx); err != nil {
+			level.Warn(m.logger).Log("msg", "failed to start propagation delay tracker", "err", err)
+			m.propagationDelayTracker = nil
+		}
 	}
 
 	var tickerChan <-chan time.Time
@@ -916,6 +943,14 @@ func (m *KV) discoverMembersWithRetries(ctx context.Context, members []string) (
 // While Stopping, we try to leave memberlist cluster and then shutdown memberlist client.
 // We do this in order to send out last messages, typically that ingester has LEFT the ring.
 func (m *KV) stopping(_ error) error {
+	// Stop propagation delay tracker if running.
+	if m.propagationDelayTracker != nil {
+		m.propagationDelayTracker.StopAsync()
+		if err := m.propagationDelayTracker.AwaitTerminated(context.Background()); err != nil {
+			level.Warn(m.logger).Log("msg", "error stopping propagation delay tracker", "err", err)
+		}
+	}
+
 	level.Info(m.logger).Log("msg", "leaving memberlist cluster")
 
 	// Wait until queue with locally-generated messages is empty, but don't wait for too long.
@@ -1267,10 +1302,9 @@ outer:
 
 		return nil
 	}
-
 	if errors.Is(lastError, errVersionMismatch) {
-		// this is more likely error than version mismatch.
-		lastError = errTooManyRetries
+		// Version mismatch err on CAS would have been retried up to the limit
+		lastError = errors.Wrap(lastError, "too many retries")
 	}
 
 	m.casFailures.Inc()

@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.opentelemetry.io/otel"
 	amnet "k8s.io/apimachinery/pkg/util/net"
 
 	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
@@ -39,8 +38,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
 )
-
-var tracer = otel.Tracer("pkg/storage/chunk/client/awsd")
 
 const (
 	SignatureVersionV4 = "v4"
@@ -532,6 +529,15 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 			Bucket:       aws.String(a.bucketFromKey(objectKey)),
 			Key:          aws.String(a.convertObjectKey(objectKey, true)),
 			StorageClass: types.StorageClass(a.cfg.StorageClass),
+			// Buckets with Object Lock enabled reject PutObject requests
+			// that lack either Content-MD5 or one of the x-amz-checksum-*
+			// headers with `InvalidRequest: Content-MD5 OR x-amz-checksum-
+			// HTTP header is required for Put Object requests with Object
+			// Lock parameters`. Ask the SDK to compute and attach a
+			// SHA-256 trailer so compliance buckets accept uploads
+			// without forcing operators to buffer every chunk for MD5
+			// (grafana/loki#20088).
+			ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
 		}
 
 		if a.sseConfig != nil {
@@ -687,7 +693,7 @@ func IsStorageThrottledErr(err error) bool {
 			return true
 		case "ServiceUnavailable": // 503
 			return true
-		case errCodeSlowDown: // 503
+		case "SlowDown": // 503
 			return true
 		default:
 			return false

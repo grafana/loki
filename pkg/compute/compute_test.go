@@ -41,7 +41,13 @@ func TestCompute(t *testing.T) {
 				result, err := evalCaseFunction(t, &alloc, tc)
 				require.NoError(t, err)
 
-				columnartest.RequireDatumsEqual(t, tc.Expect, result)
+				mask := tc.Selection
+				if tc.Function == "FILTER" {
+					// Filter materializes the mask, so we don't want to pass
+					// the mask back down to RequireDatumsEqual.
+					mask = memory.Bitmap{}
+				}
+				columnartest.RequireDatumsEqual(t, tc.Expect, result, mask)
 			})
 		}
 
@@ -100,6 +106,9 @@ func evalCaseFunction(t *testing.T, alloc *memory.Allocator, tc computetest.Case
 		}
 
 		return compute.RegexpMatch(alloc, tc.Arguments[0], re, tc.Selection)
+	case "FILTER":
+		require.Len(t, tc.Arguments, 1, "FILTER function requires one argument")
+		return compute.Filter(alloc, tc.Arguments[0], tc.Selection)
 	case "ISMEMBER":
 		require.Len(t, tc.Arguments, 2, "ISMEMBER function requires two arguments")
 		// Second argument should be an array that we convert to a Set
@@ -112,8 +121,22 @@ func evalCaseFunction(t *testing.T, alloc *memory.Allocator, tc computetest.Case
 				values[i] = string(arr.Get(i))
 			}
 			set = columnar.NewUTF8Set(values...)
+		case *columnar.Number[int32]:
+			values := make([]int32, arr.Len())
+			require.Equal(t, 0, arr.Nulls(), "ISMEMBER set must not contain null values")
+			for i := 0; i < arr.Len(); i++ {
+				values[i] = arr.Get(i)
+			}
+			set = columnar.NewNumberSet(values...)
 		case *columnar.Number[int64]:
 			values := make([]int64, arr.Len())
+			require.Equal(t, 0, arr.Nulls(), "ISMEMBER set must not contain null values")
+			for i := 0; i < arr.Len(); i++ {
+				values[i] = arr.Get(i)
+			}
+			set = columnar.NewNumberSet(values...)
+		case *columnar.Number[uint32]:
+			values := make([]uint32, arr.Len())
 			require.Equal(t, 0, arr.Nulls(), "ISMEMBER set must not contain null values")
 			for i := 0; i < arr.Len(); i++ {
 				values[i] = arr.Get(i)

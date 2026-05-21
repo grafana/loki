@@ -31,3 +31,4 @@ spec:
     matchLabels:
       app.kubernetes.io/component: metrics
       app.kubernetes.io/name: loki-operator
+  serviceDiscoveryRole: EndpointSlice

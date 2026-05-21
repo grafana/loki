@@ -26,9 +26,9 @@ DOCKER_INTERACTIVE_FLAGS := --tty --interactive
 endif
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.26.0
+GO_VERSION         := 1.26.2
 # Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.35.0
+BUILD_IMAGE_TAG    := 0.35.1
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -67,14 +67,14 @@ DEBUG_DYN_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
 
 # Image names
 IMAGE_PREFIX           ?= grafana
-BUILD_IMAGE            := $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_TAG)
+BUILD_IMAGE            := golang:$(GO_VERSION)
 LOKI_IMAGE             := $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
 CANARY_IMAGE           := $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 QUERY_TEE_IMAGE        := $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 LOGCLI_IMAGE           := $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG)
-PROMTAIL_IMAGE         := $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)
 LOGQL_ANALYZER_IMAGE   := $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG)
 OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
+MAKEFILE_IMAGE         := $(IMAGE_PREFIX)/loki-makefile:latest
 
 # OCI (Docker) setup
 OCI_PLATFORMS  := --platform=linux/amd64,linux/arm64
@@ -97,9 +97,12 @@ BUILD_OCI_PUSH  := $(OCI_BUILD) $(OCI_PUSH_ARGS)
 # See https://docs.docker.com/docker-for-mac/osxfs-caching/#delegated
 MOUNT_FLAGS    := :delegated
 
+INSTALL_WORKFLOW_DEPS_ARGS ?=
+
 define run_in_container
 	@mkdir -p $(shell pwd)/.pkg $(shell pwd)/.cache
 	@echo ">>> Running make $@ in container ..."
+
 	$(eval GIT_MOUNT := $(shell \
 		if git rev-parse --git-dir >/dev/null 2>&1; then \
 			GIT_DIR=$$(git rev-parse --git-dir); \
@@ -111,31 +114,41 @@ define run_in_container
 				echo "-v $$ABS_GIT_DIR:/src/loki/.git$(MOUNT_FLAGS)"; \
 			fi; \
 		fi))
-	docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
-		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
+
+	@docker build --rm $(OCI_BUILD_ARGS) --build-arg "SRC_DIR=/src/loki" --build-arg "INSTALL_WORKFLOW_DEPS_ARGS=$(INSTALL_WORKFLOW_DEPS_ARGS)" \
+		-f loki-build-image/Dockerfile \
+		-t $(MAKEFILE_IMAGE) \
+		.
+
+	@docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
+		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		-v /var/run/docker.sock:/var/run/docker.sock \
 		$(GIT_MOUNT) \
-		$(BUILD_IMAGE) -f Makefile $@;
+		--entrypoint /usr/bin/make \
+		-e SRC_DIR=/src/loki \
+		-e BUILD_IN_CONTAINER=false \
+		$(MAKEFILE_IMAGE) \
+		$@
 endef
 
 # Adapted from https://www.thapaliya.com/en/writings/well-documented-makefiles/
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-45s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary loki-canary-boringcrypto lint test clean yacc protos touch-protobuf-sources
+.PHONY: all images check-generated-files logcli loki loki-debug loki-canary loki-canary-boringcrypto lint test clean yacc protos
 .PHONY: format check-format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
-.PHONY: fluent-bit-image, fluent-bit-test
-.PHONY: fluentd-image, fluentd-test
-.PHONY: promtail-image loki-image build-image build-image-push
-.PHONY: bigtable-backup, push-bigtable-backup
-.PHONY: benchmark-store, check-mod
+.PHONY: fluent-bit-image fluent-bit-test
+.PHONY: fluentd-image fluentd-test
+.PHONY: loki-image build-image build-image-push
+.PHONY: benchmark-store check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: doc check-doc
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
 .PHONY: clean clean-protos
-.PHONY: k3d-loki k3d-enterprise-logs k3d-down
+.PHONY: dev-k3d-loki dev-k3d-enterprise-logs dev-k3d-down
 .PHONY: helm-test helm-lint
 
 #############
@@ -153,16 +166,12 @@ PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
 PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 
 # Yacc Files
-YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name *.y -print)
+YACC_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.y' -print)
 YACC_GOS := $(patsubst %.y,%.y.go,$(YACC_DEFS))
 
 # Ragel Files
-RAGEL_DEFS := $(shell find . $(DONT_FIND) -type f -name *.rl -print)
+RAGEL_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.rl' -print)
 RAGEL_GOS := $(patsubst %.rl,%.rl.go,$(RAGEL_DEFS))
-
-# Promtail UI files
-PROMTAIL_GENERATED_FILE := clients/pkg/promtail/server/ui/assets_vfsdata.go
-PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name assets_vfsdata.go -prune -o -print)
 
 # Documentation source path
 DOC_SOURCES_PATH := docs/sources
@@ -182,11 +191,11 @@ binfmt:
 ################
 # Main Targets #
 ################
-all: promtail logcli loki loki-canary ## build all executables (loki, logcli, promtail, loki-canary)
+all: logcli loki loki-canary ## build all executables (loki, logcli, loki-canary)
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
-check-generated-files: yacc ragel fmt-proto protos clients/pkg/promtail/server/ui/assets_vfsdata.go
-	@if ! (git diff --exit-code $(YACC_GOS) $(RAGEL_GOS) $(PROTO_DEFS) $(PROTO_GOS) $(PROMTAIL_GENERATED_FILE)); then \
+check-generated-files: yacc ragel fmt-proto protos
+	@if ! (git diff --exit-code $(YACC_GOS) $(RAGEL_GOS) $(PROTO_DEFS) $(PROTO_GOS)); then \
 		echo "\nChanges found in generated files"; \
 		echo "Run 'make check-generated-files' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \
@@ -275,45 +284,6 @@ lokitool: cmd/lokitool/lokitool ## build lokitool executable
 cmd/lokitool/lokitool:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/lokitool
 
-############
-# Promtail #
-############
-
-PROMTAIL_CGO := 0
-PROMTAIL_GO_FLAGS := $(GO_FLAGS)
-PROMTAIL_DEBUG_GO_FLAGS := $(DEBUG_GO_FLAGS)
-
-# Validate GOHOSTOS=linux && GOOS=linux to use CGO.
-ifeq ($(GOHOSTOS),linux)
-ifeq ($(GOOS),linux)
-ifneq ($(CGO_ENABLED), 0)
-PROMTAIL_CGO = 1
-endif
-PROMTAIL_GO_FLAGS = $(DYN_GO_FLAGS)
-PROMTAIL_DEBUG_GO_FLAGS = $(DEBUG_DYN_GO_FLAGS)
-endif
-endif
-ifeq ($(PROMTAIL_JOURNAL_ENABLED), true)
-PROMTAIL_GO_EXTRA_TAGS = ,promtail_journal_enabled
-endif
-.PHONY: clients/cmd/promtail/promtail clients/cmd/promtail/promtail-debug
-promtail: clients/cmd/promtail/promtail ## build promtail executable
-promtail-debug: clients/cmd/promtail/promtail-debug ## build debug promtail executable
-
-promtail-clean-assets:
-	rm -rf clients/pkg/promtail/server/ui/assets_vfsdata.go
-
-# Rule to generate promtail static assets file
-$(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
-	@echo ">> writing assets"
-	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
-
-clients/cmd/promtail/promtail:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS)$(PROMTAIL_GO_EXTRA_TAGS) -o $@ ./$(@D)
-
-clients/cmd/promtail/promtail-debug:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS)$(PROMTAIL_GO_EXTRA_TAGS) -o $@ ./$(@D)
-
 #########
 # Mixin #
 #########
@@ -322,6 +292,7 @@ MIXIN_PATH := production/loki-mixin
 MIXIN_OUT_PATH := production/loki-mixin-compiled
 MIXIN_OUT_PATH_SSD := production/loki-mixin-compiled-ssd
 
+loki-mixin: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 loki-mixin: ## compile the loki mixin
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -356,26 +327,25 @@ GOX = gox $(GO_FLAGS) -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 CGO_GOX = gox $(DYN_GO_FLAGS) -cgo -output="dist/{{.Dir}}-{{.OS}}-{{.Arch}}"
 
 SKIP_ARM ?= false
+dist: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 dist: clean
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(run_in_container)
+else
 ifeq ($(SKIP_ARM),true)
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/lokitool
-	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
-	CGO_ENABLED=1 $(CGO_GOX) -tags promtail_journal_enabled -osarch="linux/amd64" ./clients/cmd/promtail
 else
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/lokitool
-	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
-	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
-	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
-	CGO_ENABLED=1 $(CGO_GOX) -tags promtail_journal_enabled -osarch="linux/amd64" ./clients/cmd/promtail
 endif
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
+endif
 
 packages: dist
 	@tools/packaging/nfpm.sh
@@ -383,17 +353,24 @@ packages: dist
 publish: packages
 	./tools/release
 
+# Included file contains dynamically created make targets for cross-compiling
+include crosscompile.mk
+
 ########
 # Lint #
 ########
 ifeq ($(UNAME_S),Linux)
-LINT_FLAGS=--timeout=15m --build-tags=linux,promtail_journal_enabled
-GOFLAGS=-tags=linux,promtail_journal_enabled
+LINT_FLAGS=--timeout=15m --build-tags=linux
+GOFLAGS=-tags=linux
 else
 LINT_FLAGS=--timeout=15m
 GOFLAGS=""
 endif
+lint: INSTALL_WORKFLOW_DEPS_ARGS := lint loki-release
 lint: ## run linters
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(run_in_container)
+else
 	go version
 	golangci-lint version
 	golangci-lint run -v $(LINT_FLAGS)
@@ -410,6 +387,7 @@ lint: ## run linters
 	faillint -paths \
 		"github.com/opentracing/opentracing-go,github.com/opentracing/opentracing-go/log,github.com/uber/jaeger-client-go,github.com/opentracing-contrib/go-stdlib/nethttp" \
 		./...
+endif
 
 ########
 # Test #
@@ -437,7 +415,6 @@ clean: ## clean the generated files
 	rm -rf clients/cmd/docker-driver/rootfs
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
-	rm -rf clients/cmd/promtail/promtail
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/logql-analyzer/logql-analyzer
 	rm -rf cmd/loki-canary/loki-canary
@@ -454,6 +431,7 @@ clean: ## clean the generated files
 
 yacc: $(YACC_GOS)
 
+%.y.go: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 %.y.go: %.y
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -466,7 +444,7 @@ endif
 #########
 
 ragel: $(RAGEL_GOS)
-
+%.rl.go: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 %.rl.go: %.rl
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -480,6 +458,7 @@ endif
 
 protos: clean-protos $(PROTO_GOS)
 
+%.pb.go: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 %.pb.go: ALWAYS_BUILD
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -604,31 +583,11 @@ logstash-env:
 	 docker run -v  `pwd`/clients/cmd/logstash:/home/logstash/ -it --rm --entrypoint /bin/sh \
 		 $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
 
-########################
-# Bigtable Backup Tool #
-########################
-
-BIGTABLE_BACKUP_TOOL_FOLDER = ./tools/bigtable-backup
-BIGTABLE_BACKUP_TOOL_TAG ?= $(IMAGE_TAG)
-
-bigtable-backup:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(BIGTABLE_BACKUP_TOOL_FOLDER)
-	$(OCI_TAG) $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(IMAGE_PREFIX)/loki-bigtable-backup:$(BIGTABLE_BACKUP_TOOL_TAG)
-
-push-bigtable-backup: bigtable-backup
-	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-bigtable-backup:$(BIGTABLE_BACKUP_TOOL_TAG)
-
 ##########
 # Images #
 ##########
 
-images: promtail-image loki-image loki-canary-image helm-test-image docker-driver
-
-# Promtail image
-promtail-image: ## build the promtail docker image
-	$(OCI_BUILD) -t $(PROMTAIL_IMAGE) -f clients/cmd/promtail/Dockerfile .
-promtail-debug-image: ## build the promtail debug docker image
-	$(OCI_BUILD) -t $(PROMTAIL_IMAGE)-debug -f clients/cmd/promtail/Dockerfile.debug .
+images: loki-image loki-canary-image helm-test-image docker-driver
 
 # Loki image
 loki-image: ## build the loki docker image
@@ -650,7 +609,7 @@ loki-canary-boringcrypto-image:
 
 # Helm test image
 helm-test-image: ## build the helm test docker image
-	$(OCI_BUIILD) -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
 helm-test-push: helm-test-image
 	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG)
 
@@ -741,6 +700,8 @@ fmt-jsonnet:
 	@find . -name 'vendor' -prune -o -name '*.libsonnet' -print -o -name '*.jsonnet' -print | \
 		xargs -n 1 -- jsonnetfmt -i
 
+
+fmt-proto: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 fmt-proto:
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -759,6 +720,7 @@ lint-scripts:
 # search for dead link in our documentation.
 # To avoid being rate limited by Github you can use an env variable GITHUB_TOKEN to pass a github token API.
 # see https://github.com/settings/tokens
+lint-markdown: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 lint-markdown:
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
@@ -851,23 +813,15 @@ dev-k3d-enterprise-logs:
 dev-k3d-down:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d down
 
-# Trivy is used to scan images for vulnerabilities
-.PHONY: trivy
-trivy: loki-image build-image
-	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
-	trivy i $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG)
-	trivy fs go.mod
-
-# Synk is also used to scan for vulnerabilities, and detects things that trivy might miss
+# Snyk is used to scan for vulnerabilities
 .PHONY: snyk
 snyk: loki-image build-image
 	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
 	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
-	snyk container test $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) --file=clients/cmd/promtail/Dockerfile
 	snyk code test
 
 .PHONY: scan-vulnerabilities
-scan-vulnerabilities: trivy snyk
+scan-vulnerabilities: snyk
 
 .PHONY: release-workflows
 release-workflows:
@@ -875,7 +829,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
 	pushd $(CURDIR)/.github && jb update && popd
-	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) -V GO_VERSION=$(GO_VERSION) .github/release-workflows.jsonnet
+	jsonnet -SJ .github/vendor -m .github/workflows -V GO_VERSION=$(GO_VERSION) .github/release-workflows.jsonnet
 endif
 
 .PHONY: release-workflows-check

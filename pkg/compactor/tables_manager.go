@@ -31,7 +31,6 @@ type tablesManager struct {
 	metrics           *metrics
 
 	tableLocker *tableLocker
-	wg          sync.WaitGroup
 }
 
 func newTablesManager(

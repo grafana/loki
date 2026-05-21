@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
@@ -20,6 +22,11 @@ func Sprint(wf *Workflow) string {
 
 // Fprint prints a string representation of the workflow to the given writer.
 func Fprint(w io.Writer, wf *Workflow) error {
+	if wf.Empty() {
+		_, err := fmt.Fprintln(w, "Empty")
+		return err
+	}
+
 	visited := make(map[*Task]struct{}, wf.graph.Len())
 
 	roots := wf.graph.Roots()
@@ -60,6 +67,21 @@ func Fprint(w io.Writer, wf *Workflow) error {
 					for _, stream := range streams {
 						treeNode.AddComment("@sink", "", []tree.Property{tree.NewProperty("stream", false, stream.ULID.String())})
 					}
+				}
+
+				for node, cs := range n.CachedSources {
+					treeNode := findTreeNode(planTree, func(n *tree.Node) bool { return n.Context == node })
+					if treeNode == nil {
+						continue
+					}
+					var totalBytes int
+					for _, buf := range cs {
+						totalBytes += len(buf)
+					}
+					treeNode.AddComment("@cachedSource", "", []tree.Property{
+						tree.NewProperty("buffers", false, fmt.Sprintf("%d", len(cs))),
+						tree.NewProperty("size", false, humanize.Bytes(uint64(totalBytes))),
+					})
 				}
 
 				printer.Print(planTree)

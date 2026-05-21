@@ -41,11 +41,11 @@ $(GEN_CRD_API_REFERENCE_DOCS): $(BINGO_DIR)/gen-crd-api-reference-docs.mod
 	@echo "(re)installing $(GOBIN)/gen-crd-api-reference-docs-v0.0.3"
 	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=gen-crd-api-reference-docs.mod -o=$(GOBIN)/gen-crd-api-reference-docs-v0.0.3 "github.com/ViaQ/gen-crd-api-reference-docs"
 
-GOLANGCI_LINT := $(GOBIN)/golangci-lint-v2.10.1
+GOLANGCI_LINT := $(GOBIN)/golangci-lint-v2.11.4
 $(GOLANGCI_LINT): $(BINGO_DIR)/golangci-lint.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/golangci-lint-v2.10.1"
-	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=golangci-lint.mod -o=$(GOBIN)/golangci-lint-v2.10.1 "github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
+	@echo "(re)installing $(GOBIN)/golangci-lint-v2.11.4"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=golangci-lint.mod -o=$(GOBIN)/golangci-lint-v2.11.4 "github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
 
 HUGO := $(GOBIN)/hugo-v0.80.0
 $(HUGO): $(BINGO_DIR)/hugo.mod
@@ -59,17 +59,17 @@ $(JB): $(BINGO_DIR)/jb.mod
 	@echo "(re)installing $(GOBIN)/jb-v0.6.0"
 	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=jb.mod -o=$(GOBIN)/jb-v0.6.0 "github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb"
 
-JSONNET := $(GOBIN)/jsonnet-v0.21.0
+JSONNET := $(GOBIN)/jsonnet-v0.22.0
 $(JSONNET): $(BINGO_DIR)/jsonnet.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/jsonnet-v0.21.0"
-	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=jsonnet.mod -o=$(GOBIN)/jsonnet-v0.21.0 "github.com/google/go-jsonnet/cmd/jsonnet"
+	@echo "(re)installing $(GOBIN)/jsonnet-v0.22.0"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=jsonnet.mod -o=$(GOBIN)/jsonnet-v0.22.0 "github.com/google/go-jsonnet/cmd/jsonnet"
 
-JSONNETFMT := $(GOBIN)/jsonnetfmt-v0.21.0
+JSONNETFMT := $(GOBIN)/jsonnetfmt-v0.22.0
 $(JSONNETFMT): $(BINGO_DIR)/jsonnetfmt.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/jsonnetfmt-v0.21.0"
-	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=jsonnetfmt.mod -o=$(GOBIN)/jsonnetfmt-v0.21.0 "github.com/google/go-jsonnet/cmd/jsonnetfmt"
+	@echo "(re)installing $(GOBIN)/jsonnetfmt-v0.22.0"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=jsonnetfmt.mod -o=$(GOBIN)/jsonnetfmt-v0.22.0 "github.com/google/go-jsonnet/cmd/jsonnetfmt"
 
 KIND := $(GOBIN)/kind-v0.31.0
 $(KIND): $(BINGO_DIR)/kind.mod
@@ -89,9 +89,9 @@ $(OPERATOR_SDK): $(BINGO_DIR)/operator-sdk.mod
 	@echo "(re)installing $(GOBIN)/operator-sdk-v1.39.2"
 	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=operator-sdk.mod -o=$(GOBIN)/operator-sdk-v1.39.2 "github.com/operator-framework/operator-sdk/cmd/operator-sdk"
 
-PROMTOOL := $(GOBIN)/promtool-v0.308.1
+PROMTOOL := $(GOBIN)/promtool-v0.311.1
 $(PROMTOOL): $(BINGO_DIR)/promtool.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/promtool-v0.308.1"
-	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=promtool.mod -o=$(GOBIN)/promtool-v0.308.1 "github.com/prometheus/prometheus/cmd/promtool"
+	@echo "(re)installing $(GOBIN)/promtool-v0.311.1"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=promtool.mod -o=$(GOBIN)/promtool-v0.311.1 "github.com/prometheus/prometheus/cmd/promtool"
 

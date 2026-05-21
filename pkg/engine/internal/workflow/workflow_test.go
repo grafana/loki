@@ -10,7 +10,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
@@ -46,7 +45,7 @@ func Test(t *testing.T) {
 
 		fr := newFakeRunner()
 
-		wf, err := New(Options{}, log.NewNopLogger(), fr, physicalPlan)
+		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -112,7 +111,7 @@ func TestCancellation(t *testing.T) {
 		t.Run(state.String(), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				fr := newFakeRunner()
-				wf, err := New(Options{}, log.NewNopLogger(), fr, physicalPlan)
+				wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
 				require.NoError(t, err, "workflow should construct properly")
 				require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -212,7 +211,7 @@ func TestShortCircuiting(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		fr := newFakeRunner()
-		wf, err := New(Options{}, log.NewNopLogger(), fr, physicalPlan)
+		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -300,10 +299,11 @@ func TestAdmissionControl(t *testing.T) {
 		opts := Options{
 			Tenant: "tenant",
 
-			MaxRunningScanTasks:  32, // less than numScanTasks
-			MaxRunningOtherTasks: 0,  // unlimited
+			MaxRunningScanTasks:       32, // less than numScanTasks
+			MaxRunningOtherTasks:      0,  // unlimited
+			MaxRunningCompactionTasks: 0,  // unlimited; lane is dormant
 		}
-		wf, err := New(opts, log.NewNopLogger(), fr, physicalPlan)
+		wf, err := New(t.Context(), opts, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -533,14 +533,3 @@ type runnerTask struct {
 	task    *Task
 	handler TaskEventHandler
 }
-
-type noopPipeline struct{}
-
-func (noopPipeline) Open(context.Context) error { return nil }
-
-func (noopPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	<-ctx.Done()
-	return nil, ctx.Err()
-}
-
-func (noopPipeline) Close() {}

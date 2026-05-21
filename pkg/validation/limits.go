@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -13,9 +14,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/sigv4"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
@@ -120,7 +121,6 @@ type Limits struct {
 	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
 	MaxGlobalStreamsPerUser int              `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
-	UnorderedWrites         bool             `yaml:"unordered_writes" json:"unordered_writes"`
 	PerStreamRateLimit      flagext.ByteSize `yaml:"per_stream_rate_limit" json:"per_stream_rate_limit"`
 	PerStreamRateLimitBurst flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst"`
 
@@ -219,9 +219,6 @@ type Limits struct {
 	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
 	PerTenantOverridePeriod model.Duration `yaml:"per_tenant_override_period" json:"per_tenant_override_period"`
 
-	// Deprecated
-	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes" doc:"deprecated|description=Use deletion_mode per tenant configuration instead."`
-
 	ShardStreams shardstreams.Config `yaml:"shard_streams" json:"shard_streams" doc:"description=Define streams sharding behavior."`
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
@@ -291,10 +288,65 @@ type Limits struct {
 	MaxScanTaskParallelism int  `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
 	DebugEngineTasks       bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
 	DebugEngineStreams     bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
+
+	// Data-objects sort schema
+	SortSchema SortSchema `yaml:"sort_schema,omitempty" json:"sort_schema,omitempty" doc:"hidden"`
 }
 
 type FieldDetectorConfig struct {
 	Fields map[string][]string `yaml:"fields,omitempty" json:"fields,omitempty"`
+}
+
+// SortKeyFqn is a fully-qualified sort key of the form "type:name".
+// Currently only the "label" type is supported (e.g. "label:service_name").
+type SortKeyFqn string
+
+// Type returns the type component of the SortKeyFqn (e.g. "label").
+func (f SortKeyFqn) Type() string {
+	typ, _, _ := strings.Cut(string(f), ":")
+	return typ
+}
+
+// Name returns the name component of the SortKeyFqn (e.g. "service_name").
+func (f SortKeyFqn) Name() string {
+	_, name, _ := strings.Cut(string(f), ":")
+	return name
+}
+
+// Validate checks that the SortKeyFqn is well-formed and uses a supported type.
+func (f SortKeyFqn) Validate() error {
+	typ, name, ok := strings.Cut(string(f), ":")
+	if !ok || name == "" {
+		return fmt.Errorf("%q is not a valid SortKeyFqn — expected \"label:<name>\"", f)
+	}
+	if typ != "label" {
+		return fmt.Errorf("%q has unsupported type %q — only \"label\" is currently supported", f, typ)
+	}
+	return nil
+}
+
+// SortSchema is an ordered list of SortKeyFqn sort keys for a tenant.
+// The timestamp is always implicitly appended as the final sort key.
+// An empty schema means "use DefaultSortSchema".
+type SortSchema []SortKeyFqn
+
+// DefaultSortSchema is the broad default schema used when no tenant-specific schema is configured.
+var DefaultSortSchema = SortSchema{"label:service_name"}
+
+// Validate checks that the sort schema is well-formed.
+// An empty schema is valid (callers fall back to DefaultSortSchema).
+func (s SortSchema) Validate() error {
+	seen := make(map[SortKeyFqn]struct{}, len(s))
+	for _, fqn := range s {
+		if err := fqn.Validate(); err != nil {
+			return fmt.Errorf("sort_schema: %w", err)
+		}
+		if _, dup := seen[fqn]; dup {
+			return fmt.Errorf("sort_schema entry %q is duplicated", fqn)
+		}
+		seen[fqn] = struct{}{}
+	}
+	return nil
 }
 
 type StreamRetention struct {
@@ -357,9 +409,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.UseOwnedStreamCount, "ingester.use-owned-stream-count", false, "When true an ingester takes into account only the streams that it owns according to the ring while applying the stream limit.")
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 0, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 5000, "Maximum number of active streams per user, across the cluster. 0 to disable. When the global limit is enabled, each ingester is configured with a dynamic local limit based on the replication factor and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.")
-
-	// TODO(ashwanth) Deprecated. This will be removed with the next major release and out-of-order writes would be accepted by default.
-	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", true, "Deprecated. When true, out-of-order writes are accepted.")
 
 	_ = l.PerStreamRateLimit.Set(strconv.Itoa(defaultPerStreamRateLimit))
 	f.Var(&l.PerStreamRateLimit, "ingester.per-stream-rate-limit", "Maximum byte rate per second per stream, also expressible in human readable forms (1MB, 256KB, etc).")
@@ -448,9 +497,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
 
 	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
-
-	// Deprecated
-	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
 	f.Float64Var(&l.IndexGatewayMaxCapacity, "index-gateway.max-capacity", 1.0, "Experimental. Defines a fraction (between 0.0 and 1.0) of the total index gateways available for a each tenant. A value of 0.0 has the same effect as 1.0, meaning all available index gateways. This setting only applies to simple mode.")
@@ -620,10 +666,6 @@ func (l *Limits) Validate() error {
 		return err
 	}
 
-	if l.CompactorDeletionEnabled {
-		level.Warn(util_log.Logger).Log("msg", "The compactor.allow-deletes configuration option has been deprecated and will be ignored. Instead, use deletion_mode in the limits_configs to adjust deletion functionality")
-	}
-
 	if l.MaxQueryCapacity < 0 {
 		level.Warn(util_log.Logger).Log("msg", "setting frontend.max-query-capacity to 0 as it is configured to a value less than 0")
 		l.MaxQueryCapacity = 0
@@ -655,6 +697,10 @@ func (l *Limits) Validate() error {
 	if time.Duration(l.EngineResultsCacheTimeBucketInterval) < time.Minute {
 		return fmt.Errorf("engine_results_cache_time_bucket_interval must be >= 1m, got %s",
 			l.EngineResultsCacheTimeBucketInterval)
+	}
+
+	if err := l.SortSchema.Validate(); err != nil {
+		return fmt.Errorf("sort_schema: %w", err)
 	}
 
 	return nil
@@ -1123,10 +1169,6 @@ func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 	return o.getOverridesForUser(userID).StreamRetention
 }
 
-func (o *Overrides) UnorderedWrites(userID string) bool {
-	return o.getOverridesForUser(userID).UnorderedWrites
-}
-
 func (o *Overrides) DeletionMode(userID string) string {
 	return o.getOverridesForUser(userID).DeletionMode
 }
@@ -1466,4 +1508,24 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}
 
 func (o *Overrides) SimulatedPushLatency(userID string) time.Duration {
 	return o.getOverridesForUser(userID).SimulatedPushLatency
+}
+
+// SortSchema returns the per-tenant sort schema. Falls back to DefaultSortSchema if not set.
+func (o *Overrides) SortSchema(userID string) SortSchema {
+	s := o.getOverridesForUser(userID).SortSchema
+	if len(s) == 0 {
+		return DefaultSortSchema
+	}
+	return s
+}
+
+// SortSchemaLabels returns the ordered SortKeyFqn sort keys from the per-tenant sort schema as strings.
+// Implements logsobj.TenantOverrides.
+func (o *Overrides) SortSchemaLabels(userID string) []string {
+	schema := o.SortSchema(userID)
+	result := make([]string, len(schema))
+	for i, fqn := range schema {
+		result[i] = string(fqn)
+	}
+	return result
 }

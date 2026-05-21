@@ -155,10 +155,3 @@ func produceRecords(
 	require.NoError(t, produceResult.FirstErr())
 	return produceResult
 }
-
-func commitOffset(ctx context.Context, t *testing.T, kafkaClient *kgo.Client, group string, offset kadm.Offset) {
-	offsets := make(kadm.Offsets)
-	offsets.Add(offset)
-	err := kadm.NewClient(kafkaClient).CommitAllOffsets(ctx, group, offsets)
-	require.NoError(t, err)
-}

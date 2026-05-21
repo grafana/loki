@@ -79,8 +79,15 @@ func (e *expirationChecker) DropFromIndex(userID []byte, _ Chunk, labels labels.
 
 func (e *expirationChecker) MarkPhaseStarted() {
 	e.latestRetentionStartTime = findLatestRetentionStartTime(model.Now(), e.tenantsRetention.limits)
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("overall smallest retention period %v, default smallest retention period %v",
-		e.latestRetentionStartTime.overall, e.latestRetentionStartTime.defaults))
+
+	level.Info(util_log.Logger).Log(
+		"msg",
+		fmt.Sprintf(
+			"overall smallest retention cutoff timestamp %v, default smallest retention cutoff timestamp %v",
+			e.latestRetentionStartTime.overall,
+			e.latestRetentionStartTime.defaults,
+		),
+	)
 }
 
 func (e *expirationChecker) MarkPhaseFailed()   {}
