@@ -25,9 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/noop"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
@@ -157,7 +155,7 @@ func (ns *NamedStores) populateStoreType() error {
 		case types.StorageTypeAWS, types.StorageTypeAWSDynamo, types.StorageTypeS3,
 			types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed, types.StorageTypeGCS,
 			types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCassandra,
-			types.StorageTypeFileSystem, types.StorageTypeInMemory, types.StorageTypeGrpc:
+			types.StorageTypeFileSystem, types.StorageTypeGrpc:
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
 		}
 
@@ -341,12 +339,6 @@ func (cfg *Config) Validate() error {
 func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (index.Client, error) {
 
 	switch true {
-	case util.StringsContain(types.TestingStorageTypes, periodCfg.IndexType):
-		switch periodCfg.IndexType {
-		case types.StorageTypeInMemory:
-			store := testutils.NewMockStorage()
-			return store, nil
-		}
 
 	case util.StringsContain(types.SupportedIndexTypes, periodCfg.IndexType):
 		switch periodCfg.IndexType {
@@ -407,16 +399,6 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 
 	switch true {
 
-	case util.StringsContain(types.TestingStorageTypes, storeType):
-		switch storeType {
-		case types.StorageTypeInMemory:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			return client.NewClientWithMaxParallel(c, nil, 1, schemaCfg), nil
-		}
-
 	case util.StringsContain(types.SupportedStorageTypes, storeType):
 		switch storeType {
 		case types.StorageTypeFileSystem:
@@ -446,10 +428,6 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			if cfg.CongestionControl.Enabled {
 				c = cc.Wrap(c)
 			}
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-
-		case types.StorageTypeNoop:
-			c, _ := noop.NewNoopObjectClient()
 			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 		}
 
@@ -509,8 +487,6 @@ func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientM
 	}
 
 	switch storeType {
-	case types.StorageTypeInMemory:
-		return testutils.NewMockStorage(), nil
 
 	case types.StorageTypeAWS, types.StorageTypeS3:
 		s3Cfg := cfg.S3Config

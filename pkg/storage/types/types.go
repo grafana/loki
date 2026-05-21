@@ -42,11 +42,6 @@ var UnsupportedStorageTypes = []string{
 	StorageTypeGrpc,
 }
 
-var TestingStorageTypes = []string{
-	StorageTypeInMemory,
-	StorageTypeNoop,
-}
-
 const (
 	StorageTypeAWS            = "aws"
 	StorageTypeAWSDynamo      = "aws-dynamo"
@@ -63,9 +58,7 @@ const (
 	StorageTypeGCPColumnKey   = "gcp-columnkey"
 	StorageTypeGCS            = "gcs"
 	StorageTypeGrpc           = "grpc-store"
-	StorageTypeInMemory       = "inmemory"
 	StorageTypeLocal          = "local"
-	StorageTypeNoop           = "noop"
 	StorageTypeS3             = "s3"
 	StorageTypeSwift          = "swift"
 
