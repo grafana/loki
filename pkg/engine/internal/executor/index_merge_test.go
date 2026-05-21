@@ -10,14 +10,17 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -600,12 +603,8 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 	srcPath := "source/index-0.dat"
 	buildSourceIndexWithBothKinds(t, bucket, "tenant-1", srcPath)
 
-	// 2. Open the uploaded object and find the section indices for postings and stats.
-	postingsIdx, statsIdx := findSectionIndices(ctx, t, bucket, srcPath)
-
-	// 3. Construct an IndexMerge node with two RunRefs:
-	//    - one referencing the postings section
-	//    - one referencing the stats section
+	// 2. Construct an IndexMerge node with a single RunRef referencing the source object.
+	//    The SectionIndex is a placeholder; the executor scans all sections.
 	outputPath := "output/merged.dat"
 	node := &physical.IndexMerge{
 		NodeID:          ulid.Make(),
@@ -614,20 +613,17 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 		TaskTTL:         time.Minute,
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{
-				{ObjectPath: srcPath, SectionIndex: int32(postingsIdx)},
-			}},
-			{Sections: []*compactionv2pb.SectionRef{
-				{ObjectPath: srcPath, SectionIndex: int32(statsIdx)},
+				{ObjectPath: srcPath, SectionIndex: 0}, // SectionIndex is a placeholder; executor scans all
 			}},
 		},
 	}
 
-	// 4. Create executor context and run the merger.
+	// 3. Create executor context and run the merger.
 	execCtx := newTestExecutorContext(t, bucket)
 	err := execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	// 5. Verify the output exists and contains both section kinds.
+	// 4. Verify the output exists and contains both section kinds.
 	exists, err := bucket.Exists(ctx, outputPath)
 	require.NoError(t, err)
 	require.True(t, exists, "output object must exist")
@@ -644,6 +640,131 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 	}
 	require.True(t, sawPostings, "output must contain a postings section")
 	require.True(t, sawStats, "output must contain a stats section")
+}
+
+// TestExecuteIndexMerge_SkipsLegacySections tests that the executor correctly
+// skips legacy section types (streams, pointers) while processing a source object
+// that contains all four section types: streams, pointers, stats, and postings.
+func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	// Build a source object with all four section types: streams, pointers, stats, postings.
+	srcPath := "source/index-legacy.dat"
+	buildSourceWithLegacySections(t, bucket, "tenant-1", srcPath)
+
+	// Construct an IndexMerge node with a single RunRef.
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant-1",
+		OutputIndexPath: outputPath,
+		TaskTTL:         time.Minute,
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{
+				{ObjectPath: srcPath, SectionIndex: 0}, // SectionIndex is a placeholder
+			}},
+		},
+	}
+
+	// Run the executor.
+	execCtx := newTestExecutorContext(t, bucket)
+	err := execCtx.doIndexMerge(ctx, node)
+	require.NoError(t, err, "merge should succeed despite legacy sections")
+
+	// Verify the output exists.
+	exists, err := bucket.Exists(ctx, outputPath)
+	require.NoError(t, err)
+	require.True(t, exists, "output object must exist")
+
+	outObj := openObjectFromBucket(ctx, t, bucket, outputPath)
+
+	// Check what sections are present in the output.
+	var sawPostings, sawStats bool
+	for _, sec := range outObj.Sections() {
+		if postings.CheckSection(sec) {
+			sawPostings = true
+		}
+		if stats.CheckSection(sec) {
+			sawStats = true
+		}
+	}
+
+	// Legacy sections (streams, pointers) are not passed through the merger.
+
+	require.True(t, sawPostings, "output must contain a postings section")
+	require.True(t, sawStats, "output must contain a stats section")
+
+	// Verify content exists in both sections.
+	postingsRows := readPostingsRowsFromBucket(ctx, t, bucket, outputPath)
+	statsRows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
+
+	require.NotEmpty(t, postingsRows, "output postings section should have rows")
+	require.NotEmpty(t, statsRows, "output stats section should have rows")
+}
+
+// buildSourceWithLegacySections builds a dataobj containing streams, pointers,
+// stats, and postings sections (all four section types), then uploads it.
+// This simulates a first-generation index object from indexobj.Builder.
+func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant, path string) {
+	t.Helper()
+	ctx := context.Background()
+
+	// Use the indexobj.Builder from the observation API to create a full object.
+	// This produces objects with the full set of section types: streams, pointers,
+	// pointers (index pointers), stats, postings.
+	cfg := logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		MaxPageRows:             10000,
+		TargetObjectSize:        1 << 22, // 4 MiB
+		TargetSectionSize:       1 << 21, // 2 MiB
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+	}
+
+	builder, err := indexobj.NewBuilder(cfg, nil)
+	require.NoError(t, err, "failed to create indexobj.Builder")
+
+	// Append a stream to get a streams section.
+	ts := time.Unix(0, 1_000_000)
+	_, err = builder.AppendStream(tenant, streams.Stream{
+		ID:               1,
+		Labels:           labels.New(labels.Label{Name: "service", Value: "api"}),
+		MinTimestamp:     ts,
+		MaxTimestamp:     ts.Add(time.Second),
+		Rows:             10,
+		UncompressedSize: 1000,
+	})
+	require.NoError(t, err, "failed to append stream")
+
+	// Observe a log line to get a pointers section.
+	err = builder.ObserveLogLine(tenant, "log-A", 0, 1, 1, ts, 100)
+	require.NoError(t, err, "failed to observe log line")
+
+	// Append a stat to get a stats section.
+	err = builder.AppendStat(tenant, "log-A", 0, "service",
+		map[string]string{"service": "api"},
+		ts, ts.Add(time.Second), 10, 1000)
+	require.NoError(t, err, "failed to append stat")
+
+	// Observe a label posting to get a postings section.
+	builder.ObserveLabelPosting(tenant, postings.LabelObservation{
+		ObjectPath:       "log-A",
+		SectionIndex:     0,
+		ColumnName:       "service",
+		LabelValue:       "api",
+		StreamID:         1,
+		Timestamp:        ts,
+		UncompressedSize: 100,
+	})
+
+	// Flush the builder to create the object.
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err, "failed to flush builder")
+	defer closer.Close()
+
+	// Upload to bucket.
+	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
 }
 
 // buildSourceIndexWithBothKinds builds a dataobj containing one postings section

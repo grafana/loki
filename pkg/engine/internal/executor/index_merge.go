@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -97,94 +98,82 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 	return nil
 }
 
-// classifyRuns opens each source object and classifies sections as postings or stats.
-// Returns lists of (section, runIdx) tuples for each kind, and validates that no run
-// mixes both kinds.
+// classifyRuns scans all sections of each referenced source object and classifies
+// them as postings or stats. Deduplicates objects by path; skips unknown section
+// types silently (streams, pointers, indexPointers are not the index merger's concern).
+// Validates that all stats sections share the same SortSchema.
 func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	postingsSections []runSection,
 	statsSections []runSection,
 	err error,
 ) {
-	// Cache objects by path to avoid reopening
-	objectCache := make(map[string]*dataobj.Object)
+	// Deduplicate source objects by path. One object may be referenced by
+	// multiple SectionRefs in the same or different runs; we open and scan it
+	// exactly once.
+	type objectEntry struct {
+		obj    *dataobj.Object
+		runIdx int // first run that referenced this object
+	}
+	objects := make(map[string]*objectEntry)
 
 	for runIdx, runRef := range node.Runs {
-		hasPostings := false
-		hasStats := false
-
-		for secIdx, sectionRef := range runRef.Sections {
-			// Open object if not cached
-			obj, ok := objectCache[sectionRef.ObjectPath]
-			if !ok {
-				var openErr error
-				obj, openErr = dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, 0)
-				if openErr != nil {
-					return nil, nil, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
-				}
-				objectCache[sectionRef.ObjectPath] = obj
+		for _, sectionRef := range runRef.Sections {
+			if _, seen := objects[sectionRef.ObjectPath]; seen {
+				continue
 			}
-
-			// Validate bounds: check for negative or out-of-range indices.
-			sections := obj.Sections()
-			if sectionRef.SectionIndex < 0 || int(sectionRef.SectionIndex) >= len(sections) {
-				return nil, nil, fmt.Errorf(
-					"run %d section %d: SectionIndex %d out of range [0, %d)",
-					runIdx, secIdx, sectionRef.SectionIndex, len(sections),
-				)
+			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, 0)
+			if openErr != nil {
+				return nil, nil, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
 			}
-
-			sec := sections[sectionRef.SectionIndex]
-
-			// Classify the section and track what kinds we've seen in this run
-			isPostings := postings.CheckSection(sec)
-			isStats := stats.CheckSection(sec)
-
-			if !isPostings && !isStats {
-				return nil, nil, fmt.Errorf(
-					"run %d section %d: unknown section type %q",
-					runIdx, sectionRef.SectionIndex, sec.Type,
-				)
-			}
-
-			if isPostings {
-				hasPostings = true
-				postingsSections = append(postingsSections, runSection{
-					section: sec,
-					runIdx:  runIdx,
-				})
-			} else {
-				hasStats = true
-				statsSections = append(statsSections, runSection{
-					section: sec,
-					runIdx:  runIdx,
-				})
-			}
-		}
-
-		// Validate that this run doesn't mix both kinds
-		if hasPostings && hasStats {
-			return nil, nil, fmt.Errorf("run %d: heterogeneous section kinds (both postings and stats)", runIdx)
+			objects[sectionRef.ObjectPath] = &objectEntry{obj: obj, runIdx: runIdx}
 		}
 	}
 
-	// Validate that all stats sections share the same SortSchema.
-	// Read the first row of each stats section to check the schema.
+	// For each unique source object, scan all of its sections and classify by
+	// type. Unknown section types (streams, pointers, indexPointers) are
+	// skipped silently — they're not our concern for an index merge.
+	// Iterate in sorted order for deterministic section ordering.
+	paths := make([]string, 0, len(objects))
+	for path := range objects {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+
+	for _, path := range paths {
+		entry := objects[path]
+		for _, sec := range entry.obj.Sections() {
+			switch {
+			case postings.CheckSection(sec):
+				postingsSections = append(postingsSections, runSection{
+					section: sec,
+					runIdx:  entry.runIdx,
+				})
+			case stats.CheckSection(sec):
+				statsSections = append(statsSections, runSection{
+					section: sec,
+					runIdx:  entry.runIdx,
+				})
+			// default: skip silently (streams/pointers/indexPointers etc.)
+			}
+		}
+	}
+
+	// Validate that all stats sections share the same SortSchema. Read the
+	// first row of each to check. Catches misconfigured cross-tenant merges or
+	// upstream schema-evolution bugs.
 	if len(statsSections) > 0 {
 		var firstSortSchema string
 		for i, rs := range statsSections {
-			sec, err := stats.Open(ctx, rs.section)
-			if err != nil {
-				return nil, nil, fmt.Errorf("opening stats section for validation: %w", err)
+			sec, openErr := stats.Open(ctx, rs.section)
+			if openErr != nil {
+				return nil, nil, fmt.Errorf("opening stats section for validation: %w", openErr)
 			}
-
 			reader := newStatsPileReader(sec)
-			row, err := reader.Next(ctx)
+			row, readErr := reader.Next(ctx)
 			reader.Close()
-
-			if err != nil && !errors.Is(err, io.EOF) {
-				return nil, nil, fmt.Errorf("reading stats section %d for validation: %w", i, err)
+			if readErr != nil && !errors.Is(readErr, io.EOF) {
+				return nil, nil, fmt.Errorf("reading stats section %d for validation: %w", i, readErr)
 			}
-
 			if i == 0 {
 				firstSortSchema = row.SortSchema
 			} else if row.SortSchema != firstSortSchema {
