@@ -18,12 +18,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -82,6 +84,8 @@ type thread struct {
 	Logger         log.Logger
 	StreamFilterer executor.RequestStreamFilterer
 	TaskCaches     executor.TaskCacheRegistry
+	ScratchStore   scratch.Store
+	IndexobjCfg    logsobj.BuilderBaseConfig
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -169,6 +173,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,
 		TaskCaches:     t.TaskCaches,
+		ScratchStore:   t.ScratchStore,
+		IndexobjCfg:    t.IndexobjCfg,
 
 		GetExternalInputs: func(fnCtx context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
