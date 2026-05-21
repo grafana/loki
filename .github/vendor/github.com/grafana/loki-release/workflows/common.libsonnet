@@ -34,7 +34,7 @@
     },
   },
   job: {
-    new: function(runsOn='ubuntu-latest') {
+    new: function(runsOn='ubuntu-x64') {
       'runs-on': runsOn,
     },
     with: function(with) {

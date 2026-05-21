@@ -43,7 +43,7 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -266,7 +266,7 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
   fluentd:
     needs:
     - "version"
@@ -340,7 +340,7 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
   logcli:
     needs:
     - "version"
@@ -414,13 +414,13 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - arch: "linux/arm"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   logstash:
     needs:
     - "version"
@@ -494,7 +494,7 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
   loki:
     needs:
     - "version"
@@ -568,13 +568,13 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - arch: "linux/arm"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   loki-canary:
     needs:
     - "version"
@@ -648,13 +648,13 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - arch: "linux/arm"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   loki-canary-boringcrypto:
     needs:
     - "version"
@@ -728,13 +728,13 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - arch: "linux/arm"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   loki-docker-driver:
     needs:
     - "version"
@@ -825,10 +825,10 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   loki-helm-test:
     needs:
     - "version"
@@ -902,13 +902,13 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - arch: "linux/arm"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   querytee:
     needs:
     - "version"
@@ -982,10 +982,10 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   version:
     needs:
     - "check"
@@ -996,7 +996,7 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
