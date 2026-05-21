@@ -451,6 +451,9 @@ func New(
 			MaxAge:     time.Minute,
 		}),
 	}
+	cb := newLinearRampCircuitBreaker(time.Second, 30*time.Second)
+	registerer.MustRegister(cb)
+	d.circuitBreaker = cb
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
