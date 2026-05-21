@@ -34,7 +34,7 @@
     },
   },
   job: {
-    new: function(runsOn='ubuntu-latest') {
+    new: function(runsOn='ubuntu-x64') {
       'runs-on': runsOn,
     },
     with: function(with) {
@@ -145,23 +145,11 @@
                          git config --global --add safe.directory "$GITHUB_WORKSPACE"
                        |||),
 
-  fetchAppCredentials: $.step.new('fetch app credentials from vault', 'grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760')
-                       + $.step.withId('fetch_app_credentials')
-                       + $.step.withIf('${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}')
-                       + $.step.with({
-                         repo_secrets: |||
-                           APP_ID=${{ env.GITHUB_APP }}:app-id
-                           PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
-                         |||,
-                       }),
-  githubAppToken: $.step.new('get github app token', 'actions/create-github-app-token@v1')
+  githubAppToken: $.step.new('get github app token', 'grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0')  // create-github-app-token/v0.2.2
                   + $.step.withId('get_github_app_token')
                   + $.step.withIf('${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}')
                   + $.step.with({
-                    'app-id': '${{ env.APP_ID }}',
-                    'private-key': '${{ env.PRIVATE_KEY }}',
-                    // By setting owner, we should get access to all repositories in current owner's installation: https://github.com/marketplace/actions/create-github-app-token#create-a-token-for-all-repositories-in-the-current-owners-installation
-                    owner: '${{ github.repository_owner }}',
+                    github_app: '${{ env.GITHUB_APP }}',
                   }),
 
   setToken: $.step.new('set github token')

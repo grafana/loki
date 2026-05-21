@@ -1,10 +1,10 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@eb4e89778be445f9e79533b704cbdee404592eb4"
     "with":
       "build_image": "grafana/loki-build-image:0.35.1"
       "golang_ci_lint_version": "v2.11.4"
-      "release_lib_ref": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+      "release_lib_ref": "eb4e89778be445f9e79533b704cbdee404592eb4"
       "skip_validation": false
       "use_github_app_token": true
   "loki-canary-boringcrypto-image":
@@ -12,7 +12,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+      "RELEASE_LIB_REF": "eb4e89778be445f9e79533b704cbdee404592eb4"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -92,13 +92,13 @@
         "include":
         - "arch": "linux/amd64"
           "runs_on":
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - "arch": "linux/arm64"
           "runs_on":
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - "arch": "linux/arm"
           "runs_on":
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   "loki-canary-boringcrypto-manifest":
     "env":
       "BUILD_TIMEOUT": 60
@@ -112,7 +112,7 @@
     "permissions":
       "contents": "read"
       "id-token": "write"
-    "runs-on": "ubuntu-latest"
+    "runs-on": "ubuntu-x64"
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
@@ -136,7 +136,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+      "RELEASE_LIB_REF": "eb4e89778be445f9e79533b704cbdee404592eb4"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -216,13 +216,13 @@
         "include":
         - "arch": "linux/amd64"
           "runs_on":
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - "arch": "linux/arm64"
           "runs_on":
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - "arch": "linux/arm"
           "runs_on":
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   "loki-canary-manifest":
     "env":
       "BUILD_TIMEOUT": 60
@@ -236,7 +236,7 @@
     "permissions":
       "contents": "read"
       "id-token": "write"
-    "runs-on": "ubuntu-latest"
+    "runs-on": "ubuntu-x64"
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
@@ -260,7 +260,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+      "RELEASE_LIB_REF": "eb4e89778be445f9e79533b704cbdee404592eb4"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -340,13 +340,13 @@
         "include":
         - "arch": "linux/amd64"
           "runs_on":
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - "arch": "linux/arm64"
           "runs_on":
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - "arch": "linux/arm"
           "runs_on":
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   "loki-manifest":
     "env":
       "BUILD_TIMEOUT": 60
@@ -360,7 +360,7 @@
     "permissions":
       "contents": "read"
       "id-token": "write"
-    "runs-on": "ubuntu-latest"
+    "runs-on": "ubuntu-x64"
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
@@ -384,7 +384,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.2"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "52d476dc60de14b52b6dec2b33e86abeeb497fcc"
+      "RELEASE_LIB_REF": "eb4e89778be445f9e79533b704cbdee404592eb4"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -464,13 +464,13 @@
         "include":
         - "arch": "linux/amd64"
           "runs_on":
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - "arch": "linux/arm64"
           "runs_on":
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - "arch": "linux/arm"
           "runs_on":
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   "promtail-manifest":
     "env":
       "BUILD_TIMEOUT": 60
@@ -484,7 +484,7 @@
     "permissions":
       "contents": "read"
       "id-token": "write"
-    "runs-on": "ubuntu-latest"
+    "runs-on": "ubuntu-x64"
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
