@@ -88,7 +88,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.6.7
+    tag: 3.6.8
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -423,7 +423,7 @@ loki:
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
-    # -- The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address.
+    # -- The gRPC address of the compactor. The use of compactor_grpc_address is preferred over compactor_address.
     # If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.
     compactor_grpc_address: '{{ include "loki.compactorAddress" . }}'
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
@@ -629,10 +629,12 @@ loki:
 
 # -- Configuration for running Enterprise Loki
 enterprise:
-  # Enable enterprise features, license must be provided
+  # Enterprise features are disabled by default.
+  # Set to `true` to deploy Grafana Enterprise Logs (GEL) with a valid license via
+  # `enterprise.license.contents` or `enterprise.useExternalLicense`/`enterprise.externalLicenseName`.
   enabled: false
   # Default version of GEL to deploy
-  version: 3.6.5
+  version: 3.6.8
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -674,7 +676,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.6.7
+    tag: 3.6.8
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -687,9 +689,13 @@ enterprise:
   canarySecret: null
   # -- Configuration for `provisioner` target
   # Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.
+  # The provisioner is disabled by default because it requires an out-of-band admin token secret
+  # (created via GEL `tokengen`) referenced by `enterprise.adminToken.secret`. After creating that
+  # secret, set both `enterprise.adminToken.secret` and `enterprise.provisioner.enabled: true`.
+  # See production/helm/loki/docs/examples/enterprise/README.md for the full procedure.
   provisioner:
     # -- Whether the job should be part of the deployment
-    enabled: true
+    enabled: false
     # -- Name of the secret to store provisioned tokens in
     provisionedSecretPrefix: null
     # -- Hook type(s) to customize when the job runs.  defaults to post-install
@@ -697,7 +703,7 @@ enterprise:
     # -- url of the admin api to use for the provisioner
     apiUrl: '{{ include "loki.address" . }}'
     # -- Additional tenants to be created. Each tenant will get a read and write policy
-    # and associated token. Tenant must have a name and a namespace for the secret containting
+    # and associated token. Tenant must have a name and a namespace for the secret containing
     # the token to be created in. For example
     # additionalTenants:
     #   - name: loki
@@ -1333,7 +1339,7 @@ enterpriseGateway:
   env: []
   # -- Configure optional initContainers
   initContainers: []
-  # -- Conifgure optional extraContainers
+  # -- Configure optional extraContainers
   extraContainers: []
   # -- Additional volumes for Pods
   extraVolumes: []
@@ -1795,7 +1801,7 @@ read:
   resources: {}
   # -- liveness probe settings for read pods. If empty, applies no livenessProbe
   livenessProbe: {}
-    # -- statup probe for the read pods. If empty, applies no startupProbe
+    # -- startup probe for the read pods. If empty, applies no startupProbe
   startupProbe: {}
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
@@ -2155,7 +2161,7 @@ ingester:
     grpc: ""
   # -- trafficDistribution for ingester service
   trafficDistribution: ""
-  # -- Enabling zone awareness on ingesters will create 3 statefulests where all writes will send a replica to each zone.
+  # -- Enabling zone awareness on ingesters will create 3 StatefulSets where all writes will send a replica to each zone.
   # This is primarily intended to accelerate rollout operations by allowing for multiple ingesters within a single
   # zone to be shutdown and restart simultaneously (the remaining 2 zones will be guaranteed to have at least one copy
   # of the data).
@@ -3886,7 +3892,7 @@ chunksCache:
   l2:
     # -- Append to the name of the resources to make names different for l1 and l2
     suffix: "l2"
-    # -- The age of chunks should be transfered from l1 cache to l2
+    # -- The age of chunks should be transferred from l1 cache to l2
     # 4 days
     l2ChunkCacheHandoff: 345600s
     # -- Specifies whether memcached based chunks-cache-l2 should be enabled
@@ -4034,6 +4040,17 @@ rollout_operator:
 # -- Configuration for the minio subchart
 minio:
   enabled: false
+  # Override the upstream MinIO, Inc. images with the Pigsty (pgsty) community
+  # fork to mitigate the unresolved CVE in the abandoned MinIO images.
+  # See https://github.com/pgsty/minio for details.
+  image:
+    repository: docker.io/pgsty/minio
+    tag: RELEASE.2026-03-14T12-00-00Z
+    pullPolicy: IfNotPresent
+  mcImage:
+    repository: docker.io/pgsty/mc
+    tag: RELEASE.2026-03-13T08-57-32Z
+    pullPolicy: IfNotPresent
   replicas: 1
   # Minio requires 2 to 16 drives for erasure code (drivesPerNode * replicas)
   # https://docs.min.io/docs/minio-erasure-code-quickstart-guide

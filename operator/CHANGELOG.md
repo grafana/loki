@@ -1,5 +1,19 @@
 ## Main
 
+## [0.10.1](https://github.com/grafana/loki/compare/operator/v0.10.0...operator/v0.10.1) (2026-04-16)
+
+
+### Features
+
+* **operator:** migrate to thanos objstore backend ([#20475](https://github.com/grafana/loki/issues/20475)) ([ffcac2c](https://github.com/grafana/loki/commit/ffcac2ca4562fc8a270e94961d3a4d5fe91c323a))
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.79.3 [security] (main) ([#21192](https://github.com/grafana/loki/issues/21192)) ([606472c](https://github.com/grafana/loki/commit/606472cc13a795501ddd2a59102661a80170f124))
+* **operator:** tidy go.mod ([#21323](https://github.com/grafana/loki/issues/21323)) ([119622b](https://github.com/grafana/loki/commit/119622b87e696e4a5a873e86aace4a93ebfcdece))
+* **operator:** update latency alert to reflect ingester timeout ([#21370](https://github.com/grafana/loki/issues/21370)) ([91f0ce4](https://github.com/grafana/loki/commit/91f0ce486fd0628ffd296883b440ed8ffb3cf062))
+
 ## [0.10.0](https://github.com/grafana/loki/compare/operator/v0.9.0...operator/v0.10.0) (2026-03-18)
 
 

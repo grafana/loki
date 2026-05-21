@@ -70,7 +70,7 @@ func MustParseDayTime(s string) config.DayTime {
 var defaultPeriodConfigs = []config.PeriodConfig{
 	{
 		From:      MustParseDayTime("1900-01-01"),
-		IndexType: types.StorageTypeBigTable,
+		IndexType: types.IndexTypeTSDB,
 		Schema:    "v13",
 	},
 }
@@ -322,7 +322,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 		require.NoError(t, err)
 		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
 		require.NoError(t, err)
-		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, labels.EmptyLabels(), true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, stream.policy).NewChunk()
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, labels.EmptyLabels(), NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, stream.policy).NewChunk()
 		for _, entry := range testStream.Entries {
 			dup, err := chunk.Append(&entry)
 			require.False(t, dup)
@@ -449,7 +449,7 @@ func Test_SeriesQuery(t *testing.T) {
 			},
 			[]logproto.SeriesIdentifier{
 				// Separated by shard number
-				{Labels: logproto.MustNewSeriesEntries("app", "test2", "job", "varlogs")},
+				{Labels: logproto.MustNewSeriesEntries("app", "test", "job", "varlogs")},
 			},
 		},
 		{
@@ -585,7 +585,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, policy))
+			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, policy))
 		}
 	})
 }
@@ -722,7 +722,7 @@ func Test_PipelineWrapper(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
 				Direction: logproto.BACKWARD,
-				Shards:    []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+				Shards:    []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{job="3"}`),
 				},
@@ -763,7 +763,7 @@ func Test_PipelineWrapper_disabled(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
 				Direction: logproto.BACKWARD,
-				Shards:    []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+				Shards:    []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{job="3"}`),
 				},
@@ -855,7 +855,7 @@ func Test_ExtractorWrapper(t *testing.T) {
 					Selector: `sum(count_over_time({job="3"}[1m]))`,
 					Start:    time.Unix(0, 0),
 					End:      time.Unix(0, 100000000),
-					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
 					Plan: &plan.QueryPlan{
 						AST: syntax.MustParseExpr(`sum(count_over_time({job="3"}[1m]))`),
 					},
@@ -892,7 +892,7 @@ func Test_ExtractorWrapper(t *testing.T) {
 					Selector: `variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"[1m]})`,
 					Start:    time.Unix(0, 0),
 					End:      time.Unix(0, 100000000),
-					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
 					Plan: &plan.QueryPlan{
 						AST: syntax.MustParseExpr(
 							`variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"}[1m])`,
@@ -939,7 +939,7 @@ func Test_ExtractorWrapper_disabled(t *testing.T) {
 					Selector: `sum(count_over_time({job="3"}[1m]))`,
 					Start:    time.Unix(0, 0),
 					End:      time.Unix(0, 100000000),
-					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
 					Plan: &plan.QueryPlan{
 						AST: syntax.MustParseExpr(`sum(count_over_time({job="3"}[1m]))`),
 					},
@@ -967,7 +967,7 @@ func Test_ExtractorWrapper_disabled(t *testing.T) {
 					Selector: `variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"[1m]})`,
 					Start:    time.Unix(0, 0),
 					End:      time.Unix(0, 100000000),
-					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 1}.String()},
+					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
 					Plan: &plan.QueryPlan{
 						AST: syntax.MustParseExpr(
 							`variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"}[1m])`,

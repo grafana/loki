@@ -64,7 +64,7 @@ func NewHTTP2Listener(addr net.Addr, optFuncs ...HTTP2ListenerOptFunc) *HTTP2Lis
 
 		incoming: make(chan *http2Conn),
 		closed:   make(chan struct{}),
-		codec:    defaultFrameCodec,
+		codec:    DefaultFrameCodec,
 	}
 
 	return l
@@ -327,7 +327,7 @@ func NewHTTP2Dialer(path string) *HTTP2Dialer {
 			// Context is used for cancellation, no timeout
 			Timeout: 0,
 		},
-		codec: defaultFrameCodec,
+		codec: DefaultFrameCodec,
 		path:  path,
 	}
 }

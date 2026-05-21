@@ -35,6 +35,11 @@ const (
 	scopeNameLabel    = scopeLabelPrefix + "name"
 	scopeVersionLabel = scopeLabelPrefix + "version"
 	scopeSchemaLabel  = scopeLabelPrefix + "schema_url"
+	// metrics from the prometehus bridge are ignored because this produces
+	// errors. Users should directly register prometheus metrics with the
+	// Registerer, rather than round-tripping them through the bridge and
+	// exporter.
+	bridgeScopeName = "go.opentelemetry.io/contrib/bridges/prometheus"
 )
 
 var metricsPool = sync.Pool{
@@ -96,6 +101,8 @@ type collector struct {
 	unitNamer         otlptranslator.UnitNamer
 
 	inst *observ.Instrumentation
+
+	bridgeErrorOnce sync.Once
 }
 
 // New returns a Prometheus Exporter.
@@ -229,6 +236,12 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	for j, scopeMetrics := range metrics.ScopeMetrics {
+		if scopeMetrics.Scope.Name == bridgeScopeName {
+			c.bridgeErrorOnce.Do(func() {
+				otel.Handle(errBridgeNotSupported)
+			})
+			continue
+		}
 		n := len(c.resourceKeyVals.keys) + 2 // resource attrs + scope name + scope version
 		kv := keyVals{
 			keys: make([]string, 0, n),

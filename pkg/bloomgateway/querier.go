@@ -112,7 +112,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	defer logger.Finish()
 
 	grouped := groupedChunksRefPool.Get(len(chunkRefs))
-	defer groupedChunksRefPool.Put(grouped)
+	defer func() { groupedChunksRefPool.Put(grouped) }()
 	grouped = groupChunkRefs(series, chunkRefs, grouped)
 
 	preFilterChunks := len(chunkRefs)

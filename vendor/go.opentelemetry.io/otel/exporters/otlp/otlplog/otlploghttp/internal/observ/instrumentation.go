@@ -21,8 +21,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal/x"
 	"go.opentelemetry.io/otel/internal/global"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
-	"go.opentelemetry.io/otel/semconv/v1.37.0/otelconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/semconv/v1.40.0/otelconv"
 )
 
 const (
@@ -184,16 +184,18 @@ func ServerAddrAttrs(target string) []attribute.KeyValue {
 func (i *Instrumentation) ExportLogs(ctx context.Context, count int64) ExportOp {
 	start := time.Now()
 
-	addOpt := get[metric.AddOption](addOptPool)
-	defer put(addOptPool, addOpt)
-	*addOpt = append(*addOpt, i.addOpt)
-	i.inflightMetric.Add(ctx, count, *addOpt...)
+	if i.inflightMetric.Enabled(ctx) {
+		addOpt := get[metric.AddOption](addOptPool)
+		defer put(addOptPool, addOpt)
+		*addOpt = append(*addOpt, i.addOpt)
+		i.inflightMetric.Add(ctx, count, *addOpt...)
+	}
 
 	return ExportOp{
 		ctx:   ctx,
-		start: start,
 		inst:  i,
 		count: count,
+		start: start,
 	}
 }
 
@@ -214,15 +216,30 @@ type ExportOp struct {
 // of successfully exported logs will be determined by inspecting the
 // RejectedItems field of the PartialSuccess.
 func (e ExportOp) End(err error, code int) {
-	addOpt := get[metric.AddOption](addOptPool)
-	defer put(addOptPool, addOpt)
-	*addOpt = append(*addOpt, e.inst.addOpt)
+	inflightEnabled := e.inst.inflightMetric.Enabled(e.ctx)
+	exportedEnabled := e.inst.exportedMetric.Enabled(e.ctx)
+	durationEnabled := e.inst.operationDuration.Enabled(e.ctx)
 
-	e.inst.inflightMetric.Add(e.ctx, -e.count, *addOpt...)
-	success := successful(e.count, err)
-	e.inst.exportedMetric.Add(e.ctx, success, *addOpt...)
+	if !inflightEnabled && !exportedEnabled && !durationEnabled {
+		return
+	}
 
-	if err != nil {
+	var success int64
+	if inflightEnabled || exportedEnabled {
+		addOpt := get[metric.AddOption](addOptPool)
+		defer put(addOptPool, addOpt)
+		*addOpt = append(*addOpt, e.inst.addOpt)
+
+		if inflightEnabled {
+			e.inst.inflightMetric.Add(e.ctx, -e.count, *addOpt...)
+		}
+		if exportedEnabled {
+			success = successful(e.count, err)
+			e.inst.exportedMetric.Add(e.ctx, success, *addOpt...)
+		}
+	}
+
+	if err != nil && exportedEnabled {
 		attrs := get[attribute.KeyValue](attrsPool)
 		defer put(attrsPool, attrs)
 
@@ -233,12 +250,13 @@ func (e ExportOp) End(err error, code int) {
 		e.inst.exportedMetric.Add(e.ctx, e.count-success, a)
 	}
 
-	record := get[metric.RecordOption](recordPool)
-	defer put(recordPool, record)
-	*record = append(*record, e.recordOption(err, code))
-
-	duration := time.Since(e.start).Seconds()
-	e.inst.operationDuration.Record(e.ctx, duration, *record...)
+	if durationEnabled {
+		record := get[metric.RecordOption](recordPool)
+		defer put(recordPool, record)
+		*record = append(*record, e.recordOption(err, code))
+		duration := time.Since(e.start).Seconds()
+		e.inst.operationDuration.Record(e.ctx, duration, *record...)
+	}
 }
 
 func (e ExportOp) recordOption(err error, code int) metric.RecordOption {

@@ -11,11 +11,15 @@ keywords:
 
 # Install the simple scalable Helm chart
 
+This Helm Chart deploys Grafana Loki in [simple scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) within a Kubernetes cluster.
+
 {{< admonition type="note" >}}
-Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
+As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champions and the Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the chart against the Grafana-community repo. Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
 {{< /admonition >}}
 
-This Helm Chart deploys Grafana Loki in [simple scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) within a Kubernetes cluster.
+{{< admonition type="tip" >}}
+With the move to the Grafana-community repository, the chart numbering has changed. Major version updates signal breaking changes in the chart. For more information, refer to the [README](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading).
+{{< /admonition >}}
 
 This chart configures Loki to run `read`, `write`, and `backend` targets in a [scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable). Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets.
 
@@ -27,7 +31,8 @@ The default Helm chart deploys the following components:
 - Loki Canary (1 DaemonSet)
 - Gateway (1 NGINX replica)
 - Minio (optional, if `minio.enabled=true`)
-- Index and Chunk cache (1 replica)
+- Chunks cache (1 replica)
+- Results cache (1 replica)
 
 {{< admonition type="note" >}}
 We do not recommended running scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example.
@@ -42,10 +47,10 @@ We do not recommended running scalable mode with `filesystem` storage. For the p
 
 The following steps show how to deploy the Loki Helm chart in simple scalable mode using the included MinIO as the storage backend. Our recommendation is to start here for development and testing purposes. Then configure Loki with an object storage provider when moving to production.
 
-1. Add [Grafana's chart repository](https://github.com/grafana/helm-charts) to Helm:
+1. Add the [Grafana Community chart repository](https://github.com/grafana-community/helm-charts) to Helm:
 
    ```bash
-   helm repo add grafana https://grafana.github.io/helm-charts
+   helm repo add grafana-community https://grafana-community.github.io/helm-charts
    ```
 
 1. Update the chart repository:
@@ -101,13 +106,13 @@ The following steps show how to deploy the Loki Helm chart in simple scalable mo
  - To install:
 
    ```bash
-   helm install --values values.yaml loki grafana/loki
+   helm install --values values.yaml loki grafana-community/loki
    ```
 
  - To upgrade:
 
    ```bash
-   helm upgrade --values values.yaml loki grafana/loki
+   helm upgrade --values values.yaml loki grafana-community/loki
    ```
 
 ## Object Storage Configuration
@@ -137,7 +142,7 @@ loki:
       bucketnames: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
       s3forcepathstyle: false
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
@@ -148,9 +153,9 @@ loki:
   storage:
     type: s3
     bucketNames:
-        chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
-        ruler: <Your AWS bucket for ruler, for example,  `aws-loki-dev-ruler`>
-        admin: <Your AWS bucket for admin, for example,  `aws-loki-dev-admin`>
+      chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
+      ruler: <Your AWS bucket for ruler, for example,  `aws-loki-dev-ruler`>
+      admin: <Your AWS bucket for admin, for example,  `aws-loki-dev-admin`>
     s3:
       # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or if you are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
@@ -250,6 +255,47 @@ minio:
 {{< /collapse >}}
 
 To configure other storage providers, refer to the [Helm Chart Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/).
+
+## Gateway API
+
+As an alternative to traditional Kubernetes Ingress, the Loki Helm chart supports [Gateway API](https://gateway-api.sigs.k8s.io/) routes. There are two independent options depending on whether you want to keep the nginx gateway or bypass it entirely.
+
+### Option 1: Expose the nginx gateway via Gateway API
+
+Use `gateway.route` to replace `gateway.ingress` with a Gateway API route that points to the nginx gateway. This keeps nginx as the proxy but exposes it through a Gateway API resource instead of a traditional Ingress.
+
+```yaml
+gateway:
+  ingress:
+    enabled: false  # disable traditional Ingress
+  route:
+    main:
+      enabled: true
+      kind: HTTPRoute
+      parentRefs:
+        - name: my-gateway
+          namespace: gateway-namespace
+      hostnames:
+        - loki.example.com
+```
+
+### Option 2: Bypass nginx and route directly to Loki services
+
+Use the top-level `route:` key (mutually exclusive with the top-level `ingress:`) to route Gateway API traffic directly to Loki services, bypassing nginx. The chart auto-generates path-based rules that route write traffic to the write component and read traffic to the read component.
+
+```yaml
+route:
+  main:
+    enabled: true
+    kind: HTTPRoute
+    parentRefs:
+      - name: my-gateway
+        namespace: gateway-namespace
+    hostnames:
+      - loki.example.com
+```
+
+For both options, if `apiVersion` is not set, the chart auto-detects the latest available Gateway API version installed in the cluster. Supported route kinds include `HTTPRoute`, `GRPCRoute`, `TCPRoute`, `TLSRoute`, and `UDPRoute`.
 
 ## Next Steps
 

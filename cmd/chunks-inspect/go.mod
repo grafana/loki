@@ -1,12 +1,10 @@
 module github.com/grafana/loki/cmd/chunks-inspect
 
-go 1.23
-
-toolchain go1.24.0
+go 1.26.2
 
 require (
 	github.com/golang/snappy v1.0.0
-	github.com/klauspost/compress v1.18.4
+	github.com/klauspost/compress v1.18.5
 	github.com/pierrec/lz4 v2.6.1+incompatible
 )
 

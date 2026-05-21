@@ -11,8 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/util"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -20,8 +19,8 @@ import (
 var jobName = "docker"
 
 type loki struct {
-	client  client.Client
-	handler api.EntryHandler
+	client  util.Client
+	handler util.EntryHandler
 	labels  model.LabelSet
 	logger  log.Logger
 
@@ -38,12 +37,12 @@ func New(logCtx logger.Info, logger log.Logger) (logger.Logger, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := client.NewMetrics(prometheus.DefaultRegisterer)
-	c, err := client.New(m, cfg.clientConfig, 0, 0, false, logger)
+	m := util.NewMetrics(prometheus.DefaultRegisterer)
+	c, err := util.New(m, cfg.clientConfig, 0, 0, false, logger)
 	if err != nil {
 		return nil, err
 	}
-	var handler api.EntryHandler = c
+	var handler util.EntryHandler = c
 	var stop = func() {}
 	if len(cfg.pipeline.PipelineStages) != 0 {
 		pipeline, err := stages.NewPipeline(logger, cfg.pipeline.PipelineStages, &jobName, prometheus.DefaultRegisterer)
@@ -78,7 +77,7 @@ func (l *loki) Log(m *logger.Message) error {
 	if m.Source != "" {
 		lbs["source"] = model.LabelValue(m.Source)
 	}
-	l.handler.Chan() <- api.Entry{
+	l.handler.Chan() <- util.Entry{
 		Labels: lbs,
 		Entry: logproto.Entry{
 			Timestamp: m.Timestamp,

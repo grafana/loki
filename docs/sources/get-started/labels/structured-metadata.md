@@ -45,8 +45,8 @@ You can disable Structured Metadata by setting `allow_structured_metadata: false
 You have the option to attach structured metadata to log lines in the push payload along with each log line and the timestamp.
 For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/api/#ingest-logs).
 
-Alternatively, you can use Grafana Alloy or Promtail to extract and attach structured metadata to your log lines.
-See the [Promtail: Structured metadata stage](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/structured_metadata/) for more information.
+Alternatively, you can use Grafana Alloy to extract and attach structured metadata to your log lines.
+See the [Alloy `stage.structured_metadata` block](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagestructured_metadata) for more information.
 
 With Loki version 1.2.0, support for structured metadata has been added to the Logstash output plugin. For more information, see [logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/).
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/compute"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -18,7 +19,7 @@ func BenchmarkIsMember(b *testing.B) {
 	for i := range 1000 {
 		data = append(data, fmt.Sprintf("test%d", i))
 	}
-	searchData := columnartest.Array(b, columnar.KindUTF8, &alloc, data...)
+	searchData := columnartest.Array(b, types.KindUTF8, &alloc, data...)
 
 	// 1000 keys
 	values := make([]string, 1000)
@@ -46,7 +47,7 @@ func BenchmarkIsMember_UTF8(b *testing.B) {
 			for i := 0; i < benchmarkSize; i++ {
 				data[i] = fmt.Sprintf("value%d", i%100)
 			}
-			searchData := columnartest.Array(b, columnar.KindUTF8, &alloc, data...)
+			searchData := columnartest.Array(b, types.KindUTF8, &alloc, data...)
 
 			// Create search set with 50% of values present
 			values := make([]string, 50)
@@ -82,7 +83,7 @@ func BenchmarkIsMember_Int64(b *testing.B) {
 			for i := 0; i < benchmarkSize; i++ {
 				data[i] = int64(i % 100)
 			}
-			searchData := columnartest.Array(b, columnar.KindInt64, &alloc, data...)
+			searchData := columnartest.Array(b, types.KindInt64, &alloc, data...)
 
 			// Create search set with 50% of values present
 			values := make([]int64, 50)
@@ -118,7 +119,7 @@ func BenchmarkIsMember_Uint64(b *testing.B) {
 			for i := 0; i < benchmarkSize; i++ {
 				data[i] = uint64(i % 100)
 			}
-			searchData := columnartest.Array(b, columnar.KindUint64, &alloc, data...)
+			searchData := columnartest.Array(b, types.KindUint64, &alloc, data...)
 
 			// Create search set with 50% of values present
 			values := make([]uint64, 50)

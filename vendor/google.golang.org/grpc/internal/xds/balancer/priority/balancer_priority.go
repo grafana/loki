@@ -128,7 +128,7 @@ func (b *priorityBalancer) stopSubBalancersLowerThanPriority(p int) {
 			b.logger.Warningf("Priority name %q is not found in list of child policies", name)
 			continue
 		}
-		child.stop()
+		child.stop(false)
 	}
 }
 

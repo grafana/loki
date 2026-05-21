@@ -364,6 +364,9 @@ func CopyObject(cli bce.Client, bucket, object, source string, args *CopyObjectA
 	if len(source) == 0 {
 		return nil, bce.NewBceClientError("copy source should not be null")
 	}
+	if len(args.SrcVersionId) > 0 {
+		source = source + "?versionId=" + args.SrcVersionId
+	}
 	req.SetHeader(http.BCE_COPY_SOURCE, util.UriEncode(source, false))
 	if ctx == nil {
 		ctx = newDefaultBosContext()
@@ -985,7 +988,12 @@ func GeneratePresignedUrlInternal(conf *bce.BceClientConfiguration, signer auth.
 	if len(method) == 0 {
 		method = http.GET
 	}
-	if method == http.GET && (object == "" || object == "v1") {
+	objectTrimSlash := strings.Trim(object, "/")
+	if method == http.GET && objectTrimSlash == "" {
+		log.Warnf("objectKey is empty, cannot generate presigned url.")
+		return ""
+	}
+	if !path_style && method == http.GET && objectTrimSlash == "v1" {
 		log.Warnf("objectKey '%s' is invalid, cannot generate presigned url.", object)
 		return ""
 	}
