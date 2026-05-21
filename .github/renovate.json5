@@ -125,6 +125,15 @@
       automerge: false,
     },
     {
+      // Disable al upgrades for grafana/dskit We run off main and update manually
+      matchPackageNames: [
+        'github.com/grafana/dskit',
+      ],
+      enabled: false,
+      autoApprove: false,
+      automerge: false,
+    },
+    {
       // Enable all other updates, and auto-merge minor and patch updates
       matchFileNames: [
         '!operator/go.mod',
