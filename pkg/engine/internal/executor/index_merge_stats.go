@@ -194,6 +194,12 @@ func (r *statsPileReader) Err() error {
 }
 
 // PileIdx returns the pile's index in the merge.
+// Exhausted reports whether Next has returned false. After exhaustion the
+// sequence holds no more records; Value's return is undefined.
+func (r *statsPileReader) Exhausted() bool {
+	return r.exhausted
+}
+
 func (r *statsPileReader) PileIdx() int {
 	return r.pileIdx
 }

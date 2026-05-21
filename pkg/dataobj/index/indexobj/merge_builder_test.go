@@ -325,11 +325,11 @@ type postingsRow struct {
 	ObjectPath     string
 	SectionIndex   int64
 	ColumnName     string
-	LabelValue     string       // empty for KindBloom rows
-	BloomFilter    []byte       // nil for KindLabel rows
+	LabelValue     string // empty for KindBloom rows
+	BloomFilter    []byte // nil for KindLabel rows
 	StreamIDBitmap []byte
-	MinTimestamp   int64        // unix nanos
-	MaxTimestamp   int64        // unix nanos
+	MinTimestamp   int64 // unix nanos
+	MaxTimestamp   int64 // unix nanos
 }
 
 // statsRow is a decoded per-row representation of a stats section row.
