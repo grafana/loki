@@ -153,7 +153,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 					section: sec,
 					runIdx:  entry.runIdx,
 				})
-			// default: skip silently (streams/pointers/indexPointers etc.)
+				// default: skip silently (streams/pointers/indexPointers etc.)
 			}
 		}
 	}

@@ -149,8 +149,8 @@ func NewConfig() *Config {
 		IndexobjBuilder: logsobj.BuilderBaseConfig{
 			TargetPageSize:          2048,
 			MaxPageRows:             10000,
-			TargetObjectSize:        1 << 22, // 4 MiB
-			TargetSectionSize:       1 << 21, // 2 MiB
+			TargetObjectSize:        1 << 22,  // 4 MiB
+			TargetSectionSize:       1 << 21,  // 2 MiB
 			BufferSize:              2048 * 8, // 16 KiB
 			SectionStripeMergeLimit: 2,
 		},
