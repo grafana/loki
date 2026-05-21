@@ -1,16 +1,26 @@
 package distributor
 
 import (
-	"fmt"
 	"math/rand/v2"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
-	circuitBreakerClosed   = "closed"
-	circuitBreakerOpen     = "open"
-	circuitBreakerHalfOpen = "half-open"
+	circuitBreakerClosed = iota
+	circuitBreakerOpen
+	circuitBreakerHalfOpen
+)
+
+var (
+	circuitBreakerStateDesc = prometheus.NewDesc(
+		"loki_distributor_circuit_breaker_state",
+		"The state of the circuit breaker.",
+		nil,
+		nil,
+	)
 )
 
 // An interface for circuit breakers.
@@ -27,7 +37,7 @@ type circuitBreaker interface {
 // accepts more requests for each second that passes in half-opened until
 // the half-open period is over.
 type linearRampCircuitBreaker struct {
-	state                      string
+	state                      int
 	openPeriod, halfOpenPeriod time.Duration
 	lastOpened                 time.Time
 	randf64                    func() float64
@@ -59,7 +69,7 @@ func (b *linearRampCircuitBreaker) IsPermitted() bool {
 		return b.handleHalfOpenState()
 	default:
 		// defer will ensure that mtx is unlocked even after a panic.
-		panic(fmt.Sprintf("Unknown state: %s", b.state))
+		panic("Unknown state")
 	}
 }
 
@@ -68,6 +78,22 @@ func (b *linearRampCircuitBreaker) Open() {
 	defer b.mtx.Unlock()
 	b.state = circuitBreakerOpen
 	b.lastOpened = time.Now()
+}
+
+// Describe implements [prometheus.Collector].
+func (b *linearRampCircuitBreaker) Describe(descs chan<- *prometheus.Desc) {
+	descs <- circuitBreakerStateDesc
+}
+
+// Collect implements [prometheus.Collector].
+func (b *linearRampCircuitBreaker) Collect(metrics chan<- prometheus.Metric) {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+	metrics <- prometheus.MustNewConstMetric(
+		circuitBreakerStateDesc,
+		prometheus.GaugeValue,
+		float64(b.state),
+	)
 }
 
 func (b *linearRampCircuitBreaker) handleOpenState() bool {

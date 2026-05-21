@@ -415,8 +415,10 @@ func New(
 			Objectives: map[float64]float64{1.0: 0.1},
 			MaxAge:     time.Minute,
 		}),
-		circuitBreaker: newLinearRampCircuitBreaker(time.Second, 30*time.Second),
 	}
+	cb := newLinearRampCircuitBreaker(time.Second, 30*time.Second)
+	registerer.MustRegister(cb)
+	d.circuitBreaker = cb
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
