@@ -1,15 +1,12 @@
 package indexobj
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
 	"testing"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
@@ -318,33 +315,9 @@ func TestMergeBuilder_MultiTenant(t *testing.T) {
 	require.Equal(t, stat2.RowCount, rows2[0].RowCount)
 }
 
-// postingsRow is a decoded per-row representation of a postings section row,
-// covering both label and bloom kinds.
-type postingsRow struct {
-	Kind           postings.PostingKind
-	ObjectPath     string
-	SectionIndex   int64
-	ColumnName     string
-	LabelValue     string // empty for KindBloom rows
-	BloomFilter    []byte // nil for KindLabel rows
-	StreamIDBitmap []byte
-	MinTimestamp   int64 // unix nanos
-	MaxTimestamp   int64 // unix nanos
-}
-
-// statsRow is a decoded per-row representation of a stats section row.
-type statsRow struct {
-	ObjectPath       string
-	SectionIndex     int64
-	RowCount         int64
-	UncompressedSize int64
-	MinTimestamp     int64
-	MaxTimestamp     int64
-}
-
 // readAllPostingsRows opens a postings section and returns all decoded rows.
 // It drains the reader in batches and decodes each row from the Arrow record batches.
-func readAllPostingsRows(t *testing.T, ctx context.Context, sec *postings.Section) []postingsRow {
+func readAllPostingsRows(t *testing.T, ctx context.Context, sec *postings.Section) []postings.Row {
 	t.Helper()
 
 	r := postings.NewReader(postings.ReaderOptions{
@@ -354,7 +327,10 @@ func readAllPostingsRows(t *testing.T, ctx context.Context, sec *postings.Sectio
 	require.NoError(t, r.Open(ctx))
 	t.Cleanup(func() { _ = r.Close() })
 
-	var rows []postingsRow
+	var (
+		rows    []postings.Row
+		columns postings.ColumnIndex
+	)
 	for {
 		batch, err := r.Read(ctx, 128)
 		if err != nil && !errors.Is(err, io.EOF) {
@@ -368,16 +344,14 @@ func readAllPostingsRows(t *testing.T, ctx context.Context, sec *postings.Sectio
 			continue
 		}
 
-		// Build a column name to index map for decoding.
-		columns := make(map[string]int)
-		for i, field := range batch.Schema().Fields() {
-			columns[field.Name] = i
+		// Build column index on first batch.
+		if columns == nil {
+			columns = postings.BuildColumnIndex(batch.Schema())
 		}
 
 		// Decode each row in the batch.
 		for rowIdx := 0; rowIdx < int(batch.NumRows()); rowIdx++ {
-			row := decodePostingsRow(batch, columns, rowIdx)
-			rows = append(rows, row)
+			rows = append(rows, postings.DecodeRow(batch, columns, rowIdx))
 		}
 
 		if errors.Is(err, io.EOF) {
@@ -388,52 +362,9 @@ func readAllPostingsRows(t *testing.T, ctx context.Context, sec *postings.Sectio
 	return rows
 }
 
-// decodePostingsRow extracts a single row from an Arrow record batch.
-func decodePostingsRow(batch arrow.RecordBatch, columns map[string]int, rowIndex int) postingsRow {
-	result := postingsRow{}
-
-	// Helper to safely extract a column value by name.
-	getColumn := func(name string) arrow.Array {
-		if idx, ok := columns[name]; ok {
-			return batch.Column(idx)
-		}
-		return nil
-	}
-
-	if col := getColumn("kind.int64"); col != nil && !col.IsNull(rowIndex) {
-		result.Kind = postings.PostingKind(col.(*array.Int64).Value(rowIndex))
-	}
-	if col := getColumn("object_path.utf8"); col != nil && !col.IsNull(rowIndex) {
-		result.ObjectPath = col.(*array.String).Value(rowIndex)
-	}
-	if col := getColumn("section_index.int64"); col != nil && !col.IsNull(rowIndex) {
-		result.SectionIndex = col.(*array.Int64).Value(rowIndex)
-	}
-	if col := getColumn("column_name.utf8"); col != nil && !col.IsNull(rowIndex) {
-		result.ColumnName = col.(*array.String).Value(rowIndex)
-	}
-	if col := getColumn("label_value.utf8"); col != nil && !col.IsNull(rowIndex) {
-		result.LabelValue = col.(*array.String).Value(rowIndex)
-	}
-	if col := getColumn("stream_id_bitmap.binary"); col != nil && !col.IsNull(rowIndex) {
-		result.StreamIDBitmap = bytes.Clone(col.(*array.Binary).Value(rowIndex))
-	}
-	if col := getColumn("bloom_filter.binary"); col != nil && !col.IsNull(rowIndex) {
-		result.BloomFilter = bytes.Clone(col.(*array.Binary).Value(rowIndex))
-	}
-	if col := getColumn("min_timestamp.timestamp"); col != nil && !col.IsNull(rowIndex) {
-		result.MinTimestamp = int64(col.(*array.Timestamp).Value(rowIndex))
-	}
-	if col := getColumn("max_timestamp.timestamp"); col != nil && !col.IsNull(rowIndex) {
-		result.MaxTimestamp = int64(col.(*array.Timestamp).Value(rowIndex))
-	}
-
-	return result
-}
-
 // readAllStatsRows opens a stats section and returns all decoded rows.
 // It drains the reader in batches and decodes each row from the Arrow record batches.
-func readAllStatsRows(t *testing.T, ctx context.Context, sec *stats.Section) []statsRow {
+func readAllStatsRows(t *testing.T, ctx context.Context, sec *stats.Section) []stats.Stat {
 	t.Helper()
 
 	r := stats.NewReader(stats.ReaderOptions{
@@ -443,7 +374,10 @@ func readAllStatsRows(t *testing.T, ctx context.Context, sec *stats.Section) []s
 	require.NoError(t, r.Open(ctx))
 	t.Cleanup(func() { _ = r.Close() })
 
-	var rows []statsRow
+	var (
+		rows    []stats.Stat
+		columns stats.ColumnIndex
+	)
 	for {
 		batch, err := r.Read(ctx, 128)
 		if err != nil && !errors.Is(err, io.EOF) {
@@ -457,16 +391,14 @@ func readAllStatsRows(t *testing.T, ctx context.Context, sec *stats.Section) []s
 			continue
 		}
 
-		// Build a column name to index map for decoding.
-		columns := make(map[string]int)
-		for i, field := range batch.Schema().Fields() {
-			columns[field.Name] = i
+		// Build column index on first batch.
+		if columns == nil {
+			columns = stats.BuildColumnIndex(batch.Schema())
 		}
 
 		// Decode each row in the batch.
 		for rowIdx := 0; rowIdx < int(batch.NumRows()); rowIdx++ {
-			row := decodeStatsRow(batch, columns, rowIdx)
-			rows = append(rows, row)
+			rows = append(rows, stats.DecodeRow(batch, columns, rowIdx))
 		}
 
 		if errors.Is(err, io.EOF) {
@@ -475,40 +407,6 @@ func readAllStatsRows(t *testing.T, ctx context.Context, sec *stats.Section) []s
 	}
 
 	return rows
-}
-
-// decodeStatsRow extracts a single row from an Arrow record batch.
-func decodeStatsRow(batch arrow.RecordBatch, columns map[string]int, rowIndex int) statsRow {
-	result := statsRow{}
-
-	// Helper to safely extract a column value by name.
-	getColumn := func(name string) arrow.Array {
-		if idx, ok := columns[name]; ok {
-			return batch.Column(idx)
-		}
-		return nil
-	}
-
-	if col := getColumn("object_path.utf8"); col != nil && !col.IsNull(rowIndex) {
-		result.ObjectPath = col.(*array.String).Value(rowIndex)
-	}
-	if col := getColumn("section_index.int64"); col != nil && !col.IsNull(rowIndex) {
-		result.SectionIndex = col.(*array.Int64).Value(rowIndex)
-	}
-	if col := getColumn("row_count.int64"); col != nil && !col.IsNull(rowIndex) {
-		result.RowCount = col.(*array.Int64).Value(rowIndex)
-	}
-	if col := getColumn("uncompressed_size.int64"); col != nil && !col.IsNull(rowIndex) {
-		result.UncompressedSize = col.(*array.Int64).Value(rowIndex)
-	}
-	if col := getColumn("min_timestamp.timestamp"); col != nil && !col.IsNull(rowIndex) {
-		result.MinTimestamp = int64(col.(*array.Timestamp).Value(rowIndex))
-	}
-	if col := getColumn("max_timestamp.timestamp"); col != nil && !col.IsNull(rowIndex) {
-		result.MaxTimestamp = int64(col.(*array.Timestamp).Value(rowIndex))
-	}
-
-	return result
 }
 
 // TestMergeBuilder_Reset verifies that Reset clears all state.

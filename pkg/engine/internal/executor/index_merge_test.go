@@ -321,7 +321,7 @@ func TestPostingsPileReader_RoundTrip(t *testing.T) {
 	pileReader := newPostingsPileReader(ctx, sec, 0)
 	defer pileReader.Close()
 
-	var rows []postingsRow
+	var rows []postings.Row
 	for pileReader.Next() {
 		rows = append(rows, pileReader.Value())
 	}
@@ -400,7 +400,7 @@ func TestStatsPileReader_RoundTrip(t *testing.T) {
 	pileReader := newStatsPileReader(ctx, sec, 0)
 	defer pileReader.Close()
 
-	var rows []statsRow
+	var rows []stats.Stat
 	for pileReader.Next() {
 		rows = append(rows, pileReader.Value())
 	}
@@ -625,7 +625,7 @@ func TestPostingsPileReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 	pileReader := newPostingsPileReader(ctx, sec, 0)
 	defer pileReader.Close()
 
-	var rows []postingsRow
+	var rows []postings.Row
 	for pileReader.Next() {
 		rows = append(rows, pileReader.Value())
 	}
@@ -981,7 +981,7 @@ func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, _, path string
 
 // readPostingsRowsFromBucket downloads an object from the bucket, finds its
 // postings section, and returns all decoded postings rows.
-func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []postingsRow {
+func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []postings.Row {
 	t.Helper()
 
 	obj := openObjectFromBucket(ctx, t, bucket, path)
@@ -1002,7 +1002,7 @@ func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objsto
 	pileReader := newPostingsPileReader(ctx, sec, 0)
 	defer pileReader.Close()
 
-	var rows []postingsRow
+	var rows []postings.Row
 	for pileReader.Next() {
 		rows = append(rows, pileReader.Value())
 	}
@@ -1015,7 +1015,7 @@ func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objsto
 
 // readStatsRowsFromBucket downloads an object from the bucket, finds its
 // stats section, and returns all decoded stats rows.
-func readStatsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []statsRow {
+func readStatsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []stats.Stat {
 	t.Helper()
 
 	obj := openObjectFromBucket(ctx, t, bucket, path)
@@ -1036,7 +1036,7 @@ func readStatsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.
 	pileReader := newStatsPileReader(ctx, sec, 0)
 	defer pileReader.Close()
 
-	var rows []statsRow
+	var rows []stats.Stat
 	for pileReader.Next() {
 		rows = append(rows, pileReader.Value())
 	}
@@ -1227,7 +1227,7 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 
 	// The overlapping key (log-A, 0, service, api) should have the winner from Source B
 	// (last-wins reducer).
-	var apiRow postingsRow
+	var apiRow postings.Row
 	for _, r := range rows {
 		if r.ObjectPath == "log-A" && r.SectionIndex == 0 &&
 			r.ColumnName == "service" && r.LabelValue == "api" {
@@ -1249,15 +1249,17 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 		"last-wins merger should keep Source B's UncompressedSize")
 }
 
-// TestExecuteIndexMerge_StatsAggregation tests aggregation of overlapping stats rows.
-func TestExecuteIndexMerge_StatsAggregation(t *testing.T) {
+// TestExecuteIndexMerge_StatsDuplicateLastWins verifies that stats rows
+// which collide on the full merge key — (Labels, MinTimestamp,
+// MaxTimestamp, ObjectPath, SectionIndex) — collapse to a single row using
+// the same last-wins reducer as postings.
+func TestExecuteIndexMerge_StatsDuplicateLastWins(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 
-	// Build two source objects with overlapping stats rows (same full key).
-	// In v1.0, true full-key aggregation requires identical timestamps: the
-	// comparator matches the on-disk sort order (Labels, MinTimestamp, MaxTimestamp),
-	// so rows must have the same timestamps to be considered equal keys for merging.
+	// Build two source objects whose stats rows agree on every component of
+	// the new merge key, including (ObjectPath, SectionIndex). This is the
+	// only scenario in which equal-key collisions are now possible.
 	ts1, ts2 := int64(100), int64(200)
 
 	sourceAPath := "source/index-a.dat"
@@ -1310,7 +1312,7 @@ func TestExecuteIndexMerge_StatsAggregation(t *testing.T) {
 
 	rows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
-	// Should have exactly one stats row (overlap aggregated).
+	// Should have exactly one stats row (duplicate collapsed by last-wins).
 	require.Len(t, rows, 1)
 
 	row := rows[0]
@@ -1319,12 +1321,14 @@ func TestExecuteIndexMerge_StatsAggregation(t *testing.T) {
 	require.Equal(t, "service", row.SortSchema)
 	require.Equal(t, map[string]string{"service": "api"}, row.Labels)
 
-	// Verify aggregation on full-key match: timestamps unchanged (both inputs match),
-	// row counts and sizes summed.
-	require.Equal(t, ts1, row.MinTimestamp)             // unchanged since both inputs match
-	require.Equal(t, ts2, row.MaxTimestamp)             // unchanged since both inputs match
-	require.Equal(t, int64(30), row.RowCount)           // 10 + 20
-	require.Equal(t, int64(3000), row.UncompressedSize) // 1000 + 2000
+	// Timestamps unchanged (both inputs match).
+	require.Equal(t, ts1, row.MinTimestamp)
+	require.Equal(t, ts2, row.MaxTimestamp)
+
+	require.Equal(t, int64(20), row.RowCount,
+		"last-wins reducer must keep Source B's RowCount, not aggregate")
+	require.Equal(t, int64(2000), row.UncompressedSize,
+		"last-wins reducer must keep Source B's UncompressedSize, not aggregate")
 }
 
 // TestExecuteIndexMerge_MixedKinds tests merging both postings and stats sections.
@@ -1517,14 +1521,18 @@ func TestExecuteIndexMerge_TaskTTLExceeded(t *testing.T) {
 		"expected deadline exceeded with 1µs TTL and %d-row corpus", rowCount)
 }
 
-// TestExecuteIndexMerge_RowCountSum tests precise row count aggregation across multiple sources.
-func TestExecuteIndexMerge_RowCountSum(t *testing.T) {
+// TestExecuteIndexMerge_StatsDuplicateLastWinsMultiSource verifies
+// last-wins behavior across more than two duplicate sources. With four
+// piles colliding on the same (Labels, MinTimestamp, MaxTimestamp,
+// ObjectPath, SectionIndex), the merge emits a single row carrying the
+// values from the highest pile index (pile 3 here).
+func TestExecuteIndexMerge_StatsDuplicateLastWinsMultiSource(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 
-	// Build 4 source objects with overlapping stats rows at the same full key,
-	// each with a different RowCount and UncompressedSize. All must have identical
-	// timestamps to match the full key for aggregation (see v1.0 design).
+	// Build 4 source objects whose stats rows collide on every component of
+	// the new merge key. They differ only in their counts, so we can prove
+	// which pile's row survives.
 	const sourceCount = 4
 	rowCounts := []int64{10, 20, 30, 40}
 	uncompressedSizes := []int64{1000, 2000, 3000, 4000}
@@ -1572,15 +1580,15 @@ func TestExecuteIndexMerge_RowCountSum(t *testing.T) {
 
 	rows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
-	// Should have exactly one row (all sources merged at identical full key).
+	// Should have exactly one row (all duplicates collapsed by last-wins).
 	require.Len(t, rows, 1)
 
 	row := rows[0]
-	// Verify exact sum: 10 + 20 + 30 + 40 = 100
-	require.Equal(t, int64(100), row.RowCount)
-	// Verify exact sum: 1000 + 2000 + 3000 + 4000 = 10000
-	require.Equal(t, int64(10000), row.UncompressedSize)
-	// Timestamps unchanged (all inputs identical)
+	require.Equal(t, int64(40), row.RowCount,
+		"last-wins must keep the highest pile index's RowCount")
+	require.Equal(t, int64(4000), row.UncompressedSize,
+		"last-wins must keep the highest pile index's UncompressedSize")
+	// Timestamps unchanged (all inputs identical).
 	require.Equal(t, ts1, row.MinTimestamp)
 	require.Equal(t, ts2, row.MaxTimestamp)
 }

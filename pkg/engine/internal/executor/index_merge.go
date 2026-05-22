@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // executeIndexMerge orchestrates the index merge: existence-check, classify sections,
@@ -138,9 +139,9 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	}
 	sort.Strings(paths)
 
-  // Make sure all stats section have the same sort schema by checking the sort
-  // schema from the first row of each section. Catches misconfigured
-  // cross-tenant merges or upstream schema-evolution bugs.
+	// Make sure all stats section have the same sort schema by checking the sort
+	// schema from the first row of each section. Catches misconfigured
+	// cross-tenant merges or upstream schema-evolution bugs.
 	var firstSortSchema string
 	for _, path := range paths {
 		entry := objects[path]
@@ -185,7 +186,7 @@ func readStatsSortSchema(ctx context.Context, sec *dataobj.Section) (string, err
 	}
 	reader := newStatsPileReader(ctx, statsSec, 0)
 	defer reader.Close()
-	var row statsRow
+	var row stats.Stat
 	if reader.Next() {
 		row = reader.Value()
 	}
@@ -208,7 +209,7 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 	}
 
 	// Open all postings sections and create pile readers.
-	pileReaders := make([]pileSequence[postingsRow], 0, len(sections))
+	pileReaders := make([]pileSequence[postings.Row], 0, len(sections))
 
 	for i, rs := range sections {
 		sec, err := postings.Open(ctx, rs.section)
@@ -220,10 +221,16 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 		pileReaders = append(pileReaders, reader)
 	}
 
-	// last-wins reducer
-	reducer := func(_, next postingsRow) postingsRow {
+	// A collision on the full sort key (Kind, ObjectPath, SectionIndex,
+	// ColumnName, LabelValue) means two source indexes reference the same
+	// physical section/column/label — this shouldn't happen so log a warning and
+	// emit a metric for tracking. The data is logically equivalent so keep one.
+	reducer := func(_, next postings.Row) postings.Row {
+		if region := xcap.RegionFromContext(ctx); region != nil {
+			region.Record(xcap.StatIndexMergeDuplicatePostings.Observe(1))
+		}
 		level.Warn(c.logger).Log(
-			"msg", "IndexMerge: postings full-key collision; last-wins reducer fired",
+			"msg", "IndexMerge: postings full-key collision",
 			"tenant", tenant,
 			"kind", next.Kind,
 			"object_path", next.ObjectPath,
@@ -238,7 +245,7 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 	seq := mergeHeap(ctx, pileReaders, comparePostingsRow, reducer)
 
 	var emitErr error
-	err := seq(func(row postingsRow) bool {
+	err := seq(func(row postings.Row) bool {
 		if e := c.writePostingsRow(builder, tenant, row); e != nil {
 			emitErr = e
 			return false
@@ -251,34 +258,12 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 	return emitErr
 }
 
-func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string, row postingsRow) error {
+func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string, row postings.Row) error {
 	switch row.Kind {
 	case postings.KindLabel:
-		entry := postings.LabelEntry{
-			ObjectPath:       row.ObjectPath,
-			SectionIndex:     row.SectionIndex,
-			ColumnName:       row.ColumnName,
-			LabelValue:       row.LabelValue,
-			StreamIDBitmap:   row.StreamIDBitmap,
-			MinTimestamp:     row.MinTimestamp,
-			MaxTimestamp:     row.MaxTimestamp,
-			UncompressedSize: row.UncompressedSize,
-		}
-		return builder.AppendPostingsLabelEntry(tenant, entry)
-
+		return builder.AppendPostingsLabelEntry(tenant, row.LabelEntry())
 	case postings.KindBloom:
-		entry := postings.BloomEntry{
-			ObjectPath:       row.ObjectPath,
-			SectionIndex:     row.SectionIndex,
-			ColumnName:       row.ColumnName,
-			BloomFilter:      row.BloomFilter,
-			StreamIDBitmap:   row.StreamIDBitmap,
-			MinTimestamp:     row.MinTimestamp,
-			MaxTimestamp:     row.MaxTimestamp,
-			UncompressedSize: row.UncompressedSize,
-		}
-		return builder.AppendPostingsBloomEntry(tenant, entry)
-
+		return builder.AppendPostingsBloomEntry(tenant, row.BloomEntry())
 	default:
 		return fmt.Errorf("unknown postings kind: %v", row.Kind)
 	}
@@ -293,7 +278,7 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 
 	// Open all stats sections and create pile readers.
 	// Pre-allocate with known capacity to avoid slice growth allocations.
-	pileReaders := make([]pileSequence[statsRow], 0, len(sections))
+	pileReaders := make([]pileSequence[stats.Stat], 0, len(sections))
 
 	for i, rs := range sections {
 		sec, err := stats.Open(ctx, rs.section)
@@ -305,61 +290,33 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 		pileReaders = append(pileReaders, reader)
 	}
 
-	// D3: aggregate with schema/labels validation
-	var reducerErr error
-
-	reducer := func(acc, next statsRow) statsRow {
-		// Check schema match
-		if acc.SortSchema != next.SortSchema {
-			reducerErr = fmt.Errorf(
-				"stats rows with equal key have mismatched SortSchema: %q vs %q",
-				acc.SortSchema, next.SortSchema,
-			)
-			return acc
+	// The comparator includes (ObjectPath, SectionIndex) as final tiebreakers, so
+	// an equal-key collision here means two source indexes reference the same
+	// physical (ObjectPath, SectionIndex) — which shouldn't happen. SortSchema
+	// and Labels are guaranteed to match on such collisions (same source
+	// section), as are the aggregate counts; keeping one row, warn, and
+	// observe an xcap statistic.
+	reducer := func(_, next stats.Stat) stats.Stat {
+		if region := xcap.RegionFromContext(ctx); region != nil {
+			region.Record(xcap.StatIndexMergeDuplicateStats.Observe(1))
 		}
-
-		// Check labels match
-		if !labelsEqual(acc.Labels, next.Labels) {
-			reducerErr = fmt.Errorf(
-				"stats rows with equal key have mismatched Labels: %v vs %v",
-				acc.Labels, next.Labels,
-			)
-			return acc
-		}
-
-		// Aggregate timestamps and counts
-		if next.MinTimestamp < acc.MinTimestamp {
-			acc.MinTimestamp = next.MinTimestamp
-		}
-		if next.MaxTimestamp > acc.MaxTimestamp {
-			acc.MaxTimestamp = next.MaxTimestamp
-		}
-		acc.RowCount += next.RowCount
-		acc.UncompressedSize += next.UncompressedSize
-
-		return acc
+		level.Warn(c.logger).Log(
+			"msg", "IndexMerge: stats full-key collision",
+			"tenant", tenant,
+			"object_path", next.ObjectPath,
+			"section_index", next.SectionIndex,
+			"min_timestamp", next.MinTimestamp,
+			"max_timestamp", next.MaxTimestamp,
+		)
+		return next
 	}
 
 	// Run merge heap
 	seq := mergeHeap(ctx, pileReaders, compareStatsRow, reducer)
 
 	var emitErr error
-	err := seq(func(row statsRow) bool {
-		// Stop iteration immediately if the reducer encountered an error.
-		if reducerErr != nil {
-			return false
-		}
-		stat := stats.Stat{
-			ObjectPath:       row.ObjectPath,
-			SectionIndex:     row.SectionIndex,
-			SortSchema:       row.SortSchema,
-			Labels:           row.Labels,
-			MinTimestamp:     row.MinTimestamp,
-			MaxTimestamp:     row.MaxTimestamp,
-			RowCount:         int64(row.RowCount),
-			UncompressedSize: row.UncompressedSize,
-		}
-		if e := builder.AppendStat(tenant, stat); e != nil {
+	err := seq(func(row stats.Stat) bool {
+		if e := builder.AppendStat(tenant, row); e != nil {
 			emitErr = e
 			return false
 		}
@@ -369,23 +326,5 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 		return err
 	}
 
-	// Check if reducer set an error
-	if reducerErr != nil {
-		return reducerErr
-	}
-
 	return emitErr
-}
-
-func labelsEqual(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		vb, ok := b[k]
-		if !ok || vb != v {
-			return false
-		}
-	}
-	return true
 }

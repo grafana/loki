@@ -98,8 +98,7 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 }
 
 // Entries returns all aggregated entries converted to public type. Bitmap
-// normalization (padding to equal length) is NOT done here; the caller
-// (columnarEncode) handles it across both label and bloom entries.
+// normalization (padding to equal length) is NOT done here.
 func (a *labelAggregator) Entries() []LabelEntry {
 	if len(a.entries) == 0 {
 		return nil

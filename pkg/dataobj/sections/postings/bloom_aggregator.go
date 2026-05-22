@@ -136,9 +136,8 @@ func (a *bloomAggregator) Observe(obs BloomObservation) error {
 }
 
 // Entries returns all aggregated entries converted to public type. Bitmap
-// normalization (padding to equal length) is NOT done here; the caller
-// (columnarEncode) handles it across both label and bloom entries.
-// Returns an error if any bloom filter fails to marshal.
+// normalization (padding to equal length) is NOT done here. Returns an error if
+// any bloom filter fails to marshal.
 func (a *bloomAggregator) Entries() ([]BloomEntry, error) {
 	if len(a.entries) == 0 {
 		return nil, nil
