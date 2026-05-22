@@ -2102,18 +2102,30 @@ type mockKafkaProducer struct {
 func (m *mockKafkaProducer) ProduceSync(_ context.Context, records []*kgo.Record) kgo.ProduceResults {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	results := make(kgo.ProduceResults, 0, len(records))
 	if m.failOnWrite {
-		return kgo.ProduceResults{{Err: kgo.ErrRecordTimeout}}
+		// We must append a result for each record that has both the record and the
+		// error, as this is how it works in [kgo].
+		for _, record := range records {
+			results = append(results, kgo.ProduceResult{
+				Record: record,
+				Err:    kgo.ErrRecordTimeout,
+			})
+		}
+	} else {
+		m.pushes++
+		m.records = append(m.records, records...)
+		if m.recordsPerTopic == nil {
+			m.recordsPerTopic = make(map[string][]*kgo.Record)
+		}
+		for _, record := range records {
+			m.recordsPerTopic[record.Topic] = append(m.recordsPerTopic[record.Topic], record)
+			results = append(results, kgo.ProduceResult{
+				Record: record,
+			})
+		}
 	}
-	m.pushes++
-	m.records = append(m.records, records...)
-	if m.recordsPerTopic == nil {
-		m.recordsPerTopic = make(map[string][]*kgo.Record)
-	}
-	for _, r := range records {
-		m.recordsPerTopic[r.Topic] = append(m.recordsPerTopic[r.Topic], r)
-	}
-	return kgo.ProduceResults{{Err: nil}}
+	return results
 }
 
 func (m *mockKafkaProducer) Close() {}
@@ -2801,12 +2813,13 @@ func TestConfig_Validate(t *testing.T) {
 			expectedMaxDecompressedSize: 0, // Should remain 0
 		},
 		{
-			name: "validates kafka and ingester enabled",
+			// kafka=false + ingester=false is now allowed: in inmemory mode the tee is
+			// wired programmatically and does not require either flag.
+			name: "kafka=false ingester=false is valid (inmemory mode uses programmatic tee)",
 			cfg: Config{
 				KafkaEnabled:    false,
 				IngesterEnabled: false,
 			},
-			expectedError: "at least one of kafka and ingestor writes must be enabled",
 		},
 	}
 

@@ -13,6 +13,16 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 7.1.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.6.8 (updated `enterprise.version`, and `enterprise.image.tag`).
+- [CHANGE] Updated the README to indicate that this chart is the Grafana Enterprise Logs Helm chart.
+
+## 7.0.0
+
+- [BREAKING] The chart in this repository is now maintained for Grafana Enterprise Logs (GEL) users only. As of March 16, 2026, the Grafana Loki Helm chart for OSS users has moved to [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) (forked at chart version 6.55.0). OSS users are encouraged to migrate to the community-maintained chart.  That community chart is *not* the supported installation path for GEL as the Community chart has [removed support for GEL](https://github.com/grafana-community/helm-charts/pull/184).  See [#20705](https://github.com/grafana/loki/issues/20705) for details.
+- [CHANGE] Swap bundled minio subchart images from `minio/minio` to the Pigsty (`pgsty`) community fork (`docker.io/pgsty/minio:RELEASE.2026-03-14T12-00-00Z`, `docker.io/pgsty/mc:RELEASE.2026-03-13T08-57-32Z`) to mitigate an unresolved upstream MinIO CVE.
+- [CHANGE] Changed GEL version to 3.6.6 (updated `enterprise.version`, and `enterprise.image.tag`).
 - [FEATURE] Update README chart migration notice from future tense to past tense
 
 ## 6.55.0
@@ -89,7 +99,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.46.0
 
-- [CHANGE] `nameOverride` now passed through Helm template function. [#19590](https://github.com/grafana/loki/pull/19590)
+- [BREAKING] `nameOverride` now passed through Helm template function. [#19590](https://github.com/grafana/loki/pull/19590) This PR also changed the default service account name from the chart *name* (`enterprise-logs` / `loki`) to the chart *fullname* (`<release>-enterprise-logs` / `<release>-loki`) when `serviceAccount.create: true` and `serviceAccount.name` is unset. This breaks external identity bindings (for example, AWS EKS Pod Identity, IRSA, GCP Workload Identity, Azure Workload Identity) that reference the previous default name. To preserve the previous behavior, set `serviceAccount.name` explicitly. See the [upgrade guide](https://grafana.com/docs/loki/latest/setup/upgrade/#helm-chart-6460---default-service-account-name-change) for details.
 - [FEATURE] Add configurable `singleBinary.topologySpreadConstraints`. [#19534](https://github.com/grafana/loki/pull/19534)
 - [FEATURE] Add load balancer port to query-frontend service. [#19462](https://github.com/grafana/loki/pull/19462)
 - [FEATURE] Make loki-canary readinessProbe configurable via values.yaml. [#19328](https://github.com/grafana/loki/pull/19328)

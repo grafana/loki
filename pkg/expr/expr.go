@@ -1,5 +1,5 @@
-// Package expr provides utilities for evaluating expressions against a
-// [columnar.RecordBatch] with a selection vector.
+// Package expr provides utilities for evaluating expressions against
+// [columnar.Datum] values with a selection vector.
 //
 // Package expr is EXPERIMENTAL and currently only intended to be used by
 // [github.com/grafana/loki/v3/pkg/dataobj].
@@ -57,11 +57,58 @@ type (
 	//
 	// ValueSet cannot be evaluated directly into a datum.
 	ValueSet struct{ Values *columnar.Set }
+
+	// Identity is an Expression that resolves to the input datum passed to
+	// [Evaluate]. It represents "the current data in scope" and is used by
+	// leaf-level layout readers where column references have been rewritten
+	// to Identity by parent readers.
+	Identity struct{}
+
+	// Extract is an [Expression] that evaluates Value and extracts the field
+	// with the given Name from the resulting [*columnar.Struct].
+	//
+	// If the field doesn't exist, a Null column is produced.
+	Extract struct {
+		Name  string
+		Value Expression
+	}
+
+	// Include is an [Expression] that evaluates Value and returns a new
+	// [*columnar.Struct] containing only the fields with the given Names.
+	//
+	// Names that don't exist in the source struct are silently skipped.
+	Include struct {
+		Names []string
+		Value Expression
+	}
+
+	// Exclude is an [Expression] that evaluates Value and returns a new
+	// [*columnar.Struct] with the fields matching Names removed.
+	//
+	// Names that don't exist in the source struct are silently ignored.
+	Exclude struct {
+		Names []string
+		Value Expression
+	}
+
+	// MakeStruct is an [Expression] that evaluates each of the Values
+	// expressions and constructs a new [*columnar.Struct] with the given
+	// Names. Each value must evaluate to a [columnar.Array], and all arrays
+	// must have the same length.
+	MakeStruct struct {
+		Names  []string
+		Values []Expression
+	}
 )
 
-func (*Constant) isExpr() {}
-func (*Column) isExpr()   {}
-func (*Unary) isExpr()    {}
-func (*Binary) isExpr()   {}
-func (*Regexp) isExpr()   {}
-func (*ValueSet) isExpr() {}
+func (*Constant) isExpr()   {}
+func (*Column) isExpr()     {}
+func (*Unary) isExpr()      {}
+func (*Binary) isExpr()     {}
+func (*Regexp) isExpr()     {}
+func (*ValueSet) isExpr()   {}
+func (*Identity) isExpr()   {}
+func (*Extract) isExpr()    {}
+func (*Include) isExpr()    {}
+func (*Exclude) isExpr()    {}
+func (*MakeStruct) isExpr() {}

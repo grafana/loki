@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-func dispatchNullEquality(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
+func dispatchNullEquality(alloc *memory.Allocator, left, right columnar.Datum, _ memory.Bitmap) (columnar.Datum, error) {
 	_, leftScalar := left.(columnar.Scalar)
 	_, rightScalar := right.(columnar.Scalar)
 
@@ -15,17 +15,11 @@ func dispatchNullEquality(alloc *memory.Allocator, left, right columnar.Datum, s
 	case leftScalar && rightScalar:
 		return nullEqualitySS(left.(*columnar.NullScalar), right.(*columnar.NullScalar)), nil
 	case leftScalar && !rightScalar:
-		out := nullEqualitySA(alloc, left.(*columnar.NullScalar), right.(*columnar.Null))
-		return applySelectionToBoolArray(alloc, out, selection)
+		return nullEqualitySA(alloc, left.(*columnar.NullScalar), right.(*columnar.Null)), nil
 	case !leftScalar && rightScalar:
-		out := nullEqualityAS(alloc, left.(*columnar.Null), right.(*columnar.NullScalar))
-		return applySelectionToBoolArray(alloc, out, selection)
+		return nullEqualityAS(alloc, left.(*columnar.Null), right.(*columnar.NullScalar)), nil
 	case !leftScalar && !rightScalar:
-		out, err := nullEqualityAA(alloc, left.(*columnar.Null), right.(*columnar.Null))
-		if err != nil {
-			return nil, err
-		}
-		return applySelectionToBoolArray(alloc, out, selection)
+		return nullEqualityAA(alloc, left.(*columnar.Null), right.(*columnar.Null))
 	}
 
 	panic("unreachable")

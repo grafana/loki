@@ -521,17 +521,24 @@ func (b *BlobStorage) servicePrincipalTokenFromFederatedToken(resource string, n
 	activeDirectoryEndpoint := b.cfg.ActiveDirectoryEndpoint
 
 	if activeDirectoryEndpoint == "" {
-		environmentName := azurePublicCloud
-		if b.cfg.Environment != azureGlobal {
-			environmentName = b.cfg.Environment
-		}
+		// Respect AZURE_AUTHORITY_HOST injected by the Azure Workload Identity
+		// webhook (e.g. for sovereign clouds like Azure Government) before
+		// falling back to environment-name resolution.
+		if h := os.Getenv("AZURE_AUTHORITY_HOST"); h != "" {
+			activeDirectoryEndpoint = h
+		} else {
+			environmentName := azurePublicCloud
+			if b.cfg.Environment != azureGlobal {
+				environmentName = b.cfg.Environment
+			}
 
-		// Azure SDK does NOT ship with endpoints for certain environments, e.g. IL6
-		env, err := azure.EnvironmentFromName(environmentName)
-		if err != nil {
-			return nil, err
+			// Azure SDK does NOT ship with endpoints for certain environments, e.g. IL6
+			env, err := azure.EnvironmentFromName(environmentName)
+			if err != nil {
+				return nil, err
+			}
+			activeDirectoryEndpoint = env.ActiveDirectoryEndpoint
 		}
-		activeDirectoryEndpoint = env.ActiveDirectoryEndpoint
 	}
 
 	azClientID := os.Getenv("AZURE_CLIENT_ID")
@@ -704,17 +711,6 @@ func parseConnectionString(connectionString string) (ParsedConnectionString, err
 		return ParsedConnectionString{}, errors.New("connection string missing AccountName")
 	}
 
-	accountKey, ok := connStrMap["AccountKey"]
-	if !ok {
-		sharedAccessSignature, ok := connStrMap["SharedAccessSignature"]
-		if !ok {
-			return ParsedConnectionString{}, errors.New("connection string missing AccountKey and SharedAccessSignature")
-		}
-		return ParsedConnectionString{
-			ServiceURL: fmt.Sprintf("%v://%v.blob.%v/?%v", defaultScheme, accountName, defaultSuffix, sharedAccessSignature),
-		}, nil
-	}
-
 	protocol, ok := connStrMap["DefaultEndpointsProtocol"]
 	if !ok {
 		protocol = defaultScheme
@@ -723,6 +719,19 @@ func parseConnectionString(connectionString string) (ParsedConnectionString, err
 	suffix, ok := connStrMap["EndpointSuffix"]
 	if !ok {
 		suffix = defaultSuffix
+	}
+
+	accountKey, ok := connStrMap["AccountKey"]
+	if !ok {
+		sharedAccessSignature, ok := connStrMap["SharedAccessSignature"]
+		if !ok {
+			return ParsedConnectionString{}, errors.New("connection string missing AccountKey and SharedAccessSignature")
+		}
+		// Use protocol and suffix from the connection string (not hardcoded defaults)
+		// so that sovereign cloud / custom endpoint configurations are respected.
+		return ParsedConnectionString{
+			ServiceURL: fmt.Sprintf("%v://%v.blob.%v/?%v", protocol, accountName, suffix, sharedAccessSignature),
+		}, nil
 	}
 
 	if blobEndpoint, ok := connStrMap["BlobEndpoint"]; ok {

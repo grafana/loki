@@ -73,11 +73,20 @@ func sortRecords(records []Record, sortOrder SortOrder) {
 				return res
 			}
 			return cmp.Compare(a.StreamID, b.StreamID)
+		case SortSchemaASC:
+			if res := cmp.Compare(a.SortKey, b.SortKey); res != 0 {
+				return res
+			}
+			return b.Timestamp.Compare(a.Timestamp)
 		default:
 			panic("invalid sort order")
 		}
 	})
 }
+
+// SortRecords sorts records in place by sortOrder. For SortSchemaASC each
+// record's SortKey must be set before calling.
+func SortRecords(records []Record, sortOrder SortOrder) { sortRecords(records, sortOrder) }
 
 func equalRecords(a, b Record) bool {
 	if a.StreamID != b.StreamID {

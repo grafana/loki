@@ -468,7 +468,7 @@ The logfmt parser also supports the following flags:
     ```
 
     Without the `--strict` flag the parser skips invalid key/value pairs and continues parsing the rest of the log line.
-    Non-strict mode offers the flexibility to parse semi-structed log lines, though note that this is only best-effort.
+    Non-strict mode offers the flexibility to parse semi-structured log lines, though note that this is only best-effort.
 
 - `--keep-empty` to retain standalone keys with empty value
 
@@ -559,7 +559,7 @@ those labels:
 
 #### unpack
 
-The `unpack` parser parses a JSON log line, unpacking all embedded labels from the [`stage.pack` block](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagepack).
+The `unpack` parser parses a JSON log line, unpacking all embedded labels from the [`pack` stage](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/#stagepack-block).
 **A special property `_entry` will also be used to replace the original log line**.
 
 For example, using `| unpack` with the log line:

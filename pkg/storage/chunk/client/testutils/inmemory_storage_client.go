@@ -40,7 +40,6 @@ type MockStorage struct {
 	schemaCfg config.SchemaConfig
 
 	numIndexWrites int
-	numChunkWrites int
 	mode           MockStorageMode
 }
 

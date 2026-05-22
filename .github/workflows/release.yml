@@ -5,7 +5,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+  RELEASE_LIB_REF: "65e24dba101c1535cf29bab695e1b12855803e4a"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -25,7 +25,7 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -58,22 +58,12 @@ jobs:
       uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
       with:
         version: ">= 452.0.0"
-    - id: "fetch_app_credentials"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
-      name: "fetch app credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: |
-          APP_ID=${{ env.GITHUB_APP }}:app-id
-          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/create-github-app-token@v1"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
-        app-id: "${{ env.APP_ID }}"
-        owner: "${{ github.repository_owner }}"
-        private-key: "${{ env.PRIVATE_KEY }}"
+        github_app: "${{ env.GITHUB_APP }}"
     - env:
         OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
       id: "github_app_token"
@@ -151,7 +141,7 @@ jobs:
     permissions:
       contents: "write"
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -164,22 +154,12 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - id: "fetch_app_credentials"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
-      name: "fetch app credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: |
-          APP_ID=${{ env.GITHUB_APP }}:app-id
-          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/create-github-app-token@v1"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
-        app-id: "${{ env.APP_ID }}"
-        owner: "${{ github.repository_owner }}"
-        private-key: "${{ env.PRIVATE_KEY }}"
+        github_app: "${{ env.GITHUB_APP }}"
     - env:
         OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
       id: "github_app_token"
@@ -248,7 +228,7 @@ jobs:
     - "createRelease"
     permissions:
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -302,7 +282,7 @@ jobs:
     - "createRelease"
     permissions:
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -352,7 +332,7 @@ jobs:
     permissions:
       contents: "write"
       id-token: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -360,22 +340,12 @@ jobs:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
-    - id: "fetch_app_credentials"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
-      name: "fetch app credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: |
-          APP_ID=${{ env.GITHUB_APP }}:app-id
-          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/create-github-app-token@v1"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
-        app-id: "${{ env.APP_ID }}"
-        owner: "${{ github.repository_owner }}"
-        private-key: "${{ env.PRIVATE_KEY }}"
+        github_app: "${{ env.GITHUB_APP }}"
     - env:
         OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
       id: "github_app_token"
@@ -407,7 +377,7 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"

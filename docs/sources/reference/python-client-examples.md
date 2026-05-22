@@ -25,7 +25,7 @@ pip install httpx
 
 ## Authentication
 
-The examples on this page connect to a local Loki instance without authentication. To use these examples with a multi-tenant or Grafana Cloud deployment, add the appropriate authentication as shown below.
+The examples on this page connect to a local Loki instance without authentication. To use these examples with a multi-tenant or Grafana Cloud deployment, add the appropriate authentication as shown below. All functions defined on this page accept `headers`, `auth`, and `verify` parameters for this purpose.
 
 ### Multi-tenant mode
 
@@ -34,6 +34,18 @@ If your cluster has [multi-tenancy](../../operations/multi-tenancy/) enabled, pa
 ```python
 headers = {"X-Scope-OrgID": "my-tenant"}
 resp = requests.get(url, params=params, headers=headers)
+```
+
+Using the functions defined on this page:
+
+```python
+results = query_range(
+    url="http://localhost:3100",
+    query='{job="varlogs"}',
+    start=datetime.now() - timedelta(hours=1),
+    end=datetime.now(),
+    headers={"X-Scope-OrgID": "my-tenant"},
+)
 ```
 
 To query across multiple tenants, separate tenant names with the pipe (`|`) character:
@@ -50,6 +62,18 @@ For Grafana Cloud, use basic authentication with your Grafana Cloud user and an 
 resp = requests.get(url, params=params, auth=("<user>", "<API_TOKEN>"))
 ```
 
+Using the functions defined on this page:
+
+```python
+results = query_range(
+    url="https://logs-prod-us-central1.grafana.net",
+    query='{job="varlogs"}',
+    start=datetime.now() - timedelta(hours=1),
+    end=datetime.now(),
+    auth=("<user>", "<API_TOKEN>"),
+)
+```
+
 You can find the **User** and **URL** values in the Loki logging service details of your [Grafana Cloud stack](https://grafana.com/docs/grafana-cloud/account-management/cloud-portal/#your-grafana-cloud-stack).
 
 ### Self-signed certificates
@@ -64,6 +88,18 @@ For production use, pass the path to your CA bundle instead:
 
 ```python
 resp = requests.get(url, params=params, verify="/path/to/ca-bundle.crt")
+```
+
+Using the functions defined on this page:
+
+```python
+results = query_range(
+    url="https://loki.internal:3100",
+    query='{job="varlogs"}',
+    start=datetime.now() - timedelta(hours=1),
+    end=datetime.now(),
+    verify="/path/to/ca-bundle.crt",
+)
 ```
 
 ## Query logs within a range of time
@@ -83,6 +119,9 @@ def query_range(
     start: datetime,
     end: datetime,
     limit: int = 1000,
+    headers: dict[str, str] | None = None,
+    auth: tuple[str, str] | None = None,
+    verify: bool | str = True,  # False to skip TLS, or path to CA bundle
 ) -> list:
     """Query Loki for log entries within a time range."""
     resp = requests.get(
@@ -94,6 +133,9 @@ def query_range(
             "limit": limit,
             "direction": "backward",
         },
+        headers=headers,
+        auth=auth,
+        verify=verify,
     )
     resp.raise_for_status()
     return resp.json()["data"]["result"]
@@ -125,6 +167,9 @@ def query_range(
     start: datetime,
     end: datetime,
     limit: int = 1000,
+    headers: dict[str, str] | None = None,
+    auth: tuple[str, str] | None = None,
+    verify: bool | str = True,  # False to skip TLS, or path to CA bundle; httpx also accepts ssl.SSLContext
 ) -> list:
     """Query Loki for log entries within a time range."""
     resp = httpx.get(
@@ -136,6 +181,9 @@ def query_range(
             "limit": limit,
             "direction": "backward",
         },
+        headers=headers,
+        auth=auth,
+        verify=verify,
     )
     resp.raise_for_status()
     return resp.json()["data"]["result"]
@@ -163,7 +211,13 @@ import requests
 from datetime import datetime
 
 
-def query_instant(url: str, query: str) -> list:
+def query_instant(
+    url: str,
+    query: str,
+    headers: dict[str, str] | None = None,
+    auth: tuple[str, str] | None = None,
+    verify: bool | str = True,  # False to skip TLS, or path to CA bundle
+) -> list:
     """Run an instant metric query against Loki."""
     resp = requests.get(
         f"{url}/loki/api/v1/query",
@@ -171,6 +225,9 @@ def query_instant(url: str, query: str) -> list:
             "query": query,
             "time": str(int(datetime.now().timestamp() * 1e9)),
         },
+        headers=headers,
+        auth=auth,
+        verify=verify,
     )
     resp.raise_for_status()
     return resp.json()["data"]["result"]
@@ -199,6 +256,9 @@ def push_logs(
     url: str,
     labels: dict[str, str],
     entries: list[tuple[str, str]],
+    headers: dict[str, str] | None = None,
+    auth: tuple[str, str] | None = None,
+    verify: bool | str = True,  # False to skip TLS, or path to CA bundle
 ) -> None:
     """Push log entries to Loki.
 
@@ -216,10 +276,13 @@ def push_logs(
             }
         ]
     }
+    req_headers = {**(headers or {}), "Content-Type": "application/json"}
     resp = requests.post(
         f"{url}/loki/api/v1/push",
-        headers={"Content-Type": "application/json"},
+        headers=req_headers,
         data=json.dumps(payload),
+        auth=auth,
+        verify=verify,
     )
     resp.raise_for_status()
 
@@ -243,16 +306,37 @@ push_logs(
 import requests
 
 
-def get_labels(url: str) -> list[str]:
+def get_labels(
+    url: str,
+    headers: dict[str, str] | None = None,
+    auth: tuple[str, str] | None = None,
+    verify: bool | str = True,  # False to skip TLS, or path to CA bundle
+) -> list[str]:
     """List all known label names."""
-    resp = requests.get(f"{url}/loki/api/v1/labels")
+    resp = requests.get(
+        f"{url}/loki/api/v1/labels",
+        headers=headers,
+        auth=auth,
+        verify=verify,
+    )
     resp.raise_for_status()
     return resp.json()["data"]
 
 
-def get_label_values(url: str, label: str) -> list[str]:
+def get_label_values(
+    url: str,
+    label: str,
+    headers: dict[str, str] | None = None,
+    auth: tuple[str, str] | None = None,
+    verify: bool | str = True,  # False to skip TLS, or path to CA bundle
+) -> list[str]:
     """List values for a specific label."""
-    resp = requests.get(f"{url}/loki/api/v1/label/{label}/values")
+    resp = requests.get(
+        f"{url}/loki/api/v1/label/{label}/values",
+        headers=headers,
+        auth=auth,
+        verify=verify,
+    )
     resp.raise_for_status()
     return resp.json()["data"]
 
@@ -287,12 +371,18 @@ def query_with_retry(
     query: str,
     max_retries: int = 3,
     backoff: float = 1.0,
+    headers: dict[str, str] | None = None,
+    auth: tuple[str, str] | None = None,
+    verify: bool | str = True,  # False to skip TLS, or path to CA bundle
 ) -> dict:
     """Query Loki with simple retry logic for rate limits."""
     for attempt in range(max_retries):
         resp = requests.get(
             f"{url}/loki/api/v1/query",
             params={"query": query},
+            headers=headers,
+            auth=auth,
+            verify=verify,
         )
         if resp.status_code == 429:
             wait = backoff * (2 ** attempt)

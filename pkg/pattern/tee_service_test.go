@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,7 +63,7 @@ func getTestTee(t *testing.T) (*TeeService, *mockPoolClient) {
 	return logsTee, client
 }
 
-func TestPatternTeeBasic(t *testing.T) {
+func TestPatternTee_Basic(t *testing.T) {
 	tee, client := getTestTee(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -154,7 +155,7 @@ func TestPatternTeeBasic(t *testing.T) {
 	}, pingPongEntries)
 }
 
-func TestPatternTeeEmptyStream(t *testing.T) {
+func TestPatternTee_EmptyStream(t *testing.T) {
 	tee, client := getTestTee(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -185,4 +186,143 @@ func TestPatternTeeEmptyStream(t *testing.T) {
 
 	require.Nil(t, req)
 	require.Nil(t, reqCtx)
+}
+
+func TestPatternTee_MaxBufferedBytes(t *testing.T) {
+	t.Run("limit is disabled when zero or negative", func(t *testing.T) {
+		ctx := t.Context()
+		tee, _ := getTestTee(t)
+
+		s1 := distributor.KeyedStream{
+			HashKey: 123,
+			Stream: push.Stream{
+				Labels: `{foo="bar"}`,
+				Entries: []push.Entry{{
+					Timestamp: time.Now(),
+					Line:      strings.Repeat("abc", 2<<11), // 4KB
+				}},
+			},
+		}
+
+		tee.cfg.TeeConfig.MaxBufferedBytes = 0
+		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s1}, nil)
+		bufferedBytes1 := tee.bufferedBytes
+		require.NotZero(t, bufferedBytes1)
+
+		tee.cfg.TeeConfig.MaxBufferedBytes = -1
+		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s1}, nil)
+		bufferedBytes2 := tee.bufferedBytes
+		require.Greater(t, bufferedBytes2, bufferedBytes1)
+	})
+
+	t.Run("limit is enforced when positive", func(t *testing.T) {
+		ctx := t.Context()
+		tee, _ := getTestTee(t)
+		tee.cfg.TeeConfig.MaxBufferedBytes = 1024 // 1KB
+		require.Len(t, tee.buf, 0)
+
+		// Stream should be accepted, less than 1KB.
+		s1 := distributor.KeyedStream{
+			HashKey: 123,
+			Stream: push.Stream{
+				Labels: `{foo="bar"}`,
+				Entries: []push.Entry{{
+					Timestamp: time.Now(),
+					Line:      "abc",
+				}},
+			},
+		}
+		require.LessOrEqual(t, s1.Stream.Size(), 1024)
+		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s1}, nil)
+		bufferedBytes1 := tee.bufferedBytes
+		require.NotZero(t, bufferedBytes1)
+		require.Len(t, tee.buf, 1)
+		tenantBuf, ok := tee.buf["test"]
+		require.True(t, ok)
+		require.Contains(t, tenantBuf, s1)
+
+		// Stream should be rejected, more than 1KB.
+		s2 := distributor.KeyedStream{
+			HashKey: 123,
+			Stream: push.Stream{
+				Labels: `{foo="bar"}`,
+				Entries: []push.Entry{{
+					Timestamp: time.Now(),
+					Line:      strings.Repeat("d", 1024),
+				}},
+			},
+		}
+		require.Greater(t, s2.Stream.Size(), 1024)
+		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s2}, nil)
+		bufferedBytes2 := tee.bufferedBytes
+		require.Equal(t, bufferedBytes2, bufferedBytes1)
+		require.Len(t, tee.buf, 1)
+		// tenantBuf should contain s1, but not s2.
+		tenantBuf, ok = tee.buf["test"]
+		require.True(t, ok)
+		require.Contains(t, tenantBuf, s1)
+
+		// Stream should be accepted, total of s1 and s3 is less than 1KB.
+		s3 := distributor.KeyedStream{
+			HashKey: 123,
+			Stream: push.Stream{
+				Labels: `{foo="bar"}`,
+				Entries: []push.Entry{{
+					Timestamp: time.Now(),
+					Line:      strings.Repeat("d", 512),
+				}},
+			},
+		}
+		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s3}, nil)
+		bufferedBytes3 := tee.bufferedBytes
+		require.Greater(t, bufferedBytes3, bufferedBytes2)
+		require.Len(t, tee.buf, 1)
+		// tenantBuf should contain s1 and s3.
+		tenantBuf, ok = tee.buf["test"]
+		require.True(t, ok)
+		require.Contains(t, tenantBuf, s1)
+		require.Contains(t, tenantBuf, s3)
+
+		// Stream should be rejected, total of s1, s3 and s4 is more than 1KB.
+		s4 := distributor.KeyedStream{
+			HashKey: 123,
+			Stream: push.Stream{
+				Labels: `{foo="bar"}`,
+				Entries: []push.Entry{{
+					Timestamp: time.Now(),
+					Line:      strings.Repeat("e", 512),
+				}},
+			},
+		}
+		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s4}, nil)
+		// The total size of s4 is less than s1 and s3, but not 0.
+		bufferedBytes4 := tee.bufferedBytes
+		require.Equal(t, bufferedBytes4, bufferedBytes3)
+		require.Len(t, tee.buf, 1)
+		// tenantBuf should contain s1 and s3.
+		tenantBuf, ok = tee.buf["test"]
+		require.True(t, ok)
+		require.Contains(t, tenantBuf, s1)
+		require.Contains(t, tenantBuf, s3)
+
+		// Flush s1 and s3, s4 should be accepted.
+		tee.flush()
+		select {
+		case clientRequest := <-tee.flushQueue:
+			tee.sendBatch(ctx, clientRequest)
+		case <-ctx.Done():
+			t.Fatal("context canceled before we received request from tee.flushQueue")
+		}
+		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s4}, nil)
+		// The total size of s4 is less than s1 and s3, but not 0.
+		bufferedBytes5 := tee.bufferedBytes
+		require.Less(t, bufferedBytes5, bufferedBytes4)
+		require.NotZero(t, bufferedBytes5)
+		require.Len(t, tee.buf, 1)
+		// tenantBuf should contain s4.
+		tenantBuf, ok = tee.buf["test"]
+		require.True(t, ok)
+		require.Contains(t, tenantBuf, s4)
+	})
+
 }

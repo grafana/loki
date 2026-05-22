@@ -295,13 +295,13 @@ func peekNConsoleInputs(console windows.Handle, maxEvents uint32) ([]xwindows.In
 func keyEventString(vkc, sc uint16, r rune, keyDown bool, cks uint32, repeatCount uint16) string {
 	var s strings.Builder
 	s.WriteString("vkc: ")
-	s.WriteString(fmt.Sprintf("%d, 0x%02x", vkc, vkc))
+	fmt.Fprintf(&s, "%d, 0x%02x", vkc, vkc)
 	s.WriteString(", sc: ")
-	s.WriteString(fmt.Sprintf("%d, 0x%02x", sc, sc))
+	fmt.Fprintf(&s, "%d, 0x%02x", sc, sc)
 	s.WriteString(", r: ")
-	s.WriteString(fmt.Sprintf("%q 0x%x", r, r))
+	fmt.Fprintf(&s, "%q 0x%x", r, r)
 	s.WriteString(", down: ")
-	s.WriteString(fmt.Sprintf("%v", keyDown))
+	fmt.Fprintf(&s, "%v", keyDown)
 	s.WriteString(", cks: [")
 	if cks&xwindows.LEFT_ALT_PRESSED != 0 {
 		s.WriteString("left alt, ")
@@ -331,6 +331,6 @@ func keyEventString(vkc, sc uint16, r rune, keyDown bool, cks uint32, repeatCoun
 		s.WriteString("enhanced key, ")
 	}
 	s.WriteString("], repeat count: ")
-	s.WriteString(fmt.Sprintf("%d", repeatCount))
+	fmt.Fprintf(&s, "%d", repeatCount)
 	return s.String()
 }

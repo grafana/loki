@@ -31,7 +31,7 @@ func TestCrossComponentValidation(t *testing.T) {
 							From: config.DayTime{
 								Time: model.Now(),
 							},
-							IndexType:  types.TSDBType,
+							IndexType:  types.IndexTypeTSDB,
 							ObjectType: types.StorageTypeS3,
 							Schema:     "v11",
 							IndexTables: config.IndexPeriodicTableConfig{
@@ -46,47 +46,6 @@ func TestCrossComponentValidation(t *testing.T) {
 			},
 			err: false,
 		},
-		{
-			desc: "correct shards",
-			base: &Config{
-				Ingester: ingester.Config{
-					IndexShards: 32,
-				},
-				SchemaConfig: config.SchemaConfig{
-					Configs: []config.PeriodConfig{
-						{
-							IndexType:  types.BoltDBShipperType,
-							ObjectType: types.StorageTypeS3,
-							RowShards:  16,
-							Schema:     "v11",
-							From: config.DayTime{
-								Time: model.Now().Add(-48 * time.Hour),
-							},
-							IndexTables: config.IndexPeriodicTableConfig{
-								PeriodicTableConfig: config.PeriodicTableConfig{
-									Period: 24 * time.Hour,
-								},
-							},
-						},
-						{
-							IndexType:  types.BoltDBShipperType,
-							ObjectType: types.StorageTypeS3,
-							RowShards:  17,
-							Schema:     "v11",
-							From: config.DayTime{
-								Time: model.Now(),
-							},
-							IndexTables: config.IndexPeriodicTableConfig{
-								PeriodicTableConfig: config.PeriodicTableConfig{
-									Period: 24 * time.Hour,
-								},
-							},
-						},
-					},
-				},
-			},
-			err: true,
-		},
 	} {
 		tc.base.RegisterFlags(flag.NewFlagSet(tc.desc, 0))
 		// This test predates the newer schema required for structured metadata
@@ -100,8 +59,6 @@ func TestCrossComponentValidation(t *testing.T) {
 		tc.base.CompactorConfig.WorkingDirectory = "tmp"
 		tc.base.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory = "tmp"
 		tc.base.StorageConfig.TSDBShipperConfig.CacheLocation = "tmp"
-		tc.base.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory = "tmp"
-		tc.base.StorageConfig.BoltDBShipperConfig.CacheLocation = "tmp"
 		err := tc.base.Validate()
 		if tc.err {
 			require.NotNil(t, err)

@@ -6,102 +6,29 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-func TestFactoryStop(t *testing.T) {
-	var (
-		cfg          Config
-		storeConfig  config.ChunkStoreConfig
-		schemaConfig config.SchemaConfig
-		defaults     validation.Limits
-	)
-	flagext.DefaultValues(&cfg, &storeConfig, &schemaConfig, &defaults)
-	schemaConfig.Configs = []config.PeriodConfig{
-		{
-			From:      config.DayTime{Time: model.Time(0)},
-			IndexType: "inmemory",
-			Schema:    "v11",
-			RowShards: 16,
-		},
-		{
-			From:      config.DayTime{Time: model.Time(1)},
-			IndexType: "inmemory",
-			Schema:    "v9",
-		},
-	}
-
-	limits, err := validation.NewOverrides(defaults, nil)
-	require.NoError(t, err)
-	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
-	require.NoError(t, err)
-
-	store.Stop()
-}
-
-func TestCassandraInMultipleSchemas(t *testing.T) {
-	addresses := os.Getenv("CASSANDRA_TEST_ADDRESSES")
-	if addresses == "" {
-		return
-	}
-
-	// cassandra config
-	var cassandraCfg cassandra.Config
-	flagext.DefaultValues(&cassandraCfg)
-	cassandraCfg.Addresses = addresses
-	cassandraCfg.Keyspace = "test"
-	cassandraCfg.Consistency = "QUORUM"
-	cassandraCfg.ReplicationFactor = 1
-
-	// build schema with cassandra in multiple periodic configs
-	schemaCfg := DefaultSchemaConfig("cassandra", "v1", model.Now().Add(-7*24*time.Hour))
-	newSchemaCfg := schemaCfg.Configs[0]
-	newSchemaCfg.Schema = "v2"
-	newSchemaCfg.From = config.DayTime{Time: model.Now()}
-
-	schemaCfg.Configs = append(schemaCfg.Configs, newSchemaCfg)
-
-	var (
-		cfg         Config
-		storeConfig config.ChunkStoreConfig
-		defaults    validation.Limits
-	)
-	flagext.DefaultValues(&cfg, &storeConfig, &defaults)
-	cfg.CassandraStorageConfig = cassandraCfg
-
-	limits, err := validation.NewOverrides(defaults, nil)
-	require.NoError(t, err)
-
-	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, cm, nil, log.NewNopLogger(), constants.Loki)
-	require.NoError(t, err)
-
-	store.Stop()
-}
-
 func TestNamedStores(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// config for BoltDB Shipper
-	boltdbShipperConfig := boltdb.IndexCfg{}
-	flagext.DefaultValues(&boltdbShipperConfig)
-	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
-	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
-	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	shipperCfg := indexshipper.Config{}
+	flagext.DefaultValues(&shipperCfg)
+	shipperCfg.ActiveIndexDirectory = path.Join(tempDir, "index")
+	shipperCfg.CacheLocation = path.Join(tempDir, "tsdb-cache")
+	shipperCfg.Mode = indexshipper.ModeReadWrite
 
 	cfg := Config{
 		NamedStores: NamedStores{
@@ -112,21 +39,21 @@ func TestNamedStores(t *testing.T) {
 		FSConfig: local.FSConfig{
 			Directory: path.Join(tempDir, "default"),
 		},
-		BoltDBShipperConfig: boltdbShipperConfig,
+		TSDBShipperConfig: shipperCfg,
 	}
 	require.NoError(t, cfg.NamedStores.Validate())
 
 	schemaConfig := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:       config.DayTime{Time: timeToModelTime(parseDate("2019-01-01"))},
-				IndexType:  "boltdb-shipper",
+				From:       config.DayTime{Time: timeToModelTime(parseDate("2026-01-01"))},
+				IndexType:  "tsdb",
 				ObjectType: "named-store",
-				Schema:     "v9",
+				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
-						Period: time.Hour * 168,
+						Period: 24 * time.Hour,
 					}},
 			},
 		},
@@ -230,11 +157,17 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 }
 
 func TestNewObjectClient_prefixing(t *testing.T) {
-	t.Run("no prefix", func(t *testing.T) {
+	newFSCfg := func(t *testing.T) Config {
 		var cfg Config
 		flagext.DefaultValues(&cfg)
+		cfg.FSConfig = local.FSConfig{Directory: t.TempDir()}
+		return cfg
+	}
 
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
+	t.Run("no prefix", func(t *testing.T) {
+		cfg := newFSCfg(t)
+
+		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
 		require.NoError(t, err)
 
 		_, ok := objectClient.(client.PrefixedObjectClient)
@@ -242,11 +175,10 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 	})
 
 	t.Run("prefix with trailing /", func(t *testing.T) {
-		var cfg Config
-		flagext.DefaultValues(&cfg)
+		cfg := newFSCfg(t)
 		cfg.ObjectPrefix = "my/prefix/"
 
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
+		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
@@ -255,11 +187,10 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 	})
 
 	t.Run("prefix without trailing /", func(t *testing.T) {
-		var cfg Config
-		flagext.DefaultValues(&cfg)
+		cfg := newFSCfg(t)
 		cfg.ObjectPrefix = "my/prefix"
 
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
+		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
@@ -268,11 +199,10 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 	})
 
 	t.Run("prefix with starting and trailing /", func(t *testing.T) {
-		var cfg Config
-		flagext.DefaultValues(&cfg)
+		cfg := newFSCfg(t)
 		cfg.ObjectPrefix = "/my/prefix/"
 
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
+		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
@@ -281,26 +211,26 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 	})
 }
 
-// DefaultSchemaConfig creates a simple schema config for testing
-func DefaultSchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
-	s := config.SchemaConfig{
-		Configs: []config.PeriodConfig{{
-			IndexType: store,
-			Schema:    schema,
-			From:      config.DayTime{Time: from},
-			ChunkTables: config.PeriodicTableConfig{
-				Prefix: "cortex",
-				Period: 7 * 24 * time.Hour,
-			},
-			IndexTables: config.IndexPeriodicTableConfig{
-				PeriodicTableConfig: config.PeriodicTableConfig{
-					Prefix: "cortex_chunks",
-					Period: 7 * 24 * time.Hour,
-				}},
-		}},
-	}
-	if err := s.Validate(); err != nil {
-		panic(err)
-	}
-	return s
-}
+// // DefaultSchemaConfig creates a simple schema config for testing
+// func DefaultSchemaConfig(store, schema string, from model.Time) config.SchemaConfig {
+// 	s := config.SchemaConfig{
+// 		Configs: []config.PeriodConfig{{
+// 			IndexType: store,
+// 			Schema:    schema,
+// 			From:      config.DayTime{Time: from},
+// 			ChunkTables: config.PeriodicTableConfig{
+// 				Prefix: "cortex",
+// 				Period: 24 * time.Hour,
+// 			},
+// 			IndexTables: config.IndexPeriodicTableConfig{
+// 				PeriodicTableConfig: config.PeriodicTableConfig{
+// 					Prefix: "cortex_chunks",
+// 					Period: 24 * time.Hour,
+// 				}},
+// 		}},
+// 	}
+// 	if err := s.Validate(); err != nil {
+// 		panic(err)
+// 	}
+// 	return s
+// }

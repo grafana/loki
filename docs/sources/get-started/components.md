@@ -224,13 +224,6 @@ set of tokens.
 This process is used to avoid flushing all chunks when shutting down, which is a
 slow process.
 
-### Filesystem support
-
-While ingesters do support writing to the filesystem through BoltDB, this only
-works in single-process mode as [queriers](#querier) need access to the same
-back-end store and BoltDB only allows one process to have a lock on the DB at a
-given time.
-
 ## Query frontend
 
 The **query frontend** is an **optional service** providing the querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
@@ -280,7 +273,7 @@ This cache is only applicable when using single store TSDB.
 The **query scheduler** is an **optional service** providing more [advanced queuing functionality](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/query-fairness/) than the [query frontend](#query-frontend).
 When using this component in the Loki deployment, query frontend pushes split up queries to the query scheduler which enqueues them in an internal in-memory queue.
 There is a queue for each tenant to guarantee the query fairness across all tenants.
-The queriers that connect to the query scheduler act as workers that pull their jobs from the queue, execute them, and return them to the query frontend for aggregation. Queriers therefore need to be configured with the query scheduler address (via the `-querier.scheduler-address` CLI flag) in order to allow them to connect to the query scheduler.
+The queriers that connect to the query scheduler act as workers that pull their jobs from the queue, execute them, and return them to the query frontend for aggregation. Queriers therefore need to be configured with the query scheduler address (via the `-querier.scheduler-address` CLI flag, or the `scheduler_address` field in the [`frontend_worker`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#frontend_worker) YAML block) in order to allow them to connect to the query scheduler.
 
 Query schedulers are **stateless**. However, due to the in-memory queue, it's recommended to run more than one replica to keep the benefit of high availability. Two replicas should suffice in most cases.
 
@@ -300,8 +293,7 @@ timestamp, label set, and log message.
 ## Index Gateway
 
 The **index gateway** service is responsible for handling and serving metadata queries.
-Metadata queries are queries that look up data from the index. The index gateway is only used by "shipper stores",
-such as [single store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) or [single store BoltDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/).
+Metadata queries are queries that look up data from the index. The index gateway is only used by [single store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/).
 
 The query frontend queries the index gateway for the log volume of queries so it can make a decision on how to shard the queries.
 The queriers query the index gateway for chunk references for a given query so they know which chunks to fetch and query.
@@ -311,9 +303,7 @@ In `ring` mode, index gateways use a consistent hash ring to distribute and shar
 
 ## Compactor
 
-The **compactor** service is used by "shipper stores", such as [single store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/)
-or [single store BoltDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/), to compact the multiple index files produced by the ingesters
-and shipped to object storage into single index files per day and tenant. This makes index lookups more efficient.
+The **compactor** service is used by [single store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/), to compact the multiple index files produced by the ingesters and shipped to object storage into single index files per day and tenant. This makes index lookups more efficient.
 
 To do so, the compactor downloads the files from object storage in a regular interval, merges them into a single one,
 uploads the newly created index, and cleans up the old files.

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image/color"
 	"io"
-	"strings"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
@@ -153,6 +152,25 @@ type KeyboardEnhancements struct {
 	// [KeyPressEvent] with the [Key.IsRepeat] field set indicating that this
 	// is a it's part of a key repeat sequence.
 	ReportEventTypes bool
+
+	// ReportAlternateKeys requests the terminal to report alternate key values
+	// in addition to the main ones.
+	// Note that only key events represented as escape codes will affected by
+	// this enhancement.
+	ReportAlternateKeys bool
+
+	// ReportAllKeysAsEscapeCodes requests the terminal to report all key
+	// events, including plain text keys, as escape codes.
+	// When this is enabled, text won't be sent as plain text but instead as
+	// escape codes that encode the key value and modifiers.
+	ReportAllKeysAsEscapeCodes bool
+
+	// ReportAssociatedText requests the terminal to report the text associated
+	// with key events.
+	// Note that this is an enhancement to
+	// [KeyboardEnhancements.ReportAllKeysAsEscapeCodes] and only has an effect
+	// if that is enabled.
+	ReportAssociatedText bool
 }
 
 // NewKeyboardEnhancements returns a new [KeyboardEnhancements] with the given
@@ -181,6 +199,15 @@ func (ke KeyboardEnhancements) Flags() int {
 	}
 	if ke.ReportEventTypes {
 		bits |= ansi.KittyReportEventTypes
+	}
+	if ke.ReportAlternateKeys {
+		bits |= ansi.KittyReportAlternateKeys
+	}
+	if ke.ReportAllKeysAsEscapeCodes {
+		bits |= ansi.KittyReportAllKeysAsEscapeCodes
+	}
+	if ke.ReportAssociatedText {
+		bits |= ansi.KittyReportAssociatedKeys
 	}
 
 	return bits
@@ -274,31 +301,49 @@ func EncodeBracketedPaste(w io.Writer, enable bool) error {
 	return nil
 }
 
-// EncodeMouseMode encodes the mouse mode to the given writer.
+// EncodeMouseMode encodes the mouse tracking mode to the given writer.
 func EncodeMouseMode(w io.Writer, mode MouseMode) error {
-	var sb strings.Builder
+	var seq string
 	switch mode {
 	case MouseModeNone:
-		sb.WriteString(ansi.ResetModeMouseNormal)
-		sb.WriteString(ansi.ResetModeMouseButtonEvent)
-		sb.WriteString(ansi.ResetModeMouseAnyEvent)
-		sb.WriteString(ansi.ResetModeMouseExtSgr)
+		seq = ansi.ResetModeMouseX10 +
+			ansi.ResetModeMouseNormal +
+			ansi.ResetModeMouseButtonEvent +
+			ansi.ResetModeMouseAnyEvent
+	case MouseModePress:
+		seq = ansi.SetModeMouseX10
 	case MouseModeClick:
-		sb.WriteString(ansi.SetModeMouseNormal)
-		sb.WriteString(ansi.SetModeMouseExtSgr)
+		seq = ansi.SetModeMouseNormal
 	case MouseModeDrag:
-		sb.WriteString(ansi.SetModeMouseButtonEvent)
-		sb.WriteString(ansi.SetModeMouseExtSgr)
+		seq = ansi.SetModeMouseButtonEvent
 	case MouseModeMotion:
-		sb.WriteString(ansi.SetModeMouseAnyEvent)
-		sb.WriteString(ansi.SetModeMouseExtSgr)
-	default:
-		return fmt.Errorf("invalid mouse mode: %d", mode)
+		seq = ansi.SetModeMouseAnyEvent
 	}
 
-	_, err := io.WriteString(w, sb.String())
+	_, err := io.WriteString(w, seq) //nolint:errcheck
 	if err != nil {
 		return fmt.Errorf("failed to set mouse mode: %w", err)
+	}
+
+	return nil
+}
+
+// EncodeMouseEncoding encodes the mouse encoding mode to the given writer.
+// When enc is [MouseEncodingLegacy], all extended encodings are reset.
+func EncodeMouseEncoding(w io.Writer, enc MouseEncoding) error {
+	var seq string
+	switch enc {
+	case MouseEncodingLegacy:
+		seq = ansi.ResetModeMouseExtSgr +
+			ansi.ResetModeMouseExtUrxvt +
+			ansi.ResetModeMouseExtSgrPixel
+	case MouseEncodingSGR:
+		seq = ansi.SetModeMouseExtSgr
+	}
+
+	_, err := io.WriteString(w, seq) //nolint:errcheck
+	if err != nil {
+		return fmt.Errorf("failed to set mouse encoding: %w", err)
 	}
 
 	return nil

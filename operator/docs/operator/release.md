@@ -60,7 +60,7 @@ Since the operator shares the same repo with Loki, we want to make sure that, wh
 
 #### Preventing merging the release-please PR without updating the manifests
 
-Since step 1. is currently not automated and disconnected from release-please we have put in place a workflow in `.github/workflows/operator-check-prepare-release-commit.yml` that runs on release-please PRs. This workflow is responsible for making sure that in master exists a commit with the message `chore(operator): prepare community release v$VERSION`. Once we automate step 1. we should be able to remove this workflow.
+Since step 1. is currently not automated and disconnected from release-please we have put in place a workflow in `.github/workflows/operator-check-prepare-release-commit.yml` that runs on release-please PRs. This workflow is responsible for making sure that in master exists a commit with the message `chore(operator): Prepare community release v$VERSION`. Once we automate step 1. we should be able to remove this workflow.
 
 ### Publish release to operatorhubs
 

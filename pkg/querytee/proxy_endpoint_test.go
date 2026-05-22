@@ -770,10 +770,13 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 	receivedQueries := []string{}
 
 	step := "60s"
-	stepMs := int64(60000)
 
-	// Calculate the split boundary: step-aligned threshold + step
-	splitBoundary := stepAlignUp(threshold, stepMs).Add(time.Duration(stepMs) * time.Millisecond)
+	// The split boundary sits midway between threshold and the recent portion
+	// of the spans-threshold subtests (threshold + 1h). A generous margin keeps
+	// the boundary stable even when v2End drifts: the engine router computes
+	// v2End from time.Now() at request time, while threshold here is captured
+	// at test setup, and logs queries don't step-align v2End.
+	splitBoundary := threshold.Add(30 * time.Minute)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -784,10 +787,10 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		require.NoError(t, err)
 		endTime := rangeQuery.End
 
-		// If end time is before or at split boundary, return old response
-		// Otherwise return recent response
+		// If end time is before the split boundary, return the old response.
+		// Otherwise return the recent response.
 		w.WriteHeader(200)
-		if endTime.Before(splitBoundary) || endTime.Equal(splitBoundary) {
+		if endTime.Before(splitBoundary) {
 			_, _ = w.Write([]byte(oldResponseBody))
 		} else {
 			_, _ = w.Write([]byte(recentResponseBody))
@@ -884,17 +887,10 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 
 		assert.Equal(t, 3, len(receivedQueries), "expected 3 queries, 1 for the recent portion, and 1 to both v1 and v2 for comparison, got %d", len(receivedQueries))
 
-		// Verify that old queries go to both backends
-		// Step is 60s = 60000ms from the test query
-		stepMs := int64(60000)
-
-		// Align threshold UP (as it's treated as an end boundary in alignStartEnd)
-		// This is v2End in the engine_router
-		alignedThreshold := stepAlignUp(threshold, stepMs)
-
-		// Based on observed behavior, old queries end at alignedThreshold + gap
-		oldQueryBoundary := alignedThreshold.Add(time.Duration(stepMs) * time.Millisecond)
-
+		// Classify queries by whether their end time matches the request's end:
+		// the post-v2 (recent) split runs to the request end, while the v2 (old)
+		// split ends at v2End, which is computed dynamically from time.Now() and
+		// can drift relative to `threshold` captured at test setup.
 		oldQueries := 0
 		recentQueries := 0
 		for _, q := range receivedQueries {
@@ -902,11 +898,10 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 				endStr := extractQueryParam(q, "end")
 				endTime, _ := parseTimestamp(endStr)
 
-				// Queries ending at or before oldQueryBoundary are "old"
-				if endTime.Before(oldQueryBoundary) || endTime.Equal(oldQueryBoundary) {
-					oldQueries++
-				} else {
+				if endTime.Equal(end) {
 					recentQueries++
+				} else {
+					oldQueries++
 				}
 			}
 		}
@@ -962,11 +957,8 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// - 3 queries total: 1 for recent portion (v1 only), 2 for old portion (v1 and v2 for comparison)
 		assert.Equal(t, 3, len(receivedQueries), "expected 3 queries for v2 metric query, 1 for recent portion and 2 for old portion comparison, got %d", len(receivedQueries))
 
-		// Verify that old queries go to both backends
-		stepMs := int64(60000)
-		alignedThreshold := stepAlignUp(threshold, stepMs)
-		oldQueryBoundary := alignedThreshold.Add(time.Duration(stepMs) * time.Millisecond)
-
+		// Classify queries by whether their end time matches the request's end
+		// (the recent portion) or not (the old portion sent to both backends).
 		oldQueries := 0
 		recentQueries := 0
 		for _, q := range receivedQueries {
@@ -974,10 +966,10 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 				endStr := extractQueryParam(q, "end")
 				endTime, _ := parseTimestamp(endStr)
 
-				if endTime.Before(oldQueryBoundary) || endTime.Equal(oldQueryBoundary) {
-					oldQueries++
-				} else {
+				if endTime.Equal(end) {
 					recentQueries++
+				} else {
+					oldQueries++
 				}
 			}
 		}
@@ -1016,15 +1008,6 @@ func parseTimestamp(value string) (time.Time, error) {
 		return time.Unix(nanos, 0), nil
 	}
 	return time.Unix(0, nanos), nil
-}
-
-// stepAlignUp aligns a timestamp up to the nearest step boundary
-func stepAlignUp(t time.Time, stepMs int64) time.Time {
-	timestampMs := t.UnixMilli()
-	if mod := timestampMs % stepMs; mod != 0 {
-		timestampMs += stepMs - mod
-	}
-	return time.Unix(0, timestampMs*1e6)
 }
 
 // Helper function to extract query parameters from a query string

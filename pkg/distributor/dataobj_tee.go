@@ -68,15 +68,16 @@ type DataObjTee struct {
 	limitsClient *ingestLimits
 	rateBatcher  *rateBatcher // nil if batching is disabled
 	limits       Limits
-	kafkaClient  *kgo.Client
+	kafkaClient  KafkaProducer
 	resolver     *segmentationPartitionResolver
 	logger       log.Logger
 
 	// Metrics.
-	streams         prometheus.Counter
-	streamFailures  prometheus.Counter
-	producedBytes   *prometheus.CounterVec
-	producedRecords *prometheus.CounterVec
+	streams           prometheus.Counter
+	streamFailures    prometheus.Counter
+	producedBytes     *prometheus.CounterVec
+	producedRecords   *prometheus.CounterVec
+	estimateRateBytes *prometheus.GaugeVec
 }
 
 // NewDataObjTee returns a new DataObjTee.
@@ -85,7 +86,7 @@ func NewDataObjTee(
 	resolver *segmentationPartitionResolver,
 	limitsClient *ingestLimits,
 	limits Limits,
-	kafkaClient *kgo.Client,
+	kafkaClient KafkaProducer,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*DataObjTee, error) {
@@ -104,8 +105,8 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_duplicate_stream_failures_total",
 			Help: "Total number of streams that could not be duplicated.",
 		}),
-		// The tenant and segmentation key labels are not emitted unless debug metrics
-		// are enabled.
+		// The tenant and segmentation key labels are not emitted for these metrics
+		// unless debug metrics are enabled.
 		producedBytes: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_distributor_dataobj_tee_produced_bytes_total",
 			Help: "Total number of bytes produced to each partition.",
@@ -114,6 +115,11 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_produced_records_total",
 			Help: "Total number of records produced to each partition.",
 		}, []string{"partition", "tenant", "segmentation_key"}),
+		// These metrics are not emitted at all unless debug metrics are enabled.
+		estimateRateBytes: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_distributor_dataobj_tee_estimate_rate_bytes",
+			Help: "The estimated rate bytes for the segmentation key.",
+		}, []string{"tenant", "segmentation_key"}),
 	}
 
 	// Create rate batcher if batching is enabled.
@@ -187,7 +193,11 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 
 	for _, s := range segmentationKeyStreams {
 		go func(stream segmentedStream) {
-			t.duplicate(ctx, tenant, stream, fastRates[stream.SegmentationKeyHash], tenantRateBytesLimit, pushTracker)
+			rateBytes := fastRates[stream.SegmentationKeyHash]
+			if t.cfg.DebugMetricsEnabled {
+				t.estimateRateBytes.WithLabelValues(tenant, string(stream.SegmentationKey)).Set(float64(rateBytes))
+			}
+			t.duplicate(ctx, tenant, stream, rateBytes, tenantRateBytesLimit, pushTracker)
 		}(s)
 	}
 }
@@ -211,9 +221,11 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmen
 		return
 	}
 
-	results := t.kafkaClient.ProduceSync(ctx, records...)
+	results := t.kafkaClient.ProduceSync(ctx, records)
 	if err := results.FirstErr(); err != nil {
-		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
+		if !errors.Is(err, kgo.ErrMaxBuffered) {
+			level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
+		}
 		t.streamFailures.Inc()
 		pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to tee error: %d", TeeCouldntProduceRecordsError))
 		return

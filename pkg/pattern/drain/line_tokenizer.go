@@ -19,22 +19,6 @@ type LineTokenizer interface {
 	Clone(tokens []string, state interface{}) ([]string, interface{})
 }
 
-type spacesTokenizer struct{}
-
-func (spacesTokenizer) Tokenize(line string, _ []string, _ interface{}) ([]string, interface{}) {
-	return strings.Split(line, " "), nil
-}
-
-func (spacesTokenizer) Join(tokens []string, _ interface{}) string {
-	return strings.Join(tokens, " ")
-}
-
-func (spacesTokenizer) Clone(tokens []string, _ interface{}) ([]string, interface{}) {
-	res := make([]string, len(tokens))
-	copy(res, tokens)
-	return res, nil
-}
-
 type punctuationTokenizer struct {
 	includeDelimiters [128]rune
 	excludeDelimiters [128]rune

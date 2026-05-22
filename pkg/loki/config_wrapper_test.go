@@ -239,7 +239,7 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig, config.StorageConfig.AWSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.S3Config, config.StorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
@@ -291,7 +291,7 @@ memberlist:
 
 			for _, actual := range []aws.S3Config{
 				config.Ruler.StoreConfig.S3,
-				config.StorageConfig.AWSStorageConfig.S3Config,
+				config.StorageConfig.S3Config,
 			} {
 				require.NotNil(t, actual.S3.URL)
 				assert.Equal(t, *expected, *actual.S3.URL)
@@ -357,7 +357,7 @@ memberlist:
 
 			for _, actual := range []aws.S3Config{
 				config.Ruler.StoreConfig.S3,
-				config.StorageConfig.AWSStorageConfig.S3Config,
+				config.StorageConfig.S3Config,
 			} {
 				require.NotNil(t, actual.S3.URL)
 				assert.Equal(t, *expected, *actual.S3.URL)
@@ -432,7 +432,7 @@ memberlist:
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.S3Config, config.StorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
@@ -489,7 +489,7 @@ memberlist:
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.S3Config, config.StorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
@@ -532,7 +532,7 @@ memberlist:
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.S3Config, config.StorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
@@ -602,7 +602,7 @@ memberlist:
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.S3Config, config.StorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
@@ -644,7 +644,7 @@ memberlist:
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.S3Config, config.StorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
@@ -688,7 +688,7 @@ memberlist:
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.S3Config, config.StorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
@@ -718,7 +718,7 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.S3Config, config.StorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
@@ -753,7 +753,7 @@ ruler:
 			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
 
 			// should remain empty
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.S3Config, config.StorageConfig.S3Config)
 		})
 
 		t.Run("explicit storage config provided via config file is preserved", func(t *testing.T) {
@@ -772,10 +772,10 @@ storage_config:
 
 			config, defaults := testContext(explicitStorageConfig, nil)
 
-			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.Endpoint)
-			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.Region)
-			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.AccessKeyID)
-			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.SecretAccessKey.String())
+			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.S3Config.Endpoint)
+			assert.Equal(t, "us-east1", config.StorageConfig.S3Config.Region)
+			assert.Equal(t, "abc123", config.StorageConfig.S3Config.AccessKeyID)
+			assert.Equal(t, "def789", config.StorageConfig.S3Config.SecretAccessKey.String())
 
 			// should be set by common config
 			assert.EqualValues(t, "foobar", config.Ruler.StoreConfig.GCS.BucketName)
@@ -847,10 +847,10 @@ storage_config:
 			config, _ := testContext(namedStoresConfig, nil)
 
 			// should be set by common config
-			assert.Equal(t, "s3://common-bucket", config.StorageConfig.AWSStorageConfig.Endpoint)
-			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.Region)
-			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.AccessKeyID)
-			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.SecretAccessKey.String())
+			assert.Equal(t, "s3://common-bucket", config.StorageConfig.S3Config.Endpoint)
+			assert.Equal(t, "us-east1", config.StorageConfig.S3Config.Region)
+			assert.Equal(t, "abc123", config.StorageConfig.S3Config.AccessKeyID)
+			assert.Equal(t, "def789", config.StorageConfig.S3Config.SecretAccessKey.String())
 
 			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.NamedStores.AWS["store-1"].Endpoint)
 			assert.Equal(t, "us-west1", config.StorageConfig.NamedStores.AWS["store-1"].Region)
@@ -947,44 +947,44 @@ storage_config:
 		})
 	})
 
-	t.Run("boltdb shipper apply common path prefix", func(t *testing.T) {
+	t.Run("tsdb shipper apply common path prefix", func(t *testing.T) {
 		t.Run("if path prefix provided in common config, default active_index_directory and cache_location", func(t *testing.T) {
 
-			const boltdbSchemaConfig = `---
+			const schemaCfg = `---
 common:
   path_prefix: /opt/loki
 schema_config:
   configs:
     - from: 2021-08-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: gcs
       schema: v11
       index:
         prefix: index_
         period: 24h`
-			config, _ := testContext(boltdbSchemaConfig, nil)
+			config, _ := testContext(schemaCfg, nil)
 
-			assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
-			assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+			assert.Equal(t, "/opt/loki/tsdb-shipper-active", config.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory)
+			assert.Equal(t, "/opt/loki/tsdb-shipper-cache", config.StorageConfig.TSDBShipperConfig.CacheLocation)
 		})
 
-		t.Run("boltdb shipper directories correctly handle trailing slash in path prefix", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
+		t.Run("tsdb shipper directories correctly handle trailing slash in path prefix", func(t *testing.T) {
+			const schemaCfg = `---
 common:
   path_prefix: /opt/loki/
 schema_config:
   configs:
     - from: 2021-08-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: gcs
       schema: v11
       index:
         prefix: index_
         period: 24h`
-			config, _ := testContext(boltdbSchemaConfig, nil)
+			config, _ := testContext(schemaCfg, nil)
 
-			assert.Equal(t, "/opt/loki/boltdb-shipper-active", config.StorageConfig.BoltDBShipperConfig.ActiveIndexDirectory)
-			assert.Equal(t, "/opt/loki/boltdb-shipper-cache", config.StorageConfig.BoltDBShipperConfig.CacheLocation)
+			assert.Equal(t, "/opt/loki/tsdb-shipper-active", config.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory)
+			assert.Equal(t, "/opt/loki/tsdb-shipper-cache", config.StorageConfig.TSDBShipperConfig.CacheLocation)
 
 		})
 	})
@@ -2009,33 +2009,6 @@ func Test_applyChunkRetain(t *testing.T) {
 		assert.Equal(t, defaults.Ingester.RetainPeriod, config.Ingester.RetainPeriod)
 	})
 
-	t.Run("chunk retain is set to IndexCacheValidity + 1 minute", func(t *testing.T) {
-		yamlContent := `
-schema_config:
-  configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v12
-      index:
-        prefix: index_
-        period: 24h
-storage_config:
-  index_cache_validity: 10m
-  index_queries_cache_config:
-    memcached:
-      batch_size: 256
-      parallelism: 10
-    memcached_client:
-      consistent_hash: true
-      host: memcached-index-queries.loki-bigtable.svc.cluster.local
-      service: memcached-client
-`
-		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
-		assert.NoError(t, err)
-		assert.Equal(t, 11*time.Minute, config.Ingester.RetainPeriod)
-	})
-
 	t.Run("chunk retain is not changed for tsdb index type", func(t *testing.T) {
 		yamlContent := `
 schema_config:
@@ -2055,7 +2028,7 @@ storage_config:
       parallelism: 10
     memcached_client:
       consistent_hash: true
-      host: memcached-index-queries.loki-bigtable.svc.cluster.local
+      host: memcached-index-queries.loki.svc.cluster.local
       service: memcached-client
 `
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
@@ -2353,8 +2326,6 @@ func TestNamedStores_applyDefaults(t *testing.T) {
       store-1:
         s3: "s3.test"
         storage_class: GLACIER
-        dynamodb:
-          dynamodb_url: "dynamo.test"
     azure:
       store-2:
         environment: AzureGermanCloud
@@ -2396,13 +2367,12 @@ func TestNamedStores_applyDefaults(t *testing.T) {
 		assert.Len(t, config.StorageConfig.NamedStores.AWS, 1)
 
 		// expect the defaults to be set on named store config
-		expected := defaults.StorageConfig.AWSStorageConfig
-		assert.NoError(t, expected.DynamoDB.Set("dynamo.test"))
+		expected := defaults.StorageConfig.S3Config
 		assert.NoError(t, expected.S3.Set("s3.test"))
 		// override defaults
 		expected.StorageClass = "GLACIER"
 
-		assert.Equal(t, expected, (aws.StorageConfig)(nsCfg.AWS["store-1"]))
+		assert.Equal(t, expected, (aws.S3Config)(nsCfg.AWS["store-1"]))
 	})
 
 	t.Run("azure", func(t *testing.T) {

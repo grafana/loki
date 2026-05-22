@@ -4,6 +4,8 @@ Thank you for your interest in contributing to the Loki Helm Chart! This documen
 
 For general Loki project contributions, please also see the main [Contributing Guide](../../../CONTRIBUTING.md).
 
+**IMPORTANT** As of March 16, 2026, the open source Loki Helm Chart for is being maintained by Grafana Champions and the Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the Loki Helm chart against the Grafana-community repo.  The chart in this repo is being maintained for Grafana Enterprise Logs (GEL) customers only.
+
 ## Contribution Guidelines
 
 ### What We Welcome

@@ -1,8 +1,8 @@
 # loki
 
-![Version: 6.55.0](https://img.shields.io/badge/Version-6.55.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.6.7](https://img.shields.io/badge/AppVersion-3.6.7-informational?style=flat-square)
+![Version: 7.1.0](https://img.shields.io/badge/Version-7.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.6.8](https://img.shields.io/badge/AppVersion-3.6.8-informational?style=flat-square)
 
-Helm chart for Grafana Loki and Grafana Enterprise Logs supporting monolithic, simple scalable, and microservices modes.
+Helm chart for Grafana Enterprise Logs supporting monolithic, simple scalable, and microservices modes.
 
 ## ⚠️ Helm Chart Migration
 As of March 16, 2026, the Grafana Loki Helm chart for OSS users has moved to [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts) (forked at chart version 6.55.0). OSS users are encouraged to migrate to the community-maintained chart. The chart in this repository is now maintained for Grafana Enterprise Logs (GEL) users only. See [#20705](https://github.com/grafana/loki/issues/20705) for details.
@@ -19,7 +19,7 @@ As of March 16, 2026, the Grafana Loki Helm chart for OSS users has moved to [gr
 |------------|------|---------|
 | https://charts.min.io/ | minio(minio) | 5.4.0 |
 | https://grafana.github.io/helm-charts | grafana-agent-operator(grafana-agent-operator) | 0.5.2 |
-| https://grafana.github.io/helm-charts | rollout_operator(rollout-operator) | 0.43.0 |
+| https://grafana.github.io/helm-charts | rollout_operator(rollout-operator) | 0.47.0 |
 
 Find more information in the Loki Helm Chart [documentation](https://grafana.com/docs/loki/latest/setup/install/helm/).
 

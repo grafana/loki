@@ -1,20 +1,7 @@
 package types //nolint:revive
 
 var SupportedIndexTypes = []string{
-	BoltDBShipperType,
-	TSDBType,
-}
-
-var DeprecatedIndexTypes = []string{
-	StorageTypeAWS,
-	StorageTypeAWSDynamo,
-	StorageTypeBigTable,
-	StorageTypeBigTableHashed,
-	StorageTypeBoltDB,
-	StorageTypeCassandra,
-	StorageTypeGCP,
-	StorageTypeGCPColumnKey,
-	StorageTypeGrpc,
+	IndexTypeTSDB,
 }
 
 var SupportedStorageTypes = []string{
@@ -29,45 +16,18 @@ var SupportedStorageTypes = []string{
 	StorageTypeGCS,
 	StorageTypeS3,
 	StorageTypeSwift,
-	StorageTypeNoop,
-}
-
-var DeprecatedStorageTypes = []string{
-	StorageTypeAWSDynamo,
-	StorageTypeBigTable,
-	StorageTypeBigTableHashed,
-	StorageTypeCassandra,
-	StorageTypeGCP,
-	StorageTypeGCPColumnKey,
-	StorageTypeGrpc,
-}
-
-var TestingStorageTypes = []string{
-	StorageTypeInMemory,
 }
 
 const (
-	StorageTypeAlibabaCloud   = "alibabacloud"
-	StorageTypeAWS            = "aws"
-	StorageTypeAWSDynamo      = "aws-dynamo"
-	StorageTypeAzure          = "azure"
-	StorageTypeBOS            = "bos"
-	StorageTypeBoltDB         = "boltdb"
-	StorageTypeCassandra      = "cassandra"
-	StorageTypeInMemory       = "inmemory"
-	StorageTypeBigTable       = "bigtable"
-	StorageTypeBigTableHashed = "bigtable-hashed"
-	StorageTypeFileSystem     = "filesystem"
-	StorageTypeGCP            = "gcp"
-	StorageTypeGCPColumnKey   = "gcp-columnkey"
-	StorageTypeGCS            = "gcs"
-	StorageTypeGrpc           = "grpc-store"
-	StorageTypeLocal          = "local"
-	StorageTypeS3             = "s3"
-	StorageTypeSwift          = "swift"
-	StorageTypeCOS            = "cos"
-	StorageTypeNoop           = "noop"
+	StorageTypeAWS          = "aws"
+	StorageTypeAlibabaCloud = "alibabacloud"
+	StorageTypeAzure        = "azure"
+	StorageTypeBOS          = "bos"
+	StorageTypeCOS          = "cos"
+	StorageTypeFileSystem   = "filesystem"
+	StorageTypeGCS          = "gcs"
+	StorageTypeS3           = "s3"
+	StorageTypeSwift        = "swift"
 
-	BoltDBShipperType = "boltdb-shipper"
-	TSDBType          = "tsdb"
+	IndexTypeTSDB = "tsdb"
 )

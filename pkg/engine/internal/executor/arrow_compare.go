@@ -21,6 +21,8 @@ import (
 //
 // compareScalars returns an error if the two scalars are of different types,
 // or if the scalar type is not supported for comparison.
+//
+//lint:ignore U1000 we want to keep the helper function
 func compareScalars(left, right scalar.Scalar, nullsFirst bool) (int, error) {
 	leftNull := left == nil || !left.IsValid()
 	rightNull := right == nil || !right.IsValid()
@@ -149,6 +151,8 @@ func compareScalars(left, right scalar.Scalar, nullsFirst bool) (int, error) {
 //
 // compareArrays returns an error if the two arrays are of different types,
 // or if the array type is not supported for comparison.
+//
+//lint:ignore U1000 we want to keep the helper function
 func compareArrays(left, right arrow.Array, leftIdx, rightIdx int, nullsFirst bool) (int, error) {
 	leftNull := left == nil || !left.IsValid(leftIdx)
 	rightNull := right == nil || !right.IsValid(rightIdx)

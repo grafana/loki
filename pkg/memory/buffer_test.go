@@ -116,6 +116,24 @@ func TestBuffer_Grow(t *testing.T) {
 	require.Equal(t, 0, alloc.FreeBytes(), "expected unused memory to be released")
 }
 
+func TestBuffer_BytesTrimmed(t *testing.T) {
+	t.Run("nil buffer", func(t *testing.T) {
+		var buf memory.Buffer[int32]
+		require.Nil(t, buf.BytesTrimmed())
+	})
+
+	t.Run("returns exactly len*sizeof bytes, no padding", func(t *testing.T) {
+		var alloc memory.Allocator
+		defer alloc.Reset()
+
+		buf := memory.NewBuffer[int32](&alloc, 10)
+		buf.Append(1, 2, 3)
+
+		got := buf.BytesTrimmed()
+		require.Len(t, got, 3*4, "BytesTrimmed must not include padding")
+	})
+}
+
 func TestBuffer_Slice(t *testing.T) {
 	var alloc memory.Allocator
 	defer alloc.Reset()

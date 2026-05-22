@@ -15,11 +15,11 @@ component's `metadata.yml`.
 
 ```yaml
 feature_gates:
-	- id: namespaced.uniqueIdentifier
-		description: A brief description of what the gate controls
-		stage: stable
-		from_version: 'v0.65.0'
-		reference_url: 'https://github.com/open-telemetry/opentelemetry-collector/issues/6167'
+  - id: namespaced.uniqueIdentifier
+    description: A brief description of what the gate controls
+    stage: stable
+    from_version: 'v0.65.0'
+    reference_url: 'https://github.com/open-telemetry/opentelemetry-collector/issues/6167'
 ```
 
 Running the mdatagen code generator with this configuration will initialize the
@@ -28,7 +28,7 @@ The status of the gate can later be checked by calling that submodule:
 
 ```go
 if metadata.NamespacedUniqueIdentifierFeatureGate.IsEnabled() {
-	setupNewFeature()
+  setupNewFeature()
 }
 ```
 
@@ -44,12 +44,12 @@ Once a `Gate` has been marked as `Stable`, it must have a `RemovalVersion` set.
 
 ```go
 var myFeatureGate = featuregate.GlobalRegistry().MustRegister(
-	"namespaced.uniqueIdentifier",
-	featuregate.Stable,
-    featuregate.WithRegisterFromVersion("v0.65.0")
-	featuregate.WithRegisterDescription("A brief description of what the gate controls"),
-	featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/issues/6167"),
-	featuregate.WithRegisterToVersion("v0.70.0"))
+  "namespaced.uniqueIdentifier",
+  featuregate.Stable,
+  featuregate.WithRegisterFromVersion("v0.65.0")
+  featuregate.WithRegisterDescription("A brief description of what the gate controls"),
+  featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/issues/6167"),
+  featuregate.WithRegisterToVersion("v0.70.0"))
 ```
 
 The status of the gate may later be checked by interrogating the global
@@ -57,7 +57,7 @@ feature gate registry:
 
 ```go
 if myFeatureGate.IsEnabled() {
-	setupNewFeature()
+  setupNewFeature()
 }
 ```
 

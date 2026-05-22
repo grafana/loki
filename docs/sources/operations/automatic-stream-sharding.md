@@ -7,17 +7,20 @@ weight:
 
 # Manage large volume log streams with automatic stream sharding
 
+
+
 Automatic stream sharding can keep streams under a `desired_rate` by adding new labels and values to
 existing streams. When properly tuned, this can eliminate issues where log producers are rate limited due to the
 per-stream rate limit.
 
 **To enable automatic stream sharding:**
+
 1. Edit the global [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) of the Loki configuration file:
 
    ```yaml
    limits_config:
      shard_streams:
-         enabled: true
+       enabled: true
    ```
 
 1. Optionally lower the `desired_rate` in bytes if you find that the system is still hitting the `per_stream_rate_limit`:
@@ -42,6 +45,7 @@ per-stream rate limit.
    ```
 
 ## When to use automatic stream sharding
+
 
 Large log streams present several problems for Loki, namely increased and uneven resource usage on Ingesters and
 Distributors. The general recommendation is to explore existing log streams for additional label values that are both

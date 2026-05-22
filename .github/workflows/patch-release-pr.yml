@@ -8,7 +8,7 @@ env:
   DRY_RUN: false
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+  RELEASE_LIB_REF: "65e24dba101c1535cf29bab695e1b12855803e4a"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
@@ -19,11 +19,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+    uses: "grafana/loki-release/.github/workflows/check.yml@65e24dba101c1535cf29bab695e1b12855803e4a"
     with:
-      build_image: "grafana/loki-build-image:0.35.0"
+      build_image: "golang:1.26.2"
       golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "fb3b12ec3e6411bcb951a5ea08cc983c2f2735fc"
+      release_lib_ref: "65e24dba101c1535cf29bab695e1b12855803e4a"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -43,7 +43,7 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull code to release"
       uses: "actions/checkout@v4"
@@ -68,22 +68,12 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - id: "fetch_app_credentials"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
-      name: "fetch app credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: |
-          APP_ID=${{ env.GITHUB_APP }}:app-id
-          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/create-github-app-token@v1"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
-        app-id: "${{ env.APP_ID }}"
-        owner: "${{ github.repository_owner }}"
-        private-key: "${{ env.PRIVATE_KEY }}"
+        github_app: "${{ env.GITHUB_APP }}"
     - env:
         OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
       id: "github_app_token"
@@ -131,8 +121,6 @@ jobs:
       pull-requests: "write"
     runs-on: "ubuntu-x64"
     steps:
-    - name: "clean up build tools cache"
-      run: "rm -rf /opt/hostedtoolcache"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
@@ -152,18 +140,10 @@ jobs:
       uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
       with:
         version: ">= 452.0.0"
-    - id: "get-secrets"
-      name: "get nfpm signing keys"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25"
-      with:
-        common_secrets: |
-          NFPM_SIGNING_KEY=packages-gpg:private-key
-          NFPM_PASSPHRASE=packages-gpg:passphrase
     - env:
         BUILD_IN_CONTAINER: false
         DRONE_TAG: "${{ needs.version.outputs.version }}"
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
-        NFPM_SIGNING_KEY_FILE: "nfpm-private-key.key"
         SKIP_ARM: false
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "build artifacts"
@@ -173,19 +153,38 @@ jobs:
           --env BUILD_IN_CONTAINER \
           --env DRONE_TAG \
           --env IMAGE_TAG \
-          --env NFPM_PASSPHRASE \
-          --env NFPM_SIGNING_KEY \
-          --env NFPM_SIGNING_KEY_FILE \
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.35.0"
+          --entrypoint /bin/sh "golang:1.26.2"
           git config --global --add safe.directory /src/loki
-          echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
-          if echo "grafana/loki-build-image:0.35.0" | grep -q "golang"; then
+          if echo "golang:1.26.2" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist packages
+        EOF
+      working-directory: "release"
+    - continue-on-error: true
+      env:
+        BUILD_IN_CONTAINER: false
+        DRONE_TAG: "${{ needs.version.outputs.version }}"
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "build optional artifacts"
+      run: |
+        cat <<EOF | docker run \
+          --interactive \
+          --env BUILD_IN_CONTAINER \
+          --env DRONE_TAG \
+          --env IMAGE_TAG \
+          --volume .:/src/loki \
+          --workdir /src/loki \
+          --entrypoint /bin/sh "golang:1.26.2"
+          git config --global --add safe.directory /src/loki
+          if echo "golang:1.26.2" | grep -q "golang"; then
+            /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
+          fi
+          make dist/loki-linux-riscv64
         EOF
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
@@ -268,7 +267,7 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
   fluentd:
     needs:
     - "version"
@@ -342,7 +341,7 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
   logcli:
     needs:
     - "version"
@@ -416,13 +415,13 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - arch: "linux/arm"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   logstash:
     needs:
     - "version"
@@ -496,7 +495,7 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
   loki:
     needs:
     - "version"
@@ -570,13 +569,13 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - arch: "linux/arm"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   loki-canary:
     needs:
     - "version"
@@ -650,13 +649,13 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - arch: "linux/arm"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   loki-canary-boringcrypto:
     needs:
     - "version"
@@ -730,13 +729,13 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - arch: "linux/arm"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   loki-docker-driver:
     needs:
     - "version"
@@ -798,7 +797,7 @@ jobs:
         build-args: |
           IMAGE_TAG=${{ needs.version.outputs.version }}
           GOARCH=${{ steps.platform.outputs.platform_short }}
-          BUILD_IMAGE=grafana/loki-build-image:0.35.0
+          BUILD_IMAGE=golang:1.26.2
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
         outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
@@ -827,10 +826,10 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   loki-helm-test:
     needs:
     - "version"
@@ -904,13 +903,13 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
         - arch: "linux/arm"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   querytee:
     needs:
     - "version"
@@ -984,10 +983,10 @@ jobs:
         include:
         - arch: "linux/amd64"
           runs_on:
-          - "github-hosted-ubuntu-x64-small"
+          - "ubuntu-x64"
         - arch: "linux/arm64"
           runs_on:
-          - "github-hosted-ubuntu-arm64-small"
+          - "ubuntu-arm64"
   version:
     needs:
     - "check"
@@ -998,7 +997,7 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    runs-on: "ubuntu-latest"
+    runs-on: "ubuntu-x64"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -1023,22 +1022,12 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
       working-directory: "release"
-    - id: "fetch_app_credentials"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
-      name: "fetch app credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: |
-          APP_ID=${{ env.GITHUB_APP }}:app-id
-          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
       if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/create-github-app-token@v1"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
-        app-id: "${{ env.APP_ID }}"
-        owner: "${{ github.repository_owner }}"
-        private-key: "${{ env.PRIVATE_KEY }}"
+        github_app: "${{ env.GITHUB_APP }}"
     - env:
         OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
       id: "github_app_token"

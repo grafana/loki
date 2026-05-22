@@ -17,8 +17,7 @@ The results cache stores the results for index-stat, instant-metric, label and v
 The results cache is consulted by query-frontends to be used in subsequent queries. If the cached results are incomplete, the query frontend calculates the required sub-queries and sends them further along to be executed in queriers, then also caches those results.
 To orchestrate all of the above, the results cache uses a query hash as the key that is computed and stored in the headers.
 
-The index lookup cache only supports the legacy BoltDB index storage and is configured to be in-memory by default.
-Since moving to the TSDB indexes the attached disks/persistent volumes are utilised as cache and in-memory index lookup cache is obsolete.
+Since moving to the TSDB indexes the attached disks/persistent volumes are utilized as cache.
 
 #### Chunks cache
 The chunks are cached using the `chunkRef` as the cache key, which is the unique reference to a chunk when it's cut in the Loki ingesters.
@@ -27,7 +26,7 @@ The chunk cache is consulted by queriers each time a set of `chunkRef`s are calc
 Query results are significantly smaller compared to chunks. As the Loki cluster gets bigger in ingested volume, the results cache can continue to perform, whereas the chunks cache will need to grow in proportion to demand more memory.
 To be able to support the growing needs of a cluster, in 2023 we introduced support for memcached-extstore. Extstore is an additional feature on Memcached which supports attaching SSD disks to memcached pods to maximize their capacity.
 
-Please see this [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) on Loki's experience with memcached-extstore for our SaaS offfering, Grafana Cloud.
+Please see this [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) on Loki's experience with memcached-extstore for our SaaS offering, Grafana Cloud.
 For more information on how to tune memcached-extstore please consult the open source [memcached documentation](https://docs.memcached.org/advisories/grafanaloki/).
 
 ## Before you begin

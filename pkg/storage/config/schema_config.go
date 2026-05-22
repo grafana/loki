@@ -27,9 +27,7 @@ import (
 const (
 	// Supported storage clients
 
-	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
-
-	// ObjectStorageIndexRequiredPeriod defines the required index period for object storage based index stores like boltdb-shipper and tsdb
+	// ObjectStorageIndexRequiredPeriod defines the required index period for object storage based index stores (tsdb)
 	ObjectStorageIndexRequiredPeriod = 24 * time.Hour
 
 	pathPrefixDelimiter = "/"
@@ -40,13 +38,10 @@ var (
 	errInvalidTablePeriod       = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
 	errInvalidTableName         = errors.New("invalid table name")
 	errConfigFileNotSet         = errors.New("schema config file needs to be set")
-	errConfigChunkPrefixNotSet  = errors.New("schema config for chunks is missing the 'prefix' setting")
 	errSchemaIncreasingFromTime = errors.New("from time in schemas must be distinct and in increasing order")
 
-	errCurrentBoltdbShipperNon24Hours  = errors.New("boltdb-shipper works best with 24h periodic index config. Either add a new config with future date set to 24h to retain the existing index or change the existing config to use 24h period")
-	errUpcomingBoltdbShipperNon24Hours = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
-	errTSDBNon24HoursIndexPeriod       = errors.New("tsdb must always have periodic config for index set to 24h")
-	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
+	errTSDBNon24HoursIndexPeriod = errors.New("tsdb must always have periodic config for index set to 24h")
+	errZeroLengthConfig          = errors.New("must specify at least one schema configuration")
 
 	// regexp for finding the trailing index table number at the end of the table name
 	extractTableNumberRegex = regexp.MustCompile(`[0-9]+$`)
@@ -138,9 +133,9 @@ type PeriodConfig struct {
 	// used when working with config
 	From DayTime `yaml:"from" doc:"description=The date of the first day that index buckets should be created. Use a date in the past if this is your only period_config, otherwise use a date when you want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15."`
 	// type of index client to use.
-	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Either tsdb or boltdb-shipper. Following stores are deprecated: aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
+	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Only tsdb is supported."`
 	// type of object client to use.
-	ObjectType  string                   `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
+	ObjectType  string                   `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config)."`
 	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v13."`
 	IndexTables IndexPeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
 	ChunkTables PeriodicTableConfig      `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
@@ -312,19 +307,6 @@ func (cfg *SchemaConfig) Validate() error {
 	if len(cfg.Configs) == 0 {
 		return errZeroLengthConfig
 	}
-	activePCIndex := ActivePeriodConfig((*cfg).Configs)
-
-	// if current index type is boltdb-shipper and there are no upcoming index types then it should be set to 24 hours.
-	if cfg.Configs[activePCIndex].IndexType == types.BoltDBShipperType &&
-		cfg.Configs[activePCIndex].IndexTables.Period != ObjectStorageIndexRequiredPeriod && len(cfg.Configs)-1 == activePCIndex {
-		return errCurrentBoltdbShipperNon24Hours
-	}
-
-	// if upcoming index type is boltdb-shipper, it should always be set to 24 hours.
-	if len(cfg.Configs)-1 > activePCIndex && (cfg.Configs[activePCIndex+1].IndexType == types.BoltDBShipperType &&
-		cfg.Configs[activePCIndex+1].IndexTables.Period != ObjectStorageIndexRequiredPeriod) {
-		return errUpcomingBoltdbShipperNon24Hours
-	}
 
 	for i := range cfg.Configs {
 		periodCfg := &cfg.Configs[i]
@@ -366,9 +348,10 @@ func usingForPeriodConfigs(configs []PeriodConfig, fn func(string) bool) bool {
 	return false
 }
 
-// IsObjectStorageIndex returns true if the index type is either boltdb-shipper or tsdb.
+// IsObjectStorageIndex returns true if the index type is tsdb.
+// Always returns `true`, so the function can be cleaned up in the future.
 func IsObjectStorageIndex(indexType string) bool {
-	return indexType == types.BoltDBShipperType || indexType == types.TSDBType
+	return indexType == types.IndexTypeTSDB
 }
 
 // UsingObjectStorageIndex returns true if the current or any of the upcoming periods
@@ -399,22 +382,6 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 		if cfg.Configs[i].From.Time >= t {
 			f(&cfg.Configs[i])
 		}
-	}
-}
-
-func validateChunks(cfg PeriodConfig) error {
-	objectStore := cfg.IndexType
-	if cfg.ObjectType != "" {
-		objectStore = cfg.ObjectType
-	}
-	switch objectStore {
-	case "cassandra", "aws-dynamo", "bigtable-hashed", "gcp", "gcp-columnkey", "bigtable", "grpc-store":
-		if cfg.ChunkTables.Prefix == "" {
-			return errConfigChunkPrefixNotSet
-		}
-		return nil
-	default:
-		return nil
 	}
 }
 
@@ -462,12 +429,7 @@ func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 
 // Validate the period config.
 func (cfg PeriodConfig) validate() error {
-	validateError := validateChunks(cfg)
-	if validateError != nil {
-		return validateError
-	}
-
-	if cfg.IndexType == types.TSDBType && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
+	if cfg.IndexType == types.IndexTypeTSDB && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
 		return errTSDBNon24HoursIndexPeriod
 	}
 

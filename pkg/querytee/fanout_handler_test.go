@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 // trackingSamplingMockManager is a mock Manager that tracks whether ShouldSample was called.
@@ -36,6 +37,34 @@ func (m *trackingSamplingMockManager) SendToGoldfish(_ *http.Request, _, _ *gold
 
 func (m *trackingSamplingMockManager) Close() error {
 	return nil
+}
+
+func newTagCapturingBackend(t *testing.T, received chan<- string) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received <- r.Header.Get(string(httpreq.QueryTagsHTTPHeader))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+		require.NoError(t, err)
+	}))
+}
+
+func collectQueryTags(t *testing.T, received <-chan string, count int) []string {
+	t.Helper()
+
+	tags := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		select {
+		case tag := <-received:
+			tags = append(tags, tag)
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for backend query tags, got %d/%d", len(tags), count)
+		}
+	}
+
+	return tags
 }
 
 func TestFanOutHandler_Do_ReturnsPreferredResponse(t *testing.T) {
@@ -555,5 +584,110 @@ func TestFanOutHandler_Do_UpstreamDecisionPreventsDoubleSampling(t *testing.T) {
 
 		require.True(t, mockManager.shouldSampleCalled.Load(),
 			"ShouldSample SHOULD be called when no upstream decision is in context")
+	})
+}
+
+func TestFanOutHandler_Do_PropagatesGoldfishCorrelationQueryTags(t *testing.T) {
+	makeHandler := func(t *testing.T, manager goldfish.Manager, received chan<- string) *FanOutHandler {
+		t.Helper()
+
+		backend1 := newTagCapturingBackend(t, received)
+		t.Cleanup(backend1.Close)
+		backend2 := newTagCapturingBackend(t, received)
+		t.Cleanup(backend2.Close)
+
+		backend1URL, _ := url.Parse(backend1.URL)
+		backend2URL, _ := url.Parse(backend2.URL)
+
+		proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
+		require.NoError(t, err)
+		proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
+		require.NoError(t, err)
+
+		return NewFanOutHandler(FanOutHandlerConfig{
+			Backends:        []*ProxyBackend{proxyBackend1, proxyBackend2},
+			Codec:           queryrange.DefaultCodec,
+			Logger:          log.NewNopLogger(),
+			Metrics:         NewProxyMetrics(prometheus.NewRegistry()),
+			RouteName:       "test_route",
+			GoldfishManager: manager,
+		})
+	}
+
+	req := &queryrange.LokiRequest{
+		Query:   `{app="test"}`,
+		StartTs: time.Now().Add(-1 * time.Hour),
+		EndTs:   time.Now(),
+		Limit:   100,
+	}
+
+	t.Run("sampled request appends correlation query tag", func(t *testing.T) {
+		received := make(chan string, 2)
+		manager := &trackingSamplingMockManager{
+			shouldSampleResult:  true,
+			correlationIDResult: "test-uuid",
+		}
+		handler := makeHandler(t, manager, received)
+
+		ctx := user.InjectOrgID(context.Background(), "test-tenant")
+		ctx = httpreq.InjectAllHeaders(ctx, http.Header{
+			string(httpreq.QueryTagsHTTPHeader): []string{"Source=logvolhist"},
+		})
+
+		_, err := handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.ElementsMatch(t, []string{
+			"Source=logvolhist,goldfish_correlation_id=test-uuid",
+			"Source=logvolhist,goldfish_correlation_id=test-uuid",
+		}, collectQueryTags(t, received, 2))
+		require.True(t, manager.shouldSampleCalled.Load())
+	})
+
+	t.Run("unsampled request leaves tags unchanged", func(t *testing.T) {
+		received := make(chan string, 2)
+		manager := &trackingSamplingMockManager{shouldSampleResult: false}
+		handler := makeHandler(t, manager, received)
+
+		ctx := user.InjectOrgID(context.Background(), "test-tenant")
+		ctx = httpreq.InjectAllHeaders(ctx, http.Header{
+			string(httpreq.QueryTagsHTTPHeader): []string{"Source=logvolhist"},
+		})
+
+		_, err := handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.ElementsMatch(t, []string{
+			"Source=logvolhist",
+			"Source=logvolhist",
+		}, collectQueryTags(t, received, 2))
+		require.True(t, manager.shouldSampleCalled.Load())
+	})
+
+	t.Run("upstream sampled decision keeps correlation tag without resampling", func(t *testing.T) {
+		received := make(chan string, 2)
+		manager := &trackingSamplingMockManager{
+			shouldSampleResult:  true,
+			correlationIDResult: "should-not-be-used",
+		}
+		handler := makeHandler(t, manager, received)
+
+		ctx := user.InjectOrgID(context.Background(), "test-tenant")
+		ctx = httpreq.InjectAllHeaders(ctx, http.Header{
+			string(httpreq.QueryTagsHTTPHeader): []string{"Source=logvolhist"},
+		})
+		ctx = goldfish.ContextWithSamplingDecision(ctx, goldfish.SamplingDecision{
+			Sampled:       true,
+			CorrelationID: "upstream-uuid",
+		})
+
+		_, err := handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.ElementsMatch(t, []string{
+			"Source=logvolhist,goldfish_correlation_id=upstream-uuid",
+			"Source=logvolhist,goldfish_correlation_id=upstream-uuid",
+		}, collectQueryTags(t, received, 2))
+		require.False(t, manager.shouldSampleCalled.Load())
 	})
 }

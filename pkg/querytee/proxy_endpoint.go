@@ -21,14 +21,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
+// TODO(chaudum): This interface is likely unused
+// [ProxyEndpoint] uses [comparator.ResponsesComparator], not this interface.
 type ResponsesComparator interface {
 	Compare(expected, actual []byte, queryEvaluationTime time.Time) (*ComparisonSummary, error)
 }
 
-type ComparisonSummary struct {
-	skipped        bool
-	missingMetrics int
-}
+// TODO(chaudum): This struct is likely unused
+type ComparisonSummary struct{}
 
 type ProxyEndpoint struct {
 	backends   []*ProxyBackend
