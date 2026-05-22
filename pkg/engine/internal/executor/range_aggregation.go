@@ -69,8 +69,7 @@ type timestampMatchingWindowsFunc func(time.Time) []window
 type columnarMatcherKind int
 
 const (
-	columnarMatcherNone columnarMatcherKind = iota
-	columnarMatcherInstant
+	columnarMatcherInstant columnarMatcherKind = iota
 	columnarMatcherAligned
 	columnarMatcherGapped
 	columnarMatcherOverlapping
@@ -198,7 +197,6 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch,
 }
 
 // TODOs:
-// - Add columnar ingest for without() grouping.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
 func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
 	var (
@@ -219,16 +217,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 		startedAt     = time.Now()
 		inputReadTime time.Duration
 	)
-
-	useColumnarAddRecord := r.columnarMatcher != columnarMatcherNone
-	var (
-		labelValuesCache *labelValuesCache
-		fieldsCache      *fieldsCache
-	)
-	if !useColumnarAddRecord {
-		labelValuesCache = newLabelValuesCache()
-		fieldsCache = newFieldsCache()
-	}
 
 	r.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
@@ -279,36 +267,8 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				valArr = valVec.(*array.Float64)
 			}
 
-			if useColumnarAddRecord {
-				if err := r.addRecordColumnar(tsCol, valArr, arrays, groupingFields); err != nil {
-					return nil, err
-				}
-				continue
-			}
-
-			for row := range int(record.NumRows()) {
-				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
-				if len(windows) == 0 {
-					continue // out of range, skip this row
-				}
-
-				var value float64
-				if r.opts.operation != types.RangeAggregationTypeCount {
-					if valArr.IsNull(row) {
-						continue
-					}
-
-					value = valArr.Value(row)
-				}
-
-				labelValues := labelValuesCache.getLabelValues(arrays, row)
-				labels := fieldsCache.getFields(arrays, groupingFields, row)
-
-				for _, w := range windows {
-					if err := r.aggregator.Add(w.end, value, labels, labelValues); err != nil {
-						return nil, err
-					}
-				}
+			if err := r.addRecordColumnar(tsCol, valArr, arrays, groupingFields); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -326,10 +286,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 }
 
 func (r *rangeAggregationPipeline) detectColumnarMatcher() columnarMatcherKind {
-	if r.opts.grouping.Without {
-		return columnarMatcherNone
-	}
-
 	switch {
 	case r.opts.step == 0:
 		return columnarMatcherInstant
