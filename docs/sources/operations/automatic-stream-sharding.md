@@ -44,6 +44,7 @@ per-stream rate limit.
 
 ## When to use automatic stream sharding
 
+
 Large log streams present several problems for Loki, namely increased and uneven resource usage on Ingesters and
 Distributors. The general recommendation is to explore existing log streams for additional label values that are both
 useful for querying and sufficiently low cardinality. There are many cases, however, where no more labels can
