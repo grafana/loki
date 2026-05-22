@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
+	rulerlocal "github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -440,7 +441,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.CompactorConfig.WorkingDirectory = filepath.Join(dir, "compactor")
 
 	cfg.Ruler.Ring.InstanceAddr = localhost
-	cfg.Ruler.StoreConfig.Type = "local"
+	cfg.Ruler.StoreConfig.Type = rulerlocal.Name
 	cfg.Ruler.StoreConfig.Local.Directory = dir
 
 	cfg.Common.CompactorAddress = "http://localhost:0"

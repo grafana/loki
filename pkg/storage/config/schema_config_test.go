@@ -588,7 +588,7 @@ store: tsdb
 
 	expected := PeriodConfig{
 		From:       DayTime{model.Time(1596153600000)},
-		IndexType:  "tsdb",
+		IndexType:  types.IndexTypeTSDB,
 		ObjectType: "gcs",
 		Schema:     "v11",
 		IndexTables: IndexPeriodicTableConfig{
