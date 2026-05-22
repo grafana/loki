@@ -110,7 +110,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 		client, err = ibmcloud.NewCOSObjectClient(cfg.COS, hedgeCfg)
 	case "alibabacloud":
 		client, err = alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaCloud)
-	case local.Name:
+	case "local":
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	default:
 		return nil, fmt.Errorf("unrecognized rule storage mode %v, choose one of: configdb, gcs, s3, swift, azure, local", cfg.Type)
