@@ -21,13 +21,21 @@ jobs:
       - name: Checkout Actions
         uses: actions/checkout@v4
         with:
-          repository: "grafana/grafana-github-actions"
+          repository: grafana/grafana-github-actions
           persist-credentials: false
           path: ./actions
-          ref: 066cbcd084b61558d99d13c76f835c49e31b4670
+          ref: 3c62d35c5a66e730186a338e45aeb8fa784e2d56
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - name: Install Actions
-        run: npm install --production --prefix ./actions
+        working-directory: ./actions
+        run: |
+          corepack enable
+          yarn install --immutable
 
       - name: Generate GitHub App Token
         id: app-token
