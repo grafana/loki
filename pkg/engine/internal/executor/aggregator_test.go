@@ -37,29 +37,19 @@ func samplesSchema(labelFields []arrow.Field) *arrow.Schema {
 	}, labelFields...), nil)
 }
 
-// addSamples ingests rows through Add for tests that need sparse per-row grouping.
+// addSamples ingests rows through BatchAddSample for tests.
 func addSamples(agg *aggregator, labelFields []arrow.Field, schema *arrow.Schema, rows arrowtest.Rows) error {
-	labelValuesForRow := make([]string, len(labelFields))
-	labelFieldsForRow := make([]arrow.Field, len(labelFields))
-
-	for i := 0; i < len(rows); i++ {
-		row := rows[i]
-		ts := row[colTs].(time.Time)
-		val := row[colVal].(float64)
-		next := 0
-		for _, field := range labelFields {
-			if row[field.Name] != nil {
-				labelValuesForRow[next] = row[field.Name].(string)
-				labelFieldsForRow[next] = field
-				next++
-				continue
-			}
-		}
-		if err := agg.Add(ts, val, labelFieldsForRow[:next], labelValuesForRow[:next]); err != nil {
-			return err
-		}
+	if len(rows) == 0 {
+		return nil
 	}
-	return nil
+	if schema == nil {
+		schema = samplesSchema(labelFields)
+	}
+
+	record := rows.Record(samplesMem, schema)
+	defer record.Release()
+
+	return batchAddRecord(agg, labelFields, record)
 }
 
 func batchAddRecord(agg *aggregator, labelFields []arrow.Field, record arrow.RecordBatch) error {
@@ -331,71 +321,6 @@ func TestAggregator(t *testing.T) {
 			require.NoError(t, addSamples(agg, groupBy, nil, finalInput))
 		})
 	})
-}
-
-func TestAggregator_computeGroupKeyFromColumns(t *testing.T) {
-	colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String).FQN()
-	colSvc := semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String).FQN()
-	colCluster := semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String).FQN()
-
-	fields := []arrow.Field{
-		semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
-		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
-		semconv.FieldFromIdent(semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String), true),
-	}
-
-	cases := []struct {
-		name      string
-		rows      arrowtest.Rows
-		row       int
-		labels    []arrow.Field
-		values    []string
-		colFields []arrow.Field
-		colIdx    []int
-	}{
-		{
-			name: "by grouping",
-			rows: arrowtest.Rows{
-				{colEnv: "prod", colSvc: "app1", colCluster: "east-1"},
-			},
-			row:       0,
-			labels:    fields[:2],
-			values:    []string{"prod", "app1"},
-			colFields: fields[:2],
-			colIdx:    []int{0, 1},
-		},
-		{
-			name: "sparse without grouping",
-			rows: arrowtest.Rows{
-				{colEnv: "prod", colSvc: nil, colCluster: "east-1"},
-			},
-			row:       0,
-			labels:    []arrow.Field{fields[0], fields[2]},
-			values:    []string{"prod", "east-1"},
-			colFields: fields,
-			colIdx:    []int{0, 2},
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			record := tc.rows.Record(memory.NewGoAllocator(), arrow.NewSchema(fields, nil))
-			t.Cleanup(func() { record.Release() })
-
-			labelCols := make([]*array.String, len(tc.colIdx))
-			labelFields := make([]arrow.Field, len(tc.colIdx))
-			for i, idx := range tc.colIdx {
-				labelCols[i] = record.Column(idx).(*array.String)
-				labelFields[i] = tc.colFields[idx]
-			}
-
-			agg := newAggregator(0, aggregationOperationSum)
-			require.Equal(t,
-				agg.computeGroupKey(tc.labels, tc.values),
-				agg.computeGroupKeyFromColumns(labelCols, labelFields, tc.row),
-			)
-		})
-	}
 }
 
 func TestAggregator_addSamplesFromColumns(t *testing.T) {
