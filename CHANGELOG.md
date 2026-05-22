@@ -4,7 +4,7 @@
 
 ### Breaking Changes
 
-* **docs:** Remove LogQL analyzer HTTP service (`logql-analyzer.grafana.net`); replaced with client-side WASM. Direct HTTP API callers must migrate to browser-based usage or self-host. (#XXXXX)
+* **docs:** Remove LogQL analyzer HTTP service (`logql-analyzer.grafana.net`); replaced with client-side WASM. Direct HTTP API callers must migrate to browser-based usage or self-host. (#21999)
 
 ## [3.6.0](https://github.com/grafana/loki/compare/v3.5.8...v3.6.0) (2025-11-05)
 
