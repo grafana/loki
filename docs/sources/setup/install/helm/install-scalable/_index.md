@@ -47,6 +47,10 @@ We do not recommended running scalable mode with `filesystem` storage. For the p
 
 The following steps show how to deploy the Loki Helm chart in simple scalable mode using the included MinIO as the storage backend. Our recommendation is to start here for development and testing purposes. Then configure Loki with an object storage provider when moving to production.
 
+{{< admonition type="note" >}}
+If this is the first time you have deployed the Loki Helm chart since the move to the Community managed Helm chart, note that the URL for the chart has changed. For more information see the [Upgrade documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-6x/).
+{{< /admonition >}}
+
 1. Add the [Grafana Community chart repository](https://github.com/grafana-community/helm-charts) to Helm:
 
    ```bash
