@@ -8,16 +8,11 @@ import (
 
 // pileSequence[R] is one pile cursor for the K-way merge. It satisfies
 // loser.Sequence (Next() bool) and exposes the current value via Value().
-// Implementations must store enough state to:
-//   - report the most recently read record via Value()
-//   - report any error that ended iteration via Err() (nil on natural EOF)
-//   - close their underlying reader via Close()
-//   - report the pile's index via PileIdx()
 //
 // Records must be emitted in sorted order
 type pileSequence[R any] interface {
 	// Next advances the cursor. Returns false on exhaustion (natural EOF or
-	// any error). Subsequent calls to Next continue to return false.
+	// any error).
 	Next() bool
 	// Value returns the current record. Undefined if Next has not been called
 	// or if the last Next call returned false.
@@ -29,26 +24,23 @@ type pileSequence[R any] interface {
 	Close() error
 	// PileIdx returns the pile's index in the merge. Used for stable tiebreak ordering.
 	PileIdx() int
-	// Exhausted returns true once Next has returned false. The merge heap consults
-	// this to identify sequences that should be treated as +infinity in the
-	// tournament-tree ordering.
-	Exhausted() bool
 }
 
-// heapVal wraps a record with an "exhausted" flag so we can express "+infinity"
-// to the loser tree without requiring callers to construct a max-value R.
+// heapVal[R] is the loser-tree value type: a snapshot of a pile's
+// current record plus its pile index for stable tiebreaks.
+//
+// isMax marks the +∞ sentinel.
 type heapVal[R any] struct {
-	rec       R
-	pileIdx   int
-	exhausted bool
+	rec     R
+	pileIdx int
+	isMax   bool
 }
 
 // mergeHeap returns a yield-style iterator over the sorted K-way merge of the
-// provided piles. If reduce is non-nil, runs of equal-key records (per cmp)
+// provided piles. If reduce is non-nil, runs of equal-key records (per [cmp])
 // are reduced into a single record before being yielded.
 //
-// mergeHeap takes ownership of the piles: on return (success or error) every
-// pile's Close is called.
+// on return (success or error) every pile's Close is called.
 func mergeHeap[R any](
 	ctx context.Context,
 	piles []pileSequence[R],
@@ -56,25 +48,21 @@ func mergeHeap[R any](
 	reduce func(acc, next R) R,
 ) func(yield func(R) bool) error {
 	return func(yield func(R) bool) error {
-		// maxVal represents exhaustion (treated as +infinity by the loser tree).
-		maxVal := heapVal[R]{exhausted: true}
+		// maxVal is the loser-tree +∞ sentinel.
+		maxVal := heapVal[R]{isMax: true}
 
-		// at returns the current value of a pile, or maxVal if exhausted/errored.
 		at := func(s pileSequence[R]) heapVal[R] {
-			if s.Exhausted() || s.Err() != nil {
-				return maxVal
-			}
-			return heapVal[R]{rec: s.Value(), pileIdx: s.PileIdx(), exhausted: false}
+			return heapVal[R]{rec: s.Value(), pileIdx: s.PileIdx()}
 		}
 
-		// less defines the loser tree ordering. Exhausted sequences sort as +infinity
-		// (never "less than" anything). For non-exhausted sequences, compare by the
-		// provided comparator; on equality, lower pile index wins (stable tiebreak).
+		// less defines the loser tree ordering. The maxVal sentinel sorts after
+		// every real record. For real records, order by the provided comparator;
+		// break ties by pile index for a stable merge.
 		less := func(a, b heapVal[R]) bool {
-			if a.exhausted {
+			if a.isMax {
 				return false
 			}
-			if b.exhausted {
+			if b.isMax {
 				return true
 			}
 			cmpResult := cmp(a.rec, b.rec)
@@ -91,7 +79,6 @@ func mergeHeap[R any](
 		}
 
 		tree := loser.New(piles, maxVal, at, less, closeSeq)
-
 		defer tree.Close()
 
 		var (

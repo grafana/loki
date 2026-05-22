@@ -86,10 +86,6 @@ func (p *testPileReader) Close() error {
 	return nil
 }
 
-func (p *testPileReader) Exhausted() bool {
-	return p.exhausted
-}
-
 var _ pileSequence[intRecord] = (*testPileReader)(nil)
 
 // trackingPileReader wraps a pileSequence and tracks whether Close() was called.
@@ -121,10 +117,6 @@ func (p *trackingPileReader[R]) PileIdx() int {
 func (p *trackingPileReader[R]) Close() error {
 	p.closed = true
 	return p.underlying.Close()
-}
-
-func (p *trackingPileReader[R]) Exhausted() bool {
-	return p.underlying.Exhausted()
 }
 
 func (p *trackingPileReader[R]) wasClosed() bool {
