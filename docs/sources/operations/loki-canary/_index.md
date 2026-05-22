@@ -17,7 +17,15 @@ artificial log lines,
 such that Loki Canary forms information about the performance of the Loki cluster.
 The information is available as Prometheus time series metrics.
 
-{{< figure max-width="75%" src="./loki-canary-block.png" alt="Loki canary">}}
+```mermaid
+graph LR
+    subgraph nodes["x Node"]
+        lc["loki-canary"] --> lf["log file"] --> al["Alloy"]
+    end
+
+    al -->|push| loki
+    lc -->|websocket| loki
+```
 
 Loki Canary writes a log to standard output and stores the timestamp in an internal
 array. The contents look something like this:
