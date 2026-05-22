@@ -9,6 +9,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
@@ -72,6 +73,7 @@ const (
 	columnarMatcherInstant
 	columnarMatcherAligned
 	columnarMatcherGapped
+	columnarMatcherOverlapping
 )
 
 // rangeAggregationPipeline is a pipeline that performs aggregations over a time window.
@@ -89,10 +91,49 @@ type rangeAggregationPipeline struct {
 	windows             []window
 	matcher             *matcherFactory
 	columnarMatcher     columnarMatcherKind
+	expandScratch       rangeAggExpandScratch
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           *expressionEvaluator         // used to evaluate column expressions
 	opts                rangeAggregationOptions
 	identCache          *semconv.IdentifierCache
+}
+
+type rangeAggExpandScratch struct {
+	mem        memory.Allocator
+	outputTs   []time.Time
+	values     []float64
+	sourceRows []int
+}
+
+func (s *rangeAggExpandScratch) reset() {
+	s.outputTs = s.outputTs[:0]
+	s.values = s.values[:0]
+	s.sourceRows = s.sourceRows[:0]
+}
+
+func (s *rangeAggExpandScratch) append(outTs time.Time, value float64, row int) {
+	s.outputTs = append(s.outputTs, outTs)
+	s.values = append(s.values, value)
+	s.sourceRows = append(s.sourceRows, row)
+}
+
+func (s *rangeAggExpandScratch) finish() (*array.Timestamp, *array.Float64, *array.Int32) {
+	if s.mem == nil {
+		s.mem = memory.NewGoAllocator()
+	}
+
+	tsBuilder := array.NewTimestampBuilder(s.mem, &arrow.TimestampType{Unit: arrow.Nanosecond})
+	valBuilder := array.NewFloat64Builder(s.mem)
+	rowBuilder := array.NewInt32Builder(s.mem)
+
+	for i := range s.outputTs {
+		tsValue, _ := arrow.TimestampFromTime(s.outputTs[i], arrow.Nanosecond)
+		tsBuilder.Append(tsValue)
+		valBuilder.Append(s.values[i])
+		rowBuilder.Append(int32(s.sourceRows[i]))
+	}
+
+	return tsBuilder.NewArray().(*array.Timestamp), valBuilder.NewArray().(*array.Float64), rowBuilder.NewArray().(*array.Int32)
 }
 
 func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
@@ -157,7 +198,7 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch,
 }
 
 // TODOs:
-// - Add columnar ingest for overlapping windows and without() grouping.
+// - Add columnar ingest for without() grouping.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
 func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
 	var (
@@ -297,7 +338,7 @@ func (r *rangeAggregationPipeline) detectColumnarMatcher() columnarMatcherKind {
 	case r.opts.step > r.opts.rangeInterval:
 		return columnarMatcherGapped
 	default:
-		return columnarMatcherNone
+		return columnarMatcherOverlapping
 	}
 }
 
@@ -339,14 +380,17 @@ func (r *rangeAggregationPipeline) windowEndForTimestamp(ts time.Time) (time.Tim
 	}
 }
 
-// addRecordColumnar ingests an input batch using a columnar loop for by() grouping when
-// each row maps to at most one output window (instant, aligned, or gapped matchers).
+// addRecordColumnar ingests an input batch using a columnar loop for by() grouping.
 func (r *rangeAggregationPipeline) addRecordColumnar(
 	tsCol *array.Timestamp,
 	valCol *array.Float64,
 	labelCols []*array.String,
 	labelFields []arrow.Field,
 ) error {
+	if r.columnarMatcher == columnarMatcherOverlapping {
+		return r.addRecordOverlapping(tsCol, valCol, labelCols, labelFields)
+	}
+
 	countOp := r.opts.operation == types.RangeAggregationTypeCount
 
 	for row := range int(tsCol.Len()) {
@@ -365,12 +409,80 @@ func (r *rangeAggregationPipeline) addRecordColumnar(
 			value = valCol.Value(row)
 		}
 
-		if err := r.aggregator.addSampleFromColumns(outTs, value, labelCols, labelFields, row); err != nil {
+		if err := r.aggregator.AddSample(outTs, value, labelCols, labelFields, row); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// addRecordOverlapping ingests an input batch for overlapping range queries with by() grouping.
+// Each row may contribute to multiple evaluation windows.
+func (r *rangeAggregationPipeline) addRecordOverlapping(
+	tsCol *array.Timestamp,
+	valCol *array.Float64,
+	labelCols []*array.String,
+	labelFields []arrow.Field,
+) error {
+	countOp := r.opts.operation == types.RangeAggregationTypeCount
+	r.expandScratch.reset()
+
+	for row := range int(tsCol.Len()) {
+		ts := tsCol.Value(row).ToTime(arrow.Nanosecond)
+		matching := overlappingWindowsForTimestamp(r.windows, r.matcher.bounds, ts)
+		if len(matching) == 0 {
+			continue
+		}
+
+		if !countOp && valCol.IsNull(row) {
+			continue
+		}
+
+		var value float64
+		if !countOp {
+			value = valCol.Value(row)
+		}
+
+		for _, w := range matching {
+			r.expandScratch.append(w.end, value, row)
+		}
+	}
+
+	outputTs, values, sourceRows := r.expandScratch.finish()
+	defer outputTs.Release()
+	defer values.Release()
+	defer sourceRows.Release()
+
+	return r.aggregator.BatchAddSample(outputTs, values, sourceRows, labelCols, labelFields)
+}
+
+// overlappingWindowsForTimestamp returns all evaluation windows that contain t.
+func overlappingWindowsForTimestamp(windows []window, bounds window, t time.Time) []window {
+	if !bounds.Contains(t) {
+		return nil
+	}
+
+	// Find the last window that could contain the timestamp.
+	// We need the last window where t > window.start, i.e. the index before
+	// the first window where t <= window.start. Use BinarySearchFunc with a
+	// package-level cmp so we do not allocate a closure per call (unlike sort.Search).
+	firstOOBIndex, _ := slices.BinarySearchFunc(windows, t, cmpWindowStartTime)
+
+	windowIndex := firstOOBIndex - 1
+	if windowIndex < 0 {
+		return nil
+	}
+
+	// For every i in [0, windowIndex], t > windows[i].start (by definition of windowIndex).
+	// Containment is therefore equivalent to t <= windows[i].end. Ends are non-decreasing
+	// in i, so matching indices are always a suffix [low, windowIndex] of that prefix.
+	prefix := windows[:windowIndex+1]
+	low, _ := slices.BinarySearchFunc(prefix, t, cmpWindowEndTime)
+	if low > windowIndex {
+		return nil
+	}
+	return windows[low : windowIndex+1]
 }
 
 // Close closes the resources of the pipeline.
@@ -505,29 +617,6 @@ func (f *matcherFactory) createGappedMatcher(windows []window) timestampMatching
 //	interval   |--------|
 func (f *matcherFactory) createOverlappingMatcher(windows []window) timestampMatchingWindowsFunc {
 	return func(t time.Time) []window {
-		if !f.bounds.Contains(t) {
-			return nil // out of range
-		}
-
-		// Find the last window that could contain the timestamp.
-		// We need the last window where t > window.start, i.e. the index before
-		// the first window where t <= window.start. Use BinarySearchFunc with a
-		// package-level cmp so we do not allocate a closure per call (unlike sort.Search).
-		firstOOBIndex, _ := slices.BinarySearchFunc(windows, t, cmpWindowStartTime)
-
-		windowIndex := firstOOBIndex - 1
-		if windowIndex < 0 {
-			return nil
-		}
-
-		// For every i in [0, windowIndex], t > windows[i].start (by definition of windowIndex).
-		// Containment is therefore equivalent to t <= windows[i].end. Ends are non-decreasing
-		// in i, so matching indices are always a suffix [low, windowIndex] of that prefix.
-		prefix := windows[:windowIndex+1]
-		low, _ := slices.BinarySearchFunc(prefix, t, cmpWindowEndTime)
-		if low > windowIndex {
-			return nil
-		}
-		return windows[low : windowIndex+1]
+		return overlappingWindowsForTimestamp(windows, f.bounds, t)
 	}
 }

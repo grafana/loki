@@ -46,6 +46,10 @@ type aggregator struct {
 	// Track unique series across all timestamps to enforce maxSeries limit
 	maxSeries    int                          // maximum number of unique series allowed (0 means no limit)
 	uniqueSeries map[uint64]map[string]string // tracks unique series across all timestamps
+
+	// batchRowKeys caches grouping keys by source row index during addSamplesFromColumns.
+	batchRowKeys         []uint64
+	batchRowKeysComputed []bool
 }
 
 // newAggregator creates a new aggregator with the specified grouping.
@@ -221,9 +225,102 @@ func (a *aggregator) ensureSeriesFromColumns(key uint64, labelCols []*array.Stri
 	return nil
 }
 
-// addSampleFromColumns accumulates value at ts, grouping by the non-null label columns at row.
-func (a *aggregator) addSampleFromColumns(ts time.Time, value float64, labelCols []*array.String, labelFields []arrow.Field, row int) error {
+// AddSample accumulates value at ts, grouping by the non-null label columns at row.
+func (a *aggregator) AddSample(ts time.Time, value float64, labelCols []*array.String, labelFields []arrow.Field, row int) error {
 	key := a.computeGroupKeyFromColumns(labelCols, labelFields, row)
+	return a.addSampleWithKey(ts, key, value, labelCols, labelFields, row)
+}
+
+// BatchAddSample ingests samples from columnar arrays.
+// Sample i aggregates at outputTs[i] with value values[i]. When sourceRows is nil,
+// sample i uses label row i; otherwise label row sourceRows[i].
+// values may be nil for count aggregations.
+func (a *aggregator) BatchAddSample(
+	outputTs *array.Timestamp,
+	values *array.Float64,
+	sourceRows *array.Int32,
+	labelCols []*array.String,
+	labelFields []arrow.Field,
+) error {
+	n := outputTs.Len()
+	if values != nil && values.Len() != n {
+		panic("BatchAddSample: outputTs and values length mismatch")
+	}
+	if sourceRows != nil && sourceRows.Len() != n {
+		panic("BatchAddSample: outputTs and sourceRows length mismatch")
+	}
+	if n == 0 {
+		return nil
+	}
+
+	a.prepareBatchRowKeys(a.maxSourceRow(sourceRows, labelCols, n) + 1)
+
+	for i := range n {
+		row := i
+		if sourceRows != nil {
+			if sourceRows.IsNull(i) {
+				continue
+			}
+			row = int(sourceRows.Value(i))
+		}
+
+		if !a.batchRowKeysComputed[row] {
+			a.batchRowKeys[row] = a.computeGroupKeyFromColumns(labelCols, labelFields, row)
+			a.batchRowKeysComputed[row] = true
+		}
+
+		var value float64
+		if values != nil {
+			if values.IsNull(i) {
+				continue
+			}
+			value = values.Value(i)
+		}
+
+		ts := outputTs.Value(i).ToTime(arrow.Nanosecond)
+		if err := a.addSampleWithKey(ts, a.batchRowKeys[row], value, labelCols, labelFields, row); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (a *aggregator) maxSourceRow(sourceRows *array.Int32, labelCols []*array.String, n int) int {
+	if sourceRows != nil {
+		maxRow := 0
+		for i := range n {
+			if sourceRows.IsNull(i) {
+				continue
+			}
+			row := int(sourceRows.Value(i))
+			if row > maxRow {
+				maxRow = row
+			}
+		}
+		return maxRow
+	}
+
+	if len(labelCols) > 0 {
+		return labelCols[0].Len() - 1
+	}
+
+	return n - 1
+}
+
+func (a *aggregator) prepareBatchRowKeys(n int) {
+	if cap(a.batchRowKeys) < n {
+		a.batchRowKeys = make([]uint64, n)
+		a.batchRowKeysComputed = make([]bool, n)
+		return
+	}
+
+	a.batchRowKeys = a.batchRowKeys[:n]
+	a.batchRowKeysComputed = a.batchRowKeysComputed[:n]
+	clear(a.batchRowKeysComputed)
+}
+
+func (a *aggregator) addSampleWithKey(ts time.Time, key uint64, value float64, labelCols []*array.String, labelFields []arrow.Field, row int) error {
 	point := a.pointForTimestamp(ts)
 
 	if state, ok := point[key]; ok {

@@ -37,7 +37,7 @@ func samplesSchema(labelFields []arrow.Field) *arrow.Schema {
 	}, labelFields...), nil)
 }
 
-// addSamples ingests rows through AddBatch. schema may be nil to infer from labelFields or rows.
+// addSamples ingests rows through Add for tests that need sparse per-row grouping.
 func addSamples(agg *aggregator, labelFields []arrow.Field, schema *arrow.Schema, rows arrowtest.Rows) error {
 	labelValuesForRow := make([]string, len(labelFields))
 	labelFieldsForRow := make([]arrow.Field, len(labelFields))
@@ -60,6 +60,21 @@ func addSamples(agg *aggregator, labelFields []arrow.Field, schema *arrow.Schema
 		}
 	}
 	return nil
+}
+
+func batchAddRecord(agg *aggregator, labelFields []arrow.Field, record arrow.RecordBatch) error {
+	if record.NumRows() == 0 {
+		return nil
+	}
+
+	tsCol := record.Column(0).(*array.Timestamp)
+	valCol := record.Column(1).(*array.Float64)
+	labelCols := make([]*array.String, len(labelFields))
+	for i := range labelFields {
+		labelCols[i] = record.Column(2 + i).(*array.String)
+	}
+
+	return agg.BatchAddSample(tsCol, valCol, nil, labelCols, labelFields)
 }
 
 func mustAddSamples(t *testing.T, agg *aggregator, labelFields []arrow.Field, schema *arrow.Schema, rows arrowtest.Rows) {
@@ -383,6 +398,97 @@ func TestAggregator_computeGroupKeyFromColumns(t *testing.T) {
 	}
 }
 
+func TestAggregator_addSamplesFromColumns(t *testing.T) {
+	colTs := semconv.ColumnIdentTimestamp.FQN()
+	colVal := semconv.ColumnIdentValue.FQN()
+	colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String).FQN()
+	colSvc := semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String).FQN()
+
+	fields := []arrow.Field{
+		semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
+		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
+	}
+
+	ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+	rows := arrowtest.Rows{
+		{colTs: ts1, colVal: 10.0, colEnv: "prod", colSvc: "app1"},
+		{colTs: ts1, colVal: 20.0, colEnv: "prod", colSvc: "app2"},
+	}
+	record := rows.Record(memory.NewGoAllocator(), arrow.NewSchema(fields, nil))
+	t.Cleanup(func() { record.Release() })
+
+	labelCols := []*array.String{
+		record.Column(0).(*array.String),
+		record.Column(1).(*array.String),
+	}
+
+	// Simulate overlapping fan-out: each row contributes to two windows.
+	outputTs := []time.Time{ts1, ts2, ts1, ts2}
+	values := []float64{10, 10, 20, 20}
+	sourceRows := []int{0, 0, 1, 1}
+
+	expect := arrowtest.Rows{
+		{colTs: ts1, colVal: float64(10), colEnv: "prod", colSvc: "app1"},
+		{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
+		{colTs: ts2, colVal: float64(10), colEnv: "prod", colSvc: "app1"},
+		{colTs: ts2, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
+	}
+
+	single := newAggregator(0, aggregationOperationSum)
+	single.AddLabels(fields)
+	for i := range outputTs {
+		require.NoError(t, single.AddSample(outputTs[i], values[i], labelCols, fields, sourceRows[i]))
+	}
+
+	batch := newAggregator(0, aggregationOperationSum)
+	batch.AddLabels(fields)
+	outputTsArr, valuesArr, sourceRowsArr := batchSampleArrays(t, outputTs, values, sourceRows)
+	t.Cleanup(func() {
+		outputTsArr.Release()
+		valuesArr.Release()
+		sourceRowsArr.Release()
+	})
+	require.NoError(t, batch.BatchAddSample(outputTsArr, valuesArr, sourceRowsArr, labelCols, fields))
+
+	requireAggregatedRows(t, single, expect)
+	requireAggregatedRows(t, batch, expect)
+
+	// Repeated source rows in one batch should accumulate without re-hashing labels.
+	repeated := newAggregator(0, aggregationOperationSum)
+	repeated.AddLabels(fields)
+	repeatedTs, repeatedVals, repeatedRows := batchSampleArrays(t, []time.Time{ts1, ts1}, []float64{10, 10}, []int{0, 0})
+	t.Cleanup(func() {
+		repeatedTs.Release()
+		repeatedVals.Release()
+		repeatedRows.Release()
+	})
+	require.NoError(t, repeated.BatchAddSample(repeatedTs, repeatedVals, repeatedRows, labelCols, fields))
+	requireAggregatedRows(t, repeated, arrowtest.Rows{
+		{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app1"},
+	})
+}
+
+func batchSampleArrays(t *testing.T, outputTs []time.Time, values []float64, sourceRows []int) (*array.Timestamp, *array.Float64, *array.Int32) {
+	t.Helper()
+
+	mem := memory.NewGoAllocator()
+	tsBuilder := array.NewTimestampBuilder(mem, &arrow.TimestampType{Unit: arrow.Nanosecond})
+	valBuilder := array.NewFloat64Builder(mem)
+	rowBuilder := array.NewInt32Builder(mem)
+
+	for i := range outputTs {
+		tsValue, err := arrow.TimestampFromTime(outputTs[i], arrow.Nanosecond)
+		require.NoError(t, err)
+		tsBuilder.Append(tsValue)
+		valBuilder.Append(values[i])
+		rowBuilder.Append(int32(sourceRows[i]))
+	}
+
+	return tsBuilder.NewArray().(*array.Timestamp), valBuilder.NewArray().(*array.Float64), rowBuilder.NewArray().(*array.Int32)
+}
+
 var benchGroupingFields = []arrow.Field{
 	semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
 	semconv.FieldFromIdent(semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String), true),
@@ -430,17 +536,26 @@ func BenchmarkAggregatorAdd(b *testing.B) {
 		{"interleaved", true},
 		{"single_series", false},
 	} {
-		batch := benchRows(tc.interleaved, fields, startTs, step, numPoints, batchSize)
+		rows := benchRows(tc.interleaved, fields, startTs, step, numPoints, batchSize)
+		record := rows.Record(memory.NewGoAllocator(), schema)
+		b.Cleanup(func() { record.Release() })
+
+		labelCols := make([]*array.String, len(fields))
+		for i := range fields {
+			labelCols[i] = record.Column(2 + i).(*array.String)
+		}
 
 		b.Run("case="+tc.name, func(b *testing.B) {
-			var agg *aggregator
-			agg = newAggregator(0, aggregationOperationSum)
+			agg := newAggregator(0, aggregationOperationSum)
 			agg.AddLabels(fields)
+
+			tsCol := record.Column(0).(*array.Timestamp)
+			valCol := record.Column(1).(*array.Float64)
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if err := addSamples(agg, fields, schema, batch); err != nil {
+				if err := agg.BatchAddSample(tsCol, valCol, nil, labelCols, fields); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -468,9 +583,12 @@ func BenchmarkAggregatorBuildRecord(b *testing.B) {
 			n = numPoints - offset
 		}
 		batch := benchRows(true, fields, startTs.Add(step*time.Duration(offset)), step, numPoints, n)
-		if err := addSamples(agg, fields, schema, batch); err != nil {
+		record := batch.Record(memory.NewGoAllocator(), schema)
+		if err := batchAddRecord(agg, fields, record); err != nil {
+			record.Release()
 			b.Fatal(err)
 		}
+		record.Release()
 	}
 
 	b.ResetTimer()
