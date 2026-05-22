@@ -2109,6 +2109,10 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.endpoint
 [endpoint: <string> | default = ""]
 
+# Optional Alibabacloud region name. Inferred from the endpoint if not set.
+# CLI flag: -<prefix>.oss.region
+[region: <string> | default = ""]
+
 # alibabacloud Access Key ID
 # CLI flag: -<prefix>.oss.access-key-id
 [access_key_id: <string> | default = ""]
@@ -2116,6 +2120,11 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # alibabacloud Secret Access Key
 # CLI flag: -<prefix>.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
+
+# Optional. Specify the RAM role name of the ECS instance. 
+# If configured, ECSRAMRole‑based access is enabled, and access_key_id and secret_access_key are ignored.
+# CLI flag: -<prefix>.oss.ram_role_name
+[ram_role_name: <string> | default = ""]
 
 # Connection timeout in seconds
 # CLI flag: -<prefix>.oss.conn-timeout-sec

@@ -18,6 +18,10 @@ storage_config:
     cache_location: /loki/index_cache
   alibabacloud:
     bucket: <bucket>
+    # Optional Alibabacloud region name. Inferred from the endpoint if not set.
+    # region: <region>
     endpoint: <endpoint>
     access_key_id: <access_key_id>
     secret_access_key: <secret_access_key>
+    # Optional. Specify the RAM role name of the ECS instance. If configured, ECSRAMRole‑based access is enabled, and access_key_id and secret_access_key are ignored.
+    # ram_role_name: <ram_role_name>

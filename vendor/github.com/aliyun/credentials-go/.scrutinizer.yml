@@ -1,0 +1,13 @@
+build:
+    nodes:
+        analysis:
+            tests:
+                override: 
+                  - go-scrutinizer-run
+filter:
+    excluded_paths:
+        - integration/
+    dependency_paths:
+        - vendor/
+tools:
+    external_code_coverage: true
