@@ -89,78 +89,125 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 		panic("len(labels) != len(labelValues)")
 	}
 
+	key := a.computeGroupKey(labels, labelValues)
+	point := a.pointForTimestamp(ts)
+
+	if state, ok := point[key]; ok {
+		a.accumulate(state, value)
+		return nil
+	}
+
+	if err := a.ensureSeries(key, labels, labelValues); err != nil {
+		return err
+	}
+
+	point[key] = &groupState{
+		value: value,
+		count: 1,
+	}
+	return nil
+}
+
+func (a *aggregator) pointForTimestamp(ts time.Time) map[uint64]*groupState {
 	point, ok := a.points[ts]
 	if !ok {
 		point = make(map[uint64]*groupState)
 		a.points[ts] = point
 	}
+	return point
+}
 
-	var key uint64
-	if len(labelValues) != 0 {
-		a.digest.Reset()
-		for i, val := range labelValues {
-			if i > 0 {
-				_, _ = a.digest.Write([]byte{0}) // separator
-			}
-
-			_, _ = a.digest.WriteString(labels[i].Name)
-			_, _ = a.digest.Write([]byte("="))
-			_, _ = a.digest.WriteString(val)
-		}
-		key = a.digest.Sum64()
+func (a *aggregator) computeGroupKey(labels []arrow.Field, labelValues []string) uint64 {
+	if len(labelValues) == 0 {
+		return 0
 	}
 
-	if state, ok := point[key]; ok {
-		// TODO: handle hash collisions
-
-		// accumulate value based on aggregation type
-		switch a.operation {
-		case aggregationOperationSum:
-			state.value += value
-		case aggregationOperationMax:
-			if value > state.value {
-				state.value = value
-			}
-		case aggregationOperationMin:
-			if value < state.value {
-				state.value = value
-			}
-		case aggregationOperationAvg:
-			state.value += value
+	a.digest.Reset()
+	for i, val := range labelValues {
+		if i > 0 {
+			_, _ = a.digest.Write([]byte{0}) // separator
 		}
 
-		state.count++
-	} else {
-		if series, exists := a.uniqueSeries[key]; !exists {
-			// Check series limit before adding a new series
-			if a.maxSeries > 0 && len(a.uniqueSeries) >= a.maxSeries {
-				return ErrSeriesLimitExceeded
-			}
+		_, _ = a.digest.WriteString(labels[i].Name)
+		_, _ = a.digest.Write([]byte("="))
+		_, _ = a.digest.WriteString(val)
+	}
+	return a.digest.Sum64()
+}
 
-			if len(labels) > 0 {
-				series = make(map[string]string)
-				for i, v := range labelValues {
-					// copy the value as this is backed by the arrow array data buffer.
-					// We could retain the record to avoid this copy, but that would hold
-					// all other columns in memory for as long as the query is evaluated.
-					cloned, ok := a.clonedLabelValues[v]
-					if !ok {
-						cloned = strings.Clone(v)
-						a.clonedLabelValues[v] = cloned
-					}
-					series[labels[i].Name] = cloned
-				}
-			}
-
-			a.uniqueSeries[key] = series
+// computeGroupKeyFromColumns computes the same grouping key as computeGroupKey for the
+// non-null label columns at row. Null columns are skipped, matching the sparse grouping
+// semantics used by range and vector aggregators.
+func (a *aggregator) computeGroupKeyFromColumns(labelCols []*array.String, labelFields []arrow.Field, row int) uint64 {
+	a.digest.Reset()
+	first := true
+	for i, col := range labelCols {
+		if col.IsNull(row) {
+			continue
 		}
 
-		point[key] = &groupState{
-			value: value,
-			count: int64(1),
+		if !first {
+			_, _ = a.digest.Write([]byte{0}) // separator
+		}
+		first = false
+
+		_, _ = a.digest.WriteString(labelFields[i].Name)
+		_, _ = a.digest.Write([]byte("="))
+		_, _ = a.digest.WriteString(col.Value(row))
+	}
+	return a.digest.Sum64()
+}
+
+// ensureSeries registers a new unique series for key if it does not already exist.
+func (a *aggregator) ensureSeries(key uint64, labels []arrow.Field, labelValues []string) error {
+	if _, exists := a.uniqueSeries[key]; exists {
+		return nil
+	}
+
+	if a.maxSeries > 0 && len(a.uniqueSeries) >= a.maxSeries {
+		return ErrSeriesLimitExceeded
+	}
+
+	var series map[string]string
+	if len(labels) > 0 {
+		series = make(map[string]string)
+		for i, v := range labelValues {
+			// copy the value as this is backed by the arrow array data buffer.
+			// We could retain the record to avoid this copy, but that would hold
+			// all other columns in memory for as long as the query is evaluated.
+			cloned, ok := a.clonedLabelValues[v]
+			if !ok {
+				cloned = strings.Clone(v)
+				a.clonedLabelValues[v] = cloned
+			}
+			series[labels[i].Name] = cloned
 		}
 	}
+
+	a.uniqueSeries[key] = series
 	return nil
+}
+
+// accumulate updates an existing groupState for the configured aggregation operation.
+func (a *aggregator) accumulate(state *groupState, value float64) {
+	// TODO: handle hash collisions
+
+	switch a.operation {
+	case aggregationOperationSum:
+		state.value += value
+	case aggregationOperationMax:
+		if value > state.value {
+			state.value = value
+		}
+	case aggregationOperationMin:
+		if value < state.value {
+			state.value = value
+		}
+	case aggregationOperationAvg:
+		state.value += value
+	}
+
+	state.count++
 }
 
 func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {

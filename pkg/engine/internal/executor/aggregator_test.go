@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
@@ -315,6 +316,71 @@ func TestAggregator(t *testing.T) {
 			require.NoError(t, addSamples(agg, groupBy, nil, finalInput))
 		})
 	})
+}
+
+func TestAggregator_computeGroupKeyFromColumns(t *testing.T) {
+	colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String).FQN()
+	colSvc := semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String).FQN()
+	colCluster := semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String).FQN()
+
+	fields := []arrow.Field{
+		semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
+		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
+		semconv.FieldFromIdent(semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String), true),
+	}
+
+	cases := []struct {
+		name      string
+		rows      arrowtest.Rows
+		row       int
+		labels    []arrow.Field
+		values    []string
+		colFields []arrow.Field
+		colIdx    []int
+	}{
+		{
+			name: "by grouping",
+			rows: arrowtest.Rows{
+				{colEnv: "prod", colSvc: "app1", colCluster: "east-1"},
+			},
+			row:       0,
+			labels:    fields[:2],
+			values:    []string{"prod", "app1"},
+			colFields: fields[:2],
+			colIdx:    []int{0, 1},
+		},
+		{
+			name: "sparse without grouping",
+			rows: arrowtest.Rows{
+				{colEnv: "prod", colSvc: nil, colCluster: "east-1"},
+			},
+			row:       0,
+			labels:    []arrow.Field{fields[0], fields[2]},
+			values:    []string{"prod", "east-1"},
+			colFields: fields,
+			colIdx:    []int{0, 2},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			record := tc.rows.Record(memory.NewGoAllocator(), arrow.NewSchema(fields, nil))
+			t.Cleanup(func() { record.Release() })
+
+			labelCols := make([]*array.String, len(tc.colIdx))
+			labelFields := make([]arrow.Field, len(tc.colIdx))
+			for i, idx := range tc.colIdx {
+				labelCols[i] = record.Column(idx).(*array.String)
+				labelFields[i] = tc.colFields[idx]
+			}
+
+			agg := newAggregator(0, aggregationOperationSum)
+			require.Equal(t,
+				agg.computeGroupKey(tc.labels, tc.values),
+				agg.computeGroupKeyFromColumns(labelCols, labelFields, tc.row),
+			)
+		})
+	}
 }
 
 var benchGroupingFields = []arrow.Field{
