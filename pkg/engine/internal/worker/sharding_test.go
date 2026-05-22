@@ -49,7 +49,7 @@ func createTestRecordBatch(t *testing.T, numRows int, timestamps []time.Time, la
 	schema := arrow.NewSchema(fields, nil)
 
 	// Populate data
-	for i := 0; i < numRows; i++ {
+	for i := range numRows {
 		// Timestamp
 		tsBuilder := builders[0].(*array.TimestampBuilder)
 		if i < len(timestamps) {
@@ -489,7 +489,7 @@ func TestSplitRecordByShards_MultipleColumns(t *testing.T) {
 	labels := []string{"web", "api", "db", "cache"}
 	values := []float64{1.0, 2.0, 3.0, 4.0}
 
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		tsBuilder.Append(arrow.Timestamp(timestamps[i].UnixNano()))
 		strBuilder.Append(labels[i])
 		float64Builder.Append(values[i])

@@ -71,7 +71,7 @@ func computeLabelHashShards(rec arrow.RecordBatch, grouping physical.Grouping, n
 
 	// Hash each row's grouping labels to determine shard using shared hash function
 	digest := xxhash.New()
-	for rowIdx := 0; rowIdx < int(rec.NumRows()); rowIdx++ {
+	for rowIdx := range int(rec.NumRows()) {
 		hash := executor.ComputeGroupingHash(arrays, fields, rowIdx, digest)
 		shardIndices[rowIdx] = int(hash % uint64(numShards))
 	}
@@ -95,7 +95,7 @@ func (e *simpleEvaluatorForSharding) EvalForGrouping(expr physical.Expression, r
 	fqn := ident.FQN()
 
 	schema := rec.Schema()
-	for i := 0; i < int(rec.NumCols()); i++ {
+	for i := range int(rec.NumCols()) {
 		field := schema.Field(i)
 		if field.Name == fqn {
 			return rec.Column(i), nil
@@ -120,7 +120,7 @@ func computeTimeShards(rec arrow.RecordBatch, timeRanges []physical.TimeRange, s
 		return nil
 	}
 
-	for rowIdx := 0; rowIdx < int(rec.NumRows()); rowIdx++ {
+	for rowIdx := range int(rec.NumRows()) {
 		if timestampCol.IsNull(rowIdx) {
 			shardIndices[rowIdx] = 0
 			continue
@@ -148,7 +148,7 @@ func computeTimeShards(rec arrow.RecordBatch, timeRanges []physical.TimeRange, s
 func findTimestampColumn(rec arrow.RecordBatch) (*array.Timestamp, error) {
 	timestampFQN := semconv.ColumnIdentTimestamp.FQN()
 	schema := rec.Schema()
-	for i := 0; i < int(rec.NumCols()); i++ {
+	for i := range int(rec.NumCols()) {
 		field := schema.Field(i)
 		if field.Name == timestampFQN {
 			if tsCol, ok := rec.Column(i).(*array.Timestamp); ok {
@@ -172,17 +172,17 @@ func splitRecordByShards(rec arrow.RecordBatch, shardIndices []int, numShards in
 	schema := rec.Schema()
 	alloc := memory.NewGoAllocator()
 	builders := make([]*array.RecordBuilder, numShards)
-	for i := 0; i < numShards; i++ {
+	for i := range numShards {
 		builders[i] = array.NewRecordBuilder(alloc, schema)
 		builders[i].Reserve(rowsPerShard[i])
 	}
 
 	// Distribute rows to shards
-	for rowIdx := 0; rowIdx < int(rec.NumRows()); rowIdx++ {
+	for rowIdx := range int(rec.NumRows()) {
 		shardIdx := shardIndices[rowIdx]
 		builder := builders[shardIdx]
 
-		for colIdx := 0; colIdx < int(rec.NumCols()); colIdx++ {
+		for colIdx := range int(rec.NumCols()) {
 			col := rec.Column(colIdx)
 			fieldBuilder := builder.Field(colIdx)
 
@@ -213,7 +213,7 @@ func splitRecordByShards(rec arrow.RecordBatch, shardIndices []int, numShards in
 
 	// Build the result batches
 	results := make([]arrow.RecordBatch, numShards)
-	for i := 0; i < numShards; i++ {
+	for i := range numShards {
 		results[i] = builders[i].NewRecordBatch()
 	}
 

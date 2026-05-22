@@ -429,6 +429,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 					continue
 				}
 
+				// TODO(spiridonov): Send to sinks in parallel
 				if shardIdx < len(sinks) {
 					if err := sinks[shardIdx].Send(ctx, shardBatch); err != nil {
 						level.Error(logger).Log("msg", "failed to send result to shard", "shard", shardIdx, "err", err)
@@ -440,6 +441,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			}
 		} else {
 			// Broadcast mode: send to all sinks
+			// TODO(spiridonov): Send to sinks in parallel
 			for _, sink := range sinks {
 				// If a sink doesn't accept the result, we'll continue
 				// best-effort processing our task. It's possible that one of
