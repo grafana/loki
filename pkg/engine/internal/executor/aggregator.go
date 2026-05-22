@@ -188,6 +188,60 @@ func (a *aggregator) ensureSeries(key uint64, labels []arrow.Field, labelValues 
 	return nil
 }
 
+// ensureSeriesFromColumns registers a new unique series for key using label values read
+// from Arrow columns at row. Null columns are skipped.
+func (a *aggregator) ensureSeriesFromColumns(key uint64, labelCols []*array.String, labelFields []arrow.Field, row int) error {
+	if _, exists := a.uniqueSeries[key]; exists {
+		return nil
+	}
+
+	if a.maxSeries > 0 && len(a.uniqueSeries) >= a.maxSeries {
+		return ErrSeriesLimitExceeded
+	}
+
+	var series map[string]string
+	if len(labelFields) > 0 {
+		series = make(map[string]string)
+		for i, col := range labelCols {
+			if col.IsNull(row) {
+				continue
+			}
+
+			v := col.Value(row)
+			cloned, ok := a.clonedLabelValues[v]
+			if !ok {
+				cloned = strings.Clone(v)
+				a.clonedLabelValues[v] = cloned
+			}
+			series[labelFields[i].Name] = cloned
+		}
+	}
+
+	a.uniqueSeries[key] = series
+	return nil
+}
+
+// addSampleFromColumns accumulates value at ts, grouping by the non-null label columns at row.
+func (a *aggregator) addSampleFromColumns(ts time.Time, value float64, labelCols []*array.String, labelFields []arrow.Field, row int) error {
+	key := a.computeGroupKeyFromColumns(labelCols, labelFields, row)
+	point := a.pointForTimestamp(ts)
+
+	if state, ok := point[key]; ok {
+		a.accumulate(state, value)
+		return nil
+	}
+
+	if err := a.ensureSeriesFromColumns(key, labelCols, labelFields, row); err != nil {
+		return err
+	}
+
+	point[key] = &groupState{
+		value: value,
+		count: 1,
+	}
+	return nil
+}
+
 // accumulate updates an existing groupState for the configured aggregation operation.
 func (a *aggregator) accumulate(state *groupState, value float64) {
 	// TODO: handle hash collisions

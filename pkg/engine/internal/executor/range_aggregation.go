@@ -65,6 +65,15 @@ func cmpWindowEndTime(w window, t time.Time) int {
 // The list can be empty if the timestamp is out of bounds or does not match any of the range windows.
 type timestampMatchingWindowsFunc func(time.Time) []window
 
+type columnarMatcherKind int
+
+const (
+	columnarMatcherNone columnarMatcherKind = iota
+	columnarMatcherInstant
+	columnarMatcherAligned
+	columnarMatcherGapped
+)
+
 // rangeAggregationPipeline is a pipeline that performs aggregations over a time window.
 //
 // 1. It reads from the input pipelines
@@ -77,6 +86,9 @@ type rangeAggregationPipeline struct {
 	inputsExhausted bool // indicates if all inputs are exhausted
 
 	aggregator          *aggregator
+	windows             []window
+	matcher             *matcherFactory
+	columnarMatcher     columnarMatcherKind
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           *expressionEvaluator         // used to evaluate column expressions
 	opts                rangeAggregationOptions
@@ -109,6 +121,9 @@ func (r *rangeAggregationPipeline) init() {
 	}
 
 	f := newMatcherFactoryFromOpts(r.opts)
+	r.matcher = f
+	r.windows = windows
+	r.columnarMatcher = r.detectColumnarMatcher()
 	r.windowsForTimestamp = f.createMatcher(windows)
 
 	op, ok := rangeAggregationOperations[r.opts.operation]
@@ -142,7 +157,7 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch,
 }
 
 // TODOs:
-// - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
+// - Add columnar ingest for overlapping windows and without() grouping.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
 func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
 	var (
@@ -164,8 +179,15 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 		inputReadTime time.Duration
 	)
 
-	labelValuesCache := newLabelValuesCache()
-	fieldsCache := newFieldsCache()
+	useColumnarAddRecord := r.columnarMatcher != columnarMatcherNone
+	var (
+		labelValuesCache *labelValuesCache
+		fieldsCache      *fieldsCache
+	)
+	if !useColumnarAddRecord {
+		labelValuesCache = newLabelValuesCache()
+		fieldsCache = newFieldsCache()
+	}
 
 	r.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
@@ -216,6 +238,13 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				valArr = valVec.(*array.Float64)
 			}
 
+			if useColumnarAddRecord {
+				if err := r.addRecordColumnar(tsCol, valArr, arrays, groupingFields); err != nil {
+					return nil, err
+				}
+				continue
+			}
+
 			for row := range int(record.NumRows()) {
 				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
 				if len(windows) == 0 {
@@ -253,6 +282,95 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 	}
 
 	return rec, err
+}
+
+func (r *rangeAggregationPipeline) detectColumnarMatcher() columnarMatcherKind {
+	if r.opts.grouping.Without {
+		return columnarMatcherNone
+	}
+
+	switch {
+	case r.opts.step == 0:
+		return columnarMatcherInstant
+	case r.opts.step == r.opts.rangeInterval:
+		return columnarMatcherAligned
+	case r.opts.step > r.opts.rangeInterval:
+		return columnarMatcherGapped
+	default:
+		return columnarMatcherNone
+	}
+}
+
+// windowEndForTimestamp maps an input sample timestamp to the end of its matching
+// evaluation window for columnar ingest. Each sample maps to at most one window.
+func (r *rangeAggregationPipeline) windowEndForTimestamp(ts time.Time) (time.Time, bool) {
+	if !r.matcher.bounds.Contains(ts) {
+		return time.Time{}, false
+	}
+
+	switch r.columnarMatcher {
+	case columnarMatcherInstant:
+		if len(r.windows) == 0 {
+			return time.Time{}, false
+		}
+		return r.windows[0].end, true
+	case columnarMatcherAligned:
+		startNs := r.matcher.start.UnixNano()
+		stepNs := r.matcher.step.Nanoseconds()
+		windowIndex := (ts.UnixNano() - startNs + stepNs - 1) / stepNs
+		if windowIndex < 0 || windowIndex >= int64(len(r.windows)) {
+			return time.Time{}, false
+		}
+		return r.windows[windowIndex].end, true
+	case columnarMatcherGapped:
+		startNs := r.matcher.start.UnixNano()
+		stepNs := r.matcher.step.Nanoseconds()
+		tNs := ts.UnixNano()
+		windowIndex := (tNs - startNs + stepNs - 1) / stepNs
+		if windowIndex >= int64(len(r.windows)) {
+			return time.Time{}, false
+		}
+		if tNs > r.windows[windowIndex].start.UnixNano() {
+			return r.windows[windowIndex].end, true
+		}
+		return time.Time{}, false
+	default:
+		return time.Time{}, false
+	}
+}
+
+// addRecordColumnar ingests an input batch using a columnar loop for by() grouping when
+// each row maps to at most one output window (instant, aligned, or gapped matchers).
+func (r *rangeAggregationPipeline) addRecordColumnar(
+	tsCol *array.Timestamp,
+	valCol *array.Float64,
+	labelCols []*array.String,
+	labelFields []arrow.Field,
+) error {
+	countOp := r.opts.operation == types.RangeAggregationTypeCount
+
+	for row := range int(tsCol.Len()) {
+		ts := tsCol.Value(row).ToTime(arrow.Nanosecond)
+		outTs, ok := r.windowEndForTimestamp(ts)
+		if !ok {
+			continue
+		}
+
+		if !countOp && valCol.IsNull(row) {
+			continue
+		}
+
+		var value float64
+		if !countOp {
+			value = valCol.Value(row)
+		}
+
+		if err := r.aggregator.addSampleFromColumns(outTs, value, labelCols, labelFields, row); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Close closes the resources of the pipeline.
