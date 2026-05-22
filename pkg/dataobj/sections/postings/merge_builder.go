@@ -2,7 +2,6 @@ package postings
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -134,32 +133,8 @@ func (b *MergeBuilder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 		defer timer.ObserveDuration()
 	}
 
-	// Sort label entries by [objectPath, sectionIndex, columnName, labelValue].
-	sort.SliceStable(labelEntries, func(i, j int) bool {
-		a, bEntry := labelEntries[i], labelEntries[j]
-		if a.ObjectPath != bEntry.ObjectPath {
-			return a.ObjectPath < bEntry.ObjectPath
-		}
-		if a.SectionIndex != bEntry.SectionIndex {
-			return a.SectionIndex < bEntry.SectionIndex
-		}
-		if a.ColumnName != bEntry.ColumnName {
-			return a.ColumnName < bEntry.ColumnName
-		}
-		return a.LabelValue < bEntry.LabelValue
-	})
-
-	// Sort bloom entries by [objectPath, sectionIndex, columnName].
-	sort.SliceStable(bloomEntries, func(i, j int) bool {
-		a, bEntry := bloomEntries[i], bloomEntries[j]
-		if a.ObjectPath != bEntry.ObjectPath {
-			return a.ObjectPath < bEntry.ObjectPath
-		}
-		if a.SectionIndex != bEntry.SectionIndex {
-			return a.SectionIndex < bEntry.SectionIndex
-		}
-		return a.ColumnName < bEntry.ColumnName
-	})
+	sortLabelEntries(labelEntries)
+	sortBloomEntries(bloomEntries)
 
 	var enc columnar.Encoder
 	defer enc.Reset()
