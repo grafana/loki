@@ -49,3 +49,4 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           labelsToAdd: "backport"
           title: "{{originalTitle}} (backport {{base}})"
+          removeDefaultReviewers: false
