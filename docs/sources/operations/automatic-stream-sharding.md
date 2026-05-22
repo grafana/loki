@@ -7,6 +7,8 @@ weight:
 
 # Manage large volume log streams with automatic stream sharding
 
+
+
 Automatic stream sharding can keep streams under a `desired_rate` by adding new labels and values to
 existing streams. When properly tuned, this can eliminate issues where log producers are rate limited due to the
 per-stream rate limit.
