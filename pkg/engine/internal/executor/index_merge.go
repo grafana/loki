@@ -18,7 +18,7 @@ import (
 )
 
 // executeIndexMerge orchestrates the index merge: existence-check, classify sections,
-// drive both heaps, feed indexobj.Builder, and upload the result.
+// drive both merges, feed indexobj.Builder, and upload the result.
 func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
 		if err := c.doIndexMerge(ctx, node); err != nil {
@@ -97,10 +97,10 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 	return nil
 }
 
-// classifyRuns scans all sections of each referenced source object and classifies
-// them as postings or stats. Deduplicates objects by path; skips unknown section
-// types silently (streams, pointers, indexPointers are not the index merger's concern).
-// Validates that all stats sections share the same SortSchema.
+// classifyRuns scans all sections of each referenced source object and
+// classifies them as postings or stats. Non-mergable section types (streams,
+// pointers, indexPointers) are silently ignored. Validates that all stats
+// sections share the same SortSchema.
 func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	postingsSections []runSection,
 	statsSections []runSection,
@@ -138,6 +138,10 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	}
 	sort.Strings(paths)
 
+  // Make sure all stats section have the same sort schema by checking the sort
+  // schema from the first row of each section. Catches misconfigured
+  // cross-tenant merges or upstream schema-evolution bugs.
+	var firstSortSchema string
 	for _, path := range paths {
 		entry := objects[path]
 		for _, sec := range entry.obj.Sections() {
@@ -148,6 +152,18 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 					runIdx:  entry.runIdx,
 				})
 			case stats.CheckSection(sec):
+				sortSchema, readErr := readStatsSortSchema(ctx, sec)
+				if readErr != nil {
+					return nil, nil, fmt.Errorf("reading stats section %d SortSchema: %w", len(statsSections), readErr)
+				}
+				if len(statsSections) == 0 {
+					firstSortSchema = sortSchema
+				} else if sortSchema != firstSortSchema {
+					return nil, nil, fmt.Errorf(
+						"stats sections have mismatched SortSchema: section 0 has %q, section %d has %q",
+						firstSortSchema, len(statsSections), sortSchema,
+					)
+				}
 				statsSections = append(statsSections, runSection{
 					section: sec,
 					runIdx:  entry.runIdx,
@@ -157,38 +173,26 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 		}
 	}
 
-	// Validate that all stats sections share the same SortSchema. Read the
-	// first row of each to check. Catches misconfigured cross-tenant merges or
-	// upstream schema-evolution bugs.
-	if len(statsSections) > 0 {
-		var firstSortSchema string
-		for i, rs := range statsSections {
-			sec, openErr := stats.Open(ctx, rs.section)
-			if openErr != nil {
-				return nil, nil, fmt.Errorf("opening stats section for validation: %w", openErr)
-			}
-			reader := newStatsPileReader(ctx, sec, 0)
-			var row statsRow
-			if reader.Next() {
-				row = reader.Value()
-			}
-			readErr := reader.Err()
-			reader.Close()
-			if readErr != nil && !errors.Is(readErr, io.EOF) {
-				return nil, nil, fmt.Errorf("reading stats section %d for validation: %w", i, readErr)
-			}
-			if i == 0 {
-				firstSortSchema = row.SortSchema
-			} else if row.SortSchema != firstSortSchema {
-				return nil, nil, fmt.Errorf(
-					"stats sections have mismatched SortSchema: section 0 has %q, section %d has %q",
-					firstSortSchema, i, row.SortSchema,
-				)
-			}
-		}
-	}
-
 	return postingsSections, statsSections, nil
+}
+
+// readStatsSortSchema opens a stats section and returns the SortSchema from
+// its first row. Returns an empty string if the section has no rows.
+func readStatsSortSchema(ctx context.Context, sec *dataobj.Section) (string, error) {
+	statsSec, err := stats.Open(ctx, sec)
+	if err != nil {
+		return "", fmt.Errorf("opening stats section: %w", err)
+	}
+	reader := newStatsPileReader(ctx, statsSec, 0)
+	defer reader.Close()
+	var row statsRow
+	if reader.Next() {
+		row = reader.Value()
+	}
+	if err := reader.Err(); err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	return row.SortSchema, nil
 }
 
 type runSection struct {
@@ -197,14 +201,13 @@ type runSection struct {
 }
 
 // mergePostingsIntoBuilder merges postings sections using a K-way merge heap and
-// feeds results into the builder. Uses D2 last-wins reduction.
+// feeds results into the builder.
 func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, sections []runSection, builder *indexobj.MergeBuilder) error {
 	if len(sections) == 0 {
 		return nil
 	}
 
 	// Open all postings sections and create pile readers.
-	// Pre-allocate with known capacity to avoid slice growth allocations.
 	pileReaders := make([]pileSequence[postingsRow], 0, len(sections))
 
 	for i, rs := range sections {
