@@ -10,7 +10,6 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -146,7 +145,7 @@ func validateVariantsExpr(e VariantsExpr) error {
 
 // validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
 func validateMatchers(matchers []*labels.Matcher) error {
-	_, matchers = util.SplitFiltersAndMatchers(matchers)
+	_, matchers = splitFiltersAndMatchers(matchers)
 	if len(matchers) == 0 {
 		return logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
 	}

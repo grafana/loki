@@ -12,6 +12,41 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
+// Result is the top-level response from Analyze.
+type Result struct {
+	StreamSelector string       `json:"stream_selector"`
+	Stages         []string     `json:"stages"`
+	Results        []LineResult `json:"results"`
+}
+
+// LineResult holds per-line analysis results across all stages.
+type LineResult struct {
+	OriginLine   string        `json:"origin_line"`
+	StageRecords []StageRecord `json:"stage_records"`
+}
+
+// StageRecord captures the state of a log line before and after one pipeline stage.
+type StageRecord struct {
+	LineBefore   string  `json:"line_before"`
+	LabelsBefore []Label `json:"labels_before"`
+	LineAfter    string  `json:"line_after"`
+	LabelsAfter  []Label `json:"labels_after"`
+	FilteredOut  bool    `json:"filtered_out"`
+}
+
+// Label is a name/value pair representing a log stream label.
+type Label struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// Analyze runs the LogQL analyzer on the given query and log lines.
+// It returns a Result describing how each log line flows through the pipeline stages.
+// query must be a valid LogQL log stream selector expression (e.g. `{job="foo"} | json`).
+func Analyze(query string, logs []string) (*Result, error) {
+	return logQLAnalyzer{}.analyze(query, logs)
+}
+
 type logQLAnalyzer struct {
 }
 

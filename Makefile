@@ -72,8 +72,10 @@ LOKI_IMAGE             := $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
 CANARY_IMAGE           := $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 QUERY_TEE_IMAGE        := $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 LOGCLI_IMAGE           := $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG)
-LOGQL_ANALYZER_IMAGE   := $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG)
 OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
+LOGQL_ANALYZER_WASM_OUT := docs/sources/query/analyzer/logql-analyzer.wasm
+WASM_EXEC_JS_SRC        := $(shell go env GOROOT)/lib/wasm/wasm_exec.js
+WASM_EXEC_JS_DST        := docs/sources/query/analyzer/wasm_exec.js
 
 # OCI (Docker) setup
 OCI_PLATFORMS  := --platform=linux/amd64,linux/arm64
@@ -388,7 +390,6 @@ clean: ## clean the generated files
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
 	rm -rf cmd/logcli/logcli
-	rm -rf cmd/logql-analyzer/logql-analyzer
 	rm -rf cmd/loki-canary/loki-canary
 	rm -rf cmd/loki/loki
 	rm -rf cmd/migrate/migrate
@@ -605,9 +606,19 @@ loki-querytee-image: ## build the querytee docker image
 migrate-image: ## build the migrate docker image
 	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
 
-# LogQL Analyzer
-logql-analyzer-image: ## build the logql analyzer docker image
-	$(OCI_BUILD) -t $(LOGQL_ANALYZER_IMAGE) -f cmd/logql-analyzer/Dockerfile .
+# LogQL Analyzer WASM
+.PHONY: loki-logql-analyzer-wasm
+loki-logql-analyzer-wasm: ## build the LogQL analyzer WASM binary and copy wasm_exec.js to docs/
+	GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -ldflags="-s -w" \
+	    -o $(LOGQL_ANALYZER_WASM_OUT) ./cmd/logql-analyzer-wasm
+	cp $(WASM_EXEC_JS_SRC) $(WASM_EXEC_JS_DST)
+	@if command -v wasm-opt >/dev/null 2>&1; then \
+	    wasm-opt --enable-bulk-memory --enable-nontrapping-float-to-int -Oz -o $(LOGQL_ANALYZER_WASM_OUT) $(LOGQL_ANALYZER_WASM_OUT); \
+	    echo "wasm-opt applied to $(LOGQL_ANALYZER_WASM_OUT)"; \
+	else \
+	    echo "wasm-opt not found — skipping optimization (install binaryen to reduce binary size)"; \
+	fi
+	@echo "Done. Commit $(LOGQL_ANALYZER_WASM_OUT) and $(WASM_EXEC_JS_DST) when analyzer source changes."
 
 # Build image
 build-image: ## build the build docker image

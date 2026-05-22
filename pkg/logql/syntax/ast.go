@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/util"
-
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -1111,7 +1109,7 @@ func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 func simplify(typ labels.MatchType, name string, reg *syntax.Regexp) (*labels.Matcher, bool) {
 	switch reg.Op {
 	case syntax.OpLiteral:
-		if !util.IsCaseInsensitive(reg) {
+		if !isCaseInsensitive(reg) {
 			t := labels.MatchEqual
 			if typ == labels.MatchNotRegexp {
 				t = labels.MatchNotEqual

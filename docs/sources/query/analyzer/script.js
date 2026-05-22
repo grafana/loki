@@ -4,6 +4,21 @@ const logsSourceInputElement = document.getElementById("logs-source-input");
 const queryInputElement = document.getElementById("query-input");
 const resultsElement = document.getElementById("results");
 
+// WASM initialization — requires wasm_exec.js to be loaded first (see analyzer.md)
+let wasmReady = false;
+const go = new Go(); // Go is provided by wasm_exec.js
+WebAssembly.instantiateStreaming(fetch('../analyzer/logql-analyzer.wasm'), go.importObject)
+  .then((result) => {
+    go.run(result.instance);
+    wasmReady = true;
+    // Run any deferred URL-param query now that WASM is ready.
+    loadExampleFromUrlIfExist();
+  })
+  .catch((err) => {
+    console.error('Failed to load LogQL analyzer WASM:', err);
+    handleError('Failed to load the LogQL analyzer. Please reload the page or check your network connection.');
+  });
+
 function initListeners() {
   [...document.getElementsByClassName("query_submit")].forEach(btn => btn.addEventListener("click", runQuery));
   [...document.getElementsByClassName("example-select")].forEach(btn => {
@@ -70,16 +85,22 @@ function getDataFromInputs() {
 function runQuery() {
   resultsElement.classList.add("hide");
   const data = getDataFromInputs();
-  sendRequest({...data, query: `${streamSelector} ${data.query}`})
-    .then((response) => handleResponse(response))
-}
-
-async function handleResponse(response) {
-  if (response.status !== 200) {
-    handleError(await response.text());
-    return
+  const query = `${streamSelector} ${data.query}`;
+  if (!wasmReady) {
+    handleError("The LogQL analyzer is still loading. Please try again in a moment.");
+    return;
   }
-  renderResponse(await response.json())
+  try {
+    const resultJSON = analyzeLogQL(query, data.logs);
+    const parsed = JSON.parse(resultJSON);
+    if (parsed.error) {
+      handleError(parsed.error);
+    } else {
+      renderResponse(parsed);
+    }
+  } catch (e) {
+    handleError(e.toString());
+  }
 }
 
 function handleError(error) {
@@ -87,34 +108,6 @@ function handleError(error) {
   document.getElementById("query-error").innerHTML = template({error_text:error})
   document.getElementById("query-error").classList.remove("hide");
   resultsElement.classList.add("hide");
-}
-
-// Loki version in docs always looks like `MAJOR.MINOR.x`
-const lokiVersionRegexp = /(\d+\.\d+\.x)/
-const baseAnalyzerHost = "https://logql-analyzer.grafana.net";
-
-function getSelectedDocsVersionTitle() {
-  let selectedDocsVersion = document.querySelector("#grafana-version-select > option:checked");
-  // we need to return "next" for the local development. in this case we do not have version selector
-  return selectedDocsVersion && selectedDocsVersion.text || "next";
-}
-
-function getAnalyzerHost() {
-  const docsVersionTitle = getSelectedDocsVersionTitle();
-  const matches = docsVersionTitle.match(lokiVersionRegexp);
-  if (matches === null || matches.length === 0) {
-    return `${baseAnalyzerHost}/next`
-  }
-  return `${baseAnalyzerHost}/${matches[0].replaceAll(".", "-")}`
-}
-
-async function sendRequest(payload) {
-  const host = getAnalyzerHost();
-  return fetch(host + "/api/logql-analyze", {
-    method: 'POST', headers: {
-      'Accept': 'application/json', 'Content-Type': 'application/json'
-    }, mode: 'cors', body: JSON.stringify(payload)
-  });
 }
 
 function findAddedLabels(stageInfo) {
@@ -200,4 +193,5 @@ initListeners();
 
 loadCheckedExample();
 
-loadExampleFromUrlIfExist();
+// Note: loadExampleFromUrlIfExist() is called from the WASM .then() handler above,
+// after WASM is ready, to avoid a race between async WASM load and URL-param queries.

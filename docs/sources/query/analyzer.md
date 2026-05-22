@@ -10,6 +10,7 @@ weight: 200
 
 <link rel="stylesheet" href="../analyzer/style.css">
 <script src="../analyzer/handlebars.js"></script>
+<script src="../analyzer/wasm_exec.js"></script>
 
 # Simple LogQL simulator
 

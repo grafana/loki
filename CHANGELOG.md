@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Breaking Changes
+
+* **docs:** Remove LogQL analyzer HTTP service (`logql-analyzer.grafana.net`); replaced with client-side WASM. Direct HTTP API callers must migrate to browser-based usage or self-host. (#XXXXX)
+
 ## [3.6.0](https://github.com/grafana/loki/compare/v3.5.8...v3.6.0) (2025-11-05)
 
 * Add method to get zone-aware partition consumers ([#17377](https://github.com/grafana/loki/issues/17377)) ([4a733fc](https://github.com/grafana/loki/commit/4a733fcf7db6421d28a535667f9dc31f67ec00b0))

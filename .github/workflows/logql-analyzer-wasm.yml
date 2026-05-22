@@ -1,0 +1,54 @@
+# Verifies that the LogQL analyzer WASM binary compiles successfully.
+# The developer is responsible for rebuilding and committing the binary
+# (docs/sources/query/analyzer/logql-analyzer.wasm) when analyzer source changes.
+# Run: make loki-logql-analyzer-wasm
+name: LogQL Analyzer WASM
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/logql-analyzer-wasm/**'
+      - 'pkg/logqlanalyzer/**'
+      - 'pkg/logql/log/**'
+      - 'pkg/logql/syntax/**'
+      - 'pkg/logqlmodel/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'cmd/logql-analyzer-wasm/**'
+      - 'pkg/logqlanalyzer/**'
+      - 'pkg/logql/log/**'
+      - 'pkg/logql/syntax/**'
+      - 'pkg/logqlmodel/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build WASM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build WASM binary
+        run: |
+          GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -ldflags="-s -w" \
+              -o /tmp/logql-analyzer.wasm ./cmd/logql-analyzer-wasm
+          ls -lh /tmp/logql-analyzer.wasm
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: logql-analyzer-wasm
+          path: /tmp/logql-analyzer.wasm
+          retention-days: 30
