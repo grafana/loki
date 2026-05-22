@@ -125,8 +125,8 @@ func (p *trackingPileReader[R]) wasClosed() bool {
 
 var _ pileSequence[intRecord] = (*trackingPileReader[intRecord])(nil)
 
-// TestMergeHeap_DistinctKeys tests merging two piles with distinct keys.
-func TestMergeHeap_DistinctKeys(t *testing.T) {
+// TestMerge_DistinctKeys tests merging two piles with distinct keys.
+func TestMerge_DistinctKeys(t *testing.T) {
 	ctx := context.Background()
 
 	// Two piles: {1,3,5} and {2,4,6}
@@ -150,7 +150,7 @@ func TestMergeHeap_DistinctKeys(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
+	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
 
 	expected := []intRecord{
 		{Key: 1, Val: "a"},
@@ -170,8 +170,8 @@ func TestMergeHeap_DistinctKeys(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-// TestMergeHeap_EqualKeysReducer tests merging with reduction on equal keys.
-func TestMergeHeap_EqualKeysReducer(t *testing.T) {
+// TestMerge_EqualKeysReducer tests merging with reduction on equal keys.
+func TestMerge_EqualKeysReducer(t *testing.T) {
 	ctx := context.Background()
 
 	// Two piles, each with {1, 3}
@@ -198,7 +198,7 @@ func TestMergeHeap_EqualKeysReducer(t *testing.T) {
 		return intRecord{Key: acc.Key, Val: acc.Val + "+" + next.Val}
 	}
 
-	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, reduce)
+	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, reduce)
 
 	expected := []intRecord{
 		{Key: 1, Val: "a1+b1"},
@@ -214,8 +214,8 @@ func TestMergeHeap_EqualKeysReducer(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-// TestMergeHeap_EmptyPiles tests merging empty piles.
-func TestMergeHeap_EmptyPiles(t *testing.T) {
+// TestMerge_EmptyPiles tests merging empty piles.
+func TestMerge_EmptyPiles(t *testing.T) {
 	ctx := context.Background()
 
 	pile1 := newTestPileReader()
@@ -230,7 +230,7 @@ func TestMergeHeap_EmptyPiles(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
+	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
 
 	var actual []intRecord
 	err := iter(func(rec intRecord) bool {
@@ -241,8 +241,8 @@ func TestMergeHeap_EmptyPiles(t *testing.T) {
 	require.Len(t, actual, 0)
 }
 
-// TestMergeHeap_ContextCancelled tests that context cancellation is honored.
-func TestMergeHeap_ContextCancelled(t *testing.T) {
+// TestMerge_ContextCancelled tests that context cancellation is honored.
+func TestMerge_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -258,7 +258,7 @@ func TestMergeHeap_ContextCancelled(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
+	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
 
 	err := iter(func(_ intRecord) bool {
 		return true
@@ -422,8 +422,8 @@ func TestStatsPileReader_RoundTrip(t *testing.T) {
 	require.Equal(t, "job2", rows[1].Labels["job"])
 }
 
-// TestMergeHeap_ClosesAllPilesOnEarlyStop tests that mergeHeap closes all piles when the caller stops iteration early.
-func TestMergeHeap_ClosesAllPilesOnEarlyStop(t *testing.T) {
+// TestMerge_ClosesAllPilesOnEarlyStop tests that merge closes all piles when the caller stops iteration early.
+func TestMerge_ClosesAllPilesOnEarlyStop(t *testing.T) {
 	ctx := context.Background()
 
 	// Create tracking piles
@@ -447,7 +447,7 @@ func TestMergeHeap_ClosesAllPilesOnEarlyStop(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
+	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
 
 	// Iterate and stop after the 2nd record
 	var count int
@@ -463,8 +463,8 @@ func TestMergeHeap_ClosesAllPilesOnEarlyStop(t *testing.T) {
 	require.True(t, pile2.wasClosed(), "pile2 should be closed")
 }
 
-// TestMergeHeap_ClosesAllPilesOnReadError tests that mergeHeap closes all piles when a read error occurs.
-func TestMergeHeap_ClosesAllPilesOnReadError(t *testing.T) {
+// TestMerge_ClosesAllPilesOnReadError tests that merge closes all piles when a read error occurs.
+func TestMerge_ClosesAllPilesOnReadError(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a pile that returns an error
@@ -485,7 +485,7 @@ func TestMergeHeap_ClosesAllPilesOnReadError(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileSequence[intRecord]{trackingErrorPile, trackingNormalPile}, cmp, nil)
+	iter := merge(ctx, []pileSequence[intRecord]{trackingErrorPile, trackingNormalPile}, cmp, nil)
 
 	// Try to iterate; should get an error
 	err := iter(func(_ intRecord) bool {
@@ -498,8 +498,8 @@ func TestMergeHeap_ClosesAllPilesOnReadError(t *testing.T) {
 	require.True(t, trackingNormalPile.wasClosed(), "normal pile should be closed")
 }
 
-// TestMergeHeap_ClosesAllPilesOnContextCancel tests that mergeHeap closes all piles when context is cancelled.
-func TestMergeHeap_ClosesAllPilesOnContextCancel(t *testing.T) {
+// TestMerge_ClosesAllPilesOnContextCancel tests that merge closes all piles when context is cancelled.
+func TestMerge_ClosesAllPilesOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Create tracking piles
@@ -521,7 +521,7 @@ func TestMergeHeap_ClosesAllPilesOnContextCancel(t *testing.T) {
 		return 0
 	}
 
-	iter := mergeHeap(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
+	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
 
 	// Start iteration and cancel after first record
 	var count int
