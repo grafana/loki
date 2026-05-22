@@ -315,11 +315,12 @@ func parseRegion(endpoint string) string {
 }
 
 func buildAuth(cfg authConfig) (ak string, sk string, opts []oss.ClientOption, err error) {
-	if cfg.roleName != "" {
-		_, opts, err = buildRAMRoleProvider(cfg.roleName)
-		return "", "", opts, err
+	if cfg.accessKeyID != "" || cfg.accessKeySecret != "" {
+		return cfg.accessKeyID, cfg.accessKeySecret, nil, nil
 	}
-	return cfg.accessKeyID, cfg.accessKeySecret, nil, nil
+
+	_, opts, err = buildRAMRoleProvider(cfg.roleName)
+	return "", "", opts, err
 }
 
 func buildRAMRoleProvider(roleName string) (oss.CredentialsProvider, []oss.ClientOption, error) {
