@@ -80,49 +80,54 @@ type rangeAggregationPipeline struct {
 
 type rangeAggExpandScratch struct {
 	mem        memory.Allocator
-	tsBuilder  *array.TimestampBuilder
-	valBuilder *array.Float64Builder
-	rowBuilder *array.Int32Builder
-}
-
-func (s *rangeAggExpandScratch) ensureBuilders() {
-	if s.mem == nil {
-		s.mem = memory.NewGoAllocator()
-	}
-	if s.tsBuilder == nil {
-		s.tsBuilder = array.NewTimestampBuilder(s.mem, &arrow.TimestampType{Unit: arrow.Nanosecond})
-		s.valBuilder = array.NewFloat64Builder(s.mem)
-		s.rowBuilder = array.NewInt32Builder(s.mem)
-	}
+	outputTs   []int64
+	values     []float64
+	sourceRows []int
 }
 
 func (s *rangeAggExpandScratch) reset() {
-	s.ensureBuilders()
-	s.tsBuilder.Resize(0)
-	s.valBuilder.Resize(0)
-	s.rowBuilder.Resize(0)
+	s.outputTs = s.outputTs[:0]
+	s.values = s.values[:0]
+	s.sourceRows = s.sourceRows[:0]
 }
 
 func (s *rangeAggExpandScratch) append(outTs int64, value float64, row int, includeValue bool) {
-	s.tsBuilder.Append(arrow.Timestamp(outTs))
+	s.outputTs = append(s.outputTs, outTs)
 	if includeValue {
-		s.valBuilder.Append(value)
+		s.values = append(s.values, value)
 	}
-	s.rowBuilder.Append(int32(row))
+	s.sourceRows = append(s.sourceRows, row)
 }
 
 func (s *rangeAggExpandScratch) finish(includeValues bool) (*array.Timestamp, *array.Float64, *array.Int32) {
-	if s.tsBuilder == nil || s.tsBuilder.Len() == 0 {
+	if len(s.outputTs) == 0 {
 		return nil, nil, nil
 	}
 
-	ts := s.tsBuilder.NewTimestampArray()
-	rows := s.rowBuilder.NewInt32Array()
+	if s.mem == nil {
+		s.mem = memory.NewGoAllocator()
+	}
+
+	tsBuilder := array.NewTimestampBuilder(s.mem, &arrow.TimestampType{Unit: arrow.Nanosecond})
+	rowBuilder := array.NewInt32Builder(s.mem)
+
+	for i, ts := range s.outputTs {
+		tsBuilder.Append(arrow.Timestamp(ts))
+		rowBuilder.Append(int32(s.sourceRows[i]))
+	}
+
+	ts := tsBuilder.NewTimestampArray()
+	rows := rowBuilder.NewInt32Array()
 	if !includeValues {
 		return ts, nil, rows
 	}
 
-	return ts, s.valBuilder.NewFloat64Array(), rows
+	valBuilder := array.NewFloat64Builder(s.mem)
+	for _, value := range s.values {
+		valBuilder.Append(value)
+	}
+
+	return ts, valBuilder.NewFloat64Array(), rows
 }
 
 func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
@@ -341,11 +346,11 @@ func (r *rangeAggregationPipeline) addRecordColumnar(
 		return r.addRecordOverlapping(tsCol, valCol, labelCols, labelFields)
 	}
 
-	return r.addRecordOneToOne(tsCol, valCol, labelCols, labelFields)
+	return r.addRecordSingle(tsCol, valCol, labelCols, labelFields)
 }
 
-// addRecordOneToOne ingests an input batch when each row maps to at most one output window.
-func (r *rangeAggregationPipeline) addRecordOneToOne(
+// addRecordSingle ingests an input batch when each row maps to at most one output window.
+func (r *rangeAggregationPipeline) addRecordSingle(
 	tsCol *array.Timestamp,
 	valCol *array.Float64,
 	labelCols []*array.String,
