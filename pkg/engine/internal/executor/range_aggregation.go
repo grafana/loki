@@ -62,7 +62,7 @@ const (
 // 2. Groups the data by the specified columns
 // 3. Applies the aggregation function on each group
 //
-// Current version only supports counting for instant queries.
+// It supports instant and range queries with by()/without() grouping.
 type rangeAggregationPipeline struct {
 	inputs          []Pipeline
 	inputsExhausted bool // indicates if all inputs are exhausted
