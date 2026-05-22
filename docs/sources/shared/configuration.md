@@ -2175,8 +2175,9 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
 
-# Optional. Specify the RAM role name of the ECS instance. 
-# If configured, ECSRAMRole‑based access is enabled, and access_key_id and secret_access_key are ignored.
+# Optional. Specify the RAM role name of the ECS instance.
+# ECSRAMRole-based access is enabled only when neither access_key_id nor secret_access_key is configured. 
+# The role name can be automatically inferred even if not explicitly set.
 # CLI flag: -<prefix>.oss.ram_role_name
 [ram_role_name: <string> | default = ""]
 

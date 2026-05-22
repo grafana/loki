@@ -77,7 +77,7 @@ func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"oss.region", "", "Alibabacloud Region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"oss.access-key-id", "", "alibabacloud Access Key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "alibabacloud Secret Access Key")
-	f.StringVar(&cfg.RAMRoleName, prefix+"oss.ram-role-name", "", "Optional. Specify the RAM role name of the ECS instance. If configured, ECSRAMRole‑based access is enabled, and access_key_id and secret_access_key are ignored.")
+	f.StringVar(&cfg.RAMRoleName, prefix+"oss.ram-role-name", "", "Optional. Specify the RAM role name of the ECS instance. ECSRAMRole-based access is enabled only when neither access_key_id nor secret_access_key is configured. The role name can be automatically inferred even if not explicitly set.")
 	f.Int64Var(&cfg.ConnectionTimeoutSec, prefix+"oss.conn-timeout-sec", 30, "Connection timeout in seconds")
 	f.Int64Var(&cfg.ReadWriteTimeoutSec, prefix+"oss.read-write-timeout-sec", 60, "Read/Write timeout in seconds")
 }
