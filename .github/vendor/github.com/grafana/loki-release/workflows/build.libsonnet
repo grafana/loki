@@ -325,22 +325,12 @@ local runner = import 'runner.libsonnet',
       common.googleAuth,
       common.setupGoogleCloudSdk,
 
-      step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25')  // main
-      + step.withId('get-secrets')
-      + step.with({
-        common_secrets: |||
-          NFPM_SIGNING_KEY=packages-gpg:private-key
-          NFPM_PASSPHRASE=packages-gpg:passphrase
-        |||,
-      }),
-
       releaseStep('build artifacts')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.withEnv({
         BUILD_IN_CONTAINER: false,
         DRONE_TAG: '${{ needs.version.outputs.version }}',
         IMAGE_TAG: '${{ needs.version.outputs.version }}',
-        NFPM_SIGNING_KEY_FILE: 'nfpm-private-key.key',
         SKIP_ARM: skipArm,
       })
       //TODO: the workdir here is loki specific
@@ -356,15 +346,11 @@ local runner = import 'runner.libsonnet',
             --env BUILD_IN_CONTAINER \
             --env DRONE_TAG \
             --env IMAGE_TAG \
-            --env NFPM_PASSPHRASE \
-            --env NFPM_SIGNING_KEY \
-            --env NFPM_SIGNING_KEY_FILE \
             --env SKIP_ARM \
             --volume .:/src/loki \
             --workdir /src/loki \
             --entrypoint /bin/sh "%s"
             git config --global --add safe.directory /src/loki
-            echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
             if echo "%s" | grep -q "golang"; then
               /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
             fi

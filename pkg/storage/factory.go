@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -25,12 +26,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/noop"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
@@ -153,11 +151,7 @@ func (ns *NamedStores) populateStoreType() error {
 	ns.storeType = make(map[string]string)
 
 	checkForDuplicates := func(name string) error {
-		switch name {
-		case types.StorageTypeAWS, types.StorageTypeAWSDynamo, types.StorageTypeS3,
-			types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed, types.StorageTypeGCS,
-			types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCassandra,
-			types.StorageTypeFileSystem, types.StorageTypeInMemory, types.StorageTypeGrpc:
+		if slices.Contains(types.SupportedStorageTypes, name) {
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
 		}
 
@@ -337,28 +331,6 @@ func (cfg *Config) Validate() error {
 	return cfg.NamedStores.Validate()
 }
 
-// NewIndexClient creates a new index client of the desired type specified in the PeriodConfig
-func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (index.Client, error) {
-
-	switch true {
-	case util.StringsContain(types.TestingStorageTypes, periodCfg.IndexType):
-		switch periodCfg.IndexType {
-		case types.StorageTypeInMemory:
-			store := testutils.NewMockStorage()
-			return store, nil
-		}
-
-	case util.StringsContain(types.SupportedIndexTypes, periodCfg.IndexType):
-		switch periodCfg.IndexType {
-		case types.IndexTypeTSDB:
-			// TODO(chaudum): Move TSDB index client creation into this code path
-			return nil, fmt.Errorf("code path not supported")
-		}
-	}
-
-	return nil, fmt.Errorf("unrecognized index client type %s, choose one of: %s", periodCfg.IndexType, strings.Join(types.SupportedIndexTypes, ","))
-}
-
 // NewChunkClient makes a new chunk.Client of the desired types.
 func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, p config.PeriodConfig, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
 	var cc congestion.Controller
@@ -407,16 +379,6 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 
 	switch true {
 
-	case util.StringsContain(types.TestingStorageTypes, storeType):
-		switch storeType {
-		case types.StorageTypeInMemory:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			return client.NewClientWithMaxParallel(c, nil, 1, schemaCfg), nil
-		}
-
 	case util.StringsContain(types.SupportedStorageTypes, storeType):
 		switch storeType {
 		case types.StorageTypeFileSystem:
@@ -446,10 +408,6 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			if cfg.CongestionControl.Enabled {
 				c = cc.Wrap(c)
 			}
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-
-		case types.StorageTypeNoop:
-			c, _ := noop.NewNoopObjectClient()
 			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 		}
 
@@ -509,8 +467,6 @@ func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientM
 	}
 
 	switch storeType {
-	case types.StorageTypeInMemory:
-		return testutils.NewMockStorage(), nil
 
 	case types.StorageTypeAWS, types.StorageTypeS3:
 		s3Cfg := cfg.S3Config
@@ -615,6 +571,6 @@ func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientM
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", storeName, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeFileSystem)
+		return nil, fmt.Errorf("Unrecognized storage client %s, choose one of: %s", storeName, strings.Join(types.SupportedStorageTypes, ", "))
 	}
 }
