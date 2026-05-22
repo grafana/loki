@@ -2,50 +2,16 @@
 
 package logqlmodel
 
-import (
-	"github.com/prometheus/prometheus/promql/parser"
+// Minimal WASM shim for logqlmodel.
+// The full server-side logqlmodel.go pulls in pkg/push (→ gogo/protobuf, grpc,
+// k8s.io/apimachinery, cbor) and pkg/logqlmodel/stats (→ gogo/protobuf) via
+// fields on Result and Streams. The analyzer's WASM call graph
+// (pkg/logqlanalyzer → pkg/logql/{log,syntax}) only references the constants
+// and the error helpers in error.go — not Result or Streams. Stripping those
+// types here drops ~1000 transitive symbols and several MB from the binary.
 
-	"github.com/grafana/loki/pkg/push"
-
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-)
-
-// ValueTypeStreams promql.ValueType for log streams
+// ValueTypeStreams is promql.ValueType for log streams.
 const ValueTypeStreams = "streams"
 
-// PackedEntryKey is a special JSON key used by the pack promtail stage and unpack parser
+// PackedEntryKey is a special JSON key used by the pack promtail stage and unpack parser.
 const PackedEntryKey = "_entry"
-
-// Result is the result of a query execution.
-// Note: Headers field is omitted on js/wasm builds to avoid importing
-// pkg/querier/queryrange/queryrangebase/definitions which pulls in heavy server deps.
-type Result struct {
-	Data       parser.Value
-	Statistics stats.Result
-	Warnings   []string
-}
-
-// Streams is promql.Value
-type Streams []push.Stream
-
-func (streams Streams) Len() int      { return len(streams) }
-func (streams Streams) Swap(i, j int) { streams[i], streams[j] = streams[j], streams[i] }
-func (streams Streams) Less(i, j int) bool {
-	return streams[i].Labels <= streams[j].Labels
-}
-
-// Type implements `promql.Value` and `parser.Value`
-func (Streams) Type() parser.ValueType { return ValueTypeStreams }
-
-// String implements `promql.Value` and `parser.Value`
-func (Streams) String() string {
-	return ""
-}
-
-func (streams Streams) Lines() int64 {
-	var res int64
-	for _, s := range streams {
-		res += int64(len(s.Entries))
-	}
-	return res
-}
