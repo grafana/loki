@@ -2,16 +2,13 @@ package syntax
 
 import (
 	"fmt"
-	"math"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -1888,228 +1885,11 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 // This is because literals need match all labels, which is currently difficult to encode into StepEvaluators.
 // Therefore, we ensure a binop can be reduced/simplified, maintaining the invariant that it does not have two literal legs.
 func reduceBinOp(op string, left, right float64) *LiteralExpr {
-	merged, err := MergeBinOp(
-		op,
-		&promql.Sample{F: left},
-		&promql.Sample{F: right},
-		false,
-		false,
-		false,
-	)
+	val, _, err := mergeBinOpFloat(op, left, right, false)
 	if err != nil {
 		return &LiteralExpr{err: err}
 	}
-	return &LiteralExpr{Val: merged.F}
-}
-
-// MergeBinOp performs `op` on `left` and `right` arguments and return the `promql.Sample` value.
-// In case of vector and scalar arguments, MergeBinOp assumes `left` is always vector.
-// pass `swap=true` otherwise.
-// This matters because, either it's (vector op scalar) or (scalar op vector), the return sample value should
-// always be sample value of vector argument.
-// https://github.com/grafana/loki/issues/10741
-func MergeBinOp(op string, left, right *promql.Sample, swap, filter, isVectorComparison bool) (*promql.Sample, error) {
-	var merger func(left, right *promql.Sample) *promql.Sample
-
-	switch op {
-	case OpTypeAdd:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-			res := *left
-			res.F += right.F
-			return &res
-		}
-
-	case OpTypeSub:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-			res := *left
-			res.F -= right.F
-			return &res
-		}
-
-	case OpTypeMul:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-			res := *left
-			res.F *= right.F
-			return &res
-		}
-
-	case OpTypeDiv:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-			res := *left
-			// guard against divide by zero
-			if right.F == 0 {
-				res.F = math.NaN()
-			} else {
-				res.F /= right.F
-			}
-			return &res
-		}
-
-	case OpTypeMod:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-			res := *left
-			// guard against divide by zero
-			if right.F == 0 {
-				res.F = math.NaN()
-			} else {
-				res.F = math.Mod(res.F, right.F)
-			}
-			return &res
-		}
-
-	case OpTypePow:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-
-			res := *left
-			res.F = math.Pow(left.F, right.F)
-			return &res
-		}
-
-	case OpTypeCmpEQ:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-
-			res := *left
-
-			val := 0.
-			if left.F == right.F {
-				val = 1.
-			} else if filter {
-				return nil
-			}
-			res.F = val
-			return &res
-		}
-
-	case OpTypeNEQ:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-
-			res := *left
-			val := 0.
-			if left.F != right.F {
-				val = 1.
-			} else if filter {
-				return nil
-			}
-			res.F = val
-			return &res
-		}
-
-	case OpTypeGT:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-
-			res := *left
-			val := 0.
-			if left.F > right.F {
-				val = 1.
-			} else if filter {
-				return nil
-			}
-			res.F = val
-			return &res
-		}
-
-	case OpTypeGTE:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-
-			res := *left
-			val := 0.
-			if left.F >= right.F {
-				val = 1.
-			} else if filter {
-				return nil
-			}
-			res.F = val
-			return &res
-		}
-
-	case OpTypeLT:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-
-			res := *left
-			val := 0.
-			if left.F < right.F {
-				val = 1.
-			} else if filter {
-				return nil
-			}
-			res.F = val
-			return &res
-		}
-
-	case OpTypeLTE:
-		merger = func(left, right *promql.Sample) *promql.Sample {
-			if left == nil || right == nil {
-				return nil
-			}
-
-			res := *left
-			val := 0.
-			if left.F <= right.F {
-				val = 1.
-			} else if filter {
-				return nil
-			}
-			res.F = val
-			return &res
-		}
-
-	default:
-		return nil, errors.Errorf("should never happen: unexpected operation: (%s)", op)
-	}
-
-	res := merger(left, right)
-	if !isVectorComparison {
-		return res, nil
-	}
-
-	if filter {
-		// if a filter is enabled vector-wise comparison has returned non-nil,
-		// ensure we return the vector hand side's sample value, instead of the
-		// comparison operator's result (1: the truthy answer. a.k.a bool)
-
-		retSample := left
-		if swap {
-			retSample = right
-		}
-
-		if res != nil {
-			return retSample, nil
-		}
-	}
-	return res, nil
+	return &LiteralExpr{Val: val}
 }
 
 type LiteralExpr struct {
