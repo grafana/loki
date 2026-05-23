@@ -2052,6 +2052,35 @@ common:
 		assert.Equal(t, "99.99.99.99", config.IndexGateway.Ring.InstanceAddr)
 	})
 
+	t.Run("grpc_listen_address is used as instance addr when common instance addr is not set", func(t *testing.T) {
+		yamlContent := `server:
+  grpc_listen_address: 127.0.0.1`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		require.NoError(t, err)
+		require.Equal(t, "127.0.0.1", config.Common.InstanceAddr)
+		require.Equal(t, "127.0.0.1", config.Distributor.DistributorRing.InstanceAddr)
+		require.Equal(t, "127.0.0.1", config.Ingester.LifecyclerConfig.Addr)
+		require.Equal(t, "127.0.0.1", config.Ruler.Ring.InstanceAddr)
+		require.Equal(t, "127.0.0.1", config.QueryScheduler.SchedulerRing.InstanceAddr)
+		require.Equal(t, "127.0.0.1", config.Frontend.FrontendV2.Addr)
+		require.Equal(t, "127.0.0.1", config.CompactorConfig.CompactorRing.InstanceAddr)
+		require.Equal(t, "127.0.0.1", config.IndexGateway.Ring.InstanceAddr)
+		require.Equal(t, "127.0.0.1", config.MemberlistKV.AdvertiseAddr)
+	})
+
+	t.Run("common instance addr takes precedence over grpc_listen_address", func(t *testing.T) {
+		yamlContent := `server:
+  grpc_listen_address: 127.0.0.1
+common:
+  instance_addr: 99.99.99.99`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		require.NoError(t, err)
+		require.Equal(t, "99.99.99.99", config.Common.InstanceAddr)
+		require.Equal(t, "99.99.99.99", config.Distributor.DistributorRing.InstanceAddr)
+		require.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr)
+		require.Equal(t, "99.99.99.99", config.QueryScheduler.SchedulerRing.InstanceAddr)
+	})
+
 	t.Run("common instance addr doesn't supersede instance addr from common ring", func(t *testing.T) {
 		yamlContent := `common:
   instance_addr: 99.99.99.99
