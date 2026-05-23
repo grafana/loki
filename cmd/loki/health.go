@@ -96,7 +96,7 @@ func getTLSConfig(args []string) (*tls.Config, error) {
 	}
 
 	cfg := &tls.Config{
-		InsecureSkipVerify: skip,
+		InsecureSkipVerify: skip, //nolint:gosec // user explicitly opted in via -health.tls.skip-verify flag
 	}
 
 	if ca != "" {
