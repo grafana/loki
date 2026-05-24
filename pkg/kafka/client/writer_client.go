@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -18,8 +19,6 @@ import (
 	"github.com/twmb/franz-go/plugin/kprom"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/atomic"
-
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
@@ -227,7 +226,7 @@ type Producer struct {
 
 	// Keep track of Kafka records size (bytes) currently in-flight in the Kafka client.
 	// This counter is used to implement a limit on the max buffered bytes.
-	bufferedBytes *atomic.Int64
+	bufferedBytes atomic.Int64
 
 	// The max buffered bytes allowed. Once this limit is reached, produce requests fail.
 	maxBufferedBytes int64
@@ -260,7 +259,6 @@ func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, r
 
 	producer := &Producer{
 		Client:           client,
-		bufferedBytes:    atomic.NewInt64(0),
 		maxBufferedBytes: maxBufferedBytes,
 
 		// Metrics.
@@ -310,11 +308,12 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 	}
 
 	var (
-		remaining = atomic.NewInt64(int64(len(records)))
+		remaining atomic.Int64
 		done      = make(chan struct{})
 		resMx     sync.Mutex
 		res       = make(kgo.ProduceResults, 0, len(records))
 	)
+	remaining.Store(int64(len(records)))
 
 	c.produceRequestsTotal.Add(float64(len(records)))
 
@@ -334,7 +333,7 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		// In case of error we'll wait for all responses anyway before returning from produceSync().
 		// It allows us to keep code easier, given we don't expect this function to be frequently
 		// called with multiple records.
-		if remaining.Dec() == 0 {
+		if remaining.Add(-1) == 0 {
 			close(done)
 		}
 	}

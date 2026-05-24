@@ -11,12 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"sync/atomic"
+
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -568,7 +569,7 @@ func TestCancelWhileWaitingResponse(t *testing.T) {
 
 	// Launch the For call in a goroutine because it blocks and we need to be able to cancel the context
 	// to prove it will exit when the context is canceled.
-	b := atomic.NewBool(false)
+	var b atomic.Bool
 	go func() {
 		_, _ = in.For(ctx, queries, acc, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
 			// Intended to keep the For method from returning unless the context is canceled.
@@ -625,11 +626,11 @@ func TestCancelDoesNotLeakGoroutines(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		acc := logql.NewBufferedAccumulator(len(queries))
 
-		started := atomic.NewInt32(0)
+		var started atomic.Int32
 		done := make(chan struct{})
 		go func() {
 			_, _ = in.For(ctx, queries, acc, func(_ logql.DownstreamQuery) (logqlmodel.Result, error) {
-				started.Inc()
+				started.Add(1)
 				// Block until context is canceled.
 				<-ctx.Done()
 				return logqlmodel.Result{}, ctx.Err()

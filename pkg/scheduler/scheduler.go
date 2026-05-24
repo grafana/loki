@@ -9,6 +9,7 @@ import (
 	"net/textproto"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -25,7 +26,6 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
