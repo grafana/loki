@@ -22,7 +22,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 				Name: "lokistack_gateway_requests_total",
 				Help: "Total number of requests processed by the LokiStack gateway.",
 			},
-			[]string{"method", "route", "code"},
+			[]string{"method", "route", "status_code"},
 		),
 		RequestDuration: factory.NewHistogramVec(
 			prometheus.HistogramOpts{
