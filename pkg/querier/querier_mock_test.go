@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 	"time"
-
+        "github.com/grafana/loki/pkg/push"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -164,9 +164,10 @@ func newIngesterClientMockFactory(c ring_client.PoolClient) ring_client.PoolFact
 func mockIngesterClientConfig() client.Config {
 	return client.Config{
 		PoolConfig: clientpool.PoolConfig{
-			ClientCleanupPeriod:  1 * time.Minute,
-			HealthCheckIngesters: false,
-			RemoteTimeout:        1 * time.Second,
+			ClientCleanupPeriod:    1 * time.Minute,
+			HealthCheckIngesters:   false,
+			HealthCheckGracePeriod: 0,
+			RemoteTimeout:          1 * time.Second,
 		},
 		GRPCClientConfig: grpcclient.Config{
 			MaxRecvMsgSize: 1024,
