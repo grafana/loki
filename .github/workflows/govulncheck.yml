@@ -1,0 +1,64 @@
+# PR-gating govulncheck workflow.
+#
+# Runs `govulncheck ./...` against the root Loki Go module whenever a PR
+# touches Go source or module files. Fails the PR check on any reachable
+# known-CVE finding, before merge, without depending on loki-build-image.
+#
+# This is the first SHA-pinned workflow in the repo: actions/checkout and
+# actions/setup-go are pinned to commit SHAs (not floating tags) to lock the
+# tool versions used in security scanning. Future security-focused workflows
+# should follow this pattern. The `# vX.Y.Z` trailing comments record the
+# human-readable tag that the SHA corresponds to at pin time — re-verify via
+# the GitHub API before bumping.
+#
+# Out of scope (intentionally deferred — do not add to this workflow):
+#   - cmd/dataobj-inspect/ separate go.mod (follow-up plan)
+#   - operator/ separate go.mod (follow-up plan)
+#   - loki-build-image integration (flagged for later)
+#   - Baseline / diff-against-main logic (want first real finding count first)
+#   - Any non-govulncheck steps (no tests, no lint, no build)
+
+name: govulncheck
+
+on:
+  pull_request:
+    paths:
+      - "**.go"
+      - "**/go.mod"
+      - "**/go.sum"
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.26.2"
+          cache: false
+
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-govulncheck-go-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-govulncheck-go-
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...
