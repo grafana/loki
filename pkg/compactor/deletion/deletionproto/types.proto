@@ -100,3 +100,25 @@ message StorageUpdatesCollection {
   string userID = 2;
   map<string, StorageUpdates> storageUpdates = 3 [(gogoproto.nullable) = false]; // labels -> storageUpdates mapping
 }
+
+// ObjectSectionTombstone represents tombstoned sections in a single object.
+message ObjectSectionTombstone {
+  string objectPath = 1 [(gogoproto.jsontag) = "object_path"];
+  repeated uint32 tombstonedSectionIndices = 2 [(gogoproto.jsontag) = "tombstoned_section_indices"];
+}
+
+// DataObjectTombstone marks sections as deleted across multiple objects from a single delete request.
+// This creates one tombstone file per delete request.
+// Used for query-time filtering and eventual sweep phase cleanup.
+message DataObjectTombstone {
+  repeated ObjectSectionTombstone tombstones = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "tombstones"
+  ];
+  string deleteRequestID = 2 [(gogoproto.jsontag) = "delete_request_id"];
+  int64 createdAt = 3 [(gogoproto.jsontag) = "created_at"]; // Unix timestamp in milliseconds
+  string tenantID = 4 [(gogoproto.jsontag) = "tenant_id"];
+  string query = 5 [(gogoproto.jsontag) = "query"]; // Original query for debugging
+  int64 startTime = 6 [(gogoproto.jsontag) = "start_time"]; // Unix timestamp in milliseconds
+  int64 endTime = 7 [(gogoproto.jsontag) = "end_time"]; // Unix timestamp in milliseconds
+}
