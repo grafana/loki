@@ -97,8 +97,8 @@ func TestInstrumentedHandler(t *testing.T) {
 			expectedTotal := fmt.Sprintf(`
 # HELP lokistack_gateway_requests_total Total number of requests processed by the LokiStack gateway.
 # TYPE lokistack_gateway_requests_total counter
-lokistack_gateway_requests_total{code="%d",method="%s",route="%s"} 1
-`, tc.handlerStatus, tc.method, tc.route)
+lokistack_gateway_requests_total{method="%s",route="%s",status_code="%d"} 1
+`, tc.method, tc.route, tc.handlerStatus)
 			err := testutil.CollectAndCompare(metrics.RequestsTotal, strings.NewReader(expectedTotal))
 			require.NoError(t, err)
 

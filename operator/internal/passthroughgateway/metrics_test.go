@@ -19,8 +19,8 @@ func TestMetricsRequestsTotal(t *testing.T) {
 	expected := `
 # HELP lokistack_gateway_requests_total Total number of requests processed by the LokiStack gateway.
 # TYPE lokistack_gateway_requests_total counter
-lokistack_gateway_requests_total{code="200",method="GET",route="read"} 1
-lokistack_gateway_requests_total{code="201",method="POST",route="write"} 1
+lokistack_gateway_requests_total{method="GET",route="read",status_code="200"} 1
+lokistack_gateway_requests_total{method="POST",route="write",status_code="201"} 1
 `
 
 	err := testutil.CollectAndCompare(metrics.RequestsTotal, strings.NewReader(expected))
