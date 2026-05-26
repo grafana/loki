@@ -8,7 +8,7 @@ env:
   DRY_RUN: false
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "eb4e89778be445f9e79533b704cbdee404592eb4"
+  RELEASE_LIB_REF: "2d519a304729edd6ae6931ccbfb40bb2168e13a6"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
@@ -19,11 +19,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@eb4e89778be445f9e79533b704cbdee404592eb4"
+    uses: "grafana/loki-release/.github/workflows/check.yml@2d519a304729edd6ae6931ccbfb40bb2168e13a6"
     with:
       build_image: "golang:1.26.2"
       golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "eb4e89778be445f9e79533b704cbdee404592eb4"
+      release_lib_ref: "2d519a304729edd6ae6931ccbfb40bb2168e13a6"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -61,8 +61,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "extract_branch"
       name: "extract branch name"
       run: |
@@ -92,8 +94,8 @@ jobs:
       id: "release"
       name: "release please"
       run: |
-        npm install
-        npm exec -- release-please release-pr \
+        yarn install
+        yarn exec -- release-please release-pr \
           --changelog-path "${CHANGELOG_PATH}" \
           --consider-all-branches \
           --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
@@ -140,18 +142,10 @@ jobs:
       uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
       with:
         version: ">= 452.0.0"
-    - id: "get-secrets"
-      name: "get nfpm signing keys"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25"
-      with:
-        common_secrets: |
-          NFPM_SIGNING_KEY=packages-gpg:private-key
-          NFPM_PASSPHRASE=packages-gpg:passphrase
     - env:
         BUILD_IN_CONTAINER: false
         DRONE_TAG: "${{ needs.version.outputs.version }}"
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
-        NFPM_SIGNING_KEY_FILE: "nfpm-private-key.key"
         SKIP_ARM: false
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "build artifacts"
@@ -161,15 +155,11 @@ jobs:
           --env BUILD_IN_CONTAINER \
           --env DRONE_TAG \
           --env IMAGE_TAG \
-          --env NFPM_PASSPHRASE \
-          --env NFPM_SIGNING_KEY \
-          --env NFPM_SIGNING_KEY_FILE \
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
           --entrypoint /bin/sh "golang:1.26.2"
           git config --global --add safe.directory /src/loki
-          echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
           if echo "golang:1.26.2" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
@@ -231,8 +221,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -305,8 +297,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -379,8 +373,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -459,8 +455,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -533,8 +531,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -613,8 +613,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -693,8 +695,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -771,8 +775,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -867,8 +873,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -947,8 +955,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -1027,8 +1037,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "extract_branch"
       name: "extract branch name"
       run: |
@@ -1056,10 +1068,10 @@ jobs:
       id: "version"
       name: "get release version"
       run: |
-        npm install
+        yarn install
         
         if [[ -z "${{ env.RELEASE_AS }}" ]]; then
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
@@ -1073,7 +1085,7 @@ jobs:
             --token "$OUTPUTS_TOKEN" \
             --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         else
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
@@ -1099,7 +1111,7 @@ jobs:
         if [[ `jq length release.json` -eq 0 ]]; then 
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
-          version="$(npm run --silent get-version)"
+          version="$(yarn run --silent get-version)"
           echo "Parsed version: ${version}"
           echo "version=${version}" >> $GITHUB_OUTPUT
           echo "pr_created=true" >> $GITHUB_OUTPUT

@@ -34,6 +34,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.enableCorepack,
       common.fetchGcsCredentials,
       common.googleAuth,
 
@@ -102,6 +103,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.enableCorepack,
 
       step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
       step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25'),  // main
@@ -175,6 +177,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.enableCorepack,
       common.fetchGcsCredentials,
       common.googleAuth,
 
@@ -249,6 +252,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.enableCorepack,
       common.extractBranchName,
       common.githubAppToken,
       common.setToken,
@@ -259,10 +263,10 @@ local runner = import 'runner.libsonnet',
         OUTPUTS_TOKEN: '${{ steps.github_app_token.outputs.token }}',
       })
       + step.withRun(|||
-        npm install
+        yarn install
 
         if [[ -z "${{ env.RELEASE_AS }}" ]]; then
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
@@ -276,7 +280,7 @@ local runner = import 'runner.libsonnet',
             --token "$OUTPUTS_TOKEN" \
             --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         else
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
@@ -302,7 +306,7 @@ local runner = import 'runner.libsonnet',
         if [[ `jq length release.json` -eq 0 ]]; then 
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
-          version="$(npm run --silent get-version)"
+          version="$(yarn run --silent get-version)"
           echo "Parsed version: ${version}"
           echo "version=${version}" >> $GITHUB_OUTPUT
           echo "pr_created=true" >> $GITHUB_OUTPUT
@@ -325,22 +329,12 @@ local runner = import 'runner.libsonnet',
       common.googleAuth,
       common.setupGoogleCloudSdk,
 
-      step.new('get nfpm signing keys', 'grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25')  // main
-      + step.withId('get-secrets')
-      + step.with({
-        common_secrets: |||
-          NFPM_SIGNING_KEY=packages-gpg:private-key
-          NFPM_PASSPHRASE=packages-gpg:passphrase
-        |||,
-      }),
-
       releaseStep('build artifacts')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.withEnv({
         BUILD_IN_CONTAINER: false,
         DRONE_TAG: '${{ needs.version.outputs.version }}',
         IMAGE_TAG: '${{ needs.version.outputs.version }}',
-        NFPM_SIGNING_KEY_FILE: 'nfpm-private-key.key',
         SKIP_ARM: skipArm,
       })
       //TODO: the workdir here is loki specific
@@ -356,15 +350,11 @@ local runner = import 'runner.libsonnet',
             --env BUILD_IN_CONTAINER \
             --env DRONE_TAG \
             --env IMAGE_TAG \
-            --env NFPM_PASSPHRASE \
-            --env NFPM_SIGNING_KEY \
-            --env NFPM_SIGNING_KEY_FILE \
             --env SKIP_ARM \
             --volume .:/src/loki \
             --workdir /src/loki \
             --entrypoint /bin/sh "%s"
             git config --global --add safe.directory /src/loki
-            echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
             if echo "%s" | grep -q "golang"; then
               /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
             fi

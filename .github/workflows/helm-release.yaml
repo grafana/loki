@@ -1,25 +1,22 @@
 name: helm-release
 
 on:
-  workflow_dispatch: # for manual testing
   push:
     branches:
       - main
-      - k[0-9]+
     paths:
       - 'production/helm/loki/Chart.yaml'
 
 jobs:
   call-update-helm-repo:
-    uses: grafana/helm-charts/.github/workflows/update-helm-repo.yaml@64b1c8260d69a9b1d9a186df25c51358b92f7662
+    uses: grafana/helm-charts/.github/workflows/update-helm-repo.yaml@d2a579570e204ebc7d36c9be654159be01abff17
     permissions:
       contents: "write"
       id-token: "write"
       packages: "write"
     with:
+      github_app: loki-gh-app
       charts_dir: production/helm
       cr_configfile: production/helm/cr.yaml
       ct_configfile: production/helm/ct.yaml
       helm_tag_prefix: helm
-    secrets:   
-      vault_repo_secret_name: loki-gh-app
