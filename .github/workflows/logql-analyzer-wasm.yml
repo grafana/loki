@@ -1,20 +1,13 @@
-# Verifies that the LogQL analyzer WASM binary compiles successfully.
+# Verifies that the LogQL analyzer WASM binary compiles, stays under the size
+# budget, and answers a trivial query end-to-end.
+#
 # The developer is responsible for rebuilding and committing the binary
-# (docs/sources/query/analyzer/logql-analyzer.wasm) when analyzer source changes.
-# Run: make loki-logql-analyzer-wasm
+# (docs/sources/query/analyzer/logql-analyzer.wasm) when analyzer source
+# changes. Run: make loki-logql-analyzer-wasm
 name: LogQL Analyzer WASM
 
 on:
   pull_request:
-    paths:
-      - 'cmd/logql-analyzer-wasm/**'
-      - 'pkg/logqlanalyzer/**'
-      - 'pkg/logql/log/**'
-      - 'pkg/logql/syntax/**'
-      - 'pkg/logqlmodel/**'
-  push:
-    branches:
-      - main
     paths:
       - 'cmd/logql-analyzer-wasm/**'
       - 'pkg/logqlanalyzer/**'
@@ -28,8 +21,14 @@ permissions:
 
 jobs:
   build:
-    name: Build WASM
+    name: Build, size check, smoke test
     runs-on: ubuntu-latest
+    env:
+      WASM_OUT: /tmp/logql-analyzer.wasm
+      # Hard cap on the optimized WASM size. Bumping this should be a deliberate
+      # decision after investigating what dep pulled the extra weight in.
+      # See README/PR history for the import-chain refactors that got us here.
+      WASM_SIZE_LIMIT_BYTES: 26214400  # 25 MiB
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,15 +39,133 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
+      - name: Install binaryen (wasm-opt)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y binaryen
+          wasm-opt --version
+
       - name: Build WASM binary
         run: |
           GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -ldflags="-s -w" \
-              -o /tmp/logql-analyzer.wasm ./cmd/logql-analyzer-wasm
-          ls -lh /tmp/logql-analyzer.wasm
+              -o "$WASM_OUT" ./cmd/logql-analyzer-wasm
 
-      - name: Upload WASM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: logql-analyzer-wasm
-          path: /tmp/logql-analyzer.wasm
-          retention-days: 30
+      - name: Optimize with wasm-opt -Oz
+        run: |
+          # Match the flags used by `make loki-logql-analyzer-wasm` so the
+          # binary CI checks is the same one a developer would commit.
+          wasm-opt --enable-bulk-memory --enable-nontrapping-float-to-int \
+              -Oz "$WASM_OUT" -o "$WASM_OUT"
+
+      - name: Check WASM size against 25 MiB cap
+        run: |
+          SIZE=$(stat -c%s "$WASM_OUT")
+          LIMIT="$WASM_SIZE_LIMIT_BYTES"
+          SIZE_MIB=$(awk -v s="$SIZE" 'BEGIN { printf "%.2f", s/1048576 }')
+          LIMIT_MIB=$(awk -v l="$LIMIT" 'BEGIN { printf "%.0f", l/1048576 }')
+          echo "WASM size: ${SIZE_MIB} MiB (limit: ${LIMIT_MIB} MiB)"
+          if [ "$SIZE" -gt "$LIMIT" ]; then
+            echo "::error file=cmd/logql-analyzer-wasm/main.go::WASM binary is ${SIZE_MIB} MiB, exceeds ${LIMIT_MIB} MiB cap. Investigate which import pulled the extra weight in; do not just raise the cap."
+            exit 1
+          fi
+
+      - name: Smoke test (load WASM in Node, call analyzeLogQL)
+        run: |
+          # Use the same wasm_exec.js that ships next to the binary in docs/.
+          # Polyfill Node-only globals (TextEncoder, crypto, performance) the
+          # browser supplies natively. We deliberately don't use
+          # $(go env GOROOT)/lib/wasm/wasm_exec_node.js — that file is a
+          # standalone CLI runner, not a library; importing it doesn't expose
+          # a usable Go class and triggers its own argv check.
+          cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" /tmp/wasm_exec.js
+          cat > /tmp/smoke.js <<'NODE_EOF'
+          'use strict';
+          globalThis.require = require;
+          globalThis.fs = require('fs');
+          globalThis.path = require('path');
+          globalThis.TextEncoder = require('util').TextEncoder;
+          globalThis.TextDecoder = require('util').TextDecoder;
+          globalThis.performance ??= require('perf_hooks').performance;
+          globalThis.crypto ??= require('crypto');
+          require('/tmp/wasm_exec.js');
+
+          const wasmBytes = fs.readFileSync(process.env.WASM_OUT);
+          const go = new Go();
+
+          WebAssembly.instantiate(wasmBytes, go.importObject)
+            .then((result) => {
+              // go.run starts the Go runtime. analyzeLogQL is set synchronously
+              // inside main() before main blocks on a channel, so it's
+              // available immediately after go.run returns control.
+              go.run(result.instance);
+
+              if (typeof globalThis.analyzeLogQL !== 'function') {
+                console.error('smoke FAIL: analyzeLogQL global not registered');
+                process.exit(1);
+              }
+
+              // Exercise the parser + a logfmt pipeline stage on a single log line.
+              const query = '{job="smoke"} | logfmt';
+              const logs  = ['level=info msg=hello caller=ci'];
+              const raw   = globalThis.analyzeLogQL(query, logs);
+
+              if (typeof raw !== 'string') {
+                console.error('smoke FAIL: expected JSON string, got', typeof raw);
+                process.exit(1);
+              }
+
+              let parsed;
+              try { parsed = JSON.parse(raw); }
+              catch (e) {
+                console.error('smoke FAIL: result not valid JSON:', e.message);
+                console.error('raw output:', raw);
+                process.exit(1);
+              }
+
+              if (parsed.error) {
+                console.error('smoke FAIL: analyzer returned error:', parsed.error);
+                process.exit(1);
+              }
+
+              // Verify the shape script.js consumes.
+              const expectFields = ['stream_selector', 'stages', 'results'];
+              for (const f of expectFields) {
+                if (!(f in parsed)) {
+                  console.error('smoke FAIL: missing field "' + f + '" in result');
+                  console.error('got keys:', Object.keys(parsed));
+                  process.exit(1);
+                }
+              }
+
+              if (!Array.isArray(parsed.results) || parsed.results.length !== 1) {
+                console.error('smoke FAIL: expected 1 result entry, got', parsed.results && parsed.results.length);
+                process.exit(1);
+              }
+
+              if (!Array.isArray(parsed.stages) || parsed.stages.length === 0) {
+                console.error('smoke FAIL: expected non-empty stages array');
+                process.exit(1);
+              }
+
+              const firstResult = parsed.results[0];
+              if (firstResult.origin_line !== logs[0]) {
+                console.error('smoke FAIL: origin_line mismatch:', firstResult.origin_line);
+                process.exit(1);
+              }
+              if (!Array.isArray(firstResult.stage_records) || firstResult.stage_records.length === 0) {
+                console.error('smoke FAIL: missing stage_records');
+                process.exit(1);
+              }
+
+              console.log('smoke OK:');
+              console.log('  stream_selector:', parsed.stream_selector);
+              console.log('  stages:         ', parsed.stages.join(' | '));
+              console.log('  stage_records:  ', firstResult.stage_records.length);
+              process.exit(0);
+            })
+            .catch((err) => {
+              console.error('smoke FAIL: WASM instantiate/run failed:', err);
+              process.exit(1);
+            });
+          NODE_EOF
+          node /tmp/smoke.js
