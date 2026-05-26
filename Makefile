@@ -633,7 +633,7 @@ migrate-image: ## build the migrate docker image
 loki-logql-analyzer-wasm: ## build the LogQL analyzer WASM binary and copy wasm_exec.js to docs/
 	GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -ldflags="-s -w" \
 	    -o $(LOGQL_ANALYZER_WASM_OUT) ./cmd/logql-analyzer-wasm
-	cp $(WASM_EXEC_JS_SRC) $(WASM_EXEC_JS_DST)
+	cp -f $(WASM_EXEC_JS_SRC) $(WASM_EXEC_JS_DST)
 	@if command -v wasm-opt >/dev/null 2>&1; then \
 	    wasm-opt --enable-bulk-memory --enable-nontrapping-float-to-int -Oz -o $(LOGQL_ANALYZER_WASM_OUT) $(LOGQL_ANALYZER_WASM_OUT); \
 	    echo "wasm-opt applied to $(LOGQL_ANALYZER_WASM_OUT)"; \
@@ -641,6 +641,25 @@ loki-logql-analyzer-wasm: ## build the LogQL analyzer WASM binary and copy wasm_
 	    echo "wasm-opt not found — skipping optimization (install binaryen to reduce binary size)"; \
 	fi
 	@echo "Built $(LOGQL_ANALYZER_WASM_OUT) and $(WASM_EXEC_JS_DST) (gitignored)."
+
+# One-shot local preview: build the WASM, start the docs server (or detect an
+# existing one), and open the analyzer page in the browser. Ctrl+C stops the
+# docs server. Honors DOCS_HOST_PORT (default 3002, set by docs/docs.mk).
+.PHONY: loki-logql-analyzer-wasm-local
+loki-logql-analyzer-wasm-local: loki-logql-analyzer-wasm ## build WASM, start docs server, open analyzer page
+	@URL="http://localhost:$${DOCS_HOST_PORT:-3002}/docs/loki/query/analyzer/" ; \
+	echo "" ; \
+	echo "==> Analyzer page: $$URL" ; \
+	echo "" ; \
+	if curl -sf "http://localhost:$${DOCS_HOST_PORT:-3002}/docs/loki/" >/dev/null 2>&1 ; then \
+	    echo "Docs server already running on port $${DOCS_HOST_PORT:-3002}; opening browser." ; \
+	    open "$$URL" 2>/dev/null || xdg-open "$$URL" 2>/dev/null || echo "  (open the URL manually)" ; \
+	else \
+	    echo "Starting docs server (Ctrl+C to stop) ..." ; \
+	    ( while ! curl -sf "http://localhost:$${DOCS_HOST_PORT:-3002}/docs/loki/" >/dev/null 2>&1 ; do sleep 1 ; done ; \
+	      open "$$URL" 2>/dev/null || xdg-open "$$URL" 2>/dev/null || echo "  (open the URL manually)" ) & \
+	    exec $(MAKE) -C docs docs ; \
+	fi
 
 # Build image
 build-image: ## build the build docker image
