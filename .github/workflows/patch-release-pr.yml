@@ -8,7 +8,7 @@ env:
   DRY_RUN: false
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "65e24dba101c1535cf29bab695e1b12855803e4a"
+  RELEASE_LIB_REF: "28c173596743740aea20917356bb9b7f20304444"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
@@ -61,7 +61,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "extract_branch"
       name: "extract branch name"
@@ -92,8 +92,9 @@ jobs:
       id: "release"
       name: "release please"
       run: |
-        npm install
-        npm exec -- release-please release-pr \
+        corepack enable
+        yarn install --immutable
+        yarn exec -- release-please release-pr \
           --changelog-path "${CHANGELOG_PATH}" \
           --consider-all-branches \
           --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
@@ -219,7 +220,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
@@ -293,7 +294,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
@@ -367,7 +368,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
@@ -447,7 +448,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
@@ -521,7 +522,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
@@ -601,7 +602,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
@@ -681,7 +682,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
@@ -759,7 +760,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
@@ -855,7 +856,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
@@ -935,7 +936,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
@@ -1015,7 +1016,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "extract_branch"
       name: "extract branch name"
@@ -1044,10 +1045,11 @@ jobs:
       id: "version"
       name: "get release version"
       run: |
-        npm install
+        corepack enable
+        yarn install --immutable
         
         if [[ -z "${{ env.RELEASE_AS }}" ]]; then
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
@@ -1061,7 +1063,7 @@ jobs:
             --token "$OUTPUTS_TOKEN" \
             --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         else
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \

@@ -5,7 +5,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "65e24dba101c1535cf29bab695e1b12855803e4a"
+  RELEASE_LIB_REF: "28c173596743740aea20917356bb9b7f20304444"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -43,7 +43,7 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 22
         package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
@@ -107,8 +107,9 @@ jobs:
       if: "${{ !fromJSON(steps.check_release.outputs.exists) }}"
       name: "create release"
       run: |
-        npm install
-        npm exec -- release-please github-release \
+        corepack enable
+        yarn install --immutable
+        yarn exec -- release-please github-release \
           --draft \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
