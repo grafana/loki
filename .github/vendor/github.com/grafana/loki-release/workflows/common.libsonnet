@@ -106,9 +106,16 @@
 
   setupNode: $.step.new('setup node', 'actions/setup-node@v4')
              + $.step.with({
-               'node-version': 20,
+               'node-version': 24,
                'package-manager-cache': false,
              }),
+
+  // Enable Corepack so the pinned yarn version from package.json's
+  // packageManager field is provisioned. Required because the GitHub-hosted
+  // runners ship yarn 1.x by default, and `yarn install` / `yarn exec` would
+  // otherwise run under yarn 1.x against a yarn 4 lockfile.
+  enableCorepack: $.step.new('enable corepack')
+                  + $.step.withRun('corepack enable'),
 
   makeTarget: function(target) 'make %s' % target,
 

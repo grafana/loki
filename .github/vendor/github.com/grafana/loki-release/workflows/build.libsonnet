@@ -34,6 +34,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.enableCorepack,
       common.fetchGcsCredentials,
       common.googleAuth,
 
@@ -102,6 +103,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.enableCorepack,
 
       step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
       step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25'),  // main
@@ -175,6 +177,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.enableCorepack,
       common.fetchGcsCredentials,
       common.googleAuth,
 
@@ -249,6 +252,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.enableCorepack,
       common.extractBranchName,
       common.githubAppToken,
       common.setToken,
@@ -259,10 +263,10 @@ local runner = import 'runner.libsonnet',
         OUTPUTS_TOKEN: '${{ steps.github_app_token.outputs.token }}',
       })
       + step.withRun(|||
-        npm install
+        yarn install
 
         if [[ -z "${{ env.RELEASE_AS }}" ]]; then
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
@@ -276,7 +280,7 @@ local runner = import 'runner.libsonnet',
             --token "$OUTPUTS_TOKEN" \
             --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         else
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
@@ -302,7 +306,7 @@ local runner = import 'runner.libsonnet',
         if [[ `jq length release.json` -eq 0 ]]; then 
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
-          version="$(npm run --silent get-version)"
+          version="$(yarn run --silent get-version)"
           echo "Parsed version: ${version}"
           echo "version=${version}" >> $GITHUB_OUTPUT
           echo "pr_created=true" >> $GITHUB_OUTPUT
