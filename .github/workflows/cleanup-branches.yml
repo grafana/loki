@@ -11,7 +11,7 @@ jobs:
       contents: write
       pull-requests: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - uses: grafana/shared-workflows/actions/cleanup-branches@c906affb19f070fde9dce56e0db8053c490946cc # cleanup-branches/v0.2.1
