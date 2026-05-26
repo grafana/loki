@@ -5,8 +5,6 @@ on:
     types:
       - released
 
-  workflow_dispatch: # for manual testing
-
 jobs:
   weekly-release-pr:
     runs-on: ubuntu-x64

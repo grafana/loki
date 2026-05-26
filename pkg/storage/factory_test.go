@@ -6,9 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -21,36 +19,6 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
-
-func TestFactoryStop(t *testing.T) {
-	var (
-		cfg          Config
-		storeConfig  config.ChunkStoreConfig
-		schemaConfig config.SchemaConfig
-		defaults     validation.Limits
-	)
-	flagext.DefaultValues(&cfg, &storeConfig, &schemaConfig, &defaults)
-	schemaConfig.Configs = []config.PeriodConfig{
-		{
-			From:      config.DayTime{Time: model.Time(0)},
-			IndexType: "inmemory",
-			Schema:    "v11",
-			RowShards: 16,
-		},
-		{
-			From:      config.DayTime{Time: model.Time(1)},
-			IndexType: "inmemory",
-			Schema:    "v9",
-		},
-	}
-
-	limits, err := validation.NewOverrides(defaults, nil)
-	require.NoError(t, err)
-	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
-	require.NoError(t, err)
-
-	store.Stop()
-}
 
 func TestNamedStores(t *testing.T) {
 	tempDir := t.TempDir()
@@ -189,11 +157,17 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 }
 
 func TestNewObjectClient_prefixing(t *testing.T) {
-	t.Run("no prefix", func(t *testing.T) {
+	newFSCfg := func(t *testing.T) Config {
 		var cfg Config
 		flagext.DefaultValues(&cfg)
+		cfg.FSConfig = local.FSConfig{Directory: t.TempDir()}
+		return cfg
+	}
 
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
+	t.Run("no prefix", func(t *testing.T) {
+		cfg := newFSCfg(t)
+
+		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
 		require.NoError(t, err)
 
 		_, ok := objectClient.(client.PrefixedObjectClient)
@@ -201,11 +175,10 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 	})
 
 	t.Run("prefix with trailing /", func(t *testing.T) {
-		var cfg Config
-		flagext.DefaultValues(&cfg)
+		cfg := newFSCfg(t)
 		cfg.ObjectPrefix = "my/prefix/"
 
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
+		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
@@ -214,11 +187,10 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 	})
 
 	t.Run("prefix without trailing /", func(t *testing.T) {
-		var cfg Config
-		flagext.DefaultValues(&cfg)
+		cfg := newFSCfg(t)
 		cfg.ObjectPrefix = "my/prefix"
 
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
+		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
@@ -227,11 +199,10 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 	})
 
 	t.Run("prefix with starting and trailing /", func(t *testing.T) {
-		var cfg Config
-		flagext.DefaultValues(&cfg)
+		cfg := newFSCfg(t)
 		cfg.ObjectPrefix = "/my/prefix/"
 
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
+		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
