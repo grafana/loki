@@ -6,8 +6,7 @@ jobs:
   triage:
     # We don't run the triaging for PRs from forks because those can't use the loki-gh-app token broker.
     # We don't use GitHub actions app (secrets.GITHUB_TOKEN) because PRs created by the bot don't trigger CI.
-    # Also only run if the PR is merged, as an extra safe-guard.
-    if: ${{ ! github.event.pull_request.head.repo.fork && github.event.pull_request.merged == true }}
+    if: ${{ ! github.event.pull_request.head.repo.fork }}
 
     runs-on: ubuntu-x64-small
     permissions:
