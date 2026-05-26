@@ -296,6 +296,28 @@ func Test_ConnectionStringWithBlob(t *testing.T) {
 	require.Equal(t, *expect, bloburl.URL())
 }
 
+func Test_SASConnectionStringWithContainer(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:    "mycontainer",
+		ConnectionString: flagext.SecretWithValue("AccountName=myaccount;SharedAccessSignature=sv=2022-11-02&sig=ABC123%3D&sp=rwdl&srt=sco&ss=b"),
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("https://myaccount.blob.core.windows.net/mycontainer?sv=2022-11-02&sig=ABC123%3D&sp=rwdl&srt=sco&ss=b")
+	require.Equal(t, *expect, c.containerURL.URL())
+}
+
+func Test_SASConnectionStringWithBlob(t *testing.T) {
+	c, err := NewBlobStorage(&BlobStorageConfig{
+		ContainerName:    "mycontainer",
+		ConnectionString: flagext.SecretWithValue("AccountName=myaccount;SharedAccessSignature=sv=2022-11-02&sig=ABC123%3D&sp=rwdl&srt=sco&ss=b"),
+	}, metrics, hedging.Config{})
+	require.NoError(t, err)
+	expect, _ := url.Parse("https://myaccount.blob.core.windows.net/mycontainer/myblob?sv=2022-11-02&sig=ABC123%3D&sp=rwdl&srt=sco&ss=b")
+	blobURL, err := c.getBlobURL("myblob", false)
+	require.NoError(t, err)
+	require.Equal(t, *expect, blobURL.URL())
+}
+
 func Test_ConfigValidation(t *testing.T) {
 	t.Run("expected validation error if environment is not supported", func(t *testing.T) {
 		cfg := &BlobStorageConfig{

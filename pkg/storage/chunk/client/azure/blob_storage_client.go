@@ -352,7 +352,7 @@ func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobU
 	blobID = strings.ReplaceAll(blobID, ":", b.cfg.ChunkDelimiter)
 
 	// generate url for new chunk blob
-	u, err := url.Parse(b.fmtBlobURL(blobID))
+	u, err := b.fmtBlobURL(blobID)
 	if err != nil {
 		return azblob.BlockBlobURL{}, err
 	}
@@ -365,7 +365,7 @@ func (b *BlobStorage) getBlobURL(blobID string, hedging bool) (azblob.BlockBlobU
 }
 
 func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
-	u, err := url.Parse(b.fmtContainerURL())
+	u, err := b.fmtContainerURL()
 	if err != nil {
 		return azblob.ContainerURL{}, err
 	}
@@ -411,6 +411,9 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 		parsed, err := parseConnectionString(b.cfg.ConnectionString.String())
 		if err != nil {
 			return nil, err
+		}
+		if parsed.AccountKey == "" {
+			return azblob.NewPipeline(azblob.NewAnonymousCredential(), opts), nil
 		}
 		credential, err := azblob.NewSharedKeyCredential(parsed.AccountName, parsed.AccountKey)
 		if err != nil {
@@ -655,12 +658,22 @@ func (b *BlobStorage) endpointFromConnectionString() string {
 	return parsed.ServiceURL
 }
 
-func (b *BlobStorage) fmtBlobURL(blobID string) string {
-	return fmt.Sprintf("%s/%s", b.fmtContainerURL(), blobID)
+func (b *BlobStorage) fmtBlobURL(blobID string) (*url.URL, error) {
+	u, err := b.fmtContainerURL()
+	if err != nil {
+		return nil, err
+	}
+	u.Path += "/" + blobID
+	return u, nil
 }
 
-func (b *BlobStorage) fmtContainerURL() string {
-	return fmt.Sprintf("%s/%s", b.fmtResourceURL(), b.cfg.ContainerName)
+func (b *BlobStorage) fmtContainerURL() (*url.URL, error) {
+	u, err := url.Parse(b.fmtResourceURL())
+	if err != nil {
+		return nil, err
+	}
+	u.Path = strings.TrimRight(u.Path, "/") + "/" + b.cfg.ContainerName
+	return u, nil
 }
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
