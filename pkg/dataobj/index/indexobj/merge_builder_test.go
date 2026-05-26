@@ -84,7 +84,7 @@ func TestMergeBuilder_AppendStat(t *testing.T) {
 	statSection, err := stats.Open(ctx, sec)
 	require.NoError(t, err)
 
-	decodedRows := readAllStatsRows(t, ctx, statSection)
+	decodedRows := readAllStatsRows(ctx, t, statSection)
 	require.Len(t, decodedRows, 1)
 
 	row := decodedRows[0]
@@ -142,7 +142,7 @@ func TestMergeBuilder_AppendPostingsLabelEntry(t *testing.T) {
 	postingsSection, err := postings.Open(ctx, sec)
 	require.NoError(t, err)
 
-	decodedRows := readAllPostingsRows(t, ctx, postingsSection)
+	decodedRows := readAllPostingsRows(ctx, t, postingsSection)
 	require.Len(t, decodedRows, 1)
 
 	row := decodedRows[0]
@@ -220,7 +220,7 @@ func TestMergeBuilder_AppendPostingsBloomEntry(t *testing.T) {
 	postingsSection, err := postings.Open(ctx, sec)
 	require.NoError(t, err)
 
-	decodedRows := readAllPostingsRows(t, ctx, postingsSection)
+	decodedRows := readAllPostingsRows(ctx, t, postingsSection)
 	require.Len(t, decodedRows, 1)
 
 	row := decodedRows[0]
@@ -297,7 +297,7 @@ func TestMergeBuilder_MultiTenant(t *testing.T) {
 	ctx := context.Background()
 	statSec1, err := stats.Open(ctx, sec1)
 	require.NoError(t, err)
-	rows1 := readAllStatsRows(t, ctx, statSec1)
+	rows1 := readAllStatsRows(ctx, t, statSec1)
 	require.Len(t, rows1, 1)
 	require.Equal(t, stat1.ObjectPath, rows1[0].ObjectPath)
 	require.Equal(t, stat1.RowCount, rows1[0].RowCount)
@@ -309,7 +309,7 @@ func TestMergeBuilder_MultiTenant(t *testing.T) {
 
 	statSec2, err := stats.Open(ctx, sec2)
 	require.NoError(t, err)
-	rows2 := readAllStatsRows(t, ctx, statSec2)
+	rows2 := readAllStatsRows(ctx, t, statSec2)
 	require.Len(t, rows2, 1)
 	require.Equal(t, stat2.ObjectPath, rows2[0].ObjectPath)
 	require.Equal(t, stat2.RowCount, rows2[0].RowCount)
@@ -317,7 +317,7 @@ func TestMergeBuilder_MultiTenant(t *testing.T) {
 
 // readAllPostingsRows opens a postings section and returns all decoded rows.
 // It drains the reader in batches and decodes each row from the Arrow record batches.
-func readAllPostingsRows(t *testing.T, ctx context.Context, sec *postings.Section) []postings.Row {
+func readAllPostingsRows(ctx context.Context, t *testing.T, sec *postings.Section) []postings.Row {
 	t.Helper()
 
 	r := postings.NewReader(postings.ReaderOptions{
@@ -364,7 +364,7 @@ func readAllPostingsRows(t *testing.T, ctx context.Context, sec *postings.Sectio
 
 // readAllStatsRows opens a stats section and returns all decoded rows.
 // It drains the reader in batches and decodes each row from the Arrow record batches.
-func readAllStatsRows(t *testing.T, ctx context.Context, sec *stats.Section) []stats.Stat {
+func readAllStatsRows(ctx context.Context, t *testing.T, sec *stats.Section) []stats.Stat {
 	t.Helper()
 
 	r := stats.NewReader(stats.ReaderOptions{
