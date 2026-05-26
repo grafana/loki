@@ -19,6 +19,16 @@ clients/cmd/fluent-bit/out_grafana_loki.so
 clients/cmd/fluent-bit/out_grafana_loki.h
 cmd/migrate/migrate
 cmd/querytee/querytee
+
+# LogQL analyzer WASM build artifacts.
+# Built by `make loki-logql-analyzer-wasm`. Same command is used by Loki CI
+# (for size cap + smoke test) and by grafana/website at docs-publish time
+# (to produce the binary that ships next to the analyzer docs page). Not
+# committed because the WASM-covered paths (pkg/logql/{log,syntax},
+# pkg/logqlmodel, pkg/logqlanalyzer) see ~40 commits/year and committing
+# would force every unrelated contributor to rebuild a 20MB blob.
+docs/sources/query/analyzer/logql-analyzer.wasm
+docs/sources/query/analyzer/wasm_exec.js
 /loki
 /logcli
 /loki-canary

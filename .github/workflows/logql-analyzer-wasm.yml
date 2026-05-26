@@ -1,9 +1,10 @@
-# Verifies that the LogQL analyzer WASM binary compiles, stays under the size
-# budget, and answers a trivial query end-to-end.
+# Verifies that the LogQL analyzer WASM binary builds via the canonical
+# `make loki-logql-analyzer-wasm` target, stays under the size budget, and
+# answers a trivial query end-to-end.
 #
-# The developer is responsible for rebuilding and committing the binary
-# (docs/sources/query/analyzer/logql-analyzer.wasm) when analyzer source
-# changes. Run: make loki-logql-analyzer-wasm
+# The same `make` target is used by grafana/website at docs-publish time to
+# produce the binary that actually ships next to the analyzer docs page.
+# This CI guards the source — the build artifact isn't committed.
 name: LogQL Analyzer WASM
 
 on:
@@ -24,8 +25,9 @@ jobs:
     name: Build, size check, smoke test
     runs-on: ubuntu-latest
     env:
-      WASM_OUT: /tmp/logql-analyzer.wasm
-      # Hard cap on the optimized WASM size. Bumping this should be a deliberate
+      WASM_OUT: docs/sources/query/analyzer/logql-analyzer.wasm
+      WASM_EXEC_JS: docs/sources/query/analyzer/wasm_exec.js
+      # Hard cap on the wasm-opt'd binary. Bumping this should be a deliberate
       # decision after investigating what dep pulled the extra weight in.
       # See README/PR history for the import-chain refactors that got us here.
       WASM_SIZE_LIMIT_BYTES: 26214400  # 25 MiB
@@ -45,17 +47,11 @@ jobs:
           sudo apt-get install -y binaryen
           wasm-opt --version
 
-      - name: Build WASM binary
-        run: |
-          GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -ldflags="-s -w" \
-              -o "$WASM_OUT" ./cmd/logql-analyzer-wasm
-
-      - name: Optimize with wasm-opt -Oz
-        run: |
-          # Match the flags used by `make loki-logql-analyzer-wasm` so the
-          # binary CI checks is the same one a developer would commit.
-          wasm-opt --enable-bulk-memory --enable-nontrapping-float-to-int \
-              -Oz "$WASM_OUT" -o "$WASM_OUT"
+      - name: Build WASM via `make loki-logql-analyzer-wasm`
+        # Single source of truth: the same target a developer runs locally and
+        # the one grafana/website invokes at docs-publish time. Produces both
+        # $WASM_OUT and $WASM_EXEC_JS (gitignored).
+        run: make loki-logql-analyzer-wasm
 
       - name: Check WASM size against 25 MiB cap
         run: |
@@ -70,14 +66,13 @@ jobs:
           fi
 
       - name: Smoke test (load WASM in Node, call analyzeLogQL)
+        # Exercises the same wasm_exec.js that ships next to the binary, so
+        # any drift between the runtime JS and the .wasm is caught here.
+        # Inline Node polyfills (TextEncoder, crypto, performance) cover the
+        # browser globals that wasm_exec.js expects. We deliberately don't
+        # use $(go env GOROOT)/lib/wasm/wasm_exec_node.js — that file is a
+        # standalone CLI runner, not a library.
         run: |
-          # Use the same wasm_exec.js that ships next to the binary in docs/.
-          # Polyfill Node-only globals (TextEncoder, crypto, performance) the
-          # browser supplies natively. We deliberately don't use
-          # $(go env GOROOT)/lib/wasm/wasm_exec_node.js — that file is a
-          # standalone CLI runner, not a library; importing it doesn't expose
-          # a usable Go class and triggers its own argv check.
-          cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" /tmp/wasm_exec.js
           cat > /tmp/smoke.js <<'NODE_EOF'
           'use strict';
           globalThis.require = require;
@@ -87,7 +82,7 @@ jobs:
           globalThis.TextDecoder = require('util').TextDecoder;
           globalThis.performance ??= require('perf_hooks').performance;
           globalThis.crypto ??= require('crypto');
-          require('/tmp/wasm_exec.js');
+          require(process.env.GITHUB_WORKSPACE + '/' + process.env.WASM_EXEC_JS);
 
           const wasmBytes = fs.readFileSync(process.env.WASM_OUT);
           const go = new Go();

@@ -623,6 +623,12 @@ migrate-image: ## build the migrate docker image
 	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
 
 # LogQL Analyzer WASM
+#
+# Produces docs/sources/query/analyzer/{logql-analyzer.wasm, wasm_exec.js}.
+# Both outputs are gitignored; this is the single command used by:
+#   - Loki CI (size cap + Node smoke test)
+#   - grafana/website at docs-publish time (the binary that ships next to
+#     analyzer.md and is loaded by the page's script.js)
 .PHONY: loki-logql-analyzer-wasm
 loki-logql-analyzer-wasm: ## build the LogQL analyzer WASM binary and copy wasm_exec.js to docs/
 	GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -ldflags="-s -w" \
@@ -634,7 +640,7 @@ loki-logql-analyzer-wasm: ## build the LogQL analyzer WASM binary and copy wasm_
 	else \
 	    echo "wasm-opt not found — skipping optimization (install binaryen to reduce binary size)"; \
 	fi
-	@echo "Done. Commit $(LOGQL_ANALYZER_WASM_OUT) and $(WASM_EXEC_JS_DST) when analyzer source changes."
+	@echo "Built $(LOGQL_ANALYZER_WASM_OUT) and $(WASM_EXEC_JS_DST) (gitignored)."
 
 # Build image
 build-image: ## build the build docker image
