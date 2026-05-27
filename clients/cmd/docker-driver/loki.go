@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"sync"
 
-	"github.com/moby/moby/v2/daemon/logger"
 	"github.com/go-kit/log"
+	"github.com/moby/moby/v2/daemon/logger"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
