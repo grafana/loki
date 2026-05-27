@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 
-	"google.golang.org/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 )
 
 const binaryEncodeLen = 4
