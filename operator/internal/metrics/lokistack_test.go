@@ -61,9 +61,22 @@ func TestLokiStackMetricsCollect(t *testing.T) {
 					},
 				},
 			},
-			wantMetrics: `# HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
+			wantMetrics: `# HELP lokistack_component_replicas Replica count for components.
+# TYPE lokistack_component_replicas gauge
+lokistack_component_replicas{component="compactor",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_component_replicas{component="distributor",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_component_replicas{component="gateway",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="index-gateway",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_component_replicas{component="ingester",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_component_replicas{component="querier",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_component_replicas{component="query-frontend",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_component_replicas{component="ruler",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
+# HELP lokistack_global_ingestion_rate_limit_bytes Global ingestion rate limit in bytes.
+# TYPE lokistack_global_ingestion_rate_limit_bytes gauge
+lokistack_global_ingestion_rate_limit_bytes{size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 4194304
+# HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
-lokistack_info{size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_info{credential_mode="static",object_storage_type="s3",schema_version="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
 lokistack_status_condition{condition="Degraded",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
@@ -74,9 +87,6 @@ lokistack_status_condition{condition="Pending",reason="",size="1x.demo",stack_na
 lokistack_status_condition{condition="Pending",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
 lokistack_status_condition{condition="Ready",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
 lokistack_status_condition{condition="Ready",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
-# HELP lokistack_storage_info Information about LokiStack storage backend configuration.
-# TYPE lokistack_storage_info gauge
-lokistack_storage_info{backend_type="s3",credential_mode="static",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
 `,
 		},
 		{
@@ -110,9 +120,22 @@ lokistack_storage_info{backend_type="s3",credential_mode="static",size="1x.demo"
 					},
 				},
 			},
-			wantMetrics: `# HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
+			wantMetrics: `# HELP lokistack_component_replicas Replica count for components.
+# TYPE lokistack_component_replicas gauge
+lokistack_component_replicas{component="compactor",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_component_replicas{component="distributor",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="gateway",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="index-gateway",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="ingester",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="querier",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="query-frontend",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="ruler",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+# HELP lokistack_global_ingestion_rate_limit_bytes Global ingestion rate limit in bytes.
+# TYPE lokistack_global_ingestion_rate_limit_bytes gauge
+lokistack_global_ingestion_rate_limit_bytes{size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 15728640
+# HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
-lokistack_info{size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_info{credential_mode="static",object_storage_type="s3",schema_version="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
 lokistack_status_condition{condition="Degraded",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
@@ -125,9 +148,6 @@ lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_nam
 lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
 lokistack_status_condition{condition="Warning",reason="StorageNeedsSchemaUpdate",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 0
 lokistack_status_condition{condition="Warning",reason="StorageNeedsSchemaUpdate",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 1
-# HELP lokistack_storage_info Information about LokiStack storage backend configuration.
-# TYPE lokistack_storage_info gauge
-lokistack_storage_info{backend_type="s3",credential_mode="static",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
 `,
 		},
 		{
@@ -171,9 +191,22 @@ lokistack_storage_info{backend_type="s3",credential_mode="static",size="1x.small
 					},
 				},
 			},
-			wantMetrics: `# HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
+			wantMetrics: `# HELP lokistack_component_replicas Replica count for components.
+# TYPE lokistack_component_replicas gauge
+lokistack_component_replicas{component="compactor",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_component_replicas{component="distributor",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="gateway",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="index-gateway",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="ingester",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="querier",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="query-frontend",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="ruler",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+# HELP lokistack_global_ingestion_rate_limit_bytes Global ingestion rate limit in bytes.
+# TYPE lokistack_global_ingestion_rate_limit_bytes gauge
+lokistack_global_ingestion_rate_limit_bytes{size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 15728640
+# HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
-lokistack_info{size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_info{credential_mode="static",object_storage_type="s3",schema_version="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
 lokistack_status_condition{condition="Degraded",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
@@ -186,9 +219,6 @@ lokistack_status_condition{condition="Ready",reason="ReadyComponents",size="1x.s
 lokistack_status_condition{condition="Ready",reason="ReadyComponents",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 1
 lokistack_status_condition{condition="Warning",reason="StorageNeedsSchemaUpdate",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
 lokistack_status_condition{condition="Warning",reason="StorageNeedsSchemaUpdate",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
-# HELP lokistack_storage_info Information about LokiStack storage backend configuration.
-# TYPE lokistack_storage_info gauge
-lokistack_storage_info{backend_type="s3",credential_mode="static",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
 `,
 		},
 		{
@@ -229,9 +259,22 @@ lokistack_storage_info{backend_type="s3",credential_mode="static",size="1x.small
 					},
 				},
 			},
-			wantMetrics: `# HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
+			wantMetrics: `# HELP lokistack_component_replicas Replica count for components.
+# TYPE lokistack_component_replicas gauge
+lokistack_component_replicas{component="compactor",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 1
+lokistack_component_replicas{component="distributor",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
+lokistack_component_replicas{component="gateway",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
+lokistack_component_replicas{component="index-gateway",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
+lokistack_component_replicas{component="ingester",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
+lokistack_component_replicas{component="querier",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
+lokistack_component_replicas{component="query-frontend",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
+lokistack_component_replicas{component="ruler",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
+# HELP lokistack_global_ingestion_rate_limit_bytes Global ingestion rate limit in bytes.
+# TYPE lokistack_global_ingestion_rate_limit_bytes gauge
+lokistack_global_ingestion_rate_limit_bytes{size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 15728640
+# HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
-lokistack_info{size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 1
+lokistack_info{credential_mode="token",object_storage_type="s3",schema_version="v13",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
 lokistack_status_condition{condition="Degraded",reason="",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns",status="false"} 1
@@ -242,13 +285,6 @@ lokistack_status_condition{condition="Pending",reason="",size="1x.small",stack_n
 lokistack_status_condition{condition="Pending",reason="",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns",status="true"} 0
 lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns",status="false"} 1
 lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns",status="true"} 0
-# HELP lokistack_storage_info Information about LokiStack storage backend configuration.
-# TYPE lokistack_storage_info gauge
-lokistack_storage_info{backend_type="s3",credential_mode="token",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 1
-# HELP lokistack_storage_schema_version Storage schema versions configured for the LokiStack
-# TYPE lokistack_storage_schema_version gauge
-lokistack_storage_schema_version{size="1x.small",stack_name="storage-stack",stack_namespace="test-ns",version="v12"} 1
-lokistack_storage_schema_version{size="1x.small",stack_name="storage-stack",stack_namespace="test-ns",version="v13"} 1
 `,
 		},
 		{
@@ -287,13 +323,22 @@ lokistack_storage_schema_version{size="1x.small",stack_name="storage-stack",stac
 					},
 				},
 			},
-			wantMetrics: `# HELP lokistack_component_custom_replicas User configured replica count for components
-# TYPE lokistack_component_custom_replicas gauge
-lokistack_component_custom_replicas{component="ingester",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 5
-lokistack_component_custom_replicas{component="querier",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 4
+			wantMetrics: `# HELP lokistack_component_replicas Replica count for components.
+# TYPE lokistack_component_replicas gauge
+lokistack_component_replicas{component="compactor",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 1
+lokistack_component_replicas{component="distributor",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 2
+lokistack_component_replicas{component="gateway",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 2
+lokistack_component_replicas{component="index-gateway",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 2
+lokistack_component_replicas{component="ingester",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 5
+lokistack_component_replicas{component="querier",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 4
+lokistack_component_replicas{component="query-frontend",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 2
+lokistack_component_replicas{component="ruler",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 2
+# HELP lokistack_global_ingestion_rate_limit_bytes Global ingestion rate limit in bytes.
+# TYPE lokistack_global_ingestion_rate_limit_bytes gauge
+lokistack_global_ingestion_rate_limit_bytes{size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 15728640
 # HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
-lokistack_info{size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 1
+lokistack_info{credential_mode="static",object_storage_type="gcs",schema_version="v13",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
 lokistack_status_condition{condition="Degraded",reason="",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns",status="false"} 1
@@ -304,12 +349,6 @@ lokistack_status_condition{condition="Pending",reason="",size="1x.small",stack_n
 lokistack_status_condition{condition="Pending",reason="",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns",status="true"} 0
 lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns",status="false"} 1
 lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns",status="true"} 0
-# HELP lokistack_storage_info Information about LokiStack storage backend configuration.
-# TYPE lokistack_storage_info gauge
-lokistack_storage_info{backend_type="gcs",credential_mode="static",size="1x.small",stack_name="custom-stack",stack_namespace="test-ns"} 1
-# HELP lokistack_storage_schema_version Storage schema versions configured for the LokiStack
-# TYPE lokistack_storage_schema_version gauge
-lokistack_storage_schema_version{size="1x.small",stack_name="custom-stack",stack_namespace="test-ns",version="v13"} 1
 `,
 		},
 		{
@@ -347,12 +386,22 @@ lokistack_storage_schema_version{size="1x.small",stack_name="custom-stack",stack
 					},
 				},
 			},
-			wantMetrics: `# HELP lokistack_global_ingestion_rate_limit_mb Global ingestion rate limit in MB/s.
-# TYPE lokistack_global_ingestion_rate_limit_mb gauge
-lokistack_global_ingestion_rate_limit_mb{size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 100
+			wantMetrics: `# HELP lokistack_component_replicas Replica count for components.
+# TYPE lokistack_component_replicas gauge
+lokistack_component_replicas{component="compactor",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 1
+lokistack_component_replicas{component="distributor",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 2
+lokistack_component_replicas{component="gateway",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 2
+lokistack_component_replicas{component="index-gateway",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 2
+lokistack_component_replicas{component="ingester",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 3
+lokistack_component_replicas{component="querier",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 3
+lokistack_component_replicas{component="query-frontend",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 2
+lokistack_component_replicas{component="ruler",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 2
+# HELP lokistack_global_ingestion_rate_limit_bytes Global ingestion rate limit in bytes.
+# TYPE lokistack_global_ingestion_rate_limit_bytes gauge
+lokistack_global_ingestion_rate_limit_bytes{size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 104857600
 # HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
-lokistack_info{size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 1
+lokistack_info{credential_mode="token-cco",object_storage_type="s3",schema_version="",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
 lokistack_status_condition{condition="Degraded",reason="",size="1x.medium",stack_name="full-stack",stack_namespace="logging",status="false"} 1
@@ -363,9 +412,6 @@ lokistack_status_condition{condition="Pending",reason="",size="1x.medium",stack_
 lokistack_status_condition{condition="Pending",reason="",size="1x.medium",stack_name="full-stack",stack_namespace="logging",status="true"} 0
 lokistack_status_condition{condition="Ready",reason="",size="1x.medium",stack_name="full-stack",stack_namespace="logging",status="false"} 1
 lokistack_status_condition{condition="Ready",reason="",size="1x.medium",stack_name="full-stack",stack_namespace="logging",status="true"} 0
-# HELP lokistack_storage_info Information about LokiStack storage backend configuration.
-# TYPE lokistack_storage_info gauge
-lokistack_storage_info{backend_type="s3",credential_mode="token-cco",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 1
 `,
 		},
 	}
