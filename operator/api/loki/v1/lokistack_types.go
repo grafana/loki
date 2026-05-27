@@ -237,7 +237,7 @@ type AuthenticationSpec struct {
 
 // ModeType is the authentication/authorization mode in which LokiStack Gateway will be configured.
 //
-// +kubebuilder:validation:Enum=static;dynamic;openshift-logging;openshift-network
+// +kubebuilder:validation:Enum=static;dynamic;openshift-logging;openshift-network;passthrough
 type ModeType string
 
 const (
@@ -250,6 +250,8 @@ const (
 	OpenshiftLogging ModeType = "openshift-logging"
 	// OpenshiftNetwork mode provides fully automatic OpenShift in-cluster authentication and authorization support for network logs only.
 	OpenshiftNetwork ModeType = "openshift-network"
+	// Passthrough mode uses a gateway that validates clients using mTLS and passes through the X-Scope-OrgID tenancy header.
+	Passthrough ModeType = "passthrough"
 )
 
 // TenantsSpec defines the mode, authentication and authorization
@@ -260,7 +262,7 @@ type TenantsSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=openshift-logging
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:static","urn:alm:descriptor:com.tectonic.ui:select:dynamic","urn:alm:descriptor:com.tectonic.ui:select:openshift-logging","urn:alm:descriptor:com.tectonic.ui:select:openshift-network"},displayName="Mode"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:static","urn:alm:descriptor:com.tectonic.ui:select:dynamic","urn:alm:descriptor:com.tectonic.ui:select:openshift-logging","urn:alm:descriptor:com.tectonic.ui:select:openshift-network","urn:alm:descriptor:com.tectonic.ui:select:passthrough"},displayName="Mode"
 	Mode ModeType `json:"mode"`
 	// Authentication defines the lokistack-gateway component authentication configuration spec per tenant.
 	//
@@ -281,6 +283,13 @@ type TenantsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Openshift"
 	Openshift *OpenshiftTenantSpec `json:"openshift,omitempty"`
+
+	// Passthrough defines the configuration specific to Passthrough mode.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Passthrough"
+	Passthrough *PassthroughTenantSpec `json:"passthrough,omitempty"`
 
 	// DisableIngress disables automatic creation of external access resources (Route / Ingress).
 	// When true, no Route or Ingress will be created for the gateway.
@@ -329,6 +338,26 @@ type OpenshiftTenantSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="OpenTelemetry Protocol"
 	OTLP *OpenshiftOTLPConfig `json:"otlp,omitempty"`
+}
+
+// PassthroughTenantSpec defines the configuration specific to Passthrough mode.
+type PassthroughTenantSpec struct {
+	// CA can be used to specify a custom list of trusted certificate authorities.
+	// That will be used to validate the certificates of the clients that interact
+	// with the gateway
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Certificate Authority Bundle"
+	CA *ValueReference `json:"ca,omitempty"`
+
+	// DefaultTenant defines the default tenant ID to use when X-Scope-OrgID header is not set.
+	// If not set, requests without X-Scope-OrgID are rejected.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Default Tenant"
+	DefaultTenant string `json:"defaultTenant,omitempty"`
 }
 
 // OpenshiftOTLPConfig defines configuration specific to users using OTLP together with an OpenShift tenancy mode.
@@ -1382,6 +1411,8 @@ const (
 	ReasonMissingGatewayTLSConfig LokiStackConditionReason = "MissingGatewayTLSConfig"
 	// ReasonInvalidGatewayTLSConfig when the referenced TLS Secret or ConfigMap is invalid or missing required keys.
 	ReasonInvalidGatewayTLSConfig LokiStackConditionReason = "InvalidGatewayTLSConfig"
+	// ReasonInvalidPassthroughConfiguration when the passthrough configuration is invalid.
+	ReasonInvalidPassthroughConfiguration LokiStackConditionReason = "InvalidPassthroughConfiguration"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
 	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.

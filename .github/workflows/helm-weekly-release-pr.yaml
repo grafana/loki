@@ -4,8 +4,6 @@ on:
   schedule:
     - cron: '0 10 * * 2' # 10 UTC every Tuesday (since ks get cut on Monday)
 
-  workflow_dispatch: # for manual testing
-
 permissions:
   contents: "read"
   id-token: "write"

@@ -1,7 +1,6 @@
 name: LogQL Analyzer
 
 on:
-  workflow_dispatch:
   release:
     types:
       - released

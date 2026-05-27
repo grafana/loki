@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - "docs/sources/**"
-  workflow_dispatch:
 jobs:
   sync:
     if: github.repository == 'grafana/loki'
