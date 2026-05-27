@@ -106,8 +106,8 @@ local runner = import 'runner.libsonnet',
       common.enableCorepack,
 
       step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
-      step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25'),  // main
-
+      step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136')  // v1.0.2
+      + step.with({ registry: 'us-docker.pkg.dev' }),
       releaseStep('Get weekly version')
       + step.withId('weekly-version')
       + step.withRun(|||
