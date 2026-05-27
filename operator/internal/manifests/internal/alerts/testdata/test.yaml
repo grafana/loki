@@ -75,18 +75,15 @@ tests:
       - series: 'loki_ingester_chunks_flush_requests_total{namespace="my-ns", pod="ingester-0"}'
         values: '0+100x20'
 
-      - series: 'lokistack_info{stack_namespace="my-ns",stack_name="mystack",size="1x.small"}'
+      - series: 'lokistack_info{stack_namespace="my-ns",stack_name="mystack",size="1x.small",object_storage_type="s3",credential_mode="static",schema_version="v13"}'
         values: '1+0x5'
-      - series: 'lokistack_storage_info{stack_namespace="my-ns",stack_name="mystack",size="1x.small",backend_type="s3",credential_mode="static"}'
+      - series: 'lokistack_info{stack_namespace="my-ns",stack_name="mystack1",size="1x.small",object_storage_type="gcs",credential_mode="token",schema_version="v12"}'
         values: '1+0x5'
-      # Multiple schemas (v12 + v13) to test migration scenario
-      - series: 'lokistack_storage_schema_version{stack_namespace="my-ns",stack_name="mystack",size="1x.small",version="v12"}'
+      - series: 'lokistack_info{stack_namespace="my-ns",stack_name="mystack2",size="1x.medium",object_storage_type="azure",credential_mode="token-cco",schema_version="v13"}'
         values: '1+0x5'
-      - series: 'lokistack_storage_schema_version{stack_namespace="my-ns",stack_name="mystack",size="1x.small",version="v13"}'
-        values: '1+0x5'
-      - series: 'lokistack_global_ingestion_rate_limit_mb{stack_namespace="my-ns",stack_name="mystack",size="1x.small"}'
-        values: '100+0x5'
-      - series: 'lokistack_component_custom_replicas{stack_namespace="my-ns",stack_name="mystack",size="1x.medium",component="ingester"}'
+      - series: 'lokistack_global_ingestion_rate_limit_bytes{stack_namespace="my-ns",stack_name="mystack",size="1x.small"}'
+        values: '104857600+0x5'
+      - series: 'lokistack_component_replicas{stack_namespace="my-ns",stack_name="mystack",size="1x.medium",component="ingester"}'
         values: '5+0x5'
 
       # Ingester container metrics for actual resource consumption
@@ -101,12 +98,12 @@ tests:
         values: '2147483648+0x5'
 
       # Ingestion rate metrics
-      # Stack1: receiving 80 MB/s, discarding 5 MB/s = 75 MB/s net
+      # Stack1: receiving 80 MB/s, discarding 3 MB/s (line_too_long) = 77 MB/s net
       - series: 'loki_distributor_bytes_received_total{namespace="my-ns",pod="mystack1-distributor-0",container="loki-distributor"}'
         values: '0+5033164800x5'
-      - series: 'loki_discarded_bytes_total{namespace="my-ns",pod="mystack1-distributor-0",container="loki-distributor"}'
-        values: '0+314572800x5'
-      # Stack2: receiving 90 MB/s, discarding 5 MB/s = 85 MB/s net
+      - series: 'loki_discarded_bytes_total{namespace="my-ns",pod="mystack1-distributor-0",container="loki-distributor",reason="line_too_long"}'
+        values: '0+188743680x5'
+      # Stack2: receiving 90 MB/s, discarding 5 MB/s (rate_limited) = 85 MB/s net
       - series: 'loki_distributor_bytes_received_total{namespace="my-ns",pod="mystack2-distributor-0",container="loki-distributor"}'
         values: '0+5662310400x5'
       - series: 'loki_discarded_bytes_total{namespace="my-ns",pod="mystack2-distributor-0",container="loki-distributor",reason="rate_limited"}'
@@ -270,44 +267,43 @@ tests:
       - eval_time: 5m
         expr: openshift_logging:lokistack_info:count
         exp_samples:
-          - labels: 'openshift_logging:lokistack_info:count{size="1x.small"}'
+          - labels: 'openshift_logging:lokistack_info:count{size="1x.small",object_storage_type="s3",credential_mode="static",schema_version="v13"}'
+            value: 1
+          - labels: 'openshift_logging:lokistack_info:count{size="1x.small",object_storage_type="gcs",credential_mode="token",schema_version="v12"}'
+            value: 1
+          - labels: 'openshift_logging:lokistack_info:count{size="1x.medium",object_storage_type="azure",credential_mode="token-cco",schema_version="v13"}'
             value: 1
       - eval_time: 5m
-        expr: openshift_logging:lokistack_storage_info:count
+        expr: openshift_logging:lokistack_component_replicas:sum
         exp_samples:
-          - labels: 'openshift_logging:lokistack_storage_info:count{backend_type="s3",credential_mode="static"}'
-            value: 1
+          - labels: 'openshift_logging:lokistack_component_replicas:sum{component="ingester",size="1x.medium"}'
+            value: 5
       - eval_time: 5m
-        expr: openshift_logging:lokistack_storage_schema_version:count
+        expr: openshift_logging:lokistack_global_ingestion_rate_limit_bytes:avg
         exp_samples:
-          - labels: 'openshift_logging:lokistack_storage_schema_version:count{version="v12"}'
-            value: 1
-          - labels: 'openshift_logging:lokistack_storage_schema_version:count{version="v13"}'
-            value: 1
-      - eval_time: 5m
-        expr: openshift_logging:lokistack_component_custom_replicas:count
-        exp_samples:
-          - labels: 'openshift_logging:lokistack_component_custom_replicas:count{component="ingester"}'
-            value: 1
-      - eval_time: 5m
-        expr: openshift_logging:lokistack_global_ingestion_rate_limit_mb:avg
-        exp_samples:
-          - labels: 'openshift_logging:lokistack_global_ingestion_rate_limit_mb:avg{}'
-            value: 100
+          - labels: 'openshift_logging:lokistack_global_ingestion_rate_limit_bytes:avg{size="1x.small",stack_namespace="my-ns"}'
+            value: 104857600
       - eval_time: 5m
         expr: openshift_logging:lokistack_ingester_cpu_cores:sum
         exp_samples:
-          - labels: 'openshift_logging:lokistack_ingester_cpu_cores:sum{stack_namespace="my-ns",stack_name="mystack"}'
+          - labels: 'openshift_logging:lokistack_ingester_cpu_cores:sum{size="1x.small"}'
             value: 1
       - eval_time: 5m
         expr: openshift_logging:lokistack_ingester_memory_working_set_bytes:sum
         exp_samples:
-          - labels: 'openshift_logging:lokistack_ingester_memory_working_set_bytes:sum{stack_namespace="my-ns",stack_name="mystack"}'
+          - labels: 'openshift_logging:lokistack_ingester_memory_working_set_bytes:sum{size="1x.small"}'
             value: 4294967296
       - eval_time: 5m
-        expr: openshift_logging:lokistack_ingestion_rate_mb_per_second:sum
+        expr: openshift_logging:lokistack_ingestion_received_bytes_per_second:sum
         exp_samples:
-          - labels: 'openshift_logging:lokistack_ingestion_rate_mb_per_second:sum{stack_namespace="my-ns",stack_name="mystack1"}'
-            value: 75
-          - labels: 'openshift_logging:lokistack_ingestion_rate_mb_per_second:sum{stack_namespace="my-ns",stack_name="mystack2"}'
-            value: 85
+          - labels: 'openshift_logging:lokistack_ingestion_received_bytes_per_second:sum{size="1x.small"}'
+            value: 83886080
+          - labels: 'openshift_logging:lokistack_ingestion_received_bytes_per_second:sum{size="1x.medium"}'
+            value: 94371840
+      - eval_time: 5m
+        expr: openshift_logging:lokistack_ingestion_discarded_bytes_per_second:sum
+        exp_samples:
+          - labels: 'openshift_logging:lokistack_ingestion_discarded_bytes_per_second:sum{reason="line_too_long",size="1x.small"}'
+            value: 3145728
+          - labels: 'openshift_logging:lokistack_ingestion_discarded_bytes_per_second:sum{reason="rate_limited",size="1x.medium"}'
+            value: 5242880
