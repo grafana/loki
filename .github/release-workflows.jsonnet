@@ -9,7 +9,8 @@ local buildImage = 'golang:%s' % goVersion;
 local golangCiLintVersion = 'v2.10.1';
 local imageBuildTimeoutMin = 60;
 local imagePrefix = 'grafana';
-local weeklyImagePrefix = 'us-docker.pkg.dev/grafanalabs-global/docker-loki-prod';
+local weeklyImageRegistry = 'us-docker.pkg.dev';
+local weeklyImagePrefix = '%s/grafanalabs-global/docker-loki-prod' % weeklyImageRegistry;
 local dockerPluginDir = 'clients/cmd/docker-driver';
 local runner = import 'workflows/runner.libsonnet',
       r = runner.withDefaultMapping();  // Do we need a different mapping?
@@ -180,7 +181,12 @@ local weeklyImageJobs = {
         })
         + job.withSteps([
           step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
-          step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136'),  // v1.0.2
+          step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136')  // v1.0.2
+          + {
+            with: {
+              registry: weeklyImageRegistry,
+            },
+          },
           step.new('Publish multi-arch manifest')
           + step.withRun(|||
             # Unfortunately there is no better way atm than having a separate named output for each digest
