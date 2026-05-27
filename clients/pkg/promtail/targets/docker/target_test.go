@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/go-kit/log"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -46,10 +46,9 @@ func handlerForPath(t *testing.T, paths []urlContainToPath, tty bool) http.Handl
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			info := container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{},
-				Mounts:            []container.MountPoint{},
-				Config:            &container.Config{Tty: tty},
-				NetworkSettings:   &container.NetworkSettings{},
+				Mounts:          []container.MountPoint{},
+				Config:          &container.Config{Tty: tty},
+				NetworkSettings: &container.NetworkSettings{},
 			}
 			err := json.NewEncoder(w).Encode(info)
 			require.NoError(t, err)
