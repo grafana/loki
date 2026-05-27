@@ -9,6 +9,8 @@ local buildImage = 'golang:%s' % goVersion;
 local golangCiLintVersion = 'v2.10.1';
 local imageBuildTimeoutMin = 60;
 local imagePrefix = 'grafana';
+local weeklyImageRegistry = 'us-docker.pkg.dev';
+local weeklyImagePrefix = '%s/grafanalabs-global/docker-loki-prod' % weeklyImageRegistry;
 local dockerPluginDir = 'clients/cmd/docker-driver';
 local runner = import 'workflows/runner.libsonnet',
       r = runner.withDefaultMapping();  // Do we need a different mapping?
@@ -86,7 +88,7 @@ local weeklyImageJobs = {
     lokiRelease.releaseWorkflow(
       branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+', 'main'],
       getDockerCredsFromVault=true,
-      imagePrefix='grafana',
+      imagePrefix=imagePrefix,
       releaseLibRef=releaseLibRef,
       pluginBuildDir=dockerPluginDir,
       releaseBranchTemplate='release-\\${major}.\\${minor}.x',
@@ -157,7 +159,7 @@ local weeklyImageJobs = {
           BUILD_TIMEOUT: imageBuildTimeoutMin,
           RELEASE_REPO: 'grafana/loki',
           RELEASE_LIB_REF: releaseLibRef,
-          IMAGE_PREFIX: imagePrefix,
+          IMAGE_PREFIX: weeklyImagePrefix,
           GO_VERSION: goVersion,
         })
       for name in std.objectFields(weeklyImageJobs)
@@ -179,7 +181,12 @@ local weeklyImageJobs = {
         })
         + job.withSteps([
           step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
-          step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746'),  // main
+          step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136')  // v1.0.2
+          + {
+            with: {
+              registry: weeklyImageRegistry,
+            },
+          },
           step.new('Publish multi-arch manifest')
           + step.withRun(|||
             # Unfortunately there is no better way atm than having a separate named output for each digest
