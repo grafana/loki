@@ -143,11 +143,7 @@ jobs:
           mv formatted_diff_output.truncated.md formatted_diff_output.md
 
       - name: Post diff as PR comment
-        uses: marocchino/sticky-pull-request-comment@52423e01640425a022ef5fd42c6fb5f633a02728 # v2
-        with:
-          header: "Helm Diff Output - Summary"
-          skip_unchanged: true
-          hide_and_recreate: true
-          append: true
-          hide_classify: "OUTDATED"
-          path: formatted_diff_output.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file formatted_diff_output.md
