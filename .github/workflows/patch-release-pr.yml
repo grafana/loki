@@ -178,7 +178,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -249,7 +249,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/fluent-bit-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -327,7 +327,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/fluent-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -405,7 +405,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/logcli:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -489,7 +489,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/logstash-output-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -567,7 +567,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -651,7 +651,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -735,7 +735,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -836,7 +836,7 @@ jobs:
         .
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -917,7 +917,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki-helm-test:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -1001,7 +1001,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki-query-tee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider

@@ -182,7 +182,7 @@ jobs:
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -194,7 +194,7 @@ jobs:
           --repository="generic-loki-dev" \
           --location="us" \
           --source-directory=${{env.path}} \
-          --package=${{ github.sha }} \
+          --package=binaries \
           --version=${{ github.sha }}
       env:
         path: "release/dist"
@@ -251,7 +251,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/fluent-bit-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -263,7 +263,7 @@ jobs:
           --repository="generic-loki-dev" \
           --location="us" \
           --source=${{env.path}} \
-          --package=${{ github.sha }} \
+          --package=images \
           --version=${{ github.sha }}
       env:
         path: "release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -329,7 +329,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/fluent-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -341,7 +341,7 @@ jobs:
           --repository="generic-loki-dev" \
           --location="us" \
           --source=${{env.path}} \
-          --package=${{ github.sha }} \
+          --package=images \
           --version=${{ github.sha }}
       env:
         path: "release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -407,7 +407,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/logcli:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -419,7 +419,7 @@ jobs:
           --repository="generic-loki-dev" \
           --location="us" \
           --source=${{env.path}} \
-          --package=${{ github.sha }} \
+          --package=images \
           --version=${{ github.sha }}
       env:
         path: "release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -492,7 +492,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/logstash-output-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -504,7 +504,7 @@ jobs:
           --repository="generic-loki-dev" \
           --location="us" \
           --source=${{env.path}} \
-          --package=${{ github.sha }} \
+          --package=images \
           --version=${{ github.sha }}
       env:
         path: "release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -570,7 +570,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -582,7 +582,7 @@ jobs:
           --repository="generic-loki-dev" \
           --location="us" \
           --source=${{env.path}} \
-          --package=${{ github.sha }} \
+          --package=images \
           --version=${{ github.sha }}
       env:
          path: "release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -654,7 +654,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -666,7 +666,7 @@ jobs:
           --repository="generic-loki-dev" \
           --location="us" \
           --source=${{env.path}} \
-          --package=${{ github.sha }} \
+          --package=images \
           --version=${{ github.sha }}
       env:
         path: "release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -738,7 +738,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -750,7 +750,7 @@ jobs:
           --repository="generic-loki-dev" \
           --location="us" \
           --source=${{env.path}} \
-          --package=${{ github.sha }} \
+          --package=images \
           --version=${{ github.sha }}
       env:
        path: "release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -839,7 +839,7 @@ jobs:
         .
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -851,7 +851,7 @@ jobs:
           --repository="generic-loki-dev" \
           --location="us" \
           --source=${{env.path}} \
-          --package=${{ github.sha }} \
+          --package=plugins \
           --version=${{ github.sha }}
       env:
         path: "release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -920,7 +920,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki-helm-test:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -932,7 +932,7 @@ jobs:
           --repository="generic-loki-dev" \
           --location="us" \
           --source=${{env.path}} \
-          --package=${{ github.sha }} \
+          --package=images \
           --version=${{ github.sha }}
       env:
         path: "release/images/loki-helm-test-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
@@ -1004,7 +1004,7 @@ jobs:
         tags: "${{ env.IMAGE_PREFIX }}/loki-query-tee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Setup Google Auth"
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
       with:
         project_id: grafanalabs-workload-identity
         workload_identity_provider: projects/304398677251/locations/global/workloadIdentityPools/github/providers/github-provider
@@ -1016,7 +1016,7 @@ jobs:
           --repository="generic-loki-dev" \
           --location="us" \
           --source=${{env.path}} \
-          --package=${{ github.sha }} \
+          --package=images \
           --version=${{ github.sha }}
       env:
         path: "release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
