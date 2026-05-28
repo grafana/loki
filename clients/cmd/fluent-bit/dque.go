@@ -146,7 +146,7 @@ func (c *dqueClient) enqueuer() {
 	defer c.wg.Done()
 	for e := range c.entries {
 		if err := c.queue.Enqueue(&dqueEntry{e.Labels, e.Timestamp, e.Line}); err != nil {
-			level.Warn(c.logger).Log("msg", fmt.Sprintf("cannot enqueue record %s:", e.Line), "err", err)
+			level.Warn(c.logger).Log("msg", "cannot enqueue record", "line", e.Line, "err", err)
 		}
 	}
 }

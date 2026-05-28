@@ -123,7 +123,7 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "listener closed", http.StatusServiceUnavailable)
 
 	case <-r.Context().Done():
-		level.Debug(l.logger).Log("msg", "request context cancelled", err, r.Context().Err())
+		level.Debug(l.logger).Log("msg", "request context cancelled", "err", r.Context().Err())
 		return
 
 	case l.incoming <- conn:

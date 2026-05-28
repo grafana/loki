@@ -146,7 +146,7 @@ func (r *ringLimitsClient) newExceedsLimitsRPCsFunc(resp *proto.ExceedsLimitsRes
 					Streams: streams,
 				})
 				if err != nil {
-					level.Error(r.logger).Log("failed check execeed limits for instance", "instance", addr, "err", err.Error())
+					level.Error(r.logger).Log("msg", "failed to check exceed limits for instance", "instance", addr, "err", err.Error())
 					return nil
 				}
 				responseCh <- resp
@@ -196,7 +196,7 @@ func (r *ringLimitsClient) newUpdateRatesRPCsFunc(resp *proto.UpdateRatesRespons
 					Streams: streams,
 				})
 				if err != nil {
-					level.Error(r.logger).Log("failed check execeed limits for instance", "instance", addr, "err", err.Error())
+					level.Error(r.logger).Log("msg", "failed to check exceed limits for instance", "instance", addr, "err", err.Error())
 					return nil
 				}
 				responseCh <- resp
@@ -382,12 +382,12 @@ func (r *ringLimitsClient) getPartitionConsumers(ctx context.Context, instances 
 			}
 			client, err := r.pool.GetClientFor(instance.Addr)
 			if err != nil {
-				level.Error(r.logger).Log("failed to get client for instance", "instance", instance.Addr, "err", err.Error())
+				level.Error(r.logger).Log("msg", "failed to get client for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
 			}
 			resp, err := client.(proto.IngestLimitsClient).GetAssignedPartitions(ctx, &proto.GetAssignedPartitionsRequest{})
 			if err != nil {
-				level.Error(r.logger).Log("failed to get assigned partitions for instance", "instance", instance.Addr, "err", err.Error())
+				level.Error(r.logger).Log("msg", "failed to get assigned partitions for instance", "instance", instance.Addr, "err", err.Error())
 				return nil
 			}
 			r.assignedPartitionsCache.Set(instance.Addr, resp)

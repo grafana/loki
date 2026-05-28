@@ -200,7 +200,9 @@ func compareMatrixSamples(expected, actual *model.SampleStream, opts SampleCompa
 	if expectedEntriesCount != actualEntriesCount {
 		err := fmt.Errorf("expected %d samples for metric %s but got %d: %w", expectedEntriesCount, expected.Metric, actualEntriesCount, ErrComparisonMismatch)
 		if actualEntriesCount > 0 && expectedEntriesCount > 0 {
-			level.Error(util_log.Logger).Log("msg", err.Error(),
+			level.Error(util_log.Logger).Log(
+				"msg", "sample count mismatch",
+				"err", err,
 				"oldest-expected-ts", expected.Values[0].Timestamp,
 				"newest-expected-ts", expected.Values[expectedEntriesCount-1].Timestamp,
 				"oldest-actual-ts", actual.Values[0].Timestamp,
@@ -469,7 +471,10 @@ func compareStreamEntries(streamLabels loghttp.LabelSet, expected, actual []logh
 			streamLabels, actualValuesLen, ErrComparisonMismatch)
 		if expectedValuesLen > 0 && actualValuesLen > 0 {
 			// assuming BACKWARD search since that is the default ordering
-			level.Error(util_log.Logger).Log("msg", err.Error(), "newest-expected-ts", expected[0].Timestamp.UnixNano(),
+			level.Error(util_log.Logger).Log(
+				"msg", "stream entry count mismatch",
+				"err", err,
+				"newest-expected-ts", expected[0].Timestamp.UnixNano(),
 				"oldest-expected-ts", expected[expectedValuesLen-1].Timestamp.UnixNano(),
 				"newest-actual-ts", actual[0].Timestamp.UnixNano(), "oldest-actual-ts", actual[actualValuesLen-1].Timestamp.UnixNano())
 		}
