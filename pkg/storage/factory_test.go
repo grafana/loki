@@ -23,7 +23,6 @@ import (
 func TestNamedStores(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// config for BoltDB Shipper
 	shipperCfg := indexshipper.Config{}
 	flagext.DefaultValues(&shipperCfg)
 	shipperCfg.ActiveIndexDirectory = path.Join(tempDir, "index")

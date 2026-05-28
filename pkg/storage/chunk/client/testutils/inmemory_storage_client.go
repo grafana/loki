@@ -10,12 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-kit/log/level"
-
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type MockStorageMode int
@@ -39,8 +35,7 @@ type MockStorage struct {
 	tables    map[string]*mockTable
 	schemaCfg config.SchemaConfig
 
-	numIndexWrites int
-	mode           MockStorageMode
+	mode MockStorageMode
 }
 
 // compiler check
@@ -63,13 +58,7 @@ func (m *InMemoryObjectClient) Internals() map[string][]byte {
 }
 
 type mockTable struct {
-	items       map[string][]mockItem
 	write, read int64
-}
-
-type mockItem struct {
-	rangeValue []byte
-	value      []byte
 }
 
 var singleton *MockStorage
@@ -155,7 +144,6 @@ func (m *MockStorage) CreateTable(_ context.Context, desc config.TableDesc) erro
 	}
 
 	m.tables[desc.Name] = &mockTable{
-		items: map[string][]mockItem{},
 		write: desc.ProvisionedWrite,
 		read:  desc.ProvisionedRead,
 	}
@@ -207,186 +195,6 @@ func (m *MockStorage) UpdateTable(_ context.Context, _, desc config.TableDesc) e
 	table.read = desc.ProvisionedRead
 	table.write = desc.ProvisionedWrite
 
-	return nil
-}
-
-// NewWriteBatch implements StorageClient.
-func (m *MockStorage) NewWriteBatch() index.WriteBatch {
-	return &mockWriteBatch{}
-}
-
-// BatchWrite implements StorageClient.
-func (m *MockStorage) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	if m.mode == MockStorageModeReadOnly {
-		return errPermissionDenied
-	}
-
-	mockBatch := *batch.(*mockWriteBatch)
-	seenWrites := map[string]bool{}
-
-	m.numIndexWrites += len(mockBatch.inserts)
-
-	for _, req := range mockBatch.inserts {
-		table, ok := m.tables[req.tableName]
-		if !ok {
-			return fmt.Errorf("table not found: %s", req.tableName)
-		}
-
-		// Check for duplicate writes by RangeKey in same batch
-		key := fmt.Sprintf("%s:%s:%x", req.tableName, req.hashValue, req.rangeValue)
-		if _, ok := seenWrites[key]; ok {
-			return fmt.Errorf("dupe write in batch")
-		}
-		seenWrites[key] = true
-
-		level.Debug(log.WithContext(ctx, log.Logger)).Log("msg", "write", "hash", req.hashValue, "range", req.rangeValue)
-
-		items := table.items[req.hashValue]
-
-		// insert in order
-		i := sort.Search(len(items), func(i int) bool {
-			return bytes.Compare(items[i].rangeValue, req.rangeValue) >= 0
-		})
-		if i >= len(items) || !bytes.Equal(items[i].rangeValue, req.rangeValue) {
-			items = append(items, mockItem{})
-			copy(items[i+1:], items[i:])
-		} else {
-			// if duplicate write then just update the value
-			items[i].value = req.value
-			continue
-		}
-		items[i] = mockItem{
-			rangeValue: req.rangeValue,
-			value:      req.value,
-		}
-
-		table.items[req.hashValue] = items
-	}
-
-	for _, req := range mockBatch.deletes {
-		table, ok := m.tables[req.tableName]
-		if !ok {
-			return fmt.Errorf("table not found: %s", req.tableName)
-		}
-
-		items := table.items[req.hashValue]
-
-		i := sort.Search(len(items), func(i int) bool {
-			return bytes.Compare(items[i].rangeValue, req.rangeValue) >= 0
-		})
-
-		if i >= len(items) || !bytes.Equal(items[i].rangeValue, req.rangeValue) {
-			continue
-		}
-
-		if len(items) == 1 {
-			items = nil
-		} else {
-			items = items[:i+copy(items[i:], items[i+1:])]
-		}
-
-		table.items[req.hashValue] = items
-	}
-	return nil
-}
-
-// QueryPages implements StorageClient.
-func (m *MockStorage) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
-	m.mtx.RLock()
-	defer m.mtx.RUnlock()
-
-	if m.mode == MockStorageModeWriteOnly {
-		return errPermissionDenied
-	}
-
-	for _, query := range queries {
-		err := m.query(ctx, query, func(b index.ReadBatchResult) bool {
-			return callback(query, b)
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *MockStorage) query(ctx context.Context, query index.Query, callback func(index.ReadBatchResult) (shouldContinue bool)) error {
-	logger := log.WithContext(ctx, log.Logger)
-	level.Debug(logger).Log("msg", "QueryPages", "query", query.HashValue)
-
-	table, ok := m.tables[query.TableName]
-	if !ok {
-		return fmt.Errorf("table not found: %s", query.TableName)
-	}
-
-	items, ok := table.items[query.HashValue]
-	if !ok {
-		level.Debug(logger).Log("msg", "not found")
-		return nil
-	}
-
-	if query.RangeValuePrefix != nil {
-		level.Debug(logger).Log("msg", "lookup prefix", "hash", query.HashValue, "range_prefix", query.RangeValuePrefix, "num_items", len(items))
-
-		// the smallest index i in [0, n) at which f(i) is true
-		i := sort.Search(len(items), func(i int) bool {
-			if bytes.Compare(items[i].rangeValue, query.RangeValuePrefix) > 0 {
-				return true
-			}
-			return bytes.HasPrefix(items[i].rangeValue, query.RangeValuePrefix)
-		})
-		j := sort.Search(len(items)-i, func(j int) bool {
-			if bytes.Compare(items[i+j].rangeValue, query.RangeValuePrefix) < 0 {
-				return false
-			}
-			return !bytes.HasPrefix(items[i+j].rangeValue, query.RangeValuePrefix)
-		})
-
-		level.Debug(logger).Log("msg", "found range", "from_inclusive", i, "to_exclusive", i+j)
-		if i > len(items) || j == 0 {
-			return nil
-		}
-		items = items[i : i+j]
-
-	} else if query.RangeValueStart != nil {
-		level.Debug(logger).Log("msg", "lookup range", "hash", query.HashValue, "range_start", query.RangeValueStart, "num_items", len(items))
-
-		// the smallest index i in [0, n) at which f(i) is true
-		i := sort.Search(len(items), func(i int) bool {
-			return bytes.Compare(items[i].rangeValue, query.RangeValueStart) >= 0
-		})
-
-		level.Debug(logger).Log("msg", "found range [%d)", "index", i)
-		if i > len(items) {
-			return nil
-		}
-		items = items[i:]
-
-	} else {
-		level.Debug(logger).Log("msg", "lookup", "hash", query.HashValue, "num_items", len(items))
-	}
-
-	// Filters
-	if query.ValueEqual != nil {
-		level.Debug(logger).Log("msg", "filter by equality", "value_equal", query.ValueEqual)
-
-		filtered := make([]mockItem, 0)
-		for _, v := range items {
-			if bytes.Equal(v.value, query.ValueEqual) {
-				filtered = append(filtered, v)
-			}
-		}
-		items = filtered
-	}
-
-	result := mockReadBatch{}
-	result.items = append(result.items, items...)
-
-	callback(&result)
 	return nil
 }
 
@@ -552,60 +360,4 @@ func (m *InMemoryObjectClient) List(_ context.Context, prefix, delimiter string)
 
 // Stop implements client.ObjectClient
 func (*InMemoryObjectClient) Stop() {
-}
-
-type mockWriteBatch struct {
-	inserts []struct {
-		tableName, hashValue string
-		rangeValue           []byte
-		value                []byte
-	}
-	deletes []struct {
-		tableName, hashValue string
-		rangeValue           []byte
-	}
-}
-
-func (b *mockWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	b.deletes = append(b.deletes, struct {
-		tableName, hashValue string
-		rangeValue           []byte
-	}{tableName: tableName, hashValue: hashValue, rangeValue: rangeValue})
-}
-
-func (b *mockWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	b.inserts = append(b.inserts, struct {
-		tableName, hashValue string
-		rangeValue           []byte
-		value                []byte
-	}{tableName, hashValue, rangeValue, value})
-}
-
-type mockReadBatch struct {
-	items []mockItem
-}
-
-func (b *mockReadBatch) Iterator() index.ReadBatchIterator {
-	return &mockReadBatchIter{
-		index:         -1,
-		mockReadBatch: b,
-	}
-}
-
-type mockReadBatchIter struct {
-	index int
-	*mockReadBatch
-}
-
-func (b *mockReadBatchIter) Next() bool {
-	b.index++
-	return b.index < len(b.items)
-}
-
-func (b *mockReadBatchIter) RangeValue() []byte {
-	return b.items[b.index].rangeValue
-}
-
-func (b *mockReadBatchIter) Value() []byte {
-	return b.items[b.index].value
 }

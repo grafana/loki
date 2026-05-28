@@ -1,4 +1,4 @@
-package local
+package boltdb
 
 import (
 	"bytes"
@@ -16,7 +16,6 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -36,18 +35,82 @@ const (
 	openBoltDBFileTimeout = 5 * time.Second
 )
 
-// BoltDBConfig for a BoltDB index client.
-type BoltDBConfig struct {
+// >>>>> COPIED FROM pkg/storage/stores/series/index/index.go
+
+// QueryPagesCallback from an IndexQuery.
+type QueryPagesCallback func(Query, ReadBatchResult) bool
+
+// Client for the read path.
+type ReadClient interface {
+	QueryPages(ctx context.Context, queries []Query, callback QueryPagesCallback) error
+}
+
+// Client for the write path.
+type WriteClient interface {
+	NewWriteBatch() WriteBatch
+	BatchWrite(context.Context, WriteBatch) error
+}
+
+// Client is a client for the storage of the index (e.g. DynamoDB).
+type Client interface {
+	ReadClient
+	WriteClient
+	Stop()
+}
+
+// ReadBatchResult represents the results of a QueryPages.
+type ReadBatchResult interface {
+	Iterator() ReadBatchIterator
+}
+
+// ReadBatchIterator is an iterator over a ReadBatch.
+type ReadBatchIterator interface {
+	Next() bool
+	RangeValue() []byte
+	Value() []byte
+}
+
+// WriteBatch represents a batch of writes.
+type WriteBatch interface {
+	Add(tableName, hashValue string, rangeValue []byte, value []byte)
+	Delete(tableName, hashValue string, rangeValue []byte)
+}
+
+// Query describes a query for entries
+type Query struct {
+	TableName string
+	HashValue string
+
+	// One of RangeValuePrefix or RangeValueStart might be set:
+	// - If RangeValuePrefix is not nil, must read all keys with that prefix.
+	// - If RangeValueStart is not nil, must read all keys from there onwards.
+	// - If neither is set, must read all keys for that row.
+	// RangeValueStart should only be used for querying Chunk IDs.
+	// If this is going to change then please take care of func isChunksQuery in pkg/chunk/storage/caching_index_client.go which relies on it.
+	RangeValuePrefix []byte
+	RangeValueStart  []byte
+
+	// Filters for querying
+	ValueEqual []byte
+
+	// If the result of this lookup is immutable or not (for caching).
+	Immutable bool
+}
+
+// <<<<< END
+
+// Config for a BoltDB index client.
+type Config struct {
 	Directory string `yaml:"directory"`
 }
 
 // RegisterFlags registers flags.
-func (cfg *BoltDBConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Directory, "boltdb.dir", "", "Location of BoltDB index files.")
 }
 
 type BoltIndexClient struct {
-	cfg BoltDBConfig
+	cfg Config
 
 	dbsMtx sync.RWMutex
 	dbs    map[string]*bbolt.DB
@@ -56,7 +119,7 @@ type BoltIndexClient struct {
 }
 
 // NewBoltDBIndexClient creates a new IndexClient that used BoltDB.
-func NewBoltDBIndexClient(cfg BoltDBConfig) (*BoltIndexClient, error) {
+func NewBoltDBIndexClient(cfg Config) (*BoltIndexClient, error) {
 	if err := util.EnsureDirectory(cfg.Directory); err != nil {
 		return nil, err
 	}
@@ -127,11 +190,11 @@ func (b *BoltIndexClient) Stop() {
 	b.wait.Wait()
 }
 
-func (b *BoltIndexClient) NewWriteBatch() index.WriteBatch {
+func (b *BoltIndexClient) NewWriteBatch() WriteBatch {
 	return NewWriteBatch()
 }
 
-func NewWriteBatch() index.WriteBatch {
+func NewWriteBatch() WriteBatch {
 	return &BoltWriteBatch{
 		Writes: map[string]TableWrites{},
 	}
@@ -212,7 +275,7 @@ func WriteToDB(_ context.Context, db *bbolt.DB, bucketName []byte, writes TableW
 	})
 }
 
-func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
+func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch WriteBatch) error {
 	for table, writes := range batch.(*BoltWriteBatch).Writes {
 		db, err := b.GetDB(table, DBOperationWrite)
 		if err != nil {
@@ -228,11 +291,11 @@ func (b *BoltIndexClient) BatchWrite(ctx context.Context, batch index.WriteBatch
 	return nil
 }
 
-func (b *BoltIndexClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
-	return util.DoParallelQueries(ctx, b.query, queries, callback)
+func (b *BoltIndexClient) QueryPages(ctx context.Context, queries []Query, callback QueryPagesCallback) error {
+	return DoParallelQueries(ctx, b.query, queries, callback)
 }
 
-func (b *BoltIndexClient) query(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
+func (b *BoltIndexClient) query(ctx context.Context, query Query, callback QueryPagesCallback) error {
 	db, err := b.GetDB(query.TableName, DBOperationRead)
 	if err != nil {
 		if err == ErrUnexistentBoltDB {
@@ -245,9 +308,7 @@ func (b *BoltIndexClient) query(ctx context.Context, query index.Query, callback
 	return QueryDB(ctx, db, IndexBucketName, query, callback)
 }
 
-func QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query index.Query,
-	callback index.QueryPagesCallback,
-) error {
+func QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query Query, callback QueryPagesCallback) error {
 	return db.View(func(tx *bbolt.Tx) error {
 		if len(bucketName) == 0 {
 			return ErrEmptyIndexBucketName
@@ -261,7 +322,7 @@ func QueryDB(ctx context.Context, db *bbolt.DB, bucketName []byte, query index.Q
 	})
 }
 
-func QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error {
+func QueryWithCursor(_ context.Context, c *bbolt.Cursor, query Query, callback QueryPagesCallback) error {
 	batch := batchPool.Get().(*cursorBatch)
 	defer batchPool.Put(batch)
 
@@ -281,7 +342,7 @@ var batchPool = sync.Pool{
 
 type cursorBatch struct {
 	cursor    *bbolt.Cursor
-	query     *index.Query
+	query     *Query
 	start     *bytes.Buffer
 	rowPrefix *bytes.Buffer
 	seeked    bool
@@ -290,7 +351,7 @@ type cursorBatch struct {
 	currValue      []byte
 }
 
-func (c *cursorBatch) Iterator() index.ReadBatchIterator {
+func (c *cursorBatch) Iterator() ReadBatchIterator {
 	return c
 }
 
@@ -352,7 +413,7 @@ func (c *cursorBatch) Value() []byte {
 	return c.currValue
 }
 
-func (c *cursorBatch) reset(cur *bbolt.Cursor, q *index.Query) {
+func (c *cursorBatch) reset(cur *bbolt.Cursor, q *Query) {
 	c.currRangeValue = nil
 	c.currValue = nil
 	c.seeked = false
