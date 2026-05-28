@@ -1901,6 +1901,13 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 
 func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
 	t.Helper()
+	distributors, ingesters := prepareButDontStart(t, numDistributors, numIngesters, limits, factory)
+	startAndWaitRunningDistributors(t, distributors)
+	return distributors, ingesters
+}
+
+func prepareButDontStart(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
+	t.Helper()
 
 	ingesters := make([]mockIngester, numIngesters)
 	for i := 0; i < numIngesters; i++ {
@@ -2008,14 +2015,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 
 		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, nil, log.NewNopLogger())
 		require.NoError(t, err)
-		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
-	}
-
-	if distributors[0].distributorsLifecycler != nil {
-		test.Poll(t, time.Second, numDistributors, func() interface{} {
-			return distributors[0].HealthyInstancesCount()
-		})
 	}
 
 	t.Cleanup(func() {
@@ -2027,6 +2027,18 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	})
 
 	return distributors, ingesters
+}
+
+func startAndWaitRunningDistributors(t *testing.T, distributors []*Distributor) {
+	for _, d := range distributors {
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
+	}
+
+	if distributors[0].distributorsLifecycler != nil {
+		test.Poll(t, time.Second, len(distributors), func() interface{} {
+			return distributors[0].HealthyInstancesCount()
+		})
+	}
 }
 
 func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level string) *logproto.PushRequest {
