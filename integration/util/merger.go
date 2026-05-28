@@ -22,7 +22,7 @@ func (m *YAMLMerger) AddFragment(fragment []byte) {
 }
 
 func (m *YAMLMerger) Merge() ([]byte, error) {
-	merged := make(map[interface{}]interface{})
+	merged := make(map[string]interface{})
 	for _, fragment := range m.fragments {
 		fragmentMap, err := yamlToMap(fragment)
 		if err != nil {
@@ -43,7 +43,7 @@ func (m *YAMLMerger) Merge() ([]byte, error) {
 }
 
 func yamlToMap(fragment []byte) (interface{}, error) {
-	var fragmentMap map[interface{}]interface{}
+	var fragmentMap map[string]interface{}
 
 	err := yaml.Unmarshal(fragment, &fragmentMap)
 	if err != nil {
