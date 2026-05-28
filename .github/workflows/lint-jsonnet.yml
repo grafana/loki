@@ -7,6 +7,7 @@ on:
       - "**/*.libsonnet"
       - "**/jsonnetfile.json"
       - "**/jsonnetfile.lock.json"
+      - ".github/workflows/lint-jsonnet.yml" # validate changes to the workflow itself
 
 jobs:
   check-mixin:
