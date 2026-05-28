@@ -345,11 +345,11 @@ github.com/aws/aws-sdk-go-v2/internal/timeconv
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi
-# github.com/aws/aws-sdk-go-v2/config v1.32.17
+# github.com/aws/aws-sdk-go-v2/config v1.32.18
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/config
 github.com/aws/aws-sdk-go-v2/config/internal/ini
-# github.com/aws/aws-sdk-go-v2/credentials v1.19.16
+# github.com/aws/aws-sdk-go-v2/credentials v1.19.17
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/credentials
 github.com/aws/aws-sdk-go-v2/credentials/ec2rolecreds
@@ -405,7 +405,7 @@ github.com/aws/aws-sdk-go-v2/service/signin/types
 github.com/aws/aws-sdk-go-v2/service/sso
 github.com/aws/aws-sdk-go-v2/service/sso/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/sso/types
-# github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.21
+# github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.0
 ## explicit; go 1.24
 github.com/aws/aws-sdk-go-v2/service/ssooidc
 github.com/aws/aws-sdk-go-v2/service/ssooidc/internal/endpoints
@@ -429,6 +429,7 @@ github.com/aws/smithy-go/encoding/httpbinding
 github.com/aws/smithy-go/encoding/json
 github.com/aws/smithy-go/encoding/xml
 github.com/aws/smithy-go/endpoints
+github.com/aws/smithy-go/endpoints/private/bdd
 github.com/aws/smithy-go/endpoints/private/rulesfn
 github.com/aws/smithy-go/internal/sync/singleflight
 github.com/aws/smithy-go/io
@@ -1307,7 +1308,7 @@ github.com/parquet-go/bitpack/unsafecast
 # github.com/parquet-go/jsonlite v1.0.0
 ## explicit; go 1.23
 github.com/parquet-go/jsonlite
-# github.com/parquet-go/parquet-go v0.29.0
+# github.com/parquet-go/parquet-go v0.30.1
 ## explicit; go 1.24.9
 github.com/parquet-go/parquet-go
 github.com/parquet-go/parquet-go/bloom
@@ -1336,6 +1337,7 @@ github.com/parquet-go/parquet-go/internal/debug
 github.com/parquet-go/parquet-go/internal/memory
 github.com/parquet-go/parquet-go/internal/unsafecast
 github.com/parquet-go/parquet-go/sparse
+github.com/parquet-go/parquet-go/variant
 # github.com/pb33f/jsonpath v0.8.2
 ## explicit; go 1.24
 github.com/pb33f/jsonpath/pkg/jsonpath

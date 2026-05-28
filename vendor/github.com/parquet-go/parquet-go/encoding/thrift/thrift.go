@@ -61,6 +61,7 @@ const (
 	SET
 	MAP
 	STRUCT
+	UUID
 	BOOL = FALSE
 )
 
@@ -92,6 +93,8 @@ func (t Type) String() string {
 		return "MAP"
 	case STRUCT:
 		return "STRUCT"
+	case UUID:
+		return "UUID"
 	default:
 		return "?"
 	}
