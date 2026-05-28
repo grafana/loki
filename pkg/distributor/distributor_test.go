@@ -500,6 +500,8 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	assert.Equal(t, float64(10000), testutil.ToFloat64(validation.DiscardedBytes))
 	assert.Equal(t, float64(100), testutil.ToFloat64(validation.DiscardedSamples))
 
+	// Make a new request, since Push may have modified req.
+	req = makeWriteRequestWithLabels(100, 100, []string{`{app="foo", env="prod"}`}, false, false, false)
 	// no enforced labels, so no errors.
 	limits.EnforcedLabels = []string{}
 	distributors, _ = prepare(t, 1, 3, limits, nil)
@@ -623,13 +625,14 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: true,
 		}
-		distributors, _ := prepare(t, 1, 0, limits, nil)
+		distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
 		for _, d := range distributors {
 			d.cfg.KafkaEnabled = true
 			d.cfg.IngesterEnabled = false
 			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
 			d.kafkaWriter = kafkaWriter
 		}
+		startAndWaitRunningDistributors(t, distributors)
 
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
@@ -640,13 +643,14 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
-		distributors, _ := prepare(t, 1, 0, limits, nil)
+		distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
 		for _, d := range distributors {
 			d.cfg.KafkaEnabled = true
 			d.cfg.IngesterEnabled = false
 			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
 			d.kafkaWriter = kafkaWriter
 		}
+		startAndWaitRunningDistributors(t, distributors)
 
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
@@ -659,7 +663,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
-		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+		distributors, ingesters := prepareButDontStart(t, 1, 3, limits, nil)
 		ingesters[0].succeedAfter = 5 * time.Millisecond
 		ingesters[1].succeedAfter = 10 * time.Millisecond
 		ingesters[2].succeedAfter = 15 * time.Millisecond
@@ -670,6 +674,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
 			d.kafkaWriter = kafkaWriter
 		}
+		startAndWaitRunningDistributors(t, distributors)
 
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
@@ -714,7 +719,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 				kafkaWriter := &mockKafkaProducer{
 					failOnWrite: false,
 				}
-				distributors, _ := prepare(t, 1, test.numIngesters, limits, nil)
+				distributors, _ := prepareButDontStart(t, 1, test.numIngesters, limits, nil)
 				for _, d := range distributors {
 					d.cfg.KafkaEnabled = true
 					d.cfg.IngesterEnabled = false
@@ -730,6 +735,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 					require.NoError(t, err)
 					d.validator = validator
 				}
+				startAndWaitRunningDistributors(t, distributors)
 
 				for i := 0; i < 1000; i++ {
 					_, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(
@@ -1899,6 +1905,13 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 
 func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
 	t.Helper()
+	distributors, ingesters := prepareButDontStart(t, numDistributors, numIngesters, limits, factory)
+	startAndWaitRunningDistributors(t, distributors)
+	return distributors, ingesters
+}
+
+func prepareButDontStart(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
+	t.Helper()
 
 	ingesters := make([]mockIngester, numIngesters)
 	for i := 0; i < numIngesters; i++ {
@@ -2006,14 +2019,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 
 		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, nil, log.NewNopLogger())
 		require.NoError(t, err)
-		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
-	}
-
-	if distributors[0].distributorsLifecycler != nil {
-		test.Poll(t, time.Second, numDistributors, func() interface{} {
-			return distributors[0].HealthyInstancesCount()
-		})
 	}
 
 	t.Cleanup(func() {
@@ -2025,6 +2031,18 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	})
 
 	return distributors, ingesters
+}
+
+func startAndWaitRunningDistributors(t *testing.T, distributors []*Distributor) {
+	for _, d := range distributors {
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
+	}
+
+	if distributors[0].distributorsLifecycler != nil {
+		test.Poll(t, time.Second, len(distributors), func() interface{} {
+			return distributors[0].HealthyInstancesCount()
+		})
+	}
 }
 
 func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level string) *logproto.PushRequest {
