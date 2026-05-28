@@ -1,6 +1,10 @@
 ---
 name: enforce conventional commits
 on: [pull_request]
+
+permissions:
+  contents: read
+
 jobs:
   check-title:
     runs-on: ubuntu-x64-small

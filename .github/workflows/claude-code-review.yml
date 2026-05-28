@@ -14,6 +14,9 @@ on:
     #   - "src/**/*.js"
     #   - "src/**/*.jsx"
 
+permissions:
+  contents: read
+
 jobs:
   claude-review:
     # Only run when the 'claude-review' label is added

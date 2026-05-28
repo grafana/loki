@@ -8,7 +8,7 @@ env:
   DRY_RUN: false
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "781f67f5e65569df4c97b98c1f671b27857f5684"
+  RELEASE_LIB_REF: "ad39d2f109c6608c419d7abc42d5550d741870a7"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
@@ -19,11 +19,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@781f67f5e65569df4c97b98c1f671b27857f5684"
+    uses: "grafana/loki-release/.github/workflows/check.yml@ad39d2f109c6608c419d7abc42d5550d741870a7"
     with:
-      build_image: "golang:1.26.2"
+      build_image: "golang:1.26.3"
       golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "781f67f5e65569df4c97b98c1f671b27857f5684"
+      release_lib_ref: "ad39d2f109c6608c419d7abc42d5550d741870a7"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -158,9 +158,9 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.2"
+          --entrypoint /bin/sh "golang:1.26.3"
           git config --global --add safe.directory /src/loki
-          if echo "golang:1.26.2" | grep -q "golang"; then
+          if echo "golang:1.26.3" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist packages
@@ -181,9 +181,9 @@ jobs:
           --env IMAGE_TAG \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.2"
+          --entrypoint /bin/sh "golang:1.26.3"
           git config --global --add safe.directory /src/loki
-          if echo "golang:1.26.2" | grep -q "golang"; then
+          if echo "golang:1.26.3" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist/loki-linux-riscv64
@@ -815,7 +815,7 @@ jobs:
         build-args: |
           IMAGE_TAG=${{ needs.version.outputs.version }}
           GOARCH=${{ steps.platform.outputs.platform_short }}
-          BUILD_IMAGE=golang:1.26.2
+          BUILD_IMAGE=golang:1.26.3
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
         outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"

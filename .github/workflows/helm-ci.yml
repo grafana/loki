@@ -10,6 +10,9 @@ env:
   CT_CONFIGFILE: production/helm/ct.yaml
   INTEGRATION_TESTS_DIR: production/helm/loki/test/integration
 
+permissions:
+  contents: read
+
 jobs:
 # Temporarily disabled linting because this step doesn't easily support passing GO tags yet.
 #  call-lint:
@@ -24,10 +27,6 @@ jobs:
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
-    permissions:
-      contents: "read"
-      id-token: "write"
-      pull-requests: "write"
     steps:
       - name: Checkout
         uses: actions/checkout@v4

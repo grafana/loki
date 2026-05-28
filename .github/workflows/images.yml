@@ -1,18 +1,18 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@781f67f5e65569df4c97b98c1f671b27857f5684"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@ad39d2f109c6608c419d7abc42d5550d741870a7"
     "with":
-      "build_image": "golang:1.26.2"
+      "build_image": "golang:1.26.3"
       "golang_ci_lint_version": "v2.10.1"
-      "release_lib_ref": "781f67f5e65569df4c97b98c1f671b27857f5684"
+      "release_lib_ref": "ad39d2f109c6608c419d7abc42d5550d741870a7"
       "skip_validation": false
       "use_github_app_token": true
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
+      "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
-      "RELEASE_LIB_REF": "781f67f5e65569df4c97b98c1f671b27857f5684"
+      "RELEASE_LIB_REF": "ad39d2f109c6608c419d7abc42d5550d741870a7"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -49,6 +49,8 @@
       "run": "corepack enable"
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - "name": "Login to GAR"
       "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
       "with":
@@ -120,6 +122,8 @@
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - "name": "Login to GAR"
       "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
       "with":
@@ -140,9 +144,9 @@
   "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
+      "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
-      "RELEASE_LIB_REF": "781f67f5e65569df4c97b98c1f671b27857f5684"
+      "RELEASE_LIB_REF": "ad39d2f109c6608c419d7abc42d5550d741870a7"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -179,6 +183,8 @@
       "run": "corepack enable"
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - "name": "Login to GAR"
       "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
       "with":
@@ -250,6 +256,8 @@
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - "name": "Login to GAR"
       "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
       "with":
@@ -270,9 +278,9 @@
   "loki-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
+      "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
-      "RELEASE_LIB_REF": "781f67f5e65569df4c97b98c1f671b27857f5684"
+      "RELEASE_LIB_REF": "ad39d2f109c6608c419d7abc42d5550d741870a7"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -309,6 +317,8 @@
       "run": "corepack enable"
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - "name": "Login to GAR"
       "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
       "with":
@@ -380,6 +390,8 @@
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - "name": "Login to GAR"
       "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
       "with":
@@ -400,9 +412,9 @@
   "querytee-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
+      "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
-      "RELEASE_LIB_REF": "781f67f5e65569df4c97b98c1f671b27857f5684"
+      "RELEASE_LIB_REF": "ad39d2f109c6608c419d7abc42d5550d741870a7"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -439,6 +451,8 @@
       "run": "corepack enable"
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - "name": "Login to GAR"
       "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
       "with":
@@ -510,6 +524,8 @@
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - "name": "Login to GAR"
       "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
       "with":

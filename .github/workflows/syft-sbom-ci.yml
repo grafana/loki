@@ -4,14 +4,16 @@ on:
   release:
     types: [created]
 
+permissions:
+  contents: read
+
 jobs:
   syft-sbom:
 
     runs-on: ubuntu-x64
     permissions:
-      contents: "read"
-      id-token: "write"
-      pull-requests: "write"
+      actions: read
+      contents: write
 
     steps:
     - name: Checkout
