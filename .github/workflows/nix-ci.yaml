@@ -16,8 +16,6 @@ jobs:
     runs-on: ubuntu-x64
     permissions:
       contents: "read"
-      id-token: "write"
-      pull-requests: "write"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,8 +28,6 @@ jobs:
     runs-on: ubuntu-x64
     permissions:
       contents: "read"
-      id-token: "write"
-      pull-requests: "write"
     steps:
       - uses: actions/checkout@v4
         with:
