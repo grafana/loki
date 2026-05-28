@@ -10,13 +10,14 @@ import (
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/aliyun/credentials-go/credentials"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const NoSuchKeyErr = "NoSuchKey"
@@ -74,7 +75,7 @@ func (cfg *OssConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Bucket, prefix+"oss.bucketname", "", "Name of OSS bucket.")
 	f.StringVar(&cfg.Endpoint, prefix+"oss.endpoint", "", "oss Endpoint to connect to.")
-	f.StringVar(&cfg.Endpoint, prefix+"oss.region", "", "Alibabacloud Region to use.")
+	f.StringVar(&cfg.Region, prefix+"oss.region", "", "Alibabacloud Region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"oss.access-key-id", "", "alibabacloud Access Key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "alibabacloud Secret Access Key")
 	f.StringVar(&cfg.RAMRoleName, prefix+"oss.ram-role-name", "", "Optional. Specify the RAM role name of the ECS instance. ECSRAMRole-based access is enabled only when neither access_key_id nor secret_access_key is configured. The role name can be automatically inferred even if not explicitly set.")
@@ -101,14 +102,16 @@ func NewOssObjectClient(_ context.Context, cfg OssConfig) (client.ObjectClient, 
 		return nil, err
 	}
 
-	if cfg.Region == "" {
-		region := parseRegion(cfg.Endpoint)
-		clientOptions = append(clientOptions,
-			oss.Timeout(cfg.ConnectionTimeoutSec, cfg.ReadWriteTimeoutSec),
-			oss.Region(region),
-			oss.AuthVersion(oss.AuthV4),
-		)
+	region := cfg.Region
+	if region == "" {
+		region = parseRegion(cfg.Endpoint)
 	}
+
+	clientOptions = append(clientOptions,
+		oss.Region(region),
+		oss.Timeout(cfg.ConnectionTimeoutSec, cfg.ReadWriteTimeoutSec),
+		oss.AuthVersion(oss.AuthV4),
+	)
 
 	client, err := oss.New(cfg.Endpoint, accessKeyID, secretAccessKey, clientOptions...)
 	if err != nil {
@@ -286,7 +289,11 @@ func (c *Credentials) GetSecurityToken() string {
 }
 
 func (cp *CredentialsProvider) GetCredentials() oss.Credentials {
-	cred, _ := cp.cred.GetCredential()
+	cred, err := cp.cred.GetCredential()
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to get credentials", "err", err)
+		return &Credentials{}
+	}
 
 	return &Credentials{
 		AccessKeyId:     *cred.AccessKeyId,
