@@ -39,8 +39,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
-	"google.golang.org/grpc"
 	"go.yaml.in/yaml/v4"
+	"google.golang.org/grpc"
 
 	"github.com/grafana/dskit/tenant"
 

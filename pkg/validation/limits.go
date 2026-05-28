@@ -17,8 +17,8 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/sigv4"
-	"golang.org/x/time/rate"
 	yaml "go.yaml.in/yaml/v4"
+	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"

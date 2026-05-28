@@ -69,7 +69,7 @@ max_connections_per_host: 8
 
 			err := yaml.Unmarshal([]byte(testData.config), &cfg)
 			if testData.expectedTypeErr {
-				var typeErr *yaml.TypeError
+				var typeErr *yaml.LoadErrors
 				require.ErrorAs(t, err, &typeErr)
 			} else {
 				require.NoError(t, err)
