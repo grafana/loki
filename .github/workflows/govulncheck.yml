@@ -15,54 +15,33 @@ on:
 permissions:
   contents: read
 
-jobs:
-  prepare:
-    name: prepare
-    runs-on: ubuntu-x64
-    permissions:
-      contents: read
-    outputs:
-      build_image: ${{ steps.image.outputs.build_image }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          persist-credentials: false
-          sparse-checkout: /Makefile
-          sparse-checkout-cone-mode: false
-      - name: Resolve build image reference
-        id: image
-        run: |
-          set -euo pipefail
-          BUILD_IMAGE_TAG=$(awk -F':=[[:space:]]*' '/^BUILD_IMAGE_TAG/ {print $2; exit}' Makefile | tr -d '[:space:]')
-          if [ -z "${BUILD_IMAGE_TAG}" ]; then
-            echo "ERROR: could not resolve BUILD_IMAGE_TAG from Makefile" >&2
-            exit 1
-          fi
-          echo "build_image=ghcr.io/grafana/loki-build-image:${BUILD_IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
+env:
+  GO_VERSION: "1.26.2"
+  GOVULNCHECK_VERSION: "v1.3.0"
 
+jobs:
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-x64
-    needs: prepare
     # Tight cap: govulncheck queries vuln.go.dev; don't let an external
     # service stall the job for the GitHub default of 6 hours.
     timeout-minutes: 5
     permissions:
       contents: read # Needed so we can clone this repository.
-      packages: read # Needed to pull the build image from GHCR.
-    container:
-      image: ${{ needs.prepare.outputs.build_image }} # zizmor: ignore[unpinned-images] This is a trusted internal build image from our own registry
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
-      - name: Trust the checkout directories and sub directories
-        run: git config --global --add safe.directory '*'
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
       - name: Run govulncheck
         # Symbol-aware reachability so the large vendored tree doesn't
         # drown the signal; we only get fired for vulns actually reachable
-        # from a main package. govulncheck binary is pre-installed in the
-        # build image (loki-build-image/Dockerfile).
+        # from a main package.
         run: govulncheck -mode=source -show=verbose ./...
