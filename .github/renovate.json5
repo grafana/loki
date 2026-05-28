@@ -8,7 +8,6 @@
     'github>grafana/grafana-renovate-config//presets/github-actions',
     'github>grafana/grafana-renovate-config//presets/helm',
     'github>grafana/grafana-renovate-config//presets/shared-workflows',
-    'github>grafana/grafana-renovate-config//presets/rate-limits',
     'github>grafana/grafana-renovate-config//presets/npm',
   ],
   labels: [
