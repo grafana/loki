@@ -178,6 +178,7 @@
         'minor',
         'patch',
       ],
+      minimumReleaseAge: "3 days",
       automerge: true,
       autoApprove: true,
     },
@@ -193,6 +194,7 @@
       matchUpdateTypes: [
         'major',
       ],
+      minimumReleaseAge: "3 days",
       automerge: false,
       autoApprove: false,
     },
