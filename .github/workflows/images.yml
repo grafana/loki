@@ -2,7 +2,7 @@
   "check":
     "uses": "grafana/loki-release/.github/workflows/check.yml@781f67f5e65569df4c97b98c1f671b27857f5684"
     "with":
-      "build_image": "golang:1.26.2"
+      "build_image": "golang:1.26.3"
       "golang_ci_lint_version": "v2.10.1"
       "release_lib_ref": "781f67f5e65569df4c97b98c1f671b27857f5684"
       "skip_validation": false
@@ -10,7 +10,7 @@
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
+      "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
       "RELEASE_LIB_REF": "781f67f5e65569df4c97b98c1f671b27857f5684"
       "RELEASE_REPO": "grafana/loki"
@@ -140,7 +140,7 @@
   "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
+      "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
       "RELEASE_LIB_REF": "781f67f5e65569df4c97b98c1f671b27857f5684"
       "RELEASE_REPO": "grafana/loki"
@@ -270,7 +270,7 @@
   "loki-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
+      "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
       "RELEASE_LIB_REF": "781f67f5e65569df4c97b98c1f671b27857f5684"
       "RELEASE_REPO": "grafana/loki"
@@ -400,7 +400,7 @@
   "querytee-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
+      "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
       "RELEASE_LIB_REF": "781f67f5e65569df4c97b98c1f671b27857f5684"
       "RELEASE_REPO": "grafana/loki"
