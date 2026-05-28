@@ -625,13 +625,14 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: true,
 		}
-		distributors, _ := prepare(t, 1, 0, limits, nil)
+		distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
 		for _, d := range distributors {
 			d.cfg.KafkaEnabled = true
 			d.cfg.IngesterEnabled = false
 			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
 			d.kafkaWriter = kafkaWriter
 		}
+		startAndWaitRunningDistributors(t, distributors)
 
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
@@ -642,13 +643,14 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
-		distributors, _ := prepare(t, 1, 0, limits, nil)
+		distributors, _ := prepareButDontStart(t, 1, 0, limits, nil)
 		for _, d := range distributors {
 			d.cfg.KafkaEnabled = true
 			d.cfg.IngesterEnabled = false
 			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
 			d.kafkaWriter = kafkaWriter
 		}
+		startAndWaitRunningDistributors(t, distributors)
 
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
@@ -661,7 +663,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 		kafkaWriter := &mockKafkaProducer{
 			failOnWrite: false,
 		}
-		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+		distributors, ingesters := prepareButDontStart(t, 1, 3, limits, nil)
 		ingesters[0].succeedAfter = 5 * time.Millisecond
 		ingesters[1].succeedAfter = 10 * time.Millisecond
 		ingesters[2].succeedAfter = 15 * time.Millisecond
@@ -672,6 +674,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
 			d.kafkaWriter = kafkaWriter
 		}
+		startAndWaitRunningDistributors(t, distributors)
 
 		request := makeWriteRequest(10, 64)
 		_, err := distributors[0].Push(ctx, request)
@@ -716,7 +719,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 				kafkaWriter := &mockKafkaProducer{
 					failOnWrite: false,
 				}
-				distributors, _ := prepare(t, 1, test.numIngesters, limits, nil)
+				distributors, _ := prepareButDontStart(t, 1, test.numIngesters, limits, nil)
 				for _, d := range distributors {
 					d.cfg.KafkaEnabled = true
 					d.cfg.IngesterEnabled = false
@@ -732,6 +735,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 					require.NoError(t, err)
 					d.validator = validator
 				}
+				startAndWaitRunningDistributors(t, distributors)
 
 				for i := 0; i < 1000; i++ {
 					_, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(
