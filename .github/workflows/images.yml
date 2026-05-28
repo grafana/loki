@@ -111,8 +111,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm64 }}"
-      "IMAGE_NAME": "loki-canary-boringcrypto"
-      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod/loki-canary-boringcrypto"
       "OUTPUTS_IMAGE_NAME": "${{ needs.loki-canary-boringcrypto-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary-boringcrypto-image.outputs.image_tag }}"
     "needs":
@@ -139,8 +138,8 @@
         
         # 'needs.loki-canary-boringcrypto-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
-        # Using the IMAGE_PREFIX and IMAGE_NAME env variables instead
-        IMAGE="${IMAGE_PREFIX}/${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        # Using the IMAGE_NAME env variable instead
+        IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
         
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
@@ -252,8 +251,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.loki-canary-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.loki-canary-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.loki-canary-image.outputs.image_digest_linux_arm64 }}"
-      "IMAGE_NAME": "loki-canary"
-      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod/loki-canary"
       "OUTPUTS_IMAGE_NAME": "${{ needs.loki-canary-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary-image.outputs.image_tag }}"
     "needs":
@@ -280,8 +278,8 @@
         
         # 'needs.loki-canary-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
-        # Using the IMAGE_PREFIX and IMAGE_NAME env variables instead
-        IMAGE="${IMAGE_PREFIX}/${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        # Using the IMAGE_NAME env variable instead
+        IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
         
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
@@ -393,8 +391,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.loki-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.loki-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.loki-image.outputs.image_digest_linux_arm64 }}"
-      "IMAGE_NAME": "loki"
-      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod/loki"
       "OUTPUTS_IMAGE_NAME": "${{ needs.loki-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-image.outputs.image_tag }}"
     "needs":
@@ -421,8 +418,8 @@
         
         # 'needs.loki-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
-        # Using the IMAGE_PREFIX and IMAGE_NAME env variables instead
-        IMAGE="${IMAGE_PREFIX}/${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        # Using the IMAGE_NAME env variable instead
+        IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
         
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
@@ -534,8 +531,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.querytee-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.querytee-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.querytee-image.outputs.image_digest_linux_arm64 }}"
-      "IMAGE_NAME": "querytee"
-      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod/querytee"
       "OUTPUTS_IMAGE_NAME": "${{ needs.querytee-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.querytee-image.outputs.image_tag }}"
     "needs":
@@ -562,8 +558,8 @@
         
         # 'needs.querytee-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
-        # Using the IMAGE_PREFIX and IMAGE_NAME env variables instead
-        IMAGE="${IMAGE_PREFIX}/${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        # Using the IMAGE_NAME env variable instead
+        IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
         
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \

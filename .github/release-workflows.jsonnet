@@ -178,8 +178,7 @@ local weeklyImageJobs = {
           IMAGE_DIGEST_ARM: '${{ needs.%s-image.outputs.image_digest_linux_arm }}' % name,
           OUTPUTS_IMAGE_NAME: '${{ needs.%s-image.outputs.image_name }}' % name,
           OUTPUTS_IMAGE_TAG: '${{ needs.%s-image.outputs.image_tag }}' % name,
-          IMAGE_PREFIX: weeklyImagePrefix,
-          IMAGE_NAME: name,
+          IMAGE_NAME: '%s/%s' % [weeklyImagePrefix, name],
         })
         + job.withSteps([
           step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
@@ -195,8 +194,8 @@ local weeklyImageJobs = {
 
             # 'needs.%(name)s-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
             # See https://github.com/actions/runner/issues/2316
-            # Using the IMAGE_PREFIX and IMAGE_NAME env variables instead
-            IMAGE="${IMAGE_PREFIX}/${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+            # Using the IMAGE_NAME env variable instead
+            IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
 
             echo "Create multi-arch manifest for $IMAGE"
             docker buildx imagetools create -t $IMAGE \
