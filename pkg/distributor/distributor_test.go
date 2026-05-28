@@ -500,6 +500,8 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	assert.Equal(t, float64(10000), testutil.ToFloat64(validation.DiscardedBytes))
 	assert.Equal(t, float64(100), testutil.ToFloat64(validation.DiscardedSamples))
 
+	// Make a new request, since Push may have modified req.
+	req = makeWriteRequestWithLabels(100, 100, []string{`{app="foo", env="prod"}`}, false, false, false)
 	// no enforced labels, so no errors.
 	limits.EnforcedLabels = []string{}
 	distributors, _ = prepare(t, 1, 3, limits, nil)
