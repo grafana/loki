@@ -7,6 +7,9 @@ on:
     paths:
       - 'production/helm/loki/Chart.yaml'
 
+permissions:
+  contents: read
+
 jobs:
   call-update-helm-repo:
     uses: grafana/helm-charts/.github/workflows/update-helm-repo.yaml@d2a579570e204ebc7d36c9be654159be01abff17

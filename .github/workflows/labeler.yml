@@ -2,6 +2,9 @@ name: "Pull Request Labeler"
 on:
 - pull_request
 
+permissions:
+  contents: read
+
 jobs:
   triage:
     # We don't run the triaging for PRs from forks because those can't use the loki-gh-app token broker.
