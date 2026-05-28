@@ -1,9 +1,12 @@
 ---
 name: lint-jsonnet
 on:
-  [pull_request]
-  # pull_request:
-  #   paths: "production/**"
+  pull_request:
+    paths:
+      - "**/*.jsonnet"
+      - "**/*.libsonnet"
+      - "**/jsonnetfile.json"
+      - "**/jsonnetfile.lock.json"
 
 jobs:
   check-mixin:
@@ -11,8 +14,6 @@ jobs:
     runs-on: ubuntu-x64
     permissions:
       contents: "read"
-      id-token: "write"
-      pull-requests: "write"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
