@@ -173,11 +173,12 @@ local weeklyImageJobs = {
         + job.withNeeds(['%s-image' % name])
         + job.withEnv({
           BUILD_TIMEOUT: imageBuildTimeoutMin,
-          IMAGE_DIGEST_AMD64: '${{ needs.%(name)s-image.outputs.image_digest_linux_amd64 }}' % name,
-          IMAGE_DIGEST_ARM64: '${{ needs.%(name)s-image.outputs.image_digest_linux_arm64 }}' % name,
-          IMAGE_DIGEST_ARM: '${{ needs.%(name)s-image.outputs.image_digest_linux_arm }}' % name,
-          OUTPUTS_IMAGE_NAME: '${{ needs.%(name)s-image.outputs.image_name }}' % name,
-          OUTPUTS_IMAGE_TAG: '${{ needs.%(name)s-image.outputs.image_tag }}' % name,
+          IMAGE_DIGEST_AMD64: '${{ needs.%s-image.outputs.image_digest_linux_amd64 }}' % name,
+          IMAGE_DIGEST_ARM64: '${{ needs.%s-image.outputs.image_digest_linux_arm64 }}' % name,
+          IMAGE_DIGEST_ARM: '${{ needs.%s-image.outputs.image_digest_linux_arm }}' % name,
+          OUTPUTS_IMAGE_NAME: '${{ needs.%s-image.outputs.image_name }}' % name,
+          OUTPUTS_IMAGE_TAG: '${{ needs.%s-image.outputs.image_tag }}' % name,
+          IMAGE_NAME: '%s/%s' % [weeklyImagePrefix, name],
         })
         + job.withSteps([
           step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
@@ -190,14 +191,19 @@ local weeklyImageJobs = {
             echo "linux/arm64 $IMAGE_DIGEST_ARM64"
             echo "linux/amd64 $IMAGE_DIGEST_AMD64"
             echo "linux/arm   $IMAGE_DIGEST_ARM"
-            IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+
+            # 'needs.%(name)s-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
+            # See https://github.com/actions/runner/issues/2316
+            # Using the IMAGE_NAME env variable instead
+            IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+
             echo "Create multi-arch manifest for $IMAGE"
             docker buildx imagetools create -t $IMAGE \
-              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
-              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
-              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
+              ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
+              ${IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
+              ${IMAGE_NAME}@${IMAGE_DIGEST_ARM}
             docker buildx imagetools inspect $IMAGE
-          ||| % { name: '%s-image' % name }),
+          ||| % { name: name }),
         ])
       for name in std.objectFields(weeklyImageJobs)
     } + {
