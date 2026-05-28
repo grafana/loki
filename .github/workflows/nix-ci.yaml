@@ -11,6 +11,10 @@ on:
       - "go.mod"
       - "nix/**"
       - .github/workflows/nix-ci.yaml
+
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-x64

@@ -5,6 +5,9 @@ on:
     types:
       - released
 
+permissions:
+  contents: read
+
 jobs:
   weekly-release-pr:
     runs-on: ubuntu-x64

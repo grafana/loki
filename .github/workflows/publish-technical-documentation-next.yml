@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - "docs/sources/**"
+
+permissions:
+  contents: read
+
 jobs:
   sync:
     if: github.repository == 'grafana/loki'

@@ -9,6 +9,10 @@ on:
     paths:
       - "docs/sources/**"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   sync:
     if: github.repository == 'grafana/loki'

@@ -8,6 +8,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   publish-grafana-operator:
     uses: ./.github/workflows/operator-reusable-image-build.yml

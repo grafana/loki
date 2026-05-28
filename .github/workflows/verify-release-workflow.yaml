@@ -1,5 +1,9 @@
 name: Verify release workflow updates
 on: [pull_request]
+
+permissions:
+  contents: read
+
 jobs:
   check-release-changes:
     runs-on: ubuntu-x64

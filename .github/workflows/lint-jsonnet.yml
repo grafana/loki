@@ -9,6 +9,9 @@ on:
       - "**/jsonnetfile.lock.json"
       - ".github/workflows/lint-jsonnet.yml" # validate changes to the workflow itself
 
+permissions:
+  contents: read
+
 jobs:
   check-mixin:
     name: Check mixin jsonnet files
