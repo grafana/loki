@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	yaml "gopkg.in/yaml.v2"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -408,7 +408,7 @@ func TestIndexPeriodicTableConfigCustomUnmarshalling(t *testing.T) {
 prefix: cortex_
 period: 1w
 tags:
-  foo: bar
+    foo: bar
 `
 
 	cfg := IndexPeriodicTableConfig{}
@@ -438,7 +438,7 @@ func TestPeriodicTableConfigCustomUnmarshalling(t *testing.T) {
 	yamlFile := `prefix: cortex_
 period: 1w
 tags:
-  foo: bar
+    foo: bar
 `
 
 	cfg := PeriodicTableConfig{}

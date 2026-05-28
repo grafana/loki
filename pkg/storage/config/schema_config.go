@@ -15,7 +15,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
-	yaml "gopkg.in/yaml.v2"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -146,9 +146,9 @@ type PeriodConfig struct {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaller.
-func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *PeriodConfig) UnmarshalYAML(value *yaml.Node) error {
 	type plain PeriodConfig
-	err := unmarshal((*plain)(cfg))
+	err := value.Decode((*plain)(cfg))
 	if err != nil {
 		return err
 	}
@@ -192,9 +192,9 @@ func (d DayTime) MarshalYAML() (interface{}, error) {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaller.
-func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (d *DayTime) UnmarshalYAML(value *yaml.Node) error {
 	var from string
-	if err := unmarshal(&from); err != nil {
+	if err := value.Decode(&from); err != nil {
 		return err
 	}
 	t, err := time.Parse("2006-01-02", from)
@@ -297,7 +297,7 @@ func (cfg *SchemaConfig) loadFromFile() error {
 	}
 
 	decoder := yaml.NewDecoder(f)
-	decoder.SetStrict(true)
+	decoder.KnownFields(true)
 	return decoder.Decode(&cfg)
 }
 
@@ -503,14 +503,14 @@ func (cfg *IndexPeriodicTableConfig) Validate() error {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 	g := struct {
 		PathPrefix string         `yaml:"path_prefix"`
 		Prefix     string         `yaml:"prefix"`
 		Period     model.Duration `yaml:"period"`
 		Tags       Tags           `yaml:"tags"`
 	}{}
-	if err := unmarshal(&g); err != nil {
+	if err := value.Decode(&g); err != nil {
 		return err
 	}
 
@@ -563,13 +563,13 @@ type PeriodicTableConfig struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *PeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *PeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 	g := struct {
 		Prefix string         `yaml:"prefix"`
 		Period model.Duration `yaml:"period"`
 		Tags   Tags           `yaml:"tags"`
 	}{}
-	if err := unmarshal(&g); err != nil {
+	if err := value.Decode(&g); err != nil {
 		return err
 	}
 

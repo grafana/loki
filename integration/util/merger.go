@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"dario.cat/mergo"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 )
 
 // YAMLMerger takes a set of given YAML fragments and merges them into a single YAML document.

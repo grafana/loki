@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/grafana/dskit/flagext"
+	yaml "go.yaml.in/yaml/v4"
+
 	"github.com/grafana/loki/v3/pkg/storage/bucket/azure"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
-
-	"github.com/grafana/dskit/flagext"
 )
 
 // NamedStores helps configure additional object stores from a given storage provider
@@ -162,9 +163,9 @@ func (ns *NamedStores) OverrideConfig(storeCfg *Config, namedStore string) error
 type NamedS3StorageConfig s3.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedS3StorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedS3StorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*s3.Config)(cfg))
-	return unmarshal((*s3.Config)(cfg))
+	return value.Decode((*s3.Config)(cfg))
 }
 
 func (cfg *NamedS3StorageConfig) Validate() error {
@@ -174,31 +175,31 @@ func (cfg *NamedS3StorageConfig) Validate() error {
 type NamedGCSStorageConfig gcs.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedGCSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedGCSStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*gcs.Config)(cfg))
-	return unmarshal((*gcs.Config)(cfg))
+	return value.Decode((*gcs.Config)(cfg))
 }
 
 type NamedAzureStorageConfig azure.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedAzureStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedAzureStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*azure.Config)(cfg))
-	return unmarshal((*azure.Config)(cfg))
+	return value.Decode((*azure.Config)(cfg))
 }
 
 type NamedSwiftStorageConfig swift.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedSwiftStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedSwiftStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*swift.Config)(cfg))
-	return unmarshal((*swift.Config)(cfg))
+	return value.Decode((*swift.Config)(cfg))
 }
 
 type NamedFilesystemStorageConfig filesystem.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedFilesystemStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedFilesystemStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*filesystem.Config)(cfg))
-	return unmarshal((*filesystem.Config)(cfg))
+	return value.Decode((*filesystem.Config)(cfg))
 }
