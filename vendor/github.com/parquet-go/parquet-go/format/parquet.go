@@ -287,7 +287,22 @@ type BsonType struct{}
 func (t *BsonType) String() string { return "BSON" }
 
 // Embedded Variant logical type annotation
-type VariantType struct{}
+//
+// Allowed for physical types: BYTE_ARRAY (with embedded Variant binary).
+//
+// The canonical parquet-format thrift IDL declares an optional
+// `specification_version` (i8) field on VariantType. Upstream parquet-go
+// v0.29.0 modeled this as an empty struct, which works for *reading* (the
+// unknown field id is silently skipped) but means the value is dropped on
+// round-trip. By declaring the field explicitly we (a) decode it into a
+// typed Go value, (b) preserve compatibility on round-trip writes, and
+// (c) eliminate one source of "unknown thrift field" warnings when reading
+// files written by newer parquet-cpp / parquet-mr / Arrow toolchains.
+type VariantType struct {
+	// SpecificationVersion records the version of the variant specification
+	// the value was written with. Optional; absent in older files.
+	SpecificationVersion int8 `thrift:"1,optional"`
+}
 
 func (*VariantType) String() string { return "VARIANT" }
 
@@ -803,8 +818,10 @@ type BloomFilterHash struct { // union
 
 // The compression used in the Bloom filter.
 type BloomFilterUncompressed struct{}
+type BloomFilterGzip struct{}
 type BloomFilterCompression struct { // union
 	Uncompressed *BloomFilterUncompressed `thrift:"1"`
+	GZip         *BloomFilterGzip         `thrift:"2"`
 }
 
 // Bloom filter header is stored at beginning of Bloom filter data of each column

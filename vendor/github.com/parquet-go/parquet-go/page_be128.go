@@ -9,10 +9,10 @@ import (
 type be128Page struct {
 	typ         Type
 	values      [][16]byte
-	columnIndex int16
+	columnIndex uint16
 }
 
-func newBE128Page(typ Type, columnIndex int16, numValues int32, values encoding.Values) *be128Page {
+func newBE128Page(typ Type, columnIndex uint16, numValues int32, values encoding.Values) *be128Page {
 	return &be128Page{
 		typ:         typ,
 		values:      values.Uint128()[:numValues],
