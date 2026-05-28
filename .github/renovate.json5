@@ -166,7 +166,10 @@
       automerge: false,
     },
     {
-      // Enable all other updates, and auto-merge minor and patch updates
+      // Auto-merge minor and patch Go module updates after 3 days
+      matchManagers: [
+        'gomod',
+      ],
       matchFileNames: [
         '!operator/go.mod',
         '!operator/api/loki/go.mod',
@@ -178,12 +181,15 @@
         'minor',
         'patch',
       ],
-      minimumReleaseAge: "3 days",
+      minimumReleaseAge: '3 days',
       automerge: true,
       autoApprove: true,
     },
     {
-      // Enable all other updates, don't auto-merge major updates
+      // Don't auto-merge major Go module updates, wait 3 days
+      matchManagers: [
+        'gomod',
+      ],
       matchFileNames: [
         '!operator/go.mod',
         '!operator/api/loki/go.mod',
@@ -194,7 +200,7 @@
       matchUpdateTypes: [
         'major',
       ],
-      minimumReleaseAge: "3 days",
+      minimumReleaseAge: '3 days',
       automerge: false,
       autoApprove: false,
     },
