@@ -211,6 +211,7 @@ ruler:
 ```
 
 Further configuration options can be found under [ruler](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#ruler).
+For a worked example of forwarding recording rule samples to Grafana Mimir, including multi-tenant and single-tenant configurations, see [Sending samples to Grafana Mimir](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/recording-rules/#sending-samples-to-grafana-mimir).
 
 ### Operations
 
