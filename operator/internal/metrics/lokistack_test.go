@@ -76,7 +76,7 @@ lokistack_component_replicas{component="ruler",size="1x.demo",stack_name="test-s
 lokistack_global_ingestion_rate_limit_bytes{size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 4194304
 # HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
-lokistack_info{credential_mode="static",object_storage_type="s3",schema_version="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_info{credential_mode="static",object_storage_type="s3",schema_version="v11",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
 lokistack_status_condition{condition="Degraded",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
@@ -135,7 +135,7 @@ lokistack_component_replicas{component="ruler",size="1x.small",stack_name="test-
 lokistack_global_ingestion_rate_limit_bytes{size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 15728640
 # HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
-lokistack_info{credential_mode="static",object_storage_type="s3",schema_version="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_info{credential_mode="static",object_storage_type="s3",schema_version="v11",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
 lokistack_status_condition{condition="Degraded",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
@@ -206,7 +206,7 @@ lokistack_component_replicas{component="ruler",size="1x.small",stack_name="test-
 lokistack_global_ingestion_rate_limit_bytes{size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 15728640
 # HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
-lokistack_info{credential_mode="static",object_storage_type="s3",schema_version="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
+lokistack_info{credential_mode="static",object_storage_type="s3",schema_version="v11",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
 lokistack_status_condition{condition="Degraded",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
@@ -401,7 +401,7 @@ lokistack_component_replicas{component="ruler",size="1x.medium",stack_name="full
 lokistack_global_ingestion_rate_limit_bytes{size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 104857600
 # HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
-lokistack_info{credential_mode="token-cco",object_storage_type="s3",schema_version="",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 1
+lokistack_info{credential_mode="token-cco",object_storage_type="s3",schema_version="v11",size="1x.medium",stack_name="full-stack",stack_namespace="logging"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
 lokistack_status_condition{condition="Degraded",reason="",size="1x.medium",stack_name="full-stack",stack_namespace="logging",status="false"} 1

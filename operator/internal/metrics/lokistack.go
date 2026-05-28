@@ -156,7 +156,7 @@ func getStorageCredentialsMode(stack *lokiv1.LokiStack) string {
 
 func getCurrentSchemaVersion(stack *lokiv1.LokiStack) string {
 	if len(stack.Spec.Storage.Schemas) == 0 {
-		return ""
+		return string(lokiv1.ObjectStorageSchemaV11)
 	}
 
 	return string(stack.Spec.Storage.Schemas[len(stack.Spec.Storage.Schemas)-1].Version)
@@ -171,55 +171,44 @@ func getGlobalIngestionRateLimit(stack *lokiv1.LokiStack) int32 {
 	}
 
 	defaults := manifests.DefaultLokiStackSpec(stack.Spec.Size)
-	if defaults == nil ||
-		defaults.Limits == nil ||
-		defaults.Limits.Global == nil ||
-		defaults.Limits.Global.IngestionLimits == nil {
-		return 0
-	}
+
 	return defaults.Limits.Global.IngestionLimits.IngestionRate
 }
 
 func getComponentReplicas(stack *lokiv1.LokiStack) map[string]int32 {
-	replicas := make(map[string]int32)
-
 	defaults := manifests.DefaultLokiStackSpec(stack.Spec.Size)
 	if defaults == nil || defaults.Template == nil {
-		return replicas
-	}
-	getReplicaCount := func(name string, userSpec *lokiv1.LokiComponentSpec, defaultSpec *lokiv1.LokiComponentSpec) {
-		if defaultSpec == nil {
-			return
-		}
-
-		if userSpec != nil && userSpec.Replicas != 0 {
-			replicas[name] = userSpec.Replicas
-		} else {
-			replicas[name] = defaultSpec.Replicas
-		}
+		return map[string]int32{}
 	}
 
-	var userDistributor, userIngester, userQuerier, userQueryFrontend, userCompactor, userIndexGateway, userGateway, userRuler *lokiv1.LokiComponentSpec
-
+	userTemplate := &lokiv1.LokiTemplateSpec{}
 	if stack.Spec.Template != nil {
-		userDistributor = stack.Spec.Template.Distributor
-		userIngester = stack.Spec.Template.Ingester
-		userQuerier = stack.Spec.Template.Querier
-		userQueryFrontend = stack.Spec.Template.QueryFrontend
-		userCompactor = stack.Spec.Template.Compactor
-		userIndexGateway = stack.Spec.Template.IndexGateway
-		userGateway = stack.Spec.Template.Gateway
-		userRuler = stack.Spec.Template.Ruler
+		userTemplate = stack.Spec.Template
 	}
 
-	getReplicaCount("distributor", userDistributor, defaults.Template.Distributor)
-	getReplicaCount("ingester", userIngester, defaults.Template.Ingester)
-	getReplicaCount("querier", userQuerier, defaults.Template.Querier)
-	getReplicaCount("query-frontend", userQueryFrontend, defaults.Template.QueryFrontend)
-	getReplicaCount("compactor", userCompactor, defaults.Template.Compactor)
-	getReplicaCount("index-gateway", userIndexGateway, defaults.Template.IndexGateway)
-	getReplicaCount("gateway", userGateway, defaults.Template.Gateway)
-	getReplicaCount("ruler", userRuler, defaults.Template.Ruler)
-
+	components := []struct {
+		name     string
+		userSpec *lokiv1.LokiComponentSpec
+		defSpec  *lokiv1.LokiComponentSpec
+	}{
+		{"distributor", userTemplate.Distributor, defaults.Template.Distributor},
+		{"ingester", userTemplate.Ingester, defaults.Template.Ingester},
+		{"querier", userTemplate.Querier, defaults.Template.Querier},
+		{"query-frontend", userTemplate.QueryFrontend, defaults.Template.QueryFrontend},
+		{"compactor", userTemplate.Compactor, defaults.Template.Compactor},
+		{"index-gateway", userTemplate.IndexGateway, defaults.Template.IndexGateway},
+		{"gateway", userTemplate.Gateway, defaults.Template.Gateway},
+		{"ruler", userTemplate.Ruler, defaults.Template.Ruler},
+	}
+	replicas := make(map[string]int32, len(components))
+	for _, component := range components {
+		if component.defSpec == nil {
+			continue
+		}
+		replicas[component.name] = component.defSpec.Replicas
+		if component.userSpec != nil && component.userSpec.Replicas != 0 {
+			replicas[component.name] = component.userSpec.Replicas
+		}
+	}
 	return replicas
 }
