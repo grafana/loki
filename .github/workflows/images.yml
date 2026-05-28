@@ -567,7 +567,7 @@
           ${IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM}
         docker buildx imagetools inspect $IMAGE
-  "querytee-image":
+  "loki-query-tee-image":
     "env":
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.3"
@@ -665,17 +665,17 @@
         - "arch": "linux/arm"
           "runs_on":
           - "ubuntu-arm64"
-  "querytee-manifest":
+  "loki-query-tee-manifest":
     "env":
       "BUILD_TIMEOUT": 60
-      "IMAGE_DIGEST_AMD64": "${{ needs.querytee-image.outputs.image_digest_linux_amd64 }}"
-      "IMAGE_DIGEST_ARM": "${{ needs.querytee-image.outputs.image_digest_linux_arm }}"
-      "IMAGE_DIGEST_ARM64": "${{ needs.querytee-image.outputs.image_digest_linux_arm64 }}"
-      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod/querytee"
-      "OUTPUTS_IMAGE_NAME": "${{ needs.querytee-image.outputs.image_name }}"
-      "OUTPUTS_IMAGE_TAG": "${{ needs.querytee-image.outputs.image_tag }}"
+      "IMAGE_DIGEST_AMD64": "${{ needs.loki-query-tee-image.outputs.image_digest_linux_amd64 }}"
+      "IMAGE_DIGEST_ARM": "${{ needs.loki-query-tee-image.outputs.image_digest_linux_arm }}"
+      "IMAGE_DIGEST_ARM64": "${{ needs.loki-query-tee-image.outputs.image_digest_linux_arm64 }}"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod/loki-query-tee"
+      "OUTPUTS_IMAGE_NAME": "${{ needs.loki-query-tee-image.outputs.image_name }}"
+      "OUTPUTS_IMAGE_TAG": "${{ needs.loki-query-tee-image.outputs.image_tag }}"
     "needs":
-    - "querytee-image"
+    - "loki-query-tee-image"
     "permissions":
       "contents": "read"
       "id-token": "write"
@@ -696,7 +696,7 @@
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
         
-        # 'needs.querytee-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
+        # 'needs.loki-query-tee-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
