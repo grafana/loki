@@ -627,13 +627,13 @@ logql-analyzer-image: ## build the logql analyzer docker image
 
 # Build image
 build-image: ## build the build docker image
-	$(OCI_BUILD) -t $(BUILD_IMAGE) ./loki-build-image
+	$(OCI_BUILD) -f loki-build-image/Dockerfile -t $(MAKEFILE_IMAGE) .
 build-image-push:
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
-	DOCKER_BUILDKIT=1 docker buildx build $(OCI_PLATFORMS) $(OCI_BUILD_ARGS) $(OCI_PUSH_ARGS) -t $(BUILD_IMAGE) ./loki-build-image
+	DOCKER_BUILDKIT=1 docker buildx build $(OCI_PLATFORMS) $(OCI_BUILD_ARGS) $(OCI_PUSH_ARGS) -f loki-build-image/Dockerfile -t $(MAKEFILE_IMAGE) .
 
 # Loki Operator
 loki-operator-image: ## build the operator docker image
