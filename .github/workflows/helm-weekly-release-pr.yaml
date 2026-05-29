@@ -22,9 +22,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: gabe565/setup-helm-docs-action@d5c35bdc9133cfbea3b671acadf50a29029e87c2 # v1.0.4
-        with:
-          version: v1.11.2          
+      - name: Install helm-docs
+        run: |
+          HELM_DOCS_VERSION="v1.11.2"
+          curl -fsSL "https://github.com/norwoodj/helm-docs/releases/download/${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION#v}_Linux_x86_64.tar.gz" \
+            | tar -xzf - -C "$RUNNER_TEMP" helm-docs
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Generate GitHub App Token
         id: app-token
         uses: grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0 # create-github-app-token/v0.2.2
