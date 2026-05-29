@@ -34,13 +34,13 @@
       enabled: false,
     },
     {
-      // Disable ALL updates (including security) 
-      // for dependencies found in the 'operator/**' path, but ONLY on 
-      // the specified release branches. This explicitly overrides the 
+      // Disable ALL updates (including security)
+      // for dependencies found in the 'operator/**' path, but ONLY on
+      // the specified release branches. This explicitly overrides the
       // global 'vulnerabilityAlerts' for this scope.
       matchBaseBranches: [
-        'release-2.9.x', 
-        'release-3.6.x', 
+        'release-2.9.x',
+        'release-3.6.x',
         'release-3.7.x'
       ],
       matchFileNames: ['operator/**'],
@@ -58,15 +58,13 @@
       enabled: false,
     },
     {
-      // Disable Go and loki-build-image updates for Dockerfiles
       matchManagers: [
         'dockerfile',
       ],
-      matchPackageNames: [
-        'golang',
-        'grafana/loki-build-image',
-      ],
-      enabled: false,
+      // enable digest updates
+      digest: {
+        enabled: true,
+      },
     },
     {
       // Disable updates driven by Kustomize, used by the operator
@@ -125,6 +123,10 @@
         'minor',
         'patch',
       ],
+      // enable digest updates
+      digest: {
+        enabled: true,
+      },
       autoApprove: false,
       automerge: false,
     },

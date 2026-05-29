@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -42,7 +42,7 @@ jobs:
       # Python is required because `ct lint` runs Yamale (https://github.com/23andMe/Yamale) and
       # yamllint (https://github.com/adrienverge/yamllint) which require Python
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: 3.13
 
@@ -96,7 +96,7 @@ jobs:
       tests: ${{ steps.list_tests.outputs.tests }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: 'false'
 
@@ -153,14 +153,14 @@ jobs:
             set -x
             echo "=== Debug mode enabled - verbose output active ==="
           fi
-          
+
           echo "=== Starting Helm Test ==="
           echo "Test directory: ${TEST_DIRECTORY}"
           helm-chart-toolbox/tools/helm-test/helm-test "${TEST_DIRECTORY}" || {
             EXIT_CODE=$?
             echo "=== Test failed with exit code: $EXIT_CODE ==="
             echo "=== Attempting to gather debug information ==="
-            
+
             # Try to get cluster info if kubectl is available
             if command -v kubectl &> /dev/null; then
               echo "=== Kubernetes Cluster Debug Info ==="
@@ -194,7 +194,7 @@ jobs:
                 echo "=== Previous logs for pod: $pod ==="
                 kubectl logs -n loki "$pod" --previous --tail=200 || true
               done
-              
+
               # Only show all pod logs if debug mode is enabled (can be very verbose)
               if [ "${{ runner.debug }}" == "1" ]; then
                 echo "--- All pod logs (last 50 lines each) ---"
@@ -204,7 +204,7 @@ jobs:
                 done
               fi
             fi
-            
+
             exit $EXIT_CODE
           }
         env:
