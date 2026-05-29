@@ -900,7 +900,6 @@ func TestCategorizedLabels(t *testing.T) {
 		tIndexGateway = clu.AddComponent(
 			"index-gateway",
 			"-target=index-gateway",
-			"-store.index-cache-read.embedded-cache.enabled=true",
 		)
 	)
 	require.NoError(t, clu.Run())

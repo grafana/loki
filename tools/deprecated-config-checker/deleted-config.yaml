@@ -62,6 +62,8 @@ storage_config:
   cassandra: "Support for Cassandra is removed."
   boltdb: "Support for BoltDB is removed."
   grpc_store: "Support for gRPC store is removed."
+  index_queries_cache_config: "Index read cache configuration is removed."
+  index_cache_validity: "Index cache validity is removed."
   boltdb_shipper:
     shared_store: "object_store setting in the period_config will be used to configure the store for the index."
     shared_store_key_prefix: "Path prefix for storing the index can now be configured by setting path_prefix under index key in period_config."
