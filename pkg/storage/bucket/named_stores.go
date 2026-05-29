@@ -165,7 +165,9 @@ type NamedS3StorageConfig s3.Config
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (cfg *NamedS3StorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*s3.Config)(cfg))
-	return value.Decode((*s3.Config)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*s3.Config)(cfg), yaml.WithKnownFields(true))
 }
 
 func (cfg *NamedS3StorageConfig) Validate() error {
@@ -177,7 +179,9 @@ type NamedGCSStorageConfig gcs.Config
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (cfg *NamedGCSStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*gcs.Config)(cfg))
-	return value.Decode((*gcs.Config)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*gcs.Config)(cfg), yaml.WithKnownFields(true))
 }
 
 type NamedAzureStorageConfig azure.Config
@@ -185,7 +189,9 @@ type NamedAzureStorageConfig azure.Config
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (cfg *NamedAzureStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*azure.Config)(cfg))
-	return value.Decode((*azure.Config)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*azure.Config)(cfg), yaml.WithKnownFields(true))
 }
 
 type NamedSwiftStorageConfig swift.Config
@@ -193,7 +199,9 @@ type NamedSwiftStorageConfig swift.Config
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (cfg *NamedSwiftStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*swift.Config)(cfg))
-	return value.Decode((*swift.Config)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*swift.Config)(cfg), yaml.WithKnownFields(true))
 }
 
 type NamedFilesystemStorageConfig filesystem.Config
@@ -201,5 +209,7 @@ type NamedFilesystemStorageConfig filesystem.Config
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (cfg *NamedFilesystemStorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	flagext.DefaultValues((*filesystem.Config)(cfg))
-	return value.Decode((*filesystem.Config)(cfg))
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*filesystem.Config)(cfg), yaml.WithKnownFields(true))
 }
