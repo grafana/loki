@@ -295,14 +295,14 @@ func TestIndexBuilder_idlePartition(t *testing.T) {
 
 	// Wait for idle partition to be flushed
 	for i := 0; i < 1000; i++ {
-		if len(readAllSectionPointers(t, bucket)) == 30 && len(p.partitionStates[0].events) == 0 {
+		if len(readAllSectionPointers(t, bucket)) == 30 && readFirstPartitionStateEventsCount(p) == 0 {
 			break
 		}
 		time.Sleep(time.Millisecond)
 	}
 
 	require.Equal(t, 30, len(readAllSectionPointers(t, bucket)))
-	require.Equal(t, 0, len(p.partitionStates[0].events)) // Events should be gone now they've been processed
+	require.Equal(t, 0, readFirstPartitionStateEventsCount(p)) // Events should be gone now they've been processed
 }
 
 func TestIndexBuilder_oldEvents(t *testing.T) {
@@ -365,14 +365,20 @@ func TestIndexBuilder_oldEvents(t *testing.T) {
 
 	// Wait for data to be flushed
 	for i := 0; i < 1000; i++ {
-		if len(readAllSectionPointers(t, bucket)) == 30 && len(p.partitionStates[0].events) == 0 {
+		if len(readAllSectionPointers(t, bucket)) == 30 && readFirstPartitionStateEventsCount(p) == 0 {
 			break
 		}
 		time.Sleep(time.Millisecond)
 	}
 
 	require.Equal(t, 30, len(readAllSectionPointers(t, bucket)))
-	require.Equal(t, 0, len(p.partitionStates[0].events)) // Events should be gone now they've been processed
+	require.Equal(t, 0, readFirstPartitionStateEventsCount(p)) // Events should be gone now they've been processed
+}
+
+func readFirstPartitionStateEventsCount(p *Builder) int {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+	return len(p.partitionStates[0].events)
 }
 
 func readAllSectionPointers(t *testing.T, bucket objstore.Bucket) []pointers.SectionPointer {

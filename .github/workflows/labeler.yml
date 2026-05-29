@@ -2,12 +2,14 @@ name: "Pull Request Labeler"
 on:
 - pull_request
 
+permissions:
+  contents: read
+
 jobs:
   triage:
     # We don't run the triaging for PRs from forks because those can't use the loki-gh-app token broker.
     # We don't use GitHub actions app (secrets.GITHUB_TOKEN) because PRs created by the bot don't trigger CI.
-    # Also only run if the PR is merged, as an extra safe-guard.
-    if: ${{ ! github.event.pull_request.head.repo.fork && github.event.pull_request.merged == true }}
+    if: ${{ ! github.event.pull_request.head.repo.fork }}
 
     runs-on: ubuntu-x64-small
     permissions:
@@ -17,10 +19,10 @@ jobs:
     steps:
     - name: Generate GitHub App Token
       id: app-token
-      uses: grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0 # create-github-app-token/v0.2.2
+      uses: grafana/shared-workflows/actions/create-github-app-token@ae92934a14a48b94494dbc06d74a81d47fe08a40 # create-github-app-token/v0.2.2
       with:
         github_app: loki-gh-app
 
-    - uses: actions/labeler@v5
+    - uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9 # v5.0.0
       with:
         repo-token: "${{ steps.app-token.outputs.token }}"

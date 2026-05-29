@@ -9,6 +9,8 @@ local buildImage = 'golang:%s' % goVersion;
 local golangCiLintVersion = 'v2.10.1';
 local imageBuildTimeoutMin = 60;
 local imagePrefix = 'grafana';
+local weeklyImageRegistry = 'us-docker.pkg.dev';
+local weeklyImagePrefix = '%s/grafanalabs-global/docker-loki-prod' % weeklyImageRegistry;
 local dockerPluginDir = 'clients/cmd/docker-driver';
 local runner = import 'workflows/runner.libsonnet',
       r = runner.withDefaultMapping();  // Do we need a different mapping?
@@ -36,7 +38,8 @@ local weeklyImageJobs = {
   loki: build.weeklyImage('loki', 'cmd/loki', platform=platforms.all),
   'loki-canary': build.weeklyImage('loki-canary', 'cmd/loki-canary', platform=platforms.all),
   'loki-canary-boringcrypto': build.weeklyImage('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto', platform=platforms.all),
-  querytee: build.weeklyImage('loki-query-tee', 'cmd/querytee'),
+  'loki-query-tee': build.weeklyImage('loki-query-tee', 'cmd/querytee'),
+  'logql-analyzer': build.weeklyImage('logql-analyzer', 'cmd/logql-analyzer', platform=platforms.all),
 };
 
 {
@@ -55,7 +58,6 @@ local weeklyImageJobs = {
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
-      useGitHubAppToken=true,
       versioningStrategy='always-bump-patch',
     ) + {
       name: 'Prepare Patch Release PR',
@@ -76,7 +78,6 @@ local weeklyImageJobs = {
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
-      useGitHubAppToken=true,
       versioningStrategy='always-bump-minor',
     ) + {
       name: 'Prepare Minor Release PR from Weekly',
@@ -85,13 +86,11 @@ local weeklyImageJobs = {
   'release.yml': std.manifestYamlDoc(
     lokiRelease.releaseWorkflow(
       branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+', 'main'],
-      getDockerCredsFromVault=true,
-      imagePrefix='grafana',
+      imagePrefix=imagePrefix,
       releaseLibRef=releaseLibRef,
       pluginBuildDir=dockerPluginDir,
       releaseBranchTemplate='release-\\${major}.\\${minor}.x',
       releaseRepo='grafana/loki',
-      useGitHubAppToken=true,
     ), false, false
   ),
   'check.yml': std.manifestYamlDoc({
@@ -157,7 +156,7 @@ local weeklyImageJobs = {
           BUILD_TIMEOUT: imageBuildTimeoutMin,
           RELEASE_REPO: 'grafana/loki',
           RELEASE_LIB_REF: releaseLibRef,
-          IMAGE_PREFIX: imagePrefix,
+          IMAGE_PREFIX: weeklyImagePrefix,
           GO_VERSION: goVersion,
         })
       for name in std.objectFields(weeklyImageJobs)
@@ -171,29 +170,37 @@ local weeklyImageJobs = {
         + job.withNeeds(['%s-image' % name])
         + job.withEnv({
           BUILD_TIMEOUT: imageBuildTimeoutMin,
-          IMAGE_DIGEST_AMD64: '${{ needs.%(name)s-image.outputs.image_digest_linux_amd64 }}' % name,
-          IMAGE_DIGEST_ARM64: '${{ needs.%(name)s-image.outputs.image_digest_linux_arm64 }}' % name,
-          IMAGE_DIGEST_ARM: '${{ needs.%(name)s-image.outputs.image_digest_linux_arm }}' % name,
-          OUTPUTS_IMAGE_NAME: '${{ needs.%(name)s-image.outputs.image_name }}' % name,
-          OUTPUTS_IMAGE_TAG: '${{ needs.%(name)s-image.outputs.image_tag }}' % name,
+          IMAGE_DIGEST_AMD64: '${{ needs.%s-image.outputs.image_digest_linux_amd64 }}' % name,
+          IMAGE_DIGEST_ARM64: '${{ needs.%s-image.outputs.image_digest_linux_arm64 }}' % name,
+          IMAGE_DIGEST_ARM: '${{ needs.%s-image.outputs.image_digest_linux_arm }}' % name,
+          OUTPUTS_IMAGE_NAME: '${{ needs.%s-image.outputs.image_name }}' % name,
+          OUTPUTS_IMAGE_TAG: '${{ needs.%s-image.outputs.image_tag }}' % name,
+          IMAGE_NAME: '%s/%s' % [weeklyImagePrefix, name],
         })
         + job.withSteps([
           step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
-          step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746'),  // main
+          step.new('Login to DockerHub', 'grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7'),  // v1.0.4
+          step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136')  // v1.0.2
+          + step.with({ registry: weeklyImageRegistry }),
           step.new('Publish multi-arch manifest')
           + step.withRun(|||
             # Unfortunately there is no better way atm than having a separate named output for each digest
             echo "linux/arm64 $IMAGE_DIGEST_ARM64"
             echo "linux/amd64 $IMAGE_DIGEST_AMD64"
             echo "linux/arm   $IMAGE_DIGEST_ARM"
-            IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+
+            # 'needs.%(name)s-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
+            # See https://github.com/actions/runner/issues/2316
+            # Using the IMAGE_NAME env variable instead
+            IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+
             echo "Create multi-arch manifest for $IMAGE"
             docker buildx imagetools create -t $IMAGE \
-              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
-              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
-              ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
+              ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
+              ${IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
+              ${IMAGE_NAME}@${IMAGE_DIGEST_ARM}
             docker buildx imagetools inspect $IMAGE
-          ||| % { name: '%s-image' % name }),
+          ||| % { name: name }),
         ])
       for name in std.objectFields(weeklyImageJobs)
     } + {

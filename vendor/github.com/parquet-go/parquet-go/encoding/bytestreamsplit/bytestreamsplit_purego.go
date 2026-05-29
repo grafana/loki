@@ -81,3 +81,19 @@ func decodeDouble(dst, src []byte) {
 			uint64(b7[i])<<56
 	}
 }
+
+func encodeInt32(dst, src []byte) {
+	encodeFloat(dst, src)
+}
+
+func decodeInt32(dst, src []byte) {
+	decodeFloat(dst, src)
+}
+
+func encodeInt64(dst, src []byte) {
+	encodeDouble(dst, src)
+}
+
+func decodeInt64(dst, src []byte) {
+	decodeDouble(dst, src)
+}

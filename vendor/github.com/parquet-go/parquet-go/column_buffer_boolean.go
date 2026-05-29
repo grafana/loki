@@ -11,7 +11,7 @@ import (
 
 type booleanColumnBuffer struct{ booleanPage }
 
-func newBooleanColumnBuffer(typ Type, columnIndex int16, numValues int32) *booleanColumnBuffer {
+func newBooleanColumnBuffer(typ Type, columnIndex uint16, numValues int32) *booleanColumnBuffer {
 	// Boolean values are bit-packed, we can fit up to 8 values per byte.
 	bufferSize := (numValues + 7) / 8
 	return &booleanColumnBuffer{
@@ -153,6 +153,7 @@ func (col *booleanColumnBuffer) writeValues(_ columnLevels, rows sparse.Array) {
 	}
 
 	col.bits.Resize(bitpack.ByteCount(uint(col.numValues)))
+	col.clearTrailingBits()
 }
 
 func (col *booleanColumnBuffer) writeBoolean(levels columnLevels, value bool) {
@@ -170,6 +171,20 @@ func (col *booleanColumnBuffer) writeBoolean(levels columnLevels, value bool) {
 	}
 	bits[x] = (bit << y) | (bits[x] & ^(1 << y))
 	col.numValues++
+	col.clearTrailingBits()
+}
+
+// clearTrailingBits zeros bit positions beyond numValues in the last byte of
+// the bit-packed buffer. SliceBuffer growth does not zero new bytes, so a
+// partial trailing byte can otherwise leak stale pool memory and produce
+// non-deterministic encoded output (https://github.com/parquet-go/parquet-go/issues/520).
+func (col *booleanColumnBuffer) clearTrailingBits() {
+	extra := uint(col.numValues) % 8
+	if extra == 0 {
+		return
+	}
+	bits := col.bits.Slice()
+	bits[len(bits)-1] &= byte(1<<extra) - 1
 }
 
 func (col *booleanColumnBuffer) writeInt32(levels columnLevels, value int32) {

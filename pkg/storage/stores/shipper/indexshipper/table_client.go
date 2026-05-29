@@ -5,9 +5,17 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
+
+type TableClient interface {
+	ListTables(ctx context.Context) ([]string, error)
+	CreateTable(ctx context.Context, desc config.TableDesc) error
+	DeleteTable(ctx context.Context, name string) error
+	DescribeTable(ctx context.Context, name string) (desc config.TableDesc, isActive bool, err error)
+	UpdateTable(ctx context.Context, current, expected config.TableDesc) error
+	Stop()
+}
 
 type tableClient struct {
 	indexStorageClient storage.Client
@@ -15,7 +23,7 @@ type tableClient struct {
 
 // NewTableClient creates a client for managing tables in object storage based index store.
 // It is typically used when running a table manager.
-func NewTableClient(objectClient client.ObjectClient, storageKeyPrefix string) index.TableClient {
+func NewTableClient(objectClient client.ObjectClient, storageKeyPrefix string) TableClient {
 	return &tableClient{storage.NewIndexStorageClient(objectClient, storageKeyPrefix)}
 }
 

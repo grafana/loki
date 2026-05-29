@@ -34,8 +34,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
-      common.fetchGcsCredentials,
-      common.googleAuth,
+      common.enableCorepack,
 
       step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
 
@@ -63,15 +62,23 @@ local runner = import 'runner.libsonnet',
         outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
         'build-args': 'IMAGE_TAG=${{ needs.version.outputs.version }}',
       }),
-      step.new('Upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0')  // v2
-      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
-      + step.with({
-        path: 'release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
-        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images',  //TODO: make bucket configurable
-        process_gcloudignore: false,
-      }),
-    ]),
 
+      step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136'),
+      releaseStep('upload artifacts')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
+      + step.withEnv({
+        path: 'images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
+      })
+      + step.withRun(|||
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{ env.path }} \
+          --package=images \
+          --version=${{ github.sha }}
+      |||),
+      ]),
 
   weeklyImage: function(
     name,
@@ -102,9 +109,12 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.enableCorepack,
 
       step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
-      step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25'),  // main
+      step.new('Login to DockerHub', 'grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7'),  // v1.0.4
+      step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136')  // v1.0.2
+      + step.with({ registry: 'us-docker.pkg.dev' }),
 
       releaseStep('Get weekly version')
       + step.withId('weekly-version')
@@ -175,8 +185,7 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
-      common.fetchGcsCredentials,
-      common.googleAuth,
+      common.enableCorepack,
 
       step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'),  // v3
       step.new('set up docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  //v3
@@ -229,13 +238,21 @@ local runner = import 'runner.libsonnet',
         .
       ||| % [name, name]),
 
-      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0')  // v2
+      step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136'),
+      releaseStep('upload artifacts')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
-      + step.with({
-        path: 'release/plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
-        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/plugins',
-        process_gcloudignore: false,
-      }),
+      + step.withEnv({
+        path: 'plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
+      })
+      + step.withRun(|||
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{env.path}} \
+          --package=plugins \
+          --version=${{ github.sha }}
+      |||),
     ]),
 
   version:
@@ -249,20 +266,20 @@ local runner = import 'runner.libsonnet',
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
+      common.enableCorepack,
       common.extractBranchName,
       common.githubAppToken,
-      common.setToken,
       releaseLibStep('get release version')
       + step.withId('version')
       + step.withEnv({
         OUTPUTS_BRANCH: '${{ steps.extract_branch.outputs.branch }}',
-        OUTPUTS_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+        OUTPUTS_TOKEN: '${{ steps.get_github_app_token.outputs.token }}',
       })
       + step.withRun(|||
-        npm install
+        yarn install
 
         if [[ -z "${{ env.RELEASE_AS }}" ]]; then
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
@@ -276,7 +293,7 @@ local runner = import 'runner.libsonnet',
             --token "$OUTPUTS_TOKEN" \
             --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         else
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
@@ -293,16 +310,16 @@ local runner = import 'runner.libsonnet',
 
         cat release.json
 
-        if [[ `jq length release.json` -gt 1 ]]; then 
+        if [[ `jq length release.json` -gt 1 ]]; then
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
 
-        if [[ `jq length release.json` -eq 0 ]]; then 
+        if [[ `jq length release.json` -eq 0 ]]; then
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
-          version="$(npm run --silent get-version)"
+          version="$(yarn run --silent get-version)"
           echo "Parsed version: ${version}"
           echo "version=${version}" >> $GITHUB_OUTPUT
           echo "pr_created=true" >> $GITHUB_OUTPUT
@@ -314,16 +331,13 @@ local runner = import 'runner.libsonnet',
       pr_created: '${{ steps.version.outputs.pr_created }}',
     }),
 
-  dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'], optionalTargets=[], runsOn='ubuntu-x64')
+  dist: function(buildImage, skipArm=true, makeTargets=['dist', 'packages'], optionalTargets=[], runsOn='ubuntu-x64')
     job.new(runsOn)
     + job.withPermissions({
       'id-token': 'write',
     })
     + job.withSteps([
       common.fetchReleaseRepo,
-      common.fetchGcsCredentials,
-      common.googleAuth,
-      common.setupGoogleCloudSdk,
 
       releaseStep('build artifacts')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
@@ -335,11 +349,6 @@ local runner = import 'runner.libsonnet',
       })
       //TODO: the workdir here is loki specific
       + step.withRun(
-        (
-          if useGCR then |||
-            gcloud auth configure-docker
-          ||| else ''
-        ) +
         |||
           cat <<EOF | docker run \
             --interactive \
@@ -368,11 +377,6 @@ local runner = import 'runner.libsonnet',
         IMAGE_TAG: '${{ needs.version.outputs.version }}',
       })
       + if std.length(optionalTargets) > 0 then step.withRun(
-        (
-          if useGCR then |||
-            gcloud auth configure-docker
-          ||| else ''
-        ) +
         |||
           cat <<EOF | docker run \
             --interactive \
@@ -398,13 +402,21 @@ local runner = import 'runner.libsonnet',
         |||
       ),
 
-      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0')  // v2
+      step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136'),
+      releaseStep('upload artifacts')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
-      + step.with({
-        path: 'release/dist',
-        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}',  //TODO: make bucket configurable
-        process_gcloudignore: false,
-      }),
+      + step.withEnv({
+        path: 'dist/',
+      })
+      + step.withRun(|||
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source-directory=${{env.path}} \
+          --package=binaries \
+          --version=${{ github.sha }}
+      |||),
     ])
     + job.withOutputs({
       version: '${{ needs.version.outputs.version }}',

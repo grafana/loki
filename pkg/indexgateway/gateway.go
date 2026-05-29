@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/c2h5oh/datasize"
@@ -26,38 +25,21 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
-	seriesindex "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var tracer = otel.Tracer("pkg/indexgateway")
-
-const (
-	maxIndexEntriesPerResponse = 1000
-)
 
 type IndexQuerier interface {
 	stores.ChunkFetcher
 	index.BaseReader
 	index.StatsReader
 	Stop()
-}
-
-type IndexClient interface {
-	seriesindex.ReadClient
-	Stop()
-}
-
-type IndexClientWithRange struct {
-	IndexClient
-	TableRange config.TableRange
 }
 
 type BloomQuerier interface {
@@ -68,7 +50,6 @@ type Gateway struct {
 	services.Service
 
 	indexQuerier IndexQuerier
-	indexClients []IndexClientWithRange
 	bloomQuerier BloomQuerier
 	metrics      *Metrics
 
@@ -81,133 +62,22 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
+func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Registerer, indexQuerier IndexQuerier, _ any, bloomQuerier BloomQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		bloomQuerier: bloomQuerier,
 		cfg:          cfg,
 		limits:       limits,
 		log:          log,
-		indexClients: indexClients,
 		metrics:      NewMetrics(r),
 	}
 
-	// query newer periods first
-	sort.Slice(g.indexClients, func(i, j int) bool {
-		return g.indexClients[i].TableRange.Start > g.indexClients[j].TableRange.Start
-	})
-
 	g.Service = services.NewIdleService(nil, func(_ error) error {
 		g.indexQuerier.Stop()
-		for _, indexClient := range g.indexClients {
-			indexClient.Stop()
-		}
 		return nil
 	})
 
 	return g, nil
-}
-
-func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logproto.IndexGateway_QueryIndexServer) error {
-	log, _ := spanlogger.NewOTel(context.Background(), g.log, tracer, "IndexGateway.QueryIndex")
-	defer log.Finish()
-
-	var outerErr, innerErr error
-
-	queries := make([]seriesindex.Query, 0, len(request.Queries))
-	for _, query := range request.Queries {
-		if _, err := config.ExtractTableNumberFromName(query.TableName); err != nil {
-			level.Error(log).Log("msg", "skip querying table", "table", query.TableName, "err", err)
-			continue
-		}
-
-		queries = append(queries, seriesindex.Query{
-			TableName:        query.TableName,
-			HashValue:        query.HashValue,
-			RangeValuePrefix: query.RangeValuePrefix,
-			RangeValueStart:  query.RangeValueStart,
-			ValueEqual:       query.ValueEqual,
-		})
-	}
-
-	sort.Slice(queries, func(i, j int) bool {
-		ta, _ := config.ExtractTableNumberFromName(queries[i].TableName)
-		tb, _ := config.ExtractTableNumberFromName(queries[j].TableName)
-		return ta < tb
-	})
-
-	sendBatchMtx := sync.Mutex{}
-	for _, indexClient := range g.indexClients {
-		// find queries that can be handled by this index client.
-		start := sort.Search(len(queries), func(i int) bool {
-			tableNumber, _ := config.ExtractTableNumberFromName(queries[i].TableName)
-			return tableNumber >= indexClient.TableRange.Start
-		})
-		end := sort.Search(len(queries), func(j int) bool {
-			tableNumber, _ := config.ExtractTableNumberFromName(queries[j].TableName)
-			return tableNumber > indexClient.TableRange.End
-		})
-		if end-start <= 0 {
-			continue
-		}
-
-		outerErr = indexClient.QueryPages(server.Context(), queries[start:end], func(query seriesindex.Query, batch seriesindex.ReadBatchResult) bool {
-			innerErr = buildResponses(query, batch, func(response *logproto.QueryIndexResponse) error {
-				// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
-				sendBatchMtx.Lock()
-				defer sendBatchMtx.Unlock()
-
-				return server.Send(response)
-			})
-
-			return innerErr == nil
-		})
-
-		if innerErr != nil {
-			return innerErr
-		}
-
-		if outerErr != nil {
-			return outerErr
-		}
-	}
-
-	return nil
-}
-
-func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, callback func(*logproto.QueryIndexResponse) error) error {
-	itr := batch.Iterator()
-	var resp []*logproto.Row
-
-	for itr.Next() {
-		if len(resp) == maxIndexEntriesPerResponse {
-			err := callback(&logproto.QueryIndexResponse{
-				QueryKey: seriesindex.QueryKey(query),
-				Rows:     resp,
-			})
-			if err != nil {
-				return err
-			}
-			resp = []*logproto.Row{}
-		}
-
-		resp = append(resp, &logproto.Row{
-			RangeValue: itr.RangeValue(),
-			Value:      itr.Value(),
-		})
-	}
-
-	if len(resp) != 0 {
-		err := callback(&logproto.QueryIndexResponse{
-			QueryKey: seriesindex.QueryKey(query),
-			Rows:     resp,
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (result *logproto.GetChunkRefResponse, err error) {
