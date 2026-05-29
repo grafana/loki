@@ -1165,37 +1165,6 @@ chunk_store_config:
 		})
 	})
 
-	t.Run("for the write dedupe cache config", func(t *testing.T) {
-		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
-			configFileString := `---
-chunk_store_config:
-  write_dedupe_cache_config:
-    redis:
-      endpoint: endpoint.redis.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.EqualValues(t, "endpoint.redis.org", config.ChunkStoreConfig.WriteDedupeCacheConfig.Redis.Endpoint)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
-		})
-
-		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
-			configFileString := `---
-chunk_store_config:
-  write_dedupe_cache_config:
-    memcached_client:
-      host: host.memcached.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.EqualValues(t, "host.memcached.org", config.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient.Host)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
-		})
-
-		t.Run("no embedded cache is enabled by default even if no other cache is set", func(t *testing.T) {
-			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.False(t, config.ChunkStoreConfig.WriteDedupeCacheConfig.EmbeddedCache.Enabled)
-		})
-	})
-
 	t.Run("for the index queries cache config", func(t *testing.T) {
 		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---

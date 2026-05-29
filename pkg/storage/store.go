@@ -14,7 +14,6 @@ import (
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -90,10 +89,9 @@ type LokiStore struct {
 	clientMetrics      ClientMetrics
 	registerer         prometheus.Registerer
 
-	indexReadCache   cache.Cache
-	chunksCache      cache.Cache
-	chunksCacheL2    cache.Cache
-	writeDedupeCache cache.Cache
+	indexReadCache cache.Cache
+	chunksCache    cache.Cache
+	chunksCacheL2  cache.Cache
 
 	limits StoreLimits
 	logger log.Logger
@@ -124,15 +122,6 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		return nil, err
 	}
 
-	if cache.IsCacheConfigured(storeCfg.WriteDedupeCacheConfig) {
-		level.Warn(logger).Log("msg", "write dedupe cache is deprecated along with legacy index types. Consider using TSDB index which does not require a write dedupe cache.")
-	}
-
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger, stats.WriteDedupeCache, metricsNamespace)
-	if err != nil {
-		return nil, err
-	}
-
 	chunkCacheCfg := storeCfg.ChunkCacheConfig
 	chunkCacheCfg.Prefix = "chunks"
 	chunksCache, err := cache.New(chunkCacheCfg, registerer, logger, stats.ChunkCache, metricsNamespace)
@@ -153,13 +142,11 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	indexReadCache = cache.StopOnce(indexReadCache)
 	chunksCache = cache.StopOnce(chunksCache)
 	chunksCacheL2 = cache.StopOnce(chunksCacheL2)
-	writeDedupeCache = cache.StopOnce(writeDedupeCache)
 
 	// Lets wrap all caches except chunksCache with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers.
 	// chunksCache is not wrapped because chunks content can't be anyways modified without changing its ID so there is no use of
 	// invalidating chunks cache. Also chunks can be fetched only by their ID found in index and we are anyways removing the index and invalidating index cache here.
 	indexReadCache = cache.NewCacheGenNumMiddleware(indexReadCache)
-	writeDedupeCache = cache.NewCacheGenNumMiddleware(writeDedupeCache)
 
 	err = schemaCfg.Load()
 	if err != nil {
@@ -180,10 +167,9 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		chunkMetrics:       NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
 		registerer:         registerer,
 
-		indexReadCache:   indexReadCache,
-		chunksCache:      chunksCache,
-		chunksCacheL2:    chunksCacheL2,
-		writeDedupeCache: writeDedupeCache,
+		indexReadCache: indexReadCache,
+		chunksCache:    chunksCache,
+		chunksCacheL2:  chunksCacheL2,
 
 		logger: logger,
 		limits: limits,
