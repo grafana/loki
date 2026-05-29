@@ -252,6 +252,8 @@
     autoApprove: false,
   },
   osvVulnerabilityAlerts: true,
+  prConcurrentLimit: 0,
+  branchConcurrentLimit: 0,
   branchPrefix: 'deps-update/',
   postUpdateOptions: [
     'gomodUpdateImportPaths',
