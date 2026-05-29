@@ -44,6 +44,7 @@ var (
 		"storage_config.boltdb",
 		"storage_config.grpc_store",
 		"storage_config.aws.dynamodb",
+		"storage_config.index_queries_cache_config",
 		"schema_config.configs.[1].store",
 		"schema_config.configs.[1].object_store",
 		"schema_config.configs.[2].store",

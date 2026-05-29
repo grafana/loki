@@ -1165,56 +1165,6 @@ chunk_store_config:
 		})
 	})
 
-	t.Run("for the index queries cache config", func(t *testing.T) {
-		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
-			configFileString := `---
-schema_config:
-  configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v12
-      index:
-        prefix: index_
-        period: 24h
-storage_config:
-  index_queries_cache_config:
-    redis:
-      endpoint: endpoint.redis.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.EqualValues(t, "endpoint.redis.org", config.StorageConfig.IndexQueriesCacheConfig.Redis.Endpoint)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
-		})
-
-		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
-			configFileString := `---
-schema_config:
-  configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v12
-      index:
-        prefix: index_
-        period: 24h
-storage_config:
-  index_queries_cache_config:
-    memcached_client:
-      host: host.memcached.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-
-			assert.EqualValues(t, "host.memcached.org", config.StorageConfig.IndexQueriesCacheConfig.MemcacheClient.Host)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
-		})
-
-		t.Run("no embedded cache is enabled by default even if no other cache is set", func(t *testing.T) {
-			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.False(t, config.StorageConfig.IndexQueriesCacheConfig.EmbeddedCache.Enabled)
-		})
-	})
-
 	t.Run("for the query range results cache config", func(t *testing.T) {
 		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
@@ -1991,14 +1941,6 @@ schema_config:
         period: 24h
 storage_config:
   index_cache_validity: 10m
-  index_queries_cache_config:
-    memcached:
-      batch_size: 256
-      parallelism: 10
-    memcached_client:
-      consistent_hash: true
-      host: memcached-index-queries.loki.svc.cluster.local
-      service: memcached-client
 `
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)

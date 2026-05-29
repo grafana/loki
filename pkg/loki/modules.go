@@ -972,20 +972,6 @@ func (t *Loki) updateConfigForShipperStore() {
 
 	switch true {
 	case t.Cfg.isTarget(Ingester), t.Cfg.isTarget(Write):
-		// Use embedded cache for caching index in memory, this also significantly helps performance.
-		t.Cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
-			EmbeddedCache: cache.EmbeddedCacheConfig{
-				Enabled:   true,
-				MaxSizeMB: 200,
-				// This is a small hack to save some CPU cycles.
-				// We check if the object is still valid after pulling it from cache using the IndexCacheValidity value
-				// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
-				// IndexCacheValidity guarantees the Embedded cache will expire the object first which can be done without
-				// having to deserialize the object.
-				TTL: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
-			},
-		}
-
 		// We do not want ingester to unnecessarily keep downloading files
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)

@@ -15,7 +15,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
@@ -255,9 +254,8 @@ type Config struct {
 	CongestionControl    congestion.Config         `yaml:"congestion_control,omitempty"`
 	ObjectPrefix         string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
 
-	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
-	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
-	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
+	DisableBroadIndexQueries bool `yaml:"disable_broad_index_queries"`
+	MaxParallelGetChunk      int  `yaml:"max_parallel_get_chunk"`
 
 	UseThanosObjstore bool                         `yaml:"use_thanos_objstore"`
 	ObjectStore       bucket.ConfigWithNamedStores `yaml:"object_store"`
@@ -293,7 +291,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.UseThanosObjstore, "use-thanos-objstore", false, "Enables the use of thanos-io/objstore clients for connecting to object storage. When set to true, the configuration inside `storage_config.object_store` or `common.storage.object_store` block takes effect.")
 	cfg.ObjectStore.RegisterFlagsWithPrefix("object-store.", f)
 
-	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 	f.StringVar(&cfg.ObjectPrefix, "store.object-prefix", "", "The prefix to all keys inserted in object storage. Example: loki-instances/west/")
 	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")

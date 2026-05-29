@@ -2427,7 +2427,6 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `query-engine.task-results-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
-- `store.index-cache-read`
 
 &nbsp;
 
@@ -2519,7 +2518,7 @@ memcached_client:
 
   # The TLS configuration.
   # The CLI flags prefix for this block configuration is:
-  # store.index-cache-read.memcached
+  # store.chunks-cache-l2.memcached
   [<tls_config>]
 
 redis:
@@ -6643,11 +6642,6 @@ congestion_control:
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
 
-# The cache_config block configures the cache backend for a specific Loki
-# component.
-# The CLI flags prefix for this block configuration is: store.index-cache-read
-[index_queries_cache_config: <cache_config>]
-
 # Disable broad index queries which results in reduced cache usage and faster
 # query performance at the expense of somewhat higher QPS on the index store.
 # CLI flag: -store.disable-broad-index-queries
@@ -7384,7 +7378,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `ruler.ring.etcd`
 - `store.chunks-cache-l2.memcached`
 - `store.chunks-cache.memcached`
-- `store.index-cache-read.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
 - `ui.ring.etcd`
 
