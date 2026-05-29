@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -38,6 +37,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 var tracer = otel.Tracer("pkg/storage")
