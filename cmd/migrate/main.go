@@ -89,7 +89,6 @@ func main() {
 	sourceConfig.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 
 	// Shorten these timers up so we resync a little faster and clear index files a little quicker
-	destConfig.StorageConfig.IndexCacheValidity = 1 * time.Minute
 	destConfig.StorageConfig.TSDBShipperConfig.ResyncInterval = 1 * time.Minute
 
 	// Don't want to use the index gateway for this, this makes sure the index files are properly uploaded when the store is stopped.
