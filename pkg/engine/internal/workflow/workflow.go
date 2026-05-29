@@ -330,6 +330,14 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	return wrapped, nil
 }
 
+// isTerminal reports whether the workflow has observed task in a terminal
+// state. Safe to call concurrently with [Workflow.onTaskChange].
+func (wf *Workflow) isTerminal(task *Task) bool {
+	wf.tasksMut.RLock()
+	defer wf.tasksMut.RUnlock()
+	return wf.taskStates[task].Terminal()
+}
+
 // dispatchTasks groups the slice of tasks by their associated "admission lane" (token bucket)
 // and dispatches them to the runner.
 // Tasks from different admission lanes are dispatched concurrently.
@@ -374,12 +382,28 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 		for ; offset < total; offset += batchSize {
 			batchSize = int64(1)
 
+			// Skip tasks already in a terminal state. Short-circuiting (see
+			// [Workflow.handleNonTerminalStateChange]) can cancel a task before
+			// dispatch reaches it; runner.Start no-ops on a terminal task, so an
+			// Acquire here would leak the slot — no state transition fires to
+			// trigger the matching Release in handleTerminalStateChange.
+			if wf.isTerminal(tasks[offset]) {
+				continue
+			}
+
 			start := time.Now()
 			if err := lane.Acquire(ctx, batchSize); err != nil {
 				return fmt.Errorf("failed to acquire tokens from admission lane %s: %w", taskType, err)
 			}
 
 			region.Record(xcap.StatTaskAdmissionWaitDuration.Observe(time.Since(start).Seconds()))
+
+			// Re-check after Acquire: the task may have been cancelled while we
+			// were blocked waiting for a slot. Release the slot we just took.
+			if wf.isTerminal(tasks[offset]) {
+				lane.Release(batchSize)
+				continue
+			}
 
 			batch := tasks[offset : offset+batchSize]
 			if err := wf.runner.Start(ctx, batch...); err != nil {

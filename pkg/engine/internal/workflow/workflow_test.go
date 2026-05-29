@@ -344,6 +344,162 @@ func TestAdmissionControl(t *testing.T) {
 	})
 }
 
+// TestAdmissionControl_NoLeakOnShortCircuit verifies that tasks short-circuited
+// before the dispatch loop reaches them do not leak admission-lane slots. The
+// regression: runner.Start no-ops on a terminal task, so an Acquire issued for
+// such a task would never be matched by a Release (no state transition fires).
+// Over the lifetime of a query with many short-circuited tasks, the lane fills
+// up with leaked slots and dispatch eventually deadlocks until the workflow
+// context is cancelled.
+func TestAdmissionControl_NoLeakOnShortCircuit(t *testing.T) {
+	var physicalGraph dag.Graph[physical.Node]
+
+	now := time.Now()
+	var (
+		scan = physicalGraph.Add(&physical.ScanSet{
+			Targets: []*physical.ScanTarget{
+				{
+					Type: physical.ScanTypeDataObject,
+					DataObject: &physical.DataObjScan{
+						MaxTimeRange: physical.TimeRange{
+							Start: now.Add(-time.Hour),
+							End:   now,
+						},
+					},
+				},
+				{
+					Type: physical.ScanTypeDataObject,
+					DataObject: &physical.DataObjScan{
+						MaxTimeRange: physical.TimeRange{
+							Start: now.Add(-2 * time.Hour),
+							End:   now.Add(-time.Hour),
+						},
+					},
+				},
+				{
+					Type: physical.ScanTypeDataObject,
+					DataObject: &physical.DataObjScan{
+						MaxTimeRange: physical.TimeRange{
+							Start: now.Add(-3 * time.Hour),
+							End:   now.Add(-2 * time.Hour),
+						},
+					},
+				},
+			},
+		})
+		parallelize = physicalGraph.Add(&physical.Parallelize{})
+		topk        = physicalGraph.Add(&physical.TopK{
+			SortBy:    &physical.ColumnExpr{Ref: semconv.ColumnIdentTimestamp.ColumnRef()},
+			Ascending: false,
+			K:         100,
+		})
+	)
+
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: scan})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: topk, Child: parallelize})
+
+	physicalPlan := physical.FromGraph(physicalGraph)
+
+	synctest.Test(t, func(t *testing.T) {
+		fr := newFakeRunner()
+
+		opts := Options{
+			Tenant: "tenant",
+			// Tight cap: only one scan task can be in flight at a time, so the
+			// remaining scans sit in the dispatch loop until earlier ones complete.
+			MaxRunningScanTasks:       1,
+			MaxRunningOtherTasks:      0,
+			MaxRunningCompactionTasks: 0,
+		}
+		wf, err := New(t.Context(), opts, log.NewNopLogger(), fr, physicalPlan)
+		require.NoError(t, err, "workflow should construct properly")
+
+		defer func() {
+			if !t.Failed() {
+				return
+			}
+			t.Log("Failing workflow:")
+			t.Log(Sprint(wf))
+		}()
+
+		p, err := wf.Run(t.Context())
+		require.NoError(t, err, "Workflow should start properly")
+		defer p.Close()
+
+		// Let the workflow dispatch the root task and the first scan task. The
+		// remaining two scans are held back by the admission lane.
+		synctest.Wait()
+
+		rootTask, err := wf.graph.Root()
+		require.NoError(t, err, "should retrieve root task")
+
+		// Fire ContributingTimeRange on the root. The two scan tasks whose
+		// MaxTimeRange falls entirely before -30m get short-circuited via
+		// wf.cancelTasks. At this point the second scan is still parked in the
+		// dispatch loop's Acquire call, and the third hasn't been visited yet.
+		rt, ok := fr.tasks[rootTask.ULID]
+		require.True(t, ok, "root task should be registered with runner")
+		rt.handler(t.Context(), rootTask, TaskStatus{
+			State: TaskStateRunning,
+			ContributingTimeRange: ContributingTimeRange{
+				Timestamp: now.Add(-30 * time.Minute),
+				LessThan:  false,
+			},
+		})
+		synctest.Wait()
+
+		// Sanity: at least one scan should have been short-circuited without
+		// ever leaving TaskStateCreated → TaskStateCancelled.
+		var cancelledTrailing int
+		for _, task := range wf.allTasks() {
+			if !isScanTask(task) {
+				continue
+			}
+			if wf.taskStates[task] == TaskStateCancelled {
+				cancelledTrailing++
+			}
+		}
+		require.Greater(t, cancelledTrailing, 0,
+			"expected at least one scan to be short-circuited before dispatch")
+
+		// Complete any scan still in flight so the dispatch loop can advance
+		// through the cancelled tasks. Depending on slice order, the dispatched
+		// scan may or may not have overlapped with the contributing range.
+		for _, task := range wf.allTasks() {
+			if !isScanTask(task) {
+				continue
+			}
+			state := wf.taskStates[task]
+			if state != TaskStatePending && state != TaskStateRunning {
+				continue
+			}
+			srt, ok := fr.tasks[task.ULID]
+			require.True(t, ok)
+			srt.handler(t.Context(), task, TaskStatus{State: TaskStateCompleted})
+		}
+		synctest.Wait()
+
+		// Every scan task should be in a terminal state. Without the fix, the
+		// dispatch loop would push the already-cancelled second scan back into
+		// TaskStatePending via fakeRunner.Start, then deadlock waiting for a
+		// slot the third scan will never get.
+		for _, task := range wf.allTasks() {
+			if !isScanTask(task) {
+				continue
+			}
+			require.True(t, wf.taskStates[task].Terminal(),
+				"scan task %s should be in a terminal state, got %s",
+				task.ULID, wf.taskStates[task])
+		}
+
+		// The scan admission lane should be fully drained — no leaked slots.
+		scanLane := wf.admissionControl.get(taskTypeScan)
+		require.True(t, scanLane.TryAcquire(int64(opts.MaxRunningScanTasks)),
+			"scan admission lane should have full capacity available after dispatch")
+		scanLane.Release(int64(opts.MaxRunningScanTasks))
+	})
+}
+
 type fakeRunner struct {
 	streams  map[ulid.ULID]*runnerStream
 	tasks    map[ulid.ULID]*runnerTask
