@@ -1,7 +1,7 @@
 # govulncheck workflow.
 #
 # Runs `govulncheck ./...` against the root Loki Go module whenever a PR
-# touches Go source or module files. 
+# touches Go source or module files.
 
 name: govulncheck
 

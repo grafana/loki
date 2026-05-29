@@ -17,7 +17,6 @@
     distOptionalTargets=[],
     distRunsOn='ubuntu-x64',
     dryRun=false,
-    dockerUsername='grafana',
     golangCiLintVersion='v2.3.0',
     imageBuildTimeoutMin=25,
     imageJobs={},
@@ -32,6 +31,7 @@
     versioningStrategy='always-bump-patch',
                     ) {
     local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
+    local garRepoSlug = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs' else 'loki',
 
     name: 'create release PR',
     on: {
@@ -50,11 +50,11 @@
       BUILD_ARTIFACTS_BUCKET: buildArtifactsBucket,
       BUILD_TIMEOUT: imageBuildTimeoutMin,
       CHANGELOG_PATH: changelogPath,
-      DOCKER_USERNAME: dockerUsername,
       DRY_RUN: dryRun,
       IMAGE_PREFIX: imagePrefix,
       RELEASE_LIB_REF: releaseLibRef,
       RELEASE_REPO: releaseRepo,
+      GAR_REPO_SLUG: garRepoSlug,
       SKIP_VALIDATION: skipValidation,
       USE_GITHUB_APP_TOKEN: useGitHubAppToken,
       VERSIONING_STRATEGY: versioningStrategy,
@@ -97,8 +97,6 @@
   releaseWorkflow: function(
     branches=['release-[0-9].[0-9].x', 'k[0-9]*'],
     buildArtifactsBucket='loki-build-artifacts',
-    dockerUsername='grafanabot',
-    getDockerCredsFromVault=false,
     imagePrefix='grafana',
     pluginBuildDir='release/plugin-tmp-dir',
     publishBucket='',
@@ -111,6 +109,7 @@
     publishDockerPlugins=true,
                   ) {
     local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
+    local garRepoSlug = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs' else 'loki',
 
     name: 'create release',
     on: {
@@ -130,6 +129,7 @@
       IMAGE_PREFIX: imagePrefix,
       RELEASE_LIB_REF: releaseLibRef,
       RELEASE_REPO: releaseRepo,
+      GAR_REPO_SLUG: garRepoSlug,
       USE_GITHUB_APP_TOKEN: useGitHubAppToken,
       GITHUB_APP: githubApp,
     } + if publishToGCS then {
@@ -153,9 +153,9 @@
           'id-token': 'write',
         },
       },
-      publishImages: $.release.publishImages(getDockerCredsFromVault, dockerUsername),
+      publishImages: $.release.publishImages(),
     } + (if publishDockerPlugins then {
-           publishDockerPlugins: $.release.publishDockerPlugins(pluginBuildDir, getDockerCredsFromVault, dockerUsername),
+           publishDockerPlugins: $.release.publishDockerPlugins(pluginBuildDir),
            publishRelease: $.release.publishRelease(['createRelease', 'publishImages', 'publishDockerPlugins']),
          } else {
            publishRelease: $.release.publishRelease(['createRelease', 'publishImages']),
