@@ -58,15 +58,13 @@
       enabled: false,
     },
     {
-      // Disable Go and loki-build-image updates for Dockerfiles
       matchManagers: [
         'dockerfile',
       ],
-      matchPackageNames: [
-        'golang',
-        'grafana/loki-build-image',
-      ],
-      enabled: false,
+      // enable digest updates
+      digest: {
+        enabled: true,
+      },
     },
     {
       // Disable updates driven by Kustomize, used by the operator
@@ -125,6 +123,10 @@
         'minor',
         'patch',
       ],
+      // enable digest updates
+      digest: {
+        enabled: true,
+      },
       autoApprove: false,
       automerge: false,
     },
