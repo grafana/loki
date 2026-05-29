@@ -153,14 +153,14 @@ jobs:
             set -x
             echo "=== Debug mode enabled - verbose output active ==="
           fi
-          
+
           echo "=== Starting Helm Test ==="
           echo "Test directory: ${TEST_DIRECTORY}"
           helm-chart-toolbox/tools/helm-test/helm-test "${TEST_DIRECTORY}" || {
             EXIT_CODE=$?
             echo "=== Test failed with exit code: $EXIT_CODE ==="
             echo "=== Attempting to gather debug information ==="
-            
+
             # Try to get cluster info if kubectl is available
             if command -v kubectl &> /dev/null; then
               echo "=== Kubernetes Cluster Debug Info ==="
@@ -194,7 +194,7 @@ jobs:
                 echo "=== Previous logs for pod: $pod ==="
                 kubectl logs -n loki "$pod" --previous --tail=200 || true
               done
-              
+
               # Only show all pod logs if debug mode is enabled (can be very verbose)
               if [ "${{ runner.debug }}" == "1" ]; then
                 echo "--- All pod logs (last 50 lines each) ---"
@@ -204,7 +204,7 @@ jobs:
                 done
               fi
             fi
-            
+
             exit $EXIT_CODE
           }
         env:
