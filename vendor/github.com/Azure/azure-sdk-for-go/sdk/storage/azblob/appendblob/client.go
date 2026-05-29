@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -202,7 +199,8 @@ func (ab *Client) AppendBlockFromURL(ctx context.Context, source string, o *Appe
 		leaseAccessConditions,
 		appendPositionAccessConditions,
 		modifiedAccessConditions,
-		sourceModifiedAccessConditions := o.format()
+		sourceModifiedAccessConditions,
+		sourceCPKInfo := o.format()
 
 	// content length should be 0 on * from URL. always. It's a 400 if it isn't.
 	resp, err := ab.generated().AppendBlockFromURL(ctx,
@@ -214,7 +212,8 @@ func (ab *Client) AppendBlockFromURL(ctx context.Context, source string, o *Appe
 		leaseAccessConditions,
 		appendPositionAccessConditions,
 		modifiedAccessConditions,
-		sourceModifiedAccessConditions)
+		sourceModifiedAccessConditions,
+		sourceCPKInfo)
 	return resp, err
 }
 
@@ -262,7 +261,10 @@ func (ab *Client) SetLegalHold(ctx context.Context, legalHold bool, options *blo
 }
 
 // SetTier
-// Deprecated: SetTier only works for page blob in premium storage account and block blob in blob storage account.
+//
+// Deprecated:
+//
+// SetTier only works for page blob in premium storage account and block blob in blob storage account.
 func (ab *Client) SetTier(ctx context.Context, tier blob.AccessTier, o *blob.SetTierOptions) (blob.SetTierResponse, error) {
 	return blob.SetTierResponse{}, errors.New("operation will not work on this blob type. SetTier only works for page blob in premium storage account and block blob in blob storage account")
 }
@@ -335,7 +337,10 @@ func (ab *Client) GetTags(ctx context.Context, o *blob.GetTagsOptions) (blob.Get
 }
 
 // CopyFromURL
-// Deprecated: CopyFromURL works only with block blob
+//
+// Deprecated:
+//
+// CopyFromURL works only with block blob
 func (ab *Client) CopyFromURL(ctx context.Context, copySource string, o *blob.CopyFromURLOptions) (blob.CopyFromURLResponse, error) {
 	return blob.CopyFromURLResponse{}, errors.New("operation will not work on this blob type. CopyFromURL works only with block blob")
 }

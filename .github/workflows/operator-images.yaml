@@ -8,6 +8,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   publish-grafana-operator:
     uses: ./.github/workflows/operator-reusable-image-build.yml
@@ -43,4 +46,13 @@ jobs:
       registry: "quay.io"
       organization: "openshift-logging"
       image_name: "storage-size-calculator"
+      tag: "latest"
+
+  publish-openshift-passthrough-gateway:
+    uses: ./.github/workflows/operator-reusable-image-build.yml
+    with:
+      dockerfile: "operator/passthrough-gateway.Dockerfile"
+      registry: "quay.io"
+      organization: "openshift-logging"
+      image_name: "passthrough-gateway"
       tag: "latest"

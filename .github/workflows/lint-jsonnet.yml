@@ -1,9 +1,16 @@
 ---
 name: lint-jsonnet
 on:
-  [pull_request]
-  # pull_request:
-  #   paths: "production/**"
+  pull_request:
+    paths:
+      - "**/*.jsonnet"
+      - "**/*.libsonnet"
+      - "**/jsonnetfile.json"
+      - "**/jsonnetfile.lock.json"
+      - ".github/workflows/lint-jsonnet.yml" # validate changes to the workflow itself
+
+permissions:
+  contents: read
 
 jobs:
   check-mixin:
@@ -11,17 +18,15 @@ jobs:
     runs-on: ubuntu-x64
     permissions:
       contents: "read"
-      id-token: "write"
-      pull-requests: "write"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
       - name: setup go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: "1.26.2"
+          go-version: "1.26.3"
       - name: setup jsonnet
         run: |
           go install github.com/google/go-jsonnet/cmd/jsonnet@v0.20.0

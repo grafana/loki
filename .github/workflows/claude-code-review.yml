@@ -14,6 +14,9 @@ on:
     #   - "src/**/*.js"
     #   - "src/**/*.jsx"
 
+permissions:
+  contents: read
+
 jobs:
   claude-review:
     # Only run when the 'claude-review' label is added
@@ -29,7 +32,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5.0.0
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 1
 

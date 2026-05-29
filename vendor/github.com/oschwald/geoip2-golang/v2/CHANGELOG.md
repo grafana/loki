@@ -1,5 +1,12 @@
 # Changes
 
+## 2.2.0 - 2026-05-17
+
+- This module now targets Go 1.25+.
+- Updated dependencies to latest version. In particular
+  `github.com/oschwald/maxminddb-golang/v2` was updated to `v2.3.0`, which
+  includes several performance improvements.
+
 ## 2.1.0 - 2025-12-22
 
 - Added support for the GeoIP Anonymous Plus database. This database provides

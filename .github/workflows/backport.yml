@@ -5,6 +5,9 @@ on:
       - closed
       - labeled
 
+permissions:
+  contents: read
+
 jobs:
   main:
     # We don't run the backporting for PRs from forks because those can't access "loki-github-bot" secrets in vault.
@@ -19,7 +22,7 @@ jobs:
       pull-requests: "write"
     steps:
       - name: Checkout Actions
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           repository: grafana/grafana-github-actions
           persist-credentials: false
@@ -27,7 +30,7 @@ jobs:
           ref: 3c62d35c5a66e730186a338e45aeb8fa784e2d56
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
 
@@ -39,7 +42,7 @@ jobs:
 
       - name: Generate GitHub App Token
         id: app-token
-        uses: grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0 # create-github-app-token/v0.2.2
+        uses: grafana/shared-workflows/actions/create-github-app-token@ae92934a14a48b94494dbc06d74a81d47fe08a40 # create-github-app-token/v0.2.2
         with:
           github_app: loki-gh-app
 
