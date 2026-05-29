@@ -974,7 +974,7 @@ func (t *Loki) updateConfigForShipperStore() {
 	case t.Cfg.isTarget(Ingester), t.Cfg.isTarget(Write):
 		// We do not want ingester to unnecessarily keep downloading files
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
-		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
+		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 
 	case t.Cfg.isTarget(Querier), t.Cfg.isTarget(Ruler), t.Cfg.isTarget(Read), t.Cfg.isTarget(Backend), t.isModuleActive(IndexGateway), t.Cfg.isTarget(BloomPlanner), t.Cfg.isTarget(BloomBuilder):
 		// We do not want query to do any updates to index
@@ -983,7 +983,7 @@ func (t *Loki) updateConfigForShipperStore() {
 	default:
 		// All other targets use the shipper store in RW mode
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadWrite
-		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
+		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 	}
 }
 
@@ -998,10 +998,7 @@ func (t *Loki) setupAsyncStore() error {
 
 	minIngesterQueryStoreDuration := shipperMinIngesterQueryStoreDuration(
 		t.Cfg.Ingester.MaxChunkAge,
-		shipperQuerierIndexUpdateDelay(
-			t.Cfg.StorageConfig.IndexCacheValidity,
-			shipperResyncInterval(t.Cfg.StorageConfig, t.Cfg.SchemaConfig.Configs),
-		),
+		shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval),
 	)
 
 	switch true {
@@ -1834,7 +1831,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		}
 	}
 
-	indexUpdatePropagationMaxDelay := shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, shipperResyncInterval(t.Cfg.StorageConfig, t.Cfg.SchemaConfig.Configs))
+	indexUpdatePropagationMaxDelay := shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 	t.compactor, err = compactor.NewCompactor(
 		t.Cfg.CompactorConfig,
 		objectClients,
@@ -2591,10 +2588,8 @@ func calculateAsyncStoreQueryIngestersWithin(queryIngestersWithinConfig, minDura
 // shipperQuerierIndexUpdateDelay returns duration it could take for queriers to serve the index since it was uploaded.
 // It considers upto 3 sync attempts for the indexgateway/queries to be successful in syncing the files to factor in worst case scenarios like
 // failures in sync, low download throughput, various kinds of caches in between etc. which can delay the sync operation from getting all the updates from the storage.
-// It also considers index cache validity because a querier could have cached index just before it was going to resync which means
-// it would keep serving index until the cache entries expire.
-func shipperQuerierIndexUpdateDelay(cacheValidity, resyncInterval time.Duration) time.Duration {
-	return cacheValidity + resyncInterval*3
+func shipperQuerierIndexUpdateDelay(resyncInterval time.Duration) time.Duration {
+	return resyncInterval * 3
 }
 
 // shipperIngesterIndexUploadDelay returns duration it could take for an index file containing id of a chunk to be uploaded to the shared store since it got flushed.
@@ -2607,23 +2602,6 @@ func shipperIngesterIndexUploadDelay() time.Duration {
 // avoid missing any logs or chunk ids due to async nature of shipper.
 func shipperMinIngesterQueryStoreDuration(maxChunkAge, querierUpdateDelay time.Duration) time.Duration {
 	return maxChunkAge + shipperIngesterIndexUploadDelay() + querierUpdateDelay + 5*time.Minute
-}
-
-// shipperResyncInterval returns the resync interval for the active shipper index type (always tsdb)
-func shipperResyncInterval(storageConfig storage.Config, schemaConfigs []config.PeriodConfig) time.Duration {
-	shipperConfigIdx := config.ActivePeriodConfig(schemaConfigs)
-	iTy := schemaConfigs[shipperConfigIdx].IndexType
-	if iTy != types.IndexTypeTSDB {
-		shipperConfigIdx++
-	}
-
-	var resyncInterval time.Duration
-	switch schemaConfigs[shipperConfigIdx].IndexType {
-	case types.IndexTypeTSDB:
-		resyncInterval = storageConfig.TSDBShipperConfig.ResyncInterval
-	}
-
-	return resyncInterval
 }
 
 // NewServerService constructs service from Server component.

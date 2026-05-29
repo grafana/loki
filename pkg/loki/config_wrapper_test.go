@@ -1939,8 +1939,6 @@ schema_config:
       index:
         prefix: index_
         period: 24h
-storage_config:
-  index_cache_validity: 10m
 `
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)

@@ -6583,11 +6583,6 @@ hedging:
 # Storage (COS) backend.
 [cos: <cos_storage_config>]
 
-# Cache validity for active index entries. Should be no higher than
-# -ingester.max-chunk-idle.
-# CLI flag: -store.index-cache-validity
-[index_cache_validity: <duration> | default = 5m]
-
 congestion_control:
   # Use storage congestion control (default: disabled).
   # CLI flag: -store.congestion-control.enabled

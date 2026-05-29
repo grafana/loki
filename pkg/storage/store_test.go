@@ -70,8 +70,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 			IngesterName:           "ingester-1",
 			Mode:                   indexshipper.ModeReadWrite,
 		},
-		MaxChunkBatchSize:  10,
-		IndexCacheValidity: 1 * time.Minute,
+		MaxChunkBatchSize: 10,
 	}
 
 	schemaConfig := config.SchemaConfig{

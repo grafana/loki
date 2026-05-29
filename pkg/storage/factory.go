@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -250,7 +249,6 @@ type Config struct {
 	Hedging              hedging.Config            `yaml:"hedging"`
 	NamedStores          NamedStores               `yaml:"named_stores"`
 	COSConfig            ibmcloud.COSConfig        `yaml:"cos"`
-	IndexCacheValidity   time.Duration             `yaml:"index_cache_validity"`
 	CongestionControl    congestion.Config         `yaml:"congestion_control,omitempty"`
 	ObjectPrefix         string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
 
@@ -291,7 +289,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.UseThanosObjstore, "use-thanos-objstore", false, "Enables the use of thanos-io/objstore clients for connecting to object storage. When set to true, the configuration inside `storage_config.object_store` or `common.storage.object_store` block takes effect.")
 	cfg.ObjectStore.RegisterFlagsWithPrefix("object-store.", f)
 
-	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 	f.StringVar(&cfg.ObjectPrefix, "store.object-prefix", "", "The prefix to all keys inserted in object storage. Example: loki-instances/west/")
 	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
 	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")

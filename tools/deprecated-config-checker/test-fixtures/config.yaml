@@ -86,6 +86,7 @@ storage_config:
   s3: *s3_cfg
   index_queries_cache_config: # REMOVED
     memcached: {}
+  index_cache_validity: 1m # REMOVED
 
 schema_config:
   configs:
