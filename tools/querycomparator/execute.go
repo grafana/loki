@@ -110,17 +110,6 @@ func doExecuteLocallyV2(params logql.LiteralParams, bucket objstore.Bucket) erro
 	return checkResult(result)
 }
 
-func doExecuteLocallyV2Scheduler(params logql.LiteralParams, bucket objstore.Bucket) error {
-	initV2Settings()
-	level.Info(logger).Log("msg", "executing local query with V2 engine via local scheduler and worker")
-	result, err := doLocalQueryWithV2EngineScheduler(params, bucket)
-	if err != nil {
-		level.Error(logger).Log("msg", "v2 query execution failed", "error", err)
-		return fmt.Errorf("v2 query execution failed: %w", err)
-	}
-	return checkResult(result)
-}
-
 func doExecuteLocallyV2SchedulerRemote(params logql.LiteralParams, bucket objstore.Bucket) error {
 	initV2Settings()
 	level.Info(logger).Log("msg", "executing local query with V2 engine via remote scheduler and worker")
@@ -233,63 +222,6 @@ func doLocalQueryWithV1Engine(params logql.LiteralParams, bucketName string) (lo
 	qe := logql.NewEngine(logql.EngineOpts{}, quer, logql.NoLimits, glog.NewLogfmtLogger(os.Stderr))
 	query := qe.Query(params)
 	return query.Exec(ctx)
-}
-
-func doLocalQueryWithV2EngineScheduler(params logql.LiteralParams, bucket objstore.Bucket) (logqlmodel.Result, error) {
-	ctx := user.InjectOrgID(context.Background(), orgID)
-
-	sched, err := engine.NewScheduler(engine.SchedulerParams{
-		Logger:        glog.With(logger, "component", "scheduler"),
-		AdvertiseAddr: nil,
-	})
-	if err != nil {
-		return logqlmodel.Result{}, fmt.Errorf("creating scheduler: %w", err)
-	} else if err := services.StartAndAwaitRunning(ctx, sched.Service()); err != nil {
-		return logqlmodel.Result{}, fmt.Errorf("starting scheduler service: %w", err)
-	}
-
-	metastoreMetrics := metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer)
-	msConfig := metastore.Config{IndexStoragePrefix: "index/v0"}
-	workerLogger := glog.With(logger, "component", "worker")
-	worker, err := engine.NewWorker(engine.WorkerParams{
-		Logger:         workerLogger,
-		AdvertiseAddr:  nil,
-		Bucket:         bucket,
-		Metastore:      metastore.NewObjectMetastore(bucket, msConfig, workerLogger, metastoreMetrics),
-		LocalScheduler: sched,
-		Config: engine.WorkerConfig{
-			SchedulerLookupAddress:  "",
-			SchedulerLookupInterval: 60,
-			WorkerThreads:           64,
-		},
-		Executor: engine.ExecutorConfig{
-			BatchSize: 128,
-		},
-	}, prometheus.DefaultRegisterer)
-	if err != nil {
-		return logqlmodel.Result{}, fmt.Errorf("creating worker: %w", err)
-	} else if err := services.StartAndAwaitRunning(ctx, worker.Service()); err != nil {
-		return logqlmodel.Result{}, fmt.Errorf("starting worker service: %w", err)
-	}
-
-	engineLogger := glog.With(logger, "component", "engine")
-	e, err := engine.New(engine.Params{
-		Logger:     engineLogger,
-		Registerer: prometheus.NewRegistry(),
-		Config: engine.Config{
-			Executor: engine.ExecutorConfig{
-				BatchSize: 128,
-			},
-		},
-		Metastore: metastore.NewObjectMetastore(bucket, msConfig, engineLogger, metastoreMetrics),
-		Scheduler: sched,
-		Limits:    logql.NoLimits,
-	})
-	if err != nil {
-		return logqlmodel.Result{}, err
-	}
-
-	return e.Execute(ctx, params)
 }
 
 // doLocalQueryWithV2EngineSchedulerRemote executes a query using the V2 engine via remote scheduler and workers so it also executes the serialization logic.

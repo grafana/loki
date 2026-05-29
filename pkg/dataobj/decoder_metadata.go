@@ -13,6 +13,11 @@ import (
 
 // decode* methods for metadata shared by Decoder implementations.
 
+// TODO(dead-code): decodeHeader documents returning this for files with the legacy
+// magic value, but never actually does. Either wire up the legacy-magic check or
+// remove this. Tracked as a follow-up to the dead-code cleanup.
+//
+//nolint:unused
 var errLegacyMagic = errors.New("file uses legacy magic value")
 
 // decodeHeader decodes the header of the file to retrieve the metadata size

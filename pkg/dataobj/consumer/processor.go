@@ -261,6 +261,11 @@ func (p *processor) observeRecordErr(rec *kgo.Record) {
 	p.metrics.discardedBytes.Add(float64(len(rec.Value)))
 }
 
+// TODO(dead-code): drainOnShutdown is implemented but never called — buffered records
+// are currently not drained on shutdown. Wire this into the processor shutdown path or
+// remove it. Tracked as a follow-up to the dead-code cleanup.
+//
+//nolint:unused
 func (p *processor) drainOnShutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
