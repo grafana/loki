@@ -37,8 +37,6 @@ jobs:
       - name: "Login to DockerHub (from vault)"
         uses: "grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746"
 
-      - uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
-
       - name: Update/regenerate files for standard release
         id: update
         run: |
