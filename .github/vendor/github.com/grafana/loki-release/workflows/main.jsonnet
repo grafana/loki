@@ -26,8 +26,6 @@
     releaseRepo='grafana/loki-release',
     skipArm=false,
     skipValidation=false,
-    useGitHubAppToken=true,
-    useGCR=false,
     versioningStrategy='always-bump-patch',
                     ) {
     local githubApp = if releaseRepo == 'grafana/enterprise-logs' then 'enterprise-logs-app' else 'loki-gh-app',
@@ -56,7 +54,6 @@
       RELEASE_REPO: releaseRepo,
       GAR_REPO_SLUG: garRepoSlug,
       SKIP_VALIDATION: skipValidation,
-      USE_GITHUB_APP_TOKEN: useGitHubAppToken,
       VERSIONING_STRATEGY: versioningStrategy,
       GITHUB_APP: githubApp,
     } + if releaseAs != null then {
@@ -76,13 +73,9 @@
                build_image: buildImage,
                golang_ci_lint_version: golangCiLintVersion,
                release_lib_ref: releaseLibRef,
-               use_github_app_token: useGitHubAppToken,
-             })
-             + if useGCR then $.job.withSecrets({
-               GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
-             }) else {},
+             }),
       version: $.build.version + $.common.job.withNeeds(validationSteps),
-      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets, distOptionalTargets, distRunsOn)
+      dist: $.build.dist(buildImage, skipArm, distMakeTargets, distOptionalTargets, distRunsOn)
             + $.common.job.withNeeds(['version'])
             + $.common.job.withPermissions({
               contents: 'write',
@@ -104,7 +97,6 @@
     releaseLibRef='main',
     releaseRepo='grafana/loki-release',
     releaseBranchTemplate='release-\\${major}.\\${minor}.x',
-    useGitHubAppToken=true,
     dockerPluginPath='clients/cmd/docker-driver',
     publishDockerPlugins=true,
                   ) {
@@ -130,7 +122,6 @@
       RELEASE_LIB_REF: releaseLibRef,
       RELEASE_REPO: releaseRepo,
       GAR_REPO_SLUG: garRepoSlug,
-      USE_GITHUB_APP_TOKEN: useGitHubAppToken,
       GITHUB_APP: githubApp,
     } + if publishToGCS then {
       PUBLISH_BUCKET: publishBucket,
@@ -209,7 +200,6 @@
     },
     env: {
       RELEASE_LIB_REF: '${{ inputs.release_lib_ref }}',
-      USE_GITHUB_APP_TOKEN: '${{ inputs.use_github_app_token }}',
     },
     jobs: $.validate,
   },
@@ -248,12 +238,6 @@
             type: 'boolean',
           },
         },
-        secrets: {
-          GCS_SERVICE_ACCOUNT_KEY: {
-            description: 'GCS service account key',
-            required: false,
-          },
-        },
       },
     },
     permissions: {
@@ -265,7 +249,6 @@
     },
     env: {
       RELEASE_LIB_REF: '${{ inputs.release_lib_ref }}',
-      USE_GITHUB_APP_TOKEN: '${{ inputs.use_github_app_token }}',
     },
     jobs: $.validateGel,
   },

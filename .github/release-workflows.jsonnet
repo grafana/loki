@@ -58,7 +58,6 @@ local weeklyImageJobs = {
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
-      useGitHubAppToken=true,
       versioningStrategy='always-bump-patch',
     ) + {
       name: 'Prepare Patch Release PR',
@@ -79,7 +78,6 @@ local weeklyImageJobs = {
       releaseRepo='grafana/loki',
       skipArm=false,
       skipValidation=false,
-      useGitHubAppToken=true,
       versioningStrategy='always-bump-minor',
     ) + {
       name: 'Prepare Minor Release PR from Weekly',
@@ -93,7 +91,6 @@ local weeklyImageJobs = {
       pluginBuildDir=dockerPluginDir,
       releaseBranchTemplate='release-\\${major}.\\${minor}.x',
       releaseRepo='grafana/loki',
-      useGitHubAppToken=true,
     ), false, false
   ),
   'check.yml': std.manifestYamlDoc({

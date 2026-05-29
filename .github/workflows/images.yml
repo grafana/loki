@@ -1,10 +1,10 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@3a18055644205b356e8fd578d459adf93fc17c10"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
     "with":
       "build_image": "golang:1.26.3"
       "golang_ci_lint_version": "v2.10.1"
-      "release_lib_ref": "3a18055644205b356e8fd578d459adf93fc17c10"
+      "release_lib_ref": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "skip_validation": false
       "use_github_app_token": true
   "logql-analyzer-image":
@@ -12,7 +12,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
-      "RELEASE_LIB_REF": "3a18055644205b356e8fd578d459adf93fc17c10"
+      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -152,7 +152,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
-      "RELEASE_LIB_REF": "3a18055644205b356e8fd578d459adf93fc17c10"
+      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -292,7 +292,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
-      "RELEASE_LIB_REF": "3a18055644205b356e8fd578d459adf93fc17c10"
+      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -432,7 +432,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
-      "RELEASE_LIB_REF": "3a18055644205b356e8fd578d459adf93fc17c10"
+      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -572,7 +572,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.3"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
-      "RELEASE_LIB_REF": "3a18055644205b356e8fd578d459adf93fc17c10"
+      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -696,7 +696,7 @@
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
 
-        # 'needs.querytee-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
+        # 'needs.loki-query-tee-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"

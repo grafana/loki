@@ -56,7 +56,6 @@ local dockerPluginDir = 'clients/cmd/docker-driver';
       pluginBuildDir=dockerPluginDir,
       releaseLibRef='main',
       releaseRepo='grafana/loki-release',
-      useGitHubAppToken=true,
     ) + {
       name: 'Create Release',
       on+: {
