@@ -15,37 +15,47 @@ import (
 
 // PlannerParams collects the constructor arguments for [New].
 //
-// Bucket and MetastoreWriter are required when Config.Enabled is true (the
-// coordinator polling loop calls into both). When Enabled is false, both may
-// be nil and the Planner runs as a lifecycle-only service — the embedded
-// scheduler is still constructed so the module wiring is uniform across
-// enabled and disabled states.
+// Config.Enabled is the user-facing YAML/CLI gate consulted by the Loki
+// module-init wiring: when false, the planner module returns a nil service
+// and [New] is never called. [New] therefore treats every Planner it
+// constructs as enabled — Bucket and MetastoreWriter are unconditionally
+// required.
 type PlannerParams struct {
 	Config          Config
-	Bucket          objstore.Bucket                  // required when Config.Enabled = true
-	MetastoreWriter *metastore.TableOfContentsWriter // required when Config.Enabled = true
+	Bucket          objstore.Bucket                  // required
+	MetastoreWriter *metastore.TableOfContentsWriter // required
 	Logger          log.Logger
 }
 
 // Planner is the dataobj-compaction-planner target service. It hosts an
 // embedded scheduler that compaction workers connect to and drives the
-// stateless per-cycle coordinator (when compaction is enabled).
+// stateless per-cycle coordinator.
 type Planner struct {
 	*services.BasicService
 
 	cfg         Config
 	logger      log.Logger
 	scheduler   *Scheduler
-	coordinator *coordinator // nil when disabled
+	coordinator *coordinator
 }
 
 // New constructs a compaction Planner. Returns an error if the scheduler
-// cannot be constructed or if Config.Enabled is true but bucket/metastore
-// writer dependencies are missing.
+// cannot be constructed or if any required dependency is missing.
+//
+// The disabled-compactor case (Config.Enabled = false) is handled at the
+// module-init layer by returning nil from initDataObjCompactionPlanner; New
+// is only reached on the enabled path.
 func New(params PlannerParams) (*Planner, error) {
 	logger := params.Logger
 	if logger == nil {
 		logger = log.NewNopLogger()
+	}
+
+	if params.Bucket == nil {
+		return nil, errors.New("dataobj compaction planner: bucket is required")
+	}
+	if params.MetastoreWriter == nil {
+		return nil, errors.New("dataobj compaction planner: metastore writer is required")
 	}
 
 	sched, err := newScheduler(
@@ -56,28 +66,17 @@ func New(params PlannerParams) (*Planner, error) {
 		return nil, fmt.Errorf("dataobj compaction planner: construct scheduler: %w", err)
 	}
 
-	if params.Config.Enabled {
-		if params.Bucket == nil {
-			return nil, errors.New("dataobj compaction planner: bucket is required when compaction is enabled")
-		}
-		if params.MetastoreWriter == nil {
-			return nil, errors.New("dataobj compaction planner: metastore writer is required when compaction is enabled")
-		}
-	}
-
 	p := &Planner{
 		cfg:       params.Config,
 		logger:    logger,
 		scheduler: sched,
-	}
-	if params.Config.Enabled {
-		p.coordinator = newCoordinator(
+		coordinator: newCoordinator(
 			params.Config,
 			log.With(logger, "component", "dataobj-compaction-coordinator"),
 			params.Bucket,
 			sched.inner,
 			params.MetastoreWriter,
-		)
+		),
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p, nil
@@ -105,18 +104,10 @@ func (c *Planner) starting(ctx context.Context) error {
 	return nil
 }
 
-// running is the BasicService running callback. When compaction is
-// enabled it drives the stateless coordinator polling loop; when
-// disabled it simply blocks until shutdown so the service stays healthy
-// (the embedded scheduler still serves workers either way).
+// running is the BasicService running callback. It drives the stateless
+// coordinator polling loop until the context is cancelled.
 func (c *Planner) running(ctx context.Context) error {
-	level.Info(c.logger).Log("msg", "dataobj compaction planner running",
-		"compaction_enabled", c.cfg.Enabled,
-	)
-	if c.coordinator == nil {
-		<-ctx.Done()
-		return nil
-	}
+	level.Info(c.logger).Log("msg", "dataobj compaction planner running")
 	err := c.coordinator.Run(ctx)
 	if errors.Is(err, context.Canceled) {
 		return nil // clean shutdown

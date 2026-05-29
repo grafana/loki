@@ -115,7 +115,13 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 			Endpoint:      defaultEndpoint,
 		},
 	}
-	_, err := New(PlannerParams{Config: cfg})
+	bucket := objstore.NewInMemBucket()
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	_, err := New(PlannerParams{
+		Config:          cfg,
+		Bucket:          bucket,
+		MetastoreWriter: tocWriter,
+	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "resolve advertise address",
 		"error must mention the resolution step for operator clarity, got: %v", err)

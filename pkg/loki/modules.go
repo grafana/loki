@@ -2520,11 +2520,21 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		return nil, err
 	}
 
+	// Wrap with the same IndexStoragePrefix the planner uses so the worker's
+	// IndexMerge executor writes merged-index objects to the same namespace
+	// the ToC pointers (written by the planner via its prefixed indexBucket)
+	// resolve to. metastore.NewObjectMetastore applies the prefix internally,
+	// so it still receives the unprefixed `store`.
+	indexBucket := store
+	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
+		indexBucket = objstore.NewPrefixedBucket(store, prefix)
+	}
+
 	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
 		Config:     t.Cfg.DataObj.Compaction.Worker,
-		Bucket:     store,
+		Bucket:     indexBucket,
 		Metastore:  ms,
 		Logger:     logger,
 		Registerer: prometheus.DefaultRegisterer,

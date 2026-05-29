@@ -139,6 +139,14 @@ func (c *coordinator) runCycle(ctx context.Context) {
 			level.Warn(c.logger).Log("msg", "tenant cycle failed",
 				"tenant", tenant, "window", window, "err", err)
 			failed++
+			// Stop the cycle early on context cancellation. Subsequent
+			// tenants would fail immediately on the cancelled ctx, doing no
+			// useful work but inflating the failed metric and risking
+			// false-positive alerts. The next polling tick (with a fresh
+			// ctx) re-plans the entire window.
+			if ctx.Err() != nil {
+				break
+			}
 			// Continue with next tenant
 			continue
 		}
