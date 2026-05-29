@@ -43,7 +43,7 @@ jobs:
           bash .github/workflows/scripts/helm-weekly-release.sh
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
           token: ${{ steps.app-token.outputs.token }}
           title: "chore: release loki helm chart ${{ steps.update.outputs.new_chart_version }}"
