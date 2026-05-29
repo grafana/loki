@@ -75,11 +75,10 @@ type Config struct {
 func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 	*c = DefaultConfig
 
-	type plain Config
-	// Use Load with WithKnownFields to propagate strict mode through this
-	// custom unmarshaler (Node.Decode does not carry KnownFields from the
-	// outer Decoder).
-	return value.Load((*plain)(c), yaml.WithKnownFields(true))
+	type raw Config
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*raw)(c), yaml.WithKnownFields(true))
 }
 
 // MarshalYAML implements yaml.Marshaler.

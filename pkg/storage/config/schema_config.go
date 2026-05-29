@@ -147,8 +147,10 @@ type PeriodConfig struct {
 
 // UnmarshalYAML implements yaml.Unmarshaller.
 func (cfg *PeriodConfig) UnmarshalYAML(value *yaml.Node) error {
-	type plain PeriodConfig
-	err := value.Decode((*plain)(cfg))
+	type raw PeriodConfig
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	err := value.Load((*raw)(cfg), yaml.WithKnownFields(true))
 	if err != nil {
 		return err
 	}
