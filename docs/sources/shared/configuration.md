@@ -1636,7 +1636,7 @@ dataobj:
     # CLI flag: -dataobj.compaction.toc-consolidate-timeout
     [toc_consolidate_timeout: <duration> | default = 30s]
 
-    # Experimental: Plan version hashed into IndexMerge output paths. Bump to
+    # Experimental: Plan version hashed into IndexMerge output paths. Increase to
     # invalidate previously-written outputs after a planner-algorithm change.
     # CLI flag: -dataobj.compaction.plan-version
     [plan_version: <int> | default = 1]
