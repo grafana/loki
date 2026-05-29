@@ -74,7 +74,7 @@ func loadTenantIndexes(
 	const batchSize = 1024
 	scratch := make([]indexEntry, batchSize)
 
-	out := tenantIndexes{}
+	out := make(tenantIndexes, len(obj.Tenants()))
 	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
 		tenant := section.Tenant
 		entries, err := readAllIndexPointers(ctx, &reader, scratch, section)
