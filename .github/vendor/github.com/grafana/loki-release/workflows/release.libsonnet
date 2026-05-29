@@ -26,14 +26,13 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       common.enableCorepack,
       common.extractBranchName,
       common.githubAppToken,
-      common.setToken,
 
       releaseLibStep('release please')
       + step.withId('release')
       + step.withEnv({
         SHA: '${{ github.sha }}',
         OUTPUTS_BRANCH: '${{ steps.extract_branch.outputs.branch }}',
-        OUTPUTS_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+        OUTPUTS_TOKEN: '${{ steps.get_github_app_token.outputs.token }}',
         OUTPUTS_VERSION: '${{ needs.dist.outputs.version }}',
       })
       //TODO make bucket configurable
@@ -96,7 +95,6 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    common.setupNode,
                    common.enableCorepack,
                    common.githubAppToken,
-                   common.setToken,
 
                    step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136'),
                    releaseStep('download binaries')
@@ -114,7 +112,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    releaseStep('check if release exists')
                    + step.withId('check_release')
                    + step.withEnv({
-                     GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+                     GH_TOKEN: '${{ steps.get_github_app_token.outputs.token }}',
                      OUTPUTS_NAME: '${{ needs.shouldRelease.outputs.name }}',
                    })
                    + step.withRun(|||
@@ -137,7 +135,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    + step.withIf('${{ !fromJSON(steps.check_release.outputs.exists) }}')
                    + step.withEnv({
                      OUTPUTS_BRANCH: '${{ needs.shouldRelease.outputs.branch }}',
-                     OUTPUTS_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+                     OUTPUTS_TOKEN: '${{ steps.get_github_app_token.outputs.token }}',
                      OUTPUTS_PR_NUMBER: '${{ needs.shouldRelease.outputs.prNumber }}',
                      SHA: '${{ needs.shouldRelease.outputs.sha }}',
                    })
@@ -155,7 +153,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    releaseStep('upload artifacts')
                    + step.withId('upload')
                    + step.withEnv({
-                     GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+                     GH_TOKEN: '${{ steps.get_github_app_token.outputs.token }}',
                      OUTPUTS_NAME: '${{ needs.shouldRelease.outputs.name }}',
                    })
                    + step.withRun(|||
@@ -272,11 +270,10 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
     + job.withSteps([
       common.fetchReleaseRepo,
       common.githubAppToken,
-      common.setToken,
       releaseStep('publish release')
       + step.withIf('${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}')
       + step.withEnv({
-        GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+        GH_TOKEN: '${{ steps.get_github_app_token.outputs.token }}',
         OUTPUTS_NAME: '${{ needs.createRelease.outputs.name }}',
         OUTPUTS_IS_LATEST: '${{ needs.createRelease.outputs.isLatest }}',
       })
@@ -298,16 +295,15 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       common.fetchReleaseRepo,
       common.extractBranchName,
       common.githubAppToken,
-      common.setToken,
 
       releaseStep('create release branch')
       + step.withId('create_branch')
       + step.withEnv({
-        GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+        GH_TOKEN: '${{ steps.get_github_app_token.outputs.token }}',
         VERSION: '${{ needs.publishRelease.outputs.name }}',
         OUTPUTS_NAME: '${{ needs.publishRelease.outputs.name }}',
         OUTPUTS_BRANCH: '${{ steps.extract_branch.outputs.branch }}',
-        OUTPUTS_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+        OUTPUTS_TOKEN: '${{ steps.get_github_app_token.outputs.token }}',
       })
       + step.withRun(|||
         # Debug and clean the version variable

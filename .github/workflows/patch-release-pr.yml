@@ -8,10 +8,9 @@ env:
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "3a18055644205b356e8fd578d459adf93fc17c10"
+  RELEASE_LIB_REF: "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
-  USE_GITHUB_APP_TOKEN: true
   VERSIONING_STRATEGY: "always-bump-patch"
 jobs:
   check:
@@ -19,13 +18,12 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@3a18055644205b356e8fd578d459adf93fc17c10"
+    uses: "grafana/loki-release/.github/workflows/check.yml@e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
     with:
       build_image: "golang:1.26.3"
       golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "3a18055644205b356e8fd578d459adf93fc17c10"
+      release_lib_ref: "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       skip_validation: false
-      use_github_app_token: true
   create-release-pr:
     needs:
     - "dist"
@@ -70,24 +68,13 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
     - id: "get_github_app_token"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:
-        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
-      id: "github_app_token"
-      name: "set github token"
-      run: |
-        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
-        else
-          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
-        fi
-    - env:
         OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
-        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         OUTPUTS_VERSION: "${{ needs.dist.outputs.version }}"
         SHA: "${{ github.sha }}"
       id: "release"
@@ -1030,24 +1017,13 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
     - id: "get_github_app_token"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:
-        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
-      id: "github_app_token"
-      name: "set github token"
-      run: |
-        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
-        else
-          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
-        fi
-    - env:
         OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
-        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
       id: "version"
       name: "get release version"
       run: |

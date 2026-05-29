@@ -6,9 +6,8 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "3a18055644205b356e8fd578d459adf93fc17c10"
+  RELEASE_LIB_REF: "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
   RELEASE_REPO: "grafana/loki"
-  USE_GITHUB_APP_TOKEN: true
 jobs:
   createRelease:
     env:
@@ -49,21 +48,10 @@ jobs:
     - name: "enable corepack"
       run: "corepack enable"
     - id: "get_github_app_token"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
         github_app: "${{ env.GITHUB_APP }}"
-    - env:
-        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
-      id: "github_app_token"
-      name: "set github token"
-      run: |
-        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
-        else
-          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
-        fi
     - name: "Login to GAR"
       uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
     - name: "download binaries"
@@ -78,7 +66,7 @@ jobs:
           --destination=dist/
       working-directory: "release"
     - env:
-        GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        GH_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         OUTPUTS_NAME: "${{ needs.shouldRelease.outputs.name }}"
       id: "check_release"
       name: "check if release exists"
@@ -99,7 +87,7 @@ jobs:
     - env:
         OUTPUTS_BRANCH: "${{ needs.shouldRelease.outputs.branch }}"
         OUTPUTS_PR_NUMBER: "${{ needs.shouldRelease.outputs.prNumber }}"
-        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         SHA: "${{ needs.shouldRelease.outputs.sha }}"
       id: "release"
       if: "${{ !fromJSON(steps.check_release.outputs.exists) }}"
@@ -115,7 +103,7 @@ jobs:
           --shas-to-tag "$(echo $OUTPUTS_PR_NUMBER | tr -d '"'):$(echo ${SHA} | tr -d '"')"
       working-directory: "lib"
     - env:
-        GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        GH_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         OUTPUTS_NAME: "${{ needs.shouldRelease.outputs.name }}"
       id: "upload"
       name: "upload artifacts"
@@ -158,26 +146,15 @@ jobs:
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
     - id: "get_github_app_token"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:
-        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
-      id: "github_app_token"
-      name: "set github token"
-      run: |
-        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
-        else
-          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
-        fi
-    - env:
-        GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        GH_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
         OUTPUTS_NAME: "${{ needs.publishRelease.outputs.name }}"
-        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         VERSION: "${{ needs.publishRelease.outputs.name }}"
       id: "create_branch"
       name: "create release branch"
@@ -334,23 +311,12 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - id: "get_github_app_token"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:
-        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
-      id: "github_app_token"
-      name: "set github token"
-      run: |
-        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
-        else
-          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
-        fi
-    - env:
-        GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        GH_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         OUTPUTS_IS_LATEST: "${{ needs.createRelease.outputs.isLatest }}"
         OUTPUTS_NAME: "${{ needs.createRelease.outputs.name }}"
       if: "${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}"
