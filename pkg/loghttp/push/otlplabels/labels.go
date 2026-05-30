@@ -128,16 +128,6 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 		if action == IndexLabel {
 			for _, lbl := range attributeAsLabels {
 				result.StreamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-
-				if !hasServiceName && shouldDiscoverServiceName {
-					for _, labelName := range discoverServiceName {
-						if lbl.Name == labelName {
-							result.StreamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
-							hasServiceName = true
-							break
-						}
-					}
-				}
 			}
 		} else if action == StructuredMetadata {
 			result.StructuredMetadata = append(result.StructuredMetadata, attributeAsLabels...)
@@ -149,8 +139,18 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 		return nil, rangeErr
 	}
 
+	// Discover service_name as a second pass over the collected index labels so the
+	// precedence follows the configured discoverServiceName order rather than the order
+	// attributes happen to appear in the incoming payload. See issue #22010.
 	if !hasServiceName && shouldDiscoverServiceName {
-		result.StreamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(ServiceUnknown)
+		serviceName := ServiceUnknown
+		for _, labelName := range discoverServiceName {
+			if v, ok := result.StreamLabels[model.LabelName(labelName)]; ok {
+				serviceName = string(v)
+				break
+			}
+		}
+		result.StreamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(serviceName)
 	}
 
 	return result, nil
