@@ -58,7 +58,7 @@ jobs:
           password: ${{ env.OPENSHIFT_PASS }}
 
       - name: Build and push
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           # Context has to be inferred from the image name due to zizmor high warning:
           # > WARNING: may expand into attacker-controllable code
