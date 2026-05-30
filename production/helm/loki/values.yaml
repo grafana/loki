@@ -1540,6 +1540,14 @@ singleBinary:
   nodeSelector: {}
   # -- Tolerations for single binary pods
   tolerations: []
+  # -- StatefulSet `persistentVolumeClaimRetentionPolicy`. When set, takes precedence
+  # over the legacy `singleBinary.persistence.enableStatefulSetAutoDeletePVC`
+  # toggle and is rendered verbatim on the StatefulSet spec. Requires k8s >= 1.23.
+  # Example:
+  #   persistentVolumeClaimRetentionPolicy:
+  #     whenDeleted: Retain
+  #     whenScaled: Retain
+  persistentVolumeClaimRetentionPolicy: {}
   persistence:
     # -- What to do with the volume when the StatefulSet is scaled down.
     whenScaled: Delete

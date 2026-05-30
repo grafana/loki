@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 7.1.1
+
+- [BUGFIX] Render `persistentVolumeClaimRetentionPolicy` on the `singleBinary` StatefulSet when the value is set under `singleBinary.persistentVolumeClaimRetentionPolicy`; previously the value was accepted but silently ignored by the template.
+
 ## 7.1.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to 3.6.8 (updated `enterprise.version`, and `enterprise.image.tag`).

@@ -26,7 +26,15 @@ spec:
       partition: 0
   serviceName: {{ include "loki.singleBinaryFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.singleBinary.persistence.enableStatefulSetAutoDeletePVC) (.Values.singleBinary.persistence.enabled) }}
+  {{- if .Values.singleBinary.persistentVolumeClaimRetentionPolicy }}
+  {{/*
+    Allow operators to override the StatefulSet PVC retention policy directly via
+    `.Values.singleBinary.persistentVolumeClaimRetentionPolicy`. This takes precedence
+    over the legacy `singleBinary.persistence.enableStatefulSetAutoDeletePVC` toggle.
+  */}}
+  persistentVolumeClaimRetentionPolicy:
+    {{- toYaml .Values.singleBinary.persistentVolumeClaimRetentionPolicy | nindent 4 }}
+  {{- else if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.singleBinary.persistence.enableStatefulSetAutoDeletePVC) (.Values.singleBinary.persistence.enabled) }}
   {{/*
     Data on the singleBinary nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
