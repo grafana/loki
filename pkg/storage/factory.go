@@ -4,8 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -14,7 +14,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
@@ -25,42 +24,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/noop"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
-
-var (
-	indexGatewayClient index.Client
-	// singleton for each period
-	boltdbIndexClientsWithShipper = make(map[config.DayTime]*boltdb.IndexClient)
-)
-
-// ResetBoltDBIndexClientsWithShipper allows to reset the singletons.
-// MUST ONLY BE USED IN TESTS
-func ResetBoltDBIndexClientsWithShipper() {
-	for _, client := range boltdbIndexClientsWithShipper {
-		client.Stop()
-	}
-
-	boltdbIndexClientsWithShipper = make(map[config.DayTime]*boltdb.IndexClient)
-
-	if indexGatewayClient != nil {
-		indexGatewayClient.Stop()
-		indexGatewayClient = nil
-	}
-}
 
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
@@ -176,11 +149,7 @@ func (ns *NamedStores) populateStoreType() error {
 	ns.storeType = make(map[string]string)
 
 	checkForDuplicates := func(name string) error {
-		switch name {
-		case types.StorageTypeAWS, types.StorageTypeAWSDynamo, types.StorageTypeS3,
-			types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed, types.StorageTypeGCS,
-			types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCassandra,
-			types.StorageTypeFileSystem, types.StorageTypeInMemory, types.StorageTypeGrpc:
+		if slices.Contains(types.SupportedStorageTypes, name) {
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
 		}
 
@@ -280,23 +249,21 @@ type Config struct {
 	Hedging              hedging.Config            `yaml:"hedging"`
 	NamedStores          NamedStores               `yaml:"named_stores"`
 	COSConfig            ibmcloud.COSConfig        `yaml:"cos"`
-	IndexCacheValidity   time.Duration             `yaml:"index_cache_validity"`
 	CongestionControl    congestion.Config         `yaml:"congestion_control,omitempty"`
 	ObjectPrefix         string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
 
-	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
-	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
-	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
+	DisableBroadIndexQueries bool `yaml:"disable_broad_index_queries"`
+	MaxParallelGetChunk      int  `yaml:"max_parallel_get_chunk"`
 
 	UseThanosObjstore bool                         `yaml:"use_thanos_objstore"`
 	ObjectStore       bucket.ConfigWithNamedStores `yaml:"object_store"`
 
-	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
-	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
-	TSDBShipperConfig   indexshipper.Config       `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
-	BloomShipperConfig  bloomshipperconfig.Config `yaml:"bloom_shipper" category:"experimental" doc:"description=Experimental: Configures the bloom shipper component, which contains the store abstraction to fetch bloom filters from and put them to object storage."`
+	MaxChunkBatchSize int `yaml:"max_chunk_batch_size"`
 
-	// Config for using AsyncStore when using async index stores like `boltdb-shipper`.
+	TSDBShipperConfig  indexshipper.Config       `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
+	BloomShipperConfig bloomshipperconfig.Config `yaml:"bloom_shipper" category:"experimental" doc:"description=Experimental: Configures the bloom shipper component, which contains the store abstraction to fetch bloom filters from and put them to object storage."`
+
+	// Config for using AsyncStore when using async index stores like `tsdb`.
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
 	EnableAsyncStore bool          `yaml:"-"`
 	AsyncStoreConfig AsyncStoreCfg `yaml:"-"`
@@ -322,12 +289,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.UseThanosObjstore, "use-thanos-objstore", false, "Enables the use of thanos-io/objstore clients for connecting to object storage. When set to true, the configuration inside `storage_config.object_store` or `common.storage.object_store` block takes effect.")
 	cfg.ObjectStore.RegisterFlagsWithPrefix("object-store.", f)
 
-	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
-	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 	f.StringVar(&cfg.ObjectPrefix, "store.object-prefix", "", "The prefix to all keys inserted in object storage. Example: loki-instances/west/")
 	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
 	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
-	cfg.BoltDBShipperConfig.RegisterFlags(f)
+
 	f.IntVar(&cfg.MaxChunkBatchSize, "store.max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
 	cfg.TSDBShipperConfig.RegisterFlagsWithPrefix("tsdb.", f)
 	cfg.BloomShipperConfig.RegisterFlagsWithPrefix("bloom.", f)
@@ -344,9 +309,6 @@ func (cfg *Config) Validate() error {
 	if err := cfg.S3Config.Validate(); err != nil {
 		return errors.Wrap(err, "invalid AWS Storage config")
 	}
-	if err := cfg.BoltDBShipperConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid boltdb-shipper config")
-	}
 	if err := cfg.TSDBShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tsdb config")
 	}
@@ -361,64 +323,6 @@ func (cfg *Config) Validate() error {
 	}
 
 	return cfg.NamedStores.Validate()
-}
-
-// NewIndexClient creates a new index client of the desired type specified in the PeriodConfig
-func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger, metricsNamespace string) (index.Client, error) {
-
-	switch true {
-	case util.StringsContain(types.TestingStorageTypes, periodCfg.IndexType):
-		switch periodCfg.IndexType {
-		case types.StorageTypeInMemory:
-			store := testutils.NewMockStorage()
-			return store, nil
-		}
-
-	case util.StringsContain(types.SupportedIndexTypes, periodCfg.IndexType):
-		switch periodCfg.IndexType {
-		case types.BoltDBShipperType:
-			if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
-				if indexGatewayClient != nil {
-					return indexGatewayClient, nil
-				}
-
-				gateway, err := indexgateway.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger, constants.Loki)
-				if err != nil {
-					return nil, err
-				}
-
-				indexGatewayClient = gateway
-				return gateway, nil
-			}
-
-			if client, ok := boltdbIndexClientsWithShipper[periodCfg.From]; ok {
-				return client, nil
-			}
-
-			objectClient, err := NewObjectClient(periodCfg.ObjectType, component, cfg, cm)
-			if err != nil {
-				return nil, err
-			}
-
-			var filterFn downloads.TenantFilter
-			if shardingStrategy != nil {
-				filterFn = shardingStrategy.FilterTenants
-			}
-			indexClient, err := boltdb.NewIndexClient(periodCfg.IndexTables.PathPrefix, cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
-			if err != nil {
-				return nil, err
-			}
-
-			boltdbIndexClientsWithShipper[periodCfg.From] = indexClient
-			return indexClient, nil
-
-		case types.TSDBType:
-			// TODO(chaudum): Move TSDB index client creation into this code path
-			return nil, fmt.Errorf("code path not supported")
-		}
-	}
-
-	return nil, fmt.Errorf("unrecognized index client type %s, choose one of: %s", periodCfg.IndexType, strings.Join(types.SupportedIndexTypes, ","))
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
@@ -469,16 +373,6 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 
 	switch true {
 
-	case util.StringsContain(types.TestingStorageTypes, storeType):
-		switch storeType {
-		case types.StorageTypeInMemory:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			return client.NewClientWithMaxParallel(c, nil, 1, schemaCfg), nil
-		}
-
 	case util.StringsContain(types.SupportedStorageTypes, storeType):
 		switch storeType {
 		case types.StorageTypeFileSystem:
@@ -508,10 +402,6 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			if cfg.CongestionControl.Enabled {
 				c = cc.Wrap(c)
 			}
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-
-		case types.StorageTypeNoop:
-			c, _ := noop.NewNoopObjectClient()
 			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 		}
 
@@ -571,8 +461,6 @@ func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientM
 	}
 
 	switch storeType {
-	case types.StorageTypeInMemory:
-		return testutils.NewMockStorage(), nil
 
 	case types.StorageTypeAWS, types.StorageTypeS3:
 		s3Cfg := cfg.S3Config
@@ -677,6 +565,6 @@ func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientM
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", storeName, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeFileSystem)
+		return nil, fmt.Errorf("Unrecognized storage client %s, choose one of: %s", storeName, strings.Join(types.SupportedStorageTypes, ", "))
 	}
 }

@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	msalerrors "github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors"
 )
 
 const (
@@ -61,6 +63,9 @@ var aadTrustedHostList = map[string]bool{
 	"login.microsoft.com":              true,
 	"sts.windows.net":                  true,
 	"login.usgovcloudapi.net":          true,
+	"login.sovcloud-identity.fr":       true, // Bleu (France sovereign cloud)
+	"login.sovcloud-identity.de":       true, // Delos (Germany sovereign cloud)
+	"login.sovcloud-identity.sg":       true, // GovSG (Singapore sovereign cloud)
 }
 
 // TrustedHost checks if an AAD host is trusted/valid.
@@ -607,6 +612,14 @@ func (c Client) AADInstanceDiscovery(ctx context.Context, authorityInfo Info) (I
 
 		endpoint := fmt.Sprintf(aadInstanceDiscoveryEndpoint, discoveryHost)
 		err = c.Comm.JSONCall(ctx, endpoint, http.Header{}, qv, nil, &resp)
+		if err != nil {
+			var callErr msalerrors.CallErr
+			if errors.As(err, &callErr) && callErr.Resp != nil && callErr.Resp.StatusCode == http.StatusBadRequest {
+				if strings.Contains(callErr.Err.Error(), "invalid_instance") {
+					return resp, fmt.Errorf("invalid_instance: the authority host is not valid: %w", err)
+				}
+			}
+		}
 	}
 	return resp, err
 }

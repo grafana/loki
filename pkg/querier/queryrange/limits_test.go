@@ -848,7 +848,7 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 				From: config.DayTime{
 					Time: borderTime.Add(-1 * time.Hour),
 				},
-				IndexType: types.TSDBType,
+				IndexType: types.IndexTypeTSDB,
 			},
 		}
 
@@ -866,7 +866,7 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 				From: config.DayTime{
 					Time: borderTime.Add(-1 * time.Hour),
 				},
-				IndexType: types.TSDBType,
+				IndexType: types.IndexTypeTSDB,
 			},
 		}
 
@@ -884,7 +884,7 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 				From: config.DayTime{
 					Time: borderTime.Add(-1 * time.Hour),
 				},
-				IndexType: types.TSDBType,
+				IndexType: types.IndexTypeTSDB,
 			},
 		}
 
@@ -898,20 +898,14 @@ func Test_MaxQuerySize(t *testing.T) {
 
 	schemas := []config.PeriodConfig{
 		{
-			// BoltDB -> Time -4 days
-			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-96 * time.Hour).Unix())},
-			IndexType: types.BoltDBShipperType,
-		},
-		{
 			// TSDB -> Time -2 days
 			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
-			IndexType: types.TSDBType,
+			IndexType: types.IndexTypeTSDB,
 		},
 	}
 
 	for _, tc := range []struct {
 		desc       string
-		schema     string
 		query      string
 		queryRange time.Duration
 		queryStart time.Time
@@ -922,23 +916,6 @@ func Test_MaxQuerySize(t *testing.T) {
 		expectedQueryStatsHits   int
 		expectedQuerierStatsHits int
 	}{
-		{
-			desc:       "No TSDB",
-			schema:     types.BoltDBShipperType,
-			query:      `{app="foo"} |= "foo"`,
-			queryRange: 1 * time.Hour,
-
-			queryStart: testTime.Add(-96 * time.Hour),
-			queryEnd:   testTime.Add(-90 * time.Hour),
-			limits: fakeLimits{
-				maxQueryBytesRead:   1,
-				maxQuerierBytesRead: 1,
-			},
-
-			shouldErr:                false,
-			expectedQueryStatsHits:   0,
-			expectedQuerierStatsHits: 0,
-		},
 		{
 			desc:       "Unlimited",
 			query:      `{app="foo"} |= "foo"`,
@@ -1058,7 +1035,7 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 	schemas := []config.PeriodConfig{
 		{
 			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
-			IndexType: types.TSDBType,
+			IndexType: types.IndexTypeTSDB,
 		},
 	}
 

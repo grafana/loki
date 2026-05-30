@@ -28,7 +28,7 @@ type CommonIndexClient interface {
 	DeleteFile(ctx context.Context, tableName, fileName string) error
 }
 
-// Client is used to manage boltdb index files in object storage, when using boltdb-shipper.
+// Client is used to manage TSDB index files in object storage, when using `tsdb`.
 type Client interface {
 	CommonIndexClient
 	UserIndexClient

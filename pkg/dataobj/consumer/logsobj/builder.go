@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -583,7 +584,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			iter, iterErr = sortedSchemaIter(ctx, sections, sortKeys, parseSortOrder(b.cfg.DataobjSortOrder))
 		} else {
 			sortOrder = parseSortOrder(b.cfg.DataobjSortOrder)
-			iter, iterErr = sortMergeIterator(ctx, sections, sortOrder)
+			iter, iterErr = sortmerge.Iterator(ctx, sections, sortOrder)
 		}
 		if iterErr != nil {
 			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)

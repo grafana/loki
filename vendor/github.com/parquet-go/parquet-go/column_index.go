@@ -752,3 +752,23 @@ func boundaryOrderOf(minOrder, maxOrder int) format.BoundaryOrder {
 	}
 	return format.Unordered
 }
+
+type nullColumnIndexer struct {
+	baseColumnIndexer
+}
+
+func newNullColumnIndexer() *nullColumnIndexer {
+	return new(nullColumnIndexer)
+}
+
+func (i *nullColumnIndexer) Reset() {
+	i.reset()
+}
+
+func (i *nullColumnIndexer) IndexPage(numValues, numNulls int64, min, max Value) {
+	i.observe(numValues, numNulls)
+}
+
+func (i *nullColumnIndexer) ColumnIndex() format.ColumnIndex {
+	return i.columnIndex(nil, nil, 0, 0)
+}
