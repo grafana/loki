@@ -33,8 +33,8 @@ func (p *SingleConnPool) NewConn(ctx context.Context) (*Conn, error) {
 	return p.pool.NewConn(ctx)
 }
 
-func (p *SingleConnPool) CloseConn(cn *Conn) error {
-	return p.pool.CloseConn(cn)
+func (p *SingleConnPool) CloseConn(ctx context.Context, cn *Conn, reason string, fromState string) error {
+	return p.pool.CloseConn(ctx, cn, reason, fromState)
 }
 
 func (p *SingleConnPool) Get(_ context.Context) (*Conn, error) {

@@ -3,7 +3,10 @@ package redis
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/redis/go-redis/v9/internal"
 	"github.com/redis/go-redis/v9/internal/proto"
@@ -256,22 +259,42 @@ type FTAggregateWithCursor struct {
 	MaxIdle int
 }
 
+// FTAggregateSortByStep represents a SORTBY operation with optional MAX.
+// Used inside FTAggregateStep to place SORTBY at an arbitrary position in
+// the aggregation pipeline.
+type FTAggregateSortByStep struct {
+	Fields []FTAggregateSortBy
+	Max    int // 0 means no MAX
+}
+
+// FTAggregateStep represents a single operation in the aggregation pipeline.
+// LOAD, APPLY, SORTBY and GROUPBY can all appear multiple times in any order.
+// Exactly one of the fields should be set per step.
+type FTAggregateStep struct {
+	Load    *FTAggregateLoad
+	Apply   *FTAggregateApply
+	GroupBy *FTAggregateGroupBy
+	SortBy  *FTAggregateSortByStep
+}
+
 type FTAggregateOptions struct {
-	Verbatim  bool
-	LoadAll   bool
-	Load      []FTAggregateLoad
-	Timeout   int
-	GroupBy   []FTAggregateGroupBy
-	SortBy    []FTAggregateSortBy
-	SortByMax int
+	Verbatim bool
+	LoadAll  bool
+	Timeout  int
 	// Scorer is used to set scoring function, if not set passed, a default will be used.
 	// The default scorer depends on the Redis version:
 	// - `BM25` for Redis >= 8
 	// - `TFIDF` for Redis < 8
 	Scorer string
 	// AddScores is available in Redis CE 8
-	AddScores         bool
-	Apply             []FTAggregateApply
+	AddScores bool
+
+	// Steps is the ordered sequence of aggregation pipeline operations.
+	// It can contain LOAD, APPLY, GROUPBY and SORTBY in any order, multiple times.
+	// Steps cannot be combined with the deprecated Load, Apply, GroupBy, SortBy
+	// and SortByMax fields: doing so returns an error.
+	Steps []FTAggregateStep
+
 	LimitOffset       int
 	Limit             int
 	Filter            string
@@ -280,6 +303,17 @@ type FTAggregateOptions struct {
 	Params            map[string]interface{}
 	// Dialect 1,3 and 4 are deprecated since redis 8.0
 	DialectVersion int
+
+	// Deprecated: Use Steps instead.
+	Load []FTAggregateLoad
+	// Deprecated: Use Steps instead.
+	GroupBy []FTAggregateGroupBy
+	// Deprecated: Use Steps instead.
+	SortBy []FTAggregateSortBy
+	// Deprecated: Use Steps instead.
+	SortByMax int
+	// Deprecated: Use Steps instead.
+	Apply []FTAggregateApply
 }
 
 type FTSearchFilter struct {
@@ -448,9 +482,12 @@ type FTSynDumpCmd struct {
 	val []FTSynDumpResult
 }
 
+// FTAggregateResult represents the result of an aggregate operation
+// NOTE: For RESP3 Total is not reliable (before Redis 8.8)
 type FTAggregateResult struct {
-	Total int
-	Rows  []AggregateRow
+	Total    int
+	Rows     []AggregateRow
+	Warnings []string
 }
 
 type AggregateRow struct {
@@ -580,8 +617,9 @@ type SpellCheckSuggestion struct {
 }
 
 type FTSearchResult struct {
-	Total int
-	Docs  []Document
+	Total    int
+	Docs     []Document
+	Warnings []string
 }
 
 type Document struct {
@@ -615,9 +653,112 @@ func (c cmdable) FTAggregate(ctx context.Context, index string, query string) *M
 	return cmd
 }
 
+// validateFTAggregateOptions validates mutually exclusive combinations of
+// FTAggregateOptions fields before any command arguments are constructed.
+func validateFTAggregateOptions(options *FTAggregateOptions) error {
+	if len(options.Steps) > 0 {
+		if options.Load != nil || options.Apply != nil || options.GroupBy != nil ||
+			options.SortBy != nil || options.SortByMax != 0 {
+			return fmt.Errorf("FT.AGGREGATE: Steps cannot be combined with the deprecated Load, Apply, GroupBy, SortBy and SortByMax fields")
+		}
+		if options.LoadAll {
+			for _, step := range options.Steps {
+				if step.Load != nil {
+					return fmt.Errorf("FT.AGGREGATE: LOADALL and LOAD are mutually exclusive")
+				}
+			}
+		}
+	}
+	if options.LoadAll && options.Load != nil {
+		return fmt.Errorf("FT.AGGREGATE: LOADALL and LOAD are mutually exclusive")
+	}
+	return nil
+}
+
+// appendFTAggregateStep appends the Redis command arguments for a single
+// aggregation pipeline step. Each step must set exactly one of Load, Apply,
+// GroupBy or SortBy.
+func appendFTAggregateStep(args []interface{}, step FTAggregateStep) ([]interface{}, error) {
+	set := 0
+	if step.Load != nil {
+		set++
+	}
+	if step.Apply != nil {
+		set++
+	}
+	if step.GroupBy != nil {
+		set++
+	}
+	if step.SortBy != nil {
+		set++
+	}
+	if set != 1 {
+		return args, fmt.Errorf("FT.AGGREGATE: each step must set exactly one of Load, Apply, GroupBy, SortBy (got %d)", set)
+	}
+
+	switch {
+	case step.Load != nil:
+		args = append(args, "LOAD")
+		countIdx := len(args)
+		args = append(args, 0)
+		count := 0
+		args = append(args, step.Load.Field)
+		count++
+		if step.Load.As != "" {
+			args = append(args, "AS", step.Load.As)
+			count += 2
+		}
+		args[countIdx] = count
+	case step.Apply != nil:
+		args = append(args, "APPLY", step.Apply.Field)
+		if step.Apply.As != "" {
+			args = append(args, "AS", step.Apply.As)
+		}
+	case step.GroupBy != nil:
+		args = append(args, "GROUPBY", len(step.GroupBy.Fields))
+		args = append(args, step.GroupBy.Fields...)
+		for _, reducer := range step.GroupBy.Reduce {
+			args = append(args, "REDUCE", reducer.Reducer.String())
+			if reducer.Args != nil {
+				args = append(args, len(reducer.Args))
+				args = append(args, reducer.Args...)
+			} else {
+				args = append(args, 0)
+			}
+			if reducer.As != "" {
+				args = append(args, "AS", reducer.As)
+			}
+		}
+	case step.SortBy != nil:
+		args = append(args, "SORTBY")
+		sortByOptions := []interface{}{}
+		for _, sortBy := range step.SortBy.Fields {
+			if sortBy.Asc && sortBy.Desc {
+				return args, fmt.Errorf("FT.AGGREGATE: ASC and DESC are mutually exclusive")
+			}
+			sortByOptions = append(sortByOptions, sortBy.FieldName)
+			if sortBy.Asc {
+				sortByOptions = append(sortByOptions, "ASC")
+			}
+			if sortBy.Desc {
+				sortByOptions = append(sortByOptions, "DESC")
+			}
+		}
+		args = append(args, len(sortByOptions))
+		args = append(args, sortByOptions...)
+		if step.SortBy.Max > 0 {
+			args = append(args, "MAX", step.SortBy.Max)
+		}
+	}
+	return args, nil
+}
+
 func FTAggregateQuery(query string, options *FTAggregateOptions) (AggregateQuery, error) {
 	queryArgs := []interface{}{query}
 	if options != nil {
+		if err := validateFTAggregateOptions(options); err != nil {
+			return nil, err
+		}
 		if options.Verbatim {
 			queryArgs = append(queryArgs, "VERBATIM")
 		}
@@ -630,13 +771,10 @@ func FTAggregateQuery(query string, options *FTAggregateOptions) (AggregateQuery
 			queryArgs = append(queryArgs, "ADDSCORES")
 		}
 
-		if options.LoadAll && options.Load != nil {
-			return nil, fmt.Errorf("FT.AGGREGATE: LOADALL and LOAD are mutually exclusive")
-		}
 		if options.LoadAll {
 			queryArgs = append(queryArgs, "LOAD", "*")
 		}
-		if options.Load != nil {
+		if len(options.Steps) == 0 && options.Load != nil {
 			queryArgs = append(queryArgs, "LOAD", len(options.Load))
 			index, count := len(queryArgs)-1, 0
 			for _, load := range options.Load {
@@ -654,53 +792,63 @@ func FTAggregateQuery(query string, options *FTAggregateOptions) (AggregateQuery
 			queryArgs = append(queryArgs, "TIMEOUT", options.Timeout)
 		}
 
-		for _, apply := range options.Apply {
-			queryArgs = append(queryArgs, "APPLY", apply.Field)
-			if apply.As != "" {
-				queryArgs = append(queryArgs, "AS", apply.As)
+		if len(options.Steps) > 0 {
+			for _, step := range options.Steps {
+				var err error
+				queryArgs, err = appendFTAggregateStep(queryArgs, step)
+				if err != nil {
+					return nil, err
+				}
 			}
-		}
+		} else {
+			for _, apply := range options.Apply {
+				queryArgs = append(queryArgs, "APPLY", apply.Field)
+				if apply.As != "" {
+					queryArgs = append(queryArgs, "AS", apply.As)
+				}
+			}
 
-		if options.GroupBy != nil {
-			for _, groupBy := range options.GroupBy {
-				queryArgs = append(queryArgs, "GROUPBY", len(groupBy.Fields))
-				queryArgs = append(queryArgs, groupBy.Fields...)
+			if options.GroupBy != nil {
+				for _, groupBy := range options.GroupBy {
+					queryArgs = append(queryArgs, "GROUPBY", len(groupBy.Fields))
+					queryArgs = append(queryArgs, groupBy.Fields...)
 
-				for _, reducer := range groupBy.Reduce {
-					queryArgs = append(queryArgs, "REDUCE")
-					queryArgs = append(queryArgs, reducer.Reducer.String())
-					if reducer.Args != nil {
-						queryArgs = append(queryArgs, len(reducer.Args))
-						queryArgs = append(queryArgs, reducer.Args...)
-					} else {
-						queryArgs = append(queryArgs, 0)
-					}
-					if reducer.As != "" {
-						queryArgs = append(queryArgs, "AS", reducer.As)
+					for _, reducer := range groupBy.Reduce {
+						queryArgs = append(queryArgs, "REDUCE")
+						queryArgs = append(queryArgs, reducer.Reducer.String())
+						if reducer.Args != nil {
+							queryArgs = append(queryArgs, len(reducer.Args))
+							queryArgs = append(queryArgs, reducer.Args...)
+						} else {
+							queryArgs = append(queryArgs, 0)
+						}
+						if reducer.As != "" {
+							queryArgs = append(queryArgs, "AS", reducer.As)
+						}
 					}
 				}
 			}
-		}
-		if options.SortBy != nil {
-			queryArgs = append(queryArgs, "SORTBY")
-			sortByOptions := []interface{}{}
-			for _, sortBy := range options.SortBy {
-				sortByOptions = append(sortByOptions, sortBy.FieldName)
-				if sortBy.Asc && sortBy.Desc {
-					return nil, fmt.Errorf("FT.AGGREGATE: ASC and DESC are mutually exclusive")
+			if options.SortBy != nil {
+				queryArgs = append(queryArgs, "SORTBY")
+				sortByOptions := []interface{}{}
+				for _, sortBy := range options.SortBy {
+					sortByOptions = append(sortByOptions, sortBy.FieldName)
+					if sortBy.Asc && sortBy.Desc {
+						return nil, fmt.Errorf("FT.AGGREGATE: ASC and DESC are mutually exclusive")
+					}
+					if sortBy.Asc {
+						sortByOptions = append(sortByOptions, "ASC")
+					}
+					if sortBy.Desc {
+						sortByOptions = append(sortByOptions, "DESC")
+					}
 				}
-				if sortBy.Asc {
-					sortByOptions = append(sortByOptions, "ASC")
-				}
-				if sortBy.Desc {
-					sortByOptions = append(sortByOptions, "DESC")
-				}
+				queryArgs = append(queryArgs, len(sortByOptions))
+				queryArgs = append(queryArgs, sortByOptions...)
 			}
-			queryArgs = append(queryArgs, len(sortByOptions))
-			queryArgs = append(queryArgs, sortByOptions...)
-		}
-		if options.SortByMax > 0 {
-			queryArgs = append(queryArgs, "MAX", options.SortByMax)
+			if options.SortByMax > 0 {
+				queryArgs = append(queryArgs, "MAX", options.SortByMax)
+			}
 		}
 		if options.LimitOffset >= 0 && options.Limit > 0 {
 			queryArgs = append(queryArgs, "LIMIT", options.LimitOffset, options.Limit)
@@ -806,15 +954,129 @@ func (cmd *AggregateCmd) String() string {
 }
 
 func (cmd *AggregateCmd) readReply(rd *proto.Reader) (err error) {
-	data, err := rd.ReadSlice()
+	readType, err := rd.PeekReplyType()
 	if err != nil {
 		return err
 	}
-	cmd.val, err = ProcessAggregateResult(data)
+
+	// RESP3 returns a map, RESP2 returns an array
+	if readType == proto.RespMap {
+		// Read raw response first for backwards compatibility
+		cmd.rawVal, err = rd.ReadReply()
+		if err != nil {
+			return err
+		}
+		// Parse the raw response into structured result
+		if mapVal, ok := cmd.rawVal.(map[interface{}]interface{}); ok {
+			cmd.val, err = parseFTAggregateMapRESP3(mapVal)
+		} else {
+			return fmt.Errorf("unexpected RESP3 response type: %T", cmd.rawVal)
+		}
+		return err
+	}
+
+	// RESP2 format or error response - use ReadReply to handle errors properly
+	data, err := rd.ReadReply()
 	if err != nil {
 		return err
 	}
-	return nil
+	cmd.rawVal = data // Store raw value for debugging
+	if dataSlice, ok := data.([]interface{}); ok {
+		cmd.val, err = ProcessAggregateResult(dataSlice)
+		return err
+	}
+	return fmt.Errorf("unexpected response type: %T", data)
+}
+
+// parseFTAggregateMapRESP3 parses the RESP3 format response from FT.AGGREGATE.
+// It takes a map[interface{}]interface{} which is the raw response from ReadReply().
+// RESP3 format:
+//
+//	%5
+//	  $10 attributes => *0
+//	  $13 total_results => :N
+//	  $6 format => $6 STRING
+//	  $7 results => *N (array of maps with extra_attributes, values)
+//	  $7 warning => *N (array of strings)
+func parseFTAggregateMapRESP3(data map[interface{}]interface{}) (*FTAggregateResult, error) {
+	result := &FTAggregateResult{
+		Rows: make([]AggregateRow, 0),
+	}
+
+	for k, v := range data {
+		key, ok := k.(string)
+		if !ok {
+			continue
+		}
+
+		switch key {
+		case "total_results":
+			result.Total = internal.ToInteger(v)
+		case "results":
+			if resultsData, ok := v.([]interface{}); ok {
+				rows, err := parseFTAggregateResultsMapRESP3(resultsData)
+				if err != nil {
+					return nil, err
+				}
+				result.Rows = rows
+			}
+		case "warning":
+			if warningsData, ok := v.([]interface{}); ok {
+				result.Warnings = make([]string, 0, len(warningsData))
+				for _, w := range warningsData {
+					if ws, ok := w.(string); ok {
+						result.Warnings = append(result.Warnings, ws)
+					}
+				}
+			}
+			// Ignore "attributes", "format", and other fields as per the spec
+		}
+	}
+
+	return result, nil
+}
+
+// parseFTAggregateResultsMapRESP3 parses the results array from RESP3 FT.AGGREGATE response.
+func parseFTAggregateResultsMapRESP3(resultsData []interface{}) ([]AggregateRow, error) {
+	rows := make([]AggregateRow, 0, len(resultsData))
+	for _, item := range resultsData {
+		if itemMap, ok := item.(map[interface{}]interface{}); ok {
+			row, err := parseFTAggregateRowMapRESP3(itemMap)
+			if err != nil {
+				return nil, err
+			}
+			rows = append(rows, row)
+		}
+	}
+	return rows, nil
+}
+
+// parseFTAggregateRowMapRESP3 parses a single row from RESP3 FT.AGGREGATE response.
+func parseFTAggregateRowMapRESP3(itemMap map[interface{}]interface{}) (AggregateRow, error) {
+	row := AggregateRow{
+		Fields: make(map[string]interface{}),
+	}
+
+	for k, v := range itemMap {
+		key, ok := k.(string)
+		if !ok {
+			continue
+		}
+
+		switch key {
+		case "extra_attributes":
+			if extraAttrs, ok := v.(map[interface{}]interface{}); ok {
+				for ek, ev := range extraAttrs {
+					if ekStr, ok := ek.(string); ok {
+						row.Fields[ekStr] = ev
+					}
+				}
+			}
+			// Ignore "values" and other fields as per the spec
+		}
+	}
+
+	return row, nil
 }
 
 func (cmd *AggregateCmd) Clone() Cmder {
@@ -835,6 +1097,10 @@ func (cmd *AggregateCmd) Clone() Cmder {
 				}
 			}
 		}
+		if cmd.val.Warnings != nil {
+			val.Warnings = make([]string, len(cmd.val.Warnings))
+			copy(val.Warnings, cmd.val.Warnings)
+		}
 	}
 	return &AggregateCmd{
 		baseCmd: cmd.cloneBaseCmd(),
@@ -850,6 +1116,11 @@ func (cmd *AggregateCmd) Clone() Cmder {
 func (c cmdable) FTAggregateWithArgs(ctx context.Context, index string, query string, options *FTAggregateOptions) *AggregateCmd {
 	args := []interface{}{"FT.AGGREGATE", index, query}
 	if options != nil {
+		if err := validateFTAggregateOptions(options); err != nil {
+			cmd := NewAggregateCmd(ctx, args...)
+			cmd.SetErr(err)
+			return cmd
+		}
 		if options.Verbatim {
 			args = append(args, "VERBATIM")
 		}
@@ -859,15 +1130,10 @@ func (c cmdable) FTAggregateWithArgs(ctx context.Context, index string, query st
 		if options.AddScores {
 			args = append(args, "ADDSCORES")
 		}
-		if options.LoadAll && options.Load != nil {
-			cmd := NewAggregateCmd(ctx, args...)
-			cmd.SetErr(fmt.Errorf("FT.AGGREGATE: LOADALL and LOAD are mutually exclusive"))
-			return cmd
-		}
 		if options.LoadAll {
 			args = append(args, "LOAD", "*")
 		}
-		if options.Load != nil {
+		if len(options.Steps) == 0 && options.Load != nil {
 			args = append(args, "LOAD", len(options.Load))
 			index, count := len(args)-1, 0
 			for _, load := range options.Load {
@@ -883,54 +1149,66 @@ func (c cmdable) FTAggregateWithArgs(ctx context.Context, index string, query st
 		if options.Timeout > 0 {
 			args = append(args, "TIMEOUT", options.Timeout)
 		}
-		for _, apply := range options.Apply {
-			args = append(args, "APPLY", apply.Field)
-			if apply.As != "" {
-				args = append(args, "AS", apply.As)
-			}
-		}
-		if options.GroupBy != nil {
-			for _, groupBy := range options.GroupBy {
-				args = append(args, "GROUPBY", len(groupBy.Fields))
-				args = append(args, groupBy.Fields...)
-
-				for _, reducer := range groupBy.Reduce {
-					args = append(args, "REDUCE")
-					args = append(args, reducer.Reducer.String())
-					if reducer.Args != nil {
-						args = append(args, len(reducer.Args))
-						args = append(args, reducer.Args...)
-					} else {
-						args = append(args, 0)
-					}
-					if reducer.As != "" {
-						args = append(args, "AS", reducer.As)
-					}
-				}
-			}
-		}
-		if options.SortBy != nil {
-			args = append(args, "SORTBY")
-			sortByOptions := []interface{}{}
-			for _, sortBy := range options.SortBy {
-				sortByOptions = append(sortByOptions, sortBy.FieldName)
-				if sortBy.Asc && sortBy.Desc {
+		if len(options.Steps) > 0 {
+			for _, step := range options.Steps {
+				var err error
+				args, err = appendFTAggregateStep(args, step)
+				if err != nil {
 					cmd := NewAggregateCmd(ctx, args...)
-					cmd.SetErr(fmt.Errorf("FT.AGGREGATE: ASC and DESC are mutually exclusive"))
+					cmd.SetErr(err)
 					return cmd
 				}
-				if sortBy.Asc {
-					sortByOptions = append(sortByOptions, "ASC")
-				}
-				if sortBy.Desc {
-					sortByOptions = append(sortByOptions, "DESC")
+			}
+		} else {
+			for _, apply := range options.Apply {
+				args = append(args, "APPLY", apply.Field)
+				if apply.As != "" {
+					args = append(args, "AS", apply.As)
 				}
 			}
-			args = append(args, len(sortByOptions))
-			args = append(args, sortByOptions...)
-		}
-		if options.SortByMax > 0 {
-			args = append(args, "MAX", options.SortByMax)
+			if options.GroupBy != nil {
+				for _, groupBy := range options.GroupBy {
+					args = append(args, "GROUPBY", len(groupBy.Fields))
+					args = append(args, groupBy.Fields...)
+
+					for _, reducer := range groupBy.Reduce {
+						args = append(args, "REDUCE")
+						args = append(args, reducer.Reducer.String())
+						if reducer.Args != nil {
+							args = append(args, len(reducer.Args))
+							args = append(args, reducer.Args...)
+						} else {
+							args = append(args, 0)
+						}
+						if reducer.As != "" {
+							args = append(args, "AS", reducer.As)
+						}
+					}
+				}
+			}
+			if options.SortBy != nil {
+				args = append(args, "SORTBY")
+				sortByOptions := []interface{}{}
+				for _, sortBy := range options.SortBy {
+					sortByOptions = append(sortByOptions, sortBy.FieldName)
+					if sortBy.Asc && sortBy.Desc {
+						cmd := NewAggregateCmd(ctx, args...)
+						cmd.SetErr(fmt.Errorf("FT.AGGREGATE: ASC and DESC are mutually exclusive"))
+						return cmd
+					}
+					if sortBy.Asc {
+						sortByOptions = append(sortByOptions, "ASC")
+					}
+					if sortBy.Desc {
+						sortByOptions = append(sortByOptions, "DESC")
+					}
+				}
+				args = append(args, len(sortByOptions))
+				args = append(args, sortByOptions...)
+			}
+			if options.SortByMax > 0 {
+				args = append(args, "MAX", options.SortByMax)
+			}
 		}
 		if options.LimitOffset >= 0 && options.Limit > 0 {
 			args = append(args, "LIMIT", options.LimitOffset, options.Limit)
@@ -1409,134 +1687,322 @@ func (c cmdable) FTExplainCli(ctx context.Context, key, path string) error {
 	return fmt.Errorf("FTExplainCli is not implemented")
 }
 
+// parseFTAttributeFromMap parses an FTAttribute from a RESP3 map format
+func parseFTAttributeFromMap(attrMap map[interface{}]interface{}) FTAttribute {
+	att := FTAttribute{}
+	for k, v := range attrMap {
+		key := internal.ToLower(internal.ToString(k))
+		switch key {
+		case "attribute":
+			att.Attribute = internal.ToString(v)
+		case "identifier":
+			att.Identifier = internal.ToString(v)
+		case "type":
+			att.Type = internal.ToString(v)
+		case "weight":
+			att.Weight = internal.ToFloat(v)
+		case "phonetic":
+			att.PhoneticMatcher = internal.ToString(v)
+		case "algorithm":
+			att.Algorithm = internal.ToString(v)
+		case "data_type":
+			att.DataType = internal.ToString(v)
+		case "dim":
+			att.Dim = internal.ToInteger(v)
+		case "distance_metric":
+			att.DistanceMetric = internal.ToString(v)
+		case "m":
+			att.M = internal.ToInteger(v)
+		case "ef_construction":
+			att.EFConstruction = internal.ToInteger(v)
+		case "flags":
+			// flags is an array of strings like ["SORTABLE", "NOSTEM"]
+			if flags, ok := v.([]interface{}); ok {
+				for _, flag := range flags {
+					flagStr := internal.ToLower(internal.ToString(flag))
+					switch flagStr {
+					case "nostem":
+						att.NoStem = true
+					case "sortable":
+						att.Sortable = true
+					case "noindex":
+						att.NoIndex = true
+					case "unf":
+						att.UNF = true
+					case "case_sensitive":
+						att.CaseSensitive = true
+					case "withsuffixtrie":
+						att.WithSuffixtrie = true
+					}
+				}
+			}
+		}
+	}
+	return att
+}
+
+// getMapStringKey extracts a string value from a map with interface{} keys
+func getMapStringKey(m map[interface{}]interface{}, key string) interface{} {
+	if v, ok := m[key]; ok {
+		return v
+	}
+	return nil
+}
+
+// parseIndexErrorsRESP3 parses Index Errors from RESP3 map format
+func parseIndexErrorsRESP3(m map[interface{}]interface{}) IndexErrors {
+	return IndexErrors{
+		IndexingFailures:     internal.ToInteger(getMapStringKey(m, "indexing failures")),
+		LastIndexingError:    internal.ToString(getMapStringKey(m, "last indexing error")),
+		LastIndexingErrorKey: internal.ToString(getMapStringKey(m, "last indexing error key")),
+	}
+}
+
+// parseCursorStatsRESP3 parses cursor_stats from RESP3 map format
+func parseCursorStatsRESP3(m map[interface{}]interface{}) CursorStats {
+	return CursorStats{
+		GlobalIdle:    internal.ToInteger(getMapStringKey(m, "global_idle")),
+		GlobalTotal:   internal.ToInteger(getMapStringKey(m, "global_total")),
+		IndexCapacity: internal.ToInteger(getMapStringKey(m, "index_capacity")),
+		IndexTotal:    internal.ToInteger(getMapStringKey(m, "index_total")),
+	}
+}
+
+// parseGCStatsRESP3 parses gc_stats from RESP3 map format
+func parseGCStatsRESP3(m map[interface{}]interface{}) GCStats {
+	// Handle average_cycle_time_ms which can be a float64 (including NaN) or string
+	avgCycleTime := ""
+	if v := getMapStringKey(m, "average_cycle_time_ms"); v != nil {
+		switch val := v.(type) {
+		case string:
+			// Normalize to lowercase for consistency with RESP2
+			avgCycleTime = strings.ToLower(val)
+		case float64:
+			avgCycleTime = internal.FormatFloat(val)
+		}
+	}
+
+	return GCStats{
+		BytesCollected:       ftInfoNumInt(getMapStringKey(m, "bytes_collected")),
+		TotalMsRun:           ftInfoNumInt(getMapStringKey(m, "total_ms_run")),
+		TotalCycles:          ftInfoNumInt(getMapStringKey(m, "total_cycles")),
+		AverageCycleTimeMs:   avgCycleTime,
+		LastRunTimeMs:        ftInfoNumInt(getMapStringKey(m, "last_run_time_ms")),
+		GCNumericTreesMissed: ftInfoNumInt(getMapStringKey(m, "gc_numeric_trees_missed")),
+		GCBlocksDenied:       ftInfoNumInt(getMapStringKey(m, "gc_blocks_denied")),
+	}
+}
+
+// parseIndexDefinitionRESP3 parses index_definition from RESP3 map format
+func parseIndexDefinitionRESP3(m map[interface{}]interface{}) IndexDefinition {
+	def := IndexDefinition{
+		KeyType:      internal.ToString(getMapStringKey(m, "key_type")),
+		DefaultScore: internal.ToFloat(getMapStringKey(m, "default_score")),
+	}
+	if prefixes, ok := getMapStringKey(m, "prefixes").([]interface{}); ok {
+		def.Prefixes = internal.ToStringSlice(prefixes)
+	}
+	return def
+}
+
+// parseDialectStatsRESP3 parses dialect_stats from RESP3 map format
+func parseDialectStatsRESP3(m map[interface{}]interface{}) map[string]int {
+	result := make(map[string]int)
+	for k, v := range m {
+		if kStr, ok := k.(string); ok {
+			result[kStr] = internal.ToInteger(v)
+		}
+	}
+	return result
+}
+
+// ftInfoNumString stringifies a value that RediSearch emits via REPLY_KVNUM
+// (RedisModule_ReplyWithDouble): a bulk string in RESP2 but a native double
+// in RESP3. Used for FTInfoResult fields whose public type is string.
+// Special float values (NaN, +Inf, -Inf) are normalized to lowercase to match
+// the RESP2 wire format.
+func ftInfoNumString(val interface{}) string {
+	switch v := val.(type) {
+	case string:
+		return v
+	case float64:
+		return internal.FormatFloat(v)
+	case float32:
+		return internal.FormatFloat(float64(v))
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case int:
+		return strconv.Itoa(v)
+	default:
+		return ""
+	}
+}
+
+// ftInfoNumInt converts a value that RediSearch emits via REPLY_KVNUM to int.
+// In RESP2 the value is a bulk string; in RESP3 it is a native double, even
+// for logically-integer fields (counters, byte sizes). This helper exists so
+// the internal.ToInteger helper can remain strict about float-to-int coercion
+// while still letting the RediSearch parsers read those values correctly.
+func ftInfoNumInt(val interface{}) int {
+	switch v := val.(type) {
+	case float64:
+		return int(v)
+	case float32:
+		return int(v)
+	default:
+		return internal.ToInteger(v)
+	}
+}
+
 func parseFTInfo(data map[string]interface{}) (FTInfoResult, error) {
 	var ftInfo FTInfoResult
-	// Manually parse each field from the map
+
+	// Parse Index Errors - handle both RESP2 (array) and RESP3 (map) formats
 	if indexErrors, ok := data["Index Errors"].([]interface{}); ok {
+		// RESP2 format: array with key-value pairs
 		ftInfo.IndexErrors = IndexErrors{
 			IndexingFailures:     internal.ToInteger(indexErrors[1]),
 			LastIndexingError:    internal.ToString(indexErrors[3]),
 			LastIndexingErrorKey: internal.ToString(indexErrors[5]),
 		}
+	} else if indexErrors, ok := data["Index Errors"].(map[interface{}]interface{}); ok {
+		// RESP3 format: map
+		ftInfo.IndexErrors = parseIndexErrorsRESP3(indexErrors)
 	}
 
 	if attributes, ok := data["attributes"].([]interface{}); ok {
 		for _, attr := range attributes {
-			if attrMap, ok := attr.([]interface{}); ok {
-				att := FTAttribute{}
-				attrLen := len(attrMap)
+			att := FTAttribute{}
+			// Handle RESP2 format: attribute is []interface{}
+			if attrSlice, ok := attr.([]interface{}); ok {
+				attrLen := len(attrSlice)
 				for i := 0; i < attrLen; i++ {
-					if internal.ToLower(internal.ToString(attrMap[i])) == "attribute" && i+1 < attrLen {
-						att.Attribute = internal.ToString(attrMap[i+1])
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "attribute" && i+1 < attrLen {
+						att.Attribute = internal.ToString(attrSlice[i+1])
 						i++
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "identifier" && i+1 < attrLen {
-						att.Identifier = internal.ToString(attrMap[i+1])
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "identifier" && i+1 < attrLen {
+						att.Identifier = internal.ToString(attrSlice[i+1])
 						i++
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "type" && i+1 < attrLen {
-						att.Type = internal.ToString(attrMap[i+1])
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "type" && i+1 < attrLen {
+						att.Type = internal.ToString(attrSlice[i+1])
 						i++
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "weight" && i+1 < attrLen {
-						att.Weight = internal.ToFloat(attrMap[i+1])
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "weight" && i+1 < attrLen {
+						att.Weight = internal.ToFloat(attrSlice[i+1])
 						i++
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "nostem" {
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "nostem" {
 						att.NoStem = true
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "sortable" {
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "sortable" {
 						att.Sortable = true
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "noindex" {
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "noindex" {
 						att.NoIndex = true
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "unf" {
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "unf" {
 						att.UNF = true
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "phonetic" && i+1 < attrLen {
-						att.PhoneticMatcher = internal.ToString(attrMap[i+1])
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "phonetic" && i+1 < attrLen {
+						att.PhoneticMatcher = internal.ToString(attrSlice[i+1])
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "case_sensitive" {
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "case_sensitive" {
 						att.CaseSensitive = true
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "withsuffixtrie" {
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "withsuffixtrie" {
 						att.WithSuffixtrie = true
 						continue
 					}
 
 					// vector specific attributes
-					if internal.ToLower(internal.ToString(attrMap[i])) == "algorithm" && i+1 < attrLen {
-						att.Algorithm = internal.ToString(attrMap[i+1])
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "algorithm" && i+1 < attrLen {
+						att.Algorithm = internal.ToString(attrSlice[i+1])
 						i++
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "data_type" && i+1 < attrLen {
-						att.DataType = internal.ToString(attrMap[i+1])
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "data_type" && i+1 < attrLen {
+						att.DataType = internal.ToString(attrSlice[i+1])
 						i++
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "dim" && i+1 < attrLen {
-						att.Dim = internal.ToInteger(attrMap[i+1])
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "dim" && i+1 < attrLen {
+						att.Dim = internal.ToInteger(attrSlice[i+1])
 						i++
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "distance_metric" && i+1 < attrLen {
-						att.DistanceMetric = internal.ToString(attrMap[i+1])
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "distance_metric" && i+1 < attrLen {
+						att.DistanceMetric = internal.ToString(attrSlice[i+1])
 						i++
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "m" && i+1 < attrLen {
-						att.M = internal.ToInteger(attrMap[i+1])
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "m" && i+1 < attrLen {
+						att.M = internal.ToInteger(attrSlice[i+1])
 						i++
 						continue
 					}
-					if internal.ToLower(internal.ToString(attrMap[i])) == "ef_construction" && i+1 < attrLen {
-						att.EFConstruction = internal.ToInteger(attrMap[i+1])
+					if internal.ToLower(internal.ToString(attrSlice[i])) == "ef_construction" && i+1 < attrLen {
+						att.EFConstruction = internal.ToInteger(attrSlice[i+1])
 						i++
 						continue
 					}
-
 				}
+				ftInfo.Attributes = append(ftInfo.Attributes, att)
+			} else if attrMap, ok := attr.(map[interface{}]interface{}); ok {
+				// Handle RESP3 format: attribute is map[interface{}]interface{}
+				att = parseFTAttributeFromMap(attrMap)
 				ftInfo.Attributes = append(ftInfo.Attributes, att)
 			}
 		}
 	}
 
-	ftInfo.BytesPerRecordAvg = internal.ToString(data["bytes_per_record_avg"])
+	ftInfo.BytesPerRecordAvg = ftInfoNumString(data["bytes_per_record_avg"])
 	ftInfo.Cleaning = internal.ToInteger(data["cleaning"])
 
+	// Parse cursor_stats - handle both RESP2 (array) and RESP3 (map) formats
 	if cursorStats, ok := data["cursor_stats"].([]interface{}); ok {
+		// RESP2 format
 		ftInfo.CursorStats = CursorStats{
 			GlobalIdle:    internal.ToInteger(cursorStats[1]),
 			GlobalTotal:   internal.ToInteger(cursorStats[3]),
 			IndexCapacity: internal.ToInteger(cursorStats[5]),
 			IndexTotal:    internal.ToInteger(cursorStats[7]),
 		}
+	} else if cursorStats, ok := data["cursor_stats"].(map[interface{}]interface{}); ok {
+		// RESP3 format
+		ftInfo.CursorStats = parseCursorStatsRESP3(cursorStats)
 	}
 
+	// Parse dialect_stats - handle both RESP2 (array) and RESP3 (map) formats
 	if dialectStats, ok := data["dialect_stats"].([]interface{}); ok {
+		// RESP2 format
 		ftInfo.DialectStats = make(map[string]int)
 		for i := 0; i < len(dialectStats); i += 2 {
 			ftInfo.DialectStats[internal.ToString(dialectStats[i])] = internal.ToInteger(dialectStats[i+1])
 		}
+	} else if dialectStats, ok := data["dialect_stats"].(map[interface{}]interface{}); ok {
+		// RESP3 format
+		ftInfo.DialectStats = parseDialectStatsRESP3(dialectStats)
 	}
 
 	ftInfo.DocTableSizeMB = internal.ToFloat(data["doc_table_size_mb"])
 
+	// Parse field statistics - handle both RESP2 and RESP3 formats
 	if fieldStats, ok := data["field statistics"].([]interface{}); ok {
 		for _, stat := range fieldStats {
 			if statMap, ok := stat.([]interface{}); ok {
+				// RESP2 format
 				ftInfo.FieldStatistics = append(ftInfo.FieldStatistics, FieldStatistic{
 					Identifier: internal.ToString(statMap[1]),
 					Attribute:  internal.ToString(statMap[3]),
@@ -1546,11 +2012,23 @@ func parseFTInfo(data map[string]interface{}) (FTInfoResult, error) {
 						LastIndexingErrorKey: internal.ToString(statMap[5].([]interface{})[5]),
 					},
 				})
+			} else if statMap, ok := stat.(map[interface{}]interface{}); ok {
+				// RESP3 format
+				fs := FieldStatistic{
+					Identifier: internal.ToString(getMapStringKey(statMap, "identifier")),
+					Attribute:  internal.ToString(getMapStringKey(statMap, "attribute")),
+				}
+				if indexErrors, ok := getMapStringKey(statMap, "Index Errors").(map[interface{}]interface{}); ok {
+					fs.IndexErrors = parseIndexErrorsRESP3(indexErrors)
+				}
+				ftInfo.FieldStatistics = append(ftInfo.FieldStatistics, fs)
 			}
 		}
 	}
 
+	// Parse gc_stats - handle both RESP2 (array) and RESP3 (map) formats
 	if gcStats, ok := data["gc_stats"].([]interface{}); ok {
+		// RESP2 format
 		ftInfo.GCStats = GCStats{}
 		for i := 0; i < len(gcStats); i += 2 {
 			if internal.ToLower(internal.ToString(gcStats[i])) == "bytes_collected" {
@@ -1582,21 +2060,31 @@ func parseFTInfo(data map[string]interface{}) (FTInfoResult, error) {
 				continue
 			}
 		}
+	} else if gcStats, ok := data["gc_stats"].(map[interface{}]interface{}); ok {
+		// RESP3 format
+		ftInfo.GCStats = parseGCStatsRESP3(gcStats)
 	}
 
 	ftInfo.GeoshapesSzMB = internal.ToFloat(data["geoshapes_sz_mb"])
 	ftInfo.HashIndexingFailures = internal.ToInteger(data["hash_indexing_failures"])
 
+	// Parse index_definition - handle both RESP2 (array) and RESP3 (map) formats
 	if indexDef, ok := data["index_definition"].([]interface{}); ok {
+		// RESP2 format
 		ftInfo.IndexDefinition = IndexDefinition{
 			KeyType:      internal.ToString(indexDef[1]),
 			Prefixes:     internal.ToStringSlice(indexDef[3]),
 			DefaultScore: internal.ToFloat(indexDef[5]),
 		}
+	} else if indexDef, ok := data["index_definition"].(map[interface{}]interface{}); ok {
+		// RESP3 format
+		ftInfo.IndexDefinition = parseIndexDefinitionRESP3(indexDef)
 	}
 
 	ftInfo.IndexName = internal.ToString(data["index_name"])
-	ftInfo.IndexOptions = internal.ToStringSlice(data["index_options"].([]interface{}))
+	if indexOptions, ok := data["index_options"].([]interface{}); ok {
+		ftInfo.IndexOptions = internal.ToStringSlice(indexOptions)
+	}
 	ftInfo.Indexing = internal.ToInteger(data["indexing"])
 	ftInfo.InvertedSzMB = internal.ToFloat(data["inverted_sz_mb"])
 	ftInfo.KeyTableSizeMB = internal.ToFloat(data["key_table_size_mb"])
@@ -1605,16 +2093,16 @@ func parseFTInfo(data map[string]interface{}) (FTInfoResult, error) {
 	ftInfo.NumRecords = internal.ToInteger(data["num_records"])
 	ftInfo.NumTerms = internal.ToInteger(data["num_terms"])
 	ftInfo.NumberOfUses = internal.ToInteger(data["number_of_uses"])
-	ftInfo.OffsetBitsPerRecordAvg = internal.ToString(data["offset_bits_per_record_avg"])
+	ftInfo.OffsetBitsPerRecordAvg = ftInfoNumString(data["offset_bits_per_record_avg"])
 	ftInfo.OffsetVectorsSzMB = internal.ToFloat(data["offset_vectors_sz_mb"])
-	ftInfo.OffsetsPerTermAvg = internal.ToString(data["offsets_per_term_avg"])
+	ftInfo.OffsetsPerTermAvg = ftInfoNumString(data["offsets_per_term_avg"])
 	ftInfo.PercentIndexed = internal.ToFloat(data["percent_indexed"])
-	ftInfo.RecordsPerDocAvg = internal.ToString(data["records_per_doc_avg"])
+	ftInfo.RecordsPerDocAvg = ftInfoNumString(data["records_per_doc_avg"])
 	ftInfo.SortableValuesSizeMB = internal.ToFloat(data["sortable_values_size_mb"])
 	ftInfo.TagOverheadSzMB = internal.ToFloat(data["tag_overhead_sz_mb"])
 	ftInfo.TextOverheadSzMB = internal.ToFloat(data["text_overhead_sz_mb"])
 	ftInfo.TotalIndexMemorySzMB = internal.ToFloat(data["total_index_memory_sz_mb"])
-	ftInfo.TotalIndexingTime = internal.ToInteger(data["total_indexing_time"])
+	ftInfo.TotalIndexingTime = ftInfoNumInt(data["total_indexing_time"])
 	ftInfo.TotalInvertedIndexBlocks = internal.ToInteger(data["total_inverted_index_blocks"])
 	ftInfo.VectorIndexSzMB = internal.ToFloat(data["vector_index_sz_mb"])
 
@@ -1660,6 +2148,37 @@ func (cmd *FTInfoCmd) RawResult() (interface{}, error) {
 	return cmd.rawVal, cmd.err
 }
 func (cmd *FTInfoCmd) readReply(rd *proto.Reader) (err error) {
+	readType, err := rd.PeekReplyType()
+	if err != nil {
+		return err
+	}
+
+	// RESP3 returns a map, RESP2 returns an array
+	if readType == proto.RespMap {
+		// Read raw response first for backwards compatibility
+		cmd.rawVal, err = rd.ReadReply()
+		if err != nil {
+			return err
+		}
+
+		// Convert map[interface{}]interface{} to map[string]interface{}
+		rawMap, ok := cmd.rawVal.(map[interface{}]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected RESP3 response type: %T", cmd.rawVal)
+		}
+
+		data := make(map[string]interface{}, len(rawMap))
+		for k, v := range rawMap {
+			if kStr, ok := k.(string); ok {
+				data[kStr] = v
+			}
+		}
+
+		cmd.val, err = parseFTInfo(data)
+		return err
+	}
+
+	// RESP2 format - read as map
 	n, err := rd.ReadMapLen()
 	if err != nil {
 		return err
@@ -1686,11 +2205,7 @@ func (cmd *FTInfoCmd) readReply(rd *proto.Reader) (err error) {
 		data[k] = v
 	}
 	cmd.val, err = parseFTInfo(data)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func (cmd *FTInfoCmd) Clone() Cmder {
@@ -1728,26 +2243,19 @@ func (cmd *FTInfoCmd) Clone() Cmder {
 	}
 	// Clone slices and maps
 	if cmd.val.Attributes != nil {
-		val.Attributes = make([]FTAttribute, len(cmd.val.Attributes))
-		copy(val.Attributes, cmd.val.Attributes)
+		val.Attributes = slices.Clone(cmd.val.Attributes)
 	}
 	if cmd.val.DialectStats != nil {
-		val.DialectStats = make(map[string]int, len(cmd.val.DialectStats))
-		for k, v := range cmd.val.DialectStats {
-			val.DialectStats[k] = v
-		}
+		val.DialectStats = maps.Clone(cmd.val.DialectStats)
 	}
 	if cmd.val.FieldStatistics != nil {
-		val.FieldStatistics = make([]FieldStatistic, len(cmd.val.FieldStatistics))
-		copy(val.FieldStatistics, cmd.val.FieldStatistics)
+		val.FieldStatistics = slices.Clone(cmd.val.FieldStatistics)
 	}
 	if cmd.val.IndexOptions != nil {
-		val.IndexOptions = make([]string, len(cmd.val.IndexOptions))
-		copy(val.IndexOptions, cmd.val.IndexOptions)
+		val.IndexOptions = slices.Clone(cmd.val.IndexOptions)
 	}
 	if cmd.val.IndexDefinition.Prefixes != nil {
-		val.IndexDefinition.Prefixes = make([]string, len(cmd.val.IndexDefinition.Prefixes))
-		copy(val.IndexDefinition.Prefixes, cmd.val.IndexDefinition.Prefixes)
+		val.IndexDefinition.Prefixes = slices.Clone(cmd.val.IndexDefinition.Prefixes)
 	}
 	return &FTInfoCmd{
 		baseCmd: cmd.cloneBaseCmd(),
@@ -1843,15 +2351,117 @@ func (cmd *FTSpellCheckCmd) RawResult() (interface{}, error) {
 }
 
 func (cmd *FTSpellCheckCmd) readReply(rd *proto.Reader) (err error) {
+	readType, err := rd.PeekReplyType()
+	if err != nil {
+		return err
+	}
+
+	// RESP3 returns a map, RESP2 returns an array
+	if readType == proto.RespMap {
+		// Read raw response first for backwards compatibility
+		cmd.rawVal, err = rd.ReadReply()
+		if err != nil {
+			return err
+		}
+
+		// Parse the raw response into structured result
+		rawMap, ok := cmd.rawVal.(map[interface{}]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected RESP3 response type: %T", cmd.rawVal)
+		}
+
+		cmd.val, err = parseFTSpellCheckRESP3(rawMap)
+		return err
+	}
+
+	// RESP2 format
 	data, err := rd.ReadSlice()
 	if err != nil {
 		return err
 	}
 	cmd.val, err = parseFTSpellCheck(data)
-	if err != nil {
-		return err
+	return err
+}
+
+// parseFTSpellCheckRESP3 parses the RESP3 format response from FT.SPELLCHECK.
+// RESP3 format:
+//
+//	map{
+//	  "results": map{
+//	    "misspelled_term": [
+//	      map{"suggestion": score},
+//	      ...
+//	    ],
+//	    ...
+//	  }
+//	}
+func parseFTSpellCheckRESP3(data map[interface{}]interface{}) ([]SpellCheckResult, error) {
+	results := make([]SpellCheckResult, 0)
+
+	resultsData, ok := data["results"]
+	if !ok {
+		return results, nil
 	}
-	return nil
+
+	resultsMap, ok := resultsData.(map[interface{}]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid results format: expected map, got %T", resultsData)
+	}
+
+	for termKey, suggestionsData := range resultsMap {
+		term, ok := termKey.(string)
+		if !ok {
+			continue
+		}
+
+		suggestionsArray, ok := suggestionsData.([]interface{})
+		if !ok {
+			continue
+		}
+
+		suggestions := make([]SpellCheckSuggestion, 0, len(suggestionsArray))
+		for _, suggestionData := range suggestionsArray {
+			suggestionMap, ok := suggestionData.(map[interface{}]interface{})
+			if !ok {
+				continue
+			}
+
+			for suggKey, scoreVal := range suggestionMap {
+				suggestion, ok := suggKey.(string)
+				if !ok {
+					continue
+				}
+
+				var score float64
+				switch v := scoreVal.(type) {
+				case float64:
+					score = v
+				case int64:
+					score = float64(v)
+				case string:
+					var err error
+					score, err = strconv.ParseFloat(v, 64)
+					if err != nil {
+						continue
+					}
+				default:
+					continue
+				}
+
+				suggestions = append(suggestions, SpellCheckSuggestion{
+					Score:      score,
+					Suggestion: suggestion,
+				})
+			}
+		}
+
+		results = append(results, SpellCheckResult{
+			Term:        term,
+			Suggestions: suggestions,
+		})
+	}
+
+	return results, nil
 }
 
 func parseFTSpellCheck(data []interface{}) ([]SpellCheckResult, error) {
@@ -1918,8 +2528,7 @@ func (cmd *FTSpellCheckCmd) Clone() Cmder {
 				Term: result.Term,
 			}
 			if result.Suggestions != nil {
-				val[i].Suggestions = make([]SpellCheckSuggestion, len(result.Suggestions))
-				copy(val[i].Suggestions, result.Suggestions)
+				val[i].Suggestions = slices.Clone(result.Suggestions)
 			}
 		}
 	}
@@ -2058,15 +2667,145 @@ func (cmd *FTSearchCmd) RawResult() (interface{}, error) {
 }
 
 func (cmd *FTSearchCmd) readReply(rd *proto.Reader) (err error) {
-	data, err := rd.ReadSlice()
+	readType, err := rd.PeekReplyType()
 	if err != nil {
 		return err
 	}
-	cmd.val, err = parseFTSearch(data, cmd.options.NoContent, cmd.options.WithScores, cmd.options.WithPayloads, cmd.options.WithSortKeys)
+
+	// RESP3 returns a map, RESP2 returns an array
+	if readType == proto.RespMap {
+		// Read raw response first for backwards compatibility
+		cmd.rawVal, err = rd.ReadReply()
+		if err != nil {
+			return err
+		}
+		// Parse the raw response into structured result
+		if mapVal, ok := cmd.rawVal.(map[interface{}]interface{}); ok {
+			cmd.val, err = parseFTSearchMapRESP3(mapVal)
+		} else {
+			return fmt.Errorf("unexpected RESP3 response type: %T", cmd.rawVal)
+		}
+		return err
+	}
+
+	// RESP2 format or error response - use ReadReply to handle errors properly
+	data, err := rd.ReadReply()
 	if err != nil {
 		return err
 	}
-	return nil
+	if dataSlice, ok := data.([]interface{}); ok {
+		cmd.val, err = parseFTSearch(dataSlice, cmd.options.NoContent, cmd.options.WithScores, cmd.options.WithPayloads, cmd.options.WithSortKeys)
+		return err
+	}
+	return fmt.Errorf("unexpected response type: %T", data)
+}
+
+// parseFTSearchMapRESP3 parses the RESP3 format response from FT.SEARCH.
+// It takes a map[interface{}]interface{} which is the raw response from ReadReply().
+// RESP3 format:
+//
+//	%5
+//	  $10 attributes => *0
+//	  $13 total_results => :N
+//	  $6 format => $6 STRING
+//	  $7 results => *N (array of maps with id, score, extra_attributes, values)
+//	  $7 warning => *N (array of strings)
+func parseFTSearchMapRESP3(data map[interface{}]interface{}) (FTSearchResult, error) {
+	var result FTSearchResult
+	result.Docs = make([]Document, 0)
+
+	for k, v := range data {
+		key, ok := k.(string)
+		if !ok {
+			continue
+		}
+
+		switch key {
+		case "total_results":
+			result.Total = internal.ToInteger(v)
+		case "results":
+			if resultsData, ok := v.([]interface{}); ok {
+				docs, err := parseFTSearchResultsMapRESP3(resultsData)
+				if err != nil {
+					return FTSearchResult{}, err
+				}
+				result.Docs = docs
+			}
+		case "warning":
+			if warningsData, ok := v.([]interface{}); ok {
+				result.Warnings = make([]string, 0, len(warningsData))
+				for _, w := range warningsData {
+					if ws, ok := w.(string); ok {
+						result.Warnings = append(result.Warnings, ws)
+					}
+				}
+			}
+			// Ignore "attributes", "format", and other fields as per the spec
+		}
+	}
+
+	return result, nil
+}
+
+// parseFTSearchResultsMapRESP3 parses the results array from RESP3 FT.SEARCH response.
+func parseFTSearchResultsMapRESP3(resultsData []interface{}) ([]Document, error) {
+	docs := make([]Document, 0, len(resultsData))
+	for _, item := range resultsData {
+		if itemMap, ok := item.(map[interface{}]interface{}); ok {
+			doc, err := parseFTSearchDocumentMapRESP3(itemMap)
+			if err != nil {
+				return nil, err
+			}
+			docs = append(docs, doc)
+		}
+	}
+	return docs, nil
+}
+
+// parseFTSearchDocumentMapRESP3 parses a single document from RESP3 FT.SEARCH response.
+func parseFTSearchDocumentMapRESP3(itemMap map[interface{}]interface{}) (Document, error) {
+	doc := Document{
+		Fields: make(map[string]string),
+	}
+
+	for k, v := range itemMap {
+		key, ok := k.(string)
+		if !ok {
+			continue
+		}
+
+		switch key {
+		case "id":
+			if id, ok := v.(string); ok {
+				doc.ID = id
+			}
+		case "score":
+			if score, ok := v.(float64); ok {
+				doc.Score = &score
+			}
+		case "payload":
+			if payload, ok := v.(string); ok {
+				doc.Payload = &payload
+			}
+		case "sortkey":
+			if sortKey, ok := v.(string); ok {
+				doc.SortKey = &sortKey
+			}
+		case "extra_attributes":
+			if extraAttrs, ok := v.(map[interface{}]interface{}); ok {
+				for ek, ev := range extraAttrs {
+					if ekStr, ok := ek.(string); ok {
+						if evStr, ok := ev.(string); ok {
+							doc.Fields[ekStr] = evStr
+						}
+					}
+				}
+			}
+			// Ignore "values" and other fields as per the spec
+		}
+	}
+
+	return doc, nil
 }
 
 func (cmd *FTSearchCmd) Clone() Cmder {
@@ -2089,6 +2828,10 @@ func (cmd *FTSearchCmd) Clone() Cmder {
 				}
 			}
 		}
+	}
+	if cmd.val.Warnings != nil {
+		val.Warnings = make([]string, len(cmd.val.Warnings))
+		copy(val.Warnings, cmd.val.Warnings)
 	}
 	var options *FTSearchOptions
 	if cmd.options != nil {
@@ -2115,34 +2858,25 @@ func (cmd *FTSearchCmd) Clone() Cmder {
 		}
 		// Clone slices and maps
 		if cmd.options.Filters != nil {
-			options.Filters = make([]FTSearchFilter, len(cmd.options.Filters))
-			copy(options.Filters, cmd.options.Filters)
+			options.Filters = slices.Clone(cmd.options.Filters)
 		}
 		if cmd.options.GeoFilter != nil {
-			options.GeoFilter = make([]FTSearchGeoFilter, len(cmd.options.GeoFilter))
-			copy(options.GeoFilter, cmd.options.GeoFilter)
+			options.GeoFilter = slices.Clone(cmd.options.GeoFilter)
 		}
 		if cmd.options.InKeys != nil {
-			options.InKeys = make([]interface{}, len(cmd.options.InKeys))
-			copy(options.InKeys, cmd.options.InKeys)
+			options.InKeys = slices.Clone(cmd.options.InKeys)
 		}
 		if cmd.options.InFields != nil {
-			options.InFields = make([]interface{}, len(cmd.options.InFields))
-			copy(options.InFields, cmd.options.InFields)
+			options.InFields = slices.Clone(cmd.options.InFields)
 		}
 		if cmd.options.Return != nil {
-			options.Return = make([]FTSearchReturn, len(cmd.options.Return))
-			copy(options.Return, cmd.options.Return)
+			options.Return = slices.Clone(cmd.options.Return)
 		}
 		if cmd.options.SortBy != nil {
-			options.SortBy = make([]FTSearchSortBy, len(cmd.options.SortBy))
-			copy(options.SortBy, cmd.options.SortBy)
+			options.SortBy = slices.Clone(cmd.options.SortBy)
 		}
 		if cmd.options.Params != nil {
-			options.Params = make(map[string]interface{}, len(cmd.options.Params))
-			for k, v := range cmd.options.Params {
-				options.Params[k] = v
-			}
+			options.Params = maps.Clone(cmd.options.Params)
 		}
 	}
 	return &FTSearchCmd{
@@ -2368,8 +3102,7 @@ func (cmd *FTHybridCmd) Clone() Cmder {
 		}
 	}
 	if cmd.val.Warnings != nil {
-		val.Warnings = make([]string, len(cmd.val.Warnings))
-		copy(val.Warnings, cmd.val.Warnings)
+		val.Warnings = slices.Clone(cmd.val.Warnings)
 	}
 
 	var cursorVal *FTHybridCursorResult
@@ -2749,6 +3482,30 @@ func (cmd *FTSynDumpCmd) RawResult() (interface{}, error) {
 }
 
 func (cmd *FTSynDumpCmd) readReply(rd *proto.Reader) error {
+	readType, err := rd.PeekReplyType()
+	if err != nil {
+		return err
+	}
+
+	// RESP3 returns a map, RESP2 returns an array
+	if readType == proto.RespMap {
+		// Read raw response first for backwards compatibility
+		cmd.rawVal, err = rd.ReadReply()
+		if err != nil {
+			return err
+		}
+
+		// Parse the raw response into structured result
+		rawMap, ok := cmd.rawVal.(map[interface{}]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected RESP3 response type: %T", cmd.rawVal)
+		}
+
+		cmd.val, err = parseFTSynDumpRESP3(rawMap)
+		return err
+	}
+
+	// RESP2 format
 	termSynonymPairs, err := rd.ReadSlice()
 	if err != nil {
 		return err
@@ -2783,6 +3540,44 @@ func (cmd *FTSynDumpCmd) readReply(rd *proto.Reader) error {
 
 	cmd.val = results
 	return nil
+}
+
+// parseFTSynDumpRESP3 parses the RESP3 format response from FT.SYNDUMP.
+// RESP3 format:
+//
+//	map{
+//	  "term1": ["synonym_group_id1", ...],
+//	  "term2": ["synonym_group_id2", ...],
+//	  ...
+//	}
+func parseFTSynDumpRESP3(data map[interface{}]interface{}) ([]FTSynDumpResult, error) {
+	results := make([]FTSynDumpResult, 0, len(data))
+
+	for termKey, synonymsData := range data {
+		term, ok := termKey.(string)
+		if !ok {
+			continue
+		}
+
+		synonymsArray, ok := synonymsData.([]interface{})
+		if !ok {
+			continue
+		}
+
+		synonymList := make([]string, 0, len(synonymsArray))
+		for _, syn := range synonymsArray {
+			if synonym, ok := syn.(string); ok {
+				synonymList = append(synonymList, synonym)
+			}
+		}
+
+		results = append(results, FTSynDumpResult{
+			Term:     term,
+			Synonyms: synonymList,
+		})
+	}
+
+	return results, nil
 }
 
 func (cmd *FTSynDumpCmd) Clone() Cmder {
@@ -2869,6 +3664,42 @@ func (c cmdable) FTHybrid(ctx context.Context, index string, searchExpr string, 
 	return c.FTHybridWithArgs(ctx, index, options)
 }
 
+func hybridVectorBlob(v Vector) (interface{}, error) {
+	if v == nil {
+		return nil, fmt.Errorf("FT.HYBRID: vector data is required")
+	}
+
+	switch vector := v.(type) {
+	case *VectorFP32:
+		return hybridVectorBytes(vector.Val)
+	case *VectorFloat16:
+		return hybridVectorBytes(vector.Val)
+	case *VectorBFloat16:
+		return hybridVectorBytes(vector.Val)
+	case *VectorFloat64:
+		return hybridVectorBytes(vector.Val)
+	case *VectorInt8:
+		return hybridVectorBytes(vector.Val)
+	case *VectorUint8:
+		return hybridVectorBytes(vector.Val)
+	case *VectorValues, *VectorRef:
+		return nil, fmt.Errorf("FT.HYBRID: unsupported vector type %T", v)
+	default:
+		values := v.Value()
+		if len(values) < 2 {
+			return nil, fmt.Errorf("FT.HYBRID: vector Value must contain a blob at index 1")
+		}
+		return values[1], nil
+	}
+}
+
+func hybridVectorBytes(blob []byte) ([]byte, error) {
+	if len(blob) == 0 {
+		return nil, fmt.Errorf("FT.HYBRID: vector blob is required")
+	}
+	return blob, nil
+}
+
 // FTHybridWithArgs - Executes a hybrid search with advanced options
 // FTHybridWithArgs is still experimental, the command behaviour and signature may change
 func (c cmdable) FTHybridWithArgs(ctx context.Context, index string, options *FTHybridOptions) *FTHybridCmd {
@@ -2895,16 +3726,11 @@ func (c cmdable) FTHybridWithArgs(ctx context.Context, index string, options *FT
 		for _, vectorExpr := range options.VectorExpressions {
 			args = append(args, "VSIM", "@"+vectorExpr.VectorField)
 
-			// For FT.HYBRID, we need to send just the raw vector bytes, not the Value() format
-			// Value() returns [format, data] but FT.HYBRID expects just the blob
-			vectorValue := vectorExpr.VectorData.Value()
-			var vectorBlob interface{}
-			if len(vectorValue) >= 2 {
-				// vectorValue is [format, data, ...] - we only want the data part
-				vectorBlob = vectorValue[1]
-			} else {
-				// Fallback for unexpected format
-				vectorBlob = vectorValue
+			vectorBlob, err := hybridVectorBlob(vectorExpr.VectorData)
+			if err != nil {
+				cmd := newFTHybridCmd(ctx, options, args...)
+				cmd.SetErr(err)
+				return cmd
 			}
 
 			// If VectorParamName is provided, use PARAMS mechanism (required for Redis 8.6+)

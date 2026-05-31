@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9/internal"
@@ -364,25 +363,61 @@ func (c *Config) applyWorkerDefaults(poolSize int) {
 	}
 }
 
+// endpointDetectResolveTimeout bounds the DNS lookup performed by
+// DetectEndpointType so a slow or broken resolver cannot block client
+// construction for the full system resolver timeout (often 5-30s).
+const endpointDetectResolveTimeout = 2 * time.Second
+
+// cgnatNet is RFC6598 shared address space (100.64.0.0/10), used by many
+// cloud/carrier NATs and not covered by net.IP.IsPrivate.
+var cgnatNet = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+// isPrivateIP reports whether ip belongs to a range that should be treated
+// as "internal" for the purpose of endpoint type detection. It extends
+// net.IP.IsPrivate (RFC1918 + RFC4193) with loopback, link-local and
+// RFC6598 shared address space (CGNAT).
+func isPrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+		return true
+	}
+	if v4 := ip.To4(); v4 != nil && cgnatNet.Contains(v4) {
+		return true
+	}
+	return false
+}
+
 // DetectEndpointType automatically detects the appropriate endpoint type
 // based on the connection address and TLS configuration.
 //
-// For IP addresses:
+// TLS behaviour:
 //   - If TLS is enabled: requests FQDN for proper certificate validation
-//   - If TLS is disabled: requests IP for better performance
-//
-// For hostnames:
-//   - If TLS is enabled: always requests FQDN for proper certificate validation
-//   - If TLS is disabled: requests IP for better performance
+//     (SNI / hostname verification).
+//   - If TLS is disabled: always requests IP for better performance, even
+//     when the configured address is a hostname. In that case the hostname
+//     is resolved to determine whether it belongs to an internal or
+//     external network range.
 //
 // Internal vs External detection:
 //   - For IPs: uses private IP range detection
-//   - For hostnames: uses heuristics based on common internal naming patterns
+//   - For hostnames: resolves the hostname to an IP address and uses the IP range detection
 func DetectEndpointType(addr string, tlsEnabled bool) EndpointType {
 	// Extract host from "host:port" format
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		host = addr // Assume no port
+	}
+
+	// An empty host (e.g., ":6379") conventionally means the loopback
+	// interface and is treated as internal. With TLS off we return an IP
+	// endpoint; with TLS on the caller still needs an FQDN for SNI.
+	if host == "" {
+		if tlsEnabled {
+			return EndpointTypeInternalFQDN
+		}
+		return EndpointTypeInternalIP
 	}
 
 	// Check if the host is an IP address or hostname
@@ -392,7 +427,7 @@ func DetectEndpointType(addr string, tlsEnabled bool) EndpointType {
 
 	if isIPAddress {
 		// Address is an IP - determine if it's private or public
-		isPrivate := ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
+		isPrivate := isPrivateIP(ip)
 
 		if tlsEnabled {
 			// TLS with IP addresses - still prefer FQDN for certificate validation
@@ -410,48 +445,58 @@ func DetectEndpointType(addr string, tlsEnabled bool) EndpointType {
 			}
 		}
 	} else {
-		// Address is a hostname
-		isInternalHostname := isInternalHostname(host)
-		if isInternalHostname {
-			endpointType = EndpointTypeInternalFQDN
+		// Address is a hostname - resolve it under a bounded timeout so a
+		// slow/broken DNS server cannot stall client construction.
+		ctx, cancel := context.WithTimeout(context.Background(), endpointDetectResolveTimeout)
+		defer cancel()
+
+		isInternal, err := isInternalHostname(ctx, host)
+		// Will fallback to external classification if we can't determine
+		// whether the hostname is internal.
+		if err != nil && internal.LogLevel.WarnOrAbove() {
+			internal.Logger.Printf(ctx, "Failed to determine if hostname %q is internal: %v", host, err)
+		}
+
+		if tlsEnabled {
+			// With TLS the server name must be preserved for certificate
+			// validation, so request an FQDN endpoint.
+			if isInternal {
+				endpointType = EndpointTypeInternalFQDN
+			} else {
+				endpointType = EndpointTypeExternalFQDN
+			}
 		} else {
-			endpointType = EndpointTypeExternalFQDN
+			// Without TLS we always prefer IP endpoints for performance,
+			// even if the configured address is a hostname.
+			if isInternal {
+				endpointType = EndpointTypeInternalIP
+			} else {
+				endpointType = EndpointTypeExternalIP
+			}
 		}
 	}
 
 	return endpointType
 }
 
-// isInternalHostname determines if a hostname appears to be internal/private.
-// This is a heuristic based on common naming patterns.
-func isInternalHostname(hostname string) bool {
-	// Convert to lowercase for comparison
-	hostname = strings.ToLower(hostname)
-
-	// Common internal hostname patterns
-	internalPatterns := []string{
-		"localhost",
-		".local",
-		".internal",
-		".corp",
-		".lan",
-		".intranet",
-		".private",
+// isInternalHostname resolves the hostname (both IPv4 and IPv6) under the
+// given context and reports whether every resolved address is in a
+// private/internal range. If any address is public the hostname is treated
+// as external. A resolution error returns (false, err). An empty result set
+// returns (false, nil); callers are expected to fall back to an external
+// classification when the hostname cannot be determined to be internal.
+func isInternalHostname(ctx context.Context, hostname string) (bool, error) {
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, hostname)
+	if err != nil {
+		return false, err
 	}
-
-	// Check for exact match or suffix match
-	for _, pattern := range internalPatterns {
-		if hostname == pattern || strings.HasSuffix(hostname, pattern) {
-			return true
+	if len(ips) == 0 {
+		return false, nil
+	}
+	for _, ia := range ips {
+		if !isPrivateIP(ia.IP) {
+			return false, nil
 		}
 	}
-
-	// Check for RFC 1918 style hostnames (e.g., redis-1, db-server, etc.)
-	// If hostname doesn't contain dots, it's likely internal
-	if !strings.Contains(hostname, ".") {
-		return true
-	}
-
-	// Default to external for fully qualified domain names
-	return false
+	return true, nil
 }
