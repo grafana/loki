@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -41,6 +41,8 @@ type Components struct {
 	RootNode        *yaml.Node
 	index           *index.SpecIndex
 	context         context.Context
+	nodeStore       sync.Map
+	reference       low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -169,8 +171,15 @@ func (co *Components) FindMediaType(mediaType string) *low.ValueReference[*Media
 func (co *Components) Build(ctx context.Context, root *yaml.Node, idx *index.SpecIndex) error {
 	root = utils.NodeAlias(root)
 	utils.CheckForMergeNodes(root)
-	co.Reference = new(low.Reference)
-	co.Nodes = low.ExtractNodes(ctx, root)
+	co.reference = low.Reference{}
+	co.Reference = &co.reference
+	co.nodeStore = sync.Map{}
+	co.Nodes = &co.nodeStore
+	if len(root.Content) > 0 {
+		co.NodeMap.ExtractNodes(root, false)
+	} else {
+		co.AddNode(root.Line, root)
+	}
 	co.Extensions = low.ExtractExtensions(root)
 	low.ExtractExtensionNodes(ctx, co.Extensions, co.Nodes)
 	co.RootNode = root
@@ -277,48 +286,20 @@ func extractComponentValues[T low.Buildable[N], N any](ctx context.Context, labe
 		return emptyResult, fmt.Errorf("node is array, cannot be used in components: line %d, column %d", nodeValue.Line, nodeValue.Column)
 	}
 
-	in := make(chan componentInput)
-	out := make(chan componentBuildResult[T])
-	done := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(2) // input and output goroutines.
-
-	// Send input.
-	go func() {
-		defer func() {
-			close(in)
-			wg.Done()
-		}()
-		var currentLabel *yaml.Node
-		for i, node := range nodeValue.Content {
-			// always ignore extensions
-			if i%2 == 0 {
-				currentLabel = node
-				continue
-			}
-
-			select {
-			case in <- componentInput{
-				node:         node,
-				currentLabel: currentLabel,
-			}:
-			case <-done:
-				return
-			}
+	inputs := make([]componentInput, 0, len(nodeValue.Content)/2)
+	var currentLabel *yaml.Node
+	for i, node := range nodeValue.Content {
+		if i%2 == 0 {
+			currentLabel = node
+			continue
 		}
-	}()
+		inputs = append(inputs, componentInput{
+			node:         node,
+			currentLabel: currentLabel,
+		})
+	}
 
-	// Collect output.
-	go func() {
-		for result := range out {
-			componentValues.Set(result.key, result.value)
-		}
-		close(done)
-		wg.Done()
-	}()
-
-	// Translate.
-	translateFunc := func(value componentInput) (componentBuildResult[T], error) {
+	translateFunc := func(_ int, value componentInput) (componentBuildResult[T], error) {
 		var n T = new(N)
 		currentLabel := value.currentLabel
 		node := value.node
@@ -363,8 +344,10 @@ func extractComponentValues[T low.Buildable[N], N any](ctx context.Context, labe
 			},
 		}, nil
 	}
-	err := datamodel.TranslatePipeline[componentInput, componentBuildResult[T]](in, out, translateFunc)
-	wg.Wait()
+	err := datamodel.TranslateSliceParallel(inputs, translateFunc, func(result componentBuildResult[T]) error {
+		componentValues.Set(result.key, result.value)
+		return nil
+	})
 	if err != nil {
 		return emptyResult, err
 	}

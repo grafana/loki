@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -7,6 +7,7 @@ import (
 	"context"
 	"hash/maphash"
 	"slices"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/datamodel/low/base"
@@ -32,6 +33,8 @@ type MediaType struct {
 	RootNode     *yaml.Node
 	index        *index.SpecIndex
 	context      context.Context
+	nodeStore    sync.Map
+	reference    low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -87,8 +90,15 @@ func (mt *MediaType) Build(ctx context.Context, keyNode, root *yaml.Node, idx *i
 	root = utils.NodeAlias(root)
 	mt.RootNode = root
 	utils.CheckForMergeNodes(root)
-	mt.Reference = new(low.Reference)
-	mt.Nodes = low.ExtractNodes(ctx, root)
+	mt.reference = low.Reference{}
+	mt.Reference = &mt.reference
+	mt.nodeStore = sync.Map{}
+	mt.Nodes = &mt.nodeStore
+	if len(root.Content) > 0 {
+		mt.NodeMap.ExtractNodes(root, false)
+	} else {
+		mt.AddNode(root.Line, root)
+	}
 	mt.Extensions = low.ExtractExtensions(root)
 	mt.index = idx
 	mt.context = ctx
@@ -100,11 +110,7 @@ func (mt *MediaType) Build(ctx context.Context, keyNode, root *yaml.Node, idx *i
 	if expNode != nil {
 		mt.Example = low.NodeReference[*yaml.Node]{Value: expNode, KeyNode: expLabel, ValueNode: expNode}
 		mt.Nodes.Store(expLabel.Line, expLabel)
-		m := low.ExtractNodesRecursive(ctx, expNode)
-		m.Range(func(key, value any) bool {
-			mt.Nodes.Store(key, value)
-			return true
-		})
+		low.MergeRecursiveNodesIfLineAbsent(mt.Nodes, expNode)
 	}
 
 	// handle schema

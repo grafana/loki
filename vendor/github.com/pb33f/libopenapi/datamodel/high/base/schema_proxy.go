@@ -243,6 +243,11 @@ func (sp *SchemaProxy) Schema() *Schema {
 		return nil
 	}
 
+	if sp.isParsedRefWithSiblings() {
+		sp.rendered = sp.buildSiblingOnlySchemaView()
+		return sp.rendered
+	}
+
 	// check the high-level cache first.
 	idx := sp.schema.Value.GetIndex()
 	if idx != nil && sp.schema.Value != nil {
@@ -294,12 +299,17 @@ func (sp *SchemaProxy) Schema() *Schema {
 }
 
 // IsReference returns true if the SchemaProxy is a reference to another Schema.
+// For parsed OpenAPI 3.1 $ref-with-siblings schemas, the low proxy is backed by
+// an internal allOf node, but the high-level API reflects the authored $ref.
 func (sp *SchemaProxy) IsReference() bool {
 	if sp == nil {
 		return false
 	}
 
 	if sp.refStr != "" {
+		return true
+	}
+	if sp.isParsedRefWithSiblings() {
 		return true
 	}
 	if sp.schema != nil && sp.schema.Value != nil {
@@ -312,6 +322,17 @@ func (sp *SchemaProxy) IsReference() bool {
 func (sp *SchemaProxy) GetReference() string {
 	if sp.refStr != "" {
 		return sp.refStr
+	}
+	if sp.isParsedRefWithSiblings() {
+		return sp.schema.Value.GetTransformedRefReference()
+	}
+	if refNode := sp.GetReferenceNode(); refNode != nil {
+		if refValNode := utils.GetRefValueNode(refNode); refValNode != nil {
+			return refValNode.Value
+		}
+	}
+	if sp.schema == nil || sp.schema.Value == nil {
+		return ""
 	}
 	return sp.schema.GetValue().GetReference()
 }
@@ -326,6 +347,12 @@ func (sp *SchemaProxy) GetSchemaKeyNode() *yaml.Node {
 func (sp *SchemaProxy) GetReferenceNode() *yaml.Node {
 	if sp.refStr != "" {
 		return utils.CreateRefNode(sp.refStr)
+	}
+	if sp.isParsedRefWithSiblings() {
+		return sp.schema.Value.TransformedRef
+	}
+	if sp.schema == nil || sp.schema.Value == nil {
+		return nil
 	}
 	return sp.schema.GetValue().GetReferenceNode()
 }
@@ -392,6 +419,69 @@ func (sp *SchemaProxy) isRefWithSiblings() bool {
 	return sp.refStr != "" && sp.rendered != nil && sp.schema == nil
 }
 
+// IsTransformedRefWithSiblings reports whether this high-level proxy represents
+// an authored OpenAPI 3.1 $ref with sibling schema keywords.
+func (sp *SchemaProxy) IsTransformedRefWithSiblings() bool {
+	return sp != nil &&
+		sp.schema != nil &&
+		sp.schema.Value != nil &&
+		sp.schema.Value.IsTransformedRefWithSiblings() &&
+		sp.shouldCollapseTransformedRefWithSiblings()
+}
+
+func (sp *SchemaProxy) isParsedRefWithSiblings() bool {
+	return sp.IsTransformedRefWithSiblings()
+}
+
+func (sp *SchemaProxy) buildSiblingOnlySchemaView() *Schema {
+	if sp == nil || sp.schema == nil || sp.schema.Value == nil {
+		return nil
+	}
+	lowProxy := sp.schema.Value
+	siblingNode := lowProxy.GetTransformedRefSiblingSchema()
+	if siblingNode == nil {
+		return nil
+	}
+
+	lowSchema := new(base.Schema)
+	if err := lowSchema.Build(lowProxy.GetContext(), siblingNode, lowProxy.GetIndex()); err != nil {
+		sp.buildError = err
+		return nil
+	}
+	lowSchema.ParentProxy = lowProxy
+
+	schema := NewSchema(lowSchema)
+	schema.ParentProxy = sp
+	return schema
+}
+
+// BuildTransformedRefSemanticSchema returns the internal semantic allOf view for
+// an authored $ref-with-siblings proxy, using current high-level sibling values.
+func (sp *SchemaProxy) BuildTransformedRefSemanticSchema(currentSibling *Schema) (*Schema, error) {
+	return sp.buildSemanticAllOfSchemaView(currentSibling)
+}
+
+func (sp *SchemaProxy) buildSemanticAllOfSchemaView(currentSibling *Schema) (*Schema, error) {
+	if sp == nil || sp.schema == nil || sp.schema.Value == nil {
+		return nil, nil
+	}
+	lowSchema := sp.schema.Value.Schema()
+	if lowSchema == nil {
+		return nil, sp.schema.Value.GetBuildError()
+	}
+	schema := NewSchema(lowSchema)
+	schema.ParentProxy = nil
+	if currentSibling == nil {
+		currentSibling = sp.Schema()
+	}
+	if currentSibling != nil && len(schema.AllOf) == 2 {
+		siblingCopy := *currentSibling
+		siblingCopy.ParentProxy = nil
+		schema.AllOf[0] = CreateSchemaProxy(&siblingCopy)
+	}
+	return schema, nil
+}
+
 // renderRefWithSiblings builds a YAML mapping node containing $ref as the
 // first key followed by all rendered schema sibling properties.
 func (sp *SchemaProxy) renderRefWithSiblings() *yaml.Node {
@@ -407,6 +497,150 @@ func (sp *SchemaProxy) renderRefWithSiblings() *yaml.Node {
 	return node
 }
 
+func (sp *SchemaProxy) renderTransformedRefWithSiblings(s *Schema) (*yaml.Node, bool, error) {
+	if sp == nil || sp.schema == nil || sp.schema.Value == nil || sp.schema.Value.TransformedRef == nil || s == nil {
+		return nil, false, nil
+	}
+	if !sp.shouldCollapseTransformedRefWithSiblings() {
+		return nil, false, nil
+	}
+
+	var siblingNode *yaml.Node
+	ref := sp.schema.Value.GetTransformedRefReference()
+
+	if !sp.schemaIsTransformedSiblingView(s) {
+		if len(s.AllOf) != 2 || s.AllOf[0] == nil || s.AllOf[1] == nil || !s.AllOf[1].IsReference() {
+			return nil, false, nil
+		}
+
+		// Only collapse the synthetic allOf created by the sibling-ref transformer.
+		// If callers add fields to the outer schema or change its composition, keep
+		// the explicit allOf so no mutations are hidden.
+		outerNode := high.NewNodeBuilder(s, s.low).Render()
+		if len(outerNode.Content) != 2 || outerNode.Content[0].Value != "allOf" {
+			return nil, false, nil
+		}
+
+		siblingRender, err := s.AllOf[0].MarshalYAML()
+		if err != nil {
+			return nil, true, err
+		}
+		var ok bool
+		siblingNode, ok = yamlNodeFromRender(siblingRender)
+		if !ok || !utils.IsNodeMap(siblingNode) {
+			return nil, false, nil
+		}
+		ref = s.AllOf[1].GetReference()
+	} else {
+		siblingNode = high.NewNodeBuilder(s, s.low).Render()
+	}
+
+	original := sp.schema.Value.TransformedRef
+	result := utils.CreateEmptyMapNode()
+	consumed := make(map[string]struct{}, len(siblingNode.Content)/2)
+
+	for i := 0; i+1 < len(original.Content); i += 2 {
+		keyNode := original.Content[i]
+		valueNode := original.Content[i+1]
+		if keyNode == nil {
+			continue
+		}
+		if keyNode.Value == "$ref" {
+			refKey := cloneYAMLNode(keyNode)
+			refValue := cloneYAMLNode(valueNode)
+			if refValue == nil {
+				refValue = utils.CreateStringNode(ref)
+			}
+			refValue.Value = ref
+			result.Content = append(result.Content, refKey, refValue)
+			continue
+		}
+		if _, siblingValue := findYAMLPair(siblingNode, keyNode.Value); siblingValue != nil {
+			renderKey := cloneYAMLNode(keyNode)
+			result.Content = append(result.Content, renderKey, cloneYAMLNode(siblingValue))
+			consumed[keyNode.Value] = struct{}{}
+		}
+	}
+
+	for i := 0; i+1 < len(siblingNode.Content); i += 2 {
+		keyNode := siblingNode.Content[i]
+		valueNode := siblingNode.Content[i+1]
+		if _, ok := consumed[keyNode.Value]; ok {
+			continue
+		}
+		result.Content = append(result.Content, cloneYAMLNode(keyNode), cloneYAMLNode(valueNode))
+	}
+
+	return result, true, nil
+}
+
+func (sp *SchemaProxy) schemaIsTransformedSiblingView(s *Schema) bool {
+	if sp == nil || sp.schema == nil || sp.schema.Value == nil || s == nil {
+		return false
+	}
+	return s.low != nil && s.low.RootNode == sp.schema.Value.GetTransformedRefSiblingSchema()
+}
+
+func (sp *SchemaProxy) shouldCollapseTransformedRefWithSiblings() bool {
+	if sp == nil || sp.schema == nil || sp.schema.Value == nil {
+		return false
+	}
+	idx := sp.schema.Value.GetIndex()
+	if idx == nil || idx.GetConfig() == nil || idx.GetConfig().SpecInfo == nil {
+		return true
+	}
+	return idx.GetConfig().SpecInfo.VersionNumeric >= 3.1
+}
+
+func yamlNodeFromRender(rendered interface{}) (*yaml.Node, bool) {
+	switch node := rendered.(type) {
+	case *yaml.Node:
+		return node, node != nil
+	case yaml.Node:
+		return &node, true
+	default:
+		return nil, false
+	}
+}
+
+func findYAMLPair(node *yaml.Node, key string) (*yaml.Node, *yaml.Node) {
+	if node == nil || !utils.IsNodeMap(node) {
+		return nil, nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i] != nil && node.Content[i].Value == key {
+			return node.Content[i], node.Content[i+1]
+		}
+	}
+	return nil, nil
+}
+
+func cloneYAMLNode(node *yaml.Node) *yaml.Node {
+	if node == nil {
+		return nil
+	}
+	clone := &yaml.Node{
+		Kind:        node.Kind,
+		Style:       node.Style,
+		Tag:         node.Tag,
+		Value:       node.Value,
+		Anchor:      node.Anchor,
+		Alias:       node.Alias,
+		Line:        node.Line,
+		Column:      node.Column,
+		HeadComment: node.HeadComment,
+		LineComment: node.LineComment,
+		FootComment: node.FootComment,
+	}
+	if len(node.Content) > 0 {
+		clone.Content = make([]*yaml.Node, len(node.Content))
+		for i, child := range node.Content {
+			clone.Content[i] = cloneYAMLNode(child)
+		}
+	}
+	return clone
+}
+
 // Render will return a YAML representation of the Schema object as a byte slice.
 func (sp *SchemaProxy) Render() ([]byte, error) {
 	return yaml.Marshal(sp)
@@ -414,16 +648,45 @@ func (sp *SchemaProxy) Render() ([]byte, error) {
 
 // MarshalYAML will create a ready to render YAML representation of the SchemaProxy object.
 func (sp *SchemaProxy) MarshalYAML() (interface{}, error) {
+	if sp.isParsedRefWithSiblings() {
+		return sp.referenceYAMLNodeForSchema(nil)
+	}
 	if !sp.IsReference() {
 		s, err := sp.BuildSchema()
 		if err != nil {
 			return nil, err
+		}
+		if node, ok, renderErr := sp.renderTransformedRefWithSiblings(s); ok || renderErr != nil {
+			return node, renderErr
 		}
 		nb := high.NewNodeBuilder(s, s.low)
 		return nb.Render(), nil
 	}
 	if sp.isRefWithSiblings() {
 		return sp.renderRefWithSiblings(), nil
+	}
+	return sp.GetReferenceNode(), nil
+}
+
+func (sp *SchemaProxy) referenceYAMLNode() (*yaml.Node, error) {
+	return sp.referenceYAMLNodeForSchema(nil)
+}
+
+func (sp *SchemaProxy) referenceYAMLNodeForSchema(s *Schema) (*yaml.Node, error) {
+	if sp.isRefWithSiblings() {
+		return sp.renderRefWithSiblings(), nil
+	}
+	if sp.isParsedRefWithSiblings() {
+		if s == nil {
+			var err error
+			s, err = sp.BuildSchema()
+			if err != nil {
+				return nil, err
+			}
+		}
+		if node, ok, renderErr := sp.renderTransformedRefWithSiblings(s); ok || renderErr != nil {
+			return node, renderErr
+		}
 	}
 	return sp.GetReferenceNode(), nil
 }
@@ -438,6 +701,22 @@ func (sp *SchemaProxy) getInlineRenderKey() string {
 			return sp.refStr
 		}
 		return ""
+	}
+	if sp.isParsedRefWithSiblings() && sp.schema.ValueNode != nil {
+		node := sp.schema.ValueNode
+		idx := sp.schema.Value.GetIndex()
+		if node.Line > 0 && node.Column > 0 {
+			source := "inline"
+			if idx != nil {
+				source = idx.GetSpecAbsolutePath()
+			}
+			return fmt.Sprintf("%s:%d:%d", source, node.Line, node.Column)
+		}
+		source := "inline"
+		if idx != nil {
+			source = fmt.Sprintf("%s:inline", idx.GetSpecAbsolutePath())
+		}
+		return fmt.Sprintf("%s:%p", source, node)
 	}
 	// Use the reference string if available
 	if sp.IsReference() {
@@ -496,13 +775,8 @@ func (sp *SchemaProxy) MarshalYAMLInline() (interface{}, error) {
 }
 
 func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (interface{}, error) {
-	// refNode returns the correct reference YAML node — with sibling
-	// properties when this proxy carries both a $ref and schema data.
-	refNode := func() *yaml.Node {
-		if sp.isRefWithSiblings() {
-			return sp.renderRefWithSiblings()
-		}
-		return sp.GetReferenceNode()
+	refNode := func() (*yaml.Node, error) {
+		return sp.referenceYAMLNode()
 	}
 
 	// check if this reference should be preserved (set via context by discriminator handling).
@@ -511,7 +785,7 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 	if sp.IsReference() {
 		ref := sp.GetReference()
 		if ref != "" && ctx.ShouldPreserveRef(ref) {
-			return refNode(), nil
+			return refNode()
 		}
 	}
 
@@ -532,7 +806,7 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 						rootIdx := rolodex.GetRootIndex()
 						// If the schema is in the root index, preserve the ref
 						if rootIdx != nil && schemaIdx == rootIdx {
-							return refNode(), nil
+							return refNode()
 						}
 					}
 				}
@@ -548,8 +822,9 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 	if ctx.StartRendering(renderKey) {
 		// We're already rendering this schema in THIS call chain - return ref to break the cycle
 		if sp.IsReference() {
-			return refNode(),
-				fmt.Errorf("schema render failure, circular reference: `%s`", sp.GetReference())
+			node, refErr := refNode()
+			return node, errors.Join(refErr,
+				fmt.Errorf("schema render failure, circular reference: `%s`", sp.GetReference()))
 		}
 		// For inline schemas, return an empty map to avoid infinite recursion
 		return &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"},
@@ -580,7 +855,8 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 		for _, c := range circ {
 			if sp.IsReference() {
 				if sp.GetReference() == c.LoopPoint.Definition {
-					return refNode(), cirError(c.LoopPoint.Definition)
+					node, refErr := refNode()
+					return node, errors.Join(refErr, cirError(c.LoopPoint.Definition))
 				}
 				basePath := idx.GetSpecAbsolutePath()
 
@@ -589,7 +865,8 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 				}
 
 				if basePath == c.LoopPoint.FullDefinition {
-					return refNode(), cirError(c.LoopPoint.Definition)
+					node, refErr := refNode()
+					return node, errors.Join(refErr, cirError(c.LoopPoint.Definition))
 				}
 				a := utils.ReplaceWindowsDriveWithLinuxPath(strings.Replace(c.LoopPoint.FullDefinition, basePath, "", 1))
 				b := sp.GetReference()
@@ -611,14 +888,16 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 				bBase, bFragment := index.SplitRefFragment(b)
 
 				if aFragment != "" && bFragment != "" && aFragment == bFragment {
-					return refNode(), cirError(c.LoopPoint.Definition)
+					node, refErr := refNode()
+					return node, errors.Join(refErr, cirError(c.LoopPoint.Definition))
 				}
 
 				if aFragment == "" && bFragment == "" {
 					aNorm := strings.TrimPrefix(strings.TrimPrefix(aBase, "./"), "/")
 					bNorm := strings.TrimPrefix(strings.TrimPrefix(bBase, "./"), "/")
 					if aNorm != "" && bNorm != "" && aNorm == bNorm {
-						return refNode(), cirError(c.LoopPoint.Definition)
+						node, refErr := refNode()
+						return node, errors.Join(refErr, cirError(c.LoopPoint.Definition))
 					}
 				}
 			}
@@ -629,6 +908,9 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 		return nil, err
 	}
 	if s != nil {
+		if sp.isParsedRefWithSiblings() {
+			return sp.marshalParsedRefWithSiblingsInline(ctx, s)
+		}
 		// For programmatic ref+siblings proxies, render directly to avoid nil-deref
 		// in Schema.MarshalYAMLInlineWithContext which assumes s.GoLow() is non-nil.
 		if sp.isRefWithSiblings() {
@@ -641,4 +923,15 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 		return s.MarshalYAMLInlineWithContext(ctx)
 	}
 	return nil, errors.New("unable to render schema")
+}
+
+func (sp *SchemaProxy) marshalParsedRefWithSiblingsInline(ctx *InlineRenderContext, currentSibling *Schema) (interface{}, error) {
+	s, err := sp.buildSemanticAllOfSchemaView(currentSibling)
+	if err != nil {
+		return nil, err
+	}
+	if s == nil {
+		return nil, errors.New("unable to render transformed schema reference")
+	}
+	return s.MarshalYAMLInlineWithContext(ctx)
 }

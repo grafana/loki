@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package base
@@ -7,6 +7,7 @@ import (
 	"context"
 	"hash/maphash"
 	"sort"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -30,6 +31,8 @@ type SecurityRequirement struct {
 	ContainsEmptyRequirement bool // if a requirement is empty (this means it's optional)
 	index                    *index.SpecIndex
 	context                  context.Context
+	nodeStore                sync.Map
+	reference                low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -47,13 +50,29 @@ func (s *SecurityRequirement) GetIndex() *index.SpecIndex {
 // Build will extract security requirements from the node (the structure is odd, to be honest)
 func (s *SecurityRequirement) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	s.KeyNode = keyNode
+	s.reference = low.Reference{}
+	s.Reference = &s.reference
+	s.nodeStore = sync.Map{}
+	s.Nodes = &s.nodeStore
+	s.context = ctx
+	s.index = idx
+	if root == nil {
+		s.RootNode = nil
+		s.ContainsEmptyRequirement = true
+		s.Requirements = low.ValueReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[[]low.ValueReference[string]]]]{
+			Value:     orderedmap.New[low.KeyReference[string], low.ValueReference[[]low.ValueReference[string]]](),
+			ValueNode: nil,
+		}
+		return nil
+	}
 	root = utils.NodeAlias(root)
 	s.RootNode = root
 	utils.CheckForMergeNodes(root)
-	s.Reference = new(low.Reference)
-	s.Nodes = low.ExtractNodes(ctx, root)
-	s.context = ctx
-	s.index = idx
+	if len(root.Content) > 0 {
+		s.NodeMap.ExtractNodes(root, false)
+	} else {
+		s.AddNode(root.Line, root)
+	}
 
 	var labelNode *yaml.Node
 	valueMap := orderedmap.New[low.KeyReference[string], low.ValueReference[[]low.ValueReference[string]]]()

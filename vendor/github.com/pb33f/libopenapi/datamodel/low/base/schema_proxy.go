@@ -67,7 +67,10 @@ type SchemaProxy struct {
 	hashMu         sync.Mutex // protects cachedHash + hashGen
 	cachedHash     *uint64    // protected by hashMu
 	hashGen        uint64     // generation counter for invalidation
+	nodeStore      sync.Map
+	nodeMap        low.NodeMap
 	TransformedRef *yaml.Node // Original node that contained the ref before transformation
+	transformedRef *transformedSiblingRef
 	*low.NodeMap
 }
 
@@ -83,18 +86,9 @@ func (sp *SchemaProxy) Build(ctx context.Context, key, value *yaml.Node, idx *in
 
 	// transform sibling refs to allOf structure if enabled and applicable
 	// this ensures sp.vn contains the pre-transformed YAML as the source of truth
-	transformedValue := value
-	wasTransformed := false
-	if idx != nil && idx.GetConfig() != nil && idx.GetConfig().TransformSiblingRefs {
-		transformer := NewSiblingRefTransformer(idx)
-		if transformer.ShouldTransform(value) {
-			transformed, _ := transformer.TransformSiblingRef(value)
-			if transformed != nil {
-				transformedValue = transformed
-				wasTransformed = true
-				sp.TransformedRef = value // store original node that had the ref
-			}
-		}
+	transformedValue, transformedRef, wasTransformed := transformSiblingRefNode(value, idx)
+	if wasTransformed {
+		sp.setTransformedRef(transformedRef)
 	}
 
 	sp.vn = transformedValue
@@ -109,9 +103,80 @@ func (sp *SchemaProxy) Build(ctx context.Context, key, value *yaml.Node, idx *in
 	}
 	// for transformed schemas, don't set reference since it's now an allOf structure
 	// the reference is embedded within the allOf, but the schema itself is not a pure reference
-	var m sync.Map
-	sp.NodeMap = &low.NodeMap{Nodes: &m}
+	sp.nodeStore = sync.Map{}
+	sp.nodeMap = low.NodeMap{Nodes: &sp.nodeStore}
+	sp.NodeMap = &sp.nodeMap
 	return nil
+}
+
+func transformSiblingRefNode(value *yaml.Node, idx *index.SpecIndex) (*yaml.Node, *transformedSiblingRef, bool) {
+	if idx == nil || idx.GetConfig() == nil || !idx.GetConfig().TransformSiblingRefs {
+		return value, nil, false
+	}
+	transformer := NewSiblingRefTransformer(idx)
+	transformed := transformer.transformSiblingRefWithMetadata(value)
+	if transformed == nil {
+		return value, nil, false
+	}
+	return transformed.allOfNode, transformed, true
+}
+
+// prepareForResolvedBuild initializes proxy state when the caller has already resolved any reference metadata.
+// This avoids re-running the full Build ref-detection path for child-schema helpers that already did that work.
+func (sp *SchemaProxy) prepareForResolvedBuild(ctx context.Context, key, value, scopeNode *yaml.Node, idx *index.SpecIndex, refLocation string, refNode *yaml.Node, transformed *transformedSiblingRef) {
+	sp.kn = key
+	sp.idx = idx
+	sp.vn = value
+	sp.ctx = applySchemaIdScope(ctx, scopeNode, idx)
+	sp.Reference = low.Reference{}
+	sp.setTransformedRef(transformed)
+	if refLocation != "" {
+		sp.SetReference(refLocation, refNode)
+	}
+	sp.nodeStore = sync.Map{}
+	sp.nodeMap = low.NodeMap{Nodes: &sp.nodeStore}
+	sp.NodeMap = &sp.nodeMap
+}
+
+func (sp *SchemaProxy) setTransformedRef(transformed *transformedSiblingRef) {
+	sp.transformedRef = transformed
+	sp.TransformedRef = nil
+	if transformed != nil {
+		sp.TransformedRef = transformed.referenceNode
+	}
+}
+
+// IsTransformedRefWithSiblings reports whether this proxy was authored as a
+// schema-level $ref with sibling keywords and internally normalized to allOf.
+func (sp *SchemaProxy) IsTransformedRefWithSiblings() bool {
+	return sp != nil && sp.transformedRef != nil && sp.transformedRef.reference != ""
+}
+
+// GetTransformedRefSiblingSchema returns the sibling-only schema for an
+// internally transformed $ref-with-siblings node.
+func (sp *SchemaProxy) GetTransformedRefSiblingSchema() *yaml.Node {
+	if !sp.IsTransformedRefWithSiblings() {
+		return nil
+	}
+	return sp.transformedRef.siblingNode
+}
+
+// GetTransformedRefReference returns the original reference value for an
+// internally transformed $ref-with-siblings node.
+func (sp *SchemaProxy) GetTransformedRefReference() string {
+	if !sp.IsTransformedRefWithSiblings() {
+		return ""
+	}
+	return sp.transformedRef.reference
+}
+
+// GetTransformedRefAllOfSchema returns the internal allOf schema for an
+// authored $ref-with-siblings node.
+func (sp *SchemaProxy) GetTransformedRefAllOfSchema() *yaml.Node {
+	if !sp.IsTransformedRefWithSiblings() {
+		return nil
+	}
+	return sp.transformedRef.allOfNode
 }
 
 func applySchemaIdScope(ctx context.Context, node *yaml.Node, idx *index.SpecIndex) context.Context {

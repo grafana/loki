@@ -17,7 +17,7 @@ type NodeOrigin struct {
 	// ValueNode is the value node of the node in question, if has a different origin
 	ValueNode *yaml.Node `json:"-"`
 
-	// Line is yhe original line of where the node was found in the original file
+	// Line is the original line of where the node was found in the original file
 	Line int `json:"line" yaml:"line"`
 
 	// Column is the original column of where the node was found in the original file
@@ -26,7 +26,7 @@ type NodeOrigin struct {
 	// LineValue is the line of the value (if the origin of the key and value are different)
 	LineValue int `json:"lineValue,omitempty" yaml:"lineValue,omitempty"`
 
-	// ColumnValue is the line of the value (if the origin of the key and value are different)
+	// ColumnValue is the column of the value (if the origin of the key and value are different)
 	ColumnValue int `json:"columnKey,omitempty" yaml:"columnKey,omitempty"`
 
 	// AbsoluteLocation is the absolute path to the reference was extracted from.
@@ -45,11 +45,11 @@ type NodeOrigin struct {
 // if the node was found, false if not.
 func (index *SpecIndex) GetNode(line int, column int) (*yaml.Node, bool) {
 	index.nodeMapLock.RLock()
+	defer index.nodeMapLock.RUnlock()
 	if index.nodeMap[line] == nil {
 		return nil, false
 	}
 	node := index.nodeMap[line][column]
-	index.nodeMapLock.RUnlock()
 	return node, node != nil
 }
 

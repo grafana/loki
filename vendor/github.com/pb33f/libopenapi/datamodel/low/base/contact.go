@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package base
@@ -6,6 +6,7 @@ package base
 import (
 	"context"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -26,6 +27,8 @@ type Contact struct {
 	RootNode   *yaml.Node
 	index      *index.SpecIndex
 	context    context.Context
+	nodeStore  sync.Map
+	reference  low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -33,8 +36,21 @@ type Contact struct {
 func (c *Contact) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	c.KeyNode = keyNode
 	c.RootNode = root
-	c.Reference = new(low.Reference)
-	c.Nodes = low.ExtractNodes(ctx, root)
+	c.reference = low.Reference{}
+	c.Reference = &c.reference
+	c.nodeStore = sync.Map{}
+	c.Nodes = &c.nodeStore
+	if root == nil {
+		c.Extensions = nil
+		c.context = ctx
+		c.index = idx
+		return nil
+	}
+	if len(root.Content) > 0 {
+		c.NodeMap.ExtractNodes(root, false)
+	} else {
+		c.AddNode(root.Line, root)
+	}
 	c.Extensions = low.ExtractExtensions(root)
 	c.context = ctx
 	c.index = idx

@@ -78,6 +78,7 @@ func IsFileBeingIndexed(ctx context.Context, filePath string) bool {
 	return false
 }
 
+// SearchIndexForReferenceByReference searches the index for a matching reference using a background context.
 func (index *SpecIndex) SearchIndexForReferenceByReference(fullRef *Reference) (*Reference, *SpecIndex) {
 	r, idx, _ := index.SearchIndexForReferenceByReferenceWithContext(context.Background(), fullRef)
 	return r, idx
@@ -90,6 +91,7 @@ func (index *SpecIndex) SearchIndexForReference(ref string) (*Reference, *SpecIn
 	return index.SearchIndexForReferenceByReference(&Reference{FullDefinition: ref})
 }
 
+// SearchIndexForReferenceWithContext searches the index for a reference string with context for schema ID tracking.
 func (index *SpecIndex) SearchIndexForReferenceWithContext(ctx context.Context, ref string) (*Reference, *SpecIndex, context.Context) {
 	return index.SearchIndexForReferenceByReferenceWithContext(ctx, &Reference{FullDefinition: ref})
 }
@@ -102,6 +104,10 @@ func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx contex
 		}
 	}
 
+	// --- Step 1: JSON Schema $id resolution ---
+	// Resolve the ref against JSON Schema $id values first. Specs using JSON Schema 2020-12
+	// register schemas by their $id URI (e.g. "$id: https://example.com/a.json"), so a bare
+	// ref like "a.json" can match by normalizing it against the current $id base URI scope.
 	schemaIdBase := searchRef.SchemaIdBase
 	if schemaIdBase == "" {
 		if scope := GetSchemaIdScope(ctx); scope != nil && scope.BaseUri != "" {
@@ -122,8 +128,7 @@ func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx contex
 		}
 	}
 
-	// Try to resolve via JSON Schema 2020-12 $id registry first
-	// This handles refs like "a.json" resolving to schemas with $id: "https://example.com/a.json"
+	// Try the $id registry for an exact match, then fall back to path-only matching.
 	if resolved := index.ResolveRefViaSchemaId(normalizedRef); resolved != nil {
 		if index.cache != nil {
 			index.cache.Store(searchRef.FullDefinition, resolved)
@@ -151,6 +156,11 @@ func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx contex
 		}
 	}
 
+	// --- Step 2: Parse the ref into URI components and build lookup paths ---
+	// Split the ref on "#/" to separate the file path (uri[0]) from the JSON Pointer
+	// fragment (uri[1]). Depending on whether the ref is absolute, relative, or HTTP,
+	// construct `roloLookup` (the file path for rolodex search), `ref` (the primary
+	// lookup key), and `refAlt` (an alternate absolute-path form of the key).
 	ref := normalizedRef
 	refAlt := ref
 	absPath := index.specAbsolutePath
@@ -209,6 +219,9 @@ func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx contex
 		refAlt, _ = url.QueryUnescape(refAlt)
 	}
 
+	// --- Step 3: Local index lookup ---
+	// Search the current index's mapped refs, component schema definitions, and security
+	// schemes using both the primary key (`ref`) and the alternate absolute form (`refAlt`).
 	if r, ok := index.allMappedRefs[ref]; ok {
 		idx := index.extractIndex(r)
 		index.cache.Store(ref, r)
@@ -238,7 +251,11 @@ func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx contex
 		}
 	}
 
-	// check the rolodex for the reference.
+	// --- Step 4: Rolodex / external file lookup ---
+	// Open the target file via the rolodex (the multi-file filesystem abstraction), then
+	// search through that file's index for the ref. Handles self-references back to the
+	// current spec, relative path normalization, inline/ref schema scanning, and
+	// component-tree walking inside the remote file.
 	if roloLookup != "" {
 
 		if strings.Contains(roloLookup, "#") {
@@ -303,9 +320,9 @@ func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx contex
 			}
 
 			idx := rFile.GetIndex()
-			if index.resolver != nil {
+			if resolver := index.GetResolver(); resolver != nil {
 				index.resolverLock.Lock()
-				index.resolver.indexesVisited++
+				resolver.indexesVisited++
 				index.resolverLock.Unlock()
 			}
 			if idx != nil {

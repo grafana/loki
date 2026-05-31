@@ -12,7 +12,7 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 const serviceNamespace = "cloud-run-managed"

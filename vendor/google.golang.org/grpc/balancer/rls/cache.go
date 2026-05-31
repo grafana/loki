@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	estats "google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/internal/backoff"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
@@ -174,21 +173,19 @@ type dataCache struct {
 	rlsServerTarget string
 
 	// Read only after initialization.
-	grpcTarget      string
-	uuid            string
-	metricsRecorder estats.MetricsRecorder
+	grpcTarget string
+	uuid       string
 }
 
-func newDataCache(size int64, logger *internalgrpclog.PrefixLogger, metricsRecorder estats.MetricsRecorder, grpcTarget string) *dataCache {
+func newDataCache(size int64, logger *internalgrpclog.PrefixLogger, grpcTarget string) *dataCache {
 	return &dataCache{
-		maxSize:         size,
-		keys:            newLRU(),
-		entries:         make(map[cacheKey]*cacheEntry),
-		logger:          logger,
-		shutdown:        grpcsync.NewEvent(),
-		grpcTarget:      grpcTarget,
-		uuid:            uuid.New().String(),
-		metricsRecorder: metricsRecorder,
+		maxSize:    size,
+		keys:       newLRU(),
+		entries:    make(map[cacheKey]*cacheEntry),
+		logger:     logger,
+		shutdown:   grpcsync.NewEvent(),
+		grpcTarget: grpcTarget,
+		uuid:       uuid.New().String(),
 	}
 }
 
@@ -327,8 +324,7 @@ func (dc *dataCache) addEntry(key cacheKey, entry *cacheEntry) (backoffCancelled
 	if dc.currentSize > dc.maxSize {
 		backoffCancelled = dc.resize(dc.maxSize)
 	}
-	cacheSizeMetric.Record(dc.metricsRecorder, dc.currentSize, dc.grpcTarget, dc.rlsServerTarget, dc.uuid)
-	cacheEntriesMetric.Record(dc.metricsRecorder, int64(len(dc.entries)), dc.grpcTarget, dc.rlsServerTarget, dc.uuid)
+
 	return backoffCancelled, true
 }
 
@@ -338,7 +334,7 @@ func (dc *dataCache) updateEntrySize(entry *cacheEntry, newSize int64) {
 	dc.currentSize -= entry.size
 	entry.size = newSize
 	dc.currentSize += entry.size
-	cacheSizeMetric.Record(dc.metricsRecorder, dc.currentSize, dc.grpcTarget, dc.rlsServerTarget, dc.uuid)
+
 }
 
 func (dc *dataCache) getEntry(key cacheKey) *cacheEntry {
@@ -371,8 +367,7 @@ func (dc *dataCache) deleteAndCleanup(key cacheKey, entry *cacheEntry) {
 	delete(dc.entries, key)
 	dc.currentSize -= entry.size
 	dc.keys.removeEntry(key)
-	cacheSizeMetric.Record(dc.metricsRecorder, dc.currentSize, dc.grpcTarget, dc.rlsServerTarget, dc.uuid)
-	cacheEntriesMetric.Record(dc.metricsRecorder, int64(len(dc.entries)), dc.grpcTarget, dc.rlsServerTarget, dc.uuid)
+
 }
 
 func (dc *dataCache) stop() {

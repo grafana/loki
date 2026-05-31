@@ -16,8 +16,9 @@ var ConfmapEnableMergeAppendOptionFeatureGate = featuregate.GlobalRegistry().Mus
 
 var ConfmapNewExpandedValueSanitizerFeatureGate = featuregate.GlobalRegistry().MustRegister(
 	"confmap.newExpandedValueSanitizer",
-	featuregate.StageBeta,
+	featuregate.StageStable,
 	featuregate.WithRegisterDescription("Fixes some types of decoding errors where environment variables are parsed as non-string types but assigned to string fields."),
 	featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/pull/14413"),
 	featuregate.WithRegisterFromVersion("v0.144.0"),
+	featuregate.WithRegisterToVersion("v0.154.0"),
 )

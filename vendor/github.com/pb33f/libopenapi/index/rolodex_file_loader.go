@@ -163,8 +163,7 @@ func (l *LocalFS) OpenWithContext(ctx context.Context, name string) (fs.File, er
 			}
 
 			if idx != nil {
-				resolver := NewResolver(idx)
-				idx.resolver = resolver
+				NewResolver(idx)
 				idx.BuildIndex()
 			}
 			if len(extractedFile.data) > 0 {
@@ -243,7 +242,7 @@ func (l *LocalFile) Index(config *SpecIndexConfig) (*SpecIndex, error) {
 	return l.IndexWithContext(context.Background(), config)
 }
 
-// // IndexWithContext returns the *SpecIndex for the file. If the index has not been created, it will be created (indexed), also supplied context
+// IndexWithContext returns the *SpecIndex for the file. If the index has not been created, it will be created (indexed), also supplied context
 func (l *LocalFile) IndexWithContext(ctx context.Context, config *SpecIndexConfig) (*SpecIndex, error) {
 	var result *SpecIndex
 	var resultErr error
@@ -439,7 +438,7 @@ func NewLocalFSWithConfig(config *LocalFSConfig) (*LocalFS, error) {
 				return err
 			}
 
-			// we don't care about directories, or errors, just read everything we can.
+			// skip non-matching directories, process all readable files.
 			if d.IsDir() {
 				if d.Name() != config.BaseDirectory {
 					return nil
@@ -495,7 +494,11 @@ func (l *LocalFS) extractFile(p string) (*LocalFile, error) {
 		var file fs.File
 		if config != nil && config.DirFS != nil {
 			l.logger.Debug("[rolodex file loader]: collecting file from dirFS", "file", extension, "location", abs)
-			file, _ = config.DirFS.Open(p)
+			var fileError error
+			file, fileError = config.DirFS.Open(p)
+			if fileError != nil {
+				return nil, fileError
+			}
 		} else {
 			l.logger.Debug("[rolodex file loader]: reading local file from OS", "file", extension, "location", abs)
 			var fileError error
@@ -504,8 +507,8 @@ func (l *LocalFS) extractFile(p string) (*LocalFile, error) {
 			if fileError != nil {
 				return nil, fileError
 			}
-			defer file.Close()
 		}
+		defer file.Close()
 
 		modTime := time.Now()
 		stat, _ := file.Stat()

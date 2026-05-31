@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/datamodel/low/base"
@@ -35,6 +36,8 @@ type Header struct {
 	RootNode        *yaml.Node
 	index           *index.SpecIndex
 	context         context.Context
+	nodeStore       sync.Map
+	reference       low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -127,14 +130,21 @@ func (h *Header) Hash() uint64 {
 // Build will extract extensions, examples, schema and content/media types from node.
 func (h *Header) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	h.KeyNode = keyNode
-	h.Reference = new(low.Reference)
+	h.reference = low.Reference{}
+	h.Reference = &h.reference
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		h.SetReference(ref, root)
 	}
 	root = utils.NodeAlias(root)
 	h.RootNode = root
 	utils.CheckForMergeNodes(root)
-	h.Nodes = low.ExtractNodes(ctx, root)
+	h.nodeStore = sync.Map{}
+	h.Nodes = &h.nodeStore
+	if len(root.Content) > 0 {
+		h.NodeMap.ExtractNodes(root, false)
+	} else {
+		h.AddNode(root.Line, root)
+	}
 	h.Extensions = low.ExtractExtensions(root)
 	h.context = ctx
 	h.index = idx
@@ -149,11 +159,11 @@ func (h *Header) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index
 			KeyNode:   expLabel,
 		}
 		h.Nodes.Store(expLabel.Line, expLabel)
-		m := low.ExtractNodes(ctx, expNode)
-		m.Range(func(key, value any) bool {
-			h.Nodes.Store(key, value)
-			return true
-		})
+		if len(expNode.Content) > 0 {
+			h.NodeMap.ExtractNodes(expNode, false)
+		} else {
+			h.AddNode(expNode.Line, expNode)
+		}
 	}
 
 	// handle examples if set.

@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -6,6 +6,7 @@ package v3
 import (
 	"context"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
@@ -29,6 +30,8 @@ type Callback struct {
 	RootNode   *yaml.Node
 	index      *index.SpecIndex
 	context    context.Context
+	nodeStore  sync.Map
+	reference  low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -66,14 +69,21 @@ func (cb *Callback) FindExpression(exp string) *low.ValueReference[*PathItem] {
 // Build will extract extensions, expressions and PathItem objects for Callback
 func (cb *Callback) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	cb.KeyNode = keyNode
-	cb.Reference = new(low.Reference)
+	cb.reference = low.Reference{}
+	cb.Reference = &cb.reference
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		cb.SetReference(ref, root)
 	}
 	root = utils.NodeAlias(root)
 	cb.RootNode = root
 	utils.CheckForMergeNodes(root)
-	cb.Nodes = low.ExtractNodes(ctx, root)
+	cb.nodeStore = sync.Map{}
+	cb.Nodes = &cb.nodeStore
+	if len(root.Content) > 0 {
+		cb.NodeMap.ExtractNodes(root, false)
+	} else {
+		cb.AddNode(root.Line, root)
+	}
 	cb.Extensions = low.ExtractExtensions(root)
 	cb.context = ctx
 	cb.index = idx

@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package low
@@ -7,7 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/pb33f/libopenapi/datamodel"
+	"github.com/pb33f/libopenapi/index"
+	"github.com/pb33f/libopenapi/orderedmap"
+	"github.com/pb33f/libopenapi/utils"
+	"go.yaml.in/yaml/v4"
 	"hash/maphash"
+	"math/big"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -16,15 +22,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	jsonpathconfig "github.com/pb33f/jsonpath/pkg/jsonpath/config"
-
-	"github.com/pb33f/jsonpath/pkg/jsonpath"
-	"github.com/pb33f/libopenapi/datamodel"
-	"github.com/pb33f/libopenapi/index"
-	"github.com/pb33f/libopenapi/orderedmap"
-	"github.com/pb33f/libopenapi/utils"
-	"go.yaml.in/yaml/v4"
 )
 
 // stringBuilderPool is a sync.Pool that reuses strings.Builder instances to reduce memory allocations
@@ -220,6 +217,14 @@ func LocateRefNodeWithContext(ctx context.Context, root *yaml.Node, idx *index.S
 			}
 		}
 
+		if index.GetSchemaIdScope(ctx) == nil {
+			for _, candidate := range searchRefs {
+				if node := navigateReferenceFragment(idx.GetRootNode(), candidate); node != nil {
+					return utils.NodeAlias(node), idx, nil, ctx
+				}
+			}
+		}
+
 		rv = resolvedRef
 
 		// Obtain the absolute filepath/URL of the spec in which we are trying to
@@ -339,12 +344,9 @@ func LocateRefNodeWithContext(ctx context.Context, root *yaml.Node, idx *index.S
 		// cant be found? last resort is to try a path lookup
 		_, friendly := utils.ConvertComponentIdIntoFriendlyPathSearch(rv)
 		if friendly != "" {
-			path, err := jsonpath.NewPath(friendly, jsonpathconfig.WithPropertyNameExtension(), jsonpathconfig.WithLazyContextTracking())
-			if err == nil {
-				nodes := path.Query(idx.GetRootNode())
-				if len(nodes) > 0 {
-					return utils.NodeAlias(nodes[0]), idx, nil, ctx
-				}
+			nodes, err := utils.FindNodesWithoutDeserializingWithOptions(idx.GetRootNode(), friendly, utils.JSONPathLookupOptions{})
+			if err == nil && len(nodes) > 0 {
+				return utils.NodeAlias(nodes[0]), idx, nil, ctx
 			}
 		}
 		return nil, idx, fmt.Errorf("reference '%s' at line %d, column %d was not found",
@@ -480,7 +482,7 @@ func ExtractObject[T Buildable[N], N any](ctx context.Context, label string, roo
 			}
 		}
 	} else {
-		_, ln, vn = utils.FindKeyNodeFull(label, root.Content)
+		_, ln, vn = findExtractLabelNode(label, root)
 		if vn != nil {
 			if h, _, rVal := utils.IsNodeRefValue(vn); h {
 				ref, fIdx, lerr, nCtx := LocateRefNodeWithContext(ctx, vn, idx)
@@ -540,6 +542,94 @@ func ExtractObject[T Buildable[N], N any](ctx context.Context, label string, roo
 		return res, circError
 	}
 	return res, nil
+}
+
+func extractArrayValueReferences[T Buildable[N], N any](
+	ctx context.Context,
+	label string,
+	labelNode, valueNode *yaml.Node,
+	idx *index.SpecIndex,
+	isRef bool,
+) ([]ValueReference[T], error) {
+	var circError error
+	var items []ValueReference[T]
+	if valueNode == nil || labelNode == nil {
+		return items, nil
+	}
+	if !utils.IsNodeArray(valueNode) {
+
+		if !isRef {
+			return nil, fmt.Errorf("array build failed, input is not an array, line %d, column %d", valueNode.Line, valueNode.Column)
+		}
+		// if this was pulled from a ref, but it's not a sequence, check the label and see if anything comes out,
+		// and then check that is a sequence, if not, fail it.
+		_, _, fvn := utils.FindKeyNodeFullTop(label, valueNode.Content)
+		if fvn != nil {
+			if !utils.IsNodeArray(valueNode) {
+				return nil, fmt.Errorf("array build failed, input is not an array, line %d, column %d", valueNode.Line, valueNode.Column)
+			}
+		}
+	}
+	if len(valueNode.Content) > 0 {
+		items = make([]ValueReference[T], 0, len(valueNode.Content))
+	}
+	for _, node := range valueNode.Content {
+		localReferenceValue := ""
+		foundCtx := ctx
+		foundIndex := idx
+
+		var refNode *yaml.Node
+
+		if rf, _, rv := utils.IsNodeRefValue(node); rf {
+			refg, fIdx, err, nCtx := LocateRefEnd(ctx, node, idx, 0)
+			if refg != nil {
+				refNode = node
+				node = refg
+				localReferenceValue = rv
+				foundIndex = fIdx
+				foundCtx = nCtx
+				if err != nil {
+					circError = err
+				}
+			} else if errors.Is(err, ErrExternalRefSkipped) {
+				var n T = new(N)
+				SetReference(n, rv, node)
+				v := ValueReference[T]{Value: n, ValueNode: node}
+				v.SetReference(rv, node)
+				items = append(items, v)
+				continue
+			} else {
+				if err != nil {
+					return nil, fmt.Errorf("array build failed: reference cannot be found: %s", err.Error())
+				}
+			}
+		}
+		var n T = new(N)
+		err := BuildModel(node, n)
+		if err != nil {
+			return nil, err
+		}
+		berr := n.Build(foundCtx, labelNode, node, foundIndex)
+		if berr != nil {
+			return nil, berr
+		}
+
+		if localReferenceValue != "" {
+			SetReference(n, localReferenceValue, refNode)
+		}
+
+		v := ValueReference[T]{
+			Value:     n,
+			ValueNode: node,
+		}
+		v.SetReference(localReferenceValue, refNode)
+
+		items = append(items, v)
+	}
+	if circError != nil && !idx.AllowCircularReferenceResolving() {
+		return items, circError
+	}
+	return items, nil
 }
 
 func SetReference(obj any, ref string, refNode *yaml.Node) {
@@ -630,84 +720,27 @@ func ExtractArray[T Buildable[N], N any](ctx context.Context, label string, root
 		}
 	}
 
-	var items []ValueReference[T]
-	if vn != nil && ln != nil {
-		if !utils.IsNodeArray(vn) {
-
-			if !isRef {
-				return []ValueReference[T]{}, nil, nil,
-					fmt.Errorf("array build failed, input is not an array, line %d, column %d", vn.Line, vn.Column)
-			}
-			// if this was pulled from a ref, but it's not a sequence, check the label and see if anything comes out,
-			// and then check that is a sequence, if not, fail it.
-			_, _, fvn := utils.FindKeyNodeFullTop(label, vn.Content)
-			if fvn != nil {
-				if !utils.IsNodeArray(vn) {
-					return []ValueReference[T]{}, nil, nil,
-						fmt.Errorf("array build failed, input is not an array, line %d, column %d", vn.Line, vn.Column)
-				}
-			}
-		}
-		for _, node := range vn.Content {
-			localReferenceValue := ""
-			foundCtx := ctx
-			foundIndex := idx
-
-			var refNode *yaml.Node
-
-			if rf, _, rv := utils.IsNodeRefValue(node); rf {
-				refg, fIdx, err, nCtx := LocateRefEnd(ctx, node, idx, 0)
-				if refg != nil {
-					refNode = node
-					node = refg
-					localReferenceValue = rv
-					foundIndex = fIdx
-					foundCtx = nCtx
-					if err != nil {
-						circError = err
-					}
-				} else if errors.Is(err, ErrExternalRefSkipped) {
-					var n T = new(N)
-					SetReference(n, rv, node)
-					v := ValueReference[T]{Value: n, ValueNode: node}
-					v.SetReference(rv, node)
-					items = append(items, v)
-					continue
-				} else {
-					if err != nil {
-						return []ValueReference[T]{}, nil, nil, fmt.Errorf("array build failed: reference cannot be found: %s",
-							err.Error())
-					}
-				}
-			}
-			var n T = new(N)
-			err := BuildModel(node, n)
-			if err != nil {
-				return []ValueReference[T]{}, ln, vn, err
-			}
-			berr := n.Build(foundCtx, ln, node, foundIndex)
-			if berr != nil {
-				return nil, ln, vn, berr
-			}
-
-			if localReferenceValue != "" {
-				SetReference(n, localReferenceValue, refNode)
-			}
-
-			v := ValueReference[T]{
-				Value:     n,
-				ValueNode: node,
-			}
-			v.SetReference(localReferenceValue, refNode)
-
-			items = append(items, v)
-		}
+	items, err := extractArrayValueReferences[T, N](ctx, label, ln, vn, idx, isRef)
+	if err != nil {
+		return items, ln, vn, err
 	}
-	// include circular errors?
 	if circError != nil && !idx.AllowCircularReferenceResolving() {
 		return items, ln, vn, circError
 	}
 	return items, ln, vn, nil
+}
+
+// ExtractArrayNoLookup builds an array of low-level values from an already-located YAML sequence node.
+func ExtractArrayNoLookup[T Buildable[N], N any](
+	ctx context.Context,
+	labelNode, valueNode *yaml.Node,
+	idx *index.SpecIndex,
+) ([]ValueReference[T], error) {
+	label := ""
+	if labelNode != nil {
+		label = labelNode.Value
+	}
+	return extractArrayValueReferences[T, N](ctx, label, labelNode, valueNode, idx, false)
 }
 
 // ExtractMapNoLookupExtensions will extract a map of KeyReference and ValueReference from a root yaml.Node. The 'NoLookup' part
@@ -723,12 +756,12 @@ func ExtractMapNoLookupExtensions[PT Buildable[N], N any](
 ) (*orderedmap.Map[KeyReference[string], ValueReference[PT]], error) {
 	valueMap := orderedmap.New[KeyReference[string], ValueReference[PT]]()
 	var circError error
+	root = utils.NodeAlias(root)
+	utils.CheckForMergeNodes(root)
 	if utils.IsNodeMap(root) {
 		var currentKey *yaml.Node
 		skip := false
-		rlen := len(root.Content)
-
-		for i := 0; i < rlen; i++ {
+		for i := 0; i < len(root.Content); i++ {
 			node := root.Content[i]
 			if !includeExtensions {
 				if len(node.Value) >= 2 && (node.Value[0] == 'x' || node.Value[0] == 'X') && node.Value[1] == '-' {
@@ -745,12 +778,6 @@ func ExtractMapNoLookupExtensions[PT Buildable[N], N any](
 				continue
 			}
 
-			if currentKey.Tag == "!!merge" && currentKey.Value == "<<" {
-				root.Content = append(root.Content, utils.NodeAlias(node).Content...)
-				rlen = len(root.Content)
-				currentKey = nil
-				continue
-			}
 			node = utils.NodeAlias(node)
 
 			foundIndex := idx
@@ -838,11 +865,54 @@ func ExtractMapNoLookup[PT Buildable[N], N any](
 type mappingResult[T any] struct {
 	k KeyReference[string]
 	v ValueReference[T]
+	e error
 }
 
 type buildInput struct {
 	label *yaml.Node
 	value *yaml.Node
+}
+
+func findExtractLabelNode(label string, root *yaml.Node) (keyNode *yaml.Node, labelNode *yaml.Node, valueNode *yaml.Node) {
+	root = utils.NodeAlias(root)
+	if root == nil {
+		return nil, nil, nil
+	}
+	if utils.IsNodeMap(root) {
+		keyNode, labelNode, valueNode = utils.FindKeyNodeFullTop(label, root.Content)
+		if valueNode != nil {
+			return keyNode, labelNode, valueNode
+		}
+	}
+	return utils.FindKeyNodeFull(label, root.Content)
+}
+
+func collectMapBuildInputs(valueNode *yaml.Node, extensions bool) []buildInput {
+	if valueNode == nil || len(valueNode.Content) == 0 {
+		return nil
+	}
+
+	inputs := make([]buildInput, 0, len(valueNode.Content)/2)
+	var currentLabelNode *yaml.Node
+	for i, en := range valueNode.Content {
+		en = utils.NodeAlias(en)
+		if i%2 == 0 {
+			if !extensions && strings.HasPrefix(en.Value, "x-") {
+				currentLabelNode = nil
+				continue
+			}
+			currentLabelNode = en
+			continue
+		}
+		if currentLabelNode == nil {
+			continue
+		}
+		inputs = append(inputs, buildInput{
+			label: currentLabelNode,
+			value: en,
+		})
+	}
+	return inputs
 }
 
 // ExtractMapExtensions will extract a map of KeyReference and ValueReference from a root yaml.Node. The 'label' is
@@ -881,7 +951,7 @@ func ExtractMapExtensions[PT Buildable[N], N any](
 				root.Content[1].Value)
 		}
 	} else {
-		_, labelNode, valueNode = utils.FindKeyNodeFull(label, root.Content)
+		_, labelNode, valueNode = findExtractLabelNode(label, root)
 		valueNode = utils.NodeAlias(valueNode)
 		if valueNode != nil {
 			if h, _, _ := utils.IsNodeRefValue(valueNode); h {
@@ -906,68 +976,17 @@ func ExtractMapExtensions[PT Buildable[N], N any](
 	}
 	if valueNode != nil {
 		valueMap := orderedmap.New[KeyReference[string], ValueReference[PT]]()
-
-		in := make(chan buildInput)
-		out := make(chan mappingResult[PT])
-		done := make(chan struct{})
-		var wg sync.WaitGroup
-		wg.Add(2) // input and output goroutines.
-
-		// TranslatePipeline input.
-		go func() {
-			defer func() {
-				close(in)
-				wg.Done()
-			}()
-			var currentLabelNode *yaml.Node
-			for i, en := range valueNode.Content {
-				if !extensions {
-					if strings.HasPrefix(en.Value, "x-") {
-						continue // yo, don't pay any attention to extensions, not here anyway.
-					}
-				}
-				if currentLabelNode == nil && i%2 != 0 {
-					continue // we need a label node first, and we don't have one because of extensions.
-				}
-
-				en = utils.NodeAlias(en)
-				if i%2 == 0 {
-					currentLabelNode = en
-					continue
-				}
-
-				select {
-				case in <- buildInput{
-					label: currentLabelNode,
-					value: en,
-				}:
-				case <-done:
-					return
-				}
-			}
-		}()
-
-		// TranslatePipeline output.
-		go func() {
-			for {
-				result, ok := <-out
-				if !ok {
-					break
-				}
-				valueMap.Set(result.k, result.v)
-			}
-			close(done)
-			wg.Done()
-		}()
+		inputs := collectMapBuildInputs(valueNode, extensions)
 
 		startIdx := foundIndex
 		startCtx := foundContext
 
-		translateFunc := func(input buildInput) (mappingResult[PT], error) {
+		translateFunc := func(_ int, input buildInput) (mappingResult[PT], error) {
 			en := input.value
 
 			sCtx := startCtx
 			sIdx := startIdx
+			var localCircErr error
 
 			var refNode *yaml.Node
 			var referenceValue string
@@ -983,7 +1002,7 @@ func ExtractMapExtensions[PT Buildable[N], N any](
 					}
 					sCtx = nCtx
 					if err != nil {
-						circError = err
+						localCircErr = err
 					}
 				} else if errors.Is(err, ErrExternalRefSkipped) {
 					var n PT = new(N)
@@ -993,6 +1012,7 @@ func ExtractMapExtensions[PT Buildable[N], N any](
 					return mappingResult[PT]{
 						k: KeyReference[string]{KeyNode: input.label, Value: input.label.Value},
 						v: v,
+						e: localCircErr,
 					}, nil
 				} else {
 					if err != nil {
@@ -1026,11 +1046,17 @@ func ExtractMapExtensions[PT Buildable[N], N any](
 					Value:   input.label.Value,
 				},
 				v: v,
+				e: localCircErr,
 			}, nil
 		}
 
-		err := datamodel.TranslatePipeline[buildInput, mappingResult[PT]](in, out, translateFunc)
-		wg.Wait()
+		err := datamodel.TranslateSliceParallel(inputs, translateFunc, func(result mappingResult[PT]) error {
+			if result.e != nil {
+				circError = result.e
+			}
+			valueMap.Set(result.k, result.v)
+			return nil
+		})
 		if err != nil {
 			return nil, labelNode, valueNode, err
 		}
@@ -1229,6 +1255,10 @@ func hashYamlNodeFast(n *yaml.Node) string {
 
 // hashNodeTree walks the YAML tree and hashes it without marshaling
 func hashNodeTree(h *maphash.Hash, n *yaml.Node, visited map[*yaml.Node]bool) {
+	hashNodeTreeWithNumericNormalization(h, n, visited, true)
+}
+
+func hashNodeTreeWithNumericNormalization(h *maphash.Hash, n *yaml.Node, visited map[*yaml.Node]bool, normalizeNumericScalars bool) {
 	if n == nil {
 		return
 	}
@@ -1240,10 +1270,12 @@ func hashNodeTree(h *maphash.Hash, n *yaml.Node, visited map[*yaml.Node]bool) {
 	}
 	visited[n] = true
 
-	// Hash node metadata
+	// Hash node metadata. Numeric scalars are normalized so semantically equivalent
+	// values like `1e-08` and `1e-8` compare equal.
+	tag, value := scalarTagAndValueForHash(n, normalizeNumericScalars)
 	h.Write([]byte{byte(n.Kind)})
-	h.Write([]byte(n.Tag))
-	h.Write([]byte(n.Value))
+	h.Write([]byte(tag))
+	h.Write([]byte(value))
 	if n.Anchor != "" {
 		h.Write([]byte(n.Anchor))
 	}
@@ -1262,7 +1294,7 @@ func hashNodeTree(h *maphash.Hash, n *yaml.Node, visited map[*yaml.Node]bool) {
 	case yaml.SequenceNode:
 		h.Write([]byte("["))
 		for _, child := range content {
-			hashNodeTree(h, child, visited)
+			hashNodeTreeWithNumericNormalization(h, child, visited, normalizeNumericScalars)
 			h.Write([]byte(","))
 		}
 		h.Write([]byte("]"))
@@ -1289,7 +1321,9 @@ func hashNodeTree(h *maphash.Hash, n *yaml.Node, visited map[*yaml.Node]bool) {
 			if i+1 < len(content) {
 				keyH := hasherPool.Get().(*maphash.Hash)
 				keyH.Reset()
-				hashNodeTree(keyH, content[i], visited)
+				keyVisited := getVisitedMap()
+				hashNodeTreeWithNumericNormalization(keyH, content[i], keyVisited, false)
+				putVisitedMap(keyVisited)
 				pairs = append(pairs, kvPair{
 					keyHash:   keyH.Sum64(),
 					keyNode:   content[i],
@@ -1306,9 +1340,9 @@ func hashNodeTree(h *maphash.Hash, n *yaml.Node, visited map[*yaml.Node]bool) {
 
 		// Hash in sorted order
 		for _, pair := range pairs {
-			hashNodeTree(h, pair.keyNode, visited)
+			hashNodeTreeWithNumericNormalization(h, pair.keyNode, visited, false)
 			h.Write([]byte(":"))
-			hashNodeTree(h, pair.valueNode, visited)
+			hashNodeTreeWithNumericNormalization(h, pair.valueNode, visited, true)
 			h.Write([]byte(","))
 		}
 		h.Write([]byte("}"))
@@ -1316,17 +1350,41 @@ func hashNodeTree(h *maphash.Hash, n *yaml.Node, visited map[*yaml.Node]bool) {
 	case yaml.DocumentNode:
 		h.Write([]byte("DOC["))
 		for _, child := range content {
-			hashNodeTree(h, child, visited)
+			hashNodeTreeWithNumericNormalization(h, child, visited, normalizeNumericScalars)
 		}
 		h.Write([]byte("]"))
 
 	case yaml.AliasNode:
 		h.Write([]byte("ALIAS["))
 		if n.Alias != nil {
-			hashNodeTree(h, n.Alias, visited)
+			hashNodeTreeWithNumericNormalization(h, n.Alias, visited, normalizeNumericScalars)
 		}
 		h.Write([]byte("]"))
 	}
+}
+
+func comparableScalarTagAndValue(n *yaml.Node) (string, string) {
+	return scalarTagAndValueForHash(n, true)
+}
+
+func scalarTagAndValueForHash(n *yaml.Node, normalizeNumericScalars bool) (string, string) {
+	if n == nil {
+		return "", ""
+	}
+	if n.Kind != yaml.ScalarNode {
+		return n.Tag, n.Value
+	}
+	if !normalizeNumericScalars {
+		return n.Tag, n.Value
+	}
+	if n.Tag != "!!int" && n.Tag != "!!float" {
+		return n.Tag, n.Value
+	}
+	rat, ok := new(big.Rat).SetString(n.Value)
+	if !ok {
+		return n.Tag, n.Value
+	}
+	return "!!number", rat.RatString()
 }
 
 // CompareYAMLNodes compares two YAML nodes for equality without marshaling to YAML.
@@ -1503,6 +1561,8 @@ func LocateRefEnd(ctx context.Context, root *yaml.Node, idx *index.SpecIndex, de
 }
 
 // FromReferenceMap will convert a *orderedmap.Map[KeyReference[K], ValueReference[V]] to a *orderedmap.Map[K, V]
+//
+//go:noinline
 func FromReferenceMap[K comparable, V any](refMap *orderedmap.Map[KeyReference[K], ValueReference[V]]) *orderedmap.Map[K, V] {
 	om := orderedmap.New[K, V]()
 	for k, v := range refMap.FromOldest() {
@@ -1512,6 +1572,8 @@ func FromReferenceMap[K comparable, V any](refMap *orderedmap.Map[KeyReference[K
 }
 
 // FromReferenceMapWithFunc will convert a *orderedmap.Map[KeyReference[K], ValueReference[V]] to a *orderedmap.Map[K, VOut] using a transform function
+//
+//go:noinline
 func FromReferenceMapWithFunc[K comparable, V any, VOut any](refMap *orderedmap.Map[KeyReference[K], ValueReference[V]], transform func(v V) VOut) *orderedmap.Map[K, VOut] {
 	om := orderedmap.New[K, VOut]()
 	for k, v := range refMap.FromOldest() {

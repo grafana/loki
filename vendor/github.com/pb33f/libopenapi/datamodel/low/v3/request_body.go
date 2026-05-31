@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -6,6 +6,7 @@ package v3
 import (
 	"context"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -25,6 +26,8 @@ type RequestBody struct {
 	RootNode    *yaml.Node
 	index       *index.SpecIndex
 	context     context.Context
+	nodeStore   sync.Map
+	reference   low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -67,14 +70,21 @@ func (rb *RequestBody) FindContent(cType string) *low.ValueReference[*MediaType]
 // Build will extract extensions and MediaType objects from the node.
 func (rb *RequestBody) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	rb.KeyNode = keyNode
-	rb.Reference = new(low.Reference)
+	rb.reference = low.Reference{}
+	rb.Reference = &rb.reference
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		rb.SetReference(ref, root)
 	}
 	root = utils.NodeAlias(root)
 	rb.RootNode = root
 	utils.CheckForMergeNodes(root)
-	rb.Nodes = low.ExtractNodes(ctx, root)
+	rb.nodeStore = sync.Map{}
+	rb.Nodes = &rb.nodeStore
+	if len(root.Content) > 0 {
+		rb.NodeMap.ExtractNodes(root, false)
+	} else {
+		rb.AddNode(root.Line, root)
+	}
 	rb.Extensions = low.ExtractExtensions(root)
 	rb.index = idx
 	rb.context = ctx

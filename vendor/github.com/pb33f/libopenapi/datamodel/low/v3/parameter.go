@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/maphash"
 	"slices"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/datamodel/low/base"
@@ -40,6 +41,8 @@ type Parameter struct {
 	Extensions      *orderedmap.Map[low.KeyReference[string], low.ValueReference[*yaml.Node]]
 	index           *index.SpecIndex
 	context         context.Context
+	nodeStore       sync.Map
+	reference       low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -86,7 +89,8 @@ func (p *Parameter) GetExtensions() *orderedmap.Map[low.KeyReference[string], lo
 
 // Build will extract examples, extensions and content/media types.
 func (p *Parameter) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
-	p.Reference = new(low.Reference)
+	p.reference = low.Reference{}
+	p.Reference = &p.reference
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		p.SetReference(ref, root)
 	}
@@ -94,7 +98,13 @@ func (p *Parameter) Build(ctx context.Context, keyNode, root *yaml.Node, idx *in
 	p.KeyNode = keyNode
 	p.RootNode = root
 	utils.CheckForMergeNodes(root)
-	p.Nodes = low.ExtractNodes(ctx, root)
+	p.nodeStore = sync.Map{}
+	p.Nodes = &p.nodeStore
+	if len(root.Content) > 0 {
+		p.NodeMap.ExtractNodes(root, false)
+	} else {
+		p.AddNode(root.Line, root)
+	}
 	p.Extensions = low.ExtractExtensions(root)
 	p.index = idx
 	p.context = ctx

@@ -28,7 +28,7 @@ func isHttpMethod(val string) bool {
 	return false
 }
 
-func boostrapIndexCollections(index *SpecIndex) {
+func bootstrapIndexCollections(index *SpecIndex) {
 	index.allRefs = make(map[string]*Reference)
 	index.allMappedRefs = make(map[string]*Reference)
 	index.refsByLine = make(map[string]map[int]bool)

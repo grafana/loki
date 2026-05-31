@@ -56,8 +56,8 @@ type Schema struct {
 
 	// 3.1 Specific properties
 	Contains          *SchemaProxy                          `json:"contains,omitempty" yaml:"contains,omitempty"`
-	MinContains       *int64                                `json:"minContains,omitempty" yaml:"minContains,omitempty"`
-	MaxContains       *int64                                `json:"maxContains,omitempty" yaml:"maxContains,omitempty"`
+	MinContains       *int64                                `json:"minContains,renderZero,omitempty" yaml:"minContains,renderZero,omitempty"`
+	MaxContains       *int64                                `json:"maxContains,renderZero,omitempty" yaml:"maxContains,renderZero,omitempty"`
 	If                *SchemaProxy                          `json:"if,omitempty" yaml:"if,omitempty"`
 	Else              *SchemaProxy                          `json:"else,omitempty" yaml:"else,omitempty"`
 	Then              *SchemaProxy                          `json:"then,omitempty" yaml:"then,omitempty"`
@@ -102,15 +102,15 @@ type Schema struct {
 	MultipleOf           *float64                              `json:"multipleOf,omitempty" yaml:"multipleOf,omitempty"`
 	Maximum              *float64                              `json:"maximum,renderZero,omitempty" yaml:"maximum,renderZero,omitempty"`
 	Minimum              *float64                              `json:"minimum,renderZero,omitempty," yaml:"minimum,renderZero,omitempty"`
-	MaxLength            *int64                                `json:"maxLength,omitempty" yaml:"maxLength,omitempty"`
-	MinLength            *int64                                `json:"minLength,omitempty" yaml:"minLength,omitempty"`
+	MaxLength            *int64                                `json:"maxLength,renderZero,omitempty" yaml:"maxLength,renderZero,omitempty"`
+	MinLength            *int64                                `json:"minLength,renderZero,omitempty" yaml:"minLength,renderZero,omitempty"`
 	Pattern              string                                `json:"pattern,omitempty" yaml:"pattern,omitempty"`
 	Format               string                                `json:"format,omitempty" yaml:"format,omitempty"`
-	MaxItems             *int64                                `json:"maxItems,omitempty" yaml:"maxItems,omitempty"`
-	MinItems             *int64                                `json:"minItems,omitempty" yaml:"minItems,omitempty"`
+	MaxItems             *int64                                `json:"maxItems,renderZero,omitempty" yaml:"maxItems,renderZero,omitempty"`
+	MinItems             *int64                                `json:"minItems,renderZero,omitempty" yaml:"minItems,renderZero,omitempty"`
 	UniqueItems          *bool                                 `json:"uniqueItems,omitempty" yaml:"uniqueItems,omitempty"`
-	MaxProperties        *int64                                `json:"maxProperties,omitempty" yaml:"maxProperties,omitempty"`
-	MinProperties        *int64                                `json:"minProperties,omitempty" yaml:"minProperties,omitempty"`
+	MaxProperties        *int64                                `json:"maxProperties,renderZero,omitempty" yaml:"maxProperties,renderZero,omitempty"`
+	MinProperties        *int64                                `json:"minProperties,renderZero,omitempty" yaml:"minProperties,renderZero,omitempty"`
 	Required             []string                              `json:"required,omitempty" yaml:"required,omitempty"`
 	Enum                 []*yaml.Node                          `json:"enum,omitempty" yaml:"enum,omitempty"`
 	AdditionalProperties *DynamicValue[*SchemaProxy, bool]     `json:"additionalProperties,renderZero,omitempty" yaml:"additionalProperties,renderZero,omitempty"`
@@ -326,6 +326,10 @@ func NewSchema(schema *base.Schema) *Schema {
 	for i := range schema.Required.Value {
 		req = append(req, schema.Required.Value[i].Value)
 	}
+	if !schema.Required.IsEmpty() && schema.Required.ValueNode != nil &&
+		schema.Required.ValueNode.Kind == yaml.SequenceNode && len(schema.Required.Value) == 0 {
+		req = []string{}
+	}
 	s.Required = req
 
 	if !schema.Id.IsEmpty() {
@@ -427,11 +431,17 @@ func NewSchema(schema *base.Schema) *Schema {
 	}
 
 	props := orderedmap.New[string, *SchemaProxy]()
+	if !schema.Properties.IsEmpty() {
+		s.Properties = props
+	}
 	for name, schemaProxy := range schema.Properties.Value.FromOldest() {
 		buildProps(name, schemaProxy, props, 0)
 	}
 
 	dependents := orderedmap.New[string, *SchemaProxy]()
+	if !schema.DependentSchemas.IsEmpty() {
+		s.DependentSchemas = dependents
+	}
 	for name, schemaProxy := range schema.DependentSchemas.Value.FromOldest() {
 		buildProps(name, schemaProxy, dependents, 1)
 	}
@@ -446,6 +456,9 @@ func NewSchema(schema *base.Schema) *Schema {
 	}
 
 	patternProps := orderedmap.New[string, *SchemaProxy]()
+	if !schema.PatternProperties.IsEmpty() {
+		s.PatternProperties = patternProps
+	}
 	for name, schemaProxy := range schema.PatternProperties.Value.FromOldest() {
 		buildProps(name, schemaProxy, patternProps, 2)
 	}
@@ -555,6 +568,12 @@ func (s *Schema) RenderInline() ([]byte, error) {
 
 // MarshalYAML will create a ready to render YAML representation of the Schema object.
 func (s *Schema) MarshalYAML() (interface{}, error) {
+	if s.ParentProxy != nil {
+		if node, ok, err := s.ParentProxy.renderTransformedRefWithSiblings(s); ok || err != nil {
+			return node, err
+		}
+	}
+
 	nb := high.NewNodeBuilder(s, s.low)
 
 	// determine index version
@@ -569,6 +588,14 @@ func (s *Schema) MarshalYAML() (interface{}, error) {
 
 // MarshalJSON will create a ready to render JSON representation of the Schema object.
 func (s *Schema) MarshalJSON() ([]byte, error) {
+	if s.ParentProxy != nil && s.ParentProxy.isParsedRefWithSiblings() {
+		node, err := s.ParentProxy.referenceYAMLNodeForSchema(s)
+		if err != nil {
+			return nil, err
+		}
+		return marshalYAMLNodeJSON(node)
+	}
+
 	nb := high.NewNodeBuilder(s, s.low)
 
 	// determine index version
@@ -580,13 +607,7 @@ func (s *Schema) MarshalJSON() ([]byte, error) {
 	}
 	// render node
 	node := nb.Render()
-	var renderedJSON map[string]interface{}
-
-	// marshal into struct
-	_ = node.Decode(&renderedJSON)
-
-	// return JSON bytes
-	return json.Marshal(renderedJSON)
+	return marshalYAMLNodeJSON(node)
 }
 
 // MarshalYAMLInlineWithContext will render out the Schema pointer as YAML using the provided
@@ -601,6 +622,9 @@ func (s *Schema) MarshalYAMLInlineWithContext(ctx any) (interface{}, error) {
 	if !ok || renderCtx == nil {
 		renderCtx = NewInlineRenderContext()
 		ctx = renderCtx
+	}
+	if s.ParentProxy != nil && s.ParentProxy.isParsedRefWithSiblings() {
+		return s.ParentProxy.marshalParsedRefWithSiblingsInline(renderCtx, s)
 	}
 
 	// determine if we should preserve discriminator refs based on rendering mode.
@@ -643,6 +667,14 @@ func (s *Schema) MarshalYAMLInline() (interface{}, error) {
 
 // MarshalJSONInline will render out the Schema pointer as JSON, and all refs will be inlined fully
 func (s *Schema) MarshalJSONInline() ([]byte, error) {
+	if s.ParentProxy != nil && s.ParentProxy.isParsedRefWithSiblings() {
+		rendered, err := s.MarshalYAMLInline()
+		if err != nil {
+			return nil, err
+		}
+		return marshalYAMLRenderJSON(rendered)
+	}
+
 	nb := high.NewNodeBuilder(s, s.low)
 	nb.Resolve = true
 	// determine index version
@@ -654,11 +686,21 @@ func (s *Schema) MarshalJSONInline() ([]byte, error) {
 	}
 	// render node
 	node := nb.Render()
+	return marshalYAMLNodeJSON(node)
+}
+
+func marshalYAMLRenderJSON(rendered interface{}) ([]byte, error) {
+	node, ok := yamlNodeFromRender(rendered)
+	if !ok {
+		return nil, errors.New("unable to render schema as JSON: YAML render was not a node")
+	}
+	return marshalYAMLNodeJSON(node)
+}
+
+func marshalYAMLNodeJSON(node *yaml.Node) ([]byte, error) {
 	var renderedJSON map[string]interface{}
-
-	// marshal into struct
-	_ = node.Decode(&renderedJSON)
-
-	// return JSON bytes
+	if err := node.Decode(&renderedJSON); err != nil {
+		return nil, err
+	}
 	return json.Marshal(renderedJSON)
 }
