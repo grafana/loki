@@ -7,6 +7,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -229,6 +230,51 @@ func Test_Node(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "IndexMerge",
+			node: &physical.IndexMerge{
+				NodeID: ulid.Make(),
+
+				Tenant:         "tenant-a",
+				ToCWindowStart: 1_700_000_000_000_000_000,
+				Runs: []*compactionv2pb.RunRef{
+					{
+						Sections: []*compactionv2pb.SectionRef{
+							{
+								ObjectPath:   "s3://bucket/index/0",
+								SectionIndex: 1,
+								MinKey:       []string{"a", "b"},
+								MaxKey:       []string{"c", "d"},
+								MinTimestamp: 100,
+								MaxTimestamp: 200,
+							},
+							{
+								ObjectPath:   "s3://bucket/index/1",
+								SectionIndex: 2,
+								MinKey:       []string{"e"},
+								MaxKey:       []string{"f"},
+								MinTimestamp: 300,
+								MaxTimestamp: 400,
+							},
+						},
+					},
+					{
+						Sections: []*compactionv2pb.SectionRef{
+							{
+								ObjectPath:   "s3://bucket/index/2",
+								SectionIndex: 3,
+								MinKey:       []string{"g"},
+								MaxKey:       []string{"h"},
+								MinTimestamp: 500,
+								MaxTimestamp: 600,
+							},
+						},
+					},
+				},
+				OutputIndexPath: "s3://bucket/merged/index",
+				TaskTTL:         time.Minute * 5,
+			},
+		},
 	}
 
 	for _, tc := range tt {
@@ -251,6 +297,78 @@ func Test_Node(t *testing.T) {
 			require.Equal(t, expectedOutput, actualOutput, "Unmarshaled plan from protobuf does not match origianl")
 		})
 	}
+}
+
+// Test_Node_IndexMerge_RoundTrip asserts on the concrete fields of IndexMerge
+// after a protobuf round-trip. The tree printer does not render IndexMerge
+// properties, so the tree-comparison in Test_Node cannot catch dropped or
+// mangled fields; this test exercises the marshal/unmarshal logic directly.
+func Test_Node_IndexMerge_RoundTrip(t *testing.T) {
+	want := &physical.IndexMerge{
+		NodeID: ulid.Make(),
+
+		Tenant:         "tenant-a",
+		ToCWindowStart: 1_700_000_000_000_000_000,
+		Runs: []*compactionv2pb.RunRef{
+			{
+				Sections: []*compactionv2pb.SectionRef{
+					{
+						ObjectPath:   "s3://bucket/index/0",
+						SectionIndex: 1,
+						MinKey:       []string{"a", "b"},
+						MaxKey:       []string{"c", "d"},
+						MinTimestamp: 100,
+						MaxTimestamp: 200,
+					},
+					{
+						ObjectPath:   "s3://bucket/index/1",
+						SectionIndex: 2,
+						MinKey:       []string{"e"},
+						MaxKey:       []string{"f"},
+						MinTimestamp: 300,
+						MaxTimestamp: 400,
+					},
+				},
+			},
+			{
+				Sections: []*compactionv2pb.SectionRef{
+					{
+						ObjectPath:   "s3://bucket/index/2",
+						SectionIndex: 3,
+						MinKey:       []string{"g"},
+						MaxKey:       []string{"h"},
+						MinTimestamp: 500,
+						MaxTimestamp: 600,
+					},
+				},
+			},
+		},
+		OutputIndexPath: "s3://bucket/merged/index",
+		TaskTTL:         time.Minute * 5,
+	}
+
+	var graph dag.Graph[physical.Node]
+	graph.Add(want)
+	expectedPlan := physical.FromGraph(graph)
+
+	var protoPlan physicalpb.Plan
+	require.NoError(t, protoPlan.UnmarshalPhysical(expectedPlan), "Failed to unmarshal physical plan")
+
+	actualPlan, err := protoPlan.MarshalPhysical()
+	require.NoError(t, err, "Failed to marshal protobuf plan")
+
+	roots := actualPlan.Roots()
+	require.Len(t, roots, 1)
+
+	got, ok := roots[0].(*physical.IndexMerge)
+	require.True(t, ok, "expected *physical.IndexMerge, got %T", roots[0])
+
+	require.Equal(t, want.NodeID, got.NodeID)
+	require.Equal(t, want.Tenant, got.Tenant)
+	require.Equal(t, want.ToCWindowStart, got.ToCWindowStart)
+	require.Equal(t, want.OutputIndexPath, got.OutputIndexPath)
+	require.Equal(t, want.TaskTTL, got.TaskTTL)
+	require.Equal(t, want.Runs, got.Runs)
 }
 
 func Test_Expression(t *testing.T) {

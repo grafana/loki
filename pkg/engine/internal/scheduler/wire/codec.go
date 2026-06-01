@@ -49,13 +49,13 @@ func (c *protobufCodec) EncodeTo(w io.Writer, frame Frame) error {
 	// Convert wire.Frame to protobuf
 	pbFrame, err := c.frameToPbFrame(frame)
 	if err != nil {
-		panic(fmt.Errorf("failed to convert frame to protobuf: %w", err))
+		return fmt.Errorf("failed to convert frame to protobuf: %w", err)
 	}
 
 	// Marshal to bytes
 	data, err := proto.Marshal(pbFrame)
 	if err != nil {
-		panic(fmt.Errorf("failed to marshal protobuf: %w", err))
+		return fmt.Errorf("failed to marshal protobuf: %w", err)
 	}
 
 	// Write length prefix (uvarint)
