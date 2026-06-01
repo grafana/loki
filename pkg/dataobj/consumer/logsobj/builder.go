@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/facette/natsort"
 	"github.com/go-kit/log"
@@ -210,7 +211,7 @@ type TenantOverrides interface {
 // synchronization.
 type Builder struct {
 	cfg       BuilderConfig
-	metrics   *builderMetrics
+	metrics   *BuilderMetrics
 	overrides TenantOverrides
 	logger    log.Logger
 
@@ -221,6 +222,10 @@ type Builder struct {
 	builder *dataobj.Builder // Inner builder for accumulating sections.
 	streams map[string]*streams.Builder
 	logs    map[string]*logs.Builder
+
+	// earliestRecordTime tracks the timestamp of the earliest record appended
+	// to the builder. It is required for the metastore index.
+	earliestRecordTime time.Time
 
 	state builderState
 }
@@ -238,18 +243,11 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-
+func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderMetrics) (*Builder, error) {
 	labelCache, err := lru.New[string, labels.Labels](5000)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
 	}
-
-	metrics := newBuilderMetrics()
-	metrics.ObserveConfig(cfg)
 
 	return &Builder{
 		cfg:        cfg,
@@ -294,6 +292,10 @@ func (b *Builder) initBuilder(tenant string) {
 	}
 }
 
+func (b *Builder) GetEarliestRecordTime() time.Time {
+	return b.earliestRecordTime
+}
+
 func (b *Builder) GetEstimatedSize() int {
 	return b.currentSizeEstimate
 }
@@ -304,7 +306,7 @@ func (b *Builder) GetEstimatedSize() int {
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
-func (b *Builder) Append(tenant string, stream logproto.Stream) error {
+func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
 	ls, err := b.parseLabels(stream.Labels)
 	if err != nil {
 		return err
@@ -353,6 +355,9 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 		}
 	}
 
+	if b.earliestRecordTime.IsZero() || recTime.Before(b.earliestRecordTime) {
+		b.earliestRecordTime = recTime
+	}
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	return nil
@@ -657,23 +662,10 @@ func (b *Builder) Reset() {
 	clear(b.logs)
 	clear(b.streams)
 
+	b.earliestRecordTime = time.Time{}
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
-}
-
-// RegisterMetrics registers metrics about builder to report to reg. All
-// metrics will have a tenant label set to the tenant ID of the Builder.
-//
-// If multiple Builders for the same tenant are running in the same process,
-// reg must contain additional labels to differentiate between them.
-func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
-	return b.metrics.Register(reg)
-}
-
-// UnregisterMetrics unregisters metrics about builder from reg.
-func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
-	b.metrics.Unregister(reg)
 }
 
 // drainLogsIter consumes iter, appending each record to lb and flushing

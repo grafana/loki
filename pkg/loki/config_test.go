@@ -46,47 +46,6 @@ func TestCrossComponentValidation(t *testing.T) {
 			},
 			err: false,
 		},
-		{
-			desc: "correct shards",
-			base: &Config{
-				Ingester: ingester.Config{
-					IndexShards: 32,
-				},
-				SchemaConfig: config.SchemaConfig{
-					Configs: []config.PeriodConfig{
-						{
-							IndexType:  types.IndexTypeBoltDB,
-							ObjectType: types.StorageTypeS3,
-							RowShards:  16,
-							Schema:     "v11",
-							From: config.DayTime{
-								Time: model.Now().Add(-48 * time.Hour),
-							},
-							IndexTables: config.IndexPeriodicTableConfig{
-								PeriodicTableConfig: config.PeriodicTableConfig{
-									Period: 24 * time.Hour,
-								},
-							},
-						},
-						{
-							IndexType:  types.IndexTypeBoltDB,
-							ObjectType: types.StorageTypeS3,
-							RowShards:  17,
-							Schema:     "v11",
-							From: config.DayTime{
-								Time: model.Now(),
-							},
-							IndexTables: config.IndexPeriodicTableConfig{
-								PeriodicTableConfig: config.PeriodicTableConfig{
-									Period: 24 * time.Hour,
-								},
-							},
-						},
-					},
-				},
-			},
-			err: true,
-		},
 	} {
 		tc.base.RegisterFlags(flag.NewFlagSet(tc.desc, 0))
 		// This test predates the newer schema required for structured metadata

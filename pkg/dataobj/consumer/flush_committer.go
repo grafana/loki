@@ -66,7 +66,9 @@ func newFlushCommitter(
 }
 
 // Flush the data object builder and, if successful, commit the offset.
-func (c *flushCommitterImpl) Flush(ctx context.Context, builder builder, reason string, offset int64, earliestRecordTime time.Time) error {
+func (c *flushCommitterImpl) Flush(ctx context.Context, builder builder, reason string, offset int64) error {
+	// Read before flushing: flushing resets the builder, which clears the earliest record time.
+	earliestRecordTime := builder.GetEarliestRecordTime()
 	objectPath, err := c.flusher.Flush(ctx, builder, reason)
 	if err != nil {
 		return fmt.Errorf("failed to flush data object: %w", err)

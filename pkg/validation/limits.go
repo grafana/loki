@@ -17,8 +17,8 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/sigv4"
+	yaml "go.yaml.in/yaml/v4"
 	"golang.org/x/time/rate"
-	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -602,7 +602,7 @@ func (l *Limits) SetDefaultPolicyStreamMapping(cfg PolicyStreamMapping) error {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (l *Limits) UnmarshalYAML(value *yaml.Node) error {
 	// We want to set c to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
@@ -620,7 +620,7 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		// set the otlp config to nil, which would help to detect later if it was set in the tenant override
 		l.OTLPConfig = nil
 	}
-	if err := unmarshal((*plain)(l)); err != nil {
+	if err := value.Decode((*plain)(l)); err != nil {
 		return err
 	}
 
@@ -1494,10 +1494,10 @@ func (sm OverwriteMarshalingStringMap) MarshalYAML() (interface{}, error) {
 	return sm.m, nil
 }
 
-func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(value *yaml.Node) error {
 	var def map[string]string
 
-	err := unmarshal(&def)
+	err := value.Decode(&def)
 	if err != nil {
 		return err
 	}

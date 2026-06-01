@@ -76,11 +76,11 @@ func TestBuilder(t *testing.T) {
 	}
 
 	t.Run("Build", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil)
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 		require.NoError(t, err)
 
 		for _, entry := range testStreams {
-			require.NoError(t, builder.Append("tenant", entry))
+			require.NoError(t, builder.Append("tenant", entry, time.Now()))
 		}
 		obj, closer, err := builder.Flush()
 		require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil)
+	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 	require.NoError(t, err)
 
 	tenant := "test"
@@ -111,7 +111,7 @@ func TestBuilder_Append(t *testing.T) {
 				Timestamp: time.Now().UTC(),
 				Line:      strings.Repeat("a", 1024),
 			}},
-		})
+		}, time.Now())
 		if errors.Is(err, ErrBuilderFull) {
 			break
 		}
@@ -134,8 +134,67 @@ func TestBuilder_Append(t *testing.T) {
 	}
 }
 
+// TestBuilder_EarliestRecordTime ensures the builder tracks the earliest
+// record time seen across appends and resets it when the builder is reset.
+func TestBuilder_EarliestRecordTime(t *testing.T) {
+	newStream := func() logproto.Stream {
+		return logproto.Stream{
+			Labels:  `{cluster="test",app="foo"}`,
+			Entries: []push.Entry{{Timestamp: time.Unix(0, 0).UTC(), Line: "hello"}},
+		}
+	}
+
+	t.Run("zero on an empty builder", func(t *testing.T) {
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+		require.NoError(t, err)
+		require.True(t, builder.GetEarliestRecordTime().IsZero())
+	})
+
+	t.Run("set on first append", func(t *testing.T) {
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+		require.NoError(t, err)
+
+		recTime := time.Unix(100, 0).UTC()
+		require.NoError(t, builder.Append("tenant", newStream(), recTime))
+		require.Equal(t, recTime, builder.GetEarliestRecordTime())
+	})
+
+	t.Run("tracks the minimum across appends", func(t *testing.T) {
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+		require.NoError(t, err)
+
+		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(100, 0).UTC()))
+		// A later record must not move the earliest time forward.
+		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(200, 0).UTC()))
+		require.Equal(t, time.Unix(100, 0).UTC(), builder.GetEarliestRecordTime())
+		// An earlier record must move the earliest time backward.
+		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(50, 0).UTC()))
+		require.Equal(t, time.Unix(50, 0).UTC(), builder.GetEarliestRecordTime())
+	})
+
+	t.Run("reset on Reset", func(t *testing.T) {
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+		require.NoError(t, err)
+
+		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(100, 0).UTC()))
+		builder.Reset()
+		require.True(t, builder.GetEarliestRecordTime().IsZero())
+	})
+
+	t.Run("reset on Flush", func(t *testing.T) {
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+		require.NoError(t, err)
+
+		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(100, 0).UTC()))
+		_, closer, err := builder.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+		require.True(t, builder.GetEarliestRecordTime().IsZero())
+	})
+}
+
 func TestBuilder_CopyAndSort(t *testing.T) {
-	builder, _ := NewBuilder(testBuilderConfig, nil)
+	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 	numRows := 16 // 16 rows with 1KiB each line and 8KiB section size ~> 2 logs sections per tenant
@@ -148,7 +207,7 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 					Timestamp: now.Add(time.Duration(i%8) * time.Second),
 					Line:      strings.Repeat("a", 1024), // 1KiB log line
 				}},
-			})
+			}, now.Add(time.Duration(i%8)*time.Second))
 			require.NoError(t, err)
 		}
 	}
@@ -157,7 +216,7 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 	require.NoError(t, err)
 	defer closer1.Close()
 
-	newBuilder, _ := NewBuilder(testBuilderConfig, nil)
+	newBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 
 	obj2, closer2, err := newBuilder.CopyAndSort(t.Context(), obj1)
 	require.NoError(t, err)
@@ -224,7 +283,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 	buildObj := func(t *testing.T, cfg BuilderConfig, tenant string, appVals []string, overrides TenantOverrides) *dataobj.Object {
 		t.Helper()
-		b, err := NewBuilder(cfg, nil)
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
 		require.NoError(t, err)
 		if overrides != nil {
 			b.SetOverrides(overrides)
@@ -237,7 +296,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 						Timestamp: now.Add(time.Duration(i) * time.Second),
 						Line:      fmt.Sprintf("%s-%d", app, i),
 					}},
-				}))
+				}, now.Add(time.Duration(i)*time.Second)))
 			}
 		}
 		obj, closer, err := b.Flush()
@@ -248,7 +307,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 	copyAndSort := func(t *testing.T, cfg BuilderConfig, src *dataobj.Object, overrides TenantOverrides) *dataobj.Object {
 		t.Helper()
-		b, err := NewBuilder(cfg, nil)
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
 		require.NoError(t, err)
 		if overrides != nil {
 			b.SetOverrides(overrides)
@@ -326,7 +385,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		cfg := makeCfg(true)
 		overrides := tenantOverrides{"schema-tenant": {"label:app"}}
 
-		b, err := NewBuilder(cfg, nil)
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
 		require.NoError(t, err)
 		b.SetOverrides(overrides)
 		for _, app := range []string{"zoo", "alpha", "middle"} {
@@ -334,11 +393,11 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				require.NoError(t, b.Append("schema-tenant", logproto.Stream{
 					Labels:  fmt.Sprintf(`{app=%q}`, app),
 					Entries: []push.Entry{{Timestamp: now.Add(time.Duration(i) * time.Second), Line: app}},
-				}))
+				}, now.Add(time.Duration(i)*time.Second)))
 				require.NoError(t, b.Append("plain-tenant", logproto.Stream{
 					Labels:  fmt.Sprintf(`{app=%q}`, app),
 					Entries: []push.Entry{{Timestamp: now.Add(time.Duration(i) * time.Second), Line: app}},
-				}))
+				}, now.Add(time.Duration(i)*time.Second)))
 			}
 		}
 		obj1, closer1, err := b.Flush()
@@ -401,7 +460,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 	t.Run("multi-label compound key", func(t *testing.T) {
 		cfg := makeCfg(true)
 		overrides := tenantOverrides{"t1": {"label:namespace", "label:app"}}
-		b, err := NewBuilder(cfg, nil)
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
 		require.NoError(t, err)
 		b.SetOverrides(overrides)
 
@@ -410,7 +469,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			require.NoError(t, b.Append("t1", logproto.Stream{
 				Labels:  fmt.Sprintf(`{namespace=%q,app=%q}`, e.ns, e.app),
 				Entries: []push.Entry{{Timestamp: now, Line: e.ns + "/" + e.app}},
-			}))
+			}, now))
 		}
 		obj1, closer1, err := b.Flush()
 		require.NoError(t, err)

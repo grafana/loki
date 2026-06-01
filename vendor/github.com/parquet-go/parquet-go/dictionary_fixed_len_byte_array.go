@@ -18,7 +18,7 @@ type fixedLenByteArrayDictionary struct {
 	hashmap map[string]int32
 }
 
-func newFixedLenByteArrayDictionary(typ Type, columnIndex int16, numValues int32, values encoding.Values) *fixedLenByteArrayDictionary {
+func newFixedLenByteArrayDictionary(typ Type, columnIndex uint16, numValues int32, values encoding.Values) *fixedLenByteArrayDictionary {
 	data, size := values.FixedLenByteArray()
 	return &fixedLenByteArrayDictionary{
 		fixedLenByteArrayPage: fixedLenByteArrayPage{

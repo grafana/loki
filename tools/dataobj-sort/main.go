@@ -53,7 +53,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	b, err := logsobj.NewBuilder(cfg, scr)
+	b, err := logsobj.NewBuilder(cfg, scr, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

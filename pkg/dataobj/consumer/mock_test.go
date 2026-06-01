@@ -21,12 +21,16 @@ type mockBuilder struct {
 	nextErr error
 }
 
-func (m *mockBuilder) Append(tenant string, stream logproto.Stream) error {
+func (m *mockBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
 		return err
 	}
-	return m.builder.Append(tenant, stream)
+	return m.builder.Append(tenant, stream, recTime)
+}
+
+func (m *mockBuilder) GetEarliestRecordTime() time.Time {
+	return m.builder.GetEarliestRecordTime()
 }
 
 func (m *mockBuilder) GetEstimatedSize() int {
@@ -72,7 +76,7 @@ type mockFlushCommitter struct {
 	flushes int
 }
 
-func (m *mockFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
+func (m *mockFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64) error {
 	m.flushes++
 	return nil
 }

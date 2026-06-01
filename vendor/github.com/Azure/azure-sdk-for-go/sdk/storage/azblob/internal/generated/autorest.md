@@ -7,7 +7,7 @@ go: true
 clear-output-folder: false
 version: "^3.0.0"
 license-header: MICROSOFT_MIT_NO_VERSION
-input-file: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/ae95eb6a4701d844bada7d1c4f5ecf4a7444e5b8/specification/storage/data-plane/Microsoft.BlobStorage/stable/2025-01-05/blob.json"
+input-file: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/a30ef1ee2e9795f4d77e8c62fad52b33e60d4cb7/specification/storage/data-plane/Microsoft.BlobStorage/stable/2026-04-06/blob.json"
 credential-scope: "https://storage.azure.com/.default"
 output-folder: ../generated
 file-prefix: "zz_"
@@ -65,22 +65,6 @@ directive:
   where: $.parameters.ListBlobsInclude    
   transform: >        
     $.items.enum.push("permissions");
-```
-
-### Updating service version to 2025-05-05
-```yaml
-directive:
-- from: 
-  - zz_appendblob_client.go
-  - zz_blob_client.go
-  - zz_blockblob_client.go
-  - zz_container_client.go
-  - zz_pageblob_client.go
-  - zz_service_client.go
-  where: $
-  transform: >-
-    return $.
-      replaceAll(`[]string{"2025-01-05"}`, `[]string{ServiceVersion}`);
 ```
 
 ### Fix CRC Response Header in PutBlob response
@@ -371,6 +355,8 @@ directive:
       replace(/result\.ETag\s+=\s+&val/g, `result.ETag = (*azcore.ETag)(&val)`).
       replace(/\*modifiedAccessConditions.IfMatch/g, `string(*modifiedAccessConditions.IfMatch)`).
       replace(/\*modifiedAccessConditions.IfNoneMatch/g, `string(*modifiedAccessConditions.IfNoneMatch)`).
+      replace(/\*blobModifiedAccessConditions.IfMatch/g, `string(*blobModifiedAccessConditions.IfMatch)`).
+      replace(/\*blobModifiedAccessConditions.IfNoneMatch/g, `string(*blobModifiedAccessConditions.IfNoneMatch)`).
       replace(/\*sourceModifiedAccessConditions.SourceIfMatch/g, `string(*sourceModifiedAccessConditions.SourceIfMatch)`).
       replace(/\*sourceModifiedAccessConditions.SourceIfNoneMatch/g, `string(*sourceModifiedAccessConditions.SourceIfNoneMatch)`);
 ```
@@ -384,18 +370,9 @@ directive:
   transform: >-
     return $.
       replace(/SignedOid\s+\*string/g, `SignedOID *string`).
-      replace(/SignedTid\s+\*string/g, `SignedTID *string`);
-```
-
-### Fixing Typo with StorageErrorCodeIncrementalCopyOfEarlierVersionSnapshotNotAllowed
-
-``` yaml
-directive:
-- from: zz_constants.go
-  where: $
-  transform: >-
-    return $.
-      replace(/IncrementalCopyOfEralierVersionSnapshotNotAllowed/g, "IncrementalCopyOfEarlierVersionSnapshotNotAllowed");
+      replace(/SignedTid\s+\*string/g, `SignedTID *string`).
+      replace(/DelegatedUserTid\s+\*string/g, `DelegatedUserTenantID *string`).
+      replace(/SignedDelegatedUserTid\s+\*string/g, `SignedDelegatedUserTenantID *string`);
 ```
 
 ### Fix up x-ms-content-crc64 header response name
