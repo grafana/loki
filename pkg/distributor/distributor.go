@@ -243,6 +243,7 @@ func New(
 	limitsFrontendCfg limits_frontend_client.Config,
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
+	dataObjConsumerPartitionRing ring.PartitionRingReader,
 	rendezvousPartitionWatcher *rendezvous.PartitionWatcher,
 	logger log.Logger,
 ) (*Distributor, error) {
@@ -315,6 +316,8 @@ func New(
 			}
 			resolver := newSegmentationPartitionResolver(
 				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
+				cfg.DataObjTeeConfig.UseRendezvousHashing,
+				dataObjConsumerPartitionRing,
 				rendezvousPartitionWatcher,
 				registerer,
 				logger,

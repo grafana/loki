@@ -102,7 +102,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 	t.Run("returns error if no active partitions", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		watcher := newTestPartitionWatcher(t) // empty ring — zero active partitions
-		resolver := newSegmentationPartitionResolver(1024, watcher, reg, log.NewNopLogger())
+		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, reg, log.NewNopLogger())
 		_, err := resolver.Resolve("tenant", segmentationKey("test"), 0x1, 0, 0)
 		require.EqualError(t, err, "no active partitions")
 
@@ -126,7 +126,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 	t.Run("resolves to correct partition when rate is unknown", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		watcher := newTestPartitionWatcher(t, 1)
-		resolver := newSegmentationPartitionResolver(1024, watcher, reg, log.NewNopLogger())
+		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, reg, log.NewNopLogger())
 		partition, err := resolver.Resolve("tenant", "test", 0x1, 0, 0)
 		require.NoError(t, err)
 		// Should return partition 1 since that is the only active partition.
@@ -151,7 +151,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 
 	t.Run("resolution is deterministic for same inputs", func(t *testing.T) {
 		watcher := newTestPartitionWatcher(t, 1, 2, 3)
-		resolver := newSegmentationPartitionResolver(1024, watcher, prometheus.NewRegistry(), log.NewNopLogger())
+		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, prometheus.NewRegistry(), log.NewNopLogger())
 		p1, err := resolver.Resolve("tenant-a", "svc", 0x1, 0, 0)
 		require.NoError(t, err)
 		p2, err := resolver.Resolve("tenant-a", "svc", 0x1, 0, 0)
@@ -162,7 +162,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 
 func TestSegmentationPartitionResolver_TenantShuffleShard(t *testing.T) {
 	watcher := newTestPartitionWatcher(t, 1, 2, 3, 4, 5)
-	resolver := newSegmentationPartitionResolver(1024, watcher, prometheus.NewRegistry(), log.NewNopLogger())
+	resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, prometheus.NewRegistry(), log.NewNopLogger())
 
 	tests := []struct {
 		rateBytes         uint64

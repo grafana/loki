@@ -381,6 +381,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.Cfg.IngestLimitsFrontendClient,
 		t.ingestLimitsFrontendRing,
 		t.Cfg.IngestLimits.NumPartitions,
+		t.dataObjConsumerPartitionRing,
 		t.rendezvousPartitionWatcher,
 		logger,
 	)
@@ -2300,14 +2301,16 @@ func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
 		t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.HeartbeatTimeout,
 	)
 
-	t.rendezvousPartitionWatcher = rendezvous.New(
-		rendezvous.Config{
-			HeartbeatTimeout: t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.HeartbeatTimeout,
-			Key:              consumer.PartitionRingKey,
-		},
-		kvClient,
-		util_log.Logger,
-	)
+	if t.Cfg.Distributor.DataObjTeeConfig.UseRendezvousHashing {
+		t.rendezvousPartitionWatcher = rendezvous.New(
+			rendezvous.Config{
+				HeartbeatTimeout: t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.HeartbeatTimeout,
+				Key:              consumer.PartitionRingKey,
+			},
+			kvClient,
+			util_log.Logger,
+		)
+	}
 
 	// Expose a web page to view the partitions ring state.
 	t.Server.HTTP.Path("/dataobj-consumer/partition-ring").

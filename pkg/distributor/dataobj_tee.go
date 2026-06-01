@@ -34,6 +34,7 @@ type DataObjTeeConfig struct {
 	PerPartitionRateBytes int           `yaml:"per_partition_rate_bytes"`
 	DebugMetricsEnabled   bool          `yaml:"debug_metrics_enabled"`
 	RateBatchWindow       time.Duration `yaml:"rate_batch_window"`
+	UseRendezvousHashing  bool          `yaml:"use_rendezvous_hashing"` // temporary feature flag while we verify this is safe
 }
 
 func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
@@ -43,6 +44,7 @@ func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&c.PerPartitionRateBytes, "distributor.dataobj-tee.per-partition-rate-bytes", 1024*1024, "The per-tenant partition rate (bytes/sec).")
 	f.BoolVar(&c.DebugMetricsEnabled, "distributor.dataobj-tee.debug-metrics-enabled", false, "Enables optional debug metrics.")
 	f.DurationVar(&c.RateBatchWindow, "distributor.dataobj-tee.rate-batch-window", 0, "Duration to accumulate rate updates before sending to limits frontend. Set to 0 to disable batching.")
+	f.BoolVar(&c.DebugMetricsEnabled, "distributor.dataobj-tee.use-rendezvous-hashing", false, "Enables use of rendezvous hashing. When this is false, consistent hashing is used instead.")
 }
 
 func (c *DataObjTeeConfig) Validate() error {

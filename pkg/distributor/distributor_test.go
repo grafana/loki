@@ -2017,7 +2017,7 @@ func prepareButDontStart(t *testing.T, numDistributors, numIngesters int, limits
 		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
 		limitsFrontendCfg := limits_frontend_client.Config{}
 
-		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, nil, log.NewNopLogger())
+		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, nil, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		distributors[i] = d
 	}
