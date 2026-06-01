@@ -4,7 +4,6 @@ package objtest
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -84,14 +83,11 @@ func NewBuilder(t *testing.T) *Builder {
 // Append appends the given streams to the builder.
 func (b *Builder) Append(ctx context.Context, streams ...logproto.Stream) {
 	for _, stream := range streams {
-		if err := b.logsBuilder.Append(Tenant, stream, time.Now()); err != nil && errors.Is(err, logsobj.ErrBuilderFull) {
+		if b.logsBuilder.IsFull() {
 			require.NoError(b.t, b.flush(ctx), "failed to flush logs builder")
-
-			// Try appending again after the flush.
-			require.NoError(b.t, b.logsBuilder.Append(Tenant, stream, time.Now()), "failed to append stream after flush")
-		} else if err != nil {
-			require.NoError(b.t, err, "failed to append stream")
 		}
+
+		require.NoError(b.t, b.logsBuilder.Append(Tenant, stream, time.Now()), "failed to append stream")
 
 		b.dirty = true
 	}

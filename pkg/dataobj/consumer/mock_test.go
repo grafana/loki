@@ -19,6 +19,9 @@ import (
 type mockBuilder struct {
 	builder *logsobj.Builder
 	nextErr error
+	// full, when true, forces IsFull to report the builder as full regardless
+	// of the underlying builder's estimated size.
+	full bool
 }
 
 func (m *mockBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
@@ -35,6 +38,10 @@ func (m *mockBuilder) GetEarliestRecordTime() time.Time {
 
 func (m *mockBuilder) GetEstimatedSize() int {
 	return m.builder.GetEstimatedSize()
+}
+
+func (m *mockBuilder) IsFull() bool {
+	return m.full || m.builder.IsFull()
 }
 
 func (m *mockBuilder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
