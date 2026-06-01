@@ -71,6 +71,25 @@ var (
 	StatMetastoreStreamsReadTime         = NewStatisticFloat64("metastore.sections.streams.read.duration", AggregationTypeSum)
 	StatMetastoreSectionPointersRead     = NewStatisticInt64("metastore.sections.pointers.read", AggregationTypeSum)
 	StatMetastoreSectionPointersReadTime = NewStatisticFloat64("metastore.sections.pointers.read.duration", AggregationTypeSum)
+
+	// StatPostingsPointersRead counts rows returned from postings.Reader.ReadPointers
+	// across the read path in the new-format postings reader.
+	StatPostingsPointersRead = NewStatisticInt64("postings.pointers.read", AggregationTypeSum)
+	// StatPostingsPointersReadTime measures the cumulative duration of
+	// postings.Reader.ReadPointers calls in seconds.
+	StatPostingsPointersReadTime = NewStatisticFloat64("postings.pointers.read.duration", AggregationTypeSum)
+	// StatPostingsBloomRowsRead counts rows surfaced via
+	// postings.Reader.ReadBloomRows (kind=KindBloom projection)
+	StatPostingsBloomRowsRead = NewStatisticInt64("postings.bloom.rows.read", AggregationTypeSum)
+	// StatPostingsLabelsResolved counts the number of stream IDs returned by
+	// postings.Reader.ResolveLabels (the AND-intersection across Equal
+	// matchers, post-regex-fallback).
+	StatPostingsLabelsResolved = NewStatisticInt64("postings.labels.resolved", AggregationTypeSum)
+	// StatPostingsBloomDeserializeFailures counts the number of bloom-filter
+	// payloads that failed to deserialise during postings.MatchSections —
+	// either via an error from bloom.ReadFrom OR a recovered panic inside
+	// bitset.ReadFrom (hostile / corrupted payloads).
+	StatPostingsBloomDeserializeFailures = NewStatisticInt64("postings.bloom.deserialize.failures", AggregationTypeSum)
 )
 
 // Task scheduling statistics.
