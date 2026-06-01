@@ -477,7 +477,7 @@ func (r *Reader) ReadPointers(ctx context.Context, streamIDs map[int64]struct{},
 	// (2) POSTINGS-SIDE READ — apply kind=KindLabel predicate where the kind
 	// column physically lives. Project the four columns the join needs:
 	// (kind, object_path, section_index, stream_id_bitmap).
-	postingsRows, err := r.collectPostingsRows(ctx, alloc, streamMeta)
+	postingsRows, err := r.collectPostingsRows(ctx, streamMeta)
 	if err != nil {
 		return nil, err
 	}
@@ -651,7 +651,6 @@ type pointerJoinRow struct {
 // against streamMeta to produce 9-column output tuples.
 func (r *Reader) collectPostingsRows(
 	ctx context.Context,
-	alloc memory.Allocator,
 	streamMeta map[int64]streamRowMetadata,
 ) ([]pointerJoinRow, error) {
 	postingsCols, err := findColumnsByType(r.opts.Columns,
@@ -832,7 +831,7 @@ func buildReadPointersRecord(alloc memory.Allocator, schema *arrow.Schema, rows 
 		rb.Field(9).(*array.StringBuilder).AppendNull()
 	}
 
-	return rb.NewRecord(), nil
+	return rb.NewRecordBatch(), nil
 }
 
 // buildEmptyRecord produces a zero-row arrow.RecordBatch for schema. Used
@@ -842,7 +841,7 @@ func buildReadPointersRecord(alloc memory.Allocator, schema *arrow.Schema, rows 
 func buildEmptyRecord(alloc memory.Allocator, schema *arrow.Schema) arrow.RecordBatch {
 	rb := array.NewRecordBuilder(alloc, schema)
 	defer rb.Release()
-	return rb.NewRecord()
+	return rb.NewRecordBatch()
 }
 
 // readBloomRowsBatchSize is the inner read size used by [Reader.ReadBloomRows]
@@ -1019,7 +1018,7 @@ func (r *Reader) collectBloomRowBatches(
 			return nil, fmt.Errorf("reading bloom rows: %w", readErr)
 		}
 	}
-	return rb.NewRecord(), nil
+	return rb.NewRecordBatch(), nil
 }
 
 // appendBloomRowBatch copies the 4 output columns (object_path, section_index,
