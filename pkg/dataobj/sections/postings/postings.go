@@ -108,12 +108,39 @@ const (
 type Section struct {
 	inner   *columnar.Section
 	columns []*Column
+
+	// parent is the [dataobj.Object] that contains this section, retained
+	// only when the section was opened via [OpenWithObject]. It is used by
+	// [Reader.ReadPointers] to locate the sibling streams section for the
+	// internal join. Sections opened via the legacy [Open]
+	// constructor leave parent nil; ReadPointers returns an error in that
+	// case.
+	parent *dataobj.Object
 }
 
 // Open opens a [Section] from an underlying [dataobj.Section]. Open returns an
 // error if the section metadata could not be read or if the provided ctx is
 // canceled.
+//
+// Sections opened via Open do not retain a back-pointer to their parent
+// [dataobj.Object]; callers that need [Reader.ReadPointers] (which performs
+// an internal postings+streams join) must open the section via
+// [OpenWithObject] instead.
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
+	return openSection(ctx, section, nil)
+}
+
+// OpenWithObject opens a [Section] from an underlying [dataobj.Section] and
+// retains a back-pointer to obj. [Reader.ReadPointers] requires the section
+// to be opened via OpenWithObject so it can locate the sibling streams
+// section in the same dataobj for the postings+streams join
+//
+// obj must be the [dataobj.Object] from which section originated
+func OpenWithObject(ctx context.Context, section *dataobj.Section, obj *dataobj.Object) (*Section, error) {
+	return openSection(ctx, section, obj)
+}
+
+func openSection(ctx context.Context, section *dataobj.Section, obj *dataobj.Object) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
 	} else if section.Type.Version != columnar.FormatVersion {
@@ -130,12 +157,18 @@ func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 		return nil, fmt.Errorf("opening columnar section: %w", err)
 	}
 
-	sec := &Section{inner: columnarSection}
+	sec := &Section{inner: columnarSection, parent: obj}
 	if err := sec.init(); err != nil {
 		return nil, fmt.Errorf("initializing section: %w", err)
 	}
 	return sec, nil
 }
+
+// Parent returns the [dataobj.Object] that contains this section, or nil if
+// the section was opened via [Open] (i.e. without the parent back-pointer).
+// Parent is intended for internal use by readers that need to locate sibling
+// sections in the same dataobj.
+func (s *Section) Parent() *dataobj.Object { return s.parent }
 
 func (s *Section) init() error {
 	for _, col := range s.inner.Columns() {
