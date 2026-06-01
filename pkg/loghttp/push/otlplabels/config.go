@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/relabel"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // Action is the action to be performed on OTLP Resource Attribute.
@@ -131,9 +132,9 @@ type AttributesConfig struct {
 	Regex      relabel.Regexp `yaml:"regex" json:"regex" doc:"description=Regex to choose attributes to configure how to store them or drop them altogether"`
 }
 
-func (c *AttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *AttributesConfig) UnmarshalYAML(value *yaml.Node) error {
 	type plain AttributesConfig
-	if err := unmarshal((*plain)(c)); err != nil {
+	if err := value.Decode((*plain)(c)); err != nil {
 		return err
 	}
 

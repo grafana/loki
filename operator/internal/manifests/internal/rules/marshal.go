@@ -2,7 +2,7 @@ package rules
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"go.yaml.in/yaml/v4"
+	"gopkg.in/yaml.v2"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )

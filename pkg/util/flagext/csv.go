@@ -2,6 +2,8 @@ package flagext
 
 import (
 	"strings"
+
+	yaml "go.yaml.in/yaml/v4"
 )
 
 type ListValue interface {
@@ -47,9 +49,9 @@ func (v CSV[T]) Get() []T {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (v *CSV[T]) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (v *CSV[T]) UnmarshalYAML(value *yaml.Node) error {
 	var s string
-	if err := unmarshal(&s); err != nil {
+	if err := value.Decode(&s); err != nil {
 		return err
 	}
 
