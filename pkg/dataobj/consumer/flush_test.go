@@ -36,7 +36,7 @@ func TestFlusher_Flush(t *testing.T) {
 			Entries: []logproto.Entry{
 				{Timestamp: now, Line: "baz"},
 			},
-		}))
+		}, now))
 		f := newFlusher(testSorter, testUploader, log.NewNopLogger(), reg)
 		// Flush the builder we created earlier.
 		objectPath, err := f.Flush(testCtx, testBuilder, flushReasonBuilderFull)

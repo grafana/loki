@@ -345,7 +345,7 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 	require.NoError(t, err)
 
 	for _, stream := range streams {
-		require.NoError(t, builder.Append("tenant", stream))
+		require.NoError(t, builder.Append("tenant", stream, time.Now()))
 	}
 
 	obj, closer, err := builder.Flush()
