@@ -457,7 +457,7 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 			SectionStripeMergeLimit: 2,
 		},
 		DataobjSortOrder: "stream-asc",
-	}, nil)
+	}, nil, logsobj.NewBuilderMetrics())
 	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
