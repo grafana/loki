@@ -143,7 +143,7 @@ func buildBenchDataobj(tb testing.TB, tenants, streamsPerTenant, entriesPerStrea
 				}
 			}
 
-			require.NoError(tb, builder.Append(tenantID, logproto.Stream{Labels: lbls, Entries: entries}))
+			require.NoError(tb, builder.Append(tenantID, logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
 		}
 	}
 

@@ -133,7 +133,7 @@ func (f *failureFlusher) Flush(_ context.Context, _ builder, _ string) (string, 
 
 type failureFlushCommitter struct{}
 
-func (m *failureFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
+func (m *failureFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64) error {
 	return errors.New("mock error")
 }
 
@@ -165,7 +165,6 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			// The following fields should be reset at the end of every flush.
 			require.True(t, proc.firstAppend.IsZero())
-			require.True(t, proc.earliestRecordTime.IsZero())
 			require.True(t, proc.lastAppend.IsZero())
 		})
 	})
@@ -193,7 +192,6 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			// Despite the failure, the following fields should still be reset.
 			require.True(t, proc.firstAppend.IsZero())
-			require.True(t, proc.earliestRecordTime.IsZero())
 			require.True(t, proc.lastAppend.IsZero())
 		})
 	})

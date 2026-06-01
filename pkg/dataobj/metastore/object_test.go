@@ -75,7 +75,7 @@ type testDataBuilder struct {
 }
 
 func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Stream) {
-	err := b.builder.Append(tenant, stream)
+	err := b.builder.Append(tenant, stream, now)
 	require.NoError(b.t, err)
 
 	timeRanges := b.builder.TimeRanges()

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/facette/natsort"
 	"github.com/go-kit/log"
@@ -222,6 +223,10 @@ type Builder struct {
 	streams map[string]*streams.Builder
 	logs    map[string]*logs.Builder
 
+	// earliestRecordTime tracks the timestamp of the earliest record appended
+	// to the builder. It is required for the metastore index.
+	earliestRecordTime time.Time
+
 	state builderState
 }
 
@@ -287,6 +292,10 @@ func (b *Builder) initBuilder(tenant string) {
 	}
 }
 
+func (b *Builder) GetEarliestRecordTime() time.Time {
+	return b.earliestRecordTime
+}
+
 func (b *Builder) GetEstimatedSize() int {
 	return b.currentSizeEstimate
 }
@@ -297,7 +306,7 @@ func (b *Builder) GetEstimatedSize() int {
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
-func (b *Builder) Append(tenant string, stream logproto.Stream) error {
+func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
 	ls, err := b.parseLabels(stream.Labels)
 	if err != nil {
 		return err
@@ -346,6 +355,9 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 		}
 	}
 
+	if b.earliestRecordTime.IsZero() || recTime.Before(b.earliestRecordTime) {
+		b.earliestRecordTime = recTime
+	}
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	return nil
@@ -650,6 +662,7 @@ func (b *Builder) Reset() {
 	clear(b.logs)
 	clear(b.streams)
 
+	b.earliestRecordTime = time.Time{}
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
