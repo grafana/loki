@@ -11,7 +11,7 @@
     "env":
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.3"
-      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
+      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
       "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
@@ -111,7 +111,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.logql-analyzer-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.logql-analyzer-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.logql-analyzer-image.outputs.image_digest_linux_arm64 }}"
-      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod/logql-analyzer"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/logql-analyzer"
       "OUTPUTS_IMAGE_NAME": "${{ needs.logql-analyzer-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.logql-analyzer-image.outputs.image_tag }}"
     "needs":
@@ -135,12 +135,12 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-
+        
         # 'needs.logql-analyzer-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-
+        
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -151,7 +151,7 @@
     "env":
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.3"
-      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
+      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
       "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
@@ -251,7 +251,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm64 }}"
-      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod/loki-canary-boringcrypto"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/loki-canary-boringcrypto"
       "OUTPUTS_IMAGE_NAME": "${{ needs.loki-canary-boringcrypto-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary-boringcrypto-image.outputs.image_tag }}"
     "needs":
@@ -275,12 +275,12 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-
+        
         # 'needs.loki-canary-boringcrypto-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-
+        
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -291,7 +291,7 @@
     "env":
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.3"
-      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
+      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
       "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
@@ -391,7 +391,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.loki-canary-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.loki-canary-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.loki-canary-image.outputs.image_digest_linux_arm64 }}"
-      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod/loki-canary"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/loki-canary"
       "OUTPUTS_IMAGE_NAME": "${{ needs.loki-canary-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary-image.outputs.image_tag }}"
     "needs":
@@ -415,12 +415,12 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-
+        
         # 'needs.loki-canary-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-
+        
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -431,7 +431,7 @@
     "env":
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.3"
-      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
+      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
       "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
@@ -531,7 +531,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.loki-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.loki-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.loki-image.outputs.image_digest_linux_arm64 }}"
-      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod/loki"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/loki"
       "OUTPUTS_IMAGE_NAME": "${{ needs.loki-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-image.outputs.image_tag }}"
     "needs":
@@ -555,12 +555,12 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-
+        
         # 'needs.loki-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-
+        
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
@@ -571,7 +571,7 @@
     "env":
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.3"
-      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod"
+      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
       "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
@@ -671,7 +671,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.loki-query-tee-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.loki-query-tee-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.loki-query-tee-image.outputs.image_digest_linux_arm64 }}"
-      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/docker-loki-prod/loki-query-tee"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/loki-query-tee"
       "OUTPUTS_IMAGE_NAME": "${{ needs.loki-query-tee-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-query-tee-image.outputs.image_tag }}"
     "needs":
@@ -695,12 +695,12 @@
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-
+        
         # 'needs.loki-query-tee-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
         # See https://github.com/actions/runner/issues/2316
         # Using the IMAGE_NAME env variable instead
         IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
-
+        
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
