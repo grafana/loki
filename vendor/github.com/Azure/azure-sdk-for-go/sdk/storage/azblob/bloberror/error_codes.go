@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -34,44 +31,46 @@ func HasCode(err error, codes ...Code) bool {
 type Code = generated.StorageErrorCode
 
 const (
-	AccountAlreadyExists                              Code = "AccountAlreadyExists"
-	AccountBeingCreated                               Code = "AccountBeingCreated"
-	AccountIsDisabled                                 Code = "AccountIsDisabled"
-	AppendPositionConditionNotMet                     Code = "AppendPositionConditionNotMet"
-	AuthenticationFailed                              Code = "AuthenticationFailed"
-	AuthorizationFailure                              Code = "AuthorizationFailure"
-	AuthorizationPermissionMismatch                   Code = "AuthorizationPermissionMismatch"
-	AuthorizationProtocolMismatch                     Code = "AuthorizationProtocolMismatch"
-	AuthorizationResourceTypeMismatch                 Code = "AuthorizationResourceTypeMismatch"
-	AuthorizationServiceMismatch                      Code = "AuthorizationServiceMismatch"
-	AuthorizationSourceIPMismatch                     Code = "AuthorizationSourceIPMismatch"
-	BlobAlreadyExists                                 Code = "BlobAlreadyExists"
-	BlobArchived                                      Code = "BlobArchived"
-	BlobBeingRehydrated                               Code = "BlobBeingRehydrated"
-	BlobImmutableDueToPolicy                          Code = "BlobImmutableDueToPolicy"
-	BlobNotArchived                                   Code = "BlobNotArchived"
-	BlobNotFound                                      Code = "BlobNotFound"
-	BlobOverwritten                                   Code = "BlobOverwritten"
-	BlobTierInadequateForContentLength                Code = "BlobTierInadequateForContentLength"
-	BlobUsesCustomerSpecifiedEncryption               Code = "BlobUsesCustomerSpecifiedEncryption"
-	BlockCountExceedsLimit                            Code = "BlockCountExceedsLimit"
-	BlockListTooLong                                  Code = "BlockListTooLong"
-	CannotChangeToLowerTier                           Code = "CannotChangeToLowerTier"
-	CannotVerifyCopySource                            Code = "CannotVerifyCopySource"
-	ConditionHeadersNotSupported                      Code = "ConditionHeadersNotSupported"
-	ConditionNotMet                                   Code = "ConditionNotMet"
-	ContainerAlreadyExists                            Code = "ContainerAlreadyExists"
-	ContainerBeingDeleted                             Code = "ContainerBeingDeleted"
-	ContainerDisabled                                 Code = "ContainerDisabled"
-	ContainerNotFound                                 Code = "ContainerNotFound"
-	ContentLengthLargerThanTierLimit                  Code = "ContentLengthLargerThanTierLimit"
-	CopyAcrossAccountsNotSupported                    Code = "CopyAcrossAccountsNotSupported"
-	CopyIDMismatch                                    Code = "CopyIdMismatch"
-	EmptyMetadataKey                                  Code = "EmptyMetadataKey"
-	FeatureVersionMismatch                            Code = "FeatureVersionMismatch"
-	ImmutabilityPolicyDeleteOnLockedPolicy            Code = "ImmutabilityPolicyDeleteOnLockedPolicy"
-	IncrementalCopyBlobMismatch                       Code = "IncrementalCopyBlobMismatch"
+	AccountAlreadyExists                   Code = "AccountAlreadyExists"
+	AccountBeingCreated                    Code = "AccountBeingCreated"
+	AccountIsDisabled                      Code = "AccountIsDisabled"
+	AppendPositionConditionNotMet          Code = "AppendPositionConditionNotMet"
+	AuthenticationFailed                   Code = "AuthenticationFailed"
+	AuthorizationFailure                   Code = "AuthorizationFailure"
+	AuthorizationPermissionMismatch        Code = "AuthorizationPermissionMismatch"
+	AuthorizationProtocolMismatch          Code = "AuthorizationProtocolMismatch"
+	AuthorizationResourceTypeMismatch      Code = "AuthorizationResourceTypeMismatch"
+	AuthorizationServiceMismatch           Code = "AuthorizationServiceMismatch"
+	AuthorizationSourceIPMismatch          Code = "AuthorizationSourceIPMismatch"
+	BlobAlreadyExists                      Code = "BlobAlreadyExists"
+	BlobArchived                           Code = "BlobArchived"
+	BlobBeingRehydrated                    Code = "BlobBeingRehydrated"
+	BlobImmutableDueToPolicy               Code = "BlobImmutableDueToPolicy"
+	BlobNotArchived                        Code = "BlobNotArchived"
+	BlobNotFound                           Code = "BlobNotFound"
+	BlobOverwritten                        Code = "BlobOverwritten"
+	BlobTierInadequateForContentLength     Code = "BlobTierInadequateForContentLength"
+	BlobUsesCustomerSpecifiedEncryption    Code = "BlobUsesCustomerSpecifiedEncryption"
+	BlockCountExceedsLimit                 Code = "BlockCountExceedsLimit"
+	BlockListTooLong                       Code = "BlockListTooLong"
+	CannotChangeToLowerTier                Code = "CannotChangeToLowerTier"
+	CannotVerifyCopySource                 Code = "CannotVerifyCopySource"
+	ConditionHeadersNotSupported           Code = "ConditionHeadersNotSupported"
+	ConditionNotMet                        Code = "ConditionNotMet"
+	ContainerAlreadyExists                 Code = "ContainerAlreadyExists"
+	ContainerBeingDeleted                  Code = "ContainerBeingDeleted"
+	ContainerDisabled                      Code = "ContainerDisabled"
+	ContainerNotFound                      Code = "ContainerNotFound"
+	ContentLengthLargerThanTierLimit       Code = "ContentLengthLargerThanTierLimit"
+	CopyAcrossAccountsNotSupported         Code = "CopyAcrossAccountsNotSupported"
+	CopyIDMismatch                         Code = "CopyIdMismatch"
+	EmptyMetadataKey                       Code = "EmptyMetadataKey"
+	FeatureVersionMismatch                 Code = "FeatureVersionMismatch"
+	ImmutabilityPolicyDeleteOnLockedPolicy Code = "ImmutabilityPolicyDeleteOnLockedPolicy"
+	IncrementalCopyBlobMismatch            Code = "IncrementalCopyBlobMismatch"
+	// Deprecated: Please use IncrementalCopyOfEarlierSnapshotNotAllowed instead.
 	IncrementalCopyOfEralierVersionSnapshotNotAllowed Code = "IncrementalCopyOfEralierVersionSnapshotNotAllowed"
+	IncrementalCopyOfEarlierSnapshotNotAllowed        Code = "IncrementalCopyOfEarlierSnapshotNotAllowed"
 	IncrementalCopySourceMustBeSnapshot               Code = "IncrementalCopySourceMustBeSnapshot"
 	InfiniteLeaseDurationRequired                     Code = "InfiniteLeaseDurationRequired"
 	InsufficientAccountPermissions                    Code = "InsufficientAccountPermissions"
@@ -154,6 +153,8 @@ const (
 
 var (
 	// MissingSharedKeyCredential - Error is returned when SAS URL is being created without SharedKeyCredential.
+	//nolint:staticcheck // ST1012: Renaming errors would be a breaking change, so suppressing linter warning.
 	MissingSharedKeyCredential = errors.New("SAS can only be signed with a SharedKeyCredential")
-	UnsupportedChecksum        = errors.New("for multi-part uploads, user generated checksums cannot be validated")
+	//nolint:staticcheck // ST1012: Renaming errors would be a breaking change, so suppressing linter warning.
+	UnsupportedChecksum = errors.New("for multi-part uploads, user generated checksums cannot be validated")
 )

@@ -346,7 +346,7 @@ func (col *optionalColumnBuffer) ReadValuesAt(values []Value, offset int64) (int
 	}
 
 	if numNulls2 > 0 {
-		columnIndex := ^int16(col.Column())
+		columnIndex := ^uint16(col.Column())
 		i := numNulls2 - 1
 		j := length - 1
 		definitionLevelsSlice := definitionLevels[offset : offset+length]

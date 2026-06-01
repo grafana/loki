@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	yaml "gopkg.in/yaml.v2"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -422,7 +422,7 @@ func TestIndexPeriodicTableConfigCustomUnmarshalling(t *testing.T) {
 prefix: cortex_
 period: 1w
 tags:
-  foo: bar
+    foo: bar
 `
 
 	cfg := IndexPeriodicTableConfig{}
@@ -452,7 +452,7 @@ func TestPeriodicTableConfigCustomUnmarshalling(t *testing.T) {
 	yamlFile := `prefix: cortex_
 period: 1w
 tags:
-  foo: bar
+    foo: bar
 `
 
 	cfg := PeriodicTableConfig{}
@@ -651,7 +651,7 @@ index:
   prefix: loki_index_
 object_store: gcs
 schema: v11
-store: boltdb-shipper
+store: tsdb
 `
 
 	var cfg PeriodConfig
@@ -660,7 +660,7 @@ store: boltdb-shipper
 
 	expected := PeriodConfig{
 		From:       DayTime{model.Time(1596153600000)},
-		IndexType:  "boltdb-shipper",
+		IndexType:  types.IndexTypeTSDB,
 		ObjectType: "gcs",
 		Schema:     "v11",
 		IndexTables: IndexPeriodicTableConfig{

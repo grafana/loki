@@ -10,8 +10,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// builderMetrics provides instrumnetation for a [Builder].
-type builderMetrics struct {
+// BuilderMetrics provides instrumentation for a [Builder].
+type BuilderMetrics struct {
 	logs    *logs.Metrics
 	streams *streams.Metrics
 	dataobj *dataobj.Metrics
@@ -28,10 +28,10 @@ type builderMetrics struct {
 	builtSize    prometheus.Histogram
 }
 
-// newBuilderMetrics creates a new set of [builderMetrics] for instrumenting
+// NewBuilderMetrics creates a new set of [BuilderMetrics] for instrumenting
 // logs objects.
-func newBuilderMetrics() *builderMetrics {
-	return &builderMetrics{
+func NewBuilderMetrics() *BuilderMetrics {
+	return &BuilderMetrics{
 		logs:    logs.NewMetrics(),
 		streams: streams.NewMetrics(),
 		dataobj: dataobj.NewMetrics(),
@@ -85,13 +85,13 @@ func newBuilderMetrics() *builderMetrics {
 }
 
 // ObserveConfig updates config metrics based on the provided [BuilderConfig].
-func (m *builderMetrics) ObserveConfig(cfg BuilderConfig) {
+func (m *BuilderMetrics) ObserveConfig(cfg BuilderConfig) {
 	m.targetPageSize.Set(float64(cfg.TargetPageSize))
 	m.targetObjectSize.Set(float64(cfg.TargetObjectSize))
 }
 
 // Register registers metrics to report to reg.
-func (m *builderMetrics) Register(reg prometheus.Registerer) error {
+func (m *BuilderMetrics) Register(reg prometheus.Registerer) error {
 	var errs []error
 
 	errs = append(errs, m.logs.Register(reg))
@@ -113,7 +113,7 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 }
 
 // Unregister unregisters metrics from the provided Registerer.
-func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
+func (m *BuilderMetrics) Unregister(reg prometheus.Registerer) {
 	m.logs.Unregister(reg)
 	m.streams.Unregister(reg)
 	m.dataobj.Unregister(reg)

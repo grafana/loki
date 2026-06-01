@@ -35,7 +35,7 @@ func NewSorter(factory *BuilderFactory, r prometheus.Registerer) *Sorter {
 // Sort takes an existing data object and rewrites the logs sections so they are
 // sorted object-wide.
 func (s *Sorter) Sort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	b, err := s.factory.NewBuilder(nil)
+	b, err := s.factory.NewSorterBuilder()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create builder: %w", err)
 	}
