@@ -44,8 +44,11 @@ type segmentationPartitionResolver struct {
 	logger                log.Logger
 
 	// Metrics.
-	resolveFailed prometheus.Counter
-	resolveTotal  prometheus.Counter
+	resolveFailed                   prometheus.Counter
+	resolveTotal                    prometheus.Counter
+	numPartitions                   prometheus.Histogram
+	tenantShuffleShardSize          prometheus.Histogram
+	segmentationKeyShuffleShardSize prometheus.Histogram
 }
 
 // newSegmentationPartitionResolver returns a new segmentationPartitionResolver.
@@ -64,6 +67,30 @@ func newSegmentationPartitionResolver(
 		resolveTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_total",
 			Help: "Total number of segmentation keys passed to the resolver.",
+		}),
+		numPartitions: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_distributor_segmentation_partition_resolver_partition_count",
+			Help:                            "The number of partitions that a key could resolve to",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		tenantShuffleShardSize: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_distributor_segmentation_partition_resolver_tenant_shuffle_shard_size",
+			Help:                            "The size of the shuffle shard created by sharding on tenant ID",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		segmentationKeyShuffleShardSize: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_distributor_segmentation_partition_resolver_segmentation_key_shuffle_shard_size",
+			Help:                            "The size of the shuffle shard created by sharding on segmentation key",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
 		}),
 		logger: logger,
 	}
@@ -87,6 +114,10 @@ func (r *segmentationPartitionResolver) Resolve(tenant string, key segmentationK
 	if numSegKeyShuffleShardPartitions > 1 {
 		shuffleSharder = shuffleSharder.ShuffleShard(string(key), numSegKeyShuffleShardPartitions)
 	}
+
+	r.numPartitions.Observe(float64(shuffleSharder.Size()))
+	r.tenantShuffleShardSize.Observe(float64(numTenantShuffleShardPartitions))
+	r.segmentationKeyShuffleShardSize.Observe(float64(numSegKeyShuffleShardPartitions))
 
 	// Finally, shard based on the hash key.
 	partition, err := shuffleSharder.Shard(hashKey)
