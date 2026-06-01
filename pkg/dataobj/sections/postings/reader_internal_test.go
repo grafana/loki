@@ -43,7 +43,7 @@ func TestAccumulateStreamMeta_DuplicateStreamID(t *testing.T) {
 	rb.Field(3).(*array.Int64Builder).AppendValues([]int64{10, 20}, nil)
 	rb.Field(4).(*array.Int64Builder).AppendValues([]int64{1000, 2000}, nil)
 
-	batch := rb.NewRecord()
+	batch := rb.NewRecordBatch()
 	defer batch.Release()
 
 	out := make(map[int64]streamRowMetadata)

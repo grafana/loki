@@ -20,7 +20,7 @@ import (
 //
 // ctx is passed in so each test exercises its own test-scoped context via
 // t.Context(); the helper does not call t.Context() itself.
-func buildPredicateTestSection(t *testing.T, ctx context.Context, seed string) *Section {
+func buildPredicateTestSection(ctx context.Context, t *testing.T, seed string) *Section {
 	t.Helper()
 
 	b := NewBuilder(nil, 0, 0)
@@ -61,8 +61,8 @@ func buildPredicateTestSection(t *testing.T, ctx context.Context, seed string) *
 // pins the specific error site.
 func TestReaderOptions_Validate_CrossSectionRejected(t *testing.T) {
 	ctx := t.Context()
-	sec1 := buildPredicateTestSection(t, ctx, "cross-a")
-	sec2 := buildPredicateTestSection(t, ctx, "cross-b")
+	sec1 := buildPredicateTestSection(ctx, t, "cross-a")
+	sec2 := buildPredicateTestSection(ctx, t, "cross-b")
 
 	cases := []struct {
 		name      string
@@ -112,7 +112,7 @@ func TestReaderOptions_Validate_UnsupportedScalar(t *testing.T) {
 	}
 
 	ctx := t.Context()
-	sec := buildPredicateTestSection(t, ctx, "scalar")
+	sec := buildPredicateTestSection(ctx, t, "scalar")
 	cols := sec.Columns()
 	require.NotEmpty(t, cols)
 
@@ -147,7 +147,7 @@ func (unknownPredicate) isPredicate() {}
 // step, not by the error return.
 func TestWalkPredicate_PanicsOnUnknownType(t *testing.T) {
 	ctx := t.Context()
-	sec := buildPredicateTestSection(t, ctx, "unknown")
+	sec := buildPredicateTestSection(ctx, t, "unknown")
 	cols := sec.Columns()
 	require.NotEmpty(t, cols)
 

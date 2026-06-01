@@ -1596,6 +1596,11 @@ dataobj:
     # CLI flag: -dataobj-metastore.partition-ratio
     [partition_ratio: <int> | default = 10]
 
+    # Experimental: When enabled, reads from new-format postings sections in
+    # index objects instead of the legacy pointers sections. Default false.
+    # CLI flag: -dataobj-metastore.dataobj-read-new-index-sections
+    [dataobj_read_new_index_sections: <boolean> | default = false]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).
