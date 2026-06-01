@@ -201,9 +201,10 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 // newTestBuilder returns a new logsobj.Builder with registered metrics.
 func newTestBuilder(t *testing.T, reg prometheus.Registerer) *logsobj.Builder {
-	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
+	m := logsobj.NewBuilderMetrics()
+	require.NoError(t, m.Register(reg))
+	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), m)
 	require.NoError(t, err)
-	require.NoError(t, b.RegisterMetrics(reg))
 	return b
 }
 

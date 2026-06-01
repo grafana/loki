@@ -59,7 +59,7 @@ func NewBuilder(t *testing.T) *Builder {
 
 	var builderConfig logsobj.BuilderConfig
 	builderConfig.RegisterFlagsWithPrefix("", flag.NewFlagSet("", flag.PanicOnError)) // Acquire defaults
-	logsBuilder, err := logsobj.NewBuilder(builderConfig, nil)
+	logsBuilder, err := logsobj.NewBuilder(builderConfig, nil, logsobj.NewBuilderMetrics())
 	require.NoError(t, err, "expected to be able to create logs builder")
 
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, "index/v0")
