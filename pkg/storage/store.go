@@ -251,7 +251,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 		}, nil
 	}
 
-	objectClient, err := NewObjectClient(p.ObjectType, component, s.cfg, s.clientMetrics)
+	objectClient, err := newIndexObjectClient(p.ObjectType, component, s.cfg, s.clientMetrics)
 	if err != nil {
 		return nil, nil, nil, err
 	}

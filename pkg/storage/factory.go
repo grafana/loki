@@ -447,6 +447,44 @@ func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMet
 	}
 }
 
+func newIndexObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+	return NewObjectClient(name, component, withoutChunkDelimiterForIndexObjectClient(name, cfg), clientMetrics)
+}
+
+func withoutChunkDelimiterForIndexObjectClient(name string, cfg Config) Config {
+	if cfg.UseThanosObjstore {
+		return cfg
+	}
+
+	storeType := name
+	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
+		storeType = nsType
+	}
+
+	if storeType != types.StorageTypeAWS && storeType != types.StorageTypeS3 {
+		return cfg
+	}
+
+	if _, ok := cfg.NamedStores.storeType[name]; ok {
+		namedCfg, ok := cfg.NamedStores.AWS[name]
+		if !ok {
+			return cfg
+		}
+
+		namedAWS := make(map[string]NamedAWSStorageConfig, len(cfg.NamedStores.AWS))
+		for storeName, storeCfg := range cfg.NamedStores.AWS {
+			namedAWS[storeName] = storeCfg
+		}
+		namedCfg.ChunkDelimiter = ""
+		namedAWS[name] = namedCfg
+		cfg.NamedStores.AWS = namedAWS
+		return cfg
+	}
+
+	cfg.S3Config.ChunkDelimiter = ""
+	return cfg
+}
+
 // internalNewObjectClient makes the underlying StorageClient of the desired types.
 func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	var (
