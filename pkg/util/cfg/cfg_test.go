@@ -63,7 +63,7 @@ tls:
 		flagSource,
 	)
 	require.Error(t, err)
-	require.Equal(t, err.Error(), "yaml: unmarshal errors:\n  line 2: field servers not found in type cfg.Data\n  line 6: field keey not found in type cfg.TLS")
+	require.Equal(t, err.Error(), "yaml: construct errors:\n  line 2: field servers not found in type cfg.Data\n  line 6: field keey not found in type cfg.TLS")
 }
 
 func TestDefaultUnmarshal(t *testing.T) {
