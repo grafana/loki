@@ -12,6 +12,11 @@ import (
 
 const (
 	invalid = "<invalid>"
+
+	// ExtractedSuffix is appended to a parsed or metadata column's short name when
+	// it collides with a higher-priority column of the same name (e.g. a json field
+	// "namespace" colliding with the stream label "namespace" becomes "namespace_extracted").
+	ExtractedSuffix = "_extracted"
 )
 
 var (

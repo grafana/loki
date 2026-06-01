@@ -17,7 +17,7 @@ import (
 )
 
 func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline) Pipeline {
-	const extracted = "_extracted"
+	const extracted = semconv.ExtractedSuffix
 
 	identCache := semconv.NewIdentifierCache()
 
