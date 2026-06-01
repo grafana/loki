@@ -59,13 +59,6 @@ type CredentialsProvider struct {
 	cred credentials.Credential
 }
 
-type authConfig struct {
-	endpoint        string
-	accessKeyID     string
-	accessKeySecret string
-	roleName        string
-}
-
 // RegisterFlags registers flags.
 func (cfg *OssConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
@@ -92,12 +85,7 @@ func (cfg *OssConfig) Validate() error {
 
 // NewOssObjectClient makes a new chunk.Client that writes chunks to OSS.
 func NewOssObjectClient(_ context.Context, cfg OssConfig) (client.ObjectClient, error) {
-	accessKeyID, secretAccessKey, clientOptions, err := buildAuth(authConfig{
-		endpoint:        cfg.Endpoint,
-		accessKeyID:     cfg.AccessKeyID,
-		accessKeySecret: cfg.SecretAccessKey.String(),
-		roleName:        cfg.RAMRoleName,
-	})
+	accessKeyID, secretAccessKey, clientOptions, err := buildAuth(&cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -321,12 +309,12 @@ func parseRegion(endpoint string) string {
 	return host
 }
 
-func buildAuth(cfg authConfig) (ak string, sk string, opts []oss.ClientOption, err error) {
-	if cfg.accessKeyID != "" || cfg.accessKeySecret != "" {
-		return cfg.accessKeyID, cfg.accessKeySecret, nil, nil
+func buildAuth(cfg *OssConfig) (ak string, sk string, opts []oss.ClientOption, err error) {
+	if cfg.AccessKeyID != "" || cfg.SecretAccessKey.String() != "" {
+		return cfg.AccessKeyID, cfg.SecretAccessKey.String(), nil, nil
 	}
 
-	_, opts, err = buildRAMRoleProvider(cfg.roleName)
+	_, opts, err = buildRAMRoleProvider(cfg.RAMRoleName)
 	return "", "", opts, err
 }
 
