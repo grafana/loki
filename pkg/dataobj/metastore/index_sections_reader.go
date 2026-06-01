@@ -24,6 +24,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -60,8 +61,18 @@ type indexSectionsReader struct {
 	streamsReaders  []*streams.Reader
 	pointersReaders []*pointers.Reader
 	bloomReaders    []*pointers.Reader
+	// postingsReaders holds the new-format readers.
+	// indexSectionsReader is one-object-per-instance, so length is 0 or 1 in practice.
+	postingsReaders []*postings.Reader
+	useNewPath      bool
 
 	pointersReaderIdx int
+
+	// postingsPointersRead tracks whether the single-batch ReadPointers
+	// result has already been returned on the new path. postings.Reader.ReadPointers
+	// returns one batch, while readAllPointers drains by repeatedly calling
+	// readPointers until io.EOF.
+	postingsPointersRead bool
 
 	// Stats
 	bloomRowsRead uint64
@@ -82,6 +93,7 @@ func newIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
+	useNewPath bool,
 ) *indexSectionsReader {
 	// Only keep equal predicates for bloom filtering
 	var equalPredicates []*labels.Matcher
@@ -105,6 +117,7 @@ func newIndexSectionsReader(
 		end:                end,
 		matchingStreamIDs:  make(map[int64]struct{}),
 		labelNamesByStream: make(map[int64][]string),
+		useNewPath:         useNewPath,
 	}
 }
 
@@ -133,6 +146,10 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		return fmt.Errorf("extracting org ID: %w", err)
 	}
 
+	// Keep a dedicated dispatch span so path selection is observable.
+	ctx, dispatchSpan := xcap.StartSpan(ctx, tracer, "metastore.indexSectionsReader.init.dispatch")
+	defer dispatchSpan.End()
+
 	sStart, sEnd := r.scalarTimestamps()
 
 	predicateKeys := make(map[string]struct{}, len(r.predicates))
@@ -143,6 +160,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	var (
 		unopenedStreams  []*dataobj.Section
 		unopenedPointers []*dataobj.Section
+		unopenedPostings []*dataobj.Section
 	)
 
 	for _, section := range r.obj.Sections() {
@@ -155,12 +173,46 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 			unopenedStreams = append(unopenedStreams, section)
 		case pointers.CheckSection(section):
 			unopenedPointers = append(unopenedPointers, section)
+		case postings.CheckSection(section):
+			unopenedPostings = append(unopenedPostings, section)
 		}
+	}
+
+	// Compute combined-section flag against pre-reset state so the debug log
+	// accurately reflects what was observed before precedence kicks in.
+	combined := len(unopenedPostings) > 0 && len(unopenedPointers) > 0
+
+	// *dataobj.Object does not expose a path accessor. Log object size as a
+	// stable identifier for dispatch debugging.
+	level.Debug(utillog.WithContext(ctx, r.logger)).Log(
+		"msg", "indexSectionsReader dispatch",
+		"object_size", r.obj.Size(),
+		"use_new_path", r.useNewPath,
+		"has_postings", len(unopenedPostings) > 0,
+		"combined", combined,
+	)
+
+	// If this object has no postings section, force legacy behavior. Without
+	// this, useNewPath=true could short-circuit to io.EOF and hide legacy data.
+	if len(unopenedPostings) == 0 {
+		r.useNewPath = false
+	}
+
+	// When postings exist and the new path is enabled, prefer postings and skip
+	// opening legacy streams/pointers readers for this object.
+	if len(unopenedPostings) > 0 && r.useNewPath {
+		unopenedPointers = nil
+		unopenedStreams = nil
 	}
 
 	r.streamsReaders = make([]*streams.Reader, len(unopenedStreams))
 	r.pointersReaders = make([]*pointers.Reader, len(unopenedPointers))
 	r.bloomReaders = make([]*pointers.Reader, len(unopenedPointers))
+	// Only allocate postings readers when the new path is enabled so an empty
+	// slice means "postings path did not run."
+	if r.useNewPath {
+		r.postingsReaders = make([]*postings.Reader, len(unopenedPostings))
+	}
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -214,10 +266,30 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		})
 	}
 
+	if r.useNewPath {
+		for i, section := range unopenedPostings {
+			g.Go(func() error {
+				sec, err := postings.OpenWithObject(ctx, section, r.obj)
+				if err != nil {
+					return fmt.Errorf("opening postings section: %w", err)
+				}
+
+				reader, err := r.openPostingsReader(ctx, sec)
+				if err != nil {
+					return err
+				}
+
+				r.postingsReaders[i] = reader
+				return nil
+			})
+		}
+	}
+
 	if err := g.Wait(); err != nil {
 		closeAll(r.streamsReaders)
 		closeAll(r.pointersReaders)
 		closeAll(r.bloomReaders)
+		closeAll(r.postingsReaders)
 		return err
 	}
 
@@ -276,6 +348,23 @@ func (r *indexSectionsReader) openStreamsReader(
 		return nil, fmt.Errorf("opening streams reader: %w", err)
 	}
 
+	return reader, nil
+}
+
+// openPostingsReader opens a postings reader using the section's full column
+// set. Read-time filtering is passed to reader methods, so ReaderOptions stays
+// projection-only.
+func (r *indexSectionsReader) openPostingsReader(
+	ctx context.Context,
+	sec *postings.Section,
+) (*postings.Reader, error) {
+	reader := postings.NewReader(postings.ReaderOptions{
+		Columns:   sec.Columns(),
+		Allocator: memory.DefaultAllocator,
+	})
+	if err := reader.Open(ctx); err != nil {
+		return nil, fmt.Errorf("opening postings reader: %w", err)
+	}
 	return reader, nil
 }
 
@@ -456,6 +545,10 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		return nil
 	}
 
+	if r.useNewPath {
+		return r.lazyResolveLabels(ctx)
+	}
+
 	region := xcap.RegionFromContext(ctx)
 	startTime := time.Now()
 	defer func() {
@@ -520,8 +613,82 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 	return nil
 }
 
-// filterLabelPredicates removes predicates that reference known stream labels.
+// lazyResolveLabels is the new-path replacement for lazyReadStreams. It calls
+// postings.Reader.ResolveLabels on the postings reader opened in init().
+// indexSectionsReader does not open a streams.Reader on this path.
+//
+// The output fields (matchingStreamIDs and labelNamesByStream) have the same
+// shape as the legacy path so downstream filtering logic can stay unchanged.
+//
+// Emit the same metastore stream-read stats as the legacy path so existing
+// dashboards remain comparable.
+func (r *indexSectionsReader) lazyResolveLabels(ctx context.Context) error {
+	if r.readStreams {
+		return nil
+	}
+
+	region := xcap.RegionFromContext(ctx)
+
+	// Defensive: if no postings reader is available, treat as empty result so
+	// Read() returns io.EOF cleanly.
+	if len(r.postingsReaders) == 0 || r.postingsReaders[0] == nil {
+		r.readStreams = true
+		r.hasData = false
+		return nil
+	}
+
+	startTime := time.Now()
+	defer func() {
+		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
+	}()
+
+	pr := r.postingsReaders[0]
+	streamIDs, labelNamesByStream, err := pr.ResolveLabels(ctx, r.matchers)
+	if err != nil {
+		return fmt.Errorf("resolving labels via postings: %w", err)
+	}
+
+	// Keep both maps non-nil so downstream consumers can append/read without
+	// extra nil checks.
+	if streamIDs == nil {
+		streamIDs = make(map[int64]struct{})
+	}
+	if labelNamesByStream == nil {
+		labelNamesByStream = make(map[int64][]string)
+	}
+
+	r.matchingStreamIDs = streamIDs
+	r.labelNamesByStream = labelNamesByStream
+
+	// ResolveLabels only reports names seen while evaluating matcher rows. Add
+	// all stream-label column names from the sibling streams section so
+	// stream-label predicates are removed before bloom matching. Without this,
+	// bloom matching can incorrectly drop every section when a stream-label
+	// predicate has no bloom row.
+	streamLabelNames := pr.StreamLabelColumnNames()
+	if len(streamLabelNames) > 0 {
+		for streamID := range r.matchingStreamIDs {
+			r.addLabelNamesForStream(streamID, streamLabelNames)
+		}
+	}
+
+	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
+
+	r.filterBloomPredicates()
+	r.readStreams = true
+	r.hasData = len(r.matchingStreamIDs) > 0
+	return nil
+}
+
+// filterBloomPredicates removes predicates that reference known stream labels.
 // This prevents false negatives on structured metadata columns with the same name.
+//
+// This method overwrites r.predicates with the filtered slice. If callers need
+// the original list, they must copy it before Read/Open.
+//
+// This runs once per reader lifetime because both paths gate it on
+// r.readStreams. Treat indexSectionsReader as single-shot for one
+// matcher/predicate set.
 func (r *indexSectionsReader) filterBloomPredicates() {
 	allLabelNames := r.allLabelNames()
 	filtered := make([]*labels.Matcher, 0, len(r.predicates))
@@ -544,10 +711,16 @@ func (r *indexSectionsReader) allLabelNames() []string {
 	return slices.Collect(maps.Keys(allLabelNamesMap))
 }
 
+// Close releases readers held by this indexSectionsReader.
+//
+// Keep postings readers open until Close(): one reader is used across
+// ResolveLabels, ReadPointers, and optional ReadBloomRows. Closing after
+// ReadPointers would break the bloom-filter stage.
 func (r *indexSectionsReader) Close() {
 	closeAll(r.streamsReaders)
 	closeAll(r.pointersReaders)
 	closeAll(r.bloomReaders)
+	closeAll(r.postingsReaders)
 
 	if r.readSpan != nil {
 		r.readSpan.End()
@@ -574,6 +747,12 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 	defer func(start time.Time) {
 		r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
 	}(time.Now())
+
+	// The new path reads pointers once via postings and then returns io.EOF on
+	// later calls so readAllPointers terminates naturally.
+	if r.useNewPath {
+		return r.readPointersNewPath(ctx)
+	}
 
 	for r.pointersReaderIdx < len(r.pointersReaders) {
 		pr := r.pointersReaders[r.pointersReaderIdx]
@@ -615,6 +794,53 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 	}
 
 	return nil, io.EOF
+}
+
+// readPointersNewPath is the new-path replacement for the legacy pointers
+// loop. It calls postings.Reader.ReadPointers once and returns io.EOF on
+// subsequent calls so readAllPointers can drain.
+//
+// No extra stream-id filtering is needed here because ReadPointers receives
+// matchingStreamIDs and applies that filter in its join path.
+//
+// The output schema matches downstream expectations used by buildKeepBitmask
+// and pointers.FromRecordBatch.
+//
+// Emit the same pointer-read stats as the legacy path; readPointers() wraps
+// both paths with the same timing stat.
+func (r *indexSectionsReader) readPointersNewPath(ctx context.Context) (arrow.RecordBatch, error) {
+	if r.postingsPointersRead {
+		return nil, io.EOF
+	}
+	if len(r.postingsReaders) == 0 || r.postingsReaders[0] == nil {
+		r.postingsPointersRead = true
+		return nil, io.EOF
+	}
+
+	pr := r.postingsReaders[0]
+	rec, err := pr.ReadPointers(ctx, r.matchingStreamIDs, r.start, r.end)
+	if err != nil {
+		// Preserve the contract that a transient error surfaces on every
+		// call (not just the first): leave postingsPointersRead false so a
+		// caller that retries does not get silent io.EOF. The one-shot
+		// behaviour is enforced only on a successful read below.
+		return nil, fmt.Errorf("reading postings pointers: %w", err)
+	}
+	r.postingsPointersRead = true
+
+	// Arrow contract: ReadPointers' doc-comment says "Caller must release
+	// the returned batch." A non-nil zero-row batch still pins allocator
+	// buffers, so release it explicitly before short-circuiting to io.EOF.
+	if rec == nil || rec.NumRows() == 0 {
+		if rec != nil {
+			rec.Release()
+		}
+		return nil, io.EOF
+	}
+
+	r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
+	r.bloomRowsRead += uint64(rec.NumRows())
+	return rec, nil
 }
 
 func (r *indexSectionsReader) filterPointersByMatchingStreamID(
@@ -783,6 +1009,13 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 		predicateIndexesByName[predicate.Name] = append(predicateIndexesByName[predicate.Name], i)
 	}
 
+	// The new path delegates bloom matching to postings.ReadBloomRows +
+	// postings.MatchSections. predicateIndexesByName is only used by the
+	// legacy branch below.
+	if r.useNewPath {
+		return r.readMatchedSectionKeysNewPath(ctx)
+	}
+
 	sectionMatches := make(map[SectionKey]map[int]struct{})
 
 	for _, br := range r.bloomReaders {
@@ -859,6 +1092,49 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 		}
 	}
 	return matchedSectionKeys, nil
+}
+
+// readMatchedSectionKeysNewPath replaces the legacy bloom-reader loop. It
+// reads bloom rows from postings and converts postings.Key into
+// metastore.SectionKey at this layer to avoid package import cycles.
+//
+// MatchSections preserves AND semantics across equal matchers, mirroring the
+// legacy behavior.
+//
+// r.predicates is already pre-filtered to MatchEqual entries, and
+// ReadBloomRows returns the projection MatchSections expects.
+func (r *indexSectionsReader) readMatchedSectionKeysNewPath(ctx context.Context) (map[SectionKey]struct{}, error) {
+	if len(r.postingsReaders) == 0 || r.postingsReaders[0] == nil {
+		return map[SectionKey]struct{}{}, nil
+	}
+
+	pr := r.postingsReaders[0]
+	rec, err := pr.ReadBloomRows(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading postings bloom rows: %w", err)
+	}
+	if rec == nil {
+		return map[SectionKey]struct{}{}, nil
+	}
+	// Arrow contract: ReadBloomRows' doc-comment says "Caller must release
+	// the returned batch." Move the defer above the zero-row short-circuit
+	// so the (non-nil, NumRows()==0) case releases the batch as well.
+	defer rec.Release()
+	if rec.NumRows() == 0 {
+		return map[SectionKey]struct{}{}, nil
+	}
+
+	batches := []arrow.RecordBatch{rec}
+	postingsKeys, err := postings.MatchSections(ctx, batches, r.predicates)
+	if err != nil {
+		return nil, fmt.Errorf("matching postings bloom rows: %w", err)
+	}
+
+	matched := make(map[SectionKey]struct{}, len(postingsKeys))
+	for k := range postingsKeys {
+		matched[SectionKey{ObjectPath: k.ObjectPath, SectionIdx: k.SectionIndex}] = struct{}{}
+	}
+	return matched, nil
 }
 
 func bloomFilterMayContain(bloomBytes []byte, value string) bool {
