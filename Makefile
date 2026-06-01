@@ -27,8 +27,6 @@ endif
 
 # Ensure you run `make release-workflows` after changing this
 GO_VERSION         := 1.26.3
-# Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.35.1
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -142,7 +140,7 @@ help: ## Display this help
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image fluent-bit-test
 .PHONY: fluentd-image fluentd-test
-.PHONY: loki-image build-image build-image-push
+.PHONY: loki-image
 .PHONY: benchmark-store check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: doc check-doc
@@ -625,16 +623,6 @@ migrate-image: ## build the migrate docker image
 logql-analyzer-image: ## build the logql analyzer docker image
 	$(OCI_BUILD) -t $(LOGQL_ANALYZER_IMAGE) -f cmd/logql-analyzer/Dockerfile .
 
-# Build image
-build-image: ## build the build docker image
-	$(OCI_BUILD) -f loki-build-image/Dockerfile -t $(MAKEFILE_IMAGE) .
-build-image-push:
-ifneq (,$(findstring WIP,$(IMAGE_TAG)))
-	@echo "Cannot push a WIP image, commit changes first"; \
-	false;
-endif
-	DOCKER_BUILDKIT=1 docker buildx build $(OCI_PLATFORMS) $(OCI_BUILD_ARGS) $(OCI_PUSH_ARGS) -f loki-build-image/Dockerfile -t $(MAKEFILE_IMAGE) .
-
 # Loki Operator
 loki-operator-image: ## build the operator docker image
 	$(OCI_BUILD) -t $(OPERATOR_IMAGE) -f operator/Dockerfile ./operator
@@ -812,16 +800,6 @@ dev-k3d-enterprise-logs:
 
 dev-k3d-down:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d down
-
-# Snyk is used to scan for vulnerabilities
-.PHONY: snyk
-snyk: loki-image build-image
-	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
-	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
-	snyk code test
-
-.PHONY: scan-vulnerabilities
-scan-vulnerabilities: snyk
 
 .PHONY: release-workflows
 release-workflows:
