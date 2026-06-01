@@ -33,7 +33,7 @@ const testTenant = "test"
 func buildObject(t *testing.T, labels string, base time.Time, lineCount int) (*dataobj.Object, func()) {
 	t.Helper()
 
-	b, err := logsobj.NewBuilder(testBuilderConfig, nil)
+	b, err := logsobj.NewBuilder(testBuilderConfig, nil, logsobj.NewBuilderMetrics())
 	require.NoError(t, err)
 
 	entries := make([]push.Entry, 0, lineCount)

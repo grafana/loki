@@ -398,7 +398,7 @@ func (col *repeatedColumnBuffer) ReadValuesAt(values []Value, offset int64) (int
 	repetitionLevels := repetitionLevelsSlice[offset : offset+length]
 
 	if numNulls2 > 0 {
-		columnIndex := ^int16(col.Column())
+		columnIndex := ^uint16(col.Column())
 		i := length - numNulls2 - 1 // Last index of non-null values
 		j := length - 1             // Last index in output values array
 		maxDefinitionLevel := col.maxDefinitionLevel

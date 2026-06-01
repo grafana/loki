@@ -440,7 +440,8 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.CompactorConfig.WorkingDirectory = filepath.Join(dir, "compactor")
 
 	cfg.Ruler.Ring.InstanceAddr = localhost
-	cfg.Ruler.StoreConfig.Type = types.StorageTypeLocal
+	// "local" matches the ruler's local rule-store backend (pkg/ruler/rulestore/local.Name)
+	cfg.Ruler.StoreConfig.Type = "local"
 	cfg.Ruler.StoreConfig.Local.Directory = dir
 
 	cfg.Common.CompactorAddress = "http://localhost:0"

@@ -11,15 +11,17 @@ on:
       - "go.mod"
       - "nix/**"
       - .github/workflows/nix-ci.yaml
+
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-x64
     permissions:
       contents: "read"
-      id-token: "write"
-      pull-requests: "write"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
       - uses: cachix/install-nix-action@456688f15bc354bef6d396e4a35f4f89d40bf2b7 # v31.8.2
@@ -30,10 +32,8 @@ jobs:
     runs-on: ubuntu-x64
     permissions:
       contents: "read"
-      id-token: "write"
-      pull-requests: "write"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
       - uses: cachix/install-nix-action@456688f15bc354bef6d396e4a35f4f89d40bf2b7 # v31.8.2

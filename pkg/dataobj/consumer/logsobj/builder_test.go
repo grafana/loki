@@ -76,7 +76,7 @@ func TestBuilder(t *testing.T) {
 	}
 
 	t.Run("Build", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil)
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 		require.NoError(t, err)
 
 		for _, entry := range testStreams {
@@ -97,7 +97,7 @@ func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil)
+	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 	require.NoError(t, err)
 
 	tenant := "test"
@@ -135,7 +135,7 @@ func TestBuilder_Append(t *testing.T) {
 }
 
 func TestBuilder_CopyAndSort(t *testing.T) {
-	builder, _ := NewBuilder(testBuilderConfig, nil)
+	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 	numRows := 16 // 16 rows with 1KiB each line and 8KiB section size ~> 2 logs sections per tenant
@@ -157,7 +157,7 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 	require.NoError(t, err)
 	defer closer1.Close()
 
-	newBuilder, _ := NewBuilder(testBuilderConfig, nil)
+	newBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
 
 	obj2, closer2, err := newBuilder.CopyAndSort(t.Context(), obj1)
 	require.NoError(t, err)
@@ -224,7 +224,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 	buildObj := func(t *testing.T, cfg BuilderConfig, tenant string, appVals []string, overrides TenantOverrides) *dataobj.Object {
 		t.Helper()
-		b, err := NewBuilder(cfg, nil)
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
 		require.NoError(t, err)
 		if overrides != nil {
 			b.SetOverrides(overrides)
@@ -248,7 +248,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 	copyAndSort := func(t *testing.T, cfg BuilderConfig, src *dataobj.Object, overrides TenantOverrides) *dataobj.Object {
 		t.Helper()
-		b, err := NewBuilder(cfg, nil)
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
 		require.NoError(t, err)
 		if overrides != nil {
 			b.SetOverrides(overrides)
@@ -326,7 +326,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		cfg := makeCfg(true)
 		overrides := tenantOverrides{"schema-tenant": {"label:app"}}
 
-		b, err := NewBuilder(cfg, nil)
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
 		require.NoError(t, err)
 		b.SetOverrides(overrides)
 		for _, app := range []string{"zoo", "alpha", "middle"} {
@@ -401,7 +401,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 	t.Run("multi-label compound key", func(t *testing.T) {
 		cfg := makeCfg(true)
 		overrides := tenantOverrides{"t1": {"label:namespace", "label:app"}}
-		b, err := NewBuilder(cfg, nil)
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
 		require.NoError(t, err)
 		b.SetOverrides(overrides)
 

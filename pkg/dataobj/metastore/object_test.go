@@ -804,7 +804,7 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 			BufferSize:              1024 * 1024,      // 1MB
 			SectionStripeMergeLimit: 2,
 		},
-	}, nil)
+	}, nil, logsobj.NewBuilderMetrics())
 	require.NoError(t, err)
 
 	logger := log.NewLogfmtLogger(os.Stdout)
