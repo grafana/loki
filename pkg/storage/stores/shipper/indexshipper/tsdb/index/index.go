@@ -1208,6 +1208,13 @@ type Reader struct {
 	// Map of LabelName to a list of some LabelValues's position in the offset table.
 	// The first and last values for each name are always present.
 	postings map[string][]postingOffset
+	// postingsEnd maps a label name to the payload-relative byte offset where its
+	// entries end in the postings offset table (i.e. the next name's first entry,
+	// or the table payload end for the last name). Used to bound per-query reads
+	// of the offset table to a name's region instead of slicing the whole table
+	// (which is free under mmap but a full read under an io.ReaderAt backing).
+	// V2+ only.
+	postingsEnd map[string]int
 	// For the v1 format, labelname -> labelvalue -> offset.
 	postingsV1 map[string]map[string]uint64
 
@@ -1247,37 +1254,61 @@ func (b RealByteSlice) Sub(start, end int) ByteSlice {
 	return b[start:end]
 }
 
-// ReaderAtByteSlice is a PROTOTYPE ByteSlice backed by an io.ReaderAt (e.g. an
-// *os.File), reading bytes on demand via pread instead of mmapping the whole
-// file. It exists to evaluate moving the index reader off mmap.
+// ReaderAtByteSlice is a ByteSlice backed by an io.ReaderAt (e.g. an *os.File),
+// reading bytes on demand via pread instead of mmapping the whole file. This is
+// the production backing for the index reader; it avoids the page-fault
+// scheduler stalls that mmap causes on the index-gateway.
 //
-// Caveat: the ByteSlice interface has no error return on Range — it was designed
-// for infallible mmap slicing — so a real read error has nowhere to go. We record
-// it as a sticky error retrievable via Err(); decbuf length/CRC checks will also
-// trip. This is one of the reasons the swap is not a clean drop-in.
+// The ByteSlice interface has no error return on Range — it was designed for
+// infallible mmap slicing. To stay safe when a read fails, Range returns a
+// slice shorter than requested (or empty) on any error, which makes the
+// downstream decbuf trip ErrInvalidSize/ErrInvalidChecksum rather than decode a
+// zero-padded tail as valid data. The first such error is also recorded and is
+// retrievable via Err() for observability.
 type ReaderAtByteSlice struct {
 	r    io.ReaderAt
-	size int
+	size int64
 
 	mu  sync.Mutex
 	err error
 }
 
 // NewReaderAtByteSlice wraps an io.ReaderAt of the given total size.
-func NewReaderAtByteSlice(r io.ReaderAt, size int) *ReaderAtByteSlice {
+func NewReaderAtByteSlice(r io.ReaderAt, size int64) *ReaderAtByteSlice {
 	return &ReaderAtByteSlice{r: r, size: size}
 }
 
-func (b *ReaderAtByteSlice) Len() int { return b.size }
+func (b *ReaderAtByteSlice) Len() int { return int(b.size) }
 
 func (b *ReaderAtByteSlice) Range(start, end int) []byte {
+	// Guard against a corrupt offset / overflow producing a negative length,
+	// which would otherwise panic in make. Surface it as a read error instead.
+	if start < 0 || end < start || int64(end) > b.size {
+		b.setErr(fmt.Errorf("index: read range [%d, %d) out of bounds for size %d", start, end, b.size))
+		return nil
+	}
 	buf := make([]byte, end-start)
-	if _, err := b.r.ReadAt(buf, int64(start)); err != nil && !stderrors.Is(err, io.EOF) {
-		b.mu.Lock()
-		b.err = err
-		b.mu.Unlock()
+	n, err := b.r.ReadAt(buf, int64(start))
+	if err != nil && !stderrors.Is(err, io.EOF) {
+		b.setErr(err)
+		return buf[:0]
+	}
+	// A short read means the backing file is smaller than the requested range.
+	// Return only the bytes actually read (not the zero-padded tail) so the
+	// decbuf reports a size/CRC error instead of silently decoding zeros.
+	if n < len(buf) {
+		b.setErr(io.ErrUnexpectedEOF)
+		return buf[:n]
 	}
 	return buf
+}
+
+func (b *ReaderAtByteSlice) setErr(err error) {
+	b.mu.Lock()
+	if b.err == nil {
+		b.err = err
+	}
+	b.mu.Unlock()
 }
 
 // Err returns the first read error encountered, if any.
@@ -1285,6 +1316,14 @@ func (b *ReaderAtByteSlice) Err() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.err
+}
+
+// RawReader returns a streaming io.ReadSeeker over the entire backing file. It
+// reads on demand via the underlying io.ReaderAt rather than materializing the
+// whole file in memory (as Range(0, Len()) would), which matters for the
+// upload path that io.Copy's the raw index out to object storage.
+func (b *ReaderAtByteSlice) RawReader() io.ReadSeeker {
+	return io.NewSectionReader(b.r, 0, b.size)
 }
 
 // NewReader returns a new index reader on the given byte slice. It automatically
@@ -1310,8 +1349,8 @@ func NewFileReader(path string) (*Reader, error) {
 	return r, nil
 }
 
-// NewFileReaderAt is a PROTOTYPE alternative to NewFileReader that reads the index
-// via on-demand io.ReaderAt (pread) instead of mmap. See ReaderAtByteSlice.
+// NewFileReaderAt returns a new index reader that reads the index via on-demand
+// io.ReaderAt (pread) instead of mmap. See ReaderAtByteSlice.
 func NewFileReaderAt(path string) (*Reader, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -1321,8 +1360,14 @@ func NewFileReaderAt(path string) (*Reader, error) {
 	if err != nil {
 		return nil, stderrors.Join(err, f.Close())
 	}
-	r, err := newReader(NewReaderAtByteSlice(f, int(fi.Size())), f)
+	bs := NewReaderAtByteSlice(f, fi.Size())
+	r, err := newReader(bs, f)
 	if err != nil {
+		return nil, stderrors.Join(err, f.Close())
+	}
+	// newReader parses the TOC and symbol table up front; if any of those reads
+	// failed, ByteSlice.Range can't return an error, so surface the sticky one.
+	if err := bs.Err(); err != nil {
 		return nil, stderrors.Join(err, f.Close())
 	}
 	return r, nil
@@ -1377,11 +1422,20 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		var lastName, lastValue []byte
 		lastOff := 0
 		valueCount := 0
+		r.postingsEnd = map[string]int{}
+		var curName string
+		haveName := false
 		// For the postings offset table we keep every label name but only every nth
 		// label value (plus the first and last one), to save memory.
 		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, _ uint64, off int) error {
 			if _, ok := r.postings[string(name)]; !ok {
-				// Next label name.
+				// Next label name. The previous name's entries end where this
+				// one begins.
+				if haveName {
+					r.postingsEnd[curName] = off
+				}
+				curName = string(name)
+				haveName = true
 				r.postings[string(name)] = []postingOffset{}
 				if lastName != nil {
 					// Always include last value for each label name.
@@ -1403,6 +1457,12 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		}
 		if lastName != nil {
 			r.postings[string(lastName)] = append(r.postings[string(lastName)], postingOffset{value: string(lastValue), off: lastOff})
+		}
+		if haveName {
+			// The last name's region ends at the table payload end (the BE32
+			// length prefix at the section start covers entries + trailing CRC).
+			payloadLen := int(binary.BigEndian.Uint32(r.b.Range(int(r.toc.PostingsTable), int(r.toc.PostingsTable)+4)))
+			r.postingsEnd[curName] = payloadLen
 		}
 		// Trim any extra space in the slices.
 		for k, v := range r.postings {
@@ -1440,6 +1500,11 @@ func (r *Reader) Version() int {
 }
 
 func (r *Reader) RawFileReader() (io.ReadSeeker, error) {
+	// For the pread backing, stream straight from the file instead of reading
+	// the whole index into a single heap buffer via Range(0, Len()).
+	if rb, ok := r.b.(*ReaderAtByteSlice); ok {
+		return rb.RawReader(), nil
+	}
 	return bytes.NewReader(r.b.Range(0, r.b.Len())), nil
 }
 
@@ -1736,8 +1801,10 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 	}
 	values := make([]string, 0, len(e)*symbolFactor)
 
-	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil))
-	d.Skip(e[0].off)
+	// Read only this label name's region of the offset table (from its first
+	// entry to where the next name begins) rather than slicing the whole table.
+	payloadStart := int(r.toc.PostingsTable) + 4
+	d := encoding.DecWrap(tsdb_enc.Decbuf{B: r.b.Range(payloadStart+e[0].off, payloadStart+r.postingsEnd[name])})
 	lastVal := e[len(e)-1].value
 
 	skip := 0
@@ -1923,10 +1990,17 @@ func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...str
 			// Need to look from previous entry.
 			i--
 		}
-		// Don't Crc32 the entire postings offset table, this is very slow
-		// so hope any issues were caught at startup.
-		d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil))
-		d.Skip(e[i].off)
+		// Read only the sparse block(s) around the matched entry instead of the
+		// whole offset table. While determining whether a value is present the
+		// scan can read the next sampled entry (e[i+1]), so bound to e[i+2] (or
+		// the name's end) to keep that entry fully readable. Not CRC'd (slow);
+		// integrity was checked at startup.
+		payloadStart := int(r.toc.PostingsTable) + 4
+		end := payloadStart + r.postingsEnd[name]
+		if i+2 < len(e) {
+			end = payloadStart + e[i+2].off
+		}
+		d := encoding.DecWrap(tsdb_enc.Decbuf{B: r.b.Range(payloadStart+e[i].off, end)})
 
 		// Iterate on the offset table.
 		var postingsOff uint64 // The offset into the postings table.

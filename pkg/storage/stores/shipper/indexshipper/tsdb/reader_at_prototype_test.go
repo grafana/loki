@@ -59,10 +59,20 @@ func TestReaderAtPrototype(t *testing.T) {
 	// Prototype: io.ReaderAt backing, instrumented.
 	cr := &countingReaderAt{r: bytes.NewReader(data)}
 	openCalls0, openBytes0 := cr.callN(), cr.byteN()
-	rat, err := index.NewReader(index.NewReaderAtByteSlice(cr, len(data)))
+	bs := index.NewReaderAtByteSlice(cr, int64(len(data)))
+	rat, err := index.NewReader(bs)
 	require.NoError(t, err)
 	openCalls := cr.callN() - openCalls0
 	openBytes := cr.byteN() - openBytes0
+
+	// RawFileReader (used by the upload path) must stream the exact file bytes.
+	// On the pread backing it returns a SectionReader rather than buffering the
+	// whole index, so verify it is byte-for-byte identical to the source.
+	raw, err := rat.RawFileReader()
+	require.NoError(t, err)
+	gotRaw, err := io.ReadAll(raw)
+	require.NoError(t, err)
+	require.Equal(t, data, gotRaw, "RawFileReader stream must equal the original index bytes")
 
 	// Collect a sample of real series IDs from the baseline reader.
 	p, err := base.Postings("stream", nil, "stdout")
@@ -110,7 +120,7 @@ func TestReaderAtPrototype(t *testing.T) {
 	require.NoError(t, pq.Err())
 	postCalls, postBytes := cr.callN(), cr.byteN()
 
-	require.NoError(t, index.NewReaderAtByteSlice(cr, len(data)).Err()) // sticky err sanity (fresh)
+	require.NoError(t, bs.Err()) // no read errors occurred during open + scan
 
 	fmt.Printf("\n=== io.ReaderAt prototype: %d series, %d chunks/series, file=%.2f MB ===\n",
 		nSeries, chunksPer, float64(fileSize)/(1<<20))
