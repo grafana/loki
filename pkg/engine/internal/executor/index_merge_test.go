@@ -867,29 +867,6 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, _, path
 	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
 }
 
-// findSectionIndices opens the source object and returns the indices of the
-// postings and stats sections. Both sections must exist.
-func findSectionIndices(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) (int, int) {
-	t.Helper()
-
-	obj := openObjectFromBucket(ctx, t, bucket, path)
-	postingsIdx, statsIdx := -1, -1
-
-	for i, sec := range obj.Sections() {
-		if postings.CheckSection(sec) {
-			postingsIdx = i
-		}
-		if stats.CheckSection(sec) {
-			statsIdx = i
-		}
-	}
-
-	require.GreaterOrEqual(t, postingsIdx, 0, "source object must contain a postings section")
-	require.GreaterOrEqual(t, statsIdx, 0, "source object must contain a stats section")
-
-	return postingsIdx, statsIdx
-}
-
 // openObjectFromBucket downloads and opens a dataobj.Object from the bucket.
 func openObjectFromBucket(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) *dataobj.Object {
 	t.Helper()
