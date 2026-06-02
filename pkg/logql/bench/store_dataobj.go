@@ -3,7 +3,6 @@ package bench
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -111,16 +110,12 @@ func NewDataObjStore(dir, tenant string) (*DataObjStore, error) {
 // Write implements Store
 func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error {
 	for _, stream := range streams {
-		if err := s.builder.Append(s.tenant, stream, time.Now()); errors.Is(err, logsobj.ErrBuilderFull) {
-			// If the builder is full, flush it and try again
+		if s.builder.IsFull() {
 			if err := s.flush(); err != nil {
 				return fmt.Errorf("failed to flush builder: %w", err)
 			}
-			// Try appending again
-			if err := s.builder.Append(s.tenant, stream, time.Now()); err != nil {
-				return fmt.Errorf("failed to append stream after flush: %w", err)
-			}
-		} else if err != nil {
+		}
+		if err := s.builder.Append(s.tenant, stream, time.Now()); err != nil {
 			return fmt.Errorf("failed to append stream: %w", err)
 		}
 	}

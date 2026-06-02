@@ -2,7 +2,6 @@ package logsobj
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -105,24 +104,25 @@ func TestBuilder_Append(t *testing.T) {
 	for {
 		require.NoError(t, ctx.Err())
 
-		err := builder.Append(tenant, logproto.Stream{
+		// Append until the builder reports that it is full.
+		if builder.IsFull() {
+			break
+		}
+
+		require.NoError(t, builder.Append(tenant, logproto.Stream{
 			Labels: `{cluster="test",app="foo"}`,
 			Entries: []push.Entry{{
 				Timestamp: time.Now().UTC(),
 				Line:      strings.Repeat("a", 1024),
 			}},
-		}, time.Now())
-		if errors.Is(err, ErrBuilderFull) {
-			break
-		}
-		require.NoError(t, err)
+		}, time.Now()))
 	}
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
 	defer closer.Close()
 
-	// When a section builder is reset, which happens on ErrBuilderFull, the
+	// When a section builder is reset, which happens on flush, the
 	// tenant is reset too. We must check that the tenant is added back
 	// to the section builder otherwise tenant will be absent from successive
 	// sections.

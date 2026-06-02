@@ -2,7 +2,6 @@ package consumer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -24,6 +22,7 @@ import (
 type builder interface {
 	Append(tenant string, stream logproto.Stream, recTime time.Time) error
 	GetEstimatedSize() int
+	IsFull() bool
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
 	GetEarliestRecordTime() time.Time
@@ -174,16 +173,14 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 		}
 	}
 
-	if err := p.builder.Append(tenant, stream, rec.Timestamp); err != nil {
-		if !errors.Is(err, logsobj.ErrBuilderFull) {
-			return fmt.Errorf("failed to append stream: %w", err)
-		}
+	if p.builder.IsFull() {
 		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
-			return fmt.Errorf("failed to flush and commit: %w", err)
+			return fmt.Errorf("failed to flush: %w", err)
 		}
-		if err := p.builder.Append(tenant, stream, rec.Timestamp); err != nil {
-			return fmt.Errorf("failed to append stream after flushing: %w", err)
-		}
+	}
+
+	if err := p.builder.Append(tenant, stream, rec.Timestamp); err != nil {
+		return fmt.Errorf("failed to append stream: %w", err)
 	}
 
 	if p.firstAppend.IsZero() {
