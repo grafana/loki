@@ -306,8 +306,8 @@ github.com/apache/arrow-go/v18/parquet/internal/debug
 github.com/apache/arrow-go/v18/parquet/internal/gen-go/parquet
 github.com/apache/arrow-go/v18/parquet/schema
 github.com/apache/arrow-go/v18/parquet/variant
-# github.com/apache/thrift v0.22.0
-## explicit; go 1.23
+# github.com/apache/thrift v0.23.0
+## explicit; go 1.25
 github.com/apache/thrift/lib/go/thrift
 # github.com/armon/go-metrics v0.4.1
 ## explicit; go 1.12
