@@ -1602,11 +1602,34 @@ dataobj:
     # CLI flag: -dataobj.compaction.enabled
     [enabled: <boolean> | default = false]
 
-    # Experimental: Per-workflow cap on concurrent compaction tasks (IndexMerge
-    # / LogMerge). Currently unused; reserved for the engine scheduler's
-    # compaction admission lane added in a follow-up change.
+    # Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks
+    # dispatched by the coordinator. 0 means unlimited (one goroutine per task
+    # with no admission throttle).
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
+
+    # Experimental: Coordinator main-loop cadence.
+    # CLI flag: -dataobj.compaction.polling-interval
+    [polling_interval: <duration> | default = 5m]
+
+    # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
+    # with K.
+    # CLI flag: -dataobj.compaction.max-runs-per-task
+    [max_runs_per_task: <int> | default = 8]
+
+    # Experimental: Per-IndexMerge-task deadline.
+    # CLI flag: -dataobj.compaction.index-merge-task-ttl
+    [index_merge_task_ttl: <duration> | default = 10m]
+
+    # Experimental: Coordinator-side timeout around the inline ToC
+    # ReplaceIndexPointers call. Not a task TTL.
+    # CLI flag: -dataobj.compaction.toc-consolidate-timeout
+    [toc_consolidate_timeout: <duration> | default = 30s]
+
+    # Experimental: Plan version hashed into IndexMerge output paths. Bump to
+    # invalidate previously-written outputs after a planner-algorithm change.
+    # CLI flag: -dataobj.compaction.plan-version
+    [plan_version: <int> | default = 1]
 
     scheduler:
       # Experimental: host:port the embedded compaction scheduler advertises to
