@@ -59,10 +59,12 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Help:      "Total number of responses compared per route and backend name by result.",
 		}, []string{"backend", "backend_alias", "route", "result", "issuer", "tenant"}),
 		missingMetrics: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "loki_querytee",
-			Name:      "missing_metrics_series",
-			Help:      "Number of missing metrics (series) in a vector response.",
-			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 0.75, 1, 1.5, 2, 3, 4, 5, 10, 25, 50, 100},
+			Namespace:                       "loki_querytee",
+			Name:                            "missing_metrics_series",
+			Help:                            "Number of missing metrics (series) in a vector response.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"backend", "backend_alias", "route", "status_code", "issuer"}),
 
 		queriesSampled: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
