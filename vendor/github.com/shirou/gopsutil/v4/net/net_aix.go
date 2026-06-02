@@ -31,8 +31,240 @@ func ConntrackStatsWithContext(_ context.Context, _ bool) ([]ConntrackStat, erro
 	return nil, common.ErrNotImplementedError
 }
 
-func ProtoCountersWithContext(_ context.Context, _ []string) ([]ProtoCountersStat, error) {
-	return nil, common.ErrNotImplementedError
+func ProtoCountersWithContext(ctx context.Context, protocols []string) ([]ProtoCountersStat, error) {
+	out, err := invoke.CommandWithContext(ctx, "netstat", "-s")
+	if err != nil {
+		return nil, err
+	}
+	return parseNetstatS(string(out), protocols)
+}
+
+// parseNetstatS parses "netstat -s" output on AIX.
+//
+// Format:
+//
+//	<proto>:
+//	\t<count> <description>
+//	\t\t<count> <sub-description>
+//
+// Descriptions containing parenthetical sub-counts (e.g. "(6302116893 bytes)")
+// are normalised by stripping the parenthetical before matching.
+func parseNetstatS(output string, protocols []string) ([]ProtoCountersStat, error) {
+	var stats []ProtoCountersStat
+	var currentProto string
+	var currentStats map[string]int64
+
+	for _, line := range strings.Split(output, "\n") {
+		// Protocol header: no leading whitespace, ends with ":"
+		if line != "" && line[0] != '\t' {
+			if currentProto != "" && len(currentStats) > 0 {
+				if len(protocols) == 0 || common.StringsHas(protocols, currentProto) {
+					stats = append(stats, ProtoCountersStat{
+						Protocol: currentProto,
+						Stats:    currentStats,
+					})
+				}
+			}
+			currentProto = strings.TrimSuffix(strings.TrimSpace(line), ":")
+			currentStats = make(map[string]int64)
+			continue
+		}
+
+		if currentProto == "" {
+			continue
+		}
+
+		// Count leading tabs to track indentation depth (1 = top-level metric).
+		depth := 0
+		rest := line
+		for rest != "" && rest[0] == '\t' {
+			depth++
+			rest = rest[1:]
+		}
+		if depth == 0 || rest == "" {
+			continue
+		}
+
+		// Split "<number> <description>".
+		spaceIdx := strings.IndexByte(rest, ' ')
+		if spaceIdx <= 0 {
+			continue
+		}
+		val, err := strconv.ParseInt(rest[:spaceIdx], 10, 64)
+		if err != nil {
+			continue
+		}
+		// Normalise: remove parenthetical sub-counts like "(6302116893 bytes)".
+		desc := normaliseNetstatDesc(strings.TrimSpace(rest[spaceIdx+1:]))
+
+		if key := aixProtoKey(currentProto, depth, desc); key != "" {
+			currentStats[key] += val
+		}
+	}
+
+	if currentProto != "" && len(currentStats) > 0 {
+		if len(protocols) == 0 || common.StringsHas(protocols, currentProto) {
+			stats = append(stats, ProtoCountersStat{
+				Protocol: currentProto,
+				Stats:    currentStats,
+			})
+		}
+	}
+
+	return stats, nil
+}
+
+// normaliseNetstatDesc strips a single parenthetical from a netstat -s description,
+// e.g. "data packets (6302116893 bytes) retransmitted" → "data packets retransmitted".
+func normaliseNetstatDesc(s string) string {
+	start := strings.Index(s, "(")
+	if start == -1 {
+		return s
+	}
+	end := strings.LastIndex(s, ")")
+	if end < start {
+		return s
+	}
+	return strings.Join(strings.Fields(s[:start]+s[end+1:]), " ")
+}
+
+// aixProtoKey maps a normalised AIX netstat -s description to a ProtoCountersStat key.
+// depth is the tab-indentation level (1 = top-level line under the protocol header).
+// Returns "" for lines that should be ignored.
+func aixProtoKey(proto string, depth int, desc string) string {
+	switch proto {
+	case "tcp":
+		return aixTCPKey(depth, desc)
+	case "udp":
+		return aixUDPKey(desc)
+	case "ip":
+		return aixIPKey(depth, desc)
+	case "ipv6":
+		return aixIPv6Key(depth, desc)
+	}
+	return ""
+}
+
+func aixTCPKey(depth int, desc string) string {
+	switch {
+	// Top-level totals — depth check avoids matching sub-lines like "N data packets sent".
+	case depth == 1 && desc == "packets sent":
+		return "OutSegs"
+	case depth == 1 && desc == "packets received":
+		return "InSegs"
+	// Sub-line: "data packets NNN bytes retransmitted" → normalised "data packets retransmitted"
+	case strings.Contains(desc, "retransmitted"):
+		return "RetransSegs"
+	case desc == "connection requests":
+		return "ActiveOpens"
+	case desc == "connection accepts":
+		return "PassiveOpens"
+	case desc == "embryonic connections dropped":
+		return "AttemptFails"
+	case strings.HasPrefix(desc, "discarded for bad checksums"):
+		return "InCsumErrors"
+	// Other input errors accumulate into InErrs.
+	case strings.HasPrefix(desc, "discarded for bad header") ||
+		strings.HasPrefix(desc, "discarded because packet too short"):
+		return "InErrs"
+	}
+	return ""
+}
+
+func aixUDPKey(desc string) string {
+	switch {
+	case desc == "delivered":
+		return "InDatagrams"
+	// Both unicast and broadcast "dropped due to no socket" map to NoPorts.
+	case strings.Contains(desc, "dropped due to no socket"):
+		return "NoPorts"
+	case desc == "bad checksums":
+		return "InCsumErrors"
+	case desc == "socket buffer overflows":
+		return "RcvbufErrors"
+	case desc == "datagrams output":
+		return "OutDatagrams"
+	case desc == "incomplete headers" || desc == "bad data length fields":
+		return "InErrors"
+	}
+	return ""
+}
+
+func aixIPKey(depth int, desc string) string {
+	switch {
+	case desc == "total packets received":
+		return "InReceives"
+	// All header-error variants accumulate into InHdrErrors.
+	case desc == "bad header checksums" ||
+		desc == "with size smaller than minimum" ||
+		desc == "with data size < data length" ||
+		desc == "with header length < data size" ||
+		desc == "with data length < header length" ||
+		desc == "with bad options" ||
+		desc == "with incorrect version number":
+		return "InHdrErrors"
+	case strings.Contains(desc, "unknown/unsupported protocol"):
+		return "InUnknownProtos"
+	case desc == "packets for this host":
+		return "InDelivers"
+	case depth == 1 && desc == "packets forwarded":
+		return "ForwDatagrams"
+	case desc == "packets sent from this host":
+		return "OutRequests"
+	case desc == "packets reassembled ok":
+		return "ReasmOKs"
+	case strings.HasPrefix(desc, "fragments dropped after timeout"):
+		return "ReasmFails"
+	case desc == "fragments received":
+		return "ReasmReqds"
+	case strings.HasPrefix(desc, "fragments dropped"):
+		return "InDiscards"
+	case desc == "fragments created":
+		return "FragCreates"
+	case desc == "output packets discarded due to no route":
+		return "OutNoRoutes"
+	case strings.HasPrefix(desc, "output packets dropped due to no bufs"):
+		return "OutDiscards"
+	}
+	return ""
+}
+
+func aixIPv6Key(depth int, desc string) string {
+	switch {
+	case desc == "total packets received":
+		return "InReceives"
+	case desc == "with size smaller than minimum" ||
+		desc == "with data size < data length" ||
+		desc == "with incorrect version number" ||
+		desc == "with illegal source":
+		return "InHdrErrors"
+	case strings.Contains(desc, "unknown/unsupported protocol"):
+		return "InUnknownProtos"
+	case desc == "input packets without enough memory":
+		return "InDiscards"
+	case desc == "packets for this host":
+		return "InDelivers"
+	case depth == 1 && desc == "packets forwarded":
+		return "ForwDatagrams"
+	case desc == "packets sent from this host":
+		return "OutRequests"
+	case desc == "packets reassembled ok":
+		return "ReasmOKs"
+	case strings.HasPrefix(desc, "fragments dropped after timeout"):
+		return "ReasmFails"
+	case desc == "fragments received":
+		return "ReasmReqds"
+	case strings.HasPrefix(desc, "fragments dropped"):
+		return "InDiscards"
+	case desc == "fragments created":
+		return "FragCreates"
+	case desc == "output packets discarded due to no route":
+		return "OutNoRoutes"
+	case strings.HasPrefix(desc, "output packets dropped due to no bufs") ||
+		desc == "output packets without enough memory":
+		return "OutDiscards"
+	}
+	return ""
 }
 
 func parseNetstatNetLine(line string) (ConnectionStat, error) {
