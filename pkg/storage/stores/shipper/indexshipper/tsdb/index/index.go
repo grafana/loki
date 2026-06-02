@@ -1254,78 +1254,6 @@ func (b RealByteSlice) Sub(start, end int) ByteSlice {
 	return b[start:end]
 }
 
-// ReaderAtByteSlice is a ByteSlice backed by an io.ReaderAt (e.g. an *os.File),
-// reading bytes on demand via pread instead of mmapping the whole file. This is
-// the production backing for the index reader; it avoids the page-fault
-// scheduler stalls that mmap causes on the index-gateway.
-//
-// The ByteSlice interface has no error return on Range — it was designed for
-// infallible mmap slicing. To stay safe when a read fails, Range returns a
-// slice shorter than requested (or empty) on any error, which makes the
-// downstream decbuf trip ErrInvalidSize/ErrInvalidChecksum rather than decode a
-// zero-padded tail as valid data. The first such error is also recorded and is
-// retrievable via Err() for observability.
-type ReaderAtByteSlice struct {
-	r    io.ReaderAt
-	size int64
-
-	mu  sync.Mutex
-	err error
-}
-
-// NewReaderAtByteSlice wraps an io.ReaderAt of the given total size.
-func NewReaderAtByteSlice(r io.ReaderAt, size int64) *ReaderAtByteSlice {
-	return &ReaderAtByteSlice{r: r, size: size}
-}
-
-func (b *ReaderAtByteSlice) Len() int { return int(b.size) }
-
-func (b *ReaderAtByteSlice) Range(start, end int) []byte {
-	// Guard against a corrupt offset / overflow producing a negative length,
-	// which would otherwise panic in make. Surface it as a read error instead.
-	if start < 0 || end < start || int64(end) > b.size {
-		b.setErr(fmt.Errorf("index: read range [%d, %d) out of bounds for size %d", start, end, b.size))
-		return nil
-	}
-	buf := make([]byte, end-start)
-	n, err := b.r.ReadAt(buf, int64(start))
-	if err != nil && !stderrors.Is(err, io.EOF) {
-		b.setErr(err)
-		return buf[:0]
-	}
-	// A short read means the backing file is smaller than the requested range.
-	// Return only the bytes actually read (not the zero-padded tail) so the
-	// decbuf reports a size/CRC error instead of silently decoding zeros.
-	if n < len(buf) {
-		b.setErr(io.ErrUnexpectedEOF)
-		return buf[:n]
-	}
-	return buf
-}
-
-func (b *ReaderAtByteSlice) setErr(err error) {
-	b.mu.Lock()
-	if b.err == nil {
-		b.err = err
-	}
-	b.mu.Unlock()
-}
-
-// Err returns the first read error encountered, if any.
-func (b *ReaderAtByteSlice) Err() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.err
-}
-
-// RawReader returns a streaming io.ReadSeeker over the entire backing file. It
-// reads on demand via the underlying io.ReaderAt rather than materializing the
-// whole file in memory (as Range(0, Len()) would), which matters for the
-// upload path that io.Copy's the raw index out to object storage.
-func (b *ReaderAtByteSlice) RawReader() io.ReadSeeker {
-	return io.NewSectionReader(b.r, 0, b.size)
-}
-
 // NewReader returns a new index reader on the given byte slice. It automatically
 // handles different format versions.
 func NewReader(b ByteSlice) (*Reader, error) {
@@ -1346,30 +1274,6 @@ func NewFileReader(path string) (*Reader, error) {
 		)
 	}
 
-	return r, nil
-}
-
-// NewFileReaderAt returns a new index reader that reads the index via on-demand
-// io.ReaderAt (pread) instead of mmap. See ReaderAtByteSlice.
-func NewFileReaderAt(path string) (*Reader, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, stderrors.Join(err, f.Close())
-	}
-	bs := NewReaderAtByteSlice(f, fi.Size())
-	r, err := newReader(bs, f)
-	if err != nil {
-		return nil, stderrors.Join(err, f.Close())
-	}
-	// newReader parses the TOC and symbol table up front; if any of those reads
-	// failed, ByteSlice.Range can't return an error, so surface the sticky one.
-	if err := bs.Err(); err != nil {
-		return nil, stderrors.Join(err, f.Close())
-	}
 	return r, nil
 }
 
@@ -1500,11 +1404,6 @@ func (r *Reader) Version() int {
 }
 
 func (r *Reader) RawFileReader() (io.ReadSeeker, error) {
-	// For the pread backing, stream straight from the file instead of reading
-	// the whole index into a single heap buffer via Range(0, Len()).
-	if rb, ok := r.b.(*ReaderAtByteSlice); ok {
-		return rb.RawReader(), nil
-	}
 	return bytes.NewReader(r.b.Range(0, r.b.Len())), nil
 }
 

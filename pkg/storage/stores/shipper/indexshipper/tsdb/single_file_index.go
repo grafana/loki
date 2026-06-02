@@ -127,9 +127,7 @@ type TSDBIndex struct {
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
 func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, error) {
-	// Read the index via on-demand pread (io.ReaderAt) rather than mmap: mmap
-	// page faults stall the goroutine scheduler on the index-gateway under load.
-	reader, err := index.NewFileReaderAt(location)
+	reader, err := index.NewFileReader(location)
 	if err != nil {
 		return nil, nil, err
 	}
