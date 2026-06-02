@@ -1,6 +1,8 @@
 package querytee
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -34,41 +36,43 @@ type ProxyMetrics struct {
 func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 	m := &ProxyMetrics{
 		requestsTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex_querytee",
+			Namespace: "loki_querytee",
 			Name:      "requests_total",
 			Help:      "Total number of HTTP requests received by query-tee.",
 		}, []string{"method", "route"}),
 		requestDuration: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "cortex_querytee",
-			Name:      "request_duration_seconds",
-			Help:      "Time (in seconds) spent serving HTTP requests.",
-			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 0.75, 1, 1.5, 2, 3, 4, 5, 10, 25, 50, 100},
+			Namespace:                       "loki_querytee",
+			Name:                            "request_duration_seconds",
+			Help:                            "Time (in seconds) spent serving HTTP requests.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"backend", "backend_alias", "method", "route", "status_code", "issuer"}),
 		responsesTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex_querytee",
+			Namespace: "loki_querytee",
 			Name:      "responses_total",
 			Help:      "Total number of responses sent back to the client by the selected backend.",
 		}, []string{"backend", "backend_alias", "method", "route", "issuer"}),
 		responsesComparedTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex_querytee",
+			Namespace: "loki_querytee",
 			Name:      "responses_compared_total",
 			Help:      "Total number of responses compared per route and backend name by result.",
 		}, []string{"backend", "backend_alias", "route", "result", "issuer", "tenant"}),
 		missingMetrics: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "cortex_querytee",
+			Namespace: "loki_querytee",
 			Name:      "missing_metrics_series",
 			Help:      "Number of missing metrics (series) in a vector response.",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 0.75, 1, 1.5, 2, 3, 4, 5, 10, 25, 50, 100},
 		}, []string{"backend", "backend_alias", "route", "status_code", "issuer"}),
 
 		queriesSampled: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex_querytee",
+			Namespace: "loki_querytee",
 			Name:      "queries_sampled_total",
 			Help:      "Total number of queries that were sampled and sent to Kafka.",
 		}, []string{"tenant", "route"}),
 
 		samplingDecisions: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex_querytee",
+			Namespace: "loki_querytee",
 			Name:      "sampling_decisions_total",
 			Help:      "Total number of sampling decisions made.",
 		}, []string{"tenant", "route", "decision"}),
