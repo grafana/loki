@@ -176,9 +176,12 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 	chks := ChunkMetasPool.Get()
 	defer func() { ChunkMetasPool.Put(chks) }()
 
+	// One symbol cache for the whole scan: label values repeat heavily across
+	// series, so this avoids re-reading/decoding them from the symbol table.
+	cache := index.NewSymbolCache()
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		for p.Next() {
-			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
+			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks, cache)
 			if err != nil {
 				return err
 			}
@@ -352,8 +355,9 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 			}
 		}
 
+		cache := index.NewSymbolCache()
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by, cache)
 			if err != nil {
 				return err
 			}
@@ -438,8 +442,9 @@ func (i *TSDBIndex) Volume(
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		var ls labels.Labels
+		cache := index.NewSymbolCache()
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by, cache)
 			if err != nil {
 				return fmt.Errorf("series volume: %w", err)
 			}

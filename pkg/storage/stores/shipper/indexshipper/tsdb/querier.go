@@ -63,10 +63,12 @@ type IndexReader interface {
 	// Series populates the given labels and chunk metas for the series identified
 	// by the reference.
 	// Returns storage.ErrNotFound if the ref does not resolve to a known series.
-	Series(ref storage.SeriesRef, from int64, through int64, lset *labels.Labels, chks *[]index.ChunkMeta) (uint64, error)
+	// An optional per-query *index.SymbolCache memoizes symbol lookups across the
+	// series read within a single query.
+	Series(ref storage.SeriesRef, from int64, through int64, lset *labels.Labels, chks *[]index.ChunkMeta, cache ...*index.SymbolCache) (uint64, error)
 
 	// ChunkStats returns the stats for the chunks in the given series.
-	ChunkStats(ref storage.SeriesRef, from, through int64, lset *labels.Labels, by map[string]struct{}) (uint64, index.ChunkStats, error)
+	ChunkStats(ref storage.SeriesRef, from, through int64, lset *labels.Labels, by map[string]struct{}, cache ...*index.SymbolCache) (uint64, index.ChunkStats, error)
 
 	// LabelNames returns all the unique label names present in the index in sorted order.
 	LabelNames(matchers ...*labels.Matcher) ([]string, error)

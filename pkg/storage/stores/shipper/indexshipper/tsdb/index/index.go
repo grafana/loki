@@ -1247,6 +1247,46 @@ func (b RealByteSlice) Sub(start, end int) ByteSlice {
 	return b[start:end]
 }
 
+// ReaderAtByteSlice is a PROTOTYPE ByteSlice backed by an io.ReaderAt (e.g. an
+// *os.File), reading bytes on demand via pread instead of mmapping the whole
+// file. It exists to evaluate moving the index reader off mmap.
+//
+// Caveat: the ByteSlice interface has no error return on Range — it was designed
+// for infallible mmap slicing — so a real read error has nowhere to go. We record
+// it as a sticky error retrievable via Err(); decbuf length/CRC checks will also
+// trip. This is one of the reasons the swap is not a clean drop-in.
+type ReaderAtByteSlice struct {
+	r    io.ReaderAt
+	size int
+
+	mu  sync.Mutex
+	err error
+}
+
+// NewReaderAtByteSlice wraps an io.ReaderAt of the given total size.
+func NewReaderAtByteSlice(r io.ReaderAt, size int) *ReaderAtByteSlice {
+	return &ReaderAtByteSlice{r: r, size: size}
+}
+
+func (b *ReaderAtByteSlice) Len() int { return b.size }
+
+func (b *ReaderAtByteSlice) Range(start, end int) []byte {
+	buf := make([]byte, end-start)
+	if _, err := b.r.ReadAt(buf, int64(start)); err != nil && !stderrors.Is(err, io.EOF) {
+		b.mu.Lock()
+		b.err = err
+		b.mu.Unlock()
+	}
+	return buf
+}
+
+// Err returns the first read error encountered, if any.
+func (b *ReaderAtByteSlice) Err() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.err
+}
+
 // NewReader returns a new index reader on the given byte slice. It automatically
 // handles different format versions.
 func NewReader(b ByteSlice) (*Reader, error) {
@@ -1267,6 +1307,24 @@ func NewFileReader(path string) (*Reader, error) {
 		)
 	}
 
+	return r, nil
+}
+
+// NewFileReaderAt is a PROTOTYPE alternative to NewFileReader that reads the index
+// via on-demand io.ReaderAt (pread) instead of mmap. See ReaderAtByteSlice.
+func NewFileReaderAt(path string) (*Reader, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, stderrors.Join(err, f.Close())
+	}
+	r, err := newReader(NewReaderAtByteSlice(f, int(fi.Size())), f)
+	if err != nil {
+		return nil, stderrors.Join(err, f.Close())
+	}
 	return r, nil
 }
 
@@ -1417,6 +1475,11 @@ type Symbols struct {
 
 	offsets []int
 	seen    int
+
+	// tableEnd is the absolute byte offset of the end of the symbol payload
+	// (before the CRC). Used to bound reads to the symbol section so that an
+	// io.ReaderAt-backed ByteSlice doesn't read the whole file per lookup.
+	tableEnd int
 }
 
 const symbolFactor = 32
@@ -1445,26 +1508,43 @@ func NewSymbols(bs ByteSlice, version, off int) (*Symbols, error) {
 	if d.Err() != nil {
 		return nil, d.Err()
 	}
+	s.tableEnd = basePos + origLen
 	return s, nil
 }
 
-func (s Symbols) Lookup(o uint32) (string, error) {
-	d := encoding.DecWrap(tsdb_enc.Decbuf{
-		B: s.bs.Range(0, s.bs.Len()),
-	})
+// blockEnd returns the absolute end offset of the i-th sampled symbol block
+// (i.e. the start of the next block, or the end of the section for the last).
+func (s Symbols) blockEnd(i int) int {
+	if i+1 < len(s.offsets) {
+		return s.offsets[i+1]
+	}
+	return s.tableEnd
+}
 
+func (s Symbols) Lookup(o uint32) (string, error) {
 	if s.version >= FormatV2 {
 		if int(o) >= s.seen {
 			return "", errors.Errorf("unknown symbol offset %d", o)
 		}
-		d.Skip(s.offsets[int(o/symbolFactor)])
+		// Read only the one sampled block (symbolFactor symbols) the target lives
+		// in, rather than slicing the whole file (cheap under mmap, but a
+		// whole-file read under an io.ReaderAt backing).
+		blk := int(o / symbolFactor)
+		d := encoding.DecWrap(tsdb_enc.Decbuf{B: s.bs.Range(s.offsets[blk], s.blockEnd(blk))})
 		// Walk until we find the one we want.
 		for i := o - (o / symbolFactor * symbolFactor); i > 0; i-- {
 			d.UvarintBytes()
 		}
-	} else {
-		d.Skip(int(o))
+		sym := d.UvarintStr()
+		if d.Err() != nil {
+			return "", d.Err()
+		}
+		return sym, nil
 	}
+
+	// v1: o is an absolute byte offset into the file.
+	d := encoding.DecWrap(tsdb_enc.Decbuf{B: s.bs.Range(0, s.bs.Len())})
+	d.Skip(int(o))
 	sym := d.UvarintStr()
 	if d.Err() != nil {
 		return "", d.Err()
@@ -1479,19 +1559,24 @@ func (s Symbols) ReverseLookup(sym string) (uint32, error) {
 	i := sort.Search(len(s.offsets), func(i int) bool {
 		// Any decoding errors here will be lost, however
 		// we already read through all of this at startup.
+		// Bound the read to the symbol section (see Lookup).
 		d := encoding.DecWrap(tsdb_enc.Decbuf{
-			B: s.bs.Range(0, s.bs.Len()),
+			B: s.bs.Range(s.offsets[i], s.blockEnd(i)),
 		})
-		d.Skip(s.offsets[i])
 		return yoloString(d.UvarintBytes()) > sym
-	})
-	d := encoding.DecWrap(tsdb_enc.Decbuf{
-		B: s.bs.Range(0, s.bs.Len()),
 	})
 	if i > 0 {
 		i--
 	}
-	d.Skip(s.offsets[i])
+	var d encoding.Decbuf
+	if s.version >= FormatV2 {
+		d = encoding.DecWrap(tsdb_enc.Decbuf{B: s.bs.Range(s.offsets[i], s.blockEnd(i))})
+	} else {
+		// v1 returns an absolute offset below (s.bs.Len()-lastLen), which
+		// requires the decbuf to span the whole file.
+		d = encoding.DecWrap(tsdb_enc.Decbuf{B: s.bs.Range(0, s.bs.Len())})
+		d.Skip(s.offsets[i])
+	}
 	res := i * symbolFactor
 	var lastLen int
 	var lastSymbol string
@@ -1750,7 +1835,10 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+// Series reads the series with the given ref. An optional per-query *SymbolCache
+// (variadic for call-site compatibility; only the first is used) memoizes symbol
+// lookups across series within a query.
+func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, cache ...*SymbolCache) (uint64, error) {
 	offset := id
 	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1762,14 +1850,14 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 		return 0, d.Err()
 	}
 
-	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks)
+	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks, firstSymbolCache(cache))
 	if err != nil {
 		return 0, errors.Wrap(err, "read series")
 	}
 	return fprint, nil
 }
 
-func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
+func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}, cache ...*SymbolCache) (uint64, ChunkStats, error) {
 	offset := id
 	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1781,7 +1869,7 @@ func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *lab
 		return 0, ChunkStats{}, d.Err()
 	}
 
-	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls, by)
+	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls, by, firstSymbolCache(cache))
 }
 
 func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error) {
@@ -2135,9 +2223,46 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 	return d.Err()
 }
 
+// SymbolCache memoizes symbol-reference -> string resolutions for the duration
+// of a single query/scan, so repeated label values across many series are read
+// and decoded from the symbol table only once. It is NOT safe for concurrent
+// use; create one per query (see NewSymbolCache).
+type SymbolCache struct {
+	m map[uint32]string
+}
+
+// NewSymbolCache returns an empty per-query symbol cache.
+func NewSymbolCache() *SymbolCache {
+	return &SymbolCache{m: make(map[uint32]string, 256)}
+}
+
+// lookup resolves o, consulting the cache first. A nil *SymbolCache is valid and
+// simply delegates to fn (no caching), so callers needn't branch.
+func (c *SymbolCache) lookup(o uint32, fn func(uint32) (string, error)) (string, error) {
+	if c == nil {
+		return fn(o)
+	}
+	if s, ok := c.m[o]; ok {
+		return s, nil
+	}
+	s, err := fn(o)
+	if err != nil {
+		return "", err
+	}
+	c.m[o] = s
+	return s, nil
+}
+
+func firstSymbolCache(cs []*SymbolCache) *SymbolCache {
+	if len(cs) > 0 {
+		return cs[0]
+	}
+	return nil
+}
+
 // prepSeries returns series labels for a series, only returning selected `by` label names.
 // If `by` is nil, it returns all labels for the series.
-func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
+func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]struct{}, cache *SymbolCache) (*encoding.Decbuf, uint64, error) {
 	builder := labelpool.Get()
 	defer labelpool.Put(builder)
 
@@ -2153,8 +2278,7 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]stru
 		if d.Err() != nil {
 			return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
 		}
-		// todo(cyriltovena): we could cache this by user requests spanning multiple prepSeries calls.
-		ln, err := dec.LookupSymbol(lno)
+		ln, err := cache.lookup(lno, dec.LookupSymbol)
 		if err != nil {
 			return nil, 0, errors.Wrap(err, "lookup label name")
 		}
@@ -2165,7 +2289,7 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]stru
 			}
 		}
 
-		lv, err := dec.LookupSymbol(lvo)
+		lv, err := cache.lookup(lvo, dec.LookupSymbol)
 		if err != nil {
 			return nil, 0, errors.Wrap(err, "lookup label value")
 		}
@@ -2198,8 +2322,8 @@ func (dec *Decoder) skipSeriesLabels(b []byte) (*encoding.Decbuf, uint64, error)
 	return &d, fprint, nil
 }
 
-func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
-	d, fp, err := dec.prepSeries(b, lbls, by)
+func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}, cache *SymbolCache) (uint64, ChunkStats, error) {
+	d, fp, err := dec.prepSeries(b, lbls, by, cache)
 	if err != nil {
 		return 0, ChunkStats{}, err
 	}
@@ -2343,12 +2467,12 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 
 // Series decodes a series entry from the given byte slice into lbls and chks.
 // lbls can be nil, indicating the caller only wants the chunks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (fprint uint64, err error) {
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, cache *SymbolCache) (fprint uint64, err error) {
 	var d *encoding.Decbuf
 	if lbls == nil {
 		d, fprint, err = dec.skipSeriesLabels(b)
 	} else {
-		d, fprint, err = dec.prepSeries(b, lbls, nil)
+		d, fprint, err = dec.prepSeries(b, lbls, nil, cache)
 	}
 	if err != nil {
 		return 0, err

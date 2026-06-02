@@ -112,7 +112,9 @@ func (h *headIndexReader) Postings(name string, fpFilter index.FingerprintFilter
 
 // Series returns the series for the given reference.
 // lbls can be nil, to indicate that just the chunks are needed.
-func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta) (uint64, error) {
+// The head reader builds labels from in-memory series, so it does no symbol
+// decode and ignores the per-query symbol cache.
+func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta, _ ...*index.SymbolCache) (uint64, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
@@ -138,7 +140,7 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 	return s.fp, nil
 }
 
-func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, index.ChunkStats, error) {
+func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}, _ ...*index.SymbolCache) (uint64, index.ChunkStats, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
