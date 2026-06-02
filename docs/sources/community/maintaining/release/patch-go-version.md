@@ -10,16 +10,21 @@ Update vulnerable Go version to non-vulnerable Go version to build Grafana Loki 
 
 1. Determine the [VERSION_PREFIX](../concepts/version/).
 
-1. Need to sign-in to Docker hub to be able to push Loki build image.
-
 ## Steps
 
-1. Find Go version to which you need to update. Example `1.20.5` to `1.20.6`
+1. Find Go version to which you need to update. Example `1.20.5` to `1.20.6`.
 
-1. Update Go version in the Grafana Loki build image (`loki-build-image/Dockerfile`) on the `main` branch.
+1. On the `main` branch, update `GO_VERSION` in the `Makefile`. This is the source of
+   truth for the [Loki build image](../../release-loki-build-image/) and the generated
+   GitHub workflows.
 
-1. [Release a new Loki Build Image](../../release-loki-build-image/)
+1. Run `tools/go-version-bump.sh <version>` to update the remaining `FROM golang:<ver>`
+   Dockerfiles and the dev container.
 
-1. [Backport](../backport-commits/) the Dockerfile change to `release-VERSION_PREFIX` branch.
+1. Run `make release-workflows` to regenerate the workflow files that embed the Go
+   version.
 
-1. [Backport](../backport-commits/) the Loki Build Image version change from `main` to `release-VERSION_PREFIX` branch.
+1. Update any remaining hardcoded Go versions, for example the `GO_VERSION` entries in
+   the hand-maintained `.github/workflows/` files and the `go` directive in `go.mod`.
+
+1. [Backport](../backport-commits/) the changes to the `release-VERSION_PREFIX` branch.
