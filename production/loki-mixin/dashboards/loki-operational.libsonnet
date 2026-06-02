@@ -84,39 +84,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    else error 'no pod matchers'
                                  else error 'matcher must be either job or container',
 
-                               local replaceClusterMatchers(expr) =
-                                 if dashboards['loki-operational.json'].showMultiCluster
-                                 // Replace the recording rules cluster label with the per-cluster label
-                                 then std.strReplace(
-                                   // Replace the cluster label for equality matchers with the per-cluster label
-                                   std.strReplace(
-                                     // Replace the cluster label for regex matchers with the per-cluster label
-                                     std.strReplace(
-                                       expr,
-                                       'cluster=~"$cluster"',
-                                       $._config.per_cluster_label + '=~"$cluster"'
-                                     ),
-                                     'cluster="$cluster"',
-                                     $._config.per_cluster_label + '="$cluster"'
-                                   ),
-                                   'cluster_job',
-                                   $._config.per_cluster_label + '_job'
-                                 )
-                                 else
-                                   std.strReplace(
-                                     std.strReplace(
-                                       std.strReplace(
-                                         expr,
-                                         ', ' + $._config.per_cluster_label + '="$cluster"',
-                                         ''
-                                       ),
-                                       ', ' + $._config.per_cluster_label + '=~"$cluster"',
-                                       ''
-                                     ),
-                                     $._config.per_cluster_label + '="$cluster",',
-                                     ''
-                                   ),
-
                                local replaceBackendMatchers(expr) =
                                  std.strReplace(
                                    std.strReplace(
@@ -239,7 +206,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    datasource: selectDatasource(super.datasource),
                                    targets: if std.objectHas(p, 'targets') then [
                                      e {
-                                       expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
+                                       expr: removeInternalComponents(p.title, $.replaceClusterMatchers(e.expr, dashboards['loki-operational.json'].showMultiCluster)),
                                      }
                                      for e in p.targets
                                    ] else [],
@@ -248,7 +215,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                        datasource: selectDatasource(super.datasource),
                                        targets: if std.objectHas(sp, 'targets') then [
                                          e {
-                                           expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
+                                           expr: removeInternalComponents(p.title, $.replaceClusterMatchers(e.expr, dashboards['loki-operational.json'].showMultiCluster)),
                                          }
                                          for e in sp.targets
                                        ] else [],
@@ -257,7 +224,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                            datasource: selectDatasource(super.datasource),
                                            targets: if std.objectHas(ssp, 'targets') then [
                                              e {
-                                               expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
+                                               expr: removeInternalComponents(p.title, $.replaceClusterMatchers(e.expr, dashboards['loki-operational.json'].showMultiCluster)),
                                              }
                                              for e in ssp.targets
                                            ] else [],

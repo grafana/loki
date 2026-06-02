@@ -6,7 +6,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     local dashboards = self,
     'loki-chunks.json': {
                           local cfg = self,
-                          labelsSelector:: $._config.per_cluster_label + '="$cluster", job=~"$namespace/%s"' % (
+                          labelsSelector:: $._config.per_cluster_label + '=~"$cluster", job=~"$namespace/%s"' % (
                             if $._config.meta_monitoring.enabled
                             then '(.*ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher
                             else if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(.*ingester.*)'
