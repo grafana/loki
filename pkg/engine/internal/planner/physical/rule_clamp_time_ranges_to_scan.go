@@ -42,6 +42,12 @@ func (r *clampTimeRangesToScan) apply(root Node) bool {
 		}
 	}
 
+	if len(nodes) > 1 {
+		//can't optimize across other nodes
+		//if there are multiple scan nodes with their own time ranges
+		return changed
+	}
+
 	// propagate time range to target parent nodes.
 Loop:
 	for _, n := range nodes {
