@@ -40,6 +40,21 @@ make test-fuzz                                 # run fuzz tests
 - Use structured logging with leveled logging (`github.com/go-kit/log`)
 - Document all exported functions, types, and variables
 
+### Comments
+
+Write self-descriptive code first; reach for a comment only when the code cannot speak for itself. A comment must earn its place.
+
+- Prefer clear names and small functions over explanatory comments. If you feel the need to explain *what* the code does, rename or refactor instead.
+- A comment must have a good reason to exist. Good reasons:
+  - Explain *why*, not *what*: intent, trade-offs, or constraints the code cannot convey.
+  - Warn about non-obvious behavior, edge cases, gotchas, or invariants that must hold.
+  - Reference an issue, spec, RFC, or external decision that motivates the code.
+  - Required doc comments on exported identifiers (see above).
+- Do not write comments that merely restate the code (e.g. `// increment i`, `// return the result`, `// loop over items`).
+- Avoid long, overcomplicated narration. Keep comments short and to the point.
+- Delete commented-out code and stale TODOs rather than leaving them behind.
+- Never add a comment just to explain a change you made; that belongs in the commit message or PR description.
+
 ### Testing
 
 - Always prefer `github.com/stretchr/testify/require` over `github.com/stretchr/testify/assert`
