@@ -1620,7 +1620,7 @@ func (m *Batching) GetBatchSize() int64 {
 type IndexMerge struct {
 	Tenant string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	// Start of the metastore ToC window this task compacts, in Unix nanoseconds.
-	// Pinned at plan time so the executor and the Phase-2 pointer swap target the
+	// Pinned at plan time so the executor and pointer swap target the
 	// same window regardless of clock drift between planning and execution.
 	TocWindowStartUnixNanos int64            `protobuf:"varint,2,opt,name=toc_window_start_unix_nanos,json=tocWindowStartUnixNanos,proto3" json:"toc_window_start_unix_nanos,omitempty"`
 	Runs                    []*proto1.RunRef `protobuf:"bytes,3,rep,name=runs,proto3" json:"runs,omitempty"`
