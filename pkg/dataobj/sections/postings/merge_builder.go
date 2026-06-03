@@ -17,8 +17,8 @@ import (
 type MergeBuilder struct {
 	metrics *Metrics
 	tenant  string
-	labels  map[labelPostingKey]*LabelEntry
-	blooms  map[bloomPostingKey]*BloomEntry
+	labels  map[labelPostingKey]LabelEntry
+	blooms  map[bloomPostingKey]BloomEntry
 
 	pageSizeHint    int
 	pageMaxRowCount int
@@ -34,8 +34,8 @@ type MergeBuilder struct {
 func NewMergeBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount int) *MergeBuilder {
 	return &MergeBuilder{
 		metrics:         metrics,
-		labels:          make(map[labelPostingKey]*LabelEntry),
-		blooms:          make(map[bloomPostingKey]*BloomEntry),
+		labels:          make(map[labelPostingKey]LabelEntry),
+		blooms:          make(map[bloomPostingKey]BloomEntry),
 		pageSizeHint:    pageSizeHint,
 		pageMaxRowCount: pageMaxRowCount,
 	}
@@ -65,7 +65,7 @@ func (b *MergeBuilder) AppendLabelEntry(entry LabelEntry) error {
 		return fmt.Errorf("label posting entry with key (%q, %d, %q, %q) already exists", entry.ObjectPath, entry.SectionIndex, entry.ColumnName, entry.LabelValue)
 	}
 
-	b.labels[key] = &entry
+	b.labels[key] = entry
 
 	// Track size: 5 int64 fields + string sizes + bitmap bytes.
 	b.estimatedSize += 5*8 + len(entry.ObjectPath) + len(entry.ColumnName) + len(entry.LabelValue) + len(entry.StreamIDBitmap)
@@ -87,7 +87,7 @@ func (b *MergeBuilder) AppendBloomEntry(entry BloomEntry) error {
 		return fmt.Errorf("bloom posting entry with key (%q, %d, %q) already exists", entry.ObjectPath, entry.SectionIndex, entry.ColumnName)
 	}
 
-	b.blooms[key] = &entry
+	b.blooms[key] = entry
 
 	// Track size: 5 int64 fields + string sizes + bloom bytes + bitmap bytes.
 	b.estimatedSize += 5*8 + len(entry.ObjectPath) + len(entry.ColumnName) + len(entry.BloomFilter) + len(entry.StreamIDBitmap)
@@ -103,8 +103,8 @@ func (b *MergeBuilder) EstimatedSize() int {
 
 // Reset clears all accumulated data and resets the builder to a fresh state.
 func (b *MergeBuilder) Reset() {
-	b.labels = make(map[labelPostingKey]*LabelEntry)
-	b.blooms = make(map[bloomPostingKey]*BloomEntry)
+	b.labels = make(map[labelPostingKey]LabelEntry)
+	b.blooms = make(map[bloomPostingKey]BloomEntry)
 	b.estimatedSize = 0
 }
 
@@ -116,12 +116,12 @@ func (b *MergeBuilder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	// Convert maps to slices.
 	labelEntries := make([]LabelEntry, 0, len(b.labels))
 	for _, entry := range b.labels {
-		labelEntries = append(labelEntries, *entry)
+		labelEntries = append(labelEntries, entry)
 	}
 
 	bloomEntries := make([]BloomEntry, 0, len(b.blooms))
 	for _, entry := range b.blooms {
-		bloomEntries = append(bloomEntries, *entry)
+		bloomEntries = append(bloomEntries, entry)
 	}
 
 	if len(labelEntries) == 0 && len(bloomEntries) == 0 {
