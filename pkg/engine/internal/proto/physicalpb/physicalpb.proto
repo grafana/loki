@@ -300,10 +300,6 @@ message IndexMerge {
   int64 toc_window_start = 2;
   repeated proto.RunRef runs = 3;
   string output_index_path = 4;
-  google.protobuf.Duration task_ttl = 5 [
-    (gogoproto.stdduration) = true,
-    (gogoproto.nullable) = false
-  ];
 }
 
 // Cache controls Task-level caching.

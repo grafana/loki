@@ -471,6 +471,5 @@ func (n *IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		ToCWindowStart:  n.TocWindowStart,
 		Runs:            runs,
 		OutputIndexPath: n.OutputIndexPath,
-		TaskTTL:         n.TaskTtl,
 	}, nil
 }

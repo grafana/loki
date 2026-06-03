@@ -272,7 +272,6 @@ func Test_Node(t *testing.T) {
 					},
 				},
 				OutputIndexPath: "s3://bucket/merged/index",
-				TaskTTL:         time.Minute * 5,
 			},
 		},
 	}
@@ -344,7 +343,6 @@ func Test_Node_IndexMerge_RoundTrip(t *testing.T) {
 			},
 		},
 		OutputIndexPath: "s3://bucket/merged/index",
-		TaskTTL:         time.Minute * 5,
 	}
 
 	var graph dag.Graph[physical.Node]
@@ -367,7 +365,6 @@ func Test_Node_IndexMerge_RoundTrip(t *testing.T) {
 	require.Equal(t, want.Tenant, got.Tenant)
 	require.Equal(t, want.ToCWindowStart, got.ToCWindowStart)
 	require.Equal(t, want.OutputIndexPath, got.OutputIndexPath)
-	require.Equal(t, want.TaskTTL, got.TaskTTL)
 	require.Equal(t, want.Runs, got.Runs)
 }
 

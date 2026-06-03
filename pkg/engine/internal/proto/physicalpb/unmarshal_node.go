@@ -620,7 +620,6 @@ func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
 		TocWindowStart:  indexMerge.ToCWindowStart,
 		Runs:            runs,
 		OutputIndexPath: indexMerge.OutputIndexPath,
-		TaskTtl:         indexMerge.TaskTTL,
 	}
 	return nil
 }
