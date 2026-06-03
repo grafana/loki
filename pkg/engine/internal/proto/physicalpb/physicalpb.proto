@@ -297,7 +297,10 @@ message Batching {
 // for a single tenant within one ToC window.
 message IndexMerge {
   string tenant = 1;
-  int64 toc_window_start = 2;
+  // Start of the metastore ToC window this task compacts, in Unix nanoseconds.
+  // Pinned at plan time so the executor and pointer swap target the
+  // same window regardless of clock drift between planning and execution.
+  int64 toc_window_start_unix_nanos = 2;
   repeated proto.RunRef runs = 3;
   string output_index_path = 4;
 }

@@ -468,7 +468,7 @@ func (n *IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.IndexMerge{
 		NodeID:          nodeID,
 		Tenant:          n.Tenant,
-		ToCWindowStart:  n.TocWindowStart,
+		ToCWindowStart:  n.TocWindowStartUnixNanos,
 		Runs:            runs,
 		OutputIndexPath: n.OutputIndexPath,
 	}, nil

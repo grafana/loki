@@ -616,10 +616,10 @@ func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = IndexMerge{
-		Tenant:          indexMerge.Tenant,
-		TocWindowStart:  indexMerge.ToCWindowStart,
-		Runs:            runs,
-		OutputIndexPath: indexMerge.OutputIndexPath,
+		Tenant:                  indexMerge.Tenant,
+		TocWindowStartUnixNanos: indexMerge.ToCWindowStart,
+		Runs:                    runs,
+		OutputIndexPath:         indexMerge.OutputIndexPath,
 	}
 	return nil
 }
