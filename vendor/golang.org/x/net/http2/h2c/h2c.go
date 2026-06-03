@@ -2,10 +2,28 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package h2c implements the unencrypted "h2c" form of HTTP/2.
+// Package h2c is deprecated.
 //
-// The h2c protocol is the non-TLS version of HTTP/2 which is not available from
-// net/http or golang.org/x/net/http2.
+// This package used to support unencrypted HTTP/2.
+// Unencrypted HTTP/2 is now supported directly by
+// the net/http package.
+//
+// To start a server with unencrypted HTTP/2 support:
+//
+//	srv := &http.Server{Addr: address}
+//	srv.Protocols = new(http.Protocols)
+//	srv.Protocols.SetHTTP1(true)
+//	srv.Protocols.SetUnencryptedHTTP2(true)
+//	srv.ListenAndServe()
+//
+// To use HTTP/2 for unencrypted client requests:
+//
+//	tr := &http.Transport{}
+//	tr.Protocols = new(http.Protocols)
+//	tr.Protocols.SetUnencryptedHTTP2(true)
+//	client := &http.Client{Transport: tr}
+//
+// Deprecated: This package is deprecated.
 package h2c
 
 import (
@@ -63,6 +81,10 @@ type h2cHandler struct {
 // The first request on an h2c connection is read entirely into memory before
 // the Handler is called. To limit the memory consumed by this request, wrap
 // the result of NewHandler in an http.MaxBytesHandler.
+
+// NewHandler is deprecated.
+//
+// Deprecated: Set the [http.Server] Protocols field to use unencrypted HTTP/2 instead.
 func NewHandler(h http.Handler, s *http2.Server) http.Handler {
 	return &h2cHandler{
 		Handler: h,
