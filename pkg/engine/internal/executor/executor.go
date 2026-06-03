@@ -266,6 +266,11 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	}
 	span.AddEvent("constructed predicate")
 
+	if logsPredicatesAreUnsatisfiable(predicates) {
+		span.AddEvent("unsatisfiable logs predicate; skipping dataobj scan")
+		return emptyPipeline()
+	}
+
 	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
 		// TODO(rfratto): passing the streams section means that each DataObjScan
 		// will read the entire streams section (for IDs being loaded), which is
