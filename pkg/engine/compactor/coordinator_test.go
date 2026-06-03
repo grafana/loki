@@ -88,7 +88,6 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 			Enabled:                   true,
 			PollingInterval:           5 * time.Minute,
 			MaxRunsPerTask:            2,
-			IndexMergeTaskTTL:         10 * time.Minute,
 			ToCConsolidateTimeout:     30 * time.Second,
 			MaxRunningCompactionTasks: 4,
 			PlanVersion:               1,
@@ -165,7 +164,6 @@ func TestRunCycle_FansOutPhase1ThenCommitsPhase2(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "acme", merge.Tenant)
 	require.Equal(t, window.UnixNano(), merge.ToCWindowStart)
-	require.Equal(t, 10*time.Minute, merge.TaskTTL)
 
 	// Phase 2: one ReplaceIndexPointers; oldPaths covers all 3 sources;
 	// newEntries has the deterministic output that Phase 1 produced.
