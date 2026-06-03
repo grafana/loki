@@ -50,6 +50,10 @@ func newPartitionRingWatcher(t *testing.T, partitionIDs ...int32) *rendezvous.Pa
 	return watcher
 }
 
+func newUninitialisedPartitionRingWatcher(t *testing.T) *rendezvous.PartitionRingWatcher {
+	return rendezvous.New(rendezvous.Config{Key: "test-ring"}, nil, log.NewNopLogger())
+}
+
 func TestGetSegmentationKey(t *testing.T) {
 	t.Run("stream without labels", func(t *testing.T) {
 		key, err := getSegmentationKey(KeyedStream{})
@@ -157,6 +161,13 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 		p2, err := resolver.Resolve("tenant-a", "svc", 0x1, 0, 0)
 		require.NoError(t, err)
 		require.Equal(t, p1, p2)
+	})
+
+	t.Run("uninitialised ring returns error", func(t *testing.T) {
+		watcher := newUninitialisedPartitionRingWatcher(t)
+		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, prometheus.NewRegistry(), log.NewNopLogger())
+		_, err := resolver.Resolve("tenant", "test", 0x1, 0, 0)
+		require.EqualError(t, err, "partition ring watcher not initialised")
 	})
 }
 

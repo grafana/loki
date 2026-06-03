@@ -45,7 +45,7 @@ type segmentationPartitionResolver struct {
 	perPartitionRateBytes uint64
 	useRendezvousHashing  bool
 	ringReader            ring.PartitionRingReader
-	partitionWatcher      *rendezvous.PartitionRingWatcher
+	partitionRingWatcher  *rendezvous.PartitionRingWatcher
 	logger                log.Logger
 
 	// Metrics.
@@ -68,7 +68,7 @@ func newSegmentationPartitionResolver(
 		perPartitionRateBytes: perPartitionRateBytes,
 		useRendezvousHashing:  useRendezvousHashing,
 		ringReader:            ringReader,
-		partitionWatcher:      partitionWatcher,
+		partitionRingWatcher:  partitionWatcher,
 		resolveFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_failed_total",
 			Help: "Total number of segmentation keys that could not be resolved.",
@@ -116,7 +116,12 @@ func (r *segmentationPartitionResolver) Resolve(tenant string, key segmentationK
 
 func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateBytes uint64) (int32, error) {
 	r.resolveTotal.Inc()
-	shuffleSharder := *r.partitionWatcher.ShuffleSharder()
+
+	shuffleSharder := r.partitionRingWatcher.ShuffleSharder()
+	if shuffleSharder == nil {
+		r.resolveFailed.Inc()
+		return 0, errors.New("partition ring watcher not initialised")
+	}
 
 	// Shuffle shard for the tenant based on their ingestion rate limit.
 	// This ensures that streams are not only co-located within the same

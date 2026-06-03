@@ -28,7 +28,7 @@ func NewShuffleSharder(partitions []int32) ShuffleSharder {
 	return ShuffleSharder{partitions, hashes}
 }
 
-func (r ShuffleSharder) Shard(key uint32) (int32, error) {
+func (r *ShuffleSharder) Shard(key uint32) (int32, error) {
 	if len(r.partitions) == 0 {
 		return 0, errors.New("no active partitions")
 	}
@@ -44,7 +44,7 @@ func (r ShuffleSharder) Shard(key uint32) (int32, error) {
 	return maxPartition, nil
 }
 
-func (r ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) ShuffleSharder {
+func (r *ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) *ShuffleSharder {
 	if numShards == 0 || numShards > len(r.partitions) {
 		numShards = len(r.partitions)
 	}
@@ -72,10 +72,10 @@ func (r ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) Shuf
 		subpartitions[i] = scores[i].partition
 		subHashesSet[i] = scores[i].hash // Avoid recalculating these hashes
 	}
-	return ShuffleSharder{subpartitions, subHashesSet}
+	return &ShuffleSharder{subpartitions, subHashesSet}
 }
 
-func (r ShuffleSharder) Size() int {
+func (r *ShuffleSharder) Size() int {
 	return len(r.partitions)
 }
 
