@@ -28,6 +28,7 @@ type task struct {
 	queueTime   time.Time // Time when task was enqueued.
 	assignTime  time.Time // Time when task was assigned to a worker.
 	interrupted bool      // Cancellation requested but not yet confirmed.
+	requeues    int       // Number of times the task was requeued after a failed assignment.
 
 	// capture holds individual task information from any source:
 	//
@@ -153,6 +154,14 @@ func (t *task) MarkQueued() {
 	t.queueTime = time.Now()
 }
 
+// MarkRequeued records that the task was requeued after a failed assignment
+// attempt, incrementing its assignment retry count.
+func (t *task) MarkRequeued() {
+	t.mut.Lock()
+	defer t.mut.Unlock()
+	t.requeues++
+}
+
 // MarkInterrupted records that cancellation has been requested for this task.
 func (t *task) MarkInterrupted() bool {
 	t.mut.Lock()
@@ -208,8 +217,10 @@ func (t *task) TryAssign(doAssign func() error) error {
 // the task has reached a terminal state.
 func (t *task) RecordTerminalObservations(now time.Time) {
 	t.mut.RLock()
-	queueTime, assignTime := t.queueTime, t.assignTime
+	queueTime, assignTime, requeues := t.queueTime, t.assignTime, t.requeues
 	t.mut.RUnlock()
+
+	t.region.Record(schedulerstat.TaskAssignmentRetries.Observe(int64(requeues)))
 
 	if !queueTime.IsZero() && assignTime.IsZero() {
 		t.region.Record(schedulerstat.TaskQueueDuration.Observe(now.Sub(queueTime).Nanoseconds()))

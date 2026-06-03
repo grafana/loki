@@ -70,6 +70,9 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		"duration_execution_send_ms", time.Duration(durExecutionSend).Milliseconds(),
 		"duration_execution_other_ms", time.Duration(durExecutionOther).Milliseconds(),
 
+		// Assignment
+		"assignment_retry_count", xcap.Value[int64](capture, schedulerstat.TaskAssignmentRetries),
+
 		// Stage 9 (leaf) counters.
 		"pages_total", xcap.Value[int64](capture, dataobj.StatDatasetPagesTotal),
 		"pages_pruned", xcap.Value[int64](capture, dataobj.StatDatasetPagesPruned),

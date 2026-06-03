@@ -24,6 +24,10 @@ var (
 	// never reached a worker.
 	TaskExecutionDuration = xcap.NewStatisticInt64("scheduler.task.execution.duration", xcap.AggregationTypeSum)
 
+	// TaskAssignmentRetries is the number of times a task was requeued after a
+	// failed assignment attempt before it reached a terminal state.
+	TaskAssignmentRetries = xcap.NewStatisticInt64("scheduler.task.assignment.retries", xcap.AggregationTypeSum)
+
 	// TaskTotalDuration is the total time (in nanoseconds) from scheduler
 	// registration to terminal state, regardless of which phases the task
 	// passed through.
