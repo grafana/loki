@@ -148,17 +148,17 @@ func TestSegmentationPartitionResolver_TenantShuffleShard_ConsistentHashing(t *t
 	t.Run("no rate returns full ring", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := newSegmentationPartitionResolver(1024, false, ringWithActivePartitions, nil, reg, log.NewNopLogger())
-		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.tenantShuffleShardConsistentHashing(ring, "tenant", 0)
+		partitionRing := ringWithActivePartitions.PartitionRing()
+		subring, err := resolver.tenantShuffleShardConsistentHashing(partitionRing, "tenant", 0)
 		require.NoError(t, err)
-		require.Equal(t, ring, subring)
+		require.Equal(t, partitionRing, subring)
 	})
 
 	t.Run("rate equals partition rate returns subring with one partition", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := newSegmentationPartitionResolver(1024, false, ringWithActivePartitions, nil, reg, log.NewNopLogger())
-		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.tenantShuffleShardConsistentHashing(ring, "tenant", 1024)
+		partitionRing := ringWithActivePartitions.PartitionRing()
+		subring, err := resolver.tenantShuffleShardConsistentHashing(partitionRing, "tenant", 1024)
 		require.NoError(t, err)
 		require.Equal(t, 1, subring.ActivePartitionsCount())
 	})
@@ -166,8 +166,8 @@ func TestSegmentationPartitionResolver_TenantShuffleShard_ConsistentHashing(t *t
 	t.Run("rate exceeds partition rate returns subring with all partitions", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := newSegmentationPartitionResolver(1024, false, ringWithActivePartitions, nil, reg, log.NewNopLogger())
-		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.tenantShuffleShardConsistentHashing(ring, "tenant", 2048)
+		partitionRing := ringWithActivePartitions.PartitionRing()
+		subring, err := resolver.tenantShuffleShardConsistentHashing(partitionRing, "tenant", 2048)
 		require.NoError(t, err)
 		require.Equal(t, 2, subring.ActivePartitionsCount())
 	})
