@@ -32,8 +32,7 @@ func TestReadPointers_SchemaParity(t *testing.T) {
 		{streamID: 3, minTs: unixTime(300), maxTs: unixTime(350), rows: 30, uncompressedSize: 3000},
 	})
 
-	// Postings side: open with parent Object so ReadPointers can locate the
-	// streams section.
+	// Postings side.
 	postingsReader := postings.NewReader(postings.ReaderOptions{
 		Columns:   fx.postingsSec.Columns(),
 		Allocator: memory.DefaultAllocator,
@@ -107,10 +106,9 @@ func TestReadPointers_SchemaParity(t *testing.T) {
 		postingsBatch.Schema(), pointersBatch.Schema())
 }
 
-// TestReadPointers_StreamIDFilter asserts that the streams-side
-// InPredicate(streamIDs) filters the result to the requested set and the
-// per-stream metadata (min/max/rows/uncompressed_size) reflects the
-// streams-section values for each returned stream.
+// TestReadPointers_StreamIDFilter asserts that the streamIDs filter limits the
+// result to the requested set and that each returned row's min/max_timestamp
+// reflects its postings row's [min, max].
 func TestReadPointers_StreamIDFilter(t *testing.T) {
 	fx := buildJoinedFixture(t, []testStream{
 		{streamID: 1, minTs: unixTime(100), maxTs: unixTime(150), rows: 10, uncompressedSize: 1000},
@@ -146,20 +144,21 @@ func TestReadPointers_StreamIDFilter(t *testing.T) {
 		case 1:
 			require.Equal(t, unixTime(100).UnixNano(), r.minTimestamp)
 			require.Equal(t, unixTime(150).UnixNano(), r.maxTimestamp)
-			require.Equal(t, int64(10), r.rowCount)
-			require.Equal(t, int64(1000), r.uncompressedSize)
+			// row_count / uncompressed_size are a metadata hint no consumer
+			// reads; ReadPointers emits them as zero from the postings path.
+			require.Equal(t, int64(0), r.rowCount)
+			require.Equal(t, int64(0), r.uncompressedSize)
 		case 3:
 			require.Equal(t, unixTime(300).UnixNano(), r.minTimestamp)
 			require.Equal(t, unixTime(350).UnixNano(), r.maxTimestamp)
-			require.Equal(t, int64(30), r.rowCount)
-			require.Equal(t, int64(3000), r.uncompressedSize)
+			require.Equal(t, int64(0), r.rowCount)
+			require.Equal(t, int64(0), r.uncompressedSize)
 		}
 	}
 }
 
-// TestReadPointers_TimeRangeFilter asserts that the streams-side
-// time-range predicate prunes streams whose [min,max] does not overlap the
-// requested window.
+// TestReadPointers_TimeRangeFilter asserts that the time-range filter prunes
+// postings rows whose [min,max] does not overlap the requested window.
 func TestReadPointers_TimeRangeFilter(t *testing.T) {
 	fx := buildJoinedFixture(t, []testStream{
 		{streamID: 1, minTs: unixTime(100), maxTs: unixTime(150), rows: 10, uncompressedSize: 1000},
@@ -214,27 +213,11 @@ func TestReadPointers_EmptyStreamIDs(t *testing.T) {
 	require.ElementsMatch(t, []int64{1, 2, 3}, gotIDs)
 }
 
-// TestReadPointers_ResetClearsStreamsSec is the regression test.
-// Before the fix, Reader.Reset re-initialised opts/schema/inner but NOT
-// streamsSec — so a Reader originally configured via OpenWithObject (which
-// populates streamsSec at init time) and then Reset onto a section opened
-// via plain Open (no parent back-pointer) silently retained the OLD
-// streamsSec. Subsequent ReadPointers calls would join postings rows from
-// the NEW section against streams from the OLD section — a silently wrong
-// cross-dataobj join.
-//
-// After the fix, Reset MUST clear streamsSec so init() either re-discovers
-// it (when the new section has a parent) or leaves it nil (so ReadPointers
-// returns its documented "requires a sibling streams section" error rather
-// than silently producing wrong rows).
-func TestReadPointers_ResetClearsStreamsSec(t *testing.T) {
-	// Fixture A: an OpenWithObject section that populates streamsSec.
-	fxA := buildJoinedFixture(t, []testStream{
-		{streamID: 1, minTs: unixTime(100), maxTs: unixTime(150), rows: 10, uncompressedSize: 1000},
-	})
-
-	// Fixture B: a plain Open section (no parent back-pointer) on a
-	// separate dataobj so streamsSec MUST NOT survive the Reset.
+// TestReadPointers_NoParentObject pins the decoupling from the streams
+// section: ReadPointers works on a postings section opened via the plain
+// [Open] (no parent dataobj back-pointer, no sibling streams section),
+// because pointers are now sourced entirely from the postings rows.
+func TestReadPointers_NoParentObject(t *testing.T) {
 	pb := postings.NewBuilder(nil, 0, 0)
 	pb.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "/test/objB",
@@ -245,51 +228,37 @@ func TestReadPointers_ResetClearsStreamsSec(t *testing.T) {
 		Timestamp:        unixTime(100),
 		UncompressedSize: 1,
 	})
-	objBuilderB := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilderB.Append(pb))
-	objB, closerB, err := objBuilderB.Flush()
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(pb))
+	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = closerB.Close() })
+	t.Cleanup(func() { _ = closer.Close() })
 
-	var secB *postings.Section
-	for _, s := range objB.Sections() {
+	var sec *postings.Section
+	for _, s := range obj.Sections() {
 		if !postings.CheckSection(s) {
 			continue
 		}
 		opened, openErr := postings.Open(t.Context(), s) // NO parent.
 		require.NoError(t, openErr)
-		secB = opened
+		sec = opened
 		break
 	}
-	require.NotNil(t, secB, "postings section B missing from fixture")
+	require.NotNil(t, sec, "postings section missing from fixture")
 
-	// Step 1: open Reader with fxA (parent reachable → streamsSec set).
 	r := postings.NewReader(postings.ReaderOptions{
-		Columns:   fxA.postingsSec.Columns(),
+		Columns:   sec.Columns(),
 		Allocator: memory.DefaultAllocator,
 	})
 	require.NoError(t, r.Open(t.Context()))
 	t.Cleanup(func() { _ = r.Close() })
 
-	// Sanity: ReadPointers succeeds with the parent-bound section.
 	batch, err := r.ReadPointers(t.Context(), nil, unixTime(0), unixTime(10000))
-	require.NoError(t, err)
+	require.NoError(t, err, "ReadPointers must work without a sibling streams section")
 	require.NotNil(t, batch)
-
-	// Step 2: Reset onto the parent-less section. The Reader's previously
-	// resolved streamsSec MUST NOT survive — init() will not assign a new
-	// one (parent is nil), so ReadPointers must fail with the documented
-	// "sibling streams section" error.
-	r.Reset(postings.ReaderOptions{
-		Columns:   secB.Columns(),
-		Allocator: memory.DefaultAllocator,
-	})
-	require.NoError(t, r.Open(t.Context()))
-
-	got, err := r.ReadPointers(t.Context(), nil, unixTime(0), unixTime(10000))
-	require.Nil(t, got, "ReadPointers must return nil batch when streams section is unavailable")
-	require.ErrorContains(t, err, "sibling streams section",
-		"Reset must clear streamsSec — without the fix, ReadPointers silently joined against the stale streams section")
+	require.Equal(t, int64(1), batch.NumRows())
+	got := materialiseReadPointersRows(t, batch)
+	require.Equal(t, int64(2), got[0].streamID)
 }
 
 // ----------------------------------------------------------------------------
@@ -331,11 +300,12 @@ func buildJoinedFixture(t *testing.T, testStreams []testStream) joinedFixture {
 	ptrb := pointers.NewBuilder(nil, 0, 0)
 
 	for _, ts := range testStreams {
-		// Postings: one KindLabel observation per stream — sets the
-		// stream's bit in the bitmap. Use a deterministic (column, value)
-		// pair so each test stream gets its own posting row (avoids
-		// aggregation collapse). The min/max in the postings row is
-		// recorded but ignored by ReadPointers (we read from streams).
+		// Postings: KindLabel observations per stream — set the stream's bit
+		// in the bitmap. Use a deterministic (column, value) pair so each test
+		// stream gets its own posting row (avoids aggregation collapse).
+		// Observe at both minTs and maxTs so the aggregated posting carries the
+		// stream's full [min, max] range — ReadPointers reads min/max_timestamp
+		// from these postings rows.
 		pb.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath:       objectPath,
 			SectionIndex:     sectionIndex,
@@ -344,6 +314,15 @@ func buildJoinedFixture(t *testing.T, testStreams []testStream) joinedFixture {
 			StreamID:         ts.streamID,
 			Timestamp:        ts.minTs,
 			UncompressedSize: ts.uncompressedSize,
+		})
+		pb.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath:       objectPath,
+			SectionIndex:     sectionIndex,
+			ColumnName:       "env",
+			LabelValue:       fmt.Sprintf("v%d", ts.streamID),
+			StreamID:         ts.streamID,
+			Timestamp:        ts.maxTs,
+			UncompressedSize: 0,
 		})
 
 		// Streams: synthesise per-stream metadata via Record calls. We
@@ -381,7 +360,7 @@ func buildJoinedFixture(t *testing.T, testStreams []testStream) joinedFixture {
 	for _, sec := range obj.Sections() {
 		switch {
 		case postings.CheckSection(sec):
-			s, err := postings.OpenWithObject(t.Context(), sec, obj)
+			s, err := postings.Open(t.Context(), sec)
 			require.NoError(t, err)
 			fx.postingsSec = s
 		case streams.CheckSection(sec):

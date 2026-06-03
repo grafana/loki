@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -145,13 +144,6 @@ type Reader struct {
 	alloc *memoryv2.Allocator
 
 	readSpan trace.Span
-
-	// streamsSec is the sibling streams.Section discovered at Open time on
-	// the same parent dataobj.Object. It is nil when the postings section
-	// was opened via [Open] (no parent back-pointer) or when the parent
-	// object does not contain a streams section. [Reader.ReadPointers] (per
-	// ) requires this field to be non-nil; other methods do not.
-	streamsSec *streams.Section
 }
 
 var errReaderNotOpen = errors.New("reader not opened")
@@ -183,11 +175,6 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	r.schema = columnsSchema(opts.Columns)
 	r.readSpan = nil
 	r.ready = false
-	// Clear the cached sibling streams.Section so a Reset that swaps to a
-	// section opened via the plain [Open] (no parent back-pointer) does not
-	// silently retain the streams section from the previous configuration.
-	// init() will re-discover it when the new section's parent is non-nil.
-	r.streamsSec = nil
 	if r.inner != nil {
 		_ = r.inner.Close()
 	}
@@ -281,48 +268,17 @@ func (r *Reader) init(ctx context.Context) error {
 		return fmt.Errorf("opening reader: %w", err)
 	}
 
-	// Locate the sibling streams.Section if the postings.Section was opened
-	// via OpenWithObject (i.e. retains a back-pointer to its parent
-	// dataobj.Object). When no parent reference is available — the legacy
-	// Open path, used by fixtures that don't need ReadPointers — leave
-	// streamsSec nil. ReadPointers reports an explicit error in
-	// that case so other methods (Read, future ReadBloomRows, ResolveLabels)
-	// remain usable on postings-only fixtures.
-	if parent := cols[0].Section.parent; parent != nil {
-		for _, sec := range parent.Sections() {
-			if !streams.CheckSection(sec) {
-				continue
-			}
-			sSec, err := streams.Open(ctx, sec)
-			if err != nil {
-				return fmt.Errorf("opening sibling streams section: %w", err)
-			}
-			r.streamsSec = sSec
-			break
-		}
-	}
-
 	r.ready = true
 	return nil
 }
 
 // readPointersBatchSize is the row batch size used internally by
-// [Reader.ReadPointers] when draining the postings-side and streams-side
-// columnar adapters. It mirrors the metastore default at
-// indexSectionsReader.batchSize, which falls back to 8192 when unset. We use
-// 4096 here to keep per-batch allocations bounded while still amortising
-// per-batch fixed costs; tune in a follow-up if profiling indicates a better
-// value.
+// [Reader.ReadPointers] when draining the postings columnar adapter. It
+// mirrors the metastore default at indexSectionsReader.batchSize, which
+// falls back to 8192 when unset. We use 4096 here to keep per-batch
+// allocations bounded while still amortising per-batch fixed costs; tune in a
+// follow-up if profiling indicates a better value.
 const readPointersBatchSize = 4096
-
-// streamRowMetadata is the per-stream join lookup record built from the
-// streams-section read.
-type streamRowMetadata struct {
-	minTimestamp     int64 // ns since epoch
-	maxTimestamp     int64 // ns since epoch
-	rowCount         int64
-	uncompressedSize int64
-}
 
 // readPointersOutputSchema produces the byte-for-byte Arrow schema that
 // today's pointers.Reader (configured like
@@ -402,44 +358,26 @@ func readPointersOutputSchema() *arrow.Schema {
 	return arrow.NewSchema(fields, nil)
 }
 
-// streamsTimeRangePredicate builds the streams-section predicate equivalent
-// to pointers.WhereTimeRangeOverlapsWith — a stream's [minTs, maxTs] overlaps
-// [start, end] iff maxTs >= start AND minTs <= end. The streams package
-// does not (currently) export a WhereTimeRangeOverlapsWith helper, so we
-// construct it here using the same NotPredicate{LessThanPredicate} /
-// NotPredicate{GreaterThanPredicate} idiom that
-// metastore.buildTimeRangePredicate uses.
-func streamsTimeRangePredicate(colMinTs, colMaxTs *streams.Column, sStart, sEnd *scalar.Timestamp) streams.Predicate {
-	maxCheck := streams.NotPredicate{Inner: streams.LessThanPredicate{Column: colMaxTs, Value: sStart}}
-	minCheck := streams.NotPredicate{Inner: streams.GreaterThanPredicate{Column: colMinTs, Value: sEnd}}
-	return streams.AndPredicate{Left: maxCheck, Right: minCheck}
-}
-
 // ReadPointers returns an Arrow RecordBatch of stream-pointer rows matching
 // the provided streamIDs and time range. The returned batch's Schema is
 // byte-for-byte identical to today's pointers.Reader-fed openStreamPointersReader
 // output projecting the FULL 9-column default pointer-scan column set
 // (path, section, pointer_kind, stream_id, stream_id_ref, min_timestamp,
-// max_timestamp, row_count, uncompressed_size) — Success Criterion #4,
-// . Internally performs a join between the postings section and the
-// sibling streams section of the same dataobj.
+// max_timestamp, row_count, uncompressed_size).
+//
+// Pointers are sourced entirely from the postings section's KindLabel rows:
+// stream IDs from each row's bitmap, section identity from
+// (object_path, section_index), and the time range from the row's
+// min/max_timestamp. row_count and uncompressed_size are emitted as zero —
+// they are a metadata hint that no downstream consumer reads.
 //
 // streamIDs filters the result to streams in the provided set. When
 // streamIDs is empty (nil or len==0), no stream-ID filter is applied — all
-// streams whose [min_timestamp, max_timestamp] range overlaps [start, end]
-// are returned.
-//
-// ReadPointers requires the postings.Section to have been opened via
-// [OpenWithObject] (so the parent dataobj.Object is reachable and the
-// sibling streams section can be located at Open time). When the section
-// was opened via the legacy [Open], or when the parent object does not
-// contain a streams section, ReadPointers returns an error.
+// streams in postings rows whose [min_timestamp, max_timestamp] overlaps
+// [start, end] are returned.
 func (r *Reader) ReadPointers(ctx context.Context, streamIDs map[int64]struct{}, start, end time.Time) (arrow.RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
-	}
-	if r.streamsSec == nil {
-		return nil, fmt.Errorf("ReadPointers requires a sibling streams section in the same dataobj; none was found at Open")
 	}
 
 	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ReadPointers")
@@ -453,35 +391,23 @@ func (r *Reader) ReadPointers(ctx context.Context, streamIDs map[int64]struct{},
 		alloc = memory.DefaultAllocator
 	}
 
-	// (1) STREAMS-SIDE READ — apply time-range and stream-ID predicates where
-	// the timestamp columns physically live. The streams-side projection is
-	// (stream_id, min_timestamp, max_timestamp, rows, uncompressed_size).
-	streamMeta, err := r.collectStreamRowMetadata(ctx, alloc, streamIDs, start, end)
+	// Read pointer rows directly from the postings KindLabel rows, applying the
+	// stream-ID and [start,end] filters per row.
+	postingsRows, err := r.collectPostingsRows(ctx, streamIDs, start, end)
 	if err != nil {
 		return nil, err
 	}
 
-	// If no streams match the predicates, short-circuit with an empty
-	// 9-column batch. Building the empty record via the same RecordBuilder
-	// path guarantees the schema is byte-for-byte identical to the populated
-	// case (Schema().Equal() invariant — schema-compatibility).
-	if len(streamMeta) == 0 {
+	// If nothing matched, short-circuit with an empty batch. Building it via the
+	// same RecordBuilder path guarantees the schema is byte-for-byte identical
+	// to the populated case (Schema().Equal() invariant).
+	if len(postingsRows) == 0 {
 		rb := buildEmptyRecord(alloc, outSchema)
 		xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(int64(0)))
 		xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersReadTime.Observe(time.Since(startTime).Seconds()))
 		return rb, nil
 	}
 
-	// (2) POSTINGS-SIDE READ — apply kind=KindLabel predicate where the kind
-	// column physically lives. Project the four columns the join needs:
-	// (kind, object_path, section_index, stream_id_bitmap).
-	postingsRows, err := r.collectPostingsRows(ctx, streamMeta)
-	if err != nil {
-		return nil, err
-	}
-
-	// (3) ASSEMBLE 9-COLUMN OUTPUT — emit one join tuple per (postings row,
-	// matching stream id).
 	rb, err := buildReadPointersRecord(alloc, outSchema, postingsRows)
 	if err != nil {
 		return nil, fmt.Errorf("building ReadPointers output batch: %w", err)
@@ -492,176 +418,49 @@ func (r *Reader) ReadPointers(ctx context.Context, streamIDs map[int64]struct{},
 	return rb, nil
 }
 
-// collectStreamRowMetadata reads the sibling streams.Section using the
-// provided time-range and (optional) stream-ID predicates and returns a Go
-// map keyed by stream_id with the per-stream join metadata
-// (minTimestamp, maxTimestamp, rowCount, uncompressedSize).
-//
-// Predicate pushdown: streamIDs (when non-empty) is pushed as an
-// InPredicate on the stream_id column; the time-range is pushed as the
-// AndPredicate(NotLT(maxTs, start), NotGT(minTs, end)) shape mirroring
-// metastore.buildTimeRangePredicate. Pages whose statistics fall outside
-// the predicate are skipped by the dataset layer.
-func (r *Reader) collectStreamRowMetadata(
-	ctx context.Context,
-	alloc memory.Allocator,
-	streamIDs map[int64]struct{},
-	start, end time.Time,
-) (map[int64]streamRowMetadata, error) {
-	streamsCols, err := findStreamsColumnsByType(r.streamsSec.Columns(),
-		streams.ColumnTypeStreamID,
-		streams.ColumnTypeMinTimestamp,
-		streams.ColumnTypeMaxTimestamp,
-		streams.ColumnTypeRows,
-		streams.ColumnTypeUncompressedSize,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("finding streams columns: %w", err)
-	}
-	colStreamID, colMinTs, colMaxTs, colRows, colUncompressed := streamsCols[0], streamsCols[1], streamsCols[2], streamsCols[3], streamsCols[4]
-
-	sStart := scalar.NewTimestampScalar(arrow.Timestamp(start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-
-	var streamsPreds []streams.Predicate
-	streamsPreds = append(streamsPreds, streamsTimeRangePredicate(colMinTs, colMaxTs, sStart, sEnd))
-	if len(streamIDs) > 0 {
-		vals := make([]scalar.Scalar, 0, len(streamIDs))
-		for id := range streamIDs {
-			vals = append(vals, scalar.NewInt64Scalar(id))
-		}
-		streamsPreds = append(streamsPreds, streams.InPredicate{Column: colStreamID, Values: vals})
-	}
-
-	streamsReader := streams.NewReader(streams.ReaderOptions{
-		Columns:    []*streams.Column{colStreamID, colMinTs, colMaxTs, colRows, colUncompressed},
-		Predicates: streamsPreds,
-		Allocator:  alloc,
-	})
-	if err := streamsReader.Open(ctx); err != nil {
-		return nil, fmt.Errorf("opening streams reader for ReadPointers: %w", err)
-	}
-	defer func() { _ = streamsReader.Close() }()
-
-	out := make(map[int64]streamRowMetadata)
-	for {
-		rb, readErr := streamsReader.Read(ctx, readPointersBatchSize)
-		if rb != nil {
-			if err := accumulateStreamMeta(rb, out); err != nil {
-				return nil, err
-			}
-		}
-		if errors.Is(readErr, io.EOF) {
-			break
-		}
-		if readErr != nil {
-			return nil, fmt.Errorf("reading streams batch for ReadPointers: %w", readErr)
-		}
-	}
-	return out, nil
-}
-
-// accumulateStreamMeta extracts (stream_id, minTs, maxTs, rows,
-// uncompressed_size) tuples from rb and populates out. Column order matches
-// the projection in collectStreamRowMetadata: (stream_id, min_ts, max_ts,
-// rows, uncompressed_size). Rows with a null stream_id are skipped (cannot
-// participate in the join).
-//
-// Stream IDs must be unique across the streams section read. If two rows
-// surface the same stream_id (multi-page sections, future format quirks,
-// or builder bugs) accumulateStreamMeta returns an error rather than
-// silently overwriting earlier metadata — `rowCount` / `uncompressedSize`
-// would otherwise be silently truncated to the LAST occurrence. Surfacing
-// the duplicate as an error preserves the postings+streams join invariant
-// (one streams row per stream_id) and makes upstream bugs observable.
-func accumulateStreamMeta(rb arrow.RecordBatch, out map[int64]streamRowMetadata) error {
-	if rb.NumRows() == 0 {
-		return nil
-	}
-	streamIDCol, ok := rb.Column(0).(*array.Int64)
-	if !ok {
-		return fmt.Errorf("streams stream_id column has unexpected type %T", rb.Column(0))
-	}
-	minTsCol, ok := rb.Column(1).(*array.Timestamp)
-	if !ok {
-		return fmt.Errorf("streams min_timestamp column has unexpected type %T", rb.Column(1))
-	}
-	maxTsCol, ok := rb.Column(2).(*array.Timestamp)
-	if !ok {
-		return fmt.Errorf("streams max_timestamp column has unexpected type %T", rb.Column(2))
-	}
-	rowsCol, ok := rb.Column(3).(*array.Int64)
-	if !ok {
-		return fmt.Errorf("streams rows column has unexpected type %T", rb.Column(3))
-	}
-	uncompressedCol, ok := rb.Column(4).(*array.Int64)
-	if !ok {
-		return fmt.Errorf("streams uncompressed_size column has unexpected type %T", rb.Column(4))
-	}
-
-	for i := 0; i < int(rb.NumRows()); i++ {
-		if streamIDCol.IsNull(i) {
-			continue
-		}
-		id := streamIDCol.Value(i)
-		meta := streamRowMetadata{}
-		if !minTsCol.IsNull(i) {
-			meta.minTimestamp = int64(minTsCol.Value(i))
-		}
-		if !maxTsCol.IsNull(i) {
-			meta.maxTimestamp = int64(maxTsCol.Value(i))
-		}
-		if !rowsCol.IsNull(i) {
-			meta.rowCount = rowsCol.Value(i)
-		}
-		if !uncompressedCol.IsNull(i) {
-			meta.uncompressedSize = uncompressedCol.Value(i)
-		}
-		if _, exists := out[id]; exists {
-			return fmt.Errorf("duplicate stream_id %d in streams section", id)
-		}
-		out[id] = meta
-	}
-	return nil
-}
-
-// pointerJoinRow is a fully-assembled 9-column output tuple produced by the
-// postings+streams join. Field order matches the output schema; the
-// __streamLabelNames__ column is left implicit (always null).
+// pointerJoinRow is a fully-assembled output tuple produced from a postings
+// row. Field order matches the output schema; the __streamLabelNames__ column
+// is left implicit (always null). stream_id_ref is not stored separately: in
+// new-format objects it always equals stream_id (see buildReadPointersRecord).
 type pointerJoinRow struct {
-	objectPath       string
-	sectionIndex     int64
-	streamID         int64
-	streamIDRef      int64
-	minTimestamp     int64 // ns since epoch
-	maxTimestamp     int64 // ns since epoch
-	rowCount         int64
-	uncompressedSize int64
+	objectPath   string
+	sectionIndex int64
+	streamID     int64
+	minTimestamp int64 // ns since epoch
+	maxTimestamp int64 // ns since epoch
 }
 
 // collectPostingsRows reads the postings section projecting
-// (kind, object_path, section_index, stream_id_bitmap) with a kind=KindLabel
-// EqualPredicate pushdown, decodes each row's stream_id_bitmap (an LSB byte
-// bitmap, NOT a roaring bitmap — see pkg/memory.Bitmap and
-// pkg/dataobj/sections/postings/label_aggregator.go), and joins each set bit
-// against streamMeta to produce 9-column output tuples.
+// (kind, object_path, section_index, stream_id_bitmap, min_timestamp,
+// max_timestamp) with a kind=KindLabel EqualPredicate pushdown, decodes each
+// row's stream_id_bitmap (an LSB byte bitmap, NOT a roaring bitmap — see
+// pkg/memory.Bitmap and pkg/dataobj/sections/postings/label_aggregator.go),
+// and emits one output tuple per set bit. The streamIDs set (when non-empty)
+// and the [start,end] window are applied as row-level filters.
 func (r *Reader) collectPostingsRows(
 	ctx context.Context,
-	streamMeta map[int64]streamRowMetadata,
+	streamIDs map[int64]struct{},
+	start, end time.Time,
 ) ([]pointerJoinRow, error) {
 	postingsCols, err := findColumnsByType(r.opts.Columns,
 		ColumnTypeKind,
 		ColumnTypeObjectPath,
 		ColumnTypeSectionIndex,
 		ColumnTypeStreamIDBitmap,
+		ColumnTypeMinTimestamp,
+		ColumnTypeMaxTimestamp,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("finding postings columns for ReadPointers: %w", err)
 	}
-	colKind, colObjectPath, colSectionIndex, colStreamIDBitmap := postingsCols[0], postingsCols[1], postingsCols[2], postingsCols[3]
+	colKind, colObjectPath, colSectionIndex, colStreamIDBitmap, colMinTs, colMaxTs :=
+		postingsCols[0], postingsCols[1], postingsCols[2], postingsCols[3], postingsCols[4], postingsCols[5]
 
 	innerSection := colKind.Section.inner
-	innerColumns := []*columnar.Column{colKind.inner, colObjectPath.inner, colSectionIndex.inner, colStreamIDBitmap.inner}
+	innerColumns := []*columnar.Column{
+		colKind.inner, colObjectPath.inner, colSectionIndex.inner,
+		colStreamIDBitmap.inner, colMinTs.inner, colMaxTs.inner,
+	}
 
 	dset, err := columnar.MakeDataset(innerSection, innerColumns)
 	if err != nil {
@@ -675,6 +474,8 @@ func (r *Reader) collectPostingsRows(
 		colObjectPath:     dset.Columns()[1],
 		colSectionIndex:   dset.Columns()[2],
 		colStreamIDBitmap: dset.Columns()[3],
+		colMinTs:          dset.Columns()[4],
+		colMaxTs:          dset.Columns()[5],
 	}
 
 	kindEq := EqualPredicate{
@@ -705,6 +506,8 @@ func (r *Reader) collectPostingsRows(
 		columnToField(colObjectPath),
 		columnToField(colSectionIndex),
 		columnToField(colStreamIDBitmap),
+		columnToField(colMinTs),
+		columnToField(colMaxTs),
 	}, nil)
 
 	var out []pointerJoinRow
@@ -716,7 +519,7 @@ func (r *Reader) collectPostingsRows(
 			if err != nil {
 				return nil, fmt.Errorf("converting postings columnar batch to arrow: %w", err)
 			}
-			if err := appendPostingsJoinRows(rb, streamMeta, &out); err != nil {
+			if err := appendPostingsJoinRows(rb, streamIDs, start.UnixNano(), end.UnixNano(), &out); err != nil {
 				return nil, err
 			}
 		}
@@ -732,17 +535,21 @@ func (r *Reader) collectPostingsRows(
 }
 
 // appendPostingsJoinRows iterates rb's (kind, object_path, section_index,
-// stream_id_bitmap) rows, decodes each LSB bitmap, and emits a join tuple
-// for every (object_path, section_index, stream_id) where stream_id is in
-// streamMeta. Rows with a null bitmap or null section_index/object_path are
-// skipped — they cannot participate in the join.
-func appendPostingsJoinRows(rb arrow.RecordBatch, streamMeta map[int64]streamRowMetadata, out *[]pointerJoinRow) error {
+// stream_id_bitmap, min_timestamp, max_timestamp) rows, decodes each LSB
+// bitmap, and emits one tuple per (object_path, section_index, stream_id).
+//
+// Filtering: a row is skipped when its [min_timestamp, max_timestamp] does not
+// overlap [startNanos, endNanos]; within a surviving row, a stream_id is
+// skipped when streamIDs is non-empty and does not contain it (an empty
+// streamIDs applies no stream filter). Rows with a null bitmap or null
+// section_index/object_path are skipped — they cannot participate.
+func appendPostingsJoinRows(rb arrow.RecordBatch, streamIDs map[int64]struct{}, startNanos, endNanos int64, out *[]pointerJoinRow) error {
 	if rb.NumRows() == 0 {
 		return nil
 	}
-	// Postings projection: column 0 = kind (filtered by predicate), 1 =
-	// object_path (utf8), 2 = section_index (int64), 3 = stream_id_bitmap
-	// (binary).
+	// Postings projection: 0 = kind (filtered by predicate), 1 = object_path
+	// (utf8), 2 = section_index (int64), 3 = stream_id_bitmap (binary),
+	// 4 = min_timestamp (int64 ns), 5 = max_timestamp (int64 ns).
 	objectPathCol, ok := rb.Column(1).(*array.String)
 	if !ok {
 		return fmt.Errorf("postings object_path column has unexpected type %T", rb.Column(1))
@@ -755,11 +562,33 @@ func appendPostingsJoinRows(rb arrow.RecordBatch, streamMeta map[int64]streamRow
 	if !ok {
 		return fmt.Errorf("postings stream_id_bitmap column has unexpected type %T", rb.Column(3))
 	}
+	minTsCol, ok := rb.Column(4).(*array.Timestamp)
+	if !ok {
+		return fmt.Errorf("postings min_timestamp column has unexpected type %T", rb.Column(4))
+	}
+	maxTsCol, ok := rb.Column(5).(*array.Timestamp)
+	if !ok {
+		return fmt.Errorf("postings max_timestamp column has unexpected type %T", rb.Column(5))
+	}
+
+	filterStreams := len(streamIDs) > 0
 
 	for i := 0; i < int(rb.NumRows()); i++ {
 		if objectPathCol.IsNull(i) || sectionIndexCol.IsNull(i) || bitmapCol.IsNull(i) {
 			continue
 		}
+
+		// Time-range filter on the posting's [min, max]. A null bound cannot be
+		// evaluated, so don't prune on it; emit the bound as zero in that case.
+		var minTs, maxTs int64
+		if !minTsCol.IsNull(i) && !maxTsCol.IsNull(i) {
+			minTs = int64(minTsCol.Value(i))
+			maxTs = int64(maxTsCol.Value(i))
+			if maxTs < startNanos || minTs > endNanos {
+				continue // posting does not overlap the query window
+			}
+		}
+
 		objectPath := objectPathCol.Value(i)
 		sectionIndex := sectionIndexCol.Value(i)
 		bitmapBytes := bitmapCol.Value(i)
@@ -777,25 +606,17 @@ func appendPostingsJoinRows(rb arrow.RecordBatch, streamMeta map[int64]streamRow
 					continue
 				}
 				streamID := int64(byteIdx*8 + bitPos)
-				meta, ok := streamMeta[streamID]
-				if !ok {
-					continue
+				if filterStreams {
+					if _, keep := streamIDs[streamID]; !keep {
+						continue
+					}
 				}
 				*out = append(*out, pointerJoinRow{
 					objectPath:   objectPath,
 					sectionIndex: sectionIndex,
 					streamID:     streamID,
-					// streamIDRef: in new-format index objects the postings
-					// section does not carry a distinct stream_id_ref
-					// (legacy cross-index concept). For new-format the
-					// stream's identity within the source object IS its
-					// stream_id, so streamIDRef == streamID. This preserves
-					// schema-compatibility schema parity while emitting a meaningful value.
-					streamIDRef:      streamID,
-					minTimestamp:     meta.minTimestamp,
-					maxTimestamp:     meta.maxTimestamp,
-					rowCount:         meta.rowCount,
-					uncompressedSize: meta.uncompressedSize,
+					minTimestamp: minTs,
+					maxTimestamp: maxTs,
 				})
 			}
 		}
@@ -814,11 +635,16 @@ func buildReadPointersRecord(alloc memory.Allocator, schema *arrow.Schema, rows 
 		rb.Field(1).(*array.Int64Builder).Append(row.sectionIndex)
 		rb.Field(2).(*array.Int64Builder).Append(int64(pointers.PointerKindStreamIndex))
 		rb.Field(3).(*array.Int64Builder).Append(row.streamID)
-		rb.Field(4).(*array.Int64Builder).Append(row.streamIDRef)
+		// stream_id_ref: new-format objects carry no distinct cross-index ref,
+		// so the stream's identity within its source object IS its stream_id.
+		rb.Field(4).(*array.Int64Builder).Append(row.streamID)
 		rb.Field(5).(*array.TimestampBuilder).Append(arrow.Timestamp(row.minTimestamp))
 		rb.Field(6).(*array.TimestampBuilder).Append(arrow.Timestamp(row.maxTimestamp))
-		rb.Field(7).(*array.Int64Builder).Append(row.rowCount)
-		rb.Field(8).(*array.Int64Builder).Append(row.uncompressedSize)
+		// row_count and uncompressed_size are a metadata hint no downstream
+		// consumer reads; the postings section carries no per-stream row count,
+		// so emit zero rather than source it.
+		rb.Field(7).(*array.Int64Builder).Append(0)
+		rb.Field(8).(*array.Int64Builder).Append(0)
 		// __streamLabelNames__ field — append null; populated by
 		// upstream label-resolution decorators ( concern).
 		rb.Field(9).(*array.StringBuilder).AppendNull()
