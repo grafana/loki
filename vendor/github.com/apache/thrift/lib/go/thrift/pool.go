@@ -43,7 +43,7 @@ func newPool[T any](generate func() *T, reset func(*T)) *pool[T] {
 	}
 	return &pool[T]{
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return generate()
 			},
 		},

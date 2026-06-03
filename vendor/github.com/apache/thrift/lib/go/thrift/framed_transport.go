@@ -26,6 +26,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 )
 
 // Deprecated: Use DEFAULT_MAX_FRAME_SIZE instead.
@@ -60,8 +61,13 @@ func NewTFramedTransportFactory(factory TTransportFactory) TTransportFactory {
 
 // Deprecated: Use NewTFramedTransportFactoryConf instead.
 func NewTFramedTransportFactoryMaxLength(factory TTransportFactory, maxLength uint32) TTransportFactory {
+	safeMax := maxLength
+	if safeMax > math.MaxInt32 {
+		safeMax = math.MaxInt32
+	}
+
 	return NewTFramedTransportFactoryConf(factory, &TConfiguration{
-		MaxFrameSize: int32(maxLength),
+		MaxFrameSize: int32(safeMax),
 
 		noPropagation: true,
 	})
@@ -196,8 +202,12 @@ func (p *TFramedTransport) WriteString(s string) (n int, err error) {
 }
 
 func (p *TFramedTransport) Flush(ctx context.Context) error {
-	defer bufPool.put(&p.writeBuf)
 	size := p.writeBuf.Len()
+	if size > math.MaxUint32 {
+		return NewTTransportException(UNKNOWN_TRANSPORT_EXCEPTION, fmt.Sprintf("frame too large: %d bytes exceeds uint32 max",size))
+	}
+
+	defer bufPool.put(&p.writeBuf)
 	buf := p.buffer[:4]
 	binary.BigEndian.PutUint32(buf, uint32(size))
 	_, err := p.transport.Write(buf)
