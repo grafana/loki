@@ -53,14 +53,14 @@ var tracer = otel.Tracer("pkg/dataobj/metastore")
 
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
-	// useNewPath captures cfg.DataobjReadNewIndexSections at construction.
+	// usePostingsSections captures cfg.UsePostingsSections at construction.
 	// Cell-wide, read once at NewObjectMetastore; flipping the cfg-bool
 	// requires a rolling restart (D-02 — no hot-reload by design).
-	useNewPath  bool
-	bucket      objstore.Bucket
-	parallelism int
-	logger      log.Logger
-	metrics     *ObjectMetastoreMetrics
+	usePostingsSections bool
+	bucket              objstore.Bucket
+	parallelism         int
+	logger              log.Logger
+	metrics             *ObjectMetastoreMetrics
 }
 
 // SectionKey is a unique identifier for a section of a data object.
@@ -167,11 +167,11 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 	b = bucket.NewXCapBucket(b)
 
 	store := &ObjectMetastore{
-		useNewPath:  cfg.DataobjReadNewIndexSections,
-		bucket:      b,
-		parallelism: 64,
-		logger:      logger,
-		metrics:     metrics,
+		usePostingsSections: cfg.UsePostingsSections,
+		bucket:              b,
+		parallelism:         64,
+		logger:              logger,
+		metrics:             metrics,
 	}
 
 	return store
@@ -644,7 +644,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.SectionsRequest.Matchers,
 		req.SectionsRequest.Predicates,
 		req.BatchSize,
-		m.useNewPath,
+		m.usePostingsSections,
 	)
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil

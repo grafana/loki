@@ -58,13 +58,11 @@ type indexSectionsReader struct {
 	matchingStreamIDs  map[int64]struct{}
 	labelNamesByStream map[int64][]string
 
-	streamsReaders  []*streams.Reader
-	pointersReaders []*pointers.Reader
-	bloomReaders    []*pointers.Reader
-	// postingsReaders holds the new-format readers.
-	// indexSectionsReader is one-object-per-instance, so length is 0 or 1 in practice.
-	postingsReaders []*postings.Reader
-	useNewPath      bool
+	streamsReaders      []*streams.Reader
+	pointersReaders     []*pointers.Reader
+	bloomReaders        []*pointers.Reader
+	postingsReaders     []*postings.Reader
+	usePostingsSections bool
 
 	pointersReaderIdx int
 
@@ -94,7 +92,7 @@ func newIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
-	useNewPath bool,
+	usePostingsSections bool,
 ) *indexSectionsReader {
 	// Only keep equal predicates for bloom filtering
 	var equalPredicates []*labels.Matcher
@@ -109,16 +107,16 @@ func newIndexSectionsReader(
 	}
 
 	return &indexSectionsReader{
-		logger:             logger,
-		obj:                obj,
-		matchers:           matchers,
-		predicates:         equalPredicates,
-		batchSize:          batchSize,
-		start:              start,
-		end:                end,
-		matchingStreamIDs:  make(map[int64]struct{}),
-		labelNamesByStream: make(map[int64][]string),
-		useNewPath:         useNewPath,
+		logger:              logger,
+		obj:                 obj,
+		matchers:            matchers,
+		predicates:          equalPredicates,
+		batchSize:           batchSize,
+		start:               start,
+		end:                 end,
+		matchingStreamIDs:   make(map[int64]struct{}),
+		labelNamesByStream:  make(map[int64][]string),
+		usePostingsSections: usePostingsSections,
 	}
 }
 
@@ -192,20 +190,20 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	level.Debug(utillog.WithContext(ctx, r.logger)).Log(
 		"msg", "indexSectionsReader dispatch",
 		"object_size", r.obj.Size(),
-		"use_new_path", r.useNewPath,
+		"use_postings_sections", r.usePostingsSections,
 		"has_postings", len(unopenedPostings) > 0,
 		"combined", combined,
 	)
 
 	// If this object has no postings section, force legacy behavior. Without
-	// this, useNewPath=true could short-circuit to io.EOF and hide legacy data.
+	// this, usePostingsSections=true could short-circuit to io.EOF and hide legacy data.
 	if len(unopenedPostings) == 0 {
-		r.useNewPath = false
+		r.usePostingsSections = false
 	}
 
 	// When postings exist and the new path is enabled, prefer postings and skip
 	// opening legacy streams/pointers readers for this object.
-	if len(unopenedPostings) > 0 && r.useNewPath {
+	if len(unopenedPostings) > 0 && r.usePostingsSections {
 		unopenedPointers = nil
 		unopenedStreams = nil
 	}
@@ -213,9 +211,8 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	r.streamsReaders = make([]*streams.Reader, len(unopenedStreams))
 	r.pointersReaders = make([]*pointers.Reader, len(unopenedPointers))
 	r.bloomReaders = make([]*pointers.Reader, len(unopenedPointers))
-	// Only allocate postings readers when the new path is enabled so an empty
-	// slice means "postings path did not run."
-	if r.useNewPath {
+
+	if r.usePostingsSections {
 		r.postingsReaders = make([]*postings.Reader, len(unopenedPostings))
 	}
 
@@ -272,7 +269,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		})
 	}
 
-	if r.useNewPath {
+	if r.usePostingsSections {
 		for i, section := range unopenedPostings {
 			g.Go(func() error {
 				sec, err := postings.OpenWithObject(ctx, section, r.obj)
@@ -357,9 +354,6 @@ func (r *indexSectionsReader) openStreamsReader(
 	return reader, nil
 }
 
-// openPostingsReader opens a postings reader using the section's full column
-// set. Read-time filtering is passed to reader methods, so ReaderOptions stays
-// projection-only.
 func (r *indexSectionsReader) openPostingsReader(
 	ctx context.Context,
 	sec *postings.Section,
@@ -551,7 +545,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		return nil
 	}
 
-	if r.useNewPath {
+	if r.usePostingsSections {
 		return r.lazyResolveLabels(ctx)
 	}
 
@@ -756,7 +750,7 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 
 	// The new path reads pointers once via postings and then returns io.EOF on
 	// later calls so readAllPointers terminates naturally.
-	if r.useNewPath {
+	if r.usePostingsSections {
 		return r.readPointersNewPath(ctx)
 	}
 
@@ -1022,7 +1016,7 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 	// The new path delegates bloom matching to postings.ReadBloomRows +
 	// postings.MatchSections. predicateIndexesByName is only used by the
 	// legacy branch below.
-	if r.useNewPath {
+	if r.usePostingsSections {
 		return r.readMatchedSectionKeysNewPath(ctx)
 	}
 

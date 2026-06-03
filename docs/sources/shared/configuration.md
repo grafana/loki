@@ -1597,9 +1597,9 @@ dataobj:
     [partition_ratio: <int> | default = 10]
 
     # Experimental: When enabled, reads from new-format postings sections in
-    # index objects instead of the legacy pointers sections. Default false.
-    # CLI flag: -dataobj-metastore.dataobj-read-new-index-sections
-    [dataobj_read_new_index_sections: <boolean> | default = false]
+    # index objects instead of the streams sections. Defaults to false.
+    # CLI flag: -dataobj-metastore.use-postings-sections
+    [use_postings_sections: <boolean> | default = false]
 
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
