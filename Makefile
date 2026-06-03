@@ -150,6 +150,7 @@ help: ## Display this help
 .PHONY: clean clean-protos
 .PHONY: dev-k3d-loki dev-k3d-enterprise-logs dev-k3d-down
 .PHONY: helm-test helm-lint
+.PHONY: goversion
 
 #############
 # Variables #
@@ -191,6 +192,10 @@ binfmt:
 ################
 # Main Targets #
 ################
+
+goversion:
+	@echo $(GO_VERSION)
+
 all: logcli loki loki-canary ## build all executables (loki, logcli, loki-canary)
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
