@@ -25,10 +25,8 @@ else
 DOCKER_INTERACTIVE_FLAGS := --tty --interactive
 endif
 
-# Ensure you run `make release-workflows` after changing this
+# Ensure you run `make update-go-version` after changing this
 GO_VERSION         := 1.26.4
-# Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.35.1
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -150,7 +148,7 @@ help: ## Display this help
 .PHONY: clean clean-protos
 .PHONY: dev-k3d-loki dev-k3d-enterprise-logs dev-k3d-down
 .PHONY: helm-test helm-lint
-.PHONY: goversion
+.PHONY: goversion update-go-version
 
 #############
 # Variables #
@@ -195,6 +193,9 @@ binfmt:
 
 goversion:
 	@echo $(GO_VERSION)
+
+update-go-version: goversion release-workflows
+	@tools/go-version-bump.sh $(GO_VERSION)
 
 all: logcli loki loki-canary ## build all executables (loki, logcli, loki-canary)
 
