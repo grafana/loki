@@ -1088,7 +1088,6 @@ func TestIndexSectionsReader_NewPath_StreamLabelPredicateOnDisjointName(t *testi
 		require.NoError(t, err)
 		if rec != nil {
 			total += rec.NumRows()
-			rec.Release()
 		}
 	}
 
