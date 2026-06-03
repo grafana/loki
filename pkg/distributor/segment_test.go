@@ -44,14 +44,14 @@ func newPartitionRingWatcher(t *testing.T, partitionIDs ...int32) *rendezvous.Pa
 	})
 	require.NoError(t, err)
 
-	watcher := rendezvous.New(rendezvous.Config{Key: "test-ring"}, kvClient, log.NewNopLogger())
+	watcher := rendezvous.New(rendezvous.Config{Key: "test-ring", HeartbeatTimeout: time.Hour}, kvClient, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), watcher))
 	t.Cleanup(func() { _ = services.StopAndAwaitTerminated(context.Background(), watcher) })
 	return watcher
 }
 
-func newUninitialisedPartitionRingWatcher(t *testing.T) *rendezvous.PartitionRingWatcher {
-	return rendezvous.New(rendezvous.Config{Key: "test-ring"}, nil, log.NewNopLogger())
+func newUninitialisedPartitionRingWatcher() *rendezvous.PartitionRingWatcher {
+	return rendezvous.New(rendezvous.Config{Key: "test-ring", HeartbeatTimeout: time.Hour}, nil, log.NewNopLogger())
 }
 
 func TestGetSegmentationKey(t *testing.T) {
@@ -164,7 +164,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 	})
 
 	t.Run("uninitialised ring returns error", func(t *testing.T) {
-		watcher := newUninitialisedPartitionRingWatcher(t)
+		watcher := newUninitialisedPartitionRingWatcher()
 		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, prometheus.NewRegistry(), log.NewNopLogger())
 		_, err := resolver.Resolve("tenant", "test", 0x1, 0, 0)
 		require.EqualError(t, err, "partition ring watcher not initialised")
