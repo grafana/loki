@@ -40,9 +40,9 @@ type ReaderOptions struct {
 	Allocator memory.Allocator
 }
 
-// Validate returns an error if opts is invalid. ReaderOptions are valid when
+// validate returns an error if opts is invalid. ReaderOptions are valid when
 // Columns is non-empty and every column belongs to the same Section.
-func (opts *ReaderOptions) Validate() error {
+func (opts *ReaderOptions) validate() error {
 	if len(opts.Columns) == 0 {
 		return errors.New("ReaderOptions.Columns must be non-empty")
 	}
@@ -50,15 +50,15 @@ func (opts *ReaderOptions) Validate() error {
 	columnLookup := make(map[*Column]struct{}, len(opts.Columns))
 
 	// Ensure all columns belong to the same section.
-	var checkSection *Section
+	var section *Section
 	for i, col := range opts.Columns {
 		if col == nil {
 			return fmt.Errorf("ReaderOptions.Columns[%d] is nil", i)
 		}
-		if checkSection != nil && col.Section != checkSection {
-			return fmt.Errorf("all columns must belong to the same section: got=%p want=%p", col.Section, checkSection)
-		} else if checkSection == nil {
-			checkSection = col.Section
+		if section != nil && col.Section != section {
+			return fmt.Errorf("all columns must belong to the same section: got=%p want=%p", col.Section, section)
+		} else if section == nil {
+			section = col.Section
 		}
 		columnLookup[col] = struct{}{}
 	}
@@ -125,7 +125,7 @@ func (opts *ReaderOptions) Validate() error {
 	return errors.Join(errs...)
 }
 
-// A Reader reads batches of rows from a postings [Section]. The returned
+// A Reader reads batches of rows from postings [Section]. The returned
 // [arrow.RecordBatch] values carry one column per entry in
 // [ReaderOptions.Columns], named per [Reader.Schema].
 type Reader struct {
@@ -213,7 +213,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 }
 
 func (r *Reader) init(ctx context.Context) error {
-	if err := r.opts.Validate(); err != nil {
+	if err := r.opts.validate(); err != nil {
 		return fmt.Errorf("invalid reader options: %w", err)
 	}
 	if r.opts.Allocator == nil {
@@ -269,9 +269,7 @@ func (r *Reader) init(ctx context.Context) error {
 // readPointersBatchSize bounds per-batch allocations while amortising fixed costs when draining the adapter.
 const readPointersBatchSize = 4096
 
-// readPointersOutputSchema returns the Arrow schema emitted by ReadPointers, byte-for-byte
-// matching the pointers.Reader 9-column default pointer-scan projection (+ the internal
-// __streamLabelNames__ field). Field naming mirrors pointers.makeColumnName.
+// readPointersOutputSchema returns the Arrow schema emitted by ReadPointers
 func readPointersOutputSchema() *arrow.Schema {
 	// makeColumnName mirrors pointers/reader.go:504-515.
 	makeColumnName := func(label, name string, dty arrow.DataType) string {
@@ -474,9 +472,7 @@ func appendPostingsJoinRows(rb arrow.RecordBatch, streamIDs map[int64]struct{}, 
 	if rb.NumRows() == 0 {
 		return nil
 	}
-	// Postings projection: 0 = kind (filtered by predicate), 1 = object_path
-	// (utf8), 2 = section_index (int64), 3 = stream_id_bitmap (binary),
-	// 4 = min_timestamp (int64 ns), 5 = max_timestamp (int64 ns).
+
 	objectPathCol, ok := rb.Column(1).(*array.String)
 	if !ok {
 		return fmt.Errorf("postings object_path column has unexpected type %T", rb.Column(1))
@@ -685,8 +681,7 @@ func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 	return collected, nil
 }
 
-// collectBloomRowBatches drains adapter into a single output batch matching outputSchema,
-// dropping the trailing kind column.
+// collectBloomRowBatches drains adapter into a single output batch
 func (r *Reader) collectBloomRowBatches(
 	ctx context.Context,
 	adapter *columnar.ReaderAdapter,
@@ -717,9 +712,6 @@ func (r *Reader) collectBloomRowBatches(
 	return rb.NewRecordBatch(), nil
 }
 
-// appendBloomRowBatch copies the 4 output columns (object_path, section_index,
-// column_name, bloom_filter) from innerRB into rb. The 5th inner column (kind)
-// is intentionally dropped — it served the predicate only.
 func appendBloomRowBatch(innerRB arrow.RecordBatch, rb *array.RecordBuilder) error {
 	if innerRB.NumRows() == 0 {
 		return nil
@@ -774,19 +766,9 @@ func appendBloomRowBatch(innerRB arrow.RecordBatch, rb *array.RecordBuilder) err
 // readResolveLabelsBatchSize bounds per-batch allocations while amortising fixed costs.
 const readResolveLabelsBatchSize = 4096
 
-// matcherIndex identifies a label matcher by its position in the matchers slice. Position
-// (not (name, value)) is the key so every MatchType participates uniformly — regex/NotEqual
-// values are patterns that cannot key a set.
 type matcherIndex int
 
-// ResolveLabels returns the stream IDs matching every matcher (AND) against KindLabel rows,
-// plus a map from each matching stream ID to the label-column names that contributed it.
-//
-// Equal matchers push down as AND(column_name=Name, label_value=Value); non-Equal matchers push
-// down on column_name only, with the value re-applied row-side via Matcher.Matches so every
-// targeted column is read. The AND across matchers is the post-scan intersection of per-matcher
-// stream-id sets. An empty matcher slice returns (nil, nil, nil); returned maps are caller-owned.
-// Requires ColumnName, LabelValue, StreamIDBitmap, and Kind in opts.Columns.
+// ResolveLabels returns the stream IDs matching every matcher (AND) against KindLabel rows
 func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) (map[int64]struct{}, map[int64][]string, error) {
 	if !r.ready {
 		return nil, nil, errReaderNotOpen
@@ -1033,9 +1015,6 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 	return matchingStreamIDs, labelNamesByStream, nil
 }
 
-// splitByMatchType partitions matchers into Equal (predicate-pushdown
-// eligible) and other (NotEqual / Regex / NotRegex — Go-side row filter).
-// Nil matchers in the input are skipped.
 func splitByMatchType(ms []*labels.Matcher) (equal, other []*labels.Matcher) {
 	for _, m := range ms {
 		if m == nil {
@@ -1050,10 +1029,7 @@ func splitByMatchType(ms []*labels.Matcher) (equal, other []*labels.Matcher) {
 	return equal, other
 }
 
-// accumulateLabelRows adds each row's stream IDs to perMatcherStreams[i] for every matcher i
-// satisfied by the row's (column_name, label_value) via Matches (uniform across all MatchTypes),
-// and records the row's column_name into labelNamesByStreamSet for the inversion. The stream_id_bitmap
-// is an LSB byte bitmap (pkg/memory.Bitmap): bit p of byte b is stream id b*8 + p.
+// accumulateLabelRows adds each row's stream IDs to perMatcherStreams[i] for every matcher
 func accumulateLabelRows(
 	rb arrow.RecordBatch,
 	matchers []*labels.Matcher,
@@ -1139,13 +1115,7 @@ func accumulateLabelRows(
 
 // mapPredicates translates a slice of postings [Predicate] values into the
 // equivalent slice of [dataset.Predicate] values, using columnLookup to
-// resolve each [Column] to its corresponding [dataset.Column].
-//
-// For simplicity, [mapPredicate] and the functions it calls panic if they
-// encounter an unsupported conversion. These should normally be handled by
-// [ReaderOptions.Validate], but we catch any panics here to gracefully
-// return an error to the caller instead of potentially crashing the
-// goroutine.
+// resolve each [Column] to its corresponding [dataset.Column]
 func mapPredicates(ps []Predicate, columnLookup map[*Column]dataset.Column) (predicates []dataset.Predicate, err error) {
 	defer func() {
 		if r := recover(); r == nil {
@@ -1163,10 +1133,7 @@ func mapPredicates(ps []Predicate, columnLookup map[*Column]dataset.Column) (pre
 	return
 }
 
-// mapPredicate translates a single postings [Predicate] into the equivalent
-// [dataset.Predicate]. mapPredicate panics on an unrecognized predicate type
-// or an unsupported scalar conversion; [mapPredicates] recovers those panics
-// into errors.
+// mapPredicate translates a single postings [Predicate] into the equivalent [dataset.Predicate]
 func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.Predicate {
 	switch p := p.(type) {
 	case AndPredicate:
@@ -1270,10 +1237,7 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 	}
 }
 
-// mustConvertType returns the [datasetmd.PhysicalType] corresponding to
-// arrowType. mustConvertType panics if arrowType has no supported mapping;
-// callers wrap mustConvertType under [mapPredicates] which recovers the
-// panic into an error.
+// mustConvertType returns the [datasetmd.PhysicalType] corresponding to arrowType
 func mustConvertType(arrowType arrow.DataType) datasetmd.PhysicalType {
 	toType, ok := arrowconv.DatasetType(arrowType)
 	if !ok {
@@ -1293,10 +1257,7 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// StreamLabelColumnNames returns the distinct column_name values across KindLabel rows. Callers
-// (indexSectionsReader.filterBloomPredicates) use it to keep stream-label predicates out of the
-// bloom-row set, where they would match no bloom row and wrongly AND-drop every section. The
-// Reader must be opened before calling.
+// StreamLabelColumnNames returns the distinct column_name values across KindLabel rows
 func (r *Reader) StreamLabelColumnNames(ctx context.Context) ([]string, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
