@@ -25,17 +25,17 @@ if [[ -z "${VERSION}" ]]; then
   exit 1
 fi
 
-EXCLUDE_DIRS="-name operator -prune -o -name vendor -prune -o"
+EXCLUDE_DIRS=(-name operator -prune -o -name vendor -prune -o)
 
 print_green "Updating version in go.mod '${VERSION}'"
-find $EXCLUDE_DIRS -type f -name "go.mod" -exec grep -lE "^go " {} \; |
+find "${EXCLUDE_DIRS[@]}" -type f -name "go.mod" -exec grep -lE "^go " {} \; |
   while read -r x; do
     echo " Checking ${x}"
     ${SED} -i -re "s,go [0-9\.]+,go ${VERSION},g" "${x}"
   done
 
 print_green "Updating golang base images to '${VERSION}'"
-find $EXCLUDE_DIRS -type f -name "Dockerfile*" -exec grep -lE "FROM golang:" {} \; |
+find "${EXCLUDE_DIRS[@]}" -type f -name "Dockerfile*" -exec grep -lE "FROM golang:" {} \; |
   while read -r x; do
     echo " Checking ${x}"
     ${SED} -i -re "s,golang:[0-9\.]+,golang:${VERSION},g" "${x}"
