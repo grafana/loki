@@ -10,10 +10,12 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   publish-grafana-operator:
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
       dockerfile: "operator/Dockerfile"
@@ -23,6 +25,9 @@ jobs:
       tag: "latest"
 
   publish-openshift-operator:
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
       dockerfile: "operator/Dockerfile"
@@ -32,6 +37,9 @@ jobs:
       tag: "latest"
 
   publish-openshift-bundle:
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
       dockerfile: "operator/bundle/openshift/bundle.Dockerfile"
@@ -41,6 +49,9 @@ jobs:
       tag: "latest"
 
   publish-openshift-size-calculator:
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
       dockerfile: "operator/calculator.Dockerfile"
@@ -50,6 +61,9 @@ jobs:
       tag: "latest"
 
   publish-openshift-passthrough-gateway:
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
       dockerfile: "operator/passthrough-gateway.Dockerfile"
