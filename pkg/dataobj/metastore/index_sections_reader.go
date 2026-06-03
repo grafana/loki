@@ -239,7 +239,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 
 	for i, section := range unopenedPostings {
 		g.Go(func() error {
-			sec, err := postings.OpenWithObject(ctx, section, r.obj)
+			sec, err := postings.Open(ctx, section)
 			if err != nil {
 				return fmt.Errorf("opening postings section: %w", err)
 			}

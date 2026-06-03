@@ -96,9 +96,6 @@ type bloomFixture struct {
 // (objectPath, sectionIndex, columnName) tuple plus a list of values to
 // observe — bloomAggregator aggregates all values for the same key into
 // one bloom row whose bloom filter Test-positives all listed values.
-//
-// Uses Open (not OpenWithObject) — ReadBloomRows does not require a parent
-// back-pointer, and avoiding OpenWithObject keeps the fixture minimal.
 func buildBloomFixture(t *testing.T, entries []bloomFixtureEntry) bloomFixture {
 	t.Helper()
 

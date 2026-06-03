@@ -683,11 +683,10 @@ func TestIndexSectionsReader_GateOffOnCombinedFixtureRunsLegacyPath(t *testing.T
 // legacy pointer-scan output ( schema-compatibility schema parity, re-anchored
 // at the metastore boundary).
 //
-// Per the fixture calls AppendStream + ObserveLabelPosting
-// + ObserveBloomPosting ONLY — the pointers builder stays empty and Flush
-// skips it. AppendStream is still required because 's
-// ReadPointers joins against the sibling streams section via the
-// OpenWithObject back-pointer.
+// The fixture calls AppendStream + ObserveLabelPosting + ObserveBloomPosting
+// ONLY — the pointers builder stays empty and Flush skips it. The object still
+// carries a streams section (combined-object shape), but the postings read
+// path no longer reads it.
 func TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath(t *testing.T) {
 	t.Parallel()
 
@@ -848,9 +847,8 @@ func buildLegacyOnlyFixture(t *testing.T) *dataobj.Object {
 // postings sections only (no pointers). Per , this is
 // achieved by calling AppendStream + ObserveLabelPosting + ObserveBloomPosting
 // ONLY — the pointers builder stays empty (EstimatedSize == 0) and Flush
-// skips it. AppendStream is still required because 's
-// postings.Reader.ReadPointers joins against the sibling streams section
-// via the OpenWithObject back-pointer.
+// skips it. The object still carries a streams section (combined-object shape),
+// but the postings read path no longer reads it.
 //
 // The label observation must use ColumnName="app", LabelValue="foo" so
 // it matches the test's labels.MatchEqual("app", "foo") matcher and the
