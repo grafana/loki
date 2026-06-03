@@ -64,12 +64,7 @@ type indexSectionsReader struct {
 	postingsReaders     []*postings.Reader
 	usePostingsSections bool
 
-	pointersReaderIdx int
-
-	// postingsPointersRead tracks whether the single-batch ReadPointers
-	// result has already been returned on the new path. postings.Reader.ReadPointers
-	// returns one batch, while readAllPointers drains by repeatedly calling
-	// readPointers until io.EOF.
+	pointersReaderIdx    int
 	postingsPointersRead bool
 
 	// Stats
@@ -144,7 +139,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		return fmt.Errorf("extracting org ID: %w", err)
 	}
 
-	// Keep a dedicated dispatch span so path selection is observable.
+	// todo(shantanu): revisit this
 	ctx, dispatchSpan := xcap.StartSpan(ctx, tracer, "metastore.indexSectionsReader.init.dispatch")
 	defer dispatchSpan.End()
 
@@ -176,40 +171,19 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		}
 	}
 
-	// Compute combined-section flag against pre-reset state so the debug log
-	// accurately reflects what was observed before precedence kicks in.
-	combined := len(unopenedPostings) > 0 && len(unopenedPointers) > 0
-
-	// *dataobj.Object does not expose a path accessor. Log object size as a
-	// stable identifier for dispatch debugging.
-	level.Debug(utillog.WithContext(ctx, r.logger)).Log(
-		"msg", "indexSectionsReader dispatch",
-		"object_size", r.obj.Size(),
-		"use_postings_sections", r.usePostingsSections,
-		"has_postings", len(unopenedPostings) > 0,
-		"combined", combined,
-	)
-
-	// If this object has no postings section, force legacy behavior. Without
-	// this, usePostingsSections=true could short-circuit to io.EOF and hide legacy data.
-	if len(unopenedPostings) == 0 {
-		r.usePostingsSections = false
-	}
-
-	// When postings exist and the new path is enabled, prefer postings and skip
-	// opening legacy streams/pointers readers for this object.
-	if len(unopenedPostings) > 0 && r.usePostingsSections {
-		unopenedPointers = nil
+	// todo(shantanu): Is there a better way?
+	r.usePostingsSections = r.usePostingsSections && len(unopenedPostings) > 0
+	if r.usePostingsSections {
 		unopenedStreams = nil
+		unopenedPointers = nil
+	} else {
+		unopenedPostings = nil
 	}
 
 	r.streamsReaders = make([]*streams.Reader, len(unopenedStreams))
 	r.pointersReaders = make([]*pointers.Reader, len(unopenedPointers))
 	r.bloomReaders = make([]*pointers.Reader, len(unopenedPointers))
-
-	if r.usePostingsSections {
-		r.postingsReaders = make([]*postings.Reader, len(unopenedPostings))
-	}
+	r.postingsReaders = make([]*postings.Reader, len(unopenedPostings))
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -263,23 +237,21 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		})
 	}
 
-	if r.usePostingsSections {
-		for i, section := range unopenedPostings {
-			g.Go(func() error {
-				sec, err := postings.OpenWithObject(ctx, section, r.obj)
-				if err != nil {
-					return fmt.Errorf("opening postings section: %w", err)
-				}
+	for i, section := range unopenedPostings {
+		g.Go(func() error {
+			sec, err := postings.OpenWithObject(ctx, section, r.obj)
+			if err != nil {
+				return fmt.Errorf("opening postings section: %w", err)
+			}
 
-				reader, err := r.openPostingsReader(ctx, sec)
-				if err != nil {
-					return err
-				}
+			reader, err := r.openPostingsReader(ctx, sec)
+			if err != nil {
+				return err
+			}
 
-				r.postingsReaders[i] = reader
-				return nil
-			})
-		}
+			r.postingsReaders[i] = reader
+			return nil
+		})
 	}
 
 	if err := g.Wait(); err != nil {
@@ -539,64 +511,84 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		return nil
 	}
 
+	region := xcap.RegionFromContext(ctx)
+	startTime := time.Now()
+	defer func() {
+		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
+	}()
+
 	if r.usePostingsSections {
-		return r.lazyResolveLabels(ctx)
-	}
-
-	region := xcap.RegionFromContext(ctx)
-	startTime := time.Now()
-	defer func() {
-		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
-	}()
-
-	for _, sr := range r.streamsReaders {
-		if sr == nil {
-			// Sections can be skipped during Open if they don't have relevant data.
-			continue
-		}
-
-		streamIDColumnIndex := slices.IndexFunc(sr.Columns(), func(c *streams.Column) bool { return c.Type == streams.ColumnTypeStreamID })
-		if streamIDColumnIndex < 0 {
-			return fmt.Errorf("streams schema missing stream_id column")
-		}
-
-		var requestedLabelNames []string
-		for _, col := range sr.Columns() {
-			if col.Name != "" && col.Type == streams.ColumnTypeLabel {
-				requestedLabelNames = append(requestedLabelNames, col.Name)
-			}
-		}
-
-		for {
-			rec, err := sr.Read(ctx, r.batchSize)
-			if err != nil && !errors.Is(err, io.EOF) {
-				return fmt.Errorf("reading streams record batch: %w", err)
+		if len(r.postingsReaders) > 0 && r.postingsReaders[0] != nil {
+			pr := r.postingsReaders[0]
+			streamIDs, labelNamesByStream, err := pr.ResolveLabels(ctx, r.matchers)
+			if err != nil {
+				return fmt.Errorf("resolving labels via postings: %w", err)
 			}
 
-			if rec != nil && rec.NumRows() > 0 {
-				streamIDCol, ok := rec.Column(streamIDColumnIndex).(*array.Int64)
-				if !ok {
-					return fmt.Errorf("stream_id column has unexpected type %T", rec.Column(streamIDColumnIndex))
+			if streamIDs != nil {
+				r.matchingStreamIDs = streamIDs
+			}
+			if labelNamesByStream != nil {
+				r.labelNamesByStream = labelNamesByStream
+			}
+
+			// todo(shantanu): can it be simplified under the ResolveLabels itself?
+			if streamLabelNames := pr.StreamLabelColumnNames(); len(streamLabelNames) > 0 {
+				for streamID := range r.matchingStreamIDs {
+					r.addLabelNamesForStream(streamID, streamLabelNames)
 				}
-				for i := 0; i < int(rec.NumRows()); i++ {
-					if streamIDCol.IsNull(i) {
-						continue
+			}
+		}
+	} else {
+		for _, sr := range r.streamsReaders {
+			if sr == nil {
+				// Sections can be skipped during Open if they don't have relevant data.
+				continue
+			}
+
+			streamIDColumnIndex := slices.IndexFunc(sr.Columns(), func(c *streams.Column) bool { return c.Type == streams.ColumnTypeStreamID })
+			if streamIDColumnIndex < 0 {
+				return fmt.Errorf("streams schema missing stream_id column")
+			}
+
+			var requestedLabelNames []string
+			for _, col := range sr.Columns() {
+				if col.Name != "" && col.Type == streams.ColumnTypeLabel {
+					requestedLabelNames = append(requestedLabelNames, col.Name)
+				}
+			}
+
+			for {
+				rec, err := sr.Read(ctx, r.batchSize)
+				if err != nil && !errors.Is(err, io.EOF) {
+					return fmt.Errorf("reading streams record batch: %w", err)
+				}
+
+				if rec != nil && rec.NumRows() > 0 {
+					streamIDCol, ok := rec.Column(streamIDColumnIndex).(*array.Int64)
+					if !ok {
+						return fmt.Errorf("stream_id column has unexpected type %T", rec.Column(streamIDColumnIndex))
 					}
-					streamID := streamIDCol.Value(i)
-					r.matchingStreamIDs[streamID] = struct{}{}
-					r.addLabelNamesForStream(streamID, requestedLabelNames)
+					for i := 0; i < int(rec.NumRows()); i++ {
+						if streamIDCol.IsNull(i) {
+							continue
+						}
+						streamID := streamIDCol.Value(i)
+						r.matchingStreamIDs[streamID] = struct{}{}
+						r.addLabelNamesForStream(streamID, requestedLabelNames)
+					}
+				}
+
+				if errors.Is(err, io.EOF) {
+					break
 				}
 			}
 
-			if errors.Is(err, io.EOF) {
-				break
+			// Eagerly close the streams reader to release resources.
+			if err := sr.Close(); err != nil {
+				level.Warn(utillog.WithContext(ctx, r.logger)).Log("msg", "error closing streams reader", "err", err)
 			}
 		}
-
-		// Eagerly close the streams reader to release resources.
-		if err := sr.Close(); err != nil {
-			level.Warn(utillog.WithContext(ctx, r.logger)).Log("msg", "error closing streams reader", "err", err)
-		}
 	}
 
 	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
@@ -607,82 +599,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 	return nil
 }
 
-// lazyResolveLabels is the new-path replacement for lazyReadStreams. It calls
-// postings.Reader.ResolveLabels on the postings reader opened in init().
-// indexSectionsReader does not open a streams.Reader on this path.
-//
-// The output fields (matchingStreamIDs and labelNamesByStream) have the same
-// shape as the legacy path so downstream filtering logic can stay unchanged.
-//
-// Emit the same metastore stream-read stats as the legacy path so existing
-// dashboards remain comparable.
-func (r *indexSectionsReader) lazyResolveLabels(ctx context.Context) error {
-	if r.readStreams {
-		return nil
-	}
-
-	region := xcap.RegionFromContext(ctx)
-
-	// Defensive: if no postings reader is available, treat as empty result so
-	// Read() returns io.EOF cleanly.
-	if len(r.postingsReaders) == 0 || r.postingsReaders[0] == nil {
-		r.readStreams = true
-		r.hasData = false
-		return nil
-	}
-
-	startTime := time.Now()
-	defer func() {
-		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
-	}()
-
-	pr := r.postingsReaders[0]
-	streamIDs, labelNamesByStream, err := pr.ResolveLabels(ctx, r.matchers)
-	if err != nil {
-		return fmt.Errorf("resolving labels via postings: %w", err)
-	}
-
-	// Keep both maps non-nil so downstream consumers can append/read without
-	// extra nil checks.
-	if streamIDs == nil {
-		streamIDs = make(map[int64]struct{})
-	}
-	if labelNamesByStream == nil {
-		labelNamesByStream = make(map[int64][]string)
-	}
-
-	r.matchingStreamIDs = streamIDs
-	r.labelNamesByStream = labelNamesByStream
-
-	// ResolveLabels only reports names seen while evaluating matcher rows. Add
-	// all stream-label column names from the sibling streams section so
-	// stream-label predicates are removed before bloom matching. Without this,
-	// bloom matching can incorrectly drop every section when a stream-label
-	// predicate has no bloom row.
-	streamLabelNames := pr.StreamLabelColumnNames()
-	if len(streamLabelNames) > 0 {
-		for streamID := range r.matchingStreamIDs {
-			r.addLabelNamesForStream(streamID, streamLabelNames)
-		}
-	}
-
-	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
-
-	r.filterBloomPredicates()
-	r.readStreams = true
-	r.hasData = len(r.matchingStreamIDs) > 0
-	return nil
-}
-
-// filterBloomPredicates removes predicates that reference known stream labels.
 // This prevents false negatives on structured metadata columns with the same name.
-//
-// This method overwrites r.predicates with the filtered slice. If callers need
-// the original list, they must copy it before Read/Open.
-//
-// This runs once per reader lifetime because both paths gate it on
-// r.readStreams. Treat indexSectionsReader as single-shot for one
-// matcher/predicate set.
 func (r *indexSectionsReader) filterBloomPredicates() {
 	allLabelNames := r.allLabelNames()
 	filtered := make([]*labels.Matcher, 0, len(r.predicates))
@@ -742,10 +659,8 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 		r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
 	}(time.Now())
 
-	// The new path reads pointers once via postings and then returns io.EOF on
-	// later calls so readAllPointers terminates naturally.
 	if r.usePostingsSections {
-		return r.readPointersNewPath(ctx)
+		return r.readPointersFromPostings(ctx)
 	}
 
 	for r.pointersReaderIdx < len(r.pointersReaders) {
@@ -790,19 +705,8 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 	return nil, io.EOF
 }
 
-// readPointersNewPath is the new-path replacement for the legacy pointers
-// loop. It calls postings.Reader.ReadPointers once and returns io.EOF on
-// subsequent calls so readAllPointers can drain.
-//
-// No extra stream-id filtering is needed here because ReadPointers receives
-// matchingStreamIDs and applies that filter in its join path.
-//
-// The output schema matches downstream expectations used by buildKeepBitmask
-// and pointers.FromRecordBatch.
-//
-// Emit the same pointer-read stats as the legacy path; readPointers() wraps
-// both paths with the same timing stat.
-func (r *indexSectionsReader) readPointersNewPath(ctx context.Context) (arrow.RecordBatch, error) {
+// readPointersFromPostings reads section pointers from the new postings section
+func (r *indexSectionsReader) readPointersFromPostings(ctx context.Context) (arrow.RecordBatch, error) {
 	if r.postingsPointersRead {
 		return nil, io.EOF
 	}
@@ -822,9 +726,6 @@ func (r *indexSectionsReader) readPointersNewPath(ctx context.Context) (arrow.Re
 	}
 	r.postingsPointersRead = true
 
-	// Arrow contract: ReadPointers' doc-comment says "Caller must release
-	// the returned batch." A non-nil zero-row batch still pins allocator
-	// buffers, so release it explicitly before short-circuiting to io.EOF.
 	if rec == nil || rec.NumRows() == 0 {
 		if rec != nil {
 			rec.Release()
@@ -1003,11 +904,11 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 		predicateIndexesByName[predicate.Name] = append(predicateIndexesByName[predicate.Name], i)
 	}
 
-	// The new path delegates bloom matching to postings.ReadBloomRows +
+	// The postings path delegates bloom matching to postings.ReadBloomRows +
 	// postings.MatchSections. predicateIndexesByName is only used by the
 	// legacy branch below.
 	if r.usePostingsSections {
-		return r.readMatchedSectionKeysNewPath(ctx)
+		return r.readMatchedSectionKeysFromPostings(ctx)
 	}
 
 	sectionMatches := make(map[SectionKey]map[int]struct{})
@@ -1088,16 +989,10 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 	return matchedSectionKeys, nil
 }
 
-// readMatchedSectionKeysNewPath replaces the legacy bloom-reader loop. It
-// reads bloom rows from postings and converts postings.Key into
+// readMatchedSectionKeysFromPostings replaces the legacy bloom-reader loop. It
+// reads bloom rows from the postings section and converts postings.Key into
 // metastore.SectionKey at this layer to avoid package import cycles.
-//
-// MatchSections preserves AND semantics across equal matchers, mirroring the
-// legacy behavior.
-//
-// r.predicates is already pre-filtered to MatchEqual entries, and
-// ReadBloomRows returns the projection MatchSections expects.
-func (r *indexSectionsReader) readMatchedSectionKeysNewPath(ctx context.Context) (map[SectionKey]struct{}, error) {
+func (r *indexSectionsReader) readMatchedSectionKeysFromPostings(ctx context.Context) (map[SectionKey]struct{}, error) {
 	if len(r.postingsReaders) == 0 || r.postingsReaders[0] == nil {
 		return map[SectionKey]struct{}{}, nil
 	}

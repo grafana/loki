@@ -702,7 +702,7 @@ func TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath(t *testing.T) {
 	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
 	// Force the new-path gate ON. Pre-scan sees a postings section; 	// invariant is satisfied (postings section exists); the new errgroup
 	// branch opens the postings section; lazyReadStreams / readPointers
-	// dispatch through the new helpers (lazyResolveLabels / readPointersNewPath).
+	// dispatch through the postings path (readPointersFromPostings).
 	r.usePostingsSections = true
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
