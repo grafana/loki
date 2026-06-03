@@ -2,7 +2,6 @@ package rendezvous
 
 import (
 	"context"
-	"time"
 
 	"go.uber.org/atomic"
 
@@ -28,8 +27,7 @@ type PartitionRingWatcher struct {
 }
 
 type Config struct {
-	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout" category:"advanced"`
-	Key              string        // The Key where membership is stored in the KV store
+	Key string // The Key where membership is stored in the KV store
 }
 
 // New creates a new PartitionRingWatcher that watches the given KV Key for ring membership.
@@ -76,8 +74,7 @@ func (s *PartitionRingWatcher) updateShuffleSharder(ringDesc *ring.PartitionRing
 	partitions := ringDesc.Partitions
 	partitionIDs := make([]int32, 0, len(partitions))
 	for _, partition := range partitions {
-		if partition.State == ring.PartitionActive &&
-			time.Since(time.Unix(partition.StateTimestamp, 0)) <= s.config.HeartbeatTimeout {
+		if partition.State == ring.PartitionActive {
 			partitionIDs = append(partitionIDs, partition.Id)
 		}
 	}

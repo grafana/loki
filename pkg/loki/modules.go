@@ -2304,8 +2304,7 @@ func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
 	if t.Cfg.Distributor.DataObjTeeConfig.UseRendezvousHashing {
 		t.rendezvousPartitionWatcher = rendezvous.New(
 			rendezvous.Config{
-				HeartbeatTimeout: t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.HeartbeatTimeout,
-				Key:              consumer.PartitionRingKey,
+				Key: consumer.PartitionRingKey,
 			},
 			kvClient,
 			util_log.Logger,

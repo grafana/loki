@@ -49,7 +49,7 @@ func activePartitionRing(ids ...int32) ring.PartitionRingDesc {
 
 func startWatcher(t *testing.T, kvClient kv.Client) *PartitionRingWatcher {
 	t.Helper()
-	watcher := New(Config{Key: testKey, HeartbeatTimeout: time.Hour}, kvClient, log.NewNopLogger())
+	watcher := New(Config{Key: testKey}, kvClient, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), watcher))
 	t.Cleanup(func() { assert.NoError(t, services.StopAndAwaitTerminated(context.Background(), watcher)) })
 	return watcher
@@ -122,25 +122,4 @@ func TestPartitionWatcher_InactivePartitionsExcluded(t *testing.T) {
 	sharder := watcher.ShuffleSharder()
 	require.NotNil(t, sharder)
 	require.ElementsMatch(t, []int32{1}, sharder.partitions)
-}
-
-// TestPartitionWatcher_StalePartitionsExcluded verifies that active partitions
-// whose StateTimestamp is older than HeartbeatTimeout are excluded from the sharder.
-func TestPartitionWatcher_StalePartitionsExcluded(t *testing.T) {
-	kvClient := newTestKVClient(t)
-
-	desc := ring.PartitionRingDesc{
-		Partitions: map[int32]ring.PartitionDesc{
-			1: {Id: 1, State: ring.PartitionActive, Tokens: []uint32{1}, StateTimestamp: time.Now().Unix()},
-			2: {Id: 2, State: ring.PartitionActive, Tokens: []uint32{2}, StateTimestamp: time.Now().Add(-2 * time.Hour).Unix()},
-		},
-		Owners: map[string]ring.OwnerDesc{},
-	}
-	writePartitionRing(t, kvClient, desc)
-
-	watcher := startWatcher(t, kvClient)
-
-	sharder := watcher.ShuffleSharder()
-	require.NotNil(t, sharder)
-	require.ElementsMatch(t, []int32{1}, sharder.partitions, "stale partition 2 should be excluded")
 }
