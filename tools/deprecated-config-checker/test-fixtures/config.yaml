@@ -140,3 +140,4 @@ limits_config:
   per_tenant_override_config: ./overrides.yaml # DEPRECATED
   per_tenant_override_period: 5s # DEPRECATED
   allow_deletes: true # DELETED
+  tsdb_sharding_strategy: bounded # DEPRECATED

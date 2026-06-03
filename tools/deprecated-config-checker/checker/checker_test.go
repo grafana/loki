@@ -83,6 +83,7 @@ var (
 		"limits_config.ruler_remote_write_sigv4_config",
 		"limits_config.per_tenant_override_config",
 		"limits_config.per_tenant_override_period",
+		"limits_config.tsdb_sharding_strategy",
 	}
 
 	expectedRuntimeConfigDeletes = []string{
