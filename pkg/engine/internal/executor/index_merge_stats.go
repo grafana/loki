@@ -18,16 +18,12 @@ import (
 //
 //	(Labels in SortSchema order, MinTimestamp, MaxTimestamp, ObjectPath, SectionIndex)
 //
-// The first three components match the on-disk stats sort
-// (pkg/dataobj/sections/stats/builder.go:compareStats), so each pile emits
-// rows in this order and the heap pop-order agrees on the prefix.
-//
-// ObjectPath and SectionIndex are appended as final tiebreakers so that
-// distinct source sections can never compare equal.
-//
 // Assumes all input rows share the same SortSchema; this is validated
 // upstream in classifyRuns.
 func compareStatsRow(a, b stats.Stat) int {
+	// The first three components (labels, minT, maxT) match the stats builder sort
+	// (pkg/dataobj/sections/stats/builder.go:compareStats)
+	//
 	// Compare label values in the order defined by SortSchema.
 	for labelName := range strings.SplitSeq(a.SortSchema, ",") {
 		va := a.Labels[labelName]
@@ -56,6 +52,8 @@ func compareStatsRow(a, b stats.Stat) int {
 		return 1
 	}
 
+	// ObjectPath and SectionIndex are appended as final tiebreakers so that
+	// distinct source sections can never compare equal.
 	if a.ObjectPath != b.ObjectPath {
 		if a.ObjectPath < b.ObjectPath {
 			return -1
