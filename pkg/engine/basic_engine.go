@@ -119,6 +119,8 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 	queryType := logqlQueryType(params.GetExpression())
 
+	e.metrics.observeLogQLShape(queryType, logqlShapeOf(params.QueryString(), params.GetExpression()))
+
 	logicalPlan, err := func() (*logical.Plan, error) {
 		_, span := tracer.Start(ctx, "QueryEngine.Execute.logicalPlan")
 		defer span.End()
@@ -180,6 +182,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			span.SetStatus(codes.Error, "failed to optimize physical plan")
 			return nil, ErrNotSupported
 		}
+		e.metrics.recordPhysicalRules(planner.FiredRules())
 
 		plan, err = physical.WrapWithBatching(plan, e.cfg.BatchSize)
 		if err != nil {
@@ -189,6 +192,8 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			span.SetStatus(codes.Error, "failed to wrap physical plan with batching")
 			return nil, ErrNotSupported
 		}
+
+		e.metrics.observePhysicalShape(physicalPlanShapeOf(plan))
 
 		durPhysicalPlanning = timer.ObserveDuration()
 		level.Info(logger).Log(

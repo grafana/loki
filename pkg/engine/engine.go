@@ -242,6 +242,8 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		"cache_enabled", cacheEnabled,
 	)
 
+	e.metrics.observeLogQLShape(q.queryType, logqlShapeOf(params.QueryString(), params.GetExpression()))
+
 	ctx, task := gotrace.NewTask(ctx, "Engine.Execute")
 	defer task.End()
 
@@ -384,7 +386,11 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Pa
 		return nil, ErrNotSupported
 	}
 
-	if err := logical.Optimize(logicalPlan); err != nil {
+	var opt logical.Optimizer
+	err = opt.Optimize(logicalPlan)
+	passes := opt.Report()
+	e.metrics.recordLogicalPasses(passes)
+	if err != nil {
 		level.Warn(q.Logger()).Log("msg", "failed to optimize logical plan", "err", err)
 		q.RecordError(ctx, err)
 		return nil, ErrNotSupported
@@ -398,6 +404,7 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Pa
 
 		"plan", logicalPlan.String(),
 		"duration_ms", duration.Milliseconds(),
+		"passes_fired", encodeLogicalPasses(passes),
 	)
 	span.SetAttributes(
 		attribute.Stringer("plan", logicalPlan),
@@ -432,6 +439,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 		return nil, ErrNotSupported
 	}
 
+	var rules map[string]bool
 	{
 		optimizeStart := time.Now()
 
@@ -441,6 +449,8 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 			q.RecordError(ctx, err)
 			return nil, ErrNotSupported
 		}
+		rules = planner.FiredRules()
+		e.metrics.recordPhysicalRules(rules)
 
 		optimizeDuration := time.Since(optimizeStart)
 		span.Record(statPhysicalOptimizeDuration.Observe(int64(optimizeDuration)))
@@ -456,7 +466,9 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 	duration := timer.ObserveDuration()
 	span.Record(statPhysicalPlanDuration.Observe(int64(duration)))
 
-	printPhysicalPlanSummary(q, physicalPlan, duration)
+	e.metrics.observePhysicalShape(physicalPlanShapeOf(physicalPlan))
+
+	printPhysicalPlanSummary(q, physicalPlan, duration, rules)
 	span.SetAttributes(
 		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
 	)
@@ -467,7 +479,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 
 // printExecutionSummary prints a general summary of the execution, including
 // timing and cache information.
-func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Duration) {
+func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Duration, rules map[string]bool) {
 	var (
 		indexQueryDuration, _ = q.capture.Value(statPhysicalIndexQueryDuration).Int64()
 		optimizeDuration, _   = q.capture.Value(statPhysicalOptimizeDuration).Int64()
@@ -493,7 +505,7 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 			"other":       otherDuration,
 		}),
 
-		// TODO(rfratto): include stats on which optimization passes applied/didn't apply
+		"rules_fired", encodePhysicalRules(rules),
 
 		// Large plans result in log line truncation, retain the other
 		// kvs by moving this to the end.
@@ -537,7 +549,9 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 			duration := timer.ObserveDuration()
 			q.rootRegion.Record(statPhysicalPlanDuration.Observe(int64(duration)))
 
-			printPhysicalPlanSummary(q, plan, duration)
+			// Index queries plan via planner.Plan and don't run the rule-based
+			// optimizer, so there are no rule firings to report here.
+			printPhysicalPlanSummary(q, plan, duration, nil)
 		}
 
 		// Disable admission lanes for metastore queries
