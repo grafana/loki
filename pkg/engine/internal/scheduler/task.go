@@ -213,6 +213,9 @@ func (t *task) TryAssign(doAssign func() error) error {
 //     was assigned to a worker.
 //   - [schedulerstat.TaskTotalDuration] is always recorded.
 //
+// It also records [schedulerstat.TaskFinishTime], the absolute terminal
+// timestamp, which the workflow uses to approximate the query's critical path.
+//
 // RecordTerminalObservations must only be called once per task and only when
 // the task has reached a terminal state.
 func (t *task) RecordTerminalObservations(now time.Time) {
@@ -229,5 +232,6 @@ func (t *task) RecordTerminalObservations(now time.Time) {
 		t.region.Record(schedulerstat.TaskExecutionDuration.Observe(now.Sub(assignTime).Nanoseconds()))
 	}
 	t.region.Record(schedulerstat.TaskTotalDuration.Observe(now.Sub(t.createTime).Nanoseconds()))
+	t.region.Record(schedulerstat.TaskFinishTime.Observe(now.UnixNano()))
 	t.region.End()
 }

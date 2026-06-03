@@ -37,4 +37,14 @@ var (
 	// sum of the partitions is a residual that indicates an unaccounted-for
 	// phase.
 	TaskTotalDuration = xcap.NewStatisticInt64("scheduler.task.duration", xcap.AggregationTypeSum)
+
+	// TaskFinishTime is the wall-clock time (Unix nanoseconds) at which the
+	// scheduler observed the task reach a terminal state. It is recorded once
+	// per task and rides the task's capture back to the workflow, which uses it
+	// to approximate the query's critical path.
+	//
+	// AggregationTypeMax keeps the latest observed finish time when captures are
+	// merged; the per-task read in the workflow is unaffected because each task
+	// records this stat exactly once.
+	TaskFinishTime = xcap.NewStatisticInt64("scheduler.task.finish.time", xcap.AggregationTypeMax)
 )
