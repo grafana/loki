@@ -264,6 +264,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	logicalPlan, err := e.buildLogicalPlan(ctx, q, params)
 	if err != nil {
 		e.metrics.query.subqueries.WithLabelValues(statusNotImplemented, q.queryType).Inc()
+		e.metrics.query.stageFailures.WithLabelValues(stageLogicalPlanning, statusNotImplemented, q.queryType).Inc()
 		q.RecordError(ctx, errors.New("failed to create logical plan"))
 		return logqlmodel.Result{}, ErrNotSupported
 	}
@@ -273,6 +274,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	physicalPlan, err := e.buildPhysicalPlan(ctx, q, params, catalog, logicalPlan)
 	if err != nil {
 		e.metrics.query.subqueries.WithLabelValues(statusFailure, q.queryType).Inc()
+		e.metrics.query.stageFailures.WithLabelValues(stagePhysicalPlanning, statusFailure, q.queryType).Inc()
 		q.RecordError(ctx, errors.New("failed to create physical plan"))
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
@@ -284,6 +286,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	wf, err := q.Prepare(ctx, physicalPlan, useAdmissionLanes)
 	if err != nil {
 		e.metrics.query.subqueries.WithLabelValues(statusFailure, q.queryType).Inc()
+		e.metrics.query.stageFailures.WithLabelValues(stagePrepare, statusFailure, q.queryType).Inc()
 		q.RecordError(ctx, errors.New("failed to create execution plan"))
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
@@ -295,6 +298,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		level.Error(logger).Log("msg", "failed to execute query", "err", err)
 
 		e.metrics.query.subqueries.WithLabelValues(statusFailure, q.queryType).Inc()
+		e.metrics.query.stageFailures.WithLabelValues(stageExecution, statusFailure, q.queryType).Inc()
 		q.RecordError(ctx, errors.New("failed to execute query"))
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
@@ -304,6 +308,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	builder, err := e.execute(ctx, q, params, pipeline)
 	if err != nil {
 		e.metrics.query.subqueries.WithLabelValues(statusFailure, q.queryType).Inc()
+		e.metrics.query.stageFailures.WithLabelValues(stageExecution, statusFailure, q.queryType).Inc()
 		q.RecordError(ctx, errors.New("error during query execution"))
 		return logqlmodel.Result{}, err
 	}

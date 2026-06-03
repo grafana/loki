@@ -130,6 +130,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 			e.metrics.query.subqueries.WithLabelValues(statusNotImplemented, queryType).Inc()
+			e.metrics.query.stageFailures.WithLabelValues(stageLogicalPlanning, statusNotImplemented, queryType).Inc()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to create logical plan")
 			return nil, ErrNotSupported
@@ -169,6 +170,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
 			e.metrics.query.subqueries.WithLabelValues(statusFailure, queryType).Inc()
+			e.metrics.query.stageFailures.WithLabelValues(stagePhysicalPlanning, statusFailure, queryType).Inc()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to create physical plan")
 			return nil, ErrNotSupported
@@ -178,6 +180,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
 			e.metrics.query.subqueries.WithLabelValues(statusFailure, queryType).Inc()
+			e.metrics.query.stageFailures.WithLabelValues(stagePhysicalPlanning, statusFailure, queryType).Inc()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to optimize physical plan")
 			return nil, ErrNotSupported
@@ -188,6 +191,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to wrap physical plan with batching", "err", err)
 			e.metrics.query.subqueries.WithLabelValues(statusFailure, queryType).Inc()
+			e.metrics.query.stageFailures.WithLabelValues(stagePhysicalPlanning, statusFailure, queryType).Inc()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to wrap physical plan with batching")
 			return nil, ErrNotSupported
@@ -248,6 +252,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 		if err := collectResult(ctx, pipeline, builder); err != nil {
 			e.metrics.query.subqueries.WithLabelValues(statusFailure, queryType).Inc()
+			e.metrics.query.stageFailures.WithLabelValues(stageExecution, statusFailure, queryType).Inc()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to build results")
 			return nil, err
