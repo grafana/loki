@@ -21,11 +21,13 @@ type ShuffleSharder struct {
 }
 
 func NewShuffleSharder(partitions []int32) ShuffleSharder {
+	partitionsCopy := make([]int32, len(partitions))
 	hashes := make([]uint64, len(partitions))
 	for i, partition := range partitions {
+		partitionsCopy[i] = partition
 		hashes[i] = xxhash.Sum64String("loki-distributor-" + strconv.Itoa(int(partition)))
 	}
-	return ShuffleSharder{partitions, hashes}
+	return ShuffleSharder{partitionsCopy, hashes}
 }
 
 func (r *ShuffleSharder) Shard(key uint32) (int32, error) {
