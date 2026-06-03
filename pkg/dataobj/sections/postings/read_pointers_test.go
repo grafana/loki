@@ -18,13 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// TestReadPointers_SchemaParity is the Success Criterion #4 anchor.
-// It builds an index dataobj containing postings + streams + (parallel)
-// pointers sections, configures pointers.Reader EXACTLY like
-// metastore.indexSectionsReader.openStreamPointersReader (FULL 9-column
-// default pointer-scan projection — no narrowing), reads one batch from
-// each side, and asserts arrow.Schema.Equal byte-for-byte. NEITHER side's
-// projection is narrowed.
 func TestReadPointers_SchemaParity(t *testing.T) {
 	fx := buildJoinedFixture(t, []testStream{
 		{streamID: 1, minTs: unixTime(100), maxTs: unixTime(150), rows: 10, uncompressedSize: 1000},
@@ -32,7 +25,6 @@ func TestReadPointers_SchemaParity(t *testing.T) {
 		{streamID: 3, minTs: unixTime(300), maxTs: unixTime(350), rows: 30, uncompressedSize: 3000},
 	})
 
-	// Postings side.
 	postingsReader := postings.NewReader(postings.ReaderOptions{
 		Columns:   fx.postingsSec.Columns(),
 		Allocator: memory.DefaultAllocator,
@@ -46,9 +38,6 @@ func TestReadPointers_SchemaParity(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, postingsBatch)
 
-	// Pointers side: mirror openStreamPointersReader EXACTLY — full 9-column
-	// default projection, EqualPredicate(PointerKindStreamIndex),
-	// WhereTimeRangeOverlapsWith. NEITHER side narrows.
 	pointersCols, err := findPointersColumnsByTypesTestHelper(
 		fx.pointersSec.Columns(),
 		pointers.ColumnTypePath,
@@ -106,9 +95,6 @@ func TestReadPointers_SchemaParity(t *testing.T) {
 		postingsBatch.Schema(), pointersBatch.Schema())
 }
 
-// TestReadPointers_StreamIDFilter asserts that the streamIDs filter limits the
-// result to the requested set and that each returned row's min/max_timestamp
-// reflects its postings row's [min, max].
 func TestReadPointers_StreamIDFilter(t *testing.T) {
 	fx := buildJoinedFixture(t, []testStream{
 		{streamID: 1, minTs: unixTime(100), maxTs: unixTime(150), rows: 10, uncompressedSize: 1000},
@@ -144,8 +130,6 @@ func TestReadPointers_StreamIDFilter(t *testing.T) {
 		case 1:
 			require.Equal(t, unixTime(100).UnixNano(), r.minTimestamp)
 			require.Equal(t, unixTime(150).UnixNano(), r.maxTimestamp)
-			// row_count / uncompressed_size are a metadata hint no consumer
-			// reads; ReadPointers emits them as zero from the postings path.
 			require.Equal(t, int64(0), r.rowCount)
 			require.Equal(t, int64(0), r.uncompressedSize)
 		case 3:
@@ -157,8 +141,6 @@ func TestReadPointers_StreamIDFilter(t *testing.T) {
 	}
 }
 
-// TestReadPointers_TimeRangeFilter asserts that the time-range filter prunes
-// postings rows whose [min,max] does not overlap the requested window.
 func TestReadPointers_TimeRangeFilter(t *testing.T) {
 	fx := buildJoinedFixture(t, []testStream{
 		{streamID: 1, minTs: unixTime(100), maxTs: unixTime(150), rows: 10, uncompressedSize: 1000},
@@ -173,7 +155,6 @@ func TestReadPointers_TimeRangeFilter(t *testing.T) {
 	require.NoError(t, r.Open(t.Context()))
 	t.Cleanup(func() { _ = r.Close() })
 
-	// Only stream 2's [200, 250] overlaps [190, 260].
 	batch, err := r.ReadPointers(t.Context(), nil, unixTime(190), unixTime(260))
 	require.NoError(t, err)
 	require.NotNil(t, batch)
@@ -183,9 +164,6 @@ func TestReadPointers_TimeRangeFilter(t *testing.T) {
 	require.Equal(t, int64(2), got[0].streamID)
 }
 
-// TestReadPointers_EmptyStreamIDs asserts that passing a nil/empty
-// streamIDs map applies no stream-ID filter — all streams whose
-// [min,max] overlaps the time range are returned.
 func TestReadPointers_EmptyStreamIDs(t *testing.T) {
 	fx := buildJoinedFixture(t, []testStream{
 		{streamID: 1, minTs: unixTime(100), maxTs: unixTime(150), rows: 10, uncompressedSize: 1000},
@@ -213,10 +191,6 @@ func TestReadPointers_EmptyStreamIDs(t *testing.T) {
 	require.ElementsMatch(t, []int64{1, 2, 3}, gotIDs)
 }
 
-// TestReadPointers_NoParentObject pins the decoupling from the streams
-// section: ReadPointers works on a postings section opened via the plain
-// [Open] (no parent dataobj back-pointer, no sibling streams section),
-// because pointers are now sourced entirely from the postings rows.
 func TestReadPointers_NoParentObject(t *testing.T) {
 	pb := postings.NewBuilder(nil, 0, 0)
 	pb.ObserveLabelPosting(postings.LabelObservation{
@@ -239,7 +213,7 @@ func TestReadPointers_NoParentObject(t *testing.T) {
 		if !postings.CheckSection(s) {
 			continue
 		}
-		opened, openErr := postings.Open(t.Context(), s) // NO parent.
+		opened, openErr := postings.Open(t.Context(), s)
 		require.NoError(t, openErr)
 		sec = opened
 		break
@@ -261,10 +235,6 @@ func TestReadPointers_NoParentObject(t *testing.T) {
 	require.Equal(t, int64(2), got[0].streamID)
 }
 
-// ----------------------------------------------------------------------------
-// Test helpers
-// ----------------------------------------------------------------------------
-
 type testStream struct {
 	streamID         int64
 	minTs            time.Time
@@ -280,15 +250,6 @@ type joinedFixture struct {
 	pointersSec *pointers.Section
 }
 
-// buildJoinedFixture builds a single dataobj.Object containing three sections
-// — postings + streams + (parallel) pointers — with consistent per-stream
-// metadata so the schema-parity and behaviour tests can compare both sides.
-//
-// The postings section contains a single KindLabel posting per test stream
-// whose stream_id_bitmap selects that stream (bit at index streamID). The
-// streams section records each test stream's (min, max, rows, size). The
-// parallel pointers section emits a matching SectionPointer per stream with
-// PointerKind=PointerKindStreamIndex for the schema-parity reference reader.
 func buildJoinedFixture(t *testing.T, testStreams []testStream) joinedFixture {
 	t.Helper()
 
@@ -300,12 +261,7 @@ func buildJoinedFixture(t *testing.T, testStreams []testStream) joinedFixture {
 	ptrb := pointers.NewBuilder(nil, 0, 0)
 
 	for _, ts := range testStreams {
-		// Postings: KindLabel observations per stream — set the stream's bit
-		// in the bitmap. Use a deterministic (column, value) pair so each test
-		// stream gets its own posting row (avoids aggregation collapse).
-		// Observe at both minTs and maxTs so the aggregated posting carries the
-		// stream's full [min, max] range — ReadPointers reads min/max_timestamp
-		// from these postings rows.
+		// Observe at both minTs and maxTs so the posting carries the stream's full [min, max].
 		pb.ObserveLabelPosting(postings.LabelObservation{
 			ObjectPath:       objectPath,
 			SectionIndex:     sectionIndex,
@@ -325,11 +281,7 @@ func buildJoinedFixture(t *testing.T, testStreams []testStream) joinedFixture {
 			UncompressedSize: 0,
 		})
 
-		// Streams: synthesise per-stream metadata via Record calls. We
-		// call Record `rows` times to populate the row count, and use
-		// distinct timestamps to set min/max.
 		lbls := labels.FromStrings("stream", fmt.Sprintf("s%d", ts.streamID))
-		// First record sets min, last sets max.
 		_ = sb.Record(lbls, ts.minTs, ts.uncompressedSize)
 		for i := int64(1); i < ts.rows-1; i++ {
 			_ = sb.Record(lbls, ts.minTs, 0)
@@ -338,9 +290,6 @@ func buildJoinedFixture(t *testing.T, testStreams []testStream) joinedFixture {
 			_ = sb.Record(lbls, ts.maxTs, 0)
 		}
 
-		// Pointers: matching SectionPointer with PointerKind=
-		// PointerKindStreamIndex. ObserveStream twice (start, end) to
-		// set StartTs / EndTs explicitly.
 		ptrb.ObserveStream(objectPath, sectionIndex, ts.streamID, ts.streamID, ts.minTs, ts.uncompressedSize)
 		ptrb.ObserveStream(objectPath, sectionIndex, ts.streamID, ts.streamID, ts.maxTs, 0)
 	}
@@ -379,11 +328,7 @@ func buildJoinedFixture(t *testing.T, testStreams []testStream) joinedFixture {
 	return fx
 }
 
-// findPointersColumnsByTypesTestHelper is a verbatim copy of the metastore
-// helper of the same name. We duplicate it here to keep the test in
-// package postings_test without an internal cross-package dependency on
-// pkg/dataobj/metastore (which would create a cycle: metastore already
-// depends on pointers + streams + (future) postings).
+// Copied from the metastore helper of the same name to avoid an import cycle.
 func findPointersColumnsByTypesTestHelper(allColumns []*pointers.Column, columnTypes ...pointers.ColumnType) ([]*pointers.Column, error) {
 	result := make([]*pointers.Column, 0, len(columnTypes))
 	for _, c := range allColumns {
@@ -409,9 +354,6 @@ type readPointersRow struct {
 	uncompressedSize int64
 }
 
-// materialiseReadPointersRows extracts the 9-column rows from a
-// ReadPointers RecordBatch into a Go-side slice for assertions.
-// Column ordering matches readPointersOutputSchema().
 func materialiseReadPointersRows(t *testing.T, rb arrow.RecordBatch) []readPointersRow {
 	t.Helper()
 

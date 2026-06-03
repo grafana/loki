@@ -108,7 +108,7 @@ func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []
 			}
 
 			for _, predicateIndex := range predicateIndexes {
-				mayContain, deserializeFailed := bloomFilterMayContainObserved(
+				mayContain, deserializeFailed := bloomFilterMayContain(
 					bloomCol.Value(i),
 					equalMatchers[predicateIndex].Value,
 				)
@@ -141,15 +141,9 @@ func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []
 }
 
 // bloomFilterMayContain reports whether value may be present in the bloom filter (false = definitely
-// absent). On deserialisation failure it returns true to avoid a false negative. See MatchSections.
-func bloomFilterMayContain(bloomBytes []byte, value string) (mayContain bool) {
-	mayContain, _ = bloomFilterMayContainObserved(bloomBytes, value)
-	return mayContain
-}
-
-// bloomFilterMayContainObserved is the observable variant of [bloomFilterMayContain]: it also
-// reports whether the payload failed to deserialise, so [MatchSections] can count corrupt blooms.
-func bloomFilterMayContainObserved(bloomBytes []byte, value string) (mayContain, deserializeFailed bool) {
+// absent), plus whether the payload failed to deserialise. On deserialisation failure it returns
+// (true, true) to avoid a false negative; MatchSections uses the flag to count corrupt blooms.
+func bloomFilterMayContain(bloomBytes []byte, value string) (mayContain, deserializeFailed bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			// Corrupted payload that panics on ReadFrom must yield "may contain", not propagate.
