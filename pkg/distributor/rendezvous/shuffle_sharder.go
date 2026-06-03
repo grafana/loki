@@ -63,7 +63,7 @@ func (r *ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) *Sh
 	// This sort dominates the cost of shuffle sharding.
 	// Possible future optimization - using a size-limited max heap to keep track of the k largest scores.
 	sort.Slice(scores, func(i, j int) bool {
-		return scores[i].score < scores[j].score
+		return scores[i].score > scores[j].score
 	})
 
 	subpartitions := make([]int32, numShards)
