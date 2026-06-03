@@ -979,11 +979,12 @@ func buildCombinedFixture(t *testing.T) *dataobj.Object {
 }
 
 // buildNewOnlyFixtureMultiLabel produces a new-format dataobj.Object where
-// the single stream carries TWO stream-label columns (app=foo, team=ops)
-// but the postings section only observes a label posting for "app" (the
-// "team" column exists in the streams section but has no postings/bloom
-// row). This shape is what triggers the false-negative: a predicate
-// on "team" must be stripped by filterBloomPredicates before reaching
+// the single stream carries TWO stream-label columns (app=foo, team=ops),
+// both observed as KindLabel postings (mirroring the writer invariant that
+// every label of a row-bearing stream is observed). This shape exercises the
+// false-negative guard: a predicate on "team" (a stream label NOT in the
+// selector matchers) must be stripped by filterBloomPredicates — using the
+// label names from StreamLabelColumnNames — before reaching
 // postings.MatchSections (which would otherwise AND-drop every section
 // looking for a non-existent "team" bloom row).
 func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
@@ -1014,16 +1015,24 @@ func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
 	})
 	require.NoError(t, err)
 
-	// Observe only "app" in postings; "team" is a streams-section column
-	// with no corresponding postings row. The fix relies on
-	// postings.Reader.StreamLabelColumnNames() returning {"app", "team"}
-	// from the sibling streams section so filterBloomPredicates strips
-	// the team= predicate before MatchSections runs.
+	// Observe BOTH stream labels as postings (the writer observes every label
+	// of a row-bearing stream). StreamLabelColumnNames() then returns
+	// {"app", "team"} from the postings KindLabel rows, so filterBloomPredicates
+	// strips the team= predicate before MatchSections runs.
 	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
 		ObjectPath:       "test-path",
 		SectionIndex:     0,
 		ColumnName:       "app",
 		LabelValue:       "foo",
+		StreamID:         1,
+		Timestamp:        now.Add(-3 * time.Hour),
+		UncompressedSize: 5,
+	}))
+	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+		ObjectPath:       "test-path",
+		SectionIndex:     0,
+		ColumnName:       "team",
+		LabelValue:       "ops",
 		StreamID:         1,
 		Timestamp:        now.Add(-3 * time.Hour),
 		UncompressedSize: 5,
