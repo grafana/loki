@@ -39,7 +39,8 @@ type metrics struct {
 // queryMetrics covers whole-query outcome and duration.
 
 type queryMetrics struct {
-	subqueries *prometheus.CounterVec // {status, query_type}
+	subqueries *prometheus.CounterVec   // {status, query_type}
+	other      *prometheus.HistogramVec // {query_type}
 }
 
 // planningMetrics covers logical, physical, and prepare planning.
@@ -73,7 +74,9 @@ type planningMetrics struct {
 // executionMetrics covers query execution and result collection.
 
 type executionMetrics struct {
-	duration *prometheus.HistogramVec // {query_type}
+	duration       *prometheus.HistogramVec // {query_type}
+	tasksPerQuery  *prometheus.HistogramVec // {query_type}
+	tasksGenerated *prometheus.HistogramVec // {query_type}
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -83,6 +86,10 @@ func newMetrics(r prometheus.Registerer) *metrics {
 				Name: "loki_engine_v2_subqueries_total",
 				Help: "Total number of subqueries executed with the new engine",
 			}, []string{status, queryTypeLabel}),
+			other: newNativeHistogramVec(r, prometheus.HistogramOpts{
+				Name: "loki_engine_v2_other_duration_seconds",
+				Help: "Per-query residual duration in seconds: wall-clock time not attributed to any tracked phase (mirrors the duration_other_ms summary field)",
+			}, []string{queryTypeLabel}),
 		},
 
 		planning: planningMetrics{
@@ -163,6 +170,14 @@ func newMetrics(r prometheus.Registerer) *metrics {
 					prometheus.DefBuckets,                    // 0.005s -> 10s
 					prometheus.LinearBuckets(15, 5.0, 10)..., // 15s -> 60s
 				),
+			}, []string{queryTypeLabel}),
+			tasksPerQuery: newNativeHistogramVec(r, prometheus.HistogramOpts{
+				Name: "loki_engine_v2_tasks_per_query",
+				Help: "Number of tasks per query after pruning",
+			}, []string{queryTypeLabel}),
+			tasksGenerated: newNativeHistogramVec(r, prometheus.HistogramOpts{
+				Name: "loki_engine_v2_tasks_generated_per_query",
+				Help: "Number of tasks generated per query before pruning",
 			}, []string{queryTypeLabel}),
 		},
 	}

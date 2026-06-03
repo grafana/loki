@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -201,6 +202,31 @@ func (q *query) Close() {
 
 		otherDuration = calculateResidual(q.finishTime.Sub(q.startTime), logicalPlanDuration, physicalPlanDuration, prepareDuration, executeDuration)
 	)
+
+	m := q.engine.metrics
+
+	// The residual histogram mirrors the duration_other_ms field on the
+	// query-summary line below and is observed for every query.
+	m.query.other.WithLabelValues(q.queryType).Observe(otherDuration.Seconds())
+
+	// Fan-out histograms count tasks per query, matching how printExecutionSummary
+	// computes them: tasksPlanned is the count after pruning, and the pre-pruning
+	// total is tasksPruned + tasksPlanned.
+	//
+	// Queries that fail during logical or physical planning never generate any
+	// tasks, so observing them would flood the histograms with zeros that say
+	// nothing about fan-out. We only observe once at least one task was generated;
+	// a query that generated tasks but had them all pruned legitimately records a
+	// tasks_per_query of zero.
+	var (
+		tasksPlanned   = xcap.Value[int64](q.capture, scheduler.StatPlannedTasks)
+		tasksPruned    = xcap.Value[int64](q.capture, workflow.StatPrunedTasks)
+		tasksGenerated = tasksPruned + tasksPlanned
+	)
+	if tasksGenerated > 0 {
+		m.execution.tasksPerQuery.WithLabelValues(q.queryType).Observe(float64(tasksPlanned))
+		m.execution.tasksGenerated.WithLabelValues(q.queryType).Observe(float64(tasksGenerated))
+	}
 
 	q.logger.Log(
 		"msg", "query-summary",
