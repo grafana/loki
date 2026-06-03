@@ -45,7 +45,7 @@ func Test(t *testing.T) {
 
 		fr := newFakeRunner()
 
-		wf, err := New(Options{}, log.NewNopLogger(), fr, physicalPlan)
+		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -81,7 +81,7 @@ func Test(t *testing.T) {
 		require.NotNil(t, rs.Listener, "results stream should have a listener")
 
 		// Check to make sure all known tasks have been given to the runner.
-		for _, task := range wf.AllTasks() {
+		for _, task := range wf.allTasks() {
 			_, exist := fr.tasks[task.ULID]
 			require.True(t, exist, "workflow should give all tasks to runner (task %s is missing)", task.ULID)
 		}
@@ -111,7 +111,7 @@ func TestCancellation(t *testing.T) {
 		t.Run(state.String(), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				fr := newFakeRunner()
-				wf, err := New(Options{}, log.NewNopLogger(), fr, physicalPlan)
+				wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
 				require.NoError(t, err, "workflow should construct properly")
 				require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -211,7 +211,7 @@ func TestShortCircuiting(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		fr := newFakeRunner()
-		wf, err := New(Options{}, log.NewNopLogger(), fr, physicalPlan)
+		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -299,10 +299,11 @@ func TestAdmissionControl(t *testing.T) {
 		opts := Options{
 			Tenant: "tenant",
 
-			MaxRunningScanTasks:  32, // less than numScanTasks
-			MaxRunningOtherTasks: 0,  // unlimited
+			MaxRunningScanTasks:       32, // less than numScanTasks
+			MaxRunningOtherTasks:      0,  // unlimited
+			MaxRunningCompactionTasks: 0,  // unlimited; lane is dormant
 		}
-		wf, err := New(opts, log.NewNopLogger(), fr, physicalPlan)
+		wf, err := New(t.Context(), opts, log.NewNopLogger(), fr, physicalPlan)
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -329,7 +330,7 @@ func TestAdmissionControl(t *testing.T) {
 		require.Equal(t, opts.MaxRunningScanTasks+1, len(wf.taskStates), "expected all tasks up to batch to be enqueued") // 32 scan tasks + 1 other task
 
 		// Simulate scan tasks being completed
-		for _, task := range wf.AllTasks() {
+		for _, task := range wf.allTasks() {
 			if !isScanTask(task) {
 				continue
 			}
@@ -470,7 +471,9 @@ func (f *fakeRunner) Start(ctx context.Context, tasks ...*Task) error {
 
 	for _, task := range tasks {
 		f.tasksMtx.Lock()
-		rt, exist := f.tasks[task.ULID]
+		var (
+			rt, exist = f.tasks[task.ULID]
+		)
 		f.tasksMtx.Unlock()
 
 		if !exist {
@@ -493,7 +496,9 @@ func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
 
 	for _, task := range tasks {
 		f.tasksMtx.RLock()
-		rt, exist := f.tasks[task.ULID]
+		var (
+			rt, exist = f.tasks[task.ULID]
+		)
 		f.tasksMtx.RUnlock()
 
 		if !exist {

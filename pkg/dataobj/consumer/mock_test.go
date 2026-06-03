@@ -19,18 +19,29 @@ import (
 type mockBuilder struct {
 	builder *logsobj.Builder
 	nextErr error
+	// full, when true, forces IsFull to report the builder as full regardless
+	// of the underlying builder's estimated size.
+	full bool
 }
 
-func (m *mockBuilder) Append(tenant string, stream logproto.Stream) error {
+func (m *mockBuilder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
 		return err
 	}
-	return m.builder.Append(tenant, stream)
+	return m.builder.Append(tenant, stream, recTime)
+}
+
+func (m *mockBuilder) GetEarliestRecordTime() time.Time {
+	return m.builder.GetEarliestRecordTime()
 }
 
 func (m *mockBuilder) GetEstimatedSize() int {
 	return m.builder.GetEstimatedSize()
+}
+
+func (m *mockBuilder) IsFull() bool {
+	return m.full || m.builder.IsFull()
 }
 
 func (m *mockBuilder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
@@ -72,7 +83,7 @@ type mockFlushCommitter struct {
 	flushes int
 }
 
-func (m *mockFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
+func (m *mockFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64) error {
 	m.flushes++
 	return nil
 }

@@ -7,8 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
+	"time"
 
 	"github.com/facette/natsort"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,18 +21,19 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// ErrBuilderFull is returned by [Builder.Append] when the buffer is
-// full and needs to flush; call [Builder.Flush] to flush it.
+// ErrBuilderEmpty is returned by [Builder.Flush] when there is no buffered
+// data to flush.
 var (
-	ErrBuilderFull  = errors.New("builder full")
 	ErrBuilderEmpty = errors.New("builder empty")
 )
 
@@ -192,6 +197,11 @@ func appendStrategy(ordered bool) logs.AppendStrategy {
 	return logs.AppendUnordered
 }
 
+// TenantOverrides provides per-tenant configuration for the Builder.
+type TenantOverrides interface {
+	SortSchemaLabels(tenant string) []string
+}
+
 // A Builder constructs a logs-oriented data object from a set of incoming
 // log data. Log data is appended by calling [LogBuilder.Append]. A complete
 // data object is constructed by by calling [LogBuilder.Flush].
@@ -199,8 +209,10 @@ func appendStrategy(ordered bool) logs.AppendStrategy {
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronization.
 type Builder struct {
-	cfg     BuilderConfig
-	metrics *builderMetrics
+	cfg       BuilderConfig
+	metrics   *BuilderMetrics
+	overrides TenantOverrides
+	logger    log.Logger
 
 	labelCache *lru.Cache[string, labels.Labels]
 
@@ -209,6 +221,10 @@ type Builder struct {
 	builder *dataobj.Builder // Inner builder for accumulating sections.
 	streams map[string]*streams.Builder
 	logs    map[string]*logs.Builder
+
+	// earliestRecordTime tracks the timestamp of the earliest record appended
+	// to the builder. It is required for the metastore index.
+	earliestRecordTime time.Time
 
 	state builderState
 }
@@ -226,27 +242,31 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-
+func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderMetrics) (*Builder, error) {
 	labelCache, err := lru.New[string, labels.Labels](5000)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
 	}
 
-	metrics := newBuilderMetrics()
-	metrics.ObserveConfig(cfg)
-
 	return &Builder{
 		cfg:        cfg,
 		metrics:    metrics,
+		logger:     log.NewNopLogger(),
 		labelCache: labelCache,
 		builder:    dataobj.NewBuilder(scratchStore),
 		streams:    make(map[string]*streams.Builder),
 		logs:       make(map[string]*logs.Builder),
 	}, nil
+}
+
+// SetOverrides configures per-tenant overrides used when DataobjUseSortSchema is enabled.
+func (b *Builder) SetOverrides(overrides TenantOverrides) {
+	b.overrides = overrides
+}
+
+// SetLogger sets the logger used by the builder.
+func (b *Builder) SetLogger(logger log.Logger) {
+	b.logger = logger
 }
 
 // initBuilder initializes the builders for the tenant.
@@ -271,30 +291,26 @@ func (b *Builder) initBuilder(tenant string) {
 	}
 }
 
+func (b *Builder) GetEarliestRecordTime() time.Time {
+	return b.earliestRecordTime
+}
+
 func (b *Builder) GetEstimatedSize() int {
 	return b.currentSizeEstimate
 }
 
-// Append buffers a stream to be written to a data object. Append returns an
-// error if the stream labels cannot be parsed or [ErrBuilderFull] if the
-// builder is full.
-//
-// Once a Builder is full, call [Builder.Flush] to flush the buffered data,
-// then call Append again with the same entry.
-func (b *Builder) Append(tenant string, stream logproto.Stream) error {
+func (b *Builder) IsFull() bool {
+	return b.currentSizeEstimate > int(b.cfg.TargetObjectSize)
+}
+
+// Append buffers a stream to be written to a data object.
+// Callers are expected to poll [Builder.IsFull] before appending and
+// to flush the builder once it reports full. Appending entries to a full
+// builder is permitted.
+func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
 	ls, err := b.parseLabels(stream.Labels)
 	if err != nil {
 		return err
-	}
-
-	// Check whether the buffer is full before a stream can be appended; this is
-	// tends to overestimate, but we may still go over our target size.
-	//
-	// Since this check only happens after the first call to Append,
-	// b.currentSizeEstimate will always be updated to reflect the size following
-	// the previous append.
-	if b.state != builderStateEmpty && b.currentSizeEstimate+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
-		return ErrBuilderFull
 	}
 
 	b.initBuilder(tenant)
@@ -330,6 +346,9 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 		}
 	}
 
+	if b.earliestRecordTime.IsZero() || recTime.Before(b.earliestRecordTime) {
+		b.earliestRecordTime = recTime
+	}
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	return nil
@@ -347,38 +366,6 @@ func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {
 	}
 	b.labelCache.Add(labelString, parsed)
 	return parsed, nil
-}
-
-// labelsEstimate estimates the size of a set of labels in bytes.
-func labelsEstimate(ls labels.Labels) int {
-	var (
-		keysSize   int
-		valuesSize int
-	)
-
-	ls.Range(func(l labels.Label) {
-		keysSize += len(l.Name)
-		valuesSize += len(l.Value)
-	})
-
-	// Keys are stored as columns directly, while values get compressed. We'll
-	// underestimate a 2x compression ratio.
-	return keysSize + valuesSize/2
-}
-
-// streamSizeEstimate estimates the size of a stream in bytes.
-func streamSizeEstimate(stream logproto.Stream) int {
-	var size int
-	for _, entry := range stream.Entries {
-		// We only check the size of the line and metadata. Timestamps and IDs
-		// encode so well that they're unlikely to make a singificant impact on our
-		// size estimate.
-		size += len(entry.Line) / 2 // Line with 2x compression ratio
-		for _, md := range entry.StructuredMetadata {
-			size += len(md.Name) + len(md.Value)/2
-		}
-	}
-	return size
 }
 
 func convertMetadata(md push.LabelsAdapter) labels.Labels {
@@ -480,18 +467,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 	default:
 	}
 
-	sort := parseSortOrder(b.cfg.DataobjSortOrder)
-
 	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
-	lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
-		PageSizeHint:              int(b.cfg.TargetPageSize),
-		PageMaxRowCount:           b.cfg.MaxPageRows,
-		BufferSize:                int(b.cfg.BufferSize),
-		StripeMergeLimit:          b.cfg.SectionStripeMergeLimit,
-		AppendStrategy:            logs.AppendOrdered,
-		EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
-		SortOrder:                 sort,
-	})
 
 	// Sort the set of tenants so the new object has a deterministic order of sections.
 	tenants := obj.Tenants()
@@ -537,41 +513,59 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 
 		// TODO(chaudum): Handle special case len(sections) == 1
 
-		lb.Reset()
+		var (
+			sortOrder    logs.SortOrder
+			schemaLabels []string
+			iter         result.Seq[logs.Record]
+			iterErr      error
+		)
+
+		if b.cfg.DataobjUseSortSchema {
+			if len(sections) > 0 {
+				firstSec, err := logs.Open(ctx, sections[0])
+				if err != nil {
+					return nil, nil, fmt.Errorf("opening logs section to read schema labels: %w", err)
+				}
+				schemaLabels, err = firstSec.SchemaLabels()
+				if err != nil {
+					return nil, nil, fmt.Errorf("reading schema labels from logs section: %w", err)
+				}
+			}
+			if len(schemaLabels) == 0 && b.overrides != nil {
+				schemaLabels = b.overrides.SortSchemaLabels(tenant)
+			}
+			if len(schemaLabels) == 0 {
+				level.Warn(b.logger).Log("msg", "sort schema: no schema labels resolved, falling back to dataobj_sort_order", "tenant", tenant, "overrides_configured", b.overrides != nil)
+			}
+		}
+
+		if len(schemaLabels) > 0 {
+			sortKeys, err := buildSortKeys(ctx, obj, tenant, schemaLabels)
+			if err != nil {
+				return nil, nil, fmt.Errorf("building sort keys for tenant %s: %w", tenant, err)
+			}
+			sortOrder = logs.SortSchemaASC
+			iter, iterErr = sortedSchemaIter(ctx, sections, sortKeys, parseSortOrder(b.cfg.DataobjSortOrder))
+		} else {
+			sortOrder = parseSortOrder(b.cfg.DataobjSortOrder)
+			iter, iterErr = sortmerge.Iterator(ctx, sections, sortOrder)
+		}
+		if iterErr != nil {
+			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)
+		}
+
+		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
+			PageSizeHint:     int(b.cfg.TargetPageSize),
+			PageMaxRowCount:  b.cfg.MaxPageRows,
+			BufferSize:       int(b.cfg.BufferSize),
+			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+			AppendStrategy:   logs.AppendOrdered,
+			SortOrder:        sortOrder,
+			SchemaLabels:     schemaLabels,
+		})
 		lb.SetTenant(tenant)
 
-		iter, err := sortMergeIterator(ctx, sections, sort)
-		if err != nil {
-			return nil, nil, fmt.Errorf("creating sort iterator: %w", err)
-		}
-
-		for rec := range iter {
-			// Based on profiles, almost all CPU time is spent in this loop, which makes
-			// it a perfect place to check if the context has been canceled.
-			select {
-			case <-ctx.Done():
-				return nil, nil, ctx.Err()
-			default:
-			}
-
-			val, err := rec.Value()
-			if err != nil {
-				return nil, nil, err
-			}
-			lb.Append(val)
-
-			// If our logs section has gotten big enough, we want to flush it to the encoder and start a new section.
-			if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-				if err := b.builder.Append(lb); err != nil {
-					return nil, nil, err
-				}
-				lb.Reset()
-				lb.SetTenant(tenant)
-			}
-		}
-
-		// Append the final section with the remaining logs
-		if err := b.builder.Append(lb); err != nil {
+		if err := b.drainLogsIter(ctx, iter, lb, tenant); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -627,21 +621,88 @@ func (b *Builder) Reset() {
 	clear(b.logs)
 	clear(b.streams)
 
+	b.earliestRecordTime = time.Time{}
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
 }
 
-// RegisterMetrics registers metrics about builder to report to reg. All
-// metrics will have a tenant label set to the tenant ID of the Builder.
-//
-// If multiple Builders for the same tenant are running in the same process,
-// reg must contain additional labels to differentiate between them.
-func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
-	return b.metrics.Register(reg)
+// drainLogsIter consumes iter, appending each record to lb and flushing
+// completed sections to b.builder whenever the section size target is exceeded.
+// It appends the final (possibly partial) section after the iterator is exhausted.
+func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record], lb *logs.Builder, tenant string) error {
+	for rec := range iter {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		val, err := rec.Value()
+		if err != nil {
+			return err
+		}
+		lb.Append(val)
+		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
+			if err := b.builder.Append(lb); err != nil {
+				return err
+			}
+			lb.Reset()
+			lb.SetTenant(tenant)
+		}
+	}
+	return b.builder.Append(lb)
 }
 
-// UnregisterMetrics unregisters metrics about builder from reg.
-func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
-	b.metrics.Unregister(reg)
+func buildSortKeys(ctx context.Context, obj *dataobj.Object, tenant string, schemaLabels []string) (map[int64]string, error) {
+	sortKeys := make(map[int64]string)
+	for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
+		return streams.CheckSection(s) && s.Tenant == tenant
+	}) {
+		section, err := streams.Open(ctx, sec)
+		if err != nil {
+			return nil, fmt.Errorf("opening streams section: %w", err)
+		}
+		for res := range streams.IterSection(ctx, section) {
+			stream, err := res.Value()
+			if err != nil {
+				return nil, err
+			}
+			k, err := computeSortKey(stream.Labels, schemaLabels)
+			if err != nil {
+				return nil, err
+			}
+			sortKeys[stream.ID] = k
+		}
+	}
+	return sortKeys, nil
+}
+
+// computeSortKey builds a composite sort key from stream labels using FQN entries.
+// Each FQN must be "label:<name>" — validation.SortSchema.Validate() enforces this.
+func computeSortKey(ls labels.Labels, schemaLabels []string) (string, error) {
+	if len(schemaLabels) == 0 {
+		return "", nil
+	}
+	resolveLabel := func(fqn string) (string, error) {
+		typ, name, ok := strings.Cut(fqn, ":")
+		if !ok || typ != "label" {
+			return "", fmt.Errorf("computeSortKey: unexpected FQN %q — only \"label:<name>\" is supported", fqn)
+		}
+		return ls.Get(name), nil
+	}
+	if len(schemaLabels) == 1 {
+		return resolveLabel(schemaLabels[0])
+	}
+	var b strings.Builder
+	for i, fqn := range schemaLabels {
+		if i > 0 {
+			b.WriteByte(0)
+		}
+		s, err := resolveLabel(fqn)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(s)
+	}
+	return b.String(), nil
 }

@@ -24,24 +24,28 @@ func (t *nullType) EstimateNumValues(int) int { return 0 }
 
 func (t *nullType) Compare(Value, Value) int { panic("cannot compare values on parquet NULL type") }
 
-func (t *nullType) ColumnOrder() *format.ColumnOrder { return nil }
+func (t *nullType) ColumnOrder() *format.ColumnOrder { return &typeDefinedColumnOrder }
 
-func (t *nullType) PhysicalType() *format.Type { return nil }
+// PhysicalType returns INT32 for NULL-type columns to match the convention used
+// by PyArrow and other Parquet implementations. PyArrow generates parquet files
+// where columns filled entirely with NULL values use INT32 as the physical type
+// with UNKNOWN as the logical type.
+func (t *nullType) PhysicalType() *format.Type { return &physicalTypes[Int32] }
 
 func (t *nullType) LogicalType() *format.LogicalType { return &nullLogicalType }
 
 func (t *nullType) ConvertedType() *deprecated.ConvertedType { return nil }
 
 func (t *nullType) NewColumnIndexer(int) ColumnIndexer {
-	panic("create create column indexer from parquet NULL type")
+	return newNullColumnIndexer()
 }
 
 func (t *nullType) NewDictionary(columnIndex, numValues int, data encoding.Values) Dictionary {
 	return newNullDictionary(t, makeColumnIndex(columnIndex), makeNumValues(numValues), data)
 }
 
-func (t *nullType) NewColumnBuffer(int, int) ColumnBuffer {
-	panic("cannot create column buffer from parquet NULL type")
+func (t *nullType) NewColumnBuffer(columnIndex, numValues int) ColumnBuffer {
+	return newNullColumnBuffer(t, uint16(columnIndex), int32(numValues))
 }
 
 func (t *nullType) NewPage(columnIndex, numValues int, _ encoding.Values) Page {

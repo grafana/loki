@@ -37,6 +37,21 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Removal of various configuration options
+
+- The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
+- The deprecated setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
+- The setting `-store.index-cache-read` (`storage_config.index_queries_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends (`boltdb-shipper`) that have been removed as well.
+- The setting `-store.index-cache-validity` (`storage_config.index_cache_validity` block in the yaml file) has been removed as it was only used in combination with the removed `-store.index-cache-read` setting.
+
+Use the `deprecated-config-checker` tool to validate your `config.yaml`.
+
+### Breaking change: Configure deletes on compactor
+
+The configuration option `-compactor.allow-deletes` has been removed. Instead, use the the per-tenant `deletion_mode` option instead.
+This is configured in the `limits_config` and can be one of `disabled`, `filter-only`, or `filter-and-delete`.
+When set to `filter-only` or `filter-and-delete`, and `retention_enabled` is set to true, then the log entry deletion API endpoints are available.
+
 ### Breaking change: Rename and remove metrics
 
 - The deprecated metric `loki_log_messages_total` is removed in favor of `loki_internal_log_messages_total`.
@@ -67,7 +82,7 @@ Please refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/op
 
 If the latest entry of your schema config is older than retention period of your data, then it is safe to remove any old entries from the `schema_config.configs` when upgrading.
 
-With the legacy backends removed, also the `table-manager` target and `table_manager` configuration block are removed, as they are not needed any more. If you have a `table_manager` configuration block in your `config.yaml` you can savely remove it completely.
+With the legacy backends removed, also the `table-manager` target and `table_manager` configuration block are removed, as they are not needed any more. If you have a `table_manager` configuration block in your `config.yaml` you can safely remove it completely.
 
 ### Distributor Max Receive Limits for uncompressed bytes
 
@@ -93,6 +108,36 @@ If you prefixed the sidecar container with a private registry (`sidecar.image.re
 
 For most images used in the helm chart, a `.digest` is available to pin an image to a specific hash. The sidecar images diverges from this convention by introducing a `.tag`.
 Starting with Helm chart 6.46.1, the `.tag` is deprecated and `.digest` should be used.
+
+### Helm Chart 6.46.0 - Default service account name change
+
+{{< admonition type="warning" >}}
+Helm chart version 6.46.0 introduces a **breaking change** that affects users who rely on the default service account name to bind external identity, such as AWS EKS Pod Identity, IAM Roles for Service Accounts (IRSA), GCP Workload Identity, or Azure Workload Identity.
+{{< /admonition >}}
+
+Starting with Helm chart 6.46.0 ([#19590](https://github.com/grafana/loki/pull/19590)), when `serviceAccount.create` is `true` and `serviceAccount.name` is not set, the default service account name is now derived from the chart's *fullname* template instead of the chart *name*. For example:
+
+| Deployment | Default service account name before 6.46.0 | Default service account name in 6.46.0 and later |
+|---|---|---|
+| Grafana Enterprise Logs (GEL) | `enterprise-logs` | `<release-name>-enterprise-logs` |
+| Open source Loki | `loki` | `<release-name>-loki` |
+
+If an external identity, such as an AWS IAM role through EKS Pod Identity or IRSA, is bound to the previous service account name, your pods lose access to that identity after the upgrade. For object-storage backends, this typically results in an outage because Loki components can no longer read or write to the bucket.
+
+**Recommended action**:
+
+To preserve the previous behavior and avoid the rename, set the service account name explicitly in your `values.yaml`:
+
+```yaml
+serviceAccount:
+  name: enterprise-logs   # use "loki" for open source deployments
+```
+
+Setting `serviceAccount.name` explicitly is forward-compatible and works on both pre- and post-6.46.0 chart versions, so it is also the recommended setting going forward if you want the service account name to be independent of the Helm release name.
+
+If you have already upgraded and your pods have lost cloud-provider IAM access, you have two options:
+- Set `serviceAccount.name` to the previous default (for example, `enterprise-logs`) and run `helm upgrade` again. The previously bound external identity will resume working.
+- Update the external identity binding (for example, the EKS Pod Identity association or the IRSA trust policy) to reference the new service account name.
 
 ### Helm Chart 6.34.0 - Zone-aware Ingester Breaking Change
 

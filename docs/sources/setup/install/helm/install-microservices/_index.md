@@ -21,6 +21,7 @@ With the move to the Grafana-community repository, the chart numbering has chang
 This Helm chart deploys Loki to run Loki in [microservice mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) within a Kubernetes cluster. The microservices deployment is also referred to as a Distributed deployment. The microservices deployment mode runs components of Loki as distinct processes.
 
 The default Helm chart deploys the following components:
+
 - **Compactor component** (1 replica): Compacts and processes stored data.
 - **Distributor component** (3 replicas, maxUnavailable: 2): Distributes incoming requests. Up to 2 replicas can be unavailable during updates.
 - **IndexGateway component** (2 replicas, maxUnavailable: 1): Handles indexing. Up to 1 replica can be unavailable during updates.
@@ -38,17 +39,19 @@ Zone-aware replication is enabled by default for ingesters. This creates three i
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
-We do not recommend running in microservices mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+We do not recommend running in microservices mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example.
 {{< /admonition >}}
-
 
 ## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A running Kubernetes cluster (must have at least 3 nodes).
 
-
 ## Deploying the Helm chart for development and testing
+
+{{< admonition type="note" >}}
+If this is the first time you have deployed the Loki Helm chart since the move to the Community managed Helm chart, note that the URL for the chart has changed. For more information see the [Upgrade documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-6x/).
+{{< /admonition >}}
 
 1. Add the [Grafana Community chart repository](https://github.com/grafana-community/helm-charts) to Helm:
 
@@ -140,19 +143,23 @@ We do not recommend running in microservices mode with `filesystem` storage. For
 
 1. Install or upgrade the Loki deployment.
      - To install:
+
         ```bash
        helm install --values values.yaml loki grafana-community/loki
        ```
-    - To upgrade:
+
+     - To upgrade:
+
        ```bash
        helm upgrade --values values.yaml loki grafana-community/loki
        ```
-       
 
 1. Verify that Loki is running:
+
     ```bash
     kubectl get pods -n loki
     ```
+
     The output should an output similar to the following:
 
     ```bash
@@ -191,7 +198,6 @@ After testing Loki with [MinIO](https://min.io/docs/minio/kubernetes/upstream/in
 {{< admonition type="caution" >}}
 When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
 {{< /admonition >}}
-
 
 {{< collapse title="S3" >}}
 
@@ -295,6 +301,7 @@ singleBinary:
   replicas: 0
 
 ```
+
 {{< /collapse >}}
 
 {{< collapse title="Azure" >}}
@@ -383,20 +390,64 @@ singleBinary:
   replicas: 0
 
 ```
+
 {{< /collapse >}}
 
 To configure other storage providers, refer to the [Helm Chart Reference](../reference/).
 
+## Gateway API
+
+As an alternative to traditional Kubernetes Ingress, the Loki Helm chart supports [Gateway API](https://gateway-api.sigs.k8s.io/) routes. There are two independent options depending on whether you want to keep the nginx gateway or bypass it entirely.
+
+### Option 1: Expose the nginx gateway via Gateway API
+
+Use `gateway.route` to replace `gateway.ingress` with a Gateway API route that points to the nginx gateway. This keeps nginx as the proxy but exposes it through a Gateway API resource instead of a traditional Ingress.
+
+```yaml
+gateway:
+  ingress:
+    enabled: false  # disable traditional Ingress
+  route:
+    main:
+      enabled: true
+      kind: HTTPRoute
+      parentRefs:
+        - name: my-gateway
+          namespace: gateway-namespace
+      hostnames:
+        - loki.example.com
+```
+
+### Option 2: Bypass nginx and route directly to Loki services
+
+Use the top-level `route:` key (mutually exclusive with the top-level `ingress:`) to route Gateway API traffic directly to Loki services, bypassing nginx. The chart auto-generates path-based rules that route requests to the correct microservice components (distributor, query-frontend, ruler, compactor) when `deploymentMode: Distributed` is set.
+
+```yaml
+route:
+  main:
+    enabled: true
+    kind: HTTPRoute
+    parentRefs:
+      - name: my-gateway
+        namespace: gateway-namespace
+    hostnames:
+      - loki.example.com
+```
+
+For both options, if `apiVersion` is not set, the chart auto-detects the latest available Gateway API version installed in the cluster. Supported route kinds include `HTTPRoute`, `GRPCRoute`, `TCPRoute`, `TLSRoute`, and `UDPRoute`.
+
 ## Deploying the Loki Helm chart to a Production Environment
 
 {{< admonition type="note" >}}
-We are actively working on providing more guides for deploying Loki in production. 
+We are actively working on providing more guides for deploying Loki in production.
 {{< /admonition >}}
 
 We recommend running Loki at scale within a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
+
 - [Deploy Loki on AWS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/aws/)
 - [Deploy Loki on Azure](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/azure/)
 
-## Next Steps 
+## Next Steps
+
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
 * Monitor the Loki deployment using the [Meta Monitoring Helm chart](/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/)

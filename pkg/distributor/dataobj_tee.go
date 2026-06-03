@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
@@ -76,6 +77,7 @@ type DataObjTee struct {
 	streamFailures    prometheus.Counter
 	producedBytes     *prometheus.CounterVec
 	producedRecords   *prometheus.CounterVec
+	produceLatency    prometheus.Histogram
 	estimateRateBytes *prometheus.GaugeVec
 }
 
@@ -114,6 +116,14 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_produced_records_total",
 			Help: "Total number of records produced to each partition.",
 		}, []string{"partition", "tenant", "segmentation_key"}),
+		produceLatency: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_distributor_dataobj_tee_produce_latency_seconds",
+			Help:                            "Latency to produce records to the data object topic.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
 		// These metrics are not emitted at all unless debug metrics are enabled.
 		estimateRateBytes: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_distributor_dataobj_tee_estimate_rate_bytes",
@@ -220,13 +230,17 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmen
 		return
 	}
 
+	produceTimer := prometheus.NewTimer(t.produceLatency)
 	results := t.kafkaClient.ProduceSync(ctx, records)
 	if err := results.FirstErr(); err != nil {
-		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
+		if !errors.Is(err, kgo.ErrMaxBuffered) {
+			level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
+		}
 		t.streamFailures.Inc()
 		pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to tee error: %d", TeeCouldntProduceRecordsError))
 		return
 	}
+	produceTimer.ObserveDuration()
 
 	var size int64
 	for _, rec := range records {

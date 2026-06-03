@@ -21,7 +21,6 @@ package grpc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"math"
 	rand "math/rand/v2"
@@ -750,7 +749,7 @@ func (a *csAttempt) shouldRetry(err error) (bool, error) {
 		return false, err
 	}
 	if cs.numRetries+1 >= rp.MaxAttempts {
-		return false, fmt.Errorf("max retries exhausted: failed after %d attempts: %w", cs.numRetries+1, err)
+		return false, err
 	}
 
 	var dur time.Duration

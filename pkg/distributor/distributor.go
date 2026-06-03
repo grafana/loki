@@ -55,7 +55,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	util_metric "github.com/grafana/loki/v3/pkg/util/metric"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -113,8 +112,6 @@ type Config struct {
 	KafkaConfig kafka.Config `yaml:"-"`
 
 	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
-
-	InMemoryPushTimeout time.Duration `yaml:"inmemory_dataobj_push_timeout"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -131,20 +128,18 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
-	fs.DurationVar(&cfg.InMemoryPushTimeout, "distributor.inmemory-dataobj-push-timeout", 5*time.Second,
-		"Timeout for sending a record to the in-memory queue before returning backpressure to the caller. Defaults to 5s. Set to 0 for no timeout.")
 }
 
 func (cfg *Config) Validate() error {
+	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
+		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
+	}
 	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
 		return err
 	}
 	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
 	if cfg.MaxDecompressedSize == 0 && cfg.MaxRecvMsgSize > 0 {
 		cfg.MaxDecompressedSize = int64(cfg.MaxRecvMsgSize) * 50
-	}
-	if cfg.InMemoryPushTimeout < 0 {
-		return errors.New("distributor.inmemory-dataobj-push-timeout must be >= 0")
 	}
 	return nil
 }
@@ -220,8 +215,9 @@ type Distributor struct {
 	// are consumed.
 	numMetadataPartitions int
 
-	// Track the maximum number of inflight bytes in the last 1 minute.
-	inflightBytes *util_metric.MaxSampleCollector
+	// Track the max inflight bytes in the last 1 minute.
+	inflightBytesHighWatermark prometheus.Summary
+	inflightBytes              atomic.Int64
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -411,10 +407,12 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
-		inflightBytes: util_metric.NewMaxSampleCollector(
-			"loki_distributor_max_inflight_bytes",
-			"The maximum number of inflight bytes in the last 1 minute.",
-		),
+		inflightBytesHighWatermark: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
+			Name:       "loki_distributor_inflight_bytes_high_watermark",
+			Help:       "The max inflight bytes in the last 1 minute.",
+			Objectives: map[float64]float64{1.0: 0.1},
+			MaxAge:     time.Minute,
+		}),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -455,8 +453,6 @@ func New(
 	)
 	d.rateStore = rs
 
-	_ = registerer.Register(d.inflightBytes)
-	servs = append(servs, d.inflightBytes)
 	servs = append(servs, d.ingesterClients, rs)
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
@@ -566,11 +562,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 }
 
 // Push a set of streams.
+// Can modify the input req parameter.
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(req.Size())
-	d.inflightBytes.Inc(requestSize)
-	defer d.inflightBytes.Inc(-requestSize)
+	d.inflightBytesHighWatermark.Observe(float64(d.inflightBytes.Add(requestSize)))
+	defer d.inflightBytes.Add(-requestSize)
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {

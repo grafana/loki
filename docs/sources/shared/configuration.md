@@ -1063,10 +1063,6 @@ pattern_ingester:
 
   # Configures the pattern tee which forwards requests to the pattern ingester.
   tee_config:
-    # The size of the batch of raw logs to send for template mining
-    # CLI flag: -pattern-ingester.tee.batch-size
-    [batch_size: <int> | default = 5000]
-
     # The max time between batches of raw logs to send for template mining
     # CLI flag: -pattern-ingester.tee.batch-flush-interval
     [batch_flush_interval: <duration> | default = 1s]
@@ -1078,6 +1074,11 @@ pattern_ingester:
     # the number of concurrent workers sending logs to the template service
     # CLI flag: -pattern-ingester.tee.flush-worker-count
     [flush_worker_count: <int> | default = 100]
+
+    # The maximum number of bytes that can be buffered before dropping, 0 means
+    # disabled
+    # CLI flag: -pattern-ingester.tee.max-buffered-bytes
+    [max_buffered_bytes: <int> | default = 0]
 
     # The max time we will try to flush any remaining logs to be mined when the
     # service is stopped
@@ -1529,16 +1530,6 @@ dataobj:
     # CLI flag: -dataobj-consumer.max-builder-age
     [max_builder_age: <duration> | default = 1h]
 
-    # How records are ingested: "kafka" reads from a Kafka topic; "inmemory"
-    # uses an in-process channel (experimental, single-node, no durability
-    # guarantees, each replica holds independent data).
-    # CLI flag: -dataobj-consumer.ingest-mode
-    [ingest_mode: <string> | default = "kafka"]
-
-    # Internal buffer size for records for inmemory ingestion.
-    # CLI flag: -dataobj-consumer.channel-size
-    [channel_size: <int> | default = 10000]
-
     # The name of the Kafka topic.
     # CLI flag: -dataobj-consumer.topic
     [topic: <string> | default = ""]
@@ -1611,6 +1602,77 @@ dataobj:
     # log partitions.
     # CLI flag: -dataobj-metastore.partition-ratio
     [partition_ratio: <int> | default = 10]
+
+  compaction:
+    # Experimental: Enable dataobj compaction modules (planner and worker
+    # targets when selected via -target).
+    # CLI flag: -dataobj.compaction.enabled
+    [enabled: <boolean> | default = false]
+
+    # Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks
+    # dispatched by the coordinator. 0 means unlimited (one goroutine per task
+    # with no admission throttle).
+    # CLI flag: -dataobj.compaction.max-running-compaction-tasks
+    [max_running_compaction_tasks: <int> | default = 16]
+
+    # Experimental: Coordinator main-loop cadence.
+    # CLI flag: -dataobj.compaction.polling-interval
+    [polling_interval: <duration> | default = 5m]
+
+    # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
+    # with K.
+    # CLI flag: -dataobj.compaction.max-runs-per-task
+    [max_runs_per_task: <int> | default = 8]
+
+    # Experimental: Per-IndexMerge-task deadline.
+    # CLI flag: -dataobj.compaction.index-merge-task-ttl
+    [index_merge_task_ttl: <duration> | default = 10m]
+
+    # Experimental: Coordinator-side timeout around the inline ToC
+    # ReplaceIndexPointers call. Not a task TTL.
+    # CLI flag: -dataobj.compaction.toc-consolidate-timeout
+    [toc_consolidate_timeout: <duration> | default = 30s]
+
+    # Experimental: Plan version hashed into IndexMerge output paths. Bump to
+    # invalidate previously-written outputs after a planner-algorithm change.
+    # CLI flag: -dataobj.compaction.plan-version
+    [plan_version: <int> | default = 1]
+
+    scheduler:
+      # Experimental: host:port the embedded compaction scheduler advertises to
+      # compaction workers. Empty string keeps the scheduler in-process-only.
+      # CLI flag: -dataobj.compaction.scheduler.advertise-addr
+      [advertise_addr: <string> | default = ""]
+
+      # Experimental: HTTP path the embedded compaction scheduler listens on for
+      # worker frame traffic.
+      # CLI flag: -dataobj.compaction.scheduler.endpoint
+      [endpoint: <string> | default = "/api/v2/compaction-frame"]
+
+    worker:
+      # Experimental: Number of task-execution threads. 0 uses GOMAXPROCS.
+      # CLI flag: -dataobj.compaction.worker.worker-threads
+      [worker_threads: <int> | default = 0]
+
+      # Experimental: DNS-SRV address used to discover compaction schedulers.
+      # Required when -target=dataobj-compaction-worker. Example:
+      # dnssrv+_compaction-frame._tcp.compactor-scheduler.svc.cluster.local
+      # CLI flag: -dataobj.compaction.worker.scheduler-lookup-address
+      [scheduler_lookup_address: <string> | default = ""]
+
+      # Experimental: Interval at which to re-run the DNS-SRV lookup.
+      # CLI flag: -dataobj.compaction.worker.scheduler-lookup-interval
+      [scheduler_lookup_interval: <duration> | default = 10s]
+
+      # Experimental: host:port the embedded compaction worker advertises to
+      # schedulers. Required when -target=dataobj-compaction-worker.
+      # CLI flag: -dataobj.compaction.worker.advertise-addr
+      [advertise_addr: <string> | default = ""]
+
+      # Experimental: HTTP path the embedded compaction worker registers its
+      # frame handler on.
+      # CLI flag: -dataobj.compaction.worker.endpoint
+      [endpoint: <string> | default = "/api/v2/compaction-frame"]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
@@ -2395,8 +2457,6 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `query-engine.task-results-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
-- `store.index-cache-read`
-- `store.index-cache-write`
 
 &nbsp;
 
@@ -2488,7 +2548,7 @@ memcached_client:
 
   # The TLS configuration.
   # The CLI flags prefix for this block configuration is:
-  # store.index-cache-write.memcached
+  # store.chunks-cache-l2.memcached
   [<tls_config>]
 
 redis:
@@ -2583,12 +2643,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # component.
 # The CLI flags prefix for this block configuration is: store.chunks-cache-l2
 [chunk_cache_config_l2: <cache_config>]
-
-# Write dedupe cache is deprecated along with legacy index types (aws,
-# aws-dynamo, grpc-store).
-# Consider using TSDB index which does not require a write dedupe cache.
-# The CLI flags prefix for this block configuration is: store.index-cache-write
-[write_dedupe_cache_config: <cache_config>]
 
 # Chunks fetched from queriers before this duration will not be written to the
 # cache. A value of 0 will write all chunks to the cache
@@ -3353,11 +3407,6 @@ dataobj_tee:
   # to 0 to disable batching.
   # CLI flag: -distributor.dataobj-tee.rate-batch-window
   [rate_batch_window: <duration> | default = 0s]
-
-# Timeout for sending a record to the in-memory queue before returning
-# backpressure to the caller. Defaults to 5s. Set to 0 for no timeout.
-# CLI flag: -distributor.inmemory-dataobj-push-timeout
-[inmemory_dataobj_push_timeout: <duration> | default = 5s]
 ```
 
 ### etcd
@@ -3614,7 +3663,6 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
-- `boltdb.shipper.index-gateway-client.grpc`
 - `compactor.grpc-client`
 - `frontend.grpc-client-config`
 - `ingest-limits-frontend-client`
@@ -4053,8 +4101,7 @@ flush_op_backoff:
 [max_returned_stream_errors: <int> | default = 10]
 
 # How far back should an ingester be allowed to query the store for data, for
-# use only with boltdb-shipper/tsdb index and filesystem object store. -1 for
-# infinite.
+# use only with tsdb index and filesystem object store. -1 for infinite.
 # CLI flag: -ingester.query-store-max-look-back-period
 [query_store_max_look_back_period: <duration> | default = 0s]
 
@@ -4358,10 +4405,6 @@ discover_generic_fields:
 # ingesters, and is kept updated whenever the number of ingesters change.
 # CLI flag: -ingester.max-global-streams-per-user
 [max_global_streams_per_user: <int> | default = 5000]
-
-# Deprecated. When true, out-of-order writes are accepted.
-# CLI flag: -ingester.unordered-writes
-[unordered_writes: <boolean> | default = true]
 
 # Maximum byte rate per second per stream, also expressible in human readable
 # forms (1MB, 256KB, etc).
@@ -4719,9 +4762,6 @@ ruler_remote_write_sigv4_config:
 # -runtime-config.reload-period (runtime_config.period in YAML).
 # CLI flag: -limits.per-user-override-period
 [per_tenant_override_period: <duration> | default = 10s]
-
-# Deprecated: Use deletion_mode per tenant configuration instead.
-[allow_deletes: <boolean>]
 
 # Define streams sharding behavior.
 shard_streams:
@@ -5325,13 +5365,12 @@ The `period_config` block configures what index schemas should be used for from 
 [from: <daytime>]
 
 # store and object_store below affect which <storage_config> key is used. Which
-# index to use. Either tsdb or boltdb-shipper. Following stores are deprecated:
-# aws, aws-dynamo, grpc.
+# index to use. Only tsdb is supported.
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws (alias s3), azure, gcs,
 # alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to
-# named_stores_config). Following stores are deprecated: aws-dynamo, grpc.
+# named_stores_config).
 [object_store: <string> | default = ""]
 
 # The schema version to use, current recommended schema is v13.
@@ -6574,11 +6613,6 @@ hedging:
 # Storage (COS) backend.
 [cos: <cos_storage_config>]
 
-# Cache validity for active index entries. Should be no higher than
-# -ingester.max-chunk-idle.
-# CLI flag: -store.index-cache-validity
-[index_cache_validity: <duration> | default = 5m]
-
 congestion_control:
   # Use storage congestion control (default: disabled).
   # CLI flag: -store.congestion-control.enabled
@@ -6633,11 +6667,6 @@ congestion_control:
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
 
-# The cache_config block configures the cache backend for a specific Loki
-# component.
-# The CLI flags prefix for this block configuration is: store.index-cache-read
-[index_queries_cache_config: <cache_config>]
-
 # Disable broad index queries which results in reduced cache usage and faster
 # query performance at the expense of somewhat higher QPS on the index store.
 # CLI flag: -store.disable-broad-index-queries
@@ -6677,69 +6706,6 @@ object_store:
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
 [max_chunk_batch_size: <int> | default = 50]
-
-# Configures storing index in an Object Store
-# (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required
-# fields only required when boltdb-shipper is defined in config.
-boltdb_shipper:
-  # Directory where ingesters would write index files which would then be
-  # uploaded by shipper to configured storage
-  # CLI flag: -boltdb.shipper.active-index-directory
-  [active_index_directory: <string> | default = ""]
-
-  # Cache location for restoring index files from storage for queries
-  # CLI flag: -boltdb.shipper.cache-location
-  [cache_location: <string> | default = ""]
-
-  # TTL for index files restored in cache for queries
-  # CLI flag: -boltdb.shipper.cache-ttl
-  [cache_ttl: <duration> | default = 24h]
-
-  # Resync downloaded files with the storage
-  # CLI flag: -boltdb.shipper.resync-interval
-  [resync_interval: <duration> | default = 5m]
-
-  # Number of days of common index to be kept downloaded for queries. For per
-  # tenant index query readiness, use limits overrides config.
-  # CLI flag: -boltdb.shipper.query-ready-num-days
-  [query_ready_num_days: <int> | default = 0]
-
-  index_gateway_client:
-    # The grpc_client block configures the gRPC client used to communicate
-    # between a client and server component in Loki.
-    # The CLI flags prefix for this block configuration is:
-    # boltdb.shipper.index-gateway-client.grpc
-    [grpc_client_config: <grpc_client>]
-
-    # Hostname or IP of the Index Gateway gRPC server running in simple mode.
-    # Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A
-    # record with multiple IP's, a DNS SRV record with a followup A record
-    # lookup, or a DNS SRV record without a followup A record lookup,
-    # respectively.
-    # CLI flag: -boltdb.shipper.index-gateway-client.server-address
-    [server_address: <string> | default = ""]
-
-    # Whether requests sent to the gateway should be logged or not.
-    # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
-    [log_gateway_requests: <boolean> | default = false]
-
-    # Experimental: Defines buckets for time-based sharding. Time based sharding
-    # only takes affect when index gateways run in simple mode. To enable client
-    # side time-based sharding of queries across index gateway instances set at
-    # least one bucket in the format of a string representation of a
-    # time.Duration, e.g. ['168h', '336h', '504h']
-    # CLI flag: -boltdb.shipper.index-gateway-client.time-based-sharding-buckets
-    [time_based_sharding_buckets: <list of strings> | default = []]
-
-  [ingestername: <string> | default = ""]
-
-  [mode: <string> | default = ""]
-
-  [ingesterdbretainperiod: <duration>]
-
-  # Build per tenant index files
-  # CLI flag: -boltdb.shipper.build-per-tenant-index
-  [build_per_tenant_index: <boolean> | default = false]
 
 # Configures storing index in an Object Store
 # (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required
@@ -7398,7 +7364,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `bloom.metas-cache.memcached`
-- `boltdb.shipper.index-gateway-client.grpc`
 - `common.storage.ring.etcd`
 - `compactor.grpc-client`
 - `compactor.ring.etcd`
@@ -7438,8 +7403,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `ruler.ring.etcd`
 - `store.chunks-cache-l2.memcached`
 - `store.chunks-cache.memcached`
-- `store.index-cache-read.memcached`
-- `store.index-cache-write.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
 - `ui.ring.etcd`
 
@@ -7555,50 +7518,18 @@ multi_kv_config:
 
 ## Accept out-of-order writes
 
-Since the beginning of Loki, log entries had to be written to Loki in order
-by time.
-This limitation has been lifted.
-Out-of-order writes are enabled globally by default, but can be disabled/enabled
-on a cluster or per-tenant basis.
-
-- To disable out-of-order writes for all tenants,
-place in the `limits_config` section:
-
-    ```yaml
-    limits_config:
-        unordered_writes: false
-    ```
-
-- To disable out-of-order writes for specific tenants,
-configure a runtime configuration file:
-
-    ```yaml
-    runtime_config:
-      file: overrides.yaml
-    ```
-
-    In the `overrides.yaml` file, add `unordered_writes` for each tenant
-    permitted to have out-of-order writes:
-
-    ```yaml
-    overrides:
-      "tenantA":
-        unordered_writes: false
-    ```
-
-How far into the past accepted out-of-order log entries may be
-is configurable with `max_chunk_age`.
-`max_chunk_age` defaults to 2 hour.
-Loki calculates the earliest time that out-of-order entries may have
-and be accepted with
+Loki accepts log entries of a stream to arrive out of order by time.
+How far into the past accepted out-of-order log entries may be is configurable with `max_chunk_age`.
+The setting `max_chunk_age` defaults to 2 hours, but it is advised to not increase it.
+Loki calculates the earliest time that out-of-order entries may have and be accepted with.
 
 ```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
-This means the allowed out-of-order window is half of the configured max_chunk_age.
+This means the allowed out-of-order window is half of the configured `max_chunk_age`.
 
 Log entries with timestamps that are after this earliest time are accepted.
-Log entries further back in time return an out-of-order error.
+Log entries further back in time return a `too_far_behind` error.
 
 For example, if `max_chunk_age` is 2 hours
 and the stream `{foo="bar"}` has one entry at `8:00`,

@@ -121,22 +121,11 @@ server:
   http_server_write_timeout: 6m
   log_level: debug
 storage_config:
-  boltdb_shipper:
-    active_index_directory: /data/index
-    cache_location: /data/boltdb-cache
-    index_gateway_client:
-      server_address: index-gateway:9008
   aws:
     s3: s3://loki:supersecret@minio:9000/loki
     s3forcepathstyle: true
     insecure: true
     endpoint: minio:9000
-  index_queries_cache_config:
-    memcached:
-      batch_size: 256
-      parallelism: 10
-    memcached_client:
-      addresses: memcached:11211
   tsdb_shipper:
     active_index_directory: /data/tsdb-index
     cache_location: /data/tsdb-cache

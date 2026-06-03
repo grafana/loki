@@ -77,7 +77,7 @@ loki:
 minio:
   enabled: true
       
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 1
@@ -154,7 +154,7 @@ loki:
 minio:
   enabled: true
       
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 3
@@ -191,6 +191,10 @@ bloomGateway:
 In this configuration, we need to make sure to update the `commonConfig.replication_factor` and `singleBinary.replicas` to the desired number of replicas. We are deploying Loki with MinIO as the object storage. We recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
 
 ## Deploying the Helm chart for development and testing
+
+{{< admonition type="note" >}}
+If this is the first time you have deployed the Loki Helm chart since the move to the Community managed Helm chart, note that the URL for the chart has changed. For more information see the [Upgrade documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-6x/).
+{{< /admonition >}}
 
 1. Add the [Grafana Community chart repository](https://github.com/grafana-community/helm-charts) to Helm:
 
@@ -289,7 +293,7 @@ loki:
 minio:
   enabled: false
 
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 3
@@ -375,7 +379,7 @@ loki:
 minio:
   enabled: false
 
-deploymentMode: SingleBinary
+deploymentMode: Monolithic
 
 singleBinary:
   replicas: 3
@@ -425,14 +429,14 @@ To configure other storage providers, refer to the [Helm Chart Reference](https:
 ## Deploying the Loki Helm chart to a Production Environment
 
 {{< admonition type="note" >}}
-We are actively working on providing more guides for deploying Loki in production. 
+We are actively working on providing more guides for deploying Loki in production.
 {{< /admonition >}}
 
 We recommend running Loki at scale within a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
+
 - [Deploy Loki on AWS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/aws)
 
+## Next Steps
 
-## Next Steps 
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
 * Monitor the Loki deployment using the [Meta Monitoring Helm chart](/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/)
-

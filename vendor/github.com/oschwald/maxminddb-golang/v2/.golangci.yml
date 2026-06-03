@@ -1,6 +1,6 @@
 version: "2"
 run:
-  go: "1.24"
+  go: "1.25"
   tests: true
   allow-parallel-runners: true
 linters:
@@ -43,6 +43,8 @@ linters:
       comparison: true
     exhaustive:
       default-signifies-exhaustive: true
+    goconst:
+      ignore-tests: true
     forbidigo:
       forbid:
         - pattern: Geoip
@@ -157,7 +159,7 @@ linters:
           - govet
           - revive
         path: _test.go
-        text: 'fieldalignment:'
+        text: "fieldalignment:"
 formatters:
   enable:
     - gci
