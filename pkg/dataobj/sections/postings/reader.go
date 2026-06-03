@@ -44,11 +44,11 @@ type ReaderOptions struct {
 // Validate returns an error if the opts is not valid. ReaderOptions are only
 // valid when:
 //
-// - Columns is non-empty.
-// - Each [Column] in Columns belongs to the same [Section].
-// - Each [Predicate] in Predicates references a [Column] from Columns.
-// - Scalar values used in predicates are of a supported type: an int64,
-// uint64, timestamp, or a byte array.
+//   - Columns is non-empty.
+//   - Each [Column] in Columns belongs to the same [Section].
+//   - Each [Predicate] in Predicates references a [Column] from Columns.
+//   - Scalar values used in predicates are of a supported type: an int64,
+//     uint64, timestamp, or a byte array.
 func (opts *ReaderOptions) Validate() error {
 	if len(opts.Columns) == 0 {
 		return errors.New("ReaderOptions.Columns must be non-empty")
@@ -1739,11 +1739,9 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// StreamLabelColumnNames returns the names of the stream-label columns
-// present in the sibling streams.Section discovered at Open time. The
-// returned slice is the de-duplicated list of [streams.ColumnTypeLabel]
-// column names — i.e. every label name that the streams section materializes
-// as its own column.
+// StreamLabelColumnNames returns the de-duplicated set of stream-label names
+// observed in the postings section's KindLabel rows (the distinct values of
+// the column_name column where kind == KindLabel).
 //
 // Callers (notably metastore.indexSectionsReader.filterBloomPredicates) use
 // this to decide which user-supplied predicates name stream labels and
@@ -1753,28 +1751,110 @@ func (r *Reader) Close() error {
 // column_name bloom row that does not exist and AND-drop every section
 // (the false-negative).
 //
-// Returns nil when the postings section was opened without a parent dataobj
-// back-pointer (legacy [Open], used by fixtures that don't carry a streams
-// sibling). The Reader must be opened ([Reader.Open]) before this method
-// is called.
-func (r *Reader) StreamLabelColumnNames() []string {
-	if !r.ready || r.streamsSec == nil {
-		return nil
+// Completeness rests on a writer invariant: index.labelPostingsCalculation
+// observes every label of a stream for every log row, so any row-bearing
+// stream contributes a KindLabel row for each of its labels. Stream labels
+// with no postings row (only possible for zero-row streams) are absent — but
+// such streams resolve to no sections, so the omission is harmless.
+//
+// The Reader must be opened ([Reader.Open]) before this method is called.
+func (r *Reader) StreamLabelColumnNames(ctx context.Context) ([]string, error) {
+	if !r.ready {
+		return nil, errReaderNotOpen
 	}
-	cols := r.streamsSec.Columns()
-	names := make([]string, 0, len(cols))
-	seen := make(map[string]struct{}, len(cols))
-	for _, c := range cols {
-		if c == nil || c.Type != streams.ColumnTypeLabel || c.Name == "" {
-			continue
-		}
-		if _, dup := seen[c.Name]; dup {
-			continue
-		}
-		seen[c.Name] = struct{}{}
-		names = append(names, c.Name)
+
+	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.StreamLabelColumnNames")
+	defer span.End()
+	defer r.alloc.Reclaim()
+
+	// Project column_name (output) + kind (predicate-only, gates to KindLabel).
+	nameCols, err := findColumnsByType(r.opts.Columns, ColumnTypeColumnName)
+	if err != nil {
+		return nil, fmt.Errorf("finding column_name column: %w", err)
 	}
-	return names
+	kindCols, err := findColumnsByType(r.opts.Columns, ColumnTypeKind)
+	if err != nil {
+		return nil, fmt.Errorf("finding kind column: %w", err)
+	}
+	colColumnName, colKind := nameCols[0], kindCols[0]
+
+	innerSection := colColumnName.Section.inner
+	innerColumns := []*columnar.Column{colColumnName.inner, colKind.inner}
+
+	dset, err := columnar.MakeDataset(innerSection, innerColumns)
+	if err != nil {
+		return nil, fmt.Errorf("creating dataset: %w", err)
+	} else if len(dset.Columns()) != len(innerColumns) {
+		return nil, fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(innerColumns))
+	}
+
+	columnLookup := map[*Column]dataset.Column{
+		colColumnName: dset.Columns()[0],
+		colKind:       dset.Columns()[1],
+	}
+
+	kindEq := EqualPredicate{
+		Column: colKind,
+		Value:  scalar.NewInt64Scalar(int64(KindLabel)),
+	}
+	preds, err := mapPredicates([]Predicate{kindEq}, columnLookup)
+	if err != nil {
+		return nil, fmt.Errorf("mapping predicates: %w", err)
+	}
+
+	innerOptions := dataset.RowReaderOptions{
+		Dataset:    dset,
+		Columns:    dset.Columns(),
+		Predicates: preds,
+		Prefetch:   true,
+	}
+	adapter := columnar.NewReaderAdapter(innerOptions)
+	defer func() { _ = adapter.Close() }()
+	if err := adapter.Open(ctx); err != nil {
+		return nil, fmt.Errorf("opening StreamLabelColumnNames adapter: %w", err)
+	}
+
+	innerSchema := arrow.NewSchema([]arrow.Field{
+		columnToField(colColumnName),
+		columnToField(colKind),
+	}, nil)
+
+	seen := make(map[string]struct{})
+	var names []string
+	for {
+		colBatch, readErr := adapter.Read(ctx, r.alloc, readBloomRowsBatchSize)
+		if colBatch != nil && colBatch.NumRows() > 0 {
+			rb, err := arrowconv.ToRecordBatch(colBatch, innerSchema)
+			if err != nil {
+				return nil, fmt.Errorf("converting columnar batch to arrow: %w", err)
+			}
+			nameCol, ok := rb.Column(0).(*array.String)
+			if !ok {
+				return nil, fmt.Errorf("column_name column has unexpected type %T", rb.Column(0))
+			}
+			for i := 0; i < int(rb.NumRows()); i++ {
+				if nameCol.IsNull(i) {
+					continue
+				}
+				name := nameCol.Value(i)
+				if name == "" {
+					continue
+				}
+				if _, dup := seen[name]; dup {
+					continue
+				}
+				seen[name] = struct{}{}
+				names = append(names, name)
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return nil, fmt.Errorf("reading column_name rows: %w", readErr)
+		}
+	}
+	return names, nil
 }
 
 // columnsSchema builds the arrow schema for the given projected columns.

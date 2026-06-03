@@ -533,7 +533,11 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 			}
 
 			// todo(shantanu): can it be simplified under the ResolveLabels itself?
-			if streamLabelNames := pr.StreamLabelColumnNames(); len(streamLabelNames) > 0 {
+			streamLabelNames, err := pr.StreamLabelColumnNames(ctx)
+			if err != nil {
+				return fmt.Errorf("resolving stream label names via postings: %w", err)
+			}
+			if len(streamLabelNames) > 0 {
 				for streamID := range r.matchingStreamIDs {
 					r.addLabelNamesForStream(streamID, streamLabelNames)
 				}
