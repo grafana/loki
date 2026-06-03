@@ -727,9 +727,6 @@ func (r *indexSectionsReader) readPointersFromPostings(ctx context.Context) (arr
 	r.postingsPointersRead = true
 
 	if rec == nil || rec.NumRows() == 0 {
-		if rec != nil {
-			rec.Release()
-		}
 		return nil, io.EOF
 	}
 
@@ -1002,14 +999,7 @@ func (r *indexSectionsReader) readMatchedSectionKeysFromPostings(ctx context.Con
 	if err != nil {
 		return nil, fmt.Errorf("reading postings bloom rows: %w", err)
 	}
-	if rec == nil {
-		return map[SectionKey]struct{}{}, nil
-	}
-	// Arrow contract: ReadBloomRows' doc-comment says "Caller must release
-	// the returned batch." Move the defer above the zero-row short-circuit
-	// so the (non-nil, NumRows()==0) case releases the batch as well.
-	defer rec.Release()
-	if rec.NumRows() == 0 {
+	if rec == nil || rec.NumRows() == 0 {
 		return map[SectionKey]struct{}{}, nil
 	}
 

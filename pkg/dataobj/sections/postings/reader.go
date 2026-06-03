@@ -424,8 +424,6 @@ func streamsTimeRangePredicate(colMinTs, colMaxTs *streams.Column, sStart, sEnd 
 // . Internally performs a join between the postings section and the
 // sibling streams section of the same dataobj.
 //
-// Caller must release the batch.
-//
 // streamIDs filters the result to streams in the provided set. When
 // streamIDs is empty (nil or len==0), no stream-ID filter is applied — all
 // streams whose [min_timestamp, max_timestamp] range overlaps [start, end]
@@ -550,10 +548,8 @@ func (r *Reader) collectStreamRowMetadata(
 		rb, readErr := streamsReader.Read(ctx, readPointersBatchSize)
 		if rb != nil {
 			if err := accumulateStreamMeta(rb, out); err != nil {
-				rb.Release()
 				return nil, err
 			}
-			rb.Release()
 		}
 		if errors.Is(readErr, io.EOF) {
 			break
@@ -721,10 +717,8 @@ func (r *Reader) collectPostingsRows(
 				return nil, fmt.Errorf("converting postings columnar batch to arrow: %w", err)
 			}
 			if err := appendPostingsJoinRows(rb, streamMeta, &out); err != nil {
-				rb.Release()
 				return nil, err
 			}
-			rb.Release()
 		}
 		if errors.Is(readErr, io.EOF) {
 			break
@@ -814,7 +808,6 @@ func appendPostingsJoinRows(rb arrow.RecordBatch, streamMeta map[int64]streamRow
 // rows. The output schema's field order matches readPointersOutputSchema().
 func buildReadPointersRecord(alloc memory.Allocator, schema *arrow.Schema, rows []pointerJoinRow) (arrow.RecordBatch, error) {
 	rb := array.NewRecordBuilder(alloc, schema)
-	defer rb.Release()
 
 	for _, row := range rows {
 		rb.Field(0).(*array.StringBuilder).Append(row.objectPath)
@@ -840,7 +833,6 @@ func buildReadPointersRecord(alloc memory.Allocator, schema *arrow.Schema, rows 
 // invariant).
 func buildEmptyRecord(alloc memory.Allocator, schema *arrow.Schema) arrow.RecordBatch {
 	rb := array.NewRecordBuilder(alloc, schema)
-	defer rb.Release()
 	return rb.NewRecordBatch()
 }
 
@@ -869,8 +861,6 @@ const readBloomRowsBatchSize = 4096
 // call time. Callers that construct [ReaderOptions] manually should pass
 // the section's full column set ([Section.Columns]); this is the same
 // shape the fixture tests use.
-//
-// Caller must release the returned batch.
 func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
@@ -982,12 +972,9 @@ func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 }
 
 // collectBloomRowBatches drains adapter, converts each inner columnar batch
-// to a 5-column arrow batch via arrowconv.ToRecordBatch, strips the trailing
-// kind column, and accumulates the rows into a single 4-column output batch
-// matching outputSchema. The strip happens via array.NewRecordBatch
-// referencing the first 4 arrays of the inner batch — zero-copy on the keep
-// columns, with an explicit Retain so the output batch owns valid references
-// after the inner batch is released.
+// to a 5-column arrow batch via arrowconv.ToRecordBatch, and copies the four
+// kept columns (object_path, section_index, column_name, bloom_filter) into a
+// single output batch matching outputSchema, dropping the trailing kind column.
 func (r *Reader) collectBloomRowBatches(
 	ctx context.Context,
 	adapter *columnar.ReaderAdapter,
@@ -996,7 +983,6 @@ func (r *Reader) collectBloomRowBatches(
 	outputSchema *arrow.Schema,
 ) (arrow.RecordBatch, error) {
 	rb := array.NewRecordBuilder(alloc, outputSchema)
-	defer rb.Release()
 
 	for {
 		colBatch, readErr := adapter.Read(ctx, r.alloc, readBloomRowsBatchSize)
@@ -1006,10 +992,8 @@ func (r *Reader) collectBloomRowBatches(
 				return nil, fmt.Errorf("converting bloom-row columnar batch to arrow: %w", err)
 			}
 			if err := appendBloomRowBatch(innerRB, rb); err != nil {
-				innerRB.Release()
 				return nil, err
 			}
-			innerRB.Release()
 		}
 		if errors.Is(readErr, io.EOF) {
 			break
@@ -1389,10 +1373,8 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 				perMatcherStreams,
 				labelNamesByStreamSet,
 			); err != nil {
-				innerRB.Release()
 				return nil, nil, err
 			}
-			innerRB.Release()
 		}
 		if errors.Is(readErr, io.EOF) {
 			break

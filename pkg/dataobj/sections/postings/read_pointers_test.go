@@ -46,7 +46,6 @@ func TestReadPointers_SchemaParity(t *testing.T) {
 		unixTime(0), unixTime(10000))
 	require.NoError(t, err)
 	require.NotNil(t, postingsBatch)
-	t.Cleanup(func() { postingsBatch.Release() })
 
 	// Pointers side: mirror openStreamPointersReader EXACTLY — full 9-column
 	// default projection, EqualPredicate(PointerKindStreamIndex),
@@ -102,7 +101,6 @@ func TestReadPointers_SchemaParity(t *testing.T) {
 	pointersBatch, err := pointersReader.Read(t.Context(), 128)
 	require.NoError(t, err)
 	require.NotNil(t, pointersBatch)
-	t.Cleanup(func() { pointersBatch.Release() })
 
 	require.True(t, postingsBatch.Schema().Equal(pointersBatch.Schema()),
 		"postings ReadPointers schema must match pointers.Reader-fed openStreamPointersReader schema byte-for-byte on the FULL 9-column default pointer-scan projection (no narrowing); got\n  postings=%s\n  pointers=%s",
@@ -133,7 +131,6 @@ func TestReadPointers_StreamIDFilter(t *testing.T) {
 		unixTime(0), unixTime(10000))
 	require.NoError(t, err)
 	require.NotNil(t, batch)
-	t.Cleanup(func() { batch.Release() })
 
 	require.Equal(t, int64(2), batch.NumRows(), "expected exactly 2 rows for streamIDs={1,3}")
 
@@ -181,7 +178,6 @@ func TestReadPointers_TimeRangeFilter(t *testing.T) {
 	batch, err := r.ReadPointers(t.Context(), nil, unixTime(190), unixTime(260))
 	require.NoError(t, err)
 	require.NotNil(t, batch)
-	t.Cleanup(func() { batch.Release() })
 
 	require.Equal(t, int64(1), batch.NumRows(), "expected exactly 1 row for time range [190,260]")
 	got := materialiseReadPointersRows(t, batch)
@@ -208,7 +204,6 @@ func TestReadPointers_EmptyStreamIDs(t *testing.T) {
 	batch, err := r.ReadPointers(t.Context(), nil, unixTime(0), unixTime(10000))
 	require.NoError(t, err)
 	require.NotNil(t, batch)
-	t.Cleanup(func() { batch.Release() })
 
 	require.Equal(t, int64(3), batch.NumRows(), "expected all 3 streams when streamIDs is nil")
 	got := materialiseReadPointersRows(t, batch)
@@ -280,7 +275,6 @@ func TestReadPointers_ResetClearsStreamsSec(t *testing.T) {
 	batch, err := r.ReadPointers(t.Context(), nil, unixTime(0), unixTime(10000))
 	require.NoError(t, err)
 	require.NotNil(t, batch)
-	batch.Release()
 
 	// Step 2: Reset onto the parent-less section. The Reader's previously
 	// resolved streamsSec MUST NOT survive — init() will not assign a new

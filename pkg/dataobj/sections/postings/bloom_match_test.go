@@ -35,11 +35,6 @@ func TestMatchSections_AND_Semantics(t *testing.T) {
 	})
 
 	batches := readAllBloomBatches(t, fx.sec)
-	t.Cleanup(func() {
-		for _, rb := range batches {
-			rb.Release()
-		}
-	})
 
 	result, err := postings.MatchSections(t.Context(), batches, []*labels.Matcher{
 		equalMatcher(t, "env", "prod"),
@@ -62,11 +57,6 @@ func TestMatchSections_EqualMatcherOnly_FilterApplied(t *testing.T) {
 	})
 
 	batches := readAllBloomBatches(t, fx.sec)
-	t.Cleanup(func() {
-		for _, rb := range batches {
-			rb.Release()
-		}
-	})
 
 	// Pass an Equal matcher AND a Regex matcher. The Regex matcher is
 	// silently dropped — the result should be the same as if only the
@@ -169,8 +159,6 @@ func readAllBloomBatches(t *testing.T, sec *postings.Section) []arrow.RecordBatc
 		rb, err := r.ReadBloomRows(t.Context())
 		if rb != nil && rb.NumRows() > 0 {
 			batches = append(batches, rb)
-		} else if rb != nil {
-			rb.Release()
 		}
 		if err == nil {
 			// single-batch contract — one call returns the full

@@ -32,7 +32,6 @@ func TestAccumulateStreamMeta_DuplicateStreamID(t *testing.T) {
 	}, nil)
 
 	rb := array.NewRecordBuilder(memory.DefaultAllocator, schema)
-	defer rb.Release()
 
 	// Two rows with the SAME stream_id (=42). Without the fix this silently
 	// overwrites the first row; with the fix the second row triggers an
@@ -44,7 +43,6 @@ func TestAccumulateStreamMeta_DuplicateStreamID(t *testing.T) {
 	rb.Field(4).(*array.Int64Builder).AppendValues([]int64{1000, 2000}, nil)
 
 	batch := rb.NewRecordBatch()
-	defer batch.Release()
 
 	out := make(map[int64]streamRowMetadata)
 	err := accumulateStreamMeta(batch, out)
