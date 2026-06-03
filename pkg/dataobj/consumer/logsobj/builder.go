@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/facette/natsort"
 	"github.com/go-kit/log"
@@ -30,10 +31,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// ErrBuilderFull is returned by [Builder.Append] when the buffer is
-// full and needs to flush; call [Builder.Flush] to flush it.
+// ErrBuilderEmpty is returned by [Builder.Flush] when there is no buffered
+// data to flush.
 var (
-	ErrBuilderFull  = errors.New("builder full")
 	ErrBuilderEmpty = errors.New("builder empty")
 )
 
@@ -222,6 +222,10 @@ type Builder struct {
 	streams map[string]*streams.Builder
 	logs    map[string]*logs.Builder
 
+	// earliestRecordTime tracks the timestamp of the earliest record appended
+	// to the builder. It is required for the metastore index.
+	earliestRecordTime time.Time
+
 	state builderState
 }
 
@@ -287,30 +291,26 @@ func (b *Builder) initBuilder(tenant string) {
 	}
 }
 
+func (b *Builder) GetEarliestRecordTime() time.Time {
+	return b.earliestRecordTime
+}
+
 func (b *Builder) GetEstimatedSize() int {
 	return b.currentSizeEstimate
 }
 
-// Append buffers a stream to be written to a data object. Append returns an
-// error if the stream labels cannot be parsed or [ErrBuilderFull] if the
-// builder is full.
-//
-// Once a Builder is full, call [Builder.Flush] to flush the buffered data,
-// then call Append again with the same entry.
-func (b *Builder) Append(tenant string, stream logproto.Stream) error {
+func (b *Builder) IsFull() bool {
+	return b.currentSizeEstimate > int(b.cfg.TargetObjectSize)
+}
+
+// Append buffers a stream to be written to a data object.
+// Callers are expected to poll [Builder.IsFull] before appending and
+// to flush the builder once it reports full. Appending entries to a full
+// builder is permitted.
+func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
 	ls, err := b.parseLabels(stream.Labels)
 	if err != nil {
 		return err
-	}
-
-	// Check whether the buffer is full before a stream can be appended; this is
-	// tends to overestimate, but we may still go over our target size.
-	//
-	// Since this check only happens after the first call to Append,
-	// b.currentSizeEstimate will always be updated to reflect the size following
-	// the previous append.
-	if b.state != builderStateEmpty && b.currentSizeEstimate+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
-		return ErrBuilderFull
 	}
 
 	b.initBuilder(tenant)
@@ -346,6 +346,9 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 		}
 	}
 
+	if b.earliestRecordTime.IsZero() || recTime.Before(b.earliestRecordTime) {
+		b.earliestRecordTime = recTime
+	}
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	return nil
@@ -363,38 +366,6 @@ func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {
 	}
 	b.labelCache.Add(labelString, parsed)
 	return parsed, nil
-}
-
-// labelsEstimate estimates the size of a set of labels in bytes.
-func labelsEstimate(ls labels.Labels) int {
-	var (
-		keysSize   int
-		valuesSize int
-	)
-
-	ls.Range(func(l labels.Label) {
-		keysSize += len(l.Name)
-		valuesSize += len(l.Value)
-	})
-
-	// Keys are stored as columns directly, while values get compressed. We'll
-	// underestimate a 2x compression ratio.
-	return keysSize + valuesSize/2
-}
-
-// streamSizeEstimate estimates the size of a stream in bytes.
-func streamSizeEstimate(stream logproto.Stream) int {
-	var size int
-	for _, entry := range stream.Entries {
-		// We only check the size of the line and metadata. Timestamps and IDs
-		// encode so well that they're unlikely to make a singificant impact on our
-		// size estimate.
-		size += len(entry.Line) / 2 // Line with 2x compression ratio
-		for _, md := range entry.StructuredMetadata {
-			size += len(md.Name) + len(md.Value)/2
-		}
-	}
-	return size
 }
 
 func convertMetadata(md push.LabelsAdapter) labels.Labels {
@@ -650,6 +621,7 @@ func (b *Builder) Reset() {
 	clear(b.logs)
 	clear(b.streams)
 
+	b.earliestRecordTime = time.Time{}
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty

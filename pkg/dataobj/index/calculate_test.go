@@ -96,7 +96,7 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 
 	for i := range tenants {
 		for _, stream := range testStreams {
-			err := builder.Append(fmt.Sprintf("tenant-%d", i), stream)
+			err := builder.Append(fmt.Sprintf("tenant-%d", i), stream, stream.Entries[0].Timestamp)
 			require.NoError(t, err)
 		}
 	}

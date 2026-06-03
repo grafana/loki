@@ -46,7 +46,7 @@ func buildObject(t *testing.T, labels string, base time.Time, lineCount int) (*d
 	require.NoError(t, b.Append(testTenant, logproto.Stream{
 		Labels:  labels,
 		Entries: entries,
-	}))
+	}, base))
 
 	obj, closer, err := b.Flush()
 	require.NoError(t, err)

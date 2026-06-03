@@ -2,7 +2,6 @@ package consumer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -22,16 +20,18 @@ import (
 
 // A builder allows mocking of [logsobj.Builder] in tests.
 type builder interface {
-	Append(tenant string, stream logproto.Stream) error
+	Append(tenant string, stream logproto.Stream, recTime time.Time) error
 	GetEstimatedSize() int
+	IsFull() bool
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
+	GetEarliestRecordTime() time.Time
 	CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
 }
 
 // A flushCommitter allows mocking of flushes in tests.
 type flushCommitter interface {
-	Flush(ctx context.Context, builder builder, reason string, offset int64, earliestRecordTime time.Time) error
+	Flush(ctx context.Context, builder builder, reason string, offset int64) error
 }
 
 // A processor receives records and builds data objects from them.
@@ -68,10 +68,6 @@ type processor struct {
 	// object builder. It is used to know if the builder has exceeded the
 	// idle timeout. It must be reset after each flush.
 	lastAppend time.Time
-
-	// earliestRecordTime tracks the timestamp of the earliest record appended
-	// to the data object builder. It is required for the metastore index.
-	earliestRecordTime time.Time
 
 	// timePartitionedEstimates counts how many data objects we would build
 	// per flush with 12 hour windows.
@@ -177,21 +173,16 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 		}
 	}
 
-	if err := p.builder.Append(tenant, stream); err != nil {
-		if !errors.Is(err, logsobj.ErrBuilderFull) {
-			return fmt.Errorf("failed to append stream: %w", err)
-		}
+	if p.builder.IsFull() {
 		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
-			return fmt.Errorf("failed to flush and commit: %w", err)
-		}
-		if err := p.builder.Append(tenant, stream); err != nil {
-			return fmt.Errorf("failed to append stream after flushing: %w", err)
+			return fmt.Errorf("failed to flush: %w", err)
 		}
 	}
 
-	if p.earliestRecordTime.IsZero() || rec.Timestamp.Before(p.earliestRecordTime) {
-		p.earliestRecordTime = rec.Timestamp
+	if err := p.builder.Append(tenant, stream, rec.Timestamp); err != nil {
+		return fmt.Errorf("failed to append stream: %w", err)
 	}
+
 	if p.firstAppend.IsZero() {
 		p.firstAppend = now
 	}
@@ -240,13 +231,12 @@ func (p *processor) needsIdleFlush() bool {
 func (p *processor) flush(ctx context.Context, reason string) error {
 	defer func() {
 		// Reset the state to prepare for building the next data object.
-		p.earliestRecordTime = time.Time{}
 		p.firstAppend = time.Time{}
 		p.lastAppend = time.Time{}
 		clear(p.timePartitionedEstimates)
 	}()
 	p.metrics.timePartitionEstimate.Add(float64(len(p.timePartitionedEstimates)))
-	return p.flushCommitter.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
+	return p.flushCommitter.Flush(ctx, p.builder, reason, p.lastOffset)
 }
 
 func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {

@@ -82,6 +82,39 @@ func TestProcessor_BuilderMaxAge(t *testing.T) {
 	})
 }
 
+func TestProcessor_FlushesWhenBuilderFull(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var (
+			ctx            = t.Context()
+			reg            = prometheus.NewRegistry()
+			builder        = &mockBuilder{builder: newTestBuilder(t, reg)}
+			flushCommitter = &mockFlushCommitter{}
+			proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+		)
+
+		// While the builder is not full, processing a record should append
+		// without flushing.
+		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
+		require.Equal(t, 0, flushCommitter.flushes)
+		require.Equal(t, time.Now(), proc.firstAppend)
+
+		// Mark the builder as full. The next record should trigger a flush
+		// before it is appended, starting a new data object.
+		builder.full = true
+		flushedAt := time.Now()
+		time.Sleep(time.Minute)
+		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
+
+		// Exactly one flush should have occurred, and the record should still
+		// have been appended afterwards, resetting firstAppend to the current
+		// time rather than the time of the first append.
+		require.Equal(t, 1, flushCommitter.flushes)
+		require.NotEqual(t, flushedAt, proc.firstAppend)
+		require.Equal(t, time.Now(), proc.firstAppend)
+		require.Equal(t, time.Now(), proc.lastAppend)
+	})
+}
+
 func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (
@@ -133,7 +166,7 @@ func (f *failureFlusher) Flush(_ context.Context, _ builder, _ string) (string, 
 
 type failureFlushCommitter struct{}
 
-func (m *failureFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
+func (m *failureFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64) error {
 	return errors.New("mock error")
 }
 
@@ -165,7 +198,6 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			// The following fields should be reset at the end of every flush.
 			require.True(t, proc.firstAppend.IsZero())
-			require.True(t, proc.earliestRecordTime.IsZero())
 			require.True(t, proc.lastAppend.IsZero())
 		})
 	})
@@ -193,7 +225,6 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			// Despite the failure, the following fields should still be reset.
 			require.True(t, proc.firstAppend.IsZero())
-			require.True(t, proc.earliestRecordTime.IsZero())
 			require.True(t, proc.lastAppend.IsZero())
 		})
 	})
