@@ -106,7 +106,7 @@ func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLa
 	ctx, span := xcap.StartSpan(ctx, tracer, "query.Prepare")
 	defer span.End()
 
-	timer := prometheus.NewTimer(q.engine.metrics.workflowPlanning)
+	timer := prometheus.NewTimer(q.engine.metrics.planning.prepare.WithLabelValues(q.queryType))
 
 	var maxRunningScanTasks int
 	if useAdmissionLanes {

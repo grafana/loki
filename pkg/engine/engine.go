@@ -261,7 +261,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 
 	logicalPlan, err := e.buildLogicalPlan(ctx, q, params)
 	if err != nil {
-		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
+		e.metrics.query.subqueries.WithLabelValues(statusNotImplemented, q.queryType).Inc()
 		q.RecordError(ctx, errors.New("failed to create logical plan"))
 		return logqlmodel.Result{}, ErrNotSupported
 	}
@@ -270,7 +270,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, q, engineLogger, cacheEnabled))
 	physicalPlan, err := e.buildPhysicalPlan(ctx, q, params, catalog, logicalPlan)
 	if err != nil {
-		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+		e.metrics.query.subqueries.WithLabelValues(statusFailure, q.queryType).Inc()
 		q.RecordError(ctx, errors.New("failed to create physical plan"))
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
@@ -281,7 +281,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 
 	wf, err := q.Prepare(ctx, physicalPlan, useAdmissionLanes)
 	if err != nil {
-		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+		e.metrics.query.subqueries.WithLabelValues(statusFailure, q.queryType).Inc()
 		q.RecordError(ctx, errors.New("failed to create execution plan"))
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
@@ -292,7 +292,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to execute query", "err", err)
 
-		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+		e.metrics.query.subqueries.WithLabelValues(statusFailure, q.queryType).Inc()
 		q.RecordError(ctx, errors.New("failed to execute query"))
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
@@ -301,7 +301,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	gotrace.Log(ctx, "collect_result", "start")
 	builder, err := e.execute(ctx, q, params, pipeline)
 	if err != nil {
-		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+		e.metrics.query.subqueries.WithLabelValues(statusFailure, q.queryType).Inc()
 		q.RecordError(ctx, errors.New("error during query execution"))
 		return logqlmodel.Result{}, err
 	}
@@ -365,7 +365,7 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Pa
 	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.buildLogicalPlan")
 	defer span.End()
 
-	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
+	timer := prometheus.NewTimer(e.metrics.planning.logical.WithLabelValues(q.queryType))
 
 	var deleteReqs []*deletion.Request
 	if e.deleteGetter != nil {
@@ -412,7 +412,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.buildPhysicalPlan")
 	defer span.End()
 
-	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
+	timer := prometheus.NewTimer(e.metrics.planning.physical.WithLabelValues(q.queryType))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -526,7 +526,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 
 		var plan *physical.Plan
 		{
-			timer := prometheus.NewTimer(e.metrics.physicalPlanning)
+			timer := prometheus.NewTimer(e.metrics.planning.physical.WithLabelValues(q.queryType))
 
 			plan, err = planner.Plan(ctx, selector, predicates, start, end)
 			if err != nil {
@@ -564,7 +564,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 
 		var resp metastore.CollectSectionsResponse
 		{
-			timer := prometheus.NewTimer(e.metrics.execution)
+			timer := prometheus.NewTimer(e.metrics.execution.duration.WithLabelValues(q.queryType))
 
 			resp, err = e.metastore.CollectSections(ctx, metastore.CollectSectionsRequest{
 				// externalize EOFs returned by executor pipelines (executor.EOF -> io.EOF)
@@ -609,7 +609,7 @@ func (e *Engine) execute(ctx context.Context, q *query, params logql.Params, pip
 	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.execute")
 	defer span.End()
 
-	timer := prometheus.NewTimer(e.metrics.execution)
+	timer := prometheus.NewTimer(e.metrics.execution.duration.WithLabelValues(q.queryType))
 
 	var builder ResultBuilder
 	switch params.GetExpression().(type) {
