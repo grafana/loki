@@ -76,7 +76,8 @@ func (s *PartitionRingWatcher) updateShuffleSharder(ringDesc *ring.PartitionRing
 	partitions := ringDesc.Partitions
 	partitionIDs := make([]int32, 0, len(partitions))
 	for _, partition := range partitions {
-		if partition.State == ring.PartitionActive {
+		if partition.State == ring.PartitionActive &&
+			time.Now().Sub(time.Unix(partition.StateTimestamp, 0)) <= s.config.HeartbeatTimeout {
 			partitionIDs = append(partitionIDs, partition.Id)
 		}
 	}
