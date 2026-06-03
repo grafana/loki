@@ -40,14 +40,8 @@ type ReaderOptions struct {
 	Allocator memory.Allocator
 }
 
-// Validate returns an error if the opts is not valid. ReaderOptions are only
-// valid when:
-//
-//   - Columns is non-empty.
-//   - Each [Column] in Columns belongs to the same [Section].
-//   - Each [Predicate] in Predicates references a [Column] from Columns.
-//   - Scalar values used in predicates are of a supported type: an int64,
-//     uint64, timestamp, or a byte array.
+// Validate returns an error if opts is invalid. ReaderOptions are valid when
+// Columns is non-empty and every column belongs to the same Section.
 func (opts *ReaderOptions) Validate() error {
 	if len(opts.Columns) == 0 {
 		return errors.New("ReaderOptions.Columns must be non-empty")
@@ -272,42 +266,12 @@ func (r *Reader) init(ctx context.Context) error {
 	return nil
 }
 
-// readPointersBatchSize is the row batch size used internally by
-// [Reader.ReadPointers] when draining the postings columnar adapter. It
-// mirrors the metastore default at indexSectionsReader.batchSize, which
-// falls back to 8192 when unset. We use 4096 here to keep per-batch
-// allocations bounded while still amortising per-batch fixed costs; tune in a
-// follow-up if profiling indicates a better value.
+// readPointersBatchSize bounds per-batch allocations while amortising fixed costs when draining the adapter.
 const readPointersBatchSize = 4096
 
-// readPointersOutputSchema produces the byte-for-byte Arrow schema that
-// today's pointers.Reader (configured like
-// metastore.indexSectionsReader.openStreamPointersReader) emits for the
-// 9-column default pointer-scan projection. It is the schema-compatibility / schema
-// invariant 's reader-dispatch boundary depends on.
-//
-// Schema fields (in order):
-//
-// 1. path → utf8
-// 2. section → int64
-// 3. pointer_kind → int64
-// 4. stream_id → int64
-// 5. stream_id_ref → int64
-// 6. min_timestamp → timestamp[ns]
-// 7. max_timestamp → timestamp[ns]
-// 8. row_count → int64
-// 9. uncompressed_size → int64
-// 10. __streamLabelNames__ → utf8 (internal field appended by
-// pointers.Reader whenever ColumnTypeStreamID is in the projection —
-// pointers/reader.go:461-465; this stub-projection is populated with
-// nulls because postings has no inline label-name info at this layer)
-//
-// Field naming follows the pointers.makeColumnName(label, name, dtype)
-// convention. The pointers section's path column is built with
-// dataset.NewColumnBuilder("path", ...) (pointers/builder.go:248), so its
-// Tag is "path" — the resulting Arrow field name is "path.path.utf8". All
-// other pointers columns are built via numberColumnBuilder("", ...) with
-// an empty Tag, yielding "<type>.<dtype>" names.
+// readPointersOutputSchema returns the Arrow schema emitted by ReadPointers, byte-for-byte
+// matching the pointers.Reader 9-column default pointer-scan projection (+ the internal
+// __streamLabelNames__ field). Field naming mirrors pointers.makeColumnName.
 func readPointersOutputSchema() *arrow.Schema {
 	// makeColumnName mirrors pointers/reader.go:504-515.
 	makeColumnName := func(label, name string, dty arrow.DataType) string {
@@ -338,9 +302,7 @@ func readPointersOutputSchema() *arrow.Schema {
 		}
 	}
 	fields := []arrow.Field{
-		// path column carries Tag="path" on the pointers side — see
-		// pointers/builder.go:248 (dataset.NewColumnBuilder("path", ...)).
-		// All other pointers columns have empty Tag.
+		// path column carries Tag="path" on the pointers side; all others have empty Tag.
 		mkLabelled("path", pointers.ColumnTypePath.String(), arrow.BinaryTypes.String),
 		mkPlain(pointers.ColumnTypeSection.String(), arrow.PrimitiveTypes.Int64),
 		mkPlain(pointers.ColumnTypePointerKind.String(), arrow.PrimitiveTypes.Int64),
@@ -350,31 +312,15 @@ func readPointersOutputSchema() *arrow.Schema {
 		mkPlain(pointers.ColumnTypeMaxTimestamp.String(), arrow.FixedWidthTypes.Timestamp_ns),
 		mkPlain(pointers.ColumnTypeRowCount.String(), arrow.PrimitiveTypes.Int64),
 		mkPlain(pointers.ColumnTypeUncompressedSize.String(), arrow.PrimitiveTypes.Int64),
-		// pointers.Reader appends this internal label-names column whenever
-		// ColumnTypeStreamID is part of the projection — preserved here for
-		// byte-for-byte schema parity (Schema().Equal()).
+		// Internal label-names column pointers.Reader appends with ColumnTypeStreamID; kept for schema parity.
 		{Name: pointers.InternalLabelsFieldName, Type: arrow.BinaryTypes.String, Nullable: true},
 	}
 	return arrow.NewSchema(fields, nil)
 }
 
-// ReadPointers returns an Arrow RecordBatch of stream-pointer rows matching
-// the provided streamIDs and time range. The returned batch's Schema is
-// byte-for-byte identical to today's pointers.Reader-fed openStreamPointersReader
-// output projecting the FULL 9-column default pointer-scan column set
-// (path, section, pointer_kind, stream_id, stream_id_ref, min_timestamp,
-// max_timestamp, row_count, uncompressed_size).
-//
-// Pointers are sourced entirely from the postings section's KindLabel rows:
-// stream IDs from each row's bitmap, section identity from
-// (object_path, section_index), and the time range from the row's
-// min/max_timestamp. row_count and uncompressed_size are emitted as zero —
-// they are a metadata hint that no downstream consumer reads.
-//
-// streamIDs filters the result to streams in the provided set. When
-// streamIDs is empty (nil or len==0), no stream-ID filter is applied — all
-// streams in postings rows whose [min_timestamp, max_timestamp] overlaps
-// [start, end] are returned.
+// ReadPointers returns stream-pointer rows sourced from the postings KindLabel rows for
+// streams overlapping [start, end] (an empty streamIDs applies no stream filter). The schema
+// matches readPointersOutputSchema; row_count and uncompressed_size are emitted as zero.
 func (r *Reader) ReadPointers(ctx context.Context, streamIDs map[int64]struct{}, start, end time.Time) (arrow.RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
@@ -391,16 +337,12 @@ func (r *Reader) ReadPointers(ctx context.Context, streamIDs map[int64]struct{},
 		alloc = memory.DefaultAllocator
 	}
 
-	// Read pointer rows directly from the postings KindLabel rows, applying the
-	// stream-ID and [start,end] filters per row.
 	postingsRows, err := r.collectPostingsRows(ctx, streamIDs, start, end)
 	if err != nil {
 		return nil, err
 	}
 
-	// If nothing matched, short-circuit with an empty batch. Building it via the
-	// same RecordBuilder path guarantees the schema is byte-for-byte identical
-	// to the populated case (Schema().Equal() invariant).
+	// Short-circuit empty result with a schema-identical empty batch.
 	if len(postingsRows) == 0 {
 		rb := buildEmptyRecord(alloc, outSchema)
 		xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(int64(0)))
@@ -418,10 +360,7 @@ func (r *Reader) ReadPointers(ctx context.Context, streamIDs map[int64]struct{},
 	return rb, nil
 }
 
-// pointerJoinRow is a fully-assembled output tuple produced from a postings
-// row. Field order matches the output schema; the __streamLabelNames__ column
-// is left implicit (always null). stream_id_ref is not stored separately: in
-// new-format objects it always equals stream_id (see buildReadPointersRecord).
+// pointerJoinRow is one output tuple assembled from a postings row.
 type pointerJoinRow struct {
 	objectPath   string
 	sectionIndex int64
@@ -430,13 +369,8 @@ type pointerJoinRow struct {
 	maxTimestamp int64 // ns since epoch
 }
 
-// collectPostingsRows reads the postings section projecting
-// (kind, object_path, section_index, stream_id_bitmap, min_timestamp,
-// max_timestamp) with a kind=KindLabel EqualPredicate pushdown, decodes each
-// row's stream_id_bitmap (an LSB byte bitmap, NOT a roaring bitmap — see
-// pkg/memory.Bitmap and pkg/dataobj/sections/postings/label_aggregator.go),
-// and emits one output tuple per set bit. The streamIDs set (when non-empty)
-// and the [start,end] window are applied as row-level filters.
+// collectPostingsRows reads KindLabel rows and emits one tuple per stream-id bit set in each
+// row's bitmap, applying the streamIDs and [start,end] filters row-side.
 func (r *Reader) collectPostingsRows(
 	ctx context.Context,
 	streamIDs map[int64]struct{},
@@ -534,15 +468,8 @@ func (r *Reader) collectPostingsRows(
 	return out, nil
 }
 
-// appendPostingsJoinRows iterates rb's (kind, object_path, section_index,
-// stream_id_bitmap, min_timestamp, max_timestamp) rows, decodes each LSB
-// bitmap, and emits one tuple per (object_path, section_index, stream_id).
-//
-// Filtering: a row is skipped when its [min_timestamp, max_timestamp] does not
-// overlap [startNanos, endNanos]; within a surviving row, a stream_id is
-// skipped when streamIDs is non-empty and does not contain it (an empty
-// streamIDs applies no stream filter). Rows with a null bitmap or null
-// section_index/object_path are skipped — they cannot participate.
+// appendPostingsJoinRows decodes each row's LSB bitmap into one tuple per stream-id, skipping
+// rows outside [startNanos, endNanos] and stream-ids absent from a non-empty streamIDs set.
 func appendPostingsJoinRows(rb arrow.RecordBatch, streamIDs map[int64]struct{}, startNanos, endNanos int64, out *[]pointerJoinRow) error {
 	if rb.NumRows() == 0 {
 		return nil
@@ -593,10 +520,7 @@ func appendPostingsJoinRows(rb arrow.RecordBatch, streamIDs map[int64]struct{}, 
 		sectionIndex := sectionIndexCol.Value(i)
 		bitmapBytes := bitmapCol.Value(i)
 
-		// Iterate the LSB bitmap (each byte holds 8 stream IDs starting
-		// from streamID = byteIdx*8 + bitPos). See
-		// pkg/dataobj/sections/postings/builder_test.go:21-28 (checkBit
-		// reference) and pkg/memory/bitmap.go.
+		// LSB bitmap: byte b, bit p => streamID = b*8 + p (pkg/memory.Bitmap).
 		for byteIdx, b := range bitmapBytes {
 			if b == 0 {
 				continue
@@ -624,9 +548,8 @@ func appendPostingsJoinRows(rb arrow.RecordBatch, streamIDs map[int64]struct{}, 
 	return nil
 }
 
-// buildReadPointersRecord builds a 9-column arrow.RecordBatch (plus the
-// internal __streamLabelNames__ field, kept null) from the assembled join
-// rows. The output schema's field order matches readPointersOutputSchema().
+// buildReadPointersRecord builds the output batch from the assembled join rows in
+// readPointersOutputSchema field order.
 func buildReadPointersRecord(alloc memory.Allocator, schema *arrow.Schema, rows []pointerJoinRow) (arrow.RecordBatch, error) {
 	rb := array.NewRecordBuilder(alloc, schema)
 
@@ -635,28 +558,22 @@ func buildReadPointersRecord(alloc memory.Allocator, schema *arrow.Schema, rows 
 		rb.Field(1).(*array.Int64Builder).Append(row.sectionIndex)
 		rb.Field(2).(*array.Int64Builder).Append(int64(pointers.PointerKindStreamIndex))
 		rb.Field(3).(*array.Int64Builder).Append(row.streamID)
-		// stream_id_ref: new-format objects carry no distinct cross-index ref,
-		// so the stream's identity within its source object IS its stream_id.
+		// stream_id_ref: new-format objects carry no cross-index ref, so it equals stream_id.
 		rb.Field(4).(*array.Int64Builder).Append(row.streamID)
 		rb.Field(5).(*array.TimestampBuilder).Append(arrow.Timestamp(row.minTimestamp))
 		rb.Field(6).(*array.TimestampBuilder).Append(arrow.Timestamp(row.maxTimestamp))
-		// row_count and uncompressed_size are a metadata hint no downstream
-		// consumer reads; the postings section carries no per-stream row count,
-		// so emit zero rather than source it.
+		// row_count and uncompressed_size: postings carries no per-stream count; emit zero.
 		rb.Field(7).(*array.Int64Builder).Append(0)
 		rb.Field(8).(*array.Int64Builder).Append(0)
-		// __streamLabelNames__ field — append null; populated by
-		// upstream label-resolution decorators ( concern).
+		// __streamLabelNames__: null here, populated by upstream label resolution.
 		rb.Field(9).(*array.StringBuilder).AppendNull()
 	}
 
 	return rb.NewRecordBatch(), nil
 }
 
-// buildEmptyRecord produces a zero-row arrow.RecordBatch for schema. Used
-// by ReadPointers when the join produces no rows — guarantees the returned
-// batch's Schema is byte-for-byte equal to the populated case (schema-compatibility
-// invariant).
+// buildEmptyRecord returns a zero-row batch built via the same RecordBuilder path so its
+// schema is byte-for-byte equal to the populated case.
 func buildEmptyRecord(alloc memory.Allocator, schema *arrow.Schema) arrow.RecordBatch {
 	rb := array.NewRecordBuilder(alloc, schema)
 	return rb.NewRecordBatch()
@@ -667,26 +584,10 @@ func buildEmptyRecord(alloc memory.Allocator, schema *arrow.Schema) arrow.Record
 // keeps per-batch allocations bounded while amortising fixed costs.
 const readBloomRowsBatchSize = 4096
 
-// ReadBloomRows returns an Arrow RecordBatch projecting
-// (object_path, section_index, column_name, bloom_filter) for rows whose
-// kind=KindBloom. Use [MatchSections] to test bloom-filter membership against
-// label matchers — bloom membership testing is intentionally a helper, not a
-// [Predicate], because page-level stats cannot skip rows that require a
-// bytes-deserialize + bloom.TestString.
-//
-// The 4-column output projection deliberately excludes the
-// ColumnTypeStreamIDBitmap column — bitmap-based stream filtering is a
-// future optimization. The kind column is used for predicate-pushdown only
-// and is NOT part of
-// the output schema.
-//
-// Column requirement: ReadBloomRows projects ObjectPath, SectionIndex,
-// ColumnName, BloomFilter, AND Kind from [Reader.opts.Columns]. All five
-// MUST be present — a narrower [ReaderOptions.Columns] projection that
-// omits any of them yields "finding bloom-row columns: ... not found" at
-// call time. Callers that construct [ReaderOptions] manually should pass
-// the section's full column set ([Section.Columns]); this is the same
-// shape the fixture tests use.
+// ReadBloomRows returns (object_path, section_index, column_name, bloom_filter) for KindBloom
+// rows. Membership testing is a helper ([MatchSections]), not a [Predicate], since it needs a
+// bytes-deserialize + bloom.TestString page-level stats can't skip. Requires the section's full
+// column set in opts.Columns (ObjectPath, SectionIndex, ColumnName, BloomFilter, Kind).
 func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
@@ -702,10 +603,6 @@ func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 	}
 
 	// Project the 4 output columns + the kind column (predicate-only).
-	// Doing two separate findColumnsByType calls keeps the helper simple and
-	// makes the predicate-vs-output role explicit; this is the same pattern
-	// used by collectPostingsRows for ReadPointers (kind is filtered, not
-	// projected).
 	outputCols, err := findColumnsByType(r.opts.Columns,
 		ColumnTypeObjectPath,
 		ColumnTypeSectionIndex,
@@ -721,9 +618,7 @@ func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 	}
 	colKind := kindCols[0]
 
-	// Build the inner 5-column projection: [output cols..., kind]. The kind
-	// column is needed by the predicate (kind = KindBloom pushdown) but is
-	// stripped from the returned arrow.RecordBatch before the caller sees it.
+	// Inner projection [output cols..., kind]; kind drives the pushdown and is stripped from the result.
 	innerSection := outputCols[0].Section.inner
 	innerColumns := []*columnar.Column{
 		outputCols[0].inner,
@@ -769,8 +664,7 @@ func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 		return nil, fmt.Errorf("opening ReadBloomRows adapter: %w", err)
 	}
 
-	// Inner schema (5 fields) used by arrowconv.ToRecordBatch — must match
-	// the columnar batch column count.
+	// Inner schema (5 fields) must match the columnar batch column count.
 	innerSchema := arrow.NewSchema([]arrow.Field{
 		columnToField(outputCols[0]),
 		columnToField(outputCols[1]),
@@ -779,15 +673,9 @@ func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 		columnToField(colKind),
 	}, nil)
 
-	// Output schema (4 fields) — the kind column is stripped so the helper's
-	// projection contract (positions 0-3 = path, section, column_name, bloom)
-	// is honored.
+	// Output schema (4 fields) — kind stripped.
 	outputSchema := columnsSchema(outputCols)
 
-	// single-batch decision (mirrors ReadPointers): drain the inner
-	// adapter and accumulate the result as one arrow.RecordBatch. The loop
-	// shape leaves room for a future streaming variant without changing the
-	// caller contract.
 	collected, err := r.collectBloomRowBatches(ctx, adapter, alloc, innerSchema, outputSchema)
 	if err != nil {
 		return nil, err
@@ -797,10 +685,8 @@ func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 	return collected, nil
 }
 
-// collectBloomRowBatches drains adapter, converts each inner columnar batch
-// to a 5-column arrow batch via arrowconv.ToRecordBatch, and copies the four
-// kept columns (object_path, section_index, column_name, bloom_filter) into a
-// single output batch matching outputSchema, dropping the trailing kind column.
+// collectBloomRowBatches drains adapter into a single output batch matching outputSchema,
+// dropping the trailing kind column.
 func (r *Reader) collectBloomRowBatches(
 	ctx context.Context,
 	adapter *columnar.ReaderAdapter,
@@ -885,82 +771,22 @@ func appendBloomRowBatch(innerRB arrow.RecordBatch, rb *array.RecordBuilder) err
 	return nil
 }
 
-// readResolveLabelsBatchSize is the inner read size used by
-// [Reader.ResolveLabels] when draining the columnar adapter. Mirrors
-// readPointersBatchSize / readBloomRowsBatchSize (4096) — keeps per-batch
-// allocations bounded while amortising fixed costs.
+// readResolveLabelsBatchSize bounds per-batch allocations while amortising fixed costs.
 const readResolveLabelsBatchSize = 4096
 
-// matcherIndex identifies a single label matcher by its position in the
-// caller-supplied matchers slice. It is used inside ResolveLabels to
-// accumulate per-matcher stream-id sets so the AND-across-matchers
-// intersection can be computed after the row read.
-//
-// Indexing on position (rather than (name, value) keys as in the
-// pre- design) supports every MatchType uniformly:
-// - Equal matchers no longer collide if two distinct matchers happen
-// to share (name, value); each gets its own set.
-// - Regex / NotEqual / NotRegex matchers cannot be keyed on
-// (name, value) at all (value is a pattern), so position is the
-// only stable key.
+// matcherIndex identifies a label matcher by its position in the matchers slice. Position
+// (not (name, value)) is the key so every MatchType participates uniformly — regex/NotEqual
+// values are patterns that cannot key a set.
 type matcherIndex int
 
-// ResolveLabels resolves the conjunction of label matchers against KindLabel
-// rows in the postings section. Returns the set of stream IDs matching all
-// matchers (intersection across matchers) and a map from each matching
-// stream ID to the label-column names that contributed it.
+// ResolveLabels returns the stream IDs matching every matcher (AND) against KindLabel rows,
+// plus a map from each matching stream ID to the label-column names that contributed it.
 //
-// Predicate pushdown (per , post- + fix):
-//
-// - Equal matchers are pushed down as EqualPredicate(column_name=Name)
-// AND EqualPredicate(label_value=Value) pairs combined via OrPredicate
-// — a row matches one such pair only when BOTH columns equal.
-// - Regex / NotEqual / NotRegex matchers are pushed down ONLY on
-// column_name (their Name). This ensures rows of every matcher's
-// targeted column are READ; the value-side filter is then re-applied
-// row-side via labels.Matcher.Matches (mirroring today's
-// streams.Reader behaviour at index_sections_reader.go:454-521).
-// - When an Equal matcher and a non-Equal matcher share a Name, the
-// broader column_name=Name pushdown supersedes the narrow Equal
-// AND-pair; the Equal value check is reapplied row-side. This avoids
-// filtering out rows that the non-Equal matcher might match in that
-// column.
-//
-// AND across matchers is enforced in Go after the row read via
-// per-matcher stream-id set intersection. Both Equal and non-Equal
-// matchers participate uniformly in the per-matcher accumulation — the
-// fix replaces the pre-existing regex-only UNION map with a
-// per-matcher set so multi-regex queries return the intersection.
-//
-// Pre-fix bugs (, ) and their resolutions:
-//
-// - : predicate pushdown previously included only Equal-matcher
-// Names. A mixed query like {env="prod", app=~"foo.*"} read only
-// env-column rows, so the app regex never saw any rows and was
-// silently dropped. Fix: pushdown now includes column_name=Name
-// for every non-Equal matcher's Name.
-// - : regex-only resolution previously accumulated a single
-// UNION map across all non-Equal matchers, returning streams that
-// satisfied AT LEAST ONE regex. Fix: per-matcher accumulation +
-// post-scan intersection produces the documented AND.
-//
-// Empty matcher slice returns (nil, nil, nil) — no resolution to perform.
-// Caller must not retain the returned maps beyond the lifetime of the
-// Reader's allocator; the maps are independent Go allocations safe to
-// outlive the underlying arrow batches.
-//
-// : ResolveLabels is purely additive in the postings package. The
-// streams section in new-format objects continues to exist; ResolveLabels
-// does NOT read or modify it.
-//
-// Column requirement: ResolveLabels projects ColumnName, LabelValue,
-// StreamIDBitmap, AND Kind from [Reader.opts.Columns]. All four MUST be
-// present — a narrower [ReaderOptions.Columns] projection that omits any
-// of them yields "finding ResolveLabels columns: ... not found" at call
-// time. Callers that construct [ReaderOptions] manually should pass the
-// section's full column set ([Section.Columns]); this is the same shape
-// the fixture tests use.
-// todo (gsd): clean up the comment before PR
+// Equal matchers push down as AND(column_name=Name, label_value=Value); non-Equal matchers push
+// down on column_name only, with the value re-applied row-side via Matcher.Matches so every
+// targeted column is read. The AND across matchers is the post-scan intersection of per-matcher
+// stream-id sets. An empty matcher slice returns (nil, nil, nil); returned maps are caller-owned.
+// Requires ColumnName, LabelValue, StreamIDBitmap, and Kind in opts.Columns.
 func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) (map[int64]struct{}, map[int64][]string, error) {
 	if !r.ready {
 		return nil, nil, errReaderNotOpen
@@ -1030,65 +856,26 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 		colKind:           dset.Columns()[3],
 	}
 
-	// Build the predicate (per , post- fix):
-	// AND(
-	// kind == KindLabel,
-	// OR(
-	// AND(column_name=N1, label_value=V1), // Equal matcher 1
-	// AND(column_name=N2, label_value=V2), // Equal matcher 2
-	// column_name=Nx, // non-Equal matcher whose
-	// column_name=Ny, // Name is NOT covered
-	// ... // by an Equal pair
-	// ),
-	// )
-	// Equal matchers push down as (column_name, label_value) pairs — a row
-	// matches one such pair only when both columns equal. Regex / NotEqual
-	// / NotRegex matchers push down ONLY on column_name (their Name) so
-	// every row of the targeted column is read; the row-level Go
-	// evaluation in accumulateLabelRows then applies Matches(label_value)
-	// for the value-side filter. This guarantees the row read covers
-	// EVERY matcher's column_name — the bug was that non-Equal
-	// matchers whose Name did not overlap an Equal matcher's Name had
-	// their rows silently filtered out by the predicate.
-	//
-	// To avoid emitting redundant column_name=N branches when an Equal
-	// matcher and a non-Equal matcher share the same Name, we only add
-	// a column_name=Nx branch for non-Equal matcher Names NOT already
-	// covered by an Equal matcher: the Equal AND(name,value) pair is
-	// strictly narrower than column_name=name (it filters by both
-	// columns), so the predicate must include the broader column_name=N
-	// branch to admit rows the non-Equal matcher might match in that
-	// column. We achieve this by dropping the Equal-AND-pair for such
-	// shared-name groups and replacing it with the broader column_name=N
-	// branch — the Equal matcher's value check is then re-applied
-	// row-side. (Pushing both would be sound but redundant; pushing only
-	// the AND pair would re-introduce for the value mismatch
-	// rows.)
+	// Predicate: AND(kind==KindLabel, OR(per-matcher branches)). Equal-only Names get the precise
+	// AND(column_name, label_value) pair; any Name targeted by a non-Equal matcher instead gets the
+	// broader column_name=Name branch (Equal value re-checked row-side) so its rows are not pruned.
 	kindEq := EqualPredicate{
 		Column: colKind,
 		Value:  scalar.NewInt64Scalar(int64(KindLabel)),
 	}
 	var builtPredicate Predicate = kindEq
 	if len(matchers) > 0 {
-		// Set of Names covered by a non-Equal matcher — these names must
-		// surface as a broad column_name=Name predicate so the row-level
-		// regex/NotEqual fallback sees every row in that column.
+		// Names targeted by a non-Equal matcher; they need a broad column_name=Name branch.
 		nonEqualNames := make(map[string]struct{})
 		for _, m := range otherMatchers {
 			nonEqualNames[m.Name] = struct{}{}
 		}
 
-		// dedupedBroadNames: per non-Equal name we emit at most ONE
-		// column_name=Name branch even if multiple non-Equal matchers
-		// share that Name. addedBroad tracks which Names already have a
-		// branch.
+		// addedBroad dedups the broad branch to at most one per Name.
 		addedBroad := make(map[string]struct{})
 
 		var branches []Predicate
-		// Branch (a): Equal matchers whose Name is NOT covered by any
-		// non-Equal matcher get the precise AND(name, value) pushdown.
-		// This is strictly narrower than column_name=name, which is the
-		// best we can do for Equal-only Names.
+		// Branch (a): Equal-only Names get the precise AND(name, value) pushdown.
 		for _, m := range equalMatchers {
 			if _, hasNonEqual := nonEqualNames[m.Name]; hasNonEqual {
 				continue // handled by the broad branch below
@@ -1105,11 +892,8 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 			}
 			branches = append(branches, pair)
 		}
-		// Branch (b): one column_name=Name per Name targeted by a
-		// non-Equal matcher (deduped). If an Equal matcher also targets
-		// that Name, this broad branch supersedes its narrow AND pair
-		// (we already skipped the Equal pair above) — the Equal value
-		// check is reapplied row-side via the equalsByName map.
+		// Branch (b): one broad column_name=Name per non-Equal Name; supersedes any
+		// shared Equal pair (skipped above), whose value is re-checked row-side.
 		for _, m := range otherMatchers {
 			if _, exists := addedBroad[m.Name]; exists {
 				continue
@@ -1180,12 +964,7 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 		activeMatchers = append(activeMatchers, m)
 	}
 
-	// Drain the adapter and accumulate per-matcher stream sets. Each row
-	// carries one (column_name, label_value) tuple; for each matcher
-	// whose Name == row.column_name AND whose Matches(label_value)
-	// returns true, the row's stream IDs are added to that matcher's
-	// set. The post-scan AND intersection (below) then produces the
-	// conjunction.
+	// Drain the adapter, accumulating each row's stream IDs into the set of every matcher it satisfies.
 	for {
 		colBatch, readErr := adapter.Read(ctx, r.alloc, readResolveLabelsBatchSize)
 		if colBatch != nil && colBatch.NumRows() > 0 {
@@ -1210,12 +989,8 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 		}
 	}
 
-	// AND-across-all-matchers in Go: a stream id must be present in
-	// EVERY matcher's set to satisfy the conjunction. This is the 	// fix — regex-only mode previously returned the UNION of per-matcher
-	// sets; the function's contract is the intersection.
-	//
-	// matchingStreamIDs is always freshly allocated ( fix) — the
-	// caller owns the returned map.
+	// AND across matchers: a stream id must appear in every matcher's set. matchingStreamIDs is
+	// freshly allocated so the caller owns it.
 	var matchingStreamIDs map[int64]struct{}
 	if len(activeMatchers) == 0 {
 		// Defensive: short-circuited at the top of ResolveLabels, but if
@@ -1237,11 +1012,7 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 		}
 	}
 
-	// Flatten labelNamesByStream from set-of-set to set-of-slice, scoped
-	// to streams in matchingStreamIDs. Streams that contributed to the
-	// per-matcher sets but were filtered out by the intersection above
-	// are NOT included in the returned labelNamesByStream — only streams
-	// that actually appear in matchingStreamIDs.
+	// Flatten the inversion to slices, scoped to the surviving matchingStreamIDs.
 	var labelNamesByStream map[int64][]string
 	if len(matchingStreamIDs) > 0 {
 		labelNamesByStream = make(map[int64][]string, len(matchingStreamIDs))
@@ -1279,39 +1050,10 @@ func splitByMatchType(ms []*labels.Matcher) (equal, other []*labels.Matcher) {
 	return equal, other
 }
 
-// accumulateLabelRows iterates a 4-column inner arrow batch
-// (column_name, label_value, stream_id_bitmap, kind) and, for each row,
-// evaluates every matcher whose Name targets the row's column_name. The
-// row's stream IDs are added to perMatcherStreams[i] for every matcher
-// matchers[i] satisfied by the row's (column_name, label_value) pair,
-// and labelNamesByStreamSet[streamID] gains the row's column_name for
-// every stream that contributed to AT LEAST ONE matcher's set on this
-// row (the final flatten step scopes the inversion result to the
-// AND-intersected matchingStreamIDs).
-//
-// Per-matcher evaluation ( + fix):
-// - Equal matcher: contributes if column_name == matcher.Name AND
-// label_value == matcher.Value.
-// - Regex / NotEqual / NotRegex matcher: contributes if
-// column_name == matcher.Name AND matcher.Matches(label_value).
-//
-// Pre-, regex matchers were applied as row-level rejection filters
-// (AND on same Name) and only contributed to a single regexUnionStreams
-// map — the bug was that regex matchers whose Name did not
-// overlap an Equal matcher's Name never had their rows read because the
-// predicate pushdown only included Equal-matcher Names. The bug
-// was that the regexUnionStreams was a single UNION map across all
-// regex matchers, not a per-matcher set, so multi-regex queries
-// returned the union instead of the AND.
-//
-// The new per-matcher accumulation handles every matcher uniformly:
-// the caller-side AND intersection (in ResolveLabels) now produces the
-// correct conjunction for both single-matcher-type and mixed queries.
-//
-// The stream_id_bitmap is an LSB byte bitmap from pkg/memory.Bitmap
-// (NOT a roaring bitmap — see encode_columnar.go and label_aggregator.go).
-// Each byte holds 8 stream IDs: bit position `p` of byte `b` represents
-// stream id `b*8 + p`.
+// accumulateLabelRows adds each row's stream IDs to perMatcherStreams[i] for every matcher i
+// satisfied by the row's (column_name, label_value) via Matches (uniform across all MatchTypes),
+// and records the row's column_name into labelNamesByStreamSet for the inversion. The stream_id_bitmap
+// is an LSB byte bitmap (pkg/memory.Bitmap): bit p of byte b is stream id b*8 + p.
 func accumulateLabelRows(
 	rb arrow.RecordBatch,
 	matchers []*labels.Matcher,
@@ -1334,9 +1076,7 @@ func accumulateLabelRows(
 		return fmt.Errorf("ResolveLabels stream_id_bitmap has unexpected type %T", rb.Column(2))
 	}
 
-	// Group matchers by Name for O(1) per-row dispatch. Each entry maps
-	// a Name to the indexes of matchers in `matchers` that target that
-	// Name; the per-row Matches check only runs on those matchers.
+	// Group matcher indexes by Name for O(1) per-row dispatch.
 	matchersByName := make(map[string][]matcherIndex, len(matchers))
 	for i, m := range matchers {
 		matchersByName[m.Name] = append(matchersByName[m.Name], matcherIndex(i))
@@ -1350,16 +1090,10 @@ func accumulateLabelRows(
 		value := labelValueCol.Value(i)
 		bitmapBytes := bitmapCol.Value(i)
 
-		// Which matchers (if any) does this row satisfy? A matcher
-		// targeting this row's column contributes iff Matches(value)
-		// returns true. labels.Matcher.Matches subsumes Equal (exact
-		// string), Regex (compiled regex), NotEqual, and NotRegex
-		// uniformly — so we no longer special-case Equal vs other.
+		// Matchers targeting this column; each contributes iff Matches(value).
 		applicable := matchersByName[name]
 		if len(applicable) == 0 {
-			// Row in a column no matcher targets — predicate pushdown
-			// should have filtered it; defensive skip.
-			continue
+			continue // defensive: pushdown should already exclude untargeted columns
 		}
 		matched := make([]matcherIndex, 0, len(applicable))
 		for _, idx := range applicable {
@@ -1371,8 +1105,6 @@ func accumulateLabelRows(
 			continue
 		}
 
-		// Decode the LSB byte bitmap once and iterate its set bits to
-		// produce the per-stream-id contribution.
 		for byteIdx, b := range bitmapBytes {
 			if b == 0 {
 				continue
@@ -1383,7 +1115,6 @@ func accumulateLabelRows(
 				}
 				streamID := int64(byteIdx*8 + bitPos)
 
-				// Accumulate into every matcher's set the row satisfied.
 				for _, idx := range matched {
 					set, exists := perMatcherStreams[idx]
 					if !exists {
@@ -1393,10 +1124,7 @@ func accumulateLabelRows(
 					set[streamID] = struct{}{}
 				}
 
-				// Record the column_name for the inversion. We always
-				// record (even for streams later filtered out by the
-				// AND intersection) — the final flatten step scopes the
-				// result to matchingStreamIDs.
+				// Record column_name for the inversion (scoped later to matchingStreamIDs).
 				nameSet, exists := labelNamesByStreamSet[streamID]
 				if !exists {
 					nameSet = make(map[string]struct{})
@@ -1565,25 +1293,10 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-// StreamLabelColumnNames returns the de-duplicated set of stream-label names
-// observed in the postings section's KindLabel rows (the distinct values of
-// the column_name column where kind == KindLabel).
-//
-// Callers (notably metastore.indexSectionsReader.filterBloomPredicates) use
-// this to decide which user-supplied predicates name stream labels and
-// should therefore NOT be evaluated against the bloom rows. Without this,
-// predicates that target a stream label not also covered by a matcher would
-// be left in the bloom-row predicate set, where they search for a
-// column_name bloom row that does not exist and AND-drop every section
-// (the false-negative).
-//
-// Completeness rests on a writer invariant: index.labelPostingsCalculation
-// observes every label of a stream for every log row, so any row-bearing
-// stream contributes a KindLabel row for each of its labels. Stream labels
-// with no postings row (only possible for zero-row streams) are absent — but
-// such streams resolve to no sections, so the omission is harmless.
-//
-// The Reader must be opened ([Reader.Open]) before this method is called.
+// StreamLabelColumnNames returns the distinct column_name values across KindLabel rows. Callers
+// (indexSectionsReader.filterBloomPredicates) use it to keep stream-label predicates out of the
+// bloom-row set, where they would match no bloom row and wrongly AND-drop every section. The
+// Reader must be opened before calling.
 func (r *Reader) StreamLabelColumnNames(ctx context.Context) ([]string, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen

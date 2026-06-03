@@ -23,13 +23,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// fixtureBuildMu serializes indexobj fixture construction across parallel
-// tests. Without it, concurrent indexobj.Builder.Flush calls trigger a
-// pre-existing data race in pkg/dataobj/internal/dataset/page_compress_writer.go:
-// defaultCompressionOptions is a package-global *CompressionOptions whose
-// init() lazily assigns o.zstdWriter without synchronization. Two parallel
-// fixture builds both call newCompressWriter(... opts=nil ...) → both fall
-// through to defaultCompressionOptions → both race on init().
+// fixtureBuildMu serializes indexobj fixture builds across parallel tests: concurrent Builder.Flush
+// calls race on the package-global defaultCompressionOptions.zstdWriter lazy init in
+// dataset/page_compress_writer.go (a pre-existing race the mutex sidesteps).
 var fixtureBuildMu sync.Mutex
 
 func TestIndexSectionsReader_NoSelectorReturnsEOF(t *testing.T) {

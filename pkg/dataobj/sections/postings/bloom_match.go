@@ -13,56 +13,22 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// Key uniquely identifies a postings bloom-match result by its source
-// (object path, section index) tuple. Key is intentionally defined locally
-// in the postings package — using metastore.SectionKey would create an
-// import cycle since metastore depends (or will depend) on this package.
-// Metastore converts Key
-// to metastore.SectionKey at the dispatch site.
+// Key identifies a bloom-match result by its (object path, section index) tuple. Defined locally
+// to avoid an import cycle with metastore, which converts it to metastore.SectionKey.
 type Key struct {
 	ObjectPath   string
 	SectionIndex int64
 }
 
-// MatchSections applies AND-semantics bloom-filter membership testing across
-// a slice of Equal label matchers and returns the set of (object_path,
-// section_index) Keys whose bloom rows passed every matcher.
+// MatchSections returns the (object_path, section_index) Keys whose bloom rows passed every Equal
+// matcher (AND-semantics). batches must come from [Reader.ReadBloomRows] (its 4-column projection).
+// Only MatchEqual matchers participate; others are dropped, since bloom filters can't answer regex.
 //
-// batches must come from [Reader.ReadBloomRows] — MatchSections relies on
-// the 4-column projection contract documented there (column positions: 0 =
-// object_path utf8, 1 = section_index int64, 2 = column_name utf8, 3 =
-// bloom_filter binary). Passing batches with a different projection is a
-// programmer error and will return a typed-column-mismatch error.
-//
-// Matcher filtering: only [labels.MatchEqual] matchers participate; NotEqual,
-// Regex, and NotRegex matchers are silently dropped before the row scan
-// (matches today's metastore.index_sections_reader.go:86-91 behaviour).
-// Callers that need regex matching must apply it on a separate code path —
-// the postings inverted index cannot answer regex queries with bloom
-// filters alone. When no Equal matchers remain after filtering, the result
-// is an empty map (no sections can match).
-//
-// AND-semantics: a Key is included in the result only if every Equal
-// matcher matched at least one bloom row for that Key (mirrors
-// metastore.readMatchedSectionKeys lines 856-860: `len(matchedPredicates) ==
-// len(r.predicates)`).
-//
-// LOAD-BEARING corrupted-bloom behaviour: when a bloom_filter byte payload
-// fails to deserialise (either via an err return OR a panic in the
-// underlying bitset.ReadFrom for implausibly large length prefixes),
-// [bloomFilterMayContain] returns true (i.e. "may contain") rather than
-// false. This preserves correctness — a corrupted bloom must NOT cause a
-// false negative (a section silently dropped from the result when it might
-// in fact contain the value). The err-branch is relocated from
-// metastore.bloomFilterMayContain (index_sections_reader.go:866-868); the
-// panic-recovery is a hardening over the legacy verbatim, since
-// bitset.ReadFrom can panic on hostile input (makeslice OOM). A future
-// follow-up may add a debug log / metric; this preserves the
-// silent-true contract.
+// Corrupted-bloom behaviour is load-bearing: when a bloom payload fails to deserialise (err or a
+// bitset.ReadFrom panic on hostile length prefixes), [bloomFilterMayContain] returns true, so a
+// corrupt bloom never causes a false-negative (silently dropped section).
 func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []*labels.Matcher) (map[Key]struct{}, error) {
-	// Filter to MatchEqual matchers only (same shape as
-	// metastore.index_sections_reader.go:86-91). Other matcher types fall
-	// through to callers that handle regex / not-equal on separate paths.
+	// Filter to MatchEqual matchers only; other types are handled on separate caller paths.
 	equalMatchers := make([]*labels.Matcher, 0, len(matchers))
 	for _, m := range matchers {
 		if m != nil && m.Type == labels.MatchEqual {
@@ -174,41 +140,19 @@ func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []
 	return matchedSectionKeys, nil
 }
 
-// bloomFilterMayContain returns true if value MAY be present in the bloom
-// filter encoded by bloomBytes, and false if it is definitely absent. On
-// deserialisation failure it returns true (NOT false) — a corrupted bloom
-// must not cause a false negative; the caller will fall through to the
-// authoritative row-level evaluation. Relocated from
-// metastore.bloomFilterMayContain (index_sections_reader.go:864-870); see
-// MatchSections doc-comment for the load-bearing rationale.
-//
-// Hardening over the legacy verbatim: bloom.ReadFrom (via bitset.ReadFrom)
-// can panic with "makeslice: len out of range" when the decoded length
-// prefix is implausibly large. The legacy metastore helper would crash the
-// goroutine in that case; we recover the panic and return true to preserve
-// the "no false negative" contract under hostile / corrupted input.
+// bloomFilterMayContain reports whether value may be present in the bloom filter (false = definitely
+// absent). On deserialisation failure it returns true to avoid a false negative. See MatchSections.
 func bloomFilterMayContain(bloomBytes []byte, value string) (mayContain bool) {
 	mayContain, _ = bloomFilterMayContainObserved(bloomBytes, value)
 	return mayContain
 }
 
-// bloomFilterMayContainObserved is the observable variant of
-// [bloomFilterMayContain]. It returns the membership result AND a
-// boolean indicating whether the bloom payload failed to deserialise
-// (either via err or a recovered panic). Callers with a context in scope
-// (e.g. [MatchSections]) use this to increment the
-// xcap.StatPostingsBloomDeserializeFailures counter so corrupted bloom
-// payloads become observable in flight without breaking the
-// no-false-negative contract.
-//
-// Internal helper — callers without an observability context should
-// continue to use [bloomFilterMayContain]; the deserializeFailed return
-// is otherwise discarded.
+// bloomFilterMayContainObserved is the observable variant of [bloomFilterMayContain]: it also
+// reports whether the payload failed to deserialise, so [MatchSections] can count corrupt blooms.
 func bloomFilterMayContainObserved(bloomBytes []byte, value string) (mayContain, deserializeFailed bool) {
 	defer func() {
 		if r := recover(); r != nil {
-			// LOAD-BEARING: corrupted bloom payload that panics on
-			// ReadFrom must yield "may contain" (true), not propagate.
+			// Corrupted payload that panics on ReadFrom must yield "may contain", not propagate.
 			mayContain = true
 			deserializeFailed = true
 		}
