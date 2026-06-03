@@ -38,10 +38,8 @@ func TestResolveLabels_EqualMatchers_Single(t *testing.T) {
 	}
 }
 
-// TestResolveLabels_RegexFallback exercises the Go-side regex evaluation
-// (). Same fixture as Test 1. Querying env=~"^pr.*" with no Equal
-// matcher must yield {1,2,3} (the rows whose label_value matches the regex
-// — only "prod" matches "^pr.*" among {prod, staging, foo, ...}).
+// TestResolveLabels_RegexFallback exercises the Go-side regex evaluation: env=~"^pr.*" with no
+// Equal matcher must yield {1,2,3} (only env=prod matches ^pr.*).
 func TestResolveLabels_RegexFallback(t *testing.T) {
 	r := openLabelResolveFixture(t, []labelFixtureEntry{
 		{name: "env", value: "prod", streamIDs: []int64{1, 2, 3}},
@@ -85,24 +83,9 @@ func TestResolveLabels_LabelNamesByStream_Inversion(t *testing.T) {
 		"labelNamesByStream[2] must contain all 3 contributing column names")
 }
 
-// TestResolveLabels_Mixed_Equal_And_Regex_DifferentNames is the // regression pin. Pre-fix, the predicate pushdown included only
-// Equal-matcher Names — a mixed query like {env="prod", app=~"foo.*"}
-// read only rows where column_name="env"; the regex on "app" never saw
-// any rows because the predicate filtered them out, so the regex was
-// silently ignored.
-//
-// Fixture:
-// - env=prod -> {1, 2, 3}
-// - app=foo -> {2, 4}
-// - app=bar -> {2, 5}
-//
-// Query: {env="prod", app=~"^foo.*"}
-//
-// Correct result: streams that match BOTH env=prod AND app matching ^foo.* —
-// stream 2 matches env=prod AND has app=foo (which matches ^foo.*) so
-// stream 2 qualifies. Streams 1 and 3 have env=prod but no app=foo*
-// entry — they must NOT appear. Stream 4 has app=foo but no env=prod —
-// it must NOT appear.
+// TestResolveLabels_Mixed_Equal_And_Regex_DifferentNames pins the bug where pushdown only
+// included Equal-matcher Names, so a mixed query's regex on another column saw no rows and was
+// silently dropped. {env="prod", app=~"^foo.*"} must intersect to stream 2 only.
 func TestResolveLabels_Mixed_Equal_And_Regex_DifferentNames(t *testing.T) {
 	r := openLabelResolveFixture(t, []labelFixtureEntry{
 		{name: "env", value: "prod", streamIDs: []int64{1, 2, 3}},
@@ -116,7 +99,7 @@ func TestResolveLabels_Mixed_Equal_And_Regex_DifferentNames(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, got, 1,
-		"env=prod AND app=~^foo.* must yield exactly stream 2 — pre- fix the regex was silently dropped and 3 streams returned")
+		"env=prod AND app=~^foo.* must yield exactly stream 2 — previously the regex was silently dropped and 3 streams returned")
 	_, ok := got[2]
 	require.True(t, ok, "stream 2 (env=prod AND app=foo) must be the sole survivor")
 	_, has1 := got[1]
@@ -130,23 +113,8 @@ func TestResolveLabels_Mixed_Equal_And_Regex_DifferentNames(t *testing.T) {
 		"labelNamesByStream[2] must record both contributing columns")
 }
 
-// TestResolveLabels_MultiRegex_AND is the regression pin. Pre-fix,
-// the regex-only path returned the UNION across regex matchers (a
-// single regexUnionStreams map populated by every row that satisfied
-// at least one regex). The contract is the AND-intersection.
-//
-// Fixture:
-// - env=prod -> {1, 2}
-// - env=staging -> {3}
-// - app=foo -> {2, 4}
-// - app=bar -> {5}
-//
-// Query: {env=~"^pr.*", app=~"^fo.*"}
-//
-// Correct result: streams matching BOTH regexes. env=prod matches ^pr.*
-// — contributes {1,2}. app=foo matches ^fo.* — contributes {2,4}.
-// Intersection = {2}. Pre- fix, the UNION {1,2,4} would be
-// returned.
+// TestResolveLabels_MultiRegex_AND pins the bug where the regex-only path returned the UNION
+// across regex matchers instead of the AND. {env=~"^pr.*", app=~"^fo.*"} must intersect to stream 2.
 func TestResolveLabels_MultiRegex_AND(t *testing.T) {
 	r := openLabelResolveFixture(t, []labelFixtureEntry{
 		{name: "env", value: "prod", streamIDs: []int64{1, 2}},
@@ -161,7 +129,7 @@ func TestResolveLabels_MultiRegex_AND(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, got, 1,
-		"env=~^pr.* AND app=~^fo.* must intersect to stream 2 — pre- fix this returned the UNION {1,2,4}")
+		"env=~^pr.* AND app=~^fo.* must intersect to stream 2 — previously this returned the UNION {1,2,4}")
 	_, ok := got[2]
 	require.True(t, ok, "stream 2 (env=prod AND app=foo) must be the sole survivor")
 	_, has1 := got[1]
@@ -177,30 +145,9 @@ func TestResolveLabels_MultiRegex_AND(t *testing.T) {
 		"labelNamesByStream[2] must record both contributing columns")
 }
 
-// TestResolveLabels_NotEqualMatcher_AcrossNames asserts the fix
-// extends to NotEqual matchers (not just regex). Fixture:
-// - env=prod -> {1, 2}
-// - env=dev -> {3}
-// - app=foo -> {2, 4}
-//
-// Query: {env="prod", app!="bar"}
-//
-// NotEqual matchers must NOT silently filter to env-only rows. Streams
-// matching env=prod AND not having app=bar — the only env=prod stream
-// with any app value is 2 (app=foo, which is != "bar"). Stream 1
-// (env=prod, no app row) — app!="bar" is satisfied vacuously per
-// label-matcher semantics: the row's label_value is the empty string,
-// but Prometheus label matchers consider absent labels as matching
-// label="" — env!="bar" is true for an absent label. However in the
-// inverted-index world, a stream that has NO app row simply does not
-// surface for app-targeted matchers — so this test specifically
-// asserts the row-level evaluation drives the result.
-//
-// To keep the test focused on the -style mixed-name shape, we
-// query {env="prod", app!="bar"} against a fixture where only stream 2
-// has an app row matching app!="bar". The test asserts stream 2 is
-// returned (the intersection), and pre-fix would have returned all
-// env=prod streams because the app!=bar matcher was silently dropped.
+// TestResolveLabels_NotEqualMatcher_AcrossNames asserts the cross-name pushdown fix extends to
+// NotEqual matchers. {env="prod", app!="bar"} must intersect to stream 2 (env=prod with app=foo);
+// previously the NotEqual matcher was silently dropped and all env=prod streams returned.
 func TestResolveLabels_NotEqualMatcher_AcrossNames(t *testing.T) {
 	r := openLabelResolveFixture(t, []labelFixtureEntry{
 		{name: "env", value: "prod", streamIDs: []int64{1, 2}},
@@ -222,7 +169,7 @@ func TestResolveLabels_NotEqualMatcher_AcrossNames(t *testing.T) {
 	// stream 4 has app=foo but no env=prod → env=prod rejects.
 	// stream 5 has app=bar but no env=prod → env=prod rejects.
 	require.Len(t, got, 1,
-		"env=prod AND app!=bar must yield exactly stream 2 — pre- fix the NotEqual matcher was silently dropped")
+		"env=prod AND app!=bar must yield exactly stream 2 — previously the NotEqual matcher was silently dropped")
 	_, ok := got[2]
 	require.True(t, ok, "stream 2 (env=prod AND app=foo) must be the sole survivor")
 	_, has1 := got[1]
