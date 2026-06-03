@@ -859,10 +859,13 @@ update-loki-release-sha:
 
 .PHONY: flake-update
 flake-update:
-	@docker run -v $(CURDIR):/loki \
+	@docker run --rm --tty --interactive \
+		--volume $(shell pwd):/loki \
 		--workdir /loki \
+		--entrypoint bash \
 		nixos/nix \
-		nix \
-		--extra-experimental-features nix-command \
-		--extra-experimental-features flakes \
-		flake update
+		-c "\
+	    git config --global --add safe.directory /loki && \
+      nix --extra-experimental-features nix-command --extra-experimental-features flakes \
+			    flake update \
+		"
