@@ -85,6 +85,18 @@ type executionMetrics struct {
 	duration       *prometheus.HistogramVec // {query_type}
 	tasksPerQuery  *prometheus.HistogramVec // {query_type}
 	tasksGenerated *prometheus.HistogramVec // {query_type}
+
+	// Result-collection stats, observed once per query at the end of
+	// (*Engine).execute. They mirror fields emitted on the execution-summary
+	// log line.
+	resultRows         prometheus.Histogram
+	timeToFirstBatch   *prometheus.HistogramVec
+	resultGetBatch     prometheus.Histogram
+	resultProcess      prometheus.Histogram
+	resultSizeBytes    prometheus.Histogram
+	resultErrors       *prometheus.CounterVec
+	batchesAccumulated prometheus.Counter
+	bytesAccumulated   prometheus.Counter
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -191,6 +203,39 @@ func newMetrics(r prometheus.Registerer) *metrics {
 				Name: "loki_engine_v2_tasks_generated_per_query",
 				Help: "Number of tasks generated per query before pruning",
 			}, []string{queryTypeLabel}),
+
+			resultRows: newNativeHistogram(r, prometheus.HistogramOpts{
+				Name: "loki_engine_v2_result_rows",
+				Help: "Number of rows in the collected query result",
+			}),
+			timeToFirstBatch: newNativeHistogramVec(r, prometheus.HistogramOpts{
+				Name: "loki_engine_v2_time_to_first_batch_seconds",
+				Help: "Time in seconds from the start of result collection to the first non-EOF batch read from the pipeline",
+			}, []string{queryTypeLabel}),
+			resultGetBatch: newNativeHistogram(r, prometheus.HistogramOpts{
+				Name: "loki_engine_v2_result_get_batch_seconds",
+				Help: "Total time in seconds spent reading batches from the pipeline during result collection",
+			}),
+			resultProcess: newNativeHistogram(r, prometheus.HistogramOpts{
+				Name: "loki_engine_v2_result_process_seconds",
+				Help: "Total time in seconds spent collecting batches into the result builder during result collection",
+			}),
+			resultSizeBytes: newNativeHistogram(r, prometheus.HistogramOpts{
+				Name: "loki_engine_v2_result_size_bytes",
+				Help: "Total in-memory size in bytes of the record batches accumulated during result collection",
+			}),
+			resultErrors: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+				Name: "loki_engine_v2_result_errors_total",
+				Help: "Total number of result-collection failures, split by error class",
+			}, []string{errorClassLabel}),
+			batchesAccumulated: promauto.With(r).NewCounter(prometheus.CounterOpts{
+				Name: "loki_engine_v2_batches_accumulated_total",
+				Help: "Total number of record batches accumulated into result builders during result collection",
+			}),
+			bytesAccumulated: promauto.With(r).NewCounter(prometheus.CounterOpts{
+				Name: "loki_engine_v2_bytes_accumulated_total",
+				Help: "Total in-memory size in bytes of record batches accumulated into result builders during result collection",
+			}),
 		},
 	}
 }
