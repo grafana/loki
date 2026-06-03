@@ -1449,55 +1449,6 @@ func TestExecuteIndexMerge_ExistenceShortCircuit(t *testing.T) {
 	require.Equal(t, int64(0), bucket.UploadCount())
 }
 
-// TestExecuteIndexMerge_TaskTTLExceeded tests that the executor respects TaskTTL.
-func TestExecuteIndexMerge_TaskTTLExceeded(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-
-	// Build a source with enough rows to exceed 1µs processing time.
-	// Start with 100k rows and increase if needed on fast machines.
-	const rowCount = 100000
-	observations := make([]postings.LabelObservation, rowCount)
-	for i := 0; i < rowCount; i++ {
-		observations[i] = postings.LabelObservation{
-			ObjectPath:       "log-A",
-			SectionIndex:     0,
-			ColumnName:       "service",
-			LabelValue:       fmt.Sprintf("svc-%d", i),
-			StreamID:         int64(i + 1),
-			Timestamp:        time.Unix(0, int64(i*100)),
-			UncompressedSize: 100,
-		}
-	}
-
-	sourcePath := "source/index.dat"
-	buildSourcePostingsObject(t, bucket, "tenant", sourcePath, observations)
-
-	outputPath := "output/merged.dat"
-	node := &physical.IndexMerge{
-		NodeID:          ulid.Make(),
-		Tenant:          "tenant",
-		OutputIndexPath: outputPath,
-		TaskTTL:         1 * time.Microsecond, // Very tight deadline.
-		Runs: []*compactionv2pb.RunRef{
-			{
-				Sections: []*compactionv2pb.SectionRef{
-					{ObjectPath: sourcePath, SectionIndex: 0},
-				},
-			},
-		},
-	}
-
-	execCtx := newTestExecutorContext(t, bucket)
-	err := execCtx.doIndexMerge(ctx, node)
-
-	// The task should be killed by the 1µs TTL. If this flakes on very fast CI
-	// machines, increase rowCount to 500k or 1M to ensure the executor is still
-	// working when the deadline is checked.
-	require.ErrorIs(t, err, context.DeadlineExceeded,
-		"expected deadline exceeded with 1µs TTL and %d-row corpus", rowCount)
-}
-
 // TestExecuteIndexMerge_StatsDuplicateLastWinsMultiSource verifies
 // last-wins behavior across more than two duplicate sources. With four
 // piles colliding on the same (Labels, MinTimestamp, MaxTimestamp,

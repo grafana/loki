@@ -46,13 +46,6 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 		return nil
 	}
 
-	// Apply TTL timeout if specified
-	if node.TaskTTL > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, node.TaskTTL)
-		defer cancel()
-	}
-
 	// Classify sections from all runs
 	postingsSections, statsSections, err := c.classifyRuns(ctx, node)
 	if err != nil {
