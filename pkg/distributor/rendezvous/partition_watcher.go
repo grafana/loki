@@ -14,10 +14,12 @@ import (
 	"github.com/pkg/errors"
 )
 
-// PartitionWatcher is a Service that maintains an in-memory copy of ring membership
-// and watches the KV store for changes. It provides rendezvous (highest random weight)
-// hashing as an alternative sharding mechanism to the token ring.
-type PartitionWatcher struct {
+// PartitionRingWatcher is a Service similar to
+// https://github.com/grafana/dskit/blob/main/ring/partition_ring_watcher.go, which watches the KV store for changes in
+// the partition ring.
+// It maintains an in-memory copy of partition ring membership, and provides a ShuffleSharder with a rendezvous hashing
+// implementation as an alternative to the existing shuffle sharding mechanism in dskit.
+type PartitionRingWatcher struct {
 	services.Service
 	kvClient kv.Client
 	logger   log.Logger
@@ -30,9 +32,9 @@ type Config struct {
 	Key              string        // The Key where membership is stored in the KV store
 }
 
-// New creates a new PartitionWatcher that watches the given KV Key for ring membership.
-func New(config Config, kvClient kv.Client, logger log.Logger) *PartitionWatcher {
-	s := &PartitionWatcher{
+// New creates a new PartitionRingWatcher that watches the given KV Key for ring membership.
+func New(config Config, kvClient kv.Client, logger log.Logger) *PartitionRingWatcher {
+	s := &PartitionRingWatcher{
 		kvClient: kvClient,
 		logger:   logger,
 		config:   config,
@@ -41,11 +43,11 @@ func New(config Config, kvClient kv.Client, logger log.Logger) *PartitionWatcher
 	return s
 }
 
-func (s *PartitionWatcher) Sharder() *ShuffleSharder {
+func (s *PartitionRingWatcher) ShuffleSharder() *ShuffleSharder {
 	return s.sharder.Load()
 }
 
-func (s *PartitionWatcher) starting(ctx context.Context) error {
+func (s *PartitionRingWatcher) starting(ctx context.Context) error {
 	value, err := s.kvClient.Get(ctx, s.config.Key)
 	if err != nil {
 		return errors.Wrap(err, "unable to initialise rendezvous sharder state")
@@ -58,7 +60,7 @@ func (s *PartitionWatcher) starting(ctx context.Context) error {
 	return nil
 }
 
-func (s *PartitionWatcher) loop(ctx context.Context) error {
+func (s *PartitionRingWatcher) loop(ctx context.Context) error {
 	s.kvClient.WatchKey(ctx, s.config.Key, func(value interface{}) bool {
 		if value == nil {
 			level.Info(s.logger).Log("msg", "ring doesn't exist in KV store yet")
@@ -70,7 +72,7 @@ func (s *PartitionWatcher) loop(ctx context.Context) error {
 	return nil
 }
 
-func (s *PartitionWatcher) updateShuffleSharder(ringDesc *ring.PartitionRingDesc) {
+func (s *PartitionRingWatcher) updateShuffleSharder(ringDesc *ring.PartitionRingDesc) {
 	partitions := ringDesc.Partitions
 	partitionIDs := make([]int32, 0, len(partitions))
 	for _, partition := range partitions {

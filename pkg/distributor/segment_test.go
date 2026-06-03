@@ -19,10 +19,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// newTestPartitionWatcher creates a PartitionWatcher backed by an in-memory KV
+// newPartitionRingWatcher creates a PartitionRingWatcher backed by an in-memory KV
 // store seeded with the given active partition IDs. Passing no IDs produces a
 // watcher whose sharder has zero active partitions.
-func newTestPartitionWatcher(t *testing.T, partitionIDs ...int32) *rendezvous.PartitionWatcher {
+func newPartitionRingWatcher(t *testing.T, partitionIDs ...int32) *rendezvous.PartitionRingWatcher {
 	t.Helper()
 	kvClient, closer := consul.NewInMemoryClient(ring.GetPartitionRingCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { _ = closer.Close() })
@@ -101,7 +101,7 @@ func TestSegmentationKey_Sum64(t *testing.T) {
 func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 	t.Run("returns error if no active partitions", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		watcher := newTestPartitionWatcher(t) // empty ring — zero active partitions
+		watcher := newPartitionRingWatcher(t) // empty ring — zero active partitions
 		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, reg, log.NewNopLogger())
 		_, err := resolver.Resolve("tenant", segmentationKey("test"), 0x1, 0, 0)
 		require.EqualError(t, err, "no active partitions")
@@ -125,7 +125,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 
 	t.Run("resolves to correct partition when rate is unknown", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		watcher := newTestPartitionWatcher(t, 1)
+		watcher := newPartitionRingWatcher(t, 1)
 		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, reg, log.NewNopLogger())
 		partition, err := resolver.Resolve("tenant", "test", 0x1, 0, 0)
 		require.NoError(t, err)
@@ -150,7 +150,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 	})
 
 	t.Run("resolution is deterministic for same inputs", func(t *testing.T) {
-		watcher := newTestPartitionWatcher(t, 1, 2, 3)
+		watcher := newPartitionRingWatcher(t, 1, 2, 3)
 		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, prometheus.NewRegistry(), log.NewNopLogger())
 		p1, err := resolver.Resolve("tenant-a", "svc", 0x1, 0, 0)
 		require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 }
 
 func TestSegmentationPartitionResolver_TenantShuffleShard(t *testing.T) {
-	watcher := newTestPartitionWatcher(t, 1, 2, 3, 4, 5)
+	watcher := newPartitionRingWatcher(t, 1, 2, 3, 4, 5)
 	resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, prometheus.NewRegistry(), log.NewNopLogger())
 
 	tests := []struct {

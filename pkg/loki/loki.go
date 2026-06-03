@@ -444,7 +444,7 @@ type Loki struct {
 	dataObjConsumerRing                 *ring.Ring
 	dataObjConsumerPartitionRing        *ring.PartitionInstanceRing
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
-	rendezvousPartitionWatcher          *rendezvous.PartitionWatcher
+	rendezvousPartitionWatcher          *rendezvous.PartitionRingWatcher
 	dataObjIndexBuilder                 *dataobjindex.Builder
 	dataObjCompactionPlanner            *enginecompactor.Planner
 	dataObjCompactionWorker             *enginecompactor.Worker

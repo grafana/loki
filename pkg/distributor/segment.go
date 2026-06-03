@@ -45,7 +45,7 @@ type segmentationPartitionResolver struct {
 	perPartitionRateBytes uint64
 	useRendezvousHashing  bool
 	ringReader            ring.PartitionRingReader
-	partitionWatcher      *rendezvous.PartitionWatcher
+	partitionWatcher      *rendezvous.PartitionRingWatcher
 	logger                log.Logger
 
 	// Metrics.
@@ -61,7 +61,7 @@ func newSegmentationPartitionResolver(
 	perPartitionRateBytes uint64,
 	useRendezvousHashing bool,
 	ringReader ring.PartitionRingReader,
-	partitionWatcher *rendezvous.PartitionWatcher,
+	partitionWatcher *rendezvous.PartitionRingWatcher,
 	reg prometheus.Registerer,
 	logger log.Logger) *segmentationPartitionResolver {
 	return &segmentationPartitionResolver{
@@ -116,7 +116,7 @@ func (r *segmentationPartitionResolver) Resolve(tenant string, key segmentationK
 
 func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateBytes uint64) (int32, error) {
 	r.resolveTotal.Inc()
-	shuffleSharder := *r.partitionWatcher.Sharder()
+	shuffleSharder := *r.partitionWatcher.ShuffleSharder()
 
 	// Shuffle shard for the tenant based on their ingestion rate limit.
 	// This ensures that streams are not only co-located within the same

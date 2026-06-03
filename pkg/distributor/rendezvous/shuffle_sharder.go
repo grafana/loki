@@ -11,6 +11,10 @@ import (
 
 var table = crc64.MakeTable(crc64.ECMA)
 
+// ShuffleSharder implements rendezvous hashing - https://en.wikipedia.org/wiki/Rendezvous_hashing.
+// Creates a score of each partition on creation and uses xorshiftMult64
+// (https://vigna.di.unimi.it/ftp/papers/xorshift.pdf) to generate scores thereafter to avoid running expensive score
+// functions for every request.
 type ShuffleSharder struct {
 	partitions []int32
 	hashes     []uint64
@@ -29,12 +33,12 @@ func (r ShuffleSharder) Shard(key uint32) (int32, error) {
 		return 0, errors.New("no active partitions")
 	}
 	var maxPartition int32
-	var maxHash uint64
+	var maxScore uint64
 	for i, partition := range r.partitions {
-		hash := xorshiftMult64(uint64(key) ^ r.hashes[i])
-		if maxHash == 0 || hash > maxHash {
+		score := xorshiftMult64(uint64(key) ^ r.hashes[i])
+		if maxScore == 0 || score > maxScore {
 			maxPartition = partition
-			maxHash = hash
+			maxScore = score
 		}
 	}
 	return maxPartition, nil
@@ -46,25 +50,27 @@ func (r ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) Shuf
 	}
 
 	key := crc64.Checksum([]byte(shuffleShardKey), table)
-	hashes := make([]partitionAndHash, len(r.partitions))
+	scores := make([]partitionAndScore, len(r.partitions))
 	for i, partition := range r.partitions {
 		originalHash := r.hashes[i]
-		hashes[i] = partitionAndHash{
+		scores[i] = partitionAndScore{
 			partition,
 			xorshiftMult64(key ^ originalHash),
 			originalHash,
 		}
 	}
 
-	sort.Slice(hashes, func(i, j int) bool {
-		return hashes[i].hash < hashes[j].hash
+	// This sort dominates the cost of shuffle sharding.
+	// Possible future optimization - using a size-limited max heap to keep track of the k largest scores.
+	sort.Slice(scores, func(i, j int) bool {
+		return scores[i].score < scores[j].score
 	})
 
 	subpartitions := make([]int32, numShards)
 	subHashesSet := make([]uint64, numShards)
 	for i := 0; i < numShards; i++ {
-		subpartitions[i] = hashes[i].partition
-		subHashesSet[i] = hashes[i].originalHash
+		subpartitions[i] = scores[i].partition
+		subHashesSet[i] = scores[i].hash // Avoid recalculating these hashes
 	}
 	return ShuffleSharder{subpartitions, subHashesSet}
 }
@@ -73,10 +79,10 @@ func (r ShuffleSharder) Size() int {
 	return len(r.partitions)
 }
 
-type partitionAndHash struct {
-	partition    int32
-	hash         uint64
-	originalHash uint64
+type partitionAndScore struct {
+	partition int32
+	score     uint64
+	hash      uint64
 }
 
 // https://vigna.di.unimi.it/ftp/papers/xorshift.pdf

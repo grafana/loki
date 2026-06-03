@@ -47,7 +47,7 @@ func activePartitionRing(ids ...int32) ring.PartitionRingDesc {
 	return desc
 }
 
-func startWatcher(t *testing.T, kvClient kv.Client) *PartitionWatcher {
+func startWatcher(t *testing.T, kvClient kv.Client) *PartitionRingWatcher {
 	t.Helper()
 	watcher := New(Config{Key: testKey}, kvClient, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), watcher))
@@ -63,18 +63,18 @@ func TestPartitionWatcher_ReadsInitialState(t *testing.T) {
 
 	watcher := startWatcher(t, kvClient)
 
-	sharder := watcher.Sharder()
+	sharder := watcher.ShuffleSharder()
 	require.NotNil(t, sharder)
 
 	require.ElementsMatch(t, []int32{1, 2, 3}, sharder.partitions)
 }
 
-// TestPartitionWatcher_NilSharderWhenEmpty verifies that Sharder() returns nil
+// TestPartitionWatcher_NilSharderWhenEmpty verifies that ShuffleSharder() returns nil
 // when the KV store has no data at start-up.
 func TestPartitionWatcher_NilSharderWhenEmpty(t *testing.T) {
 	kvClient := newTestKVClient(t)
 	watcher := startWatcher(t, kvClient)
-	assert.Nil(t, watcher.Sharder())
+	assert.Nil(t, watcher.ShuffleSharder())
 }
 
 // TestPartitionWatcher_PicksUpChanges verifies that the watcher updates the
@@ -85,7 +85,7 @@ func TestPartitionWatcher_PicksUpChanges(t *testing.T) {
 
 	watcher := startWatcher(t, kvClient)
 
-	initial := watcher.Sharder()
+	initial := watcher.ShuffleSharder()
 	require.NotNil(t, initial)
 	require.ElementsMatch(t, []int32{1}, initial.partitions)
 
@@ -93,10 +93,10 @@ func TestPartitionWatcher_PicksUpChanges(t *testing.T) {
 	writePartitionRing(t, kvClient, activePartitionRing(2))
 
 	require.Eventually(t, func() bool {
-		return watcher.Sharder() != initial
+		return watcher.ShuffleSharder() != initial
 	}, 5*time.Second, 10*time.Millisecond, "watcher did not pick up KV change")
 
-	updated := watcher.Sharder()
+	updated := watcher.ShuffleSharder()
 	require.NotNil(t, updated)
 	require.ElementsMatch(t, []int32{2}, updated.partitions)
 	require.ElementsMatch(t, []int32{1}, initial.partitions) // old caller still reflects pre-update state
@@ -119,7 +119,7 @@ func TestPartitionWatcher_InactivePartitionsExcluded(t *testing.T) {
 
 	watcher := startWatcher(t, kvClient)
 
-	sharder := watcher.Sharder()
+	sharder := watcher.ShuffleSharder()
 	require.NotNil(t, sharder)
 	require.ElementsMatch(t, []int32{1}, sharder.partitions)
 }

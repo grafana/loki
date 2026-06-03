@@ -244,7 +244,7 @@ func New(
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
 	dataObjConsumerPartitionRing ring.PartitionRingReader,
-	rendezvousPartitionWatcher *rendezvous.PartitionWatcher,
+	rendezvousPartitionWatcher *rendezvous.PartitionRingWatcher,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
