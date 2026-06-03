@@ -1363,8 +1363,11 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 			r.postings[string(lastName)] = append(r.postings[string(lastName)], postingOffset{value: string(lastValue), off: lastOff})
 		}
 		if haveName {
-			// The last name's region ends at the table payload end (the BE32
-			// length prefix at the section start covers entries + trailing CRC).
+			// The last name's region ends at the table payload end. The BE32
+			// length prefix at the section start gives the payload length
+			// (the entry-count word + the entries) and excludes the trailing
+			// CRC, so payloadStart+payloadLen lands exactly at the end of the
+			// entries (= start of the CRC).
 			payloadLen := int(binary.BigEndian.Uint32(r.b.Range(int(r.toc.PostingsTable), int(r.toc.PostingsTable)+4)))
 			r.postingsEnd[curName] = payloadLen
 		}
