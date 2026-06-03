@@ -380,6 +380,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 
 		if err := w.jobManager.Send(ctx, job); err != nil {
 			job.Close() // Clean up resources associated with the job.
+			w.metrics.rejectedAssignmentsTotal.Inc()
 			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
 		}
 
