@@ -610,7 +610,7 @@ func TestIndexSectionsReader_LegacyOnlyObjectStaysOnLegacyPath(t *testing.T) {
 	// the pre-scan finds no postings; precedence does NOT trigger;
 	// the legacy errgroup branches open streams + pointers as usual. Proves
 	// ("no postings section ⇒ legacy regardless of gate").
-	r.useNewPath = true
+	r.usePostingsSections = true
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -634,10 +634,10 @@ func TestIndexSectionsReader_LegacyOnlyObjectStaysOnLegacyPath(t *testing.T) {
 }
 
 // TestIndexSectionsReader_GateOffOnCombinedFixtureRunsLegacyPath proves
-// dead-code: with useNewPath=false ( default), the legacy
+// dead-code: with usePostingsSections=false ( default), the legacy
 // path runs even on a combined-section object (streams + pointers +
 // postings). r.postingsReaders is empty because the wave-1 errgroup
-// branch that opens postings sections is gated on r.useNewPath, so with
+// branch that opens postings sections is gated on r.usePostingsSections, so with
 // the gate off it never executes. r.pointersReaders is populated and
 // serves the query exactly as today.
 func TestIndexSectionsReader_GateOffOnCombinedFixtureRunsLegacyPath(t *testing.T) {
@@ -652,7 +652,7 @@ func TestIndexSectionsReader_GateOffOnCombinedFixtureRunsLegacyPath(t *testing.T
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
 	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
-	// Do NOT set r.useNewPath here — default ( dead-code).
+	// Do NOT set r.usePostingsSections here — default ( dead-code).
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -703,7 +703,7 @@ func TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath(t *testing.T) {
 	// Force the new-path gate ON. Pre-scan sees a postings section; 	// invariant is satisfied (postings section exists); the new errgroup
 	// branch opens the postings section; lazyReadStreams / readPointers
 	// dispatch through the new helpers (lazyResolveLabels / readPointersNewPath).
-	r.useNewPath = true
+	r.usePostingsSections = true
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -764,7 +764,7 @@ func TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath(t *testing.T) {
 // precedence at the slice-population level: when an object
 // contains both pointers AND postings sections, the new path wins.
 // r.pointersReaders is empty (the pre-scan reset in init() nils
-// unopenedPointers when a postings section exists && useNewPath); r.bloomReaders
+// unopenedPointers when a postings section exists && usePostingsSections); r.bloomReaders
 // is empty for the same reason; r.postingsReaders has length 1.
 //
 // Per : row-output equivalence between the legacy pointers section
@@ -784,10 +784,10 @@ func TestIndexSectionsReader_CombinedSectionObjectFavorsPostings(t *testing.T) {
 
 	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
 	// Force the new-path gate ON. Pre-scan finds streams + pointers + postings
-	// all present (combined-section). postings observed + useNewPath=true ⇒
+	// all present (combined-section). postings observed + usePostingsSections=true ⇒
 	// precedence reset: unopenedPointers and unopenedStreams are
 	// nilled before the errgroup runs. Only the postings reader gets opened.
-	r.useNewPath = true
+	r.usePostingsSections = true
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -1049,7 +1049,7 @@ func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
 }
 
 // TestIndexSectionsReader_NewPath_StreamLabelPredicateOnDisjointName is the
-// regression test. With useNewPath=true, a matcher on one stream
+// regression test. With usePostingsSections=true, a matcher on one stream
 // label ("app") plus a predicate on a DIFFERENT stream label ("team")
 // must NOT cause an empty result. The fix enriches labelNamesByStream
 // with streams-section column names via
@@ -1073,7 +1073,7 @@ func TestIndexSectionsReader_NewPath_StreamLabelPredicateOnDisjointName(t *testi
 	predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "team", "ops")}
 
 	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192, false)
-	r.useNewPath = true
+	r.usePostingsSections = true
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -1098,7 +1098,7 @@ func TestIndexSectionsReader_NewPath_StreamLabelPredicateOnDisjointName(t *testi
 }
 
 // TestIndexSectionsReader_NewPath_NoPostingsReader_ShortCircuit covers the
-// fix: when useNewPath is forced on but r.postingsReaders is empty
+// fix: when usePostingsSections is forced on but r.postingsReaders is empty
 // (defensive branch in lazyResolveLabels), Read returns io.EOF cleanly
 // and does NOT record the StreamsReadTime stat. We verify the short-
 // circuit behaviour indirectly by observing that Read returns EOF
@@ -1109,9 +1109,9 @@ func TestIndexSectionsReader_NewPath_NoPostingsReader_ShortCircuit(t *testing.T)
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
 	// buildLegacyOnlyFixture has streams + pointers but NO postings. With
-	// useNewPath forced on AFTER Open, the pre-scan would normally flip
-	// useNewPath off (no postings section ⇒ ). To force the defensive
-	// short-circuit in lazyResolveLabels, we must keep useNewPath true
+	// usePostingsSections forced on AFTER Open, the pre-scan would normally flip
+	// usePostingsSections off (no postings section ⇒ ). To force the defensive
+	// short-circuit in lazyResolveLabels, we must keep usePostingsSections true
 	// after Open() AND ensure r.postingsReaders is empty — set the flag
 	// post-Open so the pre-scan does not see it.
 	obj := buildLegacyOnlyFixture(t)
@@ -1127,7 +1127,7 @@ func TestIndexSectionsReader_NewPath_NoPostingsReader_ShortCircuit(t *testing.T)
 
 	// Now flip the gate on post-Open so Read dispatches into the new path
 	// and exercises the lazyResolveLabels defensive short-circuit.
-	r.useNewPath = true
+	r.usePostingsSections = true
 
 	_, err := r.Read(ctx)
 	require.ErrorIs(t, err, io.EOF, "no postings reader ⇒ new path returns io.EOF cleanly")
