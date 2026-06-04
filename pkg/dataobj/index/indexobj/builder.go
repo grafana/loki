@@ -53,6 +53,7 @@ type Builder struct {
 	indexPointers map[string]*indexpointers.Builder // The key is the TenantID.
 	stats         map[string]*stats.Builder         // The key is the TenantID.
 	postings      map[string]*postings.Builder      // The key is the TenantID.
+	timeRanges    map[string]multitenancy.TimeRange // The key is the TenantID.
 
 	// Hot-path cache for the postings builder. Postings are observed per
 	// (record × stream label), so getPostingsBuilderForTenant runs in a tight
@@ -108,6 +109,7 @@ func NewBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store) (*Bui
 		indexPointers: make(map[string]*indexpointers.Builder),
 		stats:         make(map[string]*stats.Builder),
 		postings:      make(map[string]*postings.Builder),
+		timeRanges:    make(map[string]multitenancy.TimeRange),
 	}, nil
 }
 
@@ -129,6 +131,42 @@ func (b *Builder) SetWritePostingsSectionsOnly(enabled bool) {
 // postings+stats sections only.
 func (b *Builder) WritePostingsSectionsOnly() bool {
 	return b.writePostingsSectionsOnly
+}
+
+func (b *Builder) observeTimeRange(tenantID string, minTime, maxTime time.Time) {
+	if minTime.IsZero() && maxTime.IsZero() {
+		return
+	}
+	if !minTime.IsZero() {
+		minTime = minTime.UTC()
+	}
+	if !maxTime.IsZero() {
+		maxTime = maxTime.UTC()
+	}
+
+	tenantRange, ok := b.timeRanges[tenantID]
+	if !ok {
+		if minTime.IsZero() {
+			minTime = maxTime
+		}
+		if maxTime.IsZero() {
+			maxTime = minTime
+		}
+		b.timeRanges[tenantID] = multitenancy.TimeRange{
+			Tenant:  tenantID,
+			MinTime: minTime,
+			MaxTime: maxTime,
+		}
+		return
+	}
+
+	if !minTime.IsZero() && minTime.Before(tenantRange.MinTime) {
+		tenantRange.MinTime = minTime
+	}
+	if !maxTime.IsZero() && maxTime.After(tenantRange.MaxTime) {
+		tenantRange.MaxTime = maxTime
+	}
+	b.timeRanges[tenantID] = tenantRange
 }
 
 func (b *Builder) getIndexPointerBuilderForTenant(tenantID string) *indexpointers.Builder {
@@ -331,6 +369,11 @@ func (b *Builder) getStreamsBuilderForTenant(tenantID string) *streams.Builder {
 
 // AppendStream appends a stream to the object's stream section, returning the stream ID within this object.
 func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, error) {
+	b.observeTimeRange(tenantID, stream.MinTimestamp, stream.MaxTimestamp)
+	if b.writePostingsSectionsOnly {
+		return stream.ID, nil
+	}
+
 	b.metrics.appendsTotal.Inc()
 
 	newEntrySize := labelsEstimate(stream.Labels) + 2
@@ -392,6 +435,10 @@ func (b *Builder) getPointersBuilderForTenant(tenantID string) *pointers.Builder
 
 // ObserveLogLine records a log line observation for a stream in the pointers section.
 func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
+	if b.writePostingsSectionsOnly {
+		return nil
+	}
+
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
 	//
@@ -423,6 +470,10 @@ func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, st
 
 // AppendColumnIndex records a column index entry with bloom filter data in the pointers section.
 func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64, columnName string, columnIndex int64, valuesBloom []byte) error {
+	if b.writePostingsSectionsOnly {
+		return nil
+	}
+
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
 	//
@@ -470,14 +521,9 @@ func (b *Builder) estimatedSize() int {
 
 // TimeRanges returns the time range of the data in the builder, by tenant.
 func (b *Builder) TimeRanges() []multitenancy.TimeRange {
-	timeRanges := make([]multitenancy.TimeRange, 0, len(b.streams))
-	for tenantID, tenantStreams := range b.streams {
-		minTime, maxTime := tenantStreams.TimeRange()
-		timeRanges = append(timeRanges, multitenancy.TimeRange{
-			Tenant:  tenantID,
-			MinTime: minTime,
-			MaxTime: maxTime,
-		})
+	timeRanges := make([]multitenancy.TimeRange, 0, len(b.timeRanges))
+	for _, tenantRange := range b.timeRanges {
+		timeRanges = append(timeRanges, tenantRange)
 	}
 	return timeRanges
 }
@@ -498,14 +544,16 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 
 	var flushErrors []error
 
-	for _, tenantStreams := range b.streams {
-		if tenantStreams.EstimatedSize() > 0 {
-			flushErrors = append(flushErrors, b.builder.Append(tenantStreams))
+	if !b.writePostingsSectionsOnly {
+		for _, tenantStreams := range b.streams {
+			if tenantStreams.EstimatedSize() > 0 {
+				flushErrors = append(flushErrors, b.builder.Append(tenantStreams))
+			}
 		}
-	}
-	for _, tenantPointers := range b.pointers {
-		if tenantPointers.EstimatedSize() > 0 {
-			flushErrors = append(flushErrors, b.builder.Append(tenantPointers))
+		for _, tenantPointers := range b.pointers {
+			if tenantPointers.EstimatedSize() > 0 {
+				flushErrors = append(flushErrors, b.builder.Append(tenantPointers))
+			}
 		}
 	}
 	for _, tenantIndexPointers := range b.indexPointers {
@@ -584,6 +632,7 @@ func (b *Builder) Reset() {
 	clear(b.streams)
 	clear(b.pointers)
 	clear(b.indexPointers)
+	clear(b.timeRanges)
 	b.stats = make(map[string]*stats.Builder)
 	b.postings = make(map[string]*postings.Builder)
 	b.lastPostingsTenant = ""
