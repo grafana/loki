@@ -91,8 +91,6 @@ func (r *RowReader) next() (Row, error) {
 		} else if batch != nil {
 			batch.Release()
 			return Row{}, io.EOF
-		} else if errors.Is(err, io.EOF) {
-			return Row{}, io.EOF
 		}
 	}
 
