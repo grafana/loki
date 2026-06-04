@@ -116,7 +116,7 @@ func (wf *Workflow) printTaskLogLocalitySummary(task *Task, capture *xcap.Captur
 		"stream_page_runs", streamPageRuns,
 		"stream_row_relevance", ratio(relevantRows, rowsTotal),
 		"stream_page_relevance", ratio(streamRelevantPages, streamPagesTotal),
-		"stream_avg_page_run_len", avgRunLength(streamRelevantPages, streamPageRuns),
+		"stream_page_fragmentation", ratio(streamPageRuns, streamRelevantPages),
 	)
 }
 
@@ -126,13 +126,6 @@ func ratio(part, total int64) float64 {
 	}
 
 	return float64(part) / float64(total)
-}
-
-func avgRunLength(relevantPages, pageRuns int64) float64 {
-	if pageRuns <= 0 {
-		return 0
-	}
-	return float64(relevantPages) / float64(pageRuns)
 }
 
 // parentTaskID returns the task's parent ULID, or the zero ULID if the task

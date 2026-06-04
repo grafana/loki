@@ -22,8 +22,7 @@ import (
 )
 
 var tracer = otel.Tracer("pkg/dataobj/sections/logs")
-
-var RegionPrefix string = "logs.Reader."
+var RegionPrefix = "logs.Reader."
 
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
