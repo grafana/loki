@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/scratch"
+	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
 // intRecord is a simple test record for the merge heap tests.
@@ -31,9 +32,9 @@ type intRecord struct {
 	Val string
 }
 
-// testPileReader is a simple pileSequence[intRecord] for testing.
-type testPileReader struct {
-	pileIdx   int
+// testSequence is a simple sequence[intRecord] for testing.
+type testSequence struct {
+	idx       int
 	records   []intRecord
 	index     int
 	cur       intRecord
@@ -41,23 +42,23 @@ type testPileReader struct {
 	exhausted bool
 }
 
-func newTestPileReader(records ...intRecord) *testPileReader {
-	return &testPileReader{
-		pileIdx: 0,
+func newTestSequence(records ...intRecord) *testSequence {
+	return &testSequence{
+		idx:     0,
 		records: records,
 		index:   0,
 	}
 }
 
-func newTestPileReaderWithIndex(pileIdx int, records ...intRecord) *testPileReader {
-	return &testPileReader{
-		pileIdx: pileIdx,
+func newTestSequenceWithIndex(idx int, records ...intRecord) *testSequence {
+	return &testSequence{
+		idx:     idx,
 		records: records,
 		index:   0,
 	}
 }
 
-func (p *testPileReader) Next() bool {
+func (p *testSequence) Next() bool {
 	if p.exhausted {
 		return false
 	}
@@ -70,72 +71,99 @@ func (p *testPileReader) Next() bool {
 	return true
 }
 
-func (p *testPileReader) At() intRecord {
+func (p *testSequence) At() intRecord {
 	return p.cur
 }
 
-func (p *testPileReader) Err() error {
+func (p *testSequence) Err() error {
 	return p.err
 }
 
-func (p *testPileReader) PileIdx() int {
-	return p.pileIdx
+func (p *testSequence) Index() int {
+	return p.idx
 }
 
-func (p *testPileReader) Close() error {
+func (p *testSequence) Close() error {
 	return nil
 }
 
-var _ pileSequence[intRecord] = (*testPileReader)(nil)
+var _ sequence[intRecord] = (*testSequence)(nil)
 
-// trackingPileReader wraps a pileSequence and tracks whether Close() was called.
-type trackingPileReader[R any] struct {
-	underlying pileSequence[R]
+// trackingSequence wraps a sequence and tracks whether Close() was called.
+type trackingSequence[R any] struct {
+	underlying sequence[R]
 	closed     bool
 }
 
-func newTrackingPileReader[R any](underlying pileSequence[R]) *trackingPileReader[R] {
-	return &trackingPileReader[R]{underlying: underlying, closed: false}
+func newTrackingSequence[R any](underlying sequence[R]) *trackingSequence[R] {
+	return &trackingSequence[R]{underlying: underlying, closed: false}
 }
 
-func (p *trackingPileReader[R]) Next() bool {
+func (p *trackingSequence[R]) Next() bool {
 	return p.underlying.Next()
 }
 
-func (p *trackingPileReader[R]) At() R {
+func (p *trackingSequence[R]) At() R {
 	return p.underlying.At()
 }
 
-func (p *trackingPileReader[R]) Err() error {
+func (p *trackingSequence[R]) Err() error {
 	return p.underlying.Err()
 }
 
-func (p *trackingPileReader[R]) PileIdx() int {
-	return p.underlying.PileIdx()
+func (p *trackingSequence[R]) Index() int {
+	return p.underlying.Index()
 }
 
-func (p *trackingPileReader[R]) Close() error {
+func (p *trackingSequence[R]) Close() error {
 	p.closed = true
 	return p.underlying.Close()
 }
 
-func (p *trackingPileReader[R]) wasClosed() bool {
+func (p *trackingSequence[R]) wasClosed() bool {
 	return p.closed
 }
 
-var _ pileSequence[intRecord] = (*trackingPileReader[intRecord])(nil)
+var _ sequence[intRecord] = (*trackingSequence[intRecord])(nil)
 
-// TestMerge_DistinctKeys tests merging two piles with distinct keys.
+// drainMerge drives a K-way merge over the given sequences using the same
+// loser-tree helpers as the production merge sites (heapAt, heapLess,
+// closeSeq). It yields every record in sorted order to fn; iteration stops
+// early when fn returns false. It mirrors the inlined loop in
+// mergePostingsIntoBuilder / mergeStatsIntoBuilder so those helpers stay tested
+// without a dedicated merge function.
+func drainMerge[R any](ctx context.Context, groups []sequence[R], cmp func(a, b R) int, fn func(R) bool) error {
+	tree := loser.New(groups, heapVal[R]{isMax: true}, heapAt[R], heapLess(cmp), closeSeq[R])
+	defer tree.Close()
+
+	for tree.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !fn(tree.Winner().At()) {
+			return nil
+		}
+	}
+
+	for _, g := range groups {
+		if err := g.Err(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// TestMerge_DistinctKeys tests merging two sequences with distinct keys.
 func TestMerge_DistinctKeys(t *testing.T) {
 	ctx := context.Background()
 
-	// Two piles: {1,3,5} and {2,4,6}
-	pile1 := newTestPileReader(
+	// Two sequences: {1,3,5} and {2,4,6}
+	seq1 := newTestSequence(
 		intRecord{Key: 1, Val: "a"},
 		intRecord{Key: 3, Val: "c"},
 		intRecord{Key: 5, Val: "e"},
 	)
-	pile2 := newTestPileReader(
+	seq2 := newTestSequence(
 		intRecord{Key: 2, Val: "b"},
 		intRecord{Key: 4, Val: "d"},
 		intRecord{Key: 6, Val: "f"},
@@ -150,8 +178,6 @@ func TestMerge_DistinctKeys(t *testing.T) {
 		return 0
 	}
 
-	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
-
 	expected := []intRecord{
 		{Key: 1, Val: "a"},
 		{Key: 2, Val: "b"},
@@ -162,7 +188,7 @@ func TestMerge_DistinctKeys(t *testing.T) {
 	}
 
 	var actual []intRecord
-	err := iter(func(rec intRecord) bool {
+	err := drainMerge(ctx, []sequence[intRecord]{seq1, seq2}, cmp, func(rec intRecord) bool {
 		actual = append(actual, rec)
 		return true
 	})
@@ -170,16 +196,18 @@ func TestMerge_DistinctKeys(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-// TestMerge_EqualKeysReducer tests merging with reduction on equal keys.
-func TestMerge_EqualKeysReducer(t *testing.T) {
+// TestMerge_EqualKeysStableOrder verifies that equal-key records are emitted
+// in stable group-index order (the merge no longer reduces; collision handling
+// lives in the consumers).
+func TestMerge_EqualKeysStableOrder(t *testing.T) {
 	ctx := context.Background()
 
-	// Two piles, each with {1, 3}
-	pile1 := newTestPileReaderWithIndex(0,
+	// Two sequences, each with {1, 3}
+	seq1 := newTestSequenceWithIndex(0,
 		intRecord{Key: 1, Val: "a1"},
 		intRecord{Key: 3, Val: "a3"},
 	)
-	pile2 := newTestPileReaderWithIndex(1,
+	seq2 := newTestSequenceWithIndex(1,
 		intRecord{Key: 1, Val: "b1"},
 		intRecord{Key: 3, Val: "b3"},
 	)
@@ -193,20 +221,16 @@ func TestMerge_EqualKeysReducer(t *testing.T) {
 		return 0
 	}
 
-	// Reducer concatenates Val strings
-	reduce := func(acc, next intRecord) intRecord {
-		return intRecord{Key: acc.Key, Val: acc.Val + "+" + next.Val}
-	}
-
-	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, reduce)
-
+	// Every record is yielded; equal keys come out lower-group-index first.
 	expected := []intRecord{
-		{Key: 1, Val: "a1+b1"},
-		{Key: 3, Val: "a3+b3"},
+		{Key: 1, Val: "a1"},
+		{Key: 1, Val: "b1"},
+		{Key: 3, Val: "a3"},
+		{Key: 3, Val: "b3"},
 	}
 
 	var actual []intRecord
-	err := iter(func(rec intRecord) bool {
+	err := drainMerge(ctx, []sequence[intRecord]{seq1, seq2}, cmp, func(rec intRecord) bool {
 		actual = append(actual, rec)
 		return true
 	})
@@ -214,12 +238,12 @@ func TestMerge_EqualKeysReducer(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-// TestMerge_EmptyPiles tests merging empty piles.
-func TestMerge_EmptyPiles(t *testing.T) {
+// TestMerge_EmptySequences tests merging empty sequences.
+func TestMerge_EmptySequences(t *testing.T) {
 	ctx := context.Background()
 
-	pile1 := newTestPileReader()
-	pile2 := newTestPileReader()
+	seq1 := newTestSequence()
+	seq2 := newTestSequence()
 
 	cmp := func(a, b intRecord) int {
 		if a.Key < b.Key {
@@ -230,10 +254,8 @@ func TestMerge_EmptyPiles(t *testing.T) {
 		return 0
 	}
 
-	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
-
 	var actual []intRecord
-	err := iter(func(rec intRecord) bool {
+	err := drainMerge(ctx, []sequence[intRecord]{seq1, seq2}, cmp, func(rec intRecord) bool {
 		actual = append(actual, rec)
 		return true
 	})
@@ -246,8 +268,8 @@ func TestMerge_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	pile1 := newTestPileReader(intRecord{Key: 1, Val: "a"})
-	pile2 := newTestPileReader(intRecord{Key: 2, Val: "b"})
+	seq1 := newTestSequence(intRecord{Key: 1, Val: "a"})
+	seq2 := newTestSequence(intRecord{Key: 2, Val: "b"})
 
 	cmp := func(a, b intRecord) int {
 		if a.Key < b.Key {
@@ -258,25 +280,23 @@ func TestMerge_ContextCancelled(t *testing.T) {
 		return 0
 	}
 
-	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
-
-	err := iter(func(_ intRecord) bool {
+	err := drainMerge(ctx, []sequence[intRecord]{seq1, seq2}, cmp, func(_ intRecord) bool {
 		return true
 	})
 	require.Equal(t, context.Canceled, err)
 }
 
-// TestMerge_ClosesAllPilesOnEarlyStop tests that merge closes all piles when the caller stops iteration early.
-func TestMerge_ClosesAllPilesOnEarlyStop(t *testing.T) {
+// TestMerge_ClosesAllSequencesOnEarlyStop tests that merge closes all sequences when the caller stops iteration early.
+func TestMerge_ClosesAllSequencesOnEarlyStop(t *testing.T) {
 	ctx := context.Background()
 
-	// Create tracking piles
-	pile1 := newTrackingPileReader(newTestPileReader(
+	// Create tracking sequences
+	seq1 := newTrackingSequence(newTestSequence(
 		intRecord{Key: 1, Val: "a"},
 		intRecord{Key: 3, Val: "c"},
 		intRecord{Key: 5, Val: "e"},
 	))
-	pile2 := newTrackingPileReader(newTestPileReader(
+	seq2 := newTrackingSequence(newTestSequence(
 		intRecord{Key: 2, Val: "b"},
 		intRecord{Key: 4, Val: "d"},
 		intRecord{Key: 6, Val: "f"},
@@ -291,32 +311,30 @@ func TestMerge_ClosesAllPilesOnEarlyStop(t *testing.T) {
 		return 0
 	}
 
-	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
-
 	// Iterate and stop after the 2nd record
 	var count int
-	err := iter(func(_ intRecord) bool {
+	err := drainMerge(ctx, []sequence[intRecord]{seq1, seq2}, cmp, func(_ intRecord) bool {
 		count++
 		return count < 2 // Stop after 2 records
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2, count)
 
-	// Both piles should be closed
-	require.True(t, pile1.wasClosed(), "pile1 should be closed")
-	require.True(t, pile2.wasClosed(), "pile2 should be closed")
+	// Both sequences should be closed
+	require.True(t, seq1.wasClosed(), "seq1 should be closed")
+	require.True(t, seq2.wasClosed(), "seq2 should be closed")
 }
 
-// TestMerge_ClosesAllPilesOnReadError tests that merge closes all piles when a read error occurs.
-func TestMerge_ClosesAllPilesOnReadError(t *testing.T) {
+// TestMerge_ClosesAllSequencesOnReadError tests that merge closes all sequences when a read error occurs.
+func TestMerge_ClosesAllSequencesOnReadError(t *testing.T) {
 	ctx := context.Background()
 
-	// Create a pile that returns an error
-	errorPile := &errorPileReader[intRecord]{}
-	trackingErrorPile := newTrackingPileReader(errorPile)
+	// Create a sequence that returns an error
+	errorSeq := &errorSequence[intRecord]{}
+	trackingErrorSeq := newTrackingSequence(errorSeq)
 
-	// Create a normal tracking pile
-	trackingNormalPile := newTrackingPileReader(newTestPileReader(
+	// Create a normal tracking sequence
+	trackingNormalSeq := newTrackingSequence(newTestSequence(
 		intRecord{Key: 1, Val: "a"},
 	))
 
@@ -329,29 +347,27 @@ func TestMerge_ClosesAllPilesOnReadError(t *testing.T) {
 		return 0
 	}
 
-	iter := merge(ctx, []pileSequence[intRecord]{trackingErrorPile, trackingNormalPile}, cmp, nil)
-
 	// Try to iterate; should get an error
-	err := iter(func(_ intRecord) bool {
+	err := drainMerge(ctx, []sequence[intRecord]{trackingErrorSeq, trackingNormalSeq}, cmp, func(_ intRecord) bool {
 		return true
 	})
 	require.Error(t, err)
 
-	// Both piles should be closed
-	require.True(t, trackingErrorPile.wasClosed(), "error pile should be closed")
-	require.True(t, trackingNormalPile.wasClosed(), "normal pile should be closed")
+	// Both sequences should be closed
+	require.True(t, trackingErrorSeq.wasClosed(), "error sequence should be closed")
+	require.True(t, trackingNormalSeq.wasClosed(), "normal sequence should be closed")
 }
 
-// TestMerge_ClosesAllPilesOnContextCancel tests that merge closes all piles when context is cancelled.
-func TestMerge_ClosesAllPilesOnContextCancel(t *testing.T) {
+// TestMerge_ClosesAllSequencesOnContextCancel tests that merge closes all sequences when context is cancelled.
+func TestMerge_ClosesAllSequencesOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Create tracking piles
-	pile1 := newTrackingPileReader(newTestPileReader(
+	// Create tracking sequences
+	seq1 := newTrackingSequence(newTestSequence(
 		intRecord{Key: 1, Val: "a"},
 		intRecord{Key: 3, Val: "c"},
 	))
-	pile2 := newTrackingPileReader(newTestPileReader(
+	seq2 := newTrackingSequence(newTestSequence(
 		intRecord{Key: 2, Val: "b"},
 		intRecord{Key: 4, Val: "d"},
 	))
@@ -365,11 +381,9 @@ func TestMerge_ClosesAllPilesOnContextCancel(t *testing.T) {
 		return 0
 	}
 
-	iter := merge(ctx, []pileSequence[intRecord]{pile1, pile2}, cmp, nil)
-
 	// Start iteration and cancel after first record
 	var count int
-	err := iter(func(_ intRecord) bool {
+	err := drainMerge(ctx, []sequence[intRecord]{seq1, seq2}, cmp, func(_ intRecord) bool {
 		count++
 		if count == 1 {
 			cancel()
@@ -378,41 +392,41 @@ func TestMerge_ClosesAllPilesOnContextCancel(t *testing.T) {
 	})
 	require.Equal(t, context.Canceled, err)
 
-	// Both piles should be closed
-	require.True(t, pile1.wasClosed(), "pile1 should be closed")
-	require.True(t, pile2.wasClosed(), "pile2 should be closed")
+	// Both sequences should be closed
+	require.True(t, seq1.wasClosed(), "seq1 should be closed")
+	require.True(t, seq2.wasClosed(), "seq2 should be closed")
 }
 
-// errorPileReader is a test pile reader that always returns an error.
-type errorPileReader[R any] struct {
+// errorSequence is a test sequence that always returns an error.
+type errorSequence[R any] struct {
 	exhausted bool
 }
 
-func (p *errorPileReader[R]) Next() bool {
+func (p *errorSequence[R]) Next() bool {
 	if !p.exhausted {
 		p.exhausted = true
 	}
 	return false
 }
 
-func (p *errorPileReader[R]) At() R {
+func (p *errorSequence[R]) At() R {
 	var zero R
 	return zero
 }
 
-func (p *errorPileReader[R]) Err() error {
+func (p *errorSequence[R]) Err() error {
 	return io.ErrUnexpectedEOF
 }
 
-func (p *errorPileReader[R]) PileIdx() int {
+func (p *errorSequence[R]) Index() int {
 	return 0
 }
 
-func (p *errorPileReader[R]) Close() error {
+func (p *errorSequence[R]) Close() error {
 	return nil
 }
 
-func (p *errorPileReader[R]) Exhausted() bool {
+func (p *errorSequence[R]) Exhausted() bool {
 	return p.exhausted
 }
 
@@ -973,8 +987,8 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 		require.True(t, assert, "rows not in sort order at index %d", i)
 	}
 
-	// The overlapping key (log-A, 0, service, api) should have the winner from Source B
-	// (last-wins reducer).
+	// The overlapping key (log-A, 0, service, api) should have the winner from Source A
+	// (first-wins).
 	var apiRow postings.Row
 	for _, r := range rows {
 		if r.ObjectPath == "log-A" && r.SectionIndex == 0 &&
@@ -985,23 +999,23 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 	}
 
 	require.NotZero(t, apiRow, "expected to find overlapping key in output")
-	// The bitmap should contain the StreamID from Source B (99).
+	// The kept row carries Source A's bitmap.
 	// This is a simplified check; a full check would decode the bitmap.
 	require.NotEmpty(t, apiRow.StreamIDBitmap)
 
 	// Source A's UncompressedSize is 100; Source B's is 300. The heap's stable
-	// tiebreak pops the lower pile index first, giving reducer (acc=A, next=B),
-	// and the last-wins reducer keeps the row from the higher pile index (Source B).
-	// Therefore the merged row's UncompressedSize must be 300.
-	require.Equal(t, int64(300), apiRow.UncompressedSize,
-		"last-wins merger should keep Source B's UncompressedSize")
+	// tiebreak pops the lower sequence index (Source A) first, and first-wins
+	// keeps that row, dropping the later duplicate from Source B.
+	// Therefore the merged row's UncompressedSize must be 100.
+	require.Equal(t, int64(100), apiRow.UncompressedSize,
+		"first-wins merger should keep Source A's UncompressedSize")
 }
 
-// TestExecuteIndexMerge_StatsDuplicateLastWins verifies that stats rows
+// TestExecuteIndexMerge_StatsDuplicateFirstWins verifies that stats rows
 // which collide on the full merge key — (Labels, MinTimestamp,
-// MaxTimestamp, ObjectPath, SectionIndex) — collapse to a single row using
-// the same last-wins reducer as postings.
-func TestExecuteIndexMerge_StatsDuplicateLastWins(t *testing.T) {
+// MaxTimestamp, ObjectPath, SectionIndex) — collapse to a single row,
+// keeping the first row (first-wins).
+func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 
@@ -1060,7 +1074,7 @@ func TestExecuteIndexMerge_StatsDuplicateLastWins(t *testing.T) {
 
 	rows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
-	// Should have exactly one stats row (duplicate collapsed by last-wins).
+	// Should have exactly one stats row (duplicate collapsed by first-wins).
 	require.Len(t, rows, 1)
 
 	row := rows[0]
@@ -1073,10 +1087,10 @@ func TestExecuteIndexMerge_StatsDuplicateLastWins(t *testing.T) {
 	require.Equal(t, ts1, row.MinTimestamp)
 	require.Equal(t, ts2, row.MaxTimestamp)
 
-	require.Equal(t, int64(20), row.RowCount,
-		"last-wins reducer must keep Source B's RowCount, not aggregate")
-	require.Equal(t, int64(2000), row.UncompressedSize,
-		"last-wins reducer must keep Source B's UncompressedSize, not aggregate")
+	require.Equal(t, int64(10), row.RowCount,
+		"first-wins must keep Source A's RowCount, not aggregate")
+	require.Equal(t, int64(1000), row.UncompressedSize,
+		"first-wins must keep Source A's UncompressedSize, not aggregate")
 }
 
 // TestExecuteIndexMerge_MixedKinds tests merging both postings and stats sections.
@@ -1220,18 +1234,18 @@ func TestExecuteIndexMerge_ExistenceShortCircuit(t *testing.T) {
 	require.Equal(t, int64(0), bucket.UploadCount())
 }
 
-// TestExecuteIndexMerge_StatsDuplicateLastWinsMultiSource verifies
-// last-wins behavior across more than two duplicate sources. With four
-// piles colliding on the same (Labels, MinTimestamp, MaxTimestamp,
+// TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource verifies
+// first-wins behavior across more than two duplicate sources. With four
+// sequences colliding on the same (Labels, MinTimestamp, MaxTimestamp,
 // ObjectPath, SectionIndex), the merge emits a single row carrying the
-// values from the highest pile index (pile 3 here).
-func TestExecuteIndexMerge_StatsDuplicateLastWinsMultiSource(t *testing.T) {
+// values from the lowest sequence index (sequence 0 here).
+func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 
 	// Build 4 source objects whose stats rows collide on every component of
 	// the new merge key. They differ only in their counts, so we can prove
-	// which pile's row survives.
+	// which sequence row survives.
 	const sourceCount = 4
 	rowCounts := []int64{10, 20, 30, 40}
 	uncompressedSizes := []int64{1000, 2000, 3000, 4000}
@@ -1279,14 +1293,14 @@ func TestExecuteIndexMerge_StatsDuplicateLastWinsMultiSource(t *testing.T) {
 
 	rows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
 
-	// Should have exactly one row (all duplicates collapsed by last-wins).
+	// Should have exactly one row (all duplicates collapsed by first-wins).
 	require.Len(t, rows, 1)
 
 	row := rows[0]
-	require.Equal(t, int64(40), row.RowCount,
-		"last-wins must keep the highest pile index's RowCount")
-	require.Equal(t, int64(4000), row.UncompressedSize,
-		"last-wins must keep the highest pile index's UncompressedSize")
+	require.Equal(t, int64(10), row.RowCount,
+		"first-wins must keep the lowest sequence index's RowCount")
+	require.Equal(t, int64(1000), row.UncompressedSize,
+		"first-wins must keep the lowest sequence index's UncompressedSize")
 	// Timestamps unchanged (all inputs identical).
 	require.Equal(t, ts1, row.MinTimestamp)
 	require.Equal(t, ts2, row.MaxTimestamp)

@@ -203,8 +203,8 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 		return nil
 	}
 
-	// Open all postings sections and create pile readers.
-	pileReaders := make([]pileSequence[postings.Row], 0, len(sections))
+	// Open all postings sections and create readers.
+	readers := make([]sequence[postings.Row], 0, len(sections))
 
 	for i, rs := range sections {
 		sec, err := postings.Open(ctx, rs.section)
@@ -212,47 +212,64 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 			return fmt.Errorf("opening postings section from run %d: %w", rs.runIdx, err)
 		}
 
-		pileReaders = append(pileReaders, indexedSeq[postings.Row]{
+		readers = append(readers, indexedSeq[postings.Row]{
 			CloseIterator: postings.NewRowReader(ctx, sec),
 			idx:           i,
 		})
 	}
 
-	// A collision on the full sort key (Kind, ObjectPath, SectionIndex,
-	// ColumnName, LabelValue) means two source indexes reference the same
-	// physical section/column/label — this shouldn't happen so log a warning and
-	// emit a metric for tracking. The data is logically equivalent so keep one.
-	reducer := func(_, next postings.Row) postings.Row {
-		if region := xcap.RegionFromContext(ctx); region != nil {
-			region.Record(statIndexMergeDuplicatePostings.Observe(1))
+	// Drive a K-way merge over the readers via a loser tree.
+	tree := loser.New(
+		readers,
+		heapVal[postings.Row]{isMax: true},
+		heapAt[postings.Row],
+		heapLess(comparePostingsRow),
+		closeSeq[postings.Row])
+	defer tree.Close()
+
+	var last *postings.Row
+	for tree.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		level.Warn(c.logger).Log(
-			"msg", "IndexMerge: postings full-key collision",
-			"tenant", tenant,
-			"kind", next.Kind,
-			"object_path", next.ObjectPath,
-			"section_index", next.SectionIndex,
-			"column_name", next.ColumnName,
-			"label_value", next.LabelValue,
-		)
-		return next
+
+		row := tree.Winner().At()
+
+		// A collision on the full sort key (Kind, ObjectPath, SectionIndex,
+		// ColumnName, LabelValue) means two source indexes reference the same
+		// physical section/column/label — this shouldn't happen so log a warning
+		// and emit a metric for tracking. The data is logically equivalent, so
+		// keep the first row and drop the later duplicate.
+		if last != nil && comparePostingsRow(*last, row) == 0 {
+			if region := xcap.RegionFromContext(ctx); region != nil {
+				region.Record(statIndexMergeDuplicatePostings.Observe(1))
+			}
+			level.Warn(c.logger).Log(
+				"msg", "IndexMerge: postings full-key collision",
+				"tenant", tenant,
+				"kind", row.Kind,
+				"object_path", row.ObjectPath,
+				"section_index", row.SectionIndex,
+				"column_name", row.ColumnName,
+				"label_value", row.LabelValue,
+			)
+			continue
+		}
+
+		last = &row
+		if err := c.writePostingsRow(builder, tenant, row); err != nil {
+			return err
+		}
 	}
 
-	// Run merge heap
-	seq := merge(ctx, pileReaders, comparePostingsRow, reducer)
-
-	var emitErr error
-	err := seq(func(row postings.Row) bool {
-		if e := c.writePostingsRow(builder, tenant, row); e != nil {
-			emitErr = e
-			return false
+	// Check for errors that occurred during iteration.
+	for _, r := range readers {
+		if err := r.Err(); err != nil {
+			return err
 		}
-		return true
-	})
-	if err != nil {
-		return err
 	}
-	return emitErr
+
+	return nil
 }
 
 func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string, row postings.Row) error {
@@ -273,9 +290,8 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 		return nil
 	}
 
-	// Open all stats sections and create pile readers.
-	// Pre-allocate with known capacity to avoid slice growth allocations.
-	pileReaders := make([]pileSequence[stats.Stat], 0, len(sections))
+	// Open all stats sections and create readers.
+	readers := make([]sequence[stats.Stat], 0, len(sections))
 
 	for i, rs := range sections {
 		sec, err := stats.Open(ctx, rs.section)
@@ -283,180 +299,127 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 			return fmt.Errorf("opening stats section from run %d: %w", rs.runIdx, err)
 		}
 
-		pileReaders = append(pileReaders, indexedSeq[stats.Stat]{
+		readers = append(readers, indexedSeq[stats.Stat]{
 			CloseIterator: stats.NewRowReader(ctx, sec),
 			idx:           i,
 		})
 	}
 
-	// The comparator includes (ObjectPath, SectionIndex) as final tiebreakers, so
-	// an equal-key collision here means two source indexes reference the same
-	// physical (ObjectPath, SectionIndex) — which shouldn't happen. SortSchema
-	// and Labels are guaranteed to match on such collisions (same source
-	// section), as are the aggregate counts; keeping one row, warn, and
-	// observe an xcap statistic.
-	reducer := func(_, next stats.Stat) stats.Stat {
-		if region := xcap.RegionFromContext(ctx); region != nil {
-			region.Record(statIndexMergeDuplicateStats.Observe(1))
+	// Drive a K-way merge over the readers via a loser tree.
+	tree := loser.New(
+		readers,
+		heapVal[stats.Stat]{isMax: true},
+		heapAt[stats.Stat],
+		heapLess(compareStatsRow),
+		closeSeq[stats.Stat])
+	defer tree.Close()
+
+	var last *stats.Stat
+	for tree.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		level.Warn(c.logger).Log(
-			"msg", "IndexMerge: stats full-key collision",
-			"tenant", tenant,
-			"object_path", next.ObjectPath,
-			"section_index", next.SectionIndex,
-			"min_timestamp", next.MinTimestamp,
-			"max_timestamp", next.MaxTimestamp,
-		)
-		return next
+
+		row := tree.Winner().At()
+
+		// The comparator includes (ObjectPath, SectionIndex) as final
+		// tiebreakers, so an equal-key collision here means two source indexes
+		// reference the same physical (ObjectPath, SectionIndex) — which
+		// shouldn't happen. SortSchema and Labels are guaranteed to match on
+		// such collisions (same source section), as are the aggregate counts;
+		// keep the first row, drop the later duplicate, warn, and observe an
+		// xcap statistic.
+		if last != nil && compareStatsRow(*last, row) == 0 {
+			if region := xcap.RegionFromContext(ctx); region != nil {
+				region.Record(statIndexMergeDuplicateStats.Observe(1))
+			}
+			level.Warn(c.logger).Log(
+				"msg", "IndexMerge: stats full-key collision",
+				"tenant", tenant,
+				"object_path", row.ObjectPath,
+				"section_index", row.SectionIndex,
+				"min_timestamp", row.MinTimestamp,
+				"max_timestamp", row.MaxTimestamp,
+			)
+			continue
+		}
+
+		last = &row
+		if err := builder.AppendStat(tenant, row); err != nil {
+			return err
+		}
 	}
 
-	// Run merge heap
-	seq := merge(ctx, pileReaders, compareStatsRow, reducer)
-
-	var emitErr error
-	err := seq(func(row stats.Stat) bool {
-		if e := builder.AppendStat(tenant, row); e != nil {
-			emitErr = e
-			return false
+	for _, r := range readers {
+		if err := r.Err(); err != nil {
+			return err
 		}
-		return true
-	})
-	if err != nil {
-		return err
 	}
 
-	return emitErr
+	return nil
 }
 
-// indexedSeq attaches a stable pile index to an [iter.CloseIterator] so the
+// indexedSeq attaches a stable index to an [iter.CloseIterator] so the
 // loser tree can break ties deterministically. The index must be readable when
-// the tree snapshots each sequence (loser.Tree calls at() eagerly inside
-// moveNext and compares the resulting heapVal immediately), so it travels with
+// the tree snapshots each sequence so it travels with
 // the sequence rather than being derived at yield time.
 //
-// indexedSeq satisfies pileSequence[R] via the embedded iterator (promoting
-// Next/At/Err/Close) plus PileIdx. No explicit compile-time assertion is
-// needed: the construction sites below assign indexedSeq values into
-// []pileSequence[R], so the conversion is checked there.
+// indexedSeq satisfies sequence[R] via the embedded iterator (promoting
+// Next/At/Err/Close) plus Index.
 type indexedSeq[R any] struct {
 	iter.CloseIterator[R] // promotes Next/At/Err/Close
 	idx                   int
 }
 
-// PileIdx returns the pile's index in the merge. Used for stable tiebreak ordering.
-func (s indexedSeq[R]) PileIdx() int { return s.idx }
+// Index returns the iterators index in the merge. Used for stable tiebreak ordering.
+func (s indexedSeq[R]) Index() int { return s.idx }
 
-// pileSequence[R] is one pile cursor for the K-way merge. It is an
-// [iter.CloseIterator] (Next/At/Err/Close) extended with PileIdx for stable
+// sequence[R] is one group cursor for the K-way merge. It is an
+// [iter.CloseIterator] (Next/At/Err/Close) extended with Index for stable
 // tiebreak ordering.
 //
 // Records must be emitted in sorted order.
-type pileSequence[R any] interface {
+type sequence[R any] interface {
 	iter.CloseIterator[R]
-	// PileIdx returns the pile's index in the merge. Used for stable tiebreak ordering.
-	PileIdx() int
+	// Index returns the iterator's index in the merge. Used for stable tiebreak ordering.
+	Index() int
 }
 
-// heapVal[R] is the loser-tree value type: a snapshot of a pile's
-// current record plus its pile index for stable tiebreaks.
+// heapVal[R] is the loser-tree value type: a snapshot of an iterator's current
+// record plus its index for stable tiebreaks.
 //
 // isMax marks the +∞ sentinel.
 type heapVal[R any] struct {
-	rec     R
-	pileIdx int
-	isMax   bool
+	rec   R
+	idx   int
+	isMax bool
 }
 
-// merge returns a yield-style iterator over the sorted K-way merge of the
-// provided piles. If reduce is non-nil, runs of equal-key records (per [cmp])
-// are reduced into a single record before being yielded.
-//
-// on return (success or error) every pile's Close is called.
-func merge[R any](
-	ctx context.Context,
-	piles []pileSequence[R],
-	cmp func(a, b R) int,
-	reduce func(acc, next R) R,
-) func(yield func(R) bool) error {
-	return func(yield func(R) bool) error {
-		// maxVal is the loser-tree +∞ sentinel.
-		maxVal := heapVal[R]{isMax: true}
+// heapAt snapshots a sequence's current record and index into a heapVal.
+func heapAt[R any](s sequence[R]) heapVal[R] {
+	return heapVal[R]{rec: s.At(), idx: s.Index()}
+}
 
-		at := func(s pileSequence[R]) heapVal[R] {
-			return heapVal[R]{rec: s.At(), pileIdx: s.PileIdx()}
+// closeSeq closes a sequence when the loser tree is done with it.
+func closeSeq[R any](s sequence[R]) {
+	_ = s.Close()
+}
+
+// heapLess returns the loser-tree ordering for the provided comparator. The
+// maxVal sentinel sorts after every real record. Order by cmp; break ties by
+// group index for a stable merge.
+func heapLess[R any](cmp func(a, b R) int) func(a, b heapVal[R]) bool {
+	return func(a, b heapVal[R]) bool {
+		if a.isMax {
+			return false
 		}
-
-		// less defines the loser tree ordering. The maxVal sentinel sorts after
-		// every real record. For real records, order by the provided comparator;
-		// break ties by pile index for a stable merge.
-		less := func(a, b heapVal[R]) bool {
-			if a.isMax {
-				return false
-			}
-			if b.isMax {
-				return true
-			}
-			cmpResult := cmp(a.rec, b.rec)
-			if cmpResult != 0 {
-				return cmpResult < 0
-			}
-			// Equal keys: lower pile index wins.
-			return a.pileIdx < b.pileIdx
+		if b.isMax {
+			return true
 		}
-
-		// closeSeq closes a sequence when the loser tree is done with it.
-		closeSeq := func(s pileSequence[R]) {
-			_ = s.Close()
+		if cmpResult := cmp(a.rec, b.rec); cmpResult != 0 {
+			return cmpResult < 0
 		}
-
-		tree := loser.New(piles, maxVal, at, less, closeSeq)
-		defer tree.Close()
-
-		var (
-			havePending bool
-			pending     R
-		)
-
-		for tree.Next() {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-
-			winner := tree.Winner()
-			rec := winner.At()
-
-			if !havePending {
-				pending = rec
-				havePending = true
-				continue
-			}
-
-			// If reduce is set and keys are equal, accumulate.
-			if reduce != nil && cmp(pending, rec) == 0 {
-				pending = reduce(pending, rec)
-				continue
-			}
-
-			// Yield the pending record and start a new one.
-			if !yield(pending) {
-				return nil
-			}
-			pending = rec
-			havePending = true
-		}
-
-		// Yield any remaining pending record.
-		if havePending {
-			_ = yield(pending)
-		}
-
-		// Check for errors that occurred during iteration.
-		for _, p := range piles {
-			if p.Err() != nil {
-				return p.Err()
-			}
-		}
-
-		return nil
+		// Equal keys: lower group index wins.
+		return a.idx < b.idx
 	}
 }
