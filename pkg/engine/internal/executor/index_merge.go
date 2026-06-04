@@ -178,7 +178,7 @@ func readStatsSortSchema(ctx context.Context, sec *dataobj.Section) (string, err
 	if err != nil {
 		return "", fmt.Errorf("opening stats section: %w", err)
 	}
-	reader := newStatsPileReader(ctx, statsSec, 0)
+	reader := stats.NewRowReader(ctx, statsSec)
 	defer reader.Close()
 	var row stats.Stat
 	if reader.Next() {
@@ -211,8 +211,10 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 			return fmt.Errorf("opening postings section from run %d: %w", rs.runIdx, err)
 		}
 
-		reader := newPostingsPileReader(ctx, sec, i)
-		pileReaders = append(pileReaders, reader)
+		pileReaders = append(pileReaders, indexedSeq[postings.Row]{
+			rowReader: postings.NewRowReader(ctx, sec),
+			idx:       i,
+		})
 	}
 
 	// A collision on the full sort key (Kind, ObjectPath, SectionIndex,
@@ -280,8 +282,10 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 			return fmt.Errorf("opening stats section from run %d: %w", rs.runIdx, err)
 		}
 
-		reader := newStatsPileReader(ctx, sec, i)
-		pileReaders = append(pileReaders, reader)
+		pileReaders = append(pileReaders, indexedSeq[stats.Stat]{
+			rowReader: stats.NewRowReader(ctx, sec),
+			idx:       i,
+		})
 	}
 
 	// The comparator includes (ObjectPath, SectionIndex) as final tiebreakers, so
@@ -322,6 +326,34 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 
 	return emitErr
 }
+
+// rowReader[R] is a merge-agnostic, in-order row iterator. It is an unexported
+// interface local to this package, distinct from the exported concrete types
+// postings.RowReader and stats.RowReader, both of which satisfy it.
+type rowReader[R any] interface {
+	Next() bool
+	Value() R
+	Err() error
+	Close() error
+}
+
+// indexedSeq attaches a stable pile index to a rowReader so the loser tree can
+// break ties deterministically. The index must be readable when the tree
+// snapshots each sequence (loser.Tree calls at() eagerly inside moveNext and
+// compares the resulting heapVal immediately), so it travels with the sequence
+// rather than being derived at yield time.
+//
+// indexedSeq satisfies pileSequence[R] via the embedded rowReader (promoting
+// Next/Value/Err/Close) plus PileIdx. No explicit compile-time assertion is
+// needed: the construction sites below assign indexedSeq values into
+// []pileSequence[R], so the conversion is checked there.
+type indexedSeq[R any] struct {
+	rowReader[R] // promotes Next/Value/Err/Close
+	idx          int
+}
+
+// PileIdx returns the pile's index in the merge. Used for stable tiebreak ordering.
+func (s indexedSeq[R]) PileIdx() int { return s.idx }
 
 // pileSequence[R] is one pile cursor for the K-way merge. It satisfies
 // loser.Sequence (Next() bool) and exposes the current value via Value().

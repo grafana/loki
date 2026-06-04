@@ -266,162 +266,6 @@ func TestMerge_ContextCancelled(t *testing.T) {
 	require.Equal(t, context.Canceled, err)
 }
 
-// TestPostingsPileReader_RoundTrip tests the postingsPileReader with a synthesized postings section.
-func TestPostingsPileReader_RoundTrip(t *testing.T) {
-	ctx := context.Background()
-
-	// Build a postings section with known rows
-	b := postings.NewBuilder(nil, 0, 0)
-	ts := time.Unix(0, 0).UTC()
-
-	// Add a label entry
-	b.ObserveLabelPosting(postings.LabelObservation{
-		ObjectPath:       "/obj",
-		SectionIndex:     0,
-		ColumnName:       "env",
-		LabelValue:       "prod",
-		StreamID:         1,
-		Timestamp:        ts,
-		UncompressedSize: 100,
-	})
-
-	// Add a bloom entry
-	b.PrepareBloomColumn("/obj", 0, "trace_id", 1000)
-
-	err := b.ObserveBloomPosting(postings.BloomObservation{
-		ObjectPath:       "/obj",
-		SectionIndex:     0,
-		ColumnName:       "trace_id",
-		StreamID:         2,
-		Timestamp:        ts,
-		UncompressedSize: 200,
-	})
-	require.NoError(t, err)
-
-	// Flush to a dataobj
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(b))
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	// Find and open the postings section
-	var sec *postings.Section
-	for _, s := range obj.Sections() {
-		if !postings.CheckSection(s) {
-			continue
-		}
-		sec, err = postings.Open(ctx, s)
-		require.NoError(t, err)
-		break
-	}
-	require.NotNil(t, sec)
-
-	// Create a pile reader and read all rows
-	pileReader := newPostingsPileReader(ctx, sec, 0)
-	defer pileReader.Close()
-
-	var rows []postings.Row
-	for pileReader.Next() {
-		rows = append(rows, pileReader.Value())
-	}
-	if pileReader.Err() != nil {
-		require.NoError(t, pileReader.Err())
-	}
-
-	// Verify we got both a label and bloom entry
-	require.Len(t, rows, 2)
-
-	// Verify they are in sort order (Kind, ObjectPath, SectionIndex, ColumnName, LabelValue)
-	// Bloom entries come first (Kind=0), then label entries (Kind=1)
-	require.Equal(t, postings.KindBloom, rows[0].Kind)
-	require.Equal(t, "/obj", rows[0].ObjectPath)
-	require.Equal(t, int64(0), rows[0].SectionIndex)
-	require.Equal(t, "trace_id", rows[0].ColumnName)
-	require.NotNil(t, rows[0].BloomFilter, "bloom row should have non-nil bloom filter")
-
-	require.Equal(t, postings.KindLabel, rows[1].Kind)
-	require.Equal(t, "/obj", rows[1].ObjectPath)
-	require.Equal(t, int64(0), rows[1].SectionIndex)
-	require.Equal(t, "env", rows[1].ColumnName)
-	require.Equal(t, "prod", rows[1].LabelValue)
-	require.NotEmpty(t, rows[1].StreamIDBitmap, "label row should have non-empty stream id bitmap")
-}
-
-// TestStatsPileReader_RoundTrip tests the statsPileReader with a synthesized stats section.
-func TestStatsPileReader_RoundTrip(t *testing.T) {
-	ctx := context.Background()
-
-	// Build a stats section
-	b := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(1024*1024, 10000))
-
-	b.Append(stats.Stat{
-		ObjectPath:       "/obj1",
-		SectionIndex:     0,
-		SortSchema:       "service_name,job",
-		Labels:           map[string]string{"service_name": "svc1", "job": "job1"},
-		MinTimestamp:     100,
-		MaxTimestamp:     200,
-		RowCount:         5,
-		UncompressedSize: 50,
-	})
-
-	b.Append(stats.Stat{
-		ObjectPath:       "/obj2",
-		SectionIndex:     0,
-		SortSchema:       "service_name,job",
-		Labels:           map[string]string{"service_name": "svc2", "job": "job2"},
-		MinTimestamp:     150,
-		MaxTimestamp:     250,
-		RowCount:         10,
-		UncompressedSize: 100,
-	})
-
-	// Flush to a dataobj
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(b))
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	// Find and open the stats section
-	var sec *stats.Section
-	for _, s := range obj.Sections() {
-		if !stats.CheckSection(s) {
-			continue
-		}
-		sec, err = stats.Open(ctx, s)
-		require.NoError(t, err)
-		break
-	}
-	require.NotNil(t, sec)
-
-	// Create a pile reader and read all rows
-	pileReader := newStatsPileReader(ctx, sec, 0)
-	defer pileReader.Close()
-
-	var rows []stats.Stat
-	for pileReader.Next() {
-		rows = append(rows, pileReader.Value())
-	}
-	if pileReader.Err() != nil {
-		require.NoError(t, pileReader.Err())
-	}
-
-	// Verify we got both rows
-	require.Len(t, rows, 2)
-
-	// Verify they are in sort order
-	require.Equal(t, "/obj1", rows[0].ObjectPath)
-	require.Equal(t, "service_name,job", rows[0].SortSchema)
-	require.Equal(t, "svc1", rows[0].Labels["service_name"])
-	require.Equal(t, "job1", rows[0].Labels["job"])
-
-	require.Equal(t, "/obj2", rows[1].ObjectPath)
-	require.Equal(t, "svc2", rows[1].Labels["service_name"])
-	require.Equal(t, "job2", rows[1].Labels["job"])
-}
-
 // TestMerge_ClosesAllPilesOnEarlyStop tests that merge closes all piles when the caller stops iteration early.
 func TestMerge_ClosesAllPilesOnEarlyStop(t *testing.T) {
 	ctx := context.Background()
@@ -570,79 +414,6 @@ func (p *errorPileReader[R]) Close() error {
 
 func (p *errorPileReader[R]) Exhausted() bool {
 	return p.exhausted
-}
-
-// TestPostingsPileReader_RoundTrip_BitLevelAssertion tests the postingsPileReader with bit-level bitmap validation.
-func TestPostingsPileReader_RoundTrip_BitLevelAssertion(t *testing.T) {
-	ctx := context.Background()
-
-	// Build a postings section with a label entry that has a known bitmap
-	b := postings.NewBuilder(nil, 0, 0)
-	ts := time.Unix(0, 0).UTC()
-
-	// Add a label entry with known stream ID
-	b.ObserveLabelPosting(postings.LabelObservation{
-		ObjectPath:       "/obj",
-		SectionIndex:     0,
-		ColumnName:       "env",
-		LabelValue:       "prod",
-		StreamID:         5, // Binary: 0b0101 (bit 0 and 2 set)
-		Timestamp:        ts,
-		UncompressedSize: 100,
-	})
-
-	// Add another label entry with different stream ID
-	b.ObserveLabelPosting(postings.LabelObservation{
-		ObjectPath:       "/obj",
-		SectionIndex:     0,
-		ColumnName:       "env",
-		LabelValue:       "staging",
-		StreamID:         10, // Binary: 0b1010 (bit 1 and 3 set)
-		Timestamp:        ts,
-		UncompressedSize: 100,
-	})
-
-	// Flush to a dataobj
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(b))
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	// Find and open the postings section
-	var sec *postings.Section
-	for _, s := range obj.Sections() {
-		if !postings.CheckSection(s) {
-			continue
-		}
-		sec, err = postings.Open(ctx, s)
-		require.NoError(t, err)
-		break
-	}
-	require.NotNil(t, sec)
-
-	// Create a pile reader and read all rows
-	pileReader := newPostingsPileReader(ctx, sec, 0)
-	defer pileReader.Close()
-
-	var rows []postings.Row
-	for pileReader.Next() {
-		rows = append(rows, pileReader.Value())
-	}
-	if pileReader.Err() != nil {
-		require.NoError(t, pileReader.Err())
-	}
-
-	// Verify we got both label entries
-	require.Len(t, rows, 2)
-
-	// Verify the bitmaps are non-empty and have the expected pattern
-	// Both should have non-empty bitmaps (different stream IDs)
-	require.NotEmpty(t, rows[0].StreamIDBitmap, "first row should have non-empty bitmap")
-	require.NotEmpty(t, rows[1].StreamIDBitmap, "second row should have non-empty bitmap")
-
-	// The bitmaps should be different (different stream IDs used)
-	require.NotEqual(t, rows[0].StreamIDBitmap, rows[1].StreamIDBitmap, "bitmaps for different stream IDs should differ")
 }
 
 // TestExecuteIndexMerge_Smoke_BothKinds smoke tests the full merge path: builds
@@ -976,15 +747,15 @@ func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objsto
 
 	require.NotNil(t, sec, "expected postings section in output object")
 
-	pileReader := newPostingsPileReader(ctx, sec, 0)
-	defer pileReader.Close()
+	reader := postings.NewRowReader(ctx, sec)
+	defer reader.Close()
 
 	var rows []postings.Row
-	for pileReader.Next() {
-		rows = append(rows, pileReader.Value())
+	for reader.Next() {
+		rows = append(rows, reader.Value())
 	}
-	if pileReader.Err() != nil {
-		require.NoError(t, pileReader.Err())
+	if reader.Err() != nil {
+		require.NoError(t, reader.Err())
 	}
 
 	return rows
@@ -1010,15 +781,15 @@ func readStatsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.
 
 	require.NotNil(t, sec, "expected stats section in output object")
 
-	pileReader := newStatsPileReader(ctx, sec, 0)
-	defer pileReader.Close()
+	reader := stats.NewRowReader(ctx, sec)
+	defer reader.Close()
 
 	var rows []stats.Stat
-	for pileReader.Next() {
-		rows = append(rows, pileReader.Value())
+	for reader.Next() {
+		rows = append(rows, reader.Value())
 	}
-	if pileReader.Err() != nil {
-		require.NoError(t, pileReader.Err())
+	if reader.Err() != nil {
+		require.NoError(t, reader.Err())
 	}
 
 	return rows
@@ -1587,16 +1358,16 @@ func TestStatsPileReader_DottedLabelNames(t *testing.T) {
 	}
 	require.NotNil(t, sec)
 
-	// Create a pile reader and read the row
-	pileReader := newStatsPileReader(ctx, sec, 0)
-	defer pileReader.Close()
+	// Create a reader and read the row
+	reader := stats.NewRowReader(ctx, sec)
+	defer reader.Close()
 
-	if !pileReader.Next() {
+	if !reader.Next() {
 		require.Fail(t, "expected to read a row")
 	}
-	row := pileReader.Value()
-	if pileReader.Err() != nil {
-		require.NoError(t, pileReader.Err())
+	row := reader.Value()
+	if reader.Err() != nil {
+		require.NoError(t, reader.Err())
 	}
 
 	// Verify the label name is NOT truncated: should be "my.svc", not "my"
