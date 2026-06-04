@@ -446,14 +446,43 @@ func (wf *Workflow) onStreamChange(_ context.Context, stream *Stream, newState S
 	}
 
 	wf.streamsMut.Lock()
-	defer wf.streamsMut.Unlock()
-
 	wf.streamStates[stream] = newState
+	shouldCloseResults := newState == StreamStateClosed && stream.ULID == wf.resultsStream.ULID
+	wf.streamsMut.Unlock()
 
-	if newState == StreamStateClosed && stream.ULID == wf.resultsStream.ULID {
-		// Close the results pipeline once the results stream has closed.
-		wf.resultsPipeline.Close()
+	if shouldCloseResults {
+		wf.maybeCloseResults()
 	}
+}
+
+// resultsStreamClosed reports whether the results stream has reached
+// StreamStateClosed. Callers must hold streamsMut.
+func (wf *Workflow) resultsStreamClosed() bool {
+	return wf.streamStates[wf.resultsStream] == StreamStateClosed
+}
+
+// maybeCloseResults closes the results pipeline (signaling EOF) only once the
+// results stream has closed AND every task is terminal, so any failed task's
+// SetError happens-before the EOF. Idempotent; safe to call from any handler.
+func (wf *Workflow) maybeCloseResults() {
+	wf.streamsMut.RLock()
+	streamClosed := wf.resultsStreamClosed()
+	wf.streamsMut.RUnlock()
+
+	if !streamClosed {
+		return
+	}
+
+	wf.tasksMut.RLock()
+	for _, state := range wf.taskStates {
+		if !state.Terminal() {
+			wf.tasksMut.RUnlock()
+			return
+		}
+	}
+	wf.tasksMut.RUnlock()
+
+	wf.resultsPipeline.Close()
 }
 
 func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus TaskStatus) {
@@ -530,6 +559,9 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 	wf.tasksMut.RUnlock()
 
 	wf.cancelTasks(ctx, tasksToCancel)
+
+	// Close the results pipeline if it was waiting on this task to finish.
+	wf.maybeCloseResults()
 
 	// Print the summary at the very end to track full end-to-end task time.
 	wf.printTaskSummary(task, oldState, newStatus)

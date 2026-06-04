@@ -21,7 +21,7 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.10.1
+VERSION ?= 0.10.2
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 
@@ -85,6 +85,7 @@ ifeq ($(USE_IMAGE_DIGESTS), true)
 endif
 
 CALCULATOR_IMG ?= $(REGISTRY_BASE)/storage-size-calculator:latest
+PASSTHROUGH_GATEWAY_IMG ?= $(REGISTRY_BASE)/passthrough-gateway:latest
 
 GO_FILES := $(shell find . -type f -name '*.go')
 
@@ -312,6 +313,15 @@ oci-build-calculator: ## Build the calculator image
 .PHONY: oci-push-calculator
 oci-push-calculator: ## Push the calculator image
 	$(OCI_RUNTIME) push $(CALCULATOR_IMG)
+
+##@ Passthrough Gateway
+.PHONY: oci-build-passthrough-gateway
+oci-build-passthrough-gateway: ## Build the passthrough gateway image
+	$(OCI_RUNTIME) build -f passthrough-gateway.Dockerfile -t $(PASSTHROUGH_GATEWAY_IMG) .
+
+.PHONY: oci-push-passthrough-gateway
+oci-push-passthrough-gateway: ## Push the passthrough gateway image
+	$(OCI_RUNTIME) push $(PASSTHROUGH_GATEWAY_IMG)
 
 ##@ Website
 

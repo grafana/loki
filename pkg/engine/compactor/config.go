@@ -19,14 +19,37 @@ type Config struct {
 	// even if their target is selected.
 	Enabled bool `yaml:"enabled"`
 
-	// MaxRunningCompactionTasks caps how many CompactionMerge tasks a
-	// single workflow may run concurrently within the engine scheduler's
-	// taskTypeCompaction admission lane. Currently unused; reserved for
-	// the engine scheduler's compaction admission lane added in a
-	// follow-up change. The semantic of zero (unlimited vs. blocked) is
-	// intentionally undefined at scaffold time; the follow-up change that
-	// consumes this field will define and document it.
+	// MaxRunningCompactionTasks caps how many IndexMerge tasks the
+	// coordinator runs concurrently per tenant within a single cycle.
+	// Applied via errgroup.SetLimit on the per-tenant goroutine group in
+	// runTenantCycle. Zero means unlimited (one goroutine per task with no
+	// admission throttle). Negative values are rejected at config validation.
 	MaxRunningCompactionTasks int `yaml:"max_running_compaction_tasks"`
+
+	// PollingInterval is the cadence of the coordinator's main loop. Each
+	// tick reads the most-recent ToC and runs a compaction plan per tenant
+	// that has > 1 index in the window.
+	PollingInterval time.Duration `yaml:"polling_interval"`
+
+	// MaxRunsPerTask (K in the K-way merge) is the maximum number of runs a
+	// single IndexMerge task may consume. Memory grows linearly with K.
+	MaxRunsPerTask int `yaml:"max_runs_per_task"`
+
+	// IndexMergeTaskTTL is the per-IndexMerge-task deadline.
+	// Enforced inside the executor via context.WithDeadline.
+	IndexMergeTaskTTL time.Duration `yaml:"index_merge_task_ttl"`
+
+	// ToCConsolidateTimeout bounds the coordinator's inline ReplaceIndexPointers
+	// call. NOT a task TTL — applied as context.WithTimeout around the metastore
+	// RPC; on expiry the cycle aborts inline and the next polling tick re-plans.
+	ToCConsolidateTimeout time.Duration `yaml:"toc_consolidate_timeout"`
+
+	// PlanVersion is hashed into IndexMerge output paths so a planner
+	// change invalidates previously-written outputs. Bump on any
+	// breaking change to the planner or merge semantics. Stored as uint
+	// because the standard library's flag package does not provide
+	// Uint32Var.
+	PlanVersion uint `yaml:"plan_version"`
 
 	// Scheduler holds the scheduler-side knobs: advertise_addr and
 	// endpoint for the embedded engine.Scheduler instance. See
@@ -100,6 +123,12 @@ type WorkerConfig struct {
 const (
 	defaultMaxRunningCompactionTasks = 16
 	defaultEndpoint                  = "/api/v2/compaction-frame"
+
+	defaultPollingInterval       = 5 * time.Minute
+	defaultMaxRunsPerTask        = 8
+	defaultIndexMergeTaskTTL     = 10 * time.Minute
+	defaultToCConsolidateTimeout = 30 * time.Second
+	defaultPlanVersion           = uint(1)
 )
 
 // RegisterFlags registers the compaction config flags under the given
@@ -115,7 +144,17 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Enable dataobj compaction modules (planner and worker targets when selected via -target).")
 	f.IntVar(&cfg.MaxRunningCompactionTasks, prefix+"max-running-compaction-tasks",
 		defaultMaxRunningCompactionTasks,
-		"Experimental: Per-workflow cap on concurrent CompactionMerge tasks. Currently unused; reserved for the engine scheduler's compaction admission lane added in a follow-up change.")
+		"Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks dispatched by the coordinator. 0 means unlimited (one goroutine per task with no admission throttle).")
+	f.DurationVar(&cfg.PollingInterval, prefix+"polling-interval", defaultPollingInterval,
+		"Experimental: Coordinator main-loop cadence.")
+	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
+		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
+	f.DurationVar(&cfg.IndexMergeTaskTTL, prefix+"index-merge-task-ttl", defaultIndexMergeTaskTTL,
+		"Experimental: Per-IndexMerge-task deadline.")
+	f.DurationVar(&cfg.ToCConsolidateTimeout, prefix+"toc-consolidate-timeout", defaultToCConsolidateTimeout,
+		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
+	f.UintVar(&cfg.PlanVersion, prefix+"plan-version", defaultPlanVersion,
+		"Experimental: Plan version hashed into IndexMerge output paths. Bump to invalidate previously-written outputs after a planner-algorithm change.")
 	f.StringVar(&cfg.Scheduler.AdvertiseAddr, prefix+"scheduler.advertise-addr", "",
 		"Experimental: host:port the embedded compaction scheduler advertises to compaction workers. Empty string keeps the scheduler in-process-only.")
 	f.StringVar(&cfg.Scheduler.Endpoint, prefix+"scheduler.endpoint", defaultEndpoint,
@@ -150,6 +189,18 @@ func (cfg *Config) Validate() error {
 	if cfg.Scheduler.Endpoint == "" {
 		return errEmptySchedulerEndpoint
 	}
+	if cfg.PollingInterval <= 0 {
+		return errInvalidPollingInterval
+	}
+	if cfg.IndexMergeTaskTTL <= 0 {
+		return errInvalidIndexMergeTaskTTL
+	}
+	if cfg.ToCConsolidateTimeout <= 0 {
+		return errInvalidToCConsolidateTimeout
+	}
+	if cfg.MaxRunsPerTask <= 0 {
+		return errInvalidMaxRunsPerTask
+	}
 	return nil
 }
 
@@ -158,4 +209,8 @@ func (cfg *Config) Validate() error {
 var (
 	errInvalidMaxRunningCompactionTasks = errors.New("dataobj.compaction.max_running_compaction_tasks must be >= 0")
 	errEmptySchedulerEndpoint           = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
+	errInvalidPollingInterval           = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
+	errInvalidIndexMergeTaskTTL         = errors.New("dataobj.compaction.index_merge_task_ttl must be > 0 when compaction is enabled")
+	errInvalidToCConsolidateTimeout     = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
+	errInvalidMaxRunsPerTask            = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
 )

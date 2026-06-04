@@ -70,3 +70,29 @@ func (acc Account) IsZero() bool {
 
 // DefaultClient is our default shared HTTP client.
 var DefaultClient = &http.Client{}
+
+type Prompt int64
+
+const (
+	PromptNone Prompt = iota
+	PromptLogin
+	PromptSelectAccount
+	PromptConsent
+	PromptCreate
+)
+
+func (p Prompt) String() string {
+	switch p {
+	case PromptNone:
+		return "none"
+	case PromptLogin:
+		return "login"
+	case PromptSelectAccount:
+		return "select_account"
+	case PromptConsent:
+		return "consent"
+	case PromptCreate:
+		return "create"
+	}
+	return ""
+}

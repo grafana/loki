@@ -6,7 +6,7 @@ package util //nolint:revive
 import (
 	"bytes"
 
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 )
 
 // CompareYAML marshals a and b to YAML and ensures that their contents are

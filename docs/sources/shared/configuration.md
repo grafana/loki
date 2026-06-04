@@ -1523,16 +1523,6 @@ dataobj:
     # CLI flag: -dataobj-consumer.max-builder-age
     [max_builder_age: <duration> | default = 1h]
 
-    # How records are ingested: "kafka" reads from a Kafka topic; "inmemory"
-    # uses an in-process channel (experimental, single-node, no durability
-    # guarantees, each replica holds independent data).
-    # CLI flag: -dataobj-consumer.ingest-mode
-    [ingest_mode: <string> | default = "kafka"]
-
-    # Internal buffer size for records for inmemory ingestion.
-    # CLI flag: -dataobj-consumer.channel-size
-    [channel_size: <int> | default = 10000]
-
     # The name of the Kafka topic.
     # CLI flag: -dataobj-consumer.topic
     [topic: <string> | default = ""]
@@ -1612,11 +1602,34 @@ dataobj:
     # CLI flag: -dataobj.compaction.enabled
     [enabled: <boolean> | default = false]
 
-    # Experimental: Per-workflow cap on concurrent CompactionMerge tasks.
-    # Currently unused; reserved for the engine scheduler's compaction admission
-    # lane added in a follow-up change.
+    # Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks
+    # dispatched by the coordinator. 0 means unlimited (one goroutine per task
+    # with no admission throttle).
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
+
+    # Experimental: Coordinator main-loop cadence.
+    # CLI flag: -dataobj.compaction.polling-interval
+    [polling_interval: <duration> | default = 5m]
+
+    # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
+    # with K.
+    # CLI flag: -dataobj.compaction.max-runs-per-task
+    [max_runs_per_task: <int> | default = 8]
+
+    # Experimental: Per-IndexMerge-task deadline.
+    # CLI flag: -dataobj.compaction.index-merge-task-ttl
+    [index_merge_task_ttl: <duration> | default = 10m]
+
+    # Experimental: Coordinator-side timeout around the inline ToC
+    # ReplaceIndexPointers call. Not a task TTL.
+    # CLI flag: -dataobj.compaction.toc-consolidate-timeout
+    [toc_consolidate_timeout: <duration> | default = 30s]
+
+    # Experimental: Plan version hashed into IndexMerge output paths. Bump to
+    # invalidate previously-written outputs after a planner-algorithm change.
+    # CLI flag: -dataobj.compaction.plan-version
+    [plan_version: <int> | default = 1]
 
     scheduler:
       # Experimental: host:port the embedded compaction scheduler advertises to
@@ -2437,8 +2450,6 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `query-engine.task-results-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
-- `store.index-cache-read`
-- `store.index-cache-write`
 
 &nbsp;
 
@@ -2530,7 +2541,7 @@ memcached_client:
 
   # The TLS configuration.
   # The CLI flags prefix for this block configuration is:
-  # store.index-cache-write.memcached
+  # store.chunks-cache-l2.memcached
   [<tls_config>]
 
 redis:
@@ -2625,12 +2636,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # component.
 # The CLI flags prefix for this block configuration is: store.chunks-cache-l2
 [chunk_cache_config_l2: <cache_config>]
-
-# Write dedupe cache is deprecated along with legacy index types (aws,
-# aws-dynamo, grpc-store).
-# Consider using TSDB index which does not require a write dedupe cache.
-# The CLI flags prefix for this block configuration is: store.index-cache-write
-[write_dedupe_cache_config: <cache_config>]
 
 # Chunks fetched from queriers before this duration will not be written to the
 # cache. A value of 0 will write all chunks to the cache
@@ -3395,11 +3400,6 @@ dataobj_tee:
   # to 0 to disable batching.
   # CLI flag: -distributor.dataobj-tee.rate-batch-window
   [rate_batch_window: <duration> | default = 0s]
-
-# Timeout for sending a record to the in-memory queue before returning
-# backpressure to the caller. Defaults to 5s. Set to 0 for no timeout.
-# CLI flag: -distributor.inmemory-dataobj-push-timeout
-[inmemory_dataobj_push_timeout: <duration> | default = 5s]
 ```
 
 ### etcd
@@ -6606,11 +6606,6 @@ hedging:
 # Storage (COS) backend.
 [cos: <cos_storage_config>]
 
-# Cache validity for active index entries. Should be no higher than
-# -ingester.max-chunk-idle.
-# CLI flag: -store.index-cache-validity
-[index_cache_validity: <duration> | default = 5m]
-
 congestion_control:
   # Use storage congestion control (default: disabled).
   # CLI flag: -store.congestion-control.enabled
@@ -6664,11 +6659,6 @@ congestion_control:
 # storage. Example: loki/
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
-
-# The cache_config block configures the cache backend for a specific Loki
-# component.
-# The CLI flags prefix for this block configuration is: store.index-cache-read
-[index_queries_cache_config: <cache_config>]
 
 # Disable broad index queries which results in reduced cache usage and faster
 # query performance at the expense of somewhat higher QPS on the index store.
@@ -7406,8 +7396,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `ruler.ring.etcd`
 - `store.chunks-cache-l2.memcached`
 - `store.chunks-cache.memcached`
-- `store.index-cache-read.memcached`
-- `store.index-cache-write.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
 - `ui.ring.etcd`
 

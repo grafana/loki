@@ -6,7 +6,10 @@ on:
       - main
     paths:
       - "docs/sources/**"
-  workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   sync:
     if: github.repository == 'grafana/loki'
@@ -15,7 +18,7 @@ jobs:
       id-token: write
     runs-on: ubuntu-x64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - uses: grafana/writers-toolkit/publish-technical-documentation@publish-technical-documentation/v1
