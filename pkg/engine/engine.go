@@ -19,7 +19,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
@@ -476,8 +478,6 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 	level.Info(q.Logger()).Log(
 		"msg", "physical-plan-summary",
 
-		"plan", physical.PrintAsTree(plan),
-
 		// Plan stats.
 		"duration_ms", duration.Milliseconds(),
 		"plan_node_count", plan.Len(),
@@ -494,6 +494,10 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 		}),
 
 		// TODO(rfratto): include stats on which optimization passes applied/didn't apply
+
+		// Large plans result in log line truncation, retain the other
+		// kvs by moving this to the end.
+		"plan", physical.PrintAsTree(plan),
 	)
 }
 
@@ -578,8 +582,26 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 			printExecutionSummary(q, executionDuration)
 		}
 
+		sectionsResolved := len(resp.SectionsResponse.Sections)
+		printMetastoreLocalitySummary(q, sectionsResolved)
+
+		if parent != nil {
+			parent.rootRegion.Record(xcap.StatMetastoreSectionsResolved.Observe(int64(sectionsResolved)))
+		}
+
 		return resp.SectionsResponse.Sections, nil
 	}
+}
+
+func printMetastoreLocalitySummary(q *query, sectionsResolved int) {
+	level.Info(q.Logger()).Log(
+		"msg", "metastore-locality-summary",
+		"toc_tables", xcap.Value[int64](q.capture, metastore.StatMetastoreTocTables),
+		"index_objects", xcap.Value[int64](q.capture, xcap.StatMetastoreIndexObjects),
+		"index_sections_opened", xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsOpened),
+		"index_sections_productive", xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsProductive),
+		"logs_sections_resolved", sectionsResolved,
+	)
 }
 
 // execute reads from the pipeline and produces a result.
@@ -643,6 +665,7 @@ func (e *Engine) execute(ctx context.Context, q *query, params logql.Params, pip
 	span.Record(statProcessBatchDuration.Observe(int64(totalProcessBatchTime)))
 
 	printExecutionSummary(q, duration)
+	printLogLocalitySummary(q)
 
 	span.SetStatus(codes.Ok, "")
 	return builder, nil
@@ -657,6 +680,8 @@ func printExecutionSummary(q *query, duration time.Duration) {
 		readBatchDuration, _    = q.capture.Value(statReadBatchDuration).Int64()
 		processBatchDuration, _ = q.capture.Value(statProcessBatchDuration).Int64()
 		otherDuration           = calculateResidual(duration, readBatchDuration, processBatchDuration)
+
+		logSections = xcap.Value[int64](q.capture, xcap.StatMetastoreSectionsResolved)
 
 		tasksPruned           = xcap.Value[int64](q.capture, workflow.StatPrunedTasks)
 		tasksPlanned          = xcap.Value[int64](q.capture, scheduler.StatPlannedTasks)
@@ -698,6 +723,8 @@ func printExecutionSummary(q *query, duration time.Duration) {
 		"task_neg_result_cache_hits", xcap.Value[int64](q.capture, workflow.StatNegativeCacheHits),
 		"task_pos_result_cache_hits", xcap.Value[int64](q.capture, workflow.StatPositiveCacheHits),
 
+		"log_sections_resolved", logSections,
+
 		// Task fan-out
 		"tasks_total", tasksTotal,
 		"tasks_pruned", tasksPruned,
@@ -710,5 +737,22 @@ func printExecutionSummary(q *query, duration time.Duration) {
 		"tasks_canceled_queued", tasksCanceledQueued,
 		"tasks_canceled_assigned", tasksCanceledAssigned,
 		"tasks_unknown_status", tasksUnkownStatus,
+	)
+}
+
+func printLogLocalitySummary(q *query) {
+	var (
+		rowsTotal           = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, xcap.StatDatasetMaxRows)
+		relevantRows        = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, dataobj.StatStreamRelevantRows)
+		streamPagesTotal    = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, dataobj.StatStreamPagesTotal)
+		streamRelevantPages = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, dataobj.StatStreamRelevantPages)
+	)
+
+	level.Info(q.Logger()).Log(
+		"msg", "logs-locality-summary",
+		"dataset_rows_total", rowsTotal,
+		"stream_relevant_rows", relevantRows,
+		"stream_pages_total", streamPagesTotal,
+		"stream_relevant_pages", streamRelevantPages,
 	)
 }
