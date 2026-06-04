@@ -15,7 +15,7 @@ import (
 //
 // pageSizeHint and pageMaxRowCount control the page splitting behaviour of the
 // underlying column builders.
-func columnarEncode(bloomEntries []*bloomPostingEntry, labelEntries []*labelPostingEntry, enc *columnar.Encoder, pageSizeHint, pageMaxRowCount int) error {
+func columnarEncode(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *columnar.Encoder, pageSizeHint, pageMaxRowCount int) error {
 	// Build column builders for all 10 columns.
 
 	// kind is a 2-value flag (0=bloom, 1=label). DELTA is the only encoding
@@ -93,13 +93,13 @@ func columnarEncode(bloomEntries []*bloomPostingEntry, labelEntries []*labelPost
 	// Compute the max bitmap length across both bloom and label entries for normalization.
 	maxBitmapLen := 0
 	for _, e := range bloomEntries {
-		if b := e.BitmapBytes(); len(b) > maxBitmapLen {
-			maxBitmapLen = len(b)
+		if len(e.StreamIDBitmap) > maxBitmapLen {
+			maxBitmapLen = len(e.StreamIDBitmap)
 		}
 	}
 	for _, e := range labelEntries {
-		if b := e.BitmapBytes(); len(b) > maxBitmapLen {
-			maxBitmapLen = len(b)
+		if len(e.StreamIDBitmap) > maxBitmapLen {
+			maxBitmapLen = len(e.StreamIDBitmap)
 		}
 	}
 
@@ -117,18 +117,13 @@ func columnarEncode(bloomEntries []*bloomPostingEntry, labelEntries []*labelPost
 	rowIdx := 0
 
 	for _, e := range bloomEntries {
-		bloomBytes, err := e.BloomBytes()
-		if err != nil {
-			return fmt.Errorf("marshaling bloom filter for column %q: %w", e.ColumnName, err)
-		}
-
 		_ = kindBuilder.Append(rowIdx, dataset.Int64Value(int64(KindBloom)))
 		_ = objectPathBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ObjectPath)))
 		_ = sectionIndexBuilder.Append(rowIdx, dataset.Int64Value(e.SectionIndex))
 		_ = columnNameBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ColumnName)))
 		_ = labelValueBuilder.Append(rowIdx, dataset.Value{}) // null for bloom
-		_ = bloomFilterBuilder.Append(rowIdx, dataset.BinaryValue(bloomBytes))
-		_ = streamIDBitmapBuilder.Append(rowIdx, dataset.BinaryValue(normalizeBitmap(e.BitmapBytes())))
+		_ = bloomFilterBuilder.Append(rowIdx, dataset.BinaryValue(e.BloomFilter))
+		_ = streamIDBitmapBuilder.Append(rowIdx, dataset.BinaryValue(normalizeBitmap(e.StreamIDBitmap)))
 		_ = uncompressedSizeBuilder.Append(rowIdx, dataset.Int64Value(e.UncompressedSize))
 		_ = minTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MinTimestamp))
 		_ = maxTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MaxTimestamp))
@@ -142,7 +137,7 @@ func columnarEncode(bloomEntries []*bloomPostingEntry, labelEntries []*labelPost
 		_ = columnNameBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ColumnName)))
 		_ = labelValueBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.LabelValue)))
 		_ = bloomFilterBuilder.Append(rowIdx, dataset.Value{}) // null for label
-		_ = streamIDBitmapBuilder.Append(rowIdx, dataset.BinaryValue(normalizeBitmap(e.BitmapBytes())))
+		_ = streamIDBitmapBuilder.Append(rowIdx, dataset.BinaryValue(normalizeBitmap(e.StreamIDBitmap)))
 		_ = uncompressedSizeBuilder.Append(rowIdx, dataset.Int64Value(e.UncompressedSize))
 		_ = minTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MinTimestamp))
 		_ = maxTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MaxTimestamp))
