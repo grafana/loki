@@ -5,6 +5,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/expressionpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -430,5 +431,45 @@ func (n *Cache) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		CacheName:    n.CacheName,
 		MaxSizeBytes: n.MaxCacheableSizeBytes,
 		Compression:  n.Compression,
+	}, nil
+}
+
+// MarshalPhysical converts a protobuf IndexMerge into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *Node_IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return n.IndexMerge.MarshalPhysical(nodeID)
+}
+
+// MarshalPhysical converts a protobuf IndexMerge into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	runs := make([]*compactionv2pb.RunRef, len(n.Runs))
+	for i, r := range n.Runs {
+		if r == nil {
+			continue
+		}
+		sections := make([]*compactionv2pb.SectionRef, len(r.Sections))
+		for j, s := range r.Sections {
+			if s == nil {
+				continue
+			}
+			sections[j] = &compactionv2pb.SectionRef{
+				ObjectPath:   s.ObjectPath,
+				SectionIndex: s.SectionIndex,
+				MinKey:       s.MinKey,
+				MaxKey:       s.MaxKey,
+				MinTimestamp: s.MinTimestamp,
+				MaxTimestamp: s.MaxTimestamp,
+			}
+		}
+		runs[i] = &compactionv2pb.RunRef{Sections: sections}
+	}
+
+	return &physical.IndexMerge{
+		NodeID:          nodeID,
+		Tenant:          n.Tenant,
+		ToCWindowStart:  n.TocWindowStartUnixNanos,
+		Runs:            runs,
+		OutputIndexPath: n.OutputIndexPath,
 	}, nil
 }
