@@ -34,6 +34,31 @@ var testBuilderConfig = logsobj.BuilderBaseConfig{
 	SectionStripeMergeLimit: 2,
 }
 
+func TestNewIndexBuilder_WritePostingsSectionsOnly(t *testing.T) {
+	builder, err := NewIndexBuilder(
+		Config{
+			BuilderBaseConfig:         testBuilderConfig,
+			WritePostingsSectionsOnly: true,
+		},
+		metastore.Config{},
+		kafka.Config{},
+		log.NewNopLogger(),
+		"instance-id",
+		objstore.NewInMemBucket(),
+		nil,
+		prometheus.NewRegistry(),
+	)
+	require.NoError(t, err)
+	t.Cleanup(builder.client.Close)
+
+	serial, ok := builder.indexer.(*serialIndexer)
+	require.True(t, ok)
+
+	calculator, ok := serial.calculator.(*Calculator)
+	require.True(t, ok)
+	require.True(t, calculator.indexobjBuilder.WritePostingsSectionsOnly())
+}
+
 func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

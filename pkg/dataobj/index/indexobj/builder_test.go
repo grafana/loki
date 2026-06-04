@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -182,6 +183,52 @@ func TestBuilder_ObserveLogLine(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Greater(t, builder.estimatedSize(), 0)
+}
+
+func TestBuilder_WritePostingsSectionsOnly(t *testing.T) {
+	builder, err := NewBuilder(testBuilderConfig, nil)
+	require.NoError(t, err)
+	builder.SetWritePostingsSectionsOnly(true)
+
+	stream := streams.Stream{
+		ID:               42,
+		Labels:           labels.FromStrings("cluster", "test", "app", "foo"),
+		Rows:             2,
+		MinTimestamp:     time.Unix(10, 0).UTC(),
+		MaxTimestamp:     time.Unix(20, 0).UTC(),
+		UncompressedSize: 200,
+	}
+	streamID, err := builder.AppendStream(testTenant, stream)
+	require.NoError(t, err)
+	require.Equal(t, stream.ID, streamID)
+
+	require.NoError(t, builder.ObserveLogLine(testTenant, "test/path", 1, streamID, streamID, stream.MinTimestamp, 100))
+	require.NoError(t, builder.AppendColumnIndex(testTenant, "test/path", 1, "trace_id", 1, []byte{1, 2, 3}))
+
+	builder.ObserveLabelPosting(testTenant, postings.LabelObservation{
+		ObjectPath:       "test/path",
+		SectionIndex:     1,
+		ColumnName:       "app",
+		LabelValue:       "foo",
+		StreamID:         streamID,
+		Timestamp:        stream.MinTimestamp,
+		UncompressedSize: stream.UncompressedSize,
+	})
+
+	timeRanges := builder.TimeRanges()
+	require.Len(t, timeRanges, 1)
+	require.Equal(t, testTenant, timeRanges[0].Tenant)
+	require.Equal(t, stream.MinTimestamp, timeRanges[0].MinTime)
+	require.Equal(t, stream.MaxTimestamp, timeRanges[0].MaxTime)
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	require.Equal(t, 0, obj.Sections().Count(streams.CheckSection))
+	require.Equal(t, 0, obj.Sections().Count(pointers.CheckSection))
+	require.Equal(t, 1, obj.Sections().Count(postings.CheckSection))
+	require.Empty(t, builder.TimeRanges())
 }
 
 func BenchmarkIndexObjBuilder_ObserveLogLine(b *testing.B) {
