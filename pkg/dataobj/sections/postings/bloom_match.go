@@ -20,13 +20,6 @@ type Key struct {
 	SectionIndex int64
 }
 
-// MatchSections returns the (object_path, section_index) Keys whose bloom rows passed every Equal
-// matcher (AND-semantics). batches must come from [Reader.ReadBloomRows] (its 4-column projection).
-// Only MatchEqual matchers participate; others are dropped, since bloom filters can't answer regex.
-//
-// Corrupted-bloom behaviour is load-bearing: when a bloom payload fails to deserialise (err or a
-// bitset.ReadFrom panic on hostile length prefixes), [bloomFilterMayContain] returns true, so a
-// corrupt bloom never causes a false-negative (silently dropped section).
 func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []*labels.Matcher) (map[Key]struct{}, error) {
 	// Filter to MatchEqual matchers only; other types are handled on separate caller paths.
 	equalMatchers := make([]*labels.Matcher, 0, len(matchers))
@@ -53,17 +46,11 @@ func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []
 		}
 	}()
 
-	// predicateIndexesByName indexes Equal matchers by Name so multiple
-	// matchers on the same column are all tested per bloom row (verbatim
-	// shape from metastore.readMatchedSectionKeys:781-784).
 	predicateIndexesByName := make(map[string][]int, len(equalMatchers))
 	for i, m := range equalMatchers {
 		predicateIndexesByName[m.Name] = append(predicateIndexesByName[m.Name], i)
 	}
 
-	// sectionMatches[Key] is the set of equalMatchers indexes that matched
-	// at least one bloom row for that Key. AND-semantics: only Keys whose
-	// set size equals len(equalMatchers) are kept (line 857 invariant).
 	sectionMatches := make(map[Key]map[int]struct{})
 
 	for _, rec := range batches {
@@ -128,8 +115,7 @@ func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []
 		}
 	}
 
-	// AND across predicates (verbatim from metastore.readMatchedSectionKeys
-	// lines 856-860): a Key is kept only if every Equal matcher matched at
+	// a Key is kept only if every Equal matcher matched at
 	// least one bloom row for that Key.
 	matchedSectionKeys := make(map[Key]struct{})
 	for sectionKey, matchedPredicates := range sectionMatches {
@@ -140,9 +126,7 @@ func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []
 	return matchedSectionKeys, nil
 }
 
-// bloomFilterMayContain reports whether value may be present in the bloom filter (false = definitely
-// absent), plus whether the payload failed to deserialise. On deserialisation failure it returns
-// (true, true) to avoid a false negative; MatchSections uses the flag to count corrupt blooms.
+// bloomFilterMayContain reports whether value may be present in the bloom filter
 func bloomFilterMayContain(bloomBytes []byte, value string) (mayContain, deserializeFailed bool) {
 	defer func() {
 		if r := recover(); r != nil {

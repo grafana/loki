@@ -582,104 +582,75 @@ func newTestBloomBytes(t *testing.T, vals ...string) []byte {
 	return bytes
 }
 
-func TestIndexSectionsReader_LegacyOnlyObjectStaysOnLegacyPath(t *testing.T) {
+func TestIndexSectionsReader_PathSelection(t *testing.T) {
 	t.Parallel()
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
-
-	obj := buildLegacyOnlyFixture(t)
-
 	start := now.Add(-4 * time.Hour)
 	end := now.Add(-time.Hour)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
-	r.usePostingsSections = true
-	t.Cleanup(r.Close)
-	require.NoError(t, r.Open(ctx))
+	const (
+		streamsPointersPath = "streams+pointers"
+		postingsPath        = "postings"
+	)
 
-	require.Empty(t, r.postingsReaders, "no postings section ⇒ r.postingsReaders is empty")
-	require.NotEmpty(t, r.pointersReaders, "legacy path runs ⇒ r.pointersReaders is populated")
-
-	rec, err := r.Read(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, rec)
-	require.Equal(t, int64(1), rec.NumRows(), "legacy baseline: one matching stream row")
-
-	var streamIDCol *array.Int64
-	for i, f := range rec.Schema().Fields() {
-		if f.Name == "stream_id.int64" {
-			streamIDCol = rec.Column(i).(*array.Int64)
-			break
-		}
+	tests := []struct {
+		name     string
+		buildObj func(*testing.T) *dataobj.Object
+		gate     bool
+		wantPath string
+	}{
+		{"streams+pointers object stays on streams+pointers path", buildStreamsPointersFixture, true, streamsPointersPath},
+		{"gate off on combined fixture runs streams+pointers path", buildCombinedFixture, false, streamsPointersPath},
+		{"postings object uses postings path", buildPostingsFixture, true, postingsPath},
+		{"combined section object favors postings", buildCombinedFixture, true, postingsPath},
 	}
-	require.NotNil(t, streamIDCol)
-	require.Equal(t, int64(1), streamIDCol.Value(0))
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newIndexSectionsReader(log.NewNopLogger(), tc.buildObj(t), start, end, matchers, nil, 8192, false)
+			r.usePostingsSections = tc.gate
+			t.Cleanup(r.Close)
+			require.NoError(t, r.Open(ctx))
+
+			switch tc.wantPath {
+			case streamsPointersPath:
+				require.Empty(t, r.postingsReaders, "streams+pointers path ⇒ no postings readers opened")
+				require.NotEmpty(t, r.pointersReaders, "streams+pointers path ⇒ pointers readers populated")
+			case postingsPath:
+				require.Empty(t, r.pointersReaders, "postings path ⇒ pointers slice empty even when the section exists")
+				require.Empty(t, r.bloomReaders, "postings path ⇒ bloom slice empty even when the section exists")
+				require.Len(t, r.postingsReaders, 1, "postings path ⇒ exactly one postings.Reader opened")
+				require.NotNil(t, r.postingsReaders[0], "wave-1 errgroup populated the reader")
+			}
+
+			rec, err := r.Read(ctx)
+			require.NoError(t, err)
+			require.NotNil(t, rec)
+			require.Equal(t, int64(1), rec.NumRows(), "one matching stream row")
+			require.Equal(t, int64(1), columnByName(t, rec, "stream_id.int64").(*array.Int64).Value(0))
+
+			// The postings path must emit the same schema the streams+pointers path produces.
+			if tc.wantPath == postingsPath {
+				requirePostingsSchema(t, rec)
+			}
+		})
+	}
 }
 
-func TestIndexSectionsReader_GateOffOnCombinedFixtureRunsLegacyPath(t *testing.T) {
-	t.Parallel()
+// requirePostingsSchema asserts rec carries the postings.ReadPointers output
+// schema (9 pointer columns + InternalLabelsFieldName), proving the postings path
+// emits the same schema as the streams+pointers path.
+func requirePostingsSchema(t *testing.T, rec arrow.RecordBatch) {
+	t.Helper()
 
-	ctx := user.InjectOrgID(context.Background(), tenantID)
+	require.Equal(t, 10, len(rec.Schema().Fields()),
+		"postings.ReadPointers output has 9 columns + InternalLabelsFieldName")
 
-	obj := buildCombinedFixture(t)
-
-	start := now.Add(-4 * time.Hour)
-	end := now.Add(-time.Hour)
-	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
-	t.Cleanup(r.Close)
-	require.NoError(t, r.Open(ctx))
-
-	require.Empty(t, r.postingsReaders, "gate off ⇒ wave-1 postings errgroup branch did not run ⇒ r.postingsReaders is empty")
-	require.NotEmpty(t, r.pointersReaders, "gate off ⇒ legacy pointers errgroup branch ran ⇒ r.pointersReaders is populated")
-
-	rec, err := r.Read(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, rec)
-	require.Equal(t, int64(1), rec.NumRows(), "legacy baseline (bit-identical to today): one matching stream row")
-
-	var streamIDCol *array.Int64
-	for i, f := range rec.Schema().Fields() {
-		if f.Name == "stream_id.int64" {
-			streamIDCol = rec.Column(i).(*array.Int64)
-			break
-		}
-	}
-	require.NotNil(t, streamIDCol)
-	require.Equal(t, int64(1), streamIDCol.Value(0))
-}
-
-func TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath(t *testing.T) {
-	t.Parallel()
-
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-
-	obj := buildNewOnlyFixture(t)
-
-	start := now.Add(-4 * time.Hour)
-	end := now.Add(-time.Hour)
-	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
-	r.usePostingsSections = true
-	t.Cleanup(r.Close)
-	require.NoError(t, r.Open(ctx))
-
-	require.Empty(t, r.pointersReaders, "no pointers section ⇒ r.pointersReaders is empty")
-	require.Empty(t, r.bloomReaders, "no pointers section ⇒ r.bloomReaders is empty")
-	require.Len(t, r.postingsReaders, 1, "one postings section ⇒ exactly one postings.Reader opened ()")
-	require.NotNil(t, r.postingsReaders[0], "wave-1 errgroup populated the reader")
-
-	rec, err := r.Read(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, rec)
-	require.Equal(t, int64(1), rec.NumRows(), "new-path: one matching stream row from postings.ReadPointers")
-
-	require.Equal(t, 10, len(rec.Schema().Fields()), "postings.ReadPointers output has 9 columns + InternalLabelsFieldName")
-
-	expectedFieldNames := []string{
+	for _, name := range []string{
 		"path.path.utf8",
 		"section.int64",
 		"pointer_kind.int64",
@@ -689,61 +660,14 @@ func TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath(t *testing.T) {
 		"max_timestamp.timestamp",
 		"row_count.int64",
 		"uncompressed_size.int64",
+	} {
+		columnByName(t, rec, name) // fails the test if the column is absent
 	}
-	for _, name := range expectedFieldNames {
-		var found bool
-		for _, f := range rec.Schema().Fields() {
-			if f.Name == name {
-				found = true
-				break
-			}
-		}
-		require.True(t, found, "schema must contain field %q ( schema-compatibility schema parity)", name)
-	}
-
-	var streamIDCol *array.Int64
-	for i, f := range rec.Schema().Fields() {
-		if f.Name == "stream_id.int64" {
-			streamIDCol = rec.Column(i).(*array.Int64)
-			break
-		}
-	}
-	require.NotNil(t, streamIDCol)
-	require.Equal(t, int64(1), streamIDCol.Value(0))
 }
 
-func TestIndexSectionsReader_CombinedSectionObjectFavorsPostings(t *testing.T) {
-	t.Parallel()
-
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-
-	obj := buildCombinedFixture(t)
-
-	start := now.Add(-4 * time.Hour)
-	end := now.Add(-time.Hour)
-	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
-	r.usePostingsSections = true
-	t.Cleanup(r.Close)
-	require.NoError(t, r.Open(ctx))
-
-	require.Empty(t, r.pointersReaders, " precedence ⇒ legacy pointers slice is empty even though the section exists")
-	require.Empty(t, r.bloomReaders, " precedence ⇒ legacy bloom slice is empty even though the section exists")
-	require.Len(t, r.postingsReaders, 1, "one postings section ⇒ exactly one postings.Reader opened ()")
-	require.NotNil(t, r.postingsReaders[0], "wave-1 errgroup populated the reader")
-
-	rec, err := r.Read(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, rec)
-	require.Equal(t, int64(1), rec.NumRows(), "new-path: one matching stream row from postings.ReadPointers (same shape as new-only)")
-}
-
-func buildLegacyOnlyFixture(t *testing.T) *dataobj.Object {
+// newFixtureBuilder returns an indexobj.Builder configured for the reader fixtures.
+func newFixtureBuilder(t *testing.T) *indexobj.Builder {
 	t.Helper()
-
-	fixtureBuildMu.Lock()
-	defer fixtureBuildMu.Unlock()
 
 	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
@@ -753,8 +677,29 @@ func buildLegacyOnlyFixture(t *testing.T) *dataobj.Object {
 		SectionStripeMergeLimit: 2,
 	}, nil)
 	require.NoError(t, err)
+	return builder
+}
 
-	_, err = builder.AppendStream(tenantID, streams.Stream{
+// flushFixture flushes builder under fixtureBuildMu (which guards the racy
+// zstdWriter lazy init reached from Flush; see fixtureBuildMu) and registers the
+// returned object's closer for cleanup.
+func flushFixture(t *testing.T, builder *indexobj.Builder) *dataobj.Object {
+	t.Helper()
+
+	fixtureBuildMu.Lock()
+	obj, closer, err := builder.Flush()
+	fixtureBuildMu.Unlock()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+	return obj
+}
+
+func buildStreamsPointersFixture(t *testing.T) *dataobj.Object {
+	t.Helper()
+
+	builder := newFixtureBuilder(t)
+
+	_, err := builder.AppendStream(tenantID, streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
@@ -762,32 +707,17 @@ func buildLegacyOnlyFixture(t *testing.T) *dataobj.Object {
 		UncompressedSize: 5,
 	})
 	require.NoError(t, err)
-
 	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
-
-	return obj
+	return flushFixture(t, builder)
 }
 
-func buildNewOnlyFixture(t *testing.T) *dataobj.Object {
+func buildPostingsFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
-	fixtureBuildMu.Lock()
-	defer fixtureBuildMu.Unlock()
+	builder := newFixtureBuilder(t)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil)
-	require.NoError(t, err)
-
-	_, err = builder.AppendStream(tenantID, streams.Stream{
+	_, err := builder.AppendStream(tenantID, streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
@@ -797,7 +727,7 @@ func buildNewOnlyFixture(t *testing.T) *dataobj.Object {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
 		ObjectPath:       "test-path",
 		SectionIndex:     0,
 		ColumnName:       "app",
@@ -805,7 +735,7 @@ func buildNewOnlyFixture(t *testing.T) *dataobj.Object {
 		StreamID:         1,
 		Timestamp:        now.Add(-3 * time.Hour),
 		UncompressedSize: 5,
-	}))
+	})
 
 	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
 	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
@@ -818,29 +748,15 @@ func buildNewOnlyFixture(t *testing.T) *dataobj.Object {
 		UncompressedSize: 5,
 	}))
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
-
-	return obj
+	return flushFixture(t, builder)
 }
 
 func buildCombinedFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
-	fixtureBuildMu.Lock()
-	defer fixtureBuildMu.Unlock()
+	builder := newFixtureBuilder(t)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil)
-	require.NoError(t, err)
-
-	_, err = builder.AppendStream(tenantID, streams.Stream{
+	_, err := builder.AppendStream(tenantID, streams.Stream{
 		ID:               1,
 		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
 		MinTimestamp:     now.Add(-3 * time.Hour),
@@ -852,7 +768,7 @@ func buildCombinedFixture(t *testing.T) *dataobj.Object {
 
 	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
 
-	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
 		ObjectPath:       "test-path",
 		SectionIndex:     0,
 		ColumnName:       "app",
@@ -860,7 +776,7 @@ func buildCombinedFixture(t *testing.T) *dataobj.Object {
 		StreamID:         1,
 		Timestamp:        now.Add(-3 * time.Hour),
 		UncompressedSize: 5,
-	}))
+	})
 
 	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
 	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
@@ -873,29 +789,15 @@ func buildCombinedFixture(t *testing.T) *dataobj.Object {
 		UncompressedSize: 5,
 	}))
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
-
-	return obj
+	return flushFixture(t, builder)
 }
 
-func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
+func buildPostingsMultiLabelFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
-	fixtureBuildMu.Lock()
-	defer fixtureBuildMu.Unlock()
+	builder := newFixtureBuilder(t)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil)
-	require.NoError(t, err)
-
-	_, err = builder.AppendStream(tenantID, streams.Stream{
+	_, err := builder.AppendStream(tenantID, streams.Stream{
 		ID: 1,
 		Labels: labels.New(
 			labels.Label{Name: "app", Value: "foo"},
@@ -908,7 +810,7 @@ func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
 		ObjectPath:       "test-path",
 		SectionIndex:     0,
 		ColumnName:       "app",
@@ -916,8 +818,8 @@ func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
 		StreamID:         1,
 		Timestamp:        now.Add(-3 * time.Hour),
 		UncompressedSize: 5,
-	}))
-	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+	})
+	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
 		ObjectPath:       "test-path",
 		SectionIndex:     0,
 		ColumnName:       "team",
@@ -925,7 +827,7 @@ func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
 		StreamID:         1,
 		Timestamp:        now.Add(-3 * time.Hour),
 		UncompressedSize: 5,
-	}))
+	})
 
 	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
 	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
@@ -938,19 +840,15 @@ func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
 		UncompressedSize: 5,
 	}))
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
-
-	return obj
+	return flushFixture(t, builder)
 }
 
-func TestIndexSectionsReader_NewPath_StreamLabelPredicateOnDisjointName(t *testing.T) {
+func TestIndexSectionsReader_PostingsPath_StreamLabelPredicateOnDisjointName(t *testing.T) {
 	t.Parallel()
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	obj := buildNewOnlyFixtureMultiLabel(t)
+	obj := buildPostingsMultiLabelFixture(t)
 
 	start := now.Add(-4 * time.Hour)
 	end := now.Add(-time.Hour)
@@ -962,7 +860,7 @@ func TestIndexSectionsReader_NewPath_StreamLabelPredicateOnDisjointName(t *testi
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
-	require.Len(t, r.postingsReaders, 1, "new-path: one postings reader opened")
+	require.Len(t, r.postingsReaders, 1, "postings path: one postings reader opened")
 
 	var total int64
 	for {
@@ -977,16 +875,16 @@ func TestIndexSectionsReader_NewPath_StreamLabelPredicateOnDisjointName(t *testi
 	}
 
 	require.Greater(t, total, int64(0),
-		"new-path must filter the stream-label predicate (team=ops) out of the bloom check; "+
+		"postings path must filter the stream-label predicate (team=ops) out of the bloom check; "+
 			"without the  fix, MatchSections AND-drops every section and Read returns EOF")
 }
 
-func TestIndexSectionsReader_NewPath_NoPostingsReader_ShortCircuit(t *testing.T) {
+func TestIndexSectionsReader_PostingsPath_NoPostingsReader_ShortCircuit(t *testing.T) {
 	t.Parallel()
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	obj := buildLegacyOnlyFixture(t)
+	obj := buildStreamsPointersFixture(t)
 
 	start := now.Add(-4 * time.Hour)
 	end := now.Add(-time.Hour)
@@ -1001,7 +899,7 @@ func TestIndexSectionsReader_NewPath_NoPostingsReader_ShortCircuit(t *testing.T)
 	r.usePostingsSections = true
 
 	_, err := r.Read(ctx)
-	require.ErrorIs(t, err, io.EOF, "no postings reader ⇒ new path returns io.EOF cleanly")
+	require.ErrorIs(t, err, io.EOF, "no postings reader ⇒ postings path returns io.EOF cleanly")
 	require.Empty(t, r.matchingStreamIDs, "short-circuit must not populate matchingStreamIDs")
 }
 
@@ -1010,26 +908,16 @@ func TestIndexSectionsReader_NewPath_NoPostingsReader_ShortCircuit(t *testing.T)
 func buildPostingsOnlyFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
-	fixtureBuildMu.Lock()
-	defer fixtureBuildMu.Unlock()
+	builder := newFixtureBuilder(t)
 
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil)
-	require.NoError(t, err)
-
-	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
 		ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "foo",
 		StreamID: 1, Timestamp: now.Add(-3 * time.Hour), UncompressedSize: 5,
-	}))
-	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+	})
+	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
 		ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "bar",
 		StreamID: 2, Timestamp: now.Add(-3 * time.Hour), UncompressedSize: 5,
-	}))
+	})
 
 	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
 	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
@@ -1037,11 +925,7 @@ func buildPostingsOnlyFixture(t *testing.T) *dataobj.Object {
 		StreamID: 1, Timestamp: now.Add(-3 * time.Hour), UncompressedSize: 5,
 	}))
 
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
-
-	return obj
+	return flushFixture(t, builder)
 }
 
 func columnByName(t *testing.T, rec arrow.RecordBatch, name string) arrow.Array {

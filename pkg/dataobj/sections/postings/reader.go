@@ -820,53 +820,53 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 		Value:  scalar.NewInt64Scalar(int64(KindLabel)),
 	}
 	var builtPredicate Predicate = kindEq
-	if len(matchers) > 0 {
-		// Names targeted by a non-Equal matcher; they need a broad column_name=Name branch.
-		nonEqualNames := make(map[string]struct{})
-		for _, m := range otherMatchers {
-			nonEqualNames[m.Name] = struct{}{}
-		}
+	// matchers is guaranteed non-empty here (early return above).
 
-		// addedBroad dedups the broad branch to at most one per Name.
-		addedBroad := make(map[string]struct{})
+	// Names targeted by a non-Equal matcher; they need a broad column_name=Name branch.
+	nonEqualNames := make(map[string]struct{})
+	for _, m := range otherMatchers {
+		nonEqualNames[m.Name] = struct{}{}
+	}
 
-		var branches []Predicate
-		// Branch (a): Equal-only Names get the precise AND(name, value) pushdown.
-		for _, m := range equalMatchers {
-			if _, hasNonEqual := nonEqualNames[m.Name]; hasNonEqual {
-				continue // handled by the broad branch below
-			}
-			pair := AndPredicate{
-				Left: EqualPredicate{
-					Column: colColumnName,
-					Value:  scalar.NewStringScalar(m.Name),
-				},
-				Right: EqualPredicate{
-					Column: colLabelValue,
-					Value:  scalar.NewStringScalar(m.Value),
-				},
-			}
-			branches = append(branches, pair)
+	// addedBroad dedups the broad branch to at most one per Name.
+	addedBroad := make(map[string]struct{})
+
+	var branches []Predicate
+	// Branch (a): Equal-only Names get the precise AND(name, value) pushdown.
+	for _, m := range equalMatchers {
+		if _, hasNonEqual := nonEqualNames[m.Name]; hasNonEqual {
+			continue // handled by the broad branch below
 		}
-		// Branch (b): one broad column_name=Name per non-Equal Name; supersedes any
-		// shared Equal pair (skipped above), whose value is re-checked row-side.
-		for _, m := range otherMatchers {
-			if _, exists := addedBroad[m.Name]; exists {
-				continue
-			}
-			addedBroad[m.Name] = struct{}{}
-			branches = append(branches, EqualPredicate{
+		pair := AndPredicate{
+			Left: EqualPredicate{
 				Column: colColumnName,
 				Value:  scalar.NewStringScalar(m.Name),
-			})
+			},
+			Right: EqualPredicate{
+				Column: colLabelValue,
+				Value:  scalar.NewStringScalar(m.Value),
+			},
 		}
-		if len(branches) > 0 {
-			combinedOr := branches[0]
-			for i := 1; i < len(branches); i++ {
-				combinedOr = OrPredicate{Left: combinedOr, Right: branches[i]}
-			}
-			builtPredicate = AndPredicate{Left: kindEq, Right: combinedOr}
+		branches = append(branches, pair)
+	}
+	// Branch (b): one broad column_name=Name per non-Equal Name; supersedes any
+	// shared Equal pair (skipped above), whose value is re-checked row-side.
+	for _, m := range otherMatchers {
+		if _, exists := addedBroad[m.Name]; exists {
+			continue
 		}
+		addedBroad[m.Name] = struct{}{}
+		branches = append(branches, EqualPredicate{
+			Column: colColumnName,
+			Value:  scalar.NewStringScalar(m.Name),
+		})
+	}
+	if len(branches) > 0 {
+		combinedOr := branches[0]
+		for i := 1; i < len(branches); i++ {
+			combinedOr = OrPredicate{Left: combinedOr, Right: branches[i]}
+		}
+		builtPredicate = AndPredicate{Left: kindEq, Right: combinedOr}
 	}
 
 	preds, err := mapPredicates([]Predicate{builtPredicate}, columnLookup)
@@ -895,24 +895,10 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 		columnToField(colKind),
 	}, nil)
 
-	// perMatcherStreams[i] -> set of stream IDs that satisfied matchers[i]
-	// across all KindLabel rows seen, where i is the position of the
-	// matcher in the (filtered) matchers slice. We key on position rather
-	// than (name, value) so non-Equal matchers (whose value is a pattern)
-	// participate in the same per-matcher accumulation as Equal matchers
-	// — the fix: regex-only multi-matcher resolution now intersects
-	// per-matcher sets instead of unioning them.
 	perMatcherStreams := make(map[matcherIndex]map[int64]struct{})
-	// labelNamesByStream tracks the column_name of each row a stream
-	// appeared in. We store as map[int64]map[string]struct{} during the
-	// scan for O(1) dedup, then flatten to map[int64][]string at return
-	// time. (Plan note: documented in SUMMARY.)
 	labelNamesByStreamSet := make(map[int64]map[string]struct{})
-
-	// activeMatchers is the (nil-filtered) matchers slice in the same
-	// order the caller supplied — perMatcherStreams keys are indexes
-	// into this slice.
 	activeMatchers := make([]*labels.Matcher, 0, len(matchers))
+
 	for _, m := range matchers {
 		if m == nil {
 			continue
@@ -945,8 +931,7 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 		}
 	}
 
-	// AND across matchers: a stream id must appear in every matcher's set. matchingStreamIDs is
-	// freshly allocated so the caller owns it.
+	// AND across matchers: a stream id must appear in every matcher's set.
 	var matchingStreamIDs map[int64]struct{}
 	if len(activeMatchers) == 0 {
 		// Defensive: short-circuited at the top of ResolveLabels, but if
