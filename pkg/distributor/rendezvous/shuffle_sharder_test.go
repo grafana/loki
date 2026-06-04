@@ -113,7 +113,7 @@ func TestShuffleShard_MajorityPartitions(t *testing.T) {
 	}
 }
 
-func TestShuffleShard_Stability(t *testing.T) {
+func TestShuffleShard_StabilityWhenChangingShuffleShardSize(t *testing.T) {
 	partitions := []int32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 	s := NewShuffleSharder(partitions)
 	previousSubPartitions := make([]int32, 0)
@@ -124,6 +124,37 @@ func TestShuffleShard_Stability(t *testing.T) {
 			assert.Contains(t, newSubPartitions.partitions, p, "shard of size %d should contain all partitions from shard of size %d", i, i-1)
 		}
 		previousSubPartitions = newSubPartitions.partitions
+	}
+}
+
+func TestShuffleShard_StabilityWhenChangingNumberOfPartitions(t *testing.T) {
+	// Adding one partition to the pool can displace at most one existing partition
+	// from the shard (the new partition either scores into the top-k or it doesn't).
+	k := 3
+	for i := k + 1; i <= 10; i++ {
+		partitionsBefore := make([]int32, i-1)
+		partitionsAfter := make([]int32, i)
+		for j := range i - 1 {
+			partitionsBefore[j] = int32(j)
+			partitionsAfter[j] = int32(j)
+		}
+		partitionsAfter[i-1] = int32(i - 1)
+
+		sharderBefore := NewShuffleSharder(partitionsBefore)
+		sharderAfter := NewShuffleSharder(partitionsAfter)
+		before := sharderBefore.ShuffleShard("foo", k).partitions
+		after := sharderAfter.ShuffleShard("foo", k).partitions
+		beforeSet := make(map[int32]bool, len(before))
+		for _, p := range before {
+			beforeSet[p] = true
+		}
+		added := 0
+		for _, p := range after {
+			if !beforeSet[p] {
+				added++
+			}
+		}
+		assert.LessOrEqual(t, added, 1)
 	}
 }
 
