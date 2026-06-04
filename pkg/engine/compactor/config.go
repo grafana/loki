@@ -139,24 +139,6 @@ const (
 	defaultPlanVersion           = uint(1)
 )
 
-// NewConfig returns a Config with sensible defaults for index object construction.
-func NewConfig() *Config {
-	return &Config{
-		MaxRunningCompactionTasks: defaultMaxRunningCompactionTasks,
-		Scheduler: SchedulerConfig{
-			Endpoint: defaultEndpoint,
-		},
-		IndexobjBuilder: logsobj.BuilderBaseConfig{
-			TargetPageSize:          2048,
-			MaxPageRows:             10000,
-			TargetObjectSize:        1 << 22,  // 4 MiB
-			TargetSectionSize:       1 << 21,  // 2 MiB
-			BufferSize:              2048 * 8, // 16 KiB
-			SectionStripeMergeLimit: 2,
-		},
-	}
-}
-
 // RegisterFlags registers the compaction config flags under the given
 // prefix.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -166,14 +148,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers the compaction config flags using
 // prefix as the flag-name prefix.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	// Set defaults if this is a fresh Config (zero-valued MaxRunningCompactionTasks and IndexobjBuilder).
-	defaults := NewConfig()
-	if cfg.MaxRunningCompactionTasks == 0 && cfg.IndexobjBuilder.TargetObjectSize == 0 {
-		cfg.MaxRunningCompactionTasks = defaults.MaxRunningCompactionTasks
-		cfg.Scheduler.Endpoint = defaults.Scheduler.Endpoint
-		cfg.IndexobjBuilder = defaults.IndexobjBuilder
-	}
-
 	f.BoolVar(&cfg.Enabled, prefix+"enabled", false,
 		"Experimental: Enable dataobj compaction modules (planner and worker targets when selected via -target).")
 	f.IntVar(&cfg.MaxRunningCompactionTasks, prefix+"max-running-compaction-tasks",
@@ -191,9 +165,14 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Plan version hashed into IndexMerge output paths. Bump to invalidate previously-written outputs after a planner-algorithm change.")
 	f.StringVar(&cfg.Scheduler.AdvertiseAddr, prefix+"scheduler.advertise-addr", "",
 		"Experimental: host:port the embedded compaction scheduler advertises to compaction workers. Empty string keeps the scheduler in-process-only.")
-	f.StringVar(&cfg.Scheduler.Endpoint, prefix+"scheduler.endpoint", cfg.Scheduler.Endpoint,
+	f.StringVar(&cfg.Scheduler.Endpoint, prefix+"scheduler.endpoint", defaultEndpoint,
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
+
+	_ = cfg.IndexobjBuilder.TargetPageSize.Set("2KB")
+	_ = cfg.IndexobjBuilder.TargetObjectSize.Set("4MB")
+	_ = cfg.IndexobjBuilder.TargetSectionSize.Set("2MB")
+	_ = cfg.IndexobjBuilder.BufferSize.Set("16KB")
 	cfg.IndexobjBuilder.RegisterFlagsWithPrefix(prefix+"indexobj-builder.", f)
 }
 
@@ -236,11 +215,6 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxRunsPerTask <= 0 {
 		return errInvalidMaxRunsPerTask
-	}
-
-	// Ensure IndexobjBuilder defaults are set if not initialized via flag registration.
-	if cfg.IndexobjBuilder.TargetObjectSize == 0 {
-		cfg.IndexobjBuilder = NewConfig().IndexobjBuilder
 	}
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {

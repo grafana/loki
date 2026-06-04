@@ -3,6 +3,7 @@ package compactor
 import (
 	"bytes"
 	"context"
+	"flag"
 	"io"
 	"testing"
 	"time"
@@ -180,6 +181,10 @@ func startInProcessSchedulerAndWorker(ctx context.Context, t *testing.T, bucket 
 
 	ms := metastore.NewObjectMetastore(bucket, metastore.Config{}, log.NewNopLogger(),
 		metastore.NewObjectMetastoreMetrics(prometheus.NewRegistry()))
+
+	var compactionCfg Config
+	compactionCfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
 	w, err := worker.New(worker.Config{
 		Logger:           log.NewNopLogger(),
 		Bucket:           bucket,
@@ -190,7 +195,7 @@ func startInProcessSchedulerAndWorker(ctx context.Context, t *testing.T, bucket 
 		SchedulerAddress: wire.LocalScheduler,
 		NumThreads:       2,
 		ScratchStore:     scratch.NewMemory(),
-		IndexobjCfg:      NewConfig().IndexobjBuilder,
+		IndexobjCfg:      compactionCfg.IndexobjBuilder,
 	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, w.Service()))

@@ -221,7 +221,7 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 	// emit a metric for tracking. The data is logically equivalent so keep one.
 	reducer := func(_, next postings.Row) postings.Row {
 		if region := xcap.RegionFromContext(ctx); region != nil {
-			region.Record(xcap.StatIndexMergeDuplicatePostings.Observe(1))
+			region.Record(statIndexMergeDuplicatePostings.Observe(1))
 		}
 		level.Warn(c.logger).Log(
 			"msg", "IndexMerge: postings full-key collision",
@@ -292,7 +292,7 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 	// observe an xcap statistic.
 	reducer := func(_, next stats.Stat) stats.Stat {
 		if region := xcap.RegionFromContext(ctx); region != nil {
-			region.Record(xcap.StatIndexMergeDuplicateStats.Observe(1))
+			region.Record(statIndexMergeDuplicateStats.Observe(1))
 		}
 		level.Warn(c.logger).Log(
 			"msg", "IndexMerge: stats full-key collision",

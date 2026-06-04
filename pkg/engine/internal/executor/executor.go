@@ -39,16 +39,21 @@ type StreamFilterer interface {
 }
 
 type Config struct {
-	// Query execution tuning.
+	// Used by the querier, unused by compaction executors
 	BatchSize          int64
 	PrefetchBytes      int64
 	MergePrefetchCount int
 
-	// Shared plumbing used by both query and compaction executors.
+	// Used by compaction, unused by query executors
+	// ScratchStore is an optional scratch store for index merge operations.
+	ScratchStore scratch.Store
+	// IndexobjCfg is the builder config for index objects.
+	IndexobjCfg logsobj.BuilderBaseConfig
+
+	// Shared, used by both query and compaction executors.
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
 
-	// Query-side plumbing. Populated by the query worker; unused by compaction executors.
 	// GetExternalInputs is an optional function called for each node in the
 	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
 	// will be used as inputs to the pipeline of node.
@@ -60,14 +65,6 @@ type Config struct {
 
 	// TaskCaches is an optional registry mapping cache types to their backing stores.
 	TaskCaches TaskCacheRegistry
-
-	// Compaction-side plumbing. Populated by the dataobj-compaction-worker; unused by query executors.
-	// Required for IndexMerge tasks; may be nil for query-only executors.
-	// ScratchStore is an optional scratch store for index merge operations.
-	ScratchStore scratch.Store
-
-	// IndexobjCfg is the builder config for index objects.
-	IndexobjCfg logsobj.BuilderBaseConfig
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
