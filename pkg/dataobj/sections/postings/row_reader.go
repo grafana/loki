@@ -13,7 +13,7 @@ import (
 )
 
 // RowReader reads [Row] records from a postings [Section] one row at a time, in
-// section order. It is a thin row-level cursor over the batch-level [Reader].
+// section order. It is a row-level cursor over the batch-level [Reader].
 // It implements [iter.CloseIterator] over [Row].
 //
 // A RowReader is not safe for concurrent use.
@@ -109,10 +109,11 @@ func (r *RowReader) At() Row { return r.cur }
 // Err returns any error that caused iteration to end. nil on natural EOF.
 func (r *RowReader) Err() error { return r.err }
 
-// Close releases the underlying reader. Idempotent: repeat calls return nil
-// without re-closing. Marks the reader exhausted so a stray Next() after
-// Close() returns false instead of dereferencing the now-nil reader.
+// Close releases the underlying reader. Repeat calls return nil without
+// re-closing.
 func (r *RowReader) Close() error {
+	// Mark exhausted so a stray Next() after Close() returns false instead of
+	// dereferencing the now-nil reader.
 	r.exhausted = true
 	r.batch = nil
 	if r.reader != nil {

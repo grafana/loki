@@ -262,7 +262,6 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 		}
 	}
 
-	// Check for errors that occurred during iteration.
 	for _, r := range readers {
 		if err := r.Err(); err != nil {
 			return err
