@@ -532,7 +532,6 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 				r.labelNamesByStream = labelNamesByStream
 			}
 
-			// todo(shantanu): can it be simplified under the ResolveLabels itself?
 			streamLabelNames, err := pr.StreamLabelColumnNames(ctx)
 			if err != nil {
 				return fmt.Errorf("resolving stream label names via postings: %w", err)
@@ -905,9 +904,6 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 		predicateIndexesByName[predicate.Name] = append(predicateIndexesByName[predicate.Name], i)
 	}
 
-	// The postings path delegates bloom matching to postings.ReadBloomRows +
-	// postings.MatchSections. predicateIndexesByName is only used by the
-	// legacy branch below.
 	if r.usePostingsSections {
 		return r.readMatchedSectionKeysFromPostings(ctx)
 	}
@@ -990,9 +986,8 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 	return matchedSectionKeys, nil
 }
 
-// readMatchedSectionKeysFromPostings replaces the legacy bloom-reader loop. It
-// reads bloom rows from the postings section and converts postings.Key into
-// metastore.SectionKey at this layer to avoid package import cycles.
+// readMatchedSectionKeysFromPostings reads bloom rows from the postings section and converts
+// postings.Key into metastore.SectionKey
 func (r *indexSectionsReader) readMatchedSectionKeysFromPostings(ctx context.Context) (map[SectionKey]struct{}, error) {
 	if len(r.postingsReaders) == 0 || r.postingsReaders[0] == nil {
 		return map[SectionKey]struct{}{}, nil

@@ -580,10 +580,7 @@ func buildEmptyRecord(alloc memory.Allocator, schema *arrow.Schema) arrow.Record
 // keeps per-batch allocations bounded while amortising fixed costs.
 const readBloomRowsBatchSize = 4096
 
-// ReadBloomRows returns (object_path, section_index, column_name, bloom_filter) for KindBloom
-// rows. Membership testing is a helper ([MatchSections]), not a [Predicate], since it needs a
-// bytes-deserialize + bloom.TestString page-level stats can't skip. Requires the section's full
-// column set in opts.Columns (ObjectPath, SectionIndex, ColumnName, BloomFilter, Kind).
+// ReadBloomRows returns arrow RecordBatch for KindBloom rows
 func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
@@ -779,44 +776,24 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 
 	defer r.alloc.Reclaim()
 
-	// Short-circuit: empty matcher list means there is nothing to resolve.
-	// Returning nil maps here (rather than empty allocated maps) lets the
-	// caller distinguish "no matchers asked" from "matchers asked but
-	// nothing matched". The caller should not pretend to filter when no
-	// matchers were supplied — that is a programming error to fall
-	// through to.
 	if len(matchers) == 0 {
 		return nil, nil, nil
 	}
 
-	// Split matchers into Equal (predicate-pushdown) and other (Go-side
-	// row filter). The same shape today's streams-section path uses (per
-	// ).
 	equalMatchers, otherMatchers := splitByMatchType(matchers)
 
-	// Project the 4 output columns + kind (predicate-only). The kind
-	// column gates the read to KindLabel rows; (column_name, label_value)
-	// + stream_id_bitmap drive matching and inversion.
-	outputCols, err := findColumnsByType(r.opts.Columns,
+	cols, err := findColumnsByType(r.opts.Columns,
 		ColumnTypeColumnName,
 		ColumnTypeLabelValue,
 		ColumnTypeStreamIDBitmap,
+		ColumnTypeKind,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("finding ResolveLabels columns: %w", err)
 	}
-	kindCols, err := findColumnsByType(r.opts.Columns, ColumnTypeKind)
-	if err != nil {
-		return nil, nil, fmt.Errorf("finding ResolveLabels columns: %w", err)
-	}
-	colColumnName, colLabelValue, colStreamIDBitmap := outputCols[0], outputCols[1], outputCols[2]
-	colKind := kindCols[0]
+	colColumnName, colLabelValue, colStreamIDBitmap, colKind := cols[0], cols[1], cols[2], cols[3]
 
-	// Build the inner 4-column projection: [column_name, label_value,
-	// stream_id_bitmap, kind]. The kind column is predicate-only; we read
-	// it anyway because the dataset layer requires every column referenced
-	// by a predicate to be in the projection.
-	innerSection := outputCols[0].Section.inner
+	innerSection := cols[0].Section.inner
 	innerColumns := []*columnar.Column{
 		colColumnName.inner,
 		colLabelValue.inner,
@@ -838,9 +815,6 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 		colKind:           dset.Columns()[3],
 	}
 
-	// Predicate: AND(kind==KindLabel, OR(per-matcher branches)). Equal-only Names get the precise
-	// AND(column_name, label_value) pair; any Name targeted by a non-Equal matcher instead gets the
-	// broader column_name=Name branch (Equal value re-checked row-side) so its rows are not pruned.
 	kindEq := EqualPredicate{
 		Column: colKind,
 		Value:  scalar.NewInt64Scalar(int64(KindLabel)),
