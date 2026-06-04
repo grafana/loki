@@ -1320,9 +1320,9 @@ func TestExecuteIndexMerge_EmptyInputs(t *testing.T) {
 	require.True(t, exists, "output object must be uploaded even for empty input")
 }
 
-// TestStatsPileReader_DottedLabelNames tests that label names containing dots
+// TestStatsRowReader_DottedLabelNames tests that label names containing dots
 // are correctly decoded (not truncated by split).
-func TestStatsPileReader_DottedLabelNames(t *testing.T) {
+func TestStatsRowReader_DottedLabelNames(t *testing.T) {
 	ctx := context.Background()
 
 	// Build a stats section with a label name containing a dot, e.g., "my.svc"

@@ -14,6 +14,8 @@ import (
 // Assumes all input rows share the same SortSchema; this is validated upstream
 // in classifyRuns.
 func compareStatsRow(a, b stats.Stat) int {
+	// The first three components (labels, minT, maxT) must match the stats
+	// builder sort order (pkg/dataobj/sections/stats/builder.go:compareStats).
 	for labelName := range strings.SplitSeq(a.SortSchema, ",") {
 		va := a.Labels[labelName]
 		vb := b.Labels[labelName]
