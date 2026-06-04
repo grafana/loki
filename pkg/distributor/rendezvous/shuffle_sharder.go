@@ -46,53 +46,87 @@ func (r *ShuffleSharder) Shard(key uint32) (int32, error) {
 }
 
 func (r *ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) *ShuffleSharder {
-	if numShards == 0 || numShards >= len(r.partitions) {
+	n := len(r.partitions)
+	if numShards == 0 || numShards >= n {
 		return r
 	}
 
 	key := crc64.Checksum([]byte(shuffleShardKey), table)
 
-	// Use a min-heap of size numShards to select the top-numShards elements in
-	// O(n log k) instead of sorting all n elements in O(n log n). This also
-	// allocates only k elements instead of n.
-	top := make([]partitionAndScore, numShards)
-	for i := range numShards {
-		top[i] = partitionAndScore{r.partitions[i], xorshiftMult64(key ^ r.hashes[i]), r.hashes[i]}
-	}
-	buildMinHeap(top)
-	for i := numShards; i < len(r.partitions); i++ {
-		if score := xorshiftMult64(key ^ r.hashes[i]); score > top[0].score {
-			top[0] = partitionAndScore{r.partitions[i], score, r.hashes[i]}
-			siftDown(top, 0)
+	if numShards <= n-numShards {
+		// numShards <= n/2: select the top-numShards elements. O(n log numShards).
+		top := make([]indexAndScore, numShards)
+		selectTopKIndices(top, r.hashes, key, false)
+		partitions := make([]int32, numShards)
+		hashes := make([]uint64, numShards)
+		for i, s := range top {
+			partitions[i] = r.partitions[s.index]
+			hashes[i] = r.hashes[s.index]
 		}
+		return &ShuffleSharder{partitions, hashes}
 	}
 
-	subpartitions := make([]int32, numShards)
-	subHashes := make([]uint64, numShards)
-	for i, s := range top {
-		subpartitions[i] = s.partition
-		subHashes[i] = s.hash
+	// numShards > n/2: cheaper to find the bottom-(n-numShards) elements to exclude, then
+	// return everything else. O(n log (n-numShards)).
+	numExclude := n - numShards
+	bottom := make([]indexAndScore, numExclude)
+	selectTopKIndices(bottom, r.hashes, key, true)
+	excluded := make([]bool, n)
+	for _, b := range bottom {
+		excluded[b.index] = true
 	}
-	return &ShuffleSharder{subpartitions, subHashes}
+	partitions := make([]int32, 0, numShards)
+	hashes := make([]uint64, 0, numShards)
+	for i := range n {
+		if !excluded[i] {
+			partitions = append(partitions, r.partitions[i])
+			hashes = append(hashes, r.hashes[i])
+		}
+	}
+	return &ShuffleSharder{partitions, hashes}
 }
 
 func (r *ShuffleSharder) Size() int {
 	return len(r.partitions)
 }
 
-type partitionAndScore struct {
-	partition int32
-	score     uint64
-	hash      uint64
+type indexAndScore struct {
+	index int
+	score uint64
 }
 
-func buildMinHeap(h []partitionAndScore) {
-	for i := len(h)/2 - 1; i >= 0; i-- {
-		siftDown(h, i)
+// selectTopKIndices fills h (pre-allocated, len defines k) with the k items with the highest
+// scores from hashes.
+// Pass invertOrdering=true to instead select the k lowest-scoring items.
+// Caller pre-allocates heap so its backing array doesn't escape to the heap.
+func selectTopKIndices(heap []indexAndScore, hashes []uint64, key uint64, invertOrdering bool) {
+	k := len(heap)
+	// Put the first k elements into the heap
+	for i := range k {
+		heap[i] = indexAndScore{i, calculateScore(key, hashes[i], invertOrdering)}
+	}
+	// Make it into a valid heap
+	for i := k/2 - 1; i >= 0; i-- {
+		siftDown(heap, i)
+	}
+	// Push the rest of the elements into the heap
+	for i := k; i < len(hashes); i++ {
+		if score := calculateScore(key, hashes[i], invertOrdering); score > heap[0].score {
+			heap[0] = indexAndScore{i, score}
+			siftDown(heap, 0)
+		}
 	}
 }
 
-func siftDown(h []partitionAndScore, i int) {
+func calculateScore(key uint64, hash uint64, invertOrdering bool) uint64 {
+	score := xorshiftMult64(key ^ hash)
+	if invertOrdering {
+		score = score ^ (^uint64(0))
+	}
+	return score
+}
+
+func siftDown(h []indexAndScore, i int) {
 	n := len(h)
 	for {
 		smallest := i

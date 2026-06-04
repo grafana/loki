@@ -83,6 +83,36 @@ func TestShuffleShard_MorePartitionsThanRequested(t *testing.T) {
 	}
 }
 
+func TestShuffleShard_MajorityPartitions(t *testing.T) {
+	// Exercises the max-heap (inverse) path where numShards > n/2.
+	partitions := []int32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	s := NewShuffleSharder(partitions)
+	numShards := 8 // 8 > 10/2
+
+	result := s.ShuffleShard("some-key", numShards)
+	require.Len(t, result.partitions, numShards)
+
+	// Each partition in the result must come from the original set.
+	for _, p := range result.partitions {
+		assert.Contains(t, partitions, p)
+	}
+
+	// Over many shard keys, each partition should appear roughly equally.
+	counts := make(map[int32]int)
+	numKeys := 1000
+	for i := 0; i < numKeys; i++ {
+		sub := s.ShuffleShard(fmt.Sprintf("tenant-%d", i), numShards)
+		for _, p := range sub.partitions {
+			counts[p]++
+		}
+	}
+	expected := numKeys * numShards / len(partitions)
+	tolerance := float64(expected) * 0.3
+	for _, p := range partitions {
+		assert.InDelta(t, expected, counts[p], tolerance, "partition %d: appeared %d times, expected ~%d", p, counts[p], expected)
+	}
+}
+
 func TestShuffleShard_Stability(t *testing.T) {
 	partitions := []int32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 	s := NewShuffleSharder(partitions)
