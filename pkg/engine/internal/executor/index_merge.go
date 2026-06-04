@@ -337,6 +337,11 @@ type rowReader[R any] interface {
 	Close() error
 }
 
+var (
+	_ rowReader[postings.Row] = (*postings.RowReader)(nil)
+	_ rowReader[stats.Stat]   = (*stats.RowReader)(nil)
+)
+
 // indexedSeq attaches a stable pile index to a rowReader so the loser tree can
 // break ties deterministically. The index must be readable when the tree
 // snapshots each sequence (loser.Tree calls at() eagerly inside moveNext and

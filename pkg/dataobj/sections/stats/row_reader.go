@@ -11,7 +11,7 @@ import (
 )
 
 // RowReader reads [Stat] records from a stats [Section] one row at a time, in
-// section order. It is a thin row-level cursor over the batch-level [Reader].
+// section order. It is a row-level cursor over the batch-level [Reader].
 //
 // A RowReader is not safe for concurrent use.
 type RowReader struct {
@@ -28,7 +28,8 @@ type RowReader struct {
 }
 
 // NewRowReader creates a RowReader over all of sec's columns. The underlying
-// reader is opened lazily on the first call to Next.
+// reader is opened lazily on the first call to Next. The provided ctx governs
+// all subsequent I/O (Open and Read).
 func NewRowReader(ctx context.Context, sec *Section) *RowReader {
 	return &RowReader{
 		ctx: ctx,
@@ -91,6 +92,9 @@ func (r *RowReader) next() (Stat, error) {
 		} else if batch != nil {
 			batch.Release()
 			return Stat{}, io.EOF
+		} else {
+			// Nil batch with no error: treat as end of section.
+			return Stat{}, io.EOF
 		}
 	}
 
@@ -106,11 +110,11 @@ func (r *RowReader) Value() Stat { return r.cur }
 // Err returns any error that caused iteration to end. nil on natural EOF.
 func (r *RowReader) Err() error { return r.err }
 
-// Close releases the current batch and the underlying reader. Idempotent:
-// repeat calls return nil without re-closing. Marks the reader exhausted so a
-// stray Next() after Close() returns false instead of dereferencing the
-// now-nil reader.
+// Close releases the current batch and the underlying reader. Repeat calls
+// return nil without re-closing.
 func (r *RowReader) Close() error {
+	// Mark exhausted so a stray Next() after Close() returns false instead of
+	// dereferencing the now-nil reader.
 	r.exhausted = true
 	if r.batch != nil {
 		r.batch.Release()

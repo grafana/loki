@@ -28,7 +28,8 @@ type RowReader struct {
 }
 
 // NewRowReader creates a RowReader over all of sec's columns. The underlying
-// reader is opened lazily on the first call to Next.
+// reader is opened lazily on the first call to Next. The provided ctx governs
+// all subsequent I/O (Open and Read).
 func NewRowReader(ctx context.Context, sec *Section) *RowReader {
 	return &RowReader{
 		ctx: ctx,
@@ -69,10 +70,7 @@ func (r *RowReader) next() (Row, error) {
 	}
 
 	if r.batch == nil || r.index >= int(r.batch.NumRows()) {
-		if r.batch != nil {
-			r.batch.Release()
-			r.batch = nil
-		}
+		r.batch = nil
 
 		batch, err := r.reader.Read(r.ctx, 8192)
 		if errors.Is(err, io.EOF) && batch == nil {
@@ -88,8 +86,8 @@ func (r *RowReader) next() (Row, error) {
 			if r.columns == nil {
 				r.columns = BuildColumnIndex(batch.Schema())
 			}
-		} else if batch != nil {
-			batch.Release()
+		} else {
+			// Empty or nil batch: treat as end of section.
 			return Row{}, io.EOF
 		}
 	}
@@ -106,16 +104,12 @@ func (r *RowReader) Value() Row { return r.cur }
 // Err returns any error that caused iteration to end. nil on natural EOF.
 func (r *RowReader) Err() error { return r.err }
 
-// Close releases the current batch and the underlying reader. Idempotent:
-// repeat calls return nil without re-closing. Marks the reader exhausted so a
-// stray Next() after Close() returns false instead of dereferencing the
-// now-nil reader.
+// Close releases the underlying reader. Idempotent: repeat calls return nil
+// without re-closing. Marks the reader exhausted so a stray Next() after
+// Close() returns false instead of dereferencing the now-nil reader.
 func (r *RowReader) Close() error {
 	r.exhausted = true
-	if r.batch != nil {
-		r.batch.Release()
-		r.batch = nil
-	}
+	r.batch = nil
 	if r.reader != nil {
 		err := r.reader.Close()
 		r.reader = nil

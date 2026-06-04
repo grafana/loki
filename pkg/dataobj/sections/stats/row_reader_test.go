@@ -65,6 +65,27 @@ func TestRowReader_RoundTrip(t *testing.T) {
 	require.NoError(t, reader.Err())
 
 	require.Len(t, rows, 2)
+
+	byPath := make(map[string]stats.Stat, len(rows))
+	for _, r := range rows {
+		byPath[r.ObjectPath] = r
+	}
+
+	r1, ok := byPath["/obj1"]
+	require.True(t, ok, "expected a row for /obj1")
+	require.Equal(t, "service_name,job", r1.SortSchema)
+	require.Equal(t, "svc1", r1.Labels["service_name"])
+	require.Equal(t, "job1", r1.Labels["job"])
+	require.Equal(t, int64(100), r1.MinTimestamp)
+	require.Equal(t, int64(200), r1.MaxTimestamp)
+
+	r2, ok := byPath["/obj2"]
+	require.True(t, ok, "expected a row for /obj2")
+	require.Equal(t, "service_name,job", r2.SortSchema)
+	require.Equal(t, "svc2", r2.Labels["service_name"])
+	require.Equal(t, "job2", r2.Labels["job"])
+	require.Equal(t, int64(150), r2.MinTimestamp)
+	require.Equal(t, int64(250), r2.MaxTimestamp)
 }
 
 // TestRowReader_CloseIdempotent verifies Close can be called more than once.
