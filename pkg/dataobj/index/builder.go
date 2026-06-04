@@ -141,6 +141,12 @@ func NewIndexBuilder(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index builder: %w", err)
 	}
+	builder.SetWritePostingsSectionsOnly(cfg.WritePostingsSectionsOnly)
+	level.Info(logger).Log(
+		"msg", "configured index builder section write modes",
+		"write_postings_sections_only", cfg.WritePostingsSectionsOnly,
+	)
+
 	calculator := NewCalculator(builder)
 
 	indexStorageBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)

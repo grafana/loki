@@ -42,6 +42,8 @@ type Builder struct {
 
 	labelCache *lru.Cache[string, labels.Labels]
 
+	writePostingsSectionsOnly bool
+
 	currentSizeEstimate int
 	builderFull         bool
 
@@ -115,6 +117,18 @@ func (b *Builder) GetEstimatedSize() int {
 
 func (b *Builder) IsFull() bool {
 	return b.builderFull
+}
+
+// SetWritePostingsSectionsOnly configures whether index objects should omit
+// streams and pointers sections and only write postings+stats.
+func (b *Builder) SetWritePostingsSectionsOnly(enabled bool) {
+	b.writePostingsSectionsOnly = enabled
+}
+
+// WritePostingsSectionsOnly reports whether the builder is configured to write
+// postings+stats sections only.
+func (b *Builder) WritePostingsSectionsOnly() bool {
+	return b.writePostingsSectionsOnly
 }
 
 func (b *Builder) getIndexPointerBuilderForTenant(tenantID string) *indexpointers.Builder {
