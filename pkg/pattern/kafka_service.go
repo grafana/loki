@@ -254,53 +254,54 @@ func (s *KafkaService) WaitUntilDone() {
 }
 
 func (s *KafkaService) batchSender(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		level.Info(s.logger).Log("msg", "context canceled")
-		// We don't return ctx.Err() here as it manifests as a service failure
-		// when stopping the service.
-		return nil
-	case rec, ok := <-s.records:
-		if !ok {
-			level.Info(s.logger).Log("msg", "channel closed")
+	for {
+		select {
+		case <-ctx.Done():
+			level.Info(s.logger).Log("msg", "context canceled")
+			// We don't return ctx.Err() here as it manifests as a service failure
+			// when stopping the service.
 			return nil
-		}
-		tenant := string(rec.Key)
-		stream, err := s.decoder.DecodeWithoutLabels(rec.Value)
-		if err != nil {
-			// This is an unrecoverable error and no amount of retries will fix it.
-			return fmt.Errorf("failed to decode stream: %w", err)
-		}
-		ingesterAddr, err := s.ingesterForTenant(tenant, stream)
-		if err != nil {
-			return fmt.Errorf("failed to get ingester for tenant: %w", err)
-		}
-		req := clientRequest{ingesterAddr: ingesterAddr, tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
-		s.sendBatch(ctx, req)
-	case req := <-s.flushRequests:
-		// Drain any records that are already in the channel before flushing
-		// so that all pending data is included in the flush.
-	drain:
-		for {
-			select {
-			case rec, ok := <-s.records:
-				if !ok {
+		case rec, ok := <-s.records:
+			if !ok {
+				level.Info(s.logger).Log("msg", "channel closed")
+				return nil
+			}
+			tenant := string(rec.Key)
+			stream, err := s.decoder.DecodeWithoutLabels(rec.Value)
+			if err != nil {
+				// This is an unrecoverable error and no amount of retries will fix it.
+				return fmt.Errorf("failed to decode stream: %w", err)
+			}
+			ingesterAddr, err := s.ingesterForTenant(tenant, stream)
+			if err != nil {
+				return fmt.Errorf("failed to get ingester for tenant: %w", err)
+			}
+			req := clientRequest{ingesterAddr: ingesterAddr, tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
+			s.sendBatch(ctx, req)
+		case req := <-s.flushRequests:
+			// Drain any records that are already in the channel before flushing
+			// so that all pending data is included in the flush.
+		drain:
+			for {
+				select {
+				case rec, ok := <-s.records:
+					if !ok {
+						break drain
+					}
+					tenant := string(rec.Key)
+					stream, err := s.decoder.DecodeWithoutLabels(rec.Value)
+					if err != nil {
+						level.Error(s.logger).Log("msg", "failed to process record during flush drain", "err", err)
+					}
+					req := clientRequest{ingesterAddr: "", tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
+					s.sendBatch(ctx, req)
+				default:
 					break drain
 				}
-				tenant := string(rec.Key)
-				stream, err := s.decoder.DecodeWithoutLabels(rec.Value)
-				if err != nil {
-					level.Error(s.logger).Log("msg", "failed to process record during flush drain", "err", err)
-				}
-				req := clientRequest{ingesterAddr: "", tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
-				s.sendBatch(ctx, req)
-			default:
-				break drain
 			}
+			req.done <- nil
 		}
-		req.done <- nil
 	}
-	return nil
 }
 
 func (s *KafkaService) ingesterForTenant(tenant string, stream logproto.Stream) (string, error) {
