@@ -528,6 +528,23 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 	return timeRanges
 }
 
+func (b *Builder) flushStreamsAndPointers() []error {
+	var flushErrors []error
+
+	for _, tenantStreams := range b.streams {
+		if tenantStreams.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantStreams))
+		}
+	}
+	for _, tenantPointers := range b.pointers {
+		if tenantPointers.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantPointers))
+		}
+	}
+
+	return flushErrors
+}
+
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
@@ -545,16 +562,7 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	var flushErrors []error
 
 	if !b.writePostingsSectionsOnly {
-		for _, tenantStreams := range b.streams {
-			if tenantStreams.EstimatedSize() > 0 {
-				flushErrors = append(flushErrors, b.builder.Append(tenantStreams))
-			}
-		}
-		for _, tenantPointers := range b.pointers {
-			if tenantPointers.EstimatedSize() > 0 {
-				flushErrors = append(flushErrors, b.builder.Append(tenantPointers))
-			}
-		}
+		flushErrors = append(flushErrors, b.flushStreamsAndPointers()...)
 	}
 	for _, tenantIndexPointers := range b.indexPointers {
 		if tenantIndexPointers.EstimatedSize() > 0 {
