@@ -38,7 +38,7 @@ func TestReadPointers_SchemaParity(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, postingsBatch)
 
-	pointersCols, err := findPointersColumnsByTypesTestHelper(
+	pointersCols := findPointersColumnsByTypesTestHelper(
 		fx.pointersSec.Columns(),
 		pointers.ColumnTypePath,
 		pointers.ColumnTypeSection,
@@ -50,7 +50,6 @@ func TestReadPointers_SchemaParity(t *testing.T) {
 		pointers.ColumnTypeRowCount,
 		pointers.ColumnTypeUncompressedSize,
 	)
-	require.NoError(t, err)
 	require.Len(t, pointersCols, 9)
 
 	var (
@@ -329,7 +328,7 @@ func buildJoinedFixture(t *testing.T, testStreams []testStream) joinedFixture {
 }
 
 // Copied from the metastore helper of the same name to avoid an import cycle.
-func findPointersColumnsByTypesTestHelper(allColumns []*pointers.Column, columnTypes ...pointers.ColumnType) ([]*pointers.Column, error) {
+func findPointersColumnsByTypesTestHelper(allColumns []*pointers.Column, columnTypes ...pointers.ColumnType) []*pointers.Column {
 	result := make([]*pointers.Column, 0, len(columnTypes))
 	for _, c := range allColumns {
 		for _, neededType := range columnTypes {
@@ -339,7 +338,7 @@ func findPointersColumnsByTypesTestHelper(allColumns []*pointers.Column, columnT
 			result = append(result, c)
 		}
 	}
-	return result, nil
+	return result
 }
 
 type readPointersRow struct {

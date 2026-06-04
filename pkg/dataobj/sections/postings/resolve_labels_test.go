@@ -159,8 +159,10 @@ type labelFixtureEntry struct {
 	streamIDs []int64
 }
 
-func openLabelResolveFixture(t *testing.T, entries []labelFixtureEntry) *postings.Reader {
-	t.Helper()
+// openLabelResolveFixture builds an opened postings Reader from entries. It takes
+// a testing.TB so it can be shared between tests and benchmarks.
+func openLabelResolveFixture(tb testing.TB, entries []labelFixtureEntry) *postings.Reader {
+	tb.Helper()
 
 	pb := postings.NewBuilder(nil, 0, 0)
 
@@ -180,28 +182,28 @@ func openLabelResolveFixture(t *testing.T, entries []labelFixtureEntry) *posting
 	}
 
 	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(pb))
+	require.NoError(tb, objBuilder.Append(pb))
 	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
+	require.NoError(tb, err)
+	tb.Cleanup(func() { _ = closer.Close() })
 
 	var sec *postings.Section
 	for _, s := range obj.Sections() {
 		if !postings.CheckSection(s) {
 			continue
 		}
-		opened, openErr := postings.Open(t.Context(), s)
-		require.NoError(t, openErr)
+		opened, openErr := postings.Open(tb.Context(), s)
+		require.NoError(tb, openErr)
 		sec = opened
 		break
 	}
-	require.NotNil(t, sec, "postings section missing from fixture")
+	require.NotNil(tb, sec, "postings section missing from fixture")
 
 	r := postings.NewReader(postings.ReaderOptions{
 		Columns:   sec.Columns(),
 		Allocator: memory.DefaultAllocator,
 	})
-	require.NoError(t, r.Open(t.Context()))
-	t.Cleanup(func() { _ = r.Close() })
+	require.NoError(tb, r.Open(tb.Context()))
+	tb.Cleanup(func() { _ = r.Close() })
 	return r
 }

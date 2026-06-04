@@ -519,6 +519,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 
 	if r.usePostingsSections {
 		if len(r.postingsReaders) > 0 && r.postingsReaders[0] != nil {
+			// todo(shantanu): Why one reader only? how is this different from streams?
 			pr := r.postingsReaders[0]
 			streamIDs, labelNamesByStream, err := pr.ResolveLabels(ctx, r.matchers)
 			if err != nil {
