@@ -47,8 +47,8 @@ func (r *ShuffleSharder) Shard(key uint32) (int32, error) {
 }
 
 func (r *ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) *ShuffleSharder {
-	if numShards == 0 || numShards > len(r.partitions) {
-		numShards = len(r.partitions)
+	if numShards == 0 || numShards >= len(r.partitions) {
+		return r
 	}
 
 	key := crc64.Checksum([]byte(shuffleShardKey), table)
