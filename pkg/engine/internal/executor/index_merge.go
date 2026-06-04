@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -182,7 +183,7 @@ func readStatsSortSchema(ctx context.Context, sec *dataobj.Section) (string, err
 	defer reader.Close()
 	var row stats.Stat
 	if reader.Next() {
-		row = reader.Value()
+		row = reader.At()
 	}
 	if err := reader.Err(); err != nil && !errors.Is(err, io.EOF) {
 		return "", err
@@ -212,8 +213,8 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 		}
 
 		pileReaders = append(pileReaders, indexedSeq[postings.Row]{
-			rowReader: postings.NewRowReader(ctx, sec),
-			idx:       i,
+			CloseIterator: postings.NewRowReader(ctx, sec),
+			idx:           i,
 		})
 	}
 
@@ -283,8 +284,8 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 		}
 
 		pileReaders = append(pileReaders, indexedSeq[stats.Stat]{
-			rowReader: stats.NewRowReader(ctx, sec),
-			idx:       i,
+			CloseIterator: stats.NewRowReader(ctx, sec),
+			idx:           i,
 		})
 	}
 
@@ -327,55 +328,31 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 	return emitErr
 }
 
-// rowReader[R] is a merge-agnostic, in-order row iterator. It is an unexported
-// interface local to this package, distinct from the exported concrete types
-// postings.RowReader and stats.RowReader, both of which satisfy it.
-type rowReader[R any] interface {
-	Next() bool
-	Value() R
-	Err() error
-	Close() error
-}
-
-var (
-	_ rowReader[postings.Row] = (*postings.RowReader)(nil)
-	_ rowReader[stats.Stat]   = (*stats.RowReader)(nil)
-)
-
-// indexedSeq attaches a stable pile index to a rowReader so the loser tree can
-// break ties deterministically. The index must be readable when the tree
-// snapshots each sequence (loser.Tree calls at() eagerly inside moveNext and
-// compares the resulting heapVal immediately), so it travels with the sequence
-// rather than being derived at yield time.
+// indexedSeq attaches a stable pile index to an [iter.CloseIterator] so the
+// loser tree can break ties deterministically. The index must be readable when
+// the tree snapshots each sequence (loser.Tree calls at() eagerly inside
+// moveNext and compares the resulting heapVal immediately), so it travels with
+// the sequence rather than being derived at yield time.
 //
-// indexedSeq satisfies pileSequence[R] via the embedded rowReader (promoting
-// Next/Value/Err/Close) plus PileIdx. No explicit compile-time assertion is
+// indexedSeq satisfies pileSequence[R] via the embedded iterator (promoting
+// Next/At/Err/Close) plus PileIdx. No explicit compile-time assertion is
 // needed: the construction sites below assign indexedSeq values into
 // []pileSequence[R], so the conversion is checked there.
 type indexedSeq[R any] struct {
-	rowReader[R] // promotes Next/Value/Err/Close
-	idx          int
+	iter.CloseIterator[R] // promotes Next/At/Err/Close
+	idx                   int
 }
 
 // PileIdx returns the pile's index in the merge. Used for stable tiebreak ordering.
 func (s indexedSeq[R]) PileIdx() int { return s.idx }
 
-// pileSequence[R] is one pile cursor for the K-way merge. It satisfies
-// loser.Sequence (Next() bool) and exposes the current value via Value().
+// pileSequence[R] is one pile cursor for the K-way merge. It is an
+// [iter.CloseIterator] (Next/At/Err/Close) extended with PileIdx for stable
+// tiebreak ordering.
 //
-// Records must be emitted in sorted order
+// Records must be emitted in sorted order.
 type pileSequence[R any] interface {
-	// Next advances the cursor. Returns false on exhaustion (natural EOF or
-	// any error).
-	Next() bool
-	// Value returns the current record. Undefined if Next has not been called
-	// or if the last Next call returned false.
-	Value() R
-	// Err returns any error that caused iteration to end. nil on natural EOF
-	// (io.EOF from the underlying reader).
-	Err() error
-	// Close releases any resources held by the sequence. Idempotent.
-	Close() error
+	iter.CloseIterator[R]
 	// PileIdx returns the pile's index in the merge. Used for stable tiebreak ordering.
 	PileIdx() int
 }
@@ -406,7 +383,7 @@ func merge[R any](
 		maxVal := heapVal[R]{isMax: true}
 
 		at := func(s pileSequence[R]) heapVal[R] {
-			return heapVal[R]{rec: s.Value(), pileIdx: s.PileIdx()}
+			return heapVal[R]{rec: s.At(), pileIdx: s.PileIdx()}
 		}
 
 		// less defines the loser tree ordering. The maxVal sentinel sorts after
@@ -446,7 +423,7 @@ func merge[R any](
 			}
 
 			winner := tree.Winner()
-			rec := winner.Value()
+			rec := winner.At()
 
 			if !havePending {
 				pending = rec

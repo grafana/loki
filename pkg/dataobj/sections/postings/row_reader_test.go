@@ -61,7 +61,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 
 	var rows []postings.Row
 	for reader.Next() {
-		rows = append(rows, reader.Value())
+		rows = append(rows, reader.At())
 	}
 	require.NoError(t, reader.Err())
 
@@ -130,7 +130,7 @@ func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 
 	var rows []postings.Row
 	for reader.Next() {
-		rows = append(rows, reader.Value())
+		rows = append(rows, reader.At())
 	}
 	require.NoError(t, reader.Err())
 

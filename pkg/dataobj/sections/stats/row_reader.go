@@ -8,10 +8,13 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
 // RowReader reads [Stat] records from a stats [Section] one row at a time, in
 // section order. It is a row-level cursor over the batch-level [Reader].
+// It implements [iter.CloseIterator] over [Stat].
 //
 // A RowReader is not safe for concurrent use.
 type RowReader struct {
@@ -39,6 +42,8 @@ func NewRowReader(ctx context.Context, sec *Section) *RowReader {
 		}),
 	}
 }
+
+var _ iter.CloseIterator[Stat] = (*RowReader)(nil)
 
 // Next advances the cursor. Returns false on exhaustion (natural EOF or any
 // error). Subsequent calls continue to return false.
@@ -103,9 +108,9 @@ func (r *RowReader) next() (Stat, error) {
 	return row, nil
 }
 
-// Value returns the current record. Undefined if Next has not been called or if
+// At returns the current record. Undefined if Next has not been called or if
 // the last Next call returned false.
-func (r *RowReader) Value() Stat { return r.cur }
+func (r *RowReader) At() Stat { return r.cur }
 
 // Err returns any error that caused iteration to end. nil on natural EOF.
 func (r *RowReader) Err() error { return r.err }

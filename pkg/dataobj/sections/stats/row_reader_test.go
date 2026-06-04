@@ -60,7 +60,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 
 	var rows []stats.Stat
 	for reader.Next() {
-		rows = append(rows, reader.Value())
+		rows = append(rows, reader.At())
 	}
 	require.NoError(t, reader.Err())
 

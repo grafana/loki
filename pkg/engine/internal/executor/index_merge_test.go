@@ -70,7 +70,7 @@ func (p *testPileReader) Next() bool {
 	return true
 }
 
-func (p *testPileReader) Value() intRecord {
+func (p *testPileReader) At() intRecord {
 	return p.cur
 }
 
@@ -102,8 +102,8 @@ func (p *trackingPileReader[R]) Next() bool {
 	return p.underlying.Next()
 }
 
-func (p *trackingPileReader[R]) Value() R {
-	return p.underlying.Value()
+func (p *trackingPileReader[R]) At() R {
+	return p.underlying.At()
 }
 
 func (p *trackingPileReader[R]) Err() error {
@@ -395,7 +395,7 @@ func (p *errorPileReader[R]) Next() bool {
 	return false
 }
 
-func (p *errorPileReader[R]) Value() R {
+func (p *errorPileReader[R]) At() R {
 	var zero R
 	return zero
 }
@@ -752,7 +752,7 @@ func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objsto
 
 	var rows []postings.Row
 	for reader.Next() {
-		rows = append(rows, reader.Value())
+		rows = append(rows, reader.At())
 	}
 	if reader.Err() != nil {
 		require.NoError(t, reader.Err())
@@ -786,7 +786,7 @@ func readStatsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.
 
 	var rows []stats.Stat
 	for reader.Next() {
-		rows = append(rows, reader.Value())
+		rows = append(rows, reader.At())
 	}
 	if reader.Err() != nil {
 		require.NoError(t, reader.Err())
@@ -1365,7 +1365,7 @@ func TestStatsRowReader_DottedLabelNames(t *testing.T) {
 	if !reader.Next() {
 		require.Fail(t, "expected to read a row")
 	}
-	row := reader.Value()
+	row := reader.At()
 	if reader.Err() != nil {
 		require.NoError(t, reader.Err())
 	}
