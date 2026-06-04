@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 // Test performs a basic end-to-end test ensuring that we can convert from a
@@ -293,6 +294,10 @@ func Test_Expression(t *testing.T) {
 		{
 			name: "LiteralExpr (StringList)",
 			expr: physical.NewLiteral([]string{"item1", "item2", "item3"}),
+		},
+		{
+			name: "LiteralExpr (LabelFmtListLiteral)",
+			expr: physical.NewLiteral([]log.LabelFmt{{Name: "test_name", Value: "test_value", Rename: true}}),
 		},
 		{
 			name: "ColumnExpr",
