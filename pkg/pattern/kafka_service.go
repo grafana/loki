@@ -7,8 +7,9 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -17,6 +18,11 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/sasl/plain"
+
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring/consumer"
@@ -24,10 +30,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/pkg/sasl/plain"
 )
 
 const (
@@ -85,7 +87,7 @@ type KafkaService struct {
 	// gives us a consistent snapshot without locking the hot path.
 	ownedPartitions atomic.Pointer[[]int32]
 
-	partitionRing *ring.PartitionRingReader
+	partitionRing ring.PartitionRingReader
 
 	pendingFlush chan struct{} // closed by flush goroutine on completion; nil when idle
 }
@@ -148,7 +150,7 @@ func NewKafkaService(
 
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("create kafka decoder: %w", err)
 	}
 	s.decoder = decoder
 	readerCfg := kafkaCfg
@@ -180,6 +182,8 @@ func NewKafkaService(
 	// nil — callers iterate the result without a nil check.
 	empty := []int32{}
 	s.ownedPartitions.Store(&empty)
+	s.partitionRing = (NewPartitionRingWatcher(cfg.TeeConfig.RingConfig, logger, reg))
+	s.Service = services.NewBasicService(s.starting, s.running, nil).WithName("pattern-ingester-kafka")
 
 	return s, nil
 }
@@ -189,7 +193,7 @@ func (s *KafkaService) starting(ctx context.Context) error {
 	// we transition to Running. Without this gate, the first JoinGroup
 	// could land while the ring is still empty and the active-sticky balancer
 	// would refuse to assign anything silently stranding the consumer group.
-	if err := waitForPartitions(ctx, *s.partitionRing, s.cfg.TeeConfig.RingConfig.StartupTimeout, s.logger); err != nil {
+	if err := waitForPartitions(ctx, s.partitionRing, s.cfg.TeeConfig.RingConfig.StartupTimeout, s.logger); err != nil {
 		return fmt.Errorf("partition ring not ready: %w", err)
 	}
 	s.wg.Add(1)
@@ -267,7 +271,11 @@ func (s *KafkaService) batchSender(ctx context.Context) error {
 			// This is an unrecoverable error and no amount of retries will fix it.
 			return fmt.Errorf("failed to decode stream: %w", err)
 		}
-		req := clientRequest{ingesterAddr: "", tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
+		ingesterAddr, err := s.ingesterForTenant(tenant, stream)
+		if err != nil {
+			return fmt.Errorf("failed to get ingester for tenant: %w", err)
+		}
+		req := clientRequest{ingesterAddr: ingesterAddr, tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
 		s.sendBatch(ctx, req)
 	case req := <-s.flushRequests:
 		// Drain any records that are already in the channel before flushing
@@ -293,6 +301,15 @@ func (s *KafkaService) batchSender(ctx context.Context) error {
 		req.done <- nil
 	}
 	return nil
+}
+
+func (s *KafkaService) ingesterForTenant(tenant string, stream logproto.Stream) (string, error) {
+	var descs [1]ring.InstanceDesc
+	replicationSet, err := s.ringClient.Ring().Get(uint32(stream.Hash), ring.WriteNoExtend, descs[:0], nil, nil)
+	if err != nil {
+		return "", err
+	}
+	return replicationSet.Instances[0].Addr, nil
 }
 
 func (s *KafkaService) sendBatch(ctx context.Context, clientRequest clientRequest) {
@@ -401,7 +418,7 @@ func (s *KafkaService) sendBatch(ctx context.Context, clientRequest clientReques
 
 					var client ring_client.PoolClient
 					client, err = s.ringClient.GetClientFor(addr)
-					if err != nil {
+					if err == nil {
 						ctx, cancel := context.WithTimeout(
 							user.InjectOrgID(ctx, clientRequest.tenant),
 							s.cfg.ClientConfig.RemoteTimeout,
@@ -628,7 +645,7 @@ func (s *KafkaService) createKafkaClient() (*kgo.Client, error) {
 	// The partition ring is a required dependency: it tells the balancer
 	// which partitions are active and must be balanced evenly. There is no
 	// fallback — newService wires it unconditionally.
-	balancer := consumer.NewCooperativeActiveStickyBalancer(*s.partitionRing, s.logger)
+	balancer := consumer.NewCooperativeActiveStickyBalancer(s.partitionRing, s.logger)
 	opts = append(opts, kgo.Balancers(balancer))
 
 	// Static membership is what keeps pod restarts from triggering rebalances.

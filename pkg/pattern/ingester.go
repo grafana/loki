@@ -149,6 +149,7 @@ const (
 	// dead pod is evicted promptly so its partitions get reassigned.
 	defaultKafkaSessionTimeout = 2 * time.Minute
 	DefaultFlushCheckInterval  = 5 * time.Minute
+	DefaultStartupTimeout      = 1 * time.Minute
 )
 
 type TeeConfig struct {
@@ -182,8 +183,9 @@ type RingConfig struct {
 func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Key, prefix+"ring.key", "", "The key to use for the pattern ingester ring.")
 	f.StringVar(&cfg.Name, prefix+"ring.name", "", "The name to use for the pattern ingester ring.")
-	f.IntVar(&cfg.WatcherBufferSize, prefix+"ring.watcher-buffer-size", 0, "")
+	f.IntVar(&cfg.WatcherBufferSize, prefix+"ring.watcher-buffer-size", 0, "Size of the buffer for key watchers.")
 	cfg.Memberlist.RegisterFlagsWithPrefix(f, prefix+"ring.memberlist.")
+	f.DurationVar(&cfg.StartupTimeout, prefix+"ring.startup-timeout", DefaultStartupTimeout, "How long to wait for the partition ring to be populated before failing startup.")
 }
 
 func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
@@ -220,7 +222,7 @@ func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(
 		(*string)(&cfg.IngestMode),
 		prefix+"tee.ingest-mode",
-		string(IngestModeKafka),
+		string(IngestModeInMemory),
 		`How records are ingested: "kafka" reads from a Kafka topic; "inmemory" uses an in-process channel (experimental, single-node, no durability guarantees, each replica holds independent data).`,
 	)
 	f.DurationVar(

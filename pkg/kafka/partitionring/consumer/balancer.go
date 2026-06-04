@@ -60,7 +60,7 @@ func (b *cooperativeActiveStickyBalancer) MemberBalancer(members []kmsg.JoinGrou
 		var meta kmsg.ConsumerMemberMetadata
 		err := meta.ReadFrom(member.ProtocolMetadata)
 		if err != nil {
-			continue
+			return nil, nil, err
 		}
 
 		// Filter owned partitions to only include active ones

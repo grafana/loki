@@ -872,7 +872,12 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 			return nil, err
 		}
 		return services.NewBasicService(
-			svc.StartAsync,
+			func(ctx context.Context) error {
+				if err := svc.StartAsync(ctx); err != nil {
+					return err
+				}
+				return svc.AwaitRunning(ctx)
+			},
 			func(_ context.Context) error {
 				svc.WaitUntilDone()
 				return nil
