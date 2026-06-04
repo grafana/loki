@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -61,6 +62,12 @@ type PageInfo struct {
 	ValuesCount      uint64 `json:"values_count"`
 }
 
+type IndexPointerRow struct {
+	Path    string    `json:"path"`
+	StartTs time.Time `json:"start_ts"`
+	EndTs   time.Time `json:"end_ts"`
+}
+
 type SectionMetadata struct {
 	Type                  string            `json:"type"`
 	TotalCompressedSize   uint64            `json:"totalCompressedSize"`
@@ -70,6 +77,7 @@ type SectionMetadata struct {
 	Distribution          []uint64          `json:"distribution"`
 	MinTimestamp          time.Time         `json:"minTimestamp"`
 	MaxTimestamp          time.Time         `json:"maxTimestamp"`
+	IndexPointers         []IndexPointerRow `json:"indexPointers,omitempty"`
 }
 
 func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
@@ -227,6 +235,27 @@ func inspectIndexPointersSection(ctx context.Context, ty dataobj.SectionType, se
 		}
 
 		meta.Columns = append(meta.Columns, colMeta)
+	}
+
+	const maxIndexPointerRows = 1000
+	truncated := false
+	for r := range indexpointers.IterSection(ctx, sec) {
+		if r.Err() != nil {
+			return SectionMetadata{}, r.Err()
+		}
+		if len(meta.IndexPointers) >= maxIndexPointerRows {
+			truncated = true
+			break
+		}
+		p := r.MustValue()
+		meta.IndexPointers = append(meta.IndexPointers, IndexPointerRow{
+			Path:    p.Path,
+			StartTs: p.StartTs.UTC(),
+			EndTs:   p.EndTs.UTC(),
+		})
+	}
+	if truncated {
+		log.Printf("indexpointers section truncated to %d rows during inspect", maxIndexPointerRows)
 	}
 
 	return meta, nil
