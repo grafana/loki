@@ -582,14 +582,6 @@ func newTestBloomBytes(t *testing.T, vals ...string) []byte {
 	return bytes
 }
 
-// TestIndexSectionsReader_LegacyOnlyObjectStaysOnLegacyPath proves /
-// : when an object contains no postings section, the legacy path runs
-// even with the gate forced on. r.postingsReaders is empty (no postings
-// section to open); r.pointersReaders is populated and serves the query.
-// Per the fixture builds a legacy-only object by calling
-// AppendStream + ObserveLogLine ONLY (no Observe*Posting methods), so
-// indexobj.Builder.Flush emits streams + pointers but skips the empty
-// postings builder.
 func TestIndexSectionsReader_LegacyOnlyObjectStaysOnLegacyPath(t *testing.T) {
 	t.Parallel()
 
@@ -602,10 +594,6 @@ func TestIndexSectionsReader_LegacyOnlyObjectStaysOnLegacyPath(t *testing.T) {
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
 	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
-	// Force the new-path gate ON. With no postings section in the object,
-	// the pre-scan finds no postings; precedence does NOT trigger;
-	// the legacy errgroup branches open streams + pointers as usual. Proves
-	// ("no postings section ⇒ legacy regardless of gate").
 	r.usePostingsSections = true
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
@@ -629,13 +617,6 @@ func TestIndexSectionsReader_LegacyOnlyObjectStaysOnLegacyPath(t *testing.T) {
 	require.Equal(t, int64(1), streamIDCol.Value(0))
 }
 
-// TestIndexSectionsReader_GateOffOnCombinedFixtureRunsLegacyPath proves
-// dead-code: with usePostingsSections=false ( default), the legacy
-// path runs even on a combined-section object (streams + pointers +
-// postings). r.postingsReaders is empty because the wave-1 errgroup
-// branch that opens postings sections is gated on r.usePostingsSections, so with
-// the gate off it never executes. r.pointersReaders is populated and
-// serves the query exactly as today.
 func TestIndexSectionsReader_GateOffOnCombinedFixtureRunsLegacyPath(t *testing.T) {
 	t.Parallel()
 
@@ -648,7 +629,6 @@ func TestIndexSectionsReader_GateOffOnCombinedFixtureRunsLegacyPath(t *testing.T
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
 	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
-	// Do NOT set r.usePostingsSections here — default ( dead-code).
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -671,18 +651,6 @@ func TestIndexSectionsReader_GateOffOnCombinedFixtureRunsLegacyPath(t *testing.T
 	require.Equal(t, int64(1), streamIDCol.Value(0))
 }
 
-// TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath proves :
-// when an object contains streams + postings sections (NO pointers
-// section), the new path takes over — r.pointersReaders and
-// r.bloomReaders are empty, r.postingsReaders has length 1, and the
-// Arrow batch returned by Read has the same 10-column schema as the
-// legacy pointer-scan output ( schema-compatibility schema parity, re-anchored
-// at the metastore boundary).
-//
-// The fixture calls AppendStream + ObserveLabelPosting + ObserveBloomPosting
-// ONLY — the pointers builder stays empty and Flush skips it. The object still
-// carries a streams section (combined-object shape), but the postings read
-// path no longer reads it.
 func TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath(t *testing.T) {
 	t.Parallel()
 
@@ -695,9 +663,6 @@ func TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath(t *testing.T) {
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
 	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
-	// Force the new-path gate ON. Pre-scan sees a postings section; 	// invariant is satisfied (postings section exists); the new errgroup
-	// branch opens the postings section; lazyReadStreams / readPointers
-	// dispatch through the postings path (readPointersFromPostings).
 	r.usePostingsSections = true
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
@@ -712,15 +677,8 @@ func TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath(t *testing.T) {
 	require.NotNil(t, rec)
 	require.Equal(t, int64(1), rec.NumRows(), "new-path: one matching stream row from postings.ReadPointers")
 
-	// Schema parity check ( schema-compatibility re-anchored at metastore boundary):
-	// readPointersOutputSchema has 9 columns + InternalLabelsFieldName.
 	require.Equal(t, 10, len(rec.Schema().Fields()), "postings.ReadPointers output has 9 columns + InternalLabelsFieldName")
 
-	// The 9 well-known columns are pointers-derived field names. The
-	// arrow.FixedWidthTypes.Timestamp_ns.Name() value is "timestamp"
-	// (the bracketed unit / tz suffixes are NOT part of Name()), so the
-	// timestamp fields use "<col>.timestamp" — matches the postings
-	// readPointersOutputSchema in pkg/dataobj/sections/postings/reader.go.
 	expectedFieldNames := []string{
 		"path.path.utf8",
 		"section.int64",
@@ -743,7 +701,6 @@ func TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath(t *testing.T) {
 		require.True(t, found, "schema must contain field %q ( schema-compatibility schema parity)", name)
 	}
 
-	// stream_id column should carry the resolved match (stream 1 → app=foo).
 	var streamIDCol *array.Int64
 	for i, f := range rec.Schema().Fields() {
 		if f.Name == "stream_id.int64" {
@@ -755,17 +712,6 @@ func TestIndexSectionsReader_NewOnlyObjectUsesPostingsPath(t *testing.T) {
 	require.Equal(t, int64(1), streamIDCol.Value(0))
 }
 
-// TestIndexSectionsReader_CombinedSectionObjectFavorsPostings proves
-// precedence at the slice-population level: when an object
-// contains both pointers AND postings sections, the new path wins.
-// r.pointersReaders is empty (the pre-scan reset in init() nils
-// unopenedPointers when a postings section exists && usePostingsSections); r.bloomReaders
-// is empty for the same reason; r.postingsReaders has length 1.
-//
-// Per : row-output equivalence between the legacy pointers section
-// and the postings section on the same fixture is territory
-// (TEST-03). This wave-3 test scope is "the legacy slices are empty
-// when precedence fires" — that and only that.
 func TestIndexSectionsReader_CombinedSectionObjectFavorsPostings(t *testing.T) {
 	t.Parallel()
 
@@ -778,10 +724,6 @@ func TestIndexSectionsReader_CombinedSectionObjectFavorsPostings(t *testing.T) {
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
 	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
-	// Force the new-path gate ON. Pre-scan finds streams + pointers + postings
-	// all present (combined-section). postings observed + usePostingsSections=true ⇒
-	// precedence reset: unopenedPointers and unopenedStreams are
-	// nilled before the errgroup runs. Only the postings reader gets opened.
 	r.usePostingsSections = true
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
@@ -797,13 +739,6 @@ func TestIndexSectionsReader_CombinedSectionObjectFavorsPostings(t *testing.T) {
 	require.Equal(t, int64(1), rec.NumRows(), "new-path: one matching stream row from postings.ReadPointers (same shape as new-only)")
 }
 
-// buildLegacyOnlyFixture produces a dataobj.Object containing streams +
-// pointers sections only (no postings). Per , this is
-// achieved by calling AppendStream + ObserveLogLine ONLY — the postings
-// builder stays empty (EstimatedSize == 0) and Flush skips it.
-//
-// The fixture mirrors the existing TestIndexSectionsReader_FiltersByStreamMatcherAndTime
-// shape so its read output is identical to the legacy baseline.
 func buildLegacyOnlyFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
@@ -828,8 +763,6 @@ func buildLegacyOnlyFixture(t *testing.T) *dataobj.Object {
 	})
 	require.NoError(t, err)
 
-	// Populates the POINTERS builder. NO Observe*Posting calls ⇒ postings
-	// builder remains empty ⇒ Flush emits only streams + pointers.
 	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
 
 	obj, closer, err := builder.Flush()
@@ -839,16 +772,6 @@ func buildLegacyOnlyFixture(t *testing.T) *dataobj.Object {
 	return obj
 }
 
-// buildNewOnlyFixture produces a dataobj.Object containing streams +
-// postings sections only (no pointers). Per , this is
-// achieved by calling AppendStream + ObserveLabelPosting + ObserveBloomPosting
-// ONLY — the pointers builder stays empty (EstimatedSize == 0) and Flush
-// skips it. The object still carries a streams section (combined-object shape),
-// but the postings read path no longer reads it.
-//
-// The label observation must use ColumnName="app", LabelValue="foo" so
-// it matches the test's labels.MatchEqual("app", "foo") matcher and the
-// AppendStream-recorded stream label set.
 func buildNewOnlyFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
@@ -874,8 +797,6 @@ func buildNewOnlyFixture(t *testing.T) *dataobj.Object {
 	})
 	require.NoError(t, err)
 
-	// Populates the POSTINGS builder. ColumnName/LabelValue match the
-	// test's matcher (app=foo) so ResolveLabels yields streamID=1.
 	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
 		ObjectPath:       "test-path",
 		SectionIndex:     0,
@@ -886,8 +807,6 @@ func buildNewOnlyFixture(t *testing.T) *dataobj.Object {
 		UncompressedSize: 5,
 	}))
 
-	// Populates the POSTINGS builder's bloom column. Minimal stub — no
-	// matchers exercise this column at read time in the dispatch test.
 	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
 	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
 		ObjectPath:       "test-path",
@@ -906,14 +825,6 @@ func buildNewOnlyFixture(t *testing.T) *dataobj.Object {
 	return obj
 }
 
-// buildCombinedFixture produces a dataobj.Object containing streams +
-// pointers + postings sections (all three). Per , this is
-// achieved by calling all of AppendStream + ObserveLogLine +
-// ObserveLabelPosting + ObserveBloomPosting — all three section builders
-// have non-zero EstimatedSize, so Flush emits all three sections.
-//
-// Used by both the combined-section dispatch test ( precedence)
-// and the gate-off regression test ( dead-code).
 func buildCombinedFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
@@ -939,10 +850,8 @@ func buildCombinedFixture(t *testing.T) *dataobj.Object {
 	})
 	require.NoError(t, err)
 
-	// Populates the POINTERS builder.
 	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
 
-	// Populates the POSTINGS builder label posting.
 	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
 		ObjectPath:       "test-path",
 		SectionIndex:     0,
@@ -953,7 +862,6 @@ func buildCombinedFixture(t *testing.T) *dataobj.Object {
 		UncompressedSize: 5,
 	}))
 
-	// Populates the POSTINGS builder bloom column.
 	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
 	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
 		ObjectPath:       "test-path",
@@ -972,15 +880,6 @@ func buildCombinedFixture(t *testing.T) *dataobj.Object {
 	return obj
 }
 
-// buildNewOnlyFixtureMultiLabel produces a new-format dataobj.Object where
-// the single stream carries TWO stream-label columns (app=foo, team=ops),
-// both observed as KindLabel postings (mirroring the writer invariant that
-// every label of a row-bearing stream is observed). This shape exercises the
-// false-negative guard: a predicate on "team" (a stream label NOT in the
-// selector matchers) must be stripped by filterBloomPredicates — using the
-// label names from StreamLabelColumnNames — before reaching
-// postings.MatchSections (which would otherwise AND-drop every section
-// looking for a non-existent "team" bloom row).
 func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
 	t.Helper()
 
@@ -1009,10 +908,6 @@ func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
 	})
 	require.NoError(t, err)
 
-	// Observe BOTH stream labels as postings (the writer observes every label
-	// of a row-bearing stream). StreamLabelColumnNames() then returns
-	// {"app", "team"} from the postings KindLabel rows, so filterBloomPredicates
-	// strips the team= predicate before MatchSections runs.
 	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
 		ObjectPath:       "test-path",
 		SectionIndex:     0,
@@ -1032,7 +927,6 @@ func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
 		UncompressedSize: 5,
 	}))
 
-	// Minimal bloom column stub (mirrors buildNewOnlyFixture).
 	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
 	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
 		ObjectPath:       "test-path",
@@ -1051,18 +945,6 @@ func buildNewOnlyFixtureMultiLabel(t *testing.T) *dataobj.Object {
 	return obj
 }
 
-// TestIndexSectionsReader_NewPath_StreamLabelPredicateOnDisjointName is the
-// regression test. With usePostingsSections=true, a matcher on one stream
-// label ("app") plus a predicate on a DIFFERENT stream label ("team")
-// must NOT cause an empty result. The fix enriches labelNamesByStream
-// with streams-section column names via
-// postings.Reader.StreamLabelColumnNames(); filterBloomPredicates then
-// strips the team= predicate so it never reaches postings.MatchSections.
-//
-// The existing TestIndexSectionsReader_LabelPredicatesFiltered does not
-// cover this because its matcher and predicate share the same name
-// (app=foo), which ResolveLabels already records via the matcher-side
-// path.
 func TestIndexSectionsReader_NewPath_StreamLabelPredicateOnDisjointName(t *testing.T) {
 	t.Parallel()
 
@@ -1099,23 +981,11 @@ func TestIndexSectionsReader_NewPath_StreamLabelPredicateOnDisjointName(t *testi
 			"without the  fix, MatchSections AND-drops every section and Read returns EOF")
 }
 
-// TestIndexSectionsReader_NewPath_NoPostingsReader_ShortCircuit covers the
-// fix: when usePostingsSections is forced on but r.postingsReaders is empty
-// (defensive branch in lazyResolveLabels), Read returns io.EOF cleanly
-// and does NOT record the StreamsReadTime stat. We verify the short-
-// circuit behaviour indirectly by observing that Read returns EOF
-// without panicking and without populating matchingStreamIDs.
 func TestIndexSectionsReader_NewPath_NoPostingsReader_ShortCircuit(t *testing.T) {
 	t.Parallel()
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	// buildLegacyOnlyFixture has streams + pointers but NO postings. With
-	// usePostingsSections forced on AFTER Open, the pre-scan would normally flip
-	// usePostingsSections off (no postings section ⇒ ). To force the defensive
-	// short-circuit in lazyResolveLabels, we must keep usePostingsSections true
-	// after Open() AND ensure r.postingsReaders is empty — set the flag
-	// post-Open so the pre-scan does not see it.
 	obj := buildLegacyOnlyFixture(t)
 
 	start := now.Add(-4 * time.Hour)
@@ -1127,11 +997,168 @@ func TestIndexSectionsReader_NewPath_NoPostingsReader_ShortCircuit(t *testing.T)
 	require.NoError(t, r.Open(ctx))
 	require.Empty(t, r.postingsReaders, "no postings section ⇒ empty slice")
 
-	// Now flip the gate on post-Open so Read dispatches into the new path
-	// and exercises the lazyResolveLabels defensive short-circuit.
+	// Flip the gate on post-Open (with no postings reader) to hit the defensive short-circuit.
 	r.usePostingsSections = true
 
 	_, err := r.Read(ctx)
 	require.ErrorIs(t, err, io.EOF, "no postings reader ⇒ new path returns io.EOF cleanly")
 	require.Empty(t, r.matchingStreamIDs, "short-circuit must not populate matchingStreamIDs")
+}
+
+// buildPostingsOnlyFixture writes only postings observations (no AppendStream /
+// ObserveLogLine), so Flush emits a postings section and no streams or pointers.
+func buildPostingsOnlyFixture(t *testing.T) *dataobj.Object {
+	t.Helper()
+
+	fixtureBuildMu.Lock()
+	defer fixtureBuildMu.Unlock()
+
+	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          1024 * 1024,
+		TargetObjectSize:        10 * 1024 * 1024,
+		TargetSectionSize:       128,
+		BufferSize:              1024 * 1024,
+		SectionStripeMergeLimit: 2,
+	}, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+		ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "foo",
+		StreamID: 1, Timestamp: now.Add(-3 * time.Hour), UncompressedSize: 5,
+	}))
+	require.NoError(t, builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+		ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "bar",
+		StreamID: 2, Timestamp: now.Add(-3 * time.Hour), UncompressedSize: 5,
+	}))
+
+	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
+	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
+		ObjectPath: "test-path", SectionIndex: 0, ColumnName: "traceID", Value: "abcd",
+		StreamID: 1, Timestamp: now.Add(-3 * time.Hour), UncompressedSize: 5,
+	}))
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+
+	return obj
+}
+
+func columnByName(t *testing.T, rec arrow.RecordBatch, name string) arrow.Array {
+	t.Helper()
+	for i, f := range rec.Schema().Fields() {
+		if f.Name == name {
+			return rec.Column(i)
+		}
+	}
+	require.Failf(t, "missing column", "record batch has no column %q", name)
+	return nil
+}
+
+func TestIndexSectionsReader_PostingsOnly_EndToEnd(t *testing.T) {
+	t.Parallel()
+
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+	obj := buildPostingsOnlyFixture(t)
+
+	inWindowStart, inWindowEnd := now.Add(-4*time.Hour), now.Add(-time.Hour)
+	appFoo := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
+
+	t.Run("object has only a postings section", func(t *testing.T) {
+		var nStreams, nPointers, nPostings int
+		for _, s := range obj.Sections() {
+			switch {
+			case streams.CheckSection(s):
+				nStreams++
+			case pointers.CheckSection(s):
+				nPointers++
+			case postings.CheckSection(s):
+				nPostings++
+			}
+		}
+		require.Zero(t, nStreams, "fixture must not write a streams section")
+		require.Zero(t, nPointers, "fixture must not write a pointers section")
+		require.GreaterOrEqual(t, nPostings, 1, "fixture must write a postings section")
+	})
+
+	t.Run("selector resolves to matching streams from postings alone", func(t *testing.T) {
+		r := newIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, nil, 8192, false)
+		r.usePostingsSections = true
+		t.Cleanup(r.Close)
+		require.NoError(t, r.Open(ctx))
+
+		require.Empty(t, r.streamsReaders)
+		require.Empty(t, r.pointersReaders)
+		require.Empty(t, r.bloomReaders)
+		require.Len(t, r.postingsReaders, 1)
+
+		gotStreamIDs := map[int64]struct{}{}
+		var rows int64
+		for {
+			rec, err := r.Read(ctx)
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			if rec == nil || rec.NumRows() == 0 {
+				continue
+			}
+			rows += rec.NumRows()
+			sid := columnByName(t, rec, "stream_id.int64").(*array.Int64)
+			path := columnByName(t, rec, "path.path.utf8").(*array.String)
+			section := columnByName(t, rec, "section.int64").(*array.Int64)
+			for i := 0; i < int(rec.NumRows()); i++ {
+				gotStreamIDs[sid.Value(i)] = struct{}{}
+				require.Equal(t, "test-path", path.Value(i))
+				require.Equal(t, int64(0), section.Value(i))
+			}
+		}
+
+		require.Equal(t, int64(1), rows, "app=foo selects stream 1 only (stream 2 is app=bar)")
+		require.Equal(t, map[int64]struct{}{1: {}}, gotStreamIDs)
+	})
+
+	t.Run("time window outside the data returns EOF", func(t *testing.T) {
+		r := newIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-30*time.Minute), now, appFoo, nil, 8192, false)
+		r.usePostingsSections = true
+		t.Cleanup(r.Close)
+		require.NoError(t, r.Open(ctx))
+
+		rec, err := r.Read(ctx)
+		require.ErrorIs(t, err, io.EOF)
+		require.Nil(t, rec)
+	})
+
+	t.Run("structured-metadata bloom selects the section", func(t *testing.T) {
+		predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd")}
+		r := newIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 8192, false)
+		r.usePostingsSections = true
+		t.Cleanup(r.Close)
+		require.NoError(t, r.Open(ctx))
+
+		var rows int64
+		for {
+			rec, err := r.Read(ctx)
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			if rec != nil {
+				rows += rec.NumRows()
+			}
+		}
+		require.Equal(t, int64(1), rows, "traceID=abcd is in the section bloom ⇒ section kept")
+	})
+
+	t.Run("structured-metadata bloom miss prunes the section", func(t *testing.T) {
+		predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "doesnotexist")}
+		r := newIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 8192, false)
+		r.usePostingsSections = true
+		t.Cleanup(r.Close)
+		require.NoError(t, r.Open(ctx))
+
+		rec, err := r.Read(ctx)
+		require.ErrorIs(t, err, io.EOF, "traceID miss ⇒ no section matched ⇒ EOF")
+		require.Nil(t, rec)
+	})
 }
