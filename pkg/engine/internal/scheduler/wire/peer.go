@@ -12,6 +12,8 @@ import (
 	"github.com/go-kit/log/level"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
 // Peer wraps a [Conn] into a synchronous API that acts as both a
@@ -248,7 +250,7 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 	select {
 	case <-ctx.Done():
 		// TODO(rfratto): queue a DiscardFrame
-		return ctx.Err()
+		return util.CauseError(ctx)
 	case <-p.done:
 		return ErrConnClosed
 	case err := <-req.result:
@@ -274,7 +276,7 @@ func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 func (p *Peer) enqueueFrame(ctx context.Context, frame Frame) error {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return util.CauseError(ctx)
 	case <-p.done:
 		return ErrConnClosed
 	case p.outgoing <- frame:

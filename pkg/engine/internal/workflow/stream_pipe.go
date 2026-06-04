@@ -7,6 +7,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
 // A streamPipe connects data for a stream to a local listener (via
@@ -56,7 +57,7 @@ func (pipe *streamPipe) Open(_ context.Context) error { return nil }
 func (pipe *streamPipe) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, util.CauseError(ctx)
 	case <-pipe.errCond:
 		return nil, pipe.err
 	case <-pipe.closed:
@@ -84,7 +85,7 @@ func (pipe *streamPipe) checkError(err error) error {
 func (pipe *streamPipe) Write(ctx context.Context, rec arrow.RecordBatch) error {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return util.CauseError(ctx)
 	case <-pipe.closed:
 		return executor.EOF
 	case pipe.results <- rec:

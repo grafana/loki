@@ -14,6 +14,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"golang.org/x/net/http2"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
 // peerAddressHeader is the header used to advertise the address to connect back
@@ -142,7 +144,7 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (l *HTTP2Listener) Accept(ctx context.Context) (Conn, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, util.CauseError(ctx)
 	case <-l.closed:
 		return nil, net.ErrClosed
 	case conn := <-l.incoming:
@@ -237,7 +239,7 @@ func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
 	case <-c.ctx.Done():
 		return ErrConnClosed
 	case <-ctx.Done():
-		return ctx.Err()
+		return util.CauseError(ctx)
 	case <-c.closed:
 		return ErrConnClosed
 	default:
@@ -269,7 +271,7 @@ func (c *http2Conn) Recv(ctx context.Context) (Frame, error) {
 	case <-c.ctx.Done():
 		return nil, ErrConnClosed
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, util.CauseError(ctx)
 	case <-c.closed:
 		return nil, ErrConnClosed
 	case f := <-c.incomingCh:

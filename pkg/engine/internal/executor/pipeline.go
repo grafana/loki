@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -197,7 +198,7 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return util.CauseError(ctx)
 		default:
 			var s state
 			s.batch, s.err = p.Pipeline.Read(ctx)
@@ -210,7 +211,7 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 			// If the context is cancelled while waiting to send, we return.
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return util.CauseError(ctx)
 			case p.ch <- s:
 			}
 		}
