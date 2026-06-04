@@ -391,8 +391,8 @@ github.com/apache/cassandra-gocql-driver/v2
 github.com/apache/cassandra-gocql-driver/v2/internal/lru
 github.com/apache/cassandra-gocql-driver/v2/internal/murmur
 github.com/apache/cassandra-gocql-driver/v2/internal/streams
-# github.com/apache/thrift v0.22.0
-## explicit; go 1.23
+# github.com/apache/thrift v0.23.0
+## explicit; go 1.25
 github.com/apache/thrift/lib/go/thrift
 # github.com/armon/go-metrics v0.4.1
 ## explicit; go 1.12

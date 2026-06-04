@@ -24,7 +24,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -205,12 +204,14 @@ func (p *TSimpleServer) innerAccept() (int32, error) {
 		return 0, err
 	}
 	if client != nil {
+
 		ctx, cancel := context.WithCancel(context.Background())
 		p.wg.Add(2)
 
 		go func() {
 			defer p.wg.Done()
 			defer cancel()
+			defer client.Close()
 			if err := p.processRequests(client); err != nil {
 				ctx := p.logContext.Load()
 				slog.ErrorContext(*ctx, "error processing request", "err", err)
@@ -366,13 +367,7 @@ func (p *TSimpleServer) processRequests(client TTransport) (err error) {
 
 		ok, err := processor.Process(ctx, inputProtocol, outputProtocol)
 		if errors.Is(err, ErrAbandonRequest) {
-			err := client.Close()
-			if errors.Is(err, net.ErrClosed) {
-				// In this case, it's kinda expected to get
-				// net.ErrClosed, treat that as no-error
-				return nil
-			}
-			return err
+			return nil
 		}
 		if errors.As(err, new(TTransportException)) && err != nil {
 			return err
