@@ -647,6 +647,28 @@ func TestBuilder_BloomBytes(t *testing.T) {
 	require.Error(t, err)
 }
 
+// mustBuildBloomBytes constructs a bloom filter section, observes one value,
+// and returns the marshaled filter bytes. Used by tests that need realistic
+// bloom-filter bytes to feed into AppendBloomEntry.
+func mustBuildBloomBytes(t *testing.T, objectPath string, sectionIndex int64, columnName, value string, ts time.Time) []byte {
+	t.Helper()
+	tempBuilder := NewBuilder(nil, 0, 0)
+	tempBuilder.PrepareBloomColumn(objectPath, sectionIndex, columnName, 100)
+	err := tempBuilder.ObserveBloomPosting(BloomObservation{
+		ObjectPath:       objectPath,
+		SectionIndex:     sectionIndex,
+		ColumnName:       columnName,
+		Value:            value,
+		StreamID:         0,
+		Timestamp:        ts,
+		UncompressedSize: 0,
+	})
+	require.NoError(t, err)
+	bytes, err := tempBuilder.BloomBytes(objectPath, sectionIndex, columnName)
+	require.NoError(t, err)
+	return bytes
+}
+
 // flushToObject flushes the builder into a dataobj.Object using dataobj.Builder.
 func flushToObject(t *testing.T, b *Builder) (*dataobj.Object, io.Closer) {
 	t.Helper()
