@@ -15,7 +15,7 @@ import (
 // buildIndexPointersObject builds a dataobj with one indexpointers section and
 // uploads it to bucket at path, so inspectFile can read it back via FromBucket.
 // Mirrors pkg/dataobj/index/builder_test.go:472-481.
-func buildIndexPointersObject(t *testing.T, ctx context.Context, bucket objstore.Bucket, path, tenant, ptrPath string, start, end time.Time) {
+func buildIndexPointersObject(ctx context.Context, t *testing.T, bucket objstore.Bucket, path, tenant, ptrPath string, start, end time.Time) {
 	t.Helper()
 
 	ib := indexpointers.NewBuilder(nil, 1024, 0)
@@ -48,7 +48,7 @@ func TestInspectFile_IndexPointers(t *testing.T) {
 	end := time.Date(2026, 6, 3, 13, 0, 0, 0, loc)
 	wantPath := "index/v0/indexes/abc123.idx"
 
-	buildIndexPointersObject(t, ctx, bucket, path, "tenantID", wantPath, start, end)
+	buildIndexPointersObject(ctx, t, bucket, path, "tenantID", wantPath, start, end)
 
 	md := inspectFile(ctx, bucket, path)
 	require.Empty(t, md.Error)
