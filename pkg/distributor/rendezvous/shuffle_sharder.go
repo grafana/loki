@@ -3,7 +3,6 @@ package rendezvous
 import (
 	"errors"
 	"hash/crc64"
-	"sort"
 	"strconv"
 
 	"github.com/cespare/xxhash/v2"
@@ -52,29 +51,29 @@ func (r *ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) *Sh
 	}
 
 	key := crc64.Checksum([]byte(shuffleShardKey), table)
-	scores := make([]partitionAndScore, len(r.partitions))
-	for i, partition := range r.partitions {
-		originalHash := r.hashes[i]
-		scores[i] = partitionAndScore{
-			partition,
-			xorshiftMult64(key ^ originalHash),
-			originalHash,
+
+	// Use a min-heap of size numShards to select the top-numShards elements in
+	// O(n log k) instead of sorting all n elements in O(n log n). This also
+	// allocates only k elements instead of n.
+	top := make([]partitionAndScore, numShards)
+	for i := range numShards {
+		top[i] = partitionAndScore{r.partitions[i], xorshiftMult64(key ^ r.hashes[i]), r.hashes[i]}
+	}
+	buildMinHeap(top)
+	for i := numShards; i < len(r.partitions); i++ {
+		if score := xorshiftMult64(key ^ r.hashes[i]); score > top[0].score {
+			top[0] = partitionAndScore{r.partitions[i], score, r.hashes[i]}
+			siftDown(top, 0)
 		}
 	}
 
-	// This sort dominates the cost of shuffle sharding.
-	// Possible future optimization - using a size-limited max heap to keep track of the k largest scores.
-	sort.Slice(scores, func(i, j int) bool {
-		return scores[i].score > scores[j].score
-	})
-
 	subpartitions := make([]int32, numShards)
-	subHashesSet := make([]uint64, numShards)
-	for i := 0; i < numShards; i++ {
-		subpartitions[i] = scores[i].partition
-		subHashesSet[i] = scores[i].hash // Avoid recalculating these hashes
+	subHashes := make([]uint64, numShards)
+	for i, s := range top {
+		subpartitions[i] = s.partition
+		subHashes[i] = s.hash
 	}
-	return &ShuffleSharder{subpartitions, subHashesSet}
+	return &ShuffleSharder{subpartitions, subHashes}
 }
 
 func (r *ShuffleSharder) Size() int {
@@ -85,6 +84,30 @@ type partitionAndScore struct {
 	partition int32
 	score     uint64
 	hash      uint64
+}
+
+func buildMinHeap(h []partitionAndScore) {
+	for i := len(h)/2 - 1; i >= 0; i-- {
+		siftDown(h, i)
+	}
+}
+
+func siftDown(h []partitionAndScore, i int) {
+	n := len(h)
+	for {
+		smallest := i
+		if l := 2*i + 1; l < n && h[l].score < h[smallest].score {
+			smallest = l
+		}
+		if r := 2*i + 2; r < n && h[r].score < h[smallest].score {
+			smallest = r
+		}
+		if smallest == i {
+			break
+		}
+		h[i], h[smallest] = h[smallest], h[i]
+		i = smallest
+	}
 }
 
 // https://vigna.di.unimi.it/ftp/papers/xorshift.pdf
