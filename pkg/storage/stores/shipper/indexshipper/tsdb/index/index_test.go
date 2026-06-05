@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 	"hash/crc32"
-	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -205,7 +204,8 @@ func TestIndexRW_Postings(t *testing.T) {
 
 	// The label indices are no longer used, so test them by hand here.
 	labelValuesOffsets := map[string]uint64{}
-	d := tsdb_enc.NewDecbufAt(ir.b, int(ir.toc.LabelIndicesTable), castagnoliTable)
+	d := ir.factory.NewDecbufAtChecked(int(ir.toc.LabelIndicesTable), castagnoliTable)
+	defer d.Close()
 	cnt := d.Be32()
 
 	for d.Err() == nil && d.Len() > 0 && cnt > 0 {
@@ -219,14 +219,15 @@ func TestIndexRW_Postings(t *testing.T) {
 
 	labelIndices := map[string][]string{}
 	for lbl, off := range labelValuesOffsets {
-		d := tsdb_enc.NewDecbufAt(ir.b, int(off), castagnoliTable)
-		require.Equal(t, 1, d.Be32int(), "Unexpected number of label indices table names")
-		for i := d.Be32(); i > 0 && d.Err() == nil; i-- {
-			v, err := ir.lookupSymbol(d.Be32())
+		d2 := ir.factory.NewDecbufAtChecked(int(off), castagnoliTable)
+		require.Equal(t, 1, d2.Be32int(), "Unexpected number of label indices table names")
+		for i := d2.Be32(); i > 0 && d2.Err() == nil; i-- {
+			v, err := ir.lookupSymbol(d2.Be32())
 			require.NoError(t, err)
 			labelIndices[lbl] = append(labelIndices[lbl], v)
 		}
-		require.NoError(t, d.Err())
+		require.NoError(t, d2.Err())
+		require.NoError(t, d2.Close())
 	}
 	require.Equal(t, map[string][]string{
 		"a": {"1"},
@@ -778,8 +779,12 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 
 			// build decoder for the series we read to verify the samples
 			offset := postings.At() * 16
-			d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(ir.b, int(offset), castagnoliTable))
-			require.NoError(t, d.Err())
+			sd := ir.factory.NewDecbufUvarintAt(int(offset), castagnoliTable)
+			require.NoError(t, sd.Err())
+			seriesBuf, err := sd.ReadBytes(sd.Len())
+			require.NoError(t, err)
+			require.NoError(t, sd.Close())
+			d := encoding.DecWrap(tsdb_enc.Decbuf{B: seriesBuf})
 
 			// read chunk metadata to positing the decoder at the beginning of first chunk
 			d.Be64()
@@ -1013,7 +1018,7 @@ func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		r, err := newReader(RealByteSlice(bs), io.NopCloser(nil))
+		r, err := newReader(idxenc.NewByteSliceDecbufFactory(bs))
 		require.NoError(b, err)
 		require.NoError(b, r.Close())
 	}

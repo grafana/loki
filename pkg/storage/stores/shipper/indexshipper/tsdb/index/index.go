@@ -17,7 +17,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	stderrors "errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -31,6 +30,7 @@ import (
 	"unsafe"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -43,6 +43,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/labelpool"
 
 	idxenc "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/encoding"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/filepool"
 )
 
 const (
@@ -187,35 +188,48 @@ func (m *Metadata) EnsureBounds(from, through int64) {
 
 // NewTOCFromByteSlice return parsed TOC from given index byte slice.
 func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
-	if bs.Len() < indexTOCLen {
+	return NewTOCFromFactory(idxenc.NewByteSliceDecbufFactory(bs.Range(0, bs.Len())))
+}
+
+// NewTOCFromFactory returns a parsed TOC by reading the last indexTOCLen bytes via the factory.
+func NewTOCFromFactory(factory idxenc.DecbufFactory) (*TOC, error) {
+	d := factory.NewRawDecbuf()
+	defer d.Close()
+
+	fileSize := d.Len()
+	if fileSize < indexTOCLen {
 		return nil, tsdb_enc.ErrInvalidSize
 	}
-	b := bs.Range(bs.Len()-indexTOCLen, bs.Len())
+	d.ResetAt(fileSize - indexTOCLen)
 
-	expCRC := binary.BigEndian.Uint32(b[len(b)-4:])
-	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b[:len(b)-4]})
-	if d.Crc32(castagnoliTable) != expCRC {
-		return nil, errors.Wrap(tsdb_enc.ErrInvalidChecksum, "read TOC")
+	tocBytes, err := d.ReadBytes(indexTOCLen)
+	if err != nil || d.Err() != nil {
+		return nil, errors.Wrap(d.Err(), "read TOC bytes")
 	}
 
-	if err := d.Err(); err != nil {
+	expCRC := binary.BigEndian.Uint32(tocBytes[len(tocBytes)-4:])
+	dd := encoding.DecWrap(tsdb_enc.Decbuf{B: tocBytes[:len(tocBytes)-4]})
+	if dd.Crc32(castagnoliTable) != expCRC {
+		return nil, errors.Wrap(tsdb_enc.ErrInvalidChecksum, "read TOC")
+	}
+	if err := dd.Err(); err != nil {
 		return nil, err
 	}
 
 	return &TOC{
-		Symbols:            d.Be64(),
-		Series:             d.Be64(),
-		LabelIndices:       d.Be64(),
-		LabelIndicesTable:  d.Be64(),
-		Postings:           d.Be64(),
-		PostingsTable:      d.Be64(),
-		FingerprintOffsets: d.Be64(),
+		Symbols:            dd.Be64(),
+		Series:             dd.Be64(),
+		LabelIndices:       dd.Be64(),
+		LabelIndicesTable:  dd.Be64(),
+		Postings:           dd.Be64(),
+		PostingsTable:      dd.Be64(),
+		FingerprintOffsets: dd.Be64(),
 		Metadata: Metadata{
-			From:     d.Be64int64(),
-			Through:  d.Be64int64(),
+			From:     dd.Be64int64(),
+			Through:  dd.Be64int64(),
 			Checksum: expCRC,
 		},
-	}, nil
+	}, dd.Err()
 }
 
 // For writing TSDBs using temporary files
@@ -1201,11 +1215,9 @@ type StringIter interface {
 }
 
 type Reader struct {
-	b   ByteSlice
-	toc *TOC
-
-	// Close that releases the underlying resources of the byte slice.
-	c io.Closer
+	factory idxenc.DecbufFactory
+	size    int64
+	toc     *TOC
 
 	// Map of LabelName to a list of some LabelValues's position in the offset table.
 	// The first and last values for each name are always present.
@@ -1252,53 +1264,61 @@ func (b RealByteSlice) Sub(start, end int) ByteSlice {
 // NewReader returns a new index reader on the given byte slice. It automatically
 // handles different format versions.
 func NewReader(b ByteSlice) (*Reader, error) {
-	return newReader(b, io.NopCloser(nil))
+	return newReader(idxenc.NewByteSliceDecbufFactory(b.Range(0, b.Len())))
 }
 
 // NewFileReader returns a new index reader against the given index file.
+// It uses a pooled file-handle approach to avoid mmap.
 func NewFileReader(path string) (*Reader, error) {
-	f, err := fileutil.OpenMmapFile(path)
+	factory := idxenc.NewFilePoolDecbufFactory(
+		path,
+		1,
+		filepool.NewFilePoolMetrics(prometheus.NewRegistry()),
+	)
+	r, err := newReader(factory)
 	if err != nil {
+		_ = factory.Close()
 		return nil, err
 	}
-	r, err := newReader(RealByteSlice(f.Bytes()), f)
-	if err != nil {
-		return nil, stderrors.Join(
-			err,
-			f.Close(),
-		)
-	}
-
 	return r, nil
 }
 
-func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
+func newReader(factory idxenc.DecbufFactory) (*Reader, error) {
 	r := &Reader{
-		b:        b,
-		c:        c,
+		factory:  factory,
 		postings: map[string][]postingOffset{},
 	}
 
 	// Verify header.
-	if r.b.Len() < HeaderLen {
+	hdr := factory.NewRawDecbuf()
+	defer hdr.Close()
+	if hdr.Len() < HeaderLen {
 		return nil, errors.Wrap(tsdb_enc.ErrInvalidSize, "index header")
 	}
-	if m := binary.BigEndian.Uint32(r.b.Range(0, 4)); m != MagicIndex {
-		return nil, errors.Errorf("invalid magic number %x", m)
+	r.size = int64(hdr.Len())
+	magic := hdr.Be32()
+	if hdr.Err() != nil {
+		return nil, hdr.Err()
 	}
-	r.version = int(r.b.Range(4, 5)[0])
+	if magic != MagicIndex {
+		return nil, errors.Errorf("invalid magic number %x", magic)
+	}
+	r.version = int(hdr.Byte())
+	if hdr.Err() != nil {
+		return nil, hdr.Err()
+	}
 
 	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 {
 		return nil, errors.Errorf("unknown index file version %d", r.version)
 	}
 
 	var err error
-	r.toc, err = NewTOCFromByteSlice(b)
+	r.toc, err = NewTOCFromFactory(factory)
 	if err != nil {
 		return nil, errors.Wrap(err, "read TOC")
 	}
 
-	r.symbols, err = NewSymbols(idxenc.NewByteSliceDecbufFactory(r.b.Range(0, r.b.Len())), r.version, int(r.toc.Symbols))
+	r.symbols, err = NewSymbols(factory, r.version, int(r.toc.Symbols))
 	if err != nil {
 		return nil, errors.Wrap(err, "read symbols")
 	}
@@ -1307,7 +1327,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		// Earlier V1 formats don't have a sorted postings offset table, so
 		// load the whole offset table into memory.
 		r.postingsV1 = map[string]map[string]uint64{}
-		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, off uint64, _ int) error {
+		if err := ReadOffsetTable(factory, r.toc.PostingsTable, func(name, value []byte, off uint64, _ int) error {
 			if _, ok := r.postingsV1[string(name)]; !ok {
 				r.postingsV1[string(name)] = map[string]uint64{}
 				r.postings[string(name)] = nil // Used to get a list of labelnames in places.
@@ -1323,7 +1343,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		valueCount := 0
 		// For the postings offset table we keep every label name but only every nth
 		// label value (plus the first and last one), to save memory.
-		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, _ uint64, off int) error {
+		if err := ReadOffsetTable(factory, r.toc.PostingsTable, func(name, value []byte, _ uint64, off int) error {
 			if _, ok := r.postings[string(name)]; !ok {
 				// Next label name.
 				r.postings[string(name)] = []postingOffset{}
@@ -1368,7 +1388,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		r.nameSymbols[off] = k
 	}
 
-	r.fingerprintOffsets, err = readFingerprintOffsetsTable(r.b, r.toc.FingerprintOffsets)
+	r.fingerprintOffsets, err = readFingerprintOffsetsTable(factory, r.toc.FingerprintOffsets)
 	if err != nil {
 		return nil, errors.Wrap(err, "loading fingerprint offsets")
 	}
@@ -1384,7 +1404,16 @@ func (r *Reader) Version() int {
 }
 
 func (r *Reader) RawFileReader() (io.ReadSeeker, error) {
-	return bytes.NewReader(r.b.Range(0, r.b.Len())), nil
+	d := r.factory.NewRawDecbuf()
+	defer d.Close()
+	if d.Err() != nil {
+		return nil, d.Err()
+	}
+	b, err := d.ReadBytes(d.Len())
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewReader(b), nil
 }
 
 // Range marks a byte range.
@@ -1396,8 +1425,9 @@ type Range struct {
 // for all postings lists.
 func (r *Reader) PostingsRanges() (map[labels.Label]Range, error) {
 	m := map[labels.Label]Range{}
-	if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, off uint64, _ int) error {
-		d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(off), castagnoliTable))
+	if err := ReadOffsetTable(r.factory, r.toc.PostingsTable, func(name, value []byte, off uint64, _ int) error {
+		d := r.factory.NewDecbufAtChecked(int(off), castagnoliTable)
+		defer d.Close()
 		if d.Err() != nil {
 			return d.Err()
 		}
@@ -1552,21 +1582,25 @@ func (s *symbolsIter) Next() bool {
 func (s symbolsIter) At() string { return s.cur }
 func (s symbolsIter) Err() error { return s.err }
 
-// ReadOffsetTable reads an offset table and at the given position calls f for each
+// ReadOffsetTable reads an offset table at the given position and calls f for each
 // found entry. If f returns an error it stops decoding and returns the received error.
-func ReadOffsetTable(bs ByteSlice, off uint64, f func(name, value []byte, postingsOffset uint64, labelOffset int) error) error {
-	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable))
-	startLen := d.Len()
+func ReadOffsetTable(factory idxenc.DecbufFactory, off uint64, f func(name, value []byte, postingsOffset uint64, labelOffset int) error) error {
+	d := factory.NewDecbufAtChecked(int(off), castagnoliTable)
+	defer d.Close()
+
+	// offsetBase is the content-start offset of the Decbuf (numLenBytes past the file position).
+	// We subtract it from d.Offset() to get the position relative to the start of content.
+	offsetBase := d.Offset()
 	cnt := d.Be32()
 
 	for d.Err() == nil && d.Len() > 0 && cnt > 0 {
-		offsetPos := startLen - d.Len()
+		offsetPos := d.Offset() - offsetBase
 		if keyCount := d.Uvarint(); keyCount != 2 {
 			return fmt.Errorf("unexpected number of keys for postings offset table %d", keyCount)
 		}
 
-		name := d.UvarintBytes()
-		value := d.UvarintBytes()
+		name := d.UnsafeUvarintBytes()
+		value := d.UnsafeUvarintBytes()
 		o := d.Uvarint64()
 		if d.Err() != nil {
 			break
@@ -1579,8 +1613,10 @@ func ReadOffsetTable(bs ByteSlice, off uint64, f func(name, value []byte, postin
 	return d.Err()
 }
 
-func readFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, error) {
-	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable))
+func readFingerprintOffsetsTable(factory idxenc.DecbufFactory, off uint64) (FingerprintOffsets, error) {
+	d := factory.NewDecbufAtChecked(int(off), castagnoliTable)
+	defer d.Close()
+
 	cnt := d.Be32()
 	res := make(FingerprintOffsets, 0, int(cnt))
 
@@ -1594,7 +1630,7 @@ func readFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, 
 
 // Close the reader and its underlying resources.
 func (r *Reader) Close() error {
-	return r.c.Close()
+	return r.factory.Close()
 }
 
 func (r *Reader) lookupSymbol(o uint32) (string, error) {
@@ -1651,7 +1687,8 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 	}
 	values := make([]string, 0, len(e)*symbolFactor)
 
-	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil))
+	d := r.factory.NewDecbufAtChecked(int(r.toc.PostingsTable), nil)
+	defer d.Close()
 	d.Skip(e[0].off)
 	lastVal := e[len(e)-1].value
 
@@ -1660,14 +1697,14 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 		if skip == 0 {
 			// These are always the same number of bytes,
 			// and it's faster to skip than parse.
-			skip = d.Len()
-			d.Uvarint()      // Keycount.
-			d.UvarintBytes() // Label name.
-			skip -= d.Len()
+			offsetBefore := d.Offset()
+			d.Uvarint()                // Keycount.
+			d.UnsafeUvarintBytes()     // Label name.
+			skip = d.Offset() - offsetBefore
 		} else {
 			d.Skip(skip)
 		}
-		s := yoloString(d.UvarintBytes()) // Label value.
+		s := yoloString(d.UnsafeUvarintBytes()) // Label value.
 		values = append(values, s)
 		if s == lastVal {
 			break
@@ -1693,10 +1730,15 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 			offset = id * 16
 		}
 
-		d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
-		buf := d.Get()
+		d := r.factory.NewDecbufUvarintAt(int(offset), castagnoliTable)
 		if d.Err() != nil {
+			_ = d.Close()
 			return nil, errors.Wrap(d.Err(), "get buffer for series")
+		}
+		buf, err := d.ReadBytes(d.Len())
+		_ = d.Close()
+		if err != nil {
+			return nil, errors.Wrap(err, "get buffer for series")
 		}
 
 		offsets, err := r.dec.LabelNamesOffsetsFor(buf)
@@ -1731,10 +1773,14 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 	if r.version >= FormatV2 {
 		offset = id * 16
 	}
-	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
-	buf := d.Get()
+	d := r.factory.NewDecbufUvarintAt(int(offset), castagnoliTable)
+	defer d.Close()
 	if d.Err() != nil {
 		return "", errors.Wrap(d.Err(), "label values for")
+	}
+	buf, err := d.ReadBytes(d.Len())
+	if err != nil {
+		return "", errors.Wrap(err, "label values for")
 	}
 
 	value, err := r.dec.LabelValueFor(buf, label)
@@ -1757,12 +1803,17 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 	if r.version >= FormatV2 {
 		offset = id * 16
 	}
-	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
+	d := r.factory.NewDecbufUvarintAt(int(offset), castagnoliTable)
+	defer d.Close()
 	if d.Err() != nil {
 		return 0, d.Err()
 	}
+	buf, err := d.ReadBytes(d.Len())
+	if err != nil {
+		return 0, err
+	}
 
-	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks)
+	fprint, err := r.dec.Series(r.version, buf, id, from, through, lbls, chks)
 	if err != nil {
 		return 0, errors.Wrap(err, "read series")
 	}
@@ -1776,12 +1827,17 @@ func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *lab
 	if r.version >= FormatV2 {
 		offset = id * 16
 	}
-	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
+	d := r.factory.NewDecbufUvarintAt(int(offset), castagnoliTable)
+	defer d.Close()
 	if d.Err() != nil {
 		return 0, ChunkStats{}, d.Err()
 	}
+	buf, err := d.ReadBytes(d.Len())
+	if err != nil {
+		return 0, ChunkStats{}, err
+	}
 
-	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls, by)
+	return r.dec.ChunkStats(r.version, buf, id, from, through, lbls, by)
 }
 
 func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error) {
@@ -1797,8 +1853,14 @@ func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...str
 				continue
 			}
 			// Read from the postings table.
-			d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(postingsOff), castagnoliTable))
-			_, p, err := r.dec.Postings(d.Get())
+			// d.Len() includes the 4-byte CRC trailer; subtract it to get content only.
+			d := r.factory.NewDecbufAtChecked(int(postingsOff), castagnoliTable)
+			buf, err := d.ReadBytes(d.Len() - crc32.Size)
+			_ = d.Close()
+			if err != nil {
+				return nil, errors.Wrap(err, "decode postings")
+			}
+			_, p, err := r.dec.Postings(buf)
 			if err != nil {
 				return nil, errors.Wrap(err, "decode postings")
 			}
@@ -1837,7 +1899,7 @@ func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...str
 		}
 		// Don't Crc32 the entire postings offset table, this is very slow
 		// so hope any issues were caught at startup.
-		d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil))
+		d := r.factory.NewDecbufAtChecked(int(r.toc.PostingsTable), nil)
 		d.Skip(e[i].off)
 
 		// Iterate on the offset table.
@@ -1846,21 +1908,29 @@ func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...str
 			if skip == 0 {
 				// These are always the same number of bytes,
 				// and it's faster to skip than parse.
-				skip = d.Len()
-				d.Uvarint()      // Keycount.
-				d.UvarintBytes() // Label name.
-				skip -= d.Len()
+				offsetBefore := d.Offset()
+				d.Uvarint()                // Keycount.
+				d.UnsafeUvarintBytes()     // Label name.
+				skip = d.Offset() - offsetBefore
 			} else {
 				d.Skip(skip)
 			}
-			v := d.UvarintBytes()       // Label value.
+			v := d.UnsafeUvarintBytes()  // Label value.
 			postingsOff = d.Uvarint64() // Offset.
 			for string(v) >= value {
 				if string(v) == value {
 					// Read from the postings table.
-					d2 := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(postingsOff), castagnoliTable))
-					_, p, err := r.dec.Postings(d2.Get())
+					// d2.Len() includes the 4-byte CRC trailer; subtract it to get content only.
+					d2 := r.factory.NewDecbufAtChecked(int(postingsOff), castagnoliTable)
+					buf, err := d2.ReadBytes(d2.Len() - crc32.Size)
+					_ = d2.Close()
 					if err != nil {
+						_ = d.Close()
+						return nil, errors.Wrap(err, "decode postings")
+					}
+					_, p, err := r.dec.Postings(buf)
+					if err != nil {
+						_ = d.Close()
 						return nil, errors.Wrap(err, "decode postings")
 					}
 					res = append(res, p)
@@ -1876,8 +1946,10 @@ func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...str
 				break
 			}
 		}
-		if d.Err() != nil {
-			return nil, errors.Wrap(d.Err(), "get postings offset entry")
+		dErr := d.Err()
+		_ = d.Close()
+		if dErr != nil {
+			return nil, errors.Wrap(dErr, "get postings offset entry")
 		}
 	}
 
@@ -1891,7 +1963,7 @@ func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...str
 
 // Size returns the size of an index file.
 func (r *Reader) Size() int64 {
-	return int64(r.b.Len())
+	return r.size
 }
 
 // LabelNames returns all the unique label names present in the index.

@@ -145,8 +145,11 @@ func (d *Decbuf) UvarintStr() string {
 	return string(d.UnsafeUvarintBytes())
 }
 
-// UnsafeUvarintBytes reads varint prefixed bytes into a byte slice consuming them but without
-// allocating. The bytes returned are NO LONGER VALID after subsequent reads from the Decbuf.
+// UnsafeUvarintBytes reads varint prefixed bytes into a byte slice, consuming them.
+// For in-memory readers the returned slice aliases the underlying buffer and requires no
+// allocation.  For streaming (file-backed) readers the underlying bufio buffer may be
+// refilled by the next read, so Read() is used to return an owned copy.  Either way the
+// caller may safely hold the result across subsequent Decbuf reads.
 // If E is non-nil, this method returns an empty byte slice.
 func (d *Decbuf) UnsafeUvarintBytes() []byte {
 	l := d.Uvarint64()
@@ -154,37 +157,7 @@ func (d *Decbuf) UnsafeUvarintBytes() []byte {
 		return nil
 	}
 
-	// If the length of this uvarint slice is greater than the size of buffer used
-	// by our reader, we can't Peek() it. Instead, we have to use the Read() method
-	// which will allocate its own slice to hold the results. We prefer to use Peek()
-	// when possible for performance but can't rely on slices always being less than
-	// the size of our buffer.
-	if l > uint64(d.r.Size()) {
-		b, err := d.r.Read(int(l))
-		if err != nil {
-			d.E = err
-			return nil
-		}
-
-		return b
-	}
-
-	b, err := d.r.Peek(int(l))
-	if err != nil {
-		d.E = err
-		return nil
-	}
-
-	if len(b) != int(l) {
-		d.E = ErrInvalidSize
-		return nil
-	}
-
-	if b == nil {
-		return nil
-	}
-
-	err = d.r.Skip(len(b))
+	b, err := d.r.Read(int(l))
 	if err != nil {
 		d.E = err
 		return nil
@@ -304,6 +277,21 @@ func (d *Decbuf) Len() int { return d.r.Len() }
 // Offset returns the current offset of the underlying BufReader.
 // Calling d.ResetAt(d.Offset()) is effectively a no-op.
 func (d *Decbuf) Offset() int { return d.r.Offset() }
+
+// ReadBytes reads exactly n bytes from the underlying reader and advances the
+// position. Unlike UnsafeUvarintBytes, the returned slice is safe to use after
+// subsequent reads, but is heap-allocated.
+func (d *Decbuf) ReadBytes(n int) ([]byte, error) {
+	if d.E != nil {
+		return nil, d.E
+	}
+	b, err := d.r.Read(n)
+	if err != nil {
+		d.E = err
+		return nil, err
+	}
+	return b, nil
+}
 
 func (d *Decbuf) Close() error {
 	if d.r != nil {
