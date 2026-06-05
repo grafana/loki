@@ -52,7 +52,7 @@ type task struct {
 	wfRegion        *xcap.Region
 	runtimeTraceCtx context.Context
 
-	// Protected by [Scheduler.resourcesMut].
+	// Protected by the owning [manifestResources] mutex.
 	owner *workerConn
 }
 

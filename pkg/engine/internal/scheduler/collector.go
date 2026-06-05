@@ -90,16 +90,18 @@ func newCollector(sched *Scheduler) *collector {
 // computeLoad returns the active load on the scheduler: the sum of running and
 // pending tasks.
 func computeLoad(sched *Scheduler) float64 {
-	sched.resourcesMut.RLock()
-	defer sched.resourcesMut.RUnlock()
-
 	var load uint64
 
-	for _, t := range sched.tasks {
-		if t.status.State == workflow.TaskStateRunning || t.status.State == workflow.TaskStatePending {
-			load++
+	sched.rangeManifests(func(mr *manifestResources) {
+		mr.mu.RLock()
+		defer mr.mu.RUnlock()
+
+		for _, t := range mr.tasks {
+			if t.status.State == workflow.TaskStateRunning || t.status.State == workflow.TaskStatePending {
+				load++
+			}
 		}
-	}
+	})
 
 	return float64(load)
 }
@@ -124,20 +126,22 @@ func (mc *collector) Collect(ch chan<- prometheus.Metric) {
 }
 
 func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
-	mc.sched.resourcesMut.RLock()
-	defer mc.sched.resourcesMut.RUnlock()
-
 	var (
 		tasksByState   = make(map[workflow.TaskState]int)
 		streamsByState = make(map[workflow.StreamState]int)
 	)
 
-	for _, t := range mc.sched.tasks {
-		tasksByState[t.status.State]++
-	}
-	for _, s := range mc.sched.streams {
-		streamsByState[s.state]++
-	}
+	mc.sched.rangeManifests(func(mr *manifestResources) {
+		mr.mu.RLock()
+		defer mr.mu.RUnlock()
+
+		for _, t := range mr.tasks {
+			tasksByState[t.status.State]++
+		}
+		for _, s := range mr.streams {
+			streamsByState[s.state]++
+		}
+	})
 
 	for state, count := range tasksByState {
 		ch <- prometheus.MustNewConstMetric(mc.tasksInflight, prometheus.GaugeValue, float64(count), state.String())
