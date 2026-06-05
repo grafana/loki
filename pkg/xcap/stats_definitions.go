@@ -65,10 +65,12 @@ var (
 
 // Metastore statistics.
 var (
-	StatMetastoreIndexObjects            = NewStatisticInt64("metastore.index.objects", AggregationTypeSum)
-	StatMetastoreSectionsResolved        = NewStatisticInt64("metastore.sections.resolved", AggregationTypeSum)
-	StatMetastoreStreamsRead             = NewStatisticInt64("metastore.sections.streams.read", AggregationTypeSum)
-	StatMetastoreStreamsReadTime         = NewStatisticFloat64("metastore.sections.streams.read.duration", AggregationTypeSum)
+	StatMetastoreIndexObjects     = NewStatisticInt64("metastore.index.objects", AggregationTypeSum)
+	StatMetastoreSectionsResolved = NewStatisticInt64("metastore.sections.resolved", AggregationTypeSum)
+
+	StatMetastoreStreamsRead     = NewStatisticInt64("metastore.sections.streams.read", AggregationTypeSum)
+	StatMetastoreStreamsReadTime = NewStatisticFloat64("metastore.sections.streams.read.duration", AggregationTypeSum)
+
 	StatMetastoreSectionPointersRead     = NewStatisticInt64("metastore.sections.pointers.read", AggregationTypeSum)
 	StatMetastoreSectionPointersReadTime = NewStatisticFloat64("metastore.sections.pointers.read.duration", AggregationTypeSum)
 )
