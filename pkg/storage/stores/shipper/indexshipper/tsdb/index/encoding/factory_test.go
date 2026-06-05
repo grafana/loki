@@ -179,7 +179,142 @@ func TestDecbufFactory_NewDecbufRaw_HappyPath(t *testing.T) {
 	})
 }
 
-// TestDecbufFactory_NewDecbufInSection tests are in factory_section_test.go (added in Phase 2).
+func TestDecbufFactory_NewDecbufInSection_HappyPath(t *testing.T) {
+	testByte := byte(0x02)
+	startOffset := 10
+	endOffset := 25
+	enc := createTestEncoderWithTestByte(testContentSize, startOffset-numLenBytes, testByte)
+	enc.PutHash(crc32.New(castagnoliTable))
+
+	testDecbufFactory(t, testContentSize, enc, func(t *testing.T, factory DecbufFactory) {
+		d := factory.NewDecbufInSection(0, startOffset, endOffset)
+		t.Cleanup(func() {
+			require.NoError(t, d.Close())
+		})
+		require.NoError(t, d.Err())
+		require.Equal(t, endOffset-startOffset, d.Len())
+		require.Equal(t, testByte, d.Byte())
+	})
+}
+
+func TestDecbufFactory_NewDecbufInSection_EndOffsetBeyondFileSize(t *testing.T) {
+	enc := createTestEncoder(testContentSize)
+	enc.PutHash(crc32.New(castagnoliTable))
+	// File size = numLenBytes + testContentSize + crc32.Size
+	fileSize := numLenBytes + testContentSize + crc32.Size
+
+	testDecbufFactory(t, testContentSize, enc, func(t *testing.T, factory DecbufFactory) {
+		d := factory.NewDecbufInSection(0, 10, testContentSize+1000)
+		t.Cleanup(func() {
+			require.NoError(t, d.Close())
+		})
+		require.NoError(t, d.Err())
+		// Clamped to actual available bytes from offset 10 to end of file.
+		require.Equal(t, fileSize-10, d.Len())
+	})
+}
+
+func TestDecbufFactory_NewDecbufInSection_EndOffsetBeforeStartOffset(t *testing.T) {
+	enc := createTestEncoder(testContentSize)
+	enc.PutHash(crc32.New(castagnoliTable))
+
+	testDecbufFactory(t, testContentSize, enc, func(t *testing.T, factory DecbufFactory) {
+		d := factory.NewDecbufInSection(0, 2500, 30)
+		t.Cleanup(func() {
+			require.NoError(t, d.Close())
+		})
+		require.Error(t, d.Err())
+	})
+}
+
+func TestDecbufFactory_NewDecbufUvarintAt_HappyPathWithCRC(t *testing.T) {
+	content := []byte("hello world test content for uvarint decbuf")
+	fileBytes := buildUvarintSection(content, castagnoliTable)
+
+	factory := newUvarintSectionFactory(t, fileBytes)
+
+	d := factory.NewDecbufUvarintAt(0, castagnoliTable)
+	t.Cleanup(func() { require.NoError(t, d.Close()) })
+
+	require.NoError(t, d.Err())
+	require.Equal(t, len(content), d.Len())
+
+	got, err := d.r.Read(len(content))
+	require.NoError(t, err)
+	require.Equal(t, content, got)
+}
+
+func TestDecbufFactory_NewDecbufUvarintAt_HappyPathNoCRC(t *testing.T) {
+	content := []byte("hello world test content for uvarint decbuf")
+	factory := newUvarintSectionFactory(t, buildUvarintSection(content, castagnoliTable))
+
+	d := factory.NewDecbufUvarintAt(0, nil)
+	t.Cleanup(func() { require.NoError(t, d.Close()) })
+
+	require.NoError(t, d.Err())
+	require.Equal(t, len(content), d.Len())
+}
+
+func TestDecbufFactory_NewDecbufUvarintAt_InvalidCRC(t *testing.T) {
+	content := []byte("hello world test content for uvarint decbuf")
+	fileBytes := buildUvarintSection(content, castagnoliTable)
+	// Corrupt the last 4 bytes (CRC).
+	fileBytes[len(fileBytes)-1] ^= 0xFF
+
+	factory := newUvarintSectionFactory(t, fileBytes)
+
+	d := factory.NewDecbufUvarintAt(0, castagnoliTable)
+	require.NoError(t, d.Close())
+	require.ErrorIs(t, d.Err(), ErrInvalidChecksum)
+}
+
+func TestDecbufFactory_NewDecbufUvarintAt_Concurrent(t *testing.T) {
+	content := []byte("concurrent read test content")
+	factory := newUvarintSectionFactory(t, buildUvarintSection(content, castagnoliTable))
+
+	const (
+		runs        = 50
+		concurrency = 8
+	)
+
+	g, _ := errgroup.WithContext(t.Context())
+	for i := 0; i < concurrency; i++ {
+		g.Go(func() error {
+			for range runs {
+				d := factory.NewDecbufUvarintAt(0, castagnoliTable)
+				if err := d.Err(); err != nil {
+					_ = d.Close()
+					return err
+				}
+				if err := d.Close(); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+	require.NoError(t, g.Wait())
+}
+
+// buildUvarintSection encodes content as [uvarint(len)][content][crc32].
+func buildUvarintSection(content []byte, table *crc32.Table) []byte {
+	enc := promencoding.Encbuf{}
+	enc.PutUvarint(len(content))
+	enc.PutBytes(content)
+	checksum := crc32.Checksum(content, table)
+	var crcBuf [4]byte
+	binary.BigEndian.PutUint32(crcBuf[:], checksum)
+	enc.PutBytes(crcBuf[:])
+	return enc.Get()
+}
+
+// buildUvarintSectionEncbuf returns an Encbuf of just the content (no uvarint prefix, no CRC),
+// used by helpers that expect a plain content buffer.
+func buildUvarintSectionEncbuf(content []byte, _ *crc32.Table) promencoding.Encbuf {
+	enc := promencoding.Encbuf{}
+	enc.PutBytes(content)
+	return enc
+}
 
 func TestDecbufFactory_Stop(t *testing.T) {
 	enc := createTestEncoder(testContentSize)

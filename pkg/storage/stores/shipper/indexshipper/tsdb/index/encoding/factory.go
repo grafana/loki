@@ -41,5 +41,12 @@ type DecbufFactory interface {
 	// This method MUST NOT validate or compute the CRC of the content.
 	NewDecbufInSection(tableOffset, sectionStartOffset, sectionEndOffset int) Decbuf
 
+	// NewDecbufUvarintAt returns a new binary decoding reader for a section whose byte length is
+	// encoded as a uvarint at the given offset, followed by the contents and a CRC32 checksum.
+	// The returned Decbuf is positioned at the first content byte (after the uvarint prefix) and
+	// its Len() reflects the content length only, excluding the CRC bytes.
+	// If table is non-nil, this method MUST verify the CRC and return an errored Decbuf on mismatch.
+	NewDecbufUvarintAt(offset int, table *crc32.Table) Decbuf
+
 	Close() error
 }

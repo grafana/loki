@@ -90,8 +90,96 @@ func (df *FilePoolDecbufFactory) NewDecbufAtUnchecked(offset int) Decbuf {
 	return df.NewDecbufAtChecked(offset, nil)
 }
 
-func (df *FilePoolDecbufFactory) NewDecbufInSection(_, _, _ int) Decbuf {
-	return Decbuf{E: fmt.Errorf("NewDecbufInSection not implemented for FilePoolDecbufFactory")}
+// NewDecbufInSection creates a FileReader bounded to the absolute byte range
+// [tableOffset+sectionStartOffset, tableOffset+sectionEndOffset). No length
+// prefix is read; the caller supplies explicit bounds.
+func (df *FilePoolDecbufFactory) NewDecbufInSection(tableOffset, sectionStartOffset, sectionEndOffset int) Decbuf {
+	f, err := df.files.Get()
+	if err != nil {
+		return Decbuf{E: errors.Wrap(err, "open file for decbuf")}
+	}
+
+	closeFile := true
+	defer func() {
+		if closeFile {
+			_ = df.files.Put(f)
+		}
+	}()
+
+	base := tableOffset + sectionStartOffset
+	requestedLength := sectionEndOffset - sectionStartOffset
+
+	// Clamp to the actual number of available bytes so that Len() is always accurate
+	// and reads never attempt to go past the end of the file.
+	stat, err := f.Stat()
+	if err != nil {
+		return Decbuf{E: errors.Wrap(err, "stat file for section decbuf")}
+	}
+	available := int(stat.Size()) - base
+	if available < 0 {
+		available = 0
+	}
+	length := min(requestedLength, available)
+
+	r, err := NewFileReader(f, base, length, df.files)
+	if err != nil {
+		return Decbuf{E: errors.Wrap(err, "create file reader")}
+	}
+
+	closeFile = false
+	return Decbuf{r: r}
+}
+
+// NewDecbufUvarintAt reads a uvarint content-length at offset, verifies the CRC32 of the
+// content (if table is non-nil), and returns a Decbuf bounded to the content bytes only.
+// This mirrors the behaviour of prometheus/tsdb/encoding.NewDecbufUvarintAt.
+func (df *FilePoolDecbufFactory) NewDecbufUvarintAt(offset int, table *crc32.Table) Decbuf {
+	f, err := df.files.Get()
+	if err != nil {
+		return Decbuf{E: errors.Wrap(err, "open file for decbuf")}
+	}
+
+	closeFile := true
+	defer func() {
+		if closeFile {
+			_ = df.files.Put(f)
+		}
+	}()
+
+	// Read enough bytes to decode the uvarint length prefix (up to 10 bytes for uint64).
+	var lenBuf [binary.MaxVarintLen64]byte
+	if _, err := f.ReadAt(lenBuf[:], int64(offset)); err != nil {
+		return Decbuf{E: errors.Wrap(err, "read uvarint length prefix")}
+	}
+
+	l, n := binary.Uvarint(lenBuf[:])
+	if n <= 0 || n > binary.MaxVarintLen64 {
+		return Decbuf{E: fmt.Errorf("invalid uvarint length prefix at offset %d: n=%d", offset, n)}
+	}
+
+	if table != nil {
+		// Read content + 4-byte CRC into a temporary buffer for inline verification.
+		// This mirrors prometheus/tsdb/encoding.NewDecbufUvarintAt, which checks the CRC
+		// before returning the Decbuf.
+		contentAndCRC := make([]byte, int(l)+crc32.Size)
+		if _, err := f.ReadAt(contentAndCRC, int64(offset+n)); err != nil {
+			return Decbuf{E: errors.Wrap(err, "read content for CRC verification")}
+		}
+		actual := crc32.Checksum(contentAndCRC[:l], table)
+		expected := binary.BigEndian.Uint32(contentAndCRC[l:])
+		if actual != expected {
+			return Decbuf{E: ErrInvalidChecksum}
+		}
+	}
+
+	// Create a FileReader bounded to content only (length l, no CRC bytes).
+	r, err := NewFileReader(f, offset+n, int(l), df.files)
+	if err != nil {
+		return Decbuf{E: errors.Wrap(err, "create file reader")}
+	}
+
+	closeFile = false
+	return Decbuf{r: r}
 }
 
 func (df *FilePoolDecbufFactory) NewRawDecbuf() Decbuf {
