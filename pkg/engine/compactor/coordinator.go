@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
@@ -46,7 +47,8 @@ type coordinator struct {
 	metastoreWriter tocReplacer
 	// clock is injected so tests can pin the current time; production
 	// wiring sets it to time.Now.
-	clock func() time.Time
+	clock   func() time.Time
+	metrics *coordinatorMetrics
 }
 
 // newCoordinator constructs a coordinator wired to a real
@@ -59,6 +61,7 @@ func newCoordinator(
 	bucket objstore.Bucket,
 	runner workflow.Runner,
 	metastoreWriter *metastore.TableOfContentsWriter,
+	reg prometheus.Registerer,
 ) *coordinator {
 	return &coordinator{
 		cfg:    cfg,
@@ -69,6 +72,7 @@ func newCoordinator(
 		},
 		metastoreWriter: metastoreWriter,
 		clock:           time.Now,
+		metrics:         newCoordinatorMetrics(reg),
 	}
 }
 
