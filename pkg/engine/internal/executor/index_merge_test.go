@@ -448,7 +448,6 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant-1",
 		OutputIndexPath: outputPath,
-		TaskTTL:         time.Minute,
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{
 				{ObjectPath: srcPath, SectionIndex: 0}, // SectionIndex is a placeholder; executor scans all
@@ -497,7 +496,6 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant-1",
 		OutputIndexPath: outputPath,
-		TaskTTL:         time.Minute,
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{
 				{ObjectPath: srcPath, SectionIndex: 0}, // SectionIndex is a placeholder
@@ -960,7 +958,6 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		TaskTTL:         time.Minute,
 		Runs: []*compactionv2pb.RunRef{
 			{
 				Sections: []*compactionv2pb.SectionRef{
@@ -1057,7 +1054,6 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		TaskTTL:         time.Minute,
 		Runs: []*compactionv2pb.RunRef{
 			{
 				Sections: []*compactionv2pb.SectionRef{
@@ -1132,7 +1128,6 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		TaskTTL:         time.Minute,
 		Runs: []*compactionv2pb.RunRef{
 			{
 				Sections: []*compactionv2pb.SectionRef{
@@ -1212,7 +1207,6 @@ func TestExecuteIndexMerge_ExistenceShortCircuit(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		TaskTTL:         time.Minute,
 		Runs: []*compactionv2pb.RunRef{
 			{
 				Sections: []*compactionv2pb.SectionRef{
@@ -1273,7 +1267,6 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		TaskTTL:         time.Minute,
 		Runs: []*compactionv2pb.RunRef{
 			{
 				Sections: []*compactionv2pb.SectionRef{},
@@ -1316,7 +1309,6 @@ func TestExecuteIndexMerge_EmptyInputs(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		TaskTTL:         time.Minute,
 		Runs: []*compactionv2pb.RunRef{
 			{
 				Sections: nil, // Empty input
@@ -1435,7 +1427,6 @@ func TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		TaskTTL:         time.Minute,
 		Runs: []*compactionv2pb.RunRef{
 			{
 				Sections: []*compactionv2pb.SectionRef{
