@@ -2470,11 +2470,13 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
-		Config:     t.Cfg.DataObj.Compaction.Worker,
-		Bucket:     indexBucket,
-		Metastore:  ms,
-		Logger:     logger,
-		Registerer: prometheus.DefaultRegisterer,
+		Config:       t.Cfg.DataObj.Compaction.Worker,
+		Bucket:       indexBucket,
+		Metastore:    ms,
+		ScratchStore: t.scratchStore,
+		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
+		Logger:       logger,
+		Registerer:   prometheus.DefaultRegisterer,
 	})
 	if err != nil {
 		return nil, err

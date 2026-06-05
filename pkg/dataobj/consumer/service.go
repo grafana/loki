@@ -163,10 +163,6 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	}
 	sorter := logsobj.NewSorter(builderFactory, reg)
 	s.flusher = newFlusher(sorter, uploader, logger, reg)
-	builder, err := builderFactory.NewBuilder()
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
-	}
 	flushCommitter := newFlushCommitter(
 		s.flusher,
 		newMetastoreEvents(partitionID, int32(mCfg.PartitionRatio), metastoreEvents),
@@ -176,7 +172,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		wrapped,
 	)
 	s.processor = newProcessor(
-		builder,
+		NewTOCAlignedMultiBuilder(builderFactory, int(cfg.BuilderConfig.TargetObjectSize)),
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,

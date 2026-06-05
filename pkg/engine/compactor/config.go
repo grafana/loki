@@ -9,7 +9,10 @@ package compactor
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 )
 
 // Config is the top-level configuration for dataobj compaction.
@@ -57,6 +60,11 @@ type Config struct {
 	// (scheduler+coordinator) or worker-only deployment, selected via
 	// -target.
 	Worker WorkerConfig `yaml:"worker"`
+
+	// IndexobjBuilder controls index object construction parameters (page sizes,
+	// target object/section sizes, etc.) used by the compactor worker when
+	// merging postings + stats sections into a new index object.
+	IndexobjBuilder logsobj.BuilderBaseConfig `yaml:"indexobj_builder" category:"experimental"`
 }
 
 // SchedulerConfig holds the scheduler-side parameters that get passed
@@ -153,6 +161,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Scheduler.Endpoint, prefix+"scheduler.endpoint", defaultEndpoint,
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
+
+	_ = cfg.IndexobjBuilder.TargetPageSize.Set("2KB")
+	_ = cfg.IndexobjBuilder.TargetObjectSize.Set("4MB")
+	_ = cfg.IndexobjBuilder.TargetSectionSize.Set("2MB")
+	_ = cfg.IndexobjBuilder.BufferSize.Set("16KB")
+	cfg.IndexobjBuilder.RegisterFlagsWithPrefix(prefix+"indexobj-builder.", f)
 }
 
 // RegisterFlagsWithPrefix registers the worker config flags using prefix
@@ -176,6 +190,7 @@ func (cfg *Config) Validate() error {
 	if !cfg.Enabled {
 		return nil
 	}
+
 	if cfg.MaxRunningCompactionTasks < 0 {
 		return errInvalidMaxRunningCompactionTasks
 	}
@@ -190,6 +205,10 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxRunsPerTask <= 0 {
 		return errInvalidMaxRunsPerTask
+	}
+
+	if err := cfg.IndexobjBuilder.Validate(); err != nil {
+		return fmt.Errorf("invalid indexobj builder config: %w", err)
 	}
 	return nil
 }
