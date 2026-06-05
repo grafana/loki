@@ -65,7 +65,7 @@ func (m *Metrics) incMessageQueued() {
 }
 
 func (m *Metrics) decMessageQueued() {
-	m.messagesQueued.Inc()
+	m.messagesQueued.Dec()
 }
 
 func (m *Metrics) incMessageSent(messageType string) {
