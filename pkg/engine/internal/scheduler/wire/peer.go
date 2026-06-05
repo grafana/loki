@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -88,9 +89,11 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 		switch frame := frame.(type) {
 		case MessageFrame:
 			// Queue the message for processing.
+			p.Metrics.observeIncomingQueueDepth(float64(len(p.incoming)))
+			start := time.Now()
 			select {
 			case p.incoming <- frame:
-				p.Metrics.incMessageQueued()
+				p.Metrics.observeEnqueueIncoming(time.Since(start))
 			case <-ctx.Done():
 				return nil
 			}
@@ -142,7 +145,6 @@ func (p *Peer) handleIncoming(ctx context.Context) error {
 		case <-p.done:
 			return nil // Closed connection.
 		case frame := <-p.incoming:
-			p.Metrics.decMessageQueued()
 			p.processMessage(ctx, frame.ID, frame.Message)
 		}
 	}
@@ -237,10 +239,7 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 	p.sentRequests.Store(reqID, req)
 	defer p.sentRequests.Delete(reqID)
 
-	timer := p.Metrics.newMessageRTTTimer()
-	defer timer.ObserveDuration()
-	p.Metrics.incMessageSent()
-
+	start := time.Now()
 	if err := p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message}); err != nil {
 		return err
 	}
@@ -252,6 +251,7 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 	case <-p.done:
 		return ErrConnClosed
 	case err := <-req.result:
+		p.Metrics.observeMessageRTT(time.Since(start))
 		return err
 	}
 }
@@ -266,18 +266,22 @@ func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 	p.lazyInit()
 
 	reqID := p.requestID.Inc()
-	p.Metrics.incMessageSent()
 	return p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message})
 }
 
 // enqueueFrame enqueues a frame to be sent to the remote peer.
 func (p *Peer) enqueueFrame(ctx context.Context, frame Frame) error {
+	p.Metrics.observeOutgoingQueueDepth(float64(len(p.outgoing)))
+	start := time.Now()
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-p.done:
 		return ErrConnClosed
 	case p.outgoing <- frame:
+		p.Metrics.observeEnqueueOutgoing(time.Since(start))
+		p.Metrics.incFrameSent(frame.FrameKind().String())
 		return nil
 	}
 }
