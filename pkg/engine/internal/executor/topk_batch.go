@@ -7,8 +7,11 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/topk"
 )
 
@@ -53,6 +56,8 @@ type topkBatch struct {
 	heap        *topk.Heap[*topkReference]
 	usedCount   map[arrow.RecordBatch]int
 	usedSchemas map[*arrow.Schema]int
+
+	labelsBuilder labels.ScratchBuilder
 }
 
 // topkReference is a reference to a row in a record that is part of the
@@ -209,14 +214,33 @@ func (b *topkBatch) less(left, right *topkReference) bool {
 		}
 	}
 
-	// Fall back to sorting by ID to have consistent ordering, so that no two
+	// Fall back to sorting by label hash to have consistent ordering with the classic engine, so that no two
 	// rows are ever equal.
 	switch {
 	case b.Ascending:
-		return left.ID > right.ID
+		return b.labelHash(left.Record, left.Row) < b.labelHash(right.Record, right.Row)
 	default:
-		return left.ID < right.ID
+		return b.labelHash(left.Record, left.Row) > b.labelHash(right.Record, right.Row)
 	}
+}
+
+func (b *topkBatch) labelHash(rec arrow.RecordBatch, row int) uint64 {
+	b.labelsBuilder.Reset()
+	for fieldIndex := range int(rec.NumCols()) {
+		field := rec.Schema().Field(fieldIndex)
+		ident, err := semconv.ParseFQN(field.Name)
+		if err != nil {
+			continue
+		}
+		if ident.ColumnType() == types.ColumnTypeLabel {
+			if rec.Column(fieldIndex).IsNull(row) || !rec.Column(fieldIndex).IsValid(row) {
+				continue
+			}
+			b.labelsBuilder.Add(ident.ShortName(), rec.Column(fieldIndex).ValueStr(row))
+		}
+	}
+	b.labelsBuilder.Sort()
+	return b.labelsBuilder.Labels().Hash()
 }
 
 // findRecordArray finds the array for the given [b.Fields] field index from
@@ -301,6 +325,7 @@ func (b *topkBatch) Reset() {
 	b.nextID = 0
 	b.mapper.Reset()
 	b.heap.PopAll()
+	b.labelsBuilder.Reset()
 
 	clear(b.usedCount)
 	clear(b.usedSchemas)
