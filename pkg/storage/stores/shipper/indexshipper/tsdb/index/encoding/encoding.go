@@ -15,6 +15,29 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Varint64 reads a signed 64-bit integer encoded as ZigZag varint (same encoding
+// used by encoding/binary.PutVarint and Prometheus's tsdb/encoding.Encbuf.PutVarint64).
+func (d *Decbuf) Varint64() int64 {
+	if d.E != nil {
+		return 0
+	}
+	b, err := d.r.Peek(binary.MaxVarintLen64)
+	if err != nil {
+		d.E = err
+		return 0
+	}
+	x, n := binary.Varint(b)
+	if n < 1 {
+		d.E = ErrInvalidSize
+		return 0
+	}
+	if err = d.r.Skip(n); err != nil {
+		d.E = err
+		return 0
+	}
+	return x
+}
+
 var (
 	ErrInvalidSize     = errors.New("invalid size")
 	ErrInvalidChecksum = errors.New("invalid checksum")

@@ -41,6 +41,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 	"github.com/grafana/loki/v3/pkg/util/labelpool"
+
+	idxenc "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/encoding"
 )
 
 const (
@@ -662,7 +664,7 @@ func (w *Creator) finishSymbols() error {
 	// pre-checksummed bytes in memory so we can use this later,
 	// loading the symbol table efficiently for the rest of the index writing.
 	copy(symbolBytes[hashPos:], w.buf1.Get())
-	w.symbols, err = NewSymbols(RealByteSlice(symbolBytes), w.Version, int(w.toc.Symbols))
+	w.symbols, err = NewSymbols(idxenc.NewByteSliceDecbufFactory(symbolBytes), w.Version, int(w.toc.Symbols))
 	if err != nil {
 		return errors.Wrap(err, "read symbols")
 	}
@@ -1296,7 +1298,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		return nil, errors.Wrap(err, "read TOC")
 	}
 
-	r.symbols, err = NewSymbols(r.b, r.version, int(r.toc.Symbols))
+	r.symbols, err = NewSymbols(idxenc.NewByteSliceDecbufFactory(r.b.Range(0, r.b.Len())), r.version, int(r.toc.Symbols))
 	if err != nil {
 		return nil, errors.Wrap(err, "read symbols")
 	}
@@ -1411,7 +1413,7 @@ func (r *Reader) PostingsRanges() (map[labels.Label]Range, error) {
 }
 
 type Symbols struct {
-	bs      ByteSlice
+	factory idxenc.DecbufFactory
 	version int
 	off     int
 
@@ -1422,24 +1424,25 @@ type Symbols struct {
 const symbolFactor = 32
 
 // NewSymbols returns a Symbols object for symbol lookups.
-func NewSymbols(bs ByteSlice, version, off int) (*Symbols, error) {
+func NewSymbols(factory idxenc.DecbufFactory, version, off int) (*Symbols, error) {
 	s := &Symbols{
-		bs:      bs,
+		factory: factory,
 		version: version,
 		off:     off,
 	}
-	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, off, castagnoliTable))
-	var (
-		origLen = d.Len()
-		cnt     = d.Be32int()
-		basePos = off + 4
-	)
+	d := factory.NewDecbufAtChecked(off, castagnoliTable)
+	defer d.Close()
+
+	cnt := d.Be32int()
 	s.offsets = make([]int, 0, 1+cnt/symbolFactor)
 	for d.Err() == nil && s.seen < cnt {
 		if s.seen%symbolFactor == 0 {
-			s.offsets = append(s.offsets, basePos+origLen-d.Len())
+			// off + d.Offset() is the absolute file position of this symbol.
+			// d.Offset() is relative to the start of the file section bounded by
+			// the FileReader (which starts at off, not off+numLenBytes).
+			s.offsets = append(s.offsets, off+d.Offset())
 		}
-		d.UvarintBytes() // The symbol.
+		d.SkipUvarintBytes()
 		s.seen++
 	}
 	if d.Err() != nil {
@@ -1449,21 +1452,20 @@ func NewSymbols(bs ByteSlice, version, off int) (*Symbols, error) {
 }
 
 func (s Symbols) Lookup(o uint32) (string, error) {
-	d := encoding.DecWrap(tsdb_enc.Decbuf{
-		B: s.bs.Range(0, s.bs.Len()),
-	})
+	d := s.factory.NewRawDecbuf()
+	defer d.Close()
 
 	if s.version >= FormatV2 {
 		if int(o) >= s.seen {
 			return "", errors.Errorf("unknown symbol offset %d", o)
 		}
-		d.Skip(s.offsets[int(o/symbolFactor)])
+		d.ResetAt(s.offsets[int(o/symbolFactor)])
 		// Walk until we find the one we want.
 		for i := o - (o / symbolFactor * symbolFactor); i > 0; i-- {
-			d.UvarintBytes()
+			d.SkipUvarintBytes()
 		}
 	} else {
-		d.Skip(int(o))
+		d.ResetAt(int(o))
 	}
 	sym := d.UvarintStr()
 	if d.Err() != nil {
@@ -1479,25 +1481,23 @@ func (s Symbols) ReverseLookup(sym string) (uint32, error) {
 	i := sort.Search(len(s.offsets), func(i int) bool {
 		// Any decoding errors here will be lost, however
 		// we already read through all of this at startup.
-		d := encoding.DecWrap(tsdb_enc.Decbuf{
-			B: s.bs.Range(0, s.bs.Len()),
-		})
-		d.Skip(s.offsets[i])
-		return yoloString(d.UvarintBytes()) > sym
+		d := s.factory.NewRawDecbuf()
+		defer d.Close()
+		d.ResetAt(s.offsets[i])
+		return yoloString(d.UnsafeUvarintBytes()) > sym
 	})
-	d := encoding.DecWrap(tsdb_enc.Decbuf{
-		B: s.bs.Range(0, s.bs.Len()),
-	})
+	d := s.factory.NewRawDecbuf()
+	defer d.Close()
 	if i > 0 {
 		i--
 	}
-	d.Skip(s.offsets[i])
+	d.ResetAt(s.offsets[i])
 	res := i * symbolFactor
-	var lastLen int
+	var lastOffset int
 	var lastSymbol string
 	for d.Err() == nil && res <= s.seen {
-		lastLen = d.Len()
-		lastSymbol = yoloString(d.UvarintBytes())
+		lastOffset = d.Offset()
+		lastSymbol = yoloString(d.UnsafeUvarintBytes())
 		if lastSymbol >= sym {
 			break
 		}
@@ -1512,7 +1512,7 @@ func (s Symbols) ReverseLookup(sym string) (uint32, error) {
 	if s.version >= FormatV2 {
 		return uint32(res), nil
 	}
-	return uint32(s.bs.Len() - lastLen), nil
+	return uint32(lastOffset), nil
 }
 
 func (s Symbols) Size() int {
@@ -1520,7 +1520,7 @@ func (s Symbols) Size() int {
 }
 
 func (s Symbols) Iter() StringIter {
-	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(s.bs, s.off, castagnoliTable))
+	d := s.factory.NewDecbufAtChecked(s.off, castagnoliTable)
 	cnt := d.Be32int()
 	return &symbolsIter{
 		d:   d,
@@ -1530,7 +1530,7 @@ func (s Symbols) Iter() StringIter {
 
 // symbolsIter implements StringIter.
 type symbolsIter struct {
-	d   encoding.Decbuf
+	d   idxenc.Decbuf
 	cnt int
 	cur string
 	err error
@@ -1540,7 +1540,7 @@ func (s *symbolsIter) Next() bool {
 	if s.cnt == 0 || s.err != nil {
 		return false
 	}
-	s.cur = yoloString(s.d.UvarintBytes())
+	s.cur = yoloString(s.d.UnsafeUvarintBytes())
 	s.cnt--
 	if s.d.Err() != nil {
 		s.err = s.d.Err()

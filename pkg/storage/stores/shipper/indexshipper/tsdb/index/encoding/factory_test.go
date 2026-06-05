@@ -231,28 +231,30 @@ func TestDecbufFactory_NewDecbufUvarintAt_HappyPathWithCRC(t *testing.T) {
 	content := []byte("hello world test content for uvarint decbuf")
 	fileBytes := buildUvarintSection(content, castagnoliTable)
 
-	factory := newUvarintSectionFactory(t, fileBytes)
+	testUvarintFactory(t, fileBytes, func(t *testing.T, factory DecbufFactory) {
+		d := factory.NewDecbufUvarintAt(0, castagnoliTable)
+		t.Cleanup(func() { require.NoError(t, d.Close()) })
 
-	d := factory.NewDecbufUvarintAt(0, castagnoliTable)
-	t.Cleanup(func() { require.NoError(t, d.Close()) })
+		require.NoError(t, d.Err())
+		require.Equal(t, len(content), d.Len())
 
-	require.NoError(t, d.Err())
-	require.Equal(t, len(content), d.Len())
-
-	got, err := d.r.Read(len(content))
-	require.NoError(t, err)
-	require.Equal(t, content, got)
+		got, err := d.r.Read(len(content))
+		require.NoError(t, err)
+		require.Equal(t, content, got)
+	})
 }
 
 func TestDecbufFactory_NewDecbufUvarintAt_HappyPathNoCRC(t *testing.T) {
 	content := []byte("hello world test content for uvarint decbuf")
-	factory := newUvarintSectionFactory(t, buildUvarintSection(content, castagnoliTable))
+	fileBytes := buildUvarintSection(content, castagnoliTable)
 
-	d := factory.NewDecbufUvarintAt(0, nil)
-	t.Cleanup(func() { require.NoError(t, d.Close()) })
+	testUvarintFactory(t, fileBytes, func(t *testing.T, factory DecbufFactory) {
+		d := factory.NewDecbufUvarintAt(0, nil)
+		t.Cleanup(func() { require.NoError(t, d.Close()) })
 
-	require.NoError(t, d.Err())
-	require.Equal(t, len(content), d.Len())
+		require.NoError(t, d.Err())
+		require.Equal(t, len(content), d.Len())
+	})
 }
 
 func TestDecbufFactory_NewDecbufUvarintAt_InvalidCRC(t *testing.T) {
@@ -261,39 +263,51 @@ func TestDecbufFactory_NewDecbufUvarintAt_InvalidCRC(t *testing.T) {
 	// Corrupt the last 4 bytes (CRC).
 	fileBytes[len(fileBytes)-1] ^= 0xFF
 
-	factory := newUvarintSectionFactory(t, fileBytes)
-
-	d := factory.NewDecbufUvarintAt(0, castagnoliTable)
-	require.NoError(t, d.Close())
-	require.ErrorIs(t, d.Err(), ErrInvalidChecksum)
+	testUvarintFactory(t, fileBytes, func(t *testing.T, factory DecbufFactory) {
+		d := factory.NewDecbufUvarintAt(0, castagnoliTable)
+		require.NoError(t, d.Close())
+		require.ErrorIs(t, d.Err(), ErrInvalidChecksum)
+	})
 }
 
 func TestDecbufFactory_NewDecbufUvarintAt_Concurrent(t *testing.T) {
 	content := []byte("concurrent read test content")
-	factory := newUvarintSectionFactory(t, buildUvarintSection(content, castagnoliTable))
+	fileBytes := buildUvarintSection(content, castagnoliTable)
 
-	const (
-		runs        = 50
-		concurrency = 8
-	)
+	testUvarintFactory(t, fileBytes, func(t *testing.T, factory DecbufFactory) {
+		const (
+			runs        = 50
+			concurrency = 8
+		)
 
-	g, _ := errgroup.WithContext(t.Context())
-	for i := 0; i < concurrency; i++ {
-		g.Go(func() error {
-			for range runs {
-				d := factory.NewDecbufUvarintAt(0, castagnoliTable)
-				if err := d.Err(); err != nil {
-					_ = d.Close()
-					return err
+		g, _ := errgroup.WithContext(t.Context())
+		for i := 0; i < concurrency; i++ {
+			g.Go(func() error {
+				for range runs {
+					d := factory.NewDecbufUvarintAt(0, castagnoliTable)
+					if err := d.Err(); err != nil {
+						_ = d.Close()
+						return err
+					}
+					if err := d.Close(); err != nil {
+						return err
+					}
 				}
-				if err := d.Close(); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
-	}
-	require.NoError(t, g.Wait())
+				return nil
+			})
+		}
+		require.NoError(t, g.Wait())
+	})
+}
+
+// testUvarintFactory runs a test against both disk-backed and byte-slice-backed uvarint factories.
+func testUvarintFactory(t *testing.T, fileBytes []byte, test func(t *testing.T, factory DecbufFactory)) {
+	t.Run("DecbufFactory=Disk", func(t *testing.T) {
+		test(t, newUvarintSectionFactory(t, fileBytes))
+	})
+	t.Run("DecbufFactory=ByteSlice", func(t *testing.T) {
+		test(t, newUvarintSectionByteSliceFactory(fileBytes))
+	})
 }
 
 // buildUvarintSection encodes content as [uvarint(len)][content][crc32].
@@ -320,7 +334,8 @@ func TestDecbufFactory_Stop(t *testing.T) {
 	enc := createTestEncoder(testContentSize)
 	enc.PutHash(crc32.New(castagnoliTable))
 
-	testDecbufFactory(t, testContentSize, enc, func(t *testing.T, factory DecbufFactory) {
+	// Only disk factories have pool-stop semantics; ByteSliceDecbufFactory.Close is a no-op.
+	testDiskDecbufFactory(t, testContentSize, enc, func(t *testing.T, factory DecbufFactory) {
 		require.NoError(t, factory.Close())
 
 		d := factory.NewRawDecbuf()
@@ -332,7 +347,20 @@ func TestDecbufFactory_Stop(t *testing.T) {
 	})
 }
 
-// testDecbufFactory runs test against pooled and non-pooled disk factory variants.
+// testDiskDecbufFactory runs tests only against disk factory variants (pool-stop behaviour not applicable to ByteSlice).
+func testDiskDecbufFactory(t *testing.T, contentLen int, enc promencoding.Encbuf, test func(t *testing.T, factory DecbufFactory)) {
+	t.Run("DecbufFactory=Disk-Pooled", func(t *testing.T) {
+		factory := createDiskDecbufFactory(t, 1, contentLen, enc)
+		test(t, factory)
+	})
+
+	t.Run("DecbufFactory=Disk-NoPool", func(t *testing.T) {
+		factory := createDiskDecbufFactory(t, 0, contentLen, enc)
+		test(t, factory)
+	})
+}
+
+// testDecbufFactory runs test against pooled disk, non-pooled disk, and byte-slice factory variants.
 func testDecbufFactory(t *testing.T, contentLen int, enc promencoding.Encbuf, test func(t *testing.T, factory DecbufFactory)) {
 	t.Run("DecbufFactory=Disk-Pooled", func(t *testing.T) {
 		factory := createDiskDecbufFactory(t, 1, contentLen, enc)
@@ -342,6 +370,48 @@ func testDecbufFactory(t *testing.T, contentLen int, enc promencoding.Encbuf, te
 	t.Run("DecbufFactory=Disk-NoPool", func(t *testing.T) {
 		factory := createDiskDecbufFactory(t, 0, contentLen, enc)
 		test(t, factory)
+	})
+
+	t.Run("DecbufFactory=ByteSlice", func(t *testing.T) {
+		factory := createByteSliceDecbufFactory(contentLen, enc)
+		test(t, factory)
+	})
+}
+
+// createByteSliceDecbufFactory builds the same on-disk layout as createDiskDecbufFactory
+// but returns a ByteSliceDecbufFactory over an in-memory copy of the bytes.
+func createByteSliceDecbufFactory(contentLen int, enc promencoding.Encbuf) *ByteSliceDecbufFactory {
+	lenBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBytes, uint32(contentLen))
+	fileBytes := append(lenBytes, enc.Get()...)
+	return NewByteSliceDecbufFactory(fileBytes)
+}
+
+// newUvarintSectionByteSliceFactory builds the same bytes as newUvarintSectionFactory
+// but returns a ByteSliceDecbufFactory instead of writing to disk.
+func newUvarintSectionByteSliceFactory(fileBytes []byte) *ByteSliceDecbufFactory {
+	return NewByteSliceDecbufFactory(fileBytes)
+}
+
+func TestDecbuf_Varint64(t *testing.T) {
+	cases := []int64{0, 1, -1, 127, -128, 1<<32 - 1, -(1 << 32), 1<<62 - 1, -(1 << 62)}
+
+	enc := promencoding.Encbuf{}
+	for _, v := range cases {
+		enc.PutVarint64(v)
+	}
+	enc.PutHash(crc32.New(castagnoliTable))
+
+	testDecbufFactory(t, enc.Len()-crc32.Size, enc, func(t *testing.T, factory DecbufFactory) {
+		d := factory.NewDecbufAtUnchecked(0)
+		t.Cleanup(func() { require.NoError(t, d.Close()) })
+		require.NoError(t, d.Err())
+
+		for _, want := range cases {
+			got := d.Varint64()
+			require.NoError(t, d.Err())
+			require.Equal(t, want, got)
+		}
 	})
 }
 
@@ -366,6 +436,20 @@ func createTestEncoder(numBytes int) promencoding.Encbuf {
 	}
 
 	return enc
+}
+
+// newUvarintSectionFactory writes fileBytes to a temp file and returns a FilePoolDecbufFactory over it.
+func newUvarintSectionFactory(t testing.TB, fileBytes []byte) *FilePoolDecbufFactory {
+	dir := t.TempDir()
+	filePath := path.Join(dir, fmt.Sprintf("test-file-%p", t))
+	require.NoError(t, os.WriteFile(filePath, fileBytes, 0700))
+
+	reg := prometheus.NewRegistry()
+	factory := NewFilePoolDecbufFactory(filePath, 1, filepool.NewFilePoolMetrics(reg))
+	t.Cleanup(func() {
+		_ = factory.Close()
+	})
+	return factory
 }
 
 // createDiskDecbufFactory writes enc to a temp file prefixed with a 4-byte big-endian

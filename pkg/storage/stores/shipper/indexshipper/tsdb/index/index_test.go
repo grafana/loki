@@ -37,6 +37,8 @@ import (
 	"github.com/prometheus/prometheus/util/testutil"
 
 	"github.com/grafana/loki/v3/pkg/util/encoding"
+
+	idxenc "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/encoding"
 )
 
 func TestMain(m *testing.M) {
@@ -521,7 +523,7 @@ func TestSymbols(t *testing.T) {
 	checksum := crc32.Checksum(buf.Get()[symbolsStart+4:], castagnoliTable)
 	buf.PutBE32(checksum) // Check sum at the end.
 
-	s, err := NewSymbols(RealByteSlice(buf.Get()), FormatV2, symbolsStart)
+	s, err := NewSymbols(idxenc.NewByteSliceDecbufFactory(buf.Get()), FormatV2, symbolsStart)
 	require.NoError(t, err)
 
 	// We store only 4 offsets to symbols.
