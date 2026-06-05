@@ -51,7 +51,6 @@ type topkBatch struct {
 	MaxUnused int
 
 	ready       bool // True if all fields below are initialized.
-	nextID      int
 	mapper      *arrowagg.Mapper
 	heap        *topk.Heap[*topkReference]
 	usedCount   map[arrow.RecordBatch]int
@@ -63,12 +62,9 @@ type topkBatch struct {
 // topkReference is a reference to a row in a record that is part of the
 // current set of top K rows.
 type topkReference struct {
-	// ID is a per-row unique ID across all records, used for comparing rows that
-	// are otherwise equal in the sort order.
-	ID int
-
-	Record arrow.RecordBatch // Record contributing to the top K.
-	Row    int
+	Record    arrow.RecordBatch // Record contributing to the top K.
+	Row       int
+	LabelHash uint64
 }
 
 // Put adds rows from rec into b. If rec contains at least one row that belongs
@@ -143,11 +139,9 @@ func (b *topkBatch) put(rec arrow.RecordBatch) {
 	// rows.
 	for i := range int(rec.NumRows()) {
 		ref := &topkReference{
-			ID:     b.nextID,
 			Record: rec,
 			Row:    i,
 		}
-		b.nextID++
 
 		res, prev := b.heap.Push(ref)
 		switch res {
@@ -215,12 +209,19 @@ func (b *topkBatch) less(left, right *topkReference) bool {
 	}
 
 	// Fall back to sorting by label hash to have consistent ordering with the classic engine, so that no two
-	// rows are ever equal.
+	// rows are ever equal. Hashes are computed lazily as they aren't needed for every row and stored to avoid recomputing.
+	if left.LabelHash == 0 {
+		left.LabelHash = b.labelHash(left.Record, left.Row)
+	}
+	if right.LabelHash == 0 {
+		right.LabelHash = b.labelHash(right.Record, right.Row)
+	}
+
 	switch {
 	case b.Ascending:
-		return b.labelHash(left.Record, left.Row) < b.labelHash(right.Record, right.Row)
+		return left.LabelHash < right.LabelHash
 	default:
-		return b.labelHash(left.Record, left.Row) > b.labelHash(right.Record, right.Row)
+		return left.LabelHash > right.LabelHash
 	}
 }
 
@@ -322,7 +323,6 @@ func (b *topkBatch) Reset() {
 		return
 	}
 
-	b.nextID = 0
 	b.mapper.Reset()
 	b.heap.PopAll()
 	b.labelsBuilder.Reset()
