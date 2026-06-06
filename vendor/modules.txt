@@ -1405,8 +1405,8 @@ github.com/prometheus/client_golang/exp/internal/github.com/efficientgo/core/bac
 # github.com/prometheus/client_model v0.6.2
 ## explicit; go 1.22.0
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.67.5
-## explicit; go 1.24.0
+# github.com/prometheus/common v0.68.1
+## explicit; go 1.25.0
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
 github.com/prometheus/common/helpers/templates
