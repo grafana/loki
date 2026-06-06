@@ -5,7 +5,9 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strings"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -180,6 +182,10 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 
 	initialKeyCount := len(requestedKeys)
 
+	// Source columns of collision-renamed "_extracted" references that must be
+	// projected from the scan (in addition to parsed) so the rename can happen.
+	var collisionSources []ColumnExpression
+
 	for _, p := range ambiguousProjections {
 		colExpr, ok := p.(*ColumnExpr)
 		if !ok {
@@ -187,8 +193,23 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 		}
 
 		// Only collect ambiguous columns to push to parse nodes
-		if !requestedKeys[colExpr.Ref.Column] {
-			requestedKeys[colExpr.Ref.Column] = true
+		requestedKeys[colExpr.Ref.Column] = true
+
+		// A parsed field colliding with a higher-priority column (a stream label or
+		// structured metadata) is referenced downstream with the ExtractedSuffix
+		// appended ("level_extracted"), but the colliding column and the parser's source
+		// key are the de-suffixed name ("level").
+		// ColumnCompat re-applies the suffix to the parsed value at runtime.
+		// To reproduce that we must
+		// (1) request the source key from the parser, else it extracts a key that doesn't exist
+		// (2) project the source column so the colliding label/metadata is actually loaded from the
+		// scan, else there is nothing to collide with and the rename never happens.
+		// Either gap makes a group-by/filter on the "_extracted" name drop to null. Mirrors v1,
+		// where parsing happens against the full label set (see JSONParser.buildJSONPathFromPrefixBuffer).
+		// Both names are kept in case a real "<x>_extracted" field exists.
+		if src, found := strings.CutSuffix(colExpr.Ref.Column, semconv.ExtractedSuffix); found && src != "" {
+			requestedKeys[src] = true
+			collisionSources = append(collisionSources, &ColumnExpr{Ref: types.ColumnRef{Column: src, Type: types.ColumnTypeAmbiguous}})
 		}
 	}
 
@@ -202,6 +223,7 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 
 	expr.Expressions = exprs.Pack(expr.Expressions)
 	projections = append(projections, exprs.sourceColumnExpr)
+	projections = append(projections, collisionSources...)
 	return changed, projections
 }
 

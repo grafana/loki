@@ -6,6 +6,7 @@ package loki.physical;
 import "gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
+import "pkg/dataobj/compaction/v2/proto/compactionv2.proto";
 import "pkg/engine/internal/proto/expressionpb/expressionpb.proto";
 import "pkg/engine/internal/proto/ulid/ulid.proto";
 
@@ -52,6 +53,7 @@ message Node {
     PointersScan pointers_scan = 14;
     Batching batching = 15;
     Cache cache = 16;
+    IndexMerge index_merge = 17;
   }
 }
 
@@ -289,6 +291,18 @@ message Join {}
 // It wraps the root of the plan and is added after optimization.
 message Batching {
   int64 batch_size = 1;
+}
+
+// IndexMerge represents one K-way sort-merge task over INDEX sections
+// for a single tenant within one ToC window.
+message IndexMerge {
+  string tenant = 1;
+  // Start of the metastore ToC window this task compacts, in Unix nanoseconds.
+  // Pinned at plan time so the executor and pointer swap target the
+  // same window regardless of clock drift between planning and execution.
+  int64 toc_window_start_unix_nanos = 2;
+  repeated proto.RunRef runs = 3;
+  string output_index_path = 4;
 }
 
 // Cache controls Task-level caching.

@@ -2,7 +2,6 @@ package postings
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -53,9 +52,8 @@ func (b *Builder) PrepareBloomColumn(objectPath string, sectionIndex int64, colu
 }
 
 // ObserveLabelPosting records a label posting observation. Multiple
-// observations for the same
-// (ObjectPath, SectionIndex, ColumnName, LabelValue) key are aggregated into a
-// single posting.
+// observations for the same (ObjectPath, SectionIndex, ColumnName, LabelValue)
+// key are aggregated into a single posting.
 func (b *Builder) ObserveLabelPosting(obs LabelObservation) {
 	b.labels.Observe(obs)
 }
@@ -90,7 +88,10 @@ func (b *Builder) Reset() {
 // After a successful flush, the builder is reset.
 func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	labelEntries := b.labels.Entries()
-	bloomEntries := b.blooms.Entries()
+	bloomEntries, err := b.blooms.Entries()
+	if err != nil {
+		return 0, fmt.Errorf("converting bloom entries: %w", err)
+	}
 
 	if len(labelEntries) == 0 && len(bloomEntries) == 0 {
 		return 0, nil
@@ -101,32 +102,8 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 		defer timer.ObserveDuration()
 	}
 
-	// Sort label entries by [objectPath, sectionIndex, columnName, labelValue].
-	sort.SliceStable(labelEntries, func(i, j int) bool {
-		a, bEntry := labelEntries[i], labelEntries[j]
-		if a.ObjectPath != bEntry.ObjectPath {
-			return a.ObjectPath < bEntry.ObjectPath
-		}
-		if a.SectionIndex != bEntry.SectionIndex {
-			return a.SectionIndex < bEntry.SectionIndex
-		}
-		if a.ColumnName != bEntry.ColumnName {
-			return a.ColumnName < bEntry.ColumnName
-		}
-		return a.LabelValue < bEntry.LabelValue
-	})
-
-	// Sort bloom entries by [objectPath, sectionIndex, columnName].
-	sort.SliceStable(bloomEntries, func(i, j int) bool {
-		a, bEntry := bloomEntries[i], bloomEntries[j]
-		if a.ObjectPath != bEntry.ObjectPath {
-			return a.ObjectPath < bEntry.ObjectPath
-		}
-		if a.SectionIndex != bEntry.SectionIndex {
-			return a.SectionIndex < bEntry.SectionIndex
-		}
-		return a.ColumnName < bEntry.ColumnName
-	})
+	sortLabelEntries(labelEntries)
+	sortBloomEntries(bloomEntries)
 
 	var enc columnar.Encoder
 	defer enc.Reset()

@@ -629,6 +629,7 @@ func (s *Scheduler) requeueTask(t *task, pos fair.Position) {
 	// Undo the scope cost that was applied when the task was popped.
 	_ = s.taskQueue.AdjustScope(t.scope, -1)
 
+	t.MarkRequeued()
 	s.metrics.requeueTotal.Inc()
 
 	if len(s.readyWorkers) > 0 {

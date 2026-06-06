@@ -23,10 +23,12 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -88,6 +90,14 @@ type Config struct {
 
 	// TaskCaches is an optional registry of backing caches for task results.
 	TaskCaches executor.TaskCacheRegistry
+
+	// ScratchStore is an optional scratch store for index merge operations.
+	// Required for compaction tasks; may be nil for query-only workers.
+	ScratchStore scratch.Store
+
+	// IndexobjCfg is the builder config for index objects.
+	// Required for compaction tasks; may be nil for query-only workers.
+	IndexobjCfg logsobj.BuilderBaseConfig
 }
 
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
@@ -188,6 +198,8 @@ func (w *Worker) run(ctx context.Context) error {
 			Metastore:      w.config.Metastore,
 			StreamFilterer: w.config.StreamFilterer,
 			TaskCaches:     w.taskCaches,
+			ScratchStore:   w.config.ScratchStore,
+			IndexobjCfg:    w.config.IndexobjCfg,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,
@@ -368,6 +380,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 
 		if err := w.jobManager.Send(ctx, job); err != nil {
 			job.Close() // Clean up resources associated with the job.
+			w.metrics.rejectedAssignmentsTotal.Inc()
 			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
 		}
 

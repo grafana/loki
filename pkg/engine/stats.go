@@ -19,4 +19,11 @@ var (
 
 	statReadBatchDuration    = xcap.NewStatisticInt64("execute.read_batch.duration", xcap.AggregationTypeSum)
 	statProcessBatchDuration = xcap.NewStatisticInt64("execute.process_batch.duration", xcap.AggregationTypeSum)
+
+	// Result-collection stats, recorded once per query in (*Engine).execute and
+	// surfaced on the execution-summary log line.
+
+	statResultRows       = xcap.NewStatisticInt64("execute.result.rows", xcap.AggregationTypeSum)
+	statTimeToFirstBatch = xcap.NewStatisticInt64("execute.result.time_to_first_batch", xcap.AggregationTypeSum)
+	statResultSizeBytes  = xcap.NewStatisticInt64("execute.result.size_bytes", xcap.AggregationTypeSum)
 )
