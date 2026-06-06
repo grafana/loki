@@ -56,6 +56,7 @@ When set to `filter-only` or `filter-and-delete`, and `retention_enabled` is set
 
 - The deprecated metric `loki_log_messages_total` is removed in favor of `loki_internal_log_messages_total`.
 - The metric `loki_log_flushes` is renamed to `loki_internal_log_flushes` to be consistent with `loki_internal_log_messages_total`.
+- The second label of the `loki_mutated_samples_total` and `loki_mutated_bytes_total` metrics is renamed from `truncated` to `tenant`. The label always held the tenant ID (not a boolean), so the new name reflects its actual value and is consistent with the `tenant` label on the `loki_discarded_samples_total` / `loki_discarded_bytes_total` metrics. If you have dashboards or alerts that aggregate these metrics by the `truncated` label, update them to use `tenant`.
 
 ### Breaking change: Drop support for non-TSDB stores in jsonnet lib 
 

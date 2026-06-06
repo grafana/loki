@@ -786,10 +786,19 @@ func Test_TruncateLogLines(t *testing.T) {
 		limits, ingester := setup()
 		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
+		// reset metrics in case they were set from a previous test.
+		validation.MutatedSamples.Reset()
+		validation.MutatedBytes.Reset()
+
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
 		require.NoError(t, err)
 		topVal := ingester.Peek()
 		require.Len(t, topVal.Streams[0].Entries[0].Line, 5)
+
+		// Truncation must be observable via the mutated_* metrics: 1 line of 10
+		// bytes truncated to 5 bytes => 1 sample, 5 bytes mutated.
+		assert.Equal(t, float64(1), testutil.ToFloat64(validation.MutatedSamples.WithLabelValues(validation.LineTooLong, "test")))
+		assert.Equal(t, float64(5), testutil.ToFloat64(validation.MutatedBytes.WithLabelValues(validation.LineTooLong, "test")))
 	})
 
 	t.Run("it truncates lines and adds suffix if configured", func(t *testing.T) {

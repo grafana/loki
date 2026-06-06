@@ -2390,7 +2390,25 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "dataobj-compaction-planner")
 
-	c, err := enginecompactor.New(t.Cfg.DataObj.Compaction, logger)
+	store, err := t.getDataObjBucket("dataobj-compaction-planner")
+	if err != nil {
+		return nil, err
+	}
+	// Wrap with the same IndexStoragePrefix the dataobj-index-builder uses so
+	// compactor outputs and ToC reads land alongside the existing multi-tenant
+	// indexes namespace.
+	indexBucket := store
+	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
+		indexBucket = objstore.NewPrefixedBucket(store, prefix)
+	}
+	tocWriter := metastore.NewTableOfContentsWriter(indexBucket, logger)
+
+	c, err := enginecompactor.New(enginecompactor.PlannerParams{
+		Config:          t.Cfg.DataObj.Compaction,
+		Bucket:          indexBucket,
+		MetastoreWriter: tocWriter,
+		Logger:          logger,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -2439,14 +2457,26 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		return nil, err
 	}
 
+	// Wrap with the same IndexStoragePrefix the planner uses so the worker's
+	// IndexMerge executor writes merged-index objects to the same namespace
+	// the ToC pointers (written by the planner via its prefixed indexBucket)
+	// resolve to. metastore.NewObjectMetastore applies the prefix internally,
+	// so it still receives the unprefixed `store`.
+	indexBucket := store
+	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
+		indexBucket = objstore.NewPrefixedBucket(store, prefix)
+	}
+
 	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
-		Config:     t.Cfg.DataObj.Compaction.Worker,
-		Bucket:     store,
-		Metastore:  ms,
-		Logger:     logger,
-		Registerer: prometheus.DefaultRegisterer,
+		Config:       t.Cfg.DataObj.Compaction.Worker,
+		Bucket:       indexBucket,
+		Metastore:    ms,
+		ScratchStore: t.scratchStore,
+		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
+		Logger:       logger,
+		Registerer:   prometheus.DefaultRegisterer,
 	})
 	if err != nil {
 		return nil, err

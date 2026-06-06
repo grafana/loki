@@ -28,7 +28,7 @@ func TestFlusher_Flush(t *testing.T) {
 			now          = time.Now()
 		)
 		// Create a builder and append some logs so it can be flushed.
-		realBuilder, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
+		realBuilder, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), logsobj.NewBuilderMetrics())
 		require.NoError(t, err)
 		testBuilder = &mockBuilder{builder: realBuilder}
 		require.NoError(t, testBuilder.Append("test", logproto.Stream{
@@ -36,7 +36,7 @@ func TestFlusher_Flush(t *testing.T) {
 			Entries: []logproto.Entry{
 				{Timestamp: now, Line: "baz"},
 			},
-		}))
+		}, now))
 		f := newFlusher(testSorter, testUploader, log.NewNopLogger(), reg)
 		// Flush the builder we created earlier.
 		objectPath, err := f.Flush(testCtx, testBuilder, flushReasonBuilderFull)

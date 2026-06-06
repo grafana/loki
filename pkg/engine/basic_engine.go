@@ -117,15 +117,20 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 	// [rangeio.ReadRanges] to make use of.
 	ctx = rangeio.WithConfig(ctx, &e.cfg.RangeConfig)
 
+	queryType := logqlQueryType(params.GetExpression())
+
+	e.metrics.observeLogQLShape(queryType, logqlShapeOf(params.QueryString(), params.GetExpression()))
+
 	logicalPlan, err := func() (*logical.Plan, error) {
 		_, span := tracer.Start(ctx, "QueryEngine.Execute.logicalPlan")
 		defer span.End()
 
-		timer := prometheus.NewTimer(e.metrics.logicalPlanning)
+		timer := prometheus.NewTimer(e.metrics.planning.logical.WithLabelValues(queryType))
 		logicalPlan, err := logical.BuildPlan(ctx, params)
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
-			e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
+			e.metrics.query.subqueries.WithLabelValues(statusNotImplemented, queryType).Inc()
+			e.metrics.query.stageFailures.WithLabelValues(stageLogicalPlanning, statusNotImplemented, queryType).Inc()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to create logical plan")
 			return nil, ErrNotSupported
@@ -150,7 +155,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		ctx, span := tracer.Start(ctx, "QueryEngine.Execute.physicalPlan")
 		defer span.End()
 
-		timer := prometheus.NewTimer(e.metrics.physicalPlanning)
+		timer := prometheus.NewTimer(e.metrics.planning.physical.WithLabelValues(queryType))
 
 		catalog := physical.NewMetastoreCatalog(func(selectors physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
 			req, err := physical.CatalogRequestToMetastoreSectionsRequest(selectors, predicates, start, end)
@@ -164,7 +169,8 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		plan, err := planner.Build(logicalPlan)
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
-			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			e.metrics.query.subqueries.WithLabelValues(statusFailure, queryType).Inc()
+			e.metrics.query.stageFailures.WithLabelValues(stagePhysicalPlanning, statusFailure, queryType).Inc()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to create physical plan")
 			return nil, ErrNotSupported
@@ -173,20 +179,25 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		plan, err = planner.Optimize(plan)
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
-			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			e.metrics.query.subqueries.WithLabelValues(statusFailure, queryType).Inc()
+			e.metrics.query.stageFailures.WithLabelValues(stagePhysicalPlanning, statusFailure, queryType).Inc()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to optimize physical plan")
 			return nil, ErrNotSupported
 		}
+		e.metrics.recordPhysicalRules(planner.FiredRules())
 
 		plan, err = physical.WrapWithBatching(plan, e.cfg.BatchSize)
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to wrap physical plan with batching", "err", err)
-			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			e.metrics.query.subqueries.WithLabelValues(statusFailure, queryType).Inc()
+			e.metrics.query.stageFailures.WithLabelValues(stagePhysicalPlanning, statusFailure, queryType).Inc()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to wrap physical plan with batching")
 			return nil, ErrNotSupported
 		}
+
+		e.metrics.observePhysicalShape(physicalPlanShapeOf(plan))
 
 		durPhysicalPlanning = timer.ObserveDuration()
 		level.Info(logger).Log(
@@ -210,7 +221,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 		level.Info(logger).Log("msg", "start executing query with new engine")
 
-		timer := prometheus.NewTimer(e.metrics.execution)
+		timer := prometheus.NewTimer(e.metrics.execution.duration.WithLabelValues(queryType))
 
 		cfg := executor.Config{
 			BatchSize:          int64(e.cfg.BatchSize),
@@ -240,14 +251,15 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		}
 
 		if err := collectResult(ctx, pipeline, builder); err != nil {
-			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			e.metrics.query.subqueries.WithLabelValues(statusFailure, queryType).Inc()
+			e.metrics.query.stageFailures.WithLabelValues(stageExecution, statusFailure, queryType).Inc()
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "failed to build results")
 			return nil, err
 		}
 
 		durExecution = timer.ObserveDuration()
-		e.metrics.subqueries.WithLabelValues(statusSuccess).Inc()
+		e.metrics.query.subqueries.WithLabelValues(statusSuccess, queryType).Inc()
 		span.SetStatus(codes.Ok, "")
 		return builder, nil
 	}()
