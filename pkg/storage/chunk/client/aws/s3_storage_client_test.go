@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -531,4 +531,112 @@ func TestCommonPrefixes(t *testing.T) {
 	_, CommonPrefixes, err := s3.List(context.Background(), "", "/")
 	require.Equal(t, nil, err)
 	require.Equal(t, 1, len(CommonPrefixes))
+}
+
+// TestPutObject_NoAWSChunkedEncoding verifies that PutObject sends the SHA-256
+// checksum as a plain request header (x-amz-checksum-sha256) and does NOT use
+// aws-chunked transfer encoding (Content-Encoding: aws-chunked).
+func TestPutObject_NoAWSChunkedEncoding(t *testing.T) {
+	var capturedReq *http.Request
+
+	// Use an HTTPS test server because the SDK only activates trailing
+	// checksums (and therefore aws-chunked) on HTTPS connections.
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedReq = r
+		w.WriteHeader(http.StatusOK)
+		// Return minimal valid S3 PutObject XML response
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><PutObjectResponse/>`))
+	}))
+	defer ts.Close()
+
+	cfg := S3Config{
+		Endpoint:         ts.URL,
+		BucketNames:      "test-bucket",
+		S3ForcePathStyle: true,
+		AccessKeyID:      "test-key",
+		SecretAccessKey:  flagext.SecretWithValue("test-secret"),
+		// Use the TLS client from the test server (accepts self-signed cert)
+		Inject: func(_ http.RoundTripper) http.RoundTripper {
+			return ts.Client().Transport
+		},
+	}
+
+	client, err := NewS3ObjectClient(cfg, hedging.Config{})
+	require.NoError(t, err)
+
+	body := []byte("hello from loki chunk")
+	err = client.PutObject(context.Background(), "test/key", bytes.NewReader(body))
+	require.NoError(t, err)
+	require.NotNil(t, capturedReq, "server should have received a request")
+
+	// Verify: no aws-chunked encoding header
+	contentEncoding := capturedReq.Header.Get("Content-Encoding")
+	require.NotContains(t, contentEncoding, "aws-chunked",
+		"PutObject must NOT use aws-chunked encoding — breaks S3-compatible backends like OpenStack Swift (issue #21791)")
+
+	// Verify: SHA-256 checksum is present as a plain header
+	checksumHeader := capturedReq.Header.Get("x-amz-checksum-sha256")
+	require.NotEmpty(t, checksumHeader,
+		"PutObject must send x-amz-checksum-sha256 header for Object Lock compatibility (issue #20088)")
+
+	// Verify: x-amz-content-sha256 is NOT the streaming sentinel value
+	payloadHash := capturedReq.Header.Get("x-amz-content-sha256")
+	require.NotEqual(t, "STREAMING-UNSIGNED-PAYLOAD-TRAILER", payloadHash,
+		"payload hash must not be the streaming sentinel — that indicates aws-chunked mode is active")
+}
+
+// TestPutObject_SwiftRejects_AWSChunked reproduces the exact failure from
+// https://github.com/grafana/loki/issues/21791.
+//
+// It spins up a mock server that behaves like OpenStack Swift's S3-compatible
+// API: it returns 501 NotImplemented when it receives a request with
+// Content-Encoding: aws-chunked, and 200 OK for normal requests.
+//
+// With the fix in place, PutObject sends a plain request (no aws-chunked)
+// and the mock Swift server accepts it successfully.
+func TestPutObject_SwiftRejects_AWSChunked(t *testing.T) {
+	// mockSwiftHandler simulates OpenStack Swift S3-compatible API behaviour:
+	// rejects aws-chunked with 501, accepts plain requests with 200.
+	mockSwiftHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contentEncoding := r.Header.Get("Content-Encoding")
+
+		if strings.Contains(contentEncoding, "aws-chunked") {
+			// This is exactly what OpenStack Swift returns
+			w.WriteHeader(http.StatusNotImplemented)
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<Error>
+  <Code>NotImplemented</Code>
+  <Message>Transfering payloads in multiple chunks using aws-chunked is not supported</Message>
+</Error>`))
+			return
+		}
+
+		// Normal request — Swift accepts it
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><PutObjectResponse/>`))
+	})
+
+	ts := httptest.NewTLSServer(mockSwiftHandler)
+	defer ts.Close()
+
+	cfg := S3Config{
+		Endpoint:         ts.URL,
+		BucketNames:      "swift-bucket",
+		S3ForcePathStyle: true,
+		AccessKeyID:      "swift-key",
+		SecretAccessKey:  flagext.SecretWithValue("swift-secret"),
+		Inject: func(_ http.RoundTripper) http.RoundTripper {
+			return ts.Client().Transport
+		},
+	}
+
+	client, err := NewS3ObjectClient(cfg, hedging.Config{})
+	require.NoError(t, err)
+
+	body := []byte("loki log chunk data")
+
+	// With the fix: PutObject should succeed because no aws-chunked is sent
+	err = client.PutObject(context.Background(), "logs/chunk-001", bytes.NewReader(body))
+	require.NoError(t, err,
+		"PutObject must succeed against OpenStack Swift (no aws-chunked should be sent)")
 }

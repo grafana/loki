@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"strings"
+
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // Tags is a string-string map that implements flag.Value.
@@ -32,9 +34,9 @@ func (ts *Tags) Set(s string) error {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (ts *Tags) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (ts *Tags) UnmarshalYAML(value *yaml.Node) error {
 	var m map[string]string
-	if err := unmarshal(&m); err != nil {
+	if err := value.Decode(&m); err != nil {
 		return err
 	}
 	*ts = Tags(m)

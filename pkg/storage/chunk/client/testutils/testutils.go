@@ -2,7 +2,6 @@ package testutils
 
 import (
 	"fmt"
-	"io"
 	"strconv"
 	"time"
 
@@ -14,20 +13,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	chunkclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 const (
 	userID = "userID"
 )
-
-// Fixture type for per-backend testing.
-type Fixture interface {
-	Name() string
-	Clients() (index.Client, chunkclient.Client, index.TableClient, config.SchemaConfig, io.Closer, error)
-}
 
 // CloserFunc is to io.Closer as http.HandlerFunc is to http.Handler.
 type CloserFunc func() error

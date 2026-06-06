@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -235,16 +232,16 @@ func (b *Client) AbortCopyFromURL(ctx context.Context, copyID string, options *A
 // https://docs.microsoft.com/en-us/rest/api/storageservices/set-blob-tags
 func (b *Client) SetTags(ctx context.Context, tags map[string]string, options *SetTagsOptions) (SetTagsResponse, error) {
 	serializedTags := shared.SerializeBlobTags(tags)
-	blobSetTagsOptions, modifiedAccessConditions, leaseAccessConditions := options.format()
-	resp, err := b.generated().SetTags(ctx, *serializedTags, blobSetTagsOptions, modifiedAccessConditions, leaseAccessConditions)
+	blobSetTagsOptions, modifiedAccessConditions, leaseAccessConditions, blobModifiedAccessConditions := options.format()
+	resp, err := b.generated().SetTags(ctx, *serializedTags, blobSetTagsOptions, modifiedAccessConditions, leaseAccessConditions, blobModifiedAccessConditions)
 	return resp, err
 }
 
 // GetTags operation enables users to get tags on a blob or specific blob version, or snapshot.
 // https://docs.microsoft.com/en-us/rest/api/storageservices/get-blob-tags
 func (b *Client) GetTags(ctx context.Context, options *GetTagsOptions) (GetTagsResponse, error) {
-	blobGetTagsOptions, modifiedAccessConditions, leaseAccessConditions := options.format()
-	resp, err := b.generated().GetTags(ctx, blobGetTagsOptions, modifiedAccessConditions, leaseAccessConditions)
+	blobGetTagsOptions, modifiedAccessConditions, leaseAccessConditions, blobModifiedAccessConditions := options.format()
+	resp, err := b.generated().GetTags(ctx, blobGetTagsOptions, modifiedAccessConditions, leaseAccessConditions, blobModifiedAccessConditions)
 	return resp, err
 
 }

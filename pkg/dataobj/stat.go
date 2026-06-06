@@ -32,4 +32,27 @@ var (
 	// storage. Bytes served from the metadata prefetch buffer are not counted
 	// again, so this is a true "transferred from storage" figure.
 	StatObjectBytesDownloaded = xcap.NewStatisticInt64("dataobj.object.bytes.downloaded", xcap.AggregationTypeSum)
+
+	// -- Following stats are added to understand how data locality affects a query --
+	//
+	// A row is considered relevant to the query if it matches the stream selector.
+	// A page is considered relevant to the query if it contains a matching stream.
+	//
+	// Good locality would result in most sections being highly relevant.
+
+	// StatStreamPagesTotal is the total number of pages in the stream-ID column.
+	StatStreamPagesTotal = xcap.NewStatisticInt64("dataobj.stream.pages.total", xcap.AggregationTypeSum)
+
+	// StatStreamRelevantPages is the number of stream-ID column pages whose
+	// min/max range overlaps the queried stream IDs.
+	StatStreamRelevantPages = xcap.NewStatisticInt64("dataobj.stream.pages.relevant", xcap.AggregationTypeSum)
+
+	// StatStreamRelevantRows is the number of rows that passed the stream-ID
+	// predicate before other query predicates narrowed the result further.
+	StatStreamRelevantRows = xcap.NewStatisticInt64("dataobj.stream.rows.relevant", xcap.AggregationTypeSum)
+
+	// StatStreamPageRuns is the number of contiguous runs of relevant
+	// stream-ID pages. A single run means all relevant pages are back-to-back;
+	// a count equal to relevant pages means every relevant page is isolated.
+	StatStreamPageRuns = xcap.NewStatisticInt64("dataobj.stream.pages.runs", xcap.AggregationTypeSum)
 )

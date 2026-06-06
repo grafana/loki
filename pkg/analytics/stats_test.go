@@ -48,7 +48,7 @@ func Test_BuildReport(t *testing.T) {
 	r := buildReport(seed, now.Add(time.Hour))
 	require.Equal(t, r.Arch, runtime.GOARCH)
 	require.Equal(t, r.Os, runtime.GOOS)
-	require.Equal(t, r.PrometheusVersion, build.GetVersion())
+	require.Equal(t, r.VersionInfo, build.GetVersion())
 	require.Equal(t, r.Edition, "OSS")
 	require.Equal(t, r.Target, "compactor")
 	require.Equal(t, r.Metrics["num_cpu"], runtime.NumCPU())

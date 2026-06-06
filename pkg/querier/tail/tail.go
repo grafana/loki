@@ -331,7 +331,7 @@ func newTailer(
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
 		responseChan:              make(chan *loghttp.TailResponse, maxBufferedTailResponses),
-		closeErrChan:              make(chan error),
+		closeErrChan:              make(chan error, 1),
 		seenStreams:               make(map[uint64]struct{}),
 		tailDisconnectedIngesters: tailDisconnectedIngesters,
 		tailMaxDuration:           tailMaxDuration,

@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -140,11 +140,11 @@ func TestRegexMapStructure(t *testing.T) {
 	t.Parallel()
 
 	// testing that we can use yaml data into mapstructure.
-	var mapstruct map[interface{}]interface{}
+	var mapstruct map[string]interface{}
 	if err := yaml.Unmarshal([]byte(regexCfg), &mapstruct); err != nil {
 		t.Fatalf("error while un-marshalling config: %s", err)
 	}
-	p, ok := mapstruct["regex"].(map[interface{}]interface{})
+	p, ok := mapstruct["regex"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("could not read parser %+v", mapstruct["regex"])
 	}

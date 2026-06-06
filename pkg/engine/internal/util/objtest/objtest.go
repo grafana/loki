@@ -4,13 +4,13 @@ package objtest
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
@@ -59,7 +59,7 @@ func NewBuilder(t *testing.T) *Builder {
 
 	var builderConfig logsobj.BuilderConfig
 	builderConfig.RegisterFlagsWithPrefix("", flag.NewFlagSet("", flag.PanicOnError)) // Acquire defaults
-	logsBuilder, err := logsobj.NewBuilder(builderConfig, nil)
+	logsBuilder, err := logsobj.NewBuilder(builderConfig, nil, logsobj.NewBuilderMetrics())
 	require.NoError(t, err, "expected to be able to create logs builder")
 
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, "index/v0")
@@ -83,14 +83,11 @@ func NewBuilder(t *testing.T) *Builder {
 // Append appends the given streams to the builder.
 func (b *Builder) Append(ctx context.Context, streams ...logproto.Stream) {
 	for _, stream := range streams {
-		if err := b.logsBuilder.Append(Tenant, stream); err != nil && errors.Is(err, logsobj.ErrBuilderFull) {
+		if b.logsBuilder.IsFull() {
 			require.NoError(b.t, b.flush(ctx), "failed to flush logs builder")
-
-			// Try appending again after the flush.
-			require.NoError(b.t, b.logsBuilder.Append(Tenant, stream), "failed to append stream after flush")
-		} else if err != nil {
-			require.NoError(b.t, err, "failed to append stream")
 		}
+
+		require.NoError(b.t, b.logsBuilder.Append(Tenant, stream, time.Now()), "failed to append stream")
 
 		b.dirty = true
 	}

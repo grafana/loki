@@ -18,12 +18,15 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -82,6 +85,8 @@ type thread struct {
 	Logger         log.Logger
 	StreamFilterer executor.RequestStreamFilterer
 	TaskCaches     executor.TaskCacheRegistry
+	ScratchStore   scratch.Store
+	IndexobjCfg    logsobj.BuilderBaseConfig
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -124,6 +129,9 @@ func (t *thread) setState(state threadState) {
 
 func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer job.Close()
+
+	setupStart := time.Now()
+	taskType := taskTypeLabel(job.Task)
 
 	ctx, task := gotrace.NewTask(ctx, "thread.runJob")
 	defer task.End()
@@ -169,6 +177,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,
 		TaskCaches:     t.TaskCaches,
+		ScratchStore:   t.ScratchStore,
+		IndexobjCfg:    t.IndexobjCfg,
 
 		GetExternalInputs: func(fnCtx context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
@@ -284,8 +294,12 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
 
+	// Record the time spent preparing the task before we begin draining its
+	// pipeline (planning, pipeline construction, and source binding setup).
+	t.Metrics.setupSeconds.WithLabelValues(taskType).Observe(time.Since(setupStart).Seconds())
+
 	gotrace.Log(ctx, "drain_pipeline", "start")
-	_, drainErr := t.drainPipeline(ctx, pipeline, sinksForJob(job), logger)
+	_, drainErr := t.drainPipeline(ctx, taskType, pipeline, sinksForJob(job), logger)
 	gotrace.Log(ctx, "drain_pipeline", "done")
 
 	var terminalStatus workflow.TaskStatus
@@ -317,6 +331,22 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	capture.End()
 	terminalStatus.Capture = capture
 
+	// Emit a per-operator pipeline-node trace from the finalized capture. This
+	// reads only statistics already collected during execution (no per-batch
+	// work) and is gated at debug level, like execution-plan-detail.
+	logPipelineNodes(logger, capture)
+
+	// Expose task I/O counts as worker counters by reading the values already
+	// accumulated in the per-task capture (the same stats logged in the task
+	// summary). Only leaf tasks download from object storage today, so these are
+	// zero for non-leaf tasks; recording unconditionally keeps the counters
+	// correct if a non-leaf task ever starts downloading.
+	pagesDownloaded := xcap.Value[int64](capture, xcap.StatDatasetPrimaryPagesDownloaded) +
+		xcap.Value[int64](capture, xcap.StatDatasetSecondaryPagesDownloaded)
+	t.Metrics.pagesDownloadedTotal.Add(float64(pagesDownloaded))
+	t.Metrics.pagesPrunedTotal.Add(float64(xcap.Value[int64](capture, dataobj.StatDatasetPagesPruned)))
+	t.Metrics.bytesDownloadedTotal.Add(float64(xcap.Value[int64](capture, dataobj.StatObjectBytesDownloaded)))
+
 	duration := time.Since(startTime)
 
 	logValues := []any{
@@ -327,7 +357,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
 
 	level.Info(logger).Log(logValues...)
-	t.Metrics.taskExecSeconds.Observe(duration.Seconds())
+	t.Metrics.taskExecSeconds.WithLabelValues(taskType).Observe(duration.Seconds())
 
 	// Send the terminal status synchronously so the scheduler can update its
 	// thread-capacity bookkeeping and merge the Capture before the worker
@@ -336,12 +366,54 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	// We use a detached context so a cancelled job context does not prevent us
 	// from delivering the final status (and in particular, the Capture).
 	sendCtx := context.WithoutCancel(ctx)
-	if err := job.Scheduler.SendMessage(sendCtx, wire.TaskStatusMessage{
+	sendStart := time.Now()
+	sendErr := job.Scheduler.SendMessage(sendCtx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
 		Status: terminalStatus,
-	}); err != nil {
-		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
+	})
+	t.Metrics.statusUpdateSeconds.Observe(time.Since(sendStart).Seconds())
+	if sendErr != nil {
+		t.Metrics.statusUpdateErrorsTotal.WithLabelValues(statusUpdateErrorClass(sendErr)).Inc()
+		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", sendErr)
 	}
+}
+
+// taskTypeLabel returns the task_type metric label for task: [taskTypeLeaf] if
+// the task has no external task sources (it reads directly from storage),
+// otherwise [taskTypeNonLeaf]. This mirrors the leaf/non-leaf classification
+// used in the per-task summary log.
+func taskTypeLabel(task *workflow.Task) string {
+	if len(task.Sources) == 0 {
+		return taskTypeLeaf
+	}
+	return taskTypeNonLeaf
+}
+
+// statusUpdateErrorClass maps an error from the status-update send path to a
+// bounded label value for the status_update_errors_total counter.
+func statusUpdateErrorClass(err error) string {
+	switch {
+	case err == nil:
+		return "none"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, wire.ErrConnClosed):
+		return "conn_closed"
+	}
+
+	var wireErr *wire.Error
+	if errors.As(err, &wireErr) {
+		switch {
+		case wireErr.Code >= 400 && wireErr.Code < 500:
+			return "rejected"
+		case wireErr.Code >= 500:
+			return "server_error"
+		}
+	}
+
+	return "other"
 }
 
 // recordBatchBytes returns the total in-memory size in bytes of all column
@@ -354,7 +426,7 @@ func recordBatchBytes(rec arrow.RecordBatch) int64 {
 	return n
 }
 
-func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
+func (t *thread) drainPipeline(ctx context.Context, taskType string, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
 	startRead := time.Now()
@@ -412,9 +484,9 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	}
 
 	// Task-wide phase durations.
-	t.Metrics.taskReadSeconds.Observe(readDuration.Seconds())
-	t.Metrics.taskComputeSeconds.Observe(totalComputeTime.Seconds())
-	t.Metrics.taskWriteSeconds.Observe(totalWriteTime.Seconds())
+	t.Metrics.taskReadSeconds.WithLabelValues(taskType).Observe(readDuration.Seconds())
+	t.Metrics.taskComputeSeconds.WithLabelValues(taskType).Observe(totalComputeTime.Seconds())
+	t.Metrics.taskWriteSeconds.WithLabelValues(taskType).Observe(totalWriteTime.Seconds())
 
 	// Record execution sub-phase durations on the task region so the workflow
 	// can include them in the per-task summary log.

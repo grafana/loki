@@ -12,14 +12,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 )
 
 // TestHTTP2BasicConnectivity tests basic connection establishment and communication.
@@ -667,9 +666,8 @@ func prepareHTTP2Listener(t *testing.T) (*wire.HTTP2Listener, func()) {
 	mux := http.NewServeMux()
 	mux.Handle("/", listener)
 
-	server := &http.Server{
-		Handler: h2c.NewHandler(mux, &http2.Server{}),
-	}
+	server := &http.Server{Handler: mux}
+	serverutil.EnableUnencryptedHTTP2(server)
 	wgServe := sync.WaitGroup{}
 	wgServe.Add(1)
 

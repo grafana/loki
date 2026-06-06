@@ -1,18 +1,18 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@eb4e89778be445f9e79533b704cbdee404592eb4"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
     "with":
-      "build_image": "golang:1.26.2"
+      "build_image": "golang:1.26.4"
       "golang_ci_lint_version": "v2.10.1"
-      "release_lib_ref": "eb4e89778be445f9e79533b704cbdee404592eb4"
+      "release_lib_ref": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "skip_validation": false
       "use_github_app_token": true
-  "loki-canary-boringcrypto-image":
+  "logql-analyzer-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
-      "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "eb4e89778be445f9e79533b704cbdee404592eb4"
+      "GO_VERSION": "1.26.4"
+      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
+      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -43,12 +43,158 @@
     - "name": "setup node"
       "uses": "actions/setup-node@v4"
       "with":
-        "node-version": 20
+        "node-version": 24
         "package-manager-cache": false
+    - "name": "enable corepack"
+      "run": "corepack enable"
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - "name": "Login to GAR"
+      "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      "with":
+        "registry": "us-docker.pkg.dev"
+    - "id": "weekly-version"
+      "name": "Get weekly version"
+      "run": |
+        version=$(./tools/image-tag)
+        echo "image_version=$version" >> $GITHUB_OUTPUT
+        echo "image_name=${{ env.IMAGE_PREFIX }}/logql-analyzer" >> $GITHUB_OUTPUT
+        echo "image_full_name=${{ env.IMAGE_PREFIX }}/logql-analyzer:$version" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    - "id": "platform"
+      "name": "Parse image platform"
+      "run": |
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    - "id": "build-push"
+      "name": "Build and push"
+      "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      "uses": "docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1"
+      "with":
+        "build-args": |
+          IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
+          GO_VERSION=${{ env.GO_VERSION }}
+        "context": "release"
+        "file": "release/cmd/logql-analyzer/Dockerfile"
+        "outputs": "push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
+        "platforms": "${{ matrix.arch }}"
+        "provenance": true
+        "tags": "${{ steps.weekly-version.outputs.image_name }}"
+    - "env":
+        "OUTPUTS_DIGEST": "${{ steps.build-push.outputs.digest }}"
+      "id": "digest"
+      "name": "Process image digest"
+      "run": |
+        arch=$(echo ${{ matrix.arch }} | tr "/" "_")
+        echo "digest_$arch=$OUTPUTS_DIGEST" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    "strategy":
+      "fail-fast": true
+      "matrix":
+        "include":
+        - "arch": "linux/amd64"
+          "runs_on":
+          - "ubuntu-x64"
+        - "arch": "linux/arm64"
+          "runs_on":
+          - "ubuntu-arm64"
+        - "arch": "linux/arm"
+          "runs_on":
+          - "ubuntu-arm64"
+  "logql-analyzer-manifest":
+    "env":
+      "BUILD_TIMEOUT": 60
+      "IMAGE_DIGEST_AMD64": "${{ needs.logql-analyzer-image.outputs.image_digest_linux_amd64 }}"
+      "IMAGE_DIGEST_ARM": "${{ needs.logql-analyzer-image.outputs.image_digest_linux_arm }}"
+      "IMAGE_DIGEST_ARM64": "${{ needs.logql-analyzer-image.outputs.image_digest_linux_arm64 }}"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/logql-analyzer"
+      "OUTPUTS_IMAGE_NAME": "${{ needs.logql-analyzer-image.outputs.image_name }}"
+      "OUTPUTS_IMAGE_TAG": "${{ needs.logql-analyzer-image.outputs.image_tag }}"
+    "needs":
+    - "logql-analyzer-image"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
+    "runs-on": "ubuntu-x64"
+    "steps":
+    - "name": "Set up Docker buildx"
+      "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - "name": "Login to GAR"
+      "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      "with":
+        "registry": "us-docker.pkg.dev"
+    - "name": "Publish multi-arch manifest"
+      "run": |
+        # Unfortunately there is no better way atm than having a separate named output for each digest
+        echo "linux/arm64 $IMAGE_DIGEST_ARM64"
+        echo "linux/amd64 $IMAGE_DIGEST_AMD64"
+        echo "linux/arm   $IMAGE_DIGEST_ARM"
+        
+        # 'needs.logql-analyzer-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
+        # See https://github.com/actions/runner/issues/2316
+        # Using the IMAGE_NAME env variable instead
+        IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        
+        echo "Create multi-arch manifest for $IMAGE"
+        docker buildx imagetools create -t $IMAGE \
+          ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
+          ${IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
+          ${IMAGE_NAME}@${IMAGE_DIGEST_ARM}
+        docker buildx imagetools inspect $IMAGE
+  "loki-canary-boringcrypto-image":
+    "env":
+      "BUILD_TIMEOUT": 60
+      "GO_VERSION": "1.26.4"
+      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
+      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+      "RELEASE_REPO": "grafana/loki"
+    "needs":
+    - "check"
+    "outputs":
+      "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
+      "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
+      "image_digest_linux_arm64": "${{ steps.digest.outputs.digest_linux_arm64 }}"
+      "image_name": "${{ steps.weekly-version.outputs.image_name }}"
+      "image_tag": "${{ steps.weekly-version.outputs.image_version }}"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
+    "runs-on": "${{ matrix.runs_on }}"
+    "steps":
+    - "name": "pull release library code"
+      "uses": "actions/checkout@v4"
+      "with":
+        "path": "lib"
+        "persist-credentials": false
+        "ref": "${{ env.RELEASE_LIB_REF }}"
+        "repository": "grafana/loki-release"
+    - "name": "pull code to release"
+      "uses": "actions/checkout@v4"
+      "with":
+        "path": "release"
+        "persist-credentials": false
+        "repository": "${{ env.RELEASE_REPO }}"
+    - "name": "setup node"
+      "uses": "actions/setup-node@v4"
+      "with":
+        "node-version": 24
+        "package-manager-cache": false
+    - "name": "enable corepack"
+      "run": "corepack enable"
+    - "name": "Set up Docker buildx"
+      "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - "name": "Login to GAR"
+      "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      "with":
+        "registry": "us-docker.pkg.dev"
     - "id": "weekly-version"
       "name": "Get weekly version"
       "run": |
@@ -105,6 +251,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm64 }}"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/loki-canary-boringcrypto"
       "OUTPUTS_IMAGE_NAME": "${{ needs.loki-canary-boringcrypto-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary-boringcrypto-image.outputs.image_tag }}"
     "needs":
@@ -116,27 +263,36 @@
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - "name": "Login to GAR"
+      "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      "with":
+        "registry": "us-docker.pkg.dev"
     - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-        IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        
+        # 'needs.loki-canary-boringcrypto-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
+        # See https://github.com/actions/runner/issues/2316
+        # Using the IMAGE_NAME env variable instead
+        IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
+          ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
+          ${IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
+          ${IMAGE_NAME}@${IMAGE_DIGEST_ARM}
         docker buildx imagetools inspect $IMAGE
   "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
-      "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "eb4e89778be445f9e79533b704cbdee404592eb4"
+      "GO_VERSION": "1.26.4"
+      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
+      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -167,12 +323,18 @@
     - "name": "setup node"
       "uses": "actions/setup-node@v4"
       "with":
-        "node-version": 20
+        "node-version": 24
         "package-manager-cache": false
+    - "name": "enable corepack"
+      "run": "corepack enable"
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - "name": "Login to GAR"
+      "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      "with":
+        "registry": "us-docker.pkg.dev"
     - "id": "weekly-version"
       "name": "Get weekly version"
       "run": |
@@ -229,6 +391,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.loki-canary-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.loki-canary-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.loki-canary-image.outputs.image_digest_linux_arm64 }}"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/loki-canary"
       "OUTPUTS_IMAGE_NAME": "${{ needs.loki-canary-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-canary-image.outputs.image_tag }}"
     "needs":
@@ -240,27 +403,36 @@
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - "name": "Login to GAR"
+      "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      "with":
+        "registry": "us-docker.pkg.dev"
     - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-        IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        
+        # 'needs.loki-canary-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
+        # See https://github.com/actions/runner/issues/2316
+        # Using the IMAGE_NAME env variable instead
+        IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
+          ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
+          ${IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
+          ${IMAGE_NAME}@${IMAGE_DIGEST_ARM}
         docker buildx imagetools inspect $IMAGE
   "loki-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
-      "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "eb4e89778be445f9e79533b704cbdee404592eb4"
+      "GO_VERSION": "1.26.4"
+      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
+      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -291,12 +463,18 @@
     - "name": "setup node"
       "uses": "actions/setup-node@v4"
       "with":
-        "node-version": 20
+        "node-version": 24
         "package-manager-cache": false
+    - "name": "enable corepack"
+      "run": "corepack enable"
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - "name": "Login to GAR"
+      "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      "with":
+        "registry": "us-docker.pkg.dev"
     - "id": "weekly-version"
       "name": "Get weekly version"
       "run": |
@@ -353,6 +531,7 @@
       "IMAGE_DIGEST_AMD64": "${{ needs.loki-image.outputs.image_digest_linux_amd64 }}"
       "IMAGE_DIGEST_ARM": "${{ needs.loki-image.outputs.image_digest_linux_arm }}"
       "IMAGE_DIGEST_ARM64": "${{ needs.loki-image.outputs.image_digest_linux_arm64 }}"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/loki"
       "OUTPUTS_IMAGE_NAME": "${{ needs.loki-image.outputs.image_name }}"
       "OUTPUTS_IMAGE_TAG": "${{ needs.loki-image.outputs.image_tag }}"
     "needs":
@@ -364,27 +543,36 @@
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - "name": "Login to GAR"
+      "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      "with":
+        "registry": "us-docker.pkg.dev"
     - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-        IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        
+        # 'needs.loki-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
+        # See https://github.com/actions/runner/issues/2316
+        # Using the IMAGE_NAME env variable instead
+        IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
+          ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
+          ${IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
+          ${IMAGE_NAME}@${IMAGE_DIGEST_ARM}
         docker buildx imagetools inspect $IMAGE
-  "querytee-image":
+  "loki-query-tee-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.26.2"
-      "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "eb4e89778be445f9e79533b704cbdee404592eb4"
+      "GO_VERSION": "1.26.4"
+      "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
+      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -415,12 +603,18 @@
     - "name": "setup node"
       "uses": "actions/setup-node@v4"
       "with":
-        "node-version": 20
+        "node-version": 24
         "package-manager-cache": false
+    - "name": "enable corepack"
+      "run": "corepack enable"
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - "name": "Login to GAR"
+      "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      "with":
+        "registry": "us-docker.pkg.dev"
     - "id": "weekly-version"
       "name": "Get weekly version"
       "run": |
@@ -471,16 +665,17 @@
         - "arch": "linux/arm"
           "runs_on":
           - "ubuntu-arm64"
-  "querytee-manifest":
+  "loki-query-tee-manifest":
     "env":
       "BUILD_TIMEOUT": 60
-      "IMAGE_DIGEST_AMD64": "${{ needs.querytee-image.outputs.image_digest_linux_amd64 }}"
-      "IMAGE_DIGEST_ARM": "${{ needs.querytee-image.outputs.image_digest_linux_arm }}"
-      "IMAGE_DIGEST_ARM64": "${{ needs.querytee-image.outputs.image_digest_linux_arm64 }}"
-      "OUTPUTS_IMAGE_NAME": "${{ needs.querytee-image.outputs.image_name }}"
-      "OUTPUTS_IMAGE_TAG": "${{ needs.querytee-image.outputs.image_tag }}"
+      "IMAGE_DIGEST_AMD64": "${{ needs.loki-query-tee-image.outputs.image_digest_linux_amd64 }}"
+      "IMAGE_DIGEST_ARM": "${{ needs.loki-query-tee-image.outputs.image_digest_linux_arm }}"
+      "IMAGE_DIGEST_ARM64": "${{ needs.loki-query-tee-image.outputs.image_digest_linux_arm64 }}"
+      "IMAGE_NAME": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/loki-query-tee"
+      "OUTPUTS_IMAGE_NAME": "${{ needs.loki-query-tee-image.outputs.image_name }}"
+      "OUTPUTS_IMAGE_TAG": "${{ needs.loki-query-tee-image.outputs.image_tag }}"
     "needs":
-    - "querytee-image"
+    - "loki-query-tee-image"
     "permissions":
       "contents": "read"
       "id-token": "write"
@@ -488,20 +683,29 @@
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - "name": "Login to DockerHub (from Vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746"
+    - "name": "Login to DockerHub"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - "name": "Login to GAR"
+      "uses": "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      "with":
+        "registry": "us-docker.pkg.dev"
     - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
         echo "linux/arm64 $IMAGE_DIGEST_ARM64"
         echo "linux/amd64 $IMAGE_DIGEST_AMD64"
         echo "linux/arm   $IMAGE_DIGEST_ARM"
-        IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        
+        # 'needs.loki-query-tee-image.outputs.image_name' gets masked and therefore OUTPUTS_IMAGE_NAME is empty
+        # See https://github.com/actions/runner/issues/2316
+        # Using the IMAGE_NAME env variable instead
+        IMAGE="${IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+        
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
-          ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
+          ${IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
+          ${IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
+          ${IMAGE_NAME}@${IMAGE_DIGEST_ARM}
         docker buildx imagetools inspect $IMAGE
   "trigger-cd":
     "env":

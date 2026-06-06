@@ -450,3 +450,50 @@ func buildLogsCaseInsensitiveMatch(col *logs.Column, op types.BinaryOp, value sc
 
 	return nil, fmt.Errorf("unrecognized case-insensitive match operation %s", op)
 }
+
+// logsPredicateIsUnsatisfiable reports whether p can never match a row.
+func logsPredicateIsUnsatisfiable(p logs.Predicate) bool {
+	switch p := p.(type) {
+	case logs.FalsePredicate:
+		return true
+	case logs.TruePredicate:
+		return false
+	case logs.AndPredicate:
+		return logsPredicateIsUnsatisfiable(p.Left) || logsPredicateIsUnsatisfiable(p.Right)
+	case logs.OrPredicate:
+		return logsPredicateIsUnsatisfiable(p.Left) && logsPredicateIsUnsatisfiable(p.Right)
+	case logs.NotPredicate:
+		return logsPredicateIsSatisfiableForAllRows(p.Inner)
+	default:
+		return false
+	}
+}
+
+// logsPredicateIsSatisfiableForAllRows reports whether p matches every row.
+func logsPredicateIsSatisfiableForAllRows(p logs.Predicate) bool {
+	switch p := p.(type) {
+	case logs.TruePredicate:
+		return true
+	case logs.FalsePredicate:
+		return false
+	case logs.AndPredicate:
+		return logsPredicateIsSatisfiableForAllRows(p.Left) && logsPredicateIsSatisfiableForAllRows(p.Right)
+	case logs.OrPredicate:
+		return logsPredicateIsSatisfiableForAllRows(p.Left) || logsPredicateIsSatisfiableForAllRows(p.Right)
+	case logs.NotPredicate:
+		return logsPredicateIsUnsatisfiable(p.Inner)
+	default:
+		return false
+	}
+}
+
+// logsPredicatesAreUnsatisfiable reports whether the conjunction of predicates can
+// never match a row. Multiple predicates passed to [logs.Reader] are ANDed.
+func logsPredicatesAreUnsatisfiable(predicates []logs.Predicate) bool {
+	for _, p := range predicates {
+		if logsPredicateIsUnsatisfiable(p) {
+			return true
+		}
+	}
+	return false
+}

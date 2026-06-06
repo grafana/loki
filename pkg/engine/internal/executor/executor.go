@@ -17,10 +17,12 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
@@ -37,13 +39,20 @@ type StreamFilterer interface {
 }
 
 type Config struct {
-	BatchSize int64
+	// Used by the querier, unused by compaction executors
+	BatchSize          int64
+	PrefetchBytes      int64
+	MergePrefetchCount int
+
+	// Used by compaction, unused by query executors
+	// ScratchStore is an optional scratch store for index merge operations.
+	ScratchStore scratch.Store
+	// IndexobjCfg is the builder config for index objects.
+	IndexobjCfg logsobj.BuilderBaseConfig
+
+	// Shared, used by both query and compaction executors.
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
-
-	PrefetchBytes int64
-
-	MergePrefetchCount int
 
 	// GetExternalInputs is an optional function called for each node in the
 	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
@@ -71,6 +80,8 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		getExternalInputs:  cfg.GetExternalInputs,
 		streamFilterer:     cfg.StreamFilterer,
 		taskCaches:         cfg.TaskCaches,
+		scratchStore:       cfg.ScratchStore,
+		indexobjCfg:        cfg.IndexobjCfg,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -100,6 +111,9 @@ type Context struct {
 
 	streamFilterer RequestStreamFilterer
 	taskCaches     TaskCacheRegistry
+
+	scratchStore scratch.Store
+	indexobjCfg  logsobj.BuilderBaseConfig
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -151,10 +165,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
 	case *physical.IndexMerge:
-		// IndexMerge ships with a stub executor that writes a zero-byte object at
-		// OutputIndexPath. The real K-way merge over index sections lands in a
-		// later PR.
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexMergeStub(n))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexMerge(ctx, n))
 	case *physical.LogMerge:
 		// LogMerge ships with a stub executor that writes a zero-byte object at
 		// OutputPath. The real K-way merge over log sections lands in a later PR,
@@ -265,6 +276,11 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		predicates = append(predicates, conv)
 	}
 	span.AddEvent("constructed predicate")
+
+	if logsPredicatesAreUnsatisfiable(predicates) {
+		span.AddEvent("unsatisfiable logs predicate; skipping dataobj scan")
+		return emptyPipeline()
+	}
 
 	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
 		// TODO(rfratto): passing the streams section means that each DataObjScan

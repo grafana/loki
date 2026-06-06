@@ -97,11 +97,12 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 			cell_a_trace_id, cell_b_trace_id,
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
+			cell_a_estimated_query_size, cell_b_estimated_query_size,
 			sampled_at,
 			comparison_status,
 			match_within_tolerance,
 			mismatch_cause
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Convert empty span IDs to NULL for database storage
@@ -185,6 +186,8 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		cellBSpanID,
 		sample.CellAUsedNewEngine,
 		sample.CellBUsedNewEngine,
+		sample.CellAStats.EstimatedQueryBytes,
+		sample.CellBStats.EstimatedQueryBytes,
 		sample.SampledAt,
 		comparison.ComparisonStatus,
 		comparison.MatchWithinTolerance,
@@ -269,6 +272,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			cell_a_trace_id, cell_b_trace_id,
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
+			cell_a_estimated_query_size, cell_b_estimated_query_size,
 			sampled_at, created_at,
 			comparison_status, match_within_tolerance, mismatch_cause
 		FROM sampled_queries
@@ -317,6 +321,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			&q.CellATraceID, &q.CellBTraceID,
 			&cellASpanID, &cellBSpanID,
 			&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
+			&q.CellAStats.EstimatedQueryBytes, &q.CellBStats.EstimatedQueryBytes,
 			&q.SampledAt, &createdAt,
 			&q.ComparisonStatus, &q.MatchWithinTolerance, &mismatchCause,
 		)
@@ -396,6 +401,7 @@ func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationI
 			cell_a_trace_id, cell_b_trace_id,
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
+			cell_a_estimated_query_size, cell_b_estimated_query_size,
 			sampled_at, created_at, comparison_status, match_within_tolerance, mismatch_cause
 		FROM sampled_queries
 		WHERE correlation_id = ?
@@ -424,9 +430,9 @@ func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationI
 		&q.CellATraceID, &q.CellBTraceID,
 		&cellASpanID, &cellBSpanID,
 		&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
+		&q.CellAStats.EstimatedQueryBytes, &q.CellBStats.EstimatedQueryBytes,
 		&q.SampledAt, &createdAt, &q.ComparisonStatus, &q.MatchWithinTolerance, &mismatchCause,
 	)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("query with correlation ID %s not found", correlationID)

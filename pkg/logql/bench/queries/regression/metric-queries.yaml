@@ -224,3 +224,25 @@ queries:
       log_format: json
       detected_fields:
         - level
+  - description: Count grouped by a collision-renamed _extracted label
+    query: sum by (level_extracted) (count_over_time(${SELECTOR} | logfmt [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - logfmt
+      - grouping
+      - extracted-label
+    notes: >
+      Regression for the v2 projection-pushdown fix. The logfmt "level" field collides
+      with the "level" structured metadata, so the parsed value is exposed as
+      "level_extracted". Grouping by that renamed label must match the v1 engine.
+      Previously the v2 engine asked the parser for the post-rename key "level_extracted"
+      (which is never a real field), so nothing was extracted and the group-by collapsed
+      to a single empty series / zero.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - level

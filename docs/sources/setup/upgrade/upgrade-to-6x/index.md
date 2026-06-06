@@ -7,7 +7,7 @@ keywords:
   - upgrade
 ---
 
-## Upgrading to v6.x
+# Upgrading to v6.x
 
 v6.x of this chart introduces distributed mode but also introduces breaking changes from v5x.
 
@@ -20,13 +20,14 @@ Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the 
 {{< /admonition >}}
 
 {{< admonition type="tip" >}}
-With the move to the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts), the chart numbering has changed. Major version updates signal breaking changes in the chart. For more information, refer to the [README](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading).
+With the move to the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts), the chart URL and numbering has changed. Major version updates signal breaking changes in the chart. For more information, refer to the [README](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/README.md#upgrading).
 {{< /admonition >}}
 
+## Changes
 
-### Changes
+The location of the Loki Helm chart has changed from https://grafana.github.io/helm-charts to https://grafana-community.github.io/helm-charts.
 
-#### BREAKING: `deploymentMode` setting
+### BREAKING: `deploymentMode` setting
 
 This only breaks you if you are running the chart in Single Binary mode, you will need to set
 
@@ -34,17 +35,17 @@ This only breaks you if you are running the chart in Single Binary mode, you wil
 deploymentMode: SingleBinary
 ```
 
-#### BREAKING: `lokiCanary` section was moved
+### BREAKING: `lokiCanary` section was moved
 
 This section was moved from within the `monitoring` section to the root level of the values file.
 
-#### BREAKING: `topologySpreadConstraints` and `podAffinity` converted to objects
+### BREAKING: `topologySpreadConstraints` and `podAffinity` converted to objects
 
 Previously they were strings which were passed through `tpl` now they are normal objects which will be added to deployments.
 
 Also we removed the soft constraint on zone.
 
-#### BREAKING: `externalConfigSecretName` was removed and replaced
+### BREAKING: `externalConfigSecretName` was removed and replaced
 
 Instead you can now provide `configObjectName` which is used by Loki components for loading the config.
 
@@ -52,7 +53,7 @@ Instead you can now provide `configObjectName` which is used by Loki components 
 
 This gives greater flexibility in using the chart to still generate a config object but allowing for another process to load and mutate this config into a new object which can be loaded by Loki and `configObjectName`
 
-#### Monitoring
+### Monitoring
 
 After some consideration of how this chart works with other charts provided by Grafana, we decided to deprecate the monitoring sections of this chart and take a new approach entirely to monitoring Loki, Mimir and Tempo with the [Meta Monitoring Chart](https://github.com/grafana/meta-monitoring-chart).
 
@@ -77,13 +78,13 @@ monitoring:
       installOperator: true
 ```
 
-#### Memcached is included and enabled by default
+### Memcached is included and enabled by default
 
 Caching is crucial to the proper operation of Loki and Memcached is now included in this chart and enabled by default for the `chunksCache` and `resultsCache`.
 
 If you are already running Memcached separately you can remove your existing installation and use the Memcached deployments built into this chart.
 
-##### Single Binary
+#### Single Binary
 
 Memcached also deploys for the Single Binary, but this may not be desired in resource constrained environments.
 
@@ -98,7 +99,7 @@ resultsCache:
 
 With these caches disabled, Loki will return to defaults which enables an in-memory results and chunks cache, so you will still get some caching.
 
-#### BREAKING: Zone-aware ingester StatefulSet serviceName fix (6.34.0+)
+### BREAKING: Zone-aware ingester StatefulSet serviceName fix (6.34.0+)
 
 **Affected users**: Only deployments using zone-aware ingester replication (`ingester.zoneAwareReplication.enabled: true`)
 
@@ -139,7 +140,7 @@ In Helm chart version 6.34.0, [PR #18558](https://github.com/grafana/loki/pull/1
 **Why this change was necessary**:
 The previous configuration caused ingester scaling operations to fail because the rollout-operator couldn't find the correct headless services for the `/ingester/prepare-downscale` endpoint.
 
-#### BREAKING: Make access modes for persistence on all PVCs and StatefulSets editable (6.38.0+)
+### BREAKING: Make access modes for persistence on all PVCs and StatefulSets editable (6.38.0+)
 
 Version 6.38.0 of the Helm charts introduced the ability to edit the access modes for persistence on all PVCs and StatefulSets. This is a breaking change because it requires users to manually orphan StatefulSets before upgrading.
 
@@ -177,6 +178,6 @@ Version 6.38.0 of the Helm charts introduced the ability to edit the access mode
    helm upgrade <RELEASE_NAME> grafana/loki --version 6.38.0
    ```
 
-#### Distributed mode
+### Distributed mode
 
 This chart introduces the ability to run Loki in distributed, or [microservices mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode). For installation instructions, refer to [Install the microservices Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-microservices/).
