@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
@@ -117,4 +118,81 @@ func TestAttributesToLabels(t *testing.T) {
 			require.Equal(t, tc.expectedResp, lbls)
 		})
 	}
+}
+
+func TestResourceAttrsToStreamLabels_DiscoverServiceNameOrder(t *testing.T) {
+	indexAll := OTLPConfig{
+		ResourceAttributes: ResourceAttributesConfig{
+			AttributesConfig: []AttributesConfig{
+				{Action: IndexLabel, Regex: mustRegexp(".*")},
+			},
+		},
+	}
+
+	for _, tc := range []struct {
+		name                string
+		buildAttrs          func() pcommon.Map
+		discoverServiceName []string
+		expectedServiceName string
+	}{
+		{
+			// container is inserted before app_kubernetes_io_name, but the configured
+			// order lists app_kubernetes_io_name first, so it must win. See issue #22010.
+			name: "configured order wins over attribute insertion order",
+			buildAttrs: func() pcommon.Map {
+				attrs := pcommon.NewMap()
+				attrs.PutStr("container", "checkout")
+				attrs.PutStr("app_kubernetes_io_name", "checkout-test")
+				return attrs
+			},
+			discoverServiceName: []string{"app_kubernetes_io_name", "container"},
+			expectedServiceName: "checkout-test",
+		},
+		{
+			// Same attributes, reversed insertion order, must give the same result.
+			name: "configured order wins regardless of attribute insertion order",
+			buildAttrs: func() pcommon.Map {
+				attrs := pcommon.NewMap()
+				attrs.PutStr("app_kubernetes_io_name", "checkout-test")
+				attrs.PutStr("container", "checkout")
+				return attrs
+			},
+			discoverServiceName: []string{"app_kubernetes_io_name", "container"},
+			expectedServiceName: "checkout-test",
+		},
+		{
+			name: "falls back to next configured label when first is absent",
+			buildAttrs: func() pcommon.Map {
+				attrs := pcommon.NewMap()
+				attrs.PutStr("container", "checkout")
+				return attrs
+			},
+			discoverServiceName: []string{"app_kubernetes_io_name", "container"},
+			expectedServiceName: "checkout",
+		},
+		{
+			name: "defaults to unknown_service when no configured label is present",
+			buildAttrs: func() pcommon.Map {
+				attrs := pcommon.NewMap()
+				attrs.PutStr("foo", "bar")
+				return attrs
+			},
+			discoverServiceName: []string{"app_kubernetes_io_name", "container"},
+			expectedServiceName: ServiceUnknown,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := ResourceAttrsToStreamLabels(tc.buildAttrs(), indexAll, tc.discoverServiceName)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedServiceName, string(result.StreamLabels[LabelServiceName]))
+		})
+	}
+}
+
+func mustRegexp(s string) relabel.Regexp {
+	re, err := relabel.NewRegexp(s)
+	if err != nil {
+		panic(err)
+	}
+	return re
 }
