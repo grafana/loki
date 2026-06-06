@@ -1,11 +1,15 @@
 package compactor
 
 import (
+	"context"
+	"errors"
+	"io"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -13,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
 type indexUpdatesRecorder struct {
@@ -223,4 +228,109 @@ func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 	require.Len(t, indexUpdatesRecorder.removedChunks, 0)
 	// it would not index any new chunks since all the source chunks were marked missing
 	require.Len(t, indexUpdatesRecorder.indexedChunks, 0)
+}
+
+func TestIndexSet_RemoveFilesFromStorageRetriesBackendError(t *testing.T) {
+	restoreBackoffConfig := setDeleteSourceObjectsBackoffConfigForTest(t)
+	defer restoreBackoffConfig()
+
+	backendErr := errors.New("googleapi: Error 503: We encountered an internal error. Please try again., backendError")
+	sourceObjects := []storage.IndexFile{{Name: "source.gz"}}
+	baseIndexSet := newDeleteRetryIndexSet(sourceObjects, map[string][]error{
+		"source.gz": {backendErr, backendErr},
+	})
+	indexSet := &indexSet{
+		ctx:           context.Background(),
+		tableName:     "test",
+		baseIndexSet:  baseIndexSet,
+		sourceObjects: sourceObjects,
+		logger:        log.NewNopLogger(),
+	}
+
+	require.NoError(t, indexSet.removeFilesFromStorage())
+	require.Equal(t, 3, baseIndexSet.deleteCalls["source.gz"])
+}
+
+func TestIndexSet_RemoveFilesFromStorageContinuesAfterDeleteFailure(t *testing.T) {
+	restoreBackoffConfig := setDeleteSourceObjectsBackoffConfigForTest(t)
+	defer restoreBackoffConfig()
+
+	backendErr := errors.New("googleapi: Error 503: We encountered an internal error. Please try again., backendError")
+	sourceObjects := []storage.IndexFile{{Name: "failed.gz"}, {Name: "deleted.gz"}}
+	baseIndexSet := newDeleteRetryIndexSet(sourceObjects, map[string][]error{
+		"failed.gz": {backendErr, backendErr, backendErr},
+	})
+	indexSet := &indexSet{
+		ctx:           context.Background(),
+		tableName:     "test",
+		baseIndexSet:  baseIndexSet,
+		sourceObjects: sourceObjects,
+		logger:        log.NewNopLogger(),
+	}
+
+	err := indexSet.removeFilesFromStorage()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed.gz")
+	require.Equal(t, 3, baseIndexSet.deleteCalls["failed.gz"])
+	require.Equal(t, 1, baseIndexSet.deleteCalls["deleted.gz"])
+}
+
+func setDeleteSourceObjectsBackoffConfigForTest(t *testing.T) func() {
+	t.Helper()
+
+	originalConfig := deleteSourceObjectsBackoffConfig
+	deleteSourceObjectsBackoffConfig.MinBackoff = time.Nanosecond
+	deleteSourceObjectsBackoffConfig.MaxBackoff = time.Nanosecond
+	deleteSourceObjectsBackoffConfig.MaxRetries = 3
+
+	return func() {
+		deleteSourceObjectsBackoffConfig = originalConfig
+	}
+}
+
+type deleteRetryIndexSet struct {
+	sourceObjects []storage.IndexFile
+	deleteErrors  map[string][]error
+	deleteCalls   map[string]int
+	notFoundErr   error
+}
+
+func newDeleteRetryIndexSet(sourceObjects []storage.IndexFile, deleteErrors map[string][]error) *deleteRetryIndexSet {
+	return &deleteRetryIndexSet{
+		sourceObjects: sourceObjects,
+		deleteErrors:  deleteErrors,
+		deleteCalls:   map[string]int{},
+		notFoundErr:   errors.New("not found"),
+	}
+}
+
+func (d *deleteRetryIndexSet) RefreshIndexTableCache(_ context.Context, _ string) {}
+
+func (d *deleteRetryIndexSet) ListFiles(_ context.Context, _, _ string, _ bool) ([]storage.IndexFile, error) {
+	return d.sourceObjects, nil
+}
+
+func (d *deleteRetryIndexSet) GetFile(_ context.Context, _, _, _ string) (io.ReadCloser, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (d *deleteRetryIndexSet) PutFile(_ context.Context, _, _, _ string, _ io.ReadSeeker) error {
+	return errors.New("not implemented")
+}
+
+func (d *deleteRetryIndexSet) DeleteFile(_ context.Context, _, _, fileName string) error {
+	call := d.deleteCalls[fileName]
+	d.deleteCalls[fileName] = call + 1
+	if call < len(d.deleteErrors[fileName]) {
+		return d.deleteErrors[fileName][call]
+	}
+	return nil
+}
+
+func (d *deleteRetryIndexSet) IsFileNotFoundErr(err error) bool {
+	return errors.Is(err, d.notFoundErr)
+}
+
+func (d *deleteRetryIndexSet) IsUserBasedIndexSet() bool {
+	return false
 }
