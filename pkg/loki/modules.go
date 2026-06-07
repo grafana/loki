@@ -2057,6 +2057,17 @@ func (t *Loki) initQuerySchedulerRing() (_ services.Service, err error) {
 	// Set some config sections from other config sections in the config struct
 	t.Cfg.QueryScheduler.SchedulerRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
+	// num_tokens/replication_factor exist via the shared ring config but are fixed for the
+	// scheduler ring (built from the constants below), so a configured value is ignored.
+	if t.Cfg.QueryScheduler.SchedulerRing.NumTokens != scheduler.NumTokens {
+		level.Warn(util_log.Logger).Log("msg", "ignoring configured query_scheduler.scheduler_ring.num_tokens; it is fixed for the scheduler ring", "configured", t.Cfg.QueryScheduler.SchedulerRing.NumTokens, "fixed", scheduler.NumTokens)
+		t.Cfg.QueryScheduler.SchedulerRing.NumTokens = scheduler.NumTokens
+	}
+	if t.Cfg.QueryScheduler.SchedulerRing.ReplicationFactor != scheduler.ReplicationFactor {
+		level.Warn(util_log.Logger).Log("msg", "ignoring configured query_scheduler.scheduler_ring.replication_factor; it is fixed for the scheduler ring", "configured", t.Cfg.QueryScheduler.SchedulerRing.ReplicationFactor, "fixed", scheduler.ReplicationFactor)
+		t.Cfg.QueryScheduler.SchedulerRing.ReplicationFactor = scheduler.ReplicationFactor
+	}
+
 	managerMode := lokiring.ClientMode
 	if t.Cfg.isTarget(QueryScheduler) || t.Cfg.isTarget(Backend) || t.Cfg.isTarget(All) || (t.Cfg.LegacyReadTarget && t.Cfg.isTarget(Read)) {
 		managerMode = lokiring.ServerMode

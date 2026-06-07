@@ -160,6 +160,15 @@ func TestProtobufBackwardsCompatibility(t *testing.T) {
 	})
 }
 
+func TestConfig_Validate_AllowsNonDefaultRingParams(t *testing.T) {
+	// Fixed ring params set in config must not fail Validate; they're reset at ring construction.
+	cfg := Config{}
+	cfg.SchedulerRing.NumTokens = 999
+	cfg.SchedulerRing.ReplicationFactor = 1
+
+	require.NoError(t, cfg.Validate())
+}
+
 type mockSchedulerForFrontendFrontendLoopServer struct {
 	msg    *schedulerpb.SchedulerToFrontend
 	recvFn func() (*schedulerpb.FrontendToScheduler, error)
