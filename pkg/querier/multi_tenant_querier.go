@@ -81,7 +81,8 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	for id := range matchedTenants {
 		singleContext := user.InjectOrgID(ctx, id)
 
-		tenantParams := params
+		cpy := *params.QueryRequest
+		tenantParams := logql.SelectLogParams{QueryRequest: &cpy}
 
 		if tenantChunkOverrides, ok := storeOverridesByTenant[id]; ok {
 			tenantParams = tenantParams.WithStoreChunks(&logproto.ChunkRefGroup{Refs: tenantChunkOverrides})
@@ -124,7 +125,8 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	i := 0
 	for id := range matchedTenants {
 		singleContext := user.InjectOrgID(ctx, id)
-		tenantParams := params
+		cpy := *params.SampleQueryRequest
+		tenantParams := logql.SelectSampleParams{SampleQueryRequest: &cpy}
 
 		if tenantChunkOverrides, ok := storeOverridesByTenant[id]; ok {
 			tenantParams = tenantParams.WithStoreChunks(&logproto.ChunkRefGroup{Refs: tenantChunkOverrides})
@@ -158,7 +160,12 @@ func (q *MultiTenantQuerier) Label(ctx context.Context, req *logproto.LabelReque
 	responses := make([]*logproto.LabelResponse, len(tenantIDs))
 	for i, id := range tenantIDs {
 		singleContext := user.InjectOrgID(ctx, id)
-		resp, err := q.Querier.Label(singleContext, req)
+		reqCopy := *req
+		startCopy := *req.Start
+		endCopy := *req.End
+		reqCopy.Start = &startCopy
+		reqCopy.End = &endCopy
+		resp, err := q.Querier.Label(singleContext, &reqCopy)
 		if err != nil {
 			return nil, err
 		}
@@ -187,7 +194,8 @@ func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 	responses := make([]*logproto.SeriesResponse, len(tenantIDs))
 	for i, id := range tenantIDs {
 		singleContext := user.InjectOrgID(ctx, id)
-		resp, err := q.Querier.Series(singleContext, req)
+		reqCopy := *req
+		resp, err := q.Querier.Series(singleContext, &reqCopy)
 		if err != nil {
 			return nil, err
 		}
@@ -350,7 +358,8 @@ func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.D
 	responses := make([]*logproto.DetectedLabelsResponse, len(tenantIDs))
 	for i, id := range tenantIDs {
 		singleContext := user.InjectOrgID(ctx, id)
-		resp, err := q.Querier.DetectedLabels(singleContext, req)
+		reqCopy := *req
+		resp, err := q.Querier.DetectedLabels(singleContext, &reqCopy)
 		if err != nil {
 			return nil, err
 		}

@@ -709,6 +709,148 @@ func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
 	}
 }
 
+func TestMultiTenantQuerier_SelectLogs_ParamsIsolated(t *testing.T) {
+	originalStart := time.Unix(100, 0)
+	originalEnd := time.Unix(200, 0)
+
+	callCount := 0
+	querier := newQuerierMock()
+	querier.On("SelectLogs", mock.Anything, mock.Anything).Return(
+		func() iter.EntryIterator { return mockStreamIterator(1, 2) }, nil,
+	).Run(func(args mock.Arguments) {
+		p := args.Get(1).(logql.SelectLogParams)
+		require.Equal(t, originalStart, p.Start, "tenant %d received mutated Start", callCount)
+		require.Equal(t, originalEnd, p.End, "tenant %d received mutated End", callCount)
+		require.Nil(t, p.Deletes, "tenant %d received non-nil Deletes", callCount)
+
+		p.Start = time.Unix(150, 0)
+		p.End = time.Unix(180, 0)
+		p.Deletes = []*logproto.Delete{{Selector: "fake", Start: 0, End: 1}}
+		callCount++
+	})
+
+	multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+
+	selector := `{type="test"}`
+	ctx := user.InjectOrgID(context.Background(), "1|2")
+	params := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+		Selector:  selector,
+		Direction: logproto.BACKWARD,
+		Start:     originalStart,
+		End:       originalEnd,
+		Plan:      &plan.QueryPlan{AST: syntax.MustParseExpr(selector)},
+	}}
+
+	_, err := multiTenantQuerier.SelectLogs(ctx, params)
+	require.NoError(t, err)
+	require.Equal(t, 2, callCount, "both tenants should be queried")
+}
+
+func TestMultiTenantQuerier_SelectSamples_ParamsIsolated(t *testing.T) {
+	originalStart := time.Unix(100, 0)
+	originalEnd := time.Unix(200, 0)
+
+	callCount := 0
+	querier := newQuerierMock()
+	querier.On("SelectSamples", mock.Anything, mock.Anything).Return(
+		func() iter.SampleIterator { return newSampleIterator() }, nil,
+	).Run(func(args mock.Arguments) {
+		p := args.Get(1).(logql.SelectSampleParams)
+		require.Equal(t, originalStart, p.Start, "tenant %d received mutated Start", callCount)
+		require.Equal(t, originalEnd, p.End, "tenant %d received mutated End", callCount)
+		require.Nil(t, p.Deletes, "tenant %d received non-nil Deletes", callCount)
+
+		p.Start = time.Unix(150, 0)
+		p.End = time.Unix(180, 0)
+		p.Deletes = []*logproto.Delete{{Selector: "fake", Start: 0, End: 1}}
+		callCount++
+	})
+
+	multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+
+	selector := `count_over_time({foo="bar"}[1m]) > 10`
+	ctx := user.InjectOrgID(context.Background(), "1|2")
+	params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+		Selector: selector,
+		Start:    originalStart,
+		End:      originalEnd,
+		Plan:     &plan.QueryPlan{AST: syntax.MustParseExpr(selector)},
+	}}
+
+	_, err := multiTenantQuerier.SelectSamples(ctx, params)
+	require.NoError(t, err)
+	require.Equal(t, 2, callCount, "both tenants should be queried")
+}
+
+func TestMultiTenantQuerier_Label_RequestIsolated(t *testing.T) {
+	originalStart := time.Unix(100, 0)
+	originalEnd := time.Unix(200, 0)
+
+	callCount := 0
+	querier := newQuerierMock()
+	querier.On("Label", mock.Anything, mock.Anything).Return(
+		&logproto.LabelResponse{Values: []string{"val1"}}, nil,
+	).Run(func(args mock.Arguments) {
+		req := args.Get(1).(*logproto.LabelRequest)
+		require.Equal(t, originalStart, *req.Start, "tenant %d received mutated Start", callCount)
+		require.Equal(t, originalEnd, *req.End, "tenant %d received mutated End", callCount)
+
+		mutatedStart := time.Unix(150, 0)
+		mutatedEnd := time.Unix(180, 0)
+		*req.Start = mutatedStart
+		*req.End = mutatedEnd
+		callCount++
+	})
+
+	multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+
+	ctx := user.InjectOrgID(context.Background(), "1|2")
+	startCopy := originalStart
+	endCopy := originalEnd
+	req := &logproto.LabelRequest{
+		Name:   "test",
+		Values: false,
+		Start:  &startCopy,
+		End:    &endCopy,
+	}
+
+	_, err := multiTenantQuerier.Label(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, 2, callCount, "both tenants should be queried")
+}
+
+func TestMultiTenantQuerier_Series_RequestIsolated(t *testing.T) {
+	originalStart := time.Unix(100, 0)
+	originalEnd := time.Unix(200, 0)
+
+	callCount := 0
+	querier := newQuerierMock()
+	querier.On("Series", mock.Anything, mock.Anything).Return(
+		func() *logproto.SeriesResponse { return &logproto.SeriesResponse{Series: []logproto.SeriesIdentifier{}} }, nil,
+	).Run(func(args mock.Arguments) {
+		req := args.Get(1).(*logproto.SeriesRequest)
+		require.Equal(t, originalStart, req.Start, "tenant %d received mutated Start", callCount)
+		require.Equal(t, originalEnd, req.End, "tenant %d received mutated End", callCount)
+
+		req.Start = time.Unix(150, 0)
+		req.End = time.Unix(180, 0)
+		callCount++
+	})
+
+	multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+
+	ctx := user.InjectOrgID(context.Background(), "1|2")
+	req := &logproto.SeriesRequest{
+		Start:  originalStart,
+		End:    originalEnd,
+		Groups: []string{`{type="test"}`},
+	}
+
+	_, err := multiTenantQuerier.Series(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, 2, callCount, "both tenants should be queried")
+}
+
 func TestMultiTenantQuerierPatterns(t *testing.T) {
 	now := time.Now()
 
