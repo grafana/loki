@@ -132,12 +132,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
-	if cfg.SchedulerRing.NumTokens != NumTokens {
-		return errors.New("Num tokens must not be changed as it will not take effect")
-	}
-	if cfg.SchedulerRing.ReplicationFactor != ReplicationFactor {
-		return errors.New("Replication factor must not be changed as it will not take effect")
-	}
+	// NumTokens and ReplicationFactor are fixed for the scheduler ring (built from the constants
+	// directly), so a configured value never takes effect. We don't reject a mismatch: that would
+	// crash boot for setting a field that's ignored anyway. Reset and warned in initQuerySchedulerRing.
 	return nil
 }
 
