@@ -5132,6 +5132,12 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.notify-interval
 [notify_interval: <duration> | default = 0s]
 
+# Size of the internal queue for messages received from other nodes. Increasing
+# this value may help to avoid dropping messages when the node is processing a
+# large number of messages from other nodes.
+# CLI flag: -memberlist.received-messages-queue-size
+[received_messages_queue_size: <int> | default = 1024]
+
 # Gossip address to advertise to other members in the cluster. Used for NAT
 # traversal.
 # CLI flag: -memberlist.advertise-addr
@@ -6114,10 +6120,14 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 # CLI flag: -runtime-config.reload-period
 [period: <duration> | default = 10s]
 
-# Comma separated list of yaml files with the configuration that can be updated
-# at runtime. Runtime config files will be merged from left to right.
+# Comma separated list of yaml files or URLs with the configuration that can be
+# updated at runtime. Runtime config files will be merged from left to right.
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
+
+# HTTP client timeout when fetching runtime config from URLs.
+# CLI flag: -runtime-config.http-client-timeout
+[http_client_timeout: <duration> | default = 30s]
 ```
 
 ### s3_storage_config
