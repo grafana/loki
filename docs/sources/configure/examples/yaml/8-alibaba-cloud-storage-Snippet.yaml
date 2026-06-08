@@ -18,12 +18,17 @@ storage_config:
     cache_location: /loki/index_cache
   alibabacloud:
     bucket: <bucket>
-    # Optional Alibabacloud region name. Inferred from the endpoint if not set.
+    # Optional Alibabacloud region name. Required for V4 signing; inferred from the endpoint if not set. 
+    # Ignored when use_v1_auth is true.
     # region: <region>
     endpoint: <endpoint>
     access_key_id: <access_key_id>
     secret_access_key: <secret_access_key>
-    # Optional. Specify the RAM role name of the ECS instance. ECSRAMRole-based 
-    # access is enabled only when neither access_key_id nor secret_access_key is configured. 
-    # The role name can be automatically inferred even if not explicitly set.
+    # Specify the RAM role name of the ECS instance. ECS RAM role-based access is enabled 
+    # only when neither access_key_id nor secret_access_key is configured, and requires 
+    # V4 signing (use_v1_auth must be false). If not set, the role name will be automatically 
+    # retrieved from the ECS instance metadata.
     # ram_role_name: <ram_role_name>
+    # Use V1 signing instead of V4. V1 signing does not support ECS RAM role authentication; 
+    # use only as an escape hatch if V4 signing breaks your setup.
+    # use_v1_auth: <use_v1_auth>
