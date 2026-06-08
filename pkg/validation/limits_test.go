@@ -21,11 +21,11 @@ import (
 )
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
-	limits := reflect.TypeOf(Limits{})
+	limits := reflect.TypeFor[Limits]()
 	n := limits.NumField()
 	var mismatch []string
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		field := limits.Field(i)
 
 		// Note that we aren't requiring YAML and JSON tags to match, just that

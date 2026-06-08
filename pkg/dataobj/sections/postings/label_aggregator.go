@@ -28,10 +28,7 @@ type labelPostingEntry struct {
 // (ceil(Len()/8) bytes). Offset is always 0 for bitmaps built with Resize/Set.
 func (e *labelPostingEntry) BitmapBytes() []byte {
 	data, _ := e.bitmap.Bytes()
-	n := (e.bitmap.Len() + 7) / 8
-	if n > len(data) {
-		n = len(data)
-	}
+	n := min((e.bitmap.Len()+7)/8, len(data))
 	return data[:n]
 }
 

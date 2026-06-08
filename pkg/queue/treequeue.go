@@ -80,7 +80,7 @@ func (q *TreeQueue) Dequeue() Request {
 	}
 
 	maxIter := len(q.mapping.keys) + 1
-	for iters := 0; iters < maxIter; iters++ {
+	for range maxIter {
 		if q.current == StartIndexWithLocalQueue {
 			q.current++
 			if len(q.ch) > 0 {

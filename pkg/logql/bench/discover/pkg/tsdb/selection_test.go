@@ -29,7 +29,7 @@ func TestSelectWithDiversity_DiversityAcrossServices(t *testing.T) {
 	// 3 services × 4 streams each = 12 total, cap at 6.
 	seen := make(map[string]loghttp.LabelSet)
 	for _, svc := range []string{"alpha", "beta", "gamma"} {
-		for i := 0; i < 4; i++ {
+		for i := range 4 {
 			key := fmt.Sprintf(`{instance="%d", service_name="%s"}`, i, svc)
 			seen[key] = loghttp.LabelSet{"service_name": svc, "instance": fmt.Sprintf("%d", i)}
 		}

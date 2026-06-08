@@ -39,7 +39,7 @@ func TestPartitionedBloomK(t *testing.T) {
 // Ensures that Count returns the number of items added to the filter.
 func TestPartitionedCount(t *testing.T) {
 	f := NewPartitionedBloomFilter(100, 0.1)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		f.Add([]byte(strconv.Itoa(i)))
 	}
 
@@ -51,7 +51,7 @@ func TestPartitionedCount(t *testing.T) {
 // Ensures that EstimatedFillRatio returns the correct approximation.
 func TestPartitionedEstimatedFillRatio(t *testing.T) {
 	f := NewPartitionedBloomFilter(100, 0.5)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		f.Add([]byte(strconv.Itoa(i)))
 	}
 
@@ -115,7 +115,7 @@ func TestPartitionedBloomTestAndAdd(t *testing.T) {
 		t.Error("`c` should not be a member")
 	}
 
-	for i := 0; i < 1000000; i++ {
+	for i := range 1000000 {
 		f.TestAndAdd([]byte(strconv.Itoa(i)))
 	}
 
@@ -128,7 +128,7 @@ func TestPartitionedBloomTestAndAdd(t *testing.T) {
 // Ensures that Reset sets every bit to zero.
 func TestPartitionedBloomReset(t *testing.T) {
 	f := NewPartitionedBloomFilter(100, 0.1)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		f.Add([]byte(strconv.Itoa(i)))
 	}
 
@@ -148,7 +148,7 @@ func TestPartitionedBloomReset(t *testing.T) {
 // Ensures that PartitionedBloomFilter can be serialized and deserialized without errors.
 func TestPartitionedBloomGob(t *testing.T) {
 	f := NewPartitionedBloomFilter(100, 0.1)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		f.Add([]byte(strconv.Itoa(i)))
 	}
 
@@ -169,7 +169,7 @@ func TestPartitionedBloomGob(t *testing.T) {
 
 func TestPartitionedBloomFilterLazyReader(t *testing.T) {
 	filter := NewPartitionedBloomFilter(100, 0.1)
-	for i := 0; i < 2000; i++ {
+	for i := range 2000 {
 		if i%2 == 0 {
 			filter.Add([]byte(strconv.Itoa(i)))
 		}

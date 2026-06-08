@@ -182,10 +182,7 @@ func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequ
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
-	step := model.Time(req.Step)
-	if step < drain.TimeResolution {
-		step = drain.TimeResolution
-	}
+	step := max(model.Time(req.Step), drain.TimeResolution)
 
 	var iters []iter.Iterator
 	err = i.forMatchingStreams(matchers, func(s *stream) error {

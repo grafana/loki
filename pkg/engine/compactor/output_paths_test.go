@@ -137,7 +137,7 @@ func BenchmarkIndexMergePath_Build(b *testing.B) {
 		var sink string
 		for n := 0; b.Loop(); n++ {
 			var bldr indexMergePath
-			for i := 0; i < tasksPerCycle; i++ {
+			for i := range tasksPerCycle {
 				sink = bldr.Build(fmt.Sprintf("tenant-%d", n&0xff), window, 1, i, ids)
 			}
 		}

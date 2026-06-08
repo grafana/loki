@@ -158,7 +158,7 @@ func TestPatienceSort_Determinism_Shuffled(t *testing.T) {
 	// Try 10 different deterministic shuffles. Use a seeded math/rand so the
 	// test is reproducible.
 	r := rand.New(rand.NewSource(42))
-	for trial := 0; trial < 10; trial++ {
+	for trial := range 10 {
 		shuffled := append([]*compactionv2pb.SectionRef(nil), base...)
 		r.Shuffle(len(shuffled), func(i, j int) {
 			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]

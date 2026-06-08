@@ -3,8 +3,10 @@ package stages
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/sha3"
 	"encoding/hex"
 	"errors"
+	"maps"
 	"reflect"
 	"regexp"
 	"strings"
@@ -16,8 +18,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"
-
-	"golang.org/x/crypto/sha3"
 )
 
 // Config Errors
@@ -57,9 +57,7 @@ var extraFunctionMap = template.FuncMap{
 var functionMap = sprig.TxtFuncMap()
 
 func init() {
-	for k, v := range extraFunctionMap {
-		functionMap[k] = v
-	}
+	maps.Copy(functionMap, extraFunctionMap)
 }
 
 // TemplateConfig configures template value extraction
@@ -81,7 +79,7 @@ func validateTemplateConfig(cfg *TemplateConfig) (*template.Template, error) {
 }
 
 // newTemplateStage creates a new templateStage
-func newTemplateStage(logger log.Logger, config interface{}) (Stage, error) {
+func newTemplateStage(logger log.Logger, config any) (Stage, error) {
 	cfg := &TemplateConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -107,11 +105,11 @@ type templateStage struct {
 }
 
 // Process implements Stage
-func (o *templateStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
+func (o *templateStage) Process(_ model.LabelSet, extracted map[string]any, _ *time.Time, entry *string) {
 	if o.cfgs == nil {
 		return
 	}
-	td := make(map[string]interface{})
+	td := make(map[string]any)
 	for k, v := range extracted {
 		s, err := getString(v)
 		if err != nil {

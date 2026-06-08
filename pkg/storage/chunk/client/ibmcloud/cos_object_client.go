@@ -309,8 +309,8 @@ func (c *COSObjectClient) Stop() {}
 func (c *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
 	return instrument.CollectedRequest(ctx, "COS.DeleteObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		deleteObjectInput := &cos.DeleteObjectInput{
-			Bucket: ibm.String(c.bucketFromKey(objectKey)),
-			Key:    ibm.String(objectKey),
+			Bucket: new(c.bucketFromKey(objectKey)),
+			Key:    new(objectKey),
 		}
 
 		_, err := c.cos.DeleteObjectWithContext(ctx, deleteObjectInput)
@@ -337,8 +337,8 @@ func (c *COSObjectClient) objectAttributes(ctx context.Context, objectKey, sourc
 	var objectSize int64
 	err := instrument.CollectedRequest(ctx, source, cosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		headOutput, requestErr := c.hedgedCOS.HeadObject(&cos.HeadObjectInput{
-			Bucket: ibm.String(bucket),
-			Key:    ibm.String(objectKey),
+			Bucket: new(bucket),
+			Key:    new(objectKey),
 		})
 		if requestErr != nil {
 			return requestErr
@@ -371,8 +371,8 @@ func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 		err = instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
 			resp, requestErr = c.hedgedCOS.GetObjectWithContext(ctx, &cos.GetObjectInput{
-				Bucket: ibm.String(bucket),
-				Key:    ibm.String(objectKey),
+				Bucket: new(bucket),
+				Key:    new(objectKey),
 			})
 			return requestErr
 		})
@@ -404,9 +404,9 @@ func (c *COSObjectClient) GetObjectRange(ctx context.Context, objectKey string, 
 		err = instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
 			resp, requestErr = c.hedgedCOS.GetObjectWithContext(ctx, &cos.GetObjectInput{
-				Bucket: ibm.String(bucket),
-				Key:    ibm.String(objectKey),
-				Range:  ibm.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)),
+				Bucket: new(bucket),
+				Key:    new(objectKey),
+				Range:  new(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)),
 			})
 			return requestErr
 		})
@@ -427,8 +427,8 @@ func (c *COSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 		}
 		putObjectInput := &cos.PutObjectInput{
 			Body:   readSeeker,
-			Bucket: ibm.String(c.bucketFromKey(objectKey)),
-			Key:    ibm.String(objectKey),
+			Bucket: new(c.bucketFromKey(objectKey)),
+			Key:    new(objectKey),
 		}
 
 		_, err = c.cos.PutObjectWithContext(ctx, putObjectInput)
@@ -444,9 +444,9 @@ func (c *COSObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 	for i := range c.bucketNames {
 		err := instrument.CollectedRequest(ctx, "COS.List", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := cos.ListObjectsV2Input{
-				Bucket:    ibm.String(c.bucketNames[i]),
-				Prefix:    ibm.String(prefix),
-				Delimiter: ibm.String(delimiter),
+				Bucket:    new(c.bucketNames[i]),
+				Prefix:    new(prefix),
+				Delimiter: new(delimiter),
 			}
 
 			for {

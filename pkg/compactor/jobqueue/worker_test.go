@@ -75,11 +75,9 @@ func TestWorkerManager(t *testing.T) {
 	// start two workers so only one of them would get a job
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		require.NoError(t, wm.Start(ctx))
-	}()
+	})
 
 	// verify that the job builder got to send the job and that it got processed successfully
 	require.Eventually(t, func() bool {
@@ -131,8 +129,7 @@ func TestWorker_ProcessJob(t *testing.T) {
 	require.Equal(t, int32(0), mockJobBuilder.jobsSentCount.Load())
 
 	// build a worker and start it
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go newWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
 		compactor_grpc.JOB_TYPE_DELETION: jobRunner,

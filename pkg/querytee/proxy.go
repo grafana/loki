@@ -451,14 +451,12 @@ func (p *Proxy) Start() error {
 	}
 
 	// Run in a dedicated goroutine.
-	p.done.Add(1)
-	go func() {
-		defer p.done.Done()
+	p.done.Go(func() {
 
 		if err := p.srv.Serve(p.srvListener); err != nil {
 			level.Error(p.logger).Log("msg", "Proxy server failed", "err", err)
 		}
-	}()
+	})
 
 	level.Info(p.logger).Log("msg", "The proxy is up and running.")
 	return nil

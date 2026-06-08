@@ -50,7 +50,7 @@ func TestQueueEvict(t *testing.T) {
 	require.Nil(t, err)
 
 	// appending 5 entries will cause the first (oldest) 2 entries to be evicted
-	entries := []interface{}{1, 2, 3, 4, 5}
+	entries := []any{1, 2, 3, 4, 5}
 	for _, entry := range entries {
 		q.Append(entry)
 	}
@@ -77,7 +77,7 @@ func TestQueueEvictionCallback(t *testing.T) {
 	})
 	require.Nil(t, err)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		q.Append(i)
 	}
 
@@ -90,15 +90,13 @@ func TestSafeConcurrentAccess(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	for w := 0; w < 30; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 30 {
+		wg.Go(func() {
 
-			for i := 0; i < 500; i++ {
+			for range 500 {
 				q.Append(rand.Int())
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -108,7 +106,7 @@ func TestSafeConcurrentAccess(t *testing.T) {
 
 type queueEntry struct {
 	key   string
-	value interface{}
+	value any
 }
 
 func BenchmarkAppendAndEvict(b *testing.B) {

@@ -2,7 +2,7 @@ package index
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"testing"
 
 	"github.com/prometheus/common/model"
@@ -145,7 +145,7 @@ func Test_ConsistentMapping(t *testing.T) {
 	a := NewWithShards(16)
 	b := NewWithShards(32)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		lbs := labels.FromStrings(
 			"foo", "bar",
 			"hi", fmt.Sprint(i),
@@ -155,7 +155,7 @@ func Test_ConsistentMapping(t *testing.T) {
 	}
 
 	shardMax := 8
-	for i := 0; i < shardMax; i++ {
+	for i := range shardMax {
 		shard := logql.NewPowerOfTwoShard(index.ShardAnnotation{
 			Shard: uint32(i),
 			Of:    uint32(shardMax),
@@ -172,9 +172,7 @@ func Test_ConsistentMapping(t *testing.T) {
 		require.Nil(t, err)
 
 		sorter := func(xs []model.Fingerprint) {
-			sort.Slice(xs, func(i, j int) bool {
-				return xs[i] < xs[j]
-			})
+			slices.Sort(xs)
 		}
 		sorter(aIDs)
 		sorter(bIDs)

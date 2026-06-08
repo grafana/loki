@@ -967,7 +967,7 @@ func (w wrappedValue) Generate(rand *rand.Rand, _ int) reflect.Value {
 		return reflect.ValueOf(wrappedValue{matrix})
 
 	case loghttp.ResultTypeScalar:
-		q, _ := quick.Value(reflect.TypeOf(promql.Scalar{}), rand)
+		q, _ := quick.Value(reflect.TypeFor[promql.Scalar](), rand)
 		return reflect.ValueOf(wrappedValue{q.Interface().(parser.Value)})
 
 	case loghttp.ResultTypeStream:
@@ -1018,9 +1018,9 @@ func randLabel(rand *rand.Rand) labels.Label {
 func randSeries(rand *rand.Rand) promql.Series {
 	var (
 		seriesMetric      = randLabels(rand)
-		seriesFPoints, _  = quick.Value(reflect.TypeOf([]promql.FPoint{}), rand)
-		seriesHPoints, _  = quick.Value(reflect.TypeOf([]promql.HPoint{}), rand)
-		seriesDropName, _ = quick.Value(reflect.TypeOf(bool(false)), rand)
+		seriesFPoints, _  = quick.Value(reflect.TypeFor[[]promql.FPoint](), rand)
+		seriesHPoints, _  = quick.Value(reflect.TypeFor[[]promql.HPoint](), rand)
+		seriesDropName, _ = quick.Value(reflect.TypeFor[bool](), rand)
 	)
 
 	return promql.Series{
@@ -1034,7 +1034,7 @@ func randSeries(rand *rand.Rand) promql.Series {
 func randLabels(rand *rand.Rand) labels.Labels {
 	nLabels := rand.Intn(100)
 	b := labels.NewScratchBuilder(nLabels)
-	for i := 0; i < nLabels; i++ {
+	for range nLabels {
 		l := randLabel(rand)
 		b.Add(l.Name, l.Value)
 	}
@@ -1045,8 +1045,8 @@ func randLabels(rand *rand.Rand) labels.Labels {
 func randEntries(rand *rand.Rand) []logproto.Entry {
 	var entries []logproto.Entry
 	nEntries := rand.Intn(100)
-	for i := 0; i < nEntries; i++ {
-		l, _ := quick.Value(reflect.TypeOf(""), rand)
+	for range nEntries {
+		l, _ := quick.Value(reflect.TypeFor[string](), rand)
 		entries = append(entries, logproto.Entry{Timestamp: time.Now(), Line: l.Interface().(string)})
 	}
 
@@ -1055,11 +1055,11 @@ func randEntries(rand *rand.Rand) []logproto.Entry {
 
 func randSample(rand *rand.Rand) promql.Sample {
 	var (
-		sampleT, _        = quick.Value(reflect.TypeOf(int64(0)), rand)
-		sampleF, _        = quick.Value(reflect.TypeOf(float64(0)), rand)
-		sampleH, _        = quick.Value(reflect.TypeOf((*histogram.FloatHistogram)(nil)), rand)
+		sampleT, _        = quick.Value(reflect.TypeFor[int64](), rand)
+		sampleF, _        = quick.Value(reflect.TypeFor[float64](), rand)
+		sampleH, _        = quick.Value(reflect.TypeFor[*histogram.FloatHistogram](), rand)
 		sampleMetric      = randLabels(rand)
-		sampleDropName, _ = quick.Value(reflect.TypeOf(bool(false)), rand)
+		sampleDropName, _ = quick.Value(reflect.TypeFor[bool](), rand)
 	)
 
 	return promql.Sample{

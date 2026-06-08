@@ -34,7 +34,7 @@ func (m *mockIndex) Reader() (io.ReadSeeker, error) {
 
 func buildTestIndexes(t *testing.T, path string, numIndexes int) map[string]*mockIndex {
 	testIndexes := make(map[string]*mockIndex)
-	for i := 0; i < numIndexes; i++ {
+	for i := range numIndexes {
 		fileName := fmt.Sprintf("index-%d", i)
 		indexPath := filepath.Join(path, fileName)
 

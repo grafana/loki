@@ -329,7 +329,7 @@ func makeChunks(now time.Time, tpls ...c) []chunk.Chunk {
 		// This isn't even the write format for Loki but we dont' care for the sake of these tests.
 		memChk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.None, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
 		// To make sure the fetcher doesn't swap keys and buffers each chunk is built with different, but deterministic data
-		for i := 0; i < from; i++ {
+		for i := range from {
 			_, _ = memChk.Append(&logproto.Entry{
 				Timestamp: time.Unix(int64(i), 0),
 				Line:      fmt.Sprintf("line ts=%d", i),

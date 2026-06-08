@@ -34,7 +34,7 @@ type taskWithMeta struct {
 func createTasks(n int) []*taskWithMeta {
 	tasks := make([]*taskWithMeta, 0, n)
 	// Enqueue tasks
-	for i := 0; i < n; i++ {
+	for i := range n {
 		task := &taskWithMeta{
 			ProtoTask: protos.NewTask(
 				config.NewDayTable(plannertest.TestDay, "fake"),
@@ -134,7 +134,7 @@ func TestQueue(t *testing.T) {
 			idx := StartIndex
 			const nDequeue = 5
 			var dequeuedTasks []*taskWithMeta
-			for i := 0; i < nDequeue; i++ {
+			for i := range nDequeue {
 				var task *protos.ProtoTask
 				var meta any
 				task, meta, idx, err = queue.Dequeue(context.Background(), idx, consumer)
@@ -195,7 +195,7 @@ func filesInDir(path string) (int, error) {
 }
 
 func createFiles(path string, n int) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		file, err := os.Create(filepath.Join(path, fmt.Sprintf("file-%d", i)))
 		if err != nil {
 			panic(err)

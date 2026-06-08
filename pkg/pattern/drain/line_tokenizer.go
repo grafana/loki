@@ -14,9 +14,9 @@ import (
 )
 
 type LineTokenizer interface {
-	Tokenize(line string, tokens []string, state interface{}, linesDropped *prometheus.CounterVec) ([]string, interface{})
-	Join(tokens []string, state interface{}) string
-	Clone(tokens []string, state interface{}) ([]string, interface{})
+	Tokenize(line string, tokens []string, state any, linesDropped *prometheus.CounterVec) ([]string, any)
+	Join(tokens []string, state any) string
+	Clone(tokens []string, state any) ([]string, any)
 }
 
 type punctuationTokenizer struct {
@@ -44,9 +44,9 @@ func newPunctuationTokenizer(maxLineLength int) *punctuationTokenizer {
 func (p *punctuationTokenizer) Tokenize(
 	line string,
 	tokens []string,
-	state interface{},
+	state any,
 	linesDropped *prometheus.CounterVec,
-) ([]string, interface{}) {
+) ([]string, any) {
 	if len(line) > p.maxLineLength {
 		if linesDropped != nil {
 			linesDropped.WithLabelValues(LineTooLong).Inc()
@@ -93,7 +93,7 @@ func (p *punctuationTokenizer) Tokenize(
 	return tokens, spacesAfter
 }
 
-func (p *punctuationTokenizer) Join(tokens []string, state interface{}) string {
+func (p *punctuationTokenizer) Join(tokens []string, state any) string {
 	spacesAfter := state.([]int)
 	strBuilder := strings.Builder{}
 	spacesIdx := 0
@@ -108,7 +108,7 @@ func (p *punctuationTokenizer) Join(tokens []string, state interface{}) string {
 	return strBuilder.String()
 }
 
-func (p *punctuationTokenizer) Clone(tokens []string, state interface{}) ([]string, interface{}) {
+func (p *punctuationTokenizer) Clone(tokens []string, state any) ([]string, any) {
 	res := make([]string, len(tokens))
 	for i, token := range tokens {
 		res[i] = strings.Clone(token)
@@ -127,9 +127,9 @@ type splittingTokenizer struct{}
 func (splittingTokenizer) Tokenize(
 	line string,
 	tokens []string,
-	state interface{},
+	state any,
 	_ *prometheus.CounterVec,
-) ([]string, interface{}) {
+) ([]string, any) {
 	numEquals := strings.Count(line, "=")
 	numColons := strings.Count(line, ":")
 	numSpaces := strings.Count(line, " ")
@@ -164,7 +164,7 @@ func (splittingTokenizer) Tokenize(
 	return tokens, spacesAfter
 }
 
-func (splittingTokenizer) Join(tokens []string, state interface{}) string {
+func (splittingTokenizer) Join(tokens []string, state any) string {
 	spacesAfter := state.([]int)
 	strBuilder := strings.Builder{}
 	spacesIdx := 0
@@ -179,7 +179,7 @@ func (splittingTokenizer) Join(tokens []string, state interface{}) string {
 	return strBuilder.String()
 }
 
-func (splittingTokenizer) Clone(tokens []string, state interface{}) ([]string, interface{}) {
+func (splittingTokenizer) Clone(tokens []string, state any) ([]string, any) {
 	res := make([]string, len(tokens))
 	for i, token := range tokens {
 		res[i] = strings.Clone(token)
@@ -210,9 +210,9 @@ func newLogfmtTokenizer(varReplace string, maxLineLength int) *logfmtTokenizer {
 func (t *logfmtTokenizer) Tokenize(
 	line string,
 	tokens []string,
-	_ interface{},
+	_ any,
 	linesDropped *prometheus.CounterVec,
-) ([]string, interface{}) {
+) ([]string, any) {
 	if len(line) > t.maxLineLength {
 		if linesDropped != nil {
 			linesDropped.WithLabelValues(LineTooLong).Inc()
@@ -241,7 +241,7 @@ func (t *logfmtTokenizer) Tokenize(
 	return tokens, nil
 }
 
-func (t *logfmtTokenizer) Join(tokens []string, _ interface{}) string {
+func (t *logfmtTokenizer) Join(tokens []string, _ any) string {
 	if len(tokens) == 0 {
 		return ""
 	}
@@ -259,7 +259,7 @@ func (t *logfmtTokenizer) Join(tokens []string, _ interface{}) string {
 	return buf.String()
 }
 
-func (t *logfmtTokenizer) Clone(tokens []string, _ interface{}) ([]string, interface{}) {
+func (t *logfmtTokenizer) Clone(tokens []string, _ any) ([]string, any) {
 	res := make([]string, len(tokens))
 	for i, token := range tokens {
 		res[i] = strings.Clone(token)
@@ -286,9 +286,9 @@ func newJSONTokenizer(varReplace string, maxLineLength int, fieldsToTokenize []s
 func (t *jsonTokenizer) Tokenize(
 	line string,
 	tokens []string,
-	state interface{},
+	state any,
 	linesDropped *prometheus.CounterVec,
-) ([]string, interface{}) {
+) ([]string, any) {
 	var found []byte
 	for _, key := range t.fieldsToTokenize {
 		msg, ty, _, err := jsonparser.Get(unsafeBytes(line), key)
@@ -311,7 +311,7 @@ func (t *jsonTokenizer) Tokenize(
 	return t.punctuationTokenizer.Tokenize(foundLine, tokens, state, linesDropped)
 }
 
-func (t *jsonTokenizer) Join(tokens []string, state interface{}) string {
+func (t *jsonTokenizer) Join(tokens []string, state any) string {
 	return fmt.Sprintf("%s%s%s", t.varReplace, t.punctuationTokenizer.Join(tokens, state), t.varReplace)
 }
 
@@ -328,6 +328,6 @@ type DedupingTokenizer struct {
 	dedupParam string
 }
 
-func (d DedupingTokenizer) Join(tokens []string, state interface{}) string {
+func (d DedupingTokenizer) Join(tokens []string, state any) string {
 	return deduplicatePlaceholders(d.LineTokenizer.Join(tokens, state), d.dedupParam)
 }

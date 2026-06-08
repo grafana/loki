@@ -3,6 +3,7 @@ package otlplabels
 import (
 	"encoding/hex"
 	"fmt"
+	"slices"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/otlptranslator"
@@ -125,21 +126,19 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 			return false
 		}
 
-		if action == IndexLabel {
+		switch action {
+		case IndexLabel:
 			for _, lbl := range attributeAsLabels {
 				result.StreamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 
 				if !hasServiceName && shouldDiscoverServiceName {
-					for _, labelName := range discoverServiceName {
-						if lbl.Name == labelName {
-							result.StreamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
-							hasServiceName = true
-							break
-						}
+					if slices.Contains(discoverServiceName, lbl.Name) {
+						result.StreamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
+						hasServiceName = true
 					}
 				}
 			}
-		} else if action == StructuredMetadata {
+		case StructuredMetadata:
 			result.StructuredMetadata = append(result.StructuredMetadata, attributeAsLabels...)
 		}
 

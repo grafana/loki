@@ -1076,7 +1076,7 @@ func Test_pruneCachedTasks(t *testing.T) {
 				tasks[1][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
 				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
 			},
-			maxNonEmptyBytes: ptr[uint64](0),
+			maxNonEmptyBytes: new(uint64(0)),
 			expected:         originalPlan,
 		},
 		{
@@ -1086,7 +1086,7 @@ func Test_pruneCachedTasks(t *testing.T) {
 			payloads: map[string][]byte{
 				tasks[2][physical.TaskCacheLogsScanRangeAggr]: nonEmptyResultPayload(),
 			},
-			maxNonEmptyBytes: ptr[uint64](5),
+			maxNonEmptyBytes: new(uint64(5)),
 			expected:         originalPlan,
 		},
 	} {
@@ -1277,9 +1277,6 @@ func (m *timeoutMockCache) Fetch(ctx context.Context, keys []string) (found []st
 	err = context.DeadlineExceeded
 	return
 }
-
-// ptr returns a pointer to v. Used to set optional test-case fields inline.
-func ptr[T any](v T) *T { return &v }
 
 // emptyResultPayload returns a zero-length buffer which is treated as an empty cached result.
 func emptyResultPayload() []byte { return []byte{} }

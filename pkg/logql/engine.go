@@ -258,7 +258,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	if q.logExecQuery {
 		queryHash := util.HashedQuery(q.params.QueryString())
 
-		logValues := []interface{}{
+		logValues := []any{
 			"msg", "executing query",
 			"query", q.params.QueryString(),
 			"query_hash", queryHash,
@@ -321,13 +321,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	// A VariantsExpr is a specific type of SampleExpr, so make sure this case is evaulated first
 	case syntax.VariantsExpr:
 		tenants, _ := tenant.TenantIDs(ctx)
-		multiVariantEnabled := false
-		for _, t := range tenants {
-			if q.limits.EnableMultiVariantQueries(t) {
-				multiVariantEnabled = true
-				break
-			}
-		}
+		multiVariantEnabled := slices.ContainsFunc(tenants, q.limits.EnableMultiVariantQueries)
 
 		if !multiVariantEnabled {
 			return nil, logqlmodel.ErrVariantsDisabled

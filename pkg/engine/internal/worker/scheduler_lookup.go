@@ -90,11 +90,9 @@ func (l *schedulerLookup) Run(ctx context.Context, handlerFunc handleScheduler) 
 					handler.Context, handler.Cancel = context.WithCancel(ctx)
 					handlers[update.Addr] = handler
 
-					handlerWg.Add(1)
-					go func() {
-						defer handlerWg.Done()
+					handlerWg.Go(func() {
 						handlerFunc(handler.Context, addr)
-					}()
+					})
 
 				case grpcutil.Delete:
 					handler, exist := handlers[update.Addr]

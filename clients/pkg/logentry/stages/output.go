@@ -34,7 +34,7 @@ func validateOutputConfig(cfg *OutputConfig) error {
 }
 
 // newOutputStage creates a new outputStage
-func newOutputStage(logger log.Logger, config interface{}) (Stage, error) {
+func newOutputStage(logger log.Logger, config any) (Stage, error) {
 	cfg := &OutputConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -57,7 +57,7 @@ type outputStage struct {
 }
 
 // Process implements Stage
-func (o *outputStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
+func (o *outputStage) Process(_ model.LabelSet, extracted map[string]any, _ *time.Time, entry *string) {
 	if o.cfgs == nil {
 		return
 	}

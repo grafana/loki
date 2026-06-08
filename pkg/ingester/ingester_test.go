@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sort"
 	"sync"
 	"testing"
@@ -161,7 +162,7 @@ func TestIngester_GetStreamRates_Correctness(t *testing.T) {
 	i.lifecycler.SetFlushOnShutdown(false)
 	i.lifecycler.SetUnregisterOnShutdown(false)
 
-	for idx := 0; idx < 100; idx++ {
+	for idx := range 100 {
 		// push 100 different streams.
 		i.streamRateCalculator.Record("fake", uint64(idx), uint64(idx), 10)
 	}
@@ -171,7 +172,7 @@ func TestIngester_GetStreamRates_Correctness(t *testing.T) {
 	resp, err := i.GetStreamRates(context.TODO(), nil)
 	require.NoError(t, err)
 	require.Len(t, resp.StreamRates, 100)
-	for idx := 0; idx < 100; idx++ {
+	for idx := range 100 {
 		resp.StreamRates[idx].StreamHash = uint64(idx)
 		resp.StreamRates[idx].Rate = 10
 	}
@@ -191,7 +192,7 @@ func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 	require.NoError(b, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
-	for idx := 0; idx < 1000; idx++ {
+	for idx := range 1000 {
 		i.streamRateCalculator.Record("fake", uint64(idx), uint64(idx), 10)
 	}
 	i.streamRateCalculator.updateRates()
@@ -227,7 +228,7 @@ func TestIngester(t *testing.T) {
 			},
 		},
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
 			Timestamp: time.Unix(0, 0),
 			Line:      fmt.Sprintf("line %d", i),
@@ -411,7 +412,7 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 			},
 		},
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
 			Timestamp: time.Unix(0, 0),
 			Line:      fmt.Sprintf("line %d", i),
@@ -814,7 +815,7 @@ func Test_InMemoryLabels(t *testing.T) {
 			},
 		},
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
 			Timestamp: time.Unix(0, 0),
 			Line:      fmt.Sprintf("line %d", i),
@@ -879,7 +880,7 @@ func TestIngester_GetDetectedLabels(t *testing.T) {
 			},
 		},
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
 			Timestamp: time.Unix(0, 0),
 			Line:      fmt.Sprintf("line %d", i),
@@ -940,7 +941,7 @@ func TestIngester_GetDetectedLabelsWithQuery(t *testing.T) {
 			},
 		},
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
 			Timestamp: time.Unix(0, 0),
 			Line:      fmt.Sprintf("line %d", i),
@@ -988,14 +989,14 @@ func Test_DedupeIngester(t *testing.T) {
 	ingesterSet, closer := createIngesterSets(t, ingesterConfig, ingesterCount)
 	defer closer()
 
-	for i := int64(0); i < streamCount; i++ {
+	for i := range streamCount {
 		s := labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i))
 		streams = append(streams, s)
 		streamHashes = append(streamHashes, labels.StableHash(s))
 	}
-	sort.Slice(streamHashes, func(i, j int) bool { return streamHashes[i] < streamHashes[j] })
+	slices.Sort(streamHashes)
 
-	for i := int64(0); i < requests; i++ {
+	for i := range requests {
 		for _, ing := range ingesterSet {
 			_, err := ing.Push(ctx, buildPushRequest(i, streams))
 			require.NoError(t, err)
@@ -1029,7 +1030,7 @@ func Test_DedupeIngester(t *testing.T) {
 				require.Equal(t, `{bar="", foo="bar"}`, it.Labels())
 				actualHashes = append(actualHashes, it.StreamHash())
 			}
-			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			slices.Sort(actualHashes)
 			require.Equal(t, streamHashes, actualHashes)
 		}
 		require.False(t, it.Next())
@@ -1050,7 +1051,7 @@ func Test_DedupeIngester(t *testing.T) {
 		}
 		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.FORWARD)
 
-		for i := int64(0); i < requests; i++ {
+		for i := range requests {
 			actualHashes := []uint64{}
 			for j := 0; j < int(streamCount); j++ {
 				require.True(t, it.Next())
@@ -1059,7 +1060,7 @@ func Test_DedupeIngester(t *testing.T) {
 				require.Equal(t, `{bar="", foo="bar"}`, it.Labels())
 				actualHashes = append(actualHashes, it.StreamHash())
 			}
-			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			slices.Sort(actualHashes)
 			require.Equal(t, streamHashes, actualHashes)
 		}
 		require.False(t, it.Next())
@@ -1085,7 +1086,7 @@ func Test_DedupeIngester(t *testing.T) {
 			expectedLabels = append(expectedLabels, labels.NewBuilder(s).Del("foo").Labels().String())
 		}
 		sort.Strings(expectedLabels)
-		for i := int64(0); i < requests; i++ {
+		for i := range requests {
 			labels := []string{}
 			actualHashes := []uint64{}
 			for j := 0; j < int(streamCount); j++ {
@@ -1096,7 +1097,7 @@ func Test_DedupeIngester(t *testing.T) {
 				actualHashes = append(actualHashes, it.StreamHash())
 			}
 			sort.Strings(labels)
-			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			slices.Sort(actualHashes)
 			require.Equal(t, expectedLabels, labels)
 			require.Equal(t, streamHashes, actualHashes)
 		}
@@ -1118,7 +1119,7 @@ func Test_DedupeIngester(t *testing.T) {
 			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
 		}
 		it := iter.NewMergeSampleIterator(ctx, iterators)
-		for i := int64(0); i < requests; i++ {
+		for i := range requests {
 			actualHashes := []uint64{}
 			for j := 0; j < int(streamCount); j++ {
 				require.True(t, it.Next())
@@ -1127,7 +1128,7 @@ func Test_DedupeIngester(t *testing.T) {
 				require.Equal(t, "{}", it.Labels())
 				actualHashes = append(actualHashes, it.StreamHash())
 			}
-			sort.Slice(actualHashes, func(i, j int) bool { return actualHashes[i] < actualHashes[j] })
+			slices.Sort(actualHashes)
 			require.Equal(t, streamHashes, actualHashes)
 		}
 		require.False(t, it.Next())
@@ -1153,11 +1154,11 @@ func Test_DedupeIngesterParser(t *testing.T) {
 	ingesterSet, closer := createIngesterSets(t, ingesterConfig, ingesterCount)
 	defer closer()
 
-	for i := 0; i < streamCount; i++ {
+	for i := range streamCount {
 		streams = append(streams, labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i)))
 	}
 
-	for i := 0; i < requests; i++ {
+	for i := range requests {
 		for _, ing := range ingesterSet {
 			_, err := ing.Push(ctx, buildPushJSONRequest(int64(i), streams))
 			require.NoError(t, err)
@@ -1183,8 +1184,8 @@ func Test_DedupeIngesterParser(t *testing.T) {
 		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.BACKWARD)
 
 		for i := requests - 1; i >= 0; i-- {
-			for j := 0; j < streamCount; j++ {
-				for k := 0; k < 2; k++ { // 2 line per entry
+			for range streamCount {
+				for range 2 { // 2 line per entry
 					require.True(t, it.Next())
 					require.Equal(t, int64(i), it.At().Timestamp.UnixNano())
 				}
@@ -1212,9 +1213,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 		}
 		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.FORWARD)
 
-		for i := 0; i < requests; i++ {
-			for j := 0; j < streamCount; j++ {
-				for k := 0; k < 2; k++ { // 2 line per entry
+		for i := range requests {
+			for range streamCount {
+				for range 2 { // 2 line per entry
 					require.True(t, it.Next())
 					require.Equal(t, int64(i), it.At().Timestamp.UnixNano())
 				}
@@ -1239,9 +1240,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 		}
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 
-		for i := 0; i < requests; i++ {
-			for j := 0; j < streamCount; j++ {
-				for k := 0; k < 2; k++ { // 2 line per entry
+		for i := range requests {
+			for range streamCount {
+				for range 2 { // 2 line per entry
 					require.True(t, it.Next())
 					require.Equal(t, float64(1), it.At().Value)
 					require.Equal(t, int64(i), it.At().Timestamp)
@@ -1267,9 +1268,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 		}
 		it := iter.NewMergeSampleIterator(ctx, iterators)
 
-		for i := 0; i < requests; i++ {
-			for j := 0; j < streamCount; j++ {
-				for k := 0; k < 2; k++ { // 2 line per entry
+		for i := range requests {
+			for range streamCount {
+				for range 2 { // 2 line per entry
 					require.True(t, it.Next())
 					require.Equal(t, float64(1), it.At().Value)
 					require.Equal(t, int64(i), it.At().Timestamp)
@@ -1397,7 +1398,7 @@ func Test_Series(t *testing.T) {
 				},
 			},
 		}
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
 				Timestamp: time.Unix(0, 0),
 				Line:      fmt.Sprintf("line %d", i),
@@ -1437,7 +1438,7 @@ func Test_Series(t *testing.T) {
 				},
 			},
 		}
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
 				Timestamp: time.Now(),
 				Line:      fmt.Sprintf("line %d", i),
@@ -1475,7 +1476,7 @@ func Test_Series(t *testing.T) {
 				},
 			},
 		}
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
 				Timestamp: time.Now(),
 				Line:      fmt.Sprintf("line %d", i),
@@ -1512,7 +1513,7 @@ type ingesterClient struct {
 func createIngesterSets(t *testing.T, config Config, count int) ([]ingesterClient, func()) {
 	result := make([]ingesterClient, count)
 	closers := make([]func(), count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		ingester, closer := createIngesterServer(t, config)
 		result[i] = ingester
 		closers[i] = closer
@@ -1535,9 +1536,9 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 
 	listener := bufconn.Listen(1024 * 1024)
 
-	server := grpc.NewServer(grpc.ChainStreamInterceptor(func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	server := grpc.NewServer(grpc.ChainStreamInterceptor(func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
-	}), grpc.ChainUnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	}), grpc.ChainUnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		return middleware.ServerUserHeaderInterceptor(ctx, req, info, handler)
 	}))
 

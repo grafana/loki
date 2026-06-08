@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -159,10 +160,5 @@ func newFakeMetadataBloom(tokenizer *StructuredMetadataTokenizer, kvs ...push.La
 
 func (f fakeMetadataBloom) Test(data []byte) bool {
 	str := string(data)
-	for _, match := range f {
-		if str == match {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(f, str)
 }

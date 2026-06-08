@@ -123,7 +123,7 @@ func run(args []string) int {
 	if *suitesStr == "" {
 		suites = []bench.Suite{bench.SuiteFast, bench.SuiteRegression, bench.SuiteExhaustive}
 	} else {
-		for _, s := range strings.Split(*suitesStr, ",") {
+		for s := range strings.SplitSeq(*suitesStr, ",") {
 			suites = append(suites, bench.Suite(strings.TrimSpace(s)))
 		}
 	}

@@ -498,7 +498,7 @@ func TestSerialization(t *testing.T) {
 					numSamples := 50000
 					var entry *logproto.Entry
 
-					for i := 0; i < numSamples; i++ {
+					for i := range numSamples {
 						entry = logprotoEntry(int64(i), strconv.Itoa(i))
 						if appendWithStructuredMetadata {
 							entry.StructuredMetadata = []logproto.LabelAdapter{{Name: "foo", Value: strconv.Itoa(i)}}
@@ -517,7 +517,7 @@ func TestSerialization(t *testing.T) {
 
 					it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 					require.NoError(t, err)
-					for i := 0; i < numSamples; i++ {
+					for i := range numSamples {
 						require.True(t, it.Next())
 
 						e := it.At()
@@ -543,7 +543,7 @@ func TestSerialization(t *testing.T) {
 					extractors := []log.StreamSampleExtractor{countExtractor, countExtractor}
 
 					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
-					for i := 0; i < numSamples; i++ {
+					for i := range numSamples {
 						require.True(t, sampleIt.Next(), i)
 
 						s := sampleIt.At()
@@ -1104,7 +1104,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 					structuredMetadata = labels.FromStrings("foo", "foo")
 				}
 
-				for i := 0; i < j; i++ {
+				for i := range j {
 					if _, err := h.Append(int64(i), "this is the append string", structuredMetadata); err != nil {
 						b.Fatal(err)
 					}
@@ -1137,7 +1137,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 					structuredMetadata = labels.FromStrings("foo", "foo")
 				}
 
-				for i := 0; i < j; i++ {
+				for i := range j {
 					if _, err := h.Append(int64(i), "this is the append string", structuredMetadata); err != nil {
 						b.Fatal(err)
 					}
@@ -1197,7 +1197,7 @@ func BenchmarkHeadBlockSampleIterator_WithMultipleExtractors(b *testing.B) {
 					structuredMetadata = labels.FromStrings("foo", "foo")
 				}
 
-				for i := 0; i < j; i++ {
+				for i := range j {
 					if _, err := h.Append(int64(i), "this is the append string", structuredMetadata); err != nil {
 						b.Fatal(err)
 					}
@@ -1324,7 +1324,7 @@ func TestCheckpointEncoding(t *testing.T) {
 			c := newMemChunkWithFormat(f.chunkFormat, compression.Snappy, f.headBlockFmt, blockSize, targetSize)
 
 			// add a few entries
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(int64(i), 0),
 					Line:      fmt.Sprintf("hi there - %d", i),
@@ -2166,7 +2166,7 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 
 						// We will run the test twice so the iterator will be created twice.
 						// This is to ensure that the iterator is correctly closed.
-						for i := 0; i < 2; i++ {
+						for range 2 {
 							sts, ctx := stats.NewContext(context.Background())
 							it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, pipeline.ForStream(streamLabels))
 							require.NoError(t, err)
@@ -2205,7 +2205,7 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 
 						// We will run the test twice so the iterator will be created twice.
 						// This is to ensure that the iterator is correctly closed.
-						for i := 0; i < 2; i++ {
+						for range 2 {
 							sts, ctx := stats.NewContext(context.Background())
 
 							streamExtractors := make(
@@ -2253,11 +2253,11 @@ func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
 
 	for _, format := range allPossibleFormats {
 		t.Run(fmt.Sprintf("chunkFormat:%v headBlockFmt:%v", format.chunkFormat, format.headBlockFmt), func(t *testing.T) {
-			for incorrectOffsetBlockNum := 0; incorrectOffsetBlockNum < 3; incorrectOffsetBlockNum++ {
+			for incorrectOffsetBlockNum := range 3 {
 				t.Run(fmt.Sprintf("inorrect offset block: %d", incorrectOffsetBlockNum), func(t *testing.T) {
 					chk := NewMemChunk(format.chunkFormat, compression.None, format.headBlockFmt, blockSize, testTargetSize)
 					ts := time.Now().Unix()
-					for i := 0; i < 3; i++ {
+					for i := range 3 {
 						dup, err := chk.Append(&logproto.Entry{
 							Timestamp: time.Now(),
 							Line:      fmt.Sprintf("%d-%d", ts, i),

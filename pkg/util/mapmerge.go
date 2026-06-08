@@ -1,5 +1,7 @@
 package util //nolint:revive
 
+import "maps"
+
 // CopyMap makes a copy of the given map
 func CopyMap(m map[string]string) map[string]string {
 	var newMap = make(map[string]string, len(m))
@@ -8,9 +10,7 @@ func CopyMap(m map[string]string) map[string]string {
 		return nil
 	}
 
-	for k, v := range m {
-		newMap[k] = v
-	}
+	maps.Copy(newMap, m)
 
 	return newMap
 }
@@ -27,9 +27,7 @@ func MergeMaps(base map[string]string, overlay map[string]string) map[string]str
 		return newMap
 	}
 
-	for k, v := range overlay {
-		newMap[k] = v
-	}
+	maps.Copy(newMap, overlay)
 
 	return newMap
 }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -37,12 +38,12 @@ var (
 // If string is non-empty, it will be added as comment.
 // If yaml value is non-empty, it will be marshaled as yaml under the same key as it would appear in config.
 type ExamplerConfig interface {
-	ExampleDoc() (comment string, yaml interface{})
+	ExampleDoc() (comment string, yaml any)
 }
 
 type FieldExample struct {
 	Comment string
-	Yaml    interface{}
+	Yaml    any
 }
 
 type ConfigBlock struct {
@@ -125,11 +126,11 @@ func Flags(cfg flagext.Registerer) map[uintptr]*flag.Flag {
 
 // Config returns a slice of ConfigBlocks. The first ConfigBlock is a recursively expanded cfg.
 // The remaining entries in the slice are all (root or not) ConfigBlocks.
-func Config(cfg interface{}, flags map[uintptr]*flag.Flag, rootBlocks []RootBlock) ([]*ConfigBlock, error) {
+func Config(cfg any, flags map[uintptr]*flag.Flag, rootBlocks []RootBlock) ([]*ConfigBlock, error) {
 	return config(nil, cfg, flags, rootBlocks)
 }
 
-func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, rootBlocks []RootBlock) ([]*ConfigBlock, error) {
+func config(block *ConfigBlock, cfg any, flags map[uintptr]*flag.Flag, rootBlocks []RootBlock) ([]*ConfigBlock, error) {
 	var blocks []*ConfigBlock
 
 	// If the input block is nil it means we're generating the doc for the top-level block
@@ -139,9 +140,9 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 	}
 
 	// The input config is expected to be addressable.
-	if reflect.TypeOf(cfg).Kind() != reflect.Ptr {
+	if reflect.TypeOf(cfg).Kind() != reflect.Pointer {
 		t := reflect.TypeOf(cfg)
-		return nil, fmt.Errorf("%s is a %s while a %s is expected", t, t.Kind(), reflect.Ptr)
+		return nil, fmt.Errorf("%s is a %s while a %s is expected", t, t.Kind(), reflect.Pointer)
 	}
 
 	// The input config is expected to be a pointer to struct.
@@ -152,8 +153,7 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 		return nil, fmt.Errorf("%s is a %s while a %s is expected", v, v.Kind(), reflect.Struct)
 	}
 
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
+	for field := range t.Fields() {
 		fieldValue := v.FieldByIndex(field.Index)
 
 		// Skip fields explicitly marked as "hidden" in the doc
@@ -189,7 +189,7 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 		}
 
 		// Recursively re-iterate if it's a struct, and it's not a custom type.
-		if _, custom := getCustomFieldType(field.Type); (field.Type.Kind() == reflect.Struct || field.Type.Kind() == reflect.Ptr) && !custom {
+		if _, custom := getCustomFieldType(field.Type); (field.Type.Kind() == reflect.Struct || field.Type.Kind() == reflect.Pointer) && !custom {
 			// Check whether the sub-block is a root config block
 			rootName, rootDesc, isRoot := isRootBlock(field.Type, rootBlocks)
 
@@ -250,7 +250,7 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 				}
 			}
 
-			if field.Type.Kind() == reflect.Ptr {
+			if field.Type.Kind() == reflect.Pointer {
 				// If this is a pointer, it's probably nil, so we initialize it.
 				fieldValue = reflect.New(field.Type.Elem())
 			} else if field.Type.Kind() == reflect.Struct {
@@ -275,7 +275,7 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 			// Add ConfigBlock for slices only if the field isn't a custom type,
 			// which shouldn't be inspected because doesn't have YAML tags, flag registrations, etc.
 			_, isCustomType := getFieldCustomType(field.Type)
-			isSliceOfStructs := field.Type.Kind() == reflect.Slice && (field.Type.Elem().Kind() == reflect.Struct || field.Type.Elem().Kind() == reflect.Ptr)
+			isSliceOfStructs := field.Type.Kind() == reflect.Slice && (field.Type.Elem().Kind() == reflect.Struct || field.Type.Elem().Kind() == reflect.Pointer)
 			if !isCustomType && isSliceOfStructs {
 				// Check if slice element type is a root block
 				// and add it to the blocks structure
@@ -451,7 +451,7 @@ func getFieldType(t reflect.Type, rootBlocks []RootBlock) (string, error) {
 		return fmt.Sprintf("map of %s to %s", t.Key(), elemType), nil
 	case reflect.Struct:
 		return t.Name(), nil
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return getFieldType(t.Elem(), rootBlocks)
 	case reflect.Interface:
 		return t.Name(), nil
@@ -509,11 +509,11 @@ func getFieldExample(fieldKey string, fieldType reflect.Type) *FieldExample {
 	comment, yml := ex.ExampleDoc()
 	return &FieldExample{
 		Comment: comment,
-		Yaml:    map[string]interface{}{fieldKey: yml},
+		Yaml:    map[string]any{fieldKey: yml},
 	}
 }
 
-func getCustomFieldEntry(cfg interface{}, field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*ConfigEntry, error) {
+func getCustomFieldEntry(cfg any, field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*ConfigEntry, error) {
 	if field.Type == reflect.TypeFor[log.Level]() {
 		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
 		if err != nil || fieldFlag == nil {
@@ -626,7 +626,7 @@ func isFieldInline(f reflect.StructField) bool {
 	return yamlFieldInlineParser.MatchString(f.Tag.Get("yaml"))
 }
 
-func getFieldDescription(cfg interface{}, field reflect.StructField, fallback string) string {
+func getFieldDescription(cfg any, field reflect.StructField, fallback string) string {
 	// Set prefix
 	prefix := ""
 	if isFieldDeprecated(field) {
@@ -653,10 +653,8 @@ func getFieldDescription(cfg interface{}, field reflect.StructField, fallback st
 
 func isRootBlock(t reflect.Type, rootBlocks []RootBlock) (string, string, bool) {
 	for _, rootBlock := range rootBlocks {
-		for _, structType := range rootBlock.StructType {
-			if t == structType {
-				return rootBlock.Name, rootBlock.Desc, true
-			}
+		if slices.Contains(rootBlock.StructType, t) {
+			return rootBlock.Name, rootBlock.Desc, true
 		}
 	}
 
@@ -682,7 +680,7 @@ func parseDocTag(f reflect.StructField) map[string]string {
 		return cfg
 	}
 
-	for _, entry := range strings.Split(tag, "|") {
+	for entry := range strings.SplitSeq(tag, "|") {
 		parts := strings.SplitN(entry, "=", 2)
 
 		switch len(parts) {

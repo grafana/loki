@@ -57,9 +57,9 @@ type flushReasonCounter struct {
 	flushReasonSynced   int
 }
 
-func (f *flushReasonCounter) Log() []interface{} {
+func (f *flushReasonCounter) Log() []any {
 	// return counters only if they are non zero
-	var log []interface{}
+	var log []any
 	if f.flushReasonIdle > 0 {
 		log = append(log, "idle", f.flushReasonIdle)
 	}
@@ -289,7 +289,7 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 	}
 
 	lbs := labels.String()
-	logValues := make([]interface{}, 0, 35)
+	logValues := make([]any, 0, 35)
 	logValues = append(logValues,
 		"msg", "flushing stream",
 		"user", userID,

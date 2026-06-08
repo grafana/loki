@@ -485,26 +485,20 @@ func (c *Compactor) loop(ctx context.Context) error {
 					level.Info(util_log.Logger).Log("msg", "this instance has been chosen to run the compactor, starting compactor")
 					runningCtx, runningCancel = context.WithCancel(ctx)
 
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+					wg.Go(func() {
 						c.tablesManager.start(runningCtx)
-					}()
+					})
 
 					if c.deleteRequestsManager != nil {
-						wg.Add(1)
-						go func() {
-							defer wg.Done()
+						wg.Go(func() {
 							c.deleteRequestsManager.Start(runningCtx)
-						}()
+						})
 					}
 
 					if c.cfg.HorizontalScalingMode == HorizontalScalingModeMain {
-						wg.Add(1)
-						go func() {
-							defer wg.Done()
+						wg.Go(func() {
 							c.JobQueue.Start(runningCtx)
-						}()
+						})
 					}
 
 					c.running = true

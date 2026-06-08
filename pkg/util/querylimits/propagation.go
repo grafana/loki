@@ -89,7 +89,7 @@ func ExtractQueryLimitsFromContext(ctx context.Context) *QueryLimits {
 
 // InjectQueryLimitsIntoContext returns a derived context containing the provided query limits
 func InjectQueryLimitsIntoContext(ctx context.Context, limits QueryLimits) context.Context {
-	return context.WithValue(ctx, interface{}(queryLimitsCtxKey), &limits)
+	return context.WithValue(ctx, any(queryLimitsCtxKey), &limits)
 }
 
 type Context struct {

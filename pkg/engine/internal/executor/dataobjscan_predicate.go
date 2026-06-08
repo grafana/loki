@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -490,10 +491,5 @@ func logsPredicateIsSatisfiableForAllRows(p logs.Predicate) bool {
 // logsPredicatesAreUnsatisfiable reports whether the conjunction of predicates can
 // never match a row. Multiple predicates passed to [logs.Reader] are ANDed.
 func logsPredicatesAreUnsatisfiable(predicates []logs.Predicate) bool {
-	for _, p := range predicates {
-		if logsPredicateIsUnsatisfiable(p) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(predicates, logsPredicateIsUnsatisfiable)
 }

@@ -60,16 +60,16 @@ func BenchmarkSubstrInsensitive(b *testing.B) {
 }
 
 func makeUTF8ArrayForRegexp(tb testing.TB, alloc *memory.Allocator, size int) columnar.Datum {
-	values := make([]interface{}, size)
+	values := make([]any, size)
 	strings := []string{"foo", "bar", "baz", "qux", "quux", "corge", "grault", "garply"}
-	for i := 0; i < size; i++ {
+	for i := range size {
 		values[i] = strings[i%len(strings)]
 	}
 	return columnartest.Array(tb, types.KindUTF8, alloc, values...)
 }
 
 func makeUTF8ArrayForSubstr(tb testing.TB, alloc *memory.Allocator, size int) columnar.Datum {
-	values := make([]interface{}, size)
+	values := make([]any, size)
 	strings := []string{
 		"this is a test string",
 		"another test value",
@@ -78,7 +78,7 @@ func makeUTF8ArrayForSubstr(tb testing.TB, alloc *memory.Allocator, size int) co
 		"test",
 		"final test entry",
 	}
-	for i := 0; i < size; i++ {
+	for i := range size {
 		values[i] = strings[i%len(strings)]
 	}
 	return columnartest.Array(tb, types.KindUTF8, alloc, values...)

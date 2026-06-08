@@ -179,9 +179,7 @@ func newMarkerReader(markerStorageClient client.ObjectClient, maxParallelism int
 func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []byte) error) {
 	level.Info(util_log.Logger).Log("msg", "mark processor started", "workers", r.maxParallelism, "delay", r.minAgeFile)
 	r.wg.Wait() // only one start at a time.
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
+	r.wg.Go(func() {
 		ticker := time.NewTicker(minListMarkDelay)
 		defer ticker.Stop()
 		tick := func() {
@@ -226,10 +224,8 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 			}
 
 		}
-	}()
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
+	})
+	r.wg.Go(func() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 		tick := func() {
@@ -249,7 +245,7 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 			}
 			r.sweeperMetrics.markerFilesCurrent.Set(float64(len(names)))
 		}
-	}()
+	})
 }
 
 func (r *markerProcessor) processFile(name string, deleteFunc func(ctx context.Context, chunkId []byte) error) (bool, error) {
@@ -294,9 +290,7 @@ func (r *markerProcessor) processFile(name string, deleteFunc func(ctx context.C
 	}()
 
 	for i := 0; i < r.maxParallelism; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for key := range queue {
 				if err := deleteFunc(r.ctx, key.value.Bytes()); err != nil {
 					allChunksDeleted.Store(false)
@@ -304,7 +298,7 @@ func (r *markerProcessor) processFile(name string, deleteFunc func(ctx context.C
 				}
 				putKeyBuffer(key)
 			}
-		}()
+		})
 	}
 
 	err = dbView.View(func(tx *bbolt.Tx) error {

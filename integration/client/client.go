@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -138,9 +139,7 @@ func (c *Client) pushLogLine(line string, timestamp time.Time, structuredMetadat
 	}
 	// add extra labels
 	for _, labelList := range extraLabelList {
-		for k, v := range labelList {
-			s.Stream[k] = v
-		}
+		maps.Copy(s.Stream, labelList)
 	}
 
 	data, err := json.Marshal(&struct {
@@ -383,7 +382,7 @@ type StreamValues struct {
 // MatrixValues holds a label key value pairs for the metric and a list of a list of values
 type MatrixValues struct {
 	Metric map[string]string
-	Values [][]interface{}
+	Values [][]any
 }
 
 // VectorValues holds a label key value pairs for the metric and single timestamp and value
@@ -396,7 +395,7 @@ type VectorValues struct {
 func (a *VectorValues) UnmarshalJSON(b []byte) error {
 	var s struct {
 		Metric map[string]string `json:"metric"`
-		Value  []interface{}     `json:"value"`
+		Value  []any             `json:"value"`
 	}
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
@@ -473,7 +472,7 @@ type RulesData struct {
 type Rules struct {
 	Name  string
 	File  string
-	Rules []interface{}
+	Rules []any
 }
 
 type Header struct {

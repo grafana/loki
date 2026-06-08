@@ -123,7 +123,7 @@ func BenchmarkStreamsResultBuilder_Build(b *testing.B) {
 			// Build a second record: first numDup rows duplicate rec1's rows
 			// (same timestamps/lines), remaining rows are unique.
 			rows2 := make(arrowtest.Rows, numRows)
-			for i := 0; i < numRows; i++ {
+			for i := range numRows {
 				row := make(map[string]any)
 				if i < numDup {
 					// Duplicate: reuse the same timestamp and line as rec1
@@ -185,7 +185,7 @@ func prepareSchema(numLabels int, numMeta int, numParsed int) (*arrow.Schema, []
 
 	// Add label columns
 	labelIdents := make([]*semconv.Identifier, numLabels)
-	for i := 0; i < numLabels; i++ {
+	for i := range numLabels {
 		ident := semconv.NewIdentifier(
 			fmt.Sprintf("label_%d", i),
 			types.ColumnTypeLabel,
@@ -197,7 +197,7 @@ func prepareSchema(numLabels int, numMeta int, numParsed int) (*arrow.Schema, []
 
 	// Add metadata columns
 	metaIdents := make([]*semconv.Identifier, numMeta)
-	for i := 0; i < numMeta; i++ {
+	for i := range numMeta {
 		ident := semconv.NewIdentifier(
 			fmt.Sprintf("meta_%d", i),
 			types.ColumnTypeMetadata,
@@ -209,7 +209,7 @@ func prepareSchema(numLabels int, numMeta int, numParsed int) (*arrow.Schema, []
 
 	// Add parsed columns
 	parsedIdents := make([]*semconv.Identifier, numParsed)
-	for i := 0; i < numParsed; i++ {
+	for i := range numParsed {
 		ident := semconv.NewIdentifier(
 			fmt.Sprintf("parsed_%d", i),
 			types.ColumnTypeParsed,
@@ -230,7 +230,7 @@ func generateRows(
 	baseTime time.Time,
 ) arrowtest.Rows {
 	rows := make(arrowtest.Rows, numRows)
-	for rowIdx := 0; rowIdx < numRows; rowIdx++ {
+	for rowIdx := range numRows {
 		row := make(map[string]any)
 		row[semconv.ColumnIdentTimestamp.FQN()] = baseTime.Add(time.Duration(rowIdx) * time.Nanosecond)
 		row[semconv.ColumnIdentMessage.FQN()] = fmt.Sprintf("log line %d with some additional text to make it more realistic", rowIdx)

@@ -109,11 +109,9 @@ func (w *WorkerManager) Start(ctx context.Context) error {
 		worker := newWorker(w.grpcClient, w.jobRunners, w.metrics)
 		w.workers = append(w.workers, worker)
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			worker.Start(ctx)
-		}()
+		})
 	}
 
 	wg.Wait()

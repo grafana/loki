@@ -433,7 +433,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]cli
 	var commonPrefixes []client.StorageCommonPrefix
 
 	pager := b.containerClient.NewListBlobsHierarchyPager(delimiter, &container.ListBlobsHierarchyOptions{
-		Prefix: to.Ptr(prefix),
+		Prefix: new(prefix),
 	})
 
 	for pager.More() {

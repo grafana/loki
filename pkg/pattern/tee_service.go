@@ -351,10 +351,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 					ts.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
 
 					// limit logged labels to 1000
-					labelsLimit := len(req.Streams)
-					if labelsLimit > 1000 {
-						labelsLimit = 1000
-					}
+					labelsLimit := min(len(req.Streams), 1000)
 
 					labels := make([]string, 0, labelsLimit)
 					for _, stream := range req.Streams {

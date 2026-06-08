@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"testing"
 	"time"
 
@@ -746,9 +747,7 @@ func stripOpaqueBinaryColumns(rows arrowtest.Rows, keys ...string) arrowtest.Row
 	out := make(arrowtest.Rows, len(rows))
 	for i, row := range rows {
 		cp := make(arrowtest.Row, len(row))
-		for k, v := range row {
-			cp[k] = v
-		}
+		maps.Copy(cp, row)
 		for _, k := range keys {
 			delete(cp, k)
 		}

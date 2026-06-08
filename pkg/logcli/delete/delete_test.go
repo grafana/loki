@@ -514,7 +514,7 @@ func BenchmarkDeleteCreateQuery(b *testing.B) {
 
 func BenchmarkDeleteListQuery(b *testing.B) {
 	deleteRequests := make([]client.DeleteRequest, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		deleteRequests[i] = client.DeleteRequest{
 			StartTime: int64(1000 + i),
 			EndTime:   int64(2000 + i),

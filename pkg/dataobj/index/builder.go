@@ -424,14 +424,12 @@ func (p *Builder) flushPartition(ctx context.Context, partition int32, triggerTy
 		return
 	}
 
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
+	p.wg.Go(func() {
 		level.Info(p.logger).Log("msg", "flushing partition",
 			"partition", partition, "events", len(eventsToFlush), "trigger", triggerType)
 
 		p.buildAndCommitIndex(calculationCtx, eventsToFlush, partition, triggerType)
-	}()
+	})
 }
 
 func (p *Builder) buildAndCommitIndex(ctx context.Context, events []bufferedEvent, partition int32, triggerType triggerType) {

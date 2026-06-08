@@ -26,17 +26,15 @@ func TestTailer_RoundTrip(t *testing.T) {
 	tail, err := newTailer("org-id", expr, server, 10)
 	require.NoError(t, err)
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		tail.loop()
-		wg.Done()
-	}()
+	})
 
 	const numStreams = 1000
 	var entries []logproto.Entry
 	for i := 0; i < numStreams; i += 3 {
 		var iterEntries []logproto.Entry
-		for j := 0; j < 3; j++ {
+		for j := range 3 {
 			iterEntries = append(iterEntries, logproto.Entry{Timestamp: time.Unix(0, int64(i+j)), Line: fmt.Sprintf("line %d", i+j)})
 		}
 		entries = append(entries, iterEntries...)
@@ -78,7 +76,7 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 		},
 	}
 
-	for run := 0; run < runs; run++ {
+	for range runs {
 		expr, err := syntax.ParseLogSelector(stream.Labels, true)
 		require.NoError(t, err)
 		tailer, err := newTailer("org-id", expr, nil, 10)
@@ -209,8 +207,7 @@ func Test_TailerSendRace(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for i := 1; i <= 20; i++ {
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			lbs := makeRandomLabels()
 			tail.send(logproto.Stream{
 				Labels: lbs.String(),
@@ -220,8 +217,7 @@ func Test_TailerSendRace(t *testing.T) {
 					{Timestamp: time.Unix(0, 3), Line: "3"},
 				},
 			}, lbs)
-			wg.Done()
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -349,11 +345,9 @@ func Test_StructuredMetadata(t *testing.T) {
 			require.NoError(t, err)
 
 			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
+			wg.Go(func() {
 				tail.loop()
-				wg.Done()
-			}()
+			})
 
 			tail.send(tc.sentStream, lbs)
 

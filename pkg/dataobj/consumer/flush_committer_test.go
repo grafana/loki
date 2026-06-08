@@ -103,7 +103,7 @@ func TestFlushCommitter(t *testing.T) {
 		)
 		// Build a slice of builders, mimicking a partition split across windows.
 		var builders []builder
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			b := newTestBuilder(t, prometheus.NewRegistry())
 			require.NoError(t, b.Append("test", logproto.Stream{
 				Labels:  `{foo="bar"}`,

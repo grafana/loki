@@ -63,7 +63,7 @@ type logfmtStage struct {
 }
 
 // newLogfmtStage creates a new logfmt pipeline stage from a config.
-func newLogfmtStage(logger log.Logger, config interface{}) (Stage, error) {
+func newLogfmtStage(logger log.Logger, config any) (Stage, error) {
 	cfg, err := parseLogfmtConfig(config)
 	if err != nil {
 		return nil, err
@@ -83,7 +83,7 @@ func newLogfmtStage(logger log.Logger, config interface{}) (Stage, error) {
 	}), nil
 }
 
-func parseLogfmtConfig(config interface{}) (*LogfmtConfig, error) {
+func parseLogfmtConfig(config any) (*LogfmtConfig, error) {
 	cfg := &LogfmtConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -93,7 +93,7 @@ func parseLogfmtConfig(config interface{}) (*LogfmtConfig, error) {
 }
 
 // Process implements Stage
-func (j *logfmtStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
+func (j *logfmtStage) Process(_ model.LabelSet, extracted map[string]any, _ *time.Time, entry *string) {
 	// If a source key is provided, the logfmt stage should process it
 	// from the extracted map, otherwise should fallback to the entry
 	input := entry

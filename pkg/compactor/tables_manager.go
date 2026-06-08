@@ -86,9 +86,7 @@ func (c *tablesManager) start(ctx context.Context) {
 		level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
 	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 
 		ticker := time.NewTicker(c.cfg.CompactionInterval)
 		defer ticker.Stop()
@@ -103,12 +101,10 @@ func (c *tablesManager) start(ctx context.Context) {
 				return
 			}
 		}
-	}()
+	})
 
 	if c.cfg.RetentionEnabled {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := c.runCompaction(ctx, true); err != nil {
 				level.Error(util_log.Logger).Log("msg", "failed to apply retention", "err", err)
 			}
@@ -126,7 +122,7 @@ func (c *tablesManager) start(ctx context.Context) {
 					return
 				}
 			}
-		}()
+		})
 
 		for _, container := range c.storeContainers {
 			if container.sweeper == nil {

@@ -1435,11 +1435,11 @@ func Test_applyIngesterRingConfig(t *testing.T) {
 		msgf := "%s has changed, this is a crude attempt to catch mapping errors missed in config_wrapper.applyIngesterRingConfig when a ring config changes. Please add a new mapping and update the expected value in this test."
 
 		assert.Equal(t, 9,
-			reflect.TypeOf(distributor.RingConfig{}).NumField(),
-			fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
+			reflect.TypeFor[distributor.RingConfig]().NumField(),
+			fmt.Sprintf(msgf, reflect.TypeFor[distributor.RingConfig]().String()))
 		assert.Equal(t, 15,
-			reflect.TypeOf(lokiring.RingConfig{}).NumField(),
-			fmt.Sprintf(msgf, reflect.TypeOf(lokiring.RingConfig{}).String()))
+			reflect.TypeFor[lokiring.RingConfig]().NumField(),
+			fmt.Sprintf(msgf, reflect.TypeFor[lokiring.RingConfig]().String()))
 	})
 
 	t.Run("compactor and scheduler tokens file should not be configured if persist_tokens is false", func(t *testing.T) {

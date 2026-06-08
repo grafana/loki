@@ -108,11 +108,9 @@ func (q *Queue) RegisterBuilder(jobType grpc.JobType, b Builder, jobTimeout time
 func (q *Queue) Start(ctx context.Context) {
 	buildersWg := sync.WaitGroup{}
 	for _, builder := range q.builders {
-		buildersWg.Add(1)
-		go func() {
-			defer buildersWg.Done()
+		buildersWg.Go(func() {
 			q.startBuilder(ctx, builder)
-		}()
+		})
 	}
 
 	buildersWg.Wait()

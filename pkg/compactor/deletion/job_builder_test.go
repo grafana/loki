@@ -647,7 +647,7 @@ func buildStorageUpdates(jobNumStart, numJobs int, wholeChunksDeleted bool) dele
 	s := deletionproto.StorageUpdates{
 		RebuiltChunks: map[string]*deletionproto.Chunk{},
 	}
-	for i := 0; i < numJobs; i++ {
+	for i := range numJobs {
 		jobNum := jobNumStart + i
 		chunkID := fmt.Sprintf("%d-d", jobNum)
 		if wholeChunksDeleted {

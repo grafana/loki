@@ -100,7 +100,7 @@ func makePipelineBenchStreamLabels(streams, labelsPerStream int) map[int64]label
 	result := make(map[int64]labels.Labels, streams)
 	baseLabelKeys := []string{"service_name", "cluster", "namespace", "region"}
 	mods := []int{50, 5, 10, 3}
-	for i := 0; i < streams; i++ {
+	for i := range streams {
 		pairs := make([]string, 0, labelsPerStream*2)
 		for j := 0; j < labelsPerStream && j < len(baseLabelKeys); j++ {
 			pairs = append(pairs, baseLabelKeys[j], fmt.Sprintf("%s-%d", baseLabelKeys[j], i%mods[j]))
@@ -114,7 +114,7 @@ func makePipelineBenchStreamLabels(streams, labelsPerStream int) map[int64]label
 // names of the form "meta_col_<i>".
 func makePipelineBenchMetadataColumnNames(n int) []string {
 	cols := make([]string, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		cols[i] = fmt.Sprintf("meta_col_%d", i)
 	}
 	return cols

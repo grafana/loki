@@ -264,7 +264,7 @@ func BenchmarkRateStore(b *testing.B) {
 	}
 
 	rates := make([]*logproto.StreamRate, 200000)
-	for i := 0; i < 200000; i++ {
+	for i := range 200000 {
 		rates[i] = &logproto.StreamRate{Tenant: fmt.Sprintf("tenant %d", i%2), StreamHash: uint64(i % 3), StreamHashNoShard: uint64(i % 4), Rate: rand.Int63()}
 	}
 
@@ -288,7 +288,7 @@ func BenchmarkAggregateByShard(b *testing.B) {
 	rs := &rateStore{rates: make(map[string]map[uint64]expiringRate)}
 	rates := make(map[string]map[uint64]*logproto.StreamRate)
 	rates["fake"] = make(map[uint64]*logproto.StreamRate)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		rates["fake"][uint64(i)] = &logproto.StreamRate{StreamHash: uint64(i), StreamHashNoShard: 12345}
 	}
 

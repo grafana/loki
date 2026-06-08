@@ -214,7 +214,7 @@ func TestAppendOrdered_ManyRecords(t *testing.T) {
 			StreamID:  int64(i%5 + 1),
 			Timestamp: time.Unix(int64(500-i), 0),
 			Metadata:  labels.EmptyLabels(),
-			Line:      []byte(fmt.Sprintf("line-%04d", i)),
+			Line:      fmt.Appendf(nil, "line-%04d", i),
 		})
 	}
 

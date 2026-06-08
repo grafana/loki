@@ -2,6 +2,7 @@ package logical
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -37,21 +38,21 @@ func (r *RangeAggregation) Name() string { return r.b.Name() }
 func (r *RangeAggregation) String() string {
 	props := fmt.Sprintf("operation=%s, start_ts=%s, end_ts=%s, step=%s, range=%s", r.Operation, util.FormatTimeRFC3339Nano(r.Start), util.FormatTimeRFC3339Nano(r.End), r.Step, r.RangeInterval)
 
-	grouping := ""
+	var grouping strings.Builder
 	if len(r.Grouping.Columns) > 0 {
 		for i, columnRef := range r.Grouping.Columns {
 			if i > 0 {
-				grouping += ", "
+				grouping.WriteString(", ")
 			}
-			grouping += columnRef.String()
+			grouping.WriteString(columnRef.String())
 		}
 	}
 	if r.Grouping.Without {
 		if len(r.Grouping.Columns) > 0 {
-			props = fmt.Sprintf("group_without=(%s), %s", grouping, props)
+			props = fmt.Sprintf("group_without=(%s), %s", grouping.String(), props)
 		}
 	} else {
-		props = fmt.Sprintf("group_by=(%s), %s", grouping, props)
+		props = fmt.Sprintf("group_by=(%s), %s", grouping.String(), props)
 	}
 
 	return fmt.Sprintf("RANGE_AGGREGATION %s [%s]", r.Table.Name(), props)

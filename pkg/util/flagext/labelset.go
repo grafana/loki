@@ -83,7 +83,7 @@ func (v *LabelSet) UnmarshalYAML(value *yaml.Node) error {
 }
 
 // MarshalYAML implements yaml.Marshaller.
-func (v LabelSet) MarshalYAML() (interface{}, error) {
+func (v LabelSet) MarshalYAML() (any, error) {
 	out, err := yaml.Marshal(util.ModelLabelSetToMap(v.LabelSet))
 	if err != nil {
 		return nil, err

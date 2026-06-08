@@ -68,13 +68,11 @@ func NewEntryHandler(entries chan<- Entry, stop func()) EntryHandler {
 func NewEntryMutatorHandler(next EntryHandler, f EntryMutatorFunc) EntryHandler {
 	in, wg, once := make(chan Entry), sync.WaitGroup{}, sync.Once{}
 	nextChan := next.Chan()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for e := range in {
 			nextChan <- f(e)
 		}
-	}()
+	})
 	return NewEntryHandler(in, func() {
 		once.Do(func() { close(in) })
 		wg.Wait()

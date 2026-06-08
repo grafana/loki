@@ -333,7 +333,7 @@ func makeBenchRecords(tb testing.TB, n, rowsPerRecord int) []arrow.RecordBatch {
 	records := make([]arrow.RecordBatch, n)
 	for i := range records {
 		bldr := array.NewStringBuilder(memory.NewGoAllocator())
-		for r := 0; r < rowsPerRecord; r++ {
+		for r := range rowsPerRecord {
 			s := fmt.Sprintf("rec-%06d-row-%06d-%040x", i, r, r*1_000_003+i)
 			if len(s) < benchValueLen {
 				s += fmt.Sprintf("%0*d", benchValueLen-len(s), 0)

@@ -208,11 +208,9 @@ func newFrontendSchedulerWorker(conn *grpc.ClientConn, schedulerAddr string, fro
 func (w *frontendSchedulerWorker) start() {
 	client := schedulerpb.NewSchedulerForFrontendClient(w.conn)
 	for i := 0; i < w.concurrency; i++ {
-		w.wg.Add(1)
-		go func() {
-			defer w.wg.Done()
+		w.wg.Go(func() {
 			w.runOne(w.ctx, client)
-		}()
+		})
 	}
 }
 

@@ -127,7 +127,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 					level.Error(logger).Log("msg", "error parsing labels before logging push request", "err", err)
 				}
 
-				logValues := []interface{}{
+				logValues := []any{
 					"msg", "push request streams",
 					"stream", s.Labels,
 					"streamLabelsHash", util.HashedQuery(s.Labels), // this is to make it easier to do searching and grouping

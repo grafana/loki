@@ -14,7 +14,6 @@ import (
 
 	"github.com/grafana/loki/v3/clients/pkg/util"
 
-	lokiutil "github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -74,46 +73,46 @@ func TestTenantStage_Validation(t *testing.T) {
 		},
 		"should fail on missing source and value": {
 			config:      &TenantConfig{},
-			expectedErr: lokiutil.StringRef(ErrTenantStageEmptyLabelSourceOrValue),
+			expectedErr: new(ErrTenantStageEmptyLabelSourceOrValue),
 		},
 		"should fail on empty source": {
 			config: &TenantConfig{
 				Source: "",
 			},
-			expectedErr: lokiutil.StringRef(ErrTenantStageEmptyLabelSourceOrValue),
+			expectedErr: new(ErrTenantStageEmptyLabelSourceOrValue),
 		},
 		"should fail on empty value": {
 			config: &TenantConfig{
 				Value: "",
 			},
-			expectedErr: lokiutil.StringRef(ErrTenantStageEmptyLabelSourceOrValue),
+			expectedErr: new(ErrTenantStageEmptyLabelSourceOrValue),
 		},
 		"should fail on empty label": {
 			config: &TenantConfig{
 				Label: "",
 			},
-			expectedErr: lokiutil.StringRef(ErrTenantStageEmptyLabelSourceOrValue),
+			expectedErr: new(ErrTenantStageEmptyLabelSourceOrValue),
 		},
 		"should fail on both source and value set": {
 			config: &TenantConfig{
 				Source: "tenant",
 				Value:  "team-a",
 			},
-			expectedErr: lokiutil.StringRef(ErrTenantStageConflictingLabelSourceAndValue),
+			expectedErr: new(ErrTenantStageConflictingLabelSourceAndValue),
 		},
 		"should fail on both source and label set": {
 			config: &TenantConfig{
 				Source: "tenant",
 				Label:  "team-a",
 			},
-			expectedErr: lokiutil.StringRef(ErrTenantStageConflictingLabelSourceAndValue),
+			expectedErr: new(ErrTenantStageConflictingLabelSourceAndValue),
 		},
 		"should fail on both label and value set": {
 			config: &TenantConfig{
 				Label: "tenant",
 				Value: "team-a",
 			},
-			expectedErr: lokiutil.StringRef(ErrTenantStageConflictingLabelSourceAndValue),
+			expectedErr: new(ErrTenantStageConflictingLabelSourceAndValue),
 		},
 		"should fail on all set": {
 			config: &TenantConfig{
@@ -121,7 +120,7 @@ func TestTenantStage_Validation(t *testing.T) {
 				Source: "tenant",
 				Value:  "team-a",
 			},
-			expectedErr: lokiutil.StringRef(ErrTenantStageConflictingLabelSourceAndValue),
+			expectedErr: new(ErrTenantStageConflictingLabelSourceAndValue),
 		},
 	}
 
@@ -146,56 +145,56 @@ func TestTenantStage_Process(t *testing.T) {
 	tests := map[string]struct {
 		config         *TenantConfig
 		inputLabels    model.LabelSet
-		inputExtracted map[string]interface{}
+		inputExtracted map[string]any
 		expectedTenant *string
 	}{
 		"should not set the tenant if the source field is not defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{},
-			inputExtracted: map[string]interface{}{},
+			inputExtracted: map[string]any{},
 			expectedTenant: nil,
 		},
 		"should not override the tenant if the source field is not defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{util.ReservedLabelTenantID: "foo"},
-			inputExtracted: map[string]interface{}{},
-			expectedTenant: lokiutil.StringRef("foo"),
+			inputExtracted: map[string]any{},
+			expectedTenant: new("foo"),
 		},
 		"should set the tenant if the source field is defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{},
-			inputExtracted: map[string]interface{}{"tenant_id": "bar"},
-			expectedTenant: lokiutil.StringRef("bar"),
+			inputExtracted: map[string]any{"tenant_id": "bar"},
+			expectedTenant: new("bar"),
 		},
 		"should set the tenant if the label is defined in the label map": {
 			config:         &TenantConfig{Label: "tenant_id"},
 			inputLabels:    model.LabelSet{"tenant_id": "bar"},
-			inputExtracted: map[string]interface{}{},
-			expectedTenant: lokiutil.StringRef("bar"),
+			inputExtracted: map[string]any{},
+			expectedTenant: new("bar"),
 		},
 		"should override the tenant if the source field is defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{util.ReservedLabelTenantID: "foo"},
-			inputExtracted: map[string]interface{}{"tenant_id": "bar"},
-			expectedTenant: lokiutil.StringRef("bar"),
+			inputExtracted: map[string]any{"tenant_id": "bar"},
+			expectedTenant: new("bar"),
 		},
 		"should not set the tenant if the source field data type can't be converted to string": {
 			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{},
-			inputExtracted: map[string]interface{}{"tenant_id": []string{"bar"}},
+			inputExtracted: map[string]any{"tenant_id": []string{"bar"}},
 			expectedTenant: nil,
 		},
 		"should set the tenant with the configured static value": {
 			config:         &TenantConfig{Value: "bar"},
 			inputLabels:    model.LabelSet{},
-			inputExtracted: map[string]interface{}{},
-			expectedTenant: lokiutil.StringRef("bar"),
+			inputExtracted: map[string]any{},
+			expectedTenant: new("bar"),
 		},
 		"should override the tenant with the configured static value": {
 			config:         &TenantConfig{Value: "bar"},
 			inputLabels:    model.LabelSet{util.ReservedLabelTenantID: "foo"},
-			inputExtracted: map[string]interface{}{},
-			expectedTenant: lokiutil.StringRef("bar"),
+			inputExtracted: map[string]any{},
+			expectedTenant: new("bar"),
 		},
 	}
 

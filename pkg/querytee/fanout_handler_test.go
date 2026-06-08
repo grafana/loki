@@ -55,7 +55,7 @@ func collectQueryTags(t *testing.T, received <-chan string, count int) []string 
 	t.Helper()
 
 	tags := make([]string, 0, count)
-	for i := 0; i < count; i++ {
+	for range count {
 		select {
 		case tag := <-received:
 			tags = append(tags, tag)

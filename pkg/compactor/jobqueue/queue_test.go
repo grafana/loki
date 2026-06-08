@@ -107,7 +107,7 @@ func TestQueue_Loop(t *testing.T) {
 
 	// Create a couple of test jobs
 	var jobs []*compactor_grpc.Job
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		jobs = append(jobs, &compactor_grpc.Job{
 			Id:   fmt.Sprintf("test-job-%d", i),
 			Type: compactor_grpc.JOB_TYPE_DELETION,
@@ -298,11 +298,9 @@ func TestQueue_Close(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		q.Start(ctx)
-	}()
+	})
 
 	// cancel the context to stop all the builders and close the queue
 	cancel()

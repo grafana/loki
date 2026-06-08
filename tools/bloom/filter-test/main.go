@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,7 +69,7 @@ func main() {
 	for fp := range grouped {
 		fps = append(fps, fp)
 	}
-	sort.Slice(fps, func(i, j int) bool { return fps[i] < fps[j] })
+	slices.Sort(fps)
 
 	fmt.Printf("Block:    %s\n", blockDir)
 	fmt.Printf("Query:    %s\n", query)

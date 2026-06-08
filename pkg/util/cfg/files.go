@@ -112,7 +112,7 @@ func ConfigFileLoader(args []string, name string, strict bool) Source {
 			return nil
 		}
 
-		for _, val := range strings.Split(f.Value.String(), ",") {
+		for val := range strings.SplitSeq(f.Value.String(), ",") {
 			val := strings.TrimSpace(val)
 			expandEnv := false
 			expandEnvFlag := freshFlags.Lookup("config.expand-env")

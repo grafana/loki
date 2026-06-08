@@ -3,7 +3,7 @@ package bucket
 import (
 	"bytes"
 	"context"
-	"sort"
+	"slices"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -115,12 +115,8 @@ func TestObjectClientAdapter_List(t *testing.T) {
 			keys = append(keys, key.Key)
 		}
 
-		sort.Slice(tt.storageObjKeys, func(i, j int) bool {
-			return tt.storageObjKeys[i] < tt.storageObjKeys[j]
-		})
-		sort.Slice(tt.storageCommonPref, func(i, j int) bool {
-			return tt.storageCommonPref[i] < tt.storageCommonPref[j]
-		})
+		slices.Sort(tt.storageObjKeys)
+		slices.Sort(tt.storageCommonPref)
 
 		require.NoError(t, err)
 		require.Equal(t, tt.storageObjKeys, keys)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"path"
 	"strconv"
 	"sync"
@@ -325,10 +326,7 @@ func (b *JobBuilder) createJobsForChunksGroup(ctx context.Context, tableName, us
 		chunks := group.Chunks[labels].IDs
 		// Split chunks into groups of maxChunksPerJob
 		for i := 0; i < len(chunks); i += maxChunksPerJob {
-			end := i + maxChunksPerJob
-			if end > len(chunks) {
-				end = len(chunks)
-			}
+			end := min(i+maxChunksPerJob, len(chunks))
 
 			payload, err := proto.Marshal(&deletionproto.DeletionJob{
 				TableName:      tableName,
@@ -487,9 +485,7 @@ func (i *storageUpdatesCollection) addUpdates(labels string, result deletionprot
 		i.StorageUpdates[labels] = updates
 	}
 
-	for chunkID, newChunk := range result.RebuiltChunks {
-		updates.RebuiltChunks[chunkID] = newChunk
-	}
+	maps.Copy(updates.RebuiltChunks, result.RebuiltChunks)
 	updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, result.ChunksToDeIndex...)
 	i.StorageUpdates[labels] = updates
 }

@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -113,12 +114,12 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 	}
 
 	// Create a pipeline with numbers 1-10
-	var data string
+	var data strings.Builder
 	for i := 1; i <= 10; i++ {
-		data += string(rune('0'+i)) + "\n"
+		data.WriteString(string(rune('0'+i)) + "\n")
 	}
 
-	record, err := CSVToArrow(fields, data)
+	record, err := CSVToArrow(fields, data.String())
 	require.NoError(t, err)
 
 	source := NewBufferedPipeline(record)
@@ -136,7 +137,7 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 	require.Equal(t, int64(4), batch.NumRows())
 
 	// Check values to ensure we got the right rows
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		expectedVal := string(rune('0' + 4 + i))
 		actualVal := batch.Column(0).ValueStr(i)
 		require.Equal(t, expectedVal, actualVal)

@@ -48,7 +48,7 @@ func TestQueryFilter_BuildWhereClause(t *testing.T) {
 		{
 			name: "new engine filter true",
 			filter: QueryFilter{
-				UsedNewEngine: boolPtr(true),
+				UsedNewEngine: new(true),
 			},
 			expectedWhere: "WHERE (cell_a_used_new_engine = 1 OR cell_b_used_new_engine = 1)",
 			expectedArgs:  nil,
@@ -56,7 +56,7 @@ func TestQueryFilter_BuildWhereClause(t *testing.T) {
 		{
 			name: "new engine filter false",
 			filter: QueryFilter{
-				UsedNewEngine: boolPtr(false),
+				UsedNewEngine: new(false),
 			},
 			expectedWhere: "WHERE cell_a_used_new_engine = 0 AND cell_b_used_new_engine = 0",
 			expectedArgs:  nil,
@@ -64,7 +64,7 @@ func TestQueryFilter_BuildWhereClause(t *testing.T) {
 		{
 			name: "logs drilldown filter true",
 			filter: QueryFilter{
-				IsLogsDrilldown: boolPtr(true),
+				IsLogsDrilldown: new(true),
 			},
 			expectedWhere: "WHERE is_logs_drilldown = ?",
 			expectedArgs:  []any{true},
@@ -72,7 +72,7 @@ func TestQueryFilter_BuildWhereClause(t *testing.T) {
 		{
 			name: "logs drilldown filter false",
 			filter: QueryFilter{
-				IsLogsDrilldown: boolPtr(false),
+				IsLogsDrilldown: new(false),
 			},
 			expectedWhere: "WHERE is_logs_drilldown = ?",
 			expectedArgs:  []any{false},
@@ -82,8 +82,8 @@ func TestQueryFilter_BuildWhereClause(t *testing.T) {
 			filter: QueryFilter{
 				Tenant:          "tenant-b",
 				User:            "user123",
-				IsLogsDrilldown: boolPtr(true),
-				UsedNewEngine:   boolPtr(true),
+				IsLogsDrilldown: new(true),
+				UsedNewEngine:   new(true),
 			},
 			expectedWhere: "WHERE tenant_id = ? AND user = ? AND is_logs_drilldown = ? AND (cell_a_used_new_engine = 1 OR cell_b_used_new_engine = 1)",
 			expectedArgs:  []any{"tenant-b", "user123", true},
@@ -145,10 +145,6 @@ func TestQueryFilter_BuildWhereClause(t *testing.T) {
 			assert.Equal(t, tt.expectedArgs, args)
 		})
 	}
-}
-
-func boolPtr(b bool) *bool {
-	return &b
 }
 
 func TestStatsFilter_BuildStatsWhereClause(t *testing.T) {

@@ -193,7 +193,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		messageBuilder := array.NewStringBuilder(memory.DefaultAllocator)
 
 		// Create test data
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			timestampBuilder.Append(arrow.Timestamp(time.Date(2025, time.January, 1, 0, 0, i, 0, time.UTC).UnixNano()))
 			messageBuilder.Append(fmt.Sprintf("Message %d", i))
 		}

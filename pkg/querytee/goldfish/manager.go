@@ -292,7 +292,7 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 		logLevel = level.Warn
 	}
 
-	logFields := []interface{}{
+	logFields := []any{
 		"msg", "query comparison completed",
 		"correlation_id", correlationID,
 		"tenant", sample.TenantID,

@@ -69,10 +69,8 @@ func benchmarkPageDecodeParallel(b *testing.B, workers int) {
 		var wg sync.WaitGroup
 
 		for range workers {
-			wg.Add(1)
 
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 
 				_, values, err := page.reader(datasetmd.COMPRESSION_TYPE_ZSTD)
 				if err != nil {
@@ -82,7 +80,7 @@ func benchmarkPageDecodeParallel(b *testing.B, workers int) {
 				} else if err := values.Close(); err != nil {
 					b.Error(err)
 				}
-			}()
+			})
 		}
 
 		wg.Wait()

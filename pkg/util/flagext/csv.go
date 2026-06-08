@@ -59,6 +59,6 @@ func (v *CSV[T]) UnmarshalYAML(value *yaml.Node) error {
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (v CSV[T]) MarshalYAML() (interface{}, error) {
+func (v CSV[T]) MarshalYAML() (any, error) {
 	return v.String(), nil
 }

@@ -12,12 +12,12 @@ type ResettingPool struct {
 func NewRecordPool() *ResettingPool {
 	return &ResettingPool{
 		rPool: &sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return &Record{}
 			},
 		},
 		bPool: &sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				buf := new([]byte)            // Attempt to force allocation on heap.
 				*buf = make([]byte, 0, 1<<10) // 1kb
 				return buf

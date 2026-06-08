@@ -28,7 +28,7 @@ func genLabels(
 	l := labelSet[0]
 	rest := genLabels(labelSet[1:], labelBuckets)
 
-	for i := 0; i < labelBuckets; i++ {
+	for i := range labelBuckets {
 		if len(rest) == 0 {
 			result = append(result, labels.FromStrings(l, fmt.Sprintf("%d", i)))
 			continue
@@ -51,7 +51,7 @@ func NewMockShardedQueryable(
 	delayPerSeries time.Duration,
 ) *MockShardedQueryable {
 	samples := make([]model.SamplePair, 0, nSamples)
-	for i := 0; i < nSamples; i++ {
+	for i := range nSamples {
 		samples = append(samples, model.SamplePair{
 			Timestamp: model.Time(i * 1000),
 			Value:     model.SampleValue(i),

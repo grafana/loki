@@ -54,7 +54,7 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
-	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
+	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (any, error) {
 		return client.Query(ctx, req)
 	})
 	if err != nil {
@@ -127,7 +127,7 @@ func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int64, m
 }
 
 // ForAllIngesters runs f, in parallel, for all ingesters
-func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.PatternClient) (interface{}, error)) ([]ResponseFromIngesters, error) {
+func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.PatternClient) (any, error)) ([]ResponseFromIngesters, error) {
 	replicationSet, err := q.ringClient.Ring().GetAllHealthy(ring.Read)
 	if err != nil {
 		return nil, err
@@ -138,10 +138,10 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 
 type ResponseFromIngesters struct {
 	addr     string
-	response interface{}
+	response any
 }
 
-func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.PatternClient) (interface{}, error)) ([]ResponseFromIngesters, error) {
+func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.PatternClient) (any, error)) ([]ResponseFromIngesters, error) {
 	g, ctx := errgroup.WithContext(ctx)
 	responses := make([]ResponseFromIngesters, len(replicationSet.Instances))
 

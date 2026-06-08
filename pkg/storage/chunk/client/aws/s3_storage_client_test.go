@@ -520,7 +520,7 @@ type testCommonPrefixesS3Client struct {
 func (m testCommonPrefixesS3Client) ListObjectsV2(context.Context, *s3.ListObjectsV2Input, ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
 	var commonPrefixes []types.CommonPrefix
 	commonPrefix := "common-prefix-repeated/"
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		commonPrefixes = append(commonPrefixes, types.CommonPrefix{Prefix: aws.String(commonPrefix)})
 	}
 	return &s3.ListObjectsV2Output{CommonPrefixes: commonPrefixes, IsTruncated: aws.Bool(false)}, nil
@@ -606,7 +606,7 @@ func TestPutObject_SwiftRejects_AWSChunked(t *testing.T) {
 			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
 <Error>
   <Code>NotImplemented</Code>
-  <Message>Transfering payloads in multiple chunks using aws-chunked is not supported</Message>
+  <Message>Transferring payloads in multiple chunks using aws-chunked is not supported</Message>
 </Error>`))
 			return
 		}

@@ -1302,11 +1302,9 @@ func TestDeleteRequestsManager_SeriesProgress(t *testing.T) {
 
 			wg := sync.WaitGroup{}
 			mgrCtx, mgrCtxCancel := context.WithCancel(context.Background())
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				mgr.Start(mgrCtx)
-			}()
+			})
 
 			mgr.MarkPhaseStarted()
 			require.NotNil(t, mgr.currentBatch)

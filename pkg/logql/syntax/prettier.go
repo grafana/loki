@@ -55,19 +55,20 @@ func (e *PipelineExpr) Pretty(level int) string {
 		return Indent(level) + e.String()
 	}
 
-	s := fmt.Sprintf("%s\n", e.Left.Pretty(level))
+	var s strings.Builder
+	fmt.Fprintf(&s, "%s\n", e.Left.Pretty(level))
 	for i, ms := range e.MultiStages {
-		s += ms.Pretty(level + 1)
+		s.WriteString(ms.Pretty(level + 1))
 		//NOTE: Needed because, we tend to format multiple stage in pipeline as each stage in single line
 		// e.g:
 		// | logfmt
 		// | level = "error"
 		// But all the stages will have same indent level. So here we don't increase level.
 		if i < len(e.MultiStages)-1 {
-			s += "\n"
+			s.WriteString("\n")
 		}
 	}
-	return s
+	return s.String()
 }
 
 // e.g: `|= "error" != "memcache" |= ip("192.168.0.1")`
@@ -153,17 +154,18 @@ func (e *LogfmtExpressionParserExpr) Pretty(level int) string {
 
 // e.g: sum_over_time({foo="bar"} | logfmt | unwrap bytes_processed [5m])
 func (e *UnwrapExpr) Pretty(level int) string {
-	s := Indent(level)
+	var s strings.Builder
+	s.WriteString(Indent(level))
 
 	if e.Operation != "" {
-		s += fmt.Sprintf("%s %s %s(%s)", OpPipe, OpUnwrap, e.Operation, e.Identifier)
+		fmt.Fprintf(&s, "%s %s %s(%s)", OpPipe, OpUnwrap, e.Operation, e.Identifier)
 	} else {
-		s += fmt.Sprintf("%s %s %s", OpPipe, OpUnwrap, e.Identifier)
+		fmt.Fprintf(&s, "%s %s %s", OpPipe, OpUnwrap, e.Identifier)
 	}
 	for _, f := range e.PostFilters {
-		s += fmt.Sprintf("\n%s%s %s", Indent(level), OpPipe, f)
+		fmt.Fprintf(&s, "\n%s%s %s", Indent(level), OpPipe, f)
 	}
-	return s
+	return s.String()
 }
 
 // e.g: `{foo="bar"}|logfmt[5m]`

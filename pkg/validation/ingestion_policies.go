@@ -234,7 +234,7 @@ func injectIntoGRPCRequest(ctx context.Context) (context.Context, error) {
 }
 
 // ClientIngestionPolicyInterceptor is a gRPC unary client interceptor that propagates the ingestion policy
-func ClientIngestionPolicyInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func ClientIngestionPolicyInterceptor(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	ctx, err := injectIntoGRPCRequest(ctx)
 	if err != nil {
 		return err
@@ -280,7 +280,7 @@ func extractFromGRPCRequest(ctx context.Context) (context.Context, error) {
 }
 
 // ServerIngestionPolicyInterceptor is a gRPC unary server interceptor that extracts the ingestion policy
-func ServerIngestionPolicyInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func ServerIngestionPolicyInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	ctx, err := extractFromGRPCRequest(ctx)
 	if err != nil {
 		return nil, err
@@ -290,7 +290,7 @@ func ServerIngestionPolicyInterceptor(ctx context.Context, req interface{}, _ *g
 }
 
 // StreamServerIngestionPolicyInterceptor is a gRPC stream server interceptor that extracts the ingestion policy
-func StreamServerIngestionPolicyInterceptor(srv interface{}, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+func StreamServerIngestionPolicyInterceptor(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	ctx, err := extractFromGRPCRequest(ss.Context())
 	if err != nil {
 		return err

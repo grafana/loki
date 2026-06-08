@@ -215,7 +215,7 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 	// Set up test data
 	bucket := objstore.NewInMemBucket()
 	numTestObjects := 5
-	for i := 0; i < numTestObjects; i++ {
+	for i := range numTestObjects {
 		buildLogObject(t, fmt.Sprintf("app-%d", i), fmt.Sprintf("test-path-%d", i), bucket)
 	}
 
@@ -257,7 +257,7 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 	cancelCtx, cancelBuild := context.WithCancel(ctx)
 	defer cancelBuild()
 
-	for i := 0; i < numRequests; i++ {
+	for i := range numRequests {
 		go func(idx int) {
 			event := metastore.ObjectWrittenEvent{
 				ObjectPath: fmt.Sprintf("test-path-%d", idx%numTestObjects),
@@ -284,7 +284,7 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 	}
 
 	// Wait for all requests to complete
-	for i := 0; i < numRequests; i++ {
+	for range numRequests {
 		err := <-results
 		require.NoError(t, err)
 	}
@@ -350,12 +350,12 @@ func TestSerialIndexer_FlushOnBuilderFull(t *testing.T) {
 
 	// Set up test data - 3 events to process
 	bucket := objstore.NewInMemBucket()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		buildLogObject(t, fmt.Sprintf("tenant-%d", i), fmt.Sprintf("test-path-%d", i), bucket)
 	}
 
 	events := []bufferedEvent{}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		event := metastore.ObjectWrittenEvent{
 			ObjectPath: fmt.Sprintf("test-path-%d", i),
 			WriteTime:  time.Now().Format(time.RFC3339),

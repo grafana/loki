@@ -37,7 +37,7 @@ func buildObject(t *testing.T, labels string, base time.Time, lineCount int) (*d
 	require.NoError(t, err)
 
 	entries := make([]push.Entry, 0, lineCount)
-	for i := 0; i < lineCount; i++ {
+	for i := range lineCount {
 		entries = append(entries, push.Entry{
 			Timestamp: base.Add(time.Duration(i) * time.Second).UTC(),
 			Line:      "line",

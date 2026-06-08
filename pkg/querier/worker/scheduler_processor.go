@@ -164,7 +164,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 				sp.runQueryRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, r.QueryRequest)
 			default:
 				// todo: how should we handle the error here?
-				level.Error(logger).Log("msg", "error, unexpected request type from scheduler", "type", reflect.TypeOf(request))
+				level.Error(logger).Log("msg", "error, unexpected request type from scheduler", "type", reflect.TypeFor[*schedulerpb.SchedulerToQuerier]())
 				return
 			}
 			sp.metrics.inflightRequests.Dec()

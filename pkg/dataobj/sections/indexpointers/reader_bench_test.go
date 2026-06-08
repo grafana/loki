@@ -91,7 +91,7 @@ func buildBenchSection(b *testing.B, numPointers int) *indexpointers.Section {
 
 	sectionBuilder := indexpointers.NewBuilder(nil, 0, 2)
 
-	for i := 0; i < numPointers; i++ {
+	for i := range numPointers {
 		path := "path/" + strconv.Itoa(i%benchPathVariants)
 		startTs := unixTime(int64(i * 2))
 		endTs := unixTime(int64(i*2 + 1))

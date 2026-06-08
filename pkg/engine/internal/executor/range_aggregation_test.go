@@ -1031,7 +1031,7 @@ func requireEqualWindows(t *testing.T, expected, actual []window) {
 
 	require.Equal(t, len(expected), len(actual), "window slices should have the same length")
 
-	for i := 0; i < len(expected); i++ {
+	for i := range expected {
 		require.Equal(t, expected[i].start.UnixNano(), actual[i].start.UnixNano(),
 			"window[%d] start time mismatch: expected %s, actual %s", i, expected[i].start, actual[i].start)
 		require.Equal(t, expected[i].end.UnixNano(), actual[i].end.UnixNano(),

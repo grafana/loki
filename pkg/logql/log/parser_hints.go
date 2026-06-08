@@ -1,6 +1,7 @@
 package log
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -75,10 +76,8 @@ func (p *Hints) ShouldExtract(key string) bool {
 	// return consistent results throughout the lifetime of a query; this means
 	// we can't account for p.extracted here.
 
-	for _, l := range p.requiredLabels {
-		if l == key {
-			return true
-		}
+	if slices.Contains(p.requiredLabels, key) {
+		return true
 	}
 
 	return len(p.requiredLabels) == 0
@@ -189,12 +188,7 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 }
 
 func containsError(hints []string) bool {
-	for _, s := range hints {
-		if s == logqlmodel.ErrorLabel {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(hints, logqlmodel.ErrorLabel)
 }
 
 // appendLabelHints Appends the label to the list of hints with and without the duplicate suffix.
@@ -207,8 +201,8 @@ func containsError(hints []string) bool {
 func appendLabelHints(dst []string, src ...string) []string {
 	for _, l := range src {
 		dst = append(dst, l)
-		if strings.HasSuffix(l, duplicateSuffix) {
-			dst = append(dst, strings.TrimSuffix(l, duplicateSuffix))
+		if before, ok := strings.CutSuffix(l, duplicateSuffix); ok {
+			dst = append(dst, before)
 		}
 	}
 	return dst

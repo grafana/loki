@@ -196,7 +196,7 @@ func (s *Service) GetSampledQueriesWithContext(ctx context.Context, page, pageSi
 			// Time fields - convert time.Time to RFC3339 strings for API
 			StartTime:    q.StartTime.Format(time.RFC3339),
 			EndTime:      q.EndTime.Format(time.RFC3339),
-			StepDuration: int64Ptr(q.Step.Milliseconds()),
+			StepDuration: new(q.Step.Milliseconds()),
 
 			// Timestamps
 			SampledAt: q.SampledAt,
@@ -227,8 +227,8 @@ func (s *Service) GetSampledQueriesWithContext(ctx context.Context, page, pageSi
 			CellBResponseHash:  strPtr(q.CellBResponseHash),
 			CellAResponseSize:  &q.CellAResponseSize,
 			CellBResponseSize:  &q.CellBResponseSize,
-			CellAStatusCode:    intPtr(q.CellAStatusCode),
-			CellBStatusCode:    intPtr(q.CellBStatusCode),
+			CellAStatusCode:    new(q.CellAStatusCode),
+			CellBStatusCode:    new(q.CellBStatusCode),
 			CellATraceID:       strPtr(q.CellATraceID),
 			CellBTraceID:       strPtr(q.CellBTraceID),
 			CellASpanID:        strPtr(q.CellASpanID),
@@ -340,15 +340,6 @@ func (s *Service) GetStatistics(ctx context.Context, filter goldfish.StatsFilter
 	}
 
 	return stats, nil
-}
-
-// Helper functions for converting to nullable pointers
-func int64Ptr(v int64) *int64 {
-	return &v
-}
-
-func intPtr(v int) *int {
-	return &v
 }
 
 func strPtr(s string) *string {

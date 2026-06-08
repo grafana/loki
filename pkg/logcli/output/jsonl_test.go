@@ -77,7 +77,7 @@ func TestJSONLOutput_Format(t *testing.T) {
 }
 
 func isValidJSON(s string) error {
-	var data map[string]interface{}
+	var data map[string]any
 
 	return json.Unmarshal([]byte(s), &data)
 }

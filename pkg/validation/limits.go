@@ -1490,7 +1490,7 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalJSON(val []byte) error {
 
 // MarshalYAML explicitly uses the type receiver and not pointer receiver
 // or it won't be called
-func (sm OverwriteMarshalingStringMap) MarshalYAML() (interface{}, error) {
+func (sm OverwriteMarshalingStringMap) MarshalYAML() (any, error) {
 	return sm.m, nil
 }
 

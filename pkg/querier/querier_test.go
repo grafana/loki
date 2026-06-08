@@ -1178,7 +1178,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 func TestQuerier_DetectedLabels(t *testing.T) {
 	manyValues := []string{}
 	now := time.Now()
-	for i := 0; i < 60; i++ {
+	for i := range 60 {
 		manyValues = append(manyValues, "a"+strconv.Itoa(i))
 	}
 

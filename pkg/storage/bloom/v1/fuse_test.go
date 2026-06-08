@@ -77,11 +77,11 @@ func TestFusedQuerier(t *testing.T) {
 	nReqs := numSeries / n
 	var inputs [][]Request
 	var resChans []chan Output
-	for i := 0; i < nReqs; i++ {
+	for i := range nReqs {
 		ch := make(chan Output)
 		var reqs []Request
 		// find n series for each
-		for j := 0; j < n; j++ {
+		for j := range n {
 			idx := numSeries/nReqs*i + j
 			reqs = append(reqs, Request{
 				Recorder: NewBloomRecorder(context.Background(), "unknown"),
@@ -102,8 +102,7 @@ func TestFusedQuerier(t *testing.T) {
 
 	resps := make([][]Output, nReqs)
 	var g sync.WaitGroup
-	g.Add(1)
-	go func() {
+	g.Go(func() {
 		require.Nil(t, concurrency.ForEachJob(
 			context.Background(),
 			len(resChans),
@@ -115,8 +114,7 @@ func TestFusedQuerier(t *testing.T) {
 				return nil
 			},
 		))
-		g.Done()
-	}()
+	})
 
 	fused := querier.Fuse(itrs, log.NewNopLogger())
 
@@ -253,7 +251,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	numSeries := 4
 	data := make([]SeriesWithBlooms, 0, numSeries)
 
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		var series Series
 		series.Fingerprint = model.Fingerprint(i)
 		series.Chunks = []ChunkRef{
@@ -419,13 +417,13 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 	seriesPerRequest := 100
 	var requestChains [][]Request
 	var responseChans []chan Output
-	for i := 0; i < numRequestChains; i++ {
+	for i := range numRequestChains {
 		var reqs []Request
 		// ensure they use the same channel
 		ch := make(chan Output)
 		// evenly spread out the series queried within a single request chain
 		// to mimic series distribution across keyspace
-		for j := 0; j < seriesPerRequest; j++ {
+		for j := range seriesPerRequest {
 			// add the chain index (i) for a little jitter
 			idx := numSeries*j/seriesPerRequest + i
 			if idx >= numSeries {

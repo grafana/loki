@@ -240,12 +240,10 @@ func TestConcurrentConfirmMissing(t *testing.T) {
 	}
 
 	wg := sync.WaitGroup{}
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			assert.NotPanics(t, func() { c.confirmMissing(time.UnixMilli(3)) })
-		}()
+		})
 	}
 	assert.Eventually(
 		t,

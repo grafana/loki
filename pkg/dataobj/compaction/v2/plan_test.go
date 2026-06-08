@@ -50,7 +50,7 @@ func TestPlan_KGrouping_P10_K3(t *testing.T) {
 	// All share MinKey "a" but have different MaxKeys (and stable_ids), so each
 	// section creates its own pile.
 	sections := make([]*compactionv2pb.SectionRef, 0, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		// MaxKey = "z" so all of them overlap pairwise (MinKey "a" < MaxKey "z").
 		sections = append(sections, sec("o", int32(i), "a", "z"))
 	}
@@ -105,7 +105,7 @@ func TestPlan_Determinism(t *testing.T) {
 	want := Plan(context.Background(), append([]*compactionv2pb.SectionRef(nil), base...), "tenantA", 3)
 
 	r := rand.New(rand.NewSource(1337))
-	for trial := 0; trial < 10; trial++ {
+	for trial := range 10 {
 		shuffled := append([]*compactionv2pb.SectionRef(nil), base...)
 		r.Shuffle(len(shuffled), func(i, j int) {
 			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]

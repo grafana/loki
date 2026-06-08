@@ -49,7 +49,7 @@ type config struct {
 	labelKeys            []string
 	lineFormat           format
 	dropSingleKey        bool
-	labelMap             map[string]interface{}
+	labelMap             map[string]any
 }
 
 // externalLabelsFromFluentBitLabelsOption parses the fluent-bit plugin Labels option

@@ -742,7 +742,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 	require.Len(t, bs, len(as))
 
-	for i := 0; i < len(as); i++ {
+	for i := range as {
 		a := as[i]
 		b := bs[i]
 		require.Equal(t, a.Metric, b.Metric)
@@ -763,7 +763,7 @@ func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 func approximatelyEqualsVector(t *testing.T, as, bs promql.Vector) {
 	require.Len(t, bs, len(as))
 
-	for i := 0; i < len(as); i++ {
+	for i := range as {
 		a := as[i]
 		b := bs[i]
 		require.Equal(t, a.Metric, b.Metric)
@@ -779,7 +779,7 @@ func approximatelyEqualsVector(t *testing.T, as, bs promql.Vector) {
 func relativeError(t *testing.T, expected, actual promql.Matrix, alpha float64) {
 	require.Len(t, actual, len(expected))
 
-	for i := 0; i < len(expected); i++ {
+	for i := range expected {
 		expectedSeries := expected[i]
 		actualSeries := actual[i]
 		require.Equal(t, expectedSeries.Metric, actualSeries.Metric)
@@ -801,7 +801,7 @@ func relativeErrorVector(t *testing.T, expected, actual promql.Vector, alpha flo
 	e := make([]float64, len(expected))
 	a := make([]float64, len(expected))
 	inTopk := 0
-	for i := 0; i < len(expected); i++ {
+	for i := range expected {
 		if labels.Equal(expected[i].Metric, actual[i].Metric) {
 			e[i] = expected[i].F
 			a[i] = actual[i].F

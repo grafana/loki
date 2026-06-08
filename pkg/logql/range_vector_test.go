@@ -537,7 +537,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("testing aggregation %s", tt.name), func(t *testing.T) {
 			it, err := newRangeVectorIterator(sampleIter(tt.negative),
-				&syntax.RangeAggregationExpr{Left: &syntax.LogRangeExpr{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
+				&syntax.RangeAggregationExpr{Left: &syntax.LogRangeExpr{Interval: 2}, Params: new(0.99), Operation: tt.op},
 				3, 1, start, end, 0)
 			require.NoError(t, err)
 
@@ -605,7 +605,7 @@ func TestQuantiles(t *testing.T) {
 						r := rand.New(rand.NewSource(42))
 						z := rand.NewZipf(r, s, v, 1_000)
 						values := make(vector.HeapByMaxValue, 0)
-						for i := 0; i < samplesCount; i++ {
+						for range samplesCount {
 
 							value := float64(z.Uint64())
 							values = append(values, promql.Sample{F: value})

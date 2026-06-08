@@ -2,6 +2,7 @@ package logical
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -32,21 +33,21 @@ func (v *VectorAggregation) Name() string { return v.b.Name() }
 func (v *VectorAggregation) String() string {
 	props := fmt.Sprintf("operation=%s", v.Operation)
 
-	grouping := ""
+	var grouping strings.Builder
 	if len(v.Grouping.Columns) > 0 {
 		for i, columnRef := range v.Grouping.Columns {
 			if i > 0 {
-				grouping += ", "
+				grouping.WriteString(", ")
 			}
-			grouping += columnRef.String()
+			grouping.WriteString(columnRef.String())
 		}
 	}
 	if v.Grouping.Without {
 		if len(v.Grouping.Columns) > 0 {
-			props = fmt.Sprintf("%s, group_without=(%s)", props, grouping)
+			props = fmt.Sprintf("%s, group_without=(%s)", props, grouping.String())
 		}
 	} else {
-		props = fmt.Sprintf("%s, group_by=(%s)", props, grouping)
+		props = fmt.Sprintf("%s, group_by=(%s)", props, grouping.String())
 	}
 
 	return fmt.Sprintf("VECTOR_AGGREGATION %s [%s]", v.Table.Name(), props)

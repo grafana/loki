@@ -32,7 +32,7 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) Ch
 	c := newDummyChunk()
 	chunkStart := now.Add(-time.Hour)
 
-	for i := 0; i < samples; i++ {
+	for i := range samples {
 		t := time.Duration(i) * 15 * time.Second
 		nc, err := c.Add(model.SamplePair{Timestamp: chunkStart.Add(t), Value: model.SampleValue(i)})
 		if err != nil {
@@ -210,13 +210,13 @@ func benchmarkDecode(b *testing.B, batchSize int) {
 		b.StopTimer()
 		chunks := make([]Chunk, batchSize)
 		// Copy across the metadata so the check works out ok
-		for j := 0; j < batchSize; j++ {
+		for j := range batchSize {
 			chunks[j] = chunk
 			chunks[j].Metric = labels.EmptyLabels()
 			chunks[j].Data = nil
 		}
 		b.StartTimer()
-		for j := 0; j < batchSize; j++ {
+		for j := range batchSize {
 			err := chunks[j].Decode(decodeContext, buf)
 			require.NoError(b, err)
 		}

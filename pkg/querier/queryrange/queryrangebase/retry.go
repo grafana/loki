@@ -138,7 +138,7 @@ func logImplementingType(i Request) string {
 	t := reflect.TypeOf(i)
 
 	// Check if it's a pointer and get the underlying type if so
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 

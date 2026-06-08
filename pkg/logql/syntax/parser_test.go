@@ -13,8 +13,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
+//go:fix inline
 func NewStringLabelFilter(s string) *string {
-	return &s
+	return new(s)
 }
 
 var ParseTestCases = []struct {
@@ -325,7 +326,7 @@ var ParseTestCases = []struct {
 		}, "topk", &Grouping{
 			Without: true,
 			Groups:  []string{"bar"},
-		}, NewStringLabelFilter("10")),
+		}, new("10")),
 	},
 	{
 		in: `bottomk(30 ,sum(rate({ foo = "bar" }[5h])) by (foo))`,
@@ -339,7 +340,7 @@ var ParseTestCases = []struct {
 			Groups:  []string{"foo"},
 			Without: false,
 		}, nil), "bottomk", nil,
-			NewStringLabelFilter("30")),
+			new("30")),
 	},
 	{
 		in: `max( sum(count_over_time({ foo = "bar" }[5h])) without (foo,bar) ) by (foo)`,
@@ -906,7 +907,7 @@ var ParseTestCases = []struct {
 				Without: true,
 				Groups:  []string{"foo"},
 			},
-			NewStringLabelFilter("5")),
+			new("5")),
 	},
 	{
 		in: `topk(5,sum(rate(({foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap")[5m])) by (app))`,
@@ -939,7 +940,7 @@ var ParseTestCases = []struct {
 				nil),
 			"topk",
 			nil,
-			NewStringLabelFilter("5")),
+			new("5")),
 	},
 	{
 		in: `count_over_time({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")`,
@@ -1017,7 +1018,7 @@ var ParseTestCases = []struct {
 				Without: true,
 				Groups:  []string{"foo"},
 			},
-			NewStringLabelFilter("5")),
+			new("5")),
 	},
 	{
 		in: `topk(5,sum(rate({foo="bar"}[5m] |= "baz" |~ "blip" != "flip" !~ "flap")) by (app))`,
@@ -1050,7 +1051,7 @@ var ParseTestCases = []struct {
 				nil),
 			"topk",
 			nil,
-			NewStringLabelFilter("5")),
+			new("5")),
 	},
 	{
 		in:  `{foo="bar}`,
@@ -1980,7 +1981,7 @@ var ParseTestCases = []struct {
 				5*time.Minute,
 				newUnwrapExpr("foo", ""),
 				nil),
-			OpRangeTypeQuantile, nil, NewStringLabelFilter("0.99998"),
+			OpRangeTypeQuantile, nil, new("0.99998"),
 		),
 	},
 	{
@@ -2011,7 +2012,7 @@ var ParseTestCases = []struct {
 				5*time.Minute,
 				newUnwrapExpr("foo", ""),
 				nil),
-			OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+			OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new("0.99998"),
 		),
 	},
 	{
@@ -2042,7 +2043,7 @@ var ParseTestCases = []struct {
 				5*time.Minute,
 				newUnwrapExpr("foo", "").addPostFilter(log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+"))),
 				nil),
-			OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+			OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new("0.99998"),
 		),
 	},
 	{
@@ -2077,7 +2078,7 @@ var ParseTestCases = []struct {
 					5*time.Minute,
 					newUnwrapExpr("foo", ""),
 					nil),
-				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new("0.99998"),
 			),
 			OpTypeSum,
 			&Grouping{Without: true, Groups: []string{"foo"}},
@@ -2116,7 +2117,7 @@ var ParseTestCases = []struct {
 					5*time.Minute,
 					newUnwrapExpr("foo", ""),
 					newOffsetExpr(5*time.Minute)),
-				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new("0.99998"),
 			),
 			OpTypeSum,
 			&Grouping{Without: true, Groups: []string{"foo"}},
@@ -2155,7 +2156,7 @@ var ParseTestCases = []struct {
 					5*time.Minute,
 					newUnwrapExpr("foo", OpConvDuration),
 					nil),
-				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new("0.99998"),
 			),
 			OpTypeSum,
 			&Grouping{Without: true, Groups: []string{"foo"}},
@@ -2194,7 +2195,7 @@ var ParseTestCases = []struct {
 					5*time.Minute,
 					newUnwrapExpr("foo", OpConvDuration),
 					nil),
-				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter(".99998"),
+				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new(".99998"),
 			),
 			OpTypeSum,
 			&Grouping{Without: true, Groups: []string{"foo"}},
@@ -2233,7 +2234,7 @@ var ParseTestCases = []struct {
 					5*time.Minute,
 					newUnwrapExpr("foo", OpConvDurationSeconds),
 					nil),
-				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter(".99998"),
+				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new(".99998"),
 			),
 			OpTypeSum,
 			&Grouping{Without: true, Groups: []string{"foo"}},
@@ -2272,11 +2273,11 @@ var ParseTestCases = []struct {
 					5*time.Minute,
 					newUnwrapExpr("foo", ""),
 					nil),
-				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+				OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new("0.99998"),
 			),
 			OpTypeTopK,
 			nil,
-			NewStringLabelFilter("10"),
+			new("10"),
 		),
 	},
 	{
@@ -2322,7 +2323,7 @@ var ParseTestCases = []struct {
 						5*time.Minute,
 						newUnwrapExpr("foo", ""),
 						nil),
-					OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+					OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new("0.99998"),
 				),
 				OpTypeSum,
 				&Grouping{Groups: []string{"foo", "bar"}},
@@ -2403,7 +2404,7 @@ var ParseTestCases = []struct {
 						5*time.Minute,
 						newUnwrapExpr("foo", ""),
 						nil),
-					OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+					OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new("0.99998"),
 				),
 				OpTypeSum,
 				&Grouping{Groups: []string{"foo", "bar"}},
@@ -2484,7 +2485,7 @@ var ParseTestCases = []struct {
 						5*time.Minute,
 						newUnwrapExpr("foo", ""),
 						nil),
-					OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+					OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new("0.99998"),
 				),
 				OpTypeSum,
 				&Grouping{Groups: []string{"foo", "bar"}},
@@ -2565,7 +2566,7 @@ var ParseTestCases = []struct {
 						5*time.Minute,
 						newUnwrapExpr("foo", ""),
 						nil),
-					OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+					OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new("0.99998"),
 				),
 				OpTypeSum,
 				&Grouping{Groups: []string{"foo", "bar"}},
@@ -2714,7 +2715,7 @@ var ParseTestCases = []struct {
 							5*time.Minute,
 							newUnwrapExpr("foo", ""),
 							nil),
-						OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, NewStringLabelFilter("0.99998"),
+						OpRangeTypeQuantile, &Grouping{Without: false, Groups: []string{"namespace", "instance"}}, new("0.99998"),
 					),
 					OpTypeSum,
 					&Grouping{Groups: []string{"foo", "bar"}},

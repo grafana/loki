@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -351,9 +352,7 @@ func (m *InMemoryObjectClient) List(_ context.Context, prefix, delimiter string)
 	sort.Slice(storageObjects, func(i, j int) bool {
 		return storageObjects[i].Key < storageObjects[j].Key
 	})
-	sort.Slice(commonPrefixes, func(i, j int) bool {
-		return commonPrefixes[i] < commonPrefixes[j]
-	})
+	slices.Sort(commonPrefixes)
 
 	return storageObjects, commonPrefixes, nil
 }

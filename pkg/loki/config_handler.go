@@ -13,13 +13,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-func yamlMarshalUnmarshal(in interface{}) (map[string]interface{}, error) {
+func yamlMarshalUnmarshal(in any) (map[string]any, error) {
 	yamlBytes, err := yaml.Marshal(in)
 	if err != nil {
 		return nil, err
 	}
 
-	object := make(map[string]interface{})
+	object := make(map[string]any)
 	if err := yaml.Unmarshal(yamlBytes, &object); err != nil {
 		return nil, err
 	}
@@ -27,8 +27,8 @@ func yamlMarshalUnmarshal(in interface{}) (map[string]interface{}, error) {
 	return object, nil
 }
 
-func diffConfig(defaultConfig, actualConfig map[string]interface{}) (map[string]interface{}, error) {
-	output := make(map[string]interface{})
+func diffConfig(defaultConfig, actualConfig map[string]any) (map[string]any, error) {
+	output := make(map[string]any)
 
 	for key, value := range actualConfig {
 
@@ -54,8 +54,8 @@ func diffConfig(defaultConfig, actualConfig map[string]interface{}) (map[string]
 			if !ok || defaultV != v {
 				output[key] = v
 			}
-		case []interface{}:
-			defaultV, ok := defaultValue.([]interface{})
+		case []any:
+			defaultV, ok := defaultValue.([]any)
 			if !ok || !reflect.DeepEqual(defaultV, v) {
 				output[key] = v
 			}
@@ -64,8 +64,8 @@ func diffConfig(defaultConfig, actualConfig map[string]interface{}) (map[string]
 			if !ok || !reflect.DeepEqual(defaultV, v) {
 				output[key] = v
 			}
-		case map[string]interface{}:
-			defaultV, ok := defaultValue.(map[string]interface{})
+		case map[string]any:
+			defaultV, ok := defaultValue.(map[string]any)
 			if !ok {
 				output[key] = value
 				break

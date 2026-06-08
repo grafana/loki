@@ -1000,19 +1000,17 @@ func TestMapPoolPanic(_ *testing.T) {
 		builder,
 	)
 
-	for i := 0; i < 100; i++ {
-		wgFinished.Add(1)
-		go func() {
+	for range 100 {
+		wgFinished.Go(func() {
 			wg.Wait()
 			a := newMustLineFormatter(tmpl)
 			a.Process(0,
 				[]byte("logger=sqlstore.metrics traceID=XXXXXXXXXXXXXXXXXXXXXXXXXXXX t=2024-01-04T23:58:47.696779826Z level=debug msg=\"query finished\" status=success elapsedtime=1.523571ms sql=\"some SQL query\" error=null"),
 				builder,
 			)
-			wgFinished.Done()
-		}()
+		})
 	}
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wgFinished.Add(1)
 		j := i
 		go func() {

@@ -72,17 +72,17 @@ func BenchmarkEquals_UTF8(b *testing.B) {
 }
 
 func makeInt64Array(tb testing.TB, alloc *memory.Allocator, size int) columnar.Datum {
-	values := make([]interface{}, size)
-	for i := 0; i < size; i++ {
+	values := make([]any, size)
+	for i := range size {
 		values[i] = int64(i % 1000)
 	}
 	return columnartest.Array(tb, types.KindInt64, alloc, values...)
 }
 
 func makeUTF8Array(tb testing.TB, alloc *memory.Allocator, size int) columnar.Datum {
-	values := make([]interface{}, size)
+	values := make([]any, size)
 	strings := []string{"foo", "bar", "baz", "qux", "quux", "corge", "grault", "garply"}
-	for i := 0; i < size; i++ {
+	for i := range size {
 		values[i] = strings[i%len(strings)]
 	}
 	return columnartest.Array(tb, types.KindUTF8, alloc, values...)
@@ -90,7 +90,7 @@ func makeUTF8Array(tb testing.TB, alloc *memory.Allocator, size int) columnar.Da
 
 func makeAlternatingSelection(_ testing.TB, alloc *memory.Allocator, size int) memory.Bitmap {
 	bm := memory.NewBitmap(alloc, size)
-	for i := 0; i < size; i++ {
+	for i := range size {
 		bm.Append(i%2 == 0)
 	}
 	return bm
@@ -99,7 +99,7 @@ func makeAlternatingSelection(_ testing.TB, alloc *memory.Allocator, size int) m
 func makeSparseSelection(_ testing.TB, alloc *memory.Allocator, size int, selectivity float64) memory.Bitmap {
 	bm := memory.NewBitmap(alloc, size)
 	step := int(1.0 / selectivity)
-	for i := 0; i < size; i++ {
+	for i := range size {
 		bm.Append(i%step == 0)
 	}
 	return bm

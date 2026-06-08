@@ -21,7 +21,7 @@ import (
 type FileMetadata struct {
 	Sections     []SectionMetadata `json:"sections"`
 	Error        string            `json:"error,omitempty"`
-	LastModified time.Time         `json:"lastModified,omitempty"`
+	LastModified time.Time         `json:"lastModified"`
 }
 
 type ColumnWithPages struct {

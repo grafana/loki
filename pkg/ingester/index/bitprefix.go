@@ -36,7 +36,7 @@ func NewBitPrefixWithShards(totalShards uint32) (*BitPrefixInvertedIndex, error)
 	}
 
 	shards := make([]*indexShard, totalShards)
-	for i := uint32(0); i < totalShards; i++ {
+	for i := range totalShards {
 		shards[i] = &indexShard{
 			idx:   map[string]indexEntry{},
 			shard: i,

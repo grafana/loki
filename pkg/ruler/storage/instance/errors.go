@@ -28,7 +28,7 @@ func (e ErrInvalidUpdate) Is(err error) bool {
 
 // As will set the err object to ErrInvalidUpdate provided err
 // is a pointer to ErrInvalidUpdate.
-func (e ErrInvalidUpdate) As(err interface{}) bool {
+func (e ErrInvalidUpdate) As(err any) bool {
 	switch v := err.(type) {
 	case *ErrInvalidUpdate:
 		*v = e

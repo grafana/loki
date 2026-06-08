@@ -99,10 +99,7 @@ func buildPipelineNodes(regions []pipelineRegionStat) []pipelineNode {
 			batchesIn += c.ReadCalls
 		}
 
-		self := r.ReadDuration - childReadDuration
-		if self < 0 {
-			self = 0
-		}
+		self := max(r.ReadDuration-childReadDuration, 0)
 
 		var parent xcap.ID
 		if _, ok := known[r.ParentID]; ok {

@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/IBM/ibm-cos-sdk-go/aws"
 	"github.com/IBM/ibm-cos-sdk-go/aws/credentials/ibmiam/token"
 	"github.com/IBM/ibm-cos-sdk-go/aws/request"
 	"github.com/IBM/ibm-cos-sdk-go/service/s3"
@@ -588,8 +587,8 @@ func Test_IsObjectNotFoundErr(t *testing.T) {
 		err  error
 		want bool
 	}{
-		{"no such key", &types.NoSuchKey{Message: aws.String("no such key")}, true},
-		{"no such bucket", &types.NoSuchBucket{Message: aws.String("no such bucket")}, false},
+		{"no such key", &types.NoSuchKey{Message: new("no such key")}, true},
+		{"no such bucket", &types.NoSuchBucket{Message: new("no such bucket")}, false},
 		{"no error", nil, false},
 	}
 

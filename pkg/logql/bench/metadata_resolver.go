@@ -3,6 +3,7 @@ package bench
 import (
 	"fmt"
 	"math/rand"
+	"slices"
 	"strings"
 	"time"
 
@@ -187,11 +188,8 @@ func (r *MetadataVariableResolver) extractLabelFromSelector(selector string, req
 		pair := labelPair{name: matcher.Name, value: matcher.Value}
 		allPairs = append(allPairs, pair)
 
-		for _, requiredLabel := range req.Labels {
-			if matcher.Name == requiredLabel {
-				requiredPairs = append(requiredPairs, pair)
-				break
-			}
+		if slices.Contains(req.Labels, matcher.Name) {
+			requiredPairs = append(requiredPairs, pair)
 		}
 	}
 

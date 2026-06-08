@@ -61,7 +61,7 @@ func TestQueryMetrics(t *testing.T) {
 	for _, tc := range []struct {
 		desc  string
 		in    string
-		exp   interface{}
+		exp   any
 		error bool
 	}{
 		{
@@ -102,12 +102,12 @@ func Test_testToKeyValues(t *testing.T) {
 	cases := []struct {
 		name string
 		in   string
-		exp  []interface{}
+		exp  []any
 	}{
 		{
 			name: "canonical-form",
 			in:   "Source=logvolhist",
-			exp: []interface{}{
+			exp: []any{
 				"source",
 				"logvolhist",
 			},
@@ -115,7 +115,7 @@ func Test_testToKeyValues(t *testing.T) {
 		{
 			name: "canonical-form-multiple-values",
 			in:   "Source=logvolhist,Feature=beta,User=Jinx@grafana.com",
-			exp: []interface{}{
+			exp: []any{
 				"source",
 				"logvolhist",
 				"feature",
@@ -127,12 +127,12 @@ func Test_testToKeyValues(t *testing.T) {
 		{
 			name: "empty",
 			in:   "",
-			exp:  []interface{}{},
+			exp:  []any{},
 		},
 		{
 			name: "non-canonical form",
 			in:   "abc",
-			exp:  []interface{}{},
+			exp:  []any{},
 		},
 	}
 

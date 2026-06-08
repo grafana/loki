@@ -120,7 +120,7 @@ func Test_SimplifiedRegex(t *testing.T) {
 
 func allunicode() string {
 	var b []byte
-	for i := 0x00; i < 0x10FFFF; i++ {
+	for i := range 0x10FFFF {
 		b = append(b, byte(i))
 	}
 	return string(b)

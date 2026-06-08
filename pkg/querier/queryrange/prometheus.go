@@ -106,8 +106,8 @@ func (p *LokiPromResponse) marshalVector() ([]byte, error) {
 		Data   struct {
 			ResultType string         `json:"resultType"`
 			Result     loghttp.Vector `json:"result"`
-			Statistics stats.Result   `json:"stats,omitempty"`
-		} `json:"data,omitempty"`
+			Statistics stats.Result   `json:"stats"`
+		} `json:"data"`
 		ErrorType string   `json:"errorType,omitempty"`
 		Error     string   `json:"error,omitempty"`
 		Warnings  []string `json:"warnings,omitempty"`
@@ -116,7 +116,7 @@ func (p *LokiPromResponse) marshalVector() ([]byte, error) {
 		Data: struct {
 			ResultType string         `json:"resultType"`
 			Result     loghttp.Vector `json:"result"`
-			Statistics stats.Result   `json:"stats,omitempty"`
+			Statistics stats.Result   `json:"stats"`
 		}{
 			ResultType: loghttp.ResultTypeVector,
 			Result:     vec,
@@ -140,8 +140,8 @@ func (p *LokiPromResponse) marshalMatrix() ([]byte, error) {
 		Status string `json:"status"`
 		Data   struct {
 			queryrangebase.PrometheusData
-			Statistics stats.Result `json:"stats,omitempty"`
-		} `json:"data,omitempty"`
+			Statistics stats.Result `json:"stats"`
+		} `json:"data"`
 		ErrorType string   `json:"errorType,omitempty"`
 		Error     string   `json:"error,omitempty"`
 		Warnings  []string `json:"warnings,omitempty"`
@@ -149,7 +149,7 @@ func (p *LokiPromResponse) marshalMatrix() ([]byte, error) {
 		Error: p.Response.Error,
 		Data: struct {
 			queryrangebase.PrometheusData
-			Statistics stats.Result `json:"stats,omitempty"`
+			Statistics stats.Result `json:"stats"`
 		}{
 			PrometheusData: p.Response.Data,
 			Statistics:     p.Statistics,
@@ -180,8 +180,8 @@ func (p *LokiPromResponse) marshalScalar() ([]byte, error) {
 		Data   struct {
 			ResultType string         `json:"resultType"`
 			Result     loghttp.Scalar `json:"result"`
-			Statistics stats.Result   `json:"stats,omitempty"`
-		} `json:"data,omitempty"`
+			Statistics stats.Result   `json:"stats"`
+		} `json:"data"`
 		ErrorType string   `json:"errorType,omitempty"`
 		Error     string   `json:"error,omitempty"`
 		Warnings  []string `json:"warnings,omitempty"`
@@ -190,7 +190,7 @@ func (p *LokiPromResponse) marshalScalar() ([]byte, error) {
 		Data: struct {
 			ResultType string         `json:"resultType"`
 			Result     loghttp.Scalar `json:"result"`
-			Statistics stats.Result   `json:"stats,omitempty"`
+			Statistics stats.Result   `json:"stats"`
 		}{
 			ResultType: loghttp.ResultTypeScalar,
 			Result:     scalar,

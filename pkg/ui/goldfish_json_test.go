@@ -65,7 +65,7 @@ func TestSampledQueryJSONMarshaling(t *testing.T) {
 		// Time fields - convert to RFC3339 strings
 		StartTime:    qs.StartTime.Format(time.RFC3339),
 		EndTime:      qs.EndTime.Format(time.RFC3339),
-		StepDuration: int64Ptr(qs.Step.Milliseconds()),
+		StepDuration: new(qs.Step.Milliseconds()),
 
 		// Timestamps
 		SampledAt: qs.SampledAt,
@@ -96,8 +96,8 @@ func TestSampledQueryJSONMarshaling(t *testing.T) {
 		CellBResponseHash: strPtr(qs.CellBResponseHash),
 		CellAResponseSize: &qs.CellAResponseSize,
 		CellBResponseSize: &qs.CellBResponseSize,
-		CellAStatusCode:   intPtr(qs.CellAStatusCode),
-		CellBStatusCode:   intPtr(qs.CellBStatusCode),
+		CellAStatusCode:   new(qs.CellAStatusCode),
+		CellBStatusCode:   new(qs.CellBStatusCode),
 		CellATraceID:      strPtr(qs.CellATraceID),
 		CellBTraceID:      strPtr(qs.CellBTraceID),
 
