@@ -2728,6 +2728,29 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 	}
 }
 
+func Benchmark_CodecEncodeLogs(b *testing.B) {
+	u := &url.URL{Path: "/loki/api/v1/query_range"}
+	req := &http.Request{
+		Method:     "GET",
+		RequestURI: u.String(),
+		URL:        u,
+	}
+	resp := &LokiResponse{
+		Status:    loghttp.QueryStatusSuccess,
+		Direction: logproto.BACKWARD,
+		Version:   uint32(loghttp.VersionV1),
+		Limit:     1000,
+		Data: LokiData{
+			ResultType: loghttp.ResultTypeStream,
+			Result:     generateStream(),
+		},
+	}
+	for b.Loop() {
+		_, err := DefaultCodec.EncodeResponse(b.Context(), req, resp)
+		require.Nil(b, err)
+	}
+}
+
 func Benchmark_CodecDecodeSamples(b *testing.B) {
 	ctx := context.Background()
 	u := &url.URL{Path: "/loki/api/v1/query_range"}
@@ -2765,6 +2788,28 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 		})
 		require.NoError(b, err)
 		require.NotNil(b, result)
+	}
+}
+
+func Benchmark_CodecEncodeSamples(b *testing.B) {
+	u := &url.URL{Path: "/loki/api/v1/query_range"}
+	req := &http.Request{
+		Method:     "GET",
+		RequestURI: u.String(), // This is what the httpgrpc code looks at.
+		URL:        u,
+	}
+	resp := &LokiPromResponse{
+		Response: &queryrangebase.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: queryrangebase.PrometheusData{
+				ResultType: loghttp.ResultTypeMatrix,
+				Result:     generateMatrix(),
+			},
+		},
+	}
+	for b.Loop() {
+		_, err := DefaultCodec.EncodeResponse(b.Context(), req, resp)
+		require.Nil(b, err)
 	}
 }
 
@@ -2840,7 +2885,7 @@ func Benchmark_MergeResponses(b *testing.B) {
 func generateMatrix() (res []queryrangebase.SampleStream) {
 	for i := 0; i < 100; i++ {
 		s := queryrangebase.SampleStream{
-			Labels:  []logproto.LabelAdapter{},
+			Labels:  []logproto.LabelAdapter{{Name: "foo", Value: strconv.Itoa(i)}, {Name: "buzz", Value: "bar"}, {Name: "cluster", Value: "us-central2"}, {Name: "namespace", Value: "loki-dev"}, {Name: "container", Value: "query-frontend"}},
 			Samples: []logproto.LegacySample{},
 		}
 		for j := 0; j < 1000; j++ {
