@@ -72,8 +72,7 @@ type workerConn struct {
 
 	// wake un-parks the worker's assignment loop after it has parked on a 429.
 	// A WorkerReady received while the loop is already running nudges this
-	// channel to signal that the worker has freed a thread. It is a buffered
-	// channel of size 1 used as a coalescing notification.
+	// channel to signal that the worker has freed a thread.
 	wake chan struct{}
 }
 

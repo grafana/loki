@@ -1378,9 +1378,8 @@ func TestScheduler_worker(t *testing.T) {
 }
 
 // TestScheduler_workerParkOnBackoff verifies that a 429 from a worker parks the
-// worker's assignment loop (keeping it eligible for assignment) instead of
-// tearing it down, and that a subsequent ready message resumes assignment of
-// the requeued task without requiring a fresh subscribe round trip.
+// worker's assignment loop, and that a subsequent ready message resumes assignment of
+// the requeued task.
 func TestScheduler_workerParkOnBackoff(t *testing.T) {
 	sched := newTestScheduler(t)
 

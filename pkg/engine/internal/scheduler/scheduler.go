@@ -235,19 +235,11 @@ func (s *Scheduler) markWorkerReady(ctx context.Context, worker *workerConn) err
 		return err
 	}
 
-	if _, alreadyReady := s.readyWorkers[worker]; alreadyReady {
-		// The worker already has a long-lived assignment loop. A fresh ready
-		// message means it has freed a thread, so un-park the loop (if it
-		// parked on a previous 429) rather than starting a second loop.
+	if _, exists := s.readyWorkers[worker]; exists {
 		nudgeSemaphore(worker.wake)
 	} else {
 		s.readyWorkers[worker] = struct{}{}
 
-		// Spawn the single, long-lived goroutine that assigns tasks to this
-		// worker by reading from tasksCh. Unlike the previous design, the loop
-		// is not torn down on a 429: it parks and resumes on the next ready
-		// message, so worker threads don't sit idle waiting for a fresh
-		// subscribe round trip.
 		go s.workerLoop(ctx, worker)
 	}
 
@@ -488,13 +480,6 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 	}
 }
 
-// workerLoop assigns tasks to a single worker by reading from the shared
-// tasksCh. It is long-lived: it runs until the connection is closed or the
-// scheduler shuts down. When the worker reports it is at capacity (429), the
-// loop parks instead of exiting and resumes when the worker advertises a freed
-// thread via a ready message. This avoids the teardown + re-subscribe round
-// trip that previously left worker threads idle while tasks queued.
-//
 // TODO(ashwanth): When there is only a single worker (say single-binary)
 // all assignments go through a single workerLoop. Because SendMessage blocks
 // until the worker ACKs, the per-task round-trip overhead adds up
@@ -533,14 +518,9 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 			// Generic error: restore the task to its original queue position.
 			s.requeueTask(assignment.t, assignment.pos)
 
-			// If it's a 429 the worker is at capacity. Keep the loop and the
-			// worker's ready status alive and park until the worker advertises
-			// a freed thread. This keeps the worker eligible for assignment so
-			// the next ready message resumes dispatch immediately, without the
-			// expensive teardown + re-subscribe cycle.
 			if isTooManyRequestsError(err) {
 				s.metrics.backoffsTotal.Inc()
-				if !s.parkWorker(ctx, worker) {
+				if resume := s.parkWorker(ctx, worker); !resume {
 					return
 				}
 				continue
@@ -562,11 +542,6 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 // nudges worker.wake), the worker disconnects, or the scheduler shuts down. It
 // returns true if the assignment loop should resume, or false if it should
 // exit.
-//
-// While parked the worker remains in s.readyWorkers so the assign loop keeps
-// preparing work for it; that work waits on the unbuffered tasksCh until this
-// loop resumes, providing backpressure without busy-spinning against a full
-// worker.
 func (s *Scheduler) parkWorker(ctx context.Context, worker *workerConn) bool {
 	select {
 	case <-ctx.Done():
