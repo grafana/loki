@@ -22,12 +22,11 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Run go fix
-        run: go fix ./...
-
-      - name: Check for divergence
+      - name: Check go fix
+        # `go fix -diff` prints the patch and exits non-zero if any fixer
+        # has changes to apply, so it doubles as the divergence check.
         run: |
-          if ! git diff --exit-code; then
+          if ! go fix -diff ./...; then
             echo "::error::'go fix ./...' produced changes. Please run 'go fix ./...' locally and commit the result."
             exit 1
           fi
