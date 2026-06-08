@@ -94,18 +94,6 @@ func (p *parallelPushdown) canPushdown(node Node) bool {
 	return !foundNonParallelize
 }
 
-// findParentVectorAggregation finds the VectorAggregation node that is a parent
-// of the given node (typically a RangeAggregation). Returns nil if no parent
-// VectorAggregation exists.
-func (p *parallelPushdown) findParentVectorAggregation(node Node) *VectorAggregation {
-	for _, parent := range p.plan.Parent(node) {
-		if vecAgg, ok := parent.(*VectorAggregation); ok {
-			return vecAgg
-		}
-	}
-	return nil
-}
-
 // canShardAggregation returns true if the combination of vector and
 // range aggregation operations can be safely parallelized.
 //
