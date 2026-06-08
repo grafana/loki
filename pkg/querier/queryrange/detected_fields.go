@@ -406,18 +406,31 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 	}
 
 	line := entry.Line
-	parser := "json"
+	var parsers []string
+
 	jsonParser := logql_log.NewJSONParser(true)
 	_, jsonSuccess := jsonParser.Process(0, []byte(line), lblBuilder)
-	if !jsonSuccess || lblBuilder.HasErr() {
+	if jsonSuccess && !lblBuilder.HasErr() {
+		parsers = append(parsers, "json")
+	} else {
 		lblBuilder.Reset()
+	}
 
-		logFmtParser := logql_log.NewLogfmtParser(false, false)
-		parser = "logfmt"
-		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
-		if !logfmtSuccess || lblBuilder.HasErr() {
-			return parsed, nil
+	logFmtParser := logql_log.NewLogfmtParser(false, false)
+	logfmtBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, labels.StableHash(streamLbls))
+	_, logfmtSuccess := logFmtParser.Process(0, []byte(line), logfmtBuilder)
+	if logfmtSuccess && !logfmtBuilder.HasErr() {
+		logfmtLabels := logfmtBuilder.LabelsResult().Parsed()
+		if logfmtLabels.Len() > 0 {
+			parsers = append(parsers, "logfmt")
+			logfmtLabels.Range(func(lbl labels.Label) {
+				lblBuilder.Set(logql_log.ParsedLabel, lbl.Name, lbl.Value)
+			})
 		}
+	}
+
+	if len(parsers) == 0 {
+		return parsed, nil
 	}
 
 	parsedLabels := map[string]map[string]struct{}{}
@@ -456,7 +469,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 		result[lbl] = vals
 	}
 
-	return result, []string{parser}
+	return result, parsers
 }
 
 func getParsedLabels(entry push.Entry) map[string][]string {
