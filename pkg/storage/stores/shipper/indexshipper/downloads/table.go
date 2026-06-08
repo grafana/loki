@@ -102,7 +102,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		maxConcurrent:      maxConcurrent,
 	}
 
-	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(dirEntries))
+	level.Debug(table.logger).Log("msg", "opening locally present files for table", "table", name, "files", fmt.Sprint(dirEntries))
 
 	// common index files are outside the directories and user index files are in the directories
 	for _, entry := range dirEntries {
@@ -253,7 +253,7 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 				continue
 			}
 
-			level.Info(t.logger).Log("msg", fmt.Sprintf("cleaning up expired index set %s", userID))
+			level.Info(t.logger).Log("msg", "cleaning up expired index set", "user_id", userID)
 			err := t.indexSets[userID].DropAllDBs()
 			if err != nil {
 				return false, err
@@ -270,7 +270,7 @@ func (t *table) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) 
 
 // Sync downloads updated and new files from the storage relevant for the table and removes the deleted ones
 func (t *table) Sync(ctx context.Context) error {
-	level.Debug(t.logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
+	level.Debug(t.logger).Log("msg", "syncing files for table", "table", t.name)
 
 	t.indexSetsMtx.RLock()
 	users := slices.Collect(maps.Keys(t.indexSets))
@@ -367,9 +367,9 @@ func (t *table) cleanupBrokenIndexSet(ctx context.Context, id string) {
 		return
 	}
 
-	level.Error(util_log.WithContext(ctx, t.logger)).Log("msg", fmt.Sprintf("index set %s has some problem, cleaning it up", id), "err", indexSet.Err())
+	level.Error(util_log.WithContext(ctx, t.logger)).Log("msg", "index set has a problem, cleaning it up", "index_set", id, "err", indexSet.Err())
 	if err := indexSet.DropAllDBs(); err != nil {
-		level.Error(t.logger).Log("msg", fmt.Sprintf("failed to cleanup broken index set %s", id), "err", err)
+		level.Error(t.logger).Log("msg", "failed to cleanup broken index set", "index_set", id, "err", err)
 	}
 
 	delete(t.indexSets, id)

@@ -972,23 +972,9 @@ func (t *Loki) updateConfigForShipperStore() {
 
 	switch true {
 	case t.Cfg.isTarget(Ingester), t.Cfg.isTarget(Write):
-		// Use embedded cache for caching index in memory, this also significantly helps performance.
-		t.Cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
-			EmbeddedCache: cache.EmbeddedCacheConfig{
-				Enabled:   true,
-				MaxSizeMB: 200,
-				// This is a small hack to save some CPU cycles.
-				// We check if the object is still valid after pulling it from cache using the IndexCacheValidity value
-				// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
-				// IndexCacheValidity guarantees the Embedded cache will expire the object first which can be done without
-				// having to deserialize the object.
-				TTL: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
-			},
-		}
-
 		// We do not want ingester to unnecessarily keep downloading files
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
-		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
+		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 
 	case t.Cfg.isTarget(Querier), t.Cfg.isTarget(Ruler), t.Cfg.isTarget(Read), t.Cfg.isTarget(Backend), t.isModuleActive(IndexGateway), t.Cfg.isTarget(BloomPlanner), t.Cfg.isTarget(BloomBuilder):
 		// We do not want query to do any updates to index
@@ -997,7 +983,7 @@ func (t *Loki) updateConfigForShipperStore() {
 	default:
 		// All other targets use the shipper store in RW mode
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadWrite
-		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
+		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 	}
 }
 
@@ -1012,10 +998,7 @@ func (t *Loki) setupAsyncStore() error {
 
 	minIngesterQueryStoreDuration := shipperMinIngesterQueryStoreDuration(
 		t.Cfg.Ingester.MaxChunkAge,
-		shipperQuerierIndexUpdateDelay(
-			t.Cfg.StorageConfig.IndexCacheValidity,
-			shipperResyncInterval(t.Cfg.StorageConfig, t.Cfg.SchemaConfig.Configs),
-		),
+		shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval),
 	)
 
 	switch true {
@@ -1719,7 +1702,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 			reg,
 		),
 	)
-	dnsProvider := dns.NewProvider(util_log.Logger, dnsProviderReg, dns.GolangResolverType)
+	dnsProvider := dns.NewProvider(dns.GolangResolverType, 0, util_log.Logger, dnsProviderReg)
 
 	// TODO(ashwanth): This is not considering component specific overrides for InstanceInterfaceNames.
 	// This should be fixed in the future.
@@ -1848,7 +1831,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		}
 	}
 
-	indexUpdatePropagationMaxDelay := shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, shipperResyncInterval(t.Cfg.StorageConfig, t.Cfg.SchemaConfig.Configs))
+	indexUpdatePropagationMaxDelay := shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 	t.compactor, err = compactor.NewCompactor(
 		t.Cfg.CompactorConfig,
 		objectClients,
@@ -2407,7 +2390,25 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "dataobj-compaction-planner")
 
-	c, err := enginecompactor.New(t.Cfg.DataObj.Compaction, logger)
+	store, err := t.getDataObjBucket("dataobj-compaction-planner")
+	if err != nil {
+		return nil, err
+	}
+	// Wrap with the same IndexStoragePrefix the dataobj-index-builder uses so
+	// compactor outputs and ToC reads land alongside the existing multi-tenant
+	// indexes namespace.
+	indexBucket := store
+	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
+		indexBucket = objstore.NewPrefixedBucket(store, prefix)
+	}
+	tocWriter := metastore.NewTableOfContentsWriter(indexBucket, logger)
+
+	c, err := enginecompactor.New(enginecompactor.PlannerParams{
+		Config:          t.Cfg.DataObj.Compaction,
+		Bucket:          indexBucket,
+		MetastoreWriter: tocWriter,
+		Logger:          logger,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -2456,14 +2457,26 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		return nil, err
 	}
 
+	// Wrap with the same IndexStoragePrefix the planner uses so the worker's
+	// IndexMerge executor writes merged-index objects to the same namespace
+	// the ToC pointers (written by the planner via its prefixed indexBucket)
+	// resolve to. metastore.NewObjectMetastore applies the prefix internally,
+	// so it still receives the unprefixed `store`.
+	indexBucket := store
+	if prefix := t.Cfg.DataObj.Metastore.IndexStoragePrefix; prefix != "" {
+		indexBucket = objstore.NewPrefixedBucket(store, prefix)
+	}
+
 	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
-		Config:     t.Cfg.DataObj.Compaction.Worker,
-		Bucket:     store,
-		Metastore:  ms,
-		Logger:     logger,
-		Registerer: prometheus.DefaultRegisterer,
+		Config:       t.Cfg.DataObj.Compaction.Worker,
+		Bucket:       indexBucket,
+		Metastore:    ms,
+		ScratchStore: t.scratchStore,
+		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
+		Logger:       logger,
+		Registerer:   prometheus.DefaultRegisterer,
 	})
 	if err != nil {
 		return nil, err
@@ -2605,10 +2618,8 @@ func calculateAsyncStoreQueryIngestersWithin(queryIngestersWithinConfig, minDura
 // shipperQuerierIndexUpdateDelay returns duration it could take for queriers to serve the index since it was uploaded.
 // It considers upto 3 sync attempts for the indexgateway/queries to be successful in syncing the files to factor in worst case scenarios like
 // failures in sync, low download throughput, various kinds of caches in between etc. which can delay the sync operation from getting all the updates from the storage.
-// It also considers index cache validity because a querier could have cached index just before it was going to resync which means
-// it would keep serving index until the cache entries expire.
-func shipperQuerierIndexUpdateDelay(cacheValidity, resyncInterval time.Duration) time.Duration {
-	return cacheValidity + resyncInterval*3
+func shipperQuerierIndexUpdateDelay(resyncInterval time.Duration) time.Duration {
+	return resyncInterval * 3
 }
 
 // shipperIngesterIndexUploadDelay returns duration it could take for an index file containing id of a chunk to be uploaded to the shared store since it got flushed.
@@ -2621,23 +2632,6 @@ func shipperIngesterIndexUploadDelay() time.Duration {
 // avoid missing any logs or chunk ids due to async nature of shipper.
 func shipperMinIngesterQueryStoreDuration(maxChunkAge, querierUpdateDelay time.Duration) time.Duration {
 	return maxChunkAge + shipperIngesterIndexUploadDelay() + querierUpdateDelay + 5*time.Minute
-}
-
-// shipperResyncInterval returns the resync interval for the active shipper index type (always tsdb)
-func shipperResyncInterval(storageConfig storage.Config, schemaConfigs []config.PeriodConfig) time.Duration {
-	shipperConfigIdx := config.ActivePeriodConfig(schemaConfigs)
-	iTy := schemaConfigs[shipperConfigIdx].IndexType
-	if iTy != types.IndexTypeTSDB {
-		shipperConfigIdx++
-	}
-
-	var resyncInterval time.Duration
-	switch schemaConfigs[shipperConfigIdx].IndexType {
-	case types.IndexTypeTSDB:
-		resyncInterval = storageConfig.TSDBShipperConfig.ResyncInterval
-	}
-
-	return resyncInterval
 }
 
 // NewServerService constructs service from Server component.

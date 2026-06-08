@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"

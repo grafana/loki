@@ -15,6 +15,7 @@ type metrics struct {
 	records               prometheus.Counter
 	recordFailures        prometheus.Counter
 	timePartitionEstimate prometheus.Counter
+	sizeEstimate          prometheus.Gauge
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -46,6 +47,10 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		timePartitionEstimate: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_time_partition_estimate_total",
 			Help: "The number of data objects we would build with 12 hour windows.",
+		}),
+		sizeEstimate: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_size_estimate_bytes",
+			Help: "Current estimated size in bytes buffered across all window-specific builders for the partition.",
 		}),
 	}
 }

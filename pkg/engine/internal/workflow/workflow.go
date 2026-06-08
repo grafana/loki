@@ -20,6 +20,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -139,6 +140,10 @@ type Workflow struct {
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
+	// taskFinish records each task's terminal finish time (Unix nanoseconds),
+	// read from the task's capture as it reaches a terminal state. It is used
+	// to approximate the query's critical path once every task is terminal.
+	taskFinish map[*Task]int64
 
 	streamsMut   sync.RWMutex
 	streamStates map[*Stream]StreamState
@@ -175,6 +180,7 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 			logger:       logger,
 			runner:       runner,
 			taskStates:   make(map[*Task]TaskState),
+			taskFinish:   make(map[*Task]int64),
 			streamStates: make(map[*Stream]StreamState),
 		}, nil
 	}
@@ -194,6 +200,7 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 		resultsPipeline: newStreamPipe(),
 
 		taskStates:   make(map[*Task]TaskState),
+		taskFinish:   make(map[*Task]int64),
 		streamStates: make(map[*Stream]StreamState),
 	}
 	// Detach cancellation from the caller's ctx so a cancellation of the
@@ -286,6 +293,11 @@ func (wf *Workflow) Close() {
 	if err := wf.runner.UnregisterManifest(context.Background(), wf.manifest); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to unregister workflow manifest", "err", err)
 	}
+
+	// UnregisterManifest synchronously drives every remaining task to a terminal
+	// state and delivers its status, so by here the DAG and all per-task finish
+	// times are recorded and the critical path is complete.
+	wf.logCriticalPath()
 }
 
 // Run executes the workflow, returning a pipeline to read results from. The
@@ -446,14 +458,43 @@ func (wf *Workflow) onStreamChange(_ context.Context, stream *Stream, newState S
 	}
 
 	wf.streamsMut.Lock()
-	defer wf.streamsMut.Unlock()
-
 	wf.streamStates[stream] = newState
+	shouldCloseResults := newState == StreamStateClosed && stream.ULID == wf.resultsStream.ULID
+	wf.streamsMut.Unlock()
 
-	if newState == StreamStateClosed && stream.ULID == wf.resultsStream.ULID {
-		// Close the results pipeline once the results stream has closed.
-		wf.resultsPipeline.Close()
+	if shouldCloseResults {
+		wf.maybeCloseResults()
 	}
+}
+
+// resultsStreamClosed reports whether the results stream has reached
+// StreamStateClosed. Callers must hold streamsMut.
+func (wf *Workflow) resultsStreamClosed() bool {
+	return wf.streamStates[wf.resultsStream] == StreamStateClosed
+}
+
+// maybeCloseResults closes the results pipeline (signaling EOF) only once the
+// results stream has closed AND every task is terminal, so any failed task's
+// SetError happens-before the EOF. Idempotent; safe to call from any handler.
+func (wf *Workflow) maybeCloseResults() {
+	wf.streamsMut.RLock()
+	streamClosed := wf.resultsStreamClosed()
+	wf.streamsMut.RUnlock()
+
+	if !streamClosed {
+		return
+	}
+
+	wf.tasksMut.RLock()
+	for _, state := range wf.taskStates {
+		if !state.Terminal() {
+			wf.tasksMut.RUnlock()
+			return
+		}
+	}
+	wf.tasksMut.RUnlock()
+
+	wf.resultsPipeline.Close()
 }
 
 func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus TaskStatus) {
@@ -494,6 +535,15 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 
 	if newStatus.Capture != nil {
 		wf.mergeCapture(newStatus.Capture)
+
+		// Stash the task's terminal finish time for the critical-path walk. The
+		// per-task capture is merged away into wf.capture, so this is the only
+		// point at which the per-task value is available.
+		if finish, ok := xcap.TryValue[int64](newStatus.Capture, schedulerstat.TaskFinishTime); ok {
+			wf.tasksMut.Lock()
+			wf.taskFinish[task] = finish
+			wf.tasksMut.Unlock()
+		}
 	}
 
 	if newStatus.Statistics != nil {
@@ -530,6 +580,9 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 	wf.tasksMut.RUnlock()
 
 	wf.cancelTasks(ctx, tasksToCancel)
+
+	// Close the results pipeline if it was waiting on this task to finish.
+	wf.maybeCloseResults()
 
 	// Print the summary at the very end to track full end-to-end task time.
 	wf.printTaskSummary(task, oldState, newStatus)

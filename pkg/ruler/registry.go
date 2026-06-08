@@ -24,7 +24,7 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/sigv4"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"

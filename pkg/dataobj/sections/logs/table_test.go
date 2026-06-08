@@ -146,6 +146,7 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 
 	records := []Record{
 		{StreamID: 10, Timestamp: t1, SortKey: "app-b", Line: []byte("b-old")},
+		{StreamID: 10, Timestamp: t1, SortKey: "app-b", Line: []byte("b-old-2")}, // Stable sort: Ensure a second record with the same sort key is emitted in the order it was presented.
 		{StreamID: 20, Timestamp: t3, SortKey: "app-a", Line: []byte("a-new")},
 		{StreamID: 21, Timestamp: t1, SortKey: "app-a", Line: []byte("a-old")},
 		{StreamID: 11, Timestamp: t2, SortKey: "app-b", Line: []byte("b-mid")},
@@ -161,7 +162,7 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 	}
 
 	// app-a records first (sort key ASC), timestamp DESC within group
-	require.Equal(t, []string{"a-new", "a-mid", "a-old", "b-new", "b-mid", "b-old"}, lines)
+	require.Equal(t, []string{"a-new", "a-mid", "a-old", "b-new", "b-mid", "b-old", "b-old-2"}, lines)
 
 	for i := 0; i < len(records)-1; i++ {
 		a, b := records[i], records[i+1]

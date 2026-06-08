@@ -8,9 +8,12 @@ import (
 	"strconv"
 	"strings"
 
+	"bytes"
+	"io"
+
 	"github.com/drone/envsubst"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // JSON returns a Source that opens the supplied `.json` file and loads it.
@@ -66,7 +69,12 @@ func YAML(f string, expandEnvVars bool, strict bool) Source {
 // dYAMLStrict returns a YAML source and allows dependency injection
 func dYAMLStrict(y []byte) Source {
 	return func(dst Cloneable) error {
-		return yaml.UnmarshalStrict(y, dst)
+		dec := yaml.NewDecoder(bytes.NewReader(y))
+		dec.KnownFields(true)
+		if err := dec.Decode(dst); err != nil && err != io.EOF {
+			return err
+		}
+		return nil
 	}
 }
 

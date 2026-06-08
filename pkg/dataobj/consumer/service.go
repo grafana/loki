@@ -49,7 +49,6 @@ type Service struct {
 	watcher                     *services.FailureWatcher
 	logger                      log.Logger
 	reg                         prometheus.Registerer
-	builderFactory              *logsobj.BuilderFactory
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
@@ -149,22 +148,21 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
-	s.builderFactory = logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore, logger)
-	if overrides != nil {
-		s.builderFactory.SetOverrides(overrides)
-		level.Info(logger).Log("msg", "sort schema overrides wired to builder factory at construction")
-	} else {
-		level.Warn(logger).Log("msg", "sort schema overrides not provided at construction; schema sort will not apply to the initial builder")
-	}
-	sorter := logsobj.NewSorter(s.builderFactory, reg)
-	s.flusher = newFlusher(sorter, uploader, logger, reg)
+
+	builderMetrics := logsobj.NewBuilderMetrics()
 	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
 		"partition": strconv.Itoa(int(partitionID)),
 	}, reg)
-	builder, err := s.builderFactory.NewBuilder(wrapped)
+	err = builderMetrics.Register(wrapped)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
+		return nil, fmt.Errorf("failed to register logsobj builder metrics: %w", err)
 	}
+	builderFactory, err := logsobj.NewBuilderFactory(cfg.BuilderConfig, scratchStore, builderMetrics, logger, overrides)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logsobj builder factory: %w", err)
+	}
+	sorter := logsobj.NewSorter(builderFactory, reg)
+	s.flusher = newFlusher(sorter, uploader, logger, reg)
 	flushCommitter := newFlushCommitter(
 		s.flusher,
 		newMetastoreEvents(partitionID, int32(mCfg.PartitionRatio), metastoreEvents),
@@ -174,7 +172,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		wrapped,
 	)
 	s.processor = newProcessor(
-		builder,
+		NewTOCAlignedMultiBuilder(builderFactory, int(cfg.BuilderConfig.TargetObjectSize)),
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,

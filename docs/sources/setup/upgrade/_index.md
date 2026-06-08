@@ -41,6 +41,8 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
 - The deprecated setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
+- The setting `-store.index-cache-read` (`storage_config.index_queries_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends (`boltdb-shipper`) that have been removed as well.
+- The setting `-store.index-cache-validity` (`storage_config.index_cache_validity` block in the yaml file) has been removed as it was only used in combination with the removed `-store.index-cache-read` setting.
 
 Use the `deprecated-config-checker` tool to validate your `config.yaml`.
 
@@ -54,6 +56,7 @@ When set to `filter-only` or `filter-and-delete`, and `retention_enabled` is set
 
 - The deprecated metric `loki_log_messages_total` is removed in favor of `loki_internal_log_messages_total`.
 - The metric `loki_log_flushes` is renamed to `loki_internal_log_flushes` to be consistent with `loki_internal_log_messages_total`.
+- The second label of the `loki_mutated_samples_total` and `loki_mutated_bytes_total` metrics is renamed from `truncated` to `tenant`. The label always held the tenant ID (not a boolean), so the new name reflects its actual value and is consistent with the `tenant` label on the `loki_discarded_samples_total` / `loki_discarded_bytes_total` metrics. If you have dashboards or alerts that aggregate these metrics by the `truncated` label, update them to use `tenant`.
 
 ### Breaking change: Drop support for non-TSDB stores in jsonnet lib 
 

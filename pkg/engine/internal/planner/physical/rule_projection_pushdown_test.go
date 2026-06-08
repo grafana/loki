@@ -406,6 +406,153 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			expectedDataObjScanProjections: []string{"code", "duration", "message", "status", "timestamp"},
 		},
 		{
+			// Regression test for the collision-renamed "_extracted" bug: a parsed
+			// field that collides with a stream label is referenced downstream
+			// as "namespace_extracted" (e.g. json "namespace" vs the "namespace" stream label).
+			// The parser only sees real json keys, so we must
+			// also request the de-suffixed source key "namespace"; otherwise nothing
+			// is extracted and group-by on the "_extracted" name silently drops to
+			// null (returning 0 in v2 while v1 returns the correct value).
+			name: "GroupBy on collision-renamed _extracted label requests the source key",
+			buildLogical: func() logical.Value {
+				// count_over_time({app="test"} | json [5m]) by (namespace_extracted)
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+				builder = builder.RangeAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "namespace_extracted", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested: []string{"namespace", "namespace_extracted"},
+			// "namespace" is also projected so the colliding label/metadata is loaded
+			// and ColumnCompat can rename the parsed value to "namespace_extracted".
+			expectedDataObjScanProjections: []string{"message", "namespace", "namespace_extracted", "timestamp"},
+		},
+		{
+			// Same fix from the label-filter side, combined with a clean group-by
+			// column: the "_extracted" filter column also contributes its source key,
+			// while the clean group-by column is left untouched.
+			name: "Filter on _extracted label plus clean GroupBy requests both source and clean keys",
+			buildLogical: func() logical.Value {
+				// sum by (component) (count_over_time({app="test"} | json | name_extracted="x" [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+				builder = builder.Select(&logical.BinOp{
+					Left:  logical.NewColumnRef("name_extracted", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("x"),
+					Op:    types.BinaryOpEq,
+				})
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "component", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"component", "name", "name_extracted"},
+			expectedDataObjScanProjections: []string{"component", "message", "name", "name_extracted", "timestamp"},
+		},
+		{
+			// Edge case: a column literally named "_extracted" must not produce an
+			// empty source key (CutSuffix yields ""), which would request every key.
+			name: "GroupBy on bare _extracted does not request an empty key",
+			buildLogical: func() logical.Value {
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+				builder = builder.RangeAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "_extracted", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"_extracted"},
+			expectedDataObjScanProjections: []string{"_extracted", "message", "timestamp"},
+		},
+		{
+			// Edge case: a doubly-suffixed name (nested collision) strips exactly one
+			// level, requesting "foo_extracted" as the source.
+			name: "GroupBy on double-suffixed _extracted strips only one level",
+			buildLogical: func() logical.Value {
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+				builder = builder.RangeAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "foo_extracted_extracted", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"foo_extracted", "foo_extracted_extracted"},
+			expectedDataObjScanProjections: []string{"foo_extracted", "foo_extracted_extracted", "message", "timestamp"},
+		},
+		{
 			name: "log query should request all keys even with filters",
 			buildLogical: func() logical.Value {
 				// Create a logical plan that represents a log query:

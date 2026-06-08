@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -11,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -236,14 +237,18 @@ ruler_remote_write_headers:
 			},
 		},
 		{
-			desc: "empty map overrides defaults",
+			// In yaml.v4, null YAML values for struct-backed custom types do not
+			// invoke UnmarshalYAML; the existing value (from defaults) is preserved.
+			// Use `ruler_remote_write_headers: {}` to explicitly set an empty map.
+			desc: "null map preserves defaults (yaml.v4 behaviour)",
 			yaml: `
 ruler_remote_write_headers:
 `,
 			exp: Limits{
-				DiscoverGenericFields: FieldDetectorConfig{},
-				DiscoverServiceName:   []string{},
-				LogLevelFields:        []string{},
+				DiscoverGenericFields:   FieldDetectorConfig{},
+				DiscoverServiceName:     []string{},
+				LogLevelFields:          []string{},
+				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{m: map[string]string{"a": "b"}},
 				// Rest from new defaults
 				StreamRetention: []StreamRetention{
 					{
@@ -346,7 +351,9 @@ query_timeout: 5m
 
 		t.Run(tc.desc, func(t *testing.T) {
 			var out Limits
-			require.Nil(t, yaml.UnmarshalStrict([]byte(tc.yaml), &out))
+			dec := yaml.NewDecoder(bytes.NewReader([]byte(tc.yaml)))
+			dec.KnownFields(true)
+			require.Nil(t, dec.Decode(&out))
 			require.Equal(t, tc.exp, out)
 		})
 	}
@@ -956,7 +963,9 @@ otlp_config:
 			SetDefaultLimitsForYAMLUnmarshalling(newDefaults)
 
 			var out Limits
-			require.Nil(t, yaml.UnmarshalStrict([]byte(tc.yaml), &out))
+			dec := yaml.NewDecoder(bytes.NewReader([]byte(tc.yaml)))
+			dec.KnownFields(true)
+			require.Nil(t, dec.Decode(&out))
 			require.Equal(t, tc.exp, out)
 		})
 	}
