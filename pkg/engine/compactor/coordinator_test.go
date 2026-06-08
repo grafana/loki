@@ -133,8 +133,9 @@ func TestRunCycle_SkipsConvergedTenants(t *testing.T) {
 }
 
 // TestRunCycle_EmitsMetrics verifies that runCycle wires the metric helpers:
-// a converged tenant records a converged tenant-cycle and SLI gauges, and the
-// full cycle records an "ok" cycle observation.
+// a converged tenant records a converged tenant-cycle and SLI gauges, and a
+// cycle where every tenant short-circuits records a "skipped" cycle outcome
+// (no compaction was attempted).
 func TestRunCycle_EmitsMetrics(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
@@ -152,8 +153,10 @@ func TestRunCycle_EmitsMetrics(t *testing.T) {
 
 	c.runCycle(ctx)
 
-	// Full-cycle outcome recorded as ok.
+	// Every tenant converged ⇒ no compaction attempted ⇒ cycle is "skipped".
 	require.InDelta(t, 1.0,
+		testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("skipped")), 0.001)
+	require.InDelta(t, 0.0,
 		testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("ok")), 0.001)
 	// Converged tenant recorded.
 	require.InDelta(t, 1.0,
@@ -181,6 +184,34 @@ func TestRunCycle_AbortedRecordsAbortedCycle(t *testing.T) {
 
 	require.InDelta(t, 1.0,
 		testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("aborted")), 0.001)
+}
+
+// TestRunCycle_OkRecordsOkCycle verifies that a cycle which actually compacts
+// at least one tenant records an "ok" cycle outcome (not "skipped").
+func TestRunCycle_OkRecordsOkCycle(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"acme": {
+			{path: "indexes/aa/src-0", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour)},
+			{path: "indexes/bb/src-1", start: window.Add(3 * time.Hour), end: window.Add(4 * time.Hour)},
+		},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+
+	c.runCycle(ctx)
+
+	require.InDelta(t, 1.0,
+		testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("ok")), 0.001)
+	require.InDelta(t, 0.0,
+		testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("skipped")), 0.001)
+	require.InDelta(t, 1.0,
+		testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("compacted", "acme")), 0.001)
 }
 
 // TestRunCycle_FansOutPhase1ThenCommitsPhase2 verifies the full per-tenant

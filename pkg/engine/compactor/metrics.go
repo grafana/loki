@@ -24,7 +24,7 @@ type coordinatorMetrics struct {
 	indexesPerTenantWindow     *prometheus.GaugeVec // tenant
 
 	// cyclesTotal counts coordinator cycles by outcome.
-	cyclesTotal *prometheus.CounterVec // outcome=ok|aborted
+	cyclesTotal *prometheus.CounterVec // outcome=ok|skipped|aborted
 
 	// tenantCyclesTotal counts per-tenant cycle outcomes.
 	tenantCyclesTotal *prometheus.CounterVec // outcome=compacted|converged|failed, tenant
@@ -71,7 +71,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		cyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Name:      "cycles_total",
-			Help:      "Total coordinator cycles by outcome. ok = cycle completed (any per-tenant result), aborted = cycle bailed before per-tenant loop.",
+			Help:      "Total coordinator cycles by outcome. ok = cycle attempted compaction for >=1 tenant, skipped = cycle ran but every tenant short-circuited (no ToC, or all <=1 index), aborted = cycle bailed before the per-tenant loop (ToC load error).",
 		}, []string{"outcome"}),
 		tenantCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
