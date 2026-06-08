@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
+	"github.com/prometheus/prometheus/util/jsonutil"
 	attribute "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -189,9 +190,9 @@ func SampleJsoniterEncode(legacySample *LegacySample, stream *jsoniter.Stream) {
 	}
 
 	stream.WriteArrayStart()
-	stream.WriteFloat64(float64(legacySample.TimestampMs) / float64(time.Second/time.Millisecond))
+	jsonutil.MarshalTimestamp(legacySample.TimestampMs, stream)
 	stream.WriteMore()
-	stream.WriteString(model.SampleValue(legacySample.Value).String())
+	jsonutil.MarshalFloat(legacySample.Value, stream)
 	stream.WriteArrayEnd()
 }
 

@@ -1472,6 +1472,7 @@ github.com/prometheus/prometheus/util/compression
 github.com/prometheus/prometheus/util/convertnhcb
 github.com/prometheus/prometheus/util/features
 github.com/prometheus/prometheus/util/gate
+github.com/prometheus/prometheus/util/jsonutil
 github.com/prometheus/prometheus/util/kahansum
 github.com/prometheus/prometheus/util/logging
 github.com/prometheus/prometheus/util/namevalidationutil
