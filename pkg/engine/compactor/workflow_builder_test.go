@@ -21,7 +21,7 @@ func TestBuildIndexMergePlan_SingleRoot(t *testing.T) {
 	}
 	output := "indexes/tenants/t1/aa/aaaa"
 
-	plan := buildIndexMergePlan("t1", window, task, output, 10*time.Minute)
+	plan := buildIndexMergePlan("t1", window, task, output)
 
 	root, err := plan.Root()
 	require.NoError(t, err, "plan must have exactly one root node")
@@ -31,7 +31,6 @@ func TestBuildIndexMergePlan_SingleRoot(t *testing.T) {
 	require.Equal(t, "t1", node.Tenant)
 	require.Equal(t, window.UnixNano(), node.ToCWindowStart)
 	require.Equal(t, output, node.OutputIndexPath)
-	require.Equal(t, 10*time.Minute, node.TaskTTL)
 	require.Equal(t, task.Runs, node.Runs)
 }
 
@@ -46,8 +45,8 @@ func TestBuildIndexMergePlan_AssignsFreshNodeID(t *testing.T) {
 		Runs:   []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "i0", SectionIndex: 0}}}},
 	}
 
-	p1 := buildIndexMergePlan("t1", window, task, "out1", time.Minute)
-	p2 := buildIndexMergePlan("t1", window, task, "out2", time.Minute)
+	p1 := buildIndexMergePlan("t1", window, task, "out1")
+	p2 := buildIndexMergePlan("t1", window, task, "out2")
 
 	n1, err := p1.Root()
 	require.NoError(t, err)
