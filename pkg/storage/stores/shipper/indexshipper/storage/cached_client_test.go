@@ -272,14 +272,12 @@ func TestCachedObjectClient_errors(t *testing.T) {
 			objectClient.listDelay = time.Millisecond * 100
 			objectClient.errResp = errors.New("fake error")
 			expectedListCallsCount++
-			for i := 0; i < 5; i++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+			for range 5 {
+				wg.Go(func() {
 					_, _, err := cachedObjectClient.List(context.Background(), tc.prefix, "", false)
 					require.Error(t, err)
 					require.Equal(t, expectedListCallsCount, objectClient.listCallsCount)
-				}()
+				})
 			}
 
 			wg.Wait()
@@ -288,16 +286,14 @@ func TestCachedObjectClient_errors(t *testing.T) {
 			// objectClient must receive just one request and all the calls should not get any error
 			objectClient.errResp = nil
 			expectedListCallsCount++
-			for i := 0; i < 5; i++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+			for range 5 {
+				wg.Go(func() {
 					objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), tc.prefix, "", false)
 					require.NoError(t, err)
 					require.Equal(t, expectedListCallsCount, objectClient.listCallsCount)
 					require.Equal(t, tc.expectedObjects, objects)
 					require.Equal(t, tc.expectedCommonPrefixes, commonPrefixes)
-				}()
+				})
 			}
 			wg.Wait()
 		})

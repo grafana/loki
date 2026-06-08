@@ -304,7 +304,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 
 		// First record: 5 rows (buffer grows to 5)
 		rows1 := make(arrowtest.Rows, 5)
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			rows1[i] = arrowtest.Row{
 				colTs.FQN():  time.Unix(0, int64(1620000000000000001+i)).UTC(),
 				colMsg.FQN(): "log line",
@@ -319,7 +319,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 
 		// Second record: 2 rows (buffer shrinks to 2)
 		rows2 := make(arrowtest.Rows, 2)
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			rows2[i] = arrowtest.Row{
 				colTs.FQN():  time.Unix(0, int64(1620000000000000010+i)).UTC(),
 				colMsg.FQN(): "log line",
@@ -334,7 +334,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 
 		// Third record: 10 rows (buffer grows to 10)
 		rows3 := make(arrowtest.Rows, 10)
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			rows3[i] = arrowtest.Row{
 				colTs.FQN():  time.Unix(0, int64(1620000000000000020+i)).UTC(),
 				colMsg.FQN(): "log line",
@@ -374,7 +374,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 
 		// First record: 3 valid rows
 		rows1 := make(arrowtest.Rows, 3)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			rows1[i] = arrowtest.Row{
 				colTs.FQN():  time.Unix(0, int64(1620000000000000001+i)).UTC(),
 				colMsg.FQN(): "log line",
@@ -395,7 +395,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 
 		// Third record: 2 valid rows
 		rows3 := make(arrowtest.Rows, 2)
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			rows3[i] = arrowtest.Row{
 				colTs.FQN():  time.Unix(0, int64(1620000000000000010+i)).UTC(),
 				colMsg.FQN(): "log line",

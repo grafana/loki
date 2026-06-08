@@ -44,14 +44,14 @@ func BenchmarkIsMember_UTF8(b *testing.B) {
 
 			// Create test data
 			data := make([]any, benchmarkSize)
-			for i := 0; i < benchmarkSize; i++ {
+			for i := range benchmarkSize {
 				data[i] = fmt.Sprintf("value%d", i%100)
 			}
 			searchData := columnartest.Array(b, types.KindUTF8, &alloc, data...)
 
 			// Create search set with 50% of values present
 			values := make([]string, 50)
-			for i := 0; i < 50; i++ {
+			for i := range 50 {
 				values[i] = fmt.Sprintf("value%d", i)
 			}
 			valuesSet := columnar.NewUTF8Set(values...)
@@ -80,14 +80,14 @@ func BenchmarkIsMember_Int64(b *testing.B) {
 
 			// Create test data
 			data := make([]any, benchmarkSize)
-			for i := 0; i < benchmarkSize; i++ {
+			for i := range benchmarkSize {
 				data[i] = int64(i % 100)
 			}
 			searchData := columnartest.Array(b, types.KindInt64, &alloc, data...)
 
 			// Create search set with 50% of values present
 			values := make([]int64, 50)
-			for i := 0; i < 50; i++ {
+			for i := range 50 {
 				values[i] = int64(i)
 			}
 			valuesSet := columnar.NewNumberSet(values...)
@@ -116,14 +116,14 @@ func BenchmarkIsMember_Uint64(b *testing.B) {
 
 			// Create test data
 			data := make([]any, benchmarkSize)
-			for i := 0; i < benchmarkSize; i++ {
+			for i := range benchmarkSize {
 				data[i] = uint64(i % 100)
 			}
 			searchData := columnartest.Array(b, types.KindUint64, &alloc, data...)
 
 			// Create search set with 50% of values present
 			values := make([]uint64, 50)
-			for i := 0; i < 50; i++ {
+			for i := range 50 {
 				values[i] = uint64(i)
 			}
 			valuesSet := columnar.NewNumberSet(values...)

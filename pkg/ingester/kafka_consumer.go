@@ -81,9 +81,7 @@ type kafkaConsumer struct {
 
 func (kc *kafkaConsumer) Start(ctx context.Context, recordsCh <-chan []partition.Record) func() {
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -100,7 +98,7 @@ func (kc *kafkaConsumer) Start(ctx context.Context, recordsCh <-chan []partition
 				kc.consume(ctx, records)
 			}
 		}
-	}()
+	})
 	return wg.Wait
 }
 
@@ -136,10 +134,8 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 	// ordered.
 	success := make([]*int64, len(records))
 
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range numWorkers {
+		wg.Go(func() {
 			for recordWithIndex := range workChan {
 				stream, err := kc.decoder.DecodeWithoutLabels(recordWithIndex.record.Content)
 				if err != nil {
@@ -174,7 +170,7 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 				offset := recordWithIndex.record.Offset
 				success[recordWithIndex.index] = &offset
 			}
-		}()
+		})
 	}
 
 	for i, record := range records {

@@ -29,8 +29,8 @@ func TestParseLabelQuery(t *testing.T) {
 			}, "name", "test"), &logproto.LabelRequest{
 				Name:   "test",
 				Values: true,
-				Start:  timePtr(time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC)),
-				End:    timePtr(time.Date(2017, 07, 10, 21, 42, 24, 760738998, time.UTC)),
+				Start:  new(time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC)),
+				End:    new(time.Date(2017, 07, 10, 21, 42, 24, 760738998, time.UTC)),
 			}, false},
 		{"good with name",
 			&http.Request{
@@ -38,8 +38,8 @@ func TestParseLabelQuery(t *testing.T) {
 			}, &logproto.LabelRequest{
 				Name:   "",
 				Values: false,
-				Start:  timePtr(time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC)),
-				End:    timePtr(time.Date(2017, 07, 10, 21, 42, 24, 760738998, time.UTC)),
+				Start:  new(time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC)),
+				End:    new(time.Date(2017, 07, 10, 21, 42, 24, 760738998, time.UTC)),
 			}, false},
 	}
 	for _, tt := range tests {
@@ -72,10 +72,6 @@ func TestLabelsMap(t *testing.T) {
 		},
 		ls.Map(),
 	)
-}
-
-func timePtr(t time.Time) *time.Time {
-	return &t
 }
 
 func requestWithVar(req *http.Request, name, value string) *http.Request {

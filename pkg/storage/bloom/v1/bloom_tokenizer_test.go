@@ -147,7 +147,7 @@ func randomStr(ln int) string {
 	charset := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_!@#$%^&*() ")
 
 	res := make([]rune, ln)
-	for i := 0; i < ln; i++ {
+	for i := range ln {
 		res[i] = charset[rng.Intn(len(charset))]
 	}
 	return string(res)
@@ -246,7 +246,7 @@ func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
 	var blooms []*Bloom
 	ref := ChunkRef{}
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		ch := make(chan *BloomCreation)
 		itr, err := chunkRefItrFromMetadata(md)
 		require.NoError(t, err)
@@ -279,7 +279,7 @@ func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
 func BenchmarkMapClear(b *testing.B) {
 	bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 	for i := 0; i < b.N; i++ {
-		for k := 0; k < cacheSize; k++ {
+		for k := range cacheSize {
 			bt.cache[fmt.Sprint(k)] = k
 		}
 
@@ -290,10 +290,10 @@ func BenchmarkMapClear(b *testing.B) {
 func BenchmarkNewMap(b *testing.B) {
 	bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 	for i := 0; i < b.N; i++ {
-		for k := 0; k < cacheSize; k++ {
+		for k := range cacheSize {
 			bt.cache[fmt.Sprint(k)] = k
 		}
 
-		bt.cache = make(map[string]interface{}, cacheSize)
+		bt.cache = make(map[string]any, cacheSize)
 	}
 }

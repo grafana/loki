@@ -274,7 +274,7 @@ func prepareBenchmark(b *testing.B) map[string]BlockDirectory {
 	b.Helper()
 
 	entries := make(map[string]BlockDirectory)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		key := fmt.Sprintf("block-%04x", i)
 		entries[key] = BlockDirectory{
 			BlockRef: BlockRef{},

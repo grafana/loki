@@ -353,14 +353,12 @@ func (q *Query) startWorkers(
 
 	// Start workers
 	for w := 0; w < q.ParallelMaxWorkers; w++ {
-		wg.Add(1)
 
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for job := range jobsChan {
 				job.run(c, out, statistics)
 			}
-		}()
+		})
 	}
 
 	return &wg

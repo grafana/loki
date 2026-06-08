@@ -43,7 +43,7 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-type RawYaml map[string]interface{}
+type RawYaml map[string]any
 
 type Checker struct {
 	config        RawYaml
@@ -123,7 +123,7 @@ type deprecationAnnotation struct {
 	Msg    string
 }
 
-func getDeprecationAnnotation(value interface{}) (deprecationAnnotation, bool) {
+func getDeprecationAnnotation(value any) (deprecationAnnotation, bool) {
 	// If the value is a string, return it as the message
 	if msg, is := value.(string); is {
 		return deprecationAnnotation{
@@ -140,7 +140,7 @@ func getDeprecationAnnotation(value interface{}) (deprecationAnnotation, bool) {
 
 		var deprecatedValues []string
 		if v, exists := inner[deprecatedValuesField]; exists {
-			asIfcSlice := v.([]interface{})
+			asIfcSlice := v.([]any)
 			deprecatedValues = make([]string, len(asIfcSlice))
 			for i, v := range asIfcSlice {
 				deprecatedValues[i] = v.(string)
@@ -253,7 +253,7 @@ func enumerateDeprecatesFields(deprecates, input RawYaml, rootPath string, prefi
 		if isDeprecatedNote {
 			var inputValueStrSlice []string
 			switch v := inputValue.(type) {
-			case []interface{}:
+			case []any:
 				for _, val := range v {
 					inputValueStrSlice = append(inputValueStrSlice, val.(string))
 				}
@@ -299,7 +299,7 @@ func enumerateDeprecatesFields(deprecates, input RawYaml, rootPath string, prefi
 			switch v := inputValue.(type) {
 			case RawYaml:
 				deprecations = append(deprecations, enumerateDeprecatesFields(deprecateYaml, v, path, prefix)...)
-			case []interface{}:
+			case []any:
 				// If the config is a list, recurse into each item.
 				for i, item := range v {
 					itemYaml := item.(RawYaml)

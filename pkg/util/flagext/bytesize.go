@@ -28,7 +28,7 @@ func (bs *ByteSize) Set(s string) error {
 	return nil
 }
 
-func (bs ByteSize) Get() interface{} {
+func (bs ByteSize) Get() any {
 	return bs.Val()
 }
 
@@ -49,7 +49,7 @@ func (bs *ByteSize) UnmarshalYAML(value *yaml.Node) error {
 
 // MarshalYAML implements yaml.Marshaller.
 // Use a string representation for consistency
-func (bs ByteSize) MarshalYAML() (interface{}, error) {
+func (bs ByteSize) MarshalYAML() (any, error) {
 	return bs.String(), nil
 }
 

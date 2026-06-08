@@ -368,11 +368,9 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, from, to net.Addr) (Conn, error)
 	)
 
 	readLoopWg := sync.WaitGroup{}
-	readLoopWg.Add(1)
-	go func() {
-		defer readLoopWg.Done()
+	readLoopWg.Go(func() {
 		conn.readLoop(ctx)
-	}()
+	})
 
 	// when the connection is closed, close the pipe writer and wait until the reader loop exits
 	conn.cleanup = func() {

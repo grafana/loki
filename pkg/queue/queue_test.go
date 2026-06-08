@@ -51,12 +51,12 @@ func BenchmarkGetNextRequest(b *testing.B) {
 				queue := NewRequestQueue(maxOutstandingPerTenant, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
 				queues = append(queues, queue)
 
-				for ix := 0; ix < queriers; ix++ {
+				for ix := range queriers {
 					queue.RegisterConsumerConnection(fmt.Sprintf("querier-%d", ix))
 				}
 
-				for i := 0; i < maxOutstandingPerTenant; i++ {
-					for j := 0; j < numTenants; j++ {
+				for range maxOutstandingPerTenant {
+					for j := range numTenants {
 						userID := strconv.Itoa(j)
 						err := queue.Enqueue(userID, benchCase.fn(j), "request", nil)
 						if err != nil {
@@ -68,7 +68,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 			}
 
 			querierNames := make([]string, queriers)
-			for x := 0; x < queriers; x++ {
+			for x := range queriers {
 				querierNames[x] = fmt.Sprintf("querier-%d", x)
 			}
 
@@ -76,9 +76,9 @@ func BenchmarkGetNextRequest(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				for j := 0; j < queriers; j++ {
+				for j := range queriers {
 					idx := StartIndexWithLocalQueue
-					for x := 0; x < maxOutstandingPerTenant*numTenants/queriers; x++ {
+					for range maxOutstandingPerTenant * numTenants / queriers {
 						r, nidx, err := queues[i].Dequeue(ctx, idx, querierNames[j])
 						if r == nil {
 							break
@@ -108,13 +108,13 @@ func BenchmarkQueueRequest(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		q := NewRequestQueue(maxOutstandingPerTenant, 0, noQueueLimits, NewMetrics(nil, constants.Loki, "query_scheduler"))
 
-		for ix := 0; ix < queriers; ix++ {
+		for ix := range queriers {
 			q.RegisterConsumerConnection(fmt.Sprintf("querier-%d", ix))
 		}
 
 		queues = append(queues, q)
 
-		for j := 0; j < numTenants; j++ {
+		for j := range numTenants {
 			requests = append(requests, fmt.Sprintf("%d-%d", n, j))
 			users = append(users, strconv.Itoa(j))
 		}
@@ -122,8 +122,8 @@ func BenchmarkQueueRequest(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		for i := 0; i < maxOutstandingPerTenant; i++ {
-			for j := 0; j < numTenants; j++ {
+		for range maxOutstandingPerTenant {
+			for j := range numTenants {
 				err := queues[n].Enqueue(users[j], nil, requests[j], nil)
 				if err != nil {
 					b.Fatal(err)
@@ -151,12 +151,10 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 
 	// Querier-2 waits for a new request.
 	querier2wg := sync.WaitGroup{}
-	querier2wg.Add(1)
-	go func() {
-		defer querier2wg.Done()
+	querier2wg.Go(func() {
 		_, _, err := queue.Dequeue(ctx, StartIndex, "querier-2")
 		require.NoError(t, err)
-	}()
+	})
 
 	// Querier-1 crashes (no graceful shutdown notification).
 	queue.UnregisterConsumerConnection("querier-1")
@@ -280,7 +278,7 @@ func TestContextCond(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		for i := 0; i < goroutines; i++ {
+		for range goroutines {
 			go func() {
 				<-release
 
@@ -535,10 +533,10 @@ func TestDequeueAfterEnqueueFails(t *testing.T) {
 }
 
 func enqueueTasksAsync(tenantsCount int, tasksPerTenant int, senderDelay time.Duration, wg *errgroup.Group, queue *RequestQueue) {
-	for i := 0; i < tenantsCount; i++ {
+	for i := range tenantsCount {
 		tenant := fmt.Sprintf("tenant-%d", i)
 		wg.Go(func() error {
-			for j := 0; j < tasksPerTenant; j++ {
+			for range tasksPerTenant {
 				err := queue.Enqueue(tenant, []string{}, tenant, nil)
 				if err != nil {
 					return fmt.Errorf("error while enqueueing task for the %s : %w", tenant, err)
@@ -585,7 +583,7 @@ func assertChanReceived(t *testing.T, c chan struct{}, timeout time.Duration, ms
 	}
 }
 
-func assertChanNotReceived(t *testing.T, c chan struct{}, wait time.Duration, msg string, args ...interface{}) {
+func assertChanNotReceived(t *testing.T, c chan struct{}, wait time.Duration, msg string, args ...any) {
 	t.Helper()
 
 	select {

@@ -2552,9 +2552,10 @@ func (m *MultiVariantExpr) Accept(v RootVisitor) {
 
 // Pretty prettyfies any LogQL expression at given `level` of the whole LogQL query.
 func (m *MultiVariantExpr) Pretty(level int) string {
-	s := Indent(level)
+	var s strings.Builder
+	s.WriteString(Indent(level))
 
-	s += OpVariants + "(\n"
+	s.WriteString(OpVariants + "(\n")
 
 	variants := make([]string, 0, len(m.variants))
 	for _, v := range m.variants {
@@ -2562,19 +2563,19 @@ func (m *MultiVariantExpr) Pretty(level int) string {
 	}
 
 	for i, v := range variants {
-		s += v
+		s.WriteString(v)
 		// LogQL doesn't allow `,` at the end of last argument.
 		if i < len(variants)-1 {
-			s += ","
+			s.WriteString(",")
 		}
-		s += "\n"
+		s.WriteString("\n")
 	}
 
-	s += Indent(level) + ") of (\n"
-	s += m.logRange.Pretty(level + 1)
-	s += Indent(level) + "\n)"
+	s.WriteString(Indent(level) + ") of (\n")
+	s.WriteString(m.logRange.Pretty(level + 1))
+	s.WriteString(Indent(level) + "\n)")
 
-	return s
+	return s.String()
 }
 
 func (m *MultiVariantExpr) MatcherGroups() ([]MatcherRange, error) {

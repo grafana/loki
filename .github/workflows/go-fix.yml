@@ -1,0 +1,30 @@
+name: Go Fix
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  go-fix:
+    name: Check go fix
+    runs-on: ubuntu-x64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Check go fix
+        run: |
+          if ! go fix -diff ./...; then
+            echo "::error::'go fix ./...' produced changes. Please run 'go fix ./...' locally and commit the result."
+            exit 1
+          fi

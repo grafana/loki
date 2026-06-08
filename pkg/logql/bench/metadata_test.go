@@ -140,7 +140,7 @@ func TestSaveAndLoadMetadata(t *testing.T) {
 	// Verify file is valid JSON
 	data, err := os.ReadFile(metadataPath)
 	require.NoError(t, err)
-	var jsonCheck map[string]interface{}
+	var jsonCheck map[string]any
 	err = json.Unmarshal(data, &jsonCheck)
 	require.NoError(t, err)
 
@@ -205,13 +205,13 @@ func TestLoadMetadata_VersionMismatch(t *testing.T) {
 	dir := t.TempDir()
 
 	// Write metadata with wrong version
-	badMetadata := map[string]interface{}{
+	badMetadata := map[string]any{
 		"version":        "999.0",
 		"time_range":     map[string]string{"start": "2024-01-01T00:00:00Z", "end": "2024-01-02T00:00:00Z"},
 		"by_format":      map[string][]string{},
 		"by_application": map[string][]string{},
 		"all_selectors":  []string{},
-		"statistics":     map[string]interface{}{"total_streams": 0},
+		"statistics":     map[string]any{"total_streams": 0},
 	}
 
 	data, err := json.Marshal(badMetadata)

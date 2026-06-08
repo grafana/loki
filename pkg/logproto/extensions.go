@@ -128,11 +128,11 @@ func (m *IndexStatsResponse) Stats() IndexStatsResponse {
 
 // Helper function for returning the key value pairs
 // to be passed to a logger
-func (m *IndexStatsResponse) LoggingKeyValues() []interface{} {
+func (m *IndexStatsResponse) LoggingKeyValues() []any {
 	if m == nil {
 		return nil
 	}
-	return []interface{}{
+	return []any{
 		"bytes", strings.Replace(humanize.Bytes(m.Bytes), " ", "", 1),
 		"chunks", m.Chunks,
 		"streams", m.Streams,

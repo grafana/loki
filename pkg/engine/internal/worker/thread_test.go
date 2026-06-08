@@ -38,7 +38,7 @@ func (m *mockRecordSink) Send(_ context.Context, rec arrow.RecordBatch) error {
 	if rec != nil && rec.Schema() != nil {
 		n := rec.Schema().NumFields()
 		names := make([]string, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			names[i] = rec.Schema().Field(i).Name
 		}
 		m.RecordedFieldNames = append(m.RecordedFieldNames, names)

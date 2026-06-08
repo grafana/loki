@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -139,34 +140,37 @@ func (s *scanner) canTerminate(tok token) bool {
 }
 
 func (s *scanner) scanIdent(pos position) (position, token, string) {
-	lit := string(s.ch)
+	var lit strings.Builder
+	lit.WriteString(string(s.ch))
 	s.next()
 	for isIdentContinue(s.ch) {
-		lit += string(s.ch)
+		lit.WriteString(string(s.ch))
 		s.next()
 	}
-	switch lit {
+	switch lit.String() {
 	case "select":
-		return pos, tokenSelect, lit
+		return pos, tokenSelect, lit.String()
 	default:
-		return pos, tokenIdent, lit
+		return pos, tokenIdent, lit.String()
 	}
 }
 
 func (s *scanner) scanNumber(pos position) (position, token, string) {
-	lit := string(s.ch)
+	var lit strings.Builder
+	lit.WriteString(string(s.ch))
 	s.next()
 	for isDigit(s.ch) {
-		lit += string(s.ch)
+		lit.WriteString(string(s.ch))
 		s.next()
 	}
-	return pos, tokenInteger, lit
+	return pos, tokenInteger, lit.String()
 }
 
 func (s *scanner) scanString(pos position) (position, token, string) {
 	// Build the raw string including quotes for strconv.Unquote
 	// The opening quote has already been consumed
-	raw := "\""
+	var raw strings.Builder
+	raw.WriteString("\"")
 	for {
 		if s.ch == eof {
 			// Unterminated string
@@ -174,27 +178,27 @@ func (s *scanner) scanString(pos position) (position, token, string) {
 		}
 		if s.ch == '"' {
 			// End of string
-			raw += "\""
+			raw.WriteString("\"")
 			s.next() // consume closing quote
 			break
 		}
 		if s.ch == '\\' {
 			// Include escape sequence as-is
-			raw += "\\"
+			raw.WriteString("\\")
 			s.next()
 			if s.ch == eof {
 				return pos, tokenIllegal, ""
 			}
-			raw += string(s.ch)
+			raw.WriteString(string(s.ch))
 			s.next()
 		} else {
-			raw += string(s.ch)
+			raw.WriteString(string(s.ch))
 			s.next()
 		}
 	}
 
 	// Use strconv.Unquote to handle escape sequences
-	lit, err := strconv.Unquote(raw)
+	lit, err := strconv.Unquote(raw.String())
 	if err != nil {
 		return pos, tokenIllegal, ""
 	}

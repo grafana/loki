@@ -1,0 +1,12 @@
+# See https://pre-commit.com for documentation.
+# Install once with: pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: go-fix
+        name: go fix
+        description: Run `go fix ./...` on staged Go changes
+        entry: go fix ./...
+        language: system
+        types: [go]
+        pass_filenames: false

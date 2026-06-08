@@ -80,7 +80,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg, "distributor")
 
 		errorStr := strings.Builder{}
-		for i := 0; i < 1001; i++ {
+		for range 1001 {
 			errorStr.WriteRune('z')
 		}
 
@@ -94,7 +94,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1002)}, runtimeCfg, "ingester")
 
 		errorStr := strings.Builder{}
-		for i := 0; i < 1001; i++ {
+		for range 1001 {
 			errorStr.WriteRune('z')
 		}
 
@@ -111,7 +111,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 		errorStr1 := strings.Builder{}
 		errorStr2 := strings.Builder{}
 		errorStr3 := strings.Builder{}
-		for i := 0; i < 999; i++ {
+		for range 999 {
 			errorStr1.WriteRune('z')
 			errorStr2.WriteRune('w')
 			errorStr2.WriteRune('y')
@@ -137,7 +137,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 		errorStr1 := strings.Builder{}
 		errorStr2 := strings.Builder{}
 		errorStr3 := strings.Builder{}
-		for i := 0; i < 998; i++ {
+		for range 998 {
 			errorStr1.WriteRune('z')
 			errorStr2.WriteRune('w')
 			errorStr3.WriteRune('y')

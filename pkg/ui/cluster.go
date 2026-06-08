@@ -30,7 +30,7 @@ type Member struct {
 	Services []ServiceState `json:"services"`
 	Build    BuildInfo      `json:"build"`
 	Error    error          `json:"error,omitempty"`
-	Ready    ReadyResponse  `json:"ready,omitempty"`
+	Ready    ReadyResponse  `json:"ready"`
 
 	configBody string
 }
@@ -171,13 +171,13 @@ func readResponseError(resp *http.Response, operation string) error {
 // It adds on top of Member the config, build, clusterID, clusterSeededAt, os, arch, edition and registered analytics metrics.
 type NodeDetails struct {
 	Member
-	Config          string                 `json:"config"`
-	ClusterID       string                 `json:"clusterID"`
-	ClusterSeededAt int64                  `json:"clusterSeededAt"`
-	OS              string                 `json:"os"`
-	Arch            string                 `json:"arch"`
-	Edition         string                 `json:"edition"`
-	Metrics         map[string]interface{} `json:"metrics"`
+	Config          string         `json:"config"`
+	ClusterID       string         `json:"clusterID"`
+	ClusterSeededAt int64          `json:"clusterSeededAt"`
+	OS              string         `json:"os"`
+	Arch            string         `json:"arch"`
+	Edition         string         `json:"edition"`
+	Metrics         map[string]any `json:"metrics"`
 }
 
 func (s *Service) fetchDetails(ctx context.Context, nodeName string) (NodeDetails, error) {
@@ -334,7 +334,7 @@ func (s *Service) checkNodeReadiness(ctx context.Context, addr string) (ReadyRes
 // parseTargetFromConfig extracts the target value from a YAML configuration string.
 // Returns "unknown" if the config cannot be parsed or the target is not found.
 func parseTargetFromConfig(config string) string {
-	var cfg map[string]interface{}
+	var cfg map[string]any
 	if err := yaml.Unmarshal([]byte(config), &cfg); err != nil {
 		return "unknown"
 	}
@@ -347,8 +347,8 @@ func parseTargetFromConfig(config string) string {
 // Returns a slice of ServiceState structs.
 func parseServices(body string) ([]ServiceState, error) {
 	var services []ServiceState
-	lines := strings.Split(body, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(body, "\n")
+	for line := range lines {
 		parts := strings.SplitN(line, " => ", 2)
 		if len(parts) != 2 {
 			continue

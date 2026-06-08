@@ -1913,7 +1913,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 	startingGoroutines := runtime.NumGoroutine()
 
 	// goroutines shouldn't blow up across 100 rounds
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		res, err := split.Do(ctx, req)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(res.(*LokiResponse).Data.Result))
@@ -1940,7 +1940,7 @@ func assertSplits(t *testing.T, want, splits []queryrangebase.Request) {
 			return
 		}
 
-		for j := 0; j < len(want); j++ {
+		for j := range want {
 			exp := want[j]
 			act := splits[j]
 			equal := assert.Equal(t, exp, act)

@@ -73,7 +73,7 @@ func Fuzz_delta(f *testing.F) {
 		)
 
 		var numbers []int64
-		for i := 0; i < count; i++ {
+		for range count {
 			v := rnd.Int63()
 			numbers = append(numbers, v)
 			require.NoError(t, enc.Encode(Int64Value(v)))
@@ -140,7 +140,7 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 
 			enc := newDeltaEncoder(&buf)
 
-			for i := 0; i < pageSize; i++ {
+			for i := range pageSize {
 				err := enc.Encode(Int64Value(int64(i)))
 				require.NoError(b, err)
 			}
@@ -149,7 +149,7 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 		"largest delta": func() *bytes.Buffer {
 			var buf bytes.Buffer
 			enc := newDeltaEncoder(&buf)
-			for i := 0; i < pageSize; i++ {
+			for i := range pageSize {
 				if i%2 == 0 {
 					_ = enc.Encode(Int64Value(0))
 				} else {
@@ -164,7 +164,7 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 
 			rnd := rand.New(rand.NewSource(0))
 
-			for i := 0; i < pageSize; i++ {
+			for range pageSize {
 				_ = enc.Encode(Int64Value(rnd.Int63()))
 			}
 			return &buf

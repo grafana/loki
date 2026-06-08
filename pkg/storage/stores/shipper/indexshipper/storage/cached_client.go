@@ -61,7 +61,7 @@ func newCachedObjectClient(downstreamClient client.ObjectClient) *cachedObjectCl
 }
 
 func (c *cachedObjectClient) RefreshIndexTableNamesCache(ctx context.Context) {
-	_, _, _ = c.buildCacheGroup.Do(refreshKey, func() (interface{}, error) {
+	_, _, _ = c.buildCacheGroup.Do(refreshKey, func() (any, error) {
 		return nil, c.buildTableNamesCache(ctx)
 	})
 }
@@ -74,7 +74,7 @@ func (c *cachedObjectClient) RefreshIndexTableCache(ctx context.Context, tableNa
 		return
 	}
 
-	_, _, _ = tbl.buildCacheGroup.Do(refreshKey, func() (interface{}, error) {
+	_, _, _ = tbl.buildCacheGroup.Do(refreshKey, func() (any, error) {
 		err := tbl.buildCache(ctx, c.ObjectClient)
 		return nil, err
 	})
@@ -178,7 +178,7 @@ func (c *cachedObjectClient) updateTableNamesCache(ctx context.Context) error {
 	if !outOfDate {
 		return nil
 	}
-	_, err, _ := c.buildCacheGroup.Do(refreshKey, func() (interface{}, error) {
+	_, err, _ := c.buildCacheGroup.Do(refreshKey, func() (any, error) {
 		return nil, c.buildTableNamesCache(ctx)
 	})
 	return err
@@ -265,7 +265,7 @@ func (t *table) updateCache(ctx context.Context, objectClient client.ObjectClien
 	if !outOfDate {
 		return nil
 	}
-	_, err, _ := t.buildCacheGroup.Do(refreshKey, func() (interface{}, error) {
+	_, err, _ := t.buildCacheGroup.Do(refreshKey, func() (any, error) {
 		err := t.buildCache(ctx, objectClient)
 		return nil, err
 	})

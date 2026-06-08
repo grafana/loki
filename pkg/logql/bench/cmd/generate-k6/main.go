@@ -125,7 +125,7 @@ func generateCases(
 	return cases, errors
 }
 
-func writeJSON(path string, data interface{}) error {
+func writeJSON(path string, data any) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)

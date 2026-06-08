@@ -40,7 +40,7 @@ func Test_newRulerClientFactory(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	factory := newRulerPoolClient(cfg, reg, constants.Loki)
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		client, err := factory(listener.Addr().String())
 		require.NoError(t, err)
 		defer client.Close() //nolint:errcheck

@@ -277,10 +277,7 @@ func (c *client) run() {
 	// We apply a cap of 10ms to the ticker, to avoid too frequent checks in
 	// case the BatchWait is very low.
 	minWaitCheckFrequency := 10 * time.Millisecond
-	maxWaitCheckFrequency := c.cfg.BatchWait / 10
-	if maxWaitCheckFrequency < minWaitCheckFrequency {
-		maxWaitCheckFrequency = minWaitCheckFrequency
-	}
+	maxWaitCheckFrequency := max(c.cfg.BatchWait/10, minWaitCheckFrequency)
 
 	maxWaitCheck := time.NewTicker(maxWaitCheckFrequency)
 
@@ -364,7 +361,7 @@ func (c *client) Chan() chan<- Entry {
 	return c.entries
 }
 
-func asSha256(o interface{}) string {
+func asSha256(o any) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "%v", o)
 

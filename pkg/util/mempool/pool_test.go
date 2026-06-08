@@ -104,11 +104,9 @@ func TestMemPool(t *testing.T) {
 		var wg sync.WaitGroup
 		n := 10
 
-		for i := 0; i < numWorkers; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for i := 0; i < n; i++ {
+		for range numWorkers {
+			wg.Go(func() {
+				for range n {
 					s := (2 << rand.Intn(5)) << 10 // 2KB, 4KB, 8KB, 16KB, or 32KB
 					buf1, err1 := pool.Get(s)
 					buf2, err2 := pool.Get(s)
@@ -120,7 +118,7 @@ func TestMemPool(t *testing.T) {
 						pool.Put(buf1)
 					}
 				}
-			}()
+			})
 		}
 
 		wg.Wait()

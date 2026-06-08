@@ -714,7 +714,7 @@ func BenchmarkFilterChunkRefs(b *testing.B) {
 		}
 		return &outputs
 	}
-	responseP.New = func() interface{} {
+	responseP.New = func() any {
 		return mkOutputs()
 	}
 

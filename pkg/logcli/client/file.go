@@ -164,13 +164,10 @@ func (f *FileClient) ListLabelValues(name string, _ bool, _, _ time.Time) (*logh
 }
 
 func (f *FileClient) Series(_ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
-	m := len(f.labels)
-	if m > len(f.labelValues) {
-		m = len(f.labelValues)
-	}
+	m := min(len(f.labels), len(f.labelValues))
 
 	lbs := make(loghttp.LabelSet)
-	for i := 0; i < m; i++ {
+	for i := range m {
 		lbs[f.labels[i]] = f.labelValues[i]
 	}
 

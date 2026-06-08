@@ -24,7 +24,7 @@ func buildBenchSection(b *testing.B, numPointers int) *pointers.Section {
 	sectionBuilder := pointers.NewBuilder(nil, 0, 2)
 
 	// Create diverse set of pointers with different stream IDs
-	for i := 0; i < numPointers; i++ {
+	for i := range numPointers {
 		streamID := int64(i % maxStreamID) // Cycle through different stream IDs
 		path := "path/to/object"
 		section := int64(i % 10)

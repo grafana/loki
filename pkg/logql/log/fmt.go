@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"maps"
 	"net/url"
 	"strconv"
 	"strings"
@@ -120,11 +121,9 @@ var (
 	}
 )
 
-func AddLineAndTimestampFunctions(currLine func() string, currTimestamp func() int64) map[string]interface{} {
-	functions := make(map[string]interface{}, len(functionMap)+2)
-	for k, v := range functionMap {
-		functions[k] = v
-	}
+func AddLineAndTimestampFunctions(currLine func() string, currTimestamp func() int64) map[string]any {
+	functions := make(map[string]any, len(functionMap)+2)
+	maps.Copy(functions, functionMap)
 	functions[functionLineName] = func() string {
 		return currLine()
 	}

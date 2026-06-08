@@ -36,7 +36,7 @@ import (
 
 type response struct {
 	Status    string       `json:"status"`
-	Data      interface{}  `json:"data"`
+	Data      any          `json:"data"`
 	ErrorType v1.ErrorType `json:"errorType"`
 	Error     string       `json:"error"`
 }
@@ -74,7 +74,7 @@ type RuleGroup struct {
 	EvaluationTime float64   `json:"evaluationTime"`
 }
 
-type rule interface{}
+type rule any
 
 type alertingRule struct {
 	// State can be "unknown", "pending", "firing", "inactive".
@@ -341,7 +341,7 @@ var (
 	ErrBadRuleGroup = errors.New("unable to decoded rule group")
 )
 
-func marshalAndSend(output interface{}, w http.ResponseWriter, logger log.Logger) {
+func marshalAndSend(output any, w http.ResponseWriter, logger log.Logger) {
 	d, err := yaml.Marshal(&output)
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshalling yaml rule groups", "err", err)

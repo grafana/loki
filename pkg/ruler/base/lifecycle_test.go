@@ -2,7 +2,7 @@ package base
 
 import (
 	"context"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -39,7 +39,7 @@ func TestRulerShutdown(t *testing.T) {
 	defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
 
 	// Wait until the tokens are registered in the ring
-	test.Poll(t, 100*time.Millisecond, config.Ring.NumTokens, func() interface{} {
+	test.Poll(t, 100*time.Millisecond, config.Ring.NumTokens, func() any {
 		return numTokens(ringStore, "localhost", ringKey)
 	})
 
@@ -48,7 +48,7 @@ func TestRulerShutdown(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), r))
 
 	// Wait until the tokens are unregistered from the ring
-	test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
+	test.Poll(t, 100*time.Millisecond, 0, func() any {
 		return numTokens(ringStore, "localhost", ringKey)
 	})
 }
@@ -76,7 +76,7 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
 
 	// Add an unhealthy instance to the ring.
-	require.NoError(t, ringStore.CAS(ctx, ringKey, func(in interface{}) (interface{}, bool, error) {
+	require.NoError(t, ringStore.CAS(ctx, ringKey, func(in any) (any, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
 
 		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", generateSortedTokens(config.Ring.NumTokens), ring.ACTIVE, time.Now(), false, time.Now(), nil)
@@ -87,7 +87,7 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	}))
 
 	// Ensure the unhealthy instance is removed from the ring.
-	test.Poll(t, time.Second*5, false, func() interface{} {
+	test.Poll(t, time.Second*5, false, func() any {
 		d, err := ringStore.Get(ctx, ringKey)
 		if err != nil {
 			return err
@@ -103,9 +103,7 @@ func generateSortedTokens(numTokens int) ring.Tokens {
 	tokens := gen.GenerateTokens(numTokens, nil)
 
 	// Ensure generated tokens are sorted.
-	sort.Slice(tokens, func(i, j int) bool {
-		return tokens[i] < tokens[j]
-	})
+	slices.Sort(tokens)
 
 	return tokens
 }

@@ -2,6 +2,7 @@ package rules
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/prometheus/common/model"
@@ -173,11 +174,8 @@ func prepareAggregationExpr(e *parser.AggregateExpr, label string, ruleName stri
 		return nil
 	}
 
-	for _, lbl := range e.Grouping {
-		// It already has the label we want to aggregate by.
-		if lbl == label {
-			return nil
-		}
+	if slices.Contains(e.Grouping, label) {
+		return nil
 	}
 
 	log.WithFields(
@@ -197,11 +195,8 @@ func prepareBinaryExpr(e *parser.BinaryExpr, label string, rule string) error {
 		return nil
 	}
 
-	for _, lbl := range e.VectorMatching.MatchingLabels {
-		// It already has the label we want to add in the expression.
-		if lbl == label {
-			return nil
-		}
+	if slices.Contains(e.VectorMatching.MatchingLabels, label) {
+		return nil
 	}
 
 	log.WithFields(

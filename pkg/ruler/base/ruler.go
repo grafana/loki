@@ -674,13 +674,10 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	mu := sync.Mutex{}
 	result := map[string]rulespb.RuleGroupList{}
 
-	concurrency := loadRulesConcurrency
-	if len(userRings) < concurrency {
-		concurrency = len(userRings)
-	}
+	concurrency := min(len(userRings), loadRulesConcurrency)
 
 	g, gctx := errgroup.WithContext(ctx)
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		g.Go(func() error {
 			for userID := range userCh {
 				groups, err := r.store.ListRuleGroupsForUserAndNamespace(gctx, userID, "")
@@ -1117,7 +1114,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	done := make(chan struct{})
-	iter := make(chan interface{})
+	iter := make(chan any)
 
 	go func() {
 		util.StreamWriteYAMLResponse(w, iter, logger)

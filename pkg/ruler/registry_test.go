@@ -389,7 +389,7 @@ func TestTenantRemoteWriteConfigWithOverrideConcurrentAccess(t *testing.T) {
 	require.NotPanics(t, func() {
 		reg := setupRegistry(t, cfg, newFakeLimits())
 		var wg sync.WaitGroup
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			wg.Add(1)
 			go func(reg *walRegistry) {
 				defer wg.Done()
@@ -415,7 +415,7 @@ func TestAppenderConcurrentAccess(t *testing.T) {
 	require.NotPanics(t, func() {
 		reg := setupRegistry(t, cfg, newFakeLimits())
 		var wg sync.WaitGroup
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			wg.Add(1)
 			go func(reg *walRegistry) {
 				defer wg.Done()
@@ -944,7 +944,7 @@ func TestStorageSetup(t *testing.T) {
 	// to acquire an appender for the WAL storage
 	reg.configureTenantStorage(enabledRWTenant)
 
-	test.Poll(t, 2*time.Second, true, func() interface{} {
+	test.Poll(t, 2*time.Second, true, func() any {
 		return reg.isReady(enabledRWTenant)
 	})
 

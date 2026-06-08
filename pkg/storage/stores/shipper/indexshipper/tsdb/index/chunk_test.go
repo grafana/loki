@@ -399,7 +399,7 @@ func TestChunkPageMarkerEncodeDecode(t *testing.T) {
 }
 
 func mkChks(n int) (chks []ChunkMeta) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		chks = append(chks, chkFrom(i))
 	}
 	return chks

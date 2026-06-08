@@ -124,7 +124,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.NoError(t, err)
 
 		calculator := NewCalculator(indexBuilder)
-		for i := 0; i < objects; i++ {
+		for i := range objects {
 			obj := createTestLogObject(t, tenants)
 
 			path := fmt.Sprintf("test/path-%d", i)
@@ -161,7 +161,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.NoError(t, err)
 
 		calculator := NewCalculator(indexBuilder)
-		for i := 0; i < objects; i++ {
+		for i := range objects {
 			obj := createTestLogObject(t, tenants)
 
 			// Upload to bucket

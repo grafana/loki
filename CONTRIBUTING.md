@@ -80,6 +80,24 @@ go work use -r .   # recursively add sub-modules
 
 The `go.work` file is gitignored and does not affect other contributors.
 
+### Git hooks (pre-commit)
+
+Loki uses [pre-commit](https://pre-commit.com) to run lightweight checks before each commit. The configuration lives in [`.pre-commit-config.yaml`](.pre-commit-config.yaml) and currently runs `go fix ./...` against staged Go changes.
+
+Install the framework once (`brew install pre-commit`, `pipx install pre-commit`, or follow the [official install guide](https://pre-commit.com/#install)) and then enable the repo hooks:
+
+```bash
+pre-commit install
+```
+
+To run the hooks manually against all files:
+
+```bash
+pre-commit run --all-files
+```
+
+Hooks are opt-in per clone — `pre-commit install` writes `.git/hooks/pre-commit`, which is not tracked by git.
+
 ## Submitting a pull request
 
 ### Loki Improvement Documents (LIDs)

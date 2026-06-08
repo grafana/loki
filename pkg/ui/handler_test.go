@@ -45,7 +45,7 @@ func TestFeaturesHandler_GoldfishWithNamespaces(t *testing.T) {
 		require.NoError(t, err)
 
 		// Check that goldfish is an object with the expected structure
-		goldfishData, ok := response["goldfish"].(map[string]interface{})
+		goldfishData, ok := response["goldfish"].(map[string]any)
 		require.True(t, ok, "goldfish should be an object")
 
 		assert.Equal(t, true, goldfishData["enabled"])
@@ -72,12 +72,12 @@ func TestFeaturesHandler_GoldfishWithNamespaces(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 
-		var response map[string]interface{}
+		var response map[string]any
 		err := json.Unmarshal(rr.Body.Bytes(), &response)
 		require.NoError(t, err)
 
 		// Check that goldfish is an object with only enabled: false
-		goldfishData, ok := response["goldfish"].(map[string]interface{})
+		goldfishData, ok := response["goldfish"].(map[string]any)
 		require.True(t, ok, "goldfish should be an object")
 
 		assert.Equal(t, false, goldfishData["enabled"])
@@ -103,12 +103,12 @@ func TestFeaturesHandler_GoldfishWithNamespaces(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 
-		var response map[string]interface{}
+		var response map[string]any
 		err := json.Unmarshal(rr.Body.Bytes(), &response)
 		require.NoError(t, err)
 
 		// Check that goldfish is an object with only enabled: true
-		goldfishData, ok := response["goldfish"].(map[string]interface{})
+		goldfishData, ok := response["goldfish"].(map[string]any)
 		require.True(t, ok, "goldfish should be an object")
 
 		assert.Equal(t, true, goldfishData["enabled"])

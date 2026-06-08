@@ -199,10 +199,7 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 	streams := make([]logproto.Stream, 0, len(entriesByStream))
 
 	// limit the number of services to log to 1000
-	serviceLimit := len(entriesByStream)
-	if serviceLimit > 1000 {
-		serviceLimit = 1000
-	}
+	serviceLimit := min(len(entriesByStream), 1000)
 
 	for s, entries := range entriesByStream {
 		lbls, err := syntax.ParseLabels(s)

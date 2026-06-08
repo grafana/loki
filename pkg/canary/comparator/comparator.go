@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"slices"
 	"sync"
 	"time"
 
@@ -455,13 +456,7 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 			return
 		}
 
-		found := false
-		for _, r := range recvd {
-			if (*sce).Equal(r) {
-				found = true
-				break
-			}
-		}
+		found := slices.ContainsFunc(recvd, (*sce).Equal)
 		if !found {
 			fmt.Fprintf(c.w, ErrSpotCheckEntryNotReceived, sce.UnixNano(), currTime.Sub(*sce))
 			for _, r := range recvd {

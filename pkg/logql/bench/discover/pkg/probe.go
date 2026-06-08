@@ -288,12 +288,12 @@ func parseSelectorToMap(selector string) map[string]string {
 	// Each part is key="value".
 	for part := range strings.SplitSeq(s, ", ") {
 		part = strings.TrimSpace(part)
-		eqIdx := strings.Index(part, "=")
-		if eqIdx < 0 {
+		before, after, ok := strings.Cut(part, "=")
+		if !ok {
 			continue
 		}
-		key := part[:eqIdx]
-		val := part[eqIdx+1:]
+		key := before
+		val := after
 		// Strip quotes from value.
 		val = strings.Trim(val, "\"")
 		m[key] = val

@@ -241,13 +241,11 @@ func (p *Planner) runOne(ctx context.Context) error {
 	level.Info(p.logger).Log("msg", "running bloom build iteration")
 
 	// Launch retention (will return instantly if retention is disabled)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := p.retentionManager.Apply(ctx); err != nil {
 			level.Error(p.logger).Log("msg", "failed apply retention", "err", err)
 		}
-	}()
+	})
 
 	tables := p.tables(time.Now())
 	level.Debug(p.logger).Log("msg", "loaded tables", "tables", tables.TotalDays())
@@ -444,7 +442,7 @@ func (p *Planner) processTenantTaskResults(
 
 	var tasksSucceed int
 	newMetas := make([]bloomshipper.Meta, 0, totalTasks)
-	for i := 0; i < totalTasks; i++ {
+	for range totalTasks {
 		select {
 		case <-ctx.Done():
 			if err := ctx.Err(); err != nil && !errors.Is(err, context.Canceled) {

@@ -235,7 +235,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 	defer peerCancel()
 
 	go func() {
-		for i := 0; i < numClients; i++ {
+		for i := range numClients {
 			conn, err := listener.Accept(peerCtx)
 			if err != nil {
 				if peerCtx.Err() != nil {
@@ -269,12 +269,10 @@ func TestHTTP2MultipleClients(t *testing.T) {
 	clientReceivedCounts := make([]int, numClients)
 	var clientReceivedMu sync.Mutex
 
-	for i := 0; i < numClients; i++ {
+	for i := range numClients {
 		clientIdx := i
-		clientWg.Add(1)
 
-		go func() {
-			defer clientWg.Done()
+		clientWg.Go(func() {
 
 			// Connect
 			conn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr(), listener.Addr())
@@ -315,14 +313,12 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			defer peerDone()
 
 			var peerWg sync.WaitGroup
-			peerWg.Add(1)
-			go func() {
-				defer peerWg.Done()
+			peerWg.Go(func() {
 				_ = peer.Serve(peerDoneCtx)
-			}()
+			})
 
 			// Send messages
-			for j := 0; j < 3; j++ {
+			for j := range 3 {
 				msg := wire.TaskStatusMessage{}
 				err := peer.SendMessage(ctx, msg)
 				if err != nil {
@@ -341,7 +337,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 
 			peerDone()
 			peerWg.Wait()
-		}()
+		})
 	}
 
 	// Wait for all clients to finish
@@ -669,14 +665,12 @@ func prepareHTTP2Listener(t *testing.T) (*wire.HTTP2Listener, func()) {
 	server := &http.Server{Handler: mux}
 	serverutil.EnableUnencryptedHTTP2(server)
 	wgServe := sync.WaitGroup{}
-	wgServe.Add(1)
 
-	go func() {
-		defer wgServe.Done()
+	wgServe.Go(func() {
 
 		err = server.Serve(l)
 		require.Error(t, err, http.ErrServerClosed)
-	}()
+	})
 
 	return listener, func() {
 		ctx := context.Background()

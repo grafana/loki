@@ -1622,7 +1622,7 @@ func TestMapping(t *testing.T) {
 			in: `quantile_over_time(0.8, {foo="bar"} | unwrap bytes [5m])`,
 			expr: &syntax.RangeAggregationExpr{
 				Operation: syntax.OpRangeTypeQuantile,
-				Params:    float64p(0.8),
+				Params:    new(0.8),
 				Left: &syntax.LogRangeExpr{
 					Left: &syntax.MatchersExpr{
 						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
@@ -1638,7 +1638,7 @@ func TestMapping(t *testing.T) {
 			in: `quantile_over_time(0.8, {foo="bar"} | unwrap bytes [5m]) by (cluster)`,
 			expr: &syntax.RangeAggregationExpr{
 				Operation: syntax.OpRangeTypeQuantile,
-				Params:    float64p(0.8),
+				Params:    new(0.8),
 				Left: &syntax.LogRangeExpr{
 					Left: &syntax.MatchersExpr{
 						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
@@ -1663,7 +1663,7 @@ func TestMapping(t *testing.T) {
 				SampleExpr: DownstreamSampleExpr{
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeQuantile,
-						Params:    float64p(0.99),
+						Params:    new(0.99),
 						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "foo")},
@@ -1746,7 +1746,7 @@ func TestMapping(t *testing.T) {
 				SampleExpr: DownstreamSampleExpr{
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeQuantile,
-						Params:    float64p(0.99),
+						Params:    new(0.99),
 						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "foo")},
@@ -1780,7 +1780,7 @@ func TestMapping(t *testing.T) {
 				RHS: DownstreamSampleExpr{
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeQuantile,
-						Params:    float64p(0.99),
+						Params:    new(0.99),
 						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "foo")},
@@ -1888,10 +1888,6 @@ func TestStringTrimming(t *testing.T) {
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
 		})
 	}
-}
-
-func float64p(v float64) *float64 {
-	return &v
 }
 
 func TestShardTopk(t *testing.T) {

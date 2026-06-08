@@ -22,7 +22,7 @@ func Test_multilineStage_Process(t *testing.T) {
 	util_log.InitLogger(cfg, nil, false)
 	Debug = true
 
-	mcfg := &MultilineConfig{Expression: ptrFromString("^START"), MaxWaitTime: ptrFromString("3s")}
+	mcfg := &MultilineConfig{Expression: new("^START"), MaxWaitTime: new("3s")}
 	err := validateMultilineConfig(mcfg)
 	require.NoError(t, err)
 
@@ -54,7 +54,7 @@ func Test_multilineStage_MultiStreams(t *testing.T) {
 	util_log.InitLogger(cfg, nil, false)
 	Debug = true
 
-	mcfg := &MultilineConfig{Expression: ptrFromString("^START"), MaxWaitTime: ptrFromString("3s")}
+	mcfg := &MultilineConfig{Expression: new("^START"), MaxWaitTime: new("3s")}
 	err := validateMultilineConfig(mcfg)
 	require.NoError(t, err)
 
@@ -100,7 +100,7 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 	Debug = true
 
 	maxWait := 2 * time.Second
-	mcfg := &MultilineConfig{Expression: ptrFromString("^START"), MaxWaitTime: ptrFromString(maxWait.String())}
+	mcfg := &MultilineConfig{Expression: new("^START"), MaxWaitTime: new(maxWait.String())}
 	err := validateMultilineConfig(mcfg)
 	require.NoError(t, err)
 
@@ -144,7 +144,7 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 
 func simpleEntry(line, label string) Entry {
 	return Entry{
-		Extracted: map[string]interface{}{},
+		Extracted: map[string]any{},
 		Entry: util.Entry{
 			Labels: model.LabelSet{"value": model.LabelValue(label)},
 			Entry: logproto.Entry{

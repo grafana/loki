@@ -37,7 +37,7 @@ type dqueEntry struct {
 	Line string
 }
 
-func dqueEntryBuilder() interface{} {
+func dqueEntryBuilder() any {
 	return &dqueEntry{}
 }
 

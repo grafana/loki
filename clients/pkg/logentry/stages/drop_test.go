@@ -49,7 +49,7 @@ func Test_dropStage_Process(t *testing.T) {
 		name       string
 		config     *DropConfig
 		labels     model.LabelSet
-		extracted  map[string]interface{}
+		extracted  map[string]any
 		t          time.Time
 		entry      string
 		shouldDrop bool
@@ -57,50 +57,50 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Longer Than Should Drop",
 			config: &DropConfig{
-				LongerThan: ptrFromString("10b"),
+				LongerThan: new("10b"),
 			},
 			labels:     model.LabelSet{},
-			extracted:  map[string]interface{}{},
+			extracted:  map[string]any{},
 			entry:      "12345678901",
 			shouldDrop: true,
 		},
 		{
 			name: "Longer Than Should Not Drop When Equal",
 			config: &DropConfig{
-				LongerThan: ptrFromString("10b"),
+				LongerThan: new("10b"),
 			},
 			labels:     model.LabelSet{},
-			extracted:  map[string]interface{}{},
+			extracted:  map[string]any{},
 			entry:      "1234567890",
 			shouldDrop: false,
 		},
 		{
 			name: "Longer Than Should Not Drop When Less",
 			config: &DropConfig{
-				LongerThan: ptrFromString("10b"),
+				LongerThan: new("10b"),
 			},
 			labels:     model.LabelSet{},
-			extracted:  map[string]interface{}{},
+			extracted:  map[string]any{},
 			entry:      "123456789",
 			shouldDrop: false,
 		},
 		{
 			name: "Older than Should Drop",
 			config: &DropConfig{
-				OlderThan: ptrFromString("1h"),
+				OlderThan: new("1h"),
 			},
 			labels:     model.LabelSet{},
-			extracted:  map[string]interface{}{},
+			extracted:  map[string]any{},
 			t:          time.Now().Add(-2 * time.Hour),
 			shouldDrop: true,
 		},
 		{
 			name: "Older than Should Not Drop",
 			config: &DropConfig{
-				OlderThan: ptrFromString("1h"),
+				OlderThan: new("1h"),
 			},
 			labels:     model.LabelSet{},
-			extracted:  map[string]interface{}{},
+			extracted:  map[string]any{},
 			t:          time.Now().Add(-5 * time.Minute),
 			shouldDrop: false,
 		},
@@ -110,7 +110,7 @@ func Test_dropStage_Process(t *testing.T) {
 				Source: "key",
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key": "",
 			},
 			shouldDrop: true,
@@ -121,7 +121,7 @@ func Test_dropStage_Process(t *testing.T) {
 				Source: "key1",
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key": "val1",
 			},
 			shouldDrop: false,
@@ -130,10 +130,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Matched Source and Value",
 			config: &DropConfig{
 				Source: "key",
-				Value:  ptrFromString("val1"),
+				Value:  new("val1"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key": "val1",
 			},
 			shouldDrop: true,
@@ -142,10 +142,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Did not match Source and Value",
 			config: &DropConfig{
 				Source: "key",
-				Value:  ptrFromString("val1"),
+				Value:  new("val1"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key": "VALRUE1",
 			},
 			shouldDrop: false,
@@ -154,10 +154,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Matched Source(int) and Value(string)",
 			config: &DropConfig{
 				Source: "level",
-				Value:  ptrFromString("50"),
+				Value:  new("50"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"level": 50,
 			},
 			shouldDrop: true,
@@ -166,10 +166,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Matched Source(string) and Value(string)",
 			config: &DropConfig{
 				Source: "level",
-				Value:  ptrFromString("50"),
+				Value:  new("50"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"level": "50",
 			},
 			shouldDrop: true,
@@ -178,10 +178,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Did not match Source(int) and Value(string)",
 			config: &DropConfig{
 				Source: "level",
-				Value:  ptrFromString("50"),
+				Value:  new("50"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"level": 100,
 			},
 			shouldDrop: false,
@@ -190,10 +190,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Did not match Source(string) and Value(string)",
 			config: &DropConfig{
 				Source: "level",
-				Value:  ptrFromString("50"),
+				Value:  new("50"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"level": "100",
 			},
 			shouldDrop: false,
@@ -202,10 +202,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Matched Source and Value with multiple sources",
 			config: &DropConfig{
 				Source: []string{"key1", "key2"},
-				Value:  ptrFromString(`val1;val200.*`),
+				Value:  new(`val1;val200.*`),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key1": "val1",
 				"key2": "val200.*",
 			},
@@ -215,11 +215,11 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Matched Source and Value with multiple sources and custom separator",
 			config: &DropConfig{
 				Source:    []string{"key1", "key2"},
-				Separator: ptrFromString("|"),
-				Value:     ptrFromString(`val1|val200[a]`),
+				Separator: new("|"),
+				Value:     new(`val1|val200[a]`),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key1": "val1",
 				"key2": "val200[a]",
 			},
@@ -229,10 +229,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Regex Matched Source(int) and Expression",
 			config: &DropConfig{
 				Source:     "key",
-				Expression: ptrFromString("50"),
+				Expression: new("50"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key": 50,
 			},
 			shouldDrop: true,
@@ -241,10 +241,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Regex Matched Source(string) and Expression",
 			config: &DropConfig{
 				Source:     "key",
-				Expression: ptrFromString("50"),
+				Expression: new("50"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key": "50",
 			},
 			shouldDrop: true,
@@ -253,10 +253,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Regex Matched Source and Expression with multiple sources",
 			config: &DropConfig{
 				Source:     []string{"key1", "key2"},
-				Expression: ptrFromString(`val\d{1};val\d{3}$`),
+				Expression: new(`val\d{1};val\d{3}$`),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key1": "val1",
 				"key2": "val200",
 			},
@@ -266,11 +266,11 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Regex Matched Source and Expression with multiple sources and custom separator",
 			config: &DropConfig{
 				Source:     []string{"key1", "key2"},
-				Separator:  ptrFromString("#"),
-				Expression: ptrFromString(`val\d{1}#val\d{3}$`),
+				Separator:  new("#"),
+				Expression: new(`val\d{1}#val\d{3}$`),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key1": "val1",
 				"key2": "val200",
 			},
@@ -280,10 +280,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Regex Did not match Source and Expression",
 			config: &DropConfig{
 				Source:     "key",
-				Expression: ptrFromString(".*val.*"),
+				Expression: new(".*val.*"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key": "pal1",
 			},
 			shouldDrop: false,
@@ -292,10 +292,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Regex Did not match Source and Expression with multiple sources",
 			config: &DropConfig{
 				Source:     []string{"key1", "key2"},
-				Expression: ptrFromString(`match\d+;match\d+`),
+				Expression: new(`match\d+;match\d+`),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key1": "match1",
 				"key2": "notmatch2",
 			},
@@ -305,11 +305,11 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Regex Did not match Source and Expression with multiple sources and custom separator",
 			config: &DropConfig{
 				Source:     []string{"key1", "key2"},
-				Separator:  ptrFromString("#"),
-				Expression: ptrFromString(`match\d;match\d`),
+				Separator:  new("#"),
+				Expression: new(`match\d;match\d`),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key1": "match1",
 				"key2": "match2",
 			},
@@ -319,10 +319,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Regex No Matching Source",
 			config: &DropConfig{
 				Source:     "key",
-				Expression: ptrFromString(".*val.*"),
+				Expression: new(".*val.*"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"pokey": "pal1",
 			},
 			shouldDrop: false,
@@ -330,31 +330,31 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Regex Did Not Match Line",
 			config: &DropConfig{
-				Expression: ptrFromString(".*val.*"),
+				Expression: new(".*val.*"),
 			},
 			labels:     model.LabelSet{},
 			entry:      "this is a line which does not match the regex",
-			extracted:  map[string]interface{}{},
+			extracted:  map[string]any{},
 			shouldDrop: false,
 		},
 		{
 			name: "Regex Matched Line",
 			config: &DropConfig{
-				Expression: ptrFromString(".*val.*"),
+				Expression: new(".*val.*"),
 			},
 			labels:     model.LabelSet{},
 			entry:      "this is a line with the word value in it",
-			extracted:  map[string]interface{}{},
+			extracted:  map[string]any{},
 			shouldDrop: true,
 		},
 		{
 			name: "Match Source and Length Both Match",
 			config: &DropConfig{
 				Source:     "key",
-				LongerThan: ptrFromString("10b"),
+				LongerThan: new("10b"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key": "pal1",
 			},
 			entry:      "12345678901",
@@ -364,10 +364,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Match Source and Length Only First Matches",
 			config: &DropConfig{
 				Source:     "key",
-				LongerThan: ptrFromString("10b"),
+				LongerThan: new("10b"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key": "pal1",
 			},
 			entry:      "123456789",
@@ -377,10 +377,10 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Match Source and Length Only Second Matches",
 			config: &DropConfig{
 				Source:     "key",
-				LongerThan: ptrFromString("10b"),
+				LongerThan: new("10b"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"WOOOOOOOOOOOOOO": "pal1",
 			},
 			entry:      "123456789012",
@@ -390,12 +390,12 @@ func Test_dropStage_Process(t *testing.T) {
 			name: "Everything Must Match",
 			config: &DropConfig{
 				Source:     "key",
-				Expression: ptrFromString(".*val.*"),
-				OlderThan:  ptrFromString("1h"),
-				LongerThan: ptrFromString("10b"),
+				Expression: new(".*val.*"),
+				OlderThan:  new("1h"),
+				LongerThan: new("10b"),
 			},
 			labels: model.LabelSet{},
-			extracted: map[string]interface{}{
+			extracted: map[string]any{
 				"key": "must contain value to match",
 			},
 			t:          time.Now().Add(-2 * time.Hour),
@@ -419,10 +419,6 @@ func Test_dropStage_Process(t *testing.T) {
 			}
 		})
 	}
-}
-
-func ptrFromString(str string) *string {
-	return &str
 }
 
 // TestDropPipeline is used to verify we properly parse the yaml config and create a working pipeline

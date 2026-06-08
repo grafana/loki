@@ -27,14 +27,14 @@ func (h MinHeap) Swap(i, j int) {
 	h[j].index = uint16(j)
 }
 
-func (h *MinHeap) Push(x interface{}) {
+func (h *MinHeap) Push(x any) {
 	n := len(*h)
 	item := x.(*node)
 	item.index = uint16(n)
 	*h = append(*h, item)
 }
 
-func (h *MinHeap) Pop() interface{} {
+func (h *MinHeap) Pop() any {
 	old := *h
 	n := len(old)
 	item := old[n-1]
@@ -44,7 +44,7 @@ func (h *MinHeap) Pop() interface{} {
 	return item
 }
 
-func (h *MinHeap) Peek() interface{} {
+func (h *MinHeap) Peek() any {
 	return (*h)[0]
 }
 

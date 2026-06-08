@@ -95,7 +95,7 @@ func TestIngesterWAL(t *testing.T) {
 	steps := 10
 	end := start.Add(time.Second * time.Duration(steps))
 
-	for i := 0; i < steps; i++ {
+	for i := range steps {
 		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
 			Timestamp: start.Add(time.Duration(i) * time.Second),
 			Line:      fmt.Sprintf("line %d", i),
@@ -177,7 +177,7 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 	steps := 10
 	end := start.Add(time.Second * time.Duration(steps))
 
-	for i := 0; i < steps; i++ {
+	for i := range steps {
 		req.Streams[0].Entries = append(req.Streams[0].Entries, logproto.Entry{
 			Timestamp: start.Add(time.Duration(i) * time.Second),
 			Line:      fmt.Sprintf("line %d", i),
@@ -371,12 +371,9 @@ func mkPush(start time.Time, totalSize int) (*logproto.PushRequest, int) {
 			},
 		},
 	}
-	totalStreams := 500
-	if totalStreams > totalSize {
-		totalStreams = totalSize
-	}
+	totalStreams := min(500, totalSize)
 
-	for i := 0; i < totalStreams; i++ {
+	for i := range totalStreams {
 		req.Streams = append(req.Streams, logproto.Stream{
 			Labels: fmt.Sprintf(`{foo="bar",i="%d"}`, i),
 		})
@@ -472,7 +469,7 @@ func Test_SeriesIterator(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	tenantsRetention := retention.NewTenantsRetention(limits)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
 		require.Nil(t, err)
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream1}}))
@@ -484,9 +481,9 @@ func Test_SeriesIterator(t *testing.T) {
 		return instances
 	}))
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		var streams []logproto.Stream
-		for j := 0; j < 2; j++ {
+		for range 2 {
 			iter.Next()
 			assert.Equal(t, fmt.Sprintf("%d", i), iter.Stream().UserID)
 			memchunk, err := chunkenc.MemchunkFromCheckpoint(iter.Stream().Chunks[0].Data, iter.Stream().Chunks[0].Head, chunkenc.UnorderedHeadBlockFmt, 0, 0)
@@ -578,7 +575,7 @@ func buildChunks(t testing.TB, size int) []Chunk {
 	descs := make([]chunkDesc, 0, size)
 	chks := make([]Chunk, size)
 
-	for i := 0; i < size; i++ {
+	for range size {
 		// build chunks of 256k blocks, 1.5MB target size. Same as default config.
 		c := chunkenc.NewMemChunk(chunkenc.ChunkFormatV3, compression.GZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 1500*1024)
 		fillChunk(t, c)

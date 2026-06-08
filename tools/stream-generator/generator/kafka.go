@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -61,17 +62,17 @@ func (s *Generator) sendStreamMetadata(ctx context.Context, tenant string, batch
 
 	switch {
 	case len(resp.Results) > 0:
-		var results string
+		var results strings.Builder
 		reasonCounts := make(map[string]int)
 		for _, rejectedStream := range resp.Results {
 			reason := limits.Reason(rejectedStream.Reason).String()
 			reasonCounts[reason]++
 		}
 		for reason, count := range reasonCounts {
-			results += fmt.Sprintf("%s: %d, ", reason, count)
+			fmt.Fprintf(&results, "%s: %d, ", reason, count)
 		}
 
-		level.Info(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenant, "batch_size", batchSize, "rejected", results)
+		level.Info(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenant, "batch_size", batchSize, "rejected", results.String())
 		return
 	case len(resp.Results) == 0:
 		level.Debug(s.logger).Log("msg", "Stream accepted", "tenant", tenant, "batch_size", batchSize)

@@ -182,7 +182,7 @@ func encodePayload(data []byte, compression string) ([]byte, error) {
 }
 
 func buildMetadata(payload []byte, opts StoreOptions, compression string) []byte {
-	meta := map[string]interface{}{
+	meta := map[string]any{
 		"correlation_id": opts.CorrelationID,
 		"cell":           opts.CellLabel,
 		"tenant":         opts.TenantID,

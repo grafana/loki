@@ -1,5 +1,4 @@
 //go:build sketch_slow
-// +build sketch_slow
 
 package sketch
 

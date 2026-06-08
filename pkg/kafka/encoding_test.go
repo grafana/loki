@@ -130,7 +130,7 @@ func generateStream(entries, lineLength int) logproto.Stream {
 		Entries: make([]logproto.Entry, entries),
 	}
 
-	for i := 0; i < entries; i++ {
+	for i := range entries {
 		stream.Entries[i] = logproto.Entry{
 			Timestamp: time.Now(),
 			Line:      generateRandomString(lineLength),

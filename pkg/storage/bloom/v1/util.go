@@ -15,7 +15,7 @@ var (
 	// Pool of crc32 hash
 	Crc32HashPool = ChecksumPool{
 		Pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return crc32.New(castagnoliTable)
 			},
 		},

@@ -337,13 +337,13 @@ func makeStringBenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arro
 	data := make([]byte, 0, n*8)
 	offsets := make([]int32, 0, n+1)
 	offsets = append(offsets, 0)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if !validity.Get(i) {
 			offsets = append(offsets, int32(len(data)))
 			continue
 		}
 		valLen := (i % 32) + 1
-		for j := 0; j < valLen; j++ {
+		for range valLen {
 			data = append(data, byte('a'+(i%26)))
 		}
 		offsets = append(offsets, int32(len(data)))

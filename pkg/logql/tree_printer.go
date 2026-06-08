@@ -75,7 +75,7 @@ type tree struct {
 }
 
 // Childf adds a node as a child of the given node.
-func (n Node) Childf(format string, args ...interface{}) Node {
+func (n Node) Childf(format string, args ...any) Node {
 	return n.Child(fmt.Sprintf(format, args...))
 }
 
@@ -99,7 +99,7 @@ func (n Node) AddLine(v string) {
 	k := len(edgeLast)
 	indent := n.level * k
 	row := make([]rune, indent+len(v))
-	for i := 0; i < indent; i++ {
+	for i := range indent {
 		row[i] = ' '
 	}
 	for i, r := range v {

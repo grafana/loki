@@ -34,7 +34,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 	tests := map[string]struct {
 		method string
 		testFn func(*IngesterQuerier) error
-		retVal interface{}
+		retVal any
 	}{
 		"label": {
 			method: "Label",
@@ -135,7 +135,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 	tests = map[string]struct {
 		method string
 		testFn func(*IngesterQuerier) error
-		retVal interface{}
+		retVal any
 	}{
 		"select_logs": {
 			method: "Query",
@@ -244,7 +244,7 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 	tests := map[string]struct {
 		method string
 		testFn func(*IngesterQuerier) error
-		retVal interface{}
+		retVal any
 		shards int
 	}{
 		"label": {
@@ -367,7 +367,7 @@ func TestIngesterQuerier_QueriesSameIngestersWithPartitionContext(t *testing.T) 
 	tests := map[string]struct {
 		method string
 		testFn func(context.Context, *IngesterQuerier) error
-		retVal interface{}
+		retVal any
 		shards int
 	}{
 		"select_logs": {
@@ -705,10 +705,10 @@ func (c *mockQuerierTailClient) Context() context.Context {
 	return context.Background()
 }
 
-func (c *mockQuerierTailClient) SendMsg(_ interface{}) error {
+func (c *mockQuerierTailClient) SendMsg(_ any) error {
 	return nil
 }
 
-func (c *mockQuerierTailClient) RecvMsg(_ interface{}) error {
+func (c *mockQuerierTailClient) RecvMsg(_ any) error {
 	return nil
 }

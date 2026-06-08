@@ -582,12 +582,10 @@ func Test_MaxQueryParallelism(t *testing.T) {
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 			return queryrangebase.HandlerFunc(func(c context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 				var wg sync.WaitGroup
-				for i := 0; i < 10; i++ {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+				for range 10 {
+					wg.Go(func() {
 						_, _ = next.Do(c, &LokiRequest{})
-					}()
+					})
 				}
 				wg.Wait()
 				return nil, nil
@@ -612,7 +610,7 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-				for i := 0; i < 10; i++ {
+				for range 10 {
 					go func() {
 						_, _ = next.Do(c, r)
 					}()
@@ -639,7 +637,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 			return queryrangebase.HandlerFunc(func(c context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-				for i := 0; i < 10; i++ {
+				for range 10 {
 					go func() {
 						_, _ = next.Do(c, &LokiRequest{})
 					}()
@@ -1261,7 +1259,7 @@ func TestAcquireWithTiming(t *testing.T) {
 		GoroutineID int
 		WaitingTime time.Duration
 	}
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		waitingDurations = append(waitingDurations, <-waitingTimes)
 	}
 	// Find and check the waiting time for the third goroutine

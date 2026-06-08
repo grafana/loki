@@ -505,7 +505,7 @@ func BenchmarkLabelsBuilder_Add(b *testing.B) {
 		b.Run(fmt.Sprintf("size_%d", size), func(b *testing.B) {
 			// Pre-generate labels that should be added
 			newB := labels.NewScratchBuilder(size)
-			for i := 0; i < size; i++ {
+			for i := range size {
 				newB.Add(fmt.Sprintf("label_%d", i), fmt.Sprintf("value_%d", i))
 			}
 			newLabels := newB.Labels()

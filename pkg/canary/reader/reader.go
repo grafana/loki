@@ -76,7 +76,7 @@ type Reader struct {
 func buildLabelSelector(labels, sName, sValue, lName, lVal string) (string, error) {
 	if labels != "" {
 		var lbls []string
-		for _, label := range strings.Split(labels, ",") {
+		for label := range strings.SplitSeq(labels, ",") {
 			labelParts := strings.SplitN(label, "=", 2)
 			if len(labelParts) != 2 {
 				return "", fmt.Errorf("invalid label format: %s, expected key=value", label)

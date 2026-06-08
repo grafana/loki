@@ -34,8 +34,8 @@ func Test_bitmap(t *testing.T) {
 				enc = newBitmapEncoder(&buf)
 				dec = newBitmapDecoder(nil)
 			)
-			parts := strings.Split(expected, "")
-			for _, b := range parts {
+			parts := strings.SplitSeq(expected, "")
+			for b := range parts {
 				val := uint64(0)
 				if b == "1" {
 					val = 1
@@ -275,7 +275,7 @@ func Benchmark_bitmapDecoder_DecodeBatches(b *testing.B) {
 	build := func(name string, valueCount int, valueAt func(i int) bool) scenario {
 		var buf bytes.Buffer
 		enc := newBitmapEncoder(&buf)
-		for i := 0; i < valueCount; i++ {
+		for i := range valueCount {
 			boolVal := valueAt(i)
 			val := Uint64Value(0)
 			if boolVal {
@@ -361,7 +361,7 @@ func Benchmark_bitmap_EncodeN(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				// Encode the same value multiple times
-				for j := 0; j < runLength; j++ {
+				for range runLength {
 					_ = enc.Encode(Uint64Value(42))
 				}
 				_ = enc.Flush()

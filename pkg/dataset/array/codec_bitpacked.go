@@ -214,7 +214,7 @@ func bitpackInto[T unsigned](values []T, width int, dst *memory.Buffer[byte]) {
 
 	for i, v := range values {
 		startBit := i * width
-		for b := 0; b < width; b++ {
+		for b := range width {
 			if uint64(v)&(1<<b) != 0 {
 				bitPos := startBit + b
 				buf[bitPos/8] |= 1 << (bitPos % 8)

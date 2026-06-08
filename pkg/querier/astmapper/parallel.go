@@ -2,6 +2,7 @@ package astmapper
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -99,10 +100,5 @@ func CanParallelize(node parser.Node) bool {
 // ParallelizableFunc ensures that a promql function can be part of a parallel query.
 func ParallelizableFunc(f parser.Function) bool {
 
-	for _, v := range nonParallelFuncs {
-		if v == f.Name {
-			return false
-		}
-	}
-	return true
+	return !slices.Contains(nonParallelFuncs, f.Name)
 }

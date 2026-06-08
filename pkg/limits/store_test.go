@@ -18,7 +18,7 @@ func TestUsageStore_ActiveStreams(t *testing.T) {
 		require.NoError(t, err)
 		clock := quartz.NewMock(t)
 		s.clock = clock
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			// Create 10 streams, one stream for each of the 10 partitions.
 			require.NoError(t, s.Update(
 				fmt.Sprintf("tenant%d", i),
@@ -67,7 +67,7 @@ func TestUsageStore_TenantActiveStreams(t *testing.T) {
 		require.NoError(t, err)
 		clock := quartz.NewMock(t)
 		s.clock = clock
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			tenant := "tenant1"
 			if i >= 5 {
 				tenant = "tenant2"
@@ -477,7 +477,7 @@ func TestUsageStore_EvictPartitions(t *testing.T) {
 	s.clock = clock
 	// Create 10 streams. Since we use i as the hash, we can expect the
 	// streams to be sharded over all 10 partitions.
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		s.setForTests("tenant", streamUsage{hash: uint64(i), lastSeenAt: clock.Now().UnixNano()})
 	}
 	// Evict the first 5 partitions.

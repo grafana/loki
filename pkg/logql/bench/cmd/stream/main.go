@@ -79,7 +79,7 @@ OpenTelemetry Attributes:
 	var appFilter map[string]bool
 	if *apps != "" {
 		appFilter = make(map[string]bool)
-		for _, app := range strings.Split(*apps, ",") {
+		for app := range strings.SplitSeq(*apps, ",") {
 			appFilter[strings.TrimSpace(app)] = true
 		}
 	}
@@ -131,8 +131,8 @@ OpenTelemetry Attributes:
 						var trace *traceContext
 
 						for _, meta := range entry.StructuredMetadata {
-							if strings.HasPrefix(meta.Name, "resource_") {
-								key := strings.TrimPrefix(meta.Name, "resource_")
+							if after, ok := strings.CutPrefix(meta.Name, "resource_"); ok {
+								key := after
 								resource[key] = meta.Value
 							} else if meta.Name == "trace_id" {
 								if trace == nil {

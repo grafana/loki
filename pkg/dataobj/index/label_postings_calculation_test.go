@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"testing"
 	"time"
 
@@ -122,9 +123,7 @@ func stripOpaqueCols(rows arrowtest.Rows, keys ...string) arrowtest.Rows {
 	out := make(arrowtest.Rows, len(rows))
 	for i, row := range rows {
 		cp := make(arrowtest.Row, len(row))
-		for k, v := range row {
-			cp[k] = v
-		}
+		maps.Copy(cp, row)
 		for _, k := range keys {
 			delete(cp, k)
 		}

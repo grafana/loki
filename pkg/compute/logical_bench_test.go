@@ -79,8 +79,8 @@ func BenchmarkNot(b *testing.B) {
 }
 
 func makeBoolArray(tb testing.TB, alloc *memory.Allocator, size int) columnar.Datum {
-	values := make([]interface{}, size)
-	for i := 0; i < size; i++ {
+	values := make([]any, size)
+	for i := range size {
 		values[i] = i%3 != 0 // ~67% true, ~33% false
 	}
 	return columnartest.Array(tb, types.KindBool, alloc, values...)

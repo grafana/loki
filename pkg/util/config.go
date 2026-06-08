@@ -15,7 +15,7 @@ import (
 
 // LogConfig takes a pointer to a config object, marshalls it to YAML and prints each line in REVERSE order
 // The reverse order makes display in Grafana in easier which typically sorts newest entries at the top.
-func LogConfig(cfg interface{}) error {
+func LogConfig(cfg any) error {
 	lc, err := yaml.Marshal(cfg)
 	if err != nil {
 		return err
@@ -31,7 +31,7 @@ func LogConfig(cfg interface{}) error {
 
 // PrintConfig will takes a pointer to a config object, marshalls it to YAML and prints the result to the provided writer
 // unlike LogConfig, PrintConfig prints the object in naturally ocurring order.
-func PrintConfig(w io.Writer, config interface{}) error {
+func PrintConfig(w io.Writer, config any) error {
 	lc, err := yaml.Marshal(config)
 	if err != nil {
 		return err

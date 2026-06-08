@@ -508,7 +508,7 @@ func TestCompactor_Compact(t *testing.T) {
 					// setup multi-tenant indexes
 					for _, multiTenantIndexConfig := range tc.multiTenantIndexConfigs {
 						userStreams := map[string][]stream{}
-						for i := 0; i < numUsers; i++ {
+						for i := range numUsers {
 							userID := buildUserID(i)
 							userStreams[userID] = []stream{}
 
@@ -529,7 +529,7 @@ func TestCompactor_Compact(t *testing.T) {
 
 					// setup per-tenant indexes i.e compacted ones
 					for _, perTenantIndexConfig := range tc.perTenantIndexConfigs {
-						for i := 0; i < numUsers; i++ {
+						for i := range numUsers {
 							userID := buildUserID(i)
 
 							var streams []stream
@@ -1030,7 +1030,7 @@ func TestSetupBuilder_ManyFiles(t *testing.T) {
 	require.NoError(t, util.EnsureDirectory(userTablePath))
 
 	lbls := mustParseLabels(`{foo="bar"}`)
-	for i := 0; i < numFiles; i++ {
+	for i := range numFiles {
 		streams := []stream{
 			buildStream(lbls, buildChunkMetas(int64(i*1000), int64(i*1000+100)), ""),
 		}
@@ -1079,7 +1079,7 @@ func TestCompactTable_ClosesFilesOnError(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create several valid multi-tenant index files.
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		userStreams := map[string][]stream{
 			"user_0": {buildStream(lbls, buildChunkMetas(int64(i*10), int64(i*10+5)), "")},
 			"user_1": {buildStream(lbls, buildChunkMetas(int64(i*10), int64(i*10+5)), "")},

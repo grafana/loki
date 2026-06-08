@@ -481,13 +481,7 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 		}
 
 		// Only query the store if pattern persistence is enabled for at least one tenant
-		patternPersistenceEnabled := false
-		for _, tenantID := range tenantIDs {
-			if q.limits.PatternPersistenceEnabled(tenantID) {
-				patternPersistenceEnabled = true
-				break
-			}
-		}
+		patternPersistenceEnabled := slices.ContainsFunc(tenantIDs, q.limits.PatternPersistenceEnabled)
 
 		if patternPersistenceEnabled {
 			g.Go(func() error {

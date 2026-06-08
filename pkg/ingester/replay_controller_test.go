@@ -48,7 +48,7 @@ func TestReplayController(t *testing.T) {
 	n := 5
 	wg.Add(n)
 
-	for i := 0; i < n; i++ {
+	for range n {
 		// In order to prevent all the goroutines from running before they've added bytes
 		// to the internal count, introduce a brief sleep.
 		time.Sleep(time.Millisecond)
@@ -161,15 +161,13 @@ func TestReplayControllerNoSpuriousErrorOnConcurrentAdd(t *testing.T) {
 	rc.Add(95) // above 90% ceiling
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		// Simulate a concurrent worker adding bytes while the first flush is running,
 		// pushing currentBytes back above the pre-flush snapshot (100 > before=95).
 		// The loop will flush again and drain normally; no error should be returned.
 		<-flushed
 		rc.Add(85) // 15 + 85 = 100, above the original before=95
-	}()
+	})
 
 	err := rc.WithBackPressure(func() error { return nil })
 	wg.Wait()
@@ -210,10 +208,8 @@ func TestReplayControllerConcurrentFlushes(t *testing.T) {
 		var wg sync.WaitGroup
 		numGoroutines := 5
 
-		for i := 0; i < numGoroutines; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range numGoroutines {
+			wg.Go(func() {
 				<-start
 
 				err := rc.WithBackPressure(func() error {
@@ -221,7 +217,7 @@ func TestReplayControllerConcurrentFlushes(t *testing.T) {
 					return nil
 				})
 				require.NoError(t, err)
-			}()
+			})
 		}
 
 		// Start all goroutines at the same time

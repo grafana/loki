@@ -317,8 +317,8 @@ func getLevelUsingJSONParser(line []byte, allowedLevelFields map[string]struct{}
 }
 
 func isLogFmt(line []byte) bool {
-	equalIndex := bytes.Index(line, []byte("="))
-	if len(line) == 0 || equalIndex == -1 {
+	found := bytes.Contains(line, []byte("="))
+	if len(line) == 0 || !found {
 		return false
 	}
 	return true

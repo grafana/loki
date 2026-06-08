@@ -3,6 +3,7 @@ package stages
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"regexp"
 	"sync"
 	"time"
@@ -81,7 +82,7 @@ type multilineState struct {
 }
 
 // newMultilineStage creates a MulitlineStage from config
-func newMultilineStage(logger log.Logger, config interface{}) (Stage, error) {
+func newMultilineStage(logger log.Logger, config any) (Stage, error) {
 	cfg := &MultilineConfig{}
 	err := mapstructure.WeakDecode(config, cfg)
 	if err != nil {
@@ -205,10 +206,8 @@ func (m *multilineStage) flush(out chan Entry, s *multilineState) {
 		return
 	}
 	// copy extracted data.
-	extracted := make(map[string]interface{}, len(s.startLineEntry.Extracted))
-	for k, v := range s.startLineEntry.Extracted {
-		extracted[k] = v
-	}
+	extracted := make(map[string]any, len(s.startLineEntry.Extracted))
+	maps.Copy(extracted, s.startLineEntry.Extracted)
 	collapsed := Entry{
 		Extracted: extracted,
 		Entry: util.Entry{

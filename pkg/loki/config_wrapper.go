@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -41,12 +42,7 @@ type ConfigWrapper struct {
 
 func PrintVersion(args []string) bool {
 	pattern := regexp.MustCompile(`^-+` + versionFlag + `$`)
-	for _, a := range args {
-		if pattern.MatchString(a) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(args, pattern.MatchString)
 }
 
 func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {

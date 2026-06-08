@@ -19,15 +19,13 @@ func NewFakeClient(stop func()) *FakeClient {
 		OnStop:  stop,
 		entries: make(chan Entry),
 	}
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 		for e := range c.entries {
 			c.mtx.Lock()
 			c.received = append(c.received, e)
 			c.mtx.Unlock()
 		}
-	}()
+	})
 	return c
 }
 

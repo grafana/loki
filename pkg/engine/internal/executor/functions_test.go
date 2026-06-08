@@ -900,8 +900,8 @@ func TestStringFilterNullAsEmpty(t *testing.T) {
 		// BinaryOpEq — `orgID = ""` matches an absent (null) orgID.
 		{name: "Eq null lhs vs empty literal", op: types.BinaryOpEq, lhs: nil, rhs: "", expected: true},
 		{name: "Eq null lhs vs non-empty literal", op: types.BinaryOpEq, lhs: nil, rhs: "foo", expected: false},
-		{name: "Eq present empty lhs vs empty literal", op: types.BinaryOpEq, lhs: strPtr(""), rhs: "", expected: true},
-		{name: "Eq present value vs matching literal", op: types.BinaryOpEq, lhs: strPtr("foo"), rhs: "foo", expected: true},
+		{name: "Eq present empty lhs vs empty literal", op: types.BinaryOpEq, lhs: new(""), rhs: "", expected: true},
+		{name: "Eq present value vs matching literal", op: types.BinaryOpEq, lhs: new("foo"), rhs: "foo", expected: true},
 
 		// BinaryOpNeq — `orgID != "foo"` is true for absent (null) orgID.
 		{name: "Neq null lhs vs empty literal", op: types.BinaryOpNeq, lhs: nil, rhs: "", expected: false},
@@ -982,8 +982,6 @@ func TestStringFilterNullAsEmpty_SymmetricLhsScalar(t *testing.T) {
 	_, err = fn.Evaluate(lhsRe, rhsRe, true, false)
 	require.NoError(t, err)
 }
-
-func strPtr(s string) *string { return &s }
 
 func TestArrayLengthMismatch(t *testing.T) {
 	tests := []struct {

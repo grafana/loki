@@ -2,6 +2,7 @@ package metastore
 
 import (
 	"context"
+	"maps"
 	"os"
 	"slices"
 	"testing"
@@ -595,9 +596,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 				// Collect all stream ID -> labels mappings across all sections
 				gotLabelsByStreamID := make(map[int64][]string)
 				for _, section := range sectionsResp.Sections {
-					for streamID, lbls := range section.AmbiguousPredicatesByStream {
-						gotLabelsByStreamID[streamID] = lbls
-					}
+					maps.Copy(gotLabelsByStreamID, section.AmbiguousPredicatesByStream)
 				}
 
 				// Verify each expected stream ID has the correct labels

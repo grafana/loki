@@ -214,7 +214,7 @@ func TestIndexBuilder(t *testing.T) {
 	buildLogObject(t, "testing", "test-path-1", bucket)
 	buildLogObject(t, "three", "test-path-2", bucket)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		event := metastore.ObjectWrittenEvent{
 			ObjectPath: fmt.Sprintf("test-path-%d", i),
 			WriteTime:  time.Now().Format(time.RFC3339),
@@ -279,7 +279,7 @@ func TestIndexBuilder_idlePartition(t *testing.T) {
 	buildLogObject(t, "testing", "test-path-1", bucket)
 	buildLogObject(t, "three", "test-path-2", bucket)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		event := metastore.ObjectWrittenEvent{
 			ObjectPath: fmt.Sprintf("test-path-%d", i),
 			WriteTime:  time.Now().Format(time.RFC3339),
@@ -294,7 +294,7 @@ func TestIndexBuilder_idlePartition(t *testing.T) {
 	}
 
 	// Wait for idle partition to be flushed
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		if len(readAllSectionPointers(t, bucket)) == 30 && readFirstPartitionStateEventsCount(p) == 0 {
 			break
 		}
@@ -349,7 +349,7 @@ func TestIndexBuilder_oldEvents(t *testing.T) {
 	buildLogObject(t, "testing", "test-path-1", bucket)
 	buildLogObject(t, "three", "test-path-2", bucket)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		event := metastore.ObjectWrittenEvent{
 			ObjectPath: fmt.Sprintf("test-path-%d", i),
 			WriteTime:  time.Now().Format(time.RFC3339),
@@ -364,7 +364,7 @@ func TestIndexBuilder_oldEvents(t *testing.T) {
 	}
 
 	// Wait for data to be flushed
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		if len(readAllSectionPointers(t, bucket)) == 30 && readFirstPartitionStateEventsCount(p) == 0 {
 			break
 		}
@@ -460,7 +460,7 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 	}, nil, logsobj.NewBuilderMetrics())
 	require.NoError(t, err)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		stream := logproto.Stream{
 			Labels:  fmt.Sprintf("{app=\"%s\",stream=\"%d\"}", app, i),
 			Entries: []logproto.Entry{{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}},

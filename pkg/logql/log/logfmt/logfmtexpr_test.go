@@ -13,13 +13,13 @@ func TestLogfmtExpressionParser(t *testing.T) {
 	tests := []struct {
 		name       string
 		expression string
-		want       []interface{}
+		want       []any
 		error      error
 	}{
 		{
 			"single field",
 			"app",
-			[]interface{}{"app"},
+			[]any{"app"},
 			nil,
 		},
 		{
@@ -43,7 +43,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 		{
 			"identifier with number",
 			`id8`,
-			[]interface{}{"id8"},
+			[]any{"id8"},
 			nil,
 		},
 	}

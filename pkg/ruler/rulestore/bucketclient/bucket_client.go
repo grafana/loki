@@ -172,7 +172,7 @@ func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[s
 	// download all rule groups in parallel. We limit the number of workers to avoid a
 	// particular user having too many rule groups rate limiting us with the object storage.
 	g, gCtx := errgroup.WithContext(ctx)
-	for i := 0; i < loadConcurrency; i++ {
+	for range loadConcurrency {
 		g.Go(func() error {
 			for gr := range ch {
 				user, namespace, group := gr.GetUser(), gr.GetNamespace(), gr.GetName()

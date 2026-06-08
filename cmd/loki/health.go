@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"time"
 )
 
@@ -17,12 +18,7 @@ const (
 // CheckHealth checks if args contain the -health flag
 func CheckHealth(args []string) bool {
 	pattern := regexp.MustCompile(`^-+` + healthFlag + `$`)
-	for _, a := range args {
-		if pattern.MatchString(a) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(args, pattern.MatchString)
 }
 
 // RunHealthCheck performs a health check against the /ready endpoint

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -204,11 +205,9 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 	user, _ := user.ExtractOrgID(ctx)
 	logger := log.With(s.logger, "org_id", user)
 
-	for _, v := range headerValues {
-		if v == noStoreValue {
-			level.Debug(logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
-			return false
-		}
+	if slices.Contains(headerValues, noStoreValue) {
+		level.Debug(logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
+		return false
 	}
 
 	if !s.isAtModifierCachable(req, maxCacheTime) {

@@ -32,7 +32,7 @@ type LimitConfig struct {
 	MaxDistinctLabels int     `mapstructure:"max_distinct_labels"`
 }
 
-func newLimitStage(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
+func newLimitStage(logger log.Logger, config any, registerer prometheus.Registerer) (Stage, error) {
 	cfg := &LimitConfig{}
 
 	err := mapstructure.WeakDecode(config, cfg)

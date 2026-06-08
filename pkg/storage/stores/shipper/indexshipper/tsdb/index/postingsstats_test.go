@@ -23,7 +23,7 @@ func TestPostingsStats(t *testing.T) {
 	maxVal := 3000000
 	heapLength := 10
 	stats.init(heapLength)
-	for i := 0; i < maxVal; i++ {
+	for i := range maxVal {
 		item := Stat{
 			Name:  "Label-da",
 			Count: uint64(i),
@@ -34,7 +34,7 @@ func TestPostingsStats(t *testing.T) {
 
 	data := stats.get()
 	require.Equal(t, 10, len(data))
-	for i := 0; i < heapLength; i++ {
+	for i := range heapLength {
 		require.Equal(t, uint64(maxVal-i), data[i].Count)
 	}
 }
@@ -62,7 +62,7 @@ func BenchmarkPostingStatsMaxHep(b *testing.B) {
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		stats.init(heapLength)
-		for i := 0; i < maxVal; i++ {
+		for i := range maxVal {
 			item := Stat{
 				Name:  "Label-da",
 				Count: uint64(i),

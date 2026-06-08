@@ -455,7 +455,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	numDBs := 10
 
 	dbsToSetup := make(map[string]IndexFileConfig)
-	for i := 0; i < numDBs; i++ {
+	for i := range numDBs {
 		dbsToSetup[fmt.Sprint(i)] = IndexFileConfig{
 			CompressFile: i%2 == 0,
 		}
@@ -535,7 +535,7 @@ func TestTable_applyStorageUpdates(t *testing.T) {
 	}
 
 	var chunksToDeIndex []string
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		chunkID := schemaCfg.ExternalKey(logproto.ChunkRef{
 			Fingerprint: uint64(i),
 			UserID:      user1,

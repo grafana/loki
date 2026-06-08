@@ -33,8 +33,8 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 	sortSchema := rows[0].SortSchema
 	var labelKeys []string
 	if sortSchema != "" {
-		parts := strings.Split(sortSchema, ",")
-		for _, k := range parts {
+		parts := strings.SplitSeq(sortSchema, ",")
+		for k := range parts {
 			if k != "" {
 				labelKeys = append(labelKeys, k)
 			}

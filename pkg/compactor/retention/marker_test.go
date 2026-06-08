@@ -54,7 +54,7 @@ func Test_markerProcessor_Deadlock(t *testing.T) {
 	w, err := NewMarkerWriter(markerStorageClient)
 	require.NoError(t, err)
 	for i := 0; i <= 2000; i++ {
-		require.NoError(t, w.Put([]byte(fmt.Sprintf("%d", i))))
+		require.NoError(t, w.Put(fmt.Appendf(nil, "%d", i)))
 	}
 	require.NoError(t, w.Close())
 	names, _, err := p.availableFiles()
@@ -188,8 +188,8 @@ func Test_MarkFileRotation(t *testing.T) {
 	w, err := NewMarkerWriter(markerStorageClient)
 	require.NoError(t, err)
 	totalMarks := int64(2 * int(maxMarkPerFile))
-	for i := int64(0); i < totalMarks; i++ {
-		require.NoError(t, w.Put([]byte(fmt.Sprintf("%d", i))))
+	for i := range totalMarks {
+		require.NoError(t, w.Put(fmt.Appendf(nil, "%d", i)))
 	}
 	require.NoError(t, w.Close())
 	paths, _, err := p.availableFiles()

@@ -37,9 +37,7 @@ func newMockConsumer() *mockConsumer {
 }
 
 func (m *mockConsumer) Start(ctx context.Context, recordsChan <-chan []Record) func() {
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
+	m.wg.Go(func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -51,7 +49,7 @@ func (m *mockConsumer) Start(ctx context.Context, recordsChan <-chan []Record) f
 				m.recordsChan <- records
 			}
 		}
-	}()
+	})
 	return m.wg.Wait
 }
 
@@ -120,7 +118,7 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// Verify the records
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case receivedRecords := <-consumer.recordsChan:
 			require.Len(t, receivedRecords, 1)
@@ -280,7 +278,7 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
 	}
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		stream.Entries = []logproto.Entry{{Timestamp: time.Now(), Line: fmt.Sprintf("test-%d", i)}}
 		records, err := kafka.Encode(0, "test-tenant", stream, 10<<20)
 		require.NoError(t, err)
@@ -342,7 +340,7 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
 	}
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		stream.Entries = []logproto.Entry{{Timestamp: time.Now(), Line: fmt.Sprintf("test-%d", i)}}
 		records, err := kafka.Encode(0, "test-tenant", stream, 10<<20)
 		require.NoError(t, err)

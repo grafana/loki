@@ -16,7 +16,7 @@ type Error struct {
 var _ error = (*Error)(nil)
 
 // Errorf creates a new Error with the given code and formatted message.
-func Errorf(code int32, format string, args ...interface{}) *Error {
+func Errorf(code int32, format string, args ...any) *Error {
 	return &Error{
 		Code:    code,
 		Message: fmt.Sprintf(format, args...),

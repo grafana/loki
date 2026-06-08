@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -173,9 +174,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		var pushedLabels model.LabelSet
 		if logServiceNameDiscovery {
 			pushedLabels = make(model.LabelSet, len(streamLabels))
-			for k, v := range streamLabels {
-				pushedLabels[k] = v
-			}
+			maps.Copy(pushedLabels, streamLabels)
 		}
 
 		// this must be pushed to the end after log lines are also evaluated
@@ -282,12 +281,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				if len(logLabels) > 0 {
 					// Combine resource labels with log attributes
 					combinedLabels := make(model.LabelSet, len(streamLabels)+len(logLabels))
-					for k, v := range streamLabels {
-						combinedLabels[k] = v
-					}
-					for k, v := range logLabels {
-						combinedLabels[k] = v
-					}
+					maps.Copy(combinedLabels, streamLabels)
+					maps.Copy(combinedLabels, logLabels)
 
 					if err := combinedLabels.Validate(); err != nil {
 						stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels with log attributes: %w", err))
@@ -406,9 +401,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 	}
 
 	if logServiceNameDiscovery && pushedLabels != nil {
-		for k, v := range logResult.IndexLabels {
-			pushedLabels[k] = v
-		}
+		maps.Copy(pushedLabels, logResult.IndexLabels)
 	}
 
 	return logResult.IndexLabels, push.Entry{

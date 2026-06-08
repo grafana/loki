@@ -137,10 +137,7 @@ const keysPerBatch = 100
 // Store writes keys for the cache in the background.
 func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
 	for len(keys) > 0 {
-		num := keysPerBatch
-		if num > len(keys) {
-			num = len(keys)
-		}
+		num := min(keysPerBatch, len(keys))
 
 		bgWrite := backgroundWrite{
 			keys: keys[:num],

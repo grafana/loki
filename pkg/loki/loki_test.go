@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -119,11 +120,8 @@ func TestLoki_AppendOptionalInternalServer(t *testing.T) {
 
 	var tests []string
 	for target, deps := range fake.deps {
-		for _, dep := range deps {
-			if dep == Server {
-				tests = append(tests, target)
-				break
-			}
+		if slices.Contains(deps, Server) {
+			tests = append(tests, target)
 		}
 	}
 
@@ -155,7 +153,7 @@ func TestLoki_AppendOptionalInternalServer(t *testing.T) {
 
 func getRandomPorts(n int) []int {
 	portListeners := []net.Listener{}
-	for i := 0; i < n; i++ {
+	for range n {
 		listener, err := net.Listen("tcp", ":0")
 		if err != nil {
 			panic(err)
@@ -165,7 +163,7 @@ func getRandomPorts(n int) []int {
 	}
 
 	portNumbers := []int{}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		port := portListeners[i].Addr().(*net.TCPAddr).Port
 		portNumbers = append(portNumbers, port)
 		if err := portListeners[i].Close(); err != nil {

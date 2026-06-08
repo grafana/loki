@@ -1245,7 +1245,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 	uncompressedSizes := []int64{1000, 2000, 3000, 4000}
 	ts1, ts2 := int64(100), int64(200) // identical for all sources
 
-	for i := 0; i < sourceCount; i++ {
+	for i := range sourceCount {
 		path := fmt.Sprintf("source/index-%d.dat", i)
 		buildSourceStatsObject(t, bucket, "tenant", path, []stats.Stat{
 			{
@@ -1274,7 +1274,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 		},
 	}
 
-	for i := 0; i < sourceCount; i++ {
+	for i := range sourceCount {
 		path := fmt.Sprintf("source/index-%d.dat", i)
 		node.Runs[0].Sections = append(node.Runs[0].Sections,
 			&compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: 0})

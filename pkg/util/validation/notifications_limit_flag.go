@@ -52,6 +52,6 @@ func (m NotificationRateLimitMap) updateMap(unmarshalErr error, newMap map[strin
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (m NotificationRateLimitMap) MarshalYAML() (interface{}, error) {
+func (m NotificationRateLimitMap) MarshalYAML() (any, error) {
 	return map[string]float64(m), nil
 }

@@ -19,10 +19,8 @@ func TestPool(t *testing.T) {
 		t.Run(enc.String(), func(t *testing.T) {
 			var wg sync.WaitGroup
 
-			for i := 0; i < 200; i++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+			for range 200 {
+				wg.Go(func() {
 					var (
 						buf   = bytes.NewBuffer(nil)
 						res   = make([]byte, 1024)
@@ -46,7 +44,7 @@ func TestPool(t *testing.T) {
 					}
 					require.Equal(t, 4, n, enc.String())
 					require.Equal(t, []byte("test"), res[:n], enc)
-				}()
+				})
 			}
 
 			wg.Wait()

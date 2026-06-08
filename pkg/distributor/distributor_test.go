@@ -533,7 +533,7 @@ func TestDistributorPushConcurrently(t *testing.T) {
 
 	numReq := 1
 	var wg sync.WaitGroup
-	for i := 0; i < numReq; i++ {
+	for i := range numReq {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
@@ -570,7 +570,7 @@ func TestDistributorPushConcurrently(t *testing.T) {
 	}
 	assert.Equal(t, numReq*3, counter) // RF=3
 	// each stream is present 3 times
-	for i := 0; i < numReq; i++ {
+	for i := range numReq {
 		l := fmt.Sprintf(`{instance="bar-%d"}`, i)
 		assert.Equal(t, 3, labels[l], "stream %s expected 3 times, got %d", l, labels[l])
 		l = fmt.Sprintf(`{app="foo-%d"}`, i)
@@ -737,7 +737,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 				}
 				startAndWaitRunningDistributors(t, distributors)
 
-				for i := 0; i < 1000; i++ {
+				for i := range 1000 {
 					_, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(
 						10, 64, []string{fmt.Sprintf(`{foo="%s"}`, strconv.Itoa(i))},
 						false, false, false))
@@ -1275,7 +1275,7 @@ func TestStreamShardByTime(t *testing.T) {
 
 func generateEntries(n int) []logproto.Entry {
 	var entries []logproto.Entry
-	for i := 0; i < n; i++ {
+	for i := range n {
 		entries = append(entries, logproto.Entry{
 			Line:      fmt.Sprintf("log line %d", i),
 			Timestamp: time.Now(),
@@ -1923,7 +1923,7 @@ func prepareButDontStart(t *testing.T, numDistributors, numIngesters int, limits
 	t.Helper()
 
 	ingesters := make([]mockIngester, numIngesters)
-	for i := 0; i < numIngesters; i++ {
+	for i := range numIngesters {
 		ingesters[i] = mockIngester{}
 	}
 
@@ -1945,7 +1945,7 @@ func prepareButDontStart(t *testing.T, numDistributors, numIngesters int, limits
 	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 
 	err := kvStore.CAS(context.Background(), ingester.RingKey,
-		func(_ interface{}) (interface{}, bool, error) {
+		func(_ any) (any, bool, error) {
 			return &ring.Desc{
 				Ingesters: ingesterDescs,
 			}, true, nil
@@ -1967,7 +1967,7 @@ func prepareButDontStart(t *testing.T, numDistributors, numIngesters int, limits
 	partitions := map[int32]ring.PartitionDesc{}
 	owners := map[string]ring.OwnerDesc{}
 	numPartitions := max(1, numIngesters)
-	for i := 0; i < numPartitions; i++ {
+	for i := range numPartitions {
 		partitions[int32(i)] = ring.PartitionDesc{
 			Id:             int32(i),
 			Tokens:         []uint32{uint32((math.MaxUint32 / numPartitions) * i)},
@@ -2002,7 +2002,7 @@ func prepareButDontStart(t *testing.T, numDistributors, numIngesters int, limits
 	require.NoError(t, err)
 
 	distributors := make([]*Distributor, numDistributors)
-	for i := 0; i < numDistributors; i++ {
+	for i := range numDistributors {
 		var distributorConfig Config
 		var clientConfig client.Config
 		flagext.DefaultValues(&distributorConfig, &clientConfig)
@@ -2048,7 +2048,7 @@ func startAndWaitRunningDistributors(t *testing.T, distributors []*Distributor) 
 	}
 
 	if distributors[0].distributorsLifecycler != nil {
-		test.Poll(t, time.Second, len(distributors), func() interface{} {
+		test.Poll(t, time.Second, len(distributors), func() any {
 			return distributors[0].HealthyInstancesCount()
 		})
 	}
@@ -2056,10 +2056,10 @@ func startAndWaitRunningDistributors(t *testing.T, distributors []*Distributor) 
 
 func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level string) *logproto.PushRequest {
 	streams := make([]logproto.Stream, len(labels))
-	for i := 0; i < len(labels); i++ {
+	for i := range labels {
 		stream := logproto.Stream{Labels: labels[i]}
 
-		for j := 0; j < lines; j++ {
+		for j := range lines {
 			// Construct the log line, honoring the input size
 			line := "msg=an error occurred " + strconv.Itoa(j) + strings.Repeat("0", size) + " severity=" + level
 
@@ -2079,10 +2079,10 @@ func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level
 
 func makeWriteRequestWithLabels(lines, size int, labels []string, addStructuredMetadata, invalidName, invalidValue bool) *logproto.PushRequest {
 	streams := make([]logproto.Stream, len(labels))
-	for i := 0; i < len(labels); i++ {
+	for i := range labels {
 		stream := logproto.Stream{Labels: labels[i]}
 
-		for j := 0; j < lines; j++ {
+		for j := range lines {
 			// Construct the log line, honoring the input size
 			line := strconv.Itoa(j) + strings.Repeat("0", size)
 			line = line[:size]

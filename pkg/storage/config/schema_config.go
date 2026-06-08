@@ -189,7 +189,7 @@ type DayTime struct {
 }
 
 // MarshalYAML implements yaml.Marshaller.
-func (d DayTime) MarshalYAML() (interface{}, error) {
+func (d DayTime) MarshalYAML() (any, error) {
 	return d.String(), nil
 }
 
@@ -525,7 +525,7 @@ func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 }
 
 // MarshalYAML implements the yaml.Marshaler interface.
-func (cfg IndexPeriodicTableConfig) MarshalYAML() (interface{}, error) {
+func (cfg IndexPeriodicTableConfig) MarshalYAML() (any, error) {
 	g := &struct {
 		PathPrefix string         `yaml:"path_prefix"`
 		Prefix     string         `yaml:"prefix"`
@@ -583,7 +583,7 @@ func (cfg *PeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 }
 
 // MarshalYAML implements the yaml.Marshaler interface.
-func (cfg PeriodicTableConfig) MarshalYAML() (interface{}, error) {
+func (cfg PeriodicTableConfig) MarshalYAML() (any, error) {
 	g := &struct {
 		Prefix string         `yaml:"prefix"`
 		Period model.Duration `yaml:"period"`

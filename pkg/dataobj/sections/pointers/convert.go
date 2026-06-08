@@ -47,10 +47,7 @@ func FromRecordBatch(
 	populate func(arrow.Field, ColumnType) bool,
 ) (int, error) {
 	schema := rec.Schema()
-	numRows := int(rec.NumRows())
-	if len(dest) < numRows {
-		numRows = len(dest)
-	}
+	numRows := min(len(dest), int(rec.NumRows()))
 
 	for fIdx := range schema.Fields() {
 		field := schema.Field(fIdx)

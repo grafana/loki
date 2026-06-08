@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"slices"
 	"sort"
 	"time"
 
@@ -213,10 +214,8 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 		if len(b.rowBuilders[rowIdx].errorLabelKeys) > 0 {
 			keyBuilder := labels.NewScratchBuilder(lbs.Len())
 			lbs.Range(func(label labels.Label) {
-				for _, errKey := range b.rowBuilders[rowIdx].errorLabelKeys {
-					if label.Name == errKey {
-						return // skip error labels in grouping key
-					}
+				if slices.Contains(b.rowBuilders[rowIdx].errorLabelKeys, label.Name) {
+					return // skip error labels in grouping key
 				}
 				keyBuilder.Add(label.Name, label.Value)
 			})

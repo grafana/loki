@@ -80,12 +80,12 @@ func processEntries(s Stage, entries ...Entry) []Entry {
 }
 
 func loadConfig(yml string) PipelineStages {
-	var config map[string]interface{}
+	var config map[string]any
 	err := yaml.Unmarshal([]byte(yml), &config)
 	if err != nil {
 		panic(err)
 	}
-	return config["pipeline_stages"].([]interface{})
+	return config["pipeline_stages"].([]any)
 }
 
 func TestNewPipeline(t *testing.T) {
@@ -194,12 +194,12 @@ func TestPipeline_Process(t *testing.T) {
 
 	for tName, tt := range tests {
 		t.Run(tName, func(t *testing.T) {
-			var config map[string]interface{}
+			var config map[string]any
 
 			err := yaml.Unmarshal([]byte(tt.config), &config)
 			require.NoError(t, err)
 
-			p, err := NewPipeline(util_log.Logger, config["pipeline_stages"].([]interface{}), nil, prometheus.DefaultRegisterer)
+			p, err := NewPipeline(util_log.Logger, config["pipeline_stages"].([]any), nil, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 
 			out := processEntries(p, newEntry(nil, tt.initialLabels, tt.entry, tt.t))[0]
@@ -267,12 +267,12 @@ func BenchmarkPipeline(b *testing.B) {
 
 func TestPipeline_Wrap(t *testing.T) {
 	now := time.Now()
-	var config map[string]interface{}
+	var config map[string]any
 	err := yaml.Unmarshal([]byte(testMultiStageYaml), &config)
 	if err != nil {
 		panic(err)
 	}
-	p, err := NewPipeline(util_log.Logger, config["pipeline_stages"].([]interface{}), nil, prometheus.DefaultRegisterer)
+	p, err := NewPipeline(util_log.Logger, config["pipeline_stages"].([]any), nil, prometheus.DefaultRegisterer)
 	if err != nil {
 		panic(err)
 	}
@@ -327,14 +327,14 @@ func TestPipeline_Wrap(t *testing.T) {
 }
 
 func newPipelineFromConfig(cfg, name string) (*Pipeline, error) {
-	var config map[string]interface{}
+	var config map[string]any
 
 	err := yaml.Unmarshal([]byte(cfg), &config)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewPipeline(util_log.Logger, config["pipeline_stages"].([]interface{}), &name, prometheus.DefaultRegisterer)
+	return NewPipeline(util_log.Logger, config["pipeline_stages"].([]any), &name, prometheus.DefaultRegisterer)
 }
 
 func Test_PipelineParallel(t *testing.T) {
@@ -379,7 +379,7 @@ pipeline_stages:
 	parallelism := 10
 	wg.Add(parallelism)
 
-	for i := 0; i < parallelism; i++ {
+	for i := range parallelism {
 		go func(i int) {
 			defer wg.Done()
 			entryhandler.Chan() <- util.Entry{

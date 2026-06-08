@@ -27,7 +27,7 @@ func (m *mockTableQuerier) MultiQueries(_ context.Context, queries []Query, _ Qu
 
 func (m *mockTableQuerier) hasQueries(t *testing.T, count int) {
 	require.Len(t, m.queries, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		idx := strconv.Itoa(i)
 
 		require.Equal(t, m.queries[idx], Query{
@@ -74,7 +74,7 @@ func TestDoParallelQueries(t *testing.T) {
 
 func buildQueries(n int) []Query {
 	queries := make([]Query, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		idx := strconv.Itoa(i)
 		queries = append(queries, Query{
 			HashValue:  idx,

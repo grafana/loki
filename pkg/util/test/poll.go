@@ -7,7 +7,7 @@ import (
 )
 
 // Poll repeatedly evaluates condition until we either timeout, or it succeeds.
-func Poll(t testing.TB, d time.Duration, want interface{}, have func() interface{}) {
+func Poll(t testing.TB, d time.Duration, want any, have func() any) {
 	t.Helper()
 	deadline := time.Now().Add(d)
 	for !time.Now().After(deadline) {

@@ -25,7 +25,7 @@ func TestLimiterAllow(t *testing.T) {
 	require.True(t, l.Allow(), "expected Allow to return true initially")
 
 	// Test allowing until evictions exceed maxPercentage
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		require.True(t, l.Allow(), "expected Allow to return true %d", i)
 		l.Evict()
 	}

@@ -270,7 +270,7 @@ func (r *RuleCommand) setupFiles() error {
 	// Set up ignored namespaces map for sync/diff command
 	if r.IgnoredNamespaces != "" {
 		r.ignoredNamespacesMap = map[string]struct{}{}
-		for _, ns := range strings.Split(r.IgnoredNamespaces, ",") {
+		for ns := range strings.SplitSeq(r.IgnoredNamespaces, ",") {
 			if ns != "" {
 				r.ignoredNamespacesMap[ns] = struct{}{}
 			}
@@ -280,7 +280,7 @@ func (r *RuleCommand) setupFiles() error {
 	// Set up allowed namespaces map for sync/diff command
 	if r.Namespaces != "" {
 		r.namespacesMap = map[string]struct{}{}
-		for _, ns := range strings.Split(r.Namespaces, ",") {
+		for ns := range strings.SplitSeq(r.Namespaces, ",") {
 			if ns != "" {
 				r.namespacesMap[ns] = struct{}{}
 			}
@@ -289,13 +289,13 @@ func (r *RuleCommand) setupFiles() error {
 
 	// Set up rule groups excluded from label aggregation.
 	r.aggregationLabelExcludedRuleGroupsList = map[string]struct{}{}
-	for _, name := range strings.Split(r.AggregationLabelExcludedRuleGroups, ",") {
+	for name := range strings.SplitSeq(r.AggregationLabelExcludedRuleGroups, ",") {
 		if name = strings.TrimSpace(name); name != "" {
 			r.aggregationLabelExcludedRuleGroupsList[name] = struct{}{}
 		}
 	}
 
-	for _, file := range strings.Split(r.RuleFiles, ",") {
+	for file := range strings.SplitSeq(r.RuleFiles, ",") {
 		if file != "" {
 			log.WithFields(log.Fields{
 				"file": file,
@@ -304,7 +304,7 @@ func (r *RuleCommand) setupFiles() error {
 		}
 	}
 
-	for _, dir := range strings.Split(r.RuleFilesPath, ",") {
+	for dir := range strings.SplitSeq(r.RuleFilesPath, ",") {
 		if dir != "" {
 			err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 				if err != nil {
@@ -752,7 +752,7 @@ func checkDuplicates(groups []rwrulefmt.RuleGroup) []compareRuleType {
 				metric: ruleMetric(rule),
 				label:  rule.Labels,
 			}
-			for i := 0; i < index; i++ {
+			for i := range index {
 				t := compareRuleType{
 					metric: ruleMetric(group.Rules[i]),
 					label:  group.Rules[i].Labels,

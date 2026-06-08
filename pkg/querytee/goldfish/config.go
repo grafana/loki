@@ -318,8 +318,8 @@ func (f *tenantRulesFlag) Set(value string) error {
 // parseRate parses a rate string that can be decimal (0.1) or percentage (10%)
 func parseRate(s string) (float64, error) {
 	s = strings.TrimSpace(s)
-	if strings.HasSuffix(s, "%") {
-		percentStr := strings.TrimSuffix(s, "%")
+	if before, ok := strings.CutSuffix(s, "%"); ok {
+		percentStr := before
 		percent, err := strconv.ParseFloat(percentStr, 64)
 		if err != nil {
 			return 0, err

@@ -58,10 +58,10 @@ func BenchmarkPrometheusCodec_EncodeResponse(b *testing.B) {
 
 func mockPrometheusResponse(numSeries, numSamplesPerSeries int) *PrometheusResponse {
 	stream := make([]SampleStream, numSeries)
-	for s := 0; s < numSeries; s++ {
+	for s := range numSeries {
 		// Generate random samples.
 		samples := make([]logproto.LegacySample, numSamplesPerSeries)
-		for i := 0; i < numSamplesPerSeries; i++ {
+		for i := range numSamplesPerSeries {
 			samples[i] = logproto.LegacySample{
 				Value:       rand.Float64(),
 				TimestampMs: int64(i),

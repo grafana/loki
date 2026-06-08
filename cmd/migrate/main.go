@@ -246,11 +246,7 @@ func calcSyncRanges(from, to int64, shardBy int64) []*syncRange {
 		number++
 
 		currentFrom = currentTo + 1
-		currentTo = currentTo + shardBy
-
-		if currentTo > to {
-			currentTo = to
-		}
+		currentTo = min(currentTo+shardBy, to)
 	}
 	return syncRanges
 }
@@ -308,10 +304,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 
 				// Slice up into batches
 				for j := 0; j < len(schemaGroups[i]); j += m.batch {
-					k := j + m.batch
-					if k > len(schemaGroups[i]) {
-						k = len(schemaGroups[i])
-					}
+					k := min(j+m.batch, len(schemaGroups[i]))
 
 					chunks := schemaGroups[i][j:k]
 					//log.Printf("%v Processing chunks %v-%v of %v\n", threadID, j, k, len(schemaGroups[i]))

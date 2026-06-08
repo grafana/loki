@@ -3,6 +3,7 @@ package generationnumber
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strconv"
 	"sync"
 	"time"
@@ -69,9 +70,7 @@ func (l *GenNumberLoader) reload() error {
 
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	for userID, genNumber := range updatedGenNumbers {
-		l.numbers[userID] = genNumber
-	}
+	maps.Copy(l.numbers, updatedGenNumbers)
 
 	return nil
 }

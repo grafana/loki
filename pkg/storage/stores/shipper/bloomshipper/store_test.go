@@ -472,7 +472,7 @@ func TestBloomStore_SortBlocks(t *testing.T) {
 	refs := make([]BlockRef, 10)
 	bqs := make([]*CloseableBlockQuerier, 10)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		refs[i] = BlockRef{
 			Ref: Ref{
 				TenantID: "fake",
@@ -498,7 +498,7 @@ func TestBloomStore_SortBlocks(t *testing.T) {
 	sortBlocks(bqs, refs)
 
 	// assert order of block queriers
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if i%2 == 0 {
 			require.Equal(t, refs[i], bqs[i].BlockRef)
 		} else {

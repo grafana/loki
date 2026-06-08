@@ -3,12 +3,14 @@ package util //nolint:revive
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"sort"
 	"unicode"
 )
 
+//go:fix inline
 func StringRef(value string) *string {
-	return &value
+	return new(value)
 }
 
 // SnakeCase converts given string `s` into `snake_case`.
@@ -26,13 +28,7 @@ func SnakeCase(s string) string {
 
 // StringsContain returns true if the search value is within the list of input values.
 func StringsContain(values []string, search string) bool {
-	for _, v := range values {
-		if search == v {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(values, search)
 }
 
 // UniqueStrings keeps a slice of unique strings.

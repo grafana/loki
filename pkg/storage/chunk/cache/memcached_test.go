@@ -35,11 +35,8 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 		ctx     = context.Background()
 	)
 
-	wg.Add(1)
-
 	// This goroutine is going to do some real "work" (writing to `c.inputCh`). We then do `m.Stop()` closing `c.inputCh`. We assert there shouldn't be any panics.
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		<-stopped
 		assert.NotPanics(t, func() {
 			keys := []string{"1", "2"}
@@ -51,7 +48,7 @@ func TestMemcached_fetchKeysBatched(t *testing.T) {
 			require.NoError(t, err)
 
 		})
-	}()
+	})
 
 	m.Stop()
 	close(stopped)
@@ -88,20 +85,20 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 	bufs := make([][]byte, 0, numKeys)
 
 	// Insert 1000 keys skipping all multiples of 5.
-	for i := 0; i < numKeys; i++ {
+	for i := range numKeys {
 		keysIncMissing = append(keysIncMissing, fmt.Sprint(i))
 		if i%5 == 0 {
 			continue
 		}
 
 		keys = append(keys, fmt.Sprint(i))
-		bufs = append(bufs, []byte(fmt.Sprint(i)))
+		bufs = append(bufs, fmt.Append(nil, i))
 	}
 	err := memcache.Store(ctx, keys, bufs)
 	require.NoError(t, err)
 
 	found, bufs, missing, _ := memcache.Fetch(ctx, keysIncMissing)
-	for i := 0; i < numKeys; i++ {
+	for i := range numKeys {
 		if i%5 == 0 {
 			require.Equal(t, fmt.Sprint(i), missing[0])
 			missing = missing[1:]
@@ -192,18 +189,18 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 	keys := make([]string, 0, numKeys)
 	bufs := make([][]byte, 0, numKeys)
 	// Insert 1000 keys skipping all multiples of 5.
-	for i := 0; i < numKeys; i++ {
+	for i := range numKeys {
 		keysIncMissing = append(keysIncMissing, fmt.Sprint(i))
 		if i%5 == 0 {
 			continue
 		}
 		keys = append(keys, fmt.Sprint(i))
-		bufs = append(bufs, []byte(fmt.Sprint(i)))
+		bufs = append(bufs, fmt.Append(nil, i))
 	}
 	err := memcache.Store(ctx, keys, bufs)
 	require.NoError(t, err)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		found, bufs, missing, _ := memcache.Fetch(ctx, keysIncMissing)
 
 		require.Equal(t, len(found), len(bufs))

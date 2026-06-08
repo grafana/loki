@@ -67,7 +67,7 @@ type jsonStage struct {
 }
 
 // newJSONStage creates a new json pipeline stage from a config.
-func newJSONStage(logger log.Logger, config interface{}) (Stage, error) {
+func newJSONStage(logger log.Logger, config any) (Stage, error) {
 	cfg, err := parseJSONConfig(config)
 	if err != nil {
 		return nil, err
@@ -83,7 +83,7 @@ func newJSONStage(logger log.Logger, config interface{}) (Stage, error) {
 	}, nil
 }
 
-func parseJSONConfig(config interface{}) (*JSONConfig, error) {
+func parseJSONConfig(config any) (*JSONConfig, error) {
 	cfg := &JSONConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -107,7 +107,7 @@ func (j *jsonStage) Run(in chan Entry) chan Entry {
 	return out
 }
 
-func (j *jsonStage) processEntry(extracted map[string]interface{}, entry *string) error {
+func (j *jsonStage) processEntry(extracted map[string]any, entry *string) error {
 	// If a source key is provided, the json stage should process it
 	// from the extracted map, otherwise should fallback to the entry
 	input := entry
@@ -138,7 +138,7 @@ func (j *jsonStage) processEntry(extracted map[string]interface{}, entry *string
 		return nil
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 
 	if err := json.Unmarshal([]byte(*input), &data); err != nil {
 		if Debug {

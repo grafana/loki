@@ -336,10 +336,7 @@ func (t *Topk) InTopk(h1, h2 uint32) bool {
 }
 
 func (t *Topk) Topk() TopKResult {
-	n := t.max
-	if len(*t.heap) < t.max {
-		n = len(*t.heap)
-	}
+	n := min(len(*t.heap), t.max)
 	res := make(TopKResult, 0, len(*t.heap))
 	for _, e := range *t.heap {
 		res = append(res, element{

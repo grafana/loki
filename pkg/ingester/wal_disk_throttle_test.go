@@ -204,7 +204,7 @@ func TestDiskThrottleWithMultiplePushes(t *testing.T) {
 	mockWAL.SetThrottled(false)
 
 	// Push multiple times successfully
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		req := &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
@@ -223,7 +223,7 @@ func TestDiskThrottleWithMultiplePushes(t *testing.T) {
 	mockWAL.SetThrottled(true)
 
 	// All subsequent pushes should fail with ErrReadOnly
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		req := &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
@@ -243,7 +243,7 @@ func TestDiskThrottleWithMultiplePushes(t *testing.T) {
 	mockWAL.SetThrottled(false)
 
 	// Pushes should succeed again
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		req := &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{

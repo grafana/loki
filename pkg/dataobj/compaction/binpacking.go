@@ -37,10 +37,7 @@ func BinPack[G Sizer](groups []G) []BinPackResult[G] {
 	for _, group := range groups {
 		totalUncompressedSize += group.GetSize()
 	}
-	estimatedBinCount := int((totalUncompressedSize + targetUncompressedSize - 1) / targetUncompressedSize)
-	if estimatedBinCount < 1 {
-		estimatedBinCount = 1
-	}
+	estimatedBinCount := max(int((totalUncompressedSize+targetUncompressedSize-1)/targetUncompressedSize), 1)
 
 	maxOverflowSize := targetUncompressedSize * maxOutputMultiple
 	var bins []BinPackResult[G]

@@ -158,7 +158,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 					halfData := data[i:]
 					halfKeys := keys[i:]
 					require.NoError(t, querier.Seek(halfData[0].Series.Fingerprint))
-					for j := 0; j < len(halfData); j++ {
+					for j := range halfData {
 						require.Equal(t, true, querier.Next(), "on iteration %d", j)
 						got := querier.At()
 						blooms, err := iter.Collect(got.Blooms)
@@ -216,16 +216,15 @@ func TestMergeBuilder(t *testing.T) {
 	}
 
 	// Build a list of blocks containing overlapping & duplicated parts of the dataset
-	for i := 0; i < nBlocks; i++ {
+	for i := range nBlocks {
 		// references for linking in memory reader+writer
 		indexBuf := bytes.NewBuffer(nil)
 		bloomsBuf := bytes.NewBuffer(nil)
 
 		minVal := i * numSeries / nBlocks
-		maxVal := (i + 2) * numSeries / nBlocks // allow some overlap
-		if maxVal > len(data) {
-			maxVal = len(data)
-		}
+		maxVal := min(
+			// allow some overlap
+			(i+2)*numSeries/nBlocks, len(data))
 
 		writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 		reader := NewByteReader(indexBuf, bloomsBuf)
@@ -421,7 +420,7 @@ func TestBlockReset(t *testing.T) {
 
 	rounds := make([][]model.Fingerprint, 2)
 
-	for i := 0; i < len(rounds); i++ {
+	for i := range rounds {
 		for querier.Next() {
 			rounds[i] = append(rounds[i], querier.At().Fingerprint)
 		}
@@ -462,7 +461,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	}
 
 	for i, copies := range sets {
-		for j := 0; j < copies; j++ {
+		for range copies {
 			// references for linking in memory reader+writer
 			indexBuf := bytes.NewBuffer(nil)
 			bloomsBuf := bytes.NewBuffer(nil)
