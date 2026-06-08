@@ -146,7 +146,7 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	logger := log.With(s.logger, "remote_addr", conn.RemoteAddr())
 	level.Info(logger).Log("msg", "handling connection")
 
-	wc := &workerConn{done: make(chan struct{})}
+	wc := &workerConn{done: make(chan struct{}), wake: make(chan struct{}, 1)}
 
 	s.connections.Store(wc, struct{}{})
 	defer s.connections.Delete(wc)
@@ -234,17 +234,22 @@ func (s *Scheduler) markWorkerReady(ctx context.Context, worker *workerConn) err
 	if err := worker.MarkReady(); err != nil {
 		return err
 	}
-	s.readyWorkers[worker] = struct{}{}
 
-	// Spawn a goroutine that assigns tasks to this worker by reading
-	// from the tasksCh. The goroutine exits on 429/error/disconnect.
-	//
-	// It's possible for this to launch multiple goroutines if the worker
-	// (incorrectly) sends more than one ready message. If this happens
-	// the worker basically gets a higher weight towards task assignment
-	// as more than a single routine is picking from the shared channel.
-	// But backpressure would still work as expected if worker can't keep up.
-	go s.workerLoop(ctx, worker)
+	if _, alreadyReady := s.readyWorkers[worker]; alreadyReady {
+		// The worker already has a long-lived assignment loop. A fresh ready
+		// message means it has freed a thread, so un-park the loop (if it
+		// parked on a previous 429) rather than starting a second loop.
+		nudgeSemaphore(worker.wake)
+	} else {
+		s.readyWorkers[worker] = struct{}{}
+
+		// Spawn the single, long-lived goroutine that assigns tasks to this
+		// worker by reading from tasksCh. Unlike the previous design, the loop
+		// is not torn down on a 429: it parks and resumes on the next ready
+		// message, so worker threads don't sit idle waiting for a fresh
+		// subscribe round trip.
+		go s.workerLoop(ctx, worker)
+	}
 
 	// Wake [Scheduler.runAssignLoop] so it feeds tasks into tasksCh.
 	if s.taskQueue.Len() > 0 {
@@ -483,9 +488,12 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 	}
 }
 
-// workerLoop assigns tasks to a single worker by reading from the
-// shared tasksCh. It continues assigning until the worker NACKs, an error
-// occurs, or the connection is closed.
+// workerLoop assigns tasks to a single worker by reading from the shared
+// tasksCh. It is long-lived: it runs until the connection is closed or the
+// scheduler shuts down. When the worker reports it is at capacity (429), the
+// loop parks instead of exiting and resumes when the worker advertises a freed
+// thread via a ready message. This avoids the teardown + re-subscribe round
+// trip that previously left worker threads idle while tasks queued.
 //
 // TODO(ashwanth): When there is only a single worker (say single-binary)
 // all assignments go through a single workerLoop. Because SendMessage blocks
@@ -522,19 +530,20 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 			// so we can skip the send and move on to the next task.
 			continue
 		} else if err != nil {
-			// Generic error.
+			// Generic error: restore the task to its original queue position.
 			s.requeueTask(assignment.t, assignment.pos)
 
-			// if its 429, remove from ready workers and fire subscribe request.
+			// If it's a 429 the worker is at capacity. Keep the loop and the
+			// worker's ready status alive and park until the worker advertises
+			// a freed thread. This keeps the worker eligible for assignment so
+			// the next ready message resumes dispatch immediately, without the
+			// expensive teardown + re-subscribe cycle.
 			if isTooManyRequestsError(err) {
-				s.assignMut.Lock()
-				delete(s.readyWorkers, worker)
-				s.assignMut.Unlock()
-
 				s.metrics.backoffsTotal.Inc()
-				s.workerSubscribe(ctx, worker)
-
-				return
+				if !s.parkWorker(ctx, worker) {
+					return
+				}
+				continue
 			}
 
 			level.Warn(s.logger).Log("msg", "failed to assign task", "id", assignment.msg.Task.ULID, "conn", worker.RemoteAddr(), "err", err)
@@ -546,6 +555,26 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 		gotrace.Log(assignment.t.runtimeTraceCtx, "task_assigned", assignment.t.inner.ULID.String()+" -> "+worker.RemoteAddr().String())
 
 		s.finalizeAssignment(ctx, assignment.t, worker, assignment.msg.StreamStates)
+	}
+}
+
+// parkWorker blocks until the worker advertises freed capacity (a ready message
+// nudges worker.wake), the worker disconnects, or the scheduler shuts down. It
+// returns true if the assignment loop should resume, or false if it should
+// exit.
+//
+// While parked the worker remains in s.readyWorkers so the assign loop keeps
+// preparing work for it; that work waits on the unbuffered tasksCh until this
+// loop resumes, providing backpressure without busy-spinning against a full
+// worker.
+func (s *Scheduler) parkWorker(ctx context.Context, worker *workerConn) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-worker.done:
+		return false
+	case <-worker.wake:
+		return true
 	}
 }
 

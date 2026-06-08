@@ -432,25 +432,37 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	}
 
 	g.Go(func() error {
-		for {
-			// Wait for a signal that we want to wait for a ready thread.
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-waitReady:
-			}
-
-			if err := w.jobManager.WaitReady(ctx); err != nil {
-				// Context got canceled; abort.
-				break
-			}
-
-			if err := peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{}); err != nil {
-				level.Warn(logger).Log("msg", "failed to send ready message", "err", err)
-			}
+		// Wait for the scheduler's initial subscribe before advertising
+		// readiness. The scheduler sends a single WorkerSubscribe once it has
+		// processed our WorkerHello; from then on we self-advertise capacity
+		// for the lifetime of the connection, emitting one WorkerReady per
+		// thread that frees up. This keeps the scheduler's per-worker
+		// assignment loop fed without a subscribe round trip after every task.
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-waitReady:
 		}
 
-		return nil
+		// Start advertising from the current available capacity so a
+		// late-joining scheduler is told how many threads are free right now,
+		// rather than replaying every historical thread-ready event.
+		seen := w.jobManager.readyCursor()
+		for {
+			cur, err := w.jobManager.AwaitReady(ctx, seen)
+			if err != nil {
+				// Context got canceled; abort.
+				return nil
+			}
+
+			// Emit one ready (credit) for each thread that became available
+			// since we last advertised.
+			for ; seen < cur; seen++ {
+				if err := peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{}); err != nil {
+					level.Warn(logger).Log("msg", "failed to send ready message", "err", err)
+				}
+			}
+		}
 	})
 
 	// Wait for all worker goroutines to exit.

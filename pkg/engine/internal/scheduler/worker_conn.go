@@ -69,6 +69,12 @@ type workerConn struct {
 	// done is closed when the worker connection is closed. It is used to signal
 	// worker goroutines to exit.
 	done chan struct{}
+
+	// wake un-parks the worker's assignment loop after it has parked on a 429.
+	// A WorkerReady received while the loop is already running nudges this
+	// channel to signal that the worker has freed a thread. It is a buffered
+	// channel of size 1 used as a coalescing notification.
+	wake chan struct{}
 }
 
 // Type returns the type of the worker connection.

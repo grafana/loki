@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"sync"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -1373,6 +1375,90 @@ func TestScheduler_worker(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestScheduler_workerParkOnBackoff verifies that a 429 from a worker parks the
+// worker's assignment loop (keeping it eligible for assignment) instead of
+// tearing it down, and that a subsequent ready message resumes assignment of
+// the requeued task without requiring a fresh subscribe round trip.
+func TestScheduler_workerParkOnBackoff(t *testing.T) {
+	sched := newTestScheduler(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+
+	conn, err := sched.DialFrom(ctx, wire.LocalWorker)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// reject controls whether the worker NACKs assignments with a 429.
+	var reject atomic.Bool
+	reject.Store(true)
+
+	assigns := make(chan *workflow.Task, 10)
+
+	peer := wire.Peer{
+		Logger:  log.NewNopLogger(),
+		Metrics: wire.NewMetrics(),
+		Conn:    conn,
+		Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
+			if msg, ok := message.(wire.TaskAssignMessage); ok {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case assigns <- msg.Task:
+				}
+				if reject.Load() {
+					return wire.Errorf(http.StatusTooManyRequests, "no threads available")
+				}
+			}
+			return nil
+		},
+	}
+	go func() { _ = peer.Serve(ctx) }()
+
+	require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
+	require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
+
+	exampleTask := &workflow.Task{ULID: ulid.Make()}
+	manifest := &workflow.Manifest{
+		Tasks:              []*workflow.Task{exampleTask},
+		StreamEventHandler: nopStreamHandler,
+		TaskEventHandler:   nopTaskHandler,
+	}
+	require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
+	require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
+
+	// First attempt: the worker NACKs with a 429.
+	select {
+	case <-ctx.Done():
+		require.Fail(t, "timed out before first assignment attempt")
+	case got := <-assigns:
+		require.Equal(t, exampleTask.ULID, got.ULID)
+	}
+
+	// After the 429 the scheduler should record a backoff but keep the worker
+	// in the ready set: the loop parks rather than being torn down.
+	require.Eventually(t, func() bool {
+		if testutil.ToFloat64(sched.metrics.backoffsTotal) < 1 {
+			return false
+		}
+		sched.assignMut.RLock()
+		defer sched.assignMut.RUnlock()
+		return len(sched.readyWorkers) == 1
+	}, 5*time.Second, 10*time.Millisecond, "worker should remain ready (loop parks, not torn down) after a 429")
+
+	// Now accept assignments and signal a freed thread. The parked loop should
+	// resume and re-assign the requeued task.
+	reject.Store(false)
+	require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
+
+	select {
+	case <-ctx.Done():
+		require.Fail(t, "timed out before requeued task was reassigned")
+	case got := <-assigns:
+		require.Equal(t, exampleTask.ULID, got.ULID, "requeued task should be reassigned once the worker readies again")
+	}
 }
 
 func newTestScheduler(t *testing.T) *Scheduler {

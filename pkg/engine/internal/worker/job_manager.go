@@ -52,6 +52,7 @@ type threadJob struct {
 type jobManager struct {
 	mut        sync.RWMutex
 	waiting    int
+	readyTotal uint64        // Monotonic count of threads that have become ready.
 	waitCond   chan struct{} // Channel-based condition variable to permit cancellation
 	cancelCond chan struct{} // Channel-based condition variable to cancel Recv
 
@@ -95,6 +96,7 @@ func (jm *jobManager) broadcast() {
 	defer jm.mut.Unlock()
 
 	jm.waiting++
+	jm.readyTotal++
 
 	close(jm.waitCond) // Wakes all blocked calls to WaitReady
 	jm.waitCond = make(chan struct{})
@@ -184,4 +186,48 @@ func (jm *jobManager) WaitReady(ctx context.Context) error {
 	}
 
 	return ctx.Err()
+}
+
+// readyCursor returns a cursor for [jobManager.AwaitReady] positioned so that
+// the first call advertises exactly the number of threads currently available.
+// A freshly connected scheduler can use this to advertise current capacity
+// without replaying the entire history of thread-ready events.
+func (jm *jobManager) readyCursor() uint64 {
+	jm.mut.RLock()
+	defer jm.mut.RUnlock()
+
+	if jm.readyTotal < uint64(jm.waiting) {
+		return 0
+	}
+	return jm.readyTotal - uint64(jm.waiting)
+}
+
+// AwaitReady blocks until the cumulative count of threads that have become
+// ready exceeds seen, then returns the new cumulative count. Callers pass the
+// value previously returned (starting from [jobManager.readyCursor]) to receive
+// an edge-triggered signal for every thread that becomes ready, without missing
+// or coalescing events across calls.
+//
+// Unlike [jobManager.WaitReady], which is level-triggered and returns
+// immediately whenever any thread is waiting, AwaitReady lets a caller emit
+// exactly one signal (credit) per freed thread.
+func (jm *jobManager) AwaitReady(ctx context.Context, seen uint64) (uint64, error) {
+	jm.mut.RLock()
+	defer jm.mut.RUnlock()
+
+	for jm.readyTotal <= seen && ctx.Err() == nil {
+		waitCh := jm.waitCond
+
+		jm.mut.RUnlock()
+		select {
+		case <-ctx.Done():
+		case <-waitCh:
+		}
+		jm.mut.RLock()
+	}
+
+	if ctx.Err() != nil {
+		return jm.readyTotal, ctx.Err()
+	}
+	return jm.readyTotal, nil
 }
