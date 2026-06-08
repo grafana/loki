@@ -1702,7 +1702,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 			reg,
 		),
 	)
-	dnsProvider := dns.NewProvider(util_log.Logger, dnsProviderReg, dns.GolangResolverType)
+	dnsProvider := dns.NewProvider(dns.GolangResolverType, 0, util_log.Logger, dnsProviderReg)
 
 	// TODO(ashwanth): This is not considering component specific overrides for InstanceInterfaceNames.
 	// This should be fixed in the future.

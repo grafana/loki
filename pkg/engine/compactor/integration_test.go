@@ -79,7 +79,6 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 			Enabled:                   true,
 			PollingInterval:           1 * time.Second,
 			MaxRunsPerTask:            2,
-			IndexMergeTaskTTL:         10 * time.Second,
 			ToCConsolidateTimeout:     10 * time.Second,
 			MaxRunningCompactionTasks: 4,
 			PlanVersion:               1,
