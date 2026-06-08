@@ -345,8 +345,8 @@ github.com/cockroachdb/datadriven v0.0.0-20190809214429-80d97fb3cbaa/go.mod h1:z
 github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd/go.mod h1:sE/e/2PUdi/liOCUjSTXgM1o87ZssimdTWN964YiIeI=
 github.com/coder/quartz v0.3.0 h1:bUoSEJ77NBfKtUqv6CPSC0AS8dsjqAqqAv7bN02m1mg=
 github.com/coder/quartz v0.3.0/go.mod h1:BgE7DOj/8NfvRgvKw0jPLDQH/2Lya2kxcTaNJ8X0rZk=
-github.com/containerd/containerd/v2 v2.0.7 h1:55JsNhqP/L7VZOijyfq6Qn0O8Oeff0UizfRuP+2pc90=
-github.com/containerd/containerd/v2 v2.0.7/go.mod h1:su8B0Z1NFQMEIztOIbHwy7xtznbCms/kFlfsxIcQrZ8=
+github.com/containerd/containerd/v2 v2.0.9 h1:BtjYFk0SHtDQs8SXRQhPT+WZia18rLaHobekf5YFmrQ=
+github.com/containerd/containerd/v2 v2.0.9/go.mod h1:YdMdboz+mhlo+CQYGaLyUuqJBGlaz2OV2SA6dEMjvuo=
 github.com/containerd/errdefs v1.0.0 h1:tg5yIfIlQIrxYtu9ajqY42W3lpS19XqdxRQeEwYG8PI=
 github.com/containerd/errdefs v1.0.0/go.mod h1:+YBYIdtsnF4Iw6nWZhJcqGSg/dwvV7tyJ/kCkyJ2k+M=
 github.com/containerd/errdefs/pkg v0.3.0 h1:9IKJ06FvyNlexW690DXuQNx2KA2cUJXx151Xdx3ZPPE=
