@@ -445,16 +445,16 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		for {
 			// Wait until at least one thread is ready to receive a task.
 			if err := w.jobManager.WaitReady(ctx); err != nil {
-				continue
+				return nil
 			}
 
 			if err := peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{}); err != nil {
 				level.Warn(logger).Log("msg", "failed to send ready message", "err", err)
 			}
 
-			// Wait until all threads are busy.
+			// Wait until all threads are busy before proceeding.
 			if err := w.jobManager.WaitFull(ctx); err != nil {
-				continue
+				return nil
 			}
 		}
 	})
