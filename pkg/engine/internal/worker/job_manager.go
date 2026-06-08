@@ -47,13 +47,13 @@ type threadJob struct {
 //   - The worker calls [jobManager.Send] when it is assigned a task from the
 //     scheduler, which fails if there are no ready threads.
 //
-//   - The worker calls [jobManager.WaitReady] to inform a scheduler when
-//     there is at least one ready worker thread.
+//   - The worker calls [jobManager.WaitReady] / [jobManager.WaitBusy] to track
+//     when the pool transitions between having spare capacity and being fully
+//     busy, so it can advertise readiness to a scheduler.
 type jobManager struct {
 	mut        sync.RWMutex
 	waiting    int
-	readyTotal uint64        // Monotonic count of threads that have become ready.
-	waitCond   chan struct{} // Channel-based condition variable to permit cancellation
+	waitCond   chan struct{} // Closed and recreated on every change to waiting.
 	cancelCond chan struct{} // Channel-based condition variable to cancel Recv
 
 	jobCh chan *threadJob
@@ -90,15 +90,20 @@ func (jm *jobManager) Recv(ctx context.Context) (*threadJob, error) {
 	}
 }
 
-// broadcast wakes all blocked calls to WaitReady.
+// broadcast records that another thread is waiting for a job and wakes any
+// blocked calls to WaitReady / WaitBusy.
 func (jm *jobManager) broadcast() {
 	jm.mut.Lock()
 	defer jm.mut.Unlock()
 
 	jm.waiting++
-	jm.readyTotal++
+	jm.notify()
+}
 
-	close(jm.waitCond) // Wakes all blocked calls to WaitReady
+// notify wakes all goroutines blocked on a change to waiting (WaitReady and
+// WaitBusy). Callers must hold jm.mut for writing.
+func (jm *jobManager) notify() {
+	close(jm.waitCond) // Wakes all blocked calls to WaitReady / WaitBusy.
 	jm.waitCond = make(chan struct{})
 }
 
@@ -111,6 +116,7 @@ func (jm *jobManager) cancelWaiting() {
 		panic("jobManager.cancelWaiting called with no waiting calls")
 	}
 	jm.waiting--
+	jm.notify() // waiting decreased; wake WaitBusy.
 
 	close(jm.cancelCond)
 	jm.cancelCond = make(chan struct{})
@@ -151,6 +157,7 @@ func (jm *jobManager) Send(ctx context.Context, job *threadJob) error {
 	switch {
 	case sent:
 		jm.waiting--
+		jm.notify() // waiting decreased; wake WaitBusy.
 		return nil
 	case !sent && ctx.Err() != nil:
 		return ctx.Err()
@@ -188,43 +195,28 @@ func (jm *jobManager) WaitReady(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// readyCursor returns a cursor for [jobManager.AwaitReady] positioned so that
-// the first call advertises the number of threads currently available.
-// A freshly connected scheduler can use this to advertise current capacity
-// without replaying the entire history of thread-ready events.
-func (jm *jobManager) readyCursor() uint64 {
+// WaitFull blocks until there are no waiting calls to [jobManager.Recv] (every
+// thread is busy), or until ctx is done. It is the inverse of WaitReady.
+func (jm *jobManager) WaitFull(ctx context.Context) error {
 	jm.mut.RLock()
 	defer jm.mut.RUnlock()
 
-	if jm.readyTotal < uint64(jm.waiting) {
-		return 0
-	}
-	return jm.readyTotal - uint64(jm.waiting)
-}
-
-// AwaitReady blocks until the cumulative count of threads that have become
-// ready exceeds seen, then returns the new cumulative count.
-//
-// Unlike [jobManager.WaitReady], which is level-triggered and returns
-// immediately whenever any thread is waiting, AwaitReady lets a caller emit
-// exactly one signal per freed thread.
-func (jm *jobManager) AwaitReady(ctx context.Context, seen uint64) (uint64, error) {
-	jm.mut.RLock()
-	defer jm.mut.RUnlock()
-
-	for jm.readyTotal <= seen && ctx.Err() == nil {
+	for ctx.Err() == nil && jm.waiting != 0 {
+		// Get the current condition variable channel.
 		waitCh := jm.waitCond
 
+		// Unlock the mutex while waiting for waitCh to close.
 		jm.mut.RUnlock()
+
 		select {
 		case <-ctx.Done():
 		case <-waitCh:
 		}
+
+		// Re-lock the mutex so the condition can be safely checked again on
+		// the next loop.
 		jm.mut.RLock()
 	}
 
-	if ctx.Err() != nil {
-		return jm.readyTotal, ctx.Err()
-	}
-	return jm.readyTotal, nil
+	return ctx.Err()
 }
