@@ -153,7 +153,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 			}
 			valueArr := valueVec.(*array.Float64)
 
-			arrays, groupingFields, err := collectGroupingColumns(record, v.grouping, v.evaluator, v.identCache)
+			arrays, groupingFields, err := CollectGroupingColumns(record, v.grouping, v.evaluator, v.identCache)
 			if err != nil {
 				return nil, err
 			}

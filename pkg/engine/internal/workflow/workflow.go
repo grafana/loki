@@ -113,6 +113,10 @@ type Options struct {
 	// PruneCachedTasksFetchTimeout is the timeout applied to each cache Fetch
 	// call during task pruning at plan time. 0 means no timeout.
 	PruneCachedTasksFetchTimeout time.Duration
+
+	// AggregationLabelHashShardCount is the number of shards that aggregation tasks should be split into when
+	// shrded by label groupings.
+	AggregationLabelHashShardCount int
 }
 
 var _ fmt.Stringer = (*Workflow)(nil)
@@ -166,7 +170,7 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 		pruneEmptyCachedTasks:       opts.PruneEmptyCachedTasks,
 		nonEmptyCachedTasksMaxBytes: opts.NonEmptyCachedTasksMaxSize,
 		pruneFetchTimeout:           opts.PruneCachedTasksFetchTimeout,
-	}, logger)
+	}, opts.AggregationLabelHashShardCount, logger)
 	if err != nil {
 		return nil, err
 	}

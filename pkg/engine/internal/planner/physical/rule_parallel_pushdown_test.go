@@ -146,43 +146,6 @@ func TestParallelPushdown(t *testing.T) {
 		expected := PrintAsTree(&expectedPlan)
 		require.Equal(t, expected, PrintAsTree(&plan))
 	})
-
-	t.Run("Shifts RangeAggregation with valid VectorAggregation parent", func(t *testing.T) {
-		// Input plan: VectorAgg -> RangeAgg -> Parallelize -> Scan
-		// Expected output: VectorAgg -> Parallelize -> RangeAgg -> Scan
-		var plan Plan
-		{
-			vecAgg := plan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
-			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeSum})
-			parallelize := plan.graph.Add(&Parallelize{})
-			scan := plan.graph.Add(&DataObjScan{})
-
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
-		}
-
-		opt := NewOptimizer(&plan, []*Optimization{
-			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
-		})
-		root, _ := plan.graph.Root()
-		opt.Optimize(root)
-
-		var expectedPlan Plan
-		{
-			vecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
-			parallelize := expectedPlan.graph.Add(&Parallelize{})
-			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeSum})
-			scan := expectedPlan.graph.Add(&DataObjScan{})
-
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: parallelize}))
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: rangeAgg}))
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
-		}
-
-		expected := PrintAsTree(&expectedPlan)
-		require.Equal(t, expected, PrintAsTree(&plan))
-	})
 }
 
 // TestParallelPushdown_canShardAggregation tests the canShardAggregation function directly

@@ -97,17 +97,7 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 
 	var key uint64
 	if len(labelValues) != 0 {
-		a.digest.Reset()
-		for i, val := range labelValues {
-			if i > 0 {
-				_, _ = a.digest.Write([]byte{0}) // separator
-			}
-
-			_, _ = a.digest.WriteString(labels[i].Name)
-			_, _ = a.digest.Write([]byte("="))
-			_, _ = a.digest.WriteString(val)
-		}
-		key = a.digest.Sum64()
+		key = ComputeHashFromValues(a.digest, labels, labelValues)
 	}
 
 	if state, ok := point[key]; ok {

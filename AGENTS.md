@@ -63,3 +63,4 @@ make test-fuzz                                 # run fuzz tests
 ## Using Tools
 
 - When using the `mcp__acp__Write` tool, write to a path within the current worktree to avoid sandboxing/permissions issues. This includes when writing plan files.
+- Generate protobufs with `make protos`. It can take 10 minutes to run.

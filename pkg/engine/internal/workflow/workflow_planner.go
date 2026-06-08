@@ -21,10 +21,11 @@ import (
 
 // planner is responsible for constructing the Task graph held by a [Workflow].
 type planner struct {
-	tenantID  string
-	batchSize int // batch size to wrap each task fragment with; 0 means no wrapping
-	graph     dag.Graph[*Task]
-	physical  *physical.Plan
+	tenantID            string
+	batchSize           int // batch size to wrap each task fragment with; 0 means no wrapping
+	labelHashShardCount int // number of shards for label hash sharding
+	graph               dag.Graph[*Task]
+	physical            *physical.Plan
 
 	streamWriters map[*Stream]*Task // Lookup of stream to which task writes to it
 }
@@ -49,7 +50,10 @@ type cacheParams struct {
 // The provided context is used only for recording planning-time observations
 // into the xcap region (if any) carried by ctx. Cancellation of ctx does not
 // abort planning.
-func planWorkflow(ctx context.Context, tenantID string, plan *physical.Plan, cacheOpts cacheParams, logger log.Logger) (dag.Graph[*Task], error) {
+//
+// labelHashShardCount specifies the number of shards to create when sharding
+// aggregations by label hash. Use 0 for the default value (16).
+func planWorkflow(ctx context.Context, tenantID string, plan *physical.Plan, cacheOpts cacheParams, labelHashShardCount int, logger log.Logger) (dag.Graph[*Task], error) {
 	root, err := plan.Root()
 	if err != nil {
 		return dag.Graph[*Task]{}, err
@@ -68,11 +72,17 @@ func planWorkflow(ctx context.Context, tenantID string, plan *physical.Plan, cac
 		}
 	}
 
+	// Use default shard count if not specified
+	if labelHashShardCount == 0 {
+		labelHashShardCount = 16
+	}
+
 	planner := &planner{
-		tenantID:      tenantID,
-		batchSize:     batchSize,
-		physical:      plan,
-		streamWriters: make(map[*Stream]*Task),
+		tenantID:            tenantID,
+		batchSize:           batchSize,
+		labelHashShardCount: labelHashShardCount,
+		physical:            plan,
+		streamWriters:       make(map[*Stream]*Task),
 	}
 	if err := planner.Process(root); err != nil {
 		return dag.Graph[*Task]{}, err
@@ -548,8 +558,85 @@ func injectTaskCaching(tenantID string, graph dag.Graph[*Task], maxSizeBytes uin
 // Process builds a set of tasks from a root physical plan node. Built tasks are
 // added to p.graph.
 func (p *planner) Process(root physical.Node) error {
+	// Special handling if root is an aggregation that should be sharded
+	if isAggregation(root) {
+		return p.processShardedRootAggregation(root)
+	}
+
 	_, err := p.processNode(root, true)
 	return err
+}
+
+// processShardedRootAggregation handles the case where the root node of the plan
+// is an aggregation that should be sharded. It creates multiple aggregation tasks
+// and wraps them with a single Merge node as the new root.
+func (p *planner) processShardedRootAggregation(aggNode physical.Node) error {
+	// Create the sharded aggregation tasks
+	aggShardTasks, err := p.processShardedAggregation(aggNode)
+	if err != nil {
+		return err
+	}
+
+	// If we only got one task back (sharding wasn't applied), don't create a Merge node
+	// The single task is already the root
+	if len(aggShardTasks) == 1 {
+		return nil
+	}
+
+	// Create a Merge node as the new root to combine all aggregation shards
+	mergeNode := &physical.Merge{
+		NodeID: ulid.Make(),
+	}
+
+	// Create task fragment containing only the Merge node
+	mergePlan := dag.Graph[physical.Node]{}
+	mergePlan.Add(mergeNode)
+	mergeFragment := physical.FromGraph(mergePlan)
+
+	// Apply batching if configured
+	if p.batchSize > 0 {
+		var err error
+		if mergeFragment, err = physical.WrapWithBatching(mergeFragment, p.batchSize); err != nil {
+			return fmt.Errorf("wrapping merge with batching: %w", err)
+		}
+	}
+
+	// Create streams from all aggregation shard tasks to the Merge task
+	mergeSources := make(map[physical.Node][]*Stream)
+	for _, aggTask := range aggShardTasks {
+		stream := &Stream{ULID: ulid.Make(), TenantID: p.tenantID}
+		if err := p.addSink(aggTask, stream); err != nil {
+			return err
+		}
+		mergeSources[mergeNode] = append(mergeSources[mergeNode], stream)
+	}
+
+	// Calculate time range for merge task
+	var mergeTimeRange physical.TimeRange
+	for _, aggTask := range aggShardTasks {
+		mergeTimeRange = mergeTimeRange.Merge(aggTask.MaxTimeRange)
+	}
+
+	// Create the Merge task
+	mergeTask := &Task{
+		ULID:         ulid.Make(),
+		TenantID:     p.tenantID,
+		Fragment:     mergeFragment,
+		Sources:      mergeSources,
+		Sinks:        make(map[physical.Node][]*Stream),
+		MaxTimeRange: mergeTimeRange,
+	}
+	p.graph.Add(mergeTask)
+
+	// Wire edges from merge task to all aggregation shard tasks
+	for _, aggTask := range aggShardTasks {
+		_ = p.graph.AddEdge(dag.Edge[*Task]{
+			Parent: mergeTask,
+			Child:  aggTask,
+		})
+	}
+
+	return nil
 }
 
 // processNode builds a set of tasks from the given node. splitOnBreaker
@@ -600,15 +687,28 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 			switch {
 			case splitOnBreaker && isPipelineBreaker(child):
 				childTasks, found := nodeTasks[child]
+
 				if !found {
-					// Split the pipeline breaker into its own set of tasks.
-					task, err := p.processNode(child, splitOnBreaker)
-					if err != nil {
-						return nil, err
+					// Check if this is an aggregation that should be sharded
+					if isAggregation(child) {
+						// Create multiple sharded aggregation tasks
+						tasks, err := p.processShardedAggregation(child)
+						if err != nil {
+							return nil, err
+						}
+						childrenTasks = append(childrenTasks, tasks...)
+						nodeTasks[child] = append(nodeTasks[child], tasks...)
+						childTasks = nodeTasks[child]
+					} else {
+						// Split the pipeline breaker into its own task
+						task, err := p.processNode(child, splitOnBreaker)
+						if err != nil {
+							return nil, err
+						}
+						childrenTasks = append(childrenTasks, task)
+						nodeTasks[child] = append(nodeTasks[child], task)
+						childTasks = nodeTasks[child]
 					}
-					childrenTasks = append(childrenTasks, task)
-					nodeTasks[child] = append(nodeTasks[child], task)
-					childTasks = nodeTasks[child]
 				}
 
 				// Create one unique stream for each child task so we can
@@ -742,12 +842,251 @@ func isPipelineBreaker(node physical.Node) bool {
 	// decision on this should wait until we're able to serialize the node over
 	// the network, since that might impact how we're able to define this at the
 	// node level.
-	switch node.Type() {
-	case physical.NodeTypeTopK, physical.NodeTypeRangeAggregation, physical.NodeTypeVectorAggregation:
+
+	if node.Type() == physical.NodeTypeTopK {
+		return true
+	}
+
+	// Aggregation nodes are also pipeline breakers. Explicitly reuse that logic.
+	if isAggregation(node) {
 		return true
 	}
 
 	return false
+}
+
+// isAggregation returns true if the node is an aggregation node.
+func isAggregation(node physical.Node) bool {
+	switch node.Type() {
+	case physical.NodeTypeRangeAggregation, physical.NodeTypeVectorAggregation:
+		return true
+	}
+	return false
+}
+
+// getShardingConfig determines if a node should be sharded and returns the sharding configuration.
+// Returns nil if the node should not be sharded.
+func (p *planner) getShardingConfig(node physical.Node) *SinkRouting {
+	switch agg := node.(type) {
+	case *physical.VectorAggregation:
+		// Shard vector aggregations by label hash
+		return &SinkRouting{
+			Strategy: SinkRoutingStrategyLabelHash,
+			Grouping: agg.Grouping,
+		}
+	case *physical.RangeAggregation:
+		// Shard range aggregations by time
+		if !agg.Start.IsZero() && !agg.End.IsZero() {
+			timeRanges := calculateAlignedTimeShards(agg.Start, agg.End)
+			if len(timeRanges) > 1 {
+				return &SinkRouting{
+					Strategy:   SinkRoutingStrategyTimeShard,
+					TimeRanges: timeRanges,
+				}
+			}
+		}
+		// Fallback to label hash if time range is not available or too small
+		return &SinkRouting{
+			Strategy: SinkRoutingStrategyLabelHash,
+			Grouping: agg.Grouping,
+		}
+	}
+
+	return nil
+}
+
+// calculateAlignedTimeShards splits a time range into 12-hour aligned shards.
+// Returns a slice of TimeRanges, one for each shard.
+func calculateAlignedTimeShards(start, end time.Time) []physical.TimeRange {
+	const shardDuration = 12 * time.Hour
+
+	// Align start to a 12-hour boundary (00:00 or 12:00 UTC)
+	alignedStart := start.Truncate(shardDuration)
+	if alignedStart.Before(start) {
+		alignedStart = alignedStart.Add(shardDuration)
+	}
+
+	var shards []physical.TimeRange
+	current := start
+	if current.Before(alignedStart) {
+		shardEnd := alignedStart
+		if shardEnd.After(end) {
+			shardEnd = end
+		}
+
+		shards = append(shards, physical.TimeRange{
+			Start: current,
+			End:   shardEnd,
+		})
+
+		current = shardEnd
+	}
+
+	for current.Before(end) {
+		shardEnd := current.Add(shardDuration)
+		if shardEnd.After(end) {
+			shardEnd = end
+		}
+
+		shards = append(shards, physical.TimeRange{
+			Start: current,
+			End:   shardEnd,
+		})
+
+		current = shardEnd
+	}
+
+	// If we don't have any shards (e.g., range is smaller than one shard), create one
+	if len(shards) == 0 {
+		shards = append(shards, physical.TimeRange{
+			Start: start,
+			End:   end,
+		})
+	}
+
+	return shards
+}
+
+// processShardedAggregation creates multiple identical aggregation tasks for sharding.
+func (p *planner) processShardedAggregation(node physical.Node) ([]*Task, error) {
+	routing := p.getShardingConfig(node)
+	if routing == nil {
+		// No sharding needed, process normally
+		task, err := p.processNode(node, true)
+		if err != nil {
+			return nil, err
+		}
+		return []*Task{task}, nil
+	}
+
+	// Determine the number of shards to create based on the routing strategy
+	numShards := p.labelHashShardCount
+	if routing.Strategy == SinkRoutingStrategyTimeShard {
+		numShards = len(routing.TimeRanges)
+	}
+
+	if numShards == 1 {
+		// No sharding needed, process normally
+		task, err := p.processNode(node, true)
+		if err != nil {
+			return nil, err
+		}
+		return []*Task{task}, nil
+	}
+
+	// Process the aggregation and its children ONCE to get the base task structure
+	baseAggTask, err := p.processNode(node, true)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the children of the aggregation task (tasks that feed INTO the aggregation)
+	childTasks := p.graph.Children(baseAggTask)
+
+	// Update MaxTimeRange for the base task if sharding by time
+	if routing.Strategy == SinkRoutingStrategyTimeShard {
+		baseAggTask.MaxTimeRange = routing.TimeRanges[0]
+	}
+
+	// Create N-1 more aggregation shard tasks (we already have one from baseTasks)
+	allShardTasks := make([]*Task, 0, numShards)
+	allShardTasks = append(allShardTasks, baseAggTask)
+
+	// Build a mapping from base nodes to their positions in the graph for later matching
+	baseGraph := baseAggTask.Fragment.Graph()
+	baseNodesList := make([]physical.Node, 0)
+	for _, root := range baseGraph.Roots() {
+		_ = baseGraph.Walk(root, func(n physical.Node) error {
+			baseNodesList = append(baseNodesList, n)
+			return nil
+		}, dag.PreOrderWalk)
+	}
+
+	// Store node mappings for each shard (index 0 is base, indices 1+ are clones)
+	nodeMappings := make([]map[physical.Node]physical.Node, numShards)
+	nodeMappings[0] = make(map[physical.Node]physical.Node)
+	for _, n := range baseNodesList {
+		nodeMappings[0][n] = n // base maps to itself
+	}
+
+	for i := 1; i < numShards; i++ {
+		// Clone the aggregation task's fragment for each additional shard.
+		// The cloned fragment already has batching applied from baseAggTask (via processNode),
+		// so we don't need to wrap it again.
+		shardPlan := baseAggTask.Fragment.Graph().Clone()
+		shardFragment := physical.FromGraph(*shardPlan)
+
+		// Build corresponding list of shard nodes in the same traversal order
+		shardNodesList := make([]physical.Node, 0)
+		for _, root := range shardFragment.Graph().Roots() {
+			_ = shardFragment.Graph().Walk(root, func(n physical.Node) error {
+				shardNodesList = append(shardNodesList, n)
+				return nil
+			}, dag.PreOrderWalk)
+		}
+
+		// Create mapping from base nodes to shard nodes
+		nodeMapping := make(map[physical.Node]physical.Node)
+		for j := 0; j < len(baseNodesList) && j < len(shardNodesList); j++ {
+			nodeMapping[baseNodesList[j]] = shardNodesList[j]
+		}
+		nodeMappings[i] = nodeMapping
+
+		// Set MaxTimeRange based on sharding strategy
+		var maxTimeRange physical.TimeRange
+		if routing.Strategy == SinkRoutingStrategyTimeShard {
+			maxTimeRange = routing.TimeRanges[i]
+		} else {
+			maxTimeRange = baseAggTask.MaxTimeRange
+		}
+
+		shardTask := &Task{
+			ULID:         ulid.Make(),
+			TenantID:     p.tenantID,
+			Fragment:     shardFragment,
+			Sources:      make(map[physical.Node][]*Stream),
+			Sinks:        make(map[physical.Node][]*Stream),
+			MaxTimeRange: maxTimeRange,
+		}
+		p.graph.Add(shardTask)
+		allShardTasks = append(allShardTasks, shardTask)
+
+		// Wire edge from shard to each child
+		for _, childTask := range childTasks {
+			_ = p.graph.AddEdge(dag.Edge[*Task]{
+				Parent: shardTask,
+				Child:  childTask,
+			})
+		}
+	}
+
+	// Now connect each child to ALL N shards (each child should have N sinks)
+	for _, childTask := range childTasks {
+		// Set sink routing on child so it knows how to route to shards
+		childTask.SinkRouting = routing
+
+		// Create N-1 additional streams from this child to the other shards
+		// (it already has 1 stream to baseAggTask from the initial processNode call)
+		for i := 1; i < numShards; i++ {
+			stream := &Stream{ULID: ulid.Make(), TenantID: p.tenantID}
+			if err := p.addSink(childTask, stream); err != nil {
+				return nil, err
+			}
+
+			// Add this stream as a source to the shard task.
+			// Use the node mapping to find corresponding nodes in the shard.
+			shardTask := allShardTasks[i]
+			nodeMapping := nodeMappings[i]
+
+			for baseNode := range baseAggTask.Sources {
+				if shardNode, ok := nodeMapping[baseNode]; ok {
+					shardTask.Sources[shardNode] = append(shardTask.Sources[shardNode], stream)
+				}
+			}
+		}
+	}
+
+	return allShardTasks, nil
 }
 
 // processParallelizeNode builds a set of tasks for a Parallelize node.
