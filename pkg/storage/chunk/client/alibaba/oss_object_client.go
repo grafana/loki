@@ -47,6 +47,7 @@ type OssConfig struct {
 	RAMRoleName          string         `yaml:"ram_role_name"`
 	ConnectionTimeoutSec int64          `yaml:"conn_timeout_sec"`
 	ReadWriteTimeoutSec  int64          `yaml:"read_write_timeout_sec"`
+	UseV1Auth            bool           `yaml:"use_v1_auth"`
 }
 
 type Credentials struct {
@@ -71,7 +72,8 @@ func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Region, prefix+"oss.region", "", "Alibabacloud Region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"oss.access-key-id", "", "alibabacloud Access Key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "alibabacloud Secret Access Key")
-	f.StringVar(&cfg.RAMRoleName, prefix+"oss.ram-role-name", "", "Optional. Specify the RAM role name of the ECS instance. ECSRAMRole-based access is enabled only when neither access_key_id nor secret_access_key is configured. The role name can be automatically inferred even if not explicitly set.")
+	f.StringVar(&cfg.RAMRoleName, prefix+"oss.ram-role-name", "", "Specify the RAM role name of the ECS instance. ECS RAM role-based access is enabled only when neither access_key_id nor secret_access_key is configured, and requires V4 signing (use_v1_auth must be false). If not set, the role name will be automatically retrieved from the ECS instance metadata.")
+	f.BoolVar(&cfg.UseV1Auth, prefix+"oss.use-v1-auth", false, "Use V1 signing instead of V4. V1 signing does not support ECS RAM role authentication; use only as an escape hatch if V4 signing breaks your setup.")
 	f.Int64Var(&cfg.ConnectionTimeoutSec, prefix+"oss.conn-timeout-sec", 30, "Connection timeout in seconds")
 	f.Int64Var(&cfg.ReadWriteTimeoutSec, prefix+"oss.read-write-timeout-sec", 60, "Read/Write timeout in seconds")
 }
@@ -90,16 +92,19 @@ func NewOssObjectClient(_ context.Context, cfg OssConfig) (client.ObjectClient, 
 		return nil, err
 	}
 
-	region := cfg.Region
-	if region == "" {
-		region = parseRegion(cfg.Endpoint)
+	if !cfg.UseV1Auth {
+		region := cfg.Region
+		if region == "" {
+			region = parseRegion(cfg.Endpoint)
+		}
+
+		clientOptions = append(clientOptions,
+			oss.Region(region),
+			oss.AuthVersion(oss.AuthV4),
+		)
 	}
 
-	clientOptions = append(clientOptions,
-		oss.Region(region),
-		oss.Timeout(cfg.ConnectionTimeoutSec, cfg.ReadWriteTimeoutSec),
-		oss.AuthVersion(oss.AuthV4),
-	)
+	clientOptions = append(clientOptions, oss.Timeout(cfg.ConnectionTimeoutSec, cfg.ReadWriteTimeoutSec))
 
 	client, err := oss.New(cfg.Endpoint, accessKeyID, secretAccessKey, clientOptions...)
 	if err != nil {
@@ -312,6 +317,10 @@ func parseRegion(endpoint string) string {
 func buildAuth(cfg *OssConfig) (ak string, sk string, opts []oss.ClientOption, err error) {
 	if cfg.AccessKeyID != "" || cfg.SecretAccessKey.String() != "" {
 		return cfg.AccessKeyID, cfg.SecretAccessKey.String(), nil, nil
+	}
+
+	if cfg.UseV1Auth {
+		return cfg.AccessKeyID, cfg.SecretAccessKey.String(), nil, errors.New("ECS RAM role requires V4 signing; either set use_v1_auth=false or configure access_key_id and secret_access_key")
 	}
 
 	_, opts, err = buildRAMRoleProvider(cfg.RAMRoleName)
