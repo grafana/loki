@@ -7,6 +7,7 @@ Instructions file for coding agents.
 - Use the minimum Go version specified in [go.mod](go.mod)
 - Warn the user about an old Go version
 - The project uses GNU make for building binaries and images. See [Makefile](Makefile)
+- The repo ships a [pre-commit](https://pre-commit.com) config at [.pre-commit-config.yaml](.pre-commit-config.yaml). Run `pre-commit install` once to enable hooks; `go fix ./...` runs automatically on Go changes before each commit.
 
 ## Commands
 
