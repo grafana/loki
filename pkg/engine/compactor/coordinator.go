@@ -180,11 +180,6 @@ func (c *coordinator) runCycle(ctx context.Context) {
 		"tenants_converged", converged,
 		"tenants_failed", failed,
 	)
-	// A cycle that attempted real compaction work — successfully (compacted)
-	// or not (failed) — is "ok"; a cycle where every tenant short-circuited
-	// via the <=1 gate (nothing to do) is "skipped". Separating them keeps
-	// no-op cycle wall-clock (just the ToC load + converged scan) out of the
-	// latency distribution for cycles that did actual work.
 	cycleOutcome := "skipped"
 	if compacted > 0 || failed > 0 {
 		cycleOutcome = "ok"

@@ -78,8 +78,7 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 	obj, closer, err := builder.Flush()
 	if err != nil {
 		if errors.Is(err, indexobj.ErrBuilderEmpty) {
-			// Upload a zero-byte sentinel. No observation: this is the
-			// "merge produced no rows" path and should not skew size stats.
+			// Upload a zero-byte sentinel.
 			return c.bucket.Upload(ctx, node.OutputIndexPath, io.NopCloser(bytes.NewReader([]byte{})))
 		}
 		return fmt.Errorf("flushing builder: %w", err)
