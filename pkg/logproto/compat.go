@@ -177,9 +177,12 @@ func (s *LegacySample) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func SampleJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+func unsafeSampleJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	legacySample := (*LegacySample)(ptr)
+	SampleJsoniterEncode(legacySample, stream)
+}
 
+func SampleJsoniterEncode(legacySample *LegacySample, stream *jsoniter.Stream) {
 	if isTesting && math.IsNaN(legacySample.Value) {
 		stream.Error = fmt.Errorf("test sample")
 		return
@@ -192,7 +195,7 @@ func SampleJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	stream.WriteArrayEnd()
 }
 
-func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+func unsafeSampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	if !iter.ReadArray() {
 		iter.ReportError("logproto.LegacySample", "expected [")
 		return
@@ -229,8 +232,8 @@ func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 }
 
 func init() {
-	jsoniter.RegisterTypeEncoderFunc("logproto.LegacySample", SampleJsoniterEncode, func(unsafe.Pointer) bool { return false })
-	jsoniter.RegisterTypeDecoderFunc("logproto.LegacySample", SampleJsoniterDecode)
+	jsoniter.RegisterTypeEncoderFunc("logproto.LegacySample", unsafeSampleJsoniterEncode, nil)
+	jsoniter.RegisterTypeDecoderFunc("logproto.LegacySample", unsafeSampleJsoniterDecode)
 }
 
 // Combine unique values from multiple LabelResponses into a single, sorted LabelResponse.
