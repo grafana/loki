@@ -30,12 +30,12 @@ The default Helm chart deploys the following components:
 - Backend component (3 replicas)
 - Loki Canary (1 DaemonSet)
 - Gateway (1 NGINX replica)
-- Minio (optional, if `minio.enabled=true`)
+- Minio (optional, deprecated — see warning below)
 - Chunks cache (1 replica)
 - Results cache (1 replica)
 
 {{< admonition type="note" >}}
-We do not recommended running scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example.
+We do not recommend running scalable mode with `filesystem` storage. For the purpose of this guide, we will use the deprecated built-in MinIO subchart to provide a complete self-contained example. Configure a dedicated external object storage backend for production.
 {{< /admonition >}}
 
 ## Prerequisites
@@ -64,6 +64,10 @@ If this is the first time you have deployed the Loki Helm chart since the move t
    ```
 
 1. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
+
+   {{< admonition type="warning" >}}
+   The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. The example below requires `ignoreMinioDeprecation: true` to render with chart v17+. For production, configure a dedicated external object storage backend.
+   {{< /admonition >}}
 
     ```yaml
       loki:
@@ -96,6 +100,7 @@ If this is the first time you have deployed the Loki Helm chart since the move t
       write:
         replicas: 3 # To ensure data durability with replication
 
+      ignoreMinioDeprecation: true  # Temporary workaround – MinIO will be removed 2026-10-31
       # Enable minio for storage
       minio:
         enabled: true
@@ -107,13 +112,13 @@ If this is the first time you have deployed the Loki Helm chart since the move t
 
 1. Install or upgrade the Loki deployment.
 
- - To install:
+  - To install:
 
    ```bash
    helm install --values values.yaml loki grafana-community/loki
    ```
 
- - To upgrade:
+  - To upgrade:
 
    ```bash
    helm upgrade --values values.yaml loki grafana-community/loki
