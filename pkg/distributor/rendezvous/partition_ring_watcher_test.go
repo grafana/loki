@@ -69,12 +69,22 @@ func TestPartitionWatcher_ReadsInitialState(t *testing.T) {
 	require.ElementsMatch(t, []int32{1, 2, 3}, sharder.partitions)
 }
 
-// TestPartitionWatcher_NilSharderWhenEmpty verifies that ShuffleSharder() returns nil
-// when the KV store has no data at start-up.
-func TestPartitionWatcher_NilSharderWhenEmpty(t *testing.T) {
+// TestPartitionWatcher_EmptySharderWhenKVMissing verifies that ShuffleSharder() returns
+// a non-nil empty sharder when the KV store has no data at start-up.
+func TestPartitionWatcher_EmptySharderWhenKVMissing(t *testing.T) {
 	kvClient := newTestKVClient(t)
 	watcher := startWatcher(t, kvClient)
-	assert.Nil(t, watcher.ShuffleSharder())
+
+	sharder := watcher.ShuffleSharder()
+	require.NotNil(t, sharder)
+	assert.Equal(t, 0, sharder.Size())
+
+	_, err := sharder.Shard(123)
+	assert.Error(t, err)
+
+	sharder2 := sharder.ShuffleShard("foo", 1)
+	require.NotNil(t, sharder2)
+	assert.Equal(t, 0, sharder2.Size())
 }
 
 // TestPartitionWatcher_PicksUpChanges verifies that the watcher updates the
@@ -100,6 +110,31 @@ func TestPartitionWatcher_PicksUpChanges(t *testing.T) {
 	require.NotNil(t, updated)
 	require.ElementsMatch(t, []int32{2}, updated.partitions)
 	require.ElementsMatch(t, []int32{1}, initial.partitions) // old caller still reflects pre-update state
+}
+
+// nilGetKVClient is a kv.Client whose Get returns (nil, nil), matching the
+// documented behaviour for a missing key. WatchKey blocks until the context
+// is cancelled so the watcher's loop stays running for the duration of the test.
+type nilGetKVClient struct{ kv.Client }
+
+func (nilGetKVClient) Get(_ context.Context, _ string) (interface{}, error) {
+	return nil, nil
+}
+
+func (nilGetKVClient) WatchKey(ctx context.Context, _ string, _ func(interface{}) bool) {
+	<-ctx.Done()
+}
+
+// TestPartitionWatcher_NilGetReturnsEmptySharder verifies that when kvClient.Get
+// returns (nil, nil) during starting(ctx), ShuffleSharder() returns a non-nil empty sharder.
+func TestPartitionWatcher_NilGetReturnsEmptySharder(t *testing.T) {
+	watcher := New(Config{Key: testKey}, nilGetKVClient{}, log.NewNopLogger())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), watcher))
+	t.Cleanup(func() { assert.NoError(t, services.StopAndAwaitTerminated(context.Background(), watcher)) })
+
+	sharder := watcher.ShuffleSharder()
+	require.NotNil(t, sharder)
+	assert.Equal(t, 0, sharder.Size())
 }
 
 // TestPartitionWatcher_InactivePartitionsExcluded verifies that only active

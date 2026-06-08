@@ -167,7 +167,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 		watcher := newUninitialisedPartitionRingWatcher()
 		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, prometheus.NewRegistry(), log.NewNopLogger())
 		_, err := resolver.Resolve("tenant", "test", 0x1, 0, 0)
-		require.EqualError(t, err, "partition ring watcher not initialised")
+		require.EqualError(t, err, "no active partitions")
 	})
 }
 

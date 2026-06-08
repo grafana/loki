@@ -109,10 +109,6 @@ func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, 
 	r.resolveTotal.Inc()
 
 	shuffleSharder := r.partitionRingWatcher.ShuffleSharder()
-	if shuffleSharder == nil {
-		r.resolveFailed.Inc()
-		return 0, errors.New("partition ring watcher not initialised")
-	}
 
 	// Shuffle shard for the tenant based on their ingestion rate limit.
 	// This ensures that streams are not only co-located within the same
