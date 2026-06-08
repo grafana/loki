@@ -57,8 +57,8 @@ func (c *DataObjTeeConfig) Validate() error {
 	if c.MaxBufferedBytes < 0 {
 		return errors.New("max buffered bytes cannot be negative")
 	}
-	if c.PerPartitionRateBytes < 0 {
-		return errors.New("per partition rate bytes cannot be negative")
+	if c.PerPartitionRateBytes <= 0 {
+		return errors.New("per partition rate bytes must be positive")
 	}
 	return nil
 }
