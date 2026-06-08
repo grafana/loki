@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
@@ -69,6 +70,9 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		"duration_execution_send_ms", time.Duration(durExecutionSend).Milliseconds(),
 		"duration_execution_other_ms", time.Duration(durExecutionOther).Milliseconds(),
 
+		// Assignment
+		"assignment_retry_count", xcap.Value[int64](capture, schedulerstat.TaskAssignmentRetries),
+
 		// Stage 9 (leaf) counters.
 		"pages_total", xcap.Value[int64](capture, dataobj.StatDatasetPagesTotal),
 		"pages_pruned", xcap.Value[int64](capture, dataobj.StatDatasetPagesPruned),
@@ -86,6 +90,45 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		// Task result cache.
 		"cache_check", taskResultCacheOutcome(capture),
 	)
+
+	if isScanTask(task) {
+		// print log section data locality as a separate log line.
+		wf.printTaskLogLocalitySummary(task, capture)
+	}
+}
+
+func (wf *Workflow) printTaskLogLocalitySummary(task *Task, capture *xcap.Capture) {
+	rowsTotal := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, xcap.StatDatasetMaxRows)
+	relevantRows := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamRelevantRows)
+	streamPagesTotal := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamPagesTotal)
+	streamRelevantPages := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamRelevantPages)
+	streamPageRuns := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamPageRuns)
+
+	level.Info(wf.logger).Log(
+		"msg", "task-log-locality-summary",
+		// Identity
+		"task_id", task.ULID,
+		"query_id", wf.opts.ID,
+		"parent_task_id", wf.parentTaskID(task),
+
+		// Locality
+		"dataset_rows_total", rowsTotal,
+		"stream_relevant_rows", relevantRows,
+		"stream_pages_total", streamPagesTotal,
+		"stream_relevant_pages", streamRelevantPages,
+		"stream_page_runs", streamPageRuns,
+		"stream_row_relevance", ratio(relevantRows, rowsTotal),
+		"stream_page_relevance", ratio(streamRelevantPages, streamPagesTotal),
+		"stream_page_fragmentation", ratio(streamPageRuns, streamRelevantPages),
+	)
+}
+
+func ratio(part, total int64) float64 {
+	if total <= 0 {
+		return 0
+	}
+
+	return float64(part) / float64(total)
 }
 
 // parentTaskID returns the task's parent ULID, or the zero ULID if the task

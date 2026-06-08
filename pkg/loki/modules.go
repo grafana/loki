@@ -1732,7 +1732,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 			reg,
 		),
 	)
-	dnsProvider := dns.NewProvider(util_log.Logger, dnsProviderReg, dns.GolangResolverType)
+	dnsProvider := dns.NewProvider(dns.GolangResolverType, 0, util_log.Logger, dnsProviderReg)
 
 	// TODO(ashwanth): This is not considering component specific overrides for InstanceInterfaceNames.
 	// This should be fixed in the future.
@@ -2500,11 +2500,13 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
-		Config:     t.Cfg.DataObj.Compaction.Worker,
-		Bucket:     indexBucket,
-		Metastore:  ms,
-		Logger:     logger,
-		Registerer: prometheus.DefaultRegisterer,
+		Config:       t.Cfg.DataObj.Compaction.Worker,
+		Bucket:       indexBucket,
+		Metastore:    ms,
+		ScratchStore: t.scratchStore,
+		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
+		Logger:       logger,
+		Registerer:   prometheus.DefaultRegisterer,
 	})
 	if err != nil {
 		return nil, err

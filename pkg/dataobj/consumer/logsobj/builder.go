@@ -388,7 +388,6 @@ func (b *Builder) estimatedSize() int {
 		size += lb.EstimatedSize()
 	}
 	size += b.builder.Bytes()
-	b.metrics.sizeEstimate.Set(float64(size))
 	return size
 }
 
@@ -622,7 +621,6 @@ func (b *Builder) Reset() {
 	clear(b.streams)
 
 	b.earliestRecordTime = time.Time{}
-	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
 	b.state = builderStateEmpty
 }

@@ -281,7 +281,7 @@ func (is *indexSet) upload() error {
 	}()
 
 	fileName := idx.Name()
-	level.Debug(is.logger).Log("msg", fmt.Sprintf("uploading index %s", fileName))
+	level.Debug(is.logger).Log("msg", "uploading index", "file_name", fileName)
 
 	idxPath := idx.Path()
 

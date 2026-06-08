@@ -880,6 +880,111 @@ func TestNullValueHandling(t *testing.T) {
 	}
 }
 
+// TestStringFilterNullAsEmpty verifies the LogQL filter null-coercion semantics:
+// when a string comparator runs as column-vs-literal (one side is a scalar), a
+// null entry on the column side is treated as the empty string "". This matches
+// v1, where an absent label compares as "" so `| foo=""` and `| foo=~".*"` both
+// match rows where foo is absent.
+func TestStringFilterNullAsEmpty(t *testing.T) {
+	// Each case constructs a single-row pair so the boolean result speaks
+	// directly to "does this column entry, treated as '', match this literal?".
+	cases := []struct {
+		name string
+		op   types.BinaryOp
+		// lhs row 0: nullable string. nil means null; ptr-to-string means present.
+		lhs *string
+		// rhs row 0: scalar literal string. The test always sets rhsIsScalar=true.
+		rhs      string
+		expected bool
+	}{
+		// BinaryOpEq — `orgID = ""` matches an absent (null) orgID.
+		{name: "Eq null lhs vs empty literal", op: types.BinaryOpEq, lhs: nil, rhs: "", expected: true},
+		{name: "Eq null lhs vs non-empty literal", op: types.BinaryOpEq, lhs: nil, rhs: "foo", expected: false},
+		{name: "Eq present empty lhs vs empty literal", op: types.BinaryOpEq, lhs: strPtr(""), rhs: "", expected: true},
+		{name: "Eq present value vs matching literal", op: types.BinaryOpEq, lhs: strPtr("foo"), rhs: "foo", expected: true},
+
+		// BinaryOpNeq — `orgID != "foo"` is true for absent (null) orgID.
+		{name: "Neq null lhs vs empty literal", op: types.BinaryOpNeq, lhs: nil, rhs: "", expected: false},
+		{name: "Neq null lhs vs non-empty literal", op: types.BinaryOpNeq, lhs: nil, rhs: "foo", expected: true},
+
+		// BinaryOpMatchRe — the bug shape: `orgID=~"(?i).*.*"` must match null.
+		{name: "MatchRe null lhs vs match-all", op: types.BinaryOpMatchRe, lhs: nil, rhs: ".*", expected: true},
+		{name: "MatchRe null lhs vs (?i).*.*", op: types.BinaryOpMatchRe, lhs: nil, rhs: "(?i).*.*", expected: true},
+		{name: "MatchRe null lhs vs require-non-empty", op: types.BinaryOpMatchRe, lhs: nil, rhs: ".+", expected: false},
+		{name: "MatchRe null lhs vs literal-foo", op: types.BinaryOpMatchRe, lhs: nil, rhs: "foo", expected: false},
+
+		// BinaryOpNotMatchRe — inversion of the above.
+		{name: "NotMatchRe null lhs vs match-all", op: types.BinaryOpNotMatchRe, lhs: nil, rhs: ".*", expected: false},
+		{name: "NotMatchRe null lhs vs require-non-empty", op: types.BinaryOpNotMatchRe, lhs: nil, rhs: ".+", expected: true},
+
+		// BinaryOpEqCaseInsensitive — same null-as-"" behaviour for the CI variants.
+		{name: "EqCaseInsensitive null lhs vs empty literal", op: types.BinaryOpEqCaseInsensitive, lhs: nil, rhs: "", expected: true},
+		{name: "EqCaseInsensitive null lhs vs FOO", op: types.BinaryOpEqCaseInsensitive, lhs: nil, rhs: "FOO", expected: false},
+
+		// BinaryOpMatchSubstr — `column |= "foo"` is false when the column is null.
+		// (In practice this op runs against the non-null message column, but the
+		// coercion still yields the LogQL-consistent answer here.)
+		{name: "MatchSubstr null lhs vs needle", op: types.BinaryOpMatchSubstr, lhs: nil, rhs: "foo", expected: false},
+		{name: "MatchSubstr null lhs vs empty needle", op: types.BinaryOpMatchSubstr, lhs: nil, rhs: "", expected: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var nulls []bool
+			values := []string{""}
+			if tc.lhs == nil {
+				nulls = []bool{true}
+			} else {
+				values[0] = *tc.lhs
+			}
+			lhsArr := createStringArray(values, nulls)
+			rhsArr := createStringArray([]string{tc.rhs}, nil)
+
+			fn, err := binaryFunctions.GetForSignature(tc.op, arrow.BinaryTypes.String)
+			require.NoError(t, err)
+
+			// rhsIsScalar=true is the column-vs-literal shape LogQL filters
+			// always produce. The fix only applies in this shape.
+			result, err := fn.Evaluate(lhsArr, rhsArr, false, true)
+			require.NoError(t, err)
+
+			got, _ := extractBoolValues(result)
+			require.Equal(t, []bool{tc.expected}, got)
+		})
+	}
+}
+
+// TestStringFilterNullAsEmpty_SymmetricLhsScalar verifies the coercion is
+// symmetric: a null on the rhs paired with a scalar lhs literal is also
+// coerced to "". The logical builder always puts the column on the left and
+// the literal on the right today, so this branch isn't reached by current
+// LogQL syntax; the test guards it for future-proofing.
+func TestStringFilterNullAsEmpty_SymmetricLhsScalar(t *testing.T) {
+	lhsArr := createStringArray([]string{""}, nil)          // scalar literal ""
+	rhsArr := createStringArray([]string{""}, []bool{true}) // null column on rhs
+
+	fn, err := binaryFunctions.GetForSignature(types.BinaryOpEq, arrow.BinaryTypes.String)
+	require.NoError(t, err)
+	result, err := fn.Evaluate(lhsArr, rhsArr, true, false)
+	require.NoError(t, err)
+	got, _ := extractBoolValues(result)
+	require.Equal(t, []bool{true}, got, `"" = null-as-"" should be true`)
+
+	// Symmetric case for regex.
+	lhsRe := createStringArray([]string{".*"}, nil)
+	rhsRe := createStringArray([]string{""}, []bool{true})
+	fn, err = binaryFunctions.GetForSignature(types.BinaryOpMatchRe, arrow.BinaryTypes.String)
+	require.NoError(t, err)
+	// NOTE: regex requires the pattern on the rhs; when lhs is scalar, eval
+	// treats lhs as the haystack. We only verify the null-rhs coercion does
+	// not crash and the loop completes — the LogQL semantic for this shape is
+	// undefined, but symmetry must not regress existing tests.
+	_, err = fn.Evaluate(lhsRe, rhsRe, true, false)
+	require.NoError(t, err)
+}
+
+func strPtr(s string) *string { return &s }
+
 func TestArrayLengthMismatch(t *testing.T) {
 	tests := []struct {
 		name     string

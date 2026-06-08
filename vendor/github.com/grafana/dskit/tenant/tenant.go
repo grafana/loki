@@ -58,6 +58,15 @@ func (e *errTenantIDUnsupportedCharacter) Error() string {
 	)
 }
 
+type errMalformedMetadata struct {
+	source string
+	reason string
+}
+
+func (e errMalformedMetadata) Error() string {
+	return fmt.Sprintf("malformed tenant metadata: %q (%s)", e.source, e.reason)
+}
+
 // NormalizeTenantIDs creates a normalized form by sorting and de-duplicating the list of tenantIDs
 func NormalizeTenantIDs(tenantIDs []string) []string {
 	sort.Strings(tenantIDs)
@@ -141,7 +150,7 @@ func splitTenantAndMetadata(orgID string) (tenantID, metadata string) {
 	if idx == -1 {
 		return orgID, ""
 	}
-	return orgID[:idx], orgID[idx+1:]
+	return orgID[:idx], orgID[idx:]
 }
 
 // stringsCut is like strings.Cut but uses strings.IndexByte instead.

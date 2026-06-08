@@ -25,7 +25,6 @@ func buildIndexMergePlan(
 	window time.Time,
 	task *compactionv2pb.TaskSpec,
 	outputIndexPath string,
-	taskTTL time.Duration,
 ) *physical.Plan {
 	node := &physical.IndexMerge{
 		// Each call mints a fresh NodeID so racing builds don't collide on the
@@ -35,7 +34,6 @@ func buildIndexMergePlan(
 		ToCWindowStart:  window.UnixNano(),
 		Runs:            task.Runs,
 		OutputIndexPath: outputIndexPath,
-		TaskTTL:         taskTTL,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)
