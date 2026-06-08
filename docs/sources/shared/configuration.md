@@ -1617,10 +1617,6 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
-    # Experimental: Per-IndexMerge-task deadline.
-    # CLI flag: -dataobj.compaction.index-merge-task-ttl
-    [index_merge_task_ttl: <duration> | default = 10m]
-
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
     # CLI flag: -dataobj.compaction.toc-consolidate-timeout

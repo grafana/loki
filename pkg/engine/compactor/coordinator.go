@@ -209,7 +209,7 @@ func (c *coordinator) runTenantCycle(
 	}
 	for i, ts := range tasks {
 		g.Go(func() error {
-			plan := buildIndexMergePlan(tenant, window, ts, outputs[i], c.cfg.IndexMergeTaskTTL)
+			plan := buildIndexMergePlan(tenant, window, ts, outputs[i])
 			opts := workflow.Options{
 				Tenant: tenant,
 				Actor:  []string{"compaction", "index-merge"},
