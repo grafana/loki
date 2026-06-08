@@ -99,6 +99,8 @@ type indexAndScore struct {
 // scores from hashes.
 // Pass invertOrdering=true to instead select the k lowest-scoring items.
 // Caller pre-allocates heap so its backing array doesn't escape to the heap.
+// Doesn't use go's built-in heap support to avoid the backing array escaping to the heap. This is a significant
+// performance optimization - benchmarks are ~45% slower using built-in heap.
 func selectTopKIndices(heap []indexAndScore, hashes []uint64, key uint64, invertOrdering bool) {
 	k := len(heap)
 	// Put the first k elements into the heap
