@@ -2863,12 +2863,13 @@ func Benchmark_CodecDecodeSeries(b *testing.B) {
 
 func Benchmark_MergeResponses(b *testing.B) {
 	responses := make([]queryrangebase.Response, 100)
+	seriesData := generateSeries()
 	for i := range responses {
 		responses[i] = &LokiSeriesResponse{
 			Status:     "200",
 			Version:    1,
 			Statistics: stats.Result{},
-			Data:       generateSeries(),
+			Data:       seriesData,
 		}
 	}
 
