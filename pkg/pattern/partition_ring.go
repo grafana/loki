@@ -67,7 +67,7 @@ func (s *PartitionRingWatcher) starting(ctx context.Context) error {
 		analytics.JSONCodec,
 	}
 
-	resolver := dns.NewProvider(log.With(s.logger, "component", "memberlist-dns"), s.reg, dns.GolangResolverType)
+	resolver := dns.NewProvider(dns.GolangResolverType, 0, log.With(s.logger, "component", "memberlist-dns"), s.reg)
 	s.kvInit = memberlist.NewKVInitService(&memberlistCfg, log.With(s.logger, "component", "memberlist-kv"), resolver, s.reg)
 	if err := s.kvInit.StartAsync(ctx); err != nil {
 		return fmt.Errorf("start memberlist kv init service: %w", err)
@@ -85,7 +85,7 @@ func (s *PartitionRingWatcher) starting(ctx context.Context) error {
 		return fmt.Errorf("create memberlist kv client: %w", err)
 	}
 
-	const partitionRingName = "ingester-partitions"
+	const partitionRingName = "pattern-ingester-partitions"
 	s.watcher = ring.NewPartitionRingWatcher(partitionRingName, s.cfg.Key, client, log.With(s.logger, "component", "partition-ring"), s.reg)
 
 	s.watcher.WithDelegate(newPartitionRingMetrics(s.reg))

@@ -168,7 +168,6 @@ type TeeConfig struct {
 
 type RingConfig struct {
 	Key               string              `yaml:"key"`
-	Name              string              `yaml:"name"`
 	Memberlist        memberlist.KVConfig `yaml:"memberlist"`
 	WatcherBufferSize int                 `yaml:"watcher_buffer_size"`
 
@@ -181,8 +180,7 @@ type RingConfig struct {
 }
 
 func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Key, prefix+"ring.key", "", "The key to use for the pattern ingester ring.")
-	f.StringVar(&cfg.Name, prefix+"ring.name", "", "The name to use for the pattern ingester ring.")
+	f.StringVar(&cfg.Key, prefix+"ring.key", "pattern-ingester", "The key to use for the pattern ingester ring.")
 	f.IntVar(&cfg.WatcherBufferSize, prefix+"ring.watcher-buffer-size", 0, "Size of the buffer for key watchers.")
 	cfg.Memberlist.RegisterFlagsWithPrefix(f, prefix+"ring.memberlist.")
 	f.DurationVar(&cfg.StartupTimeout, prefix+"ring.startup-timeout", DefaultStartupTimeout, "How long to wait for the partition ring to be populated before failing startup.")
