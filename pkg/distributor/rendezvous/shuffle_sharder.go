@@ -23,7 +23,7 @@ type ShuffleSharder struct {
 func NewShuffleSharder(partitions []int32) ShuffleSharder {
 	hashes := make([]uint64, len(partitions))
 	for i, partition := range partitions {
-		hashes[i] = xxhash.Sum64String("loki-distributor-" + strconv.Itoa(int(partition)))
+		hashes[i] = xxhash.Sum64String(strconv.Itoa(int(partition)))
 	}
 	return ShuffleSharder{partitions, hashes}
 }
