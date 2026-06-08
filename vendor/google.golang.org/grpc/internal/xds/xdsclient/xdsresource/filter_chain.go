@@ -19,7 +19,7 @@ package xdsresource
 
 import (
 	"fmt"
-	"net"
+	"net/netip"
 
 	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource/version"
 
@@ -40,7 +40,7 @@ type NetworkFilterChainMap struct {
 // source type matchers.
 type DestinationPrefixEntry struct {
 	// Prefix is the destination IP prefix.
-	Prefix *net.IPNet
+	Prefix netip.Prefix
 	// SourceTypeArr contains the source type matchers. The supported source
 	// types and their associated indices in the array are:
 	//   - 0: Any: matches connection attempts from any source.
@@ -59,7 +59,7 @@ type SourcePrefixes struct {
 // port matchers.
 type SourcePrefixEntry struct {
 	// Prefix is the source IP prefix.
-	Prefix *net.IPNet
+	Prefix netip.Prefix
 	// PortMap contains the matchers for source ports.
 	PortMap map[int]NetworkFilterChainConfig
 }
