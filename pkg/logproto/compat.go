@@ -232,6 +232,19 @@ func unsafeSampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	}
 }
 
+func LabelAdaptersJsoniterEncode(lbls []LabelAdapter, stream *jsoniter.Stream) {
+	stream.WriteObjectStart()
+	for i, v := range lbls {
+		if i != 0 {
+			stream.WriteMore()
+		}
+		stream.WriteString(v.Name)
+		stream.WriteRaw(`:`)
+		stream.WriteString(v.Value)
+	}
+	stream.WriteObjectEnd()
+}
+
 func init() {
 	jsoniter.RegisterTypeEncoderFunc("logproto.LegacySample", unsafeSampleJsoniterEncode, nil)
 	jsoniter.RegisterTypeDecoderFunc("logproto.LegacySample", unsafeSampleJsoniterDecode)
