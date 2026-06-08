@@ -4,4 +4,4 @@
 package autoexport // import "go.opentelemetry.io/contrib/exporters/autoexport"
 
 // Version is the current release version of the autoexport module.
-const Version = "0.67.0"
+const Version = "0.68.0"
