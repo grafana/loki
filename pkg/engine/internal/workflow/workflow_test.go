@@ -158,6 +158,83 @@ func TestCancellation(t *testing.T) {
 	}
 }
 
+// TestFailedTaskSurfacesErrorBeforeEOF reproduces a race where a failed task's
+// error is lost because the worker closes the results-stream sink (signaling
+// EOF) before the workflow learns the task failed and calls
+// resultsPipeline.SetError. A sink-only task (the root task emits no records
+// and is its own root) maximizes the window: the worker closes the results
+// sink immediately, then reports TaskStateFailed.
+//
+// The consumer (e.g. the dataobj compactor's runPlan) reads the results
+// pipeline to io.EOF and treats EOF as success. If the error is lost, a failed
+// compaction task looks successful and the coordinator swaps the ToC to point
+// at index objects that were never written.
+//
+// This drives the handlers in the order a real worker produces them:
+//  1. results stream -> StreamStateClosed   (worker closes all sinks on failure)
+//  2. root task      -> TaskStateFailed      (worker reports terminal status)
+//
+// and asserts the consumer pipeline surfaces the failure rather than EOF.
+func TestFailedTaskSurfacesErrorBeforeEOF(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var physicalGraph dag.Graph[physical.Node]
+		_ = physicalGraph.Add(&physical.DataObjScan{})
+		physicalPlan := physical.FromGraph(physicalGraph)
+
+		fr := newFakeRunner()
+		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
+		require.NoError(t, err, "workflow should construct properly")
+
+		p, err := wf.Run(t.Context())
+		require.NoError(t, err, "workflow should start properly")
+		defer p.Close()
+
+		synctest.Wait()
+
+		rootTask, err := wf.graph.Root()
+		require.NoError(t, err, "should be able to retrieve singular root task")
+		rt, ok := fr.tasks[rootTask.ULID]
+		require.True(t, ok, "root task should be registered with runner")
+
+		wantErr := errors.New("index merge failed: object not found")
+
+		// The consumer drains the results pipeline in a goroutine, blocked on
+		// Read, exactly as runPlan does.
+		require.NoError(t, p.Open(t.Context()))
+		type readResult struct {
+			err error
+		}
+		done := make(chan readResult, 1)
+		go func() {
+			_, readErr := p.Read(t.Context())
+			done <- readResult{err: readErr}
+		}()
+
+		// Let the consumer goroutine block in Read.
+		synctest.Wait()
+
+		// 1. Worker closes the results-stream sink first (the EOF signal), before
+		//    the workflow has learned the task failed, so errCond is not closed.
+		rs, ok := fr.streams[wf.resultsStream.ULID]
+		require.True(t, ok, "results stream should be registered with runner")
+		rs.Handler(t.Context(), wf.resultsStream, StreamStateClosed)
+
+		// Let the consumer goroutine react to the stream close.
+		synctest.Wait()
+
+		// 2. Worker then reports the task failure.
+		rt.handler(t.Context(), rootTask, TaskStatus{State: TaskStateFailed, Error: wantErr})
+
+		synctest.Wait()
+
+		// The consumer must observe the failure, not a clean EOF. A lost error
+		// makes a failed task look successful.
+		res := <-done
+		require.ErrorIs(t, res.err, wantErr,
+			"consumer must surface the task failure instead of EOF")
+	})
+}
+
 // TestShortCircuiting tests that a running task updating its contributing time range cancels irrelevant
 // downstream tasks.
 func TestShortCircuiting(t *testing.T) {

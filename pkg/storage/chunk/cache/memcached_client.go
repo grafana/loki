@@ -151,7 +151,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		hostname:    cfg.Host,
 		service:     cfg.Service,
 		logger:      logger,
-		provider:    dns.NewProvider(logger, dnsProviderRegisterer, dns.GolangResolverType),
+		provider:    dns.NewProvider(dns.GolangResolverType, 0, logger, dnsProviderRegisterer),
 		cbs:         make(map[string]*gobreaker.CircuitBreaker[interface{}]),
 		cbFailures:  cfg.CBFailures,
 		cbInterval:  cfg.CBInterval,

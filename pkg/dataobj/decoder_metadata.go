@@ -2,7 +2,6 @@ package dataobj
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
@@ -13,12 +12,8 @@ import (
 
 // decode* methods for metadata shared by Decoder implementations.
 
-var errLegacyMagic = errors.New("file uses legacy magic value")
-
 // decodeHeader decodes the header of the file to retrieve the metadata size
 // and the magic value.
-//
-// If the header has the legacy magic value, it returns [errLegacyMagic].
 func decodeHeader(r streamio.Reader) (metadataSize uint32, err error) {
 	var gotMagic [4]byte
 	if _, err := io.ReadFull(r, gotMagic[:]); err != nil {

@@ -310,13 +310,13 @@ local runner = import 'runner.libsonnet',
 
         cat release.json
 
-        if [[ `jq length release.json` -gt 1 ]]; then
+        if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
 
-        if [[ `jq length release.json` -eq 0 ]]; then
+        if [[ `jq length release.json` -eq 0 ]]; then 
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(yarn run --silent get-version)"
