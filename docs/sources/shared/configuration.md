@@ -1622,6 +1622,12 @@ dataobj:
     # CLI flag: -dataobj.compaction.toc-consolidate-timeout
     [toc_consolidate_timeout: <duration> | default = 30s]
 
+    # Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap.
+    # Planning, IndexMerge task execution, and per-output audit logging still
+    # run, but the ToC is never mutated.
+    # CLI flag: -dataobj.compaction.dry-run
+    [dry_run: <boolean> | default = false]
+
     # Experimental: Plan version hashed into IndexMerge output paths. Bump to
     # invalidate previously-written outputs after a planner-algorithm change.
     # CLI flag: -dataobj.compaction.plan-version
