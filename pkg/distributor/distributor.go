@@ -244,7 +244,8 @@ func New(
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
 	dataObjConsumerPartitionRing ring.PartitionRingReader,
-	rendezvousPartitionWatcher *rendezvous.PartitionRingWatcher,
+	dataObjConsumerPartitionKVClient kv.Client,
+	dataObjConsumerPartitionRingKey string,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -311,7 +312,13 @@ func New(
 		)
 
 		if cfg.DataObjTeeConfig.Enabled {
-			if rendezvousPartitionWatcher != nil {
+			var rendezvousPartitionWatcher *rendezvous.PartitionRingWatcher
+			if cfg.DataObjTeeConfig.UseRendezvousHashing {
+				rendezvousPartitionWatcher = rendezvous.New(
+					rendezvous.Config{Key: dataObjConsumerPartitionRingKey},
+					dataObjConsumerPartitionKVClient,
+					logger,
+				)
 				servs = append(servs, rendezvousPartitionWatcher)
 			}
 			resolver := newSegmentationPartitionResolver(

@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/modules"
@@ -40,7 +41,6 @@ import (
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
-	"github.com/grafana/loki/v3/pkg/distributor/rendezvous"
 	"github.com/grafana/loki/v3/pkg/engine"
 	enginecompactor "github.com/grafana/loki/v3/pkg/engine/compactor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -444,7 +444,7 @@ type Loki struct {
 	dataObjConsumerRing                 *ring.Ring
 	dataObjConsumerPartitionRing        *ring.PartitionInstanceRing
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
-	rendezvousPartitionWatcher          *rendezvous.PartitionRingWatcher
+	dataObjConsumerPartitionKVClient    kv.Client
 	dataObjIndexBuilder                 *dataobjindex.Builder
 	dataObjCompactionPlanner            *enginecompactor.Planner
 	dataObjCompactionWorker             *enginecompactor.Worker
