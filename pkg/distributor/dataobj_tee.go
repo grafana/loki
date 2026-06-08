@@ -213,10 +213,10 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 	}
 }
 
-func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmentedStream, rateBytes, tenantRateBytes uint64, pushTracker *PushTracker) {
+func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmentedStream, rateBytes, tenantRateBytesLimit uint64, pushTracker *PushTracker) {
 	t.streams.Inc()
 
-	partition, err := t.resolver.Resolve(tenant, stream.SegmentationKey, stream.HashKey, rateBytes, tenantRateBytes)
+	partition, err := t.resolver.Resolve(tenant, stream.SegmentationKey, stream.HashKey, rateBytes, tenantRateBytesLimit)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to resolve partition", "err", err)
 		t.streamFailures.Inc()
