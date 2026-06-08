@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -99,6 +101,7 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		runPlan:         runner.run,
 		metastoreWriter: replacer,
 		clock:           clock,
+		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
 	}
 }
 
@@ -127,6 +130,57 @@ func TestRunCycle_SkipsConvergedTenants(t *testing.T) {
 
 	require.Empty(t, runner.snapshot(), "no Phase 1 dispatch for converged tenant")
 	require.Empty(t, replacer.snapshot(), "no Phase 2 ToC swap for converged tenant")
+}
+
+// TestRunCycle_EmitsMetrics verifies that runCycle wires the metric helpers:
+// a converged tenant records a converged tenant-cycle and SLI gauges, and the
+// full cycle records an "ok" cycle observation.
+func TestRunCycle_EmitsMetrics(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"single": {
+			{path: "indexes/aa/idx-0", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour)},
+		},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+
+	c.runCycle(ctx)
+
+	// Full-cycle outcome recorded as ok.
+	require.InDelta(t, 1.0,
+		testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("ok")), 0.001)
+	// Converged tenant recorded.
+	require.InDelta(t, 1.0,
+		testutil.ToFloat64(c.metrics.tenantCyclesTotal.WithLabelValues("converged", "single")), 0.001)
+	// Single converged index ⇒ backlog 0, one index in the current window.
+	require.InDelta(t, 0.0,
+		gaugeValue(c.metrics.unconsolidatedBacklog, "single"), 0.001)
+	require.InDelta(t, 1.0,
+		gaugeValue(c.metrics.indexesPerTenantWindow, "single"), 0.001)
+}
+
+// TestRunCycle_AbortedRecordsAbortedCycle verifies the cycle-abort path
+// (load error) records an "aborted" cycle observation.
+func TestRunCycle_AbortedRecordsAbortedCycle(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	// No ToC written ⇒ load short-circuits via IsObjNotFoundErr ⇒ aborted.
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+
+	c.runCycle(ctx)
+
+	require.InDelta(t, 1.0,
+		testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("aborted")), 0.001)
 }
 
 // TestRunCycle_FansOutPhase1ThenCommitsPhase2 verifies the full per-tenant
@@ -234,7 +288,8 @@ func TestRunTenantCycle_RaceLossIsSuccess(t *testing.T) {
 	// runCycle swallows per-tenant errors; check directly via the lower API.
 	indexes, err := loadTenantIndexes(ctx, bucket, window)
 	require.NoError(t, err)
-	require.NoError(t, c.runTenantCycle(ctx, "acme", window, indexes["acme"]))
+	_, _, _, runErr := c.runTenantCycle(ctx, "acme", window, indexes["acme"])
+	require.NoError(t, runErr)
 }
 
 // TestRunTenantCycle_HardSwapErrorPropagates verifies that a non-nil error
@@ -260,8 +315,8 @@ func TestRunTenantCycle_HardSwapErrorPropagates(t *testing.T) {
 
 	indexes, err := loadTenantIndexes(ctx, bucket, window)
 	require.NoError(t, err)
-	err = c.runTenantCycle(ctx, "acme", window, indexes["acme"])
-	require.ErrorIs(t, err, swapErr)
+	_, _, _, runErr := c.runTenantCycle(ctx, "acme", window, indexes["acme"])
+	require.ErrorIs(t, runErr, swapErr)
 }
 
 // TestRunCycle_NoToC verifies a missing ToC is a no-op cycle: no panic, no

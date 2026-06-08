@@ -69,11 +69,17 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 		return fmt.Errorf("merging stats: %w", err)
 	}
 
+	// Snapshot the builder's in-memory accumulated size BEFORE Flush. This is the
+	// uncompressed pre-encoding size used for the output_bytes_uncompressed
+	// histogram observation below.
+	uncompressedBytes := int64(builder.GetEstimatedSize())
+
 	// Flush builder and upload result
 	obj, closer, err := builder.Flush()
 	if err != nil {
 		if errors.Is(err, indexobj.ErrBuilderEmpty) {
-			// Upload a zero-byte sentinel
+			// Upload a zero-byte sentinel. No observation: this is the
+			// "merge produced no rows" path and should not skew size stats.
 			return c.bucket.Upload(ctx, node.OutputIndexPath, io.NopCloser(bytes.NewReader([]byte{})))
 		}
 		return fmt.Errorf("flushing builder: %w", err)
@@ -89,6 +95,12 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 
 	if err := c.bucket.Upload(ctx, node.OutputIndexPath, reader); err != nil {
 		return fmt.Errorf("uploading merged index: %w", err)
+	}
+
+	// Observe output sizes once the upload has succeeded. obj.Size() reflects
+	// the encoded/compressed bytes that just got written.
+	if c.indexMergeObserver != nil {
+		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, obj.Size(), uncompressedBytes)
 	}
 	return nil
 }

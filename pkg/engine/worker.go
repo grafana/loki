@@ -71,6 +71,11 @@ type WorkerParams struct {
 	// IndexobjCfg is the builder config for index objects.
 	// Required for compaction tasks; may be nil for query-only workers.
 	IndexobjCfg logsobj.BuilderBaseConfig
+
+	// IndexMergeObserver, when non-nil, receives per-task output-size
+	// callbacks from the IndexMerge executor. Used by the compactor to
+	// populate output-size histograms. Optional; nil for query-only workers.
+	IndexMergeObserver executor.IndexMergeObserver
 }
 
 // Worker requests tasks from a [Scheduler] and executes them. Task results are
@@ -161,6 +166,8 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		TaskCaches:     taskCaches,
 		ScratchStore:   params.ScratchStore,
 		IndexobjCfg:    params.IndexobjCfg,
+
+		IndexMergeObserver: params.IndexMergeObserver,
 	})
 	if err != nil {
 		return nil, err

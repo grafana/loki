@@ -98,6 +98,11 @@ type Config struct {
 	// IndexobjCfg is the builder config for index objects.
 	// Required for compaction tasks; may be nil for query-only workers.
 	IndexobjCfg logsobj.BuilderBaseConfig
+
+	// IndexMergeObserver, when non-nil, receives per-task output-size
+	// callbacks from the IndexMerge executor. Optional; nil for query-only
+	// workers.
+	IndexMergeObserver executor.IndexMergeObserver
 }
 
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
@@ -200,6 +205,8 @@ func (w *Worker) run(ctx context.Context) error {
 			TaskCaches:     w.taskCaches,
 			ScratchStore:   w.config.ScratchStore,
 			IndexobjCfg:    w.config.IndexobjCfg,
+
+			IndexMergeObserver: w.config.IndexMergeObserver,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

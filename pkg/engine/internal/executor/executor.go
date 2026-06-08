@@ -50,6 +50,11 @@ type Config struct {
 	// IndexobjCfg is the builder config for index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
+	// IndexMergeObserver receives a callback after each successful IndexMerge
+	// task with the output sizes. Used  by compaction to populate output-size
+	// histograms. Optional; nil disables observation.
+	IndexMergeObserver IndexMergeObserver
+
 	// Shared, used by both query and compaction executors.
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
@@ -67,6 +72,15 @@ type Config struct {
 	TaskCaches TaskCacheRegistry
 }
 
+// IndexMergeObserver is invoked by the IndexMerge executor after each
+// successful task to report output sizes.
+type IndexMergeObserver interface {
+	// ObserveIndexMergeOutput is called once per successful task.
+	// [compressedBytes] are the bytes uploaded to object storage, and
+	// [uncompressedBytes] are the builder's in-memory accumulated size at Flush.
+	ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64)
+}
+
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
 		plan:               plan,
@@ -82,6 +96,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		taskCaches:         cfg.TaskCaches,
 		scratchStore:       cfg.ScratchStore,
 		indexobjCfg:        cfg.IndexobjCfg,
+		indexMergeObserver: cfg.IndexMergeObserver,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -114,6 +129,8 @@ type Context struct {
 
 	scratchStore scratch.Store
 	indexobjCfg  logsobj.BuilderBaseConfig
+
+	indexMergeObserver IndexMergeObserver
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {

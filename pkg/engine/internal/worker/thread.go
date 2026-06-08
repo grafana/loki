@@ -88,6 +88,11 @@ type thread struct {
 	ScratchStore   scratch.Store
 	IndexobjCfg    logsobj.BuilderBaseConfig
 
+	// IndexMergeObserver, when non-nil, receives per-task output-size
+	// callbacks from the IndexMerge executor. Optional; nil for query-only
+	// workers.
+	IndexMergeObserver executor.IndexMergeObserver
+
 	Metrics    *metrics
 	JobManager *jobManager
 
@@ -179,6 +184,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		TaskCaches:     t.TaskCaches,
 		ScratchStore:   t.ScratchStore,
 		IndexobjCfg:    t.IndexobjCfg,
+
+		IndexMergeObserver: t.IndexMergeObserver,
 
 		GetExternalInputs: func(fnCtx context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
