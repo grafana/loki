@@ -246,3 +246,25 @@ queries:
       log_format: logfmt
       detected_fields:
         - level
+  - description: Count with label equality filter on parsed field that is null on some rows
+    query: count_over_time(${SELECTOR} | logfmt | error="" [${RANGE}])
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - logfmt
+      - label-filter
+      - absent-field
+    notes: >
+      Regression for the v2 filter null-coercion fix. The "error" logfmt field
+      is only emitted for error-level lines, so its parsed column is null on
+      every non-error row. LogQL says an absent label compares as "" (matching
+      v1); pre-fix the v2 engine short-circuited any filter on a null column to
+      false, so this count was 0 while v1 returned the count of non-error rows.
+      Must equal v1.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - error
