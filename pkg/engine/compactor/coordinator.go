@@ -302,7 +302,7 @@ func (c *coordinator) compactTenant(
 	)
 
 	if c.cfg.DryRun {
-		return nil
+		return compactionStats{}, nil
 	}
 
 	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
