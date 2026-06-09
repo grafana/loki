@@ -6,7 +6,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "22c2fa76d6384771cfd9e5b2e36df46a0d644118"
+  RELEASE_LIB_REF: "961a0dadb24cc4102187fc700dc3242152a17c21"
   RELEASE_REPO: "grafana/loki"
 jobs:
   createRelease:
@@ -57,6 +57,7 @@ jobs:
     - name: "download binaries"
       run: |
         echo "downloading binaries to $(pwd)/dist"
+        mkdir -p dist
         gcloud artifacts generic download \
           --project="grafanalabs-dev" \
           --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
