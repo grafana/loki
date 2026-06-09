@@ -51,11 +51,10 @@ type threadJob struct {
 //     when threads become ready, so it can advertise spare capacity to a
 //     scheduler once per batch of newly-ready threads.
 type jobManager struct {
-	mut             sync.RWMutex
-	waiting         int
-	readyGeneration uint64        // Monotonic count of threads becoming ready; bumped on every Recv.
-	waitCond        chan struct{} // Closed and recreated on every change to waiting.
-	cancelCond      chan struct{} // Channel-based condition variable to cancel Recv
+	mut        sync.RWMutex
+	waiting    int
+	waitCond   chan struct{} // Closed and recreated on every change to waiting.
+	cancelCond chan struct{} // Channel-based condition variable to cancel Recv
 
 	jobCh chan *threadJob
 }
@@ -98,7 +97,6 @@ func (jm *jobManager) broadcast() {
 	defer jm.mut.Unlock()
 
 	jm.waiting++
-	jm.readyGeneration++
 	jm.notify()
 }
 
@@ -168,14 +166,12 @@ func (jm *jobManager) Send(ctx context.Context, job *threadJob) error {
 	}
 }
 
-// WaitReady blocks until a thread has become ready since generation `last`,
-// returning the new generation. It lets the readiness emitter advertise spare
-// capacity to the scheduler as a batch, regardless of when the threads became ready.
-func (jm *jobManager) WaitReady(ctx context.Context, lastGeneration uint64) (uint64, error) {
+// WaitReady blocks until a thread has become ready for another job.
+func (jm *jobManager) WaitReady(ctx context.Context) error {
 	jm.mut.RLock()
 	defer jm.mut.RUnlock()
 
-	for ctx.Err() == nil && jm.readyGeneration == lastGeneration {
+	for ctx.Err() == nil && jm.waiting == 0 {
 		waitCh := jm.waitCond
 
 		jm.mut.RUnlock()
@@ -186,5 +182,5 @@ func (jm *jobManager) WaitReady(ctx context.Context, lastGeneration uint64) (uin
 		jm.mut.RLock()
 	}
 
-	return jm.readyGeneration, ctx.Err()
+	return ctx.Err()
 }

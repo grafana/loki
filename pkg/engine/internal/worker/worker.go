@@ -380,6 +380,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 
 		if err := w.jobManager.Send(ctx, job); err != nil {
 			job.Close() // Clean up resources associated with the job.
+			handleWorkerSubscribe()
 			w.metrics.rejectedAssignmentsTotal.Inc()
 			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
 		}
@@ -432,25 +433,21 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	}
 
 	g.Go(func() error {
-		// Wait for the scheduler's initial subscribe before advertising
-		// readiness. The scheduler sends a single WorkerSubscribe once it has
-		// processed our WorkerHello; from then on we self-advertise capacity
-		// for the lifetime of the connection.
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-waitReady:
-		}
-
-		// Advertise readiness once per batch of newly-ready threads.
-		// The generation number is used to ensure all Readying threads are caught.
-		var waitGeneration uint64
 		for {
-			var err error
-			if waitGeneration, err = w.jobManager.WaitReady(ctx, waitGeneration); err != nil {
+			// Wait for the scheduler to require a WorkerReady message.
+			// This happens automatically before sending a http.StatusTooManyRequests error
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-waitReady:
+			}
+
+			// Wait for a thread to become ready for another job
+			if err := w.jobManager.WaitReady(ctx); err != nil {
 				return nil
 			}
 
+			// Notify the scheduler.
 			if err := peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{}); err != nil {
 				level.Warn(logger).Log("msg", "failed to send ready message", "err", err)
 			}

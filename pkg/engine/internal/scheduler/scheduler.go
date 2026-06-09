@@ -146,7 +146,10 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	logger := log.With(s.logger, "remote_addr", conn.RemoteAddr())
 	level.Info(logger).Log("msg", "handling connection")
 
-	wc := &workerConn{done: make(chan struct{}), wake: make(chan struct{}, 1)}
+	wc := &workerConn{
+		done: make(chan struct{}),
+		wake: make(chan struct{}, 1),
+	}
 
 	s.connections.Store(wc, struct{}{})
 	defer s.connections.Delete(wc)
