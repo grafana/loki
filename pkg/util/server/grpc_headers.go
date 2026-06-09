@@ -9,19 +9,38 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
+// propagatedHTTPHeaders is the allow-list of Loki HTTP headers carried across the
+// gRPC boundary (stored in/restored from context). We propagate an explicit set
+// rather than copying all headers to avoid leaking sensitive headers (e.g.
+// Authorization) into gRPC metadata. The gRPC metadata key is the header name
+// itself (metadata keys are case-insensitive ASCII, which these names satisfy).
+var propagatedHTTPHeaders = []string{
+	httpreq.LokiDisablePipelineWrappersHeader,
+	httpreq.LokiBackfillHeader,
+}
+
 func injectHTTPHeadersIntoGRPCRequest(ctx context.Context) context.Context {
-	header := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader)
-	if header == "" {
-		return ctx
+	var md metadata.MD
+	var copied bool
+	for _, header := range propagatedHTTPHeaders {
+		value := httpreq.ExtractHeader(ctx, header)
+		if value == "" {
+			continue
+		}
+		if !copied {
+			if existing, ok := metadata.FromOutgoingContext(ctx); ok {
+				md = existing.Copy()
+			} else {
+				md = metadata.New(map[string]string{})
+			}
+			copied = true
+		}
+		md.Set(header, value)
 	}
 
-	// inject into GRPC metadata
-	md, ok := metadata.FromOutgoingContext(ctx)
-	if !ok {
-		md = metadata.New(map[string]string{})
+	if !copied {
+		return ctx
 	}
-	md = md.Copy()
-	md.Set(httpreq.LokiDisablePipelineWrappersHeader, header)
 
 	return metadata.NewOutgoingContext(ctx, md)
 }
@@ -33,12 +52,15 @@ func extractHTTPHeadersFromGRPCRequest(ctx context.Context) context.Context {
 		return ctx
 	}
 
-	headerValues := md.Get(httpreq.LokiDisablePipelineWrappersHeader)
-	if len(headerValues) == 0 {
-		return ctx
+	for _, header := range propagatedHTTPHeaders {
+		headerValues := md.Get(header)
+		if len(headerValues) == 0 {
+			continue
+		}
+		ctx = httpreq.InjectHeader(ctx, header, headerValues[0])
 	}
 
-	return httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, headerValues[0])
+	return ctx
 }
 
 func UnaryClientHTTPHeadersInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
