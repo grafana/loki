@@ -167,7 +167,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 		watcher := newUninitialisedPartitionRingWatcher()
 		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, prometheus.NewRegistry(), log.NewNopLogger())
 		_, err := resolver.Resolve("tenant", "test", 0x1, 0, 0)
-		require.EqualError(t, err, "partition ring watcher not initialised")
+		require.EqualError(t, err, "no active partitions")
 	})
 }
 
@@ -176,12 +176,13 @@ func TestSegmentationPartitionResolver_TenantShuffleShard(t *testing.T) {
 	resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, prometheus.NewRegistry(), log.NewNopLogger())
 
 	tests := []struct {
-		rateBytes         uint64
-		tenantRateBytes   uint64
-		expectedNumShards int
+		rateBytes            uint64
+		tenantRateLimitBytes uint64
+		expectedNumShards    int
 	}{
 		{500, 500, 1},
 		{0, 0, 1},
+		{1_000_000, 0, 5},
 		{1500, 1500, 2},
 		{3000, 1500, 2},
 		{4000, 3000, 3},
@@ -189,10 +190,10 @@ func TestSegmentationPartitionResolver_TenantShuffleShard(t *testing.T) {
 		{1_000_000, 1_000_000, 5},
 	}
 	for _, test := range tests {
-		t.Run(fmt.Sprintf("perPartitionRateBytes=1024,rateBytes=%d,tenantRateBytes=%d", test.rateBytes, test.tenantRateBytes), func(t *testing.T) {
+		t.Run(fmt.Sprintf("perPartitionRateBytes=1024,rateBytes=%d,tenantRateLimitBytes=%d", test.rateBytes, test.tenantRateLimitBytes), func(t *testing.T) {
 			seen := make(map[int32]struct{}, 2)
 			for i := 0; i < 100; i++ {
-				partition, err := resolver.Resolve("tenant", "test", uint32(i), test.rateBytes, test.tenantRateBytes)
+				partition, err := resolver.Resolve("tenant", "test", uint32(i), test.rateBytes, test.tenantRateLimitBytes)
 				require.NoError(t, err)
 				seen[partition] = struct{}{}
 				require.InDelta(t, 3, partition, 2)

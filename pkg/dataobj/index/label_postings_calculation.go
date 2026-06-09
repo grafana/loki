@@ -36,7 +36,7 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 			if batchErr != nil {
 				return
 			}
-			batchErr = calcCtx.builder.ObserveLabelPosting(calcCtx.tenantID, postings.LabelObservation{
+			calcCtx.builder.ObserveLabelPosting(calcCtx.tenantID, postings.LabelObservation{
 				ObjectPath:       calcCtx.objectPath,
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       lbl.Name,

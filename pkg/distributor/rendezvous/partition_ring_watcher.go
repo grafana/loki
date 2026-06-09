@@ -31,12 +31,16 @@ type Config struct {
 }
 
 // New creates a new PartitionRingWatcher that watches the given KV Key for ring membership.
+// The watcher starts with an empty ShuffleSharder so that ShuffleSharder() always returns a
+// non-nil value; callers receive a sharder with no partitions until the KV store is observed.
 func New(config Config, kvClient kv.Client, logger log.Logger) *PartitionRingWatcher {
 	s := &PartitionRingWatcher{
 		kvClient: kvClient,
 		logger:   logger,
 		config:   config,
 	}
+	empty := NewShuffleSharder(nil)
+	s.sharder.Store(&empty)
 	s.Service = services.NewBasicService(s.starting, s.loop, nil).WithName("rendezvous sharder")
 	return s
 }

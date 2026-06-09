@@ -24,8 +24,7 @@ type BuilderMetrics struct {
 	buildTime     prometheus.Histogram
 	flushFailures prometheus.Counter
 
-	sizeEstimate prometheus.Gauge
-	builtSize    prometheus.Histogram
+	builtSize prometheus.Histogram
 }
 
 // NewBuilderMetrics creates a new set of [BuilderMetrics] for instrumenting
@@ -65,10 +64,6 @@ func NewBuilderMetrics() *BuilderMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		sizeEstimate: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "loki_dataobj_size_estimate_bytes",
-			Help: "Current estimated size of the data object in bytes.",
-		}),
 		builtSize: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_dataobj_built_size_bytes",
 			Help: "Distribution of constructed data object sizes in bytes.",
@@ -105,7 +100,6 @@ func (m *BuilderMetrics) Register(reg prometheus.Registerer) error {
 	errs = append(errs, reg.Register(m.appendTime))
 	errs = append(errs, reg.Register(m.buildTime))
 
-	errs = append(errs, reg.Register(m.sizeEstimate))
 	errs = append(errs, reg.Register(m.builtSize))
 	errs = append(errs, reg.Register(m.flushFailures))
 
@@ -125,7 +119,6 @@ func (m *BuilderMetrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.appendTime)
 	reg.Unregister(m.buildTime)
 
-	reg.Unregister(m.sizeEstimate)
 	reg.Unregister(m.builtSize)
 	reg.Unregister(m.flushFailures)
 }

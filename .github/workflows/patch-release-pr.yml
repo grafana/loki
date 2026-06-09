@@ -8,7 +8,7 @@ env:
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+  RELEASE_LIB_REF: "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-patch"
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+    uses: "grafana/loki-release/.github/workflows/check.yml@1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
     with:
-      build_image: "golang:1.26.3"
+      build_image: "golang:1.26.4"
       golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+      release_lib_ref: "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
       skip_validation: false
   create-release-pr:
     needs:
@@ -84,11 +84,11 @@ jobs:
         yarn exec -- release-please release-pr \
           --changelog-path "${CHANGELOG_PATH}" \
           --consider-all-branches \
-          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --group-pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
           --label "backport main,autorelease: pending,product-approved" \
           --manifest-file .release-please-manifest.json \
           --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}" \
-          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
           --release-as "$(echo $OUTPUTS_VERSION | tr -d '"')" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
@@ -131,9 +131,9 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.3"
+          --entrypoint /bin/sh "golang:1.26.4"
           git config --global --add safe.directory /src/loki
-          if echo "golang:1.26.3" | grep -q "golang"; then
+          if echo "golang:1.26.4" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist packages
@@ -154,9 +154,9 @@ jobs:
           --env IMAGE_TAG \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.3"
+          --entrypoint /bin/sh "golang:1.26.4"
           git config --global --add safe.directory /src/loki
-          if echo "golang:1.26.3" | grep -q "golang"; then
+          if echo "golang:1.26.4" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist/loki-linux-riscv64
@@ -780,7 +780,7 @@ jobs:
         build-args: |
           IMAGE_TAG=${{ needs.version.outputs.version }}
           GOARCH=${{ steps.platform.outputs.platform_short }}
-          BUILD_IMAGE=golang:1.26.3
+          BUILD_IMAGE=golang:1.26.4
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
         outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
@@ -1034,9 +1034,9 @@ jobs:
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
-            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --group-pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --manifest-file .release-please-manifest.json \
-            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
@@ -1048,9 +1048,9 @@ jobs:
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
-            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --group-pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --manifest-file .release-please-manifest.json \
-            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \

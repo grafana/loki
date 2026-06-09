@@ -96,38 +96,36 @@ func newSegmentationPartitionResolver(
 	}
 }
 
-func (r *segmentationPartitionResolver) Resolve(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateBytes uint64) (int32, error) {
+func (r *segmentationPartitionResolver) Resolve(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateBytesLimit uint64) (int32, error) {
 	if r.useRendezvousHashing {
-		return r.resolveRendezvousHashing(tenant, key, hashKey, rateBytes, tenantRateBytes)
+		return r.resolveRendezvousHashing(tenant, key, hashKey, rateBytes, tenantRateBytesLimit)
 	}
 
 	// TODO(danhopper): remove consistent hashing once we have confidence in rendezvous hashing
-	return r.resolveConsistentHashing(tenant, key, hashKey, rateBytes, tenantRateBytes)
+	return r.resolveConsistentHashing(tenant, key, hashKey, rateBytes, tenantRateBytesLimit)
 }
 
-func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateBytes uint64) (int32, error) {
+func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateLimitBytes uint64) (int32, error) {
 	r.resolveTotal.Inc()
 
 	shuffleSharder := r.partitionRingWatcher.ShuffleSharder()
-	if shuffleSharder == nil {
-		r.resolveFailed.Inc()
-		return 0, errors.New("partition ring watcher not initialised")
-	}
 
 	// Shuffle shard for the tenant based on their ingestion rate limit.
 	// This ensures that streams are not only co-located within the same
 	// segmentation key, but also segmentation keys for a tenant are as
 	// co-located as possible.
-	numTenantShuffleShardPartitions := numPartitionsForRateRendezvousHashing(tenantRateBytes, r.perPartitionRateBytes, shuffleSharder.Size())
+	var numTenantShuffleShardPartitions int
+	if tenantRateLimitBytes == 0 {
+		// For tenants without a rate limit, send data to all partitions.
+		numTenantShuffleShardPartitions = shuffleSharder.Size()
+	} else {
+		numTenantShuffleShardPartitions = numPartitionsForRateRendezvousHashing(tenantRateLimitBytes, r.perPartitionRateBytes, shuffleSharder.Size())
+	}
 	shuffleSharder = shuffleSharder.ShuffleShard(tenant, numTenantShuffleShardPartitions)
 
 	// Shuffle shard for the segmentation key.
 	numSegKeyShuffleShardPartitions := numPartitionsForRateRendezvousHashing(rateBytes, r.perPartitionRateBytes, shuffleSharder.Size())
-	// If the segmentation key is small enough that it does not need to be sharded,
-	// we can avoid doing a shuffle shard.
-	if numSegKeyShuffleShardPartitions > 1 {
-		shuffleSharder = shuffleSharder.ShuffleShard(string(key), numSegKeyShuffleShardPartitions)
-	}
+	shuffleSharder = shuffleSharder.ShuffleShard(string(key), numSegKeyShuffleShardPartitions)
 
 	r.tenantShuffleShardSize.Observe(float64(numTenantShuffleShardPartitions))
 	r.segmentationKeyShuffleShardSize.Observe(float64(numSegKeyShuffleShardPartitions))
@@ -153,7 +151,7 @@ func numPartitionsForRateRendezvousHashing(rateBytes, perPartitionRateBytes uint
 	return int(partitions)
 }
 
-func (r *segmentationPartitionResolver) resolveConsistentHashing(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateBytes uint64) (int32, error) {
+func (r *segmentationPartitionResolver) resolveConsistentHashing(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateLimitBytes uint64) (int32, error) {
 	r.resolveTotal.Inc()
 	// We use a snapshot of the partition ring to ensure resolving the
 	// partition for a segmentation key is determinstic even if the ring
@@ -170,7 +168,7 @@ func (r *segmentationPartitionResolver) resolveConsistentHashing(tenant string, 
 	// This ensures that streams are not only co-located within the same
 	// segmentation key, but also segmentation keys for a tenant are as
 	// co-located as possible.
-	subring, err := r.tenantShuffleShardConsistentHashing(ring, tenant, tenantRateBytes)
+	subring, err := r.tenantShuffleShardConsistentHashing(ring, tenant, tenantRateLimitBytes)
 	if err != nil {
 		r.resolveFailed.Inc()
 		return 0, fmt.Errorf("failed to shuffle shard tenant: %w", err)
@@ -197,12 +195,12 @@ func (r *segmentationPartitionResolver) resolveConsistentHashing(tenant string, 
 }
 
 // tenantShuffleShardConsistentHashing returns a subring for the tenant based on their rate limit.
-func (r *segmentationPartitionResolver) tenantShuffleShardConsistentHashing(ring *ring.PartitionRing, tenant string, tenantRateBytes uint64) (*ring.PartitionRing, error) {
+func (r *segmentationPartitionResolver) tenantShuffleShardConsistentHashing(ring *ring.PartitionRing, tenant string, tenantRateLimitBytes uint64) (*ring.PartitionRing, error) {
 	// If the tenant has no limit, return the full ring.
-	if tenantRateBytes == 0 {
+	if tenantRateLimitBytes == 0 {
 		return ring, nil
 	}
-	numShuffleShardPartitions := numPartitionsForRateConsistentHashing(tenantRateBytes, r.perPartitionRateBytes, ring.ActivePartitionsCount())
+	numShuffleShardPartitions := numPartitionsForRateConsistentHashing(tenantRateLimitBytes, r.perPartitionRateBytes, ring.ActivePartitionsCount())
 	return ring.ShuffleShard(tenant, numShuffleShardPartitions)
 }
 
