@@ -23,13 +23,25 @@ per-stream rate limit.
        enabled: true
    ```
 
-1. Optionally lower the `desired_rate` in bytes if you find that the system is still hitting the `per_stream_rate_limit`:
+1. Optionally lower the `desired_rate` if you find that the system is still hitting the `per_stream_rate_limit`.
+
+   The value is the per-stream target rate in bytes per second.
+   It accepts both a plain integer (bytes) and a human-readable size string with a unit suffix (`KB`, `MB`, `MiB`, `KiB`, and so on):
 
    ```yaml
    limits_config:
      shard_streams:
        enabled: true
-       desired_rate: 2097152 #2MiB
+       desired_rate: 2097152   # 2 MiB, specified as plain bytes
+   ```
+
+   Or equivalently:
+
+   ```yaml
+   limits_config:
+     shard_streams:
+       enabled: true
+       desired_rate: 2MiB      # human-readable size string
    ```
 
 1. Optionally enable `logging_enabled` for debugging stream sharding.
