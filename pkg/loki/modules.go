@@ -378,6 +378,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
 		t.Cfg.Distributor,
+		t.Cfg.SchemaConfig,
 		t.Cfg.Ingester,
 		t.Cfg.IngesterClient,
 		t.tenantConfigs,
@@ -411,6 +412,9 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	httpPushHandlerMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
+		// Propagate request headers into context so the push path can read the
+		// X-Loki-Backfill marker (all but the authorization header, for safety).
+		httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader),
 		validation.NewIngestionPolicyMiddleware(util_log.Logger),
 	)
 

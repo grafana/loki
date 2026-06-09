@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -10,12 +11,15 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -129,11 +133,11 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			flagext.DefaultValues(l)
 			o, err := validation.NewOverrides(*l, tt.overrides)
 			assert.NoError(t, err)
-			v, err := NewValidator(o, nil)
+			v, err := NewValidator(o, nil, config.SchemaConfig{})
 			assert.NoError(t, err)
 			retentionHours := util.RetentionHours(v.RetentionPeriod(tt.userID))
 
-			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry, retentionHours, "", "loki")
+			err = v.ValidateEntry(ctx, v.getValidationContextForTime(context.Background(), testTime, tt.userID), testStreamLabels, tt.entry, retentionHours, "", "loki")
 			assert.Equal(t, tt.expected, err)
 		})
 	}
@@ -229,10 +233,10 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			retentionHours := util.RetentionHours(time.Duration(l.RetentionPeriod))
 			o, err := validation.NewOverrides(*l, tt.overrides)
 			assert.NoError(t, err)
-			v, err := NewValidator(o, nil)
+			v, err := NewValidator(o, nil, config.SchemaConfig{})
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels}, retentionHours, "", "loki")
+			err = v.ValidateLabels(v.getValidationContextForTime(context.Background(), testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels}, retentionHours, "", "loki")
 			assert.Equal(t, tt.expected, err)
 		})
 	}
@@ -374,10 +378,10 @@ func TestShouldBlockIngestion(t *testing.T) {
 
 			o, err := validation.NewOverrides(*l, tc.overrides)
 			assert.NoError(t, err)
-			v, err := NewValidator(o, nil)
+			v, err := NewValidator(o, nil, config.SchemaConfig{})
 			assert.NoError(t, err)
 
-			block, statusCode, reason, err := v.ShouldBlockIngestion(v.getValidationContextForTime(testTime, "fake"), testTime, tc.policy)
+			block, statusCode, reason, err := v.ShouldBlockIngestion(v.getValidationContextForTime(context.Background(), testTime, "fake"), testTime, tc.policy)
 			assert.Equal(t, tc.expectBlock, block)
 			if tc.expectBlock {
 				assert.Equal(t, tc.expectStatusCode, statusCode)
@@ -398,4 +402,62 @@ func mustParseLabels(s string) labels.Labels {
 		panic(err)
 	}
 	return ls
+}
+
+func singleSchemaConfig(version string) config.SchemaConfig {
+	return config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:      config.DayTime{Time: 0},
+				IndexType: "tsdb",
+				Schema:    version,
+				RowShards: 16,
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+				},
+			},
+		},
+	}
+}
+
+// TestValidator_BackfillHeaderRejectOldSamples verifies the X-Loki-Backfill
+// header bypasses RejectOldSamples only when the entry's schema period persists
+// the ingestion timestamp (schema v14); under v13 the header is ignored.
+func TestValidator_BackfillHeaderRejectOldSamples(t *testing.T) {
+	oldEntry := logproto.Entry{Timestamp: testTime.Add(-5 * time.Hour), Line: "old"}
+	overrides := fakeLimits{&validation.Limits{
+		RejectOldSamples:       true,
+		RejectOldSamplesMaxAge: model.Duration(time.Hour),
+	}}
+
+	backfillCtx := httpreq.InjectHeader(context.Background(), httpreq.LokiBackfillHeader, httpreq.LokiBackfillHeaderValue)
+
+	for _, tc := range []struct {
+		name      string
+		schema    string
+		ctx       context.Context
+		wantError bool
+	}{
+		{"v13 ignores backfill header", "v13", backfillCtx, true},
+		{"v14 bypasses with backfill header", "v14", backfillCtx, false},
+		{"v14 without header still rejects", "v14", context.Background(), true},
+		{"v13 without header rejects", "v13", context.Background(), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := &validation.Limits{}
+			flagext.DefaultValues(l)
+			o, err := validation.NewOverrides(*l, overrides)
+			require.NoError(t, err)
+			v, err := NewValidator(o, nil, singleSchemaConfig(tc.schema))
+			require.NoError(t, err)
+
+			vCtx := v.getValidationContextForTime(tc.ctx, testTime, "test")
+			err = v.ValidateEntry(tc.ctx, vCtx, testStreamLabels, oldEntry, "", "", "loki")
+			if tc.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

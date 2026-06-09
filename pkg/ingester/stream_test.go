@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
@@ -69,6 +70,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			s := newStream(
 				chunkfmt,
 				headfmt,
+				false,
 				cfg,
 				limiter.rateLimitStrategy,
 				"fake",
@@ -124,6 +126,7 @@ func TestPushStampsFirstSeen(t *testing.T) {
 	s := newStream(
 		chunkfmt,
 		headfmt,
+		false,
 		defaultConfig(),
 		limiter.rateLimitStrategy,
 		"fake",
@@ -157,6 +160,7 @@ func TestPushDeduplication(t *testing.T) {
 	s := newStream(
 		chunkfmt,
 		headfmt,
+		false,
 		defaultConfig(),
 		limiter.rateLimitStrategy,
 		"fake",
@@ -216,6 +220,7 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 	s := newStream(
 		chunkfmt,
 		headfmt,
+		false,
 		defaultConfig(),
 		limiter.rateLimitStrategy,
 		"fake",
@@ -261,6 +266,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 	s := newStream(
 		chunkfmt,
 		headfmt,
+		false,
 		defaultConfig(),
 		limiter.rateLimitStrategy,
 		"fake",
@@ -368,6 +374,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	s := newStream(
 		chunkfmt,
 		headfmt,
+		false,
 		&cfg,
 		limiter.rateLimitStrategy,
 		"fake",
@@ -394,6 +401,41 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	require.Equal(t, 13.0, tracker.discardedBytes)
 }
 
+// TestStream_BackfillBypassesTooFarBehind verifies the backfill header lets old
+// entries skip the too-far-behind cut only when the stream persists IngestedAt
+// (schema v14). Under v13 (writesIngestedAt false) the header is ignored.
+func TestStream_BackfillBypassesTooFarBehind(t *testing.T) {
+	newTestStream := func(writesIngestedAt bool) *stream {
+		cfg := defaultIngesterTestConfig(t)
+		cfg.MaxChunkAge = time.Minute
+		l := validation.Limits{PerStreamRateLimit: 1 << 20, PerStreamRateLimitBurst: 1 << 20}
+		limits, err := validation.NewOverrides(l, nil)
+		require.NoError(t, err)
+		limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+		retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+		chunkfmt, headfmt := defaultChunkFormat(t)
+		s := newStream(chunkfmt, headfmt, writesIngestedAt, &cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), labels.FromStrings("foo", "bar"), NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
+		s.highestTs = time.Now()
+		return s
+	}
+
+	oldEntry := []logproto.Entry{{Line: "old", Timestamp: time.Now().AddDate(-1, 0, 0)}}
+	backfillCtx := httpreq.InjectHeader(context.Background(), httpreq.LokiBackfillHeader, httpreq.LokiBackfillHeaderValue)
+
+	t.Run("v14 stream with header bypasses", func(t *testing.T) {
+		_, failed := newTestStream(true).validateEntries(backfillCtx, oldEntry, false, true, &mockUsageTracker{}, "loki")
+		require.Empty(t, failed)
+	})
+	t.Run("v14 stream without header rejects", func(t *testing.T) {
+		_, failed := newTestStream(true).validateEntries(context.Background(), oldEntry, false, true, &mockUsageTracker{}, "loki")
+		require.NotEmpty(t, failed)
+	})
+	t.Run("v13 stream ignores header", func(t *testing.T) {
+		_, failed := newTestStream(false).validateEntries(backfillCtx, oldEntry, false, true, &mockUsageTracker{}, "loki")
+		require.NotEmpty(t, failed)
+	})
+}
+
 func TestUnorderedPush(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.MaxChunkAge = 10 * time.Second
@@ -406,6 +448,7 @@ func TestUnorderedPush(t *testing.T) {
 	s := newStream(
 		chunkfmt,
 		headfmt,
+		false,
 		&cfg,
 		limiter.rateLimitStrategy,
 		"fake",
@@ -508,6 +551,7 @@ func TestPushRateLimit(t *testing.T) {
 	s := newStream(
 		chunkfmt,
 		headfmt,
+		false,
 		defaultConfig(),
 		limiter.rateLimitStrategy,
 		"fake",
@@ -548,6 +592,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 	s := newStream(
 		chunkfmt,
 		headfmt,
+		false,
 		cfg,
 		limiter.rateLimitStrategy,
 		"fake",
@@ -587,6 +632,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	s := newStream(
 		chunkfmt,
 		headfmt,
+		false,
 		cfg,
 		limiter.rateLimitStrategy,
 		"fake",
@@ -648,7 +694,7 @@ func Benchmark_PushStream(b *testing.B) {
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	chunkfmt, headfmt := defaultChunkFormat(b)
 	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
-	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
+	s := newStream(chunkfmt, headfmt, false, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
 	expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, &fakeTailServer{}, 10)

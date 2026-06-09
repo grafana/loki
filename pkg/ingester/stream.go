@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
 
@@ -83,6 +84,10 @@ type stream struct {
 
 	chunkFormat          byte
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
+	// writesIngestedAt is true when this stream's schema period persists the
+	// per-chunk ingestion timestamp (TSDB FormatV4 / schema v14+). It gates the
+	// backfill too-far-behind bypass so v13 streams ignore the backfill header.
+	writesIngestedAt bool
 
 	configs *runtime.TenantConfigs
 
@@ -113,6 +118,7 @@ type entryWithError struct {
 func newStream(
 	chunkFormat byte,
 	headBlockFmt chunkenc.HeadBlockFmt,
+	writesIngestedAt bool,
 	cfg *Config,
 	limits RateLimiterStrategy,
 	tenant string,
@@ -142,6 +148,7 @@ func newStream(
 		writeFailures:        writeFailures,
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
+		writesIngestedAt:     writesIngestedAt,
 
 		configs:        configs,
 		retentionHours: retentionHours,
@@ -392,6 +399,11 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 }
 
 func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
+	// Backfill traffic may bypass the too-far-behind cut, but only when this
+	// stream's period persists the ingestion timestamp (FormatV4 / schema v14+).
+	// Under v13 the header is ignored. Rate limits are still enforced below.
+	backfill := s.writesIngestedAt &&
+		httpreq.ExtractHeader(ctx, httpreq.LokiBackfillHeader) == httpreq.LokiBackfillHeaderValue
 
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
@@ -433,7 +445,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
-		if !isReplay && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
+		if !isReplay && !backfill && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++

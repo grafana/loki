@@ -52,6 +52,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
+	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -233,6 +234,7 @@ type Distributor struct {
 // New a distributor creates.
 func New(
 	cfg Config,
+	schemaConfig storageconfig.SchemaConfig,
 	ingesterCfg ingester.Config,
 	clientCfg ingester_client.Config,
 	configs *runtime.TenantConfigs,
@@ -262,7 +264,7 @@ func New(
 		return ingester_client.New(internalCfg, addr)
 	}
 
-	validator, err := NewValidator(overrides, usageTracker)
+	validator, err := NewValidator(overrides, usageTracker, schemaConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -593,7 +595,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	var validationErrors util.GroupedErrors
 
 	now := time.Now()
-	validationContext := d.validator.getValidationContextForTime(now, tenantID)
+	validationContext := d.validator.getValidationContextForTime(ctx, now, tenantID)
 	fieldDetector := newFieldDetector(validationContext)
 	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
 	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()

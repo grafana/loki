@@ -429,6 +429,15 @@ func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 	}
 }
 
+// SupportsIngestedAt reports whether chunks written under this period's schema
+// persist the per-chunk ingestion timestamp, i.e. the TSDB index format is
+// FormatV4 or newer (schema v14+). It is used to gate ingestion-time retention
+// behavior such as the backfill age-gate bypass.
+func (cfg *PeriodConfig) SupportsIngestedAt() bool {
+	format, err := cfg.TSDBFormat()
+	return err == nil && format >= index.FormatV4
+}
+
 // Validate the period config.
 func (cfg PeriodConfig) validate() error {
 	if cfg.IndexType == types.IndexTypeTSDB && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
@@ -704,6 +713,19 @@ func (cfg SchemaConfig) SchemaForTime(t model.Time) (PeriodConfig, error) {
 		}
 	}
 	return PeriodConfig{}, fmt.Errorf("no schema config found for time %v", t)
+}
+
+// SupportsIngestedAtForTime reports whether the schema period active at time t
+// persists the per-chunk ingestion timestamp (TSDB FormatV4 / schema v14+).
+// It returns false when no period covers t. Callers backfilling old data should
+// pass the entry timestamp so the decision matches the period the chunk will be
+// written to, keeping the bypass off for data that lands in legacy (v13) periods.
+func (cfg SchemaConfig) SupportsIngestedAtForTime(t model.Time) bool {
+	p, err := cfg.SchemaForTime(t)
+	if err != nil {
+		return false
+	}
+	return p.SupportsIngestedAt()
 }
 
 // TableFor calculates the table shard for a given point in time.
