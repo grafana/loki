@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -296,31 +297,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 	}
 }
 
-func TestPeriodConfig_TSDBFormat_V14RequiresSchemaSupport(t *testing.T) {
-	v14 := PeriodConfig{
-		Schema:    "v14",
-		RowShards: 16,
-		IndexType: "tsdb",
-		IndexTables: IndexPeriodicTableConfig{
-			PathPrefix:          "index/",
-			PeriodicTableConfig: PeriodicTableConfig{Period: ObjectStorageIndexRequiredPeriod},
-		},
-		ChunkTables: PeriodicTableConfig{Period: 0},
-	}
-
-	require.ErrorContains(t, v14.validate(), "invalid schema version")
-
-	format, err := v14.TSDBFormat()
-	require.NoError(t, err)
-	require.Equal(t, index.FormatV3, format)
-
-	v13 := v14
-	v13.Schema = "v13"
-	format, err = v13.TSDBFormat()
-	require.NoError(t, err)
-	require.Equal(t, index.FormatV3, format)
-}
-
 func TestPeriodConfig_Validate(t *testing.T) {
 	for _, tc := range []struct {
 		desc string
@@ -402,6 +378,18 @@ func TestPeriodConfig_Validate(t *testing.T) {
 			desc: "v13",
 			in: PeriodConfig{
 				Schema:    "v13",
+				RowShards: 16,
+				IndexTables: IndexPeriodicTableConfig{
+					PathPrefix:          "index/",
+					PeriodicTableConfig: PeriodicTableConfig{Period: 0},
+				},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
+		},
+		{
+			desc: "v14",
+			in: PeriodConfig{
+				Schema:    "v14",
 				RowShards: 16,
 				IndexTables: IndexPeriodicTableConfig{
 					PathPrefix:          "index/",
@@ -584,6 +572,19 @@ func TestVersionAsInt(t *testing.T) {
 			},
 			expected: int(13),
 		},
+		{
+			name: "v14",
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v14",
+						RowShards: 16,
+					},
+				},
+			},
+			expected: int(14),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			version, err := tc.schemaCfg.Configs[0].VersionAsInt()
@@ -593,6 +594,51 @@ func TestVersionAsInt(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestPeriodConfigFormatMappings(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		schema      string
+		wantChunk   byte
+		wantHeadFmt chunkenc.HeadBlockFmt
+		wantTSDB    int
+	}{
+		{
+			name:        "v12",
+			schema:      "v12",
+			wantChunk:   chunkenc.ChunkFormatV3,
+			wantHeadFmt: chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV3),
+			wantTSDB:    index.FormatV2,
+		},
+		{
+			name:        "v13",
+			schema:      "v13",
+			wantChunk:   chunkenc.ChunkFormatV4,
+			wantHeadFmt: chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4),
+			wantTSDB:    index.FormatV3,
+		},
+		{
+			name:        "v14",
+			schema:      "v14",
+			wantChunk:   chunkenc.ChunkFormatV4,
+			wantHeadFmt: chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4),
+			wantTSDB:    index.FormatV4,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := PeriodConfig{Schema: tc.schema, RowShards: 16}
+
+			chunkFmt, headFmt, err := cfg.ChunkFormat()
+			require.NoError(t, err)
+			require.Equal(t, tc.wantChunk, chunkFmt)
+			require.Equal(t, tc.wantHeadFmt, headFmt)
+
+			tsdbFmt, err := cfg.TSDBFormat()
+			require.NoError(t, err)
+			require.Equal(t, tc.wantTSDB, tsdbFmt)
 		})
 	}
 }
