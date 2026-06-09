@@ -1,7 +1,10 @@
 package compactor
 
 import (
+	"bytes"
 	"context"
+	"flag"
+	"io"
 	"testing"
 	"time"
 
@@ -11,26 +14,26 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// TestCoordinator_EndToEnd_FullCycle drives the coordinator against a real
+// TestCoordinator_EndToEnd drives the coordinator against a real
 // scheduler + worker pair wired in-process via wire.Local transport. Asserts:
 //
-//   - Phase 1 wrote the expected number of placeholder index objects at
+//   - Phase 1 wrote the expected number of merged index objects at
 //     deterministic paths.
 //   - Phase 2 atomically swapped the ToC: source paths removed, output paths
 //     added with the right timestamps.
 //   - Other tenants' rows survive byte-equivalent across the swap.
-//
-// The stub IndexMerge does not actually merge sections, but the orchestration
-// shape is identical to the real-executor case: the test exercises the full
-// scheduler → worker → ReplaceIndexPointers flow.
 func TestCoordinator_EndToEnd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -41,7 +44,7 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 	// Seed: 3 indexes for "acme" with overlapping timestamp ranges (forces >1 pile).
 	// Plus an "untouched" tenant with one index to verify cross-tenant
 	// isolation across the ToC swap.
-	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+	seed := map[string][]testIndex{
 		"acme": {
 			{path: "indexes/aa/src-0", start: window.Add(1 * time.Hour), end: window.Add(5 * time.Hour)},
 			{path: "indexes/bb/src-1", start: window.Add(2 * time.Hour), end: window.Add(6 * time.Hour)},
@@ -51,7 +54,20 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 			{path: "indexes/aa/src-0", start: window.Add(1 * time.Hour), end: window.Add(5 * time.Hour)},
 			{path: "indexes/dd/idx-d-0", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour)},
 		},
-	})
+	}
+	writeToCWithIndexes(ctx, t, bucket, seed)
+
+	// Upload an index with postings + stats per distinct path.
+	seenPaths := map[string]struct{}{}
+	for _, entries := range seed {
+		for _, e := range entries {
+			if _, seen := seenPaths[e.path]; seen {
+				continue
+			}
+			seenPaths[e.path] = struct{}{}
+			seedSourceIndexObject(ctx, t, bucket, e.path, e.start)
+		}
+	}
 
 	// Bring up a real scheduler + worker pair using wire.Local transport.
 	sched, _ := startInProcessSchedulerAndWorker(ctx, t, bucket)
@@ -63,7 +79,6 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 			Enabled:                   true,
 			PollingInterval:           1 * time.Second,
 			MaxRunsPerTask:            2,
-			IndexMergeTaskTTL:         10 * time.Second,
 			ToCConsolidateTimeout:     10 * time.Second,
 			MaxRunningCompactionTasks: 4,
 			PlanVersion:               1,
@@ -165,6 +180,10 @@ func startInProcessSchedulerAndWorker(ctx context.Context, t *testing.T, bucket 
 
 	ms := metastore.NewObjectMetastore(bucket, metastore.Config{}, log.NewNopLogger(),
 		metastore.NewObjectMetastoreMetrics(prometheus.NewRegistry()))
+
+	var compactionCfg Config
+	compactionCfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
 	w, err := worker.New(worker.Config{
 		Logger:           log.NewNopLogger(),
 		Bucket:           bucket,
@@ -174,6 +193,8 @@ func startInProcessSchedulerAndWorker(ctx context.Context, t *testing.T, bucket 
 		Listener:         workerListener,
 		SchedulerAddress: wire.LocalScheduler,
 		NumThreads:       2,
+		ScratchStore:     scratch.NewMemory(),
+		IndexobjCfg:      compactionCfg.IndexobjBuilder,
 	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, w.Service()))
@@ -204,4 +225,50 @@ func pathsOf(entries []indexEntry) []string {
 		out[i] = e.Path
 	}
 	return out
+}
+
+// seedSourceIndexObject builds and uploads an index object at path, containing
+// one postings section and one stats section. The single observation/stat is
+// timestamped at ts so it falls inside the entry's seeded time range.
+func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, ts time.Time) {
+	t.Helper()
+
+	postingsBuilder := postings.NewBuilder(nil, 0, 0)
+	postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       path,
+		SectionIndex:     0,
+		ColumnName:       "service",
+		LabelValue:       "api",
+		StreamID:         1,
+		Timestamp:        ts,
+		UncompressedSize: 100,
+	})
+
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+	statsBuilder.Append(stats.Stat{
+		ObjectPath:       path,
+		SectionIndex:     0,
+		SortSchema:       "service",
+		Labels:           map[string]string{"service": "api"},
+		MinTimestamp:     ts.UnixNano(),
+		MaxTimestamp:     ts.UnixNano() + 1000,
+		RowCount:         10,
+		UncompressedSize: 1000,
+	})
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(postingsBuilder))
+	require.NoError(t, objBuilder.Append(statsBuilder))
+
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	reader, err := obj.Reader(ctx)
+	require.NoError(t, err)
+	defer reader.Close()
+
+	objBytes, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NoError(t, bucket.Upload(ctx, path, io.NopCloser(bytes.NewReader(objBytes))))
 }
