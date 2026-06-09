@@ -100,6 +100,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    releaseStep('download binaries')
                    + step.withRun(|||
                      echo "downloading binaries to $(pwd)/dist"
+                     mkdir -p dist
                      gcloud artifacts generic download \
                        --project="grafanalabs-dev" \
                        --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
