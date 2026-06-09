@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus TaskStatus) {
+func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus TaskStatus, onCriticalPath bool) {
 	capture := newStatus.Capture
 	if capture == nil {
 		// Every terminal notification carries the per-task capture. Skip
@@ -53,6 +53,7 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 
 		// Outcome
 		"status", taskStatusName(newStatus.State),
+		"on_critical_path", onCriticalPath,
 		"cancellation_phase", cancellationPhaseName(oldState, newStatus.State),
 		"error", newStatus.Error,
 
@@ -133,10 +134,10 @@ func ratio(part, total int64) float64 {
 
 // parentTaskID returns the task's parent ULID, or the zero ULID if the task
 // is a root (one-parent assumption per the workflow planner).
+//
+// tasksMut must be held by the caller.
 func (wf *Workflow) parentTaskID(task *Task) any {
-	wf.tasksMut.RLock()
 	parents := wf.graph.Parents(task)
-	wf.tasksMut.RUnlock()
 
 	if len(parents) == 0 {
 		return nil

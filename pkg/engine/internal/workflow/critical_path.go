@@ -1,29 +1,36 @@
 package workflow
 
 import (
-	"github.com/go-kit/log/level"
-
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
-// logCriticalPath emits the per-query critical-path log lines, one per task on
-// the path. It is called from Close, after UnregisterManifest has driven every
-// task to a terminal state and recorded its finish time, so the task DAG and
-// all per-task finish times are available.
-func (wf *Workflow) logCriticalPath() {
-	wf.tasksMut.RLock()
-	path := criticalPath(&wf.graph, wf.taskFinish)
-	wf.tasksMut.RUnlock()
+// pendingSummary is a terminal task's state, retained for its deferred summary
+// (see Workflow.pendingSummaries).
+type pendingSummary struct {
+	oldState TaskState
+	status   TaskStatus
 
-	total := len(path)
-	for position, task := range path {
-		level.Info(wf.logger).Log(
-			"msg", "critical-path",
-			"query_id", wf.opts.ID,
-			"task_id", task.ULID,
-			"cp_position", position,
-			"cp_total_length", total,
-		)
+	taskFinishNanos int64
+}
+
+// flushTaskSummaries logs the deferred per-task summaries at Close, flagging the
+// tasks on the critical path. onTaskChange records each summary and finish time
+// under the terminal-state lock, so on the normal path all are present once the
+// results pipeline closes (every task terminal).
+func (wf *Workflow) flushTaskSummaries() {
+	wf.tasksMut.RLock()
+	defer wf.tasksMut.RUnlock()
+
+	onPath := make(map[*Task]struct{})
+	for _, task := range criticalPath(&wf.graph, wf.pendingSummaries) {
+		onPath[task] = struct{}{}
+	}
+
+	// TODO(rfratto): make Workflow.Close a hard barrier; a fail-fast query can drop
+	// a sibling that finishes at the instant of teardown (failing task unaffected).
+	for t, s := range wf.pendingSummaries {
+		_, critical := onPath[t]
+		wf.printTaskSummary(t, s.oldState, s.status, critical)
 	}
 }
 
@@ -49,10 +56,10 @@ func (wf *Workflow) logCriticalPath() {
 // planner enforces exactly one root node), so this only matters for
 // hypothetical multi-root graphs.
 //
-// A task missing from finish is treated as having finish time 0, so a path is
-// still produced even if some finish times were never recorded.
-func criticalPath(graph *dag.Graph[*Task], finish map[*Task]int64) []*Task {
-	current := latestFinisher(graph.Roots(), finish)
+// A task missing from summaries is treated as having finish time 0, so a path
+// is still produced even if some finish times were never recorded.
+func criticalPath(graph *dag.Graph[*Task], summaries map[*Task]pendingSummary) []*Task {
+	current := latestFinisher(graph.Roots(), summaries)
 	if current == nil {
 		return nil
 	}
@@ -60,7 +67,7 @@ func criticalPath(graph *dag.Graph[*Task], finish map[*Task]int64) []*Task {
 	var path []*Task
 	for current != nil {
 		path = append(path, current)
-		current = latestFinisher(graph.Children(current), finish)
+		current = latestFinisher(graph.Children(current), summaries)
 	}
 	return path
 }
@@ -68,13 +75,13 @@ func criticalPath(graph *dag.Graph[*Task], finish map[*Task]int64) []*Task {
 // latestFinisher returns the task in candidates with the greatest finish time,
 // or nil if candidates is empty. Ties are broken by keeping the first task in
 // iteration order, which keeps selection deterministic for a given graph.
-func latestFinisher(candidates []*Task, finish map[*Task]int64) *Task {
+func latestFinisher(candidates []*Task, summaries map[*Task]pendingSummary) *Task {
 	var (
 		best     *Task
 		bestTime int64
 	)
 	for _, candidate := range candidates {
-		t := finish[candidate]
+		t := summaries[candidate].taskFinishNanos
 		if best == nil || t > bestTime {
 			best, bestTime = candidate, t
 		}
