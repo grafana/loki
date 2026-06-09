@@ -1444,7 +1444,7 @@ func TestScheduler_workerParkOnBackoff(t *testing.T) {
 		}
 		sched.assignMut.RLock()
 		defer sched.assignMut.RUnlock()
-		return len(sched.readyWorkers) == 1
+		return len(sched.connectedWorkers) == 1
 	}, 5*time.Second, 10*time.Millisecond, "worker should remain ready (loop parks, not torn down) after a 429")
 
 	// Now accept assignments and signal a freed thread. The parked loop should

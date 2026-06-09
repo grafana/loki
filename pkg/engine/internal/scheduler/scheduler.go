@@ -57,9 +57,9 @@ type Scheduler struct {
 	streams      map[ulid.ULID]*stream // All known streams (regardless of state)
 	tasks        map[ulid.ULID]*task   // All known tasks (regardless of state)
 
-	assignMut    sync.RWMutex
-	taskQueue    fair.Queue[*task]
-	readyWorkers map[*workerConn]struct{}
+	assignMut        sync.RWMutex
+	taskQueue        fair.Queue[*task]
+	connectedWorkers map[*workerConn]struct{}
 
 	assignSema chan struct{}       // assignSema signals that task assignment is ready.
 	tasksCh    chan taskAssignment // channel for sending task assignments to worker routines.
@@ -95,7 +95,7 @@ func New(config Config) (*Scheduler, error) {
 		streams: make(map[ulid.ULID]*stream),
 		tasks:   make(map[ulid.ULID]*task),
 
-		readyWorkers: make(map[*workerConn]struct{}),
+		connectedWorkers: make(map[*workerConn]struct{}),
 
 		assignSema: make(chan struct{}, 1),
 		tasksCh:    make(chan taskAssignment),
@@ -238,10 +238,10 @@ func (s *Scheduler) markWorkerReady(ctx context.Context, worker *workerConn) err
 		return err
 	}
 
-	if _, exists := s.readyWorkers[worker]; exists {
+	if _, exists := s.connectedWorkers[worker]; exists {
 		nudgeSemaphore(worker.wake)
 	} else {
-		s.readyWorkers[worker] = struct{}{}
+		s.connectedWorkers[worker] = struct{}{}
 
 		go s.workerLoop(ctx, worker)
 	}
@@ -450,7 +450,7 @@ func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason
 	}
 
 	// Remove the worker from the ready list, if it exists.
-	delete(s.readyWorkers, worker)
+	delete(s.connectedWorkers, worker)
 }
 
 func (s *Scheduler) runAssignLoop(ctx context.Context) error {
@@ -572,7 +572,7 @@ func (s *Scheduler) prepareAssignment() (taskAssignment, bool) {
 		s.taskQueue.Pop()
 	}
 
-	if len(s.readyWorkers) == 0 || s.taskQueue.Len() == 0 {
+	if len(s.connectedWorkers) == 0 || s.taskQueue.Len() == 0 {
 		return taskAssignment{}, false
 	}
 
@@ -639,7 +639,7 @@ func (s *Scheduler) requeueTask(t *task, pos fair.Position) {
 	t.MarkRequeued()
 	s.metrics.requeueTotal.Inc()
 
-	if len(s.readyWorkers) > 0 {
+	if len(s.connectedWorkers) > 0 {
 		nudgeSemaphore(s.assignSema)
 	}
 }
@@ -1183,7 +1183,7 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 		}
 	}
 
-	if len(s.readyWorkers) > 0 && s.taskQueue.Len() > 0 {
+	if len(s.connectedWorkers) > 0 && s.taskQueue.Len() > 0 {
 		nudgeSemaphore(s.assignSema)
 	}
 }
