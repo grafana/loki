@@ -99,6 +99,13 @@ func fromWireChunks(conf *Config, headfmt chunkenc.HeadBlockFmt, wireChunks []Ch
 			flushed:     c.FlushedAt,
 			lastUpdated: c.LastUpdated,
 		}
+		// Unflushed chunks recovered after a crash are effectively re-ingested
+		// now, so stamp firstSeen with recovery time. It is persisted only under
+		// FormatV4 (schema v14); legacy encoders drop it. Already-flushed chunks
+		// keep firstSeen zero because their IngestedAt is already in the index.
+		if c.FlushedAt.IsZero() {
+			desc.firstSeen = time.Now()
+		}
 
 		mc, err := chunkenc.MemchunkFromCheckpoint(c.Data, c.Head, headfmt, conf.BlockSize, conf.TargetChunkSize)
 		if err != nil {

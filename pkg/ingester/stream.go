@@ -98,6 +98,11 @@ type chunkDesc struct {
 	reason  string
 
 	lastUpdated time.Time
+	// firstSeen is the wall-clock time the chunk was created (i.e. when its
+	// first entry was ingested). It is the source of chunk.Chunk.IngestedAt at
+	// flush time and is recorded for every chunk; it is only persisted to the
+	// index under TSDB FormatV4 (schema v14) and dropped for legacy formats.
+	firstSeen time.Time
 }
 
 type entryWithError struct {
@@ -164,6 +169,15 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
+// newChunkDesc creates a chunkDesc, stamping firstSeen with the current time so
+// every chunk carries its ingestion timestamp.
+func (s *stream) newChunkDesc() chunkDesc {
+	return chunkDesc{
+		chunk:     s.NewChunk(),
+		firstSeen: time.Now(),
+	}
+}
+
 func (s *stream) Push(
 	ctx context.Context,
 	entries []logproto.Entry,
@@ -210,9 +224,7 @@ func (s *stream) Push(
 
 	prevNumChunks := len(s.chunks)
 	if prevNumChunks == 0 {
-		s.chunks = append(s.chunks, chunkDesc{
-			chunk: s.NewChunk(),
-		})
+		s.chunks = append(s.chunks, s.newChunkDesc())
 		s.metrics.chunksCreatedTotal.Inc()
 		s.metrics.chunkCreatedStats.Inc(1)
 	}
@@ -508,9 +520,7 @@ func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
 	s.metrics.chunksCreatedTotal.Inc()
 	s.metrics.chunkCreatedStats.Inc(1)
 
-	s.chunks = append(s.chunks, chunkDesc{
-		chunk: s.NewChunk(),
-	})
+	s.chunks = append(s.chunks, s.newChunkDesc())
 	return &s.chunks[len(s.chunks)-1]
 }
 

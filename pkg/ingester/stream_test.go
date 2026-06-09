@@ -112,6 +112,41 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 	}
 }
 
+// TestPushStampsFirstSeen verifies every chunk records its creation time so it
+// can be persisted as IngestedAt under FormatV4.
+func TestPushStampsFirstSeen(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
+	s := newStream(
+		chunkfmt,
+		headfmt,
+		defaultConfig(),
+		limiter.rateLimitStrategy,
+		"fake",
+		model.Fingerprint(0),
+		labels.FromStrings("foo", "bar"),
+		NewStreamRateCalculator(),
+		NilMetrics,
+		nil,
+		nil,
+		retentionHours,
+		noPolicy,
+	)
+
+	before := time.Now()
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
+	require.NoError(t, err)
+	require.Len(t, s.chunks, 1)
+	require.False(t, s.chunks[0].firstSeen.IsZero(), "chunk should stamp firstSeen at creation")
+	require.False(t, s.chunks[0].firstSeen.Before(before), "firstSeen should be set to creation time")
+}
+
 func TestPushDeduplication(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
