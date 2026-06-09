@@ -331,10 +331,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	capture.End()
 	terminalStatus.Capture = capture
 
-	// Emit a per-operator pipeline-node trace from the finalized capture. This
-	// reads only statistics already collected during execution (no per-batch
-	// work) and is gated at debug level, like execution-plan-detail.
-	logPipelineNodes(logger, capture)
+	// Emit the per-task pipeline trace from the finalized capture.
+	logPipelineTrace(logger, capture)
 
 	// Expose task I/O counts as worker counters by reading the values already
 	// accumulated in the per-task capture (the same stats logged in the task
