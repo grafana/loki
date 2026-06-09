@@ -138,12 +138,9 @@ type Workflow struct {
 
 	span *xcap.Span
 
-	tasksMut   sync.RWMutex
-	taskStates map[*Task]TaskState
-	// taskFinish records each task's terminal finish time (Unix nanoseconds),
-	// read from the task's capture as it reaches a terminal state. It is used
-	// to approximate the query's critical path once every task is terminal.
-	taskFinish map[*Task]int64
+	tasksMut         sync.RWMutex
+	taskStates       map[*Task]TaskState
+	pendingSummaries map[*Task]pendingSummary // Holds terminal task state until Close.
 
 	streamsMut   sync.RWMutex
 	streamStates map[*Stream]StreamState
@@ -176,12 +173,12 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 	if graph.Len() == 0 {
 		level.Debug(logger).Log("msg", "workflow plan is empty")
 		return &Workflow{
-			opts:         opts,
-			logger:       logger,
-			runner:       runner,
-			taskStates:   make(map[*Task]TaskState),
-			taskFinish:   make(map[*Task]int64),
-			streamStates: make(map[*Stream]StreamState),
+			opts:             opts,
+			logger:           logger,
+			runner:           runner,
+			taskStates:       make(map[*Task]TaskState),
+			streamStates:     make(map[*Stream]StreamState),
+			pendingSummaries: make(map[*Task]pendingSummary),
 		}, nil
 	}
 
@@ -199,9 +196,9 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 		resultsStream:   results,
 		resultsPipeline: newStreamPipe(),
 
-		taskStates:   make(map[*Task]TaskState),
-		taskFinish:   make(map[*Task]int64),
-		streamStates: make(map[*Stream]StreamState),
+		taskStates:       make(map[*Task]TaskState),
+		streamStates:     make(map[*Stream]StreamState),
+		pendingSummaries: make(map[*Task]pendingSummary),
 	}
 	// Detach cancellation from the caller's ctx so a cancellation of the
 	// planning context does not abort the manifest registration, but keep
@@ -297,7 +294,7 @@ func (wf *Workflow) Close() {
 	// UnregisterManifest synchronously drives every remaining task to a terminal
 	// state and delivers its status, so by here the DAG and all per-task finish
 	// times are recorded and the critical path is complete.
-	wf.logCriticalPath()
+	wf.flushTaskSummaries()
 }
 
 // Run executes the workflow, returning a pipeline to read results from. The
@@ -505,6 +502,9 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	wf.tasksMut.Lock()
 	oldState := wf.taskStates[task]
 	wf.taskStates[task] = newStatus.State
+	if newStatus.State.Terminal() && oldState != newStatus.State {
+		wf.recordTerminal(task, oldState, newStatus)
+	}
 	wf.tasksMut.Unlock()
 
 	if newStatus.State.Terminal() {
@@ -512,6 +512,23 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	} else {
 		wf.handleNonTerminalStateChange(ctx, task, newStatus)
 	}
+}
+
+// recordTerminal stashes a terminal task's summary and finish time for Close to
+// emit. Recording both under one lock is what lets flushTaskSummaries trust that
+// observing every task terminal implies every summary and finish is present.
+// wf.tasksMut must be held.
+func (wf *Workflow) recordTerminal(task *Task, oldState TaskState, newStatus TaskStatus) {
+	summary := pendingSummary{
+		oldState: oldState,
+		status:   newStatus,
+	}
+	if newStatus.Capture != nil {
+		if finish, ok := xcap.TryValue[int64](newStatus.Capture, schedulerstat.TaskFinishTime); ok {
+			summary.taskFinishNanos = finish
+		}
+	}
+	wf.pendingSummaries[task] = summary
 }
 
 func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, oldState TaskState, newStatus TaskStatus) {
@@ -535,15 +552,6 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 
 	if newStatus.Capture != nil {
 		wf.mergeCapture(newStatus.Capture)
-
-		// Stash the task's terminal finish time for the critical-path walk. The
-		// per-task capture is merged away into wf.capture, so this is the only
-		// point at which the per-task value is available.
-		if finish, ok := xcap.TryValue[int64](newStatus.Capture, schedulerstat.TaskFinishTime); ok {
-			wf.tasksMut.Lock()
-			wf.taskFinish[task] = finish
-			wf.tasksMut.Unlock()
-		}
 	}
 
 	if newStatus.Statistics != nil {
@@ -583,9 +591,6 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 
 	// Close the results pipeline if it was waiting on this task to finish.
 	wf.maybeCloseResults()
-
-	// Print the summary at the very end to track full end-to-end task time.
-	wf.printTaskSummary(task, oldState, newStatus)
 }
 
 func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task, newStatus TaskStatus) {

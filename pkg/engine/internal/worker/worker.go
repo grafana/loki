@@ -379,7 +379,8 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		}
 
 		if err := w.jobManager.Send(ctx, job); err != nil {
-			job.Close() // Clean up resources associated with the job.
+			job.Close()                 // Clean up resources associated with the job.
+			_ = handleWorkerSubscribe() // handleWorkerSubscribe can only return nil
 			w.metrics.rejectedAssignmentsTotal.Inc()
 			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
 		}
@@ -433,24 +434,24 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 
 	g.Go(func() error {
 		for {
-			// Wait for a signal that we want to wait for a ready thread.
+			// Wait for the scheduler to require a WorkerReady message.
+			// This happens automatically before sending a http.StatusTooManyRequests error
 			select {
 			case <-ctx.Done():
 				return nil
 			case <-waitReady:
 			}
 
+			// Wait for a thread to become ready for another job
 			if err := w.jobManager.WaitReady(ctx); err != nil {
-				// Context got canceled; abort.
-				break
+				return nil
 			}
 
+			// Notify the scheduler.
 			if err := peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{}); err != nil {
 				level.Warn(logger).Log("msg", "failed to send ready message", "err", err)
 			}
 		}
-
-		return nil
 	})
 
 	// Wait for all worker goroutines to exit.
