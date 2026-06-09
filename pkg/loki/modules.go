@@ -831,9 +831,10 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 		_ = level.Debug(logger).Log("msg", " pattern ingester tee service disabled")
 		return nil, nil
 	}
-	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
+	_ = level.Debug(logger).Log("msg", "initializing pattern ingester...")
 
 	if t.Cfg.Pattern.TeeConfig.IngestMode == pattern.IngestMode(pattern.IngestModeInMemory) {
+		_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
 		svc, err := pattern.NewTeeService(
 			t.Cfg.Pattern,
 			t.Overrides,
@@ -859,6 +860,7 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 			},
 		), nil
 	} else {
+		_ = level.Debug(logger).Log("msg", "initializing pattern ingester Kafka service...")
 		svc, err := pattern.NewKafkaService(t.Cfg.Pattern,
 			t.Overrides,
 			t.PatternRingClient,
