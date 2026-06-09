@@ -6,7 +6,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "961a0dadb24cc4102187fc700dc3242152a17c21"
+  RELEASE_LIB_REF: "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
   RELEASE_REPO: "grafana/loki"
 jobs:
   createRelease:
@@ -63,7 +63,7 @@ jobs:
           --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
           --location="us" \
           --package=binaries \
-          --version=${{ github.sha }} \
+          --version=$(echo ${SHA} | tr -d '"') \
           --destination=dist/
       working-directory: "release"
     - env:
@@ -242,7 +242,7 @@ jobs:
           --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
           --location="us" \
           --package=plugins \
-          --version=${{ github.sha }} \
+          --version=$(echo ${SHA} | tr -d '"') \
           --destination=plugins/
         mkdir -p "release/clients/cmd/docker-driver"
     - name: "publish docker driver"
@@ -285,7 +285,7 @@ jobs:
           --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
           --location="us" \
           --package=images \
-          --version=${{ github.sha }} \
+          --version=$(echo ${SHA} | tr -d '"') \
           --destination=images/
     - name: "publish docker images"
       uses: "./lib/actions/push-images"

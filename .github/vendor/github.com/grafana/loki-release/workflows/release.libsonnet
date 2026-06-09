@@ -106,7 +106,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                        --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
                        --location="us" \
                        --package=binaries \
-                       --version=${{ github.sha }} \
+                       --version=$(echo ${SHA} | tr -d '"') \
                        --destination=dist/
                    |||),
 
@@ -209,7 +209,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
             --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
             --location="us" \
             --package=images \
-            --version=${{ github.sha }} \
+            --version=$(echo ${SHA} | tr -d '"') \
             --destination=images/
         |||),
         step.new('publish docker images', './lib/actions/push-images')
@@ -246,7 +246,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
             --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
             --location="us" \
             --package=plugins \
-            --version=${{ github.sha }} \
+            --version=$(echo ${SHA} | tr -d '"') \
             --destination=plugins/
           mkdir -p "release/%s"
         ||| % path),
