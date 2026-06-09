@@ -3435,6 +3435,11 @@ dataobj_tee:
   # to 0 to disable batching.
   # CLI flag: -distributor.dataobj-tee.rate-batch-window
   [rate_batch_window: <duration> | default = 0s]
+
+  # Enables use of rendezvous hashing. When this is false, consistent hashing is
+  # used instead.
+  # CLI flag: -distributor.dataobj-tee.use-rendezvous-hashing
+  [use_rendezvous_hashing: <boolean> | default = false]
 ```
 
 ### etcd
