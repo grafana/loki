@@ -32,6 +32,11 @@ type Chunk struct {
 	ChunkID string
 	From    model.Time
 	Through model.Time
+	// IngestedAt is the chunk's ingestion timestamp, populated from
+	// ChunkMeta.IngestedAt. It is recorded for every chunk written under TSDB
+	// FormatV4 (schema v14) and is zero for legacy formats (v13 and below),
+	// where retention falls back to Through. See expirationChecker.Expired.
+	IngestedAt model.Time
 }
 
 func (c Chunk) String() string {
@@ -103,7 +108,7 @@ type chunkIndexer interface {
 	// The implementation could skip indexing a chunk due to it not belonging to the table.
 	// ToDo(Sandeep): We already have a check in the caller of IndexChunk to check if the chunk belongs to the table.
 	// See if we can drop the redundant check in the underlying implementation.
-	IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, sizeInKB uint32, logEntriesCount uint32) (chunkIndexed bool, err error)
+	IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, ingestedAt model.Time, sizeInKB uint32, logEntriesCount uint32) (chunkIndexed bool, err error)
 }
 
 type IndexProcessor interface {
@@ -536,6 +541,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 		newChunkStart,
 		newChunkEnd,
 	)
+	newChunk.IngestedAt = chks[0].IngestedAt
 
 	err = newChunk.Encode()
 	if err != nil {
@@ -543,7 +549,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 	}
 
 	approxKB := math.Round(float64(newChunk.Data.UncompressedSize()) / float64(1<<10))
-	uploadChunk, err := c.chunkIndexer.IndexChunk(newChunk.ChunkRef, newChunk.Metric, uint32(approxKB), uint32(newChunk.Data.Entries()))
+	uploadChunk, err := c.chunkIndexer.IndexChunk(newChunk.ChunkRef, newChunk.Metric, newChunk.IngestedAt, uint32(approxKB), uint32(newChunk.Data.Entries()))
 	if err != nil {
 		return false, false, err
 	}

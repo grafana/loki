@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
@@ -293,6 +294,34 @@ func TestSchemaConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPeriodConfig_TSDBFormat_V14NotAcceptedBeforeSchemaPR guards the Phase 1
+// boundary: the FormatV4 encoder exists, but no production schema can select
+// it yet. Schema v14 must fail validation and must not map to FormatV4.
+func TestPeriodConfig_TSDBFormat_V14NotAcceptedBeforeSchemaPR(t *testing.T) {
+	v14 := PeriodConfig{
+		Schema:    "v14",
+		RowShards: 16,
+		IndexType: "tsdb",
+		IndexTables: IndexPeriodicTableConfig{
+			PathPrefix:          "index/",
+			PeriodicTableConfig: PeriodicTableConfig{Period: ObjectStorageIndexRequiredPeriod},
+		},
+		ChunkTables: PeriodicTableConfig{Period: 0},
+	}
+
+	require.ErrorContains(t, v14.validate(), "invalid schema version")
+
+	format, err := v14.TSDBFormat()
+	require.NoError(t, err)
+	require.Equal(t, index.FormatV3, format, "schema v14 must not map to FormatV4 before the schema writer PR")
+
+	v13 := v14
+	v13.Schema = "v13"
+	format, err = v13.TSDBFormat()
+	require.NoError(t, err)
+	require.Equal(t, index.FormatV3, format)
 }
 
 func TestPeriodConfig_Validate(t *testing.T) {

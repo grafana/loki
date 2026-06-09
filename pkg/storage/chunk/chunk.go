@@ -44,6 +44,11 @@ type Chunk struct {
 	logproto.ChunkRef
 
 	Metric labels.Labels `json:"metric"`
+	// IngestedAt is the chunk's ingestion timestamp. Under TSDB FormatV4
+	// (schema v14) it is set for every chunk at ingestion time and persisted in
+	// the index; for legacy formats it stays zero and is not encoded. It feeds
+	// ingestion-time retention in the compactor.
+	IngestedAt model.Time `json:"ingestedAt"`
 
 	// We never use Delta encoding (the zero value), so if this entry is
 	// missing, we default to DoubleDelta.
