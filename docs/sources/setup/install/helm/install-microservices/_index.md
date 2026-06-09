@@ -38,7 +38,7 @@ Zone-aware replication is enabled by default for ingesters. This creates three i
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
-We do not recommend running in microservices mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+We do not recommend running in microservices mode with `filesystem` storage. For the purpose of this guide, we will use the deprecated built-in MinIO subchart to provide a complete self-contained example. Configure a dedicated external object storage backend for production.
 {{< /admonition >}}
 
 
@@ -63,6 +63,10 @@ We do not recommend running in microservices mode with `filesystem` storage. For
    ```
 
 1. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
+
+   {{< admonition type="warning" >}}
+   The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. The example below requires `ignoreMinioDeprecation: true` to render with chart v17+. For production, configure a dedicated external object storage backend.
+   {{< /admonition >}}
 
      ```yaml
      loki:
@@ -132,7 +136,7 @@ We do not recommend running in microservices mode with `filesystem` storage. For
        service:
          type: LoadBalancer
 
-
+     ignoreMinioDeprecation: true  # Temporary workaround – MinIO will be removed 2026-10-31
      # Enable minio for storage
      minio:
        enabled: true
