@@ -282,7 +282,7 @@ func TestLimiter_TSDBShardingStrategy(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tLimits := map[string]*validation.Limits{
-				"fake": &validation.Limits{
+				"fake": {
 					TSDBShardingStrategy: tc.configured,
 				},
 			}
