@@ -47,8 +47,8 @@ jobs:
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
       dockerfile: "operator/Dockerfile"
-      registry: "docker.io"
-      organization: "grafana"
+      registry: "us-docker.pkg.dev"
+      organization: "grafanalabs-global/dockerhub-loki-prod-mirror"
       image_name: "loki-operator"
       tag: ${{ needs.releasePlease.outputs.release_major }}.${{ needs.releasePlease.outputs.release_minor }}.${{ needs.releasePlease.outputs.release_patch }}
   publishRelease:
