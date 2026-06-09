@@ -28,12 +28,12 @@ func TestPackPipelineNodes(t *testing.T) {
 		{
 			name: "root and child link by index",
 			nodes: []pipelineNode{
-				{OperatorID: rootID, OpType: "Limit", SelfDuration: 50 * time.Millisecond, BatchesOut: 10, BatchesIn: 4, RowsOut: 1000},
+				{OperatorID: rootID, OpType: "Limit", SelfDuration: 50 * time.Millisecond, BatchesOut: 10, BatchesIn: 4, RowsIn: 400, RowsOut: 1000},
 				{OperatorID: leafID, ParentOperatorID: rootID, OpType: "Projection/PARSE_LOGFMT", SelfDuration: 30 * time.Millisecond, BatchesOut: 4, RowsOut: 400},
 			},
 			want: `[
-				{"op":"Limit","parent":-1,"self_ms":50,"batches_in":4,"batches_out":10,"rows_out":1000},
-				{"op":"Projection/PARSE_LOGFMT","parent":0,"self_ms":30,"batches_in":0,"batches_out":4,"rows_out":400}
+				{"op":"Limit","parent":-1,"self_ms":50,"batches_in":4,"batches_out":10,"rows_in":400,"rows_out":1000},
+				{"op":"Projection/PARSE_LOGFMT","parent":0,"self_ms":30,"batches_in":0,"batches_out":4,"rows_in":0,"rows_out":400}
 			]`,
 		},
 		{
@@ -44,9 +44,9 @@ func TestPackPipelineNodes(t *testing.T) {
 				{OperatorID: leafID, ParentOperatorID: midID, OpType: "DataObjScan"},
 			},
 			want: `[
-				{"op":"Limit","parent":-1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_out":0},
-				{"op":"Filter","parent":0,"self_ms":0,"batches_in":0,"batches_out":0,"rows_out":0},
-				{"op":"DataObjScan","parent":1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_out":0}
+				{"op":"Limit","parent":-1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0},
+				{"op":"Filter","parent":0,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0},
+				{"op":"DataObjScan","parent":1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0}
 			]`,
 		},
 		{
@@ -54,7 +54,7 @@ func TestPackPipelineNodes(t *testing.T) {
 			nodes: []pipelineNode{
 				{OperatorID: leafID, ParentOperatorID: absent, OpType: "DataObjScan"},
 			},
-			want: `[{"op":"DataObjScan","parent":-1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_out":0}]`,
+			want: `[{"op":"DataObjScan","parent":-1,"self_ms":0,"batches_in":0,"batches_out":0,"rows_in":0,"rows_out":0}]`,
 		},
 	}
 	for _, tt := range tests {
@@ -109,6 +109,7 @@ func TestBuildPipelineNodes(t *testing.T) {
 					BatchesOut:       10,
 					BatchesIn:        7, // 4 + 3
 					RowsOut:          1000,
+					RowsIn:           700, // 400 + 300
 				},
 				leftID: {
 					OperatorID:       leftID,
@@ -118,6 +119,7 @@ func TestBuildPipelineNodes(t *testing.T) {
 					BatchesOut:       4,
 					BatchesIn:        2,
 					RowsOut:          400,
+					RowsIn:           200,
 				},
 				rightID: {
 					OperatorID:       rightID,

@@ -64,6 +64,9 @@ type pipelineNode struct {
 	BatchesIn int64
 	// RowsOut is the number of rows this operator produced.
 	RowsOut int64
+	// RowsIn is the sum of rows produced by this operator's direct children (its
+	// input from upstream operators; zero for a leaf, whose input is storage).
+	RowsIn int64
 }
 
 // buildPipelineNodes assembles one [pipelineNode] per operator region from the
@@ -73,8 +76,8 @@ type pipelineNode struct {
 // Parent/child relationships are resolved within the supplied set. A record's
 // ParentOperatorID is preserved only when it refers to another record in
 // regions, so an operator whose parent is a non-operator region (such as the
-// task root) reports the zero ID. BatchesIn and the exclusive SelfDuration are
-// computed from each operator's direct children within the set.
+// task root) reports the zero ID. BatchesIn, RowsIn, and the exclusive
+// SelfDuration are computed from each operator's direct children within the set.
 func buildPipelineNodes(regions []pipelineRegionStat) []pipelineNode {
 	// Index regions by ID and group direct children by parent so each operator's
 	// children can be resolved in a single pass.
@@ -94,10 +97,12 @@ func buildPipelineNodes(regions []pipelineRegionStat) []pipelineNode {
 		var (
 			childReadDuration time.Duration
 			batchesIn         int64
+			rowsIn            int64
 		)
 		for _, c := range children[r.ID] {
 			childReadDuration += c.ReadDuration
 			batchesIn += c.ReadCalls
+			rowsIn += c.RowsOut
 		}
 
 		self := r.ReadDuration - childReadDuration
@@ -118,6 +123,7 @@ func buildPipelineNodes(regions []pipelineRegionStat) []pipelineNode {
 			BatchesOut:       r.ReadCalls,
 			BatchesIn:        batchesIn,
 			RowsOut:          r.RowsOut,
+			RowsIn:           rowsIn,
 		})
 	}
 	return nodes
@@ -174,6 +180,7 @@ type packedPipelineNode struct {
 	SelfMS     int64  `json:"self_ms"`
 	BatchesIn  int64  `json:"batches_in"`
 	BatchesOut int64  `json:"batches_out"`
+	RowsIn     int64  `json:"rows_in"`
 	RowsOut    int64  `json:"rows_out"`
 }
 
@@ -200,6 +207,7 @@ func packPipelineNodes(nodes []pipelineNode) []packedPipelineNode {
 			SelfMS:     n.SelfDuration.Milliseconds(),
 			BatchesIn:  n.BatchesIn,
 			BatchesOut: n.BatchesOut,
+			RowsIn:     n.RowsIn,
 			RowsOut:    n.RowsOut,
 		}
 	}

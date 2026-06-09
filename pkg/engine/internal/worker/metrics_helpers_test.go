@@ -23,12 +23,15 @@ func TestObserveOperatorCost(t *testing.T) {
 	m := newMetrics()
 	m.observeOperatorCost([]pipelineNode{
 		{OpType: "DataObjScan", SelfDuration: 20 * time.Millisecond, RowsOut: 300},
-		{OpType: "Projection/PARSE_LOGFMT", SelfDuration: 30 * time.Millisecond, RowsOut: 250},
+		{OpType: "Projection/PARSE_LOGFMT", SelfDuration: 30 * time.Millisecond, RowsIn: 400, RowsOut: 250},
 		{OpType: "DataObjScan", SelfDuration: 10 * time.Millisecond, RowsOut: 100},
 	})
 
 	require.Equal(t, float64(400), testutil.ToFloat64(m.operatorRowsOutTotal.WithLabelValues("DataObjScan")))
 	require.Equal(t, float64(250), testutil.ToFloat64(m.operatorRowsOutTotal.WithLabelValues("Projection/PARSE_LOGFMT")))
+	// Leaves have no operator input; the parser consumed its child's rows.
+	require.Equal(t, float64(0), testutil.ToFloat64(m.operatorRowsInTotal.WithLabelValues("DataObjScan")))
+	require.Equal(t, float64(400), testutil.ToFloat64(m.operatorRowsInTotal.WithLabelValues("Projection/PARSE_LOGFMT")))
 
 	// Self-time is grouped by operator type and recorded in seconds: DataObjScan
 	// gets 0.02 + 0.01 over two samples, the parser gets 0.03 over one.

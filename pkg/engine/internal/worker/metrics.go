@@ -51,6 +51,7 @@ type metrics struct {
 
 	// Per-operator-type cost; operator_type is bounded (operator/parser names).
 	operatorSelfSeconds  *prometheus.HistogramVec
+	operatorRowsInTotal  *prometheus.CounterVec
 	operatorRowsOutTotal *prometheus.CounterVec
 }
 
@@ -162,6 +163,10 @@ func newMetrics() *metrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"operator_type"}),
+		operatorRowsInTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_worker_operator_rows_in_total",
+			Help: "Total rows an operator consumed from its child operators, by operator type (zero for leaves)",
+		}, []string{"operator_type"}),
 		operatorRowsOutTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_engine_worker_operator_rows_out_total",
 			Help: "Total rows produced by an operator, by operator type",
@@ -175,10 +180,11 @@ func (m *metrics) Register(reg prometheus.Registerer) error { return reg.Registe
 // Unregister unregisters metrics from the provided Registerer.
 func (m *metrics) Unregister(reg prometheus.Registerer) { reg.Unregister(m.reg) }
 
-// observeOperatorCost records each operator's self-time and rows out, by type.
+// observeOperatorCost records each operator's self-time and row counts, by type.
 func (m *metrics) observeOperatorCost(nodes []pipelineNode) {
 	for _, n := range nodes {
 		m.operatorSelfSeconds.WithLabelValues(n.OpType).Observe(n.SelfDuration.Seconds())
+		m.operatorRowsInTotal.WithLabelValues(n.OpType).Add(float64(n.RowsIn))
 		m.operatorRowsOutTotal.WithLabelValues(n.OpType).Add(float64(n.RowsOut))
 	}
 }
