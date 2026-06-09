@@ -442,19 +442,17 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		case <-waitReady:
 		}
 
+		// Advertise readiness once per batch of newly-ready threads.
+		// The generation number is used to ensure all Readying threads are caught.
+		var waitGeneration uint64
 		for {
-			// Wait until at least one thread is ready to receive a task.
-			if err := w.jobManager.WaitReady(ctx); err != nil {
+			var err error
+			if waitGeneration, err = w.jobManager.WaitReady(ctx, waitGeneration); err != nil {
 				return nil
 			}
 
 			if err := peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{}); err != nil {
 				level.Warn(logger).Log("msg", "failed to send ready message", "err", err)
-			}
-
-			// Wait until all threads are busy before proceeding.
-			if err := w.jobManager.WaitFull(ctx); err != nil {
-				return nil
 			}
 		}
 	})

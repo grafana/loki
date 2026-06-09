@@ -2,41 +2,13 @@ package worker
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 func Test_jobManager(t *testing.T) {
-	t.Run("WaitReady blocks until a Recv call is waiting", func(t *testing.T) {
-		// Use synctest so this doesn't take a real minute to execute.
-		synctest.Test(t, func(t *testing.T) {
-			jm := newJobManager()
-
-			ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
-			defer cancel()
-
-			err := jm.WaitReady(ctx)
-			require.ErrorIs(t, err, context.DeadlineExceeded, "WaitReady should wait until context cancellation if there are no ready threads")
-		})
-	})
-
-	t.Run("WaitReady returns when a Recv call is waiting", func(t *testing.T) {
-		jm := newJobManager()
-
-		go func() {
-			_, _ = jm.Recv(t.Context())
-		}()
-
-		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
-		defer cancel()
-
-		require.NoError(t, jm.WaitReady(ctx), "WaitReady should return when a Recv call is waiting")
-	})
-
 	t.Run("Send fails with no calls to Recv", func(t *testing.T) {
 		jm := newJobManager()
 
@@ -45,39 +17,40 @@ func Test_jobManager(t *testing.T) {
 	})
 
 	t.Run("Send succeeds with a call to Recv", func(t *testing.T) {
-		jm := newJobManager()
-		job := new(threadJob)
+		synctest.Test(t, func(t *testing.T) {
+			jm := newJobManager()
+			job := new(threadJob)
 
-		var wg sync.WaitGroup
-		defer wg.Wait()
+			recvDone := make(chan struct{})
+			go func() {
+				defer close(recvDone)
+				actual, err := jm.Recv(t.Context())
+				require.NoError(t, err, "Recv should not fail when a job is sent")
+				require.Equal(t, job, actual, "Recv should return the sent job")
+			}()
 
-		wg.Go(func() {
-			actual, err := jm.Recv(t.Context())
-			require.NoError(t, err, "Recv should not fail when a job is sent")
-			require.Equal(t, job, actual, "Recv should return the sent job")
+			// Wait for the Recv call to be registered as waiting.
+			synctest.Wait()
+
+			require.NoError(t, jm.Send(t.Context(), job), "Send should not fail when a Recv call is active")
+			<-recvDone
 		})
-
-		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
-		defer cancel()
-
-		require.NoError(t, jm.WaitReady(ctx), "WaitReady should not time out")
-		require.NoError(t, jm.Send(t.Context(), job), "Send should not fail when a Recv call is active")
 	})
 
 	t.Run("Send fails if the receiver exits", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			jm := newJobManager()
 
-			ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
-			defer cancel()
-
+			recvCtx, cancelRecv := context.WithCancel(t.Context())
 			go func() {
-				_, _ = jm.Recv(ctx)
+				_, _ = jm.Recv(recvCtx)
 			}()
 
-			require.NoError(t, jm.WaitReady(ctx), "WaitReady should not time out")
+			// Wait for the Recv call to be registered as waiting.
+			synctest.Wait()
 
-			cancel()
+			cancelRecv()
+			synctest.Wait()
 
 			err := jm.Send(t.Context(), new(threadJob))
 			require.ErrorIs(t, err, errNoReadyThreads, "Send should fail if there are no ready threads")
@@ -94,9 +67,8 @@ func Test_jobManager(t *testing.T) {
 				}()
 			}
 
-			// Wait for all Recv calls to be waiting
+			// Wait for all Recv calls to be waiting.
 			synctest.Wait()
-			require.NoError(t, jm.WaitReady(t.Context()), "WaitReady should not fail when a Recv call is waiting")
 
 			for range 10 {
 				require.NoError(t, jm.Send(t.Context(), new(threadJob)), "Send should not fail when there are waiting threads")
@@ -108,98 +80,58 @@ func Test_jobManager(t *testing.T) {
 		})
 	})
 
-	t.Run("WaitBusy returns immediately when no thread is waiting", func(t *testing.T) {
-		jm := newJobManager()
-		require.NoError(t, jm.WaitFull(t.Context()), "WaitBusy should return immediately when the pool is fully busy")
-	})
-
-	t.Run("WaitBusy blocks until the waiting thread receives a job", func(t *testing.T) {
+	t.Run("WaitReady blocks until a thread becomes ready", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			jm := newJobManager()
 
+			genDone := make(chan uint64, 1)
 			go func() {
-				_, _ = jm.Recv(t.Context())
+				gen, err := jm.WaitReady(t.Context(), 0)
+				require.NoError(t, err)
+				genDone <- gen
 			}()
 
-			// Wait for the Recv call to be waiting.
-			synctest.Wait()
-
-			busyDone := make(chan error, 1)
-			go func() { busyDone <- jm.WaitFull(t.Context()) }()
-
-			// WaitBusy must not return while a thread is still waiting.
+			// No ready threads yet: WaitReady must block.
 			synctest.Wait()
 			select {
-			case <-busyDone:
-				t.Fatal("WaitBusy returned while a thread was still waiting")
+			case <-genDone:
+				t.Fatal("WaitReady returned before any thread was ready")
 			default:
 			}
 
-			// Delivering a job makes the waiting thread busy.
-			require.NoError(t, jm.Send(t.Context(), new(threadJob)))
-
+			// A thread becoming ready advances the generation and unblocks it.
+			go func() { _, _ = jm.Recv(t.Context()) }()
 			synctest.Wait()
-			require.NoError(t, <-busyDone, "WaitBusy should return once every thread is busy")
+			require.Equal(t, uint64(1), <-genDone, "WaitReady should return the advanced generation")
 		})
 	})
 
-	t.Run("WaitBusy unblocks when a waiting Recv is cancelled", func(t *testing.T) {
+	t.Run("WaitReady coalesces a burst of newly-ready threads", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			jm := newJobManager()
 
-			recvCtx, cancelRecv := context.WithCancel(t.Context())
-			go func() {
-				_, _ = jm.Recv(recvCtx)
-			}()
-
-			synctest.Wait()
-
-			busyDone := make(chan error, 1)
-			go func() { busyDone <- jm.WaitFull(t.Context()) }()
-
-			synctest.Wait()
-			select {
-			case <-busyDone:
-				t.Fatal("WaitBusy returned while a thread was still waiting")
-			default:
+			// Several threads become ready before anyone observes the generation.
+			for range 5 {
+				go func() { _, _ = jm.Recv(t.Context()) }()
 			}
-
-			// Cancelling the Recv drops the waiting count back to zero.
-			cancelRecv()
-
 			synctest.Wait()
-			require.NoError(t, <-busyDone, "WaitBusy should return after the waiting Recv is cancelled")
+
+			// A single call observes the whole burst as one generation jump.
+			gen, err := jm.WaitReady(t.Context(), 0)
+			require.NoError(t, err)
+			require.Equal(t, uint64(5), gen, "the burst should collapse into a single generation value")
 		})
 	})
 
-	t.Run("WaitReady/WaitBusy alternate across a busy->ready cycle", func(t *testing.T) {
+	t.Run("WaitReady returns when the context is cancelled", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			jm := newJobManager()
 
-			// Initially fully busy: WaitReady blocks, WaitBusy returns.
-			require.NoError(t, jm.WaitFull(t.Context()))
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
 
-			go func() {
-				_, _ = jm.Recv(t.Context())
-			}()
-			synctest.Wait()
-
-			// A thread is now waiting: WaitReady returns, WaitBusy blocks.
-			require.NoError(t, jm.WaitReady(t.Context()), "WaitReady should return once a thread is waiting")
-
-			busyDone := make(chan error, 1)
-			go func() { busyDone <- jm.WaitFull(t.Context()) }()
-			synctest.Wait()
-			select {
-			case <-busyDone:
-				t.Fatal("WaitBusy returned while a thread was still waiting")
-			default:
-			}
-
-			// Assign the task: pool is fully busy again, WaitBusy returns.
-			require.NoError(t, jm.Send(t.Context(), new(threadJob)))
-			synctest.Wait()
-			require.NoError(t, <-busyDone, "WaitBusy should return after the thread becomes busy")
+			_, err := jm.WaitReady(ctx, 0)
+			require.ErrorIs(t, err, context.Canceled)
 		})
 	})
 }
