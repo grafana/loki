@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -50,7 +51,7 @@ func TestInspectFile_IndexPointers(t *testing.T) {
 
 	buildIndexPointersObject(ctx, t, bucket, path, "tenantID", wantPath, start, end)
 
-	md := inspectFile(ctx, bucket, path)
+	md := inspectFile(ctx, log.NewNopLogger(), bucket, path)
 	require.Empty(t, md.Error)
 
 	var found *SectionMetadata
