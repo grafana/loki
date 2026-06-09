@@ -56,7 +56,7 @@ These AKS requirements are the minimum specification needed to deploy Loki using
 In this guide, we deploy Loki using `Standard_E2ds_v5` instances. This is to make sure we remain within the free tier limits for Azure. Which allows us to deploy up to 10 vCPUs within a region. We recommend for large production workloads to scale these nodes up to `Standard_D4_v5`.
 {{< /admonition >}}
 
-The minimum requirements for deploying Loki on AKS are: 
+The minimum requirements for deploying Loki on AKS are:
 
 - Kubernetes version `1.30` or above.
 - `3` nodes for the AKS cluster.
@@ -113,6 +113,7 @@ GEL customers will require a third container to store the admin data. This conta
     --encryption-services blob \
     --resource-group <MY_RESOURCE_GROUP_NAME>
     ```
+
     Replace the placeholders with your desired values.
 
 1. Create the containers for chunks and ruler:
@@ -121,8 +122,8 @@ GEL customers will require a third container to store the admin data. This conta
     az storage container create --account-name <STORAGE-ACCOUNT-NAME> --name <CHUNK-BUCKET-NAME> --auth-mode login && \
     az storage container create --account-name <STORAGE-ACCOUNT-NAME> --name <RULER-BUCKET-NAME> --auth-mode login
     ```
-    Make sure `--account-name` matches the account you just created
 
+    Make sure `--account-name` matches the account you just created
 
 With the storage account and containers created, you can now proceed to creating the Azure AD role and federated credentials.
 
@@ -139,9 +140,11 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
     --query "oidcIssuerProfile.issuerUrl" \
     -o tsv
     ```
+
     This command will return the OIDC issuer URL. You will need this URL to create the federated credentials.
 
 1. Generate a `credentials.json` file with the following content:
+
     ```json
     {
         "name": "LokiFederatedIdentity",
@@ -153,18 +156,22 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
         ]
     }
     ```
+
     Replace `<OIDC-ISSUER-URL>` with the OIDC issuer URL you found in the previous step.
 
 1. Make sure you to save the `credentials.json` file before continuing.
 
 1. Next generate an Azure directory `app`. We will use this to assign our federated credentials to:
+
    ```bash
     az ad app create \
     --display-name loki \
     --query appId \
     -o tsv
    ```
+
     This will return the app ID. Save this for later use. If you need to find the app ID later you can run the following command:
+
     ```bash
     az ad app list --display-name loki --query "[].appId" -o tsv
     ```
@@ -174,6 +181,7 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
     ```bash
     az ad sp create --id <APP-ID>
     ```
+
     Replace `<APP-ID>` with the app ID you generated in the previous step.
 
 1. Next assign the federated credentials to the app:
@@ -183,6 +191,7 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
       --id <APP-ID> \
       --parameters credentials.json 
     ```
+
     Replace `<APP-ID>` with the app ID you generated in the previous step.
 
 1. Lastly add a role assignment to the app:
@@ -193,10 +202,10 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
       --assignee <APP-ID> \
       --scope /subscriptions/<SUBSCRIPTION-ID>/resourceGroups/<RESOURCE-GROUP>/providers/Microsoft.Storage/storageAccounts/<STORAGE-ACCOUNT-NAME>
     ```
+
     Replace the placeholders with your actual values.
 
 Now that you have created the Azure AD role and federated credentials, you can proceed to deploying Loki using the Helm chart.
-
 
 ## Deploying the Helm chart
 
@@ -213,16 +222,19 @@ Before we can deploy the Loki Helm chart, we need to add the Grafana Community c
     ```bash
     helm repo add grafana-community https://grafana-community.github.io/helm-charts
     ```
+
 1. Update the chart repository:
 
     ```bash
     helm repo update
     ```
+
 1. Create a new namespace for Loki:
 
     ```bash
     kubectl create namespace loki
     ```
+
 ### Loki basic authentication
 
 Loki by default does not come with any authentication. Since we will be deploying Loki to Azure and exposing the gateway to the internet, we recommend adding at least basic authentication. In this guide we will give Loki a username and password:
@@ -236,9 +248,10 @@ Loki by default does not come with any authentication. Since we will be deployin
     ```bash
     htpasswd -c .htpasswd <username>
     ```
+
     This will create a file called `auth` with the username `loki`. You will be prompted to enter a password.
 
- 1. Create a Kubernetes secret with the `.htpasswd` file:
+1. Create a Kubernetes secret with the `.htpasswd` file:
 
     ```bash
     kubectl create secret generic loki-basic-auth --from-file=.htpasswd -n loki
@@ -254,6 +267,7 @@ Loki by default does not come with any authentication. Since we will be deployin
       --from-literal=password=<PASSWORD> \
       -n loki
     ```
+
     We create a literal secret with the username and password for Loki canary to authenticate with the Loki gateway. Make sure to replace the placeholders with your desired username and password.
 
 ### Loki Helm chart configuration
@@ -365,7 +379,7 @@ lokiCanary:
           name: canary-basic-auth
           key: username
 
-# Enable minio for storage
+# Disable minio storage
 minio:
   enabled: false
 
@@ -411,7 +425,6 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
   - Defines how the Loki gateway will be exposed.
   - We are using a `LoadBalancer` service type in this configuration.
 
-
 ### Deploy Loki
 
 Now that you have created the `values.yaml` file, you can deploy Loki using the Helm chart.
@@ -421,6 +434,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     ```bash
     helm install --values values.yaml loki grafana-community/loki -n loki --create-namespace
     ```
+
     It is important to create a namespace called `loki` as our federated credentials were generated with the  value `system:serviceaccount:loki:loki`. This translates to the `loki` service account in the `loki` namespace. This is configurable but make sure to update the federated credentials file first.
 
 1. Verify the deployment:
@@ -428,6 +442,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     ```bash
     kubectl get pods -n loki
     ```
+
     You should see the Loki pods running.
 
     ```console
@@ -470,6 +485,7 @@ To find the Loki gateway service, run the following command:
 ```bash
 kubectl get svc -n loki
 ```
+
 You should see the Loki gateway service with an external IP address. This is the address you will use to write to and query Loki.
 
 ```console
