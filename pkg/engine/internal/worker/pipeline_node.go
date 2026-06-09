@@ -207,12 +207,10 @@ func packPipelineNodes(nodes []pipelineNode) []packedPipelineNode {
 }
 
 // logPipelineTrace emits one always-on line for a task that executed operators,
-// packing its operator tree (see packedPipelineNode) as a JSON array. It reads
-// only already-collected statistics, so it adds no per-batch work. self_ms is
-// wall-clock self-time, not CPU; join on task_id (carried by the logger) to the
-// per-task summary to recover query_id.
-func logPipelineTrace(logger log.Logger, capture *xcap.Capture) {
-	nodes := buildPipelineNodes(pipelineRegionsFromCapture(capture))
+// packing its operator tree (see packedPipelineNode) as a JSON array. self_ms
+// is wall-clock self-time, not CPU; join on task_id (carried by the logger) to
+// the per-task summary to recover query_id.
+func logPipelineTrace(logger log.Logger, nodes []pipelineNode) {
 	if len(nodes) == 0 {
 		return
 	}

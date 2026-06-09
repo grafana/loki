@@ -331,8 +331,11 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	capture.End()
 	terminalStatus.Capture = capture
 
-	// Emit the per-task pipeline trace from the finalized capture.
-	logPipelineTrace(logger, capture)
+	// Build the task's operator tree once from the finalized capture (cold
+	// path), then both log it and record per-operator-type cost.
+	pipelineNodes := buildPipelineNodes(pipelineRegionsFromCapture(capture))
+	logPipelineTrace(logger, pipelineNodes)
+	t.Metrics.observeOperatorCost(pipelineNodes)
 
 	// Expose task I/O counts as worker counters by reading the values already
 	// accumulated in the per-task capture (the same stats logged in the task
