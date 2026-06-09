@@ -342,6 +342,16 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	return wrapped, nil
 }
 
+// maxDispatchBatch bounds how many tasks dispatchTasks admits and starts in a
+// single runner.Start call. Batching amortizes the scheduler's per-call global
+// locking (Start -> enqueueTasks/markPending each take assignMut/resourcesMut,
+// contended by the live assignment loop), which otherwise throttles enqueue
+// throughput and starves workers for large fan-out queries. The scheduler
+// package's BenchmarkSchedulerStaging shows a batch of ~256 already recovers
+// full end-to-end throughput under realistic round-trip latency; a larger batch
+// only lengthens the single locked section without further gain.
+const maxDispatchBatch = 256
+
 // dispatchTasks groups the slice of tasks by their associated "admission lane" (token bucket)
 // and dispatches them to the runner.
 // Tasks from different admission lanes are dispatched concurrently.
@@ -372,23 +382,40 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 	// — typeFor does not classify any task as compaction — so this slot is
 	// always empty for query workflows. It will be populated once the
 	// dataobj-compaction node types and typeFor classification land.
-	for _, taskType := range []taskType{
-		taskTypeOther,
-		taskTypeScan,
-		taskTypeCompaction,
+	for _, taskType := range []TaskType{
+		TaskTypeOther,
+		TaskTypeScan,
+		TaskTypeCompaction,
 	} {
 		lane := wf.admissionControl.get(taskType)
 		tasks := groups[taskType]
 
-		var offset, batchSize int64
+		var offset int64
 		total := int64(len(tasks))
 
-		for ; offset < total; offset += batchSize {
-			batchSize = int64(1)
-
+		for offset < total {
 			start := time.Now()
-			if err := lane.Acquire(ctx, batchSize); err != nil {
+
+			// Block until at least one token is available. This guarantees
+			// forward progress and keeps the lane capacity as a hard cap on
+			// concurrently-running tasks.
+			if err := lane.Acquire(ctx, 1); err != nil {
 				return fmt.Errorf("failed to acquire tokens from admission lane %s: %w", taskType, err)
+			}
+			batchSize := int64(1)
+
+			// Opportunistically grab more tokens without blocking. When the lane
+			// is unlimited or has spare capacity this admits a whole batch in one
+			// Start call, amortizing the scheduler's per-call global locking and
+			// preventing the dispatch loop from starving workers. When the lane
+			// is saturated TryAcquire fails immediately, falling back to
+			// one-at-a-time admission so a capped lane still drains smoothly as
+			// tokens are released.
+			for batchSize < maxDispatchBatch && offset+batchSize < total {
+				if !lane.TryAcquire(1) {
+					break
+				}
+				batchSize++
 			}
 
 			region.Record(xcap.StatTaskAdmissionWaitDuration.Observe(time.Since(start).Seconds()))
@@ -397,6 +424,7 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 			if err := wf.runner.Start(ctx, batch...); err != nil {
 				return fmt.Errorf("failed to start tasks: %w", err)
 			}
+			offset += batchSize
 		}
 	}
 

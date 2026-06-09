@@ -8,23 +8,25 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
-type taskType string
+// TaskType identifies the admission lane a task is governed by. It is derived
+// from the task's physical fragment via [Task.Type].
+type TaskType string
 
 const (
-	taskTypeScan  taskType = "scan"
-	taskTypeOther taskType = "other"
+	TaskTypeScan  TaskType = "scan"
+	TaskTypeOther TaskType = "other"
 
-	// taskTypeCompaction is the admission lane for compaction tasks
-	taskTypeCompaction taskType = "compaction"
+	// TaskTypeCompaction is the admission lane for compaction tasks
+	TaskTypeCompaction TaskType = "compaction"
 )
 
 type admissionLane struct {
 	*semaphore.Weighted
 	capacity int64
-	lane     taskType
+	lane     TaskType
 }
 
-func newAdmissionLane(lane taskType, capacity int64) *admissionLane {
+func newAdmissionLane(lane TaskType, capacity int64) *admissionLane {
 	return &admissionLane{
 		Weighted: semaphore.NewWeighted(capacity),
 		capacity: capacity,
@@ -35,7 +37,7 @@ func newAdmissionLane(lane taskType, capacity int64) *admissionLane {
 // admissionControl is a control structure to lookup "admission lanes" for different types of tasks.
 // It is a lightweight wrapper around a mapping of task type to admission lane.
 type admissionControl struct {
-	mapping map[taskType]*admissionLane
+	mapping map[TaskType]*admissionLane
 }
 
 func newAdmissionControl(maxScanTasks, maxOtherTasks, maxCompactionTasks int64) *admissionControl {
@@ -50,48 +52,47 @@ func newAdmissionControl(maxScanTasks, maxOtherTasks, maxCompactionTasks int64) 
 	}
 
 	return &admissionControl{
-		mapping: map[taskType]*admissionLane{
-			taskTypeScan:       newAdmissionLane(taskTypeScan, maxScanTasks),
-			taskTypeOther:      newAdmissionLane(taskTypeOther, maxOtherTasks),
-			taskTypeCompaction: newAdmissionLane(taskTypeCompaction, maxCompactionTasks),
+		mapping: map[TaskType]*admissionLane{
+			TaskTypeScan:       newAdmissionLane(TaskTypeScan, maxScanTasks),
+			TaskTypeOther:      newAdmissionLane(TaskTypeOther, maxOtherTasks),
+			TaskTypeCompaction: newAdmissionLane(TaskTypeCompaction, maxCompactionTasks),
 		},
 	}
 }
 
 // groupByType categorizes a slice of tasks into groups based on their characteristics (scan, other, compaction).
-func (ac *admissionControl) groupByType(tasks []*Task) map[taskType][]*Task {
-	groups := map[taskType][]*Task{
-		taskTypeScan:       make([]*Task, 0, len(tasks)),
-		taskTypeOther:      make([]*Task, 0, len(tasks)),
-		taskTypeCompaction: make([]*Task, 0, len(tasks)),
+func (ac *admissionControl) groupByType(tasks []*Task) map[TaskType][]*Task {
+	groups := map[TaskType][]*Task{
+		TaskTypeScan:       make([]*Task, 0, len(tasks)),
+		TaskTypeOther:      make([]*Task, 0, len(tasks)),
+		TaskTypeCompaction: make([]*Task, 0, len(tasks)),
 	}
 
 	for _, t := range tasks {
-		ty := ac.typeFor(t)
-		groups[ty] = append(groups[ty], t)
+		groups[t.Type()] = append(groups[t.Type()], t)
 	}
 
 	return groups
 }
 
-// typeFor classifies a task by inspecting its fragment.
+// Type classifies a task by inspecting its physical fragment.
 // Compaction is checked first so hypothetical hybrid plans are constrained
 // by the compaction lane rather than the scan lane.
-func (ac *admissionControl) typeFor(task *Task) taskType {
-	if isCompactionTask(task) {
-		return taskTypeCompaction
+func (t *Task) Type() TaskType {
+	if isCompactionTask(t) {
+		return TaskTypeCompaction
 	}
-	if isScanTask(task) {
-		return taskTypeScan
+	if isScanTask(t) {
+		return TaskTypeScan
 	}
-	return taskTypeOther
+	return TaskTypeOther
 }
 
 func (ac *admissionControl) laneFor(task *Task) *admissionLane {
-	return ac.mapping[ac.typeFor(task)]
+	return ac.mapping[task.Type()]
 }
 
-func (ac *admissionControl) get(ty taskType) *admissionLane {
+func (ac *admissionControl) get(ty TaskType) *admissionLane {
 	return ac.mapping[ty]
 }
 

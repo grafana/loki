@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"math"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -12,16 +11,14 @@ import (
 )
 
 func TestAdmissionControl_getBucket(t *testing.T) {
-	ac := newAdmissionControl(32, math.MaxInt64, math.MaxInt64)
-
 	t.Run("Task without a DataObjScan node is considered an 'other' task", func(t *testing.T) {
 		fragment := dag.Graph[physical.Node]{}
 		task := &Task{
 			ULID:     ulid.Make(),
 			Fragment: physical.FromGraph(fragment),
 		}
-		bucket := ac.typeFor(task)
-		require.Equal(t, taskTypeOther, bucket)
+		bucket := task.Type()
+		require.Equal(t, TaskTypeOther, bucket)
 	})
 
 	t.Run("Task with a DataObjScan node is considered an 'scan' task", func(t *testing.T) {
@@ -32,8 +29,8 @@ func TestAdmissionControl_getBucket(t *testing.T) {
 			ULID:     ulid.Make(),
 			Fragment: physical.FromGraph(fragment),
 		}
-		ty := ac.typeFor(task)
-		require.Equal(t, taskTypeScan, ty)
+		ty := task.Type()
+		require.Equal(t, TaskTypeScan, ty)
 	})
 
 	t.Run("Task with a PointersScan node is considered an 'scan' task", func(t *testing.T) {
@@ -44,8 +41,8 @@ func TestAdmissionControl_getBucket(t *testing.T) {
 			ULID:     ulid.Make(),
 			Fragment: physical.FromGraph(fragment),
 		}
-		ty := ac.typeFor(task)
-		require.Equal(t, taskTypeScan, ty)
+		ty := task.Type()
+		require.Equal(t, TaskTypeScan, ty)
 	})
 }
 
@@ -57,15 +54,15 @@ func TestAdmissionControl_CompactionLaneWired(t *testing.T) {
 	const compactionCap int64 = 5
 	ac := newAdmissionControl(8, 8, compactionCap)
 
-	lane := ac.get(taskTypeCompaction)
+	lane := ac.get(TaskTypeCompaction)
 	require.NotNil(t, lane)
 	require.Equal(t, compactionCap, lane.capacity)
 
 	groups := ac.groupByType(nil)
-	require.Contains(t, groups, taskTypeScan)
-	require.Contains(t, groups, taskTypeOther)
-	require.Contains(t, groups, taskTypeCompaction)
-	require.Empty(t, groups[taskTypeCompaction])
+	require.Contains(t, groups, TaskTypeScan)
+	require.Contains(t, groups, TaskTypeOther)
+	require.Contains(t, groups, TaskTypeCompaction)
+	require.Empty(t, groups[TaskTypeCompaction])
 }
 
 func TestAdmissionControl_typeFor_IndexMerge(t *testing.T) {
@@ -76,8 +73,7 @@ func TestAdmissionControl_typeFor_IndexMerge(t *testing.T) {
 	g.Add(&physical.IndexMerge{NodeID: ulid.Make(), Tenant: "tenant-29"})
 	task := &Task{Fragment: physical.FromGraph(g)}
 
-	ac := newAdmissionControl(0, 0, 0)
-	require.Equal(t, taskTypeCompaction, ac.typeFor(task))
+	require.Equal(t, TaskTypeCompaction, task.Type())
 }
 
 func TestAdmissionControl_typeFor_LogMerge(t *testing.T) {
@@ -87,6 +83,5 @@ func TestAdmissionControl_typeFor_LogMerge(t *testing.T) {
 	g.Add(&physical.LogMerge{NodeID: ulid.Make(), Tenant: "tenant-29"})
 	task := &Task{Fragment: physical.FromGraph(g)}
 
-	ac := newAdmissionControl(0, 0, 0)
-	require.Equal(t, taskTypeCompaction, ac.typeFor(task))
+	require.Equal(t, TaskTypeCompaction, task.Type())
 }
