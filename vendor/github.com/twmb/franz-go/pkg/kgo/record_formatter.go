@@ -81,6 +81,8 @@ func (f *RecordFormatter) AppendPartitionRecord(b []byte, p *FetchPartition, r *
 //	%a    record attributes (formatting required, described below)
 //	%x    producer id
 //	%y    producer epoch
+//	%D    share group delivery count (0 if not from a share group)
+//	%A    share group acquisition deadline (timestamp, 0 if not from a share group)
 //
 // For AppendPartitionRecord, the formatter also undersands the following three
 // formatting options:
@@ -293,7 +295,7 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 		default:
 			return nil, fmt.Errorf("unknown escape sequence %%%s", string(escaped))
 
-		case 'T', 'K', 'V', 'H', 'p', 'o', 'e', 'i', 'x', 'y', '[', '|', ']':
+		case 'T', 'K', 'V', 'H', 'p', 'o', 'e', 'i', 'x', 'y', 'D', '[', '|', ']':
 			// Numbers default to ascii, but we support a bunch of
 			// formatting options. We parse the format here, and
 			// then below is switching on which field to print.
@@ -348,6 +350,10 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 			case 'y':
 				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
 					return writeR(b, r, func(b []byte, r *Record) []byte { return numfn(b, int64(r.ProducerEpoch)) })
+				})
+			case 'D':
+				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
+					return writeR(b, r, func(b []byte, r *Record) []byte { return numfn(b, int64(r.DeliveryCount())) })
 				})
 			case '[':
 				f.fns = append(f.fns, func(b []byte, p *FetchPartition, _ *Record) []byte {
@@ -554,18 +560,38 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 				return b
 			})
 
-		case 'd':
+		case 'd', 'A':
 			// For datetime parsing, we support plain millis in any
 			// number format, strftime, or go formatting. We
 			// default to plain ascii millis.
+			//
+			// %d uses the record timestamp; %A uses the share
+			// group acquisition deadline. For non-share records,
+			// AcquisitionDeadline returns the zero time; we map
+			// that to the Unix epoch so all sub-formats print a
+			// sensible value (millis=0, year=1970) rather than
+			// time.Time{}'s native year-1 representation.
+			isDeadline := escaped == 'A'
+			getTime := func(r *Record) time.Time {
+				if isDeadline {
+					t := r.AcquisitionDeadline()
+					if t.IsZero() {
+						return time.Unix(0, 0)
+					}
+					return t
+				}
+				return r.Timestamp
+			}
+
 			handledBrace = isOpenBrace
 			if !handledBrace {
 				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
-					return writeR(b, r, func(b []byte, r *Record) []byte { return strconv.AppendInt(b, r.Timestamp.UnixNano()/1e6, 10) })
+					return writeR(b, r, func(b []byte, r *Record) []byte { return strconv.AppendInt(b, getTime(r).UnixNano()/1e6, 10) })
 				})
 				continue
 			}
 
+			escChar := string(escaped)
 			switch {
 			case strings.HasPrefix(layout, "strftime"):
 				tfmt, rem, err := nomOpenClose(layout[len("strftime"):])
@@ -573,11 +599,11 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 					return nil, fmt.Errorf("strftime parse err: %v", err)
 				}
 				if len(rem) == 0 || rem[0] != '}' {
-					return nil, fmt.Errorf("%%d{strftime missing closing } in %q", layout)
+					return nil, fmt.Errorf("%%%s{strftime missing closing } in %q", escChar, layout)
 				}
 				layout = rem[1:]
 				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
-					return writeR(b, r, func(b []byte, r *Record) []byte { return strftimeAppendFormat(b, tfmt, r.Timestamp.UTC()) })
+					return writeR(b, r, func(b []byte, r *Record) []byte { return strftimeAppendFormat(b, tfmt, getTime(r).UTC()) })
 				})
 
 			case strings.HasPrefix(layout, "go"):
@@ -586,22 +612,22 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 					return nil, fmt.Errorf("go parse err: %v", err)
 				}
 				if len(rem) == 0 || rem[0] != '}' {
-					return nil, fmt.Errorf("%%d{go missing closing } in %q", layout)
+					return nil, fmt.Errorf("%%%s{go missing closing } in %q", escChar, layout)
 				}
 				layout = rem[1:]
 				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
-					return writeR(b, r, func(b []byte, r *Record) []byte { return r.Timestamp.UTC().AppendFormat(b, tfmt) })
+					return writeR(b, r, func(b []byte, r *Record) []byte { return getTime(r).UTC().AppendFormat(b, tfmt) })
 				})
 
 			default:
 				numfn, n, err := parseNumWriteLayout(layout)
 				if err != nil {
-					return nil, fmt.Errorf("unknown %%d{ time specification in %q", layout)
+					return nil, fmt.Errorf("unknown %%%s{ time specification in %q", escChar, layout)
 				}
 				layout = layout[n:]
 
 				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
-					return writeR(b, r, func(b []byte, r *Record) []byte { return numfn(b, r.Timestamp.UnixNano()/1e6) })
+					return writeR(b, r, func(b []byte, r *Record) []byte { return numfn(b, getTime(r).UnixNano()/1e6) })
 				})
 			}
 		}

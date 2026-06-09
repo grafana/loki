@@ -83,7 +83,7 @@ var (
 	RequestTimedOut                    = &Error{"REQUEST_TIMED_OUT", 7, true, "The request timed out."}
 	BrokerNotAvailable                 = &Error{"BROKER_NOT_AVAILABLE", 8, true, "The broker is not available."}
 	ReplicaNotAvailable                = &Error{"REPLICA_NOT_AVAILABLE", 9, true, "The replica is not available for the requested topic-partition."}
-	MessageTooLarge                    = &Error{"MESSAGE_TOO_LARGE", 10, false, "The request included a message larger than the max message size the server will accept."}
+	MessageTooLarge                    = &Error{"MESSAGE_TOO_LARGE", 10, false, "The request included a message larger than the max message size the server will accept"} /* error description doesn't have period at the end as more info would be appended to it upstream */
 	StaleControllerEpoch               = &Error{"STALE_CONTROLLER_EPOCH", 11, false, "The controller moved to another broker."}
 	OffsetMetadataTooLarge             = &Error{"OFFSET_METADATA_TOO_LARGE", 12, false, "The metadata field of the offset request was too large."}
 	NetworkException                   = &Error{"NETWORK_EXCEPTION", 13, true, "The server disconnected before a response was received."}
@@ -202,7 +202,11 @@ var (
 	DuplicateVoter                     = &Error{"DUPLICATE_VOTER", 126, false, "The voter is already part of the set of voters."}
 	VoterNotFound                      = &Error{"VOTER_NOT_FOUND", 127, false, "The voter is not part of the set of voters."}
 	InvalidRegularExpression           = &Error{"INVALID_REGULAR_EXPRESSION", 128, false, "The regular expression is not valid."}
-	RebootstrapRequired                = &Error{"REBOOTSTRAP_REQUIRED", 129, false, "Client metadata is stale, client should rebootstrap to obtain new metadata."}
+	RebootstrapRequired                = &Error{"REBOOTSTRAP_REQUIRED", 129, false, "Client metadata is stale. The client should rebootstrap to obtain new metadata."}
+	StreamsInvalidTopology             = &Error{"STREAMS_INVALID_TOPOLOGY", 130, false, "The supplied topology is invalid."}
+	StreamsInvalidTopologyEpoch        = &Error{"STREAMS_INVALID_TOPOLOGY_EPOCH", 131, false, "The supplied topology epoch is invalid."}
+	StreamsTopologyFenced              = &Error{"STREAMS_TOPOLOGY_FENCED", 132, false, "The supplied topology epoch is outdated."}
+	ShareSessionLimitReached           = &Error{"SHARE_SESSION_LIMIT_REACHED", 133, true, "The limit of share sessions has been reached."}
 )
 
 var code2err = map[int16]error{
@@ -337,4 +341,8 @@ var code2err = map[int16]error{
 	127: VoterNotFound,
 	128: InvalidRegularExpression,
 	129: RebootstrapRequired,
+	130: StreamsInvalidTopology,
+	131: StreamsInvalidTopologyEpoch,
+	132: StreamsTopologyFenced,
+	133: ShareSessionLimitReached,
 }
