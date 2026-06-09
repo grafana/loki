@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// checkEnumLookup verifies that a proto enum, its corresponding types.* enum,
+// CheckEnumLookup verifies that a proto enum, its corresponding types.* enum,
 // and the marshal/unmarshal lookup maps are consistent. It asserts that:
 //   - the proto enum and the types.* enum have the same number of values
 //     (catches "added to one side but not the other");
@@ -73,7 +73,7 @@ func CheckEnumLookup[Proto, Native comparable](
 	}
 }
 
-// countConstantsOfType returns the number of top-level constants of the named
+// CountConstantsOfType returns the number of top-level constants of the named
 // type declared in the given Go source file. It walks const blocks and tracks
 // type inheritance: inside a const block, a spec that has neither an explicit
 // type nor an explicit value inherits both from the previous spec, so a single
