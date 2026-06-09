@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -284,6 +285,18 @@ func (c *coordinator) compactTenant(
 		oldPaths[i] = e.Path
 	}
 	newEntries := makeTocEntries(tasks, outputs)
+
+	level.Debug(c.logger).Log("msg", "compacted indexes",
+		"tenant", tenant, "window", window,
+		"dry_run", c.cfg.DryRun,
+		"tasks", len(tasks),
+		"removed_indexes", strings.Join(oldPaths, ","),
+		"added_indexes", strings.Join(outputs, ","),
+	)
+
+	if c.cfg.DryRun {
+		return nil
+	}
 
 	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
 	defer cancel()

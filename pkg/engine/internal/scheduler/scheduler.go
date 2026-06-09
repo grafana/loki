@@ -57,9 +57,9 @@ type Scheduler struct {
 	streams      map[ulid.ULID]*stream // All known streams (regardless of state)
 	tasks        map[ulid.ULID]*task   // All known tasks (regardless of state)
 
-	assignMut    sync.RWMutex
-	taskQueue    fair.Queue[*task]
-	readyWorkers map[*workerConn]struct{}
+	assignMut        sync.RWMutex
+	taskQueue        fair.Queue[*task]
+	connectedWorkers map[*workerConn]struct{}
 
 	assignSema chan struct{}       // assignSema signals that task assignment is ready.
 	tasksCh    chan taskAssignment // channel for sending task assignments to worker routines.
@@ -95,7 +95,7 @@ func New(config Config) (*Scheduler, error) {
 		streams: make(map[ulid.ULID]*stream),
 		tasks:   make(map[ulid.ULID]*task),
 
-		readyWorkers: make(map[*workerConn]struct{}),
+		connectedWorkers: make(map[*workerConn]struct{}),
 
 		assignSema: make(chan struct{}, 1),
 		tasksCh:    make(chan taskAssignment),
@@ -146,7 +146,10 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	logger := log.With(s.logger, "remote_addr", conn.RemoteAddr())
 	level.Info(logger).Log("msg", "handling connection")
 
-	wc := &workerConn{done: make(chan struct{})}
+	wc := &workerConn{
+		done: make(chan struct{}),
+		wake: make(chan struct{}, 1),
+	}
 
 	s.connections.Store(wc, struct{}{})
 	defer s.connections.Delete(wc)
@@ -234,17 +237,14 @@ func (s *Scheduler) markWorkerReady(ctx context.Context, worker *workerConn) err
 	if err := worker.MarkReady(); err != nil {
 		return err
 	}
-	s.readyWorkers[worker] = struct{}{}
 
-	// Spawn a goroutine that assigns tasks to this worker by reading
-	// from the tasksCh. The goroutine exits on 429/error/disconnect.
-	//
-	// It's possible for this to launch multiple goroutines if the worker
-	// (incorrectly) sends more than one ready message. If this happens
-	// the worker basically gets a higher weight towards task assignment
-	// as more than a single routine is picking from the shared channel.
-	// But backpressure would still work as expected if worker can't keep up.
-	go s.workerLoop(ctx, worker)
+	if _, exists := s.connectedWorkers[worker]; exists {
+		nudgeSemaphore(worker.wake)
+	} else {
+		s.connectedWorkers[worker] = struct{}{}
+
+		go s.workerLoop(ctx, worker)
+	}
 
 	// Wake [Scheduler.runAssignLoop] so it feeds tasks into tasksCh.
 	if s.taskQueue.Len() > 0 {
@@ -450,7 +450,7 @@ func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason
 	}
 
 	// Remove the worker from the ready list, if it exists.
-	delete(s.readyWorkers, worker)
+	delete(s.connectedWorkers, worker)
 }
 
 func (s *Scheduler) runAssignLoop(ctx context.Context) error {
@@ -483,10 +483,6 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 	}
 }
 
-// workerLoop assigns tasks to a single worker by reading from the
-// shared tasksCh. It continues assigning until the worker NACKs, an error
-// occurs, or the connection is closed.
-//
 // TODO(ashwanth): When there is only a single worker (say single-binary)
 // all assignments go through a single workerLoop. Because SendMessage blocks
 // until the worker ACKs, the per-task round-trip overhead adds up
@@ -522,19 +518,15 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 			// so we can skip the send and move on to the next task.
 			continue
 		} else if err != nil {
-			// Generic error.
+			// Generic error: restore the task to its original queue position.
 			s.requeueTask(assignment.t, assignment.pos)
 
-			// if its 429, remove from ready workers and fire subscribe request.
 			if isTooManyRequestsError(err) {
-				s.assignMut.Lock()
-				delete(s.readyWorkers, worker)
-				s.assignMut.Unlock()
-
 				s.metrics.backoffsTotal.Inc()
-				s.workerSubscribe(ctx, worker)
-
-				return
+				if resume := s.parkWorker(ctx, worker); !resume {
+					return
+				}
+				continue
 			}
 
 			level.Warn(s.logger).Log("msg", "failed to assign task", "id", assignment.msg.Task.ULID, "conn", worker.RemoteAddr(), "err", err)
@@ -546,6 +538,21 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 		gotrace.Log(assignment.t.runtimeTraceCtx, "task_assigned", assignment.t.inner.ULID.String()+" -> "+worker.RemoteAddr().String())
 
 		s.finalizeAssignment(ctx, assignment.t, worker, assignment.msg.StreamStates)
+	}
+}
+
+// parkWorker blocks until the worker advertises freed capacity (a ready message
+// nudges worker.wake), the worker disconnects, or the scheduler shuts down. It
+// returns true if the assignment loop should resume, or false if it should
+// exit.
+func (s *Scheduler) parkWorker(ctx context.Context, worker *workerConn) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-worker.done:
+		return false
+	case <-worker.wake:
+		return true
 	}
 }
 
@@ -565,7 +572,7 @@ func (s *Scheduler) prepareAssignment() (taskAssignment, bool) {
 		s.taskQueue.Pop()
 	}
 
-	if len(s.readyWorkers) == 0 || s.taskQueue.Len() == 0 {
+	if len(s.connectedWorkers) == 0 || s.taskQueue.Len() == 0 {
 		return taskAssignment{}, false
 	}
 
@@ -632,7 +639,7 @@ func (s *Scheduler) requeueTask(t *task, pos fair.Position) {
 	t.MarkRequeued()
 	s.metrics.requeueTotal.Inc()
 
-	if len(s.readyWorkers) > 0 {
+	if len(s.connectedWorkers) > 0 {
 		nudgeSemaphore(s.assignSema)
 	}
 }
@@ -1176,7 +1183,7 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 		}
 	}
 
-	if len(s.readyWorkers) > 0 && s.taskQueue.Len() > 0 {
+	if len(s.connectedWorkers) > 0 && s.taskQueue.Len() > 0 {
 		nudgeSemaphore(s.assignSema)
 	}
 }
