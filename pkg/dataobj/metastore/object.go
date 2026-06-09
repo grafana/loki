@@ -660,6 +660,7 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	for path := range IterTableOfContentsPaths(req.Start, req.End) {
 		resp.TableOfContentsPaths = append(resp.TableOfContentsPaths, path)
 	}
+	span.Record(StatMetastoreTocTables.Observe(int64(len(resp.TableOfContentsPaths))))
 
 	// Return early if no toc files are found
 	if len(resp.TableOfContentsPaths) == 0 {
@@ -720,9 +721,6 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 	for _, s := range objectSectionDescriptors {
 		sections = append(sections, s)
 	}
-
-	region := xcap.RegionFromContext(ctx)
-	region.Record(xcap.StatMetastoreSectionsResolved.Observe(int64(len(sections))))
 
 	return CollectSectionsResponse{
 		SectionsResponse: SectionsResponse{

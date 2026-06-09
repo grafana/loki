@@ -53,11 +53,7 @@ services:
       - ingester-2
       - consul
     environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=distributor
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
       - 8001:8001
       - 18001:18001
@@ -76,11 +72,7 @@ services:
       - consul
       - minio
     environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=ingester-1
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
       - 8002:8002
       - 18002:18002
@@ -100,11 +92,7 @@ services:
       - consul
       - minio
     environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=ingester-2
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
       - 8003:8003
       - 18003:18003
@@ -126,11 +114,7 @@ services:
       - query-frontend
       - query-scheduler
     environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=querier
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
       - 8004:8004
       - 18004:18004
@@ -145,16 +129,12 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: loki
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18008 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=index-gateway -server.http-listen-port=8008 -server.grpc-listen-port=9008 -boltdb.shipper.query-ready-num-days=30"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./loki --listen=:18008 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/loki.yaml -target=index-gateway -server.http-listen-port=8008 -server.grpc-listen-port=9008"]
     depends_on:
       - consul
       - minio
     environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=index-gateway
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
       - 8008:8008
       - 18008:18008
@@ -173,11 +153,7 @@ services:
       - consul
       - minio
     environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=compactor
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
       - 8006:8006
       - 18006:18006
@@ -198,11 +174,7 @@ services:
       - minio
       - query-scheduler
     environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=query-frontend
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
       - 8007:8007
       - 18007:18007
@@ -221,11 +193,7 @@ services:
       - consul
       - minio
     environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=query-scheduler
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
     ports:
       - 8009:8009
       - 18009:18009

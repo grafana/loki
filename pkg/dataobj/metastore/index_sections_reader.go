@@ -68,7 +68,8 @@ type indexSectionsReader struct {
 	postingsPointersRead bool
 
 	// Stats
-	bloomRowsRead uint64
+	bloomRowsRead            uint64
+	pointerSectionProductive []bool
 
 	// readSpan for recording observations, it is created once during init.
 	readSpan *xcap.Span
@@ -125,6 +126,7 @@ func (r *indexSectionsReader) Open(ctx context.Context) error {
 		return err
 	}
 
+	r.pointerSectionProductive = make([]bool, len(r.pointersReaders))
 	r.initialized = true
 	return nil
 }
@@ -133,6 +135,9 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	if len(r.matchers) == 0 {
 		return nil
 	}
+
+	ctx, sp := xcap.StartSpan(ctx, tracer, "metastore.indexSectionsReader.Open")
+	defer sp.End()
 
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -220,6 +225,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 				}
 
 				r.pointersReaders[i] = pointersReader
+				sp.Record(StatMetastorePointerSectionsOpened.Observe(1))
 				return nil
 			})
 
@@ -691,6 +697,10 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 				return nil, err
 			}
 			if matchedRows > 0 {
+				if !r.pointerSectionProductive[r.pointersReaderIdx] {
+					r.pointerSectionProductive[r.pointersReaderIdx] = true
+					r.readSpan.Record(StatMetastorePointerSectionsProductive.Observe(1))
+				}
 				r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(int64(matchedRows)))
 				r.bloomRowsRead += uint64(matchedRows)
 				return filteredRec, nil
