@@ -1,10 +1,13 @@
 package retention
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -106,7 +109,7 @@ func Test_expirationChecker_Expired(t *testing.T) {
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
 
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -135,7 +138,7 @@ func Test_expirationChecker_Expired_UsesIngestedAt(t *testing.T) {
 	d.RetentionPeriod = model.Duration(time.Hour)
 	o, err := overridesTestConfig(d, fakeOverrides{})
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 
 	now := model.Now()
 	tests := []struct {
@@ -171,6 +174,31 @@ func Test_expirationChecker_Expired_UsesIngestedAt(t *testing.T) {
 			require.Nil(t, filterFn)
 		})
 	}
+}
+
+func Test_expirationChecker_IngestionTimeMetricHasNoTenantLabel(t *testing.T) {
+	d := defaultLimitsTestConfig()
+	d.RetentionPeriod = model.Duration(time.Hour)
+	o, err := overridesTestConfig(d, fakeOverrides{})
+	require.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	e := NewExpirationChecker(o, reg)
+	now := model.Now()
+
+	// Expire two chunks by ingestion time across two tenants; the counter must
+	// not gain a per-tenant dimension.
+	for _, userID := range []string{"1", "2"} {
+		expired, _ := e.Expired([]byte(userID), Chunk{From: now.Add(-72 * time.Hour), Through: now.Add(-48 * time.Hour), IngestedAt: now.Add(-2 * time.Hour)}, mustParseLabels(`{foo="buzz"}`), nil, "", now)
+		require.True(t, expired)
+	}
+
+	const metric = "loki_compactor_chunks_expired_by_ingestion_time_total"
+	require.Equal(t, 2.0, testutil.ToFloat64(e.(*expirationChecker).chunksExpiredByIngestionTime))
+	expected := "# HELP " + metric + " Number of chunks expired using the per-chunk ingestion timestamp (schema v14).\n" +
+		"# TYPE " + metric + " counter\n" +
+		metric + " 2\n"
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(expected), metric))
 }
 
 func TestTenantsRetention_RetentionPeriodFor(t *testing.T) {
@@ -226,7 +254,7 @@ func Test_expirationChecker_Expired_zeroValue(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -274,7 +302,7 @@ func Test_expirationChecker_Expired_zeroValueOverride(t *testing.T) {
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
 
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -310,7 +338,7 @@ func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 
 	chunkFrom := model.Now().Add(-3 * time.Hour)
 	chunkThrough := model.Now().Add(-2 * time.Hour)
@@ -349,7 +377,7 @@ func Test_expirationChecker_CanSkipSeries(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 
 	tests := []struct {
 		name        string

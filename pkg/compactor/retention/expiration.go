@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -37,6 +39,10 @@ type ExpirationChecker interface {
 type expirationChecker struct {
 	tenantsRetention         *TenantsRetention
 	latestRetentionStartTime latestRetentionStartTime
+	// chunksExpiredByIngestionTime counts chunks expired using the per-chunk
+	// ingestion timestamp (FormatV4 / schema v14) rather than Through. It is an
+	// unlabeled counter to avoid per-tenant cardinality.
+	chunksExpiredByIngestionTime prometheus.Counter
 }
 
 type Limits interface {
@@ -47,9 +53,14 @@ type Limits interface {
 	PoliciesStreamMapping(userID string) validation.PolicyStreamMapping
 }
 
-func NewExpirationChecker(limits Limits) ExpirationChecker {
+func NewExpirationChecker(limits Limits, r prometheus.Registerer) ExpirationChecker {
 	return &expirationChecker{
 		tenantsRetention: NewTenantsRetention(limits),
+		chunksExpiredByIngestionTime: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki_compactor",
+			Name:      "chunks_expired_by_ingestion_time_total",
+			Help:      "Number of chunks expired using the per-chunk ingestion timestamp (schema v14).",
+		}),
 	}
 }
 
@@ -68,10 +79,15 @@ func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels
 	// the latest ingestion time, which is the conservative choice (matches the
 	// Through semantics of keeping data until the newest content expires).
 	expirationFrom := chk.Through
-	if chk.IngestedAt != 0 {
+	usingIngestedAt := chk.IngestedAt != 0
+	if usingIngestedAt {
 		expirationFrom = chk.IngestedAt
 	}
-	return now.Sub(expirationFrom) > period, nil
+	expired := now.Sub(expirationFrom) > period
+	if expired && usingIngestedAt && e.chunksExpiredByIngestionTime != nil {
+		e.chunksExpiredByIngestionTime.Inc()
+	}
+	return expired, nil
 }
 
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.
