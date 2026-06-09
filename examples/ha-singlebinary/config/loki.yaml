@@ -1,0 +1,129 @@
+# Loki HA Single Binary
+
+auth_enabled: true
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: info
+  http_server_idle_timeout: 120s
+  http_server_read_timeout: 310s # must be slightly longer than query timeout
+  http_server_write_timeout: 310s # must be slightly longer than query timeout
+
+common:
+  path_prefix: /loki
+  replication_factor: 3
+  compactor_grpc_address: loki-1:9095
+  ring:
+    instance_id: ${LOKI_INSTANCE_ID}
+    heartbeat_period: 1m
+    heartbeat_timeout: 5m
+    kvstore:
+      store: memberlist
+
+memberlist:
+  bind_addr: ["0.0.0.0"]
+  bind_port: 7946
+  join_members:
+    - "loki-1:7946"
+    - "loki-2:7946"
+    - "loki-3:7946"
+    - "loki-4:7946"
+    - "loki-5:7946"
+  abort_if_cluster_join_fails: false
+  cluster_label: loki-ha-single-binary
+  cluster_label_verification_disabled: false
+
+schema_config:
+  configs:
+    - from: 2026-01-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  aws: ## legacy object client
+    endpoint: minio:9000
+    insecure: true
+    bucketnames: loki-chunks
+    access_key_id: loki
+    secret_access_key: supersecret
+    s3forcepathstyle: true
+  use_thanos_objstore: true
+  object_store: ## thanos storage client
+    s3:
+      endpoint: minio:9000
+      insecure: true
+      bucket_name: loki-chunks
+      access_key_id: loki
+      secret_access_key: supersecret
+
+ingester:
+  chunk_idle_period: 10m
+  max_chunk_age: 1h
+  chunk_encoding: snappy
+  chunk_target_size: 2097152 # 2MB
+  chunk_block_size: 262144 # 256KB
+  wal:
+    dir: /loki/wal
+    enabled: true
+    replay_memory_ceiling: 1GB
+  lifecycler:
+    num_tokens: 512
+    tokens_file_path: /loki/ring-tokens
+    unregister_on_shutdown: true # Set to false if you want to keep ingesters in LEAVING state while restarting them
+  shutdown_marker_path: /loki
+
+frontend:
+  log_queries_longer_than: 5s
+  compress_responses: true
+
+query_range:
+  align_queries_with_step: true
+  max_retries: 5
+  parallelise_shardable_queries: true
+
+compactor:
+  apply_retention_interval: 1h
+  compaction_interval: 5m
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: s3
+  horizontal_scaling_mode: ${COMPACTOR_MODE:-worker}
+
+ruler:
+  storage:
+    type: s3
+    s3:
+      endpoint: minio:9000
+      insecure: true
+      bucketnames: loki-ruler
+      access_key_id: loki
+      secret_access_key: supersecret
+      s3forcepathstyle: true
+
+limits_config:
+  allow_structured_metadata: true
+  discover_log_levels: true
+  ingestion_rate_mb: 128
+  ingestion_burst_size_mb: 128
+  max_global_streams_per_user: 10000
+  query_timeout: 300s
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  retention_period: 7d
+  shard_streams:
+    desired_rate: 262144 # 256KB
+    enabled: true
+    time_sharding_enabled: true
+  split_queries_by_interval: 30m
+  volume_enabled: true
+
+analytics:
+  reporting_enabled: false
