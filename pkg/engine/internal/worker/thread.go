@@ -331,10 +331,11 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	capture.End()
 	terminalStatus.Capture = capture
 
-	// Emit a per-operator pipeline-node trace from the finalized capture. This
-	// reads only statistics already collected during execution (no per-batch
-	// work) and is gated at debug level, like execution-plan-detail.
-	logPipelineNodes(logger, capture)
+	// Build the task's operator tree once from the finalized capture (cold
+	// path), then both log it and record per-operator-type cost.
+	pipelineNodes := buildPipelineNodes(pipelineRegionsFromCapture(capture))
+	logPipelineTrace(logger, pipelineNodes)
+	t.Metrics.observeOperatorCost(pipelineNodes)
 
 	// Expose task I/O counts as worker counters by reading the values already
 	// accumulated in the per-task capture (the same stats logged in the task
@@ -429,27 +430,43 @@ func recordBatchBytes(rec arrow.RecordBatch) int64 {
 func (t *thread) drainPipeline(ctx context.Context, taskType string, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
-	startRead := time.Now()
-	if err := pipeline.Open(ctx); err != nil {
-		return 0, err
-	}
-	readDuration := time.Since(startRead)
-
 	var (
-		totalRows        int
-		totalComputeTime time.Duration
-		totalWriteTime   time.Duration
+		openDuration  time.Duration
+		totalReadTime time.Duration
+		totalSendTime time.Duration
 	)
 
+	// Record on every exit, including failures, so a task that errors still
+	// reports where its time went; the region observations feed the summary log.
+	defer func() {
+		t.Metrics.taskOpenSeconds.WithLabelValues(taskType).Observe(openDuration.Seconds())
+		t.Metrics.taskReadSeconds.WithLabelValues(taskType).Observe(totalReadTime.Seconds())
+		t.Metrics.taskSendSeconds.WithLabelValues(taskType).Observe(totalSendTime.Seconds())
+
+		region.Record(workerstat.TaskExecutionOpenDuration.Observe(openDuration.Nanoseconds()))
+		region.Record(workerstat.TaskExecutionReadDuration.Observe(totalReadTime.Nanoseconds()))
+		region.Record(workerstat.TaskExecutionSendDuration.Observe(totalSendTime.Nanoseconds()))
+	}()
+
+	startOpen := time.Now()
+	openErr := pipeline.Open(ctx)
+	openDuration = time.Since(startOpen)
+	if openErr != nil {
+		return 0, openErr
+	}
+
+	var totalRows int
 	for {
-		startCompute := time.Now()
+		startRead := time.Now()
 		rec, err := pipeline.Read(ctx)
-		computeDuration := time.Since(startCompute)
+		readDuration := time.Since(startRead)
+		// Count every pass toward the task total; the per-pass histogram skips
+		// error passes to avoid skewing pass latencies.
+		totalReadTime += readDuration
 		if err == nil || errors.Is(err, executor.EOF) {
-			t.Metrics.passComputeSeconds.Observe(computeDuration.Seconds())
-			totalComputeTime += computeDuration
+			t.Metrics.passReadSeconds.Observe(readDuration.Seconds())
 		}
-		if err != nil && errors.Is(err, executor.EOF) {
+		if errors.Is(err, executor.EOF) {
 			break
 		} else if err != nil {
 			return totalRows, err
@@ -473,26 +490,15 @@ func (t *thread) drainPipeline(ctx context.Context, taskType string, pipeline ex
 				level.Warn(logger).Log("msg", "failed to send result", "err", err)
 			}
 		}
-		writeDuration := time.Since(startSend)
-		t.Metrics.passWriteSeconds.Observe(writeDuration.Seconds())
-		totalWriteTime += writeDuration
+		sendDuration := time.Since(startSend)
+		t.Metrics.passSendSeconds.Observe(sendDuration.Seconds())
+		totalSendTime += sendDuration
 
 		region.Record(xcap.TaskRecordsSent.Observe(1))
 		region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
 		region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(rec)))
-		region.Record(xcap.TaskSendDuration.Observe(writeDuration.Seconds()))
+		region.Record(xcap.TaskSendDuration.Observe(sendDuration.Seconds()))
 	}
-
-	// Task-wide phase durations.
-	t.Metrics.taskReadSeconds.WithLabelValues(taskType).Observe(readDuration.Seconds())
-	t.Metrics.taskComputeSeconds.WithLabelValues(taskType).Observe(totalComputeTime.Seconds())
-	t.Metrics.taskWriteSeconds.WithLabelValues(taskType).Observe(totalWriteTime.Seconds())
-
-	// Record execution sub-phase durations on the task region so the workflow
-	// can include them in the per-task summary log.
-	region.Record(workerstat.TaskExecutionOpenDuration.Observe(readDuration.Nanoseconds()))
-	region.Record(workerstat.TaskExecutionReadDuration.Observe(totalComputeTime.Nanoseconds()))
-	region.Record(workerstat.TaskExecutionSendDuration.Observe(totalWriteTime.Nanoseconds()))
 
 	return totalRows, nil
 }
