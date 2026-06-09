@@ -5,44 +5,45 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
-var (
-	records = []arrowtest.Rows{
-		{
-			{"ts": int64(10), "table": "A", "line": "line A"},
-			{"ts": int64(15), "table": "A", "line": "line B"},
-			{"ts": int64(5), "table": "A", "line": "line C"},
-			{"ts": int64(20), "table": "A", "line": "line D"},
-		},
-		{
-			{"ts": int64(1), "table": "A", "line": "line A"},
-			{"ts": int64(50), "table": "A", "line": "line B"},
-		},
-		{
-			// This record contains an additional column not found in the other
-			// records; this tests to make sure topkBatch properly merges schemas.
-			{"ts": int64(100), "table": "B", "app": "loki", "line": "line A"},
-			{"ts": int64(75), "table": "B", "app": "loki", "line": "line B"},
-			{"ts": int64(25), "table": "B", "app": "loki", "line": "line C"},
-		},
-		{
-			{"ts": int64(13), "table": "C", "line": "line A"},
-			{"ts": int64(15), "table": "C", "line": "line B"},
-			{"ts": int64(17), "table": "C", "line": "line C"},
-			{"ts": int64(19), "table": "C", "line": "line D"},
-		},
-		{
-			// This record contains a nil sort key to test the behaviour of
-			// NullsFirst.
-			{"table": "D", "line": "line A"},
-		},
-	}
-)
+var records = []arrowtest.Rows{
+	{
+		{"ts": int64(10), "table": "A", "line": "line A"},
+		{"ts": int64(15), "table": "A", "line": "line B"},
+		{"ts": int64(5), "table": "A", "line": "line C"},
+		{"ts": int64(20), "table": "A", "line": "line D"},
+	},
+	{
+		{"ts": int64(1), "table": "A", "line": "line A"},
+		{"ts": int64(50), "table": "A", "line": "line B"},
+	},
+	{
+		// This record contains an additional column not found in the other
+		// records; this tests to make sure topkBatch properly merges schemas.
+		{"ts": int64(100), "table": "B", "app": "loki", "line": "line A"},
+		{"ts": int64(75), "table": "B", "app": "loki", "line": "line B"},
+		{"ts": int64(25), "table": "B", "app": "loki", "line": "line C"},
+	},
+	{
+		{"ts": int64(13), "table": "C", "line": "line A"},
+		{"ts": int64(15), "table": "C", "line": "line B"},
+		{"ts": int64(17), "table": "C", "line": "line C"},
+		{"ts": int64(19), "table": "C", "line": "line D"},
+	},
+	{
+		// This record contains a nil sort key to test the behaviour of
+		// NullsFirst.
+		{"table": "D", "line": "line A"},
+	},
+}
 
 func Test_topkBatch(t *testing.T) {
 	tt := []struct {
@@ -126,6 +127,69 @@ func Test_topkBatch(t *testing.T) {
 			require.ElementsMatch(t, tc.expect, actual, "rows should match (order may differ)")
 		})
 	}
+}
+
+func Test_topkBatch_stability(t *testing.T) {
+	lineIdent := semconv.NewIdentifier("line", types.ColumnTypeLabel, types.Loki.String)
+	records = []arrowtest.Rows{
+		{
+			{"ts": int64(10), lineIdent.FQN(): "line A"},
+			{"ts": int64(15), lineIdent.FQN(): "line B"},
+			{"ts": int64(5), lineIdent.FQN(): "line C"},
+		},
+		{
+			{"ts": int64(5), lineIdent.FQN(): "line D"},
+		},
+	}
+
+	expect := arrowtest.Rows{
+		{"ts": int64(15), lineIdent.FQN(): "line B"},
+		{"ts": int64(10), lineIdent.FQN(): "line A"},
+		{"ts": int64(5), lineIdent.FQN(): "line D"},
+	}
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "ts", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+		{Name: lineIdent.FQN(), Type: arrow.BinaryTypes.String, Nullable: true},
+	}, nil)
+
+	b := topkBatch{
+		Fields:        []arrow.Field{{Name: "ts", Type: arrow.PrimitiveTypes.Int64, Nullable: true}},
+		K:             3,
+		MaxUnused:     3,
+		Ascending:     false,
+		NullsFirst:    false,
+		labelsBuilder: labels.NewScratchBuilder(1),
+	}
+	defer b.Reset()
+
+	for _, rows := range records {
+		rec := rows.Record(memory.DefaultAllocator, schema)
+		b.Put(rec)
+	}
+
+	output := b.Compact()
+
+	actual, err := arrowtest.RecordRows(output)
+	require.NoError(t, err)
+	require.Len(t, actual, 3)
+	require.ElementsMatch(t, expect, actual, "rows should match (order may differ)")
+
+	b.Reset()
+
+	// Now apply batches in reverse order to test stability.
+	for i := len(records) - 1; i >= 0; i-- {
+		rows := records[i]
+		rec := rows.Record(memory.DefaultAllocator, schema)
+		b.Put(rec)
+	}
+
+	output = b.Compact()
+
+	actual, err = arrowtest.RecordRows(output)
+	require.NoError(t, err)
+	require.Len(t, actual, 3)
+	require.ElementsMatch(t, expect, actual, "rows should match when added in reverse order (order may differ)")
 }
 
 // Test_topkBatch_MaxUnused ensures that compaction is automatically triggered

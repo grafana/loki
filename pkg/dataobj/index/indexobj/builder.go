@@ -206,7 +206,7 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 // requires all observations for a section to be present before encoding
 // (bitmap normalization, bloom filter construction). The builderFull flag
 // provides back-pressure via TargetObjectSize.
-func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObservation) error {
+func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObservation) {
 	// Postings are observed per (record × stream label), so this method runs in
 	// a hot loop that fires hundreds of thousands of times per logs section.
 	// Per-call prometheus.NewTimer / Histogram.Observe / sizeEstimate.Set were
@@ -227,7 +227,6 @@ func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObserva
 	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
 	}
-	return nil
 }
 
 // PrepareBloomColumn initializes the bloom filter for a specific column.

@@ -75,16 +75,6 @@ func (p *PathBuilder) BuildPath() string {
 	return p.Build()
 }
 
-// PushMap adds a map key to the path.
-func (p *PathBuilder) PushMap(key string) {
-	p.segments = append(p.segments, key)
-}
-
-// PushSlice adds a slice index to the path.
-func (p *PathBuilder) PushSlice(index int) {
-	p.segments = append(p.segments, strconv.Itoa(index))
-}
-
 // PrependMap adds a map key to the beginning of the path (for retroactive building).
 func (p *PathBuilder) PrependMap(key string) {
 	p.segments = append([]string{key}, p.segments...)
@@ -95,24 +85,12 @@ func (p *PathBuilder) PrependSlice(index int) {
 	p.segments = append([]string{strconv.Itoa(index)}, p.segments...)
 }
 
-// Pop removes the last segment from the path.
-func (p *PathBuilder) Pop() {
-	if len(p.segments) > 0 {
-		p.segments = p.segments[:len(p.segments)-1]
-	}
-}
-
 // Build constructs the full path string.
 func (p *PathBuilder) Build() string {
 	if len(p.segments) == 0 {
 		return "/"
 	}
 	return "/" + strings.Join(p.segments, "/")
-}
-
-// Reset clears all segments for reuse.
-func (p *PathBuilder) Reset() {
-	p.segments = p.segments[:0]
 }
 
 // ParseAndExtend parses an existing path and extends this builder with those segments.

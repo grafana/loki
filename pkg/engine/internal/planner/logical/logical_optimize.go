@@ -12,17 +12,54 @@ import (
 )
 
 type optimizationPass interface {
-	Apply(*Plan) error
+	// Name returns a stable, bounded identifier for the pass, used as a metric
+	// label and in plan-summary logs.
+	Name() string
+	// Apply runs the pass on p. It reports whether it changed the plan
+	// (applied) and any error encountered.
+	Apply(p *Plan) (applied bool, err error)
+}
+
+// PassFiring records the outcome of a single logical optimizer pass: whether it
+// changed the plan (Applicable), whether it ran without error (Succeeded), and
+// the error if it failed.
+type PassFiring struct {
+	Name       string
+	Applicable bool
+	Succeeded  bool
+	Err        error
 }
 
 // Optimize performs optimizations on p.
 func Optimize(p *Plan) error {
+	var o Optimizer
+	return o.Optimize(p)
+}
+
+// Optimizer runs the logical optimization passes on a plan, recording the
+// outcome of each pass for observability.
+type Optimizer struct {
+	firings []PassFiring
+}
+
+// Optimize performs optimizations on p and records the firing of each pass
+// into the receiver. The recorded report includes the pass that failed (if
+// any), so callers can record observability even when optimization fails.
+func (o *Optimizer) Optimize(p *Plan) error {
 	passes := []optimizationPass{
 		simplifyRegexPass{},
 	}
 
+	o.firings = make([]PassFiring, 0, len(passes))
 	for _, pass := range passes {
-		if err := pass.Apply(p); err != nil {
+		applied, err := pass.Apply(p)
+		o.firings = append(o.firings, PassFiring{
+			Name:       pass.Name(),
+			Applicable: applied,
+			Succeeded:  err == nil,
+			Err:        err,
+		})
+		if err != nil {
 			return err
 		}
 	}
@@ -35,10 +72,19 @@ func Optimize(p *Plan) error {
 	return nil
 }
 
+// Report returns the firing of each pass from the most recent call to
+// [Optimizer.Optimize]. It returns nil if Optimize has not been called.
+func (o *Optimizer) Report() []PassFiring {
+	return o.firings
+}
+
 type simplifyRegexPass struct{}
 
-func (pass simplifyRegexPass) Apply(p *Plan) error {
+func (pass simplifyRegexPass) Name() string { return "SimplifyRegex" }
+
+func (pass simplifyRegexPass) Apply(p *Plan) (bool, error) {
 	var operandBuffer []*Value
+	applied := false
 
 	// NOTE(rfratto): We can't do a range loop here because we're modifying the
 	// slice as we iterate over it.
@@ -51,17 +97,18 @@ func (pass simplifyRegexPass) Apply(p *Plan) error {
 
 		simplified, changed, err := pass.simplifyBinop(b)
 		if err != nil {
-			return err
+			return applied, err
 		} else if !changed {
 			// No simplification performed.
 			continue
 		}
+		applied = true
 
 		// The final element in simplified becomes the "return" of the regex
 		// simplification, and is what other nodes will now reference.
 		newValue, ok := simplified[len(simplified)-1].(Value)
 		if !ok {
-			return fmt.Errorf("expected regex simplify to end in a Value")
+			return applied, fmt.Errorf("expected regex simplify to end in a Value")
 		}
 
 		instrs := extractInstructions(simplified)
@@ -84,7 +131,7 @@ func (pass simplifyRegexPass) Apply(p *Plan) error {
 		}
 	}
 
-	return nil
+	return applied, nil
 }
 
 func (pass simplifyRegexPass) shouldApply(b *BinOp) bool {

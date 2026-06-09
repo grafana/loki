@@ -4,14 +4,13 @@ env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   BUILD_TIMEOUT: 60
   CHANGELOG_PATH: "CHANGELOG.md"
-  DOCKER_USERNAME: "grafana"
   DRY_RUN: false
+  GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "48ee065d8d1e3f1a3a28cb1e5ecf5cb85211a019"
+  RELEASE_LIB_REF: "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
-  USE_GITHUB_APP_TOKEN: true
   VERSIONING_STRATEGY: "always-bump-patch"
 jobs:
   check:
@@ -19,13 +18,12 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@48ee065d8d1e3f1a3a28cb1e5ecf5cb85211a019"
+    uses: "grafana/loki-release/.github/workflows/check.yml@1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
     with:
-      build_image: "golang:1.26.2"
+      build_image: "golang:1.26.4"
       golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "48ee065d8d1e3f1a3a28cb1e5ecf5cb85211a019"
+      release_lib_ref: "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
       skip_validation: false
-      use_github_app_token: true
   create-release-pr:
     needs:
     - "dist"
@@ -61,56 +59,36 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "extract_branch"
       name: "extract branch name"
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
-      working-directory: "release"
-    - id: "fetch_app_credentials"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
-      name: "fetch app credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: |
-          APP_ID=${{ env.GITHUB_APP }}:app-id
-          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/create-github-app-token@v1"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
-        app-id: "${{ env.APP_ID }}"
-        owner: "${{ github.repository_owner }}"
-        private-key: "${{ env.PRIVATE_KEY }}"
-    - env:
-        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
-      id: "github_app_token"
-      name: "set github token"
-      run: |
-        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
-        else
-          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
-        fi
+        github_app: "${{ env.GITHUB_APP }}"
     - env:
         OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
-        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         OUTPUTS_VERSION: "${{ needs.dist.outputs.version }}"
         SHA: "${{ github.sha }}"
       id: "release"
       name: "release please"
       run: |
-        npm install
-        npm exec -- release-please release-pr \
+        yarn install
+        yarn exec -- release-please release-pr \
           --changelog-path "${CHANGELOG_PATH}" \
           --consider-all-branches \
-          --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --group-pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
           --label "backport main,autorelease: pending,product-approved" \
           --manifest-file .release-please-manifest.json \
           --pull-request-footer "Merging this PR will release the [artifacts](https://console.cloud.google.com/storage/browser/${BUILD_ARTIFACTS_BUCKET}/${SHA}) of ${SHA}" \
-          --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+          --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
           --release-as "$(echo $OUTPUTS_VERSION | tr -d '"')" \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
@@ -137,31 +115,10 @@ jobs:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up Cloud SDK"
-      uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
-      with:
-        version: ">= 452.0.0"
-    - id: "get-secrets"
-      name: "get nfpm signing keys"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@fa48192dac470ae356b3f7007229f3ac28c48a25"
-      with:
-        common_secrets: |
-          NFPM_SIGNING_KEY=packages-gpg:private-key
-          NFPM_PASSPHRASE=packages-gpg:passphrase
     - env:
         BUILD_IN_CONTAINER: false
         DRONE_TAG: "${{ needs.version.outputs.version }}"
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
-        NFPM_SIGNING_KEY_FILE: "nfpm-private-key.key"
         SKIP_ARM: false
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "build artifacts"
@@ -171,16 +128,12 @@ jobs:
           --env BUILD_IN_CONTAINER \
           --env DRONE_TAG \
           --env IMAGE_TAG \
-          --env NFPM_PASSPHRASE \
-          --env NFPM_SIGNING_KEY \
-          --env NFPM_SIGNING_KEY_FILE \
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.2"
+          --entrypoint /bin/sh "golang:1.26.4"
           git config --global --add safe.directory /src/loki
-          echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
-          if echo "golang:1.26.2" | grep -q "golang"; then
+          if echo "golang:1.26.4" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist packages
@@ -201,21 +154,29 @@ jobs:
           --env IMAGE_TAG \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "golang:1.26.2"
+          --entrypoint /bin/sh "golang:1.26.4"
           git config --global --add safe.directory /src/loki
-          if echo "golang:1.26.2" | grep -q "golang"; then
+          if echo "golang:1.26.4" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist/loki-linux-riscv64
         EOF
       working-directory: "release"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "dist/"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}"
-        path: "release/dist"
-        process_gcloudignore: false
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source-directory=${{env.path}} \
+          --package=binaries \
+          --version=${{ github.sha }}
+      working-directory: "release"
   fluent-bit:
     needs:
     - "version"
@@ -241,17 +202,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "enable corepack"
+      run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -276,13 +230,21 @@ jobs:
         outputs: "type=docker,dest=release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/fluent-bit-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
-        path: "release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{ env.path }} \
+          --package=images \
+          --version=${{ github.sha }}
+      working-directory: "release"
     strategy:
       fail-fast: true
       matrix:
@@ -315,17 +277,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "enable corepack"
+      run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -350,13 +305,21 @@ jobs:
         outputs: "type=docker,dest=release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/fluent-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
-        path: "release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{ env.path }} \
+          --package=images \
+          --version=${{ github.sha }}
+      working-directory: "release"
     strategy:
       fail-fast: true
       matrix:
@@ -389,17 +352,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "enable corepack"
+      run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -424,13 +380,21 @@ jobs:
         outputs: "type=docker,dest=release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/logcli:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
-        path: "release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{ env.path }} \
+          --package=images \
+          --version=${{ github.sha }}
+      working-directory: "release"
     strategy:
       fail-fast: true
       matrix:
@@ -469,17 +433,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "enable corepack"
+      run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -504,13 +461,21 @@ jobs:
         outputs: "type=docker,dest=release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/logstash-output-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
-        path: "release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{ env.path }} \
+          --package=images \
+          --version=${{ github.sha }}
+      working-directory: "release"
     strategy:
       fail-fast: true
       matrix:
@@ -543,17 +508,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "enable corepack"
+      run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -578,13 +536,21 @@ jobs:
         outputs: "type=docker,dest=release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
-        path: "release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{ env.path }} \
+          --package=images \
+          --version=${{ github.sha }}
+      working-directory: "release"
     strategy:
       fail-fast: true
       matrix:
@@ -623,17 +589,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "enable corepack"
+      run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -658,13 +617,21 @@ jobs:
         outputs: "type=docker,dest=release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
-        path: "release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{ env.path }} \
+          --package=images \
+          --version=${{ github.sha }}
+      working-directory: "release"
     strategy:
       fail-fast: true
       matrix:
@@ -703,17 +670,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "enable corepack"
+      run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -738,13 +698,21 @@ jobs:
         outputs: "type=docker,dest=release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
-        path: "release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{ env.path }} \
+          --package=images \
+          --version=${{ github.sha }}
+      working-directory: "release"
     strategy:
       fail-fast: true
       matrix:
@@ -781,17 +749,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "enable corepack"
+      run: "corepack enable"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
@@ -819,7 +780,7 @@ jobs:
         build-args: |
           IMAGE_TAG=${{ needs.version.outputs.version }}
           GOARCH=${{ steps.platform.outputs.platform_short }}
-          BUILD_IMAGE=golang:1.26.2
+          BUILD_IMAGE=golang:1.26.4
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
         outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
@@ -835,13 +796,21 @@ jobs:
         tar -cf release/plugins/loki-docker-driver-${OUTPUTS_VERSION}-${OUTPUTS_PLATFORM}.tar \
         -C release/plugins/loki-docker-driver-${OUTPUTS_VERSION}-${OUTPUTS_PLATFORM} \
         .
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/plugins"
-        path: "release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{env.path}} \
+          --package=plugins \
+          --version=${{ github.sha }}
+      working-directory: "release"
     strategy:
       fail-fast: true
       matrix:
@@ -877,17 +846,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "enable corepack"
+      run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -912,13 +874,21 @@ jobs:
         outputs: "type=docker,dest=release/images/loki-helm-test-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-helm-test:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
-        path: "release/images/loki-helm-test-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "images/loki-helm-test-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{ env.path }} \
+          --package=images \
+          --version=${{ github.sha }}
+      working-directory: "release"
     strategy:
       fail-fast: true
       matrix:
@@ -957,17 +927,10 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "enable corepack"
+      run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - id: "platform"
@@ -992,13 +955,21 @@ jobs:
         outputs: "type=docker,dest=release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-query-tee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Upload artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
-        path: "release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        process_gcloudignore: false
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+    - env:
+        path: "images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "upload artifacts"
+      run: |
+        gcloud artifacts generic upload \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --source=${{ env.path }} \
+          --package=images \
+          --version=${{ github.sha }}
+      working-directory: "release"
     strategy:
       fail-fast: true
       matrix:
@@ -1037,55 +1008,35 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "extract_branch"
       name: "extract branch name"
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
-      working-directory: "release"
-    - id: "fetch_app_credentials"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
-      name: "fetch app credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: |
-          APP_ID=${{ env.GITHUB_APP }}:app-id
-          PRIVATE_KEY=${{ env.GITHUB_APP }}:private-key
     - id: "get_github_app_token"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
-      uses: "actions/create-github-app-token@v1"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
-        app-id: "${{ env.APP_ID }}"
-        owner: "${{ github.repository_owner }}"
-        private-key: "${{ env.PRIVATE_KEY }}"
-    - env:
-        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
-      id: "github_app_token"
-      name: "set github token"
-      run: |
-        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
-        else
-          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
-        fi
+        github_app: "${{ env.GITHUB_APP }}"
     - env:
         OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
-        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
       id: "version"
       name: "get release version"
       run: |
-        npm install
+        yarn install
         
         if [[ -z "${{ env.RELEASE_AS }}" ]]; then
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
-            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --group-pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --manifest-file .release-please-manifest.json \
-            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
@@ -1093,13 +1044,13 @@ jobs:
             --token "$OUTPUTS_TOKEN" \
             --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
         else
-          npm exec -- release-please release-pr \
+          yarn exec -- release-please release-pr \
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
-            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --group-pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --manifest-file .release-please-manifest.json \
-            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
@@ -1119,7 +1070,7 @@ jobs:
         if [[ `jq length release.json` -eq 0 ]]; then 
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
-          version="$(npm run --silent get-version)"
+          version="$(yarn run --silent get-version)"
           echo "Parsed version: ${version}"
           echo "version=${version}" >> $GITHUB_OUTPUT
           echo "pr_created=true" >> $GITHUB_OUTPUT

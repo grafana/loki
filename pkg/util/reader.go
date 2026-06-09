@@ -2,10 +2,12 @@ package util //nolint:revive
 
 import (
 	"io"
+
+	"go.uber.org/atomic"
 )
 
 type sizeReader struct {
-	size int64
+	size atomic.Int64
 	r    io.Reader
 }
 
@@ -22,10 +24,10 @@ func NewSizeReader(r io.Reader) SizeReader {
 
 func (v *sizeReader) Read(p []byte) (int, error) {
 	n, err := v.r.Read(p)
-	v.size += int64(n)
+	v.size.Add(int64(n))
 	return n, err
 }
 
 func (v *sizeReader) Size() int64 {
-	return v.size
+	return v.size.Load()
 }

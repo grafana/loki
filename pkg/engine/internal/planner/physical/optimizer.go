@@ -37,8 +37,11 @@ func (o *Optimization) withRules(rules ...rule) *Optimization {
 	return o
 }
 
-func (o *Optimization) optimize(node Node) {
+// optimize runs the optimization to a fixed point and reports whether it changed
+// the node at least once.
+func (o *Optimization) optimize(node Node) bool {
 	iterations, maxIterations := 0, 10
+	applied := false
 
 	for iterations < maxIterations {
 		iterations++
@@ -47,7 +50,10 @@ func (o *Optimization) optimize(node Node) {
 			// Stop immediately if an optimization pass produced no changes.
 			break
 		}
+		applied = true
 	}
+
+	return applied
 }
 
 func (o *Optimization) applyRules(node Node) bool {
@@ -72,10 +78,15 @@ func NewOptimizer(plan *Plan, passes []*Optimization) *Optimizer {
 	return &Optimizer{plan: plan, optimisations: passes}
 }
 
-func (o *Optimizer) Optimize(node Node) {
+// Optimize runs every optimization pass over node and returns a map from
+// optimization name to whether it applied at least once.
+func (o *Optimizer) Optimize(node Node) map[string]bool {
+	firings := make(map[string]bool, len(o.optimisations))
 	for _, optimisation := range o.optimisations {
-		optimisation.optimize(node)
+		applied := optimisation.optimize(node)
+		firings[optimisation.name] = applied
 	}
+	return firings
 }
 
 // addUniqueColumnExpr adds a column to the projections list if it's not already present

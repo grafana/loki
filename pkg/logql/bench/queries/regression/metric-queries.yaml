@@ -224,3 +224,47 @@ queries:
       log_format: json
       detected_fields:
         - level
+  - description: Count grouped by a collision-renamed _extracted label
+    query: sum by (level_extracted) (count_over_time(${SELECTOR} | logfmt [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - logfmt
+      - grouping
+      - extracted-label
+    notes: >
+      Regression for the v2 projection-pushdown fix. The logfmt "level" field collides
+      with the "level" structured metadata, so the parsed value is exposed as
+      "level_extracted". Grouping by that renamed label must match the v1 engine.
+      Previously the v2 engine asked the parser for the post-rename key "level_extracted"
+      (which is never a real field), so nothing was extracted and the group-by collapsed
+      to a single empty series / zero.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - level
+  - description: Count with label equality filter on parsed field that is null on some rows
+    query: count_over_time(${SELECTOR} | logfmt | error="" [${RANGE}])
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - logfmt
+      - label-filter
+      - absent-field
+    notes: >
+      Regression for the v2 filter null-coercion fix. The "error" logfmt field
+      is only emitted for error-level lines, so its parsed column is null on
+      every non-error row. LogQL says an absent label compares as "" (matching
+      v1); pre-fix the v2 engine short-circuited any filter on a null column to
+      false, so this count was 0 while v1 returned the count of non-error rows.
+      Must equal v1.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - error

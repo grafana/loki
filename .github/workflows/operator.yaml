@@ -9,6 +9,9 @@ on:
     paths:
       - 'operator/**'
 
+permissions:
+  contents: read
+
 jobs:
   docs:
     name: docs
@@ -109,14 +112,7 @@ jobs:
         cache-dependency-path: ./operator/go.sum
     - name: Run tests
       working-directory: ./operator
-      run: go test -coverprofile=profile.cov ./...
+      run: go test ./...
     - name: Run prometheus rule tests
       working-directory: ./operator
       run: make test-unit-prometheus
-    - name: Send coverage
-      uses: shogo82148/actions-goveralls@9606dbc5ac5cf888a0e9ef901515c3cd516a2790 # v1.11.0
-      with:
-        working-directory: ./operator
-        path-to-profile: profile.cov
-        flag-name: Go-1.25
-        shallow: true
