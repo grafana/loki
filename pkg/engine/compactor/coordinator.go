@@ -116,58 +116,41 @@ func (c *coordinator) runCycle(ctx context.Context) {
 	if err != nil {
 		if c.bucket.IsObjNotFoundErr(err) {
 			level.Debug(c.logger).Log("msg", "no ToC for current window", "window", window)
-			c.metrics.observeCycle("aborted", c.clock().Sub(start))
+			c.metrics.observeCycle("toc_not_found", c.clock().Sub(start))
 			return
 		}
 		level.Warn(c.logger).Log("msg", "cycle aborted: load tenant indexes",
 			"window", window, "err", err)
-		c.metrics.observeCycle("aborted", c.clock().Sub(start))
+		c.metrics.observeCycle("index_load_err", c.clock().Sub(start))
 		return
 	}
 	if len(indexes) == 0 {
 		level.Debug(c.logger).Log("msg", "cycle: no tenants in ToC", "window", window)
-		c.metrics.observeCycle("skipped", c.clock().Sub(start))
+		c.metrics.observeCycle("no_indexes", c.clock().Sub(start))
 		return
 	}
 
 	var (
-		converged = 0 // tenants skipped via the <=1 gate
-		compacted = 0 // tenants whose runTenantCycle returned nil
-		failed    = 0 // tenants whose runTenantCycle returned an error
+		converged = 0 // tenants already at <=1 index (no work)
+		compacted = 0 // tenants whose cycle ran to completion
+		failed    = 0 // tenants whose cycle returned an error
 	)
 	for tenant, entries := range indexes {
-		tenantStart := c.clock()
-
-		if len(entries) <= 1 {
-			level.Debug(c.logger).Log("msg", "cycle: tenant converged, skipping",
-				"tenant", tenant, "indexes", len(entries))
+		// Stop the cycle early on context cancellation. Remaining tenants
+		// would fail immediately on the cancelled ctx, doing no useful work
+		// but inflating the failed metric and risking false-positive alerts.
+		// The next polling tick (with a fresh ctx) re-plans the entire window.
+		if ctx.Err() != nil {
+			break
+		}
+		switch c.runTenantCycle(ctx, tenant, window, entries) {
+		case tenantCycleConverged:
 			converged++
-			c.metrics.observeTenantCycle(tenant, "converged", c.clock().Sub(tenantStart), 0, 0, 0)
-			c.metrics.observeEntries(tenant, entries, c.clock())
-			continue
-		}
-
-		removed, added, tasks, runErr := c.runTenantCycle(ctx, tenant, window, entries)
-		tenantDuration := c.clock().Sub(tenantStart)
-		if runErr != nil {
-			level.Warn(c.logger).Log("msg", "tenant cycle failed",
-				"tenant", tenant, "window", window, "err", runErr)
+		case tenantCycleCompacted:
+			compacted++
+		case tenantCycleFailed:
 			failed++
-			c.metrics.observeTenantCycle(tenant, "failed", tenantDuration, 0, 0, 0)
-			c.metrics.observeEntries(tenant, entries, c.clock())
-			// Stop the cycle early on context cancellation. Subsequent
-			// tenants would fail immediately on the cancelled ctx, doing no
-			// useful work but inflating the failed metric and risking
-			// false-positive alerts. The next polling tick (with a fresh
-			// ctx) re-plans the entire window.
-			if ctx.Err() != nil {
-				break
-			}
-			// Continue with next tenant
-			continue
 		}
-		compacted++
-		c.metrics.observeTenantCycle(tenant, "compacted", tenantDuration, removed, added, tasks)
 	}
 
 	duration := c.clock().Sub(start)
@@ -180,9 +163,18 @@ func (c *coordinator) runCycle(ctx context.Context) {
 		"tenants_converged", converged,
 		"tenants_failed", failed,
 	)
-	cycleOutcome := "skipped"
-	if compacted > 0 || failed > 0 {
-		cycleOutcome = "ok"
+
+	cycleOutcome := "converged"
+	if failed > 0 && compacted <= 0 {
+		cycleOutcome = "compaction_failed"
+	}
+
+	if compacted > 0 {
+		if failed > 0 {
+			cycleOutcome = "compacted_with_failures"
+		} else {
+			cycleOutcome = "compacted"
+		}
 	}
 	c.metrics.observeCycle(cycleOutcome, duration)
 
@@ -196,13 +188,56 @@ func (c *coordinator) runCycle(ctx context.Context) {
 	}
 }
 
-// runTenantCycle performs the per-(tenant, window) compaction. Returns the
+// tenantCycleResult is the single outcome of one per-(tenant, window) cycle.
+type tenantCycleResult int
+
+const (
+	// tenantCycleConverged: tenant was already at <=1 index, no work done.
+	tenantCycleConverged tenantCycleResult = iota
+	// tenantCycleCompacted: tenant cycle ran to completion.
+	tenantCycleCompacted
+	// tenantCycleFailed: the tenant cycle returned an error.
+	tenantCycleFailed
+)
+
+// runTenantCycle drives one per-(tenant, window) cycle end to end and returns a
+// tenantCycleResult.
+func (c *coordinator) runTenantCycle(
+	ctx context.Context,
+	tenant string,
+	window time.Time,
+	entries []indexEntry,
+) tenantCycleResult {
+	tenantStart := c.clock()
+
+	if len(entries) <= 1 {
+		level.Debug(c.logger).Log("msg", "cycle: tenant converged, skipping",
+			"tenant", tenant, "indexes", len(entries))
+		c.metrics.observeTenantCycle(tenant, "converged", c.clock().Sub(tenantStart), 0, 0, 0)
+		c.metrics.observeEntries(tenant, entries, c.clock())
+		return tenantCycleConverged
+	}
+
+	removed, added, tasks, err := c.compactTenant(ctx, tenant, window, entries)
+	tenantDuration := c.clock().Sub(tenantStart)
+	if err != nil {
+		level.Warn(c.logger).Log("msg", "tenant cycle failed",
+			"tenant", tenant, "window", window, "err", err)
+		c.metrics.observeTenantCycle(tenant, "failed", tenantDuration, 0, 0, 0)
+		c.metrics.observeEntries(tenant, entries, c.clock())
+		return tenantCycleFailed
+	}
+	c.metrics.observeTenantCycle(tenant, "compacted", tenantDuration, removed, added, tasks)
+	return tenantCycleCompacted
+}
+
+// compactTenant performs the per-(tenant, window) compaction. Returns the
 // number of source index pointers removed, the number of compacted outputs
 // added, the number of IndexMerge tasks dispatched, and an error if present.
 // (0, 0, 0, nil) is returned when there was no work (planner produced no tasks)
 // or when the ToC swap was a race-loss / already-converged no-op — both are
 // successes that produced no index/task deltas.
-func (c *coordinator) runTenantCycle(
+func (c *coordinator) compactTenant(
 	ctx context.Context,
 	tenant string,
 	window time.Time,

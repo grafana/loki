@@ -79,9 +79,6 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, fmt.Errorf("dataobj compaction worker: resolve worker advertise address: %w", err)
 	}
 
-	// Worker-side metrics: the output_bytes_{compressed,uncompressed}
-	// histograms are populated by the IndexMerge executor on this worker via
-	// the IndexMergeObserver callback.
 	wm := newWorkerMetrics(registerer)
 
 	inner, err := engine.NewWorker(engine.WorkerParams{

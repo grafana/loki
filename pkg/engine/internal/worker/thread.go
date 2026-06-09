@@ -88,9 +88,7 @@ type thread struct {
 	ScratchStore   scratch.Store
 	IndexobjCfg    logsobj.BuilderBaseConfig
 
-	// IndexMergeObserver, when non-nil, receives per-task output-size
-	// callbacks from the IndexMerge executor. Optional; nil for query-only
-	// workers.
+	// IndexMergeObserver is optional; nil for query-only workers.
 	IndexMergeObserver executor.IndexMergeObserver
 
 	Metrics    *metrics

@@ -99,9 +99,8 @@ type Config struct {
 	// Required for compaction tasks; may be nil for query-only workers.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
-	// IndexMergeObserver, when non-nil, receives per-task output-size
-	// callbacks from the IndexMerge executor. Optional; nil for query-only
-	// workers.
+	// IndexMergeObserver is used  by compaction to populate output-size
+	// histograms. Optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
 }
 

@@ -50,8 +50,7 @@ type Config struct {
 	// IndexobjCfg is the builder config for index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
-	// IndexMergeObserver receives a callback after each successful IndexMerge
-	// task with the output sizes. Used  by compaction to populate output-size
+	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
 	IndexMergeObserver IndexMergeObserver
 
@@ -72,12 +71,7 @@ type Config struct {
 	TaskCaches TaskCacheRegistry
 }
 
-// IndexMergeObserver is invoked by the IndexMerge executor after each
-// successful task to report output sizes.
 type IndexMergeObserver interface {
-	// ObserveIndexMergeOutput is called once per successful task.
-	// [compressedBytes] are the bytes uploaded to object storage, and
-	// [uncompressedBytes] are the builder's in-memory accumulated size at Flush.
 	ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64)
 }
 
