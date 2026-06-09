@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
@@ -47,7 +48,8 @@ type coordinator struct {
 	metastoreWriter tocReplacer
 	// clock is injected so tests can pin the current time; production
 	// wiring sets it to time.Now.
-	clock func() time.Time
+	clock   func() time.Time
+	metrics *coordinatorMetrics
 }
 
 // newCoordinator constructs a coordinator wired to a real
@@ -60,6 +62,7 @@ func newCoordinator(
 	bucket objstore.Bucket,
 	runner workflow.Runner,
 	metastoreWriter *metastore.TableOfContentsWriter,
+	reg prometheus.Registerer,
 ) *coordinator {
 	return &coordinator{
 		cfg:    cfg,
@@ -70,6 +73,7 @@ func newCoordinator(
 		},
 		metastoreWriter: metastoreWriter,
 		clock:           time.Now,
+		metrics:         newCoordinatorMetrics(reg),
 	}
 }
 
@@ -113,45 +117,41 @@ func (c *coordinator) runCycle(ctx context.Context) {
 	if err != nil {
 		if c.bucket.IsObjNotFoundErr(err) {
 			level.Debug(c.logger).Log("msg", "no ToC for current window", "window", window)
+			c.metrics.observeCycle("toc_not_found", c.clock().Sub(start))
 			return
 		}
 		level.Warn(c.logger).Log("msg", "cycle aborted: load tenant indexes",
 			"window", window, "err", err)
+		c.metrics.observeCycle("index_load_err", c.clock().Sub(start))
 		return
 	}
 	if len(indexes) == 0 {
 		level.Debug(c.logger).Log("msg", "cycle: no tenants in ToC", "window", window)
+		c.metrics.observeCycle("no_indexes", c.clock().Sub(start))
 		return
 	}
 
 	var (
-		converged = 0 // tenants skipped via the <=1 gate
-		compacted = 0 // tenants whose runTenantCycle returned nil
-		failed    = 0 // tenants whose runTenantCycle returned an error
+		converged = 0 // tenants already at <=1 index (no work)
+		compacted = 0 // tenants whose cycle ran to completion
+		failed    = 0 // tenants whose cycle returned an error
 	)
 	for tenant, entries := range indexes {
-		if len(entries) <= 1 {
-			level.Debug(c.logger).Log("msg", "cycle: tenant converged, skipping",
-				"tenant", tenant, "indexes", len(entries))
+		// Stop the cycle early on context cancellation. Remaining tenants
+		// would fail immediately on the cancelled ctx, doing no useful work
+		// but inflating the failed metric and risking false-positive alerts.
+		// The next polling tick (with a fresh ctx) re-plans the entire window.
+		if ctx.Err() != nil {
+			break
+		}
+		switch c.runTenantCycle(ctx, tenant, window, entries) {
+		case tenantCycleConverged:
 			converged++
-			continue
-		}
-		if err := c.runTenantCycle(ctx, tenant, window, entries); err != nil {
-			level.Warn(c.logger).Log("msg", "tenant cycle failed",
-				"tenant", tenant, "window", window, "err", err)
+		case tenantCycleCompacted:
+			compacted++
+		case tenantCycleFailed:
 			failed++
-			// Stop the cycle early on context cancellation. Subsequent
-			// tenants would fail immediately on the cancelled ctx, doing no
-			// useful work but inflating the failed metric and risking
-			// false-positive alerts. The next polling tick (with a fresh
-			// ctx) re-plans the entire window.
-			if ctx.Err() != nil {
-				break
-			}
-			// Continue with next tenant
-			continue
 		}
-		compacted++
 	}
 
 	duration := c.clock().Sub(start)
@@ -165,6 +165,20 @@ func (c *coordinator) runCycle(ctx context.Context) {
 		"tenants_failed", failed,
 	)
 
+	cycleOutcome := "converged"
+	if failed > 0 && compacted <= 0 {
+		cycleOutcome = "compaction_failed"
+	}
+
+	if compacted > 0 {
+		if failed > 0 {
+			cycleOutcome = "compacted_with_failures"
+		} else {
+			cycleOutcome = "compacted"
+		}
+	}
+	c.metrics.observeCycle(cycleOutcome, duration)
+
 	//TODO(twhitney): will want a metric for this
 	if duration > c.cfg.PollingInterval {
 		level.Warn(c.logger).Log(
@@ -175,25 +189,75 @@ func (c *coordinator) runCycle(ctx context.Context) {
 	}
 }
 
-// runTenantCycle performs the per-(tenant, window) compaction.
-//
-// Returned errors are wrapped for the caller; (swapped=false, err=nil) from
-// ReplaceIndexPointers is treated as success because it signals either a
-// race-loss to a sibling coordinator or that the cycle's source paths were
-// already removed by a previous cycle.
+// tenantCycleResult is the single outcome of one per-(tenant, window) cycle.
+type tenantCycleResult int
+
+const (
+	// tenantCycleConverged: tenant was already at <=1 index, no work done.
+	tenantCycleConverged tenantCycleResult = iota
+	// tenantCycleCompacted: tenant cycle ran to completion.
+	tenantCycleCompacted
+	// tenantCycleFailed: the tenant cycle returned an error.
+	tenantCycleFailed
+)
+
+// runTenantCycle drives one per-(tenant, window) cycle end to end and returns a
+// tenantCycleResult.
 func (c *coordinator) runTenantCycle(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
 	entries []indexEntry,
-) error {
+) tenantCycleResult {
+	tenantStart := c.clock()
+
+	if len(entries) <= 1 {
+		level.Debug(c.logger).Log("msg", "cycle: tenant converged, skipping",
+			"tenant", tenant, "indexes", len(entries))
+		c.metrics.observeTenantCycle(tenant, "converged", c.clock().Sub(tenantStart), compactionStats{})
+		c.metrics.observeEntries(tenant, entries, c.clock())
+		return tenantCycleConverged
+	}
+
+	stats, err := c.compactTenant(ctx, tenant, window, entries)
+	tenantDuration := c.clock().Sub(tenantStart)
+	if err != nil {
+		level.Warn(c.logger).Log("msg", "tenant cycle failed",
+			"tenant", tenant, "window", window, "err", err)
+		c.metrics.observeTenantCycle(tenant, "failed", tenantDuration, compactionStats{})
+		c.metrics.observeEntries(tenant, entries, c.clock())
+		return tenantCycleFailed
+	}
+	c.metrics.observeTenantCycle(tenant, "compacted", tenantDuration, stats)
+	return tenantCycleCompacted
+}
+
+// compactionStats reports the results of a single tenant compaction. The zero
+// value (all fields 0) represents a no-op success.
+type compactionStats struct {
+	removed    int
+	added      int
+	dispatched int
+}
+
+// compactTenant performs the per-(tenant, window) compaction. Returns the
+// index/task deltas and an error if present. A zero-value compactionStats with
+// a nil error is returned when there was no work (planner produced no tasks) or
+// when the ToC swap was a race-loss / already-converged no-op — both are
+// successes that produced no index/task deltas.
+func (c *coordinator) compactTenant(
+	ctx context.Context,
+	tenant string,
+	window time.Time,
+	entries []indexEntry,
+) (compactionStats, error) {
 	// Plan.
 	sections := sectionRefsFor(entries)
 	tasks := v2.Plan(ctx, sections, tenant, c.cfg.MaxRunsPerTask)
 	if len(tasks) == 0 {
 		level.Debug(c.logger).Log("msg", "tenant cycle: planner produced no tasks",
 			"tenant", tenant, "window", window)
-		return nil
+		return compactionStats{}, nil
 	}
 
 	// Compute deterministic output paths per task. A single indexMergePath
@@ -219,7 +283,7 @@ func (c *coordinator) runTenantCycle(
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("failed to execute compaction tasks: %w", err)
+		return compactionStats{}, fmt.Errorf("failed to execute compaction tasks: %w", err)
 	}
 
 	// Replace index pointers with new indexes
@@ -238,19 +302,19 @@ func (c *coordinator) runTenantCycle(
 	)
 
 	if c.cfg.DryRun {
-		return nil
+		return compactionStats{}, nil
 	}
 
 	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
 	defer cancel()
 	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
 	if err != nil {
-		return fmt.Errorf("failed to replace index pointers after compaction: %w", err)
+		return compactionStats{}, fmt.Errorf("failed to replace index pointers after compaction: %w", err)
 	}
 	if !swapped {
 		level.Debug(c.logger).Log("msg", "ToC replace race-loss / already-converged",
 			"tenant", tenant, "window", window)
-		return nil
+		return compactionStats{}, nil
 	}
 	level.Info(c.logger).Log("msg", "tenant cycle complete",
 		"tenant", tenant, "window", window,
@@ -258,7 +322,11 @@ func (c *coordinator) runTenantCycle(
 		"removed_indexes", len(oldPaths),
 		"added_indexes", len(outputs),
 	)
-	return nil
+	return compactionStats{
+		removed:    len(oldPaths),
+		added:      len(outputs),
+		dispatched: len(tasks),
+	}, nil
 }
 
 // taskSectionIDs returns canonical "<ObjectPath>#<SectionIndex>" IDs for

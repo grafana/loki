@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -98,6 +99,7 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		runPlan:         runner.run,
 		metastoreWriter: replacer,
 		clock:           clock,
+		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
 	}
 }
 
@@ -213,7 +215,7 @@ func TestRunCycle_FansOutOverlappingPiles(t *testing.T) {
 // TestRunTenantCycle_RaceLossIsSuccess verifies the (swapped=false, err=nil)
 // path is treated as success: the cycle returns nil and the next cycle
 // re-plans against the post-swap ToC.
-func TestRunTenantCycle_RaceLossIsSuccess(t *testing.T) {
+func TestCompactTenant_RaceLossIsSuccess(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
@@ -232,14 +234,15 @@ func TestRunTenantCycle_RaceLossIsSuccess(t *testing.T) {
 	// runCycle swallows per-tenant errors; check directly via the lower API.
 	indexes, err := loadTenantIndexes(ctx, bucket, window)
 	require.NoError(t, err)
-	require.NoError(t, c.runTenantCycle(ctx, "acme", window, indexes["acme"]))
+	_, runErr := c.compactTenant(ctx, "acme", window, indexes["acme"])
+	require.NoError(t, runErr)
 }
 
-// TestRunTenantCycle_HardSwapErrorPropagates verifies that a non-nil error
+// TestCompactTenant_HardSwapErrorPropagates verifies that a non-nil error
 // from ReplaceIndexPointers aborts the tenant cycle. The poll loop's
-// runCycle wrapper will log + continue to the next tenant; runTenantCycle
+// runCycle wrapper will log + continue to the next tenant; compactTenant
 // itself returns the wrapped error so the test can pin it.
-func TestRunTenantCycle_HardSwapErrorPropagates(t *testing.T) {
+func TestCompactTenant_HardSwapErrorPropagates(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
@@ -258,8 +261,8 @@ func TestRunTenantCycle_HardSwapErrorPropagates(t *testing.T) {
 
 	indexes, err := loadTenantIndexes(ctx, bucket, window)
 	require.NoError(t, err)
-	err = c.runTenantCycle(ctx, "acme", window, indexes["acme"])
-	require.ErrorIs(t, err, swapErr)
+	_, runErr := c.compactTenant(ctx, "acme", window, indexes["acme"])
+	require.ErrorIs(t, runErr, swapErr)
 }
 
 // TestRunCycle_DryRunSkipsToCSwapButLogs verifies that with DryRun=true the
