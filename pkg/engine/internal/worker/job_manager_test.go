@@ -4,11 +4,38 @@ import (
 	"context"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 func Test_jobManager(t *testing.T) {
+	t.Run("WaitReady blocks until a Recv call is waiting", func(t *testing.T) {
+		// Use synctest so this doesn't take a real minute to execute.
+		synctest.Test(t, func(t *testing.T) {
+			jm := newJobManager()
+
+			ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+			defer cancel()
+
+			err := jm.WaitReady(ctx)
+			require.ErrorIs(t, err, context.DeadlineExceeded, "WaitReady should wait until context cancellation if there are no ready threads")
+		})
+	})
+
+	t.Run("WaitReady returns when a Recv call is waiting", func(t *testing.T) {
+		jm := newJobManager()
+
+		go func() {
+			_, _ = jm.Recv(t.Context())
+		}()
+
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+
+		require.NoError(t, jm.WaitReady(ctx), "WaitReady should return when a Recv call is waiting")
+	})
+
 	t.Run("Send fails with no calls to Recv", func(t *testing.T) {
 		jm := newJobManager()
 

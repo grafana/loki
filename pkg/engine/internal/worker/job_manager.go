@@ -47,13 +47,12 @@ type threadJob struct {
 //   - The worker calls [jobManager.Send] when it is assigned a task from the
 //     scheduler, which fails if there are no ready threads.
 //
-//   - The worker's readiness emitter calls [jobManager.WaitReadyGen] to learn
-//     when threads become ready, so it can advertise spare capacity to a
-//     scheduler once per batch of newly-ready threads.
+//   - The worker calls [jobManager.WaitReady] to inform a scheduler when
+//     there is at least one ready worker thread.
 type jobManager struct {
 	mut        sync.RWMutex
 	waiting    int
-	waitCond   chan struct{} // Closed and recreated on every change to waiting.
+	waitCond   chan struct{} // Channel-based condition variable to permit cancellation
 	cancelCond chan struct{} // Channel-based condition variable to cancel Recv
 
 	jobCh chan *threadJob
@@ -90,20 +89,14 @@ func (jm *jobManager) Recv(ctx context.Context) (*threadJob, error) {
 	}
 }
 
-// broadcast records that another thread is waiting for a job and wakes any
-// blocked calls to WaitReady / WaitBusy.
+// broadcast wakes all blocked calls to WaitReady.
 func (jm *jobManager) broadcast() {
 	jm.mut.Lock()
 	defer jm.mut.Unlock()
 
 	jm.waiting++
-	jm.notify()
-}
 
-// notify wakes all goroutines blocked on a change to waiting (WaitReadyGen).
-// Callers must hold jm.mut for writing.
-func (jm *jobManager) notify() {
-	close(jm.waitCond) // Wakes all blocked calls to WaitReadyGen.
+	close(jm.waitCond) // Wakes all blocked calls to WaitReady
 	jm.waitCond = make(chan struct{})
 }
 
@@ -116,7 +109,6 @@ func (jm *jobManager) cancelWaiting() {
 		panic("jobManager.cancelWaiting called with no waiting calls")
 	}
 	jm.waiting--
-	jm.notify()
 
 	close(jm.cancelCond)
 	jm.cancelCond = make(chan struct{})
@@ -157,7 +149,6 @@ func (jm *jobManager) Send(ctx context.Context, job *threadJob) error {
 	switch {
 	case sent:
 		jm.waiting--
-		jm.notify()
 		return nil
 	case !sent && ctx.Err() != nil:
 		return ctx.Err()
@@ -166,19 +157,29 @@ func (jm *jobManager) Send(ctx context.Context, job *threadJob) error {
 	}
 }
 
-// WaitReady blocks until a thread has become ready for another job.
+// WaitReady blocks until there is at least one waiting call to
+// [jobManager.Recv], indicating that [jobManager.Send] can be called.
+//
+// Note that other goroutines may consume all Send slots between this call
+// returning and calling Send, causing Send to return an error.
 func (jm *jobManager) WaitReady(ctx context.Context) error {
 	jm.mut.RLock()
 	defer jm.mut.RUnlock()
 
 	for ctx.Err() == nil && jm.waiting == 0 {
+		// Get the current condition variable channel.
 		waitCh := jm.waitCond
 
+		// Unlock the mutex while waiting for waitCh to close.
 		jm.mut.RUnlock()
+
 		select {
 		case <-ctx.Done():
 		case <-waitCh:
 		}
+
+		// Re-lock the mutex so the condition can be safely checked again on
+		// the next loop.
 		jm.mut.RLock()
 	}
 
