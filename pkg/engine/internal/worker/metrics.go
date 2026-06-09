@@ -25,14 +25,14 @@ type metrics struct {
 	taskExecSeconds          *prometheus.HistogramVec
 
 	// Per-pass phase durations (one observation per loop iteration).
-	passComputeSeconds prometheus.Histogram
-	passWriteSeconds   prometheus.Histogram
+	passReadSeconds prometheus.Histogram
+	passSendSeconds prometheus.Histogram
 
 	// Task-wide phase durations (one observation per drainPipeline call),
 	// partitioned by task_type.
-	taskReadSeconds    *prometheus.HistogramVec
-	taskComputeSeconds *prometheus.HistogramVec
-	taskWriteSeconds   *prometheus.HistogramVec
+	taskOpenSeconds *prometheus.HistogramVec
+	taskReadSeconds *prometheus.HistogramVec
+	taskSendSeconds *prometheus.HistogramVec
 
 	// setupSeconds measures the time spent preparing a task for execution
 	// (before draining its pipeline), partitioned by task_type.
@@ -77,42 +77,42 @@ func newMetrics() *metrics {
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"task_type"}),
 
-		passComputeSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name: "loki_engine_worker_pass_compute_seconds",
-			Help: "Duration of a single compute phase pass",
+		passReadSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name: "loki_engine_worker_pass_read_seconds",
+			Help: "Duration of a single read-phase pass",
 
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}),
-		passWriteSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name: "loki_engine_worker_pass_write_seconds",
-			Help: "Duration of a single write phase pass",
+		passSendSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name: "loki_engine_worker_pass_send_seconds",
+			Help: "Duration of a single send-phase pass",
 
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}),
 
+		taskOpenSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Name: "loki_engine_worker_task_open_seconds",
+			Help: "Total time spent opening a task's pipeline (Pipeline.Open)",
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+		}, []string{"task_type"}),
 		taskReadSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name: "loki_engine_worker_task_read_seconds",
-			Help: "Total time spent in the read phase for a task",
+			Help: "Total time spent in the read phase (Pipeline.Read) for a task",
 
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"task_type"}),
-		taskComputeSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_engine_worker_task_compute_seconds",
-			Help: "Total time spent in the compute phase for a task",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
-		}, []string{"task_type"}),
-		taskWriteSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_engine_worker_task_write_seconds",
-			Help: "Total time spent in the write phase for a task",
+		taskSendSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Name: "loki_engine_worker_task_send_seconds",
+			Help: "Total time spent in the send phase for a task",
 
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
