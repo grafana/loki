@@ -1235,17 +1235,54 @@ type ByteSlice interface {
 
 type RealByteSlice []byte
 
-func (b RealByteSlice) Len() int {
-	return len(b)
+func (b RealByteSlice) Len() int                     { return len(b) }
+func (b RealByteSlice) Range(start, end int) []byte  { return b[start:end] }
+func (b RealByteSlice) Sub(start, end int) ByteSlice { return b[start:end] }
+
+// fileByteSlice implements ByteSlice via random reads against an open *os.File.
+// Each Range call allocates a fresh buffer and issues a ReadAt syscall.
+// The file must remain open for the Reader's lifetime.
+type fileByteSlice struct {
+	f    *os.File
+	size int
 }
 
-func (b RealByteSlice) Range(start, end int) []byte {
-	return b[start:end]
+func newFileByteSlice(f *os.File) (*fileByteSlice, error) {
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", f.Name())
+	}
+	return &fileByteSlice{f: f, size: int(info.Size())}, nil
 }
 
-func (b RealByteSlice) Sub(start, end int) ByteSlice {
-	return b[start:end]
+func (s *fileByteSlice) Len() int { return s.size }
+
+func (s *fileByteSlice) Range(start, end int) []byte {
+	// fmt.Printf("Range() reading %d bytes\n", end-start)
+	b := make([]byte, end-start)
+	if _, err := s.f.ReadAt(b, int64(start)); err != nil {
+		// ByteSlice.Range has no error return; a read failure here is
+		// non-recoverable and indicates a corrupted or truncated index file.
+		panic(fmt.Sprintf("index: ReadAt [%d, %d): %v", start, end, err))
+	}
+	return b
 }
+
+// sectionByteSlice presents a window [start, end) of an underlying ByteSlice
+// as a new ByteSlice starting at position 0. Used to scope large ByteSlices
+// (e.g. the full-file slice) down to individual index sections so that
+// Range(0, Len()) only reads the relevant section.
+type sectionByteSlice struct {
+	bs    ByteSlice
+	start int
+	end   int
+}
+
+func (s sectionByteSlice) Len() int              { return s.end - s.start }
+func (s sectionByteSlice) Range(a, b int) []byte { return s.bs.Range(s.start+a, s.start+b) }
 
 // NewReader returns a new index reader on the given byte slice. It automatically
 // handles different format versions.
@@ -1254,19 +1291,22 @@ func NewReader(b ByteSlice) (*Reader, error) {
 }
 
 // NewFileReader returns a new index reader against the given index file.
+// Unlike the previous mmap-based implementation, this uses regular file I/O
+// via ReadAt, so the file contents are never fully loaded into memory.
 func NewFileReader(path string) (*Reader, error) {
-	f, err := fileutil.OpenMmapFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	r, err := newReader(RealByteSlice(f.Bytes()), f)
+	bs, err := newFileByteSlice(f)
 	if err != nil {
-		return nil, stderrors.Join(
-			err,
-			f.Close(),
-		)
+		_ = f.Close()
+		return nil, err
 	}
-
+	r, err := newReader(bs, f)
+	if err != nil {
+		return nil, stderrors.Join(err, f.Close())
+	}
 	return r, nil
 }
 
@@ -1296,7 +1336,18 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		return nil, errors.Wrap(err, "read TOC")
 	}
 
-	r.symbols, err = NewSymbols(r.b, r.version, int(r.toc.Symbols))
+	// Scope the ByteSlice for the symbols section so that Symbols.Lookup and
+	// ReverseLookup (which call bs.Range(0, bs.Len())) only read that section
+	// rather than the full file. The section layout is: 4-byte length prefix +
+	// content + 4-byte CRC, matching NewDecbufAt's expectations.
+	symOff := int(r.toc.Symbols)
+	symContentLen := int(binary.BigEndian.Uint32(r.b.Range(symOff, symOff+4)))
+	symSection := sectionByteSlice{
+		bs:    r.b,
+		start: symOff,
+		end:   symOff + 4 + symContentLen + 4,
+	}
+	r.symbols, err = NewSymbols(symSection, r.version, 0)
 	if err != nil {
 		return nil, errors.Wrap(err, "read symbols")
 	}
@@ -1382,6 +1433,14 @@ func (r *Reader) Version() int {
 }
 
 func (r *Reader) RawFileReader() (io.ReadSeeker, error) {
+	// For file-based readers, return the underlying file directly to avoid
+	// materialising the entire index into memory.
+	if f, ok := r.c.(*os.File); ok {
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		return f, nil
+	}
 	return bytes.NewReader(r.b.Range(0, r.b.Len())), nil
 }
 
