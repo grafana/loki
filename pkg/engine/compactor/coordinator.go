@@ -214,43 +214,50 @@ func (c *coordinator) runTenantCycle(
 	if len(entries) <= 1 {
 		level.Debug(c.logger).Log("msg", "cycle: tenant converged, skipping",
 			"tenant", tenant, "indexes", len(entries))
-		c.metrics.observeTenantCycle(tenant, "converged", c.clock().Sub(tenantStart), 0, 0, 0)
+		c.metrics.observeTenantCycle(tenant, "converged", c.clock().Sub(tenantStart), compactionStats{})
 		c.metrics.observeEntries(tenant, entries, c.clock())
 		return tenantCycleConverged
 	}
 
-	removed, added, tasks, err := c.compactTenant(ctx, tenant, window, entries)
+	stats, err := c.compactTenant(ctx, tenant, window, entries)
 	tenantDuration := c.clock().Sub(tenantStart)
 	if err != nil {
 		level.Warn(c.logger).Log("msg", "tenant cycle failed",
 			"tenant", tenant, "window", window, "err", err)
-		c.metrics.observeTenantCycle(tenant, "failed", tenantDuration, 0, 0, 0)
+		c.metrics.observeTenantCycle(tenant, "failed", tenantDuration, compactionStats{})
 		c.metrics.observeEntries(tenant, entries, c.clock())
 		return tenantCycleFailed
 	}
-	c.metrics.observeTenantCycle(tenant, "compacted", tenantDuration, removed, added, tasks)
+	c.metrics.observeTenantCycle(tenant, "compacted", tenantDuration, stats)
 	return tenantCycleCompacted
 }
 
+// compactionStats reports the results of a single tenant compaction. The zero
+// value (all fields 0) represents a no-op success.
+type compactionStats struct {
+	removed    int
+	added      int
+	dispatched int
+}
+
 // compactTenant performs the per-(tenant, window) compaction. Returns the
-// number of source index pointers removed, the number of compacted outputs
-// added, the number of IndexMerge tasks dispatched, and an error if present.
-// (0, 0, 0, nil) is returned when there was no work (planner produced no tasks)
-// or when the ToC swap was a race-loss / already-converged no-op — both are
+// index/task deltas and an error if present. A zero-value compactionStats with
+// a nil error is returned when there was no work (planner produced no tasks) or
+// when the ToC swap was a race-loss / already-converged no-op — both are
 // successes that produced no index/task deltas.
 func (c *coordinator) compactTenant(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
 	entries []indexEntry,
-) (removed, added, dispatched int, err error) {
+) (compactionStats, error) {
 	// Plan.
 	sections := sectionRefsFor(entries)
 	tasks := v2.Plan(ctx, sections, tenant, c.cfg.MaxRunsPerTask)
 	if len(tasks) == 0 {
 		level.Debug(c.logger).Log("msg", "tenant cycle: planner produced no tasks",
 			"tenant", tenant, "window", window)
-		return 0, 0, 0, nil
+		return compactionStats{}, nil
 	}
 
 	// Compute deterministic output paths per task. A single indexMergePath
@@ -276,7 +283,7 @@ func (c *coordinator) compactTenant(
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return 0, 0, 0, fmt.Errorf("failed to execute compaction tasks: %w", err)
+		return compactionStats{}, fmt.Errorf("failed to execute compaction tasks: %w", err)
 	}
 
 	// Replace index pointers with new indexes
@@ -302,12 +309,12 @@ func (c *coordinator) compactTenant(
 	defer cancel()
 	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("failed to replace index pointers after compaction: %w", err)
+		return compactionStats{}, fmt.Errorf("failed to replace index pointers after compaction: %w", err)
 	}
 	if !swapped {
 		level.Debug(c.logger).Log("msg", "ToC replace race-loss / already-converged",
 			"tenant", tenant, "window", window)
-		return 0, 0, 0, nil
+		return compactionStats{}, nil
 	}
 	level.Info(c.logger).Log("msg", "tenant cycle complete",
 		"tenant", tenant, "window", window,
@@ -315,7 +322,11 @@ func (c *coordinator) compactTenant(
 		"removed_indexes", len(oldPaths),
 		"added_indexes", len(outputs),
 	)
-	return len(oldPaths), len(outputs), len(tasks), nil
+	return compactionStats{
+		removed:    len(oldPaths),
+		added:      len(outputs),
+		dispatched: len(tasks),
+	}, nil
 }
 
 // taskSectionIDs returns canonical "<ObjectPath>#<SectionIndex>" IDs for

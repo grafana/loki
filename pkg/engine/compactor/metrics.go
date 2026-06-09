@@ -7,9 +7,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// metricsNamespace prefixes every coordinator-side metric.
-const metricsNamespace = "loki_dataobj_compaction"
-
 // Label names for metrics.
 const (
 	labelTenant  = "tenant"
@@ -52,58 +49,48 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 	f := promauto.With(reg)
 	return &coordinatorMetrics{
 		unconsolidatedBacklog: f.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
-			Name:      "unconsolidated_index_backlog",
-			Help:      "Per-tenant count of indexes in the current + previous ToC windows whose max_timestamp is older than the consolidation SLO. Steady state: 0.",
+			Name: "loki_dataobj_compaction_unconsolidated_index_backlog",
+			Help: "Per-tenant count of indexes in the current + previous ToC windows whose max_timestamp is older than the consolidation SLO. Steady state: 0.",
 		}, []string{labelTenant}),
 		oldestBacklogLogAgeSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
-			Name:      "oldest_backlog_log_age_seconds",
-			Help:      "Per-tenant age (now - min(max_timestamp)) of the oldest unconsolidated index in the current + previous ToC windows. Zero when there is no backlog.",
+			Name: "loki_dataobj_compaction_oldest_backlog_log_age_seconds",
+			Help: "Per-tenant age (now - min(max_timestamp)) of the oldest unconsolidated index in the current + previous ToC windows. Zero when there is no backlog.",
 		}, []string{labelTenant}),
 		indexesPerTenantWindow: f.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
-			Name:      "indexes_per_tenant_window",
-			Help:      "Per-tenant raw index count for the current ToC window. Bounded cardinality (1 series per tenant).",
+			Name: "loki_dataobj_compaction_indexes_per_tenant_window",
+			Help: "Per-tenant raw index count for the current ToC window. Bounded cardinality (1 series per tenant).",
 		}, []string{labelTenant}),
 
 		// Operational counters / histograms.
 		cyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Name:      "cycles_total",
-			Help:      "Total coordinator cycles by outcome.",
+			Name: "loki_dataobj_compaction_cycles_total",
+			Help: "Total coordinator cycles by outcome.",
 		}, []string{labelOutcome}),
 		tenantCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Name:      "tenant_cycles_total",
-			Help:      "Per-tenant cycle outcomes. compacted = ran compaction successfully, converged = had <= 1 index (no work), failed = compaction returned error.",
+			Name: "loki_dataobj_compaction_tenant_cycles_total",
+			Help: "Per-tenant cycle outcomes. compacted = ran compaction successfully, converged = had <= 1 index (no work), failed = compaction returned error.",
 		}, []string{labelOutcome, labelTenant}),
 		indexesRemovedTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Name:      "indexes_removed_total",
-			Help:      "Cumulative count of source index pointers removed from the ToC by successful tenant cycles.",
+			Name: "loki_dataobj_compaction_indexes_removed_total",
+			Help: "Cumulative count of source index pointers removed from the ToC by successful tenant cycles.",
 		}, []string{labelTenant}),
 		indexesAddedTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Name:      "indexes_added_total",
-			Help:      "Cumulative count of compacted index pointers written to the ToC by successful tenant cycles.",
+			Name: "loki_dataobj_compaction_indexes_added_total",
+			Help: "Cumulative count of compacted index pointers written to the ToC by successful tenant cycles.",
 		}, []string{labelTenant}),
 		tasksTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Name:      "tasks_total",
-			Help:      "Cumulative count of IndexMerge tasks dispatched per tenant.",
+			Name: "loki_dataobj_compaction_tasks_total",
+			Help: "Cumulative count of IndexMerge tasks dispatched per tenant.",
 		}, []string{labelTenant}),
 		cycleDurationSeconds: f.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
-			Name:      "cycle_duration_seconds",
-			Help:      "Full coordinator-cycle wall-clock duration (load ToC, per-tenant loop, all I/O).",
-			Buckets:   prometheus.ExponentialBuckets(0.01, 2, 14), // 10ms .. ~80s
+			Name:    "loki_dataobj_compaction_cycle_duration_seconds",
+			Help:    "Full coordinator-cycle wall-clock duration (load ToC, per-tenant loop, all I/O).",
+			Buckets: prometheus.ExponentialBuckets(0.01, 2, 14), // 10ms .. ~80s
 		}),
 		tenantCycleDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
-			Name:      "tenant_cycle_duration_seconds",
-			Help:      "Per-tenant cycle wall-clock duration. Excludes the converged-skip path.",
-			Buckets:   prometheus.ExponentialBuckets(0.01, 2, 14),
+			Name:    "loki_dataobj_compaction_tenant_cycle_duration_seconds",
+			Help:    "Per-tenant cycle wall-clock duration. Excludes the converged-skip path.",
+			Buckets: prometheus.ExponentialBuckets(0.01, 2, 14),
 		}, []string{"outcome"}),
 	}
 }
@@ -159,14 +146,13 @@ func (m *coordinatorMetrics) observeCycle(outcome string, duration time.Duration
 	m.cycleDurationSeconds.Observe(duration.Seconds())
 }
 
-// observeTenantCycle records per-tenant cycle outcomes and counts.
+// observeTenantCycle records per-tenant cycle outcomes and counts. stats is
+// only consulted for the compacted outcome; pass the zero value otherwise.
 func (m *coordinatorMetrics) observeTenantCycle(
 	tenant string,
 	outcome string,
 	duration time.Duration,
-	removedIndexes int,
-	addedIndexes int,
-	tasks int,
+	stats compactionStats,
 ) {
 	if m == nil {
 		return
@@ -177,9 +163,9 @@ func (m *coordinatorMetrics) observeTenantCycle(
 		m.tenantCycleDurationSeconds.WithLabelValues(outcome).Observe(duration.Seconds())
 	}
 	if outcome == "compacted" {
-		m.indexesRemovedTotal.WithLabelValues(tenant).Add(float64(removedIndexes))
-		m.indexesAddedTotal.WithLabelValues(tenant).Add(float64(addedIndexes))
-		m.tasksTotal.WithLabelValues(tenant).Add(float64(tasks))
+		m.indexesRemovedTotal.WithLabelValues(tenant).Add(float64(stats.removed))
+		m.indexesAddedTotal.WithLabelValues(tenant).Add(float64(stats.added))
+		m.tasksTotal.WithLabelValues(tenant).Add(float64(stats.dispatched))
 	}
 }
 
@@ -194,16 +180,14 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 	f := promauto.With(reg)
 	return &workerMetrics{
 		outputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
-			Name:      "output_bytes_compressed",
-			Help:      "Size of the bytes uploaded to object storage per successful IndexMerge task (post-encoding, what's stored at rest). One observation per task.",
-			Buckets:   prometheus.ExponentialBuckets(1024, 2, 21),
+			Name:    "loki_dataobj_compaction_output_bytes_compressed",
+			Help:    "Size of the bytes uploaded to object storage per successful IndexMerge task (post-encoding, what's stored at rest). One observation per task.",
+			Buckets: prometheus.ExponentialBuckets(1024, 2, 21),
 		}, []string{labelTenant}),
 		outputBytesUncompressed: f.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
-			Name:      "output_bytes_uncompressed",
-			Help:      "Estimated in-memory size of the IndexMerge builder (postings + stats sections, pre-encoding) at Flush. One observation per task.",
-			Buckets:   prometheus.ExponentialBuckets(1024, 2, 21),
+			Name:    "loki_dataobj_compaction_output_bytes_uncompressed",
+			Help:    "Estimated in-memory size of the IndexMerge builder (postings + stats sections, pre-encoding) at Flush. One observation per task.",
+			Buckets: prometheus.ExponentialBuckets(1024, 2, 21),
 		}, []string{labelTenant}),
 	}
 }

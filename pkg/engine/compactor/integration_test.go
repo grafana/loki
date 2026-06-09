@@ -96,7 +96,7 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 	// --- Cycle 1: 3 sources → ⌈P/K⌉ outputs ---
 	preCycle1 := mustLoadTenant(ctx, t, bucket, window, "acme")
 	require.Len(t, preCycle1, 3, "sanity: 3 source indexes seeded")
-	_, _, _, runErr := c.compactTenant(ctx, "acme", window, preCycle1)
+	_, runErr := c.compactTenant(ctx, "acme", window, preCycle1)
 	require.NoError(t, runErr)
 
 	postCycle1 := mustLoadTenants(ctx, t, bucket, window)
@@ -131,7 +131,7 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 	// --- Cycle 2: drive against the post-swap ToC. Should converge further. ---
 	indexesC2 := mustLoadTenant(ctx, t, bucket, window, "acme")
 	if len(indexesC2) > 1 {
-		_, _, _, runErr := c.compactTenant(ctx, "acme", window, indexesC2)
+		_, runErr := c.compactTenant(ctx, "acme", window, indexesC2)
 		require.NoError(t, runErr)
 		postCycle2 := mustLoadTenants(ctx, t, bucket, window)
 		t.Logf("cycle 2: acme went from %d → %d indexes", len(indexesC2), len(postCycle2["acme"]))
@@ -146,7 +146,7 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 		if len(acmeIdx) <= 1 {
 			break
 		}
-		_, _, _, runErr := c.compactTenant(ctx, "acme", window, acmeIdx)
+		_, runErr := c.compactTenant(ctx, "acme", window, acmeIdx)
 		require.NoError(t, runErr)
 		t.Logf("convergence loop iter %d: acme → %d indexes", i,
 			len(mustLoadTenant(ctx, t, bucket, window, "acme")))

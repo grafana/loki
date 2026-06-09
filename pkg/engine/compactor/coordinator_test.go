@@ -234,7 +234,7 @@ func TestCompactTenant_RaceLossIsSuccess(t *testing.T) {
 	// runCycle swallows per-tenant errors; check directly via the lower API.
 	indexes, err := loadTenantIndexes(ctx, bucket, window)
 	require.NoError(t, err)
-	_, _, _, runErr := c.compactTenant(ctx, "acme", window, indexes["acme"])
+	_, runErr := c.compactTenant(ctx, "acme", window, indexes["acme"])
 	require.NoError(t, runErr)
 }
 
@@ -261,7 +261,7 @@ func TestCompactTenant_HardSwapErrorPropagates(t *testing.T) {
 
 	indexes, err := loadTenantIndexes(ctx, bucket, window)
 	require.NoError(t, err)
-	_, _, _, runErr := c.compactTenant(ctx, "acme", window, indexes["acme"])
+	_, runErr := c.compactTenant(ctx, "acme", window, indexes["acme"])
 	require.ErrorIs(t, runErr, swapErr)
 }
 
