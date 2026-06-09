@@ -7,28 +7,28 @@ import (
 	"reflect"
 
 	"github.com/grafana/dskit/tenant"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-func yamlMarshalUnmarshal(in interface{}) (map[interface{}]interface{}, error) {
+func yamlMarshalUnmarshal(in interface{}) (map[string]interface{}, error) {
 	yamlBytes, err := yaml.Marshal(in)
 	if err != nil {
 		return nil, err
 	}
 
-	object := make(map[interface{}]interface{})
-	if err := yaml.Unmarshal(yamlBytes, object); err != nil {
+	object := make(map[string]interface{})
+	if err := yaml.Unmarshal(yamlBytes, &object); err != nil {
 		return nil, err
 	}
 
 	return object, nil
 }
 
-func diffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[interface{}]interface{}, error) {
-	output := make(map[interface{}]interface{})
+func diffConfig(defaultConfig, actualConfig map[string]interface{}) (map[string]interface{}, error) {
+	output := make(map[string]interface{})
 
 	for key, value := range actualConfig {
 
@@ -64,10 +64,11 @@ func diffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[in
 			if !ok || !reflect.DeepEqual(defaultV, v) {
 				output[key] = v
 			}
-		case map[interface{}]interface{}:
-			defaultV, ok := defaultValue.(map[interface{}]interface{})
+		case map[string]interface{}:
+			defaultV, ok := defaultValue.(map[string]interface{})
 			if !ok {
 				output[key] = value
+				break
 			}
 			diff, err := diffConfig(defaultV, v)
 			if err != nil {

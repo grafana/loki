@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )

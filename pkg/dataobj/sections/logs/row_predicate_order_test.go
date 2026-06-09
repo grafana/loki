@@ -216,6 +216,16 @@ func TestGetPredicateSelectivity(t *testing.T) {
 			},
 			want: selectivityScore(0.15),
 		},
+		{
+			name:      "FalsePredicate has zero selectivity",
+			predicate: dataset.FalsePredicate{},
+			want:      noMatchSelectivity,
+		},
+		{
+			name:      "TruePredicate matches all rows",
+			predicate: dataset.TruePredicate{},
+			want:      matchAllSelectivity,
+		},
 	}
 
 	for _, tt := range tests {
@@ -358,6 +368,11 @@ func TestOrderPredicates(t *testing.T) {
 			name:       "Order by selectivity - equality before AND",
 			predicates: []dataset.Predicate{andPred, equalPred2},
 			want:       []dataset.Predicate{equalPred2, andPred},
+		},
+		{
+			name:       "FalsePredicate ordered before other predicates",
+			predicates: []dataset.Predicate{equalPred1, dataset.FalsePredicate{}},
+			want:       []dataset.Predicate{dataset.FalsePredicate{}, equalPred1},
 		},
 	}
 

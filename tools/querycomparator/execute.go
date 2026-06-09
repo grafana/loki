@@ -17,8 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -33,6 +31,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -107,17 +106,6 @@ func doExecuteLocallyV2(params logql.LiteralParams, bucket objstore.Bucket) erro
 	if err != nil {
 		level.Error(logger).Log("msg", "V2 query execution failed", "error", err)
 		return fmt.Errorf("V2 query execution failed: %w", err)
-	}
-	return checkResult(result)
-}
-
-func doExecuteLocallyV2Scheduler(params logql.LiteralParams, bucket objstore.Bucket) error {
-	initV2Settings()
-	level.Info(logger).Log("msg", "executing local query with V2 engine via local scheduler and worker")
-	result, err := doLocalQueryWithV2EngineScheduler(params, bucket)
-	if err != nil {
-		level.Error(logger).Log("msg", "v2 query execution failed", "error", err)
-		return fmt.Errorf("v2 query execution failed: %w", err)
 	}
 	return checkResult(result)
 }
@@ -236,63 +224,6 @@ func doLocalQueryWithV1Engine(params logql.LiteralParams, bucketName string) (lo
 	return query.Exec(ctx)
 }
 
-func doLocalQueryWithV2EngineScheduler(params logql.LiteralParams, bucket objstore.Bucket) (logqlmodel.Result, error) {
-	ctx := user.InjectOrgID(context.Background(), orgID)
-
-	sched, err := engine.NewScheduler(engine.SchedulerParams{
-		Logger:        glog.With(logger, "component", "scheduler"),
-		AdvertiseAddr: nil,
-	})
-	if err != nil {
-		return logqlmodel.Result{}, fmt.Errorf("creating scheduler: %w", err)
-	} else if err := services.StartAndAwaitRunning(ctx, sched.Service()); err != nil {
-		return logqlmodel.Result{}, fmt.Errorf("starting scheduler service: %w", err)
-	}
-
-	metastoreMetrics := metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer)
-	msConfig := metastore.Config{IndexStoragePrefix: "index/v0"}
-	workerLogger := glog.With(logger, "component", "worker")
-	worker, err := engine.NewWorker(engine.WorkerParams{
-		Logger:         workerLogger,
-		AdvertiseAddr:  nil,
-		Bucket:         bucket,
-		Metastore:      metastore.NewObjectMetastore(bucket, msConfig, workerLogger, metastoreMetrics),
-		LocalScheduler: sched,
-		Config: engine.WorkerConfig{
-			SchedulerLookupAddress:  "",
-			SchedulerLookupInterval: 60,
-			WorkerThreads:           64,
-		},
-		Executor: engine.ExecutorConfig{
-			BatchSize: 128,
-		},
-	}, prometheus.DefaultRegisterer)
-	if err != nil {
-		return logqlmodel.Result{}, fmt.Errorf("creating worker: %w", err)
-	} else if err := services.StartAndAwaitRunning(ctx, worker.Service()); err != nil {
-		return logqlmodel.Result{}, fmt.Errorf("starting worker service: %w", err)
-	}
-
-	engineLogger := glog.With(logger, "component", "engine")
-	e, err := engine.New(engine.Params{
-		Logger:     engineLogger,
-		Registerer: prometheus.NewRegistry(),
-		Config: engine.Config{
-			Executor: engine.ExecutorConfig{
-				BatchSize: 128,
-			},
-		},
-		Metastore: metastore.NewObjectMetastore(bucket, msConfig, engineLogger, metastoreMetrics),
-		Scheduler: sched,
-		Limits:    logql.NoLimits,
-	})
-	if err != nil {
-		return logqlmodel.Result{}, err
-	}
-
-	return e.Execute(ctx, params)
-}
-
 // doLocalQueryWithV2EngineSchedulerRemote executes a query using the V2 engine via remote scheduler and workers so it also executes the serialization logic.
 func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams, bucket objstore.Bucket) (logqlmodel.Result, error) {
 	ctx := user.InjectOrgID(context.Background(), orgID)
@@ -404,7 +335,7 @@ func newServerService(name string, httpPort int, logger glog.Logger, registerer 
 	)
 
 	// Enable HTTP/2
-	serv.HTTPServer.Handler = h2c.NewHandler(serv.HTTPServer.Handler, &http2.Server{})
+	serverutil.EnableUnencryptedHTTP2(serv.HTTPServer)
 
 	return serv, svc, nil
 }

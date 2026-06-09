@@ -322,6 +322,9 @@ type KeyInfo struct {
 
 	// REQUIRED; The date-time the key is active in ISO 8601 UTC time
 	Start *string `xml:"Start"`
+
+	// The delegated user tenant id in Azure AD
+	DelegatedUserTenantID *string `xml:"DelegatedUserTid"`
 }
 
 // ListBlobsFlatSegmentResponse - An enumeration of blobs
@@ -490,7 +493,10 @@ type StaticWebsite struct {
 }
 
 type StorageError struct {
-	Message *string
+	CopySourceErrorCode    *string
+	CopySourceErrorMessage *string
+	CopySourceStatusCode   *int32
+	Message                *string
 }
 
 // StorageServiceProperties - Storage Service Properties.
@@ -546,4 +552,7 @@ type UserDelegationKey struct {
 
 	// REQUIRED; The key as a base64 string
 	Value *string `xml:"Value"`
+
+	// The delegated user tenant id in Azure AD. Return if DelegatedUserTid is specified.
+	SignedDelegatedUserTenantID *string `xml:"SignedDelegatedUserTid"`
 }

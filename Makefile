@@ -25,10 +25,8 @@ else
 DOCKER_INTERACTIVE_FLAGS := --tty --interactive
 endif
 
-# Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.26.2
-# Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.35.1
+# Ensure you run `make update-go-version` after changing this
+GO_VERSION         := 1.26.4
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -150,6 +148,7 @@ help: ## Display this help
 .PHONY: clean clean-protos
 .PHONY: dev-k3d-loki dev-k3d-enterprise-logs dev-k3d-down
 .PHONY: helm-test helm-lint
+.PHONY: goversion update-go-version
 
 #############
 # Variables #
@@ -191,6 +190,13 @@ binfmt:
 ################
 # Main Targets #
 ################
+
+goversion:
+	@echo $(GO_VERSION)
+
+update-go-version: goversion release-workflows
+	@tools/go-version-bump.sh $(GO_VERSION)
+
 all: logcli loki loki-canary ## build all executables (loki, logcli, loki-canary)
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
@@ -853,10 +859,13 @@ update-loki-release-sha:
 
 .PHONY: flake-update
 flake-update:
-	@docker run -v $(CURDIR):/loki \
+	@docker run --rm --tty --interactive \
+		--volume $(shell pwd):/loki \
 		--workdir /loki \
+		--entrypoint bash \
 		nixos/nix \
-		nix \
-		--extra-experimental-features nix-command \
-		--extra-experimental-features flakes \
-		flake update
+		-c "\
+	    git config --global --add safe.directory /loki && \
+      nix --extra-experimental-features nix-command --extra-experimental-features flakes \
+			    flake update \
+		"

@@ -9,6 +9,9 @@ on:
     paths:
       - 'operator/**'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: scorecard

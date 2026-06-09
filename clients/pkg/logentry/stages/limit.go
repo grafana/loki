@@ -90,7 +90,6 @@ type limitStage struct {
 	rateLimiterByLabel util.GenerationalMap[model.LabelValue, *rate.Limiter]
 	dropCount          *prometheus.CounterVec
 	dropCountByLabel   *prometheus.CounterVec
-	byLabelName        model.LabelName
 }
 
 func (m *limitStage) Run(in chan Entry) chan Entry {

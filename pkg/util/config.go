@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/version"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )

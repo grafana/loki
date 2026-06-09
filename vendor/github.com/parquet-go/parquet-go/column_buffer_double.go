@@ -13,7 +13,7 @@ import (
 
 type doubleColumnBuffer struct{ doublePage }
 
-func newDoubleColumnBuffer(typ Type, columnIndex int16, numValues int32) *doubleColumnBuffer {
+func newDoubleColumnBuffer(typ Type, columnIndex uint16, numValues int32) *doubleColumnBuffer {
 	return &doubleColumnBuffer{
 		doublePage: doublePage{
 			typ:         typ,
