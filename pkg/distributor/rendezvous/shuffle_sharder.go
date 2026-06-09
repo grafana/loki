@@ -3,7 +3,6 @@ package rendezvous
 import (
 	"errors"
 	"hash/crc64"
-	"sort"
 	"strconv"
 
 	"github.com/cespare/xxhash/v2"
@@ -45,44 +44,104 @@ func (r *ShuffleSharder) Shard(key uint32) (int32, error) {
 }
 
 func (r *ShuffleSharder) ShuffleShard(shuffleShardKey string, numShards int) *ShuffleSharder {
-	if numShards == 0 || numShards > len(r.partitions) {
-		numShards = len(r.partitions)
+	n := len(r.partitions)
+	if numShards == 0 || numShards >= n {
+		return r
 	}
 
 	key := crc64.Checksum([]byte(shuffleShardKey), table)
-	scores := make([]partitionAndScore, len(r.partitions))
-	for i, partition := range r.partitions {
-		originalHash := r.hashes[i]
-		scores[i] = partitionAndScore{
-			partition,
-			xorshiftMult64(key ^ originalHash),
-			originalHash,
+
+	if numShards <= n-numShards {
+		// numShards <= n/2: select the top-numShards elements. O(n log numShards).
+		top := make([]indexAndScore, numShards)
+		selectTopKIndices(top, r.hashes, key, false)
+		partitions := make([]int32, numShards)
+		hashes := make([]uint64, numShards)
+		for i, s := range top {
+			partitions[i] = r.partitions[s.index]
+			hashes[i] = r.hashes[s.index]
+		}
+		return &ShuffleSharder{partitions, hashes}
+	}
+
+	// numShards > n/2: cheaper to find the bottom-(n-numShards) elements to exclude, then
+	// return everything else. O(n log (n-numShards)).
+	numExclude := n - numShards
+	bottom := make([]indexAndScore, numExclude)
+	selectTopKIndices(bottom, r.hashes, key, true)
+	excluded := make([]bool, n)
+	for _, b := range bottom {
+		excluded[b.index] = true
+	}
+	partitions := make([]int32, 0, numShards)
+	hashes := make([]uint64, 0, numShards)
+	for i := range n {
+		if !excluded[i] {
+			partitions = append(partitions, r.partitions[i])
+			hashes = append(hashes, r.hashes[i])
 		}
 	}
-
-	// This sort dominates the cost of shuffle sharding.
-	// Possible future optimization - using a size-limited max heap to keep track of the k largest scores.
-	sort.Slice(scores, func(i, j int) bool {
-		return scores[i].score > scores[j].score
-	})
-
-	subpartitions := make([]int32, numShards)
-	subHashesSet := make([]uint64, numShards)
-	for i := 0; i < numShards; i++ {
-		subpartitions[i] = scores[i].partition
-		subHashesSet[i] = scores[i].hash // Avoid recalculating these hashes
-	}
-	return &ShuffleSharder{subpartitions, subHashesSet}
+	return &ShuffleSharder{partitions, hashes}
 }
 
 func (r *ShuffleSharder) Size() int {
 	return len(r.partitions)
 }
 
-type partitionAndScore struct {
-	partition int32
-	score     uint64
-	hash      uint64
+type indexAndScore struct {
+	index int
+	score uint64
+}
+
+// selectTopKIndices fills h (pre-allocated, len defines k) with the k items with the highest
+// scores from hashes.
+// Pass invertOrdering=true to instead select the k lowest-scoring items.
+// Caller pre-allocates heap so its backing array doesn't escape to the heap.
+// Doesn't use go's built-in heap support to avoid the backing array escaping to the heap. This is a significant
+// performance optimization - benchmarks are ~45% slower using built-in heap.
+func selectTopKIndices(heap []indexAndScore, hashes []uint64, key uint64, invertOrdering bool) {
+	k := len(heap)
+	// Put the first k elements into the heap
+	for i := range k {
+		heap[i] = indexAndScore{i, calculateScore(key, hashes[i], invertOrdering)}
+	}
+	// Make it into a valid heap
+	for i := k/2 - 1; i >= 0; i-- {
+		siftDown(heap, i)
+	}
+	// Push the rest of the elements into the heap
+	for i := k; i < len(hashes); i++ {
+		if score := calculateScore(key, hashes[i], invertOrdering); score > heap[0].score {
+			heap[0] = indexAndScore{i, score}
+			siftDown(heap, 0)
+		}
+	}
+}
+
+func calculateScore(key uint64, hash uint64, invertOrdering bool) uint64 {
+	score := xorshiftMult64(key ^ hash)
+	if invertOrdering {
+		score = score ^ (^uint64(0))
+	}
+	return score
+}
+
+func siftDown(h []indexAndScore, i int) {
+	n := len(h)
+	for {
+		smallest := i
+		if l := 2*i + 1; l < n && h[l].score < h[smallest].score {
+			smallest = l
+		}
+		if r := 2*i + 2; r < n && h[r].score < h[smallest].score {
+			smallest = r
+		}
+		if smallest == i {
+			break
+		}
+		h[i], h[smallest] = h[smallest], h[i]
+		i = smallest
+	}
 }
 
 // https://vigna.di.unimi.it/ftp/papers/xorshift.pdf
