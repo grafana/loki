@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
@@ -53,8 +54,18 @@ type task struct {
 	wfRegion        *xcap.Region
 	runtimeTraceCtx context.Context
 
-	// Protected by [Scheduler.resourcesMut].
-	owner *workerConn
+	// owner is the worker the task is currently assigned to (nil if
+	// unassigned). It is stored atomically so it can be read without holding
+	// [Scheduler.resourcesMut]; the assignment <-> terminal-unassign handoff is
+	// serialized per task via [task.assignToWorker] / [task.setStateAndUnassign]
+	// (both under t.mut) so a terminal task can never be left assigned.
+	owner atomic.Pointer[workerConn]
+}
+
+// Owner returns the worker the task is currently assigned to, or nil if the
+// task is unassigned.
+func (t *task) Owner() *workerConn {
+	return t.owner.Load()
 }
 
 var validTaskTransitions = map[workflow.TaskState][]workflow.TaskState{
@@ -197,6 +208,53 @@ func (t *task) TryAssign(doAssign func() error) error {
 
 	t.assignTime = time.Now()
 	return nil
+}
+
+// assignToWorker binds the task to worker (recording the owner and adding the
+// task to the worker's assigned set) unless the task has already reached a
+// terminal state. It returns true if the task was assigned.
+//
+// The terminal check and the worker membership change happen together under
+// t.mut so that a concurrent terminal transition (see [task.setStateAndUnassign],
+// which removes the task from its worker under the same lock) can never race
+// with the assignment and leave a terminal task assigned to a worker.
+func (t *task) assignToWorker(worker *workerConn) bool {
+	t.mut.Lock()
+	defer t.mut.Unlock()
+
+	if t.status.State.Terminal() {
+		return false
+	}
+
+	// worker.Assign records t.owner and adds t to worker.tasks; it acquires the
+	// worker's mutex, preserving the t.mut -> worker.mut lock order.
+	worker.Assign(t)
+	return true
+}
+
+// setStateAndUnassign updates the task's state and, when the transition is to a
+// terminal state, removes the task from its owning worker. The state change and
+// the unassignment happen atomically under t.mut, mirroring [task.assignToWorker],
+// so concurrent assignment and completion cannot leave a terminal task assigned.
+//
+// Returns true if the state was updated.
+func (t *task) setStateAndUnassign(m *metrics, newStatus workflow.TaskStatus) (bool, error) {
+	t.mut.Lock()
+	defer t.mut.Unlock()
+
+	changed, err := t.setStateLocked(m, newStatus)
+	if err != nil || !changed {
+		return changed, err
+	}
+
+	if newStatus.State.Terminal() {
+		if owner := t.owner.Load(); owner != nil {
+			// Unassign acquires the worker's mutex, preserving the
+			// t.mut -> worker.mut lock order.
+			owner.Unassign(t)
+		}
+	}
+	return changed, nil
 }
 
 // RecordTerminalObservations records the scheduler-side per-task duration

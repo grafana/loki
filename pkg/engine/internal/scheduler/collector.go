@@ -96,7 +96,7 @@ func computeLoad(sched *Scheduler) float64 {
 	var load uint64
 
 	for _, t := range sched.tasks {
-		if t.status.State == workflow.TaskStateRunning || t.status.State == workflow.TaskStatePending {
+		if state := t.State(); state == workflow.TaskStateRunning || state == workflow.TaskStatePending {
 			load++
 		}
 	}
@@ -133,7 +133,7 @@ func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
 	)
 
 	for _, t := range mc.sched.tasks {
-		tasksByState[t.status.State]++
+		tasksByState[t.State()]++
 	}
 	for _, s := range mc.sched.streams {
 		streamsByState[s.state]++

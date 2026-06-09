@@ -138,11 +138,14 @@ func (wc *workerConn) Assigned() []*task {
 }
 
 // Assign assigns a task to the worker.
+//
+// Callers must hold the task's mutex (e.g. via [task.assignToWorker]) to keep
+// the assignment atomic with respect to terminal transitions.
 func (wc *workerConn) Assign(assigned *task) {
 	wc.mut.Lock()
 	defer wc.mut.Unlock()
 
-	assigned.owner = wc
+	assigned.owner.Store(wc)
 
 	if wc.tasks == nil {
 		wc.tasks = make(map[*task]struct{})

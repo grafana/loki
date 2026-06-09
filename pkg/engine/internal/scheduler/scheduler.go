@@ -272,22 +272,25 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 	var n notifier
 	defer n.Notify(ctx)
 
-	s.resourcesMut.Lock()
-	defer s.resourcesMut.Unlock()
+	// Status updates sit on the worker's hot path: the worker blocks
+	// synchronously on the scheduler's ack (see worker/thread.go). Take the read
+	// lock so updates from many workers are processed concurrently instead of
+	// serializing on the global write lock. Per-task state and the task->worker
+	// membership are made atomic by setStateAndUnassign (under t.mut), and the
+	// s.tasks map is only mutated structurally under the write lock.
+	s.resourcesMut.RLock()
+	defer s.resourcesMut.RUnlock()
 
 	task, found := s.tasks[msg.ID]
 	if !found {
 		return fmt.Errorf("task %s not found", msg.ID)
 	}
 
-	changed, err := task.SetState(s.metrics, msg.Status)
+	changed, err := task.setStateAndUnassign(s.metrics, msg.Status)
 	if err != nil {
 		return err
 	} else if changed {
 		newState := msg.Status.State
-		if owner := task.owner; owner != nil && newState.Terminal() {
-			owner.Unassign(task)
-		}
 
 		switch newState {
 		case workflow.TaskStateCompleted:
@@ -362,11 +365,13 @@ func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *
 	// If we have a receiver, inform them about the change. This is a
 	// best-effort message so we don't need to wait for acknowledgement.
 	receiver, found := s.tasks[target.taskReceiver]
-	if found && receiver.owner != nil {
-		_ = receiver.owner.SendMessageAsync(ctx, wire.StreamStatusMessage{
-			StreamID: target.inner.ULID,
-			State:    newState,
-		})
+	if found {
+		if owner := receiver.Owner(); owner != nil {
+			_ = owner.SendMessageAsync(ctx, wire.StreamStatusMessage{
+				StreamID: target.inner.ULID,
+				State:    newState,
+			})
+		}
 	}
 
 	// Inform the owner about the change.
@@ -561,7 +566,7 @@ func (s *Scheduler) prepareAssignment() (taskAssignment, bool) {
 	defer s.assignMut.Unlock()
 
 	// clean up any terminal tasks at the front of the queue.
-	for s.taskQueue.Len() > 0 && s.peekTask().status.State.Terminal() {
+	for s.taskQueue.Len() > 0 && s.peekTask().State().Terminal() {
 		s.taskQueue.Pop()
 	}
 
@@ -654,10 +659,15 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 
 	// Collect bookkeeping and messages under lock.
 	func() {
-		s.resourcesMut.Lock()
-		defer s.resourcesMut.Unlock()
+		// Read lock: this path only reads s.streams (stream-state
+		// reconciliation + bind messages). The single mutation is the
+		// task->worker binding, which assignToWorker makes atomic against
+		// terminal transitions via t.mut, so concurrent assignments finalize in
+		// parallel instead of serializing on the global write lock.
+		s.resourcesMut.RLock()
+		defer s.resourcesMut.RUnlock()
 
-		if t.State().Terminal() {
+		if !t.assignToWorker(worker) {
 			// The task reached a terminal state between TryAssign and now. The
 			// worker may still have the assignment, so we tell it to not
 			// bother.
@@ -665,7 +675,6 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 			return
 		}
 
-		worker.Assign(t)
 		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
 		queueDuration := assignTime.Sub(t.QueueTime())
 		s.metrics.taskQueueSeconds.Observe(queueDuration.Seconds())
@@ -728,25 +737,34 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 // prepareBindMessage must be called while the resourcesMut lock is held.
 func (s *Scheduler) prepareBindMessage(check *stream) *pendingMessage {
 	sendingTask, hasSendingTask := s.tasks[check.taskSender]
-	if !hasSendingTask || sendingTask.owner == nil {
+	if !hasSendingTask {
+		// No sender, abort early.
+		return nil
+	}
+	sendingOwner := sendingTask.Owner()
+	if sendingOwner == nil {
 		// No sender, abort early.
 		return nil
 	}
 
 	receivingTask, hasReceivingTask := s.tasks[check.taskReceiver]
-	if hasReceivingTask && receivingTask.owner != nil {
+	var receivingOwner *workerConn
+	if hasReceivingTask {
+		receivingOwner = receivingTask.Owner()
+	}
+	if receivingOwner != nil {
 		// Bind the address of the receiving owner to the sender.
 		return &pendingMessage{
-			peer: sendingTask.owner,
+			peer: sendingOwner,
 			msg: wire.StreamBindMessage{
 				StreamID: check.inner.ULID,
-				Receiver: receivingTask.owner.RemoteAddr(),
+				Receiver: receivingOwner.RemoteAddr(),
 			},
 		}
 	} else if check.localReceiver != nil {
 		// We're listening for results ourselves; bind our address to the sender.
 		return &pendingMessage{
-			peer: sendingTask.owner,
+			peer: sendingOwner,
 			msg: wire.StreamBindMessage{
 				StreamID: check.inner.ULID,
 				Receiver: s.listener.Addr(),
@@ -987,7 +1005,7 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 		// canceled and it can stop processing it.
 		//
 		// This is a best-effort message, so we don't wait for acknowledgement.
-		if owner := registered.owner; owner != nil {
+		if owner := registered.Owner(); owner != nil {
 			_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 		}
 
@@ -1046,7 +1064,7 @@ func (s *Scheduler) unregisterManifestScope(manifest *workflow.Manifest) error {
 func (s *Scheduler) deleteTask(t *task) {
 	delete(s.tasks, t.inner.ULID)
 
-	if owner := t.owner; owner != nil {
+	if owner := t.Owner(); owner != nil {
 		owner.Unassign(t)
 	}
 }
@@ -1243,7 +1261,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 
 		region := registered.wfRegion
 
-		if owner := registered.owner; owner != nil && registered.MarkInterrupted() {
+		if owner := registered.Owner(); owner != nil && registered.MarkInterrupted() {
 			// The task is currently running on a worker. We don't want to
 			// transition the task's state here so we can let the worker send
 			// final stats before acknowledging cancellation.
