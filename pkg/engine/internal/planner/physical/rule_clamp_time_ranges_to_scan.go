@@ -24,44 +24,25 @@ func (r *clampTimeRangesToScan) apply(root Node) bool {
 		return false
 	})
 
+	if len(nodes) != 1 {
+		//can't optimize across other nodes if there are multiple scan nodes with their own time ranges
+		return false
+	}
+
 	changed := false
 
-	var nodeChanged bool
-	for _, n := range nodes {
-		switch n := n.(type) {
-		case *DataObjScan:
-			n.Predicates, nodeChanged = r.clamp(n.Predicates, n.MaxTimeRange)
-			if nodeChanged {
-				changed = true
-			}
-		case *PointersScan:
-			n.Predicates, nodeChanged = r.clamp(n.Predicates, n.MaxTimeRange())
-			if nodeChanged {
-				changed = true
-			}
+	switch n := nodes[0].(type) {
+	case *DataObjScan:
+		n.Predicates, changed = r.clamp(n.Predicates, n.MaxTimeRange)
+		// propagate time range to target parent nodes.
+		if r.applyToTargets(n, n.MaxTimeRange) {
+			changed = true
 		}
-	}
-
-	if len(nodes) > 1 {
-		//can't optimize across other nodes
-		//if there are multiple scan nodes with their own time ranges
-		return changed
-	}
-
-	// propagate time range to target parent nodes.
-Loop:
-	for _, n := range nodes {
-		switch scan := n.(type) {
-		case *DataObjScan:
-			if r.applyToTargets(scan, scan.MaxTimeRange) {
-				changed = true
-				break Loop // should be at most one scan node, so break after applying to the first one.
-			}
-		case *PointersScan:
-			if r.applyToTargets(scan, scan.MaxTimeRange()) {
-				changed = true
-				break Loop // should be at most one scan node, so break after applying to the first one.
-			}
+	case *PointersScan:
+		n.Predicates, changed = r.clamp(n.Predicates, n.MaxTimeRange())
+		// propagate time range to target parent nodes.
+		if r.applyToTargets(n, n.MaxTimeRange()) {
+			changed = true
 		}
 	}
 	return changed
@@ -72,37 +53,43 @@ func (r *clampTimeRangesToScan) applyToTargets(node Node, timeRange TimeRange) b
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
-		if node.Step > 0 { // only apply optimization to range queries
-			// Align the start time to the step, rounding down, to ensure we don't accidentally exclude any data.
-			// We use nanoseconds for the calculation to avoid dividing by zero if the step is less than 1 ms.
-			trSteppedStart := time.UnixMilli((timeRange.Start.UnixNano() / node.Step.Nanoseconds()) * node.Step.Nanoseconds() / 1000000).UTC()
+		// If we try to clamp instant queries, we would have to modify both the range and the query time.
+		// This leads to issues later on with the query window changing during execution.
+		// If we have a cache hit, that also means we are returning the cached arrow record with a different timestamp
+		// from the clamped time, which can cause correctness errors.
+		// Instead, simply avoid clamping instant queries.
+		if node.Step == 0 {
+			break
+		}
+		// Align the start time to the step, rounding down, to ensure we don't accidentally exclude any data.
+		// We use nanoseconds for the calculation to avoid dividing by zero if the step is less than 1 ms.
+		trSteppedStart := time.UnixMilli((timeRange.Start.UnixNano() / node.Step.Nanoseconds()) * node.Step.Nanoseconds() / 1000000).UTC()
 
-			// Align the end time to the step plus range, to ensure we include all the data in the range of the query.
-			// We use nanoseconds for the calculation to avoid dividing by zero if the step is less than 1 ms.
-			endPlusRange := timeRange.End.Add(node.Range)
-			trSteppedEnd := time.UnixMilli((endPlusRange.UnixNano() / node.Step.Nanoseconds()) * node.Step.Nanoseconds() / 1000000).UTC()
-			// We rounded down when aligning the end time earlier, so now we may need to round up
-			// to ensure we include all the data in the range of the query.
-			if trSteppedEnd.Compare(endPlusRange) < 0 {
-				steps := endPlusRange.Sub(trSteppedEnd)/node.Step + 1
-				trSteppedEnd = trSteppedEnd.Add(steps * node.Step)
-			}
+		// Align the end time to the step plus range, to ensure we include all the data in the range of the query.
+		// We use nanoseconds for the calculation to avoid dividing by zero if the step is less than 1 ms.
+		endPlusRange := timeRange.End.Add(node.Range)
+		trSteppedEnd := time.UnixMilli((endPlusRange.UnixNano() / node.Step.Nanoseconds()) * node.Step.Nanoseconds() / 1000000).UTC()
+		// We rounded down when aligning the end time earlier, so now we may need to round up
+		// to ensure we include all the data in the range of the query.
+		if trSteppedEnd.Compare(endPlusRange) < 0 {
+			steps := endPlusRange.Sub(trSteppedEnd)/node.Step + 1
+			trSteppedEnd = trSteppedEnd.Add(steps * node.Step)
+		}
 
-			// Compare our aligned start and end times from the timeRange against the node start and end times.
-			if node.Start.Compare(trSteppedStart) < 0 {
-				node.Start = trSteppedStart
-				changed = true
-			}
-			// trSteppedEnd could still be before node.Start; make sure it isn't
-			if trSteppedEnd.Compare(node.Start) <= 0 {
-				steps := node.Start.Sub(trSteppedEnd)/node.Step + 1
-				trSteppedEnd = trSteppedEnd.Add(steps * node.Step)
-			}
+		// Compare our aligned start and end times from the timeRange against the node start and end times.
+		if node.Start.Compare(trSteppedStart) < 0 {
+			node.Start = trSteppedStart
+			changed = true
+		}
+		// trSteppedEnd could still be before node.Start; make sure it isn't
+		if trSteppedEnd.Compare(node.Start) <= 0 {
+			steps := node.Start.Sub(trSteppedEnd)/node.Step + 1
+			trSteppedEnd = trSteppedEnd.Add(steps * node.Step)
+		}
 
-			if node.End.Compare(trSteppedEnd) > 0 {
-				node.End = trSteppedEnd
-				changed = true
-			}
+		if node.End.Compare(trSteppedEnd) > 0 {
+			node.End = trSteppedEnd
+			changed = true
 		}
 	case *Filter:
 		node.Predicates, changed = r.clamp(node.Predicates, timeRange)
