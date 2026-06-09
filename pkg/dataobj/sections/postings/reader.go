@@ -26,6 +26,9 @@ import (
 
 var tracer = otel.Tracer("pkg/dataobj/sections/postings")
 
+// RegionPrefix is the prefix used for postings reader xcap regions.
+var RegionPrefix = "postings.Reader."
+
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
 	// Columns to read. Each column must belong to the same [Section].
@@ -197,7 +200,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	}
 
 	if r.readSpan == nil {
-		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "postings.Reader.Read")
+		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, RegionPrefix+"Read")
 	} else {
 		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
 	}
@@ -220,7 +223,7 @@ func (r *Reader) init(ctx context.Context) error {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.Open")
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionPrefix+"Open")
 	defer span.End()
 
 	cols := r.opts.Columns
@@ -324,7 +327,7 @@ func (r *Reader) ReadPointers(ctx context.Context, streamIDs map[int64]struct{},
 		return nil, errReaderNotOpen
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ReadPointers")
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionPrefix+"ReadPointers")
 	defer span.End()
 	startTime := time.Now()
 	defer r.alloc.Reclaim()
@@ -586,7 +589,7 @@ func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 		return nil, errReaderNotOpen
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ReadBloomRows")
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionPrefix+"ReadBloomRows")
 	defer span.End()
 	defer r.alloc.Reclaim()
 
@@ -771,7 +774,7 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 		return nil, nil, errReaderNotOpen
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ResolveLabels")
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionPrefix+"ResolveLabels")
 	defer span.End()
 
 	defer r.alloc.Reclaim()
@@ -1222,7 +1225,7 @@ func (r *Reader) StreamLabelColumnNames(ctx context.Context) ([]string, error) {
 		return nil, errReaderNotOpen
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.StreamLabelColumnNames")
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionPrefix+"StreamLabelColumnNames")
 	defer span.End()
 	defer r.alloc.Reclaim()
 
