@@ -84,25 +84,25 @@ func Test_jobManager(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			jm := newJobManager()
 
-			genDone := make(chan uint64, 1)
+			done := make(chan struct{})
 			go func() {
-				gen, err := jm.WaitReady(t.Context(), 0)
+				defer close(done)
+				err := jm.WaitReady(t.Context())
 				require.NoError(t, err)
-				genDone <- gen
 			}()
 
 			// No ready threads yet: WaitReady must block.
 			synctest.Wait()
 			select {
-			case <-genDone:
-				t.Fatal("WaitReady returned before any thread was ready")
+			case <-done:
+				t.Fatal("WaitReady returned before any thread became ready")
 			default:
 			}
 
-			// A thread becoming ready advances the generation and unblocks it.
+			// A thread becoming ready unblocks WaitReady.
 			go func() { _, _ = jm.Recv(t.Context()) }()
 			synctest.Wait()
-			require.Equal(t, uint64(1), <-genDone, "WaitReady should return the advanced generation")
+			<-done
 		})
 	})
 
@@ -117,9 +117,8 @@ func Test_jobManager(t *testing.T) {
 			synctest.Wait()
 
 			// A single call observes the whole burst as one generation jump.
-			gen, err := jm.WaitReady(t.Context(), 0)
+			err := jm.WaitReady(t.Context())
 			require.NoError(t, err)
-			require.Equal(t, uint64(5), gen, "the burst should collapse into a single generation value")
 		})
 	})
 
@@ -130,7 +129,7 @@ func Test_jobManager(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			cancel()
 
-			_, err := jm.WaitReady(ctx, 0)
+			err := jm.WaitReady(ctx)
 			require.ErrorIs(t, err, context.Canceled)
 		})
 	})
