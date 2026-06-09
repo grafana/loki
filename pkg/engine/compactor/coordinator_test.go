@@ -262,6 +262,36 @@ func TestRunTenantCycle_HardSwapErrorPropagates(t *testing.T) {
 	require.ErrorIs(t, err, swapErr)
 }
 
+// TestRunCycle_DryRunSkipsToCSwapButLogs verifies that with DryRun=true the
+// coordinator still runs Phase 1 (IndexMerge dispatch) but never calls
+// ReplaceIndexPointers so the ToC is left untouched.
+func TestRunCycle_DryRunSkipsToCSwapButLogs(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"acme": {
+			{path: "indexes/aa/src-0", start: window.Add(1 * time.Hour), end: window.Add(5 * time.Hour)},
+			{path: "indexes/bb/src-1", start: window.Add(2 * time.Hour), end: window.Add(6 * time.Hour)},
+			{path: "indexes/cc/src-2", start: window.Add(3 * time.Hour), end: window.Add(7 * time.Hour)},
+		},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c.cfg.DryRun = true
+
+	c.runCycle(ctx)
+
+	// Phase 1 still runs: 3 overlapping piles ÷ K=2 ⇒ 2 tasks.
+	require.Len(t, runner.snapshot(), 2, "dry-run still dispatches IndexMerge tasks")
+
+	// ToC is never mutated.
+	require.Empty(t, replacer.snapshot(), "dry-run must not call ReplaceIndexPointers")
+}
+
 // TestRunCycle_NoToC verifies a missing ToC is a no-op cycle: no panic, no
 // Phase 1 dispatch, no Phase 2 commit. The next poll tick will re-read.
 func TestRunCycle_NoToC(t *testing.T) {
