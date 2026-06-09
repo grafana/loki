@@ -130,6 +130,49 @@ func Test_expirationChecker_Expired(t *testing.T) {
 	}
 }
 
+func Test_expirationChecker_Expired_UsesIngestedAt(t *testing.T) {
+	d := defaultLimitsTestConfig()
+	d.RetentionPeriod = model.Duration(time.Hour)
+	o, err := overridesTestConfig(d, fakeOverrides{})
+	require.NoError(t, err)
+	e := NewExpirationChecker(o)
+
+	now := model.Now()
+	tests := []struct {
+		name  string
+		chunk Chunk
+		want  bool
+	}{
+		{
+			name:  "zero IngestedAt falls back to Through (expired)",
+			chunk: Chunk{From: now.Add(-3 * time.Hour), Through: now.Add(-2 * time.Hour)},
+			want:  true,
+		},
+		{
+			name:  "zero IngestedAt falls back to Through (not expired)",
+			chunk: Chunk{From: now.Add(-3 * time.Hour), Through: now.Add(-30 * time.Minute)},
+			want:  false,
+		},
+		{
+			name:  "old Through but recent IngestedAt is retained",
+			chunk: Chunk{From: now.Add(-72 * time.Hour), Through: now.Add(-48 * time.Hour), IngestedAt: now.Add(-30 * time.Minute)},
+			want:  false,
+		},
+		{
+			name:  "old IngestedAt expires even if Through were recent",
+			chunk: Chunk{From: now.Add(-3 * time.Hour), Through: now.Add(-1 * time.Minute), IngestedAt: now.Add(-2 * time.Hour)},
+			want:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, filterFn := e.Expired([]byte("1"), tt.chunk, mustParseLabels(`{foo="buzz"}`), nil, "", now)
+			require.Equal(t, tt.want, actual)
+			require.Nil(t, filterFn)
+		})
+	}
+}
+
 func TestTenantsRetention_RetentionPeriodFor(t *testing.T) {
 	sevenDays, err := model.ParseDuration("720h")
 	require.NoError(t, err)

@@ -61,7 +61,17 @@ func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels
 	if period <= 0 {
 		return false, nil
 	}
-	return now.Sub(chk.Through) > period, nil
+	// Prefer the ingestion timestamp (set for FormatV4 / schema v14 chunks) so
+	// retention is measured from when data was ingested rather than from the
+	// log timestamp. Legacy chunks have IngestedAt == 0 and fall back to
+	// Through. If a chunk ever mixed backfilled and live lines, IngestedAt is
+	// the latest ingestion time, which is the conservative choice (matches the
+	// Through semantics of keeping data until the newest content expires).
+	expirationFrom := chk.Through
+	if chk.IngestedAt != 0 {
+		expirationFrom = chk.IngestedAt
+	}
+	return now.Sub(expirationFrom) > period, nil
 }
 
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.
