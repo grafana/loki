@@ -11,6 +11,7 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 // QueryDirection specifies which direction(s) to run a log query
@@ -203,13 +204,20 @@ func (r *QueryRegistry) loadFile(filePath string, suite Suite, fileName string) 
 		}
 		q.Source = fmt.Sprintf("%s/%s:%d", suite, fileName, lineNum)
 
+		// Default the kind before the directions: the directions default
+		// below is gated on the kind, so a definition that declares
+		// neither would otherwise keep Directions empty and expand to
+		// zero test cases in ExpandQuery, silently dropping it from the
+		// corpus. The kind is inferred from the query shape (mirroring
+		// TestCase.Kind), falling back to "log" (the schema default)
+		// when the query does not parse.
+		if q.Kind != kindMetric && q.Kind != kindLog {
+			q.Kind = inferQueryKind(q.Query)
+		}
+
 		// Default directions to "both" for log queries
 		if q.Directions == "" && q.Kind == kindLog {
 			q.Directions = DirectionBoth
-		}
-
-		if q.Kind == "" || (q.Kind != kindMetric && q.Kind != kindLog) {
-			q.Kind = kindLog
 		}
 
 		// Validate time range
@@ -234,6 +242,34 @@ func (r *QueryRegistry) loadFile(filePath string, suite Suite, fileName string) 
 	}
 
 	return queryFile.Queries, nil
+}
+
+// queryKindPlaceholders substitutes the registry's template placeholders
+// with syntactically valid LogQL fragments so a still-templated query can
+// be parsed for kind inference before variable resolution happens. The
+// dummy values never reach the wire; they only make syntax.ParseExpr
+// accept the query shape.
+var queryKindPlaceholders = strings.NewReplacer(
+	placeholderSelector, `{placeholder="x"}`,
+	placeholderRange, "5m",
+	placeholderLabelName, "placeholder",
+	placeholderLabelValue, "x",
+)
+
+// inferQueryKind classifies a query definition as "metric" or "log" by
+// parsing the placeholder-substituted query, mirroring TestCase.Kind
+// (which runs the same check on the resolved query). It falls back to
+// "log" (the schema default) when the query does not parse even after
+// substitution.
+func inferQueryKind(query string) string {
+	expr, err := syntax.ParseExpr(queryKindPlaceholders.Replace(query))
+	if err != nil {
+		return kindLog
+	}
+	if _, ok := expr.(syntax.SampleExpr); ok {
+		return kindMetric
+	}
+	return kindLog
 }
 
 // extractQueryLineNumbers extracts line numbers for each query in the YAML

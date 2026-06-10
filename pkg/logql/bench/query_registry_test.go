@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -167,4 +168,63 @@ queries:
 			}
 		})
 	}
+}
+
+// staticResolver is a minimal VariableResolver that returns queries
+// unchanged and a fixed time range, so expansion can be tested without
+// dataset metadata.
+type staticResolver struct{}
+
+func (staticResolver) ResolveQuery(query string, _ QueryRequirements, _ bool) (string, error) {
+	return query, nil
+}
+
+func (staticResolver) GetTimeRange(length time.Duration) (time.Time, time.Time, error) {
+	end := time.Unix(0, 0).UTC().Add(length)
+	return time.Unix(0, 0).UTC(), end, nil
+}
+
+// TestQueryRegistry_DefaultKindBeforeDirections pins the loadFile
+// defaulting order: a definition that declares neither kind nor
+// directions must still expand to at least one test case. Before the
+// kind was defaulted ahead of the directions, such definitions ended up
+// with Kind="log" but Directions="" and ExpandQuery emitted zero test
+// cases, silently dropping them from the corpus (eight metric-shaped
+// definitions in exhaustive/aggregations.yaml were affected).
+func TestQueryRegistry_DefaultKindBeforeDirections(t *testing.T) {
+	yamlContent := `
+queries:
+  - description: Metric query without explicit kind
+    query: 'max by (level) (avg_over_time(${SELECTOR} | logfmt | unwrap duration(duration) [${RANGE}]))'
+    time_range:
+      length: 24h
+      step: 1m
+  - description: Log query without explicit kind or directions
+    query: '${SELECTOR} |= "error"'
+    time_range:
+      length: 24h
+`
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.yaml")
+	require.NoError(t, os.WriteFile(testFile, []byte(yamlContent), 0644))
+
+	registry := NewQueryRegistry(tmpDir)
+	queries, err := registry.loadFile(testFile, SuiteFast, "test.yaml")
+	require.NoError(t, err)
+	require.Len(t, queries, 2)
+
+	metricDef, logDef := queries[0], queries[1]
+	require.Equal(t, kindMetric, metricDef.Kind, "metric-shaped query should infer kind=metric")
+	require.Equal(t, kindLog, logDef.Kind, "log-shaped query should infer kind=log")
+	require.Equal(t, DirectionBoth, logDef.Directions, "log query should default to both directions")
+
+	// No definition may expand to zero test cases.
+	metricCases, err := registry.ExpandQuery(metricDef, staticResolver{}, false)
+	require.NoError(t, err)
+	require.Len(t, metricCases, 1, "metric query should expand to a single forward case")
+	require.Equal(t, time.Minute, metricCases[0].Step)
+
+	logCases, err := registry.ExpandQuery(logDef, staticResolver{}, false)
+	require.NoError(t, err)
+	require.Len(t, logCases, 2, "log query should expand to forward and backward cases")
 }
