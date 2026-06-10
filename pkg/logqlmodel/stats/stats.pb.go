@@ -19,8 +19,6 @@ type Result struct {
 	Ingester Ingester `protobuf:"bytes,3,opt,name=ingester,proto3" json:"ingester"`
 	Caches   Caches   `protobuf:"bytes,4,opt,name=caches,proto3" json:"cache"`
 	Index    Index    `protobuf:"bytes,5,opt,name=index,proto3" json:"index"`
-
-	fieldsPresent [1]uint64
 }
 
 type Caches struct {
@@ -34,8 +32,6 @@ type Caches struct {
 	InstantMetricResult Cache `protobuf:"bytes,8,opt,name=instantMetricResult,proto3" json:"instantMetricResult"`
 	LogResult           Cache `protobuf:"bytes,9,opt,name=logResult,proto3" json:"logResult"`
 	TaskResult          Cache `protobuf:"bytes,10,opt,name=taskResult,proto3" json:"taskResult"`
-
-	fieldsPresent [1]uint64
 }
 
 // Summary is the summary of a query statistics.
@@ -73,8 +69,6 @@ type Summary struct {
 	// This is useful to identify haystack-sized queries when index filtering makes
 	// totalBytesProcessed appear much smaller.
 	EstimatedQueryBytes int64 `protobuf:"varint,13,opt,name=estimatedQueryBytes,proto3" json:"estimatedQueryBytes,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 // Statistics from Index queries
@@ -99,8 +93,6 @@ type Index struct {
 	// In addition to internal calculations this is also returned by the HTTP API.
 	// Grafana expects time values to be returned in seconds as float.
 	BloomFilterTime float64 `protobuf:"fixed64,7,opt,name=bloomFilterTime,proto3" json:"bloomFilterTime"`
-
-	fieldsPresent [1]uint64
 }
 
 type Querier struct {
@@ -109,8 +101,6 @@ type Querier struct {
 	// Total time the querier spent executing the query. This is separate from execTime which tracks overall execution time.
 	// Grafana expects time values to be returned in seconds as float.
 	QuerierExecTime float64 `protobuf:"fixed64,2,opt,name=querierExecTime,proto3" json:"querierExecTime"`
-
-	fieldsPresent [1]uint64
 }
 
 type Ingester struct {
@@ -127,8 +117,6 @@ type Ingester struct {
 	// Omitted from JSON when zero for backwards compatibility.
 	// Grafana expects time values to be returned in seconds as float
 	RecvWaitTime float64 `protobuf:"fixed64,6,opt,name=recvWaitTime,proto3" json:"recvWaitTime,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 type Store struct {
@@ -150,8 +138,6 @@ type Store struct {
 	// Total number of lines filtered by pipeline wrapper.
 	PipelineWrapperFilteredLines int64   `protobuf:"varint,7,opt,name=pipelineWrapperFilteredLines,proto3" json:"pipelineWrapperFilteredLines"`
 	Dataobj                      Dataobj `protobuf:"bytes,8,opt,name=dataobj,proto3" json:"dataobj"`
-
-	fieldsPresent [1]uint64
 }
 
 type Dataobj struct {
@@ -183,8 +169,6 @@ type Dataobj struct {
 	TotalPageDownloadTime int64 `protobuf:"varint,13,opt,name=totalPageDownloadTime,proto3" json:"totalPageDownloadTime"`
 	// Total bytes transferred between tasks via scheduler streams (sources and sinks).
 	WireBytesTransferred int64 `protobuf:"varint,14,opt,name=wireBytesTransferred,proto3" json:"wireBytesTransferred"`
-
-	fieldsPresent [1]uint64
 }
 
 type Chunk struct {
@@ -206,8 +190,6 @@ type Chunk struct {
 	HeadChunkStructuredMetadataBytes int64 `protobuf:"varint,11,opt,name=headChunkStructuredMetadataBytes,proto3" json:"headChunkStructuredMetadataBytes"`
 	// Total bytes of entries metadata decompressed and processed from chunks.
 	DecompressedStructuredMetadataBytes int64 `protobuf:"varint,12,opt,name=decompressedStructuredMetadataBytes,proto3" json:"decompressedStructuredMetadataBytes"`
-
-	fieldsPresent [1]uint64
 }
 
 type Cache struct {
@@ -219,8 +201,6 @@ type Cache struct {
 	Requests          int32 `protobuf:"varint,6,opt,name=requests,proto3" json:"requests"`
 	DownloadTime      int64 `protobuf:"varint,7,opt,name=downloadTime,proto3" json:"downloadTime"`
 	QueryLengthServed int64 `protobuf:"varint,8,opt,name=queryLengthServed,proto3" json:"queryLengthServed"`
-
-	fieldsPresent [1]uint64
 }
 
 func (m *Result) Reset() {
@@ -363,694 +343,106 @@ func (m *Cache) String() string {
 	return fmt.Sprintf("%v", *m)
 }
 
-func (m *Result) HasSummary() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Result) HasQuerier() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *Result) HasIngester() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<2) != 0
-}
-
-func (m *Result) HasCaches() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<3) != 0
-}
-
-func (m *Result) HasIndex() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<4) != 0
-}
-
-func (m *Caches) HasChunk() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Caches) HasIndex() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *Caches) HasResult() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<2) != 0
-}
-
-func (m *Caches) HasStatsResult() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<3) != 0
-}
-
-func (m *Caches) HasVolumeResult() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<4) != 0
-}
-
-func (m *Caches) HasSeriesResult() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<5) != 0
-}
-
-func (m *Caches) HasLabelResult() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<6) != 0
-}
-
-func (m *Caches) HasInstantMetricResult() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<7) != 0
-}
-
-func (m *Caches) HasLogResult() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<8) != 0
-}
-
-func (m *Caches) HasTaskResult() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<9) != 0
-}
-
-func (m *Summary) HasBytesProcessedPerSecond() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Summary) HasLinesProcessedPerSecond() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *Summary) HasTotalBytesProcessed() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<2) != 0
-}
-
-func (m *Summary) HasTotalLinesProcessed() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<3) != 0
-}
-
-func (m *Summary) HasExecTime() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<4) != 0
-}
-
-func (m *Summary) HasQueueTime() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<5) != 0
-}
-
-func (m *Summary) HasSubqueries() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<6) != 0
-}
-
-func (m *Summary) HasTotalEntriesReturned() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<7) != 0
-}
-
-func (m *Summary) HasSplits() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<8) != 0
-}
-
-func (m *Summary) HasShards() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<9) != 0
-}
-
-func (m *Summary) HasTotalPostFilterLines() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<10) != 0
-}
-
-func (m *Summary) HasTotalStructuredMetadataBytesProcessed() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<11) != 0
-}
-
-func (m *Summary) HasEstimatedQueryBytes() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<12) != 0
-}
-
-func (m *Index) HasTotalChunks() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Index) HasPostFilterChunks() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *Index) HasShardsDuration() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<2) != 0
-}
-
-func (m *Index) HasUsedBloomFilters() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<3) != 0
-}
-
-func (m *Index) HasTotalStreams() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<4) != 0
-}
-
-func (m *Index) HasChunkRefsLookupTime() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<5) != 0
-}
-
-func (m *Index) HasBloomFilterTime() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<6) != 0
-}
-
-func (m *Querier) HasStore() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Querier) HasQuerierExecTime() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *Ingester) HasTotalReached() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Ingester) HasTotalChunksMatched() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *Ingester) HasTotalBatches() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<2) != 0
-}
-
-func (m *Ingester) HasTotalLinesSent() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<3) != 0
-}
-
-func (m *Ingester) HasStore() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<4) != 0
-}
-
-func (m *Ingester) HasRecvWaitTime() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<5) != 0
-}
-
-func (m *Store) HasTotalChunksRef() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Store) HasTotalChunksDownloaded() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *Store) HasChunksDownloadTime() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<2) != 0
-}
-
-func (m *Store) HasQueryReferencedStructured() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<3) != 0
-}
-
-func (m *Store) HasQueryUsedV2Engine() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<4) != 0
-}
-
-func (m *Store) HasChunk() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<5) != 0
-}
-
-func (m *Store) HasChunkRefsFetchTime() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<6) != 0
-}
-
-func (m *Store) HasCongestionControlLatency() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<7) != 0
-}
-
-func (m *Store) HasPipelineWrapperFilteredLines() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<8) != 0
-}
-
-func (m *Store) HasDataobj() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<9) != 0
-}
-
-func (m *Dataobj) HasPrePredicateDecompressedRows() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Dataobj) HasPrePredicateDecompressedBytes() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *Dataobj) HasPrePredicateDecompressedStructuredMetadataBytes() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<2) != 0
-}
-
-func (m *Dataobj) HasPostPredicateRows() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<3) != 0
-}
-
-func (m *Dataobj) HasPostPredicateDecompressedBytes() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<4) != 0
-}
-
-func (m *Dataobj) HasPostPredicateStructuredMetadataBytes() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<5) != 0
-}
-
-func (m *Dataobj) HasPostFilterRows() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<6) != 0
-}
-
-func (m *Dataobj) HasPagesScanned() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<7) != 0
-}
-
-func (m *Dataobj) HasPagesDownloaded() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<8) != 0
-}
-
-func (m *Dataobj) HasPagesDownloadedBytes() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<9) != 0
-}
-
-func (m *Dataobj) HasPageBatches() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<10) != 0
-}
-
-func (m *Dataobj) HasTotalRowsAvailable() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<11) != 0
-}
-
-func (m *Dataobj) HasTotalPageDownloadTime() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<12) != 0
-}
-
-func (m *Dataobj) HasWireBytesTransferred() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<13) != 0
-}
-
-func (m *Chunk) HasHeadChunkBytes() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Chunk) HasHeadChunkLines() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *Chunk) HasDecompressedBytes() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<2) != 0
-}
-
-func (m *Chunk) HasDecompressedLines() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<3) != 0
-}
-
-func (m *Chunk) HasCompressedBytes() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<4) != 0
-}
-
-func (m *Chunk) HasTotalDuplicates() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<5) != 0
-}
-
-func (m *Chunk) HasPostFilterLines() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<6) != 0
-}
-
-func (m *Chunk) HasHeadChunkStructuredMetadataBytes() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<7) != 0
-}
-
-func (m *Chunk) HasDecompressedStructuredMetadataBytes() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<8) != 0
-}
-
-func (m *Cache) HasEntriesFound() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Cache) HasEntriesRequested() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *Cache) HasEntriesStored() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<2) != 0
-}
-
-func (m *Cache) HasBytesReceived() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<3) != 0
-}
-
-func (m *Cache) HasBytesSent() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<4) != 0
-}
-
-func (m *Cache) HasRequests() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<5) != 0
-}
-
-func (m *Cache) HasDownloadTime() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<6) != 0
-}
-
-func (m *Cache) HasQueryLengthServed() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<7) != 0
-}
-
 func (m *Result) GetSummary() *Summary {
-	if m != nil && m.fieldsPresent[0]&(1<<0) != 0 {
+	if m != nil {
 		return &m.Summary
 	}
 	return nil
 }
 
 func (m *Result) GetQuerier() *Querier {
-	if m != nil && m.fieldsPresent[0]&(1<<1) != 0 {
+	if m != nil {
 		return &m.Querier
 	}
 	return nil
 }
 
 func (m *Result) GetIngester() *Ingester {
-	if m != nil && m.fieldsPresent[0]&(1<<2) != 0 {
+	if m != nil {
 		return &m.Ingester
 	}
 	return nil
 }
 
 func (m *Result) GetCaches() *Caches {
-	if m != nil && m.fieldsPresent[0]&(1<<3) != 0 {
+	if m != nil {
 		return &m.Caches
 	}
 	return nil
 }
 
 func (m *Result) GetIndex() *Index {
-	if m != nil && m.fieldsPresent[0]&(1<<4) != 0 {
+	if m != nil {
 		return &m.Index
 	}
 	return nil
 }
 
 func (m *Caches) GetChunk() *Cache {
-	if m != nil && m.fieldsPresent[0]&(1<<0) != 0 {
+	if m != nil {
 		return &m.Chunk
 	}
 	return nil
 }
 
 func (m *Caches) GetIndex() *Cache {
-	if m != nil && m.fieldsPresent[0]&(1<<1) != 0 {
+	if m != nil {
 		return &m.Index
 	}
 	return nil
 }
 
 func (m *Caches) GetResult() *Cache {
-	if m != nil && m.fieldsPresent[0]&(1<<2) != 0 {
+	if m != nil {
 		return &m.Result
 	}
 	return nil
 }
 
 func (m *Caches) GetStatsResult() *Cache {
-	if m != nil && m.fieldsPresent[0]&(1<<3) != 0 {
+	if m != nil {
 		return &m.StatsResult
 	}
 	return nil
 }
 
 func (m *Caches) GetVolumeResult() *Cache {
-	if m != nil && m.fieldsPresent[0]&(1<<4) != 0 {
+	if m != nil {
 		return &m.VolumeResult
 	}
 	return nil
 }
 
 func (m *Caches) GetSeriesResult() *Cache {
-	if m != nil && m.fieldsPresent[0]&(1<<5) != 0 {
+	if m != nil {
 		return &m.SeriesResult
 	}
 	return nil
 }
 
 func (m *Caches) GetLabelResult() *Cache {
-	if m != nil && m.fieldsPresent[0]&(1<<6) != 0 {
+	if m != nil {
 		return &m.LabelResult
 	}
 	return nil
 }
 
 func (m *Caches) GetInstantMetricResult() *Cache {
-	if m != nil && m.fieldsPresent[0]&(1<<7) != 0 {
+	if m != nil {
 		return &m.InstantMetricResult
 	}
 	return nil
 }
 
 func (m *Caches) GetLogResult() *Cache {
-	if m != nil && m.fieldsPresent[0]&(1<<8) != 0 {
+	if m != nil {
 		return &m.LogResult
 	}
 	return nil
 }
 
 func (m *Caches) GetTaskResult() *Cache {
-	if m != nil && m.fieldsPresent[0]&(1<<9) != 0 {
+	if m != nil {
 		return &m.TaskResult
 	}
 	return nil
@@ -1197,7 +589,7 @@ func (m *Index) GetBloomFilterTime() float64 {
 }
 
 func (m *Querier) GetStore() *Store {
-	if m != nil && m.fieldsPresent[0]&(1<<0) != 0 {
+	if m != nil {
 		return &m.Store
 	}
 	return nil
@@ -1239,7 +631,7 @@ func (m *Ingester) GetTotalLinesSent() int64 {
 }
 
 func (m *Ingester) GetStore() *Store {
-	if m != nil && m.fieldsPresent[0]&(1<<4) != 0 {
+	if m != nil {
 		return &m.Store
 	}
 	return nil
@@ -1288,7 +680,7 @@ func (m *Store) GetQueryUsedV2Engine() bool {
 }
 
 func (m *Store) GetChunk() *Chunk {
-	if m != nil && m.fieldsPresent[0]&(1<<5) != 0 {
+	if m != nil {
 		return &m.Chunk
 	}
 	return nil
@@ -1316,7 +708,7 @@ func (m *Store) GetPipelineWrapperFilteredLines() int64 {
 }
 
 func (m *Store) GetDataobj() *Dataobj {
-	if m != nil && m.fieldsPresent[0]&(1<<9) != 0 {
+	if m != nil {
 		return &m.Dataobj
 	}
 	return nil
@@ -1548,40 +940,30 @@ func (m *Result) Size() int {
 		s := m.Summary.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<0) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.Querier.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<1) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.Ingester.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<2) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.Caches.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<3) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.Index.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<4) != 0 {
-			n += 2
 		}
 	}
 	return n
@@ -1596,80 +978,60 @@ func (m *Caches) Size() int {
 		s := m.Chunk.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<0) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.Index.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<1) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.Result.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<2) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.StatsResult.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<3) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.VolumeResult.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<4) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.SeriesResult.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<5) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.LabelResult.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<6) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.InstantMetricResult.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<7) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.LogResult.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<8) != 0 {
-			n += 2
 		}
 	}
 	{
 		s := m.TaskResult.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<9) != 0 {
-			n += 2
 		}
 	}
 	return n
@@ -1760,8 +1122,6 @@ func (m *Querier) Size() int {
 		s := m.Store.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<0) != 0 {
-			n += 2
 		}
 	}
 	if math.Float64bits(m.QuerierExecTime) != 0 {
@@ -1791,8 +1151,6 @@ func (m *Ingester) Size() int {
 		s := m.Store.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<4) != 0 {
-			n += 2
 		}
 	}
 	if math.Float64bits(m.RecvWaitTime) != 0 {
@@ -1825,8 +1183,6 @@ func (m *Store) Size() int {
 		s := m.Chunk.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<5) != 0 {
-			n += 2
 		}
 	}
 	if m.ChunkRefsFetchTime != 0 {
@@ -1842,8 +1198,6 @@ func (m *Store) Size() int {
 		s := m.Dataobj.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<9) != 0 {
-			n += 2
 		}
 	}
 	return n
@@ -2005,11 +1359,6 @@ func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x2a
-		} else if m.fieldsPresent[0]&(1<<4) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x2a
 		}
 	}
 	{
@@ -2020,11 +1369,6 @@ func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		if size > 0 {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x22
-		} else if m.fieldsPresent[0]&(1<<3) != 0 {
-			i--
-			dAtA[i] = 0
 			i--
 			dAtA[i] = 0x22
 		}
@@ -2039,11 +1383,6 @@ func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x1a
-		} else if m.fieldsPresent[0]&(1<<2) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x1a
 		}
 	}
 	{
@@ -2056,11 +1395,6 @@ func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x12
-		} else if m.fieldsPresent[0]&(1<<1) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x12
 		}
 	}
 	{
@@ -2071,11 +1405,6 @@ func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		if size > 0 {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x0a
-		} else if m.fieldsPresent[0]&(1<<0) != 0 {
-			i--
-			dAtA[i] = 0
 			i--
 			dAtA[i] = 0x0a
 		}
@@ -2122,11 +1451,6 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x52
-		} else if m.fieldsPresent[0]&(1<<9) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x52
 		}
 	}
 	{
@@ -2137,11 +1461,6 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		if size > 0 {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x4a
-		} else if m.fieldsPresent[0]&(1<<8) != 0 {
-			i--
-			dAtA[i] = 0
 			i--
 			dAtA[i] = 0x4a
 		}
@@ -2156,11 +1475,6 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x42
-		} else if m.fieldsPresent[0]&(1<<7) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x42
 		}
 	}
 	{
@@ -2171,11 +1485,6 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		if size > 0 {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x3a
-		} else if m.fieldsPresent[0]&(1<<6) != 0 {
-			i--
-			dAtA[i] = 0
 			i--
 			dAtA[i] = 0x3a
 		}
@@ -2190,11 +1499,6 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x32
-		} else if m.fieldsPresent[0]&(1<<5) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x32
 		}
 	}
 	{
@@ -2205,11 +1509,6 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		if size > 0 {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x2a
-		} else if m.fieldsPresent[0]&(1<<4) != 0 {
-			i--
-			dAtA[i] = 0
 			i--
 			dAtA[i] = 0x2a
 		}
@@ -2224,11 +1523,6 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x22
-		} else if m.fieldsPresent[0]&(1<<3) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x22
 		}
 	}
 	{
@@ -2239,11 +1533,6 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		if size > 0 {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1a
-		} else if m.fieldsPresent[0]&(1<<2) != 0 {
-			i--
-			dAtA[i] = 0
 			i--
 			dAtA[i] = 0x1a
 		}
@@ -2258,11 +1547,6 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x12
-		} else if m.fieldsPresent[0]&(1<<1) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x12
 		}
 	}
 	{
@@ -2273,11 +1557,6 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		if size > 0 {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x0a
-		} else if m.fieldsPresent[0]&(1<<0) != 0 {
-			i--
-			dAtA[i] = 0
 			i--
 			dAtA[i] = 0x0a
 		}
@@ -2503,11 +1782,6 @@ func (m *Querier) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x0a
-		} else if m.fieldsPresent[0]&(1<<0) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x0a
 		}
 	}
 	return len(dAtA) - i, nil
@@ -2556,11 +1830,6 @@ func (m *Ingester) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		if size > 0 {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x2a
-		} else if m.fieldsPresent[0]&(1<<4) != 0 {
-			i--
-			dAtA[i] = 0
 			i--
 			dAtA[i] = 0x2a
 		}
@@ -2647,11 +1916,6 @@ func (m *Store) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x42
-		} else if m.fieldsPresent[0]&(1<<9) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x42
 		}
 	}
 	if m.PipelineWrapperFilteredLines != 0 {
@@ -2677,11 +1941,6 @@ func (m *Store) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		if size > 0 {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x22
-		} else if m.fieldsPresent[0]&(1<<5) != 0 {
-			i--
-			dAtA[i] = 0
 			i--
 			dAtA[i] = 0x22
 		}
@@ -2955,73 +2214,6 @@ func (m *Cache) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-const maxUnmarshalDepth = 10000
-
-func skipValue(dAtA []byte, wireType int, fieldNum int32) (int, error) {
-	iNdEx := 0
-	l := len(dAtA)
-	switch wireType {
-	case 0:
-		for shift := 0; ; shift++ {
-			if shift >= 10 {
-				return 0, fmt.Errorf("invalid varint")
-			}
-			if iNdEx >= l {
-				return 0, fmt.Errorf("invalid varint")
-			}
-			iNdEx++
-			if dAtA[iNdEx-1] < 0x80 {
-				break
-			}
-		}
-	case 1:
-		if (iNdEx + 8) > l {
-			return 0, fmt.Errorf("truncated fixed64")
-		}
-		iNdEx += 8
-	case 2:
-		var length uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return 0, fmt.Errorf("invalid bytes")
-			}
-			if iNdEx >= l {
-				return 0, fmt.Errorf("invalid bytes")
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			length |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				if shift == 63 && b > 1 {
-					return 0, fmt.Errorf("invalid bytes")
-				}
-				break
-			}
-		}
-		if length > uint64(math.MaxInt) {
-			return 0, fmt.Errorf("invalid bytes")
-		}
-		iNdEx += int(length)
-		if iNdEx < 0 || iNdEx > l {
-			return 0, fmt.Errorf("invalid bytes")
-		}
-	case 3:
-		_, n := protowire.ConsumeGroup(protowire.Number(fieldNum), dAtA[iNdEx:])
-		if n < 0 {
-			return 0, fmt.Errorf("invalid group")
-		}
-		iNdEx += n
-	case 5:
-		if (iNdEx + 4) > l {
-			return 0, fmt.Errorf("truncated fixed32")
-		}
-		iNdEx += 4
-	default:
-		return 0, fmt.Errorf("unknown wire type %d", wireType)
-	}
-	return iNdEx, nil
-}
-
 func (m *Result) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -3034,7 +2226,7 @@ func (m *Result) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Result) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -3068,7 +2260,7 @@ func (m *Result) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // summary
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3113,10 +2305,9 @@ func (m *Result) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // querier
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3161,10 +2352,9 @@ func (m *Result) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 1
 		case 3: // ingester
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3209,10 +2399,9 @@ func (m *Result) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 2
 		case 4: // caches
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3257,10 +2446,9 @@ func (m *Result) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 3
 		case 5: // index
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3305,9 +2493,8 @@ func (m *Result) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 4
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -3332,7 +2519,7 @@ func (m *Caches) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Caches) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -3366,7 +2553,7 @@ func (m *Caches) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // chunk
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3411,10 +2598,9 @@ func (m *Caches) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // index
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3459,10 +2645,9 @@ func (m *Caches) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 1
 		case 3: // result
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3507,10 +2692,9 @@ func (m *Caches) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 2
 		case 4: // statsResult
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3555,10 +2739,9 @@ func (m *Caches) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 3
 		case 5: // volumeResult
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3603,10 +2786,9 @@ func (m *Caches) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 4
 		case 6: // seriesResult
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3651,10 +2833,9 @@ func (m *Caches) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 5
 		case 7: // labelResult
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3699,10 +2880,9 @@ func (m *Caches) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 6
 		case 8: // instantMetricResult
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3747,10 +2927,9 @@ func (m *Caches) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 7
 		case 9: // logResult
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3795,10 +2974,9 @@ func (m *Caches) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 8
 		case 10: // taskResult
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3843,9 +3021,8 @@ func (m *Caches) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 9
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -3870,7 +3047,7 @@ func (m *Summary) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Summary) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -3904,7 +3081,7 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // bytesProcessedPerSecond
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3930,10 +3107,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.BytesProcessedPerSecond = int64(v)
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // linesProcessedPerSecond
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3959,10 +3135,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.LinesProcessedPerSecond = int64(v)
-			m.fieldsPresent[0] |= 1 << 1
 		case 3: // totalBytesProcessed
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3988,10 +3163,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalBytesProcessed = int64(v)
-			m.fieldsPresent[0] |= 1 << 2
 		case 4: // totalLinesProcessed
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4017,10 +3191,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalLinesProcessed = int64(v)
-			m.fieldsPresent[0] |= 1 << 3
 		case 5: // execTime
 			if wireType != 1 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4033,10 +3206,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 			v := binary.LittleEndian.Uint64(dAtA[iNdEx:])
 			iNdEx += 8
 			m.ExecTime = math.Float64frombits(v)
-			m.fieldsPresent[0] |= 1 << 4
 		case 6: // queueTime
 			if wireType != 1 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4049,10 +3221,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 			v := binary.LittleEndian.Uint64(dAtA[iNdEx:])
 			iNdEx += 8
 			m.QueueTime = math.Float64frombits(v)
-			m.fieldsPresent[0] |= 1 << 5
 		case 7: // subqueries
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4078,10 +3249,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Subqueries = int64(v)
-			m.fieldsPresent[0] |= 1 << 6
 		case 8: // totalEntriesReturned
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4107,10 +3277,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalEntriesReturned = int64(v)
-			m.fieldsPresent[0] |= 1 << 7
 		case 9: // splits
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4136,10 +3305,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Splits = int64(v)
-			m.fieldsPresent[0] |= 1 << 8
 		case 10: // shards
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4165,10 +3333,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Shards = int64(v)
-			m.fieldsPresent[0] |= 1 << 9
 		case 11: // totalPostFilterLines
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4194,10 +3361,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalPostFilterLines = int64(v)
-			m.fieldsPresent[0] |= 1 << 10
 		case 12: // totalStructuredMetadataBytesProcessed
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4223,10 +3389,9 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalStructuredMetadataBytesProcessed = int64(v)
-			m.fieldsPresent[0] |= 1 << 11
 		case 13: // estimatedQueryBytes
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4252,9 +3417,8 @@ func (m *Summary) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.EstimatedQueryBytes = int64(v)
-			m.fieldsPresent[0] |= 1 << 12
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -4279,7 +3443,7 @@ func (m *Index) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Index) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -4313,7 +3477,7 @@ func (m *Index) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // totalChunks
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4339,10 +3503,9 @@ func (m *Index) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalChunks = int64(v)
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // postFilterChunks
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4368,10 +3531,9 @@ func (m *Index) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PostFilterChunks = int64(v)
-			m.fieldsPresent[0] |= 1 << 1
 		case 3: // shardsDuration
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4397,10 +3559,9 @@ func (m *Index) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.ShardsDuration = int64(v)
-			m.fieldsPresent[0] |= 1 << 2
 		case 4: // usedBloomFilters
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4426,10 +3587,9 @@ func (m *Index) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.UsedBloomFilters = v != 0
-			m.fieldsPresent[0] |= 1 << 3
 		case 5: // totalStreams
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4455,10 +3615,9 @@ func (m *Index) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalStreams = int64(v)
-			m.fieldsPresent[0] |= 1 << 4
 		case 6: // chunkRefsLookupTime
 			if wireType != 1 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4471,10 +3630,9 @@ func (m *Index) unmarshal(dAtA []byte, depth int) error {
 			v := binary.LittleEndian.Uint64(dAtA[iNdEx:])
 			iNdEx += 8
 			m.ChunkRefsLookupTime = math.Float64frombits(v)
-			m.fieldsPresent[0] |= 1 << 5
 		case 7: // bloomFilterTime
 			if wireType != 1 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4487,9 +3645,8 @@ func (m *Index) unmarshal(dAtA []byte, depth int) error {
 			v := binary.LittleEndian.Uint64(dAtA[iNdEx:])
 			iNdEx += 8
 			m.BloomFilterTime = math.Float64frombits(v)
-			m.fieldsPresent[0] |= 1 << 6
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -4514,7 +3671,7 @@ func (m *Querier) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Querier) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -4548,7 +3705,7 @@ func (m *Querier) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // store
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4593,10 +3750,9 @@ func (m *Querier) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // querierExecTime
 			if wireType != 1 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4609,9 +3765,8 @@ func (m *Querier) unmarshal(dAtA []byte, depth int) error {
 			v := binary.LittleEndian.Uint64(dAtA[iNdEx:])
 			iNdEx += 8
 			m.QuerierExecTime = math.Float64frombits(v)
-			m.fieldsPresent[0] |= 1 << 1
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -4636,7 +3791,7 @@ func (m *Ingester) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Ingester) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -4670,7 +3825,7 @@ func (m *Ingester) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // totalReached
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4696,10 +3851,9 @@ func (m *Ingester) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalReached = int32(v)
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // totalChunksMatched
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4725,10 +3879,9 @@ func (m *Ingester) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalChunksMatched = int64(v)
-			m.fieldsPresent[0] |= 1 << 1
 		case 3: // totalBatches
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4754,10 +3907,9 @@ func (m *Ingester) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalBatches = int64(v)
-			m.fieldsPresent[0] |= 1 << 2
 		case 4: // totalLinesSent
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4783,10 +3935,9 @@ func (m *Ingester) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalLinesSent = int64(v)
-			m.fieldsPresent[0] |= 1 << 3
 		case 5: // store
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4831,10 +3982,9 @@ func (m *Ingester) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 4
 		case 6: // recvWaitTime
 			if wireType != 1 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4847,9 +3997,8 @@ func (m *Ingester) unmarshal(dAtA []byte, depth int) error {
 			v := binary.LittleEndian.Uint64(dAtA[iNdEx:])
 			iNdEx += 8
 			m.RecvWaitTime = math.Float64frombits(v)
-			m.fieldsPresent[0] |= 1 << 5
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -4874,7 +4023,7 @@ func (m *Store) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Store) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -4908,7 +4057,7 @@ func (m *Store) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // totalChunksRef
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4934,10 +4083,9 @@ func (m *Store) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalChunksRef = int64(v)
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // totalChunksDownloaded
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4963,10 +4111,9 @@ func (m *Store) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalChunksDownloaded = int64(v)
-			m.fieldsPresent[0] |= 1 << 1
 		case 3: // chunksDownloadTime
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4992,10 +4139,9 @@ func (m *Store) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.ChunksDownloadTime = int64(v)
-			m.fieldsPresent[0] |= 1 << 2
 		case 13: // queryReferencedStructured
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5021,10 +4167,9 @@ func (m *Store) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.QueryReferencedStructured = v != 0
-			m.fieldsPresent[0] |= 1 << 3
 		case 14: // queryUsedV2Engine
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5050,10 +4195,9 @@ func (m *Store) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.QueryUsedV2Engine = v != 0
-			m.fieldsPresent[0] |= 1 << 4
 		case 4: // chunk
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5098,10 +4242,9 @@ func (m *Store) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 5
 		case 5: // chunkRefsFetchTime
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5127,10 +4270,9 @@ func (m *Store) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.ChunkRefsFetchTime = int64(v)
-			m.fieldsPresent[0] |= 1 << 6
 		case 6: // congestionControlLatency
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5156,10 +4298,9 @@ func (m *Store) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.CongestionControlLatency = int64(v)
-			m.fieldsPresent[0] |= 1 << 7
 		case 7: // pipelineWrapperFilteredLines
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5185,10 +4326,9 @@ func (m *Store) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PipelineWrapperFilteredLines = int64(v)
-			m.fieldsPresent[0] |= 1 << 8
 		case 8: // dataobj
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5233,9 +4373,8 @@ func (m *Store) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 9
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -5260,7 +4399,7 @@ func (m *Dataobj) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -5294,7 +4433,7 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // prePredicateDecompressedRows
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5320,10 +4459,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PrePredicateDecompressedRows = int64(v)
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // prePredicateDecompressedBytes
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5349,10 +4487,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PrePredicateDecompressedBytes = int64(v)
-			m.fieldsPresent[0] |= 1 << 1
 		case 3: // prePredicateDecompressedStructuredMetadataBytes
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5378,10 +4515,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PrePredicateDecompressedStructuredMetadataBytes = int64(v)
-			m.fieldsPresent[0] |= 1 << 2
 		case 4: // postPredicateRows
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5407,10 +4543,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PostPredicateRows = int64(v)
-			m.fieldsPresent[0] |= 1 << 3
 		case 5: // postPredicateDecompressedBytes
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5436,10 +4571,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PostPredicateDecompressedBytes = int64(v)
-			m.fieldsPresent[0] |= 1 << 4
 		case 6: // postPredicateStructuredMetadataBytes
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5465,10 +4599,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PostPredicateStructuredMetadataBytes = int64(v)
-			m.fieldsPresent[0] |= 1 << 5
 		case 7: // postFilterRows
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5494,10 +4627,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PostFilterRows = int64(v)
-			m.fieldsPresent[0] |= 1 << 6
 		case 8: // pagesScanned
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5523,10 +4655,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PagesScanned = int64(v)
-			m.fieldsPresent[0] |= 1 << 7
 		case 9: // pagesDownloaded
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5552,10 +4683,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PagesDownloaded = int64(v)
-			m.fieldsPresent[0] |= 1 << 8
 		case 10: // pagesDownloadedBytes
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5581,10 +4711,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PagesDownloadedBytes = int64(v)
-			m.fieldsPresent[0] |= 1 << 9
 		case 11: // pageBatches
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5610,10 +4739,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PageBatches = int64(v)
-			m.fieldsPresent[0] |= 1 << 10
 		case 12: // totalRowsAvailable
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5639,10 +4767,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalRowsAvailable = int64(v)
-			m.fieldsPresent[0] |= 1 << 11
 		case 13: // totalPageDownloadTime
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5668,10 +4795,9 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalPageDownloadTime = int64(v)
-			m.fieldsPresent[0] |= 1 << 12
 		case 14: // wireBytesTransferred
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5697,9 +4823,8 @@ func (m *Dataobj) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.WireBytesTransferred = int64(v)
-			m.fieldsPresent[0] |= 1 << 13
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -5724,7 +4849,7 @@ func (m *Chunk) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -5758,7 +4883,7 @@ func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 4: // headChunkBytes
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5784,10 +4909,9 @@ func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.HeadChunkBytes = int64(v)
-			m.fieldsPresent[0] |= 1 << 0
 		case 5: // headChunkLines
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5813,10 +4937,9 @@ func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.HeadChunkLines = int64(v)
-			m.fieldsPresent[0] |= 1 << 1
 		case 6: // decompressedBytes
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5842,10 +4965,9 @@ func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.DecompressedBytes = int64(v)
-			m.fieldsPresent[0] |= 1 << 2
 		case 7: // decompressedLines
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5871,10 +4993,9 @@ func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.DecompressedLines = int64(v)
-			m.fieldsPresent[0] |= 1 << 3
 		case 8: // compressedBytes
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5900,10 +5021,9 @@ func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.CompressedBytes = int64(v)
-			m.fieldsPresent[0] |= 1 << 4
 		case 9: // totalDuplicates
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5929,10 +5049,9 @@ func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.TotalDuplicates = int64(v)
-			m.fieldsPresent[0] |= 1 << 5
 		case 10: // postFilterLines
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5958,10 +5077,9 @@ func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.PostFilterLines = int64(v)
-			m.fieldsPresent[0] |= 1 << 6
 		case 11: // headChunkStructuredMetadataBytes
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5987,10 +5105,9 @@ func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.HeadChunkStructuredMetadataBytes = int64(v)
-			m.fieldsPresent[0] |= 1 << 7
 		case 12: // decompressedStructuredMetadataBytes
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6016,9 +5133,8 @@ func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.DecompressedStructuredMetadataBytes = int64(v)
-			m.fieldsPresent[0] |= 1 << 8
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -6043,7 +5159,7 @@ func (m *Cache) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Cache) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -6077,7 +5193,7 @@ func (m *Cache) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // entriesFound
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6103,10 +5219,9 @@ func (m *Cache) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.EntriesFound = int32(v)
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // entriesRequested
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6132,10 +5247,9 @@ func (m *Cache) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.EntriesRequested = int32(v)
-			m.fieldsPresent[0] |= 1 << 1
 		case 3: // entriesStored
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6161,10 +5275,9 @@ func (m *Cache) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.EntriesStored = int32(v)
-			m.fieldsPresent[0] |= 1 << 2
 		case 4: // bytesReceived
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6190,10 +5303,9 @@ func (m *Cache) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.BytesReceived = int64(v)
-			m.fieldsPresent[0] |= 1 << 3
 		case 5: // bytesSent
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6219,10 +5331,9 @@ func (m *Cache) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.BytesSent = int64(v)
-			m.fieldsPresent[0] |= 1 << 4
 		case 6: // requests
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6248,10 +5359,9 @@ func (m *Cache) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Requests = int32(v)
-			m.fieldsPresent[0] |= 1 << 5
 		case 7: // downloadTime
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6277,10 +5387,9 @@ func (m *Cache) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.DownloadTime = int64(v)
-			m.fieldsPresent[0] |= 1 << 6
 		case 8: // queryLengthServed
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6306,9 +5415,8 @@ func (m *Cache) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.QueryLengthServed = int64(v)
-			m.fieldsPresent[0] |= 1 << 7
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}

@@ -187,15 +187,11 @@ type Frame struct {
 
 type AckFrame struct {
 	Id uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 type NackFrame struct {
 	Id    uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Error *Error `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 type Error struct {
@@ -203,21 +199,15 @@ type Error struct {
 	Code int32 `protobuf:"varint,1,opt,name=code,proto3" json:"code,omitempty"`
 	// A message describing the error.
 	Message string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 type DiscardFrame struct {
 	Id uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 type MessageFrame struct {
 	Id   uint64            `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Kind MessageFrame_Kind `protobuf_oneof:"kind"`
-
-	fieldsPresent [1]uint64
 }
 
 // WorkerHelloMessage is sent by a peer to the scheduler to establish
@@ -230,8 +220,6 @@ type WorkerHelloMessage struct {
 	// The scheduler uses threads to determine the maximum number of tasks that
 	// can be assigned concurrently to a worker.
 	Threads uint64 `protobuf:"varint,1,opt,name=threads,proto3" json:"threads,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 // WorkerSubscribeMessage is sent by a scheduler to request a WorkerReadyMessage
@@ -276,8 +264,6 @@ type TaskAssignMessage struct {
 type Header struct {
 	Key    string   `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	Values []string `protobuf:"bytes,2,rep,name=values,proto3" json:"values,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 // TaskCancelMessage is sent by the scheduler to a worker when a task is no
@@ -292,8 +278,6 @@ type TaskFlagMessage struct {
 	// Interruptible indicates that tasks blocked on writing or reading to a
 	// stream can be paused, and that worker can accept new tasks to run.
 	Interruptible bool `protobuf:"varint,2,opt,name=interruptible,proto3" json:"interruptible,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 // TaskStatusMessage is sent by the worker to the scheduler to inform the
@@ -301,8 +285,6 @@ type TaskFlagMessage struct {
 type TaskStatusMessage struct {
 	Id     ulid.ULID  `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Status TaskStatus `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 // StreamBindMessage is sent by the scheduler to a worker to inform the
@@ -311,8 +293,6 @@ type StreamBindMessage struct {
 	StreamId ulid.ULID `protobuf:"bytes,1,opt,name=stream_id,json=streamId,proto3" json:"stream_id,omitempty"`
 	// Receiver is the network address of the stream receiver.
 	Receiver string `protobuf:"bytes,2,opt,name=receiver,proto3" json:"receiver,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 // StreamDataMessage is sent by a peer to a stream receiver to provide
@@ -324,16 +304,12 @@ type StreamDataMessage struct {
 	StreamId ulid.ULID `protobuf:"bytes,1,opt,name=stream_id,json=streamId,proto3" json:"stream_id,omitempty"`
 	// Data is the serialized Arrow record payload.
 	Data []byte `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 // StreamStatusMessage communicates the status of the sending side of a stream.
 type StreamStatusMessage struct {
 	StreamId ulid.ULID   `protobuf:"bytes,1,opt,name=stream_id,json=streamId,proto3" json:"stream_id,omitempty"`
 	State    StreamState `protobuf:"varint,2,opt,name=state,proto3,enum=loki.wire.StreamState" json:"state,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 // Task is a single unit of work within a workflow.
@@ -358,8 +334,6 @@ type Task struct {
 	// The key is the node ID string representation.
 	// The arrow batches are retrieved from the task result cache by the scheduler and passed to the workers here.
 	CachedSources map[string]CachedSources `protobuf:"bytes,7,rep,name=cached_sources,json=cachedSources,proto3" json:"cached_sources,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-
-	fieldsPresent [1]uint64
 }
 
 // StreamList is a list of streams, used in Task's sources and sinks maps.
@@ -376,8 +350,6 @@ type CachedSources struct {
 type Stream struct {
 	Ulid     ulid.ULID `protobuf:"bytes,1,opt,name=ulid,proto3" json:"ulid,omitempty"`
 	TenantId string    `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 // TaskStatus represents the current status of a task.
@@ -389,21 +361,15 @@ type TaskStatus struct {
 	// This is an opaque binary representation of the capture payload.
 	Capture               []byte                 `protobuf:"bytes,3,opt,name=capture,proto3" json:"capture,omitempty"`
 	ContributingTimeRange *ContributingTimeRange `protobuf:"bytes,4,opt,name=contributing_time_range,json=contributingTimeRange,proto3" json:"contributing_time_range,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 type ContributingTimeRange struct {
 	Timestamp time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	LessThan  bool      `protobuf:"varint,2,opt,name=less_than,json=lessThan,proto3" json:"less_than,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 type TaskError struct {
 	Description string `protobuf:"bytes,1,opt,name=description,proto3" json:"description,omitempty"`
-
-	fieldsPresent [1]uint64
 }
 
 func (m *Frame) Reset() {
@@ -742,153 +708,6 @@ func (m *TaskError) String() string {
 	return fmt.Sprintf("%v", *m)
 }
 
-func (m *AckFrame) HasId() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *NackFrame) HasId() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Error) HasCode() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Error) HasMessage() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *DiscardFrame) HasId() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *MessageFrame) HasId() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *WorkerHelloMessage) HasThreads() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Header) HasKey() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *TaskFlagMessage) HasInterruptible() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *TaskStatusMessage) HasStatus() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *StreamBindMessage) HasReceiver() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *StreamDataMessage) HasData() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *StreamStatusMessage) HasState() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Task) HasTenantId() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *Task) HasFragment() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *Task) HasMaxTimeRange() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<2) != 0
-}
-
-func (m *Stream) HasTenantId() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *TaskStatus) HasState() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *TaskStatus) HasCapture() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *ContributingTimeRange) HasLessThan() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *TaskError) HasDescription() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
 func (m *Frame) GetKind() Frame_Kind {
 	if m != nil {
 		return m.Kind
@@ -1124,7 +943,7 @@ func (m *TaskStatusMessage) GetId() ulid.ULID {
 }
 
 func (m *TaskStatusMessage) GetStatus() *TaskStatus {
-	if m != nil && m.fieldsPresent[0]&(1<<0) != 0 {
+	if m != nil {
 		return &m.Status
 	}
 	return nil
@@ -1191,7 +1010,7 @@ func (m *Task) GetTenantId() string {
 }
 
 func (m *Task) GetFragment() *physicalpb.Plan {
-	if m != nil && m.fieldsPresent[0]&(1<<1) != 0 {
+	if m != nil {
 		return &m.Fragment
 	}
 	return nil
@@ -1212,7 +1031,7 @@ func (m *Task) GetSinks() map[string]StreamList {
 }
 
 func (m *Task) GetMaxTimeRange() *physicalpb.TimeRange {
-	if m != nil && m.fieldsPresent[0]&(1<<2) != 0 {
+	if m != nil {
 		return &m.MaxTimeRange
 	}
 	return nil
@@ -1519,8 +1338,6 @@ func (m *TaskStatusMessage) Size() int {
 		s := m.Status.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<0) != 0 {
-			n += 2
 		}
 	}
 	return n
@@ -1583,8 +1400,6 @@ func (m *Task) Size() int {
 		s := m.Fragment.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<1) != 0 {
-			n += 2
 		}
 	}
 	for k, v := range m.Sources {
@@ -1605,8 +1420,6 @@ func (m *Task) Size() int {
 		s := m.MaxTimeRange.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		} else if m.fieldsPresent[0]&(1<<2) != 0 {
-			n += 2
 		}
 	}
 	for k, v := range m.CachedSources {
@@ -2426,11 +2239,6 @@ func (m *TaskStatusMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x12
-		} else if m.fieldsPresent[0]&(1<<0) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x12
 		}
 	}
 	if s := m.Id.SizeWiresmith(); s > 0 {
@@ -2661,11 +2469,6 @@ func (m *Task) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x32
-		} else if m.fieldsPresent[0]&(1<<2) != 0 {
-			i--
-			dAtA[i] = 0
-			i--
-			dAtA[i] = 0x32
 		}
 	}
 	for k, v := range m.Sinks {
@@ -2714,11 +2517,6 @@ func (m *Task) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		if size > 0 {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1a
-		} else if m.fieldsPresent[0]&(1<<1) != 0 {
-			i--
-			dAtA[i] = 0
 			i--
 			dAtA[i] = 0x1a
 		}
@@ -3032,73 +2830,6 @@ func (m *TaskError) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-const maxUnmarshalDepth = 10000
-
-func skipValue(dAtA []byte, wireType int, fieldNum int32) (int, error) {
-	iNdEx := 0
-	l := len(dAtA)
-	switch wireType {
-	case 0:
-		for shift := 0; ; shift++ {
-			if shift >= 10 {
-				return 0, fmt.Errorf("invalid varint")
-			}
-			if iNdEx >= l {
-				return 0, fmt.Errorf("invalid varint")
-			}
-			iNdEx++
-			if dAtA[iNdEx-1] < 0x80 {
-				break
-			}
-		}
-	case 1:
-		if (iNdEx + 8) > l {
-			return 0, fmt.Errorf("truncated fixed64")
-		}
-		iNdEx += 8
-	case 2:
-		var length uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return 0, fmt.Errorf("invalid bytes")
-			}
-			if iNdEx >= l {
-				return 0, fmt.Errorf("invalid bytes")
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			length |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				if shift == 63 && b > 1 {
-					return 0, fmt.Errorf("invalid bytes")
-				}
-				break
-			}
-		}
-		if length > uint64(math.MaxInt) {
-			return 0, fmt.Errorf("invalid bytes")
-		}
-		iNdEx += int(length)
-		if iNdEx < 0 || iNdEx > l {
-			return 0, fmt.Errorf("invalid bytes")
-		}
-	case 3:
-		_, n := protowire.ConsumeGroup(protowire.Number(fieldNum), dAtA[iNdEx:])
-		if n < 0 {
-			return 0, fmt.Errorf("invalid group")
-		}
-		iNdEx += n
-	case 5:
-		if (iNdEx + 4) > l {
-			return 0, fmt.Errorf("truncated fixed32")
-		}
-		iNdEx += 4
-	default:
-		return 0, fmt.Errorf("unknown wire type %d", wireType)
-	}
-	return iNdEx, nil
-}
-
 func (m *Frame) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -3111,7 +2842,7 @@ func (m *Frame) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Frame) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -3145,7 +2876,7 @@ func (m *Frame) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // ack
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3197,7 +2928,7 @@ func (m *Frame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 2: // nack
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3249,7 +2980,7 @@ func (m *Frame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 3: // discard
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3301,7 +3032,7 @@ func (m *Frame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 4: // message
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3352,7 +3083,7 @@ func (m *Frame) unmarshal(dAtA []byte, depth int) error {
 			m.Kind = &Frame_Message{Message: msg}
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -3377,7 +3108,7 @@ func (m *AckFrame) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *AckFrame) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -3411,7 +3142,7 @@ func (m *AckFrame) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // id
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3437,9 +3168,8 @@ func (m *AckFrame) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Id = v
-			m.fieldsPresent[0] |= 1 << 0
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -3464,7 +3194,7 @@ func (m *NackFrame) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *NackFrame) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -3498,7 +3228,7 @@ func (m *NackFrame) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // id
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3524,10 +3254,9 @@ func (m *NackFrame) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Id = v
-			m.fieldsPresent[0] |= 1 << 0
 		case 3: // error
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3576,7 +3305,7 @@ func (m *NackFrame) unmarshal(dAtA []byte, depth int) error {
 			}
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -3601,7 +3330,7 @@ func (m *Error) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Error) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -3635,7 +3364,7 @@ func (m *Error) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // code
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3661,10 +3390,9 @@ func (m *Error) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Code = int32(v)
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // message
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3707,9 +3435,8 @@ func (m *Error) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.Message = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 1
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -3734,7 +3461,7 @@ func (m *DiscardFrame) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *DiscardFrame) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -3768,7 +3495,7 @@ func (m *DiscardFrame) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // id
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3794,9 +3521,8 @@ func (m *DiscardFrame) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Id = v
-			m.fieldsPresent[0] |= 1 << 0
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -3821,7 +3547,7 @@ func (m *MessageFrame) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -3855,7 +3581,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // id
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3881,10 +3607,9 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Id = v
-			m.fieldsPresent[0] |= 1 << 0
 		case 10: // worker_hello
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3936,7 +3661,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 11: // worker_subscribe
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -3988,7 +3713,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 2: // worker_ready
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4040,7 +3765,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 3: // task_assign
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4092,7 +3817,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 4: // task_cancel
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4144,7 +3869,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 5: // task_flag
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4196,7 +3921,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 6: // task_status
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4248,7 +3973,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 7: // stream_bind
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4300,7 +4025,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 8: // stream_data
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4352,7 +4077,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 9: // stream_status
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4403,7 +4128,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			m.Kind = &MessageFrame_StreamStatus{StreamStatus: msg}
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -4428,7 +4153,7 @@ func (m *WorkerHelloMessage) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *WorkerHelloMessage) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -4462,7 +4187,7 @@ func (m *WorkerHelloMessage) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // threads
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4488,9 +4213,8 @@ func (m *WorkerHelloMessage) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Threads = v
-			m.fieldsPresent[0] |= 1 << 0
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -4515,7 +4239,7 @@ func (m *WorkerSubscribeMessage) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *WorkerSubscribeMessage) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -4548,7 +4272,7 @@ func (m *WorkerSubscribeMessage) unmarshal(dAtA []byte, depth int) error {
 		wireType := int(wire & 0x7)
 		switch fieldNum {
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -4573,7 +4297,7 @@ func (m *WorkerReadyMessage) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *WorkerReadyMessage) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -4606,7 +4330,7 @@ func (m *WorkerReadyMessage) unmarshal(dAtA []byte, depth int) error {
 		wireType := int(wire & 0x7)
 		switch fieldNum {
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -4631,7 +4355,7 @@ func (m *TaskAssignMessage) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -4705,7 +4429,11 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.Metadata = make([]HeaderAdapter, 0, c)
+			if cap(m.Metadata) < c {
+				m.Metadata = make([]HeaderAdapter, 0, c)
+			} else {
+				m.Metadata = m.Metadata[:0]
+			}
 		}
 	}
 	for iNdEx < l {
@@ -4737,7 +4465,7 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // task
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4787,7 +4515,7 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 2: // stream_states
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4860,7 +4588,7 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 				switch int32(entryWire >> 3) {
 				case 1:
 					if int(entryWire&0x7) != int(protowire.BytesType) {
-						n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+						n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 						if err != nil {
 							return err
 						}
@@ -4905,7 +4633,7 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 					iNdEx = postIndex
 				case 2:
 					if int(entryWire&0x7) != int(protowire.VarintType) {
-						n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+						n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 						if err != nil {
 							return err
 						}
@@ -4932,7 +4660,7 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 					}
 					mapvalue = StreamState(v)
 				default:
-					n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+					n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 					if err != nil {
 						return err
 					}
@@ -4943,7 +4671,7 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 3: // metadata
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -4991,7 +4719,7 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 			m.Metadata = append(m.Metadata, elem)
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -5016,7 +4744,7 @@ func (m *Header) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Header) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -5081,7 +4809,11 @@ func (m *Header) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.Values = make([]string, 0, c)
+			if cap(m.Values) < c {
+				m.Values = make([]string, 0, c)
+			} else {
+				m.Values = m.Values[:0]
+			}
 		}
 	}
 	for iNdEx < l {
@@ -5113,7 +4845,7 @@ func (m *Header) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // key
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5156,10 +4888,9 @@ func (m *Header) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.Key = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // values
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5203,7 +4934,7 @@ func (m *Header) unmarshal(dAtA []byte, depth int) error {
 			m.Values = append(m.Values, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -5228,7 +4959,7 @@ func (m *TaskCancelMessage) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *TaskCancelMessage) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -5262,7 +4993,7 @@ func (m *TaskCancelMessage) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // id
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5308,7 +5039,7 @@ func (m *TaskCancelMessage) unmarshal(dAtA []byte, depth int) error {
 			}
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -5333,7 +5064,7 @@ func (m *TaskFlagMessage) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *TaskFlagMessage) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -5367,7 +5098,7 @@ func (m *TaskFlagMessage) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // id
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5414,7 +5145,7 @@ func (m *TaskFlagMessage) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 2: // interruptible
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5440,9 +5171,8 @@ func (m *TaskFlagMessage) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Interruptible = v != 0
-			m.fieldsPresent[0] |= 1 << 0
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -5467,7 +5197,7 @@ func (m *TaskStatusMessage) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *TaskStatusMessage) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -5501,7 +5231,7 @@ func (m *TaskStatusMessage) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // id
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5548,7 +5278,7 @@ func (m *TaskStatusMessage) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 2: // status
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5593,9 +5323,8 @@ func (m *TaskStatusMessage) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -5620,7 +5349,7 @@ func (m *StreamBindMessage) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *StreamBindMessage) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -5654,7 +5383,7 @@ func (m *StreamBindMessage) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // stream_id
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5701,7 +5430,7 @@ func (m *StreamBindMessage) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 2: // receiver
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5744,9 +5473,8 @@ func (m *StreamBindMessage) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.Receiver = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -5771,7 +5499,7 @@ func (m *StreamDataMessage) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *StreamDataMessage) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -5805,7 +5533,7 @@ func (m *StreamDataMessage) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // stream_id
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5852,7 +5580,7 @@ func (m *StreamDataMessage) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 2: // data
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -5895,9 +5623,8 @@ func (m *StreamDataMessage) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.Data = append(m.Data[:0], dAtA[iNdEx:postIndex]...)
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -5922,7 +5649,7 @@ func (m *StreamStatusMessage) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *StreamStatusMessage) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -5956,7 +5683,7 @@ func (m *StreamStatusMessage) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // stream_id
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6003,7 +5730,7 @@ func (m *StreamStatusMessage) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 2: // state
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6029,9 +5756,8 @@ func (m *StreamStatusMessage) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.State = StreamState(v)
-			m.fieldsPresent[0] |= 1 << 0
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -6056,7 +5782,7 @@ func (m *Task) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Task) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -6171,7 +5897,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // ulid
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6218,7 +5944,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 2: // tenant_id
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6261,10 +5987,9 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.TenantId = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		case 3: // fragment
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6309,10 +6034,9 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 1
 		case 4: // sources
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6385,7 +6109,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 				switch int32(entryWire >> 3) {
 				case 1:
 					if int(entryWire&0x7) != int(protowire.BytesType) {
-						n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+						n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 						if err != nil {
 							return err
 						}
@@ -6430,7 +6154,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 					iNdEx = postIndex
 				case 2:
 					if int(entryWire&0x7) != int(protowire.BytesType) {
-						n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+						n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 						if err != nil {
 							return err
 						}
@@ -6476,7 +6200,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 					}
 					iNdEx = postIndex
 				default:
-					n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+					n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 					if err != nil {
 						return err
 					}
@@ -6487,7 +6211,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 5: // sinks
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6560,7 +6284,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 				switch int32(entryWire >> 3) {
 				case 1:
 					if int(entryWire&0x7) != int(protowire.BytesType) {
-						n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+						n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 						if err != nil {
 							return err
 						}
@@ -6605,7 +6329,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 					iNdEx = postIndex
 				case 2:
 					if int(entryWire&0x7) != int(protowire.BytesType) {
-						n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+						n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 						if err != nil {
 							return err
 						}
@@ -6651,7 +6375,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 					}
 					iNdEx = postIndex
 				default:
-					n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+					n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 					if err != nil {
 						return err
 					}
@@ -6662,7 +6386,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 6: // max_time_range
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6707,10 +6431,9 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 2
 		case 7: // cached_sources
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -6783,7 +6506,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 				switch int32(entryWire >> 3) {
 				case 1:
 					if int(entryWire&0x7) != int(protowire.BytesType) {
-						n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+						n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 						if err != nil {
 							return err
 						}
@@ -6828,7 +6551,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 					iNdEx = postIndex
 				case 2:
 					if int(entryWire&0x7) != int(protowire.BytesType) {
-						n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+						n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 						if err != nil {
 							return err
 						}
@@ -6874,7 +6597,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 					}
 					iNdEx = postIndex
 				default:
-					n, err := skipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
+					n, err := protohelpers.SkipValue(dAtA[iNdEx:], int(entryWire&0x7), int32(entryWire>>3))
 					if err != nil {
 						return err
 					}
@@ -6884,7 +6607,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 			m.CachedSources[mapkey] = mapvalue
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -6909,7 +6632,7 @@ func (m *StreamList) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *StreamList) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -6974,7 +6697,11 @@ func (m *StreamList) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.Streams = make([]Stream, 0, c)
+			if cap(m.Streams) < c {
+				m.Streams = make([]Stream, 0, c)
+			} else {
+				m.Streams = m.Streams[:0]
+			}
 		}
 	}
 	for iNdEx < l {
@@ -7006,7 +6733,7 @@ func (m *StreamList) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // streams
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -7053,7 +6780,7 @@ func (m *StreamList) unmarshal(dAtA []byte, depth int) error {
 			}
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -7078,7 +6805,7 @@ func (m *CachedSources) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *CachedSources) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -7143,7 +6870,11 @@ func (m *CachedSources) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.CachedSource = make([][]byte, 0, c)
+			if cap(m.CachedSource) < c {
+				m.CachedSource = make([][]byte, 0, c)
+			} else {
+				m.CachedSource = m.CachedSource[:0]
+			}
 		}
 	}
 	for iNdEx < l {
@@ -7175,7 +6906,7 @@ func (m *CachedSources) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // cachedSource
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -7219,7 +6950,7 @@ func (m *CachedSources) unmarshal(dAtA []byte, depth int) error {
 			m.CachedSource = append(m.CachedSource, append([]byte(nil), dAtA[iNdEx:postIndex]...))
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -7244,7 +6975,7 @@ func (m *Stream) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *Stream) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -7278,7 +7009,7 @@ func (m *Stream) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // ulid
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -7325,7 +7056,7 @@ func (m *Stream) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 2: // tenant_id
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -7368,9 +7099,8 @@ func (m *Stream) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.TenantId = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -7395,7 +7125,7 @@ func (m *TaskStatus) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *TaskStatus) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -7429,7 +7159,7 @@ func (m *TaskStatus) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // state
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -7455,10 +7185,9 @@ func (m *TaskStatus) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.State = TaskState(v)
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // error
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -7508,7 +7237,7 @@ func (m *TaskStatus) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 3: // capture
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -7551,10 +7280,9 @@ func (m *TaskStatus) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.Capture = append(m.Capture[:0], dAtA[iNdEx:postIndex]...)
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 1
 		case 4: // contributing_time_range
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -7603,7 +7331,7 @@ func (m *TaskStatus) unmarshal(dAtA []byte, depth int) error {
 			}
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -7628,7 +7356,7 @@ func (m *ContributingTimeRange) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *ContributingTimeRange) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -7662,7 +7390,7 @@ func (m *ContributingTimeRange) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // timestamp
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -7711,7 +7439,7 @@ func (m *ContributingTimeRange) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 2: // less_than
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -7737,9 +7465,8 @@ func (m *ContributingTimeRange) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.LessThan = v != 0
-			m.fieldsPresent[0] |= 1 << 0
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -7764,7 +7491,7 @@ func (m *TaskError) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *TaskError) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -7798,7 +7525,7 @@ func (m *TaskError) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // description
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -7841,9 +7568,8 @@ func (m *TaskError) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.Description = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}

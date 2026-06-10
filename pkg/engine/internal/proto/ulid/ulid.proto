@@ -3,7 +3,15 @@ syntax = "proto3";
 
 package ulid.loki.v1;
 
+import "wiresmith/options.proto";
+
 option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid";
+
+// Drop the per-message presence bitmap: gogoproto nullable=false parity.
+// The exported XXX_fieldsPresent field would otherwise leak into
+// encoding/json output (it carries no json:"-" tag) and break
+// reflect.DeepEqual between literals and decoded values.
+option (wiresmith.options.no_presence_all) = true;
 
 // ProtoULID represents a Universally Unique Lexicographically Sortable
 // Identifier (ULID) over protobuf.

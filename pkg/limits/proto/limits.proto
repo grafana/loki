@@ -4,6 +4,12 @@ package proto;
 
 import "wiresmith/options.proto";
 
+// Drop the per-message presence bitmap: gogoproto nullable=false parity.
+// The exported XXX_fieldsPresent field would otherwise leak into
+// encoding/json output (it carries no json:"-" tag) and break
+// reflect.DeepEqual between literals and decoded values.
+option (wiresmith.options.no_presence_all) = true;
+
 service IngestLimitsFrontend {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
   rpc UpdateRates(UpdateRatesRequest) returns (UpdateRatesResponse) {}

@@ -12,6 +12,12 @@ import "pkg/engine/internal/proto/ulid/ulid.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb";
 
+// Drop the per-message presence bitmap: gogoproto nullable=false parity.
+// The exported XXX_fieldsPresent field would otherwise leak into
+// encoding/json output (it carries no json:"-" tag) and break
+// reflect.DeepEqual between literals and decoded values.
+option (wiresmith.options.no_presence_all) = true;
+
 // Plan represents the physical plan of a query.
 message Plan {
   repeated Node nodes = 1;

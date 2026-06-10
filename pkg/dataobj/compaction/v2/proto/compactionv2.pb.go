@@ -34,8 +34,6 @@ type SectionRef struct {
 	MaxKey       []string `protobuf:"bytes,4,rep,name=max_key,json=maxKey,proto3" json:"max_key"`
 	MinTimestamp int64    `protobuf:"varint,5,opt,name=min_timestamp,json=minTimestamp,proto3" json:"min_timestamp"`
 	MaxTimestamp int64    `protobuf:"varint,6,opt,name=max_timestamp,json=maxTimestamp,proto3" json:"max_timestamp"`
-
-	fieldsPresent [1]uint64
 }
 
 // RunRef is one pile: a sorted, non-overlapping section sequence.
@@ -47,8 +45,6 @@ type RunRef struct {
 type TaskSpec struct {
 	Tenant string   `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant"`
 	Runs   []RunRef `protobuf:"bytes,2,rep,name=runs,proto3" json:"runs"`
-
-	fieldsPresent [1]uint64
 }
 
 func (m *SectionRef) Reset() {
@@ -91,41 +87,6 @@ func (m *TaskSpec) String() string {
 		return "<nil>"
 	}
 	return fmt.Sprintf("%v", *m)
-}
-
-func (m *SectionRef) HasObjectPath() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
-}
-
-func (m *SectionRef) HasSectionIndex() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<1) != 0
-}
-
-func (m *SectionRef) HasMinTimestamp() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<2) != 0
-}
-
-func (m *SectionRef) HasMaxTimestamp() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<3) != 0
-}
-
-func (m *TaskSpec) HasTenant() bool {
-	if m == nil {
-		return false
-	}
-	return m.fieldsPresent[0]&(1<<0) != 0
 }
 
 func (m *SectionRef) GetObjectPath() string {
@@ -403,73 +364,6 @@ func (m *TaskSpec) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-const maxUnmarshalDepth = 10000
-
-func skipValue(dAtA []byte, wireType int, fieldNum int32) (int, error) {
-	iNdEx := 0
-	l := len(dAtA)
-	switch wireType {
-	case 0:
-		for shift := 0; ; shift++ {
-			if shift >= 10 {
-				return 0, fmt.Errorf("invalid varint")
-			}
-			if iNdEx >= l {
-				return 0, fmt.Errorf("invalid varint")
-			}
-			iNdEx++
-			if dAtA[iNdEx-1] < 0x80 {
-				break
-			}
-		}
-	case 1:
-		if (iNdEx + 8) > l {
-			return 0, fmt.Errorf("truncated fixed64")
-		}
-		iNdEx += 8
-	case 2:
-		var length uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return 0, fmt.Errorf("invalid bytes")
-			}
-			if iNdEx >= l {
-				return 0, fmt.Errorf("invalid bytes")
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			length |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				if shift == 63 && b > 1 {
-					return 0, fmt.Errorf("invalid bytes")
-				}
-				break
-			}
-		}
-		if length > uint64(math.MaxInt) {
-			return 0, fmt.Errorf("invalid bytes")
-		}
-		iNdEx += int(length)
-		if iNdEx < 0 || iNdEx > l {
-			return 0, fmt.Errorf("invalid bytes")
-		}
-	case 3:
-		_, n := protowire.ConsumeGroup(protowire.Number(fieldNum), dAtA[iNdEx:])
-		if n < 0 {
-			return 0, fmt.Errorf("invalid group")
-		}
-		iNdEx += n
-	case 5:
-		if (iNdEx + 4) > l {
-			return 0, fmt.Errorf("truncated fixed32")
-		}
-		iNdEx += 4
-	default:
-		return 0, fmt.Errorf("unknown wire type %d", wireType)
-	}
-	return iNdEx, nil
-}
-
 func (m *SectionRef) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -482,7 +376,7 @@ func (m *SectionRef) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -550,13 +444,21 @@ func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.MinKey = make([]string, 0, c)
+			if cap(m.MinKey) < c {
+				m.MinKey = make([]string, 0, c)
+			} else {
+				m.MinKey = m.MinKey[:0]
+			}
 		}
 		if c := field4count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.MaxKey = make([]string, 0, c)
+			if cap(m.MaxKey) < c {
+				m.MaxKey = make([]string, 0, c)
+			} else {
+				m.MaxKey = m.MaxKey[:0]
+			}
 		}
 	}
 	for iNdEx < l {
@@ -588,7 +490,7 @@ func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // object_path
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -631,10 +533,9 @@ func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.ObjectPath = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // section_index
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -660,10 +561,9 @@ func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.SectionIndex = int32(v)
-			m.fieldsPresent[0] |= 1 << 1
 		case 3: // min_key
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -708,7 +608,7 @@ func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 4: // max_key
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -753,7 +653,7 @@ func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
 			iNdEx = postIndex
 		case 5: // min_timestamp
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -779,10 +679,9 @@ func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.MinTimestamp = int64(v)
-			m.fieldsPresent[0] |= 1 << 2
 		case 6: // max_timestamp
 			if wireType != 0 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -808,9 +707,8 @@ func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.MaxTimestamp = int64(v)
-			m.fieldsPresent[0] |= 1 << 3
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -835,7 +733,7 @@ func (m *RunRef) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *RunRef) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -900,7 +798,11 @@ func (m *RunRef) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.Sections = make([]SectionRef, 0, c)
+			if cap(m.Sections) < c {
+				m.Sections = make([]SectionRef, 0, c)
+			} else {
+				m.Sections = m.Sections[:0]
+			}
 		}
 	}
 	for iNdEx < l {
@@ -932,7 +834,7 @@ func (m *RunRef) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // sections
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -979,7 +881,7 @@ func (m *RunRef) unmarshal(dAtA []byte, depth int) error {
 			}
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
@@ -1004,7 +906,7 @@ func (m *TaskSpec) UnmarshalWithDepth(b []byte, depth int) error {
 }
 
 func (m *TaskSpec) unmarshal(dAtA []byte, depth int) error {
-	if depth > maxUnmarshalDepth {
+	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
 	l := len(dAtA)
@@ -1069,7 +971,11 @@ func (m *TaskSpec) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.Runs = make([]RunRef, 0, c)
+			if cap(m.Runs) < c {
+				m.Runs = make([]RunRef, 0, c)
+			} else {
+				m.Runs = m.Runs[:0]
+			}
 		}
 	}
 	for iNdEx < l {
@@ -1101,7 +1007,7 @@ func (m *TaskSpec) unmarshal(dAtA []byte, depth int) error {
 		switch fieldNum {
 		case 1: // tenant
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -1144,10 +1050,9 @@ func (m *TaskSpec) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.Tenant = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-			m.fieldsPresent[0] |= 1 << 0
 		case 2: // runs
 			if wireType != 2 {
-				n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
 					return err
 				}
@@ -1194,7 +1099,7 @@ func (m *TaskSpec) unmarshal(dAtA []byte, depth int) error {
 			}
 			iNdEx = postIndex
 		default:
-			n, err := skipValue(dAtA[iNdEx:], wireType, fieldNum)
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
 				return err
 			}
