@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/v3/pkg/util/errors"
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
