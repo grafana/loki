@@ -394,9 +394,6 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 
 	opts := workflow.Options{
 		Tenant: objtest.Tenant,
-
-		MaxRunningScanTasks:  32,
-		MaxRunningOtherTasks: 0, // unlimited
 	}
 	wf, err := workflow.New(ctx, opts, logger, sched, plan)
 	require.NoError(t, err)
