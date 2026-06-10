@@ -2411,6 +2411,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		Bucket:          indexBucket,
 		MetastoreWriter: tocWriter,
 		Logger:          logger,
+		Registerer:      prometheus.DefaultRegisterer,
 	})
 	if err != nil {
 		return nil, err
