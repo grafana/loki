@@ -7,6 +7,7 @@ import (
 	"fmt"
 	gotrace "runtime/trace"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alecthomas/units"
@@ -223,7 +224,9 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}
-	defer q.Close()
+
+	closeQuery := runOnceFunc(q.Close)
+	defer closeQuery()
 
 	// We save the pre-query logger so we can pass it to buildPhysicalPlan,
 	// which creates a subquery.
@@ -292,7 +295,14 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		q.RecordError(ctx, errors.New("failed to create execution plan"))
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
-	defer wf.Close()
+	closeWorkflow := runOnceFunc(func() {
+		// workflow close can spend non-trivial time as it needs to send
+		// cancel messages to running tasks and close open streams.
+		start := time.Now()
+		wf.Close()
+		q.rootRegion.Record(statCloseDuration.Observe(int64(time.Since(start))))
+	})
+	defer closeWorkflow()
 	gotrace.Log(ctx, "workflow_planning", "done")
 
 	pipeline, err := wf.Run(ctx)
@@ -304,7 +314,12 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		q.RecordError(ctx, errors.New("failed to execute query"))
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
-	defer pipeline.Close()
+	closePipeline := runOnceFunc(func() {
+		start := time.Now()
+		pipeline.Close()
+		q.rootRegion.Record(statCloseDuration.Observe(int64(time.Since(start))))
+	})
+	defer closePipeline()
 
 	gotrace.Log(ctx, "collect_result", "start")
 	builder, err := e.execute(ctx, q, params, pipeline)
@@ -316,14 +331,15 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	}
 	gotrace.Log(ctx, "collect_result", "done")
 
-	// Close the pipeline to calculate the stats.
-	pipeline.Close()
-	span.SetStatus(codes.Ok, "")
+	// record close timings to capture.
+	closePipeline()
+	closeWorkflow()
 
-	// explicitly call End() before exporting even though we have a defer above.
-	// It is safe to call End() multiple times.
+	span.SetStatus(codes.Ok, "")
+	// End() span to record observations as attributes.
 	span.End()
-	q.Close()
+
+	closeQuery()
 
 	totalQueueTime := xcap.Value[int64](q.capture, schedulerstat.TaskQueueDuration)
 	stats := q.capture.ToStatsSummary(q.Duration(), time.Duration(totalQueueTime), builder.Len())
@@ -370,13 +386,34 @@ func isMetricQuery(expr syntax.Expr) bool {
 }
 
 // buildLogicalPlan builds a logical plan from the given params.
-func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Params) (*logical.Plan, error) {
+func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Params) (logicalPlan *logical.Plan, retErr error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.buildLogicalPlan",
 		trace.WithAttributes(attribute.Stringer("query_id", q.id)),
 	)
 	defer span.End()
 
+	var (
+		optimizeReport []logical.PassFiring
+	)
+
 	timer := prometheus.NewTimer(e.metrics.planning.logical.WithLabelValues(q.queryType))
+	defer func() {
+		duration := timer.ObserveDuration()
+		span.Record(statLogicalPlanDuration.Observe(int64(duration)))
+
+		var planStr string
+		if logicalPlan != nil {
+			planStr = logicalPlan.String()
+		}
+
+		level.Info(q.logger).Log(
+			"msg", "logical-plan-summary",
+			"status", phaseStatus(retErr),
+			"plan", planStr,
+			"duration_ms", duration.Milliseconds(),
+			"passes_fired", encodeLogicalPasses(optimizeReport),
+		)
+	}()
 
 	var deleteReqs []*deletion.Request
 	if e.deleteGetter != nil {
@@ -388,7 +425,8 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Pa
 		}
 	}
 
-	logicalPlan, err := logical.BuildPlanWithDeletes(ctx, params, deleteReqs)
+	var err error
+	logicalPlan, err = logical.BuildPlanWithDeletes(ctx, params, deleteReqs)
 	if err != nil {
 		level.Warn(q.Logger()).Log("msg", "failed to create logical plan", "err", err)
 		q.RecordError(ctx, err)
@@ -397,24 +435,14 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Pa
 
 	var opt logical.Optimizer
 	err = opt.Optimize(logicalPlan)
-	passes := opt.Report()
-	e.metrics.recordLogicalPasses(passes)
+	optimizeReport = opt.Report()
+	e.metrics.recordLogicalPasses(optimizeReport)
 	if err != nil {
 		level.Warn(q.Logger()).Log("msg", "failed to optimize logical plan", "err", err)
 		q.RecordError(ctx, err)
 		return nil, fmt.Errorf("%w: %w", ErrNotSupported, err)
 	}
 
-	duration := timer.ObserveDuration()
-	span.Record(statLogicalPlanDuration.Observe(int64(duration)))
-
-	level.Info(q.logger).Log(
-		"msg", "logical-plan-summary",
-
-		"plan", logicalPlan.String(),
-		"duration_ms", duration.Milliseconds(),
-		"passes_fired", encodeLogicalPasses(passes),
-	)
 	span.SetAttributes(
 		attribute.Stringer("plan", logicalPlan),
 	)
@@ -424,13 +452,25 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Pa
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
-func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.Params, catalog *physical.MetastoreCatalog, logicalPlan *logical.Plan) (*physical.Plan, error) {
+func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.Params, catalog *physical.MetastoreCatalog, logicalPlan *logical.Plan) (physicalPlan *physical.Plan, retErr error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.buildPhysicalPlan",
 		trace.WithAttributes(attribute.Stringer("query_id", q.id)),
 	)
 	defer span.End()
 
+	var rules map[string]bool
+
 	timer := prometheus.NewTimer(e.metrics.planning.physical.WithLabelValues(q.queryType))
+	defer func() {
+		duration := timer.ObserveDuration()
+		span.Record(statPhysicalPlanDuration.Observe(int64(duration)))
+
+		if retErr == nil {
+			e.metrics.observePhysicalShape(physicalPlanShapeOf(physicalPlan))
+		}
+
+		printPhysicalPlanSummary(q, physicalPlan, duration, rules, retErr)
+	}()
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -450,7 +490,6 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 		return nil, ErrNotSupported
 	}
 
-	var rules map[string]bool
 	{
 		optimizeStart := time.Now()
 
@@ -474,12 +513,6 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 		return nil, ErrNotSupported
 	}
 
-	duration := timer.ObserveDuration()
-	span.Record(statPhysicalPlanDuration.Observe(int64(duration)))
-
-	e.metrics.observePhysicalShape(physicalPlanShapeOf(physicalPlan))
-
-	printPhysicalPlanSummary(q, physicalPlan, duration, rules)
 	span.SetAttributes(
 		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
 	)
@@ -490,20 +523,29 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 
 // printExecutionSummary prints a general summary of the execution, including
 // timing and cache information.
-func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Duration, rules map[string]bool) {
+func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Duration, rules map[string]bool, err error) {
 	var (
 		indexQueryDuration, _ = q.capture.Value(statPhysicalIndexQueryDuration).Int64()
 		optimizeDuration, _   = q.capture.Value(statPhysicalOptimizeDuration).Int64()
 
 		otherDuration = calculateResidual(duration, indexQueryDuration, optimizeDuration)
+
+		planLen int
+		planStr string
 	)
+
+	if plan != nil {
+		planLen = plan.Len()
+		planStr = physical.PrintAsTree(plan)
+	}
 
 	level.Info(q.Logger()).Log(
 		"msg", "physical-plan-summary",
+		"status", phaseStatus(err),
 
 		// Plan stats.
 		"duration_ms", duration.Milliseconds(),
-		"plan_node_count", plan.Len(),
+		"plan_node_count", planLen,
 
 		// Timing info
 		"duration_index_query_ms", time.Duration(indexQueryDuration).Milliseconds(),
@@ -520,7 +562,7 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 
 		// Large plans result in log line truncation, retain the other
 		// kvs by moving this to the end.
-		"plan", physical.PrintAsTree(plan),
+		"plan", planStr,
 	)
 }
 
@@ -548,21 +590,24 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 		}()
 
 		var plan *physical.Plan
-		{
+		if err := func() error {
+			var err error
 			timer := prometheus.NewTimer(e.metrics.planning.physical.WithLabelValues(q.queryType))
+			defer func() {
+				duration := timer.ObserveDuration()
+				q.rootRegion.Record(statPhysicalPlanDuration.Observe(int64(duration)))
+				printPhysicalPlanSummary(q, plan, duration, nil, err)
+			}()
 
 			plan, err = planner.Plan(ctx, selector, predicates, start, end)
 			if err != nil {
 				q.RecordError(ctx, err)
-				return nil, fmt.Errorf("index query: build plan: %w", err)
+				return fmt.Errorf("index query: build plan: %w", err)
 			}
 
-			duration := timer.ObserveDuration()
-			q.rootRegion.Record(statPhysicalPlanDuration.Observe(int64(duration)))
-
-			// Index queries plan via planner.Plan and don't run the rule-based
-			// optimizer, so there are no rule firings to report here.
-			printPhysicalPlanSummary(q, plan, duration, nil)
+			return nil
+		}(); err != nil {
+			return nil, err
 		}
 
 		// Disable admission lanes for metastore queries
@@ -572,7 +617,11 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 			q.RecordError(ctx, err)
 			return nil, fmt.Errorf("index query: build workflow: %w", err)
 		}
-		defer wf.Close()
+		defer func() {
+			start := time.Now()
+			wf.Close()
+			q.rootRegion.Record(statCloseDuration.Observe(int64(time.Since(start))))
+		}()
 
 		pipeline, err := wf.Run(ctx)
 		if err != nil {
@@ -580,17 +629,26 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 			return nil, fmt.Errorf("index query: run workflow: %w", err)
 		}
 		reader := executor.TranslateEOF(pipeline)
-		defer reader.Close()
+		defer func() {
+			start := time.Now()
+			reader.Close()
+			q.rootRegion.Record(statCloseDuration.Observe(int64(time.Since(start))))
+		}()
 
-		if err := reader.Open(ctx); err != nil {
+		executionTimer := prometheus.NewTimer(e.metrics.execution.duration.WithLabelValues(q.queryType))
+		defer func() {
+			duration := executionTimer.ObserveDuration()
+			q.rootRegion.Record(statExecutionDuration.Observe(int64(duration)))
+			printExecutionSummary(q, duration, err)
+		}()
+
+		if err = reader.Open(ctx); err != nil {
 			q.RecordError(ctx, err)
 			return nil, fmt.Errorf("index query: open pipeline: %w", err)
 		}
 
 		var resp metastore.CollectSectionsResponse
 		{
-			timer := prometheus.NewTimer(e.metrics.execution.duration.WithLabelValues(q.queryType))
-
 			resp, err = e.metastore.CollectSections(ctx, metastore.CollectSectionsRequest{
 				// externalize EOFs returned by executor pipelines (executor.EOF -> io.EOF)
 				// because metastore is not aware about executor implementation details
@@ -600,11 +658,6 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 				q.RecordError(ctx, err)
 				return nil, fmt.Errorf("index query: collect sections: %w", err)
 			}
-
-			executionDuration := timer.ObserveDuration()
-			q.rootRegion.Record(statExecutionDuration.Observe(int64(executionDuration)))
-
-			printExecutionSummary(q, executionDuration)
 		}
 
 		sectionsResolved := len(resp.SectionsResponse.Sections)
@@ -647,6 +700,13 @@ func (e *Engine) execute(ctx context.Context, q *query, params logql.Params, pip
 
 	executeStart := time.Now()
 	timer := prometheus.NewTimer(e.metrics.execution.duration.WithLabelValues(q.queryType))
+	defer func() {
+		duration := timer.ObserveDuration()
+		span.Record(statExecutionDuration.Observe(int64(duration)))
+
+		printExecutionSummary(q, duration, err)
+		printLogLocalitySummary(q)
+	}()
 
 	var builder ResultBuilder
 	switch params.GetExpression().(type) {
@@ -708,8 +768,6 @@ func (e *Engine) execute(ctx context.Context, q *query, params logql.Params, pip
 		totalProcessBatchTime += time.Since(startTime)
 	}
 
-	duration := timer.ObserveDuration()
-	span.Record(statExecutionDuration.Observe(int64(duration)))
 	span.Record(statReadBatchDuration.Observe(int64(totalReadBatchTime)))
 	span.Record(statProcessBatchDuration.Observe(int64(totalProcessBatchTime)))
 
@@ -727,9 +785,6 @@ func (e *Engine) execute(ctx context.Context, q *query, params logql.Params, pip
 	span.Record(statResultRows.Observe(int64(builder.Len())))
 	span.Record(statTimeToFirstBatch.Observe(int64(timeToFirstBatch)))
 	span.Record(statResultSizeBytes.Observe(totalBytes))
-
-	printExecutionSummary(q, duration)
-	printLogLocalitySummary(q)
 
 	span.SetStatus(codes.Ok, "")
 	return builder, nil
@@ -765,7 +820,7 @@ func resultErrorClass(err error) string {
 // timing and cache information.
 //
 // Stats that are not reported in the capture are left empty.
-func printExecutionSummary(q *query, duration time.Duration) {
+func printExecutionSummary(q *query, duration time.Duration, err error) {
 	var (
 		readBatchDuration, _    = q.capture.Value(statReadBatchDuration).Int64()
 		processBatchDuration, _ = q.capture.Value(statProcessBatchDuration).Int64()
@@ -798,6 +853,7 @@ func printExecutionSummary(q *query, duration time.Duration) {
 
 	level.Info(q.Logger()).Log(
 		"msg", "execution-summary",
+		"status", phaseStatus(err),
 
 		// Stats
 		"duration_ms", duration.Milliseconds(),
@@ -854,4 +910,16 @@ func printLogLocalitySummary(q *query) {
 		"stream_pages_total", streamPagesTotal,
 		"stream_relevant_pages", streamRelevantPages,
 	)
+}
+
+func phaseStatus(err error) string {
+	if err == nil {
+		return "success"
+	}
+	return "failed"
+}
+
+func runOnceFunc(fn func()) func() {
+	var once sync.Once
+	return func() { once.Do(fn) }
 }
