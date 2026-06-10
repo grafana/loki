@@ -22,41 +22,52 @@ func TestTokenizeLabelFmt(t *testing.T) {
 		[]arrow.Field{
 			semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
 			semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
-			semconv.FieldFromIdent(semconv.NewIdentifier("namespace", types.ColumnTypeMetadata, types.Loki.String), false),
+			semconv.FieldFromIdent(semconv.NewIdentifier("namespace", types.ColumnTypeMetadata, types.Loki.String), true),
 		},
 		nil, // No metadata
 	)
 	tests := []struct {
-		name      string
-		line      string
-		timeVal   arrow.Timestamp
-		namespace string
-		fmts      []log.LabelFmt
-		want      map[string]string
+		name          string
+		line          string
+		timeVal       arrow.Timestamp
+		namespace     string
+		nullNamespace bool // when true, append NULL for namespace instead of the namespace string
+		fmts          []log.LabelFmt
+		want          map[string]string
 	}{
 		{
-			"simple rename",
-			"this is my test line of logs",
-			arrow.Timestamp(timestamp.UnixNano()),
-			"dev",
-			[]log.LabelFmt{{Name: "foo", Value: "namespace", Rename: true}},
-			map[string]string{"foo": "dev"},
+			name:      "simple rename",
+			line:      "this is my test line of logs",
+			timeVal:   arrow.Timestamp(timestamp.UnixNano()),
+			namespace: "dev",
+			fmts:      []log.LabelFmt{{Name: "foo", Value: "namespace", Rename: true}},
+			want:      map[string]string{"foo": "dev"},
 		},
 		{
-			"new label",
-			"this is my test line of logs",
-			arrow.Timestamp(timestamp.UnixNano()),
-			"dev",
-			[]log.LabelFmt{{Name: "logTimeNanos", Value: "{{ __timestamp__ | unixEpochNanos }}", Rename: false}},
-			map[string]string{"logTimeNanos": strconv.FormatInt(timestamp.UTC().UnixNano(), 10)},
+			name:      "new label",
+			line:      "this is my test line of logs",
+			timeVal:   arrow.Timestamp(timestamp.UnixNano()),
+			namespace: "dev",
+			fmts:      []log.LabelFmt{{Name: "logTimeNanos", Value: "{{ __timestamp__ | unixEpochNanos }}", Rename: false}},
+			want:      map[string]string{"logTimeNanos": strconv.FormatInt(timestamp.UTC().UnixNano(), 10)},
 		},
 		{
-			"rename and label",
-			"this is my test line of logs",
-			arrow.Timestamp(timestamp.Add(10 * time.Second).UTC().UnixNano()),
-			"dev",
-			[]log.LabelFmt{{Name: "foo", Value: "namespace", Rename: true}, {Name: "logTimeNanos", Value: "{{ __timestamp__ | unixEpochNanos }}", Rename: false}},
-			map[string]string{"foo": "dev", "logTimeNanos": strconv.FormatInt(timestamp.Add(10*time.Second).UTC().UnixNano(), 10)},
+			name:      "rename and label",
+			line:      "this is my test line of logs",
+			timeVal:   arrow.Timestamp(timestamp.Add(10 * time.Second).UTC().UnixNano()),
+			namespace: "dev",
+			fmts:      []log.LabelFmt{{Name: "foo", Value: "namespace", Rename: true}, {Name: "logTimeNanos", Value: "{{ __timestamp__ | unixEpochNanos }}", Rename: false}},
+			want:      map[string]string{"foo": "dev", "logTimeNanos": strconv.FormatInt(timestamp.Add(10*time.Second).UTC().UnixNano(), 10)},
+		},
+		{
+			// Null entries on a parsed/metadata column must be exposed to the label
+			// formatter as "" to match v1 engine
+			name:          "null entry renders as empty",
+			line:          "line",
+			timeVal:       arrow.Timestamp(timestamp.UnixNano()),
+			nullNamespace: true,
+			fmts:          []log.LabelFmt{{Name: "tag", Value: "x{{.namespace}}y", Rename: false}},
+			want:          map[string]string{"tag": "xy"},
 		},
 	}
 
@@ -67,18 +78,13 @@ func TestTokenizeLabelFmt(t *testing.T) {
 			tsBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 			namespaceBuilder := array.NewStringBuilder(memory.DefaultAllocator)
 
-			// Append data to the builders
-			logs := make([]string, 1)
-			ts := make([]arrow.Timestamp, 1)
-			namespaces := make([]string, 1)
-
-			logs[0] = tt.line
-			ts[0] = tt.timeVal
-			namespaces[0] = tt.namespace
-
-			tsBuilder.AppendValues(ts, nil)
-			logBuilder.AppendValues(logs, nil)
-			namespaceBuilder.AppendValues(namespaces, nil)
+			logBuilder.Append(tt.line)
+			tsBuilder.Append(tt.timeVal)
+			if tt.nullNamespace {
+				namespaceBuilder.AppendNull()
+			} else {
+				namespaceBuilder.Append(tt.namespace)
+			}
 
 			// Build the arrays
 			logArray := logBuilder.NewArray()

@@ -268,3 +268,26 @@ queries:
       log_format: logfmt
       detected_fields:
         - error
+  - description: label_format renders null parsed field as empty, not "(null)"
+    query: sum by (tag) (count_over_time(${SELECTOR} | logfmt | error=~`(?i).*.*` | label_format tag=`x{{.error}}y` [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - sum
+      - count_over_time
+      - logfmt
+      - label_format
+      - absent-field
+    notes: >
+      Regression for the v2 null-rendering fix. The "error" logfmt field is only
+      emitted for error-level lines, so its parsed column is null on every
+      non-error row. Pre-fix the v2 engine rendered `{{.error}}` as the literal
+      "(null)" (Arrow's NullValueStr), producing an extra tag="x(null)y" series
+      that v1 never emits (v1 renders missing labels as ""). The
+      series label set and per-series counts must match v1.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - error

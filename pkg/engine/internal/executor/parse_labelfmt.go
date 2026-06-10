@@ -74,7 +74,7 @@ func tokenizeLabelfmt(input arrow.RecordBatch, line string, decoder *log.LabelsF
 func buildLabelsFromInput(input arrow.RecordBatch) labels.Labels {
 	var labelList []labels.Label
 	for i := 0; i < int(input.NumCols()); i++ {
-		labelList = append(labelList, labels.Label{Name: semconv.MustParseFQN(input.ColumnName(i)).ColumnRef().Column, Value: input.Column(i).ValueStr(0)})
+		labelList = append(labelList, labels.Label{Name: semconv.MustParseFQN(input.ColumnName(i)).ColumnRef().Column, Value: valueStrOrEmpty(input.Column(i), 0)})
 	}
 	return labels.New(labelList...)
 }
