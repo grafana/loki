@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-func TestReadPointers_SchemaParity(t *testing.T) {
+func TestReadPointersForStreams_SchemaParity(t *testing.T) {
 	fx := buildJoinedFixture(t, []testStream{
 		{streamID: 1, minTs: unixTime(100), maxTs: unixTime(150), rows: 10, uncompressedSize: 1000},
 		{streamID: 2, minTs: unixTime(200), maxTs: unixTime(250), rows: 20, uncompressedSize: 2000},
@@ -32,8 +32,8 @@ func TestReadPointers_SchemaParity(t *testing.T) {
 	require.NoError(t, postingsReader.Open(t.Context()))
 	t.Cleanup(func() { _ = postingsReader.Close() })
 
-	postingsBatch, err := postingsReader.ReadPointers(t.Context(),
-		map[int64]struct{}{1: {}, 2: {}, 3: {}},
+	postingsBatch, err := postingsReader.ReadPointersForStreams(t.Context(),
+		streamRefsForObject("/test/obj", 1, 2, 3),
 		unixTime(0), unixTime(10000))
 	require.NoError(t, err)
 	require.NotNil(t, postingsBatch)
@@ -90,11 +90,11 @@ func TestReadPointers_SchemaParity(t *testing.T) {
 	require.NotNil(t, pointersBatch)
 
 	require.True(t, postingsBatch.Schema().Equal(pointersBatch.Schema()),
-		"postings ReadPointers schema must match pointers.Reader-fed openStreamPointersReader schema byte-for-byte on the FULL 9-column default pointer-scan projection (no narrowing); got\n  postings=%s\n  pointers=%s",
+		"postings ReadPointersForStreams schema must match pointers.Reader-fed openStreamPointersReader schema byte-for-byte on the FULL 9-column default pointer-scan projection (no narrowing); got\n  postings=%s\n  pointers=%s",
 		postingsBatch.Schema(), pointersBatch.Schema())
 }
 
-func TestReadPointers_StreamIDFilter(t *testing.T) {
+func TestReadPointersForStreams_StreamIDFilter(t *testing.T) {
 	fx := buildJoinedFixture(t, []testStream{
 		{streamID: 1, minTs: unixTime(100), maxTs: unixTime(150), rows: 10, uncompressedSize: 1000},
 		{streamID: 2, minTs: unixTime(200), maxTs: unixTime(250), rows: 20, uncompressedSize: 2000},
@@ -109,8 +109,8 @@ func TestReadPointers_StreamIDFilter(t *testing.T) {
 	require.NoError(t, r.Open(t.Context()))
 	t.Cleanup(func() { _ = r.Close() })
 
-	batch, err := r.ReadPointers(t.Context(),
-		map[int64]struct{}{1: {}, 3: {}},
+	batch, err := r.ReadPointersForStreams(t.Context(),
+		streamRefsForObject("/test/obj", 1, 3),
 		unixTime(0), unixTime(10000))
 	require.NoError(t, err)
 	require.NotNil(t, batch)
@@ -140,7 +140,159 @@ func TestReadPointers_StreamIDFilter(t *testing.T) {
 	}
 }
 
-func TestReadPointers_TimeRangeFilter(t *testing.T) {
+func TestReadPointersForStreams_ObjectScopedFilter(t *testing.T) {
+	pb := postings.NewBuilder(nil, 0, 0)
+	pb.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "/test/objA",
+		SectionIndex:     0,
+		ColumnName:       "app",
+		LabelValue:       "foo",
+		StreamID:         1,
+		Timestamp:        unixTime(100),
+		UncompressedSize: 1,
+	})
+	pb.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "/test/objB",
+		SectionIndex:     0,
+		ColumnName:       "app",
+		LabelValue:       "bar",
+		StreamID:         1,
+		Timestamp:        unixTime(120),
+		UncompressedSize: 1,
+	})
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(pb))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+
+	var sec *postings.Section
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		opened, openErr := postings.Open(t.Context(), s)
+		require.NoError(t, openErr)
+		sec = opened
+		break
+	}
+	require.NotNil(t, sec, "postings section missing from fixture")
+
+	r := postings.NewReader(postings.ReaderOptions{
+		Columns:   sec.Columns(),
+		Allocator: memory.DefaultAllocator,
+	})
+	require.NoError(t, r.Open(t.Context()))
+	t.Cleanup(func() { _ = r.Close() })
+
+	batch, err := r.ReadPointersForStreams(
+		t.Context(),
+		map[postings.StreamRef]struct{}{
+			{ObjectPath: "/test/objA", StreamID: 1}: {},
+		},
+		unixTime(0), unixTime(10000),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, batch)
+	require.Equal(t, int64(1), batch.NumRows())
+
+	got := materialiseReadPointersRows(t, batch)
+	require.Equal(t, "/test/objA", got[0].objectPath)
+	require.Equal(t, int64(1), got[0].streamID)
+}
+
+func TestReadPointersForStreams_DeduplicatesAcrossLabelRows(t *testing.T) {
+	pb := postings.NewBuilder(nil, 0, 0)
+	for _, obs := range []postings.LabelObservation{
+		// app=foo row for stream 1
+		{
+			ObjectPath:       "/test/objA",
+			SectionIndex:     0,
+			ColumnName:       "app",
+			LabelValue:       "foo",
+			StreamID:         1,
+			Timestamp:        unixTime(100),
+			UncompressedSize: 1,
+		},
+		{
+			ObjectPath:       "/test/objA",
+			SectionIndex:     0,
+			ColumnName:       "app",
+			LabelValue:       "foo",
+			StreamID:         1,
+			Timestamp:        unixTime(110),
+			UncompressedSize: 1,
+		},
+		// env=prod row for the same stream 1, with a wider time span
+		{
+			ObjectPath:       "/test/objA",
+			SectionIndex:     0,
+			ColumnName:       "env",
+			LabelValue:       "prod",
+			StreamID:         1,
+			Timestamp:        unixTime(90),
+			UncompressedSize: 1,
+		},
+		{
+			ObjectPath:       "/test/objA",
+			SectionIndex:     0,
+			ColumnName:       "env",
+			LabelValue:       "prod",
+			StreamID:         1,
+			Timestamp:        unixTime(120),
+			UncompressedSize: 1,
+		},
+	} {
+		pb.ObserveLabelPosting(obs)
+	}
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(pb))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+
+	var sec *postings.Section
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		opened, openErr := postings.Open(t.Context(), s)
+		require.NoError(t, openErr)
+		sec = opened
+		break
+	}
+	require.NotNil(t, sec, "postings section missing from fixture")
+
+	r := postings.NewReader(postings.ReaderOptions{
+		Columns:   sec.Columns(),
+		Allocator: memory.DefaultAllocator,
+	})
+	require.NoError(t, r.Open(t.Context()))
+	t.Cleanup(func() { _ = r.Close() })
+
+	// Without dedupe this returns 2 rows (one per label posting row).
+	batch, err := r.ReadPointersForStreams(
+		t.Context(),
+		map[postings.StreamRef]struct{}{
+			{ObjectPath: "/test/objA", StreamID: 1}: {},
+		},
+		unixTime(0), unixTime(10000),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, batch)
+	require.Equal(t, int64(1), batch.NumRows(), "must emit one row per (object,section,stream)")
+
+	got := materialiseReadPointersRows(t, batch)
+	require.Equal(t, "/test/objA", got[0].objectPath)
+	require.Equal(t, int64(0), got[0].sectionIndex)
+	require.Equal(t, int64(1), got[0].streamID)
+	require.Equal(t, unixTime(90).UnixNano(), got[0].minTimestamp)
+	require.Equal(t, unixTime(120).UnixNano(), got[0].maxTimestamp)
+}
+
+func TestReadPointersForStreams_TimeRangeFilter(t *testing.T) {
 	fx := buildJoinedFixture(t, []testStream{
 		{streamID: 1, minTs: unixTime(100), maxTs: unixTime(150), rows: 10, uncompressedSize: 1000},
 		{streamID: 2, minTs: unixTime(200), maxTs: unixTime(250), rows: 20, uncompressedSize: 2000},
@@ -154,7 +306,7 @@ func TestReadPointers_TimeRangeFilter(t *testing.T) {
 	require.NoError(t, r.Open(t.Context()))
 	t.Cleanup(func() { _ = r.Close() })
 
-	batch, err := r.ReadPointers(t.Context(), nil, unixTime(190), unixTime(260))
+	batch, err := r.ReadPointersForStreams(t.Context(), nil, unixTime(190), unixTime(260))
 	require.NoError(t, err)
 	require.NotNil(t, batch)
 
@@ -163,7 +315,7 @@ func TestReadPointers_TimeRangeFilter(t *testing.T) {
 	require.Equal(t, int64(2), got[0].streamID)
 }
 
-func TestReadPointers_EmptyStreamIDs(t *testing.T) {
+func TestReadPointersForStreams_EmptyStreamRefs(t *testing.T) {
 	fx := buildJoinedFixture(t, []testStream{
 		{streamID: 1, minTs: unixTime(100), maxTs: unixTime(150), rows: 10, uncompressedSize: 1000},
 		{streamID: 2, minTs: unixTime(200), maxTs: unixTime(250), rows: 20, uncompressedSize: 2000},
@@ -177,7 +329,7 @@ func TestReadPointers_EmptyStreamIDs(t *testing.T) {
 	require.NoError(t, r.Open(t.Context()))
 	t.Cleanup(func() { _ = r.Close() })
 
-	batch, err := r.ReadPointers(t.Context(), nil, unixTime(0), unixTime(10000))
+	batch, err := r.ReadPointersForStreams(t.Context(), nil, unixTime(0), unixTime(10000))
 	require.NoError(t, err)
 	require.NotNil(t, batch)
 
@@ -190,7 +342,7 @@ func TestReadPointers_EmptyStreamIDs(t *testing.T) {
 	require.ElementsMatch(t, []int64{1, 2, 3}, gotIDs)
 }
 
-func TestReadPointers_NoParentObject(t *testing.T) {
+func TestReadPointersForStreams_NoParentObject(t *testing.T) {
 	pb := postings.NewBuilder(nil, 0, 0)
 	pb.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "/test/objB",
@@ -226,8 +378,8 @@ func TestReadPointers_NoParentObject(t *testing.T) {
 	require.NoError(t, r.Open(t.Context()))
 	t.Cleanup(func() { _ = r.Close() })
 
-	batch, err := r.ReadPointers(t.Context(), nil, unixTime(0), unixTime(10000))
-	require.NoError(t, err, "ReadPointers must work without a sibling streams section")
+	batch, err := r.ReadPointersForStreams(t.Context(), nil, unixTime(0), unixTime(10000))
+	require.NoError(t, err, "ReadPointersForStreams must work without a sibling streams section")
 	require.NotNil(t, batch)
 	require.Equal(t, int64(1), batch.NumRows())
 	got := materialiseReadPointersRows(t, batch)
@@ -339,6 +491,17 @@ func findPointersColumnsByTypesTestHelper(allColumns []*pointers.Column, columnT
 		}
 	}
 	return result
+}
+
+func streamRefsForObject(objectPath string, streamIDs ...int64) map[postings.StreamRef]struct{} {
+	refs := make(map[postings.StreamRef]struct{}, len(streamIDs))
+	for _, streamID := range streamIDs {
+		refs[postings.StreamRef{
+			ObjectPath: objectPath,
+			StreamID:   streamID,
+		}] = struct{}{}
+	}
+	return refs
 }
 
 type readPointersRow struct {

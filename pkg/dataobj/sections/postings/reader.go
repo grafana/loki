@@ -269,7 +269,7 @@ func (r *Reader) init(ctx context.Context) error {
 // readPointersBatchSize bounds per-batch allocations while amortising fixed costs when draining the adapter.
 const readPointersBatchSize = 4096
 
-// readPointersOutputSchema returns the Arrow schema emitted by ReadPointers
+// readPointersOutputSchema returns the Arrow schema emitted by ReadPointersForStreams.
 func readPointersOutputSchema() *arrow.Schema {
 	// makeColumnName mirrors pointers/reader.go:504-515.
 	makeColumnName := func(label, name string, dty arrow.DataType) string {
@@ -316,48 +316,6 @@ func readPointersOutputSchema() *arrow.Schema {
 	return arrow.NewSchema(fields, nil)
 }
 
-// ReadPointers returns stream-pointer rows sourced from the postings KindLabel rows for
-// streams overlapping [start, end] (an empty streamIDs applies no stream filter). The schema
-// matches readPointersOutputSchema; row_count and uncompressed_size are emitted as zero.
-func (r *Reader) ReadPointers(ctx context.Context, streamIDs map[int64]struct{}, start, end time.Time) (arrow.RecordBatch, error) {
-	if !r.ready {
-		return nil, errReaderNotOpen
-	}
-
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ReadPointers")
-	defer span.End()
-	startTime := time.Now()
-	defer r.alloc.Reclaim()
-
-	outSchema := readPointersOutputSchema()
-	alloc := r.opts.Allocator
-	if alloc == nil {
-		alloc = memory.DefaultAllocator
-	}
-
-	postingsRows, err := r.collectPostingsRows(ctx, streamIDs, nil, start, end)
-	if err != nil {
-		return nil, err
-	}
-
-	// Short-circuit empty result with a schema-identical empty batch.
-	if len(postingsRows) == 0 {
-		rb := buildEmptyRecord(alloc, outSchema)
-		xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(int64(0)))
-		xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersReadTime.Observe(time.Since(startTime).Seconds()))
-		return rb, nil
-	}
-
-	rb, err := buildReadPointersRecord(alloc, outSchema, postingsRows)
-	if err != nil {
-		return nil, fmt.Errorf("building ReadPointers output batch: %w", err)
-	}
-
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(rb.NumRows()))
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersReadTime.Observe(time.Since(startTime).Seconds()))
-	return rb, nil
-}
-
 // ReadPointersForStreams returns stream-pointer rows scoped to the provided stream refs.
 // Stream refs include object path context, which avoids accidental cross-object stream-ID
 // collisions when the same numeric stream ID appears in multiple source objects.
@@ -377,7 +335,7 @@ func (r *Reader) ReadPointersForStreams(ctx context.Context, streamRefs map[Stre
 		alloc = memory.DefaultAllocator
 	}
 
-	postingsRows, err := r.collectPostingsRows(ctx, nil, streamRefs, start, end)
+	postingsRows, err := r.collectPostingsRows(ctx, streamRefs, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +349,7 @@ func (r *Reader) ReadPointersForStreams(ctx context.Context, streamRefs map[Stre
 
 	rb, err := buildReadPointersRecord(alloc, outSchema, postingsRows)
 	if err != nil {
-		return nil, fmt.Errorf("building ReadPointers output batch: %w", err)
+		return nil, fmt.Errorf("building ReadPointersForStreams output batch: %w", err)
 	}
 
 	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(rb.NumRows()))
@@ -416,10 +374,9 @@ type pointerJoinKey struct {
 }
 
 // collectPostingsRows reads KindLabel rows and emits one tuple per stream-id bit set in each
-// row's bitmap, applying stream filters and [start,end] filters row-side.
+// row's bitmap, applying streamRefs and [start,end] filters row-side.
 func (r *Reader) collectPostingsRows(
 	ctx context.Context,
-	streamIDs map[int64]struct{},
 	streamRefs map[StreamRef]struct{},
 	start, end time.Time,
 ) ([]pointerJoinRow, error) {
@@ -432,7 +389,7 @@ func (r *Reader) collectPostingsRows(
 		ColumnTypeMaxTimestamp,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("finding postings columns for ReadPointers: %w", err)
+		return nil, fmt.Errorf("finding postings columns for ReadPointersForStreams: %w", err)
 	}
 	colKind, colObjectPath, colSectionIndex, colStreamIDBitmap, colMinTs, colMaxTs :=
 		postingsCols[0], postingsCols[1], postingsCols[2], postingsCols[3], postingsCols[4], postingsCols[5]
@@ -477,7 +434,7 @@ func (r *Reader) collectPostingsRows(
 	postingsAdapter := columnar.NewReaderAdapter(innerOptions)
 	defer func() { _ = postingsAdapter.Close() }()
 	if err := postingsAdapter.Open(ctx); err != nil {
-		return nil, fmt.Errorf("opening postings adapter for ReadPointers: %w", err)
+		return nil, fmt.Errorf("opening postings adapter for ReadPointersForStreams: %w", err)
 	}
 
 	// Schema for the inner postings projection (used by arrowconv.ToRecordBatch
@@ -501,7 +458,7 @@ func (r *Reader) collectPostingsRows(
 			if err != nil {
 				return nil, fmt.Errorf("converting postings columnar batch to arrow: %w", err)
 			}
-			if err := appendPostingsJoinRows(rb, streamIDs, streamRefs, start.UnixNano(), end.UnixNano(), &out, seen); err != nil {
+			if err := appendPostingsJoinRows(rb, streamRefs, start.UnixNano(), end.UnixNano(), &out, seen); err != nil {
 				return nil, err
 			}
 		}
@@ -509,7 +466,7 @@ func (r *Reader) collectPostingsRows(
 			break
 		}
 		if readErr != nil {
-			return nil, fmt.Errorf("reading postings batch for ReadPointers: %w", readErr)
+			return nil, fmt.Errorf("reading postings batch for ReadPointersForStreams: %w", readErr)
 		}
 	}
 
@@ -517,10 +474,9 @@ func (r *Reader) collectPostingsRows(
 }
 
 // appendPostingsJoinRows decodes each row's LSB bitmap into one tuple per stream-id, skipping
-// rows outside [startNanos, endNanos] and stream-ids absent from active stream filters.
+// rows outside [startNanos, endNanos] and stream-ids absent from streamRefs.
 func appendPostingsJoinRows(
 	rb arrow.RecordBatch,
-	streamIDs map[int64]struct{},
 	streamRefs map[StreamRef]struct{},
 	startNanos, endNanos int64,
 	out *[]pointerJoinRow,
@@ -551,7 +507,6 @@ func appendPostingsJoinRows(
 		return fmt.Errorf("postings max_timestamp column has unexpected type %T", rb.Column(5))
 	}
 
-	filterStreamIDs := len(streamIDs) > 0
 	filterStreamRefs := len(streamRefs) > 0
 
 	for i := 0; i < int(rb.NumRows()); i++ {
@@ -589,10 +544,6 @@ func appendPostingsJoinRows(
 				if filterStreamRefs {
 					streamRef := StreamRef{ObjectPath: objectPath, StreamID: streamID}
 					if _, keep := streamRefs[streamRef]; !keep {
-						continue
-					}
-				} else if filterStreamIDs {
-					if _, keep := streamIDs[streamID]; !keep {
 						continue
 					}
 				}

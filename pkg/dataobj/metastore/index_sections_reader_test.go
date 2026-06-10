@@ -655,14 +655,14 @@ func TestIndexSectionsReader_PostingsPath_MultiplePostingsSectionsReturnsError(t
 	require.ErrorContains(t, err, "multiple postings sections found")
 }
 
-// requirePostingsSchema asserts rec carries the postings.ReadPointers output
+// requirePostingsSchema asserts rec carries the postings.ReadPointersForStreams output
 // schema (9 pointer columns + InternalLabelsFieldName), proving the postings path
 // emits the same schema as the streams+pointers path.
 func requirePostingsSchema(t *testing.T, rec arrow.RecordBatch) {
 	t.Helper()
 
 	require.Equal(t, 10, len(rec.Schema().Fields()),
-		"postings.ReadPointers output has 9 columns + InternalLabelsFieldName")
+		"postings.ReadPointersForStreams output has 9 columns + InternalLabelsFieldName")
 
 	for _, name := range []string{
 		"path.path.utf8",
