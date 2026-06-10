@@ -371,11 +371,11 @@ func (m *SingleTenantObjectSourceWithTenantID) GetTenant() string {
 	return ""
 }
 
-func (m *SingleTenantObjectSourceWithTenantID) GetSource() *SingleTenantObjectSource {
+func (m *SingleTenantObjectSourceWithTenantID) GetSource() SingleTenantObjectSource {
 	if m != nil {
-		return &m.Source
+		return m.Source
 	}
-	return nil
+	return SingleTenantObjectSource{}
 }
 
 func (m *CompactionJob) GetSource() CompactionJob_Source {
@@ -406,11 +406,11 @@ func (m *CompactionJob) GetTargetSizeBytes() int64 {
 	return 0
 }
 
-func (m *CompactionJob) GetReadRange() *TimeRange {
+func (m *CompactionJob) GetReadRange() TimeRange {
 	if m != nil {
-		return &m.ReadRange
+		return m.ReadRange
 	}
-	return nil
+	return TimeRange{}
 }
 
 func (m *CompactionJobResponse) GetPaths() []string {
@@ -441,11 +441,11 @@ func (m *IndexInfo) GetPath() string {
 	return ""
 }
 
-func (m *IndexInfo) GetTimeRange() *TimeRange {
+func (m *IndexInfo) GetTimeRange() TimeRange {
 	if m != nil {
-		return &m.TimeRange
+		return m.TimeRange
 	}
-	return nil
+	return TimeRange{}
 }
 
 func (m *IndexingJobResponse) GetIndexes() []IndexInfo {
@@ -1710,10 +1710,10 @@ func (m *SingleTenantObjectSource) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Streams) < c {
-				m.Streams = make([]*Stream, 0, c)
-			} else {
-				m.Streams = m.Streams[:0]
+			if need := len(m.Streams) + c; cap(m.Streams) < need {
+				grown := make([]*Stream, len(m.Streams), need)
+				copy(grown, m.Streams)
+				m.Streams = grown
 			}
 		}
 	}
@@ -1911,10 +1911,10 @@ func (m *MultiTenantObjectSource) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.TenantStreams) < c {
-				m.TenantStreams = make([]*TenantStream, 0, c)
-			} else {
-				m.TenantStreams = m.TenantStreams[:0]
+			if need := len(m.TenantStreams) + c; cap(m.TenantStreams) < need {
+				grown := make([]*TenantStream, len(m.TenantStreams), need)
+				copy(grown, m.TenantStreams)
+				m.TenantStreams = grown
 			}
 		}
 	}
@@ -2112,10 +2112,10 @@ func (m *CompactionManifest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.SourceIndexes) < c {
-				m.SourceIndexes = make([]string, 0, c)
-			} else {
-				m.SourceIndexes = m.SourceIndexes[:0]
+			if need := len(m.SourceIndexes) + c; cap(m.SourceIndexes) < need {
+				grown := make([]string, len(m.SourceIndexes), need)
+				copy(grown, m.SourceIndexes)
+				m.SourceIndexes = grown
 			}
 		}
 	}
@@ -2747,10 +2747,10 @@ func (m *CompactionJobResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Paths) < c {
-				m.Paths = make([]string, 0, c)
-			} else {
-				m.Paths = m.Paths[:0]
+			if need := len(m.Paths) + c; cap(m.Paths) < need {
+				grown := make([]string, len(m.Paths), need)
+				copy(grown, m.Paths)
+				m.Paths = grown
 			}
 		}
 	}
@@ -2917,10 +2917,10 @@ func (m *IndexingJob) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Paths) < c {
-				m.Paths = make([]string, 0, c)
-			} else {
-				m.Paths = m.Paths[:0]
+			if need := len(m.Paths) + c; cap(m.Paths) < need {
+				grown := make([]string, len(m.Paths), need)
+				copy(grown, m.Paths)
+				m.Paths = grown
 			}
 		}
 	}
@@ -3282,10 +3282,10 @@ func (m *IndexingJobResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Indexes) < c {
-				m.Indexes = make([]IndexInfo, 0, c)
-			} else {
-				m.Indexes = m.Indexes[:0]
+			if need := len(m.Indexes) + c; cap(m.Indexes) < need {
+				grown := make([]IndexInfo, len(m.Indexes), need)
+				copy(grown, m.Indexes)
+				m.Indexes = grown
 			}
 		}
 	}

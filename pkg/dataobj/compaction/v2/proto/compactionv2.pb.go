@@ -444,20 +444,20 @@ func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.MinKey) < c {
-				m.MinKey = make([]string, 0, c)
-			} else {
-				m.MinKey = m.MinKey[:0]
+			if need := len(m.MinKey) + c; cap(m.MinKey) < need {
+				grown := make([]string, len(m.MinKey), need)
+				copy(grown, m.MinKey)
+				m.MinKey = grown
 			}
 		}
 		if c := field4count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.MaxKey) < c {
-				m.MaxKey = make([]string, 0, c)
-			} else {
-				m.MaxKey = m.MaxKey[:0]
+			if need := len(m.MaxKey) + c; cap(m.MaxKey) < need {
+				grown := make([]string, len(m.MaxKey), need)
+				copy(grown, m.MaxKey)
+				m.MaxKey = grown
 			}
 		}
 	}
@@ -798,10 +798,10 @@ func (m *RunRef) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Sections) < c {
-				m.Sections = make([]SectionRef, 0, c)
-			} else {
-				m.Sections = m.Sections[:0]
+			if need := len(m.Sections) + c; cap(m.Sections) < need {
+				grown := make([]SectionRef, len(m.Sections), need)
+				copy(grown, m.Sections)
+				m.Sections = grown
 			}
 		}
 	}
@@ -971,10 +971,10 @@ func (m *TaskSpec) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Runs) < c {
-				m.Runs = make([]RunRef, 0, c)
-			} else {
-				m.Runs = m.Runs[:0]
+			if need := len(m.Runs) + c; cap(m.Runs) < need {
+				grown := make([]RunRef, len(m.Runs), need)
+				copy(grown, m.Runs)
+				m.Runs = grown
 			}
 		}
 	}

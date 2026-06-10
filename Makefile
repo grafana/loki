@@ -195,6 +195,7 @@ WIRESMITH_PROTO_GROUP_logproto := \
 	./pkg/logproto/metrics.proto \
 	./pkg/logproto/pattern.proto \
 	./pkg/logproto/bloomgateway.proto \
+	./pkg/logproto/indexgateway.proto \
 	./pkg/logproto/ingester-rf1.proto \
 	./pkg/logproto/sketch.proto \
 	./pkg/storage/chunk/cache/resultscache/types.proto \

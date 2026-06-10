@@ -418,7 +418,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Step:         0,
 			TargetLabels: req.TargetLabels,
 			AggregateBy:  req.AggregateBy,
-			CachingOpts: queryrangebase.CachingOptions{
+			CachingOptions: queryrangebase.CachingOptions{
 				Disabled: disableCacheReq,
 			},
 		}, err
@@ -436,7 +436,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Step:         req.Step.Milliseconds(),
 			TargetLabels: req.TargetLabels,
 			AggregateBy:  req.AggregateBy,
-			CachingOpts: queryrangebase.CachingOptions{
+			CachingOptions: queryrangebase.CachingOptions{
 				Disabled: disableCacheReq,
 			},
 		}, err

@@ -363,11 +363,7 @@ message VolumeRequest {
   int64 step = 5;
   repeated string targetLabels = 6;
   string aggregateBy = 7;
-  // CachingOpts frees the GetCachingOptions identifier so a hand-written
-  // value getter (pkg/logproto/compat.go) can satisfy the gogo-era
-  // definitions.Request interface: wiresmith message getters return
-  // pointers, gogo nullable=false getters returned values.
-  resultscache.CachingOptions cachingOptions = 8 [(wiresmith.options.customname) = "CachingOpts"];
+  resultscache.CachingOptions cachingOptions = 8;
 }
 
 message VolumeResponse {

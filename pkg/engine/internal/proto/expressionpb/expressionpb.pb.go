@@ -702,11 +702,11 @@ func (m *UnaryExpression) GetOp() UnaryOp {
 	return 0
 }
 
-func (m *UnaryExpression) GetValue() *Expression {
+func (m *UnaryExpression) GetValue() Expression {
 	if m != nil {
-		return &m.Value
+		return m.Value
 	}
-	return nil
+	return Expression{}
 }
 
 func (m *BinaryExpression) GetOp() BinaryOp {
@@ -716,18 +716,18 @@ func (m *BinaryExpression) GetOp() BinaryOp {
 	return 0
 }
 
-func (m *BinaryExpression) GetLeft() *Expression {
+func (m *BinaryExpression) GetLeft() Expression {
 	if m != nil {
-		return &m.Left
+		return m.Left
 	}
-	return nil
+	return Expression{}
 }
 
-func (m *BinaryExpression) GetRight() *Expression {
+func (m *BinaryExpression) GetRight() Expression {
 	if m != nil {
-		return &m.Right
+		return m.Right
 	}
-	return nil
+	return Expression{}
 }
 
 func (m *VariadicExpression) GetOp() VariadicOp {
@@ -2726,10 +2726,10 @@ func (m *VariadicExpression) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Args) < c {
-				m.Args = make([]Expression, 0, c)
-			} else {
-				m.Args = m.Args[:0]
+			if need := len(m.Args) + c; cap(m.Args) < need {
+				grown := make([]Expression, len(m.Args), need)
+				copy(grown, m.Args)
+				m.Args = grown
 			}
 		}
 	}
@@ -4169,10 +4169,10 @@ func (m *StringListLiteral) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Value) < c {
-				m.Value = make([]string, 0, c)
-			} else {
-				m.Value = m.Value[:0]
+			if need := len(m.Value) + c; cap(m.Value) < need {
+				grown := make([]string, len(m.Value), need)
+				copy(grown, m.Value)
+				m.Value = grown
 			}
 		}
 	}
@@ -4339,10 +4339,10 @@ func (m *LabelFmtListLiteral) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Value) < c {
-				m.Value = make([]LabelFmtLiteral, 0, c)
-			} else {
-				m.Value = m.Value[:0]
+			if need := len(m.Value) + c; cap(m.Value) < need {
+				grown := make([]LabelFmtLiteral, len(m.Value), need)
+				copy(grown, m.Value)
+				m.Value = grown
 			}
 		}
 	}

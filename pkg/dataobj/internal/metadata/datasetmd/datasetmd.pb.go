@@ -1588,20 +1588,20 @@ func (m *SectionMetadata) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Columns) < c {
-				m.Columns = make([]*ColumnDesc, 0, c)
-			} else {
-				m.Columns = m.Columns[:0]
+			if need := len(m.Columns) + c; cap(m.Columns) < need {
+				grown := make([]*ColumnDesc, len(m.Columns), need)
+				copy(grown, m.Columns)
+				m.Columns = grown
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Dictionary) < c {
-				m.Dictionary = make([]string, 0, c)
-			} else {
-				m.Dictionary = m.Dictionary[:0]
+			if need := len(m.Dictionary) + c; cap(m.Dictionary) < need {
+				grown := make([]string, len(m.Dictionary), need)
+				copy(grown, m.Dictionary)
+				m.Dictionary = grown
 			}
 		}
 	}
@@ -2390,10 +2390,10 @@ func (m *ColumnMetadata) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Pages) < c {
-				m.Pages = make([]*PageDesc, 0, c)
-			} else {
-				m.Pages = m.Pages[:0]
+			if need := len(m.Pages) + c; cap(m.Pages) < need {
+				grown := make([]*PageDesc, len(m.Pages), need)
+				copy(grown, m.Pages)
+				m.Pages = grown
 			}
 		}
 	}
@@ -3188,20 +3188,20 @@ func (m *SortInfo) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.ColumnSorts) < c {
-				m.ColumnSorts = make([]*SortInfo_ColumnSort, 0, c)
-			} else {
-				m.ColumnSorts = m.ColumnSorts[:0]
+			if need := len(m.ColumnSorts) + c; cap(m.ColumnSorts) < need {
+				grown := make([]*SortInfo_ColumnSort, len(m.ColumnSorts), need)
+				copy(grown, m.ColumnSorts)
+				m.ColumnSorts = grown
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.SchemaLabels) < c {
-				m.SchemaLabels = make([]string, 0, c)
-			} else {
-				m.SchemaLabels = m.SchemaLabels[:0]
+			if need := len(m.SchemaLabels) + c; cap(m.SchemaLabels) < need {
+				grown := make([]string, len(m.SchemaLabels), need)
+				copy(grown, m.SchemaLabels)
+				m.SchemaLabels = grown
 			}
 		}
 	}

@@ -896,10 +896,6 @@ func (m mockResultsCache) GetCacheType() stats.CacheType {
 	return stats.ResultCache
 }
 
-// GetCachingOptions implements Request with a value-typed getter; the
-// wiresmith-generated accessor is GetCachingOpts and returns a pointer.
-func (m *MockRequest) GetCachingOptions() CachingOptions { return m.CachingOpts }
-
 // The wiresmith-generated mock types register with the google.golang.org
 // protobuf registry only; gogo's types.MarshalAny/UnmarshalAny resolve
 // through the gogo registry, so register them there too.

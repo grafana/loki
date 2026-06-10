@@ -2091,7 +2091,7 @@ func (this *VolumeRequest) Compare(that interface{}) int {
 		}
 		return 1
 	}
-	if c := this.CachingOpts.Compare(that1.CachingOpts); c != 0 {
+	if c := this.CachingOptions.Compare(that1.CachingOptions); c != 0 {
 		return c
 	}
 	return 0

@@ -299,18 +299,14 @@ type IndexStatsResponse struct {
 }
 
 type VolumeRequest struct {
-	From         model.Time `protobuf:"varint,1,opt,name=from,proto3" json:"from,omitempty"`
-	Through      model.Time `protobuf:"varint,2,opt,name=through,proto3" json:"through,omitempty"`
-	Matchers     string     `protobuf:"bytes,3,opt,name=matchers,proto3" json:"matchers,omitempty"`
-	Limit        int32      `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
-	Step         int64      `protobuf:"varint,5,opt,name=step,proto3" json:"step,omitempty"`
-	TargetLabels []string   `protobuf:"bytes,6,rep,name=targetLabels,proto3" json:"targetLabels,omitempty"`
-	AggregateBy  string     `protobuf:"bytes,7,opt,name=aggregateBy,proto3" json:"aggregateBy,omitempty"`
-	// CachingOpts frees the GetCachingOptions identifier so a hand-written
-	// value getter (pkg/logproto/compat.go) can satisfy the gogo-era
-	// definitions.Request interface: wiresmith message getters return
-	// pointers, gogo nullable=false getters returned values.
-	CachingOpts resultscache.CachingOptions `protobuf:"bytes,8,opt,name=cachingOptions,proto3" json:"cachingOptions,omitempty"`
+	From           model.Time                  `protobuf:"varint,1,opt,name=from,proto3" json:"from,omitempty"`
+	Through        model.Time                  `protobuf:"varint,2,opt,name=through,proto3" json:"through,omitempty"`
+	Matchers       string                      `protobuf:"bytes,3,opt,name=matchers,proto3" json:"matchers,omitempty"`
+	Limit          int32                       `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	Step           int64                       `protobuf:"varint,5,opt,name=step,proto3" json:"step,omitempty"`
+	TargetLabels   []string                    `protobuf:"bytes,6,rep,name=targetLabels,proto3" json:"targetLabels,omitempty"`
+	AggregateBy    string                      `protobuf:"bytes,7,opt,name=aggregateBy,proto3" json:"aggregateBy,omitempty"`
+	CachingOptions resultscache.CachingOptions `protobuf:"bytes,8,opt,name=cachingOptions,proto3" json:"cachingOptions,omitempty"`
 }
 
 type VolumeResponse struct {
@@ -1286,11 +1282,11 @@ func (m *QueryResponse) GetStreams() []push.Stream {
 	return nil
 }
 
-func (m *QueryResponse) GetStats() *stats.Ingester {
+func (m *QueryResponse) GetStats() stats.Ingester {
 	if m != nil {
-		return &m.Stats
+		return m.Stats
 	}
-	return nil
+	return stats.Ingester{}
 }
 
 func (m *QueryResponse) GetWarnings() []string {
@@ -1307,11 +1303,11 @@ func (m *SampleQueryResponse) GetSeries() []Series {
 	return nil
 }
 
-func (m *SampleQueryResponse) GetStats() *stats.Ingester {
+func (m *SampleQueryResponse) GetStats() stats.Ingester {
 	if m != nil {
-		return &m.Stats
+		return m.Stats
 	}
-	return nil
+	return stats.Ingester{}
 }
 
 func (m *SampleQueryResponse) GetWarnings() []string {
@@ -1780,11 +1776,11 @@ func (m *GetChunkRefResponse) GetRefs() []*ChunkRef {
 	return nil
 }
 
-func (m *GetChunkRefResponse) GetStats() *stats.Index {
+func (m *GetChunkRefResponse) GetStats() stats.Index {
 	if m != nil {
-		return &m.Stats
+		return m.Stats
 	}
-	return nil
+	return stats.Index{}
 }
 
 func (m *GetSeriesRequest) GetFrom() model.Time {
@@ -1926,11 +1922,11 @@ func (m *VolumeRequest) GetAggregateBy() string {
 	return ""
 }
 
-func (m *VolumeRequest) GetCachingOpts() *resultscache.CachingOptions {
+func (m *VolumeRequest) GetCachingOptions() resultscache.CachingOptions {
 	if m != nil {
-		return &m.CachingOpts
+		return m.CachingOptions
 	}
-	return nil
+	return resultscache.CachingOptions{}
 }
 
 func (m *VolumeResponse) GetVolumes() []Volume {
@@ -2886,7 +2882,7 @@ func (m *VolumeRequest) Size() int {
 		n += 1 + protowire.SizeVarint(uint64(len(m.AggregateBy))) + len(m.AggregateBy)
 	}
 	{
-		s := m.CachingOpts.Size()
+		s := m.CachingOptions.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
 		}
@@ -5295,7 +5291,7 @@ func (m *VolumeRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	i := len(dAtA)
 	{
-		size, err := m.CachingOpts.MarshalToSizedBuffer(dAtA[:i])
+		size, err := m.CachingOptions.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -5885,7 +5881,9 @@ func (m *LabelToValuesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.Labels = make(map[string]UniqueLabelValues, c)
+			if m.Labels == nil {
+				m.Labels = make(map[string]UniqueLabelValues, c)
+			}
 		}
 	}
 	for iNdEx < l {
@@ -6181,10 +6179,10 @@ func (m *UniqueLabelValues) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Values) < c {
-				m.Values = make([]string, 0, c)
-			} else {
-				m.Values = m.Values[:0]
+			if need := len(m.Values) + c; cap(m.Values) < need {
+				grown := make([]string, len(m.Values), need)
+				copy(grown, m.Values)
+				m.Values = grown
 			}
 		}
 	}
@@ -6409,10 +6407,10 @@ func (m *StreamRatesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.StreamRates) < c {
-				m.StreamRates = make([]*StreamRate, 0, c)
-			} else {
-				m.StreamRates = m.StreamRates[:0]
+			if need := len(m.StreamRates) + c; cap(m.StreamRates) < need {
+				grown := make([]*StreamRate, len(m.StreamRates), need)
+				copy(grown, m.StreamRates)
+				m.StreamRates = grown
 			}
 		}
 	}
@@ -6800,20 +6798,20 @@ func (m *QueryRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Shards) < c {
-				m.Shards = make([]string, 0, c)
-			} else {
-				m.Shards = m.Shards[:0]
+			if need := len(m.Shards) + c; cap(m.Shards) < need {
+				grown := make([]string, len(m.Shards), need)
+				copy(grown, m.Shards)
+				m.Shards = grown
 			}
 		}
 		if c := field8count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Deletes) < c {
-				m.Deletes = make([]*Delete, 0, c)
-			} else {
-				m.Deletes = m.Deletes[:0]
+			if need := len(m.Deletes) + c; cap(m.Deletes) < need {
+				grown := make([]*Delete, len(m.Deletes), need)
+				copy(grown, m.Deletes)
+				m.Deletes = grown
 			}
 		}
 	}
@@ -7327,20 +7325,20 @@ func (m *SampleQueryRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Shards) < c {
-				m.Shards = make([]string, 0, c)
-			} else {
-				m.Shards = m.Shards[:0]
+			if need := len(m.Shards) + c; cap(m.Shards) < need {
+				grown := make([]string, len(m.Shards), need)
+				copy(grown, m.Shards)
+				m.Shards = grown
 			}
 		}
 		if c := field5count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Deletes) < c {
-				m.Deletes = make([]*Delete, 0, c)
-			} else {
-				m.Deletes = m.Deletes[:0]
+			if need := len(m.Deletes) + c; cap(m.Deletes) < need {
+				grown := make([]*Delete, len(m.Deletes), need)
+				copy(grown, m.Deletes)
+				m.Deletes = grown
 			}
 		}
 	}
@@ -8060,20 +8058,20 @@ func (m *QueryResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Streams) < c {
-				m.Streams = make([]push.Stream, 0, c)
-			} else {
-				m.Streams = m.Streams[:0]
+			if need := len(m.Streams) + c; cap(m.Streams) < need {
+				grown := make([]push.Stream, len(m.Streams), need)
+				copy(grown, m.Streams)
+				m.Streams = grown
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Warnings) < c {
-				m.Warnings = make([]string, 0, c)
-			} else {
-				m.Warnings = m.Warnings[:0]
+			if need := len(m.Warnings) + c; cap(m.Warnings) < need {
+				grown := make([]string, len(m.Warnings), need)
+				copy(grown, m.Warnings)
+				m.Warnings = grown
 			}
 		}
 	}
@@ -8339,20 +8337,20 @@ func (m *SampleQueryResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Series) < c {
-				m.Series = make([]Series, 0, c)
-			} else {
-				m.Series = m.Series[:0]
+			if need := len(m.Series) + c; cap(m.Series) < need {
+				grown := make([]Series, len(m.Series), need)
+				copy(grown, m.Series)
+				m.Series = grown
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Warnings) < c {
-				m.Warnings = make([]string, 0, c)
-			} else {
-				m.Warnings = m.Warnings[:0]
+			if need := len(m.Warnings) + c; cap(m.Warnings) < need {
+				grown := make([]string, len(m.Warnings), need)
+				copy(grown, m.Warnings)
+				m.Warnings = grown
 			}
 		}
 	}
@@ -8888,10 +8886,10 @@ func (m *LabelResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Values) < c {
-				m.Values = make([]string, 0, c)
-			} else {
-				m.Values = m.Values[:0]
+			if need := len(m.Values) + c; cap(m.Values) < need {
+				grown := make([]string, len(m.Values), need)
+				copy(grown, m.Values)
+				m.Values = grown
 			}
 		}
 	}
@@ -9288,10 +9286,10 @@ func (m *Series) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Samples) < c {
-				m.Samples = make([]Sample, 0, c)
-			} else {
-				m.Samples = m.Samples[:0]
+			if need := len(m.Samples) + c; cap(m.Samples) < need {
+				grown := make([]Sample, len(m.Samples), need)
+				copy(grown, m.Samples)
+				m.Samples = grown
 			}
 		}
 	}
@@ -9789,10 +9787,10 @@ func (m *TailResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.DroppedStreams) < c {
-				m.DroppedStreams = make([]*DroppedStream, 0, c)
-			} else {
-				m.DroppedStreams = m.DroppedStreams[:0]
+			if need := len(m.DroppedStreams) + c; cap(m.DroppedStreams) < need {
+				grown := make([]*DroppedStream, len(m.DroppedStreams), need)
+				copy(grown, m.DroppedStreams)
+				m.DroppedStreams = grown
 			}
 		}
 	}
@@ -10012,20 +10010,20 @@ func (m *SeriesRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Groups) < c {
-				m.Groups = make([]string, 0, c)
-			} else {
-				m.Groups = m.Groups[:0]
+			if need := len(m.Groups) + c; cap(m.Groups) < need {
+				grown := make([]string, len(m.Groups), need)
+				copy(grown, m.Groups)
+				m.Groups = grown
 			}
 		}
 		if c := field4count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Shards) < c {
-				m.Shards = make([]string, 0, c)
-			} else {
-				m.Shards = m.Shards[:0]
+			if need := len(m.Shards) + c; cap(m.Shards) < need {
+				grown := make([]string, len(m.Shards), need)
+				copy(grown, m.Shards)
+				m.Shards = grown
 			}
 		}
 	}
@@ -10335,10 +10333,10 @@ func (m *SeriesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Series) < c {
-				m.Series = make([]SeriesIdentifier, 0, c)
-			} else {
-				m.Series = m.Series[:0]
+			if need := len(m.Series) + c; cap(m.Series) < need {
+				grown := make([]SeriesIdentifier, len(m.Series), need)
+				copy(grown, m.Series)
+				m.Series = grown
 			}
 		}
 	}
@@ -10656,10 +10654,10 @@ func (m *SeriesIdentifier) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Labels) < c {
-				m.Labels = make([]SeriesIdentifier_LabelsEntry, 0, c)
-			} else {
-				m.Labels = m.Labels[:0]
+			if need := len(m.Labels) + c; cap(m.Labels) < need {
+				grown := make([]SeriesIdentifier_LabelsEntry, len(m.Labels), need)
+				copy(grown, m.Labels)
+				m.Labels = grown
 			}
 		}
 	}
@@ -11774,10 +11772,10 @@ func (m *GetChunkIDsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.ChunkIDs) < c {
-				m.ChunkIDs = make([]string, 0, c)
-			} else {
-				m.ChunkIDs = m.ChunkIDs[:0]
+			if need := len(m.ChunkIDs) + c; cap(m.ChunkIDs) < need {
+				grown := make([]string, len(m.ChunkIDs), need)
+				copy(grown, m.ChunkIDs)
+				m.ChunkIDs = grown
 			}
 		}
 	}
@@ -12159,10 +12157,10 @@ func (m *ChunkRefGroup) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Refs) < c {
-				m.Refs = make([]*ChunkRef, 0, c)
-			} else {
-				m.Refs = m.Refs[:0]
+			if need := len(m.Refs) + c; cap(m.Refs) < need {
+				grown := make([]*ChunkRef, len(m.Refs), need)
+				copy(grown, m.Refs)
+				m.Refs = grown
 			}
 		}
 	}
@@ -12888,10 +12886,10 @@ func (m *GetChunkRefRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Filters) < c {
-				m.Filters = make([]syntax.LineFilter, 0, c)
-			} else {
-				m.Filters = m.Filters[:0]
+			if need := len(m.Filters) + c; cap(m.Filters) < need {
+				grown := make([]syntax.LineFilter, len(m.Filters), need)
+				copy(grown, m.Filters)
+				m.Filters = grown
 			}
 		}
 	}
@@ -13210,10 +13208,10 @@ func (m *GetChunkRefResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Refs) < c {
-				m.Refs = make([]*ChunkRef, 0, c)
-			} else {
-				m.Refs = m.Refs[:0]
+			if need := len(m.Refs) + c; cap(m.Refs) < need {
+				grown := make([]*ChunkRef, len(m.Refs), need)
+				copy(grown, m.Refs)
+				m.Refs = grown
 			}
 		}
 	}
@@ -13589,10 +13587,10 @@ func (m *GetSeriesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Series) < c {
-				m.Series = make([]IndexSeries, 0, c)
-			} else {
-				m.Series = m.Series[:0]
+			if need := len(m.Series) + c; cap(m.Series) < need {
+				grown := make([]IndexSeries, len(m.Series), need)
+				copy(grown, m.Series)
+				m.Series = grown
 			}
 		}
 	}
@@ -13762,10 +13760,10 @@ func (m *IndexSeries) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Labels) < c {
-				m.Labels = make([]LabelAdapter, 0, c)
-			} else {
-				m.Labels = m.Labels[:0]
+			if need := len(m.Labels) + c; cap(m.Labels) < need {
+				grown := make([]LabelAdapter, len(m.Labels), need)
+				copy(grown, m.Labels)
+				m.Labels = grown
 			}
 		}
 	}
@@ -14265,10 +14263,10 @@ func (m *VolumeRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.TargetLabels) < c {
-				m.TargetLabels = make([]string, 0, c)
-			} else {
-				m.TargetLabels = m.TargetLabels[:0]
+			if need := len(m.TargetLabels) + c; cap(m.TargetLabels) < need {
+				grown := make([]string, len(m.TargetLabels), need)
+				copy(grown, m.TargetLabels)
+				m.TargetLabels = grown
 			}
 		}
 	}
@@ -14589,7 +14587,7 @@ func (m *VolumeRequest) unmarshal(dAtA []byte, depth int) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.CachingOpts.UnmarshalWithDepth(dAtA[iNdEx:postIndex], depth+1); err != nil {
+			if err := m.CachingOptions.UnmarshalWithDepth(dAtA[iNdEx:postIndex], depth+1); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -14684,10 +14682,10 @@ func (m *VolumeResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Volumes) < c {
-				m.Volumes = make([]Volume, 0, c)
-			} else {
-				m.Volumes = m.Volumes[:0]
+			if need := len(m.Volumes) + c; cap(m.Volumes) < need {
+				grown := make([]Volume, len(m.Volumes), need)
+				copy(grown, m.Volumes)
+				m.Volumes = grown
 			}
 		}
 	}
@@ -15377,20 +15375,20 @@ func (m *DetectedFieldsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Fields) < c {
-				m.Fields = make([]*DetectedField, 0, c)
-			} else {
-				m.Fields = m.Fields[:0]
+			if need := len(m.Fields) + c; cap(m.Fields) < need {
+				grown := make([]*DetectedField, len(m.Fields), need)
+				copy(grown, m.Fields)
+				m.Fields = grown
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Values) < c {
-				m.Values = make([]string, 0, c)
-			} else {
-				m.Values = m.Values[:0]
+			if need := len(m.Values) + c; cap(m.Values) < need {
+				grown := make([]string, len(m.Values), need)
+				copy(grown, m.Values)
+				m.Values = grown
 			}
 		}
 	}
@@ -15636,20 +15634,20 @@ func (m *DetectedField) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Parsers) < c {
-				m.Parsers = make([]string, 0, c)
-			} else {
-				m.Parsers = m.Parsers[:0]
+			if need := len(m.Parsers) + c; cap(m.Parsers) < need {
+				grown := make([]string, len(m.Parsers), need)
+				copy(grown, m.Parsers)
+				m.Parsers = grown
 			}
 		}
 		if c := field6count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.JsonPath) < c {
-				m.JsonPath = make([]string, 0, c)
-			} else {
-				m.JsonPath = m.JsonPath[:0]
+			if need := len(m.JsonPath) + c; cap(m.JsonPath) < need {
+				grown := make([]string, len(m.JsonPath), need)
+				copy(grown, m.JsonPath)
+				m.JsonPath = grown
 			}
 		}
 	}
@@ -16225,10 +16223,10 @@ func (m *DetectedLabelsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.DetectedLabels) < c {
-				m.DetectedLabels = make([]*DetectedLabel, 0, c)
-			} else {
-				m.DetectedLabels = m.DetectedLabels[:0]
+			if need := len(m.DetectedLabels) + c; cap(m.DetectedLabels) < need {
+				grown := make([]*DetectedLabel, len(m.DetectedLabels), need)
+				copy(grown, m.DetectedLabels)
+				m.DetectedLabels = grown
 			}
 		}
 	}
