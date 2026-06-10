@@ -160,8 +160,24 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # 'make: Entering directory '/src/loki' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
+# Protobuf files generated with wiresmith instead of protoc/gogoslick.
+# Excluded from the gogo pipeline; see the wiresmith-protos target.
+WIRESMITH_PROTO_DEFS := \
+	./pkg/dataobj/compaction/v2/proto/compactionv2.proto \
+	./pkg/engine/internal/proto/ulid/ulid.proto \
+	./pkg/engine/internal/proto/expressionpb/expressionpb.proto \
+	./pkg/engine/internal/proto/physicalpb/physicalpb.proto \
+	./pkg/engine/internal/proto/wirepb/wirepb.proto
+# wiresmith emits sibling files next to each <name>.pb.go; <name>_grpc.pb.go
+# only appears for protos that declare services.
+WIRESMITH_PROTO_GOS := $(patsubst %.proto,%.pb.go,$(WIRESMITH_PROTO_DEFS)) \
+	$(patsubst %.proto,%_compare.pb.go,$(WIRESMITH_PROTO_DEFS)) \
+	$(patsubst %.proto,%_equal.pb.go,$(WIRESMITH_PROTO_DEFS)) \
+	$(patsubst %.proto,%_reflect.pb.go,$(WIRESMITH_PROTO_DEFS)) \
+	$(patsubst %.proto,%_grpc.pb.go,$(WIRESMITH_PROTO_DEFS))
+
 # Protobuf files
-PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
+PROTO_DEFS := $(filter-out $(WIRESMITH_PROTO_DEFS),$(shell find . $(DONT_FIND) -type f -name '*.proto' -print))
 PROTO_GOS := $(patsubst %.proto,%.pb.go,$(PROTO_DEFS))
 
 # Yacc Files
@@ -416,6 +432,9 @@ compare-coverage:
 clean-protos:
 	rm -rf $(PROTO_GOS)
 
+clean-wiresmith-protos:
+	rm -rf $(WIRESMITH_PROTO_GOS)
+
 clean: ## clean the generated files
 	rm -rf .cache
 	rm -rf clients/cmd/docker-driver/rootfs
@@ -462,7 +481,24 @@ endif
 # Protobufs #
 #############
 
-protos: clean-protos $(PROTO_GOS)
+protos: clean-protos $(PROTO_GOS) wiresmith-protos
+
+# wiresmith walks the entire --proto_path tree and enforces a single
+# go_package per proto package across the whole walk, so it cannot point at
+# the repo root (vendored duplicates of push.proto and the repeated proto
+# package names `proto`/`stats`/`logproto` would collide). Instead the
+# migrated protos are staged into a temp tree that mirrors the repo layout
+# (so `import "pkg/..."` paths resolve) and generation is scoped to them.
+.PHONY: wiresmith-protos
+wiresmith-protos: clean-wiresmith-protos
+	$(eval WIRESMITH_STAGE := $(shell mktemp -d))
+	for p in $(patsubst ./%,%,$(WIRESMITH_PROTO_DEFS)); do \
+		mkdir -p $(WIRESMITH_STAGE)/$$(dirname $$p); \
+		cp $$p $(WIRESMITH_STAGE)/$$p; \
+	done
+	wiresmith --proto_path=$(WIRESMITH_STAGE) --out=. --module=github.com/grafana/loki/v3 \
+		$(addprefix $(WIRESMITH_STAGE)/,$(patsubst ./%,%,$(WIRESMITH_PROTO_DEFS)))
+	rm -rf $(WIRESMITH_STAGE)
 
 %.pb.go: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 %.pb.go: ALWAYS_BUILD

@@ -67,105 +67,90 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_AggregateRange) UnmarshalPhysical(from physical.Node) error {
-	n.AggregateRange = new(AggregateRange)
 	return n.AggregateRange.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_AggregateVector) UnmarshalPhysical(from physical.Node) error {
-	n.AggregateVector = new(AggregateVector)
 	return n.AggregateVector.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_Scan) UnmarshalPhysical(from physical.Node) error {
-	n.Scan = new(DataObjScan)
 	return n.Scan.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_Filter) UnmarshalPhysical(from physical.Node) error {
-	n.Filter = new(Filter)
 	return n.Filter.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_Limit) UnmarshalPhysical(from physical.Node) error {
-	n.Limit = new(Limit)
 	return n.Limit.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_Projection) UnmarshalPhysical(from physical.Node) error {
-	n.Projection = new(Projection)
 	return n.Projection.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_ColumnCompat) UnmarshalPhysical(from physical.Node) error {
-	n.ColumnCompat = new(ColumnCompat)
 	return n.ColumnCompat.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_ScanSet) UnmarshalPhysical(from physical.Node) error {
-	n.ScanSet = new(ScanSet)
 	return n.ScanSet.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_TopK) UnmarshalPhysical(from physical.Node) error {
-	n.TopK = new(TopK)
 	return n.TopK.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_Parallelize) UnmarshalPhysical(from physical.Node) error {
-	n.Parallelize = new(Parallelize)
 	return n.Parallelize.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_Join) UnmarshalPhysical(from physical.Node) error {
-	n.Join = new(Join)
 	return n.Join.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_Merge) UnmarshalPhysical(from physical.Node) error {
-	n.Merge = new(Merge)
 	return n.Merge.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_PointersScan) UnmarshalPhysical(from physical.Node) error {
-	n.PointersScan = new(PointersScan)
 	return n.PointersScan.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_Batching) UnmarshalPhysical(from physical.Node) error {
-	n.Batching = new(Batching)
 	return n.Batching.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_Cache) UnmarshalPhysical(from physical.Node) error {
-	n.Cache = new(Cache)
 	return n.Cache.UnmarshalPhysical(from)
 }
 
@@ -212,14 +197,13 @@ func unmarshalGrouping(g physical.Grouping) (*Grouping, error) {
 	}, nil
 }
 
-func unmarshalColumnExpressions(from []physical.ColumnExpression) ([]*expressionpb.ColumnExpression, error) {
+func unmarshalColumnExpressions(from []physical.ColumnExpression) ([]expressionpb.ColumnExpression, error) {
 	if from == nil {
 		return nil, nil
 	}
 
-	out := make([]*expressionpb.ColumnExpression, len(from))
+	out := make([]expressionpb.ColumnExpression, len(from))
 	for i, expr := range from {
-		out[i] = new(expressionpb.ColumnExpression)
 		if err := out[i].UnmarshalPhysical(expr); err != nil {
 			return nil, err
 		}
@@ -282,21 +266,20 @@ func (n *DataObjScan) UnmarshalPhysical(from physical.Node) error {
 	return nil
 }
 
-func unmarshalTimeRange(from physical.TimeRange) *TimeRange {
-	return &TimeRange{
+func unmarshalTimeRange(from physical.TimeRange) TimeRange {
+	return TimeRange{
 		Start: from.Start,
 		End:   from.End,
 	}
 }
 
-func unmarshalExpressions(from []physical.Expression) ([]*expressionpb.Expression, error) {
+func unmarshalExpressions(from []physical.Expression) ([]expressionpb.Expression, error) {
 	if from == nil {
 		return nil, nil
 	}
 
-	out := make([]*expressionpb.Expression, len(from))
+	out := make([]expressionpb.Expression, len(from))
 	for i, expr := range from {
-		out[i] = new(expressionpb.Expression)
 		if err := out[i].UnmarshalPhysical(expr); err != nil {
 			return nil, err
 		}
@@ -424,9 +407,8 @@ func (n *ScanSet) UnmarshalPhysical(from physical.Node) error {
 		return err
 	}
 
-	targets := make([]*ScanTarget, len(scanSet.Targets))
+	targets := make([]ScanTarget, len(scanSet.Targets))
 	for i, target := range scanSet.Targets {
-		targets[i] = new(ScanTarget)
 		if err := targets[i].UnmarshalPhysical(target); err != nil {
 			return err
 		}
@@ -448,13 +430,13 @@ func (n *ScanTarget) UnmarshalPhysical(from *physical.ScanTarget) error {
 		if from.DataObject == nil {
 			return fmt.Errorf("DataObject is nil for ScanTypeDataObject")
 		}
-		n.Kind = &ScanTarget_DataObject{DataObject: new(DataObjScan)}
+		n.Kind = &ScanTarget_DataObject{}
 		return n.GetDataObject().UnmarshalPhysical(from.DataObject)
 	case physical.ScanTypePointers:
 		if from.Pointers == nil {
 			return fmt.Errorf("pointers is nil for ScanTypePointers")
 		}
-		n.Kind = &ScanTarget_Pointers{Pointers: new(PointersScan)}
+		n.Kind = &ScanTarget_Pointers{}
 		return n.GetPointers().UnmarshalPhysical(from.Pointers)
 	default:
 		return fmt.Errorf("unsupported scan type: %s", from.Type)
@@ -469,7 +451,7 @@ func (n *TopK) UnmarshalPhysical(from physical.Node) error {
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
 
-	sortBy := new(expressionpb.ColumnExpression)
+	var sortBy expressionpb.ColumnExpression
 	if err := sortBy.UnmarshalPhysical(topK.SortBy); err != nil {
 		return err
 	}
@@ -581,7 +563,6 @@ func (n *Cache) UnmarshalPhysical(from physical.Node) error {
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_IndexMerge) UnmarshalPhysical(from physical.Node) error {
-	n.IndexMerge = new(IndexMerge)
 	return n.IndexMerge.UnmarshalPhysical(from)
 }
 
@@ -593,17 +574,11 @@ func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
 
-	runs := make([]*compactionv2pb.RunRef, len(indexMerge.Runs))
-	for i, r := range indexMerge.Runs {
-		if r == nil {
-			continue
-		}
-		sections := make([]*compactionv2pb.SectionRef, len(r.Sections))
-		for j, s := range r.Sections {
-			if s == nil {
-				continue
-			}
-			sections[j] = &compactionv2pb.SectionRef{
+	runs := make([]compactionv2pb.RunRef, len(indexMerge.Runs))
+	for i := range indexMerge.Runs {
+		sections := make([]compactionv2pb.SectionRef, len(indexMerge.Runs[i].Sections))
+		for j, s := range indexMerge.Runs[i].Sections {
+			sections[j] = compactionv2pb.SectionRef{
 				ObjectPath:   s.ObjectPath,
 				SectionIndex: s.SectionIndex,
 				MinKey:       s.MinKey,
@@ -612,7 +587,7 @@ func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
 				MaxTimestamp: s.MaxTimestamp,
 			}
 		}
-		runs[i] = &compactionv2pb.RunRef{Sections: sections}
+		runs[i] = compactionv2pb.RunRef{Sections: sections}
 	}
 
 	*n = IndexMerge{

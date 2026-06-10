@@ -14,12 +14,12 @@ func TestPlan_EmptyInput(t *testing.T) {
 	got := Plan(context.Background(), nil, "tenantA", 3)
 	require.Nil(t, got, "empty input should produce no tasks")
 
-	got = Plan(context.Background(), []*compactionv2pb.SectionRef{}, "tenantA", 3)
+	got = Plan(context.Background(), []compactionv2pb.SectionRef{}, "tenantA", 3)
 	require.Nil(t, got)
 }
 
 func TestPlan_InvalidK_Panics(t *testing.T) {
-	sections := []*compactionv2pb.SectionRef{sec("o", 0, "a", "b")}
+	sections := []compactionv2pb.SectionRef{sec("o", 0, "a", "b")}
 
 	require.PanicsWithValue(t, "k must be > 0, got 0", func() {
 		Plan(context.Background(), sections, "tenantA", 0)
@@ -37,19 +37,19 @@ func TestPlan_InvalidK_Panics(t *testing.T) {
 
 func TestPlan_SingleSection(t *testing.T) {
 	s := sec("o", 0, "a", "b")
-	got := Plan(context.Background(), []*compactionv2pb.SectionRef{s}, "tenantA", 8)
+	got := Plan(context.Background(), []compactionv2pb.SectionRef{s}, "tenantA", 8)
 
 	require.Len(t, got, 1, "P=1 K=8 should produce exactly 1 task")
 	require.Equal(t, "tenantA", got[0].Tenant)
 	require.Len(t, got[0].Runs, 1)
-	require.Equal(t, []*compactionv2pb.SectionRef{s}, got[0].Runs[0].Sections)
+	require.Equal(t, []compactionv2pb.SectionRef{s}, got[0].Runs[0].Sections)
 }
 
 func TestPlan_KGrouping_P10_K3(t *testing.T) {
 	// Construct exactly 10 piles by feeding 10 mutually-overlapping sections.
 	// All share MinKey "a" but have different MaxKeys (and stable_ids), so each
 	// section creates its own pile.
-	sections := make([]*compactionv2pb.SectionRef, 0, 10)
+	sections := make([]compactionv2pb.SectionRef, 0, 10)
 	for i := 0; i < 10; i++ {
 		// MaxKey = "z" so all of them overlap pairwise (MinKey "a" < MaxKey "z").
 		sections = append(sections, sec("o", int32(i), "a", "z"))
@@ -76,7 +76,7 @@ func TestPlan_KGrouping_P10_K3(t *testing.T) {
 
 func TestPlan_KGreaterThanP(t *testing.T) {
 	// 3 mutually-overlapping sections (P=3); K=100 → 1 task with 3 piles.
-	sections := []*compactionv2pb.SectionRef{
+	sections := []compactionv2pb.SectionRef{
 		sec("o", 0, "a", "z"),
 		sec("o", 1, "a", "z"),
 		sec("o", 2, "a", "z"),
@@ -90,7 +90,7 @@ func TestPlan_KGreaterThanP(t *testing.T) {
 
 func TestPlan_Determinism(t *testing.T) {
 	// Mix of overlapping and non-overlapping sections.
-	base := []*compactionv2pb.SectionRef{
+	base := []compactionv2pb.SectionRef{
 		sec("o", 0, "01", "03"),
 		sec("o", 1, "02", "04"),
 		sec("o", 2, "05", "07"),
@@ -102,11 +102,11 @@ func TestPlan_Determinism(t *testing.T) {
 		sec("p", 1, "08", "09"),
 	}
 
-	want := Plan(context.Background(), append([]*compactionv2pb.SectionRef(nil), base...), "tenantA", 3)
+	want := Plan(context.Background(), append([]compactionv2pb.SectionRef(nil), base...), "tenantA", 3)
 
 	r := rand.New(rand.NewSource(1337))
 	for trial := 0; trial < 10; trial++ {
-		shuffled := append([]*compactionv2pb.SectionRef(nil), base...)
+		shuffled := append([]compactionv2pb.SectionRef(nil), base...)
 		r.Shuffle(len(shuffled), func(i, j int) {
 			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
 		})
@@ -125,7 +125,7 @@ func TestPlan_Determinism(t *testing.T) {
 }
 
 func TestPlan_TenantPassThrough(t *testing.T) {
-	sections := []*compactionv2pb.SectionRef{sec("o", 0, "a", "b"), sec("o", 1, "a", "c")}
+	sections := []compactionv2pb.SectionRef{sec("o", 0, "a", "b"), sec("o", 1, "a", "c")}
 	for _, tenant := range []string{"", "tenant-1", "tenant_with_strange_chars-A.B/C"} {
 		got := Plan(context.Background(), sections, tenant, 1)
 		for _, tsk := range got {

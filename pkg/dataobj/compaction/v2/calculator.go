@@ -13,7 +13,7 @@ import (
 // topMaxKey + topMaxTimestamp hold the most recent appended section's upper
 // bound -- the composite (labels, timestamp) sort key.
 type run struct {
-	sections        []*compactionv2pb.SectionRef
+	sections        []compactionv2pb.SectionRef
 	topMaxKey       []string
 	topMaxTimestamp int64
 }
@@ -36,7 +36,7 @@ func cmpSortKey(aLabels []string, aTs int64, bLabels []string, bTs int64) int {
 // The input slice is sorted in place; callers that need the original order must
 // copy beforehand. The contract requires non-nil SectionRef entries; nil
 // entries will panic.
-func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
+func calculateRuns(sections []compactionv2pb.SectionRef) []*run {
 	if len(sections) == 0 {
 		return nil
 	}
@@ -45,7 +45,7 @@ func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
 	// composite (MaxKey, MaxTimestamp) ASC, then (ObjectPath, SectionIndex) as
 	// a stable tiebreaker.
 	sort.Slice(sections, func(i, j int) bool {
-		a, b := sections[i], sections[j]
+		a, b := &sections[i], &sections[j]
 		if c := cmpSortKey(a.MinKey, a.MinTimestamp, b.MinKey, b.MinTimestamp); c != 0 {
 			return c < 0
 		}
@@ -133,7 +133,7 @@ func calculateRuns(sections []*compactionv2pb.SectionRef) []*run {
 
 		// No eligible pile: start a new one.
 		runs = append(runs, &run{
-			sections:        []*compactionv2pb.SectionRef{s},
+			sections:        []compactionv2pb.SectionRef{s},
 			topMaxKey:       s.MaxKey,
 			topMaxTimestamp: s.MaxTimestamp,
 		})

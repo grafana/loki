@@ -13,70 +13,60 @@ type literalUnmarshaler interface {
 // UnmarshalLiteral reads from literal into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *LiteralExpression_NullLiteral) UnmarshalLiteral(literal types.Literal) error {
-	e.NullLiteral = new(NullLiteral)
 	return e.NullLiteral.UnmarshalLiteral(literal)
 }
 
 // UnmarshalLiteral reads from literal into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *LiteralExpression_BoolLiteral) UnmarshalLiteral(literal types.Literal) error {
-	e.BoolLiteral = new(BoolLiteral)
 	return e.BoolLiteral.UnmarshalLiteral(literal)
 }
 
 // UnmarshalLiteral reads from literal into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *LiteralExpression_StringLiteral) UnmarshalLiteral(literal types.Literal) error {
-	e.StringLiteral = new(StringLiteral)
 	return e.StringLiteral.UnmarshalLiteral(literal)
 }
 
 // UnmarshalLiteral reads from literal into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *LiteralExpression_IntegerLiteral) UnmarshalLiteral(literal types.Literal) error {
-	e.IntegerLiteral = new(IntegerLiteral)
 	return e.IntegerLiteral.UnmarshalLiteral(literal)
 }
 
 // UnmarshalLiteral reads from literal into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *LiteralExpression_FloatLiteral) UnmarshalLiteral(literal types.Literal) error {
-	e.FloatLiteral = new(FloatLiteral)
 	return e.FloatLiteral.UnmarshalLiteral(literal)
 }
 
 // UnmarshalLiteral reads from literal into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *LiteralExpression_TimestampLiteral) UnmarshalLiteral(literal types.Literal) error {
-	e.TimestampLiteral = new(TimestampLiteral)
 	return e.TimestampLiteral.UnmarshalLiteral(literal)
 }
 
 // UnmarshalLiteral reads from literal into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *LiteralExpression_DurationLiteral) UnmarshalLiteral(literal types.Literal) error {
-	e.DurationLiteral = new(DurationLiteral)
 	return e.DurationLiteral.UnmarshalLiteral(literal)
 }
 
 // UnmarshalLiteral reads from literal into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *LiteralExpression_BytesLiteral) UnmarshalLiteral(literal types.Literal) error {
-	e.BytesLiteral = new(BytesLiteral)
 	return e.BytesLiteral.UnmarshalLiteral(literal)
 }
 
 // UnmarshalLiteral reads from literal into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *LiteralExpression_StringListLiteral) UnmarshalLiteral(literal types.Literal) error {
-	e.StringListLiteral = new(StringListLiteral)
 	return e.StringListLiteral.UnmarshalLiteral(literal)
 }
 
 // UnmarshalLiteral reads from literal into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *LiteralExpression_LabelFmtListLiteral) UnmarshalLiteral(literal types.Literal) error {
-	e.LabelFmtListLiteral = new(LabelFmtListLiteral)
 	return e.LabelFmtListLiteral.UnmarshalLiteral(literal)
 }
 
@@ -196,9 +186,9 @@ func (l *LabelFmtListLiteral) UnmarshalLiteral(literal types.Literal) error {
 		return fmt.Errorf("unsupported literal type: %T", literal)
 	}
 
-	labelFmts := make([]*LabelFmtLiteral, len(val.Value()))
+	labelFmts := make([]LabelFmtLiteral, len(val.Value()))
 	for i, value := range val.Value() {
-		labelFmts[i] = &LabelFmtLiteral{Name: value.Name, Value: value.Value, Rename: value.Rename}
+		labelFmts[i] = LabelFmtLiteral{Name: value.Name, Value: value.Value, Rename: value.Rename}
 	}
 	*l = LabelFmtListLiteral{Value: labelFmts}
 	return nil

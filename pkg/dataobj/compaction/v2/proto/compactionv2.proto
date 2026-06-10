@@ -7,7 +7,7 @@ syntax = "proto3";
 
 package proto;
 
-import "gogoproto/gogo.proto";
+import "wiresmith/options.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto";
 
@@ -28,21 +28,21 @@ option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 // The composite sort key compared across sections is (min_key, min_timestamp)
 // and (max_key, max_timestamp) -- label tuple first, then timestamp.
 message SectionRef {
-  string object_path = 1 [(gogoproto.jsontag) = "object_path"];
-  int32 section_index = 2 [(gogoproto.jsontag) = "section_index"];
-  repeated string min_key = 3 [(gogoproto.jsontag) = "min_key"];
-  repeated string max_key = 4 [(gogoproto.jsontag) = "max_key"];
-  int64 min_timestamp = 5 [(gogoproto.jsontag) = "min_timestamp"];
-  int64 max_timestamp = 6 [(gogoproto.jsontag) = "max_timestamp"];
+  string object_path = 1 [(wiresmith.options.jsontag) = "object_path"];
+  int32 section_index = 2 [(wiresmith.options.jsontag) = "section_index"];
+  repeated string min_key = 3 [(wiresmith.options.jsontag) = "min_key"];
+  repeated string max_key = 4 [(wiresmith.options.jsontag) = "max_key"];
+  int64 min_timestamp = 5 [(wiresmith.options.jsontag) = "min_timestamp"];
+  int64 max_timestamp = 6 [(wiresmith.options.jsontag) = "max_timestamp"];
 }
 
 // RunRef is one pile: a sorted, non-overlapping section sequence.
 message RunRef {
-  repeated SectionRef sections = 1 [(gogoproto.jsontag) = "sections"];
+  repeated SectionRef sections = 1 [(wiresmith.options.jsontag) = "sections"];
 }
 
 // TaskSpec is one K-way merge task: K piles bundled together for one worker.
 message TaskSpec {
-  string tenant = 1 [(gogoproto.jsontag) = "tenant"];
-  repeated RunRef runs = 2 [(gogoproto.jsontag) = "runs"];
+  string tenant = 1 [(wiresmith.options.jsontag) = "tenant"];
+  repeated RunRef runs = 2 [(wiresmith.options.jsontag) = "runs"];
 }
