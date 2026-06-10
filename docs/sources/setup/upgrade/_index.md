@@ -73,6 +73,10 @@ As a result, the following have been removed:
 - The `-ruler.enable-wal-replay` flag and its per-tenant equivalent `ruler_enable_wal_replay` (in `limits_config`). The ruler no longer replays the WAL, so these settings no longer have any effect. Remove them from your configuration; the `deprecated-config-checker` tool will flag them.
 - The ruler WAL metrics that only ever reported replay or repair activity: `loki_ruler_wal_corruptions_total`, `loki_ruler_wal_corruptions_repair_failed_total`, `loki_ruler_wal_corruptions_repair_succeeded_total`, and `loki_ruler_wal_replay_duration`. Remove any dashboards or alerts that reference them.
 
+### Common object storage config is now applied to the ruler storage
+
+When `use_thanos_objstore` is enabled, the `common.storage.object_store` configuration is now also applied to `ruler_storage`, the same way the legacy common storage types have always been applied to the ruler. This means settings such as TLS, credentials, and endpoints configured in the common object storage section are inherited by the ruler instead of being silently ignored. An explicitly configured `ruler_storage` section still takes precedence. If you previously relied on the ruler not starting because `ruler_storage` was left unconfigured while `common.storage.object_store` was set, the ruler will now start using the common object storage configuration.
+
 ### Breaking change: Removal of various configuration options
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
