@@ -101,26 +101,18 @@ func (q *query) Duration() time.Duration {
 	return q.finishTime.Sub(q.startTime)
 }
 
-// Prepare constucts a workflow from the given physical plan. The returned
+// Prepare constructs a workflow from the given physical plan. The returned
 // workflow must be closed to release resources.
-func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLanes bool) (*workflow.Workflow, error) {
+func (q *query) Prepare(ctx context.Context, plan *physical.Plan) (*workflow.Workflow, error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "query.Prepare")
 	defer span.End()
 
 	timer := prometheus.NewTimer(q.engine.metrics.planning.prepare.WithLabelValues(q.queryType))
 
-	var maxRunningScanTasks int
-	if useAdmissionLanes {
-		maxRunningScanTasks = q.engine.limits.MaxScanTaskParallelism(q.tenantID)
-	}
-
 	opts := workflow.Options{
 		ID:     q.id,
 		Tenant: q.tenantID,
 		Actor:  httpreq.ExtractActorPath(ctx),
-
-		MaxRunningScanTasks:  maxRunningScanTasks,
-		MaxRunningOtherTasks: 0,
 
 		CacheEnabled:                 q.useCache,
 		MaxTaskCacheSize:             uint64(q.engine.cfg.Executor.TaskResultsCache.TaskResultMaxCacheableSize),

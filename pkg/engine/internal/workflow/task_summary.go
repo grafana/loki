@@ -157,6 +157,18 @@ func taskTypeName(task *Task) string {
 	return "non-leaf"
 }
 
+func isScanTask(task *Task) bool {
+	if task.Fragment == nil {
+		return false
+	}
+	for node := range task.Fragment.Graph().Nodes() {
+		if node.Type() == physical.NodeTypeDataObjScan || node.Type() == physical.NodeTypePointersScan {
+			return true
+		}
+	}
+	return false
+}
+
 // taskOperatorType returns the type name of the task's root operator, or
 // the empty string if the fragment has no usable root.
 func taskOperatorType(task *Task) string {
