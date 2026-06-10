@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package proto;
 
+import "wiresmith/options.proto";
+
 service IngestLimitsFrontend {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
   rpc UpdateRates(UpdateRatesRequest) returns (UpdateRatesResponse) {}
@@ -15,11 +17,11 @@ service IngestLimits {
 
 message ExceedsLimitsRequest {
   string tenant = 1;
-  repeated StreamMetadata streams = 2;
+  repeated StreamMetadata streams = 2 [(wiresmith.options.pointer) = true];
 }
 
 message ExceedsLimitsResponse {
-  repeated ExceedsLimitsResult results = 1;
+  repeated ExceedsLimitsResult results = 1 [(wiresmith.options.pointer) = true];
 }
 
 message ExceedsLimitsResult {
@@ -43,16 +45,16 @@ message StreamMetadata {
 message StreamMetadataRecord {
   string zone = 1;
   string tenant = 2;
-  StreamMetadata metadata = 3;
+  StreamMetadata metadata = 3 [(wiresmith.options.pointer) = true];
 }
 
 message UpdateRatesRequest {
   string tenant = 1;
-  repeated StreamMetadata streams = 2;
+  repeated StreamMetadata streams = 2 [(wiresmith.options.pointer) = true];
 }
 
 message UpdateRatesResponse {
-  repeated UpdateRatesResult results = 1;
+  repeated UpdateRatesResult results = 1 [(wiresmith.options.pointer) = true];
 }
 
 message UpdateRatesResult {

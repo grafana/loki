@@ -26,6 +26,9 @@ import (
 // instances, and returning their responses.
 type Frontend struct {
 	services.Service
+	// Embedded to satisfy the wiresmith/protoc-gen-go-grpc generated server
+	// interface, which requires forward-compatible embedding.
+	proto.UnimplementedIngestLimitsFrontendServer
 	cfg                     Config
 	logger                  log.Logger
 	limitsClient            limitsClient
