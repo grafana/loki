@@ -798,8 +798,8 @@ github.com/go-playground/universal-translator
 # github.com/go-playground/validator/v10 v10.28.0
 ## explicit; go 1.24.0
 github.com/go-playground/validator/v10
-# github.com/go-sql-driver/mysql v1.9.3
-## explicit; go 1.21.0
+# github.com/go-sql-driver/mysql v1.10.0
+## explicit; go 1.24.0
 github.com/go-sql-driver/mysql
 # github.com/go-viper/mapstructure/v2 v2.5.0
 ## explicit; go 1.18

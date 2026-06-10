@@ -111,7 +111,7 @@ require (
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/dolthub/swiss v0.2.1
 	github.com/efficientgo/core v1.0.0-rc.3
-	github.com/go-sql-driver/mysql v1.9.3
+	github.com/go-sql-driver/mysql v1.10.0
 	github.com/gogo/googleapis v1.4.1
 	github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 	github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952
