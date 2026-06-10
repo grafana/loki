@@ -176,7 +176,8 @@ WIRESMITH_PROTO_GROUP_engine := \
 	./pkg/engine/internal/proto/wirepb/wirepb.proto
 WIRESMITH_PROTO_GROUP_logqlstats := ./pkg/logqlmodel/stats/stats.proto
 WIRESMITH_PROTO_GROUP_querierstats := ./pkg/querier/stats/stats.proto
-WIRESMITH_PROTO_GROUPS := engine logqlstats querierstats
+WIRESMITH_PROTO_GROUP_limits := ./pkg/limits/proto/limits.proto
+WIRESMITH_PROTO_GROUPS := engine logqlstats querierstats limits
 
 WIRESMITH_PROTO_DEFS := $(foreach g,$(WIRESMITH_PROTO_GROUPS),$(WIRESMITH_PROTO_GROUP_$(g)))
 # wiresmith emits sibling files next to each <name>.pb.go; <name>_grpc.pb.go
@@ -507,6 +508,7 @@ wiresmith-protos: clean-wiresmith-protos
 			engine) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_engine))" ;; \
 			logqlstats) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_logqlstats))" ;; \
 			querierstats) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_querierstats))" ;; \
+			limits) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_limits))" ;; \
 		esac; \
 		stage=$$(mktemp -d); \
 		staged=""; \
