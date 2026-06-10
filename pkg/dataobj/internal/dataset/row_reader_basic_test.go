@@ -282,9 +282,9 @@ func buildStringColumn(t *testing.T, name string) *ColumnBuilder {
 
 	builder, err := NewColumnBuilder(name, BuilderOptions{
 		PageSizeHint: 16, // Small page size to force multiple pages
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "string"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "string"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 
 		Statistics: StatisticsOptions{StoreRangeStats: true},
 	})
@@ -297,9 +297,9 @@ func buildInt64Column(t *testing.T, name string) *ColumnBuilder {
 
 	builder, err := NewColumnBuilder(name, BuilderOptions{
 		PageSizeHint: 16, // Small page size to force multiple pages
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, Logical: "number"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_DELTA,
 
 		Statistics: StatisticsOptions{StoreRangeStats: true},
 	})

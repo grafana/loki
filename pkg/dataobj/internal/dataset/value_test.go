@@ -141,54 +141,54 @@ func TestValue_MarshalBinary(t *testing.T) {
 
 	t.Run("Int64Value", func(t *testing.T) {
 		expect := dataset.Int64Value(-1234)
-		require.Equal(t, datasetmd.PHYSICAL_TYPE_INT64, expect.Type())
+		require.Equal(t, datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, expect.Type())
 
 		b, err := expect.MarshalBinary()
 		require.NoError(t, err)
 
 		var actual dataset.Value
 		require.NoError(t, actual.UnmarshalBinary(b))
-		require.Equal(t, datasetmd.PHYSICAL_TYPE_INT64, actual.Type())
+		require.Equal(t, datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, actual.Type())
 		require.Equal(t, expect.Int64(), actual.Int64())
 	})
 
 	t.Run("Uint64Value", func(t *testing.T) {
 		expect := dataset.Uint64Value(1234)
-		require.Equal(t, datasetmd.PHYSICAL_TYPE_UINT64, expect.Type())
+		require.Equal(t, datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64, expect.Type())
 
 		b, err := expect.MarshalBinary()
 		require.NoError(t, err)
 
 		var actual dataset.Value
 		require.NoError(t, actual.UnmarshalBinary(b))
-		require.Equal(t, datasetmd.PHYSICAL_TYPE_UINT64, actual.Type())
+		require.Equal(t, datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64, actual.Type())
 		require.Equal(t, expect.Uint64(), actual.Uint64())
 	})
 
 	t.Run("ByteArrayValue", func(t *testing.T) {
 		t.Run("Empty", func(t *testing.T) {
 			expect := dataset.BinaryValue([]byte{})
-			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, expect.Type())
+			require.Equal(t, datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, expect.Type())
 
 			b, err := expect.MarshalBinary()
 			require.NoError(t, err)
 
 			var actual dataset.Value
 			require.NoError(t, actual.UnmarshalBinary(b))
-			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, actual.Type())
+			require.Equal(t, datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, actual.Type())
 			require.Equal(t, expect.Binary(), actual.Binary())
 		})
 
 		t.Run("Non-empty", func(t *testing.T) {
 			expect := dataset.BinaryValue([]byte("hello, world!"))
-			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, expect.Type())
+			require.Equal(t, datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, expect.Type())
 
 			b, err := expect.MarshalBinary()
 			require.NoError(t, err)
 
 			var actual dataset.Value
 			require.NoError(t, actual.UnmarshalBinary(b))
-			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, actual.Type())
+			require.Equal(t, datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, actual.Type())
 			require.Equal(t, expect.Binary(), actual.Binary())
 		})
 	})

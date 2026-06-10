@@ -16,11 +16,11 @@ import (
 var testColumnOptions = dataset.BuilderOptions{
 	PageSizeHint: 1024,
 	Type: dataset.ColumnType{
-		Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+		Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
 		Logical:  "my-data",
 	},
-	Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-	Compression: datasetmd.COMPRESSION_TYPE_NONE,
+	Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+	Compression: datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 }
 
 // Test runs a basic end-to-end test for columnar encoding. More involved tests

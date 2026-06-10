@@ -177,7 +177,14 @@ WIRESMITH_PROTO_GROUP_engine := \
 WIRESMITH_PROTO_GROUP_logqlstats := ./pkg/logqlmodel/stats/stats.proto
 WIRESMITH_PROTO_GROUP_querierstats := ./pkg/querier/stats/stats.proto
 WIRESMITH_PROTO_GROUP_limits := ./pkg/limits/proto/limits.proto
-WIRESMITH_PROTO_GROUPS := engine logqlstats querierstats limits
+WIRESMITH_PROTO_GROUP_leaves := \
+	./pkg/xcap/internal/proto/xcap.proto \
+	./pkg/dataobj/internal/metadata/datasetmd/datasetmd.proto \
+	./pkg/dataobj/internal/metadata/filemd/filemd.proto \
+	./pkg/dataobj/metastore/metastore.proto \
+	./pkg/compactor/deletion/deletionproto/types.proto
+WIRESMITH_PROTO_GROUP_compaction := ./pkg/dataobj/compaction/proto/compaction.proto
+WIRESMITH_PROTO_GROUPS := engine logqlstats querierstats limits leaves compaction
 
 WIRESMITH_PROTO_DEFS := $(foreach g,$(WIRESMITH_PROTO_GROUPS),$(WIRESMITH_PROTO_GROUP_$(g)))
 # wiresmith emits sibling files next to each <name>.pb.go; <name>_grpc.pb.go
@@ -509,6 +516,8 @@ wiresmith-protos: clean-wiresmith-protos
 			logqlstats) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_logqlstats))" ;; \
 			querierstats) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_querierstats))" ;; \
 			limits) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_limits))" ;; \
+			leaves) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_leaves))" ;; \
+			compaction) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_compaction))" ;; \
 		esac; \
 		stage=$$(mktemp -d); \
 		staged=""; \
