@@ -297,7 +297,7 @@ The endpoint accepts the following query parameters in the URL:
 - `query`: The [LogQL](../../query/) query to perform. Requests that do not use valid LogQL syntax will return errors.
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream (log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamps). Defaults to now.
-- `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward`.
+- `direction`: Controls which log entries are returned when a `limit` is applied, and the order in which they appear. With `direction=backward` (the default), Loki starts from `end` and works backwards towards `start`, so `limit` returns the most recent entries. With `direction=forward`, Loki starts from `start` and works forwards towards `end`, so `limit` returns the oldest entries. Supported values are `forward` or `backward`. Defaults to `backward`.
 
 In microservices mode, `/loki/api/v1/query` is exposed by the querier and the query frontend.
 
@@ -476,7 +476,7 @@ It accepts the following query parameters in the URL:
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`. Only applies to query types which produce a matrix response.
 - `interval`: Only return entries at (or greater than) the specified interval, can be a `duration` format or float number of seconds. Only applies to queries which produce a stream response. Not to be confused with `step`, see the explanation under [Step versus interval](#step-versus-interval).
-- `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward.`
+- `direction`: Controls which log entries are returned when a `limit` is applied, and the order in which they appear. With `direction=backward` (the default), Loki starts from `end` and works backwards towards `start`, so `limit` returns the most recent entries. With `direction=forward`, Loki starts from `start` and works forwards towards `end`, so `limit` returns the oldest entries. Supported values are `forward` or `backward`. Defaults to `backward`.
 
 In microservices mode, `/loki/api/v1/query_range` is exposed by the querier and the query frontend.
 
