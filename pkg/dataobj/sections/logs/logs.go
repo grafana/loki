@@ -207,11 +207,11 @@ const (
 
 func convertSortDirection(protoDirection datasetmd_v2.SortDirection) (SortDirection, bool) {
 	switch protoDirection {
-	case datasetmd_v2.SORT_DIRECTION_UNSPECIFIED:
+	case datasetmd_v2.SortDirection_SORT_DIRECTION_UNSPECIFIED:
 		return SortDirectionUnspecified, true
-	case datasetmd_v2.SORT_DIRECTION_ASCENDING:
+	case datasetmd_v2.SortDirection_SORT_DIRECTION_ASCENDING:
 		return SortDirectionAscending, true
-	case datasetmd_v2.SORT_DIRECTION_DESCENDING:
+	case datasetmd_v2.SortDirection_SORT_DIRECTION_DESCENDING:
 		return SortDirectionDescending, true
 	}
 

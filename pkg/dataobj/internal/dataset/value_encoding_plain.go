@@ -14,8 +14,8 @@ import (
 func init() {
 	// Register the encoding so instances of it can be dynamically created.
 	registerValueEncoding(
-		datasetmd.PHYSICAL_TYPE_BINARY,
-		datasetmd.ENCODING_TYPE_PLAIN,
+		datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
+		datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 		registryEntry{
 			NewEncoder: func(w streamio.Writer) valueEncoder { return newPlainBytesEncoder(w) },
 			NewDecoder: func(data []byte) valueDecoder { return newPlainBytesDecoder(data) },
@@ -35,19 +35,19 @@ func newPlainBytesEncoder(w streamio.Writer) *plainBytesEncoder {
 	return &plainBytesEncoder{w: w}
 }
 
-// PhysicalType returns [datasetmd.PHYSICAL_TYPE_BINARY].
+// PhysicalType returns [datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY].
 func (enc *plainBytesEncoder) PhysicalType() datasetmd.PhysicalType {
-	return datasetmd.PHYSICAL_TYPE_BINARY
+	return datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY
 }
 
-// EncodingType returns [datasetmd.ENCODING_TYPE_PLAIN].
+// EncodingType returns [datasetmd.EncodingType_ENCODING_TYPE_PLAIN].
 func (enc *plainBytesEncoder) EncodingType() datasetmd.EncodingType {
-	return datasetmd.ENCODING_TYPE_PLAIN
+	return datasetmd.EncodingType_ENCODING_TYPE_PLAIN
 }
 
 // Encode encodes an individual string value.
 func (enc *plainBytesEncoder) Encode(v Value) error {
-	if v.Type() != datasetmd.PHYSICAL_TYPE_BINARY {
+	if v.Type() != datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY {
 		return fmt.Errorf("plain: invalid value type %v", v.Type())
 	}
 	sv := v.Binary()
@@ -86,14 +86,14 @@ func newPlainBytesDecoder(data []byte) *plainBytesDecoder {
 	return &plainBytesDecoder{data: data}
 }
 
-// PhysicalType returns [datasetmd.PHYSICAL_TYPE_BINARY].
+// PhysicalType returns [datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY].
 func (dec *plainBytesDecoder) PhysicalType() datasetmd.PhysicalType {
-	return datasetmd.PHYSICAL_TYPE_BINARY
+	return datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY
 }
 
-// EncodingType returns [datasetmd.ENCODING_TYPE_PLAIN].
+// EncodingType returns [datasetmd.EncodingType_ENCODING_TYPE_PLAIN].
 func (dec *plainBytesDecoder) EncodingType() datasetmd.EncodingType {
-	return datasetmd.ENCODING_TYPE_PLAIN
+	return datasetmd.EncodingType_ENCODING_TYPE_PLAIN
 }
 
 // Decode decodes up to count values using the provided allocator to store the

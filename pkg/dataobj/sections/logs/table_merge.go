@@ -295,19 +295,19 @@ func equalRows(a, b dataset.Row) bool {
 		}
 
 		switch aType {
-		case datasetmd.PHYSICAL_TYPE_INT64:
+		case datasetmd.PhysicalType_PHYSICAL_TYPE_INT64:
 			if a.Values[i].Int64() != b.Values[i].Int64() {
 				return false
 			}
-		case datasetmd.PHYSICAL_TYPE_UINT64:
+		case datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64:
 			if a.Values[i].Uint64() != b.Values[i].Uint64() {
 				return false
 			}
-		case datasetmd.PHYSICAL_TYPE_BINARY:
+		case datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY:
 			if !bytes.Equal(a.Values[i].Binary(), b.Values[i].Binary()) {
 				return false
 			}
-		case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
+		case datasetmd.PhysicalType_PHYSICAL_TYPE_UNSPECIFIED:
 			continue
 		default:
 			return false

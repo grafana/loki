@@ -350,11 +350,11 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 
 		var valueSet dataset.ValueSet
 		switch col.ColumnDesc().Type.Physical {
-		case datasetmd.PHYSICAL_TYPE_INT64:
+		case datasetmd.PhysicalType_PHYSICAL_TYPE_INT64:
 			valueSet = dataset.NewInt64ValueSet(vals)
-		case datasetmd.PHYSICAL_TYPE_UINT64:
+		case datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64:
 			valueSet = dataset.NewUint64ValueSet(vals)
-		case datasetmd.PHYSICAL_TYPE_BINARY:
+		case datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY:
 			valueSet = dataset.NewBinaryValueSet(vals)
 		default:
 			panic("InPredicate not implemented for datatype")

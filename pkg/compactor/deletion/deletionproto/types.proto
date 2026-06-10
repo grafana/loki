@@ -2,35 +2,35 @@ syntax = "proto3";
 
 package deletionproto;
 
-import "gogoproto/gogo.proto";
+import "wiresmith/options.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto";
 
+// Drop the per-message presence bitmap: gogoproto nullable=false parity
+// (see WIRESMITH_MIGRATION.md).
+option (wiresmith.options.no_presence_all) = true;
+
 message DeleteRequest {
-  string requestID = 1 [(gogoproto.jsontag) = "request_id"];
+  string requestID = 1 [(wiresmith.options.jsontag) = "request_id"];
   int64 startTime = 2 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "start_time"
+    (wiresmith.options.casttype) = "github.com/prometheus/common/model.Time",
+    (wiresmith.options.jsontag) = "start_time"
   ];
   int64 endTime = 3 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "end_time"
+    (wiresmith.options.casttype) = "github.com/prometheus/common/model.Time",
+    (wiresmith.options.jsontag) = "end_time"
   ];
-  string query = 4 [(gogoproto.jsontag) = "query"];
+  string query = 4 [(wiresmith.options.jsontag) = "query"];
   string status = 5 [
-    (gogoproto.customtype) = "DeleteRequestStatus",
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "status"
+    (wiresmith.options.casttype) = "DeleteRequestStatus",
+    (wiresmith.options.jsontag) = "status"
   ];
   int64 createdAt = 6 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "created_at"
+    (wiresmith.options.casttype) = "github.com/prometheus/common/model.Time",
+    (wiresmith.options.jsontag) = "created_at"
   ];
-  string userID = 7 [(gogoproto.jsontag) = "user_id"];
-  int64 sequenceNum = 8 [(gogoproto.jsontag) = "-"];
+  string userID = 7 [(wiresmith.options.jsontag) = "user_id"];
+  int64 sequenceNum = 8 [(wiresmith.options.jsontag) = "-"];
 }
 
 // DeletionManifest represents the completion state and summary of chunks which needs processing for a set of delete requests.
@@ -42,8 +42,8 @@ message DeleteRequest {
 //
 // Once all the segments are processed, Requests and DuplicateRequests in the manifest should be marked as processed.
 message DeletionManifest {
-  repeated DeleteRequest requests = 1 [(gogoproto.nullable) = false];
-  repeated DeleteRequest duplicateRequests = 2 [(gogoproto.nullable) = false];
+  repeated DeleteRequest requests = 1;
+  repeated DeleteRequest duplicateRequests = 2;
   int32 segmentsCount = 3;
   int32 chunksCount = 4;
 }
@@ -54,8 +54,8 @@ message ChunkIDs {
 
 // ChunksGroup holds a group of chunks selected by the same set of requests
 message ChunksGroup {
-  repeated DeleteRequest requests = 1 [(gogoproto.nullable) = false];
-  map<string, ChunkIDs> chunks = 2 [(gogoproto.nullable) = false]; // mapping of series labels to a list of ChunkIDs
+  repeated DeleteRequest requests = 1;
+  map<string, ChunkIDs> chunks = 2; // mapping of series labels to a list of ChunkIDs
 }
 
 // segment holds limited chunks in ChunksGroup.
@@ -63,7 +63,7 @@ message ChunksGroup {
 message Segment {
   string tableName = 1;
   string userID = 2;
-  repeated ChunksGroup chunksGroups = 3 [(gogoproto.nullable) = false];
+  repeated ChunksGroup chunksGroups = 3;
   int32 chunksCount = 4;
 }
 
@@ -71,18 +71,12 @@ message DeletionJob {
   string tableName = 1;
   string userID = 2;
   repeated string chunkIDs = 3;
-  repeated DeleteRequest deleteRequests = 4 [(gogoproto.nullable) = false];
+  repeated DeleteRequest deleteRequests = 4;
 }
 
 message Chunk {
-  int64 from = 1 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
-  ];
-  int64 through = 2 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
-  ];
+  int64 from = 1 [(wiresmith.options.casttype) = "github.com/prometheus/common/model.Time"];
+  int64 through = 2 [(wiresmith.options.casttype) = "github.com/prometheus/common/model.Time"];
   uint64 fingerprint = 3;
   uint32 checksum = 4;
   uint32 KB = 5;
@@ -98,5 +92,5 @@ message StorageUpdates {
 message StorageUpdatesCollection {
   string tableName = 1;
   string userID = 2;
-  map<string, StorageUpdates> storageUpdates = 3 [(gogoproto.nullable) = false]; // labels -> storageUpdates mapping
+  map<string, StorageUpdates> storageUpdates = 3; // labels -> storageUpdates mapping
 }

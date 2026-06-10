@@ -54,7 +54,7 @@ func NewJobRunner(chunkProcessingConcurrency int, getStorageClientForTableFunc G
 func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 	var deletionJob deletionproto.DeletionJob
 	var updates = deletionproto.StorageUpdates{
-		RebuiltChunks: map[string]*deletionproto.Chunk{},
+		RebuiltChunks: map[string]deletionproto.Chunk{},
 	}
 
 	if err := proto.Unmarshal(job.Payload, &deletionJob); err != nil {
@@ -131,7 +131,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 				level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", chunkID)
 				updatesMtx.Lock()
 				defer updatesMtx.Unlock()
-				updates.RebuiltChunks[chunkID] = nil
+				updates.RebuiltChunks[chunkID] = deletionproto.Chunk{}
 				return nil
 			}
 			return err
@@ -179,7 +179,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		// add the new chunk details to the list of chunks to index
 		updatesMtx.Lock()
 		defer updatesMtx.Unlock()
-		updates.RebuiltChunks[chunkID] = &deletionproto.Chunk{
+		updates.RebuiltChunks[chunkID] = deletionproto.Chunk{
 			From:        newChunk.From,
 			Through:     newChunk.Through,
 			Fingerprint: newChunk.Fingerprint,

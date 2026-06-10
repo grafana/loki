@@ -27,7 +27,7 @@ func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels strin
 		t.updates[tableName] = map[string]map[string]deletionproto.StorageUpdates{
 			userID: {
 				labels: {
-					RebuiltChunks: map[string]*deletionproto.Chunk{},
+					RebuiltChunks: map[string]deletionproto.Chunk{},
 				},
 			},
 		}
@@ -35,7 +35,7 @@ func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels strin
 	if _, ok := t.updates[tableName][userID]; !ok {
 		t.updates[tableName][userID] = map[string]deletionproto.StorageUpdates{
 			labels: {
-				RebuiltChunks: map[string]*deletionproto.Chunk{},
+				RebuiltChunks: map[string]deletionproto.Chunk{},
 			},
 		}
 	}
@@ -44,9 +44,9 @@ func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels strin
 
 	for chunkID, newChunk := range rebuiltChunks {
 		if newChunk == nil {
-			updates.RebuiltChunks[chunkID] = nil
+			updates.RebuiltChunks[chunkID] = deletionproto.Chunk{}
 		} else {
-			updates.RebuiltChunks[chunkID] = newChunk.(*deletionproto.Chunk)
+			updates.RebuiltChunks[chunkID] = *newChunk.(*deletionproto.Chunk)
 		}
 	}
 	updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, chunksToDeIndex...)
@@ -645,15 +645,15 @@ func mustMarshalPayload(job *deletionproto.DeletionJob) []byte {
 
 func buildStorageUpdates(jobNumStart, numJobs int, wholeChunksDeleted bool) deletionproto.StorageUpdates {
 	s := deletionproto.StorageUpdates{
-		RebuiltChunks: map[string]*deletionproto.Chunk{},
+		RebuiltChunks: map[string]deletionproto.Chunk{},
 	}
 	for i := 0; i < numJobs; i++ {
 		jobNum := jobNumStart + i
 		chunkID := fmt.Sprintf("%d-d", jobNum)
 		if wholeChunksDeleted {
-			s.RebuiltChunks[chunkID] = nil
+			s.RebuiltChunks[chunkID] = deletionproto.Chunk{}
 		} else {
-			s.RebuiltChunks[chunkID] = &deletionproto.Chunk{
+			s.RebuiltChunks[chunkID] = deletionproto.Chunk{
 				From:        model.Time(jobNum),
 				Through:     model.Time(jobNum),
 				Fingerprint: uint64(jobNum),

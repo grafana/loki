@@ -96,14 +96,14 @@ func newBitmapEncoder(w streamio.Writer) *bitmapEncoder {
 	}
 }
 
-// PhysicalType returns [datasetmd.PHYSICAL_TYPE_UINT64].
+// PhysicalType returns [datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64].
 func (enc *bitmapEncoder) PhysicalType() datasetmd.PhysicalType {
-	return datasetmd.PHYSICAL_TYPE_UINT64
+	return datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64
 }
 
-// EncodingType returns [datasetmd.ENCODING_TYPE_BITMAP].
+// EncodingType returns [datasetmd.EncodingType_ENCODING_TYPE_BITMAP].
 func (enc *bitmapEncoder) EncodingType() datasetmd.EncodingType {
-	return datasetmd.ENCODING_TYPE_BITMAP
+	return datasetmd.EncodingType_ENCODING_TYPE_BITMAP
 }
 
 // Encode appends a new uint64 value to enc.
@@ -114,7 +114,7 @@ func (enc *bitmapEncoder) EncodingType() datasetmd.EncodingType {
 // Call [bitmapEncoder.Flush] to end the current run and flush any remaining
 // values.
 func (enc *bitmapEncoder) Encode(v Value) error {
-	if v.Type() != datasetmd.PHYSICAL_TYPE_UINT64 {
+	if v.Type() != datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64 {
 		return fmt.Errorf("invalid value type %s", v.Type())
 	}
 	uv := v.Uint64()
@@ -176,7 +176,7 @@ func (enc *bitmapEncoder) Encode(v Value) error {
 }
 
 func (enc *bitmapEncoder) EncodeN(v Value, n uint64) error {
-	if v.Type() != datasetmd.PHYSICAL_TYPE_UINT64 {
+	if v.Type() != datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64 {
 		return fmt.Errorf("invalid value type %s", v.Type())
 	}
 	uv := v.Uint64()
@@ -563,14 +563,14 @@ func newBitmapDecoder(data []byte) *bitmapDecoder {
 	return &bitmapDecoder{data: data}
 }
 
-// PhysicalType returns [datasetmd.PHYSICAL_TYPE_UINT64].
+// PhysicalType returns [datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64].
 func (dec *bitmapDecoder) PhysicalType() datasetmd.PhysicalType {
-	return datasetmd.PHYSICAL_TYPE_UINT64
+	return datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64
 }
 
-// EncodingType returns [datasetmd.ENCODING_TYPE_BITMAP].
+// EncodingType returns [datasetmd.EncodingType_ENCODING_TYPE_BITMAP].
 func (dec *bitmapDecoder) EncodingType() datasetmd.EncodingType {
-	return datasetmd.ENCODING_TYPE_BITMAP
+	return datasetmd.EncodingType_ENCODING_TYPE_BITMAP
 }
 
 // Decode decodes up to count values and returns them as a bitmap. The number

@@ -110,19 +110,19 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 		column := columns[columnIndex]
 		switch column.Type {
 		case ColumnTypeStreamID:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			record.StreamID = columnValue.Int64()
 
 		case ColumnTypeTimestamp:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			record.Timestamp = time.Unix(0, columnValue.Int64())
 
 		case ColumnTypeMetadata:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
@@ -133,7 +133,7 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 			}
 
 		case ColumnTypeMessage:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			line := columnValue.Binary()

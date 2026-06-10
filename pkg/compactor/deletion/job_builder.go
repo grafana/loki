@@ -482,7 +482,7 @@ func (i *storageUpdatesCollection) addUpdates(labels string, result deletionprot
 	updates, ok := i.StorageUpdates[labels]
 	if !ok {
 		updates = deletionproto.StorageUpdates{
-			RebuiltChunks: map[string]*deletionproto.Chunk{},
+			RebuiltChunks: map[string]deletionproto.Chunk{},
 		}
 		i.StorageUpdates[labels] = updates
 	}
@@ -592,11 +592,13 @@ func (i *storageUpdatesIterator) ForEachSeries(callback func(labels string, rebu
 		rebuiltChunks := make(map[string]Chunk, len(updates.RebuiltChunks))
 		newChunksCount := 0
 		for chunkID, newChunk := range updates.RebuiltChunks {
-			if newChunk != nil {
+			if !newChunk.IsZero() {
 				newChunksCount++
-				rebuiltChunks[chunkID] = newChunk
+				nc := newChunk
+				rebuiltChunks[chunkID] = &nc
 			} else {
-				// when newChunk(struct type) is nil, do not assign it directly to an interface because it ends up putting a typed nil which fails the simple nil check(i.e == nil).
+				// A zero chunk means "remove without replacement"; keep the
+				// callback contract of a nil interface value for that case.
 				rebuiltChunks[chunkID] = nil
 			}
 		}

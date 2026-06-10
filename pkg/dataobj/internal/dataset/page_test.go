@@ -41,7 +41,7 @@ func benchmarkPageDecodeParallel(b *testing.B, workers int) {
 			go func(worker int) {
 				defer wg.Done()
 
-				_, values, err := page.reader(datasetmd.COMPRESSION_TYPE_ZSTD)
+				_, values, err := page.reader(datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD)
 				if err != nil {
 					b.Error(err)
 				} else if _, err := io.Copy(io.Discard, values); err != nil {
@@ -74,7 +74,7 @@ func benchmarkPageDecodeParallel(b *testing.B, workers int) {
 			go func() {
 				defer wg.Done()
 
-				_, values, err := page.reader(datasetmd.COMPRESSION_TYPE_ZSTD)
+				_, values, err := page.reader(datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD)
 				if err != nil {
 					b.Error(err)
 				} else if _, err := io.Copy(io.Discard, values); err != nil {
@@ -110,9 +110,9 @@ func logsTestPage(t testing.TB) *MemPage {
 
 	opts := BuilderOptions{
 		PageSizeHint: sb.Len() * 2,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 	}
 	builder, err := newPageBuilder(opts)
 	require.NoError(t, err)
@@ -142,9 +142,9 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 	}
 	b, err := newPageBuilder(opts)
 	require.NoError(t, err)
@@ -187,9 +187,9 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 func Test_pageBuilder_Fill(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1_500_000,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "timestamp"},
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, Logical: "timestamp"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_DELTA,
 	}
 	buf, err := newPageBuilder(opts)
 	require.NoError(t, err)

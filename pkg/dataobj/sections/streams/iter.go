@@ -159,37 +159,37 @@ func decodeRow(columns []*Column, row dataset.Row, stream *Stream, sym *symboliz
 		column := columns[columnIndex]
 		switch column.Type {
 		case ColumnTypeStreamID:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.ID = columnValue.Int64()
 
 		case ColumnTypeMinTimestamp:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.MinTimestamp = time.Unix(0, columnValue.Int64())
 
 		case ColumnTypeMaxTimestamp:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.MaxTimestamp = time.Unix(0, columnValue.Int64())
 
 		case ColumnTypeRows:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.Rows = int(columnValue.Int64())
 
 		case ColumnTypeUncompressedSize:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.UncompressedSize = columnValue.Int64()
 
 		case ColumnTypeLabel:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 

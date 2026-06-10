@@ -13,8 +13,8 @@ import (
 func init() {
 	// Register the encoding so instances of it can be dynamically created.
 	registerValueEncoding(
-		datasetmd.PHYSICAL_TYPE_INT64,
-		datasetmd.ENCODING_TYPE_DELTA,
+		datasetmd.PhysicalType_PHYSICAL_TYPE_INT64,
+		datasetmd.EncodingType_ENCODING_TYPE_DELTA,
 		registryEntry{
 			NewEncoder: func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
 			NewDecoder: func(data []byte) valueDecoder { return newDeltaDecoder(data) },
@@ -38,19 +38,19 @@ func newDeltaEncoder(w streamio.Writer) *deltaEncoder {
 	return &enc
 }
 
-// PhysicalType returns [datasetmd.PHYSICAL_TYPE_INT64].
+// PhysicalType returns [datasetmd.PhysicalType_PHYSICAL_TYPE_INT64].
 func (enc *deltaEncoder) PhysicalType() datasetmd.PhysicalType {
-	return datasetmd.PHYSICAL_TYPE_INT64
+	return datasetmd.PhysicalType_PHYSICAL_TYPE_INT64
 }
 
-// EncodingType returns [datasetmd.ENCODING_TYPE_DELTA].
+// EncodingType returns [datasetmd.EncodingType_ENCODING_TYPE_DELTA].
 func (enc *deltaEncoder) EncodingType() datasetmd.EncodingType {
-	return datasetmd.ENCODING_TYPE_DELTA
+	return datasetmd.EncodingType_ENCODING_TYPE_DELTA
 }
 
 // Encode encodes a new value.
 func (enc *deltaEncoder) Encode(v Value) error {
-	if v.Type() != datasetmd.PHYSICAL_TYPE_INT64 {
+	if v.Type() != datasetmd.PhysicalType_PHYSICAL_TYPE_INT64 {
 		return fmt.Errorf("delta: invalid value type %v", v.Type())
 	}
 	iv := v.Int64()
@@ -88,14 +88,14 @@ func newDeltaDecoder(data []byte) *deltaDecoder {
 	return &dec
 }
 
-// PhysicalType returns [datasetmd.PHYSICAL_TYPE_INT64].
+// PhysicalType returns [datasetmd.PhysicalType_PHYSICAL_TYPE_INT64].
 func (dec *deltaDecoder) PhysicalType() datasetmd.PhysicalType {
-	return datasetmd.PHYSICAL_TYPE_INT64
+	return datasetmd.PhysicalType_PHYSICAL_TYPE_INT64
 }
 
-// Type returns [datasetmd.ENCODING_TYPE_DELTA].
+// Type returns [datasetmd.EncodingType_ENCODING_TYPE_DELTA].
 func (dec *deltaDecoder) EncodingType() datasetmd.EncodingType {
-	return datasetmd.ENCODING_TYPE_DELTA
+	return datasetmd.EncodingType_ENCODING_TYPE_DELTA
 }
 
 // Decode decodes up to count values, storing the results into a new

@@ -220,15 +220,15 @@ func cloneValue(src Value) Value {
 
 func valueSize(v Value) int {
 	switch v.Type() {
-	case datasetmd.PHYSICAL_TYPE_INT64:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_INT64:
 		// Assuming that int64s are written as varints.
 		return streamio.VarintSize(v.Int64())
 
-	case datasetmd.PHYSICAL_TYPE_UINT64:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64:
 		// Assuming that uint64s are written as uvarints.
 		return streamio.UvarintSize(v.Uint64())
 
-	case datasetmd.PHYSICAL_TYPE_BINARY:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY:
 		arr := v.Binary()
 		return binary.Size(len(arr)) + len(arr)
 	}

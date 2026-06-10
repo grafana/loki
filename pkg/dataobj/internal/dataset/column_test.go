@@ -42,9 +42,9 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint:    0, // Set the size to 0 so each column has exactly one value.
 		PageMaxRowCount: pageMaxRows,
-		Type:            ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:     datasetmd.COMPRESSION_TYPE_ZSTD,
-		Encoding:        datasetmd.ENCODING_TYPE_PLAIN,
+		Type:            ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:     datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
+		Encoding:        datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 	}
 	b, err := NewColumnBuilder("", opts)
 	require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 
 	col, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Desc.Type)
+	require.Equal(t, ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Desc.Type)
 	require.Equal(t, len(in), col.Desc.RowsCount)
 	require.Equal(t, len(in), col.Desc.ValuesCount)
 	require.GreaterOrEqual(t, len(col.Pages), len(in)/pageMaxRows)
@@ -119,9 +119,9 @@ func TestColumnBuilder_MinMax(t *testing.T) {
 
 	opts := BuilderOptions{
 		PageSizeHint: 301, // Slightly larger than the string length of 3 strings per page.
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 
 		Statistics: StatisticsOptions{
 			StoreRangeStats: true,
@@ -136,7 +136,7 @@ func TestColumnBuilder_MinMax(t *testing.T) {
 
 	col, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Desc.Type)
+	require.Equal(t, ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Desc.Type)
 	require.NotNil(t, col.Desc.Statistics)
 
 	columnMin, columnMax := getMinMax(t, col.Desc.Statistics)
@@ -182,9 +182,9 @@ func TestColumnBuilder_Cardinality(t *testing.T) {
 
 	opts := BuilderOptions{
 		PageSizeHint: 301, // Slightly larger than the string length of 3 strings per page.
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 
 		Statistics: StatisticsOptions{
 			StoreCardinalityStats: true,
@@ -199,7 +199,7 @@ func TestColumnBuilder_Cardinality(t *testing.T) {
 
 	col, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Desc.Type)
+	require.Equal(t, ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Desc.Type)
 	require.NotNil(t, col.Desc.Statistics)
 	// we use sparse hyperloglog reprs until a certain cardinality is reached,
 	// so this should not be approximate at low counts.

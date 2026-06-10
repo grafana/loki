@@ -93,9 +93,9 @@ func TestColumnBuilder_Append(t *testing.T) {
 			opts := dataset.BuilderOptions{
 				PageSizeHint:    tt.pageSizeHint,
 				PageMaxRowCount: tt.pageMaxRowCount,
-				Type:            dataset.ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-				Compression:     datasetmd.COMPRESSION_TYPE_ZSTD,
-				Encoding:        datasetmd.ENCODING_TYPE_PLAIN,
+				Type:            dataset.ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+				Compression:     datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
+				Encoding:        datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 			}
 
 			cb, err := dataset.NewColumnBuilder("test", opts)

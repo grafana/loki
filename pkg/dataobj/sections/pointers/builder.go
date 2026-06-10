@@ -249,11 +249,11 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		PageSizeHint:    b.pageSize,
 		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypePath.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -301,11 +301,11 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		PageSizeHint:    b.pageSize,
 		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypeColumnName.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -323,11 +323,11 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		PageSizeHint:    b.pageSize,
 		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypeValuesBloomFilter.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-		Compression: datasetmd.COMPRESSION_TYPE_NONE, // TODO: is there a sensible compression algorithm for bloom filters?
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_NONE, // TODO: is there a sensible compression algorithm for bloom filters?
 	})
 	if err != nil {
 		return fmt.Errorf("creating values bloom filter column: %w", err)
@@ -387,11 +387,11 @@ func numberColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*d
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64,
 			Logical:  logicalType.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
-		Compression: datasetmd.COMPRESSION_TYPE_NONE,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -431,7 +431,7 @@ func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset
 				// NumColumns increases after calling Commit, so we can use the
 				// current value as the index.
 				ColumnIndex: uint32(enc.NumColumns()),
-				Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+				Direction:   datasetmd.SortDirection_SORT_DIRECTION_ASCENDING,
 			}},
 		})
 	}

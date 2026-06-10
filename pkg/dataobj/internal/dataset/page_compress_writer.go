@@ -92,13 +92,13 @@ func (c *compressWriter) Reset(w io.Writer) {
 		var compressedWriter io.WriteCloser
 
 		switch c.compression {
-		case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
+		case datasetmd.CompressionType_COMPRESSION_TYPE_UNSPECIFIED, datasetmd.CompressionType_COMPRESSION_TYPE_NONE:
 			compressedWriter = nopCloseWriter{w}
 
-		case datasetmd.COMPRESSION_TYPE_SNAPPY:
+		case datasetmd.CompressionType_COMPRESSION_TYPE_SNAPPY:
 			compressedWriter = snappy.NewBufferedWriter(w)
 
-		case datasetmd.COMPRESSION_TYPE_ZSTD:
+		case datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD:
 			if c.opts.zstdWriter == nil {
 				panic("zstd compression requested but zstd writer is not initialized; Use CompressionOptions.init() to initialize it")
 			}

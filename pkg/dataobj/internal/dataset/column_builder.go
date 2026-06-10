@@ -55,7 +55,7 @@ type StatisticsOptions struct {
 // wherever possible.
 type CompressionOptions struct {
 	// Zstd holds encoding options for Zstd compression. Only used for
-	// [datasetmd.COMPRESSION_TYPE_ZSTD].
+	// [datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD].
 	Zstd []zstd.EOption
 
 	// A helper to get a shared Zstd Writer for the given EOptions.
