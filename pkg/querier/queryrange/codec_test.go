@@ -2307,8 +2307,6 @@ var (
 			]
 		}
 	}`
-	streamsStringLegacy = `{
-		` + statsResultString + `"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T10:17:36.789012345Z","line":"super line"}]},{"labels":"{test=\"test\", x=\"a\", y=\"b\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line2"}]}, {"labels":"{test=\"test\", x=\"a\", y=\"b\", z=\"text\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line3 z=text"}]}]}`
 	logStreamsWithStructuredMetadata = []logproto.Stream{
 		{
 			Labels: `{test="test"}`,
@@ -2415,12 +2413,6 @@ var (
 	labelsString = `{
 		"status": "success",
 		"data": [
-			"foo",
-			"bar"
-		]
-	}`
-	labelsLegacyString = `{
-		"values": [
 			"foo",
 			"bar"
 		]
