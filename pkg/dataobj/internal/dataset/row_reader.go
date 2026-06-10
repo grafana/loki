@@ -837,9 +837,25 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 		pageStart    int
 		lastPageSize int
 
-		isStreamCol      = isStreamIDColumn(c)
-		prevPageIncluded bool // used for tracking avg run length
+		// datalocality stat collection
+		// For logs sections, we track streamID clustering as the data locality property.
+		isStreamCol = isStreamIDColumn(c)
+		// For pointer sections, we track column name clustering as the data locality property.
+		isColumnNameCol                                 = isColumnNameColumn(c)
+		observeLocalityStats                            = isStreamCol || isColumnNameCol
+		totalPagesStat, relevantPagesStat, pageRunsStat *xcap.StatisticInt64
+		prevPageIncluded                                bool // used for tracking avg run length
 	)
+
+	if isStreamCol {
+		totalPagesStat = dataobj.StatStreamPagesTotal
+		relevantPagesStat = dataobj.StatStreamRelevantPages
+		pageRunsStat = dataobj.StatStreamPageRuns
+	} else if isColumnNameCol {
+		totalPagesStat = dataobj.StatPostingsColumnNamePagesTotal
+		relevantPagesStat = dataobj.StatPostingsColumnNameRelevantPages
+		pageRunsStat = dataobj.StatPostingsColumnNamePageRuns
+	}
 
 	for result := range c.ListPages(ctx) {
 		pageStart += lastPageSize
@@ -856,8 +872,8 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 			End:   uint64(pageStart + pageInfo.RowCount),
 		}
 
-		if isStreamCol {
-			region.Record(dataobj.StatStreamPagesTotal.Observe(1))
+		if observeLocalityStats {
+			region.Record(totalPagesStat.Observe(1))
 		}
 
 		minValue, maxValue, err := readMinMax(pageInfo.Stats)
@@ -867,14 +883,13 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 			// No stats, so we add the whole range.
 			ranges.Add(pageRange)
 
-			if isStreamCol {
-				region.Record(dataobj.StatStreamRelevantPages.Observe(1))
+			if observeLocalityStats {
+				region.Record(relevantPagesStat.Observe(1))
 
 				// record start of a new run
 				if !prevPageIncluded {
-					region.Record(dataobj.StatStreamPageRuns.Observe(1))
+					region.Record(pageRunsStat.Observe(1))
 				}
-
 			}
 
 			prevPageIncluded = true
@@ -906,12 +921,12 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 		if include {
 			ranges.Add(pageRange)
 
-			if isStreamCol {
-				region.Record(dataobj.StatStreamRelevantPages.Observe(1))
+			if observeLocalityStats {
+				region.Record(relevantPagesStat.Observe(1))
 
 				// track start of a new run
 				if !prevPageIncluded {
-					region.Record(dataobj.StatStreamPageRuns.Observe(1))
+					region.Record(pageRunsStat.Observe(1))
 				}
 			}
 		} else {
@@ -1002,4 +1017,8 @@ func isStreamIDPredicate(p Predicate) bool {
 
 func isStreamIDColumn(col Column) bool {
 	return col.ColumnDesc().Type.Logical == "stream_id"
+}
+
+func isColumnNameColumn(col Column) bool {
+	return col.ColumnDesc().Type.Logical == "column_name"
 }

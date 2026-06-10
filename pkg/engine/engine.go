@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
@@ -619,13 +620,27 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 }
 
 func printMetastoreLocalitySummary(q *query, sectionsResolved int) {
+	var (
+		tocTables          = xcap.Value[int64](q.capture, metastore.StatMetastoreTocTables)
+		indexObjects       = xcap.Value[int64](q.capture, xcap.StatMetastoreIndexObjects)
+		sectionsOpened     = xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsOpened)
+		sectionsProductive = xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsProductive)
+
+		pagesTotal    = xcap.ValueFromRegion[int64](q.capture, postings.RegionPrefix, dataobj.StatPostingsColumnNamePagesTotal)
+		pagesRelevant = xcap.ValueFromRegion[int64](q.capture, postings.RegionPrefix, dataobj.StatPostingsColumnNameRelevantPages)
+		pageRuns      = xcap.ValueFromRegion[int64](q.capture, postings.RegionPrefix, dataobj.StatPostingsColumnNamePageRuns)
+	)
+
 	level.Info(q.Logger()).Log(
 		"msg", "metastore-locality-summary",
-		"toc_tables", xcap.Value[int64](q.capture, metastore.StatMetastoreTocTables),
-		"index_objects", xcap.Value[int64](q.capture, xcap.StatMetastoreIndexObjects),
-		"index_sections_opened", xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsOpened),
-		"index_sections_productive", xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsProductive),
+		"toc_tables", tocTables,
+		"index_objects", indexObjects,
+		"index_sections_opened", sectionsOpened,
+		"index_sections_productive", sectionsProductive,
 		"logs_sections_resolved", sectionsResolved,
+		"postings_column_name_pages_total", pagesTotal,
+		"postings_column_name_pages_relevant", pagesRelevant,
+		"postings_column_name_page_runs", pageRuns,
 	)
 }
 

@@ -55,4 +55,16 @@ var (
 	// stream-ID pages. A single run means all relevant pages are back-to-back;
 	// a count equal to relevant pages means every relevant page is isolated.
 	StatStreamPageRuns = xcap.NewStatisticInt64("dataobj.stream.pages.runs", xcap.AggregationTypeSum)
+
+	// StatPostingsColumnNamePagesTotal is the total number of pages in the
+	// postings column-name column.
+	StatPostingsColumnNamePagesTotal = xcap.NewStatisticInt64("postings.column_name.pages.total", xcap.AggregationTypeSum)
+
+	// StatPostingsColumnNameRelevantPages is the number of postings column-name
+	// pages whose min/max range overlaps queried label names.
+	StatPostingsColumnNameRelevantPages = xcap.NewStatisticInt64("postings.column_name.pages.relevant", xcap.AggregationTypeSum)
+
+	// StatPostingsColumnNamePageRuns is the number of contiguous runs of
+	// relevant postings column-name pages.
+	StatPostingsColumnNamePageRuns = xcap.NewStatisticInt64("postings.column_name.pages.runs", xcap.AggregationTypeSum)
 )

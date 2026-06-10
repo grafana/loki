@@ -256,6 +256,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 			}
 
 			r.postingsReaders[i] = reader
+			sp.Record(StatMetastorePointerSectionsOpened.Observe(1))
 			return nil
 		})
 	}
@@ -744,6 +745,7 @@ func (r *indexSectionsReader) readPointersFromPostings(ctx context.Context) (arr
 		return nil, io.EOF
 	}
 
+	r.readSpan.Record(StatMetastorePointerSectionsProductive.Observe(1))
 	r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
 	r.bloomRowsRead += uint64(rec.NumRows())
 	return rec, nil
