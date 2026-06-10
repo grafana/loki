@@ -260,9 +260,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 				if err := source.Bind(input); err != nil && errors.Is(err, wire.ErrConnClosed) {
 					// Depending on load to workers, it's possible for a job to
-					// have some already-closed sources, such as if they got
-					// canceled due to short circuiting. This can be safely
-					// ignored.
+					// have some already-closed sources, such as if their upstream
+					// task was cancelled. This can be safely ignored.
 					level.Debug(logger).Log("msg", "skipping closed source", "source", stream.ULID)
 				} else if err != nil {
 					level.Error(logger).Log("msg", "failed to bind source", "err", err)
@@ -299,33 +298,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer span.End()
 
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
-
-	// If the root pipeline can be interested in some specific contributing time range
-	// then subscribe to changes.
-	// TODO(spiridonov): find a way to subscribe on non-root pipelines.
-	notifier, ok := executor.Unwrap(pipeline).(executor.ContributingTimeRangeChangedNotifier)
-	if ok {
-		notifier.SubscribeToTimeRangeChanges(func(ts time.Time, lessThan bool) {
-			// Send a Running task status update with the current time range.
-			// This callback fires synchronously from within pipeline.Read, so its
-			// wait is already inside the Read time counted toward the slot's
-			// comm-blocked total; it is recorded here for per-site attribution
-			// only and is not added to the slot total a second time.
-			_, err := t.Metrics.timeSend(ctx, job.Scheduler, "task_status_contributing_range_sync", sendModeSync, taskType, wire.TaskStatusMessage{
-				ID: job.Task.ULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateRunning,
-					ContributingTimeRange: workflow.ContributingTimeRange{
-						Timestamp: ts,
-						LessThan:  lessThan,
-					},
-				},
-			})
-			if err != nil {
-				level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
-			}
-		})
-	}
 
 	runningWait, err := t.Metrics.timeSend(ctx, job.Scheduler, "task_status_running_async", sendModeAsync, taskType, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,

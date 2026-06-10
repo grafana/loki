@@ -6,7 +6,6 @@ package loki.wire;
 
 import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
 import "gogoproto/gogo.proto";
-import "google/protobuf/timestamp.proto";
 import "pkg/engine/internal/proto/physicalpb/physicalpb.proto";
 import "pkg/engine/internal/proto/ulid/ulid.proto";
 
@@ -194,12 +193,8 @@ message Task {
   // The key is the node ID string representation.
   map<string, StreamList> sinks = 5;
 
-  // The maximum boundary of timestamps that the task can possibly emit.
-  // Does not account for predicates.
-  // MaxTimeRange is not read when executing a task fragment. It can be used
-  // as metadata to control execution (such as cancelling ongoing tasks based
-  // on their maximum time range).
-  loki.physical.TimeRange max_time_range = 6;
+  reserved 6;
+  reserved "max_time_range";
 
   // cached_source defines a set of already processed arrow batches ready to be consumed by the physical node.
   // The key is the node ID string representation.
@@ -238,16 +233,8 @@ message TaskStatus {
   // This is an opaque binary representation of the capture payload.
   bytes capture = 3;
 
-  ContributingTimeRange contributing_time_range = 4;
-}
-
-message ContributingTimeRange {
-  google.protobuf.Timestamp timestamp = 1 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-
-  bool less_than = 2;
+  reserved 4;
+  reserved "contributing_time_range";
 }
 
 message TaskError {

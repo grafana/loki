@@ -32,11 +32,6 @@ const (
 var (
 	tracer = otel.Tracer("pkg/engine/internal/workflow")
 
-	shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "loki_engine_v2_task_short_circuits_total",
-		Help: "Total number of tasks preemptively canceled by short circuiting.",
-	})
-
 	eliminatedCachedTasksTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "loki_engine_v2_task_cached_eliminated_total",
 		Help: "Total number of tasks eliminated before execution due to a cache hit.",
@@ -421,8 +416,6 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 
 	if newStatus.State.Terminal() {
 		wf.handleTerminalStateChange(ctx, task, oldState, newStatus)
-	} else {
-		wf.handleNonTerminalStateChange(ctx, task, newStatus)
 	}
 }
 
@@ -492,44 +485,6 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 
 	// Close the results pipeline if it was waiting on this task to finish.
 	wf.maybeCloseResults()
-}
-
-func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task, newStatus TaskStatus) {
-	// If the task is running, but its contributing time range has been changed
-	if newStatus.State == TaskStateRunning && !newStatus.ContributingTimeRange.Timestamp.IsZero() {
-		// We need to detect if task's immediate children should be canceled because they can no longer contribute
-		// to the state of the running task. We only look at immediate unterminated
-		// children, since canceling them will trigger onTaskChange to process indirect children.
-		var tasksToCancel []*Task
-
-		ts := newStatus.ContributingTimeRange.Timestamp
-		lessThan := newStatus.ContributingTimeRange.LessThan
-
-		wf.tasksMut.RLock()
-		{
-			for _, child := range wf.graph.Children(task) {
-				// Ignore children in terminal states.
-				if childState := wf.taskStates[child]; childState.Terminal() {
-					continue
-				}
-
-				// Ignore if time ranges intersect, so they can contribute
-				if lessThan && child.MaxTimeRange.Start.Before(ts) ||
-					!lessThan && child.MaxTimeRange.End.After(ts) {
-					continue
-				}
-
-				// TODO(spiridonov): We do not check parents here right now, there is only 1 parent now,
-				// but in general a task can be canceled only if all its parents are in terminal states OR
-				// have non-inersecting contributing time range.
-				tasksToCancel = append(tasksToCancel, child)
-				shortCircuitsTotal.Inc()
-			}
-		}
-		wf.tasksMut.RUnlock()
-
-		wf.cancelTasks(ctx, tasksToCancel)
-	}
 }
 
 func (wf *Workflow) cancelTasks(ctx context.Context, tasks []*Task) {
