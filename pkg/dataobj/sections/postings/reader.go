@@ -335,12 +335,53 @@ func (r *Reader) ReadPointers(ctx context.Context, streamIDs map[int64]struct{},
 		alloc = memory.DefaultAllocator
 	}
 
-	postingsRows, err := r.collectPostingsRows(ctx, streamIDs, start, end)
+	postingsRows, err := r.collectPostingsRows(ctx, streamIDs, nil, start, end)
 	if err != nil {
 		return nil, err
 	}
 
 	// Short-circuit empty result with a schema-identical empty batch.
+	if len(postingsRows) == 0 {
+		rb := buildEmptyRecord(alloc, outSchema)
+		xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(int64(0)))
+		xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersReadTime.Observe(time.Since(startTime).Seconds()))
+		return rb, nil
+	}
+
+	rb, err := buildReadPointersRecord(alloc, outSchema, postingsRows)
+	if err != nil {
+		return nil, fmt.Errorf("building ReadPointers output batch: %w", err)
+	}
+
+	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(rb.NumRows()))
+	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersReadTime.Observe(time.Since(startTime).Seconds()))
+	return rb, nil
+}
+
+// ReadPointersForStreams returns stream-pointer rows scoped to the provided stream refs.
+// Stream refs include object path context, which avoids accidental cross-object stream-ID
+// collisions when the same numeric stream ID appears in multiple source objects.
+func (r *Reader) ReadPointersForStreams(ctx context.Context, streamRefs map[StreamRef]struct{}, start, end time.Time) (arrow.RecordBatch, error) {
+	if !r.ready {
+		return nil, errReaderNotOpen
+	}
+
+	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ReadPointersForStreams")
+	defer span.End()
+	startTime := time.Now()
+	defer r.alloc.Reclaim()
+
+	outSchema := readPointersOutputSchema()
+	alloc := r.opts.Allocator
+	if alloc == nil {
+		alloc = memory.DefaultAllocator
+	}
+
+	postingsRows, err := r.collectPostingsRows(ctx, nil, streamRefs, start, end)
+	if err != nil {
+		return nil, err
+	}
+
 	if len(postingsRows) == 0 {
 		rb := buildEmptyRecord(alloc, outSchema)
 		xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(int64(0)))
@@ -365,13 +406,21 @@ type pointerJoinRow struct {
 	streamID     int64
 	minTimestamp int64 // ns since epoch
 	maxTimestamp int64 // ns since epoch
+	hasBounds    bool
+}
+
+type pointerJoinKey struct {
+	objectPath   string
+	sectionIndex int64
+	streamID     int64
 }
 
 // collectPostingsRows reads KindLabel rows and emits one tuple per stream-id bit set in each
-// row's bitmap, applying the streamIDs and [start,end] filters row-side.
+// row's bitmap, applying stream filters and [start,end] filters row-side.
 func (r *Reader) collectPostingsRows(
 	ctx context.Context,
 	streamIDs map[int64]struct{},
+	streamRefs map[StreamRef]struct{},
 	start, end time.Time,
 ) ([]pointerJoinRow, error) {
 	postingsCols, err := findColumnsByType(r.opts.Columns,
@@ -443,6 +492,7 @@ func (r *Reader) collectPostingsRows(
 	}, nil)
 
 	var out []pointerJoinRow
+	seen := make(map[pointerJoinKey]int)
 
 	for {
 		colBatch, readErr := postingsAdapter.Read(ctx, r.alloc, readPointersBatchSize)
@@ -451,7 +501,7 @@ func (r *Reader) collectPostingsRows(
 			if err != nil {
 				return nil, fmt.Errorf("converting postings columnar batch to arrow: %w", err)
 			}
-			if err := appendPostingsJoinRows(rb, streamIDs, start.UnixNano(), end.UnixNano(), &out); err != nil {
+			if err := appendPostingsJoinRows(rb, streamIDs, streamRefs, start.UnixNano(), end.UnixNano(), &out, seen); err != nil {
 				return nil, err
 			}
 		}
@@ -467,8 +517,15 @@ func (r *Reader) collectPostingsRows(
 }
 
 // appendPostingsJoinRows decodes each row's LSB bitmap into one tuple per stream-id, skipping
-// rows outside [startNanos, endNanos] and stream-ids absent from a non-empty streamIDs set.
-func appendPostingsJoinRows(rb arrow.RecordBatch, streamIDs map[int64]struct{}, startNanos, endNanos int64, out *[]pointerJoinRow) error {
+// rows outside [startNanos, endNanos] and stream-ids absent from active stream filters.
+func appendPostingsJoinRows(
+	rb arrow.RecordBatch,
+	streamIDs map[int64]struct{},
+	streamRefs map[StreamRef]struct{},
+	startNanos, endNanos int64,
+	out *[]pointerJoinRow,
+	seen map[pointerJoinKey]int,
+) error {
 	if rb.NumRows() == 0 {
 		return nil
 	}
@@ -494,7 +551,8 @@ func appendPostingsJoinRows(rb arrow.RecordBatch, streamIDs map[int64]struct{}, 
 		return fmt.Errorf("postings max_timestamp column has unexpected type %T", rb.Column(5))
 	}
 
-	filterStreams := len(streamIDs) > 0
+	filterStreamIDs := len(streamIDs) > 0
+	filterStreamRefs := len(streamRefs) > 0
 
 	for i := 0; i < int(rb.NumRows()); i++ {
 		if objectPathCol.IsNull(i) || sectionIndexCol.IsNull(i) || bitmapCol.IsNull(i) {
@@ -504,7 +562,9 @@ func appendPostingsJoinRows(rb arrow.RecordBatch, streamIDs map[int64]struct{}, 
 		// Time-range filter on the posting's [min, max]. A null bound cannot be
 		// evaluated, so don't prune on it; emit the bound as zero in that case.
 		var minTs, maxTs int64
+		hasBounds := false
 		if !minTsCol.IsNull(i) && !maxTsCol.IsNull(i) {
+			hasBounds = true
 			minTs = int64(minTsCol.Value(i))
 			maxTs = int64(maxTsCol.Value(i))
 			if maxTs < startNanos || minTs > endNanos {
@@ -526,22 +586,57 @@ func appendPostingsJoinRows(rb arrow.RecordBatch, streamIDs map[int64]struct{}, 
 					continue
 				}
 				streamID := int64(byteIdx*8 + bitPos)
-				if filterStreams {
+				if filterStreamRefs {
+					streamRef := StreamRef{ObjectPath: objectPath, StreamID: streamID}
+					if _, keep := streamRefs[streamRef]; !keep {
+						continue
+					}
+				} else if filterStreamIDs {
 					if _, keep := streamIDs[streamID]; !keep {
 						continue
 					}
 				}
-				*out = append(*out, pointerJoinRow{
+				key := pointerJoinKey{
 					objectPath:   objectPath,
 					sectionIndex: sectionIndex,
 					streamID:     streamID,
-					minTimestamp: minTs,
-					maxTimestamp: maxTs,
-				})
+				}
+				if idx, exists := seen[key]; exists {
+					mergePointerJoinRowBounds(&(*out)[idx], minTs, maxTs, hasBounds)
+					continue
+				}
+
+				row := pointerJoinRow{
+					objectPath:   objectPath,
+					sectionIndex: sectionIndex,
+					streamID:     streamID,
+				}
+				mergePointerJoinRowBounds(&row, minTs, maxTs, hasBounds)
+
+				*out = append(*out, row)
+				seen[key] = len(*out) - 1
 			}
 		}
 	}
 	return nil
+}
+
+func mergePointerJoinRowBounds(row *pointerJoinRow, minTs, maxTs int64, hasBounds bool) {
+	if !hasBounds {
+		return
+	}
+	if !row.hasBounds {
+		row.minTimestamp = minTs
+		row.maxTimestamp = maxTs
+		row.hasBounds = true
+		return
+	}
+	if minTs < row.minTimestamp {
+		row.minTimestamp = minTs
+	}
+	if maxTs > row.maxTimestamp {
+		row.maxTimestamp = maxTs
+	}
 }
 
 // buildReadPointersRecord builds the output batch from the assembled join rows in
@@ -760,18 +855,18 @@ func appendBloomRowBatch(innerRB arrow.RecordBatch, rb *array.RecordBuilder) err
 	return nil
 }
 
-// readResolveLabelsBatchSize bounds per-batch allocations while amortising fixed costs.
-const readResolveLabelsBatchSize = 4096
+// readResolveMatchingStreamRefsBatchSize bounds per-batch allocations while amortising fixed costs.
+const readResolveMatchingStreamRefsBatchSize = 4096
 
 type matcherIndex int
 
-// ResolveLabels returns the stream IDs matching every matcher (AND) against KindLabel rows
-func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) (map[int64]struct{}, map[int64][]string, error) {
+// ResolveMatchingStreamRefs returns the object-scoped streams matching every matcher against KindLabel rows.
+func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labels.Matcher) (map[StreamRef]struct{}, map[StreamRef][]string, error) {
 	if !r.ready {
 		return nil, nil, errReaderNotOpen
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ResolveLabels")
+	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ResolveMatchingStreamRefs")
 	defer span.End()
 
 	defer r.alloc.Reclaim()
@@ -783,18 +878,20 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 	equalMatchers, otherMatchers := splitByMatchType(matchers)
 
 	cols, err := findColumnsByType(r.opts.Columns,
+		ColumnTypeObjectPath,
 		ColumnTypeColumnName,
 		ColumnTypeLabelValue,
 		ColumnTypeStreamIDBitmap,
 		ColumnTypeKind,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("finding ResolveLabels columns: %w", err)
+		return nil, nil, fmt.Errorf("finding ResolveMatchingStreamRefs columns: %w", err)
 	}
-	colColumnName, colLabelValue, colStreamIDBitmap, colKind := cols[0], cols[1], cols[2], cols[3]
+	colObjectPath, colColumnName, colLabelValue, colStreamIDBitmap, colKind := cols[0], cols[1], cols[2], cols[3], cols[4]
 
 	innerSection := cols[0].Section.inner
 	innerColumns := []*columnar.Column{
+		colObjectPath.inner,
 		colColumnName.inner,
 		colLabelValue.inner,
 		colStreamIDBitmap.inner,
@@ -809,10 +906,11 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 	}
 
 	columnLookup := map[*Column]dataset.Column{
-		colColumnName:     dset.Columns()[0],
-		colLabelValue:     dset.Columns()[1],
-		colStreamIDBitmap: dset.Columns()[2],
-		colKind:           dset.Columns()[3],
+		colObjectPath:     dset.Columns()[0],
+		colColumnName:     dset.Columns()[1],
+		colLabelValue:     dset.Columns()[2],
+		colStreamIDBitmap: dset.Columns()[3],
+		colKind:           dset.Columns()[4],
 	}
 
 	kindEq := EqualPredicate{
@@ -883,20 +981,21 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 	adapter := columnar.NewReaderAdapter(innerOptions)
 	defer func() { _ = adapter.Close() }()
 	if err := adapter.Open(ctx); err != nil {
-		return nil, nil, fmt.Errorf("opening ResolveLabels adapter: %w", err)
+		return nil, nil, fmt.Errorf("opening ResolveMatchingStreamRefs adapter: %w", err)
 	}
 
-	// Inner schema (4 fields) used by arrowconv.ToRecordBatch — must match
+	// Inner schema (5 fields) used by arrowconv.ToRecordBatch — must match
 	// the columnar batch column count.
 	innerSchema := arrow.NewSchema([]arrow.Field{
+		columnToField(colObjectPath),
 		columnToField(colColumnName),
 		columnToField(colLabelValue),
 		columnToField(colStreamIDBitmap),
 		columnToField(colKind),
 	}, nil)
 
-	perMatcherStreams := make(map[matcherIndex]map[int64]struct{})
-	labelNamesByStreamSet := make(map[int64]map[string]struct{})
+	perMatcherStreams := make(map[matcherIndex]map[StreamRef]struct{})
+	labelNamesByStreamSet := make(map[StreamRef]map[string]struct{})
 	activeMatchers := make([]*labels.Matcher, 0, len(matchers))
 
 	for _, m := range matchers {
@@ -908,11 +1007,11 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 
 	// Drain the adapter, accumulating each row's stream IDs into the set of every matcher it satisfies.
 	for {
-		colBatch, readErr := adapter.Read(ctx, r.alloc, readResolveLabelsBatchSize)
+		colBatch, readErr := adapter.Read(ctx, r.alloc, readResolveMatchingStreamRefsBatchSize)
 		if colBatch != nil && colBatch.NumRows() > 0 {
 			innerRB, convErr := arrowconv.ToRecordBatch(colBatch, innerSchema)
 			if convErr != nil {
-				return nil, nil, fmt.Errorf("converting ResolveLabels columnar batch to arrow: %w", convErr)
+				return nil, nil, fmt.Errorf("converting ResolveMatchingStreamRefs columnar batch to arrow: %w", convErr)
 			}
 			if err := accumulateLabelRows(
 				innerRB,
@@ -927,38 +1026,38 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 			break
 		}
 		if readErr != nil {
-			return nil, nil, fmt.Errorf("reading ResolveLabels batch: %w", readErr)
+			return nil, nil, fmt.Errorf("reading ResolveMatchingStreamRefs batch: %w", readErr)
 		}
 	}
 
-	// AND across matchers: a stream id must appear in every matcher's set.
-	var matchingStreamIDs map[int64]struct{}
+	// AND across matchers: a stream ref must appear in every matcher's set.
+	var matchingStreams map[StreamRef]struct{}
 	if len(activeMatchers) == 0 {
-		// Defensive: short-circuited at the top of ResolveLabels, but if
+		// Defensive: short-circuited at the top of ResolveMatchingStreamRefs, but if
 		// every matcher was nil we land here.
-		matchingStreamIDs = make(map[int64]struct{})
+		matchingStreams = make(map[StreamRef]struct{})
 	} else {
 		first := perMatcherStreams[matcherIndex(0)]
-		matchingStreamIDs = make(map[int64]struct{}, len(first))
-		for id := range first {
-			matchingStreamIDs[id] = struct{}{}
+		matchingStreams = make(map[StreamRef]struct{}, len(first))
+		for streamRef := range first {
+			matchingStreams[streamRef] = struct{}{}
 		}
-		for i := 1; i < len(activeMatchers) && len(matchingStreamIDs) > 0; i++ {
+		for i := 1; i < len(activeMatchers) && len(matchingStreams) > 0; i++ {
 			next := perMatcherStreams[matcherIndex(i)]
-			for id := range matchingStreamIDs {
-				if _, ok := next[id]; !ok {
-					delete(matchingStreamIDs, id)
+			for streamRef := range matchingStreams {
+				if _, ok := next[streamRef]; !ok {
+					delete(matchingStreams, streamRef)
 				}
 			}
 		}
 	}
 
-	// Flatten the inversion to slices, scoped to the surviving matchingStreamIDs.
-	var labelNamesByStream map[int64][]string
-	if len(matchingStreamIDs) > 0 {
-		labelNamesByStream = make(map[int64][]string, len(matchingStreamIDs))
-		for id := range matchingStreamIDs {
-			nameSet := labelNamesByStreamSet[id]
+	// Flatten the inversion to slices, scoped to the surviving matching stream refs.
+	var labelNamesByStream map[StreamRef][]string
+	if len(matchingStreams) > 0 {
+		labelNamesByStream = make(map[StreamRef][]string, len(matchingStreams))
+		for streamRef := range matchingStreams {
+			nameSet := labelNamesByStreamSet[streamRef]
 			if len(nameSet) == 0 {
 				continue
 			}
@@ -966,12 +1065,12 @@ func (r *Reader) ResolveLabels(ctx context.Context, matchers []*labels.Matcher) 
 			for n := range nameSet {
 				names = append(names, n)
 			}
-			labelNamesByStream[id] = names
+			labelNamesByStream[streamRef] = names
 		}
 	}
 
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsLabelsResolved.Observe(int64(len(matchingStreamIDs))))
-	return matchingStreamIDs, labelNamesByStream, nil
+	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsLabelsResolved.Observe(int64(len(matchingStreams))))
+	return matchingStreams, labelNamesByStream, nil
 }
 
 func splitByMatchType(ms []*labels.Matcher) (equal, other []*labels.Matcher) {
@@ -992,23 +1091,27 @@ func splitByMatchType(ms []*labels.Matcher) (equal, other []*labels.Matcher) {
 func accumulateLabelRows(
 	rb arrow.RecordBatch,
 	matchers []*labels.Matcher,
-	perMatcherStreams map[matcherIndex]map[int64]struct{},
-	labelNamesByStreamSet map[int64]map[string]struct{},
+	perMatcherStreams map[matcherIndex]map[StreamRef]struct{},
+	labelNamesByStreamSet map[StreamRef]map[string]struct{},
 ) error {
 	if rb.NumRows() == 0 {
 		return nil
 	}
-	columnNameCol, ok := rb.Column(0).(*array.String)
+	objectPathCol, ok := rb.Column(0).(*array.String)
 	if !ok {
-		return fmt.Errorf("ResolveLabels column_name has unexpected type %T", rb.Column(0))
+		return fmt.Errorf("ResolveMatchingStreamRefs object_path has unexpected type %T", rb.Column(0))
 	}
-	labelValueCol, ok := rb.Column(1).(*array.String)
+	columnNameCol, ok := rb.Column(1).(*array.String)
 	if !ok {
-		return fmt.Errorf("ResolveLabels label_value has unexpected type %T", rb.Column(1))
+		return fmt.Errorf("ResolveMatchingStreamRefs column_name has unexpected type %T", rb.Column(1))
 	}
-	bitmapCol, ok := rb.Column(2).(*array.Binary)
+	labelValueCol, ok := rb.Column(2).(*array.String)
 	if !ok {
-		return fmt.Errorf("ResolveLabels stream_id_bitmap has unexpected type %T", rb.Column(2))
+		return fmt.Errorf("ResolveMatchingStreamRefs label_value has unexpected type %T", rb.Column(2))
+	}
+	bitmapCol, ok := rb.Column(3).(*array.Binary)
+	if !ok {
+		return fmt.Errorf("ResolveMatchingStreamRefs stream_id_bitmap has unexpected type %T", rb.Column(3))
 	}
 
 	// Group matcher indexes by Name for O(1) per-row dispatch.
@@ -1018,9 +1121,10 @@ func accumulateLabelRows(
 	}
 
 	for i := 0; i < int(rb.NumRows()); i++ {
-		if columnNameCol.IsNull(i) || labelValueCol.IsNull(i) || bitmapCol.IsNull(i) {
+		if objectPathCol.IsNull(i) || columnNameCol.IsNull(i) || labelValueCol.IsNull(i) || bitmapCol.IsNull(i) {
 			continue
 		}
+		objectPath := objectPathCol.Value(i)
 		name := columnNameCol.Value(i)
 		value := labelValueCol.Value(i)
 		bitmapBytes := bitmapCol.Value(i)
@@ -1048,22 +1152,25 @@ func accumulateLabelRows(
 				if (b>>uint(bitPos))&1 == 0 {
 					continue
 				}
-				streamID := int64(byteIdx*8 + bitPos)
+				streamRef := StreamRef{
+					ObjectPath: objectPath,
+					StreamID:   int64(byteIdx*8 + bitPos),
+				}
 
 				for _, idx := range matched {
 					set, exists := perMatcherStreams[idx]
 					if !exists {
-						set = make(map[int64]struct{})
+						set = make(map[StreamRef]struct{})
 						perMatcherStreams[idx] = set
 					}
-					set[streamID] = struct{}{}
+					set[streamRef] = struct{}{}
 				}
 
-				// Record column_name for the inversion (scoped later to matchingStreamIDs).
-				nameSet, exists := labelNamesByStreamSet[streamID]
+				// Record column_name for the inversion (scoped later to matching streams).
+				nameSet, exists := labelNamesByStreamSet[streamRef]
 				if !exists {
 					nameSet = make(map[string]struct{})
-					labelNamesByStreamSet[streamID] = nameSet
+					labelNamesByStreamSet[streamRef] = nameSet
 				}
 				nameSet[name] = struct{}{}
 			}

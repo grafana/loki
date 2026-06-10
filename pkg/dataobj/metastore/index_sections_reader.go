@@ -56,6 +56,7 @@ type indexSectionsReader struct {
 	hasData            bool // Whether initialization pulled data to read
 	readStreams        bool
 	matchingStreamIDs  map[int64]struct{}
+	matchingStreamRefs map[postings.StreamRef]struct{}
 	labelNamesByStream map[int64][]string
 
 	streamsReaders      []*streams.Reader
@@ -110,6 +111,7 @@ func newIndexSectionsReader(
 		start:               start,
 		end:                 end,
 		matchingStreamIDs:   make(map[int64]struct{}),
+		matchingStreamRefs:  make(map[postings.StreamRef]struct{}),
 		labelNamesByStream:  make(map[int64][]string),
 		usePostingsSections: usePostingsSections,
 	}
@@ -537,16 +539,23 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 	if r.usePostingsSections {
 		if r.postingsReader != nil {
 			pr := r.postingsReader
-			streamIDs, labelNamesByStream, err := pr.ResolveLabels(ctx, r.matchers)
+			streamRefs, labelNamesByRef, err := pr.ResolveMatchingStreamRefs(ctx, r.matchers)
 			if err != nil {
 				return fmt.Errorf("resolving labels via postings: %w", err)
 			}
 
-			if streamIDs != nil {
-				r.matchingStreamIDs = streamIDs
+			if streamRefs != nil {
+				r.matchingStreamRefs = streamRefs
+				r.matchingStreamIDs = make(map[int64]struct{}, len(streamRefs))
+				for streamRef := range streamRefs {
+					r.matchingStreamIDs[streamRef.StreamID] = struct{}{}
+				}
 			}
-			if labelNamesByStream != nil {
-				r.labelNamesByStream = labelNamesByStream
+			if labelNamesByRef != nil {
+				r.labelNamesByStream = make(map[int64][]string, len(labelNamesByRef))
+				for streamRef, names := range labelNamesByRef {
+					r.addLabelNamesForStream(streamRef.StreamID, names)
+				}
 			}
 
 			streamLabelNames, err := pr.StreamLabelColumnNames(ctx)
@@ -611,11 +620,15 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		}
 	}
 
-	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
+	streamsRead := len(r.matchingStreamIDs)
+	if r.usePostingsSections {
+		streamsRead = len(r.matchingStreamRefs)
+	}
+	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(streamsRead)))
 
 	r.filterBloomPredicates()
 	r.readStreams = true
-	r.hasData = len(r.matchingStreamIDs) > 0
+	r.hasData = streamsRead > 0
 	return nil
 }
 
@@ -736,7 +749,7 @@ func (r *indexSectionsReader) readPointersFromPostings(ctx context.Context) (arr
 	}
 
 	pr := r.postingsReader
-	rec, err := pr.ReadPointers(ctx, r.matchingStreamIDs, r.start, r.end)
+	rec, err := pr.ReadPointersForStreams(ctx, r.matchingStreamRefs, r.start, r.end)
 	if err != nil {
 		// Preserve the contract that a transient error surfaces on every
 		// call (not just the first): leave postingsPointersRead false so a

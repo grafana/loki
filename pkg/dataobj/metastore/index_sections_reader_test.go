@@ -929,6 +929,29 @@ func TestIndexSectionsReader_PostingsPath_StreamLabelPredicateOnDisjointName(t *
 			"without the  fix, MatchSections AND-drops every section and Read returns EOF")
 }
 
+func TestIndexSectionsReader_PostingsPath_StreamIDCollisionAcrossObjects(t *testing.T) {
+	t.Parallel()
+
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+	start := now.Add(-4 * time.Hour)
+	end := now.Add(-time.Hour)
+	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
+
+	obj := buildPostingsStreamIDCollisionFixture(t)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, true)
+	t.Cleanup(r.Close)
+	require.NoError(t, r.Open(ctx))
+
+	rec, err := r.Read(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+	require.Equal(t, int64(1), rec.NumRows(), "only one object/stream should match app=foo")
+
+	pathCol := columnByName(t, rec, "path.path.utf8").(*array.String)
+	require.Equal(t, "obj-a", pathCol.Value(0),
+		"stream-id collisions across objects must not leak pointers from non-matching objects")
+}
+
 func TestIndexSectionsReader_PostingsPath_NoPostingsReader_ShortCircuit(t *testing.T) {
 	t.Parallel()
 
@@ -951,6 +974,39 @@ func TestIndexSectionsReader_PostingsPath_NoPostingsReader_ShortCircuit(t *testi
 	_, err := r.Read(ctx)
 	require.ErrorIs(t, err, io.EOF, "no postings reader ⇒ postings path returns io.EOF cleanly")
 	require.Empty(t, r.matchingStreamIDs, "short-circuit must not populate matchingStreamIDs")
+}
+
+func buildPostingsStreamIDCollisionFixture(t *testing.T) *dataobj.Object {
+	t.Helper()
+
+	builder := postings.NewBuilder(nil, 0, 0)
+	builder.SetTenant(tenantID)
+
+	builder.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "obj-a",
+		SectionIndex:     0,
+		ColumnName:       "app",
+		LabelValue:       "foo",
+		StreamID:         1,
+		Timestamp:        now.Add(-3 * time.Hour),
+		UncompressedSize: 5,
+	})
+	builder.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "obj-b",
+		SectionIndex:     0,
+		ColumnName:       "app",
+		LabelValue:       "bar",
+		StreamID:         1,
+		Timestamp:        now.Add(-3 * time.Hour),
+		UncompressedSize: 5,
+	})
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(builder))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+	return obj
 }
 
 // buildPostingsOnlyFixture writes only postings observations (no AppendStream /
