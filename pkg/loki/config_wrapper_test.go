@@ -792,14 +792,71 @@ storage_config:
     object_store:
       gcs:
         bucket_name: foobar
-        chunk_buffer_size: 17`
+        chunk_buffer_size: 17
+storage_config:
+  use_thanos_objstore: true`
 
 			config, _ := testContext(commonStorageConfig, nil)
 
 			assert.Equal(t, "foobar", config.StorageConfig.ObjectStore.GCS.BucketName)
 			assert.Equal(t, 17, config.StorageConfig.ObjectStore.GCS.ChunkBufferSize)
 
-			// TODO: common config should be set on ruler bucket config
+			// should be set on ruler bucket config
+			assert.Equal(t, "gcs", config.RulerStorage.Backend)
+			assert.Equal(t, "foobar", config.RulerStorage.GCS.BucketName)
+			assert.Equal(t, 17, config.RulerStorage.GCS.ChunkBufferSize)
+		})
+
+		t.Run("when common object_store config is provided, the http config such as TLS settings should be applied to the ruler storage", func(t *testing.T) {
+			commonStorageConfig := `common:
+  storage:
+    object_store:
+      s3:
+        endpoint: s3.example.local:443
+        http:
+          tls_ca_path: /var/lib/acme-ca/ca.crt
+storage_config:
+  use_thanos_objstore: true`
+
+			config, _ := testContext(commonStorageConfig, nil)
+
+			assert.Equal(t, "s3.example.local:443", config.StorageConfig.ObjectStore.S3.Endpoint)
+			assert.Equal(t, "/var/lib/acme-ca/ca.crt", config.StorageConfig.ObjectStore.S3.HTTP.TLSConfig.CAPath)
+
+			assert.Equal(t, "s3", config.RulerStorage.Backend)
+			assert.Equal(t, "s3.example.local:443", config.RulerStorage.S3.Endpoint)
+			assert.Equal(t, "/var/lib/acme-ca/ca.crt", config.RulerStorage.S3.HTTP.TLSConfig.CAPath)
+		})
+
+		t.Run("when use_thanos_objstore is not enabled, common object_store config is not applied to the ruler storage", func(t *testing.T) {
+			commonStorageConfig := `common:
+  storage:
+    object_store:
+      gcs:
+        bucket_name: foobar`
+
+			config, defaults := testContext(commonStorageConfig, nil)
+
+			assert.Equal(t, "foobar", config.StorageConfig.ObjectStore.GCS.BucketName)
+			assert.Equal(t, defaults.RulerStorage, config.RulerStorage)
+		})
+
+		t.Run("when multiple object_store backends are provided, the ruler storage backend cannot be inferred and is left untouched", func(t *testing.T) {
+			commonStorageConfig := `common:
+  storage:
+    object_store:
+      gcs:
+        bucket_name: foobar
+      s3:
+        endpoint: s3.example.local:443
+storage_config:
+  use_thanos_objstore: true`
+
+			config, defaults := testContext(commonStorageConfig, nil)
+
+			assert.Equal(t, "foobar", config.StorageConfig.ObjectStore.GCS.BucketName)
+			assert.Equal(t, "s3.example.local:443", config.StorageConfig.ObjectStore.S3.Endpoint)
+			assert.Equal(t, defaults.RulerStorage, config.RulerStorage)
 		})
 
 		t.Run("explicit thanos object storage config provided via config file is preserved", func(t *testing.T) {
@@ -810,6 +867,7 @@ storage_config:
         bucket_name: foobar
         chunk_buffer_size: 17
 storage_config:
+  use_thanos_objstore: true
   object_store:
     gcs:
       bucket_name: barfoo
@@ -820,7 +878,35 @@ storage_config:
 			assert.Equal(t, "barfoo", config.StorageConfig.ObjectStore.GCS.BucketName)
 			assert.Equal(t, 27, config.StorageConfig.ObjectStore.GCS.ChunkBufferSize)
 
-			// TODO: common config should be set on ruler bucket config
+			// the ruler storage should be set from the common config
+			assert.Equal(t, "gcs", config.RulerStorage.Backend)
+			assert.Equal(t, "foobar", config.RulerStorage.GCS.BucketName)
+			assert.Equal(t, 17, config.RulerStorage.GCS.ChunkBufferSize)
+		})
+
+		t.Run("explicit ruler_storage config provided via config file is preserved", func(t *testing.T) {
+			explicitRulerStorageConfig := `common:
+  storage:
+    object_store:
+      gcs:
+        bucket_name: foobar
+        chunk_buffer_size: 17
+storage_config:
+  use_thanos_objstore: true
+ruler_storage:
+  backend: gcs
+  gcs:
+    bucket_name: ruler-bucket`
+
+			config, _ := testContext(explicitRulerStorageConfig, nil)
+
+			assert.Equal(t, "foobar", config.StorageConfig.ObjectStore.GCS.BucketName)
+
+			// the explicitly configured ruler bucket wins over the common config,
+			// while settings not configured in ruler_storage are inherited from it
+			assert.Equal(t, "gcs", config.RulerStorage.Backend)
+			assert.Equal(t, "ruler-bucket", config.RulerStorage.GCS.BucketName)
+			assert.Equal(t, 17, config.RulerStorage.GCS.ChunkBufferSize)
 		})
 
 		t.Run("named storage config provided via config file is preserved", func(t *testing.T) {
