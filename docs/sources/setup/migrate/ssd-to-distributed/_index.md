@@ -1,8 +1,8 @@
 ---
 title: Migrate from SSD to distributed
 menuTitle: Migrate from SSD to distributed
-description: Migration guide from migrating from simple scalable deployment to a distributed microservices deployment.
-weight: 300
+description: Migration guide for migrating from simple scalable deployment to a distributed microservices deployment.
+weight: 400
 keywords:
   - migrate
   - distributed

@@ -1,10 +1,10 @@
 ---
 title: Migrate from `loki-distributed` Helm chart
 menuTitle: Migrate from `loki-distributed`
-description: Migration guide for moving from `loki-distributed` to `loki`
+description: Migration guide for moving from `loki-distributed` to `loki` Helm chart
 aliases:
   - ../../installation/helm/migrate-from-distributed
-weight: 600
+weight: 700
 keywords:
   - migrate
   - loki-distributed

@@ -4,7 +4,7 @@ menuTitle: Migrate to three targets
 description: Migration guide for moving from two scalable to three scalable targets
 aliases:
   - ../../installation/helm/migrate-to-three-scalable-targets/
-weight: 700
+weight: 600
 keywords:
   - migrate
   - ssd
