@@ -924,7 +924,7 @@ func (c *MemChunk) reorder() error {
 	// noop pipeline. So we bypass processing by using a context with the processing disabled hint.
 	// We add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
 	ctx := processingDisabledContext(context.Background())
-	itr, err := c.Iterator(ctx, from, to.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+	itr, err := c.Iterator(ctx, from, to.Add(time.Millisecond), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
 		return err
 	}
@@ -1040,7 +1040,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		headIterator = c.head.Iterator(ctx, direction, mint, maxt, pipeline)
 	}
 
-	if direction == logproto.FORWARD {
+	if direction == logproto.Direction_FORWARD {
 		// add the headblock iterator at the end.
 		if headIterator != nil {
 			blockItrs = append(blockItrs, headIterator)
@@ -1218,7 +1218,7 @@ func (c *MemChunk) Rewrite(filter filter.Func) (Chunk, error) {
 // Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
 func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
 	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
 		return nil, err
 	}
@@ -1349,7 +1349,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 		})
 	}
 
-	if direction == logproto.FORWARD {
+	if direction == logproto.Direction_FORWARD {
 		for _, e := range hb.entries {
 			process(e)
 		}

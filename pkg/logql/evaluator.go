@@ -312,7 +312,7 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 			Direction: q.Direction(),
 			Selector:  expr.String(),
 			Shards:    q.Shards(),
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 			StoreChunks: q.GetStoreChunks(),
@@ -347,7 +347,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 						// intentionally send the vector for reducing labels.
 						Selector: e.String(),
 						Shards:   q.Shards(),
-						Plan: &plan.QueryPlan{
+						Plan: plan.QueryPlan{
 							AST: expr,
 						},
 						StoreChunks: q.GetStoreChunks(),
@@ -372,7 +372,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				// intentionally send the vector for reducing labels.
 				Selector: e.String(),
 				Shards:   q.Shards(),
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: expr,
 				},
 				StoreChunks: q.GetStoreChunks(),
@@ -1384,7 +1384,7 @@ func (ev *DefaultEvaluator) NewVariantsStepEvaluator(
 				End:      q.End().Add(-logRange.Offset).Add(time.Nanosecond),
 				Selector: expr.String(),
 				Shards:   q.Shards(),
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: expr,
 				},
 				StoreChunks: q.GetStoreChunks(),

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
@@ -475,7 +476,7 @@ func TestHandleHit(t *testing.T) {
 					// if the optimization of "sorting by End when Start of 2 Extents are equal" is not there, this nil
 					// response would cause error during Extents merge phase. With the optimization
 					// this bad Extent should be dropped. The good Extent below can be used instead.
-					Response: nil,
+					Response: AnyAdapter{},
 				},
 				mkExtentWithStep(60, 160, 20),
 			},
@@ -660,13 +661,13 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	rc.put(ctx, "empty", []Extent{{
 		Start:    100,
 		End:      200,
-		Response: nil,
+		Response: AnyAdapter{},
 	}})
 	rc.put(ctx, "notempty", []Extent{mkExtent(100, 120)})
 	rc.put(ctx, "mixed", []Extent{mkExtent(100, 120), {
 		Start:    120,
 		End:      200,
-		Response: nil,
+		Response: AnyAdapter{},
 	}})
 
 	extents, hit := rc.get(ctx, "empty")
@@ -811,7 +812,7 @@ func mkExtentWithStep(start, end, step int64) Extent {
 	return Extent{
 		Start:    start,
 		End:      end,
-		Response: anyRes,
+		Response: FromAny(anyRes),
 	}
 }
 
@@ -893,4 +894,18 @@ func (m mockResultsCache) Stop() {
 func (m mockResultsCache) GetCacheType() stats.CacheType {
 	// returning results cache since we do not support storing stats for "mock" cache
 	return stats.ResultCache
+}
+
+// GetCachingOptions implements Request with a value-typed getter; the
+// wiresmith-generated accessor is GetCachingOpts and returns a pointer.
+func (m *MockRequest) GetCachingOptions() CachingOptions { return m.CachingOpts }
+
+// The wiresmith-generated mock types register with the google.golang.org
+// protobuf registry only; gogo's types.MarshalAny/UnmarshalAny resolve
+// through the gogo registry, so register them there too.
+func init() {
+	proto.RegisterType((*MockRequest)(nil), "resultscache.MockRequest")
+	proto.RegisterType((*MockResponse)(nil), "resultscache.MockResponse")
+	proto.RegisterType((*MockLabelsPair)(nil), "resultscache.MockLabelsPair")
+	proto.RegisterType((*MockSample)(nil), "resultscache.MockSample")
 }

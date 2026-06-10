@@ -631,7 +631,7 @@ func TestIngesterQuerier_DetectedLabels(t *testing.T) {
 		req := logproto.DetectedLabelsRequest{}
 
 		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelToValuesResponse{Labels: map[string]logproto.UniqueLabelValues{
 			"cluster": {Values: []string{"ingester"}},
 			"foo":     {Values: []string{"abc", "abc", "ghi"}},
 			"bar":     {Values: []string{"cgi", "def"}},
@@ -645,7 +645,7 @@ func TestIngesterQuerier_DetectedLabels(t *testing.T) {
 		detectedLabels, err := ingesterQuerier.DetectedLabel(context.Background(), &req)
 		require.NoError(t, err)
 
-		require.Equal(t, &logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+		require.Equal(t, &logproto.LabelToValuesResponse{Labels: map[string]logproto.UniqueLabelValues{
 			"all-ids": {Values: []string{"1", "3"}},
 			"bar":     {Values: []string{"cgi", "def"}},
 			"cluster": {Values: []string{"ingester"}},

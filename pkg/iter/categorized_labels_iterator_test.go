@@ -32,7 +32,7 @@ func TestNewCategorizeLabelsIterator(t *testing.T) {
 						},
 					},
 				}),
-			}, logproto.FORWARD),
+			}, logproto.Direction_FORWARD),
 			expectedStreams: []logproto.Stream{
 				{
 					Labels: labels.FromStrings("namespace", "default").String(),
@@ -92,7 +92,7 @@ func TestNewCategorizeLabelsIterator(t *testing.T) {
 						},
 					},
 				}),
-			}, logproto.FORWARD),
+			}, logproto.Direction_FORWARD),
 			expectedStreams: []logproto.Stream{
 				{
 					Labels: labels.FromStrings("namespace", "default").String(),

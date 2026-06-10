@@ -164,7 +164,7 @@ func Test_seriesLimiter(t *testing.T) {
 		Step:      30000, // 30sec
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/query_range",
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
@@ -668,7 +668,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		Limit:     10000,
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/loki/api/v1/query_range",
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
@@ -1001,7 +1001,7 @@ func Test_MaxQuerySize(t *testing.T) {
 				Limit:     1000,
 				StartTs:   tc.queryStart,
 				EndTs:     tc.queryEnd,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/query_range",
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(tc.query),
@@ -1132,7 +1132,7 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 				Query:     tc.query,
 				StartTs:   tc.queryStart,
 				EndTs:     tc.queryEnd,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/query_range",
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(tc.query),
@@ -1206,7 +1206,7 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 				Query:     `{cluster="dev-us-central-0"}`,
 				Limit:     1000,
 				TimeTs:    testTime,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/loki/api/v1/query",
 			}
 

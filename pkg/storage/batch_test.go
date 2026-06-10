@@ -58,7 +58,7 @@ func Test_batchIterSafeStart(t *testing.T) {
 		},
 	}
 
-	batch := newBatchChunkIterator(context.Background(), s, chks, 1, logproto.FORWARD, from, from.Add(4*time.Millisecond), NilMetrics, []*labels.Matcher{}, nil)
+	batch := newBatchChunkIterator(context.Background(), s, chks, 1, logproto.Direction_FORWARD, from, from.Add(4*time.Millisecond), NilMetrics, []*labels.Matcher{}, nil)
 
 	// if it was started already, we should see a panic before this
 	time.Sleep(time.Millisecond)
@@ -211,7 +211,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 				},
 				fooLabelsWithName.String(),
 				from, from.Add(4 * time.Millisecond),
-				logproto.FORWARD,
+				logproto.Direction_FORWARD,
 				2,
 			},
 			"forward all overlap and all chunks have a from time less than query from time": {
@@ -340,7 +340,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 				},
 				fooLabelsWithName.String(),
 				from.Add(1 * time.Millisecond), from.Add(5 * time.Millisecond),
-				logproto.FORWARD,
+				logproto.Direction_FORWARD,
 				2,
 			},
 			"forward with overlapping non-continuous entries": {
@@ -423,7 +423,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 				},
 				fooLabelsWithName.String(),
 				from, from.Add(3 * time.Millisecond),
-				logproto.FORWARD,
+				logproto.Direction_FORWARD,
 				2,
 			},
 			"backward with overlap": {
@@ -532,7 +532,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 				},
 				fooLabelsWithName.String(),
 				from, from.Add(4 * time.Millisecond),
-				logproto.BACKWARD,
+				logproto.Direction_BACKWARD,
 				2,
 			},
 			"backward all overlap and all chunks have a through time greater than query through time": {
@@ -661,7 +661,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 				},
 				fooLabelsWithName.String(),
 				from, from.Add(4 * time.Millisecond),
-				logproto.BACKWARD,
+				logproto.Direction_BACKWARD,
 				2,
 			},
 			"backward with overlapping non-continuous entries": {
@@ -760,7 +760,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 				},
 				fooLabelsWithName.String(),
 				from, from.Add(8 * time.Millisecond),
-				logproto.BACKWARD,
+				logproto.Direction_BACKWARD,
 				2,
 			},
 			"forward without overlap": {
@@ -818,7 +818,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 				},
 				fooLabelsWithName.String(),
 				from, from.Add(3 * time.Millisecond),
-				logproto.FORWARD,
+				logproto.Direction_FORWARD,
 				2,
 			},
 			"backward without overlap": {
@@ -876,7 +876,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 				},
 				fooLabelsWithName.String(),
 				from, from.Add(3 * time.Millisecond),
-				logproto.BACKWARD,
+				logproto.Direction_BACKWARD,
 				2,
 			},
 			// This test is rather complex under the hood.
@@ -978,7 +978,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 				},
 				fooLabelsWithName.String(),
 				from, from.Add(4 * time.Millisecond),
-				logproto.FORWARD,
+				logproto.Direction_FORWARD,
 				1,
 			},
 		}
@@ -1653,7 +1653,7 @@ func TestBuildHeapIterator(t *testing.T) {
 			ctx = user.InjectOrgID(context.Background(), "test-user")
 			b := &logBatchIterator{
 				batchChunkIterator: &batchChunkIterator{
-					direction: logproto.FORWARD,
+					direction: logproto.Direction_FORWARD,
 				},
 				ctx:      ctx,
 				pipeline: log.NewNoopPipeline(),
@@ -1748,7 +1748,7 @@ func TestBatchCancel(t *testing.T) {
 		},
 	}
 
-	it, err := newLogBatchIterator(ctx, s, NilMetrics, chunks, 1, newMatchers(fooLabels.String()), log.NewNoopPipeline(), logproto.FORWARD, from, time.Now(), nil)
+	it, err := newLogBatchIterator(ctx, s, NilMetrics, chunks, 1, newMatchers(fooLabels.String()), log.NewNoopPipeline(), logproto.Direction_FORWARD, from, time.Now(), nil)
 	require.NoError(t, err)
 	defer require.NoError(t, it.Close())
 	//nolint:revive
@@ -1783,7 +1783,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		it, err := st.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  `{foo="bar"}`,
-			Direction: logproto.BACKWARD,
+			Direction: logproto.Direction_BACKWARD,
 			Limit:     0,
 			Shards:    nil,
 			Start:     time.Unix(0, 1),

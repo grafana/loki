@@ -137,7 +137,7 @@ func (m *LokiRequest) GetDirection() logproto.Direction {
 	if m != nil {
 		return m.Direction
 	}
-	return logproto.FORWARD
+	return logproto.Direction_FORWARD
 }
 
 func (m *LokiRequest) GetPath() string {
@@ -239,7 +239,7 @@ func (m *LokiInstantRequest) GetDirection() logproto.Direction {
 	if m != nil {
 		return m.Direction
 	}
-	return logproto.FORWARD
+	return logproto.Direction_FORWARD
 }
 
 func (m *LokiInstantRequest) GetPath() string {
@@ -390,7 +390,7 @@ func (m *LokiResponse) GetDirection() logproto.Direction {
 	if m != nil {
 		return m.Direction
 	}
-	return logproto.FORWARD
+	return logproto.Direction_FORWARD
 }
 
 func (m *LokiResponse) GetLimit() uint32 {

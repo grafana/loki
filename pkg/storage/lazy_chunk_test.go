@@ -76,7 +76,7 @@ func TestLazyChunkIterator(t *testing.T) {
 			},
 		} {
 			t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-				it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.New(labels.Label{Name: "foo", Value: "bar"})), nil)
+				it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.New(labels.Label{Name: "foo", Value: "bar"})), nil)
 				require.Nil(t, err)
 				streams, _, err := iter.ReadBatch(it, 1000)
 				require.Nil(t, err)
@@ -126,49 +126,49 @@ func TestIsOverlapping(t *testing.T) {
 	}{
 		{
 			"equal forward",
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			lazyChunkWithBounds(time.Unix(0, 0), time.Unix(0, int64(time.Millisecond*5))),
 			blockWithBounds(0, int64(time.Millisecond*5)),
 			true,
 		},
 		{
 			"equal backward",
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			lazyChunkWithBounds(time.Unix(0, 0), time.Unix(0, int64(time.Millisecond*5))),
 			blockWithBounds(0, int64(time.Millisecond*5)),
 			true,
 		},
 		{
 			"equal through backward",
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			lazyChunkWithBounds(time.Unix(0, int64(time.Millisecond*5)), time.Unix(0, int64(time.Millisecond*10))),
 			blockWithBounds(0, int64(time.Millisecond*10)),
 			true,
 		},
 		{
 			"< through backward",
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			lazyChunkWithBounds(time.Unix(0, int64(time.Millisecond*5)), time.Unix(0, int64(time.Millisecond*10))),
 			blockWithBounds(0, int64(time.Millisecond*5)),
 			true,
 		},
 		{
 			"from > forward",
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			lazyChunkWithBounds(time.Unix(0, int64(time.Millisecond*4)), time.Unix(0, int64(time.Millisecond*10))),
 			blockWithBounds(int64(time.Millisecond*3), int64(time.Millisecond*5)),
 			true,
 		},
 		{
 			"from < forward",
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			lazyChunkWithBounds(time.Unix(0, int64(time.Millisecond*5)), time.Unix(0, int64(time.Millisecond*10))),
 			blockWithBounds(int64(time.Millisecond*3), int64(time.Millisecond*4)),
 			false,
 		},
 		{
 			"from = forward",
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			lazyChunkWithBounds(time.Unix(0, int64(time.Millisecond*5)), time.Unix(0, int64(time.Millisecond*10))),
 			blockWithBounds(int64(time.Millisecond*3), int64(time.Millisecond*5)),
 			true,
