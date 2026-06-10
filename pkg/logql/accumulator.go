@@ -192,8 +192,8 @@ func (a *CountMinSketchAccumulator) Result() []logqlmodel.Result {
 // importantly, AccumulatedStreams is _bounded_, so it will only
 // store the top `limit` results across all streams.
 // To implement this, we use a min-heap when looking
-// for the max values (logproto.FORWARD)
-// and vice versa for logproto.BACKWARD.
+// for the max values (logproto.Direction_FORWARD)
+// and vice versa for logproto.Direction_BACKWARD.
 // This allows us to easily find the 'worst' value
 // and replace it with a better one.
 // Once we've fully processed all log lines,
@@ -223,9 +223,9 @@ type AccumulatedStreams struct {
 func NewStreamAccumulator(params Params) *AccumulatedStreams {
 	// the stream accumulator stores a heap with reversed order
 	// from the results we expect, so we need to reverse the direction
-	order := logproto.FORWARD
-	if params.Direction() == logproto.FORWARD {
-		order = logproto.BACKWARD
+	order := logproto.Direction_FORWARD
+	if params.Direction() == logproto.Direction_FORWARD {
+		order = logproto.Direction_BACKWARD
 	}
 
 	return &AccumulatedStreams{
@@ -279,7 +279,7 @@ func (acc *AccumulatedStreams) Less(i, j int) bool {
 
 func (acc *AccumulatedStreams) less(a, b time.Time) bool {
 	// use after for stable sort
-	if acc.order == logproto.FORWARD {
+	if acc.order == logproto.Direction_FORWARD {
 		return !a.After(b)
 	}
 	return !b.After(a)

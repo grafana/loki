@@ -47,6 +47,9 @@ var (
 
 type Gateway struct {
 	services.Service
+	// Embedded to satisfy the wiresmith/protoc-gen-go-grpc generated server
+	// interface, which requires forward-compatible embedding.
+	logproto.UnimplementedBloomGatewayServer
 
 	cfg     Config
 	logger  log.Logger

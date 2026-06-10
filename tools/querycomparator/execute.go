@@ -61,7 +61,7 @@ func addExecuteCommand(app *kingpin.Application) {
 		if cfg.Limit == 0 {
 			cfg.Limit = 100
 		}
-		params, err := logql.NewLiteralParams(cfg.Query, parsed.StartTime, parsed.EndTime, 0, 0, logproto.BACKWARD, uint32(cfg.Limit), nil, nil)
+		params, err := logql.NewLiteralParams(cfg.Query, parsed.StartTime, parsed.EndTime, 0, 0, logproto.Direction_BACKWARD, uint32(cfg.Limit), nil, nil)
 		if err != nil {
 			return err
 		}

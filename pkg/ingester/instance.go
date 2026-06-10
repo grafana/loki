@@ -601,7 +601,7 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 	if len(matchers) == 0 {
 		var labels []string
 		if req.Values {
-			values, err := i.index.LabelValues(*req.Start, req.Name, nil)
+			values, err := i.index.LabelValues(req.Start, req.Name, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -611,7 +611,7 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 				Values: labels,
 			}, nil
 		}
-		names, err := i.index.LabelNames(*req.Start, nil)
+		names, err := i.index.LabelNames(req.Start, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -623,7 +623,7 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	lbls := util.NewUniqueStrings(0)
-	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
+	err := i.forMatchingStreams(ctx, req.Start, matchers, nil, func(s *stream) error {
 		s.labels.Range(func(label labels.Label) {
 			if req.Values && label.Name == req.Name {
 				lbls.Add(label.Value)

@@ -371,7 +371,7 @@ func Test_store_SelectLogs(t *testing.T) {
 				logger:       log.NewNopLogger(),
 			}
 
-			tt.req.Plan = &plan.QueryPlan{
+			tt.req.Plan = plan.QueryPlan{
 				AST: syntax.MustParseExpr(tt.req.Selector),
 			}
 
@@ -701,7 +701,7 @@ func Test_store_SelectSample(t *testing.T) {
 				chunkMetrics: NilMetrics,
 			}
 
-			tt.req.Plan = &plan.QueryPlan{
+			tt.req.Plan = plan.QueryPlan{
 				AST: syntax.MustParseExpr(tt.req.Selector),
 			}
 
@@ -1501,10 +1501,10 @@ func Test_OverlappingChunks(t *testing.T) {
 	it, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 		Selector:  `{foo="bar"}`,
 		Limit:     1000,
-		Direction: logproto.BACKWARD,
+		Direction: logproto.Direction_BACKWARD,
 		Start:     time.Unix(0, 0),
 		End:       time.Unix(0, 10),
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{foo="bar"}`),
 		},
 	}})
@@ -1625,11 +1625,11 @@ func Test_GetSeries(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.req.Selector != "" {
-				tt.req.Plan = &plan.QueryPlan{
+				tt.req.Plan = plan.QueryPlan{
 					AST: syntax.MustParseExpr(tt.req.Selector),
 				}
 			} else {
-				tt.req.Plan = &plan.QueryPlan{
+				tt.req.Plan = plan.QueryPlan{
 					AST: nil,
 				}
 			}
@@ -1913,10 +1913,10 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 		it, err := store.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  stream,
 			Limit:     1000,
-			Direction: logproto.FORWARD,
+			Direction: logproto.Direction_FORWARD,
 			Start:     chkFrom,
 			End:       chkThrough.Add(time.Minute),
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: syntax.MustParseExpr(stream),
 			},
 		}})
@@ -1990,10 +1990,10 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 				it, err := store.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 					Selector:  tc.query,
 					Limit:     1000,
-					Direction: logproto.FORWARD,
+					Direction: logproto.Direction_FORWARD,
 					Start:     chkFrom,
 					End:       chkThrough.Add(time.Minute),
-					Plan: &plan.QueryPlan{
+					Plan: plan.QueryPlan{
 						AST: syntax.MustParseExpr(tc.query),
 					},
 				}})

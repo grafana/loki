@@ -25,7 +25,7 @@ type K6TestCase struct {
 // buffer is how far from "now" the query window ends.
 func ConvertTestCaseToK6(tc TestCase, tenantID int, length time.Duration, buffer time.Duration) K6TestCase {
 	direction := "backward"
-	if tc.Direction == logproto.FORWARD {
+	if tc.Direction == logproto.Direction_FORWARD {
 		direction = "forward"
 	}
 
@@ -58,7 +58,7 @@ func ConvertTestCaseToK6(tc TestCase, tenantID int, length time.Duration, buffer
 }
 
 func directionLabel(d logproto.Direction) string {
-	if d == logproto.FORWARD {
+	if d == logproto.Direction_FORWARD {
 		return "FORWARD"
 	}
 	return "BACKWARD"

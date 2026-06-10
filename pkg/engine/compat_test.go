@@ -25,7 +25,7 @@ import (
 
 func TestStreamsResultBuilder(t *testing.T) {
 	t.Run("empty builder returns non-nil result", func(t *testing.T) {
-		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
+		builder := newStreamsResultBuilder(logproto.Direction_BACKWARD, false)
 		md, _ := metadata.NewContext(t.Context())
 		require.NotNil(t, builder.Build(stats.Result{}, md).Data)
 	})
@@ -66,7 +66,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
+		builder := newStreamsResultBuilder(logproto.Direction_BACKWARD, false)
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
+		builder := newStreamsResultBuilder(logproto.Direction_BACKWARD, false)
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		record2 := rows2.Record(memory.DefaultAllocator, schema)
 		defer record2.Release()
 
-		builder := newStreamsResultBuilder(logproto.FORWARD, false)
+		builder := newStreamsResultBuilder(logproto.Direction_FORWARD, false)
 
 		// Collect first record
 		builder.CollectRecord(record1)
@@ -300,7 +300,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
+		builder := newStreamsResultBuilder(logproto.Direction_BACKWARD, false)
 
 		// First record: 5 rows (buffer grows to 5)
 		rows1 := make(arrowtest.Rows, 5)
@@ -370,7 +370,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
+		builder := newStreamsResultBuilder(logproto.Direction_BACKWARD, false)
 
 		// First record: 3 valid rows
 		rows1 := make(arrowtest.Rows, 3)
@@ -447,7 +447,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		}
 
 		record := rows.Record(memory.DefaultAllocator, schema)
-		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
+		builder := newStreamsResultBuilder(logproto.Direction_BACKWARD, false)
 		builder.CollectRecord(record)
 		record.Release()
 		require.Equal(t, 2, builder.Len())
@@ -514,7 +514,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newStreamsResultBuilder(logproto.FORWARD, false)
+		builder := newStreamsResultBuilder(logproto.Direction_FORWARD, false)
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
@@ -558,7 +558,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		}
 
 		record := rows.Record(memory.DefaultAllocator, schema)
-		builder := newStreamsResultBuilder(logproto.BACKWARD, true)
+		builder := newStreamsResultBuilder(logproto.Direction_BACKWARD, true)
 		builder.CollectRecord(record)
 		record.Release()
 		require.Equal(t, 2, builder.Len())
@@ -611,7 +611,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			{colTs.FQN(): ts3, colMsg.FQN(): "line C", colEnv.FQN(): "prod"},
 		}.Record(memory.DefaultAllocator, schema)
 
-		builder := newStreamsResultBuilder(logproto.FORWARD, false)
+		builder := newStreamsResultBuilder(logproto.Direction_FORWARD, false)
 		builder.CollectRecord(rec1)
 		builder.CollectRecord(rec2)
 		rec1.Release()
@@ -705,7 +705,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 
 		// categorizeLabels=false is the default API behavior where parsed labels
 		// are merged into stream labels.
-		builder := newStreamsResultBuilder(logproto.FORWARD, false)
+		builder := newStreamsResultBuilder(logproto.Direction_FORWARD, false)
 		builder.CollectRecord(record)
 
 		require.Equal(t, 3, builder.Len(), "should have 3 entries")

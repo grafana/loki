@@ -110,7 +110,7 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 
 		limit = r.Limit
 
-		if r.Direction == logproto.BACKWARD {
+		if r.Direction == logproto.Direction_BACKWARD {
 			slices.SortFunc(inputs, func(a, b *engineReqResp) int {
 				return b.req.GetStart().Compare(a.req.GetStart())
 			})

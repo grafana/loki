@@ -206,7 +206,7 @@ func TestMetricsTripperware(t *testing.T) {
 		Step:      30000, // 30sec
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/query_range",
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
@@ -292,7 +292,7 @@ func TestLogFilterTripperware(t *testing.T) {
 		Limit:     1000,
 		StartTs:   testTime.Add(-10 * time.Hour), // bigger than the limit
 		EndTs:     testTime,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/loki/api/v1/query_range",
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
@@ -367,7 +367,7 @@ func TestInstantQueryTripperwareResultCaching(t *testing.T) {
 		Query:     q,
 		Limit:     1000,
 		TimeTs:    testTime.Add(-4 * time.Hour),
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/loki/api/v1/query",
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(q),
@@ -482,7 +482,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 		Query:     q,
 		Limit:     1000,
 		TimeTs:    testTime.Add(-4 * time.Hour), // because vector data we return from mock handler has that time.
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/loki/api/v1/query",
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(q),
@@ -951,7 +951,7 @@ func TestLogNoFilter(t *testing.T) {
 		Limit:     1000,
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/loki/api/v1/query_range",
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{app="foo"}`),
@@ -1011,7 +1011,7 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 		Limit:     10000,
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/loki/api/v1/query_range",
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{app="foo"}`),
@@ -1060,7 +1060,7 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 				Limit:     1000,
 				StartTs:   testTime.Add(-6 * time.Hour),
 				EndTs:     testTime,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/loki/api/v1/query_range",
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(test.qs),
@@ -1167,7 +1167,7 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				Limit:     1000,
 				StartTs:   testTime.Add(-6 * time.Hour),
 				EndTs:     testTime,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/loki/api/v1/query_range",
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(tc.query),
@@ -1298,7 +1298,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				Query:     `sum by (app) (rate({app="foo"} |= "foo"[2h]))`,
 				Limit:     1000,
 				TimeTs:    testTime,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/loki/api/v1/query",
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[2h]))`),
@@ -1316,7 +1316,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				Query:     `sum by (app) (rate({app="foo"} |= "foo"[1h]))`,
 				Limit:     1000,
 				TimeTs:    testTime,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/loki/api/v1/query",
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
@@ -1333,7 +1333,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				Step:      30000, // 30sec
 				StartTs:   testTime.Add(-2 * time.Hour),
 				EndTs:     testTime,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/query_range",
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),
@@ -1350,7 +1350,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				Step:      30000, // 30sec
 				StartTs:   testTime.Add(-1 * time.Minute),
 				EndTs:     testTime,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/query_range",
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (app) (rate({app="foo"} |= "foo"[1h]))`),

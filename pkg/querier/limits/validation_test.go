@@ -72,7 +72,7 @@ func TestValidateAggregatedMetricQuery(t *testing.T) {
 				Selector: queryStr,
 				Start:    now.Add(-time.Hour),
 				End:      now,
-				Plan:     &plan.QueryPlan{AST: expr},
+				Plan:     plan.QueryPlan{AST: expr},
 			},
 			}
 		default:
@@ -80,8 +80,8 @@ func TestValidateAggregatedMetricQuery(t *testing.T) {
 				Selector:  queryStr,
 				Start:     now.Add(-time.Hour),
 				End:       now,
-				Direction: logproto.BACKWARD,
-				Plan: &plan.QueryPlan{
+				Direction: logproto.Direction_BACKWARD,
+				Plan: plan.QueryPlan{
 					AST: expr,
 				},
 			},

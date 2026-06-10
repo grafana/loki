@@ -88,7 +88,7 @@ func (a *PusherAppender) Commit() error {
 
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
-	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), logproto.ToWriteRequest(a.labels, a.samples, nil, logproto.RULE))
+	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), logproto.ToWriteRequest(a.labels, a.samples, nil, logproto.WriteRequest_RULE))
 	if err != nil {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
 		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 != 4 {

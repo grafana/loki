@@ -27,7 +27,7 @@ func TestEngineRouter_split(t *testing.T) {
 	baseReq := &LokiRequest{
 		Query:     `{app="foo"}`,
 		Step:      1000, // 1 second step
-		Direction: logproto.BACKWARD,
+		Direction: logproto.Direction_BACKWARD,
 		Path:      "/query",
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{app="foo"}`),
@@ -159,7 +159,7 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 			StartTs:   start,
 			EndTs:     end,
 			Step:      step,
-			Direction: logproto.BACKWARD,
+			Direction: logproto.Direction_BACKWARD,
 			Path:      "/query",
 			Plan: &plan.QueryPlan{
 				AST: syntax.MustParseExpr(`{app="foo"}`),
@@ -335,7 +335,7 @@ func Test_engineRouter_Do(t *testing.T) {
 				Query:     `{foo="bar"}`,
 				Limit:     1000,
 				Step:      1000,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Path:      "/api/prom/query_range",
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"}`),
@@ -343,7 +343,7 @@ func Test_engineRouter_Do(t *testing.T) {
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
-				Direction:  logproto.BACKWARD,
+				Direction:  logproto.Direction_BACKWARD,
 				Limit:      1000,
 				Version:    1,
 				Statistics: stats.Result{Summary: stats.Summary{Splits: 3}},

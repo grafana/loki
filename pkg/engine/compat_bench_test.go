@@ -71,7 +71,7 @@ func BenchmarkStreamsResultBuilder(b *testing.B) {
 			b.ReportAllocs()
 
 			for i := 0; i < b.N; i++ {
-				rb := newStreamsResultBuilder(logproto.BACKWARD, false)
+				rb := newStreamsResultBuilder(logproto.Direction_BACKWARD, false)
 				// Collect records twice on purpose to see how efficient CollectRecord is when the builder already has
 				// some data
 				rb.CollectRecord(record1)
@@ -154,7 +154,7 @@ func BenchmarkStreamsResultBuilder_Build(b *testing.B) {
 			b.ReportAllocs()
 
 			for i := 0; i < b.N; i++ {
-				rb := newStreamsResultBuilder(logproto.FORWARD, false)
+				rb := newStreamsResultBuilder(logproto.Direction_FORWARD, false)
 				rb.CollectRecord(rec1)
 				rb.CollectRecord(rec2)
 

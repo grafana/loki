@@ -83,7 +83,7 @@ func (c *LazyChunk) Iterator(
 		its = append(its, b.Iterator(ctx, pipeline))
 	}
 
-	if direction == logproto.FORWARD {
+	if direction == logproto.Direction_FORWARD {
 		return iter.NewTimeRangedIterator(
 			iter.NewNonOverlappingIterator(its),
 			from,
@@ -138,7 +138,7 @@ func (c *LazyChunk) SampleIterator(
 			continue
 		}
 		// if the block is overlapping cache it with the next chunk boundaries.
-		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.FORWARD) {
+		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.Direction_FORWARD) {
 			// todo(cyriltovena) we can avoid to drop the metric name for each chunks since many chunks have the same metric/labelset.
 			it := iter.NewCachedSampleIterator(b.SampleIterator(ctx, extractors...), b.Entries())
 			its = append(its, it)
@@ -172,7 +172,7 @@ func (c *LazyChunk) SampleIterator(
 }
 
 func IsBlockOverlapping(b chunkenc.Block, with *LazyChunk, direction logproto.Direction) bool {
-	if direction == logproto.BACKWARD {
+	if direction == logproto.Direction_BACKWARD {
 		through := int64(with.Chunk.Through) * int64(time.Millisecond)
 		if b.MinTime() <= through {
 			return true
@@ -187,7 +187,7 @@ func IsBlockOverlapping(b chunkenc.Block, with *LazyChunk, direction logproto.Di
 }
 
 func (c *LazyChunk) IsOverlapping(with *LazyChunk, direction logproto.Direction) bool {
-	if direction == logproto.BACKWARD {
+	if direction == logproto.Direction_BACKWARD {
 		if c.Chunk.From.Before(with.Chunk.Through) || c.Chunk.From == with.Chunk.Through {
 			return true
 		}
@@ -210,7 +210,7 @@ func (l lazyChunks) Len() int         { return len(l.chunks) }
 func (l lazyChunks) Swap(i, j int)    { l.chunks[i], l.chunks[j] = l.chunks[j], l.chunks[i] }
 func (l lazyChunks) Peek() *LazyChunk { return l.chunks[0] }
 func (l lazyChunks) Less(i, j int) bool {
-	if l.direction == logproto.FORWARD {
+	if l.direction == logproto.Direction_FORWARD {
 		t1, t2 := l.chunks[i].Chunk.From, l.chunks[j].Chunk.From
 		if !t1.Equal(t2) {
 			return t1.Before(t2)

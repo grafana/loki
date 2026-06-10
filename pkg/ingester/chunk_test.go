@@ -67,7 +67,7 @@ func TestIterator(t *testing.T) {
 			for i := 0; i < entries; i++ {
 				from := rand.Intn(entries - 1)
 				length := rand.Intn(entries-from) + 1
-				iter, err := chunk.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+				iter, err := chunk.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 				require.NoError(t, err)
 				testIteratorForward(t, iter, int64(from), int64(from+length))
 				_ = iter.Close()
@@ -76,7 +76,7 @@ func TestIterator(t *testing.T) {
 			for i := 0; i < entries; i++ {
 				from := rand.Intn(entries - 1)
 				length := rand.Intn(entries-from) + 1
-				iter, err := chunk.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.BACKWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+				iter, err := chunk.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.Direction_BACKWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 				require.NoError(t, err)
 				testIteratorBackward(t, iter, int64(from), int64(from+length))
 				_ = iter.Close()

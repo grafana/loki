@@ -240,7 +240,7 @@ func (t *Tailer) pushTailResponseFromIngester(resp *logproto.TailResponse) {
 	t.streamMtx.Lock()
 	defer t.streamMtx.Unlock()
 
-	itr := iter.NewStreamIterator(*resp.Stream)
+	itr := iter.NewStreamIterator(resp.Stream)
 	if t.categorizeLabels {
 		itr = iter.NewCategorizeLabelsIterator(itr)
 	}
@@ -327,7 +327,7 @@ func newTailer(
 	}
 
 	t := Tailer{
-		openStreamIterator:        iter.NewMergeEntryIterator(context.Background(), []iter.EntryIterator{historicEntriesIter}, logproto.FORWARD),
+		openStreamIterator:        iter.NewMergeEntryIterator(context.Background(), []iter.EntryIterator{historicEntriesIter}, logproto.Direction_FORWARD),
 		querierTailClients:        querierTailClients,
 		delayFor:                  delayFor,
 		responseChan:              make(chan *loghttp.TailResponse, maxBufferedTailResponses),

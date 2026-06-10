@@ -35,8 +35,8 @@ func TestCacheKeyLabels_GenerateCacheKey(t *testing.T) {
 
 	req := LabelRequest{
 		LabelRequest: logproto.LabelRequest{
-			Start: &start,
-			End:   &end,
+			Start: start,
+			End:   end,
 		},
 	}
 
@@ -103,8 +103,8 @@ func TestLabelsCache(t *testing.T) {
 	end := start.Add(time.Hour)
 	labelsReq := &LabelRequest{
 		LabelRequest: logproto.LabelRequest{
-			Start: &start,
-			End:   &end,
+			Start: start,
+			End:   end,
 		},
 	}
 	labelsResp := composeLabelsResp([]string{"bar", "buzz"}, 1)
@@ -222,8 +222,8 @@ func TestLabelCache_freshness(t *testing.T) {
 			name: "max metadata freshness not set",
 			req: &LabelRequest{
 				LabelRequest: logproto.LabelRequest{
-					Start: &start,
-					End:   &end,
+					Start: start,
+					End:   end,
 				},
 			},
 			shouldCache: true,
@@ -232,8 +232,8 @@ func TestLabelCache_freshness(t *testing.T) {
 			name: "req overlaps with max cache freshness window",
 			req: &LabelRequest{
 				LabelRequest: logproto.LabelRequest{
-					Start: &start,
-					End:   &end,
+					Start: start,
+					End:   end,
 				},
 			},
 			maxMetadataCacheFreshness: 24 * time.Hour,
@@ -243,8 +243,8 @@ func TestLabelCache_freshness(t *testing.T) {
 			name: "req does not overlap max cache freshness window",
 			req: &LabelRequest{
 				LabelRequest: logproto.LabelRequest{
-					Start: &nonOverlappingStart,
-					End:   &nonOverlappingEnd,
+					Start: nonOverlappingStart,
+					End:   nonOverlappingEnd,
 				},
 			},
 			maxMetadataCacheFreshness: 24 * time.Hour,
@@ -370,8 +370,8 @@ func TestLabelQueryCacheKey(t *testing.T) {
 
 				r := &LabelRequest{
 					LabelRequest: logproto.LabelRequest{
-						Start: &tc.start,
-						End:   &tc.end,
+						Start: tc.start,
+						End:   tc.end,
 						Query: query,
 					},
 				}

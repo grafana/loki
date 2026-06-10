@@ -239,6 +239,10 @@ type Interface interface {
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
 	services.Service
+	// Embedded to satisfy the wiresmith/protoc-gen-go-grpc generated server
+	// interfaces, which require forward-compatible embedding.
+	logproto.UnimplementedQuerierServer
+	logproto.UnimplementedStreamDataServer
 
 	cfg    Config
 	logger log.Logger
@@ -1070,12 +1074,12 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	_, ctx := stats.NewContext(queryServer.Context())
 	_, ctx = metadata.NewContext(ctx)
 
-	if req.Plan == nil {
+	if req.Plan.AST == nil {
 		parsed, err := syntax.ParseLogSelector(req.Selector, true)
 		if err != nil {
 			return err
 		}
-		req.Plan = &plan.QueryPlan{
+		req.Plan = plan.QueryPlan{
 			AST: parsed,
 		}
 	}
@@ -1137,12 +1141,12 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	sp := trace.SpanFromContext(ctx)
 
 	// If the plan is empty we want all series to be returned.
-	if req.Plan == nil {
+	if req.Plan.AST == nil {
 		parsed, err := syntax.ParseSampleExpr(req.Selector)
 		if err != nil {
 			return err
 		}
-		req.Plan = &plan.QueryPlan{
+		req.Plan = plan.QueryPlan{
 			AST: parsed,
 		}
 	}
@@ -1303,7 +1307,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
-	if req.Start == nil {
+	if req.Start.IsZero() {
 		return resp, nil
 	}
 
@@ -1324,8 +1328,8 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		maxLookBackPeriod = asyncStoreMaxLookBack
 	}
 	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
-	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
-	if start.After(*req.End) {
+	start := adjustQueryStartTime(maxLookBackPeriod, req.Start, time.Now())
+	if start.After(req.End) {
 		// The request is older than we are allowed to query the store, just return what we have.
 		return resp, nil
 	}
@@ -1398,9 +1402,9 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 					Limit:     1,
 					Start:     start,
 					End:       end,
-					Direction: logproto.FORWARD,
+					Direction: logproto.Direction_FORWARD,
 					Shards:    req.Shards,
-					Plan: &plan.QueryPlan{
+					Plan: plan.QueryPlan{
 						AST: parsed,
 					},
 				},
@@ -1575,12 +1579,12 @@ func (i *Ingester) tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	default:
 	}
 
-	if req.Plan == nil {
+	if req.Plan.AST == nil {
 		parsed, err := syntax.ParseLogSelector(req.Query, true)
 		if err != nil {
 			return err
 		}
-		req.Plan = &plan.QueryPlan{
+		req.Plan = plan.QueryPlan{
 			AST: parsed,
 		}
 	}
@@ -1707,14 +1711,14 @@ func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.Detected
 	if err != nil {
 		return nil, err
 	}
-	result := make(map[string]*logproto.UniqueLabelValues)
+	result := make(map[string]logproto.UniqueLabelValues)
 	for label, values := range labelMap {
 		var uniqueValues []string
 		for v := range values {
 			uniqueValues = append(uniqueValues, v)
 		}
 
-		result[label] = &logproto.UniqueLabelValues{Values: uniqueValues}
+		result[label] = logproto.UniqueLabelValues{Values: uniqueValues}
 	}
 	return &logproto.LabelToValuesResponse{Labels: result}, nil
 }

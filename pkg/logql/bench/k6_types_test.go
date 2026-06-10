@@ -22,7 +22,7 @@ func TestConvertTestCaseToK6(t *testing.T) {
 			name: "log query backward",
 			tc: TestCase{
 				Query:     `{service_name="loki"}`,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Source:    "fast/basic.yaml:3",
 				QueryDesc: "Basic selector",
 			},
@@ -45,7 +45,7 @@ func TestConvertTestCaseToK6(t *testing.T) {
 			name: "metric query with step (no direction suffix in name)",
 			tc: TestCase{
 				Query:     `sum(count_over_time({service_name="loki"}[5m]))`,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Step:      time.Minute,
 				Source:    "exhaustive/agg.yaml:12",
 				QueryDesc: "Sum count_over_time",
@@ -69,7 +69,7 @@ func TestConvertTestCaseToK6(t *testing.T) {
 			name: "log query forward",
 			tc: TestCase{
 				Query:     `{service_name="loki"} |= "error"`,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Source:    "fast/filters.yaml:7",
 				QueryDesc: "Line filter",
 			},

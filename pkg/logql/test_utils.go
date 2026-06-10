@@ -98,7 +98,7 @@ outer:
 		// This is the same as how LazyChunk or MemChunk build their iterators,
 		// they return a TimeRangedIterator which is wrapped in a EntryReversedIter if the direction is BACKWARD
 		iterForward := iter.NewTimeRangedIterator(iter.NewStreamIterator(filtered[i]), req.Start, req.End)
-		if req.Direction == logproto.FORWARD {
+		if req.Direction == logproto.Direction_FORWARD {
 			streamIters = append(streamIters, iterForward)
 		} else {
 			reversed, err := iter.NewEntryReversedIter(iterForward)

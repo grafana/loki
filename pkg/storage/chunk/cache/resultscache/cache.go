@@ -295,7 +295,7 @@ func merge(extents []Extent, acc *accumulator) ([]Extent, error) {
 	return append(extents, Extent{
 		Start:    acc.Start,
 		End:      acc.End,
-		Response: anyResp,
+		Response: FromAny(anyResp),
 		TraceId:  acc.TraceId,
 	}), nil
 }
@@ -323,7 +323,7 @@ func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
 	return Extent{
 		Start:    req.GetStart().UnixMilli(),
 		End:      req.GetEnd().UnixMilli(),
-		Response: anyResp,
+		Response: FromAny(anyResp),
 		TraceId:  traceID,
 	}, nil
 }
@@ -417,7 +417,7 @@ func (s ResultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Du
 			if err != nil {
 				return nil, err
 			}
-			extents[i].Response = anyResp
+			extents[i].Response = FromAny(anyResp)
 		}
 	}
 	return extents, nil
@@ -446,7 +446,7 @@ func (s ResultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 
 	// Refreshes the cache if it contains an old proto schema.
 	for _, e := range resp.Extents {
-		if e.Response == nil {
+		if e.Response.Any() == nil {
 			return nil, false
 		}
 	}
@@ -468,12 +468,12 @@ func (s ResultsCache) put(ctx context.Context, key string, extents []Extent) {
 }
 
 func (e *Extent) toResponse() (Response, error) {
-	msg, err := types.EmptyAny(e.Response)
+	msg, err := types.EmptyAny(e.Response.Any())
 	if err != nil {
 		return nil, err
 	}
 
-	if err := types.UnmarshalAny(e.Response, msg); err != nil {
+	if err := types.UnmarshalAny(e.Response.Any(), msg); err != nil {
 		return nil, err
 	}
 

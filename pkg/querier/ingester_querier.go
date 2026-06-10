@@ -520,12 +520,12 @@ func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.Detec
 	}
 
 	// Dedupe all ingester values
-	mergedResult := make(map[string]*logproto.UniqueLabelValues)
+	mergedResult := make(map[string]logproto.UniqueLabelValues)
 	for label, val := range labelMap {
 		slices.Sort(val)
 		uniqueValues := slices.Compact(val)
 
-		mergedResult[label] = &logproto.UniqueLabelValues{
+		mergedResult[label] = logproto.UniqueLabelValues{
 			Values: uniqueValues,
 		}
 	}

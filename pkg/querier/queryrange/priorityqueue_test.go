@@ -11,7 +11,7 @@ import (
 )
 
 func TestPriorityQueuePopForward(t *testing.T) {
-	pq := &priorityqueue{direction: logproto.FORWARD}
+	pq := &priorityqueue{direction: logproto.Direction_FORWARD}
 	pq.streams = []*logproto.Stream{
 		{
 			Labels: "a",
@@ -52,7 +52,7 @@ func TestPriorityQueuePopForward(t *testing.T) {
 }
 
 func TestPriorityQueuePopBackward(t *testing.T) {
-	pq := &priorityqueue{direction: logproto.BACKWARD}
+	pq := &priorityqueue{direction: logproto.Direction_BACKWARD}
 	pq.streams = []*logproto.Stream{
 		{
 			Labels: "x",

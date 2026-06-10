@@ -382,7 +382,7 @@ func (s *instrumentedStore) SelectSamples(ctx context.Context, req logql.SelectS
 		attribute.String("end", req.End.String()),
 		attribute.StringSlice("shards", req.Shards),
 	)
-	if req.Plan != nil && req.Plan.AST != nil {
+	if req.Plan.AST != nil {
 		span.SetAttributes(attribute.String("expr", req.Plan.AST.String()))
 	}
 
@@ -402,7 +402,7 @@ func (s *instrumentedStore) SelectLogs(ctx context.Context, req logql.SelectLogP
 		attribute.StringSlice("shards", req.Shards),
 		attribute.String("direction", req.Direction.String()),
 	)
-	if req.Plan != nil && req.Plan.AST != nil {
+	if req.Plan.AST != nil {
 		span.SetAttributes(attribute.String("expr", req.Plan.AST.String()))
 	}
 
@@ -421,7 +421,7 @@ func (s *instrumentedStore) SelectSeries(ctx context.Context, req logql.SelectLo
 		attribute.String("end", req.End.String()),
 		attribute.StringSlice("shards", req.Shards),
 	)
-	if req.Plan != nil && req.Plan.AST != nil {
+	if req.Plan.AST != nil {
 		span.SetAttributes(attribute.String("expr", req.Plan.AST.String()))
 	}
 

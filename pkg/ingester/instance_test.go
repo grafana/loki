@@ -336,8 +336,8 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 
 func Test_LabelQuery(t *testing.T) {
 	instance, currentTime, _ := setupTestStreams(t)
-	start := &[]time.Time{currentTime.Add(11 * time.Nanosecond)}[0]
-	end := &[]time.Time{currentTime.Add(12 * time.Nanosecond)}[0]
+	start := currentTime.Add(11 * time.Nanosecond)
+	end := currentTime.Add(12 * time.Nanosecond)
 	m, err := labels.NewMatcher(labels.MatchEqual, "app", "test")
 	require.NoError(t, err)
 
@@ -624,8 +624,8 @@ func Test_Iterator(t *testing.T) {
 				Limit:     uint32(2),
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
-				Direction: logproto.BACKWARD,
-				Plan: &plan.QueryPlan{
+				Direction: logproto.Direction_BACKWARD,
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{job="3"} | logfmt`),
 				},
 			},
@@ -683,8 +683,8 @@ func Test_ChunkFilter(t *testing.T) {
 				Limit:     uint32(2),
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
-				Direction: logproto.BACKWARD,
-				Plan: &plan.QueryPlan{
+				Direction: logproto.Direction_BACKWARD,
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{job="3"}`),
 				},
 			},
@@ -721,9 +721,9 @@ func Test_PipelineWrapper(t *testing.T) {
 				Limit:     uint32(2),
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Shards:    []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{job="3"}`),
 				},
 			},
@@ -762,9 +762,9 @@ func Test_PipelineWrapper_disabled(t *testing.T) {
 				Limit:     uint32(2),
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Shards:    []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{job="3"}`),
 				},
 			},
@@ -856,7 +856,7 @@ func Test_ExtractorWrapper(t *testing.T) {
 					Start:    time.Unix(0, 0),
 					End:      time.Unix(0, 100000000),
 					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
-					Plan: &plan.QueryPlan{
+					Plan: plan.QueryPlan{
 						AST: syntax.MustParseExpr(`sum(count_over_time({job="3"}[1m]))`),
 					},
 				},
@@ -893,7 +893,7 @@ func Test_ExtractorWrapper(t *testing.T) {
 					Start:    time.Unix(0, 0),
 					End:      time.Unix(0, 100000000),
 					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
-					Plan: &plan.QueryPlan{
+					Plan: plan.QueryPlan{
 						AST: syntax.MustParseExpr(
 							`variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"}[1m])`,
 						),
@@ -940,7 +940,7 @@ func Test_ExtractorWrapper_disabled(t *testing.T) {
 					Start:    time.Unix(0, 0),
 					End:      time.Unix(0, 100000000),
 					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
-					Plan: &plan.QueryPlan{
+					Plan: plan.QueryPlan{
 						AST: syntax.MustParseExpr(`sum(count_over_time({job="3"}[1m]))`),
 					},
 				},
@@ -968,7 +968,7 @@ func Test_ExtractorWrapper_disabled(t *testing.T) {
 					Start:    time.Unix(0, 0),
 					End:      time.Unix(0, 100000000),
 					Shards:   []string{astmapper.ShardAnnotation{Shard: 0, Of: 2}.String()},
-					Plan: &plan.QueryPlan{
+					Plan: plan.QueryPlan{
 						AST: syntax.MustParseExpr(
 							`variants(sum(count_over_time({job="3"}[1m]))) of ({job="3"}[1m])`,
 						),
@@ -1056,7 +1056,7 @@ func Test_QueryWithDelete(t *testing.T) {
 				Limit:     uint32(2),
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, 100000000),
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Deletes: []*logproto.Delete{
 					{
 						Selector: `{log_stream="worker"}`,
@@ -1074,7 +1074,7 @@ func Test_QueryWithDelete(t *testing.T) {
 						End:      10 * 1e6,
 					},
 				},
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{job="3"}`),
 				},
 			},
@@ -1117,7 +1117,7 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 						End:      10 * 1e6,
 					},
 				},
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`count_over_time({job="3"}[5m])`),
 				},
 			},
@@ -1160,7 +1160,7 @@ func Test_QueryVariantsWithDelete(t *testing.T) {
 						End:      10 * 1e6,
 					},
 				},
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`variants(count_over_time({job="3"}[5m])) of ({job="3"}[5m])`),
 				},
 			},

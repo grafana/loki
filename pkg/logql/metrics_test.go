@@ -65,7 +65,7 @@ func TestLogSlowQuery(t *testing.T) {
 
 	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, LiteralParams{
 		queryString: `{foo="bar"} |= "buzz"`,
-		direction:   logproto.BACKWARD,
+		direction:   logproto.Direction_BACKWARD,
 		end:         now,
 		start:       now.Add(-1 * time.Hour),
 		limit:       1000,

@@ -331,7 +331,7 @@ func newFileIterator(
 		})
 	}
 
-	if params.Direction == logproto.FORWARD {
+	if params.Direction == logproto.Direction_FORWARD {
 		for _, line := range lines {
 			processLine(line)
 		}

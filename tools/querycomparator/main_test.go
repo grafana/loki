@@ -19,7 +19,7 @@ func TestQueryComparatorCmd(t *testing.T) {
 	end := start.Add(1 * time.Minute)
 	query := `{container="distributor"}`
 
-	params, err := logql.NewLiteralParams(query, start, end, 0, 0, logproto.BACKWARD, 1000, nil, nil)
+	params, err := logql.NewLiteralParams(query, start, end, 0, 0, logproto.Direction_BACKWARD, 1000, nil, nil)
 	require.NoError(t, err)
 
 	// Run subcommands as necessary

@@ -485,7 +485,7 @@ func TestPrintBenchmarkQueries(t *testing.T) {
 		if strings.Contains(c.Query, "rate(") || strings.Contains(c.Query, "sum(") {
 			metricQueries++
 		} else {
-			if c.Direction == logproto.FORWARD {
+			if c.Direction == logproto.Direction_FORWARD {
 				logQueries++
 			}
 		}

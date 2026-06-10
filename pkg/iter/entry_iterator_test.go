@@ -50,7 +50,7 @@ func TestIterator(t *testing.T) {
 				mkStreamIterator(offset(0, identity), defaultLabels),
 				mkStreamIterator(offset(testSize/2, identity), defaultLabels),
 				mkStreamIterator(offset(testSize, identity), defaultLabels),
-			}, logproto.FORWARD),
+			}, logproto.Direction_FORWARD),
 			generator: identity,
 			length:    2 * testSize,
 			labels:    defaultLabels,
@@ -62,7 +62,7 @@ func TestIterator(t *testing.T) {
 				mkStreamIterator(inverse(offset(0, identity)), defaultLabels),
 				mkStreamIterator(inverse(offset(-testSize/2, identity)), defaultLabels),
 				mkStreamIterator(inverse(offset(-testSize, identity)), defaultLabels),
-			}, logproto.BACKWARD),
+			}, logproto.Direction_BACKWARD),
 			generator: inverse(identity),
 			length:    2 * testSize,
 			labels:    defaultLabels,
@@ -74,7 +74,7 @@ func TestIterator(t *testing.T) {
 				mkStreamIterator(offset(0, constant(0)), defaultLabels),
 				mkStreamIterator(offset(0, constant(0)), defaultLabels),
 				mkStreamIterator(offset(testSize, constant(0)), defaultLabels),
-			}, logproto.FORWARD),
+			}, logproto.Direction_FORWARD),
 			generator: constant(0),
 			length:    2 * testSize,
 			labels:    defaultLabels,
@@ -114,7 +114,7 @@ func TestIteratorMultipleLabels(t *testing.T) {
 			iterator: NewMergeEntryIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(identity, "{foobar: \"baz1\"}"),
 				mkStreamIterator(identity, "{foobar: \"baz2\"}"),
-			}, logproto.FORWARD),
+			}, logproto.Direction_FORWARD),
 			generator: func(i int64) logproto.Entry {
 				return identity(i / 2)
 			},
@@ -132,7 +132,7 @@ func TestIteratorMultipleLabels(t *testing.T) {
 			iterator: NewMergeEntryIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(constant(0), "{foobar: \"baz1\"}"),
 				mkStreamIterator(constant(0), "{foobar: \"baz2\"}"),
-			}, logproto.FORWARD),
+			}, logproto.Direction_FORWARD),
 			generator: func(i int64) logproto.Entry {
 				return constant(0)(i % testSize)
 			},
@@ -184,7 +184,7 @@ func TestMergeIteratorPrefetch(t *testing.T) {
 			i := NewMergeEntryIterator(context.Background(), []EntryIterator{
 				mkStreamIterator(identity, "{foobar: \"baz1\"}"),
 				mkStreamIterator(identity, "{foobar: \"baz2\"}"),
-			}, logproto.FORWARD)
+			}, logproto.Direction_FORWARD)
 
 			testFunc(t, i)
 		})
@@ -288,7 +288,7 @@ func TestMergeIteratorDeduplication(t *testing.T) {
 		NewStreamIterator(foo),
 		NewStreamIterator(bar),
 		NewStreamIterator(foo),
-	}, logproto.FORWARD)
+	}, logproto.Direction_FORWARD)
 	assertIt(it, false, len(foo.Entries))
 
 	// backward iteration
@@ -300,7 +300,7 @@ func TestMergeIteratorDeduplication(t *testing.T) {
 		mustReverseStreamIterator(NewStreamIterator(foo)),
 		mustReverseStreamIterator(NewStreamIterator(bar)),
 		mustReverseStreamIterator(NewStreamIterator(foo)),
-	}, logproto.BACKWARD)
+	}, logproto.Direction_BACKWARD)
 	assertIt(it, true, len(foo.Entries))
 }
 
@@ -333,7 +333,7 @@ func TestMergeIteratorWithoutLabels(t *testing.T) {
 		NewStreamIterator(foo),
 		NewStreamIterator(bar),
 		NewStreamIterator(foo),
-	}, logproto.FORWARD)
+	}, logproto.Direction_FORWARD)
 
 	for i := 0; i < 3; i++ {
 
@@ -364,7 +364,7 @@ func TestReverseIterator(t *testing.T) {
 	itr1 := mkStreamIterator(inverse(offset(testSize, identity)), defaultLabels)
 	itr2 := mkStreamIterator(inverse(offset(testSize, identity)), "{foobar: \"bazbar\"}")
 
-	mergeIterator := NewMergeEntryIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
+	mergeIterator := NewMergeEntryIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.Direction_BACKWARD)
 	reversedIter, err := NewReversedIter(mergeIterator, testSize, false)
 	require.NoError(t, err)
 
@@ -403,7 +403,7 @@ func TestReverseEntryIteratorUnlimited(t *testing.T) {
 	itr1 := mkStreamIterator(offset(testSize, identity), defaultLabels)
 	itr2 := mkStreamIterator(offset(testSize, identity), "{foobar: \"bazbar\"}")
 
-	mergeIterator := NewMergeEntryIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.BACKWARD)
+	mergeIterator := NewMergeEntryIterator(context.Background(), []EntryIterator{itr1, itr2}, logproto.Direction_BACKWARD)
 	reversedIter, err := NewReversedIter(mergeIterator, 0, false)
 	require.NoError(t, err)
 
@@ -506,13 +506,13 @@ func Test_DuplicateCount(t *testing.T) {
 		{
 			"empty b",
 			[]EntryIterator{},
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			0,
 		},
 		{
 			"empty f",
 			[]EntryIterator{},
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 		},
 		{
@@ -521,7 +521,7 @@ func Test_DuplicateCount(t *testing.T) {
 				mustReverseStreamIterator(NewStreamIterator(stream)),
 				mustReverseStreamIterator(NewStreamIterator(stream)),
 			},
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			3,
 		},
 		{
@@ -530,7 +530,7 @@ func Test_DuplicateCount(t *testing.T) {
 				NewStreamIterator(stream),
 				NewStreamIterator(stream),
 			},
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			3,
 		},
 		{
@@ -548,7 +548,7 @@ func Test_DuplicateCount(t *testing.T) {
 					},
 				}),
 			},
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			6,
 		},
 		{
@@ -566,7 +566,7 @@ func Test_DuplicateCount(t *testing.T) {
 					},
 				}),
 			},
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			6,
 		},
 		{
@@ -581,7 +581,7 @@ func Test_DuplicateCount(t *testing.T) {
 					},
 				}),
 			},
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 		},
 		{
@@ -596,7 +596,7 @@ func Test_DuplicateCount(t *testing.T) {
 					},
 				}),
 			},
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			0,
 		},
 	} {
@@ -726,7 +726,7 @@ func BenchmarkSortIterator(b *testing.B) {
 				itrs = append(itrs, NewStreamIterator(streams[i]))
 			}
 			b.StartTimer()
-			it := NewMergeEntryIterator(ctx, itrs, logproto.BACKWARD)
+			it := NewMergeEntryIterator(ctx, itrs, logproto.Direction_BACKWARD)
 			for it.Next() {
 				it.At()
 			}
@@ -745,7 +745,7 @@ func BenchmarkSortIterator(b *testing.B) {
 				itrs = append(itrs, NewStreamIterator(streams[i]))
 			}
 			b.StartTimer()
-			it := NewMergeEntryIterator(ctx, itrs, logproto.BACKWARD)
+			it := NewMergeEntryIterator(ctx, itrs, logproto.Direction_BACKWARD)
 			for it.Next() {
 				it.At()
 			}
@@ -763,7 +763,7 @@ func BenchmarkSortIterator(b *testing.B) {
 				itrs = append(itrs, NewStreamIterator(streams[i]))
 			}
 			b.StartTimer()
-			it := NewSortEntryIterator(itrs, logproto.BACKWARD)
+			it := NewSortEntryIterator(itrs, logproto.Direction_BACKWARD)
 			for it.Next() {
 				it.At()
 			}
@@ -793,7 +793,7 @@ func Test_EntrySortIterator(t *testing.T) {
 					},
 					Labels: `{foo="buzz"}`,
 				}),
-			}, logproto.BACKWARD)
+			}, logproto.Direction_BACKWARD)
 		var i int64 = 5
 		defer it.Close()
 		for it.Next() {
@@ -821,7 +821,7 @@ func Test_EntrySortIterator(t *testing.T) {
 					},
 					Labels: `{foo="buzz"}`,
 				}),
-			}, logproto.FORWARD)
+			}, logproto.Direction_FORWARD)
 		var i int64
 		defer it.Close()
 		for it.Next() {
@@ -850,7 +850,7 @@ func Test_EntrySortIterator(t *testing.T) {
 					},
 					Labels: `a`,
 				}),
-			}, logproto.FORWARD)
+			}, logproto.Direction_FORWARD)
 		// The first entry appears in both so we expect it to be sorted by Labels.
 		require.True(t, it.Next())
 		require.Equal(t, time.Unix(0, 0), it.At().Timestamp)
@@ -902,7 +902,7 @@ func TestDedupeMergeEntryIterator(t *testing.T) {
 					},
 				},
 			}),
-		}, logproto.FORWARD)
+		}, logproto.Direction_FORWARD)
 	require.True(t, it.Next())
 	lines := []string{it.At().Line}
 	require.Equal(t, time.Unix(1, 0), it.At().Timestamp)
@@ -945,7 +945,7 @@ func TestMergeIteratorNoDedupDifferentStructuredMetadata(t *testing.T) {
 		[]EntryIterator{
 			NewStreamIterator(logproto.Stream{Labels: labels, Hash: hashLabels(labels), Entries: []logproto.Entry{entry1}}),
 			NewStreamIterator(logproto.Stream{Labels: labels, Hash: hashLabels(labels), Entries: []logproto.Entry{entry2}}),
-		}, logproto.FORWARD)
+		}, logproto.Direction_FORWARD)
 
 	var got []logproto.Entry
 	for it.Next() {

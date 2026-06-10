@@ -215,11 +215,11 @@ func (hb *unorderedHeadBlock) forEntries(
 
 		// preserve write ordering of entries with the same ts
 		var i int
-		if direction == logproto.BACKWARD {
+		if direction == logproto.Direction_BACKWARD {
 			i = len(es.entries) - 1
 		}
 		next := func() {
-			if direction == logproto.FORWARD {
+			if direction == logproto.Direction_FORWARD {
 				i++
 			} else {
 				i--
@@ -238,7 +238,7 @@ func (hb *unorderedHeadBlock) forEntries(
 		}
 	}
 
-	if direction == logproto.FORWARD {
+	if direction == logproto.Direction_FORWARD {
 		for _, e := range entries {
 			process(e.(*nsEntries))
 			if err != nil {
@@ -331,7 +331,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 
 	_ = hb.forEntries(
 		ctx,
-		logproto.FORWARD,
+		logproto.Direction_FORWARD,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
@@ -423,7 +423,7 @@ func (hb *unorderedHeadBlock) Serialise(pool compression.WriterPool) ([]byte, er
 
 	_ = hb.forEntries(
 		context.Background(),
-		logproto.FORWARD,
+		logproto.Direction_FORWARD,
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
@@ -482,7 +482,7 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt, symbolizer *symboliz
 
 	err := hb.forEntries(
 		context.Background(),
-		logproto.FORWARD,
+		logproto.Direction_FORWARD,
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
@@ -544,7 +544,7 @@ func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 
 	err = hb.forEntries(
 		context.Background(),
-		logproto.FORWARD,
+		logproto.Direction_FORWARD,
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {

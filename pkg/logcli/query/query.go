@@ -588,7 +588,7 @@ func (q *Query) isInstant() bool {
 
 func (q *Query) resultsDirection() logproto.Direction {
 	if q.Forward {
-		return logproto.FORWARD
+		return logproto.Direction_FORWARD
 	}
-	return logproto.BACKWARD
+	return logproto.Direction_BACKWARD
 }

@@ -31,7 +31,7 @@ func (a byDir) Swap(i, j int) { a.markers[i], a.markers[j] = a.markers[j], a.mar
 func (a byDir) Less(i, j int) bool {
 	x, y := a.markers[i].start(), a.markers[j].start()
 
-	if a.direction == logproto.BACKWARD {
+	if a.direction == logproto.Direction_BACKWARD {
 		return x > y
 	}
 	return y > x
@@ -62,7 +62,7 @@ type priorityqueue struct {
 func (pq *priorityqueue) Len() int { return len(pq.streams) }
 
 func (pq *priorityqueue) Less(i, j int) bool {
-	if pq.direction == logproto.FORWARD {
+	if pq.direction == logproto.Direction_FORWARD {
 		return pq.streams[i].Entries[0].Timestamp.UnixNano() < pq.streams[j].Entries[0].Timestamp.UnixNano()
 	}
 	return pq.streams[i].Entries[0].Timestamp.UnixNano() > pq.streams[j].Entries[0].Timestamp.UnixNano()

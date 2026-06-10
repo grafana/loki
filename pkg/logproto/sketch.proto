@@ -2,22 +2,28 @@ syntax = "proto3";
 
 package logproto;
 
+import "wiresmith/options.proto";
+
 import "pkg/logproto/logproto.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/logproto";
 
+// Drop the per-message presence bitmap: gogoproto nullable=false parity
+// (see WIRESMITH_MIGRATION.md).
+option (wiresmith.options.no_presence_all) = true;
+
 message QuantileSketchMatrix {
-  repeated QuantileSketchVector values = 1;
+  repeated QuantileSketchVector values = 1 [(wiresmith.options.pointer) = true];
 }
 
 message QuantileSketchVector {
-  repeated QuantileSketchSample samples = 1;
+  repeated QuantileSketchSample samples = 1 [(wiresmith.options.pointer) = true];
 }
 
 message QuantileSketchSample {
-  QuantileSketch f = 1;
+  QuantileSketch f = 1 [(wiresmith.options.pointer) = true];
   int64 timestamp_ms = 2;
-  repeated LabelPair metric = 3;
+  repeated LabelPair metric = 3 [(wiresmith.options.pointer) = true];
 }
 
 message QuantileSketch {
@@ -37,7 +43,7 @@ message TDigest {
     double mean = 1;
     double weight = 2;
   }
-  repeated Centroid processed = 4;
+  repeated Centroid processed = 4 [(wiresmith.options.pointer) = true];
 }
 
 message CountMinSketch {
@@ -52,32 +58,32 @@ message CountMinSketch {
 
 message CountMinSketchVector {
   int64 timestamp_ms = 1;
-  CountMinSketch sketch = 2;
+  CountMinSketch sketch = 2 [(wiresmith.options.pointer) = true];
 
-  repeated Labels metrics = 3;
+  repeated Labels metrics = 3 [(wiresmith.options.pointer) = true];
 }
 
 message Labels {
-  repeated LabelPair metric = 1;
+  repeated LabelPair metric = 1 [(wiresmith.options.pointer) = true];
 }
 
 message TopK {
-  CountMinSketch cms = 1;
+  CountMinSketch cms = 1 [(wiresmith.options.pointer) = true];
 
   message Pair {
     string event = 1;
     double count = 2;
   }
-  repeated Pair list = 2;
+  repeated Pair list = 2 [(wiresmith.options.pointer) = true];
 
   bytes hyperloglog = 3;
 }
 
 message TopKMatrix {
   message Vector {
-    TopK topk = 1;
+    TopK topk = 1 [(wiresmith.options.pointer) = true];
     int64 timestamp_ms = 2;
   }
 
-  repeated Vector values = 1;
+  repeated Vector values = 1 [(wiresmith.options.pointer) = true];
 }

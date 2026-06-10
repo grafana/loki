@@ -636,3 +636,10 @@ func (m *DetectedLabelsRequest) LogToSpan(sp trace.Span) {
 		attribute.String("end", m.End.String()),
 	)
 }
+
+// GetCachingOptions implements definitions.Request (value-typed getter for
+// interface compatibility with gogo-generated implementations; the
+// wiresmith-generated accessor is GetCachingOpts and returns a pointer).
+func (m *VolumeRequest) GetCachingOptions() resultscache.CachingOptions {
+	return m.CachingOpts
+}

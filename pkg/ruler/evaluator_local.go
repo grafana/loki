@@ -46,7 +46,7 @@ func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*l
 		now,
 		0,
 		0,
-		logproto.FORWARD,
+		logproto.Direction_FORWARD,
 		0,
 		nil,
 		nil,

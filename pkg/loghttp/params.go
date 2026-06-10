@@ -21,7 +21,7 @@ const (
 	defaultQueryLimit = 100
 	defaultLimit      = 1000
 	defaultSince      = 1 * time.Hour
-	defaultDirection  = logproto.BACKWARD
+	defaultDirection  = logproto.Direction_BACKWARD
 )
 
 func limit(r *http.Request) (uint32, error) {
@@ -206,7 +206,7 @@ func parseDirection(value string, def logproto.Direction) (logproto.Direction, e
 
 	d, ok := logproto.Direction_value[strings.ToUpper(value)]
 	if !ok {
-		return logproto.FORWARD, fmt.Errorf("invalid direction '%s'", value)
+		return logproto.Direction_FORWARD, fmt.Errorf("invalid direction '%s'", value)
 	}
 	return logproto.Direction(d), nil
 }

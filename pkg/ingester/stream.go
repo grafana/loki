@@ -585,7 +585,7 @@ func (s *stream) Iterator(ctx context.Context, statsCtx *stats.Context, from, th
 		}
 	}
 
-	if direction != logproto.FORWARD {
+	if direction != logproto.Direction_FORWARD {
 		for left, right := 0, len(iterators)-1; left < right; left, right = left+1, right-1 {
 			iterators[left], iterators[right] = iterators[right], iterators[left]
 		}

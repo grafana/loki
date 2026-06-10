@@ -48,7 +48,7 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 	var forwardStop int64
 	err := hb.forEntries(
 		context.Background(),
-		logproto.FORWARD,
+		logproto.Direction_FORWARD,
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, _ string, _ symbols) error {
@@ -69,7 +69,7 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 	var backwardStop int64
 	err = hb.forEntries(
 		context.Background(),
-		logproto.BACKWARD,
+		logproto.Direction_BACKWARD,
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, _ string, _ symbols) error {
@@ -111,7 +111,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{2, "c", labels.FromStrings("a", "b")}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
 			},
-			dir: logproto.BACKWARD,
+			dir: logproto.Direction_BACKWARD,
 		},
 		{
 			desc: "unordered forward",
@@ -130,7 +130,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{2, "c", labels.FromStrings("a", "b")}, {1, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
 			},
-			dir: logproto.BACKWARD,
+			dir: logproto.Direction_BACKWARD,
 		},
 		{
 			desc: "different structured metadata forward",
@@ -150,7 +150,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{1, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")}, {0, "a", labels.EmptyLabels()},
 			},
-			dir:       logproto.BACKWARD,
+			dir:       logproto.Direction_BACKWARD,
 			forFormat: UnorderedWithStructuredMetadataHeadBlockFmt,
 		},
 		{
@@ -172,7 +172,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{1, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
 			},
-			dir:       logproto.BACKWARD,
+			dir:       logproto.Direction_BACKWARD,
 			hasDup:    true,
 			forFormat: UnorderedHeadBlockFmt,
 		},
@@ -195,7 +195,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")},
 			},
-			dir:       logproto.BACKWARD,
+			dir:       logproto.Direction_BACKWARD,
 			forFormat: UnorderedHeadBlockFmt,
 		},
 		{
@@ -209,7 +209,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{1, "c", labels.EmptyLabels()}, {0, "a", labels.FromStrings("a", "b")}, {0, "b", labels.EmptyLabels()},
 			},
-			dir:       logproto.BACKWARD,
+			dir:       logproto.Direction_BACKWARD,
 			forFormat: UnorderedWithStructuredMetadataHeadBlockFmt,
 		},
 		{
@@ -220,7 +220,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()},
 			},
-			dir:    logproto.FORWARD,
+			dir:    logproto.Direction_FORWARD,
 			hasDup: true,
 		},
 		{
@@ -231,7 +231,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
 			},
-			dir:    logproto.BACKWARD,
+			dir:    logproto.Direction_BACKWARD,
 			hasDup: true,
 		},
 	} {
@@ -308,7 +308,7 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 			exp: []entry{
 				{3, "d", labels.EmptyLabels()}, {2, "c", labels.EmptyLabels()}, {1, "b", labels.FromStrings("a", "b")},
 			},
-			dir: logproto.BACKWARD,
+			dir: logproto.Direction_BACKWARD,
 		},
 		{
 			desc: "unordered",
@@ -538,10 +538,10 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	// ensure head block has data
 	require.Equal(t, false, c.head.IsEmpty())
 
-	forward, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(100, 0), logproto.FORWARD, noopStreamPipeline)
+	forward, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(100, 0), logproto.Direction_FORWARD, noopStreamPipeline)
 	require.Nil(t, err)
 
-	backward, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(100, 0), logproto.BACKWARD, noopStreamPipeline)
+	backward, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(100, 0), logproto.Direction_BACKWARD, noopStreamPipeline)
 	require.Nil(t, err)
 
 	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
@@ -602,7 +602,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 		for _, tc := range tcs {
 			b.Run(tc.desc, func(b *testing.B) {
 				for n := 0; n < b.N; n++ {
-					iterator, err := tc.c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+					iterator, err := tc.c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.Direction_FORWARD, noopStreamPipeline)
 					if err != nil {
 						panic(err)
 					}
@@ -645,7 +645,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 
 	ct := 0
 	var i int64
-	iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+	iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.Direction_FORWARD, noopStreamPipeline)
 	if err != nil {
 		panic(err)
 	}
@@ -786,7 +786,7 @@ func TestReorderAcrossBlocks(t *testing.T) {
 	from, to := c.Bounds()
 	require.Nil(t, c.Close())
 
-	itr, err := c.Iterator(context.Background(), from, to.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.EmptyLabels()))
+	itr, err := c.Iterator(context.Background(), from, to.Add(time.Nanosecond), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.EmptyLabels()))
 	require.Nil(t, err)
 
 	exp := []entry{
@@ -830,7 +830,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 			dup, err := b.Append(1, "foo", labels.FromStrings("foo", "bar"))
 			require.False(t, dup)
 			require.NoError(t, err)
-			eit := b.Iterator(context.Background(), logproto.BACKWARD, 0, 2, log.NewNoopPipeline().ForStream(lbs))
+			eit := b.Iterator(context.Background(), logproto.Direction_BACKWARD, 0, 2, log.NewNoopPipeline().ForStream(lbs))
 
 			for eit.Next() {
 				require.Equal(t, labels.StableHash(lbs), eit.StreamHash())
@@ -848,7 +848,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 			require.NoError(t, err)
 			eit := b.Iterator(
 				context.Background(),
-				logproto.BACKWARD,
+				logproto.Direction_BACKWARD,
 				0,
 				2,
 				log.NewNoopPipeline().ForStream(lbs),

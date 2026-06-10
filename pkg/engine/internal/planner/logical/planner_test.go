@@ -87,7 +87,7 @@ func TestConvertAST_Success(t *testing.T) {
 		statement: `{cluster="prod", namespace=~"loki-.*"} | foo="bar" or bar="baz" |= "metric.go" |= "foo" or "bar" !~ "(a|b|c)" `,
 		start:     3600,
 		end:       7200,
-		direction: logproto.BACKWARD, // ASC is not supported
+		direction: logproto.Direction_BACKWARD, // ASC is not supported
 		limit:     1000,
 	}
 	logicalPlan, err := BuildPlan(context.Background(), q)
@@ -189,7 +189,7 @@ func TestConvertAST_LineFilterOr(t *testing.T) {
 				statement: tc.query,
 				start:     3600,
 				end:       7200,
-				direction: logproto.BACKWARD,
+				direction: logproto.Direction_BACKWARD,
 				limit:     1000,
 			}
 			plan, err := BuildPlan(context.Background(), q)
@@ -462,7 +462,7 @@ func TestCanExecuteQuery(t *testing.T) {
 				statement: tt.statement,
 				start:     1000,
 				end:       2000,
-				direction: logproto.BACKWARD,
+				direction: logproto.Direction_BACKWARD,
 				limit:     1000,
 			}
 
@@ -484,7 +484,7 @@ func TestConvertAST_WithDeletes(t *testing.T) {
 			statement: `{cluster="prod"} |= "error"`,
 			start:     3600,
 			end:       7200,
-			direction: logproto.BACKWARD,
+			direction: logproto.Direction_BACKWARD,
 			limit:     1000,
 		}
 
@@ -529,7 +529,7 @@ RETURN %17
 			statement: `{cluster="prod"} |= "error"`,
 			start:     3600,
 			end:       7200,
-			direction: logproto.BACKWARD,
+			direction: logproto.Direction_BACKWARD,
 			limit:     1000,
 		}
 
@@ -629,7 +629,7 @@ RETURN %13
 			statement: `{app="test"} | logfmt | level="error"`,
 			start:     3600,
 			end:       7200,
-			direction: logproto.BACKWARD,
+			direction: logproto.Direction_BACKWARD,
 			limit:     1000,
 		}
 
@@ -692,7 +692,7 @@ RETURN %13
 			statement: `{app="test"} | json | level="error"`,
 			start:     3600,
 			end:       7200,
-			direction: logproto.BACKWARD,
+			direction: logproto.Direction_BACKWARD,
 			limit:     1000,
 		}
 
@@ -755,7 +755,7 @@ RETURN %13
 			statement: `{app="test"} | regexp "(?P<level>\\w+):\\s+(?P<message>.*)" | level="error"`,
 			start:     3600,
 			end:       7200,
-			direction: logproto.BACKWARD,
+			direction: logproto.Direction_BACKWARD,
 			limit:     1000,
 		}
 
@@ -800,7 +800,7 @@ RETURN %12
 				statement: fmt.Sprintf(`{job="app"} |= "error" | label="value" | %s | level="debug"`, parser),
 				start:     3600,
 				end:       7200,
-				direction: logproto.BACKWARD,
+				direction: logproto.Direction_BACKWARD,
 				limit:     1000,
 			}
 
@@ -887,7 +887,7 @@ func TestPlannerCreatesProjection(t *testing.T) {
 			start:     0,
 			end:       3600,
 			interval:  5 * time.Minute,
-			direction: logproto.BACKWARD,
+			direction: logproto.Direction_BACKWARD,
 		}
 
 		plan, err := BuildPlan(context.Background(), q)
@@ -914,7 +914,7 @@ RETURN %9
 			start:     0,
 			end:       3600,
 			interval:  5 * time.Minute,
-			direction: logproto.BACKWARD,
+			direction: logproto.Direction_BACKWARD,
 		}
 
 		plan, err := BuildPlan(context.Background(), q)

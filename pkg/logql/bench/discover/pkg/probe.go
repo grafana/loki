@@ -220,7 +220,7 @@ func runKeywordPhaseBroad(
 				broadLimit,
 				from,
 				to,
-				logproto.BACKWARD,
+				logproto.Direction_BACKWARD,
 				0,
 				0,
 				true,

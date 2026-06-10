@@ -151,7 +151,7 @@ func buildPlanForLogQuery(
 	// builder = builder.ProjectAll(false, false)
 
 	direction := params.Direction()
-	if !isMetricQuery && direction == logproto.FORWARD {
+	if !isMetricQuery && direction == logproto.Direction_FORWARD {
 		return nil, fmt.Errorf("forward search log queries are not supported: %w", errUnimplemented)
 	}
 

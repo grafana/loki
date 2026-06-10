@@ -169,7 +169,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			limits.blockedQueries = test.blocked
 
-			params, err := NewLiteralParams(test.q, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			params, err := NewLiteralParams(test.q, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.Direction_FORWARD, 1000, nil, nil)
 			require.NoError(t, err)
 			q := eng.Query(params)
 			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
@@ -207,7 +207,7 @@ func TestEngine_BlockedQueries_ConcurrentAccess(t *testing.T) {
 	for range goroutines {
 		go func() {
 			defer wg.Done()
-			params, err := NewLiteralParams(queryStr, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			params, err := NewLiteralParams(queryStr, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.Direction_FORWARD, 1000, nil, nil)
 			require.NoError(t, err)
 			q := eng.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
@@ -288,7 +288,7 @@ func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			limits.blockedQueries = test.blocked
 
-			params, err := NewLiteralParams(test.q, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			params, err := NewLiteralParams(test.q, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.Direction_FORWARD, 1000, nil, nil)
 			require.NoError(t, err)
 			q := eng.Query(params)
 

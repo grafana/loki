@@ -296,7 +296,7 @@ func TestStoreCombiner_Merging(t *testing.T) {
 			QueryRequest: &logproto.QueryRequest{
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(2, 0),
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 			},
 		})
 		require.NoError(t, err)

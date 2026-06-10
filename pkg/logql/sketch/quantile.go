@@ -27,7 +27,7 @@ type QuantileSketchFactory func() QuantileSketch
 func QuantileSketchFromProto(proto *logproto.QuantileSketch) (QuantileSketch, error) {
 	switch concrete := proto.Sketch.(type) {
 	case *logproto.QuantileSketch_Tdigest:
-		return TDigestQuantileFromProto(concrete.Tdigest), nil
+		return TDigestQuantileFromProto(&concrete.Tdigest), nil
 	case *logproto.QuantileSketch_Ddsketch:
 		return DDSketchQuantileFromProto(concrete.Ddsketch)
 	}
@@ -137,7 +137,7 @@ func (d *TDigestQuantile) ToProto() *logproto.QuantileSketch {
 
 	return &logproto.QuantileSketch{
 		Sketch: &logproto.QuantileSketch_Tdigest{
-			Tdigest: &logproto.TDigest{
+			Tdigest: logproto.TDigest{
 				Compression: d.Compression,
 				Processed:   processed,
 			},

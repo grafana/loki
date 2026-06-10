@@ -213,7 +213,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	switch req := r.(type) {
 	case *LokiRequest:
 		limit = int64(req.Limit)
-		if req.Direction == logproto.BACKWARD {
+		if req.Direction == logproto.Direction_BACKWARD {
 			for i, j := 0, len(intervals)-1; i < j; i, j = i+1, j-1 {
 				intervals[i], intervals[j] = intervals[j], intervals[i]
 			}

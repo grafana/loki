@@ -132,7 +132,7 @@ func newBatchedChunkLoader(
 			ctx,
 			time.Unix(0, 0),
 			time.Unix(0, math.MaxInt64),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			logql_log.NewNoopPipeline().ForStream(labels.EmptyLabels()),
 		)
 

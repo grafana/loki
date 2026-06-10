@@ -184,7 +184,22 @@ WIRESMITH_PROTO_GROUP_leaves := \
 	./pkg/dataobj/metastore/metastore.proto \
 	./pkg/compactor/deletion/deletionproto/types.proto
 WIRESMITH_PROTO_GROUP_compaction := ./pkg/dataobj/compaction/proto/compaction.proto
-WIRESMITH_PROTO_GROUPS := engine logqlstats querierstats limits leaves compaction
+# The logproto group keeps pkg/push on gogo: push.proto is staged for import
+# resolution only (its messages are referenced solely through customtype
+# overrides and gRPC method signatures, never embedded) and pinned with -M so
+# its divergent go_package (separate pkg/push Go module, no /v3) is exempt
+# from the one-go_package-per-proto-package check. push-rf1.proto must NOT be
+# staged: it duplicates `service logproto.PusherRF1` from ingester-rf1.proto.
+WIRESMITH_PROTO_GROUP_logproto := \
+	./pkg/logproto/logproto.proto \
+	./pkg/logproto/metrics.proto \
+	./pkg/logproto/pattern.proto \
+	./pkg/logproto/bloomgateway.proto \
+	./pkg/logproto/ingester-rf1.proto \
+	./pkg/logproto/sketch.proto \
+	./pkg/storage/chunk/cache/resultscache/types.proto \
+	./pkg/storage/chunk/cache/resultscache/test_types.proto
+WIRESMITH_PROTO_GROUPS := engine logqlstats querierstats limits leaves compaction logproto
 
 WIRESMITH_PROTO_DEFS := $(foreach g,$(WIRESMITH_PROTO_GROUPS),$(WIRESMITH_PROTO_GROUP_$(g)))
 # wiresmith emits sibling files next to each <name>.pb.go; <name>_grpc.pb.go
@@ -511,6 +526,7 @@ protos: clean-protos $(PROTO_GOS) wiresmith-protos
 .PHONY: wiresmith-protos
 wiresmith-protos: clean-wiresmith-protos
 	for group in $(WIRESMITH_PROTO_GROUPS); do \
+		imports=""; mflags=""; \
 		case $$group in \
 			engine) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_engine))" ;; \
 			logqlstats) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_logqlstats))" ;; \
@@ -518,6 +534,10 @@ wiresmith-protos: clean-wiresmith-protos
 			limits) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_limits))" ;; \
 			leaves) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_leaves))" ;; \
 			compaction) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_compaction))" ;; \
+			logproto) \
+				protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_logproto))"; \
+				imports="pkg/push/push.proto pkg/logqlmodel/stats/stats.proto vendor/github.com/gogo/protobuf/gogoproto/gogo.proto=gogoproto/gogo.proto"; \
+				mflags="-M pkg/push/push.proto=github.com/grafana/loki/pkg/push" ;; \
 		esac; \
 		stage=$$(mktemp -d); \
 		staged=""; \
@@ -526,7 +546,12 @@ wiresmith-protos: clean-wiresmith-protos
 			cp $$p $$stage/$$p; \
 			staged="$$staged $$stage/$$p"; \
 		done; \
-		wiresmith --proto_path=$$stage --out=. --module=github.com/grafana/loki/v3 $$staged || exit 1; \
+		for spec in $$imports; do \
+			src=$${spec%%=*}; dst=$${spec#*=}; \
+			mkdir -p $$stage/$$(dirname $$dst); \
+			cp $$src $$stage/$$dst; \
+		done; \
+		wiresmith --proto_path=$$stage --out=. --module=github.com/grafana/loki/v3 $$mflags $$staged || exit 1; \
 		rm -rf $$stage; \
 	done
 

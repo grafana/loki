@@ -221,7 +221,7 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 				End:       time.Unix(3600, 0),
 				Step:      14 * time.Second,
 				Limit:     100,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 			},
 		},
 		"should use the input step parameter if provided as an integer": {
@@ -232,7 +232,7 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 				End:       time.Unix(3600, 0),
 				Step:      5 * time.Second,
 				Limit:     100,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 			},
 		},
 		"should use the input step parameter if provided as a float without decimals": {
@@ -243,7 +243,7 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 				End:       time.Unix(3600, 0),
 				Step:      5 * time.Second,
 				Limit:     100,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 			},
 		},
 		"should use the input step parameter if provided as a float with decimals": {
@@ -254,7 +254,7 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 				End:       time.Unix(3600, 0),
 				Step:      5.5 * 1e9,
 				Limit:     100,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 			},
 		},
 		"should use the input step parameter if provided as a duration in seconds": {
@@ -265,7 +265,7 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 				End:       time.Unix(3600, 0),
 				Step:      5 * time.Second,
 				Limit:     100,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 			},
 		},
 		"should use the input step parameter if provided as a duration in days": {
@@ -276,7 +276,7 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 				End:       time.Unix(3600, 0),
 				Step:      5 * 24 * 3600 * time.Second,
 				Limit:     100,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 			},
 		},
 	}

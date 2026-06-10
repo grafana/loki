@@ -181,7 +181,7 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordLabelQueryMetrics(ctx, utillog.Logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
+	logql.RecordLabelQueryMetrics(ctx, utillog.Logger, req.Start, req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
 }

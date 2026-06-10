@@ -40,7 +40,7 @@ func TestEncodeMetricsParquet(t *testing.T) {
 func TestEncodeLogsParquet(t *testing.T) {
 	resp := &LokiResponse{
 		Status:    loghttp.QueryStatusSuccess,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Limit:     100,
 		Version:   uint32(loghttp.VersionV1),
 		Data: LokiData{

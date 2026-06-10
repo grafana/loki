@@ -491,7 +491,7 @@ func Test_SeriesIterator(t *testing.T) {
 			assert.Equal(t, fmt.Sprintf("%d", i), iter.Stream().UserID)
 			memchunk, err := chunkenc.MemchunkFromCheckpoint(iter.Stream().Chunks[0].Data, iter.Stream().Chunks[0].Head, chunkenc.UnorderedHeadBlockFmt, 0, 0)
 			require.NoError(t, err)
-			it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.EmptyLabels()))
+			it, err := memchunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.EmptyLabels()))
 			require.NoError(t, err)
 			stream := logproto.Stream{
 				Labels: logproto.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),

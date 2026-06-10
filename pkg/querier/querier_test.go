@@ -44,8 +44,8 @@ func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 	request := logproto.LabelRequest{
 		Name:   "test",
 		Values: true,
-		Start:  &startTime,
-		End:    &endTime,
+		Start:  startTime,
+		End:    endTime,
 	}
 
 	ingesterClient := newQuerierClientMock()
@@ -116,8 +116,8 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 		Limit:     10,
 		Start:     time.Now().Add(-1 * time.Minute),
 		End:       time.Now(),
-		Direction: logproto.FORWARD,
-		Plan: &plan.QueryPlan{
+		Direction: logproto.Direction_FORWARD,
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{type="test", fail="yes"} |= "foo"`),
 		},
 	}
@@ -153,7 +153,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max streams matchers per query exceeded, matchers-count > limit (2 > 1)"), err)
 
 	request.Selector = `{type="test"}`
-	request.Plan = &plan.QueryPlan{
+	request.Plan = plan.QueryPlan{
 		AST: syntax.MustParseExpr(`{type="test"}`),
 	}
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
@@ -374,8 +374,8 @@ func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
 				Limit:     1000,
 				Start:     tc.end.Add(-6 * time.Hour),
 				End:       tc.end,
-				Direction: logproto.FORWARD,
-				Plan: &plan.QueryPlan{
+				Direction: logproto.Direction_FORWARD,
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{app="foo"}`),
 				},
 			}
@@ -782,8 +782,8 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 						Limit:     10,
 						Start:     start,
 						End:       end,
-						Direction: logproto.FORWARD,
-						Plan: &plan.QueryPlan{
+						Direction: logproto.Direction_FORWARD,
+						Plan: plan.QueryPlan{
 							AST: syntax.MustParseExpr(`{type="test", fail="yes"} |= "foo"`),
 						},
 					},
@@ -800,7 +800,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 						Selector: `count_over_time({foo="bar"}[5m])`,
 						Start:    start,
 						End:      end,
-						Plan: &plan.QueryPlan{
+						Plan: plan.QueryPlan{
 							AST: syntax.MustParseExpr(`count_over_time({foo="bar"}[5m])`),
 						},
 					},
@@ -814,8 +814,8 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 				_, err := querier.Label(ctx, &logproto.LabelRequest{
 					Name:   "type",
 					Values: true,
-					Start:  &start,
-					End:    &end,
+					Start:  start,
+					End:    end,
 				})
 				return err
 			},
@@ -825,8 +825,8 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 			do: func(querier *SingleTenantQuerier, start, end time.Time) error {
 				_, err := querier.Label(ctx, &logproto.LabelRequest{
 					Values: false,
-					Start:  &start,
-					End:    &end,
+					Start:  start,
+					End:    end,
 				})
 				return err
 			},
@@ -1070,8 +1070,8 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 		Limit:     10,
 		Start:     time.Unix(0, 300000000),
 		End:       time.Unix(0, 600000000),
-		Direction: logproto.FORWARD,
-		Plan: &plan.QueryPlan{
+		Direction: logproto.Direction_FORWARD,
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{type="test"} |= "foo"`),
 		},
 	}
@@ -1090,7 +1090,7 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 			{Selector: "2", Start: 400000000, End: 500000000},
 			{Selector: "3", Start: 500000000, End: 700000000},
 		},
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(request.Selector),
 		},
 	}
@@ -1137,7 +1137,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 		Selector: `count_over_time({foo="bar"}[5m])`,
 		Start:    time.Unix(0, 300000000),
 		End:      time.Unix(0, 600000000),
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(`count_over_time({foo="bar"}[5m])`),
 		},
 	}
@@ -1155,7 +1155,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 				{Selector: "2", Start: 400000000, End: 500000000},
 				{Selector: "3", Start: 500000000, End: 700000000},
 			},
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: syntax.MustParseExpr(request.Selector),
 			},
 		},
@@ -1196,7 +1196,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 	}
 
 	t.Run("when both store and ingester responses are present, a combined response is returned", func(t *testing.T) {
-		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]logproto.UniqueLabelValues{
 			"cluster":       {Values: []string{"ingester"}},
 			"ingesterLabel": {Values: []string{"abc", "def", "ghi", "abc"}},
 		}}
@@ -1236,7 +1236,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 	})
 
 	t.Run("when both store and ingester responses are present, duplicates are removed", func(t *testing.T) {
-		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]logproto.UniqueLabelValues{
 			"cluster":       {Values: []string{"ingester"}},
 			"ingesterLabel": {Values: []string{"abc", "def", "ghi", "abc"}},
 			"commonLabel":   {Values: []string{"abc", "def", "ghi", "abc"}},
@@ -1348,7 +1348,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 	})
 
 	t.Run("returns a response when store data is empty", func(t *testing.T) {
-		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]logproto.UniqueLabelValues{
 			"cluster":       {Values: []string{"ingester"}},
 			"ingesterLabel": {Values: []string{"abc", "def", "ghi", "abc"}},
 		}}
@@ -1383,7 +1383,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 	})
 
 	t.Run("id types like uuids, guids and numbers are not relevant detected labels", func(t *testing.T) {
-		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]logproto.UniqueLabelValues{
 			"all-ints":   {Values: []string{"1", "2", "3", "4"}},
 			"all-floats": {Values: []string{"1.2", "2.3", "3.4", "4.5"}},
 			"all-uuids":  {Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
@@ -1414,7 +1414,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 	})
 
 	t.Run("allows boolean values, even if numeric", func(t *testing.T) {
-		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]logproto.UniqueLabelValues{
 			"boolean-ints":            {Values: []string{"0", "1"}},
 			"boolean-bools":           {Values: []string{"true", "false"}},
 			"boolean-bools-uppercase": {Values: []string{"TRUE", "FALSE"}},
@@ -1454,7 +1454,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 	})
 
 	t.Run("static labels are always returned no matter their cardinality or value types", func(t *testing.T) {
-		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]logproto.UniqueLabelValues{
 			"cluster":   {Values: []string{"val1"}},
 			"namespace": {Values: manyValues},
 			"pod":       {Values: []string{"1", "2", "3", "4"}},
@@ -1536,7 +1536,7 @@ func BenchmarkQuerierDetectedLabels(b *testing.B) {
 		End:   now,
 		Query: "",
 	}
-	ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+	ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]logproto.UniqueLabelValues{
 		"cluster":       {Values: []string{"ingester"}},
 		"ingesterLabel": {Values: []string{"abc", "def", "ghi", "abc"}},
 	}}

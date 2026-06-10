@@ -102,7 +102,7 @@ func Test_StatsHTTP(t *testing.T) {
 				data.recorded = true
 				data.params, _ = ParamsFromRequest(&LokiRequest{
 					Query:     "foo",
-					Direction: logproto.BACKWARD,
+					Direction: logproto.Direction_BACKWARD,
 					Limit:     100,
 				})
 				data.statistics = nil
@@ -110,7 +110,7 @@ func Test_StatsHTTP(t *testing.T) {
 			func(t *testing.T, data *queryData) {
 				require.Equal(t, fmt.Sprintf("%d", http.StatusOK), data.status)
 				require.Equal(t, "foo", data.params.QueryString())
-				require.Equal(t, logproto.BACKWARD, data.params.Direction())
+				require.Equal(t, logproto.Direction_BACKWARD, data.params.Direction())
 				require.Equal(t, uint32(100), data.params.Limit())
 				require.Equal(t, stats.Result{}, *data.statistics)
 			},
@@ -122,7 +122,7 @@ func Test_StatsHTTP(t *testing.T) {
 				data.recorded = true
 				data.params, _ = ParamsFromRequest(&LokiRequest{
 					Query:     "foo",
-					Direction: logproto.BACKWARD,
+					Direction: logproto.Direction_BACKWARD,
 					Limit:     100,
 				})
 				data.statistics = &statsResult
@@ -131,7 +131,7 @@ func Test_StatsHTTP(t *testing.T) {
 			func(t *testing.T, data *queryData) {
 				require.Equal(t, fmt.Sprintf("%d", http.StatusTeapot), data.status)
 				require.Equal(t, "foo", data.params.QueryString())
-				require.Equal(t, logproto.BACKWARD, data.params.Direction())
+				require.Equal(t, logproto.Direction_BACKWARD, data.params.Direction())
 				require.Equal(t, uint32(100), data.params.Limit())
 				require.Equal(t, statsResult, *data.statistics)
 			},
@@ -143,7 +143,7 @@ func Test_StatsHTTP(t *testing.T) {
 				data.recorded = true
 				data.params, _ = ParamsFromRequest(&LokiRequest{
 					Query:     "foo",
-					Direction: logproto.BACKWARD,
+					Direction: logproto.Direction_BACKWARD,
 					Limit:     100,
 				})
 				data.statistics = &statsResult
@@ -153,7 +153,7 @@ func Test_StatsHTTP(t *testing.T) {
 			func(t *testing.T, data *queryData) {
 				require.Equal(t, fmt.Sprintf("%d", http.StatusTeapot), data.status)
 				require.Equal(t, "foo", data.params.QueryString())
-				require.Equal(t, logproto.BACKWARD, data.params.Direction())
+				require.Equal(t, logproto.Direction_BACKWARD, data.params.Direction())
 				require.Equal(t, uint32(100), data.params.Limit())
 				require.Equal(t, statsResult, *data.statistics)
 				require.Equal(t, streams, data.result)

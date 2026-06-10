@@ -38,14 +38,14 @@ var (
 			Limit:     100,
 			StartTs:   start,
 			EndTs:     end,
-			Direction: logproto.BACKWARD,
+			Direction: logproto.Direction_BACKWARD,
 			Path:      "/loki/api/v1/query_range",
 		}
 	}
 	lokiResps = []queryrangebase.Response{
 		&LokiResponse{
 			Status:    loghttp.QueryStatusSuccess,
-			Direction: logproto.BACKWARD,
+			Direction: logproto.Direction_BACKWARD,
 			Limit:     defaultReq().Limit,
 			Version:   1,
 			Headers: []definitions.PrometheusResponseHeader{
@@ -66,7 +66,7 @@ var (
 		},
 		&LokiResponse{
 			Status:    loghttp.QueryStatusSuccess,
-			Direction: logproto.BACKWARD,
+			Direction: logproto.Direction_BACKWARD,
 			Limit:     100,
 			Version:   1,
 			Headers: []definitions.PrometheusResponseHeader{
@@ -871,7 +871,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 		Query:     q,
 		Limit:     1000,
 		TimeTs:    testTime,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/loki/api/v1/query",
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(q),
@@ -934,7 +934,7 @@ func Test_ConstantShardingDefaultIndexType(t *testing.T) {
 		Query:     q,
 		Limit:     1000,
 		TimeTs:    model.Now().Add(-1 * time.Hour).Time(),
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/loki/api/v1/query",
 		Plan: &plan.QueryPlan{
 			AST: syntax.MustParseExpr(q),

@@ -580,7 +580,7 @@ func TestChunkRewriter(t *testing.T) {
 				require.Equal(t, expectedChunks[i][len(expectedChunks[i])-1].End, chunks[i].Through)
 
 				lokiChunk := chunks[i].Data.(*chunkenc.Facade).LokiChunk()
-				newChunkItr, err := lokiChunk.Iterator(context.Background(), chunks[i].From.Time(), chunks[i].Through.Add(time.Minute).Time(), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+				newChunkItr, err := lokiChunk.Iterator(context.Background(), chunks[i].From.Time(), chunks[i].Through.Add(time.Minute).Time(), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 				require.NoError(t, err)
 
 				for _, interval := range expectedChunks[i] {

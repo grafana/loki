@@ -96,3 +96,47 @@ func ReuseTimeseries(ts *TimeSeries) {
 	ts.Samples = ts.Samples[:0]
 	timeSeriesPool.Put(ts)
 }
+
+// SizeWiresmith implements the wiresmith customtype contract.
+func (p *PreallocTimeseries) SizeWiresmith() int { return p.TimeSeries.Size() }
+
+// MarshalWiresmith implements the wiresmith customtype contract.
+func (p *PreallocTimeseries) MarshalWiresmith(buf []byte) (int, error) {
+	return p.TimeSeries.MarshalTo(buf)
+}
+
+// UnmarshalWiresmith implements the wiresmith customtype contract. Like
+// Unmarshal, it sources the backing TimeSeries from the pool.
+func (p *PreallocTimeseries) UnmarshalWiresmith(buf []byte) error { return p.Unmarshal(buf) }
+
+// EqualWiresmith implements the wiresmith customtype contract.
+func (p *PreallocTimeseries) EqualWiresmith(other any) bool {
+	o, ok := coercePreallocTimeseries(other)
+	if !ok {
+		return false
+	}
+	return p.TimeSeries.Equal(o.TimeSeries)
+}
+
+// CompareWiresmith implements the wiresmith customtype contract. There is no
+// natural order for timeseries; equality decides 0, otherwise -1.
+func (p *PreallocTimeseries) CompareWiresmith(other any) int {
+	if p.EqualWiresmith(other) {
+		return 0
+	}
+	return -1
+}
+
+func coercePreallocTimeseries(other any) (PreallocTimeseries, bool) {
+	switch o := other.(type) {
+	case PreallocTimeseries:
+		return o, true
+	case *PreallocTimeseries:
+		if o == nil {
+			return PreallocTimeseries{}, false
+		}
+		return *o, true
+	default:
+		return PreallocTimeseries{}, false
+	}
+}

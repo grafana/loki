@@ -81,7 +81,7 @@ func Test_splitQuery(t *testing.T) {
 					Step:      2,
 					StartTs:   start,
 					EndTs:     end,
-					Direction: logproto.BACKWARD,
+					Direction: logproto.Direction_BACKWARD,
 					Path:      "/query",
 					Plan: &plan.QueryPlan{
 						AST: syntax.MustParseExpr(`{app="foo"}`),
@@ -97,7 +97,7 @@ func Test_splitQuery(t *testing.T) {
 					Interval:  2,
 					StartTs:   start,
 					EndTs:     end,
-					Direction: logproto.BACKWARD,
+					Direction: logproto.Direction_BACKWARD,
 					Path:      "/query",
 					Plan: &plan.QueryPlan{
 						AST: syntax.MustParseExpr(`{app="foo"}`),
@@ -1414,12 +1414,12 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Query:     "",
 				Limit:     1000,
 				Step:      1,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Path:      "/api/prom/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
-				Direction:  logproto.BACKWARD,
+				Direction:  logproto.Direction_BACKWARD,
 				Limit:      1000,
 				Version:    1,
 				Statistics: stats.Result{Summary: stats.Summary{Splits: 4}},
@@ -1447,12 +1447,12 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Query:     "",
 				Limit:     1000,
 				Step:      1,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/api/prom/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
-				Direction:  logproto.FORWARD,
+				Direction:  logproto.Direction_FORWARD,
 				Statistics: stats.Result{Summary: stats.Summary{Splits: 4}},
 				Limit:      1000,
 				Version:    1,
@@ -1480,12 +1480,12 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Query:     "",
 				Limit:     2,
 				Step:      1,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/api/prom/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
-				Direction:  logproto.FORWARD,
+				Direction:  logproto.Direction_FORWARD,
 				Limit:      2,
 				Version:    1,
 				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
@@ -1511,12 +1511,12 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Query:     "",
 				Limit:     2,
 				Step:      1,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Path:      "/api/prom/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
-				Direction:  logproto.BACKWARD,
+				Direction:  logproto.Direction_BACKWARD,
 				Limit:      2,
 				Version:    1,
 				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
@@ -1816,13 +1816,13 @@ func Test_ExitEarly(t *testing.T) {
 		Query:     "",
 		Limit:     2,
 		Step:      1,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/api/prom/query_range",
 	}
 
 	expected := &LokiResponse{
 		Status:    loghttp.QueryStatusSuccess,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Limit:     2,
 		Version:   1,
 		Statistics: stats.Result{
@@ -1904,7 +1904,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 		Query:     "",
 		Limit:     uint32(n / 2),
 		Step:      1,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/api/prom/query_range",
 	}
 

@@ -21,11 +21,11 @@ func TestAccumulatedStreams(t *testing.T) {
 	lim := 30
 	nStreams := 10
 	start, end := 0, 10
-	// for a logproto.BACKWARD query, we use a min heap based on FORWARD
+	// for a logproto.Direction_BACKWARD query, we use a min heap based on FORWARD
 	// to store the _earliest_ timestamp of the _latest_ entries, up to `limit`
-	xs := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, nStreams, logproto.BACKWARD)
+	xs := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, nStreams, logproto.Direction_BACKWARD)
 	acc := NewStreamAccumulator(LiteralParams{
-		direction: logproto.BACKWARD,
+		direction: logproto.Direction_BACKWARD,
 		limit:     uint32(lim),
 	})
 	for _, x := range xs {
@@ -44,7 +44,7 @@ func TestAccumulatedStreams(t *testing.T) {
 func TestDownstreamAccumulatorSimple(t *testing.T) {
 	lim := 30
 	start, end := 0, 10
-	direction := logproto.BACKWARD
+	direction := logproto.Direction_BACKWARD
 
 	streams := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, 10, direction)
 	x := make(logqlmodel.Streams, 0, len(streams))
@@ -81,7 +81,7 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 // TestDownstreamAccumulatorMultiMerge simulates merging multiple
 // sub-results from different queries.
 func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
-	for _, direction := range []logproto.Direction{logproto.BACKWARD, logproto.FORWARD} {
+	for _, direction := range []logproto.Direction{logproto.Direction_BACKWARD, logproto.Direction_FORWARD} {
 		t.Run(direction.String(), func(t *testing.T) {
 			nQueries := 10
 			delta := 10 // 10 entries per stream, 1s apart
@@ -102,9 +102,9 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			}
 
 			// queries are always dispatched in the correct order.
-			// oldest time ranges first in the case of logproto.FORWARD
-			// and newest time ranges first in the case of logproto.BACKWARD
-			if direction == logproto.BACKWARD {
+			// oldest time ranges first in the case of logproto.Direction_FORWARD
+			// and newest time ranges first in the case of logproto.Direction_BACKWARD
+			if direction == logproto.Direction_BACKWARD {
 				for i, j := 0, len(payloads)-1; i < j; i, j = i+1, j-1 {
 					payloads[i], payloads[j] = payloads[j], payloads[i]
 				}
@@ -135,7 +135,7 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 				ln := lim / streamsPerQuery
 				require.Equal(t, ln, len(stream.Entries), "correct number of entries in stream")
 				switch direction {
-				case logproto.BACKWARD:
+				case logproto.Direction_BACKWARD:
 					for i := 0; i < ln; i++ {
 						offset := delta*nQueries - 1 - i
 						require.Equal(t, time.Unix(int64(offset), 0), stream.Entries[i].Timestamp, "correct timestamp")
@@ -172,7 +172,7 @@ func BenchmarkAccumulator(b *testing.B) {
 	// dummy params. Only need to populate direction & limit
 	lim := 30
 	params, err := NewLiteralParams(
-		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, logproto.BACKWARD, uint32(lim), nil, nil,
+		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, logproto.Direction_BACKWARD, uint32(lim), nil, nil,
 	)
 	require.NoError(b, err)
 
@@ -222,7 +222,7 @@ func newStreamResults() []logqlmodel.Result {
 	for i := 0; i < nQueries; i++ {
 		start := i * delta
 		end := start + delta
-		streams := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, streamsPerQuery, logproto.BACKWARD)
+		streams := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, streamsPerQuery, logproto.Direction_BACKWARD)
 		var res logqlmodel.Streams
 		for i := range streams {
 			res = append(res, *streams[i])
@@ -268,8 +268,8 @@ func newStreamWithDirection(start, end time.Time, delta time.Duration, ls string
 			Line:      fmt.Sprintf("%d", t.Unix()),
 		})
 	}
-	if direction == logproto.BACKWARD {
-		// simulate data coming in reverse order (logproto.BACKWARD)
+	if direction == logproto.Direction_BACKWARD {
+		// simulate data coming in reverse order (logproto.Direction_BACKWARD)
 		for i, j := 0, len(s.Entries)-1; i < j; i, j = i+1, j-1 {
 			s.Entries[i], s.Entries[j] = s.Entries[j], s.Entries[i]
 		}

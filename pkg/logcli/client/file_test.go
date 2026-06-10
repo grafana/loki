@@ -47,7 +47,7 @@ func TestFileClient_QueryRangeLogQueries(t *testing.T) {
 			limit:          10, // more than input
 			start:          now.Add(-1 * time.Hour),
 			end:            now,
-			direction:      logproto.BACKWARD,
+			direction:      logproto.Direction_BACKWARD,
 			step:           0, // let client decide based on start and end
 			interval:       0,
 			expectedStatus: loghttp.QueryStatusSuccess,
@@ -58,7 +58,7 @@ func TestFileClient_QueryRangeLogQueries(t *testing.T) {
 			limit:          10, // more than input
 			start:          now.Add(-1 * time.Hour),
 			end:            now,
-			direction:      logproto.FORWARD,
+			direction:      logproto.Direction_FORWARD,
 			step:           0, // let the client decide based on start and end
 			interval:       0,
 			expectedStatus: loghttp.QueryStatusSuccess,
@@ -117,7 +117,7 @@ func TestFileClient_Query(t *testing.T) {
 			name:           "return-all-logs-backward",
 			limit:          10, // more than input
 			ts:             now.Add(-1 * time.Hour),
-			direction:      logproto.BACKWARD,
+			direction:      logproto.Direction_BACKWARD,
 			expectedStatus: loghttp.QueryStatusSuccess,
 			expected:       reversed,
 		},
@@ -125,7 +125,7 @@ func TestFileClient_Query(t *testing.T) {
 			name:           "return-all-logs-forward",
 			limit:          10, // more than input
 			ts:             now.Add(-1 * time.Hour),
-			direction:      logproto.FORWARD,
+			direction:      logproto.Direction_FORWARD,
 			expectedStatus: loghttp.QueryStatusSuccess,
 			expected:       input,
 		},

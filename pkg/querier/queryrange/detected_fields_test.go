@@ -994,7 +994,7 @@ func limitedHandler(stream logproto.Stream) base.Handler {
 						stream,
 					},
 				},
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 			}, nil
 		})
 }
@@ -1010,7 +1010,7 @@ func logHandler(stream logproto.Stream) base.Handler {
 						stream,
 					},
 				},
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 			}, nil
 		})
 }

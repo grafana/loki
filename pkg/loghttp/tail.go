@@ -76,7 +76,7 @@ func ParseTailQuery(r *http.Request) (*logproto.TailRequest, error) {
 	}
 	req := logproto.TailRequest{
 		Query: qs,
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: parsed,
 		},
 	}
