@@ -11,6 +11,12 @@ import "wiresmith/options.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto";
 
+// Drop the per-message presence bitmap: gogoproto nullable=false parity.
+// The exported XXX_fieldsPresent field would otherwise leak into
+// encoding/json output (it carries no json:"-" tag) and break
+// reflect.DeepEqual between literals and decoded values.
+option (wiresmith.options.no_presence_all) = true;
+
 // SectionRef identifies one section in object storage with its sort-key bounds.
 //
 // The section's sort-key is the tuple (sort_schema_label_values, __timestamp__)
