@@ -10,7 +10,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/logqlerr"
 )
 
 var (
@@ -415,7 +415,7 @@ func (s *LineFilterLabelFilter) RequiredLabelNames() []string {
 }
 
 func labelValue(name string, lbs *LabelsBuilder) string {
-	if name == logqlmodel.ErrorLabel {
+	if name == logqlerr.ErrorLabel {
 		return lbs.GetErr()
 	}
 	v, _ := lbs.Get(name)

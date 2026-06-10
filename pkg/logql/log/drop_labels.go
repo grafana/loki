@@ -3,7 +3,7 @@ package log
 import (
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/logqlerr"
 )
 
 type NamedLabelMatcher struct {
@@ -41,11 +41,11 @@ func (dl *DropLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 func (dl *DropLabels) RequiredLabelNames() []string { return []string{} }
 
 func isErrorLabel(name string) bool {
-	return name == logqlmodel.ErrorLabel
+	return name == logqlerr.ErrorLabel
 }
 
 func isErrorDetailsLabel(name string) bool {
-	return name == logqlmodel.ErrorDetailsLabel
+	return name == logqlerr.ErrorDetailsLabel
 }
 
 func dropLabelNames(name string, lbls *LabelsBuilder) {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
+	"github.com/grafana/loki/v3/pkg/logqlmodel/logqlerr"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 )
@@ -13,7 +14,10 @@ import (
 const ValueTypeStreams = "streams"
 
 // PackedEntryKey is a special JSON key used by the pack promtail stage and unpack parser
-const PackedEntryKey = "_entry"
+//
+// This was moved to pkg/logqlmodel/logqlerr and is re-exported here so existing
+// callers of logqlmodel.PackedEntryKey keep working unchanged.
+const PackedEntryKey = logqlerr.PackedEntryKey
 
 // Result is the result of a query execution.
 type Result struct {
