@@ -61,7 +61,7 @@ type indexSectionsReader struct {
 	streamsReaders      []*streams.Reader
 	pointersReaders     []*pointers.Reader
 	bloomReaders        []*pointers.Reader
-	postingsReaders     []*postings.Reader
+	postingsReader      *postings.Reader
 	usePostingsSections bool
 
 	pointersReaderIdx    int
@@ -158,7 +158,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	var (
 		unopenedStreams  []*dataobj.Section
 		unopenedPointers []*dataobj.Section
-		unopenedPostings []*dataobj.Section
+		unopenedPostings *dataobj.Section
 	)
 
 	for _, section := range r.obj.Sections() {
@@ -172,12 +172,15 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		case pointers.CheckSection(section):
 			unopenedPointers = append(unopenedPointers, section)
 		case postings.CheckSection(section):
-			unopenedPostings = append(unopenedPostings, section)
+			if unopenedPostings != nil {
+				return fmt.Errorf("multiple postings sections found for tenant %s", targetTenant)
+			}
+			unopenedPostings = section
 		}
 	}
 
 	// todo(shantanu): Is there a better way?
-	r.usePostingsSections = r.usePostingsSections && len(unopenedPostings) > 0
+	r.usePostingsSections = r.usePostingsSections && unopenedPostings != nil
 	if r.usePostingsSections {
 		unopenedStreams = nil
 		unopenedPointers = nil
@@ -188,7 +191,6 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	r.streamsReaders = make([]*streams.Reader, len(unopenedStreams))
 	r.pointersReaders = make([]*pointers.Reader, len(unopenedPointers))
 	r.bloomReaders = make([]*pointers.Reader, len(unopenedPointers))
-	r.postingsReaders = make([]*postings.Reader, len(unopenedPostings))
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -243,7 +245,8 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		})
 	}
 
-	for i, section := range unopenedPostings {
+	if unopenedPostings != nil {
+		section := unopenedPostings
 		g.Go(func() error {
 			sec, err := postings.Open(ctx, section)
 			if err != nil {
@@ -255,7 +258,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 				return err
 			}
 
-			r.postingsReaders[i] = reader
+			r.postingsReader = reader
 			return nil
 		})
 	}
@@ -264,7 +267,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		closeAll(r.streamsReaders)
 		closeAll(r.pointersReaders)
 		closeAll(r.bloomReaders)
-		closeAll(r.postingsReaders)
+		closeIfNotNil(r.postingsReader)
 		return err
 	}
 
@@ -285,6 +288,14 @@ func closeAll[C closable](cs []C) {
 		}
 		_ = c.Close()
 	}
+}
+
+func closeIfNotNil[C closable](c C) {
+	var zero C
+	if c == zero {
+		return
+	}
+	_ = c.Close()
 }
 
 func (r *indexSectionsReader) scalarTimestamps() (*scalar.Timestamp, *scalar.Timestamp) {
@@ -524,9 +535,8 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 	}()
 
 	if r.usePostingsSections {
-		if len(r.postingsReaders) > 0 && r.postingsReaders[0] != nil {
-			// todo(shantanu): Why one reader only? how is this different from streams?
-			pr := r.postingsReaders[0]
+		if r.postingsReader != nil {
+			pr := r.postingsReader
 			streamIDs, labelNamesByStream, err := pr.ResolveLabels(ctx, r.matchers)
 			if err != nil {
 				return fmt.Errorf("resolving labels via postings: %w", err)
@@ -633,15 +643,11 @@ func (r *indexSectionsReader) allLabelNames() []string {
 }
 
 // Close releases readers held by this indexSectionsReader.
-//
-// Keep postings readers open until Close(): one reader is used across
-// ResolveLabels, ReadPointers, and optional ReadBloomRows. Closing after
-// ReadPointers would break the bloom-filter stage.
 func (r *indexSectionsReader) Close() {
 	closeAll(r.streamsReaders)
 	closeAll(r.pointersReaders)
 	closeAll(r.bloomReaders)
-	closeAll(r.postingsReaders)
+	closeIfNotNil(r.postingsReader)
 
 	if r.readSpan != nil {
 		r.readSpan.End()
@@ -724,12 +730,12 @@ func (r *indexSectionsReader) readPointersFromPostings(ctx context.Context) (arr
 	if r.postingsPointersRead {
 		return nil, io.EOF
 	}
-	if len(r.postingsReaders) == 0 || r.postingsReaders[0] == nil {
+	if r.postingsReader == nil {
 		r.postingsPointersRead = true
 		return nil, io.EOF
 	}
 
-	pr := r.postingsReaders[0]
+	pr := r.postingsReader
 	rec, err := pr.ReadPointers(ctx, r.matchingStreamIDs, r.start, r.end)
 	if err != nil {
 		// Preserve the contract that a transient error surfaces on every
@@ -1000,11 +1006,11 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 // readMatchedSectionKeysFromPostings reads bloom rows from the postings section and converts
 // postings.Key into metastore.SectionKey
 func (r *indexSectionsReader) readMatchedSectionKeysFromPostings(ctx context.Context) (map[SectionKey]struct{}, error) {
-	if len(r.postingsReaders) == 0 || r.postingsReaders[0] == nil {
+	if r.postingsReader == nil {
 		return map[SectionKey]struct{}{}, nil
 	}
 
-	pr := r.postingsReaders[0]
+	pr := r.postingsReader
 	rec, err := pr.ReadBloomRows(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading postings bloom rows: %w", err)

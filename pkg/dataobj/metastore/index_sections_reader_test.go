@@ -618,13 +618,12 @@ func TestIndexSectionsReader_PathSelection(t *testing.T) {
 
 			switch tc.wantPath {
 			case streamsPointersPath:
-				require.Empty(t, r.postingsReaders, "streams+pointers path ⇒ no postings readers opened")
+				require.Nil(t, r.postingsReader, "streams+pointers path ⇒ no postings reader opened")
 				require.NotEmpty(t, r.pointersReaders, "streams+pointers path ⇒ pointers readers populated")
 			case postingsPath:
 				require.Empty(t, r.pointersReaders, "postings path ⇒ pointers slice empty even when the section exists")
 				require.Empty(t, r.bloomReaders, "postings path ⇒ bloom slice empty even when the section exists")
-				require.Len(t, r.postingsReaders, 1, "postings path ⇒ exactly one postings.Reader opened")
-				require.NotNil(t, r.postingsReaders[0], "wave-1 errgroup populated the reader")
+				require.NotNil(t, r.postingsReader, "postings path ⇒ one postings.Reader opened")
 			}
 
 			rec, err := r.Read(ctx)
@@ -639,6 +638,21 @@ func TestIndexSectionsReader_PathSelection(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIndexSectionsReader_PostingsPath_MultiplePostingsSectionsReturnsError(t *testing.T) {
+	t.Parallel()
+
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+	start := now.Add(-4 * time.Hour)
+	end := now.Add(-time.Hour)
+	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
+
+	obj := buildMultiPostingsSectionsFixture(t)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, true)
+
+	err := r.Open(ctx)
+	require.ErrorContains(t, err, "multiple postings sections found")
 }
 
 // requirePostingsSchema asserts rec carries the postings.ReadPointers output
@@ -751,6 +765,42 @@ func buildPostingsFixture(t *testing.T) *dataobj.Object {
 	return flushFixture(t, builder)
 }
 
+func buildMultiPostingsSectionsFixture(t *testing.T) *dataobj.Object {
+	t.Helper()
+
+	first := postings.NewBuilder(nil, 0, 0)
+	first.SetTenant(tenantID)
+	first.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "test-path-1",
+		SectionIndex:     0,
+		ColumnName:       "app",
+		LabelValue:       "foo",
+		StreamID:         1,
+		Timestamp:        now.Add(-3 * time.Hour),
+		UncompressedSize: 5,
+	})
+
+	second := postings.NewBuilder(nil, 0, 0)
+	second.SetTenant(tenantID)
+	second.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "test-path-2",
+		SectionIndex:     0,
+		ColumnName:       "app",
+		LabelValue:       "foo",
+		StreamID:         1,
+		Timestamp:        now.Add(-3 * time.Hour),
+		UncompressedSize: 5,
+	})
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(first))
+	require.NoError(t, objBuilder.Append(second))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+	return obj
+}
+
 func buildCombinedFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
@@ -860,7 +910,7 @@ func TestIndexSectionsReader_PostingsPath_StreamLabelPredicateOnDisjointName(t *
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
-	require.Len(t, r.postingsReaders, 1, "postings path: one postings reader opened")
+	require.NotNil(t, r.postingsReader, "postings path: one postings reader opened")
 
 	var total int64
 	for {
@@ -893,7 +943,7 @@ func TestIndexSectionsReader_PostingsPath_NoPostingsReader_ShortCircuit(t *testi
 	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
-	require.Empty(t, r.postingsReaders, "no postings section ⇒ empty slice")
+	require.Nil(t, r.postingsReader, "no postings section ⇒ no postings reader")
 
 	// Flip the gate on post-Open (with no postings reader) to hit the defensive short-circuit.
 	r.usePostingsSections = true
@@ -974,7 +1024,7 @@ func TestIndexSectionsReader_PostingsOnly_EndToEnd(t *testing.T) {
 		require.Empty(t, r.streamsReaders)
 		require.Empty(t, r.pointersReaders)
 		require.Empty(t, r.bloomReaders)
-		require.Len(t, r.postingsReaders, 1)
+		require.NotNil(t, r.postingsReader)
 
 		gotStreamIDs := map[int64]struct{}{}
 		var rows int64
