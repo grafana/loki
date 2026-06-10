@@ -419,7 +419,14 @@ func TestProtobufBackwardsCompatibility(t *testing.T) {
 	require.NoError(t, err)
 
 	require.IsType(t, &frontendv2pb.QueryResultRequest_HttpResponse{}, actual.Response)
-	require.EqualValues(t, expected, actual)
+	require.Equal(t, expected.QueryID, actual.QueryID)
+	require.EqualValues(t, expected.Response, actual.Response)
+	// Compare stats via the generated Equal method: the wiresmith-generated
+	// struct carries an unexported presence bitmap that differs between a
+	// hand-constructed literal and a wire-decoded value, so a deep equality
+	// comparison of the full request would report a spurious mismatch.
+	require.True(t, expected.Stats.Equal(actual.Stats),
+		"stats mismatch: want %+v got %+v", expected.Stats, actual.Stats)
 }
 
 type mockScheduler struct {

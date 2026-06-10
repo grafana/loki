@@ -162,12 +162,23 @@ DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune 
 
 # Protobuf files generated with wiresmith instead of protoc/gogoslick.
 # Excluded from the gogo pipeline; see the wiresmith-protos target.
-WIRESMITH_PROTO_DEFS := \
+#
+# Generation groups: wiresmith enforces one go_package per proto package
+# across its whole --proto_path walk, so protos that share a proto package
+# name but live in different Go packages (e.g. both stats protos declare
+# `package stats`) must be generated in separate invocations with disjoint
+# staging trees. Protos that import each other must be in the same group.
+WIRESMITH_PROTO_GROUP_engine := \
 	./pkg/dataobj/compaction/v2/proto/compactionv2.proto \
 	./pkg/engine/internal/proto/ulid/ulid.proto \
 	./pkg/engine/internal/proto/expressionpb/expressionpb.proto \
 	./pkg/engine/internal/proto/physicalpb/physicalpb.proto \
 	./pkg/engine/internal/proto/wirepb/wirepb.proto
+WIRESMITH_PROTO_GROUP_logqlstats := ./pkg/logqlmodel/stats/stats.proto
+WIRESMITH_PROTO_GROUP_querierstats := ./pkg/querier/stats/stats.proto
+WIRESMITH_PROTO_GROUPS := engine logqlstats querierstats
+
+WIRESMITH_PROTO_DEFS := $(foreach g,$(WIRESMITH_PROTO_GROUPS),$(WIRESMITH_PROTO_GROUP_$(g)))
 # wiresmith emits sibling files next to each <name>.pb.go; <name>_grpc.pb.go
 # only appears for protos that declare services.
 WIRESMITH_PROTO_GOS := $(patsubst %.proto,%.pb.go,$(WIRESMITH_PROTO_DEFS)) \
@@ -491,14 +502,22 @@ protos: clean-protos $(PROTO_GOS) wiresmith-protos
 # (so `import "pkg/..."` paths resolve) and generation is scoped to them.
 .PHONY: wiresmith-protos
 wiresmith-protos: clean-wiresmith-protos
-	$(eval WIRESMITH_STAGE := $(shell mktemp -d))
-	for p in $(patsubst ./%,%,$(WIRESMITH_PROTO_DEFS)); do \
-		mkdir -p $(WIRESMITH_STAGE)/$$(dirname $$p); \
-		cp $$p $(WIRESMITH_STAGE)/$$p; \
+	for group in $(WIRESMITH_PROTO_GROUPS); do \
+		case $$group in \
+			engine) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_engine))" ;; \
+			logqlstats) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_logqlstats))" ;; \
+			querierstats) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_querierstats))" ;; \
+		esac; \
+		stage=$$(mktemp -d); \
+		staged=""; \
+		for p in $$protos; do \
+			mkdir -p $$stage/$$(dirname $$p); \
+			cp $$p $$stage/$$p; \
+			staged="$$staged $$stage/$$p"; \
+		done; \
+		wiresmith --proto_path=$$stage --out=. --module=github.com/grafana/loki/v3 $$staged || exit 1; \
+		rm -rf $$stage; \
 	done
-	wiresmith --proto_path=$(WIRESMITH_STAGE) --out=. --module=github.com/grafana/loki/v3 \
-		$(addprefix $(WIRESMITH_STAGE)/,$(patsubst ./%,%,$(WIRESMITH_PROTO_DEFS)))
-	rm -rf $(WIRESMITH_STAGE)
 
 %.pb.go: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 %.pb.go: ALWAYS_BUILD
