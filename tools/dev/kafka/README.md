@@ -12,7 +12,7 @@ This directory contains the development environment for testing Loki with Kafka 
 2. Run Loki manually with Kafka configuration:
    ```bash
    # From the root of the Loki repository
-   go run ./cmd/loki/main.go --config.file=tools/dev/kafka/loki-local-config.debug.yaml --log.level=debug -target=all
+   go run ./cmd/loki --config.file=tools/dev/kafka/loki-local-config.debug.yaml --log.level=debug -target=all
    ```
 
    Note: Loki is not included in docker-compose as it's intended to be run directly from source code for development.
