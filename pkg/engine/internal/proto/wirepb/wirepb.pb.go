@@ -942,11 +942,11 @@ func (m *TaskStatusMessage) GetId() ulid.ULID {
 	return zero
 }
 
-func (m *TaskStatusMessage) GetStatus() *TaskStatus {
+func (m *TaskStatusMessage) GetStatus() TaskStatus {
 	if m != nil {
-		return &m.Status
+		return m.Status
 	}
-	return nil
+	return TaskStatus{}
 }
 
 func (m *StreamBindMessage) GetStreamId() ulid.ULID {
@@ -1009,11 +1009,11 @@ func (m *Task) GetTenantId() string {
 	return ""
 }
 
-func (m *Task) GetFragment() *physicalpb.Plan {
+func (m *Task) GetFragment() physicalpb.Plan {
 	if m != nil {
-		return &m.Fragment
+		return m.Fragment
 	}
-	return nil
+	return physicalpb.Plan{}
 }
 
 func (m *Task) GetSources() map[string]StreamList {
@@ -1030,11 +1030,11 @@ func (m *Task) GetSinks() map[string]StreamList {
 	return nil
 }
 
-func (m *Task) GetMaxTimeRange() *physicalpb.TimeRange {
+func (m *Task) GetMaxTimeRange() physicalpb.TimeRange {
 	if m != nil {
-		return &m.MaxTimeRange
+		return m.MaxTimeRange
 	}
-	return nil
+	return physicalpb.TimeRange{}
 }
 
 func (m *Task) GetCachedSources() map[string]CachedSources {
@@ -4423,16 +4423,18 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.StreamStates = make(map[string]StreamState, c)
+			if m.StreamStates == nil {
+				m.StreamStates = make(map[string]StreamState, c)
+			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Metadata) < c {
-				m.Metadata = make([]HeaderAdapter, 0, c)
-			} else {
-				m.Metadata = m.Metadata[:0]
+			if need := len(m.Metadata) + c; cap(m.Metadata) < need {
+				grown := make([]HeaderAdapter, len(m.Metadata), need)
+				copy(grown, m.Metadata)
+				m.Metadata = grown
 			}
 		}
 	}
@@ -4809,10 +4811,10 @@ func (m *Header) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Values) < c {
-				m.Values = make([]string, 0, c)
-			} else {
-				m.Values = m.Values[:0]
+			if need := len(m.Values) + c; cap(m.Values) < need {
+				grown := make([]string, len(m.Values), need)
+				copy(grown, m.Values)
+				m.Values = grown
 			}
 		}
 	}
@@ -5853,19 +5855,25 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.Sources = make(map[string]StreamList, c)
+			if m.Sources == nil {
+				m.Sources = make(map[string]StreamList, c)
+			}
 		}
 		if c := field5count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.Sinks = make(map[string]StreamList, c)
+			if m.Sinks == nil {
+				m.Sinks = make(map[string]StreamList, c)
+			}
 		}
 		if c := field7count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.CachedSources = make(map[string]CachedSources, c)
+			if m.CachedSources == nil {
+				m.CachedSources = make(map[string]CachedSources, c)
+			}
 		}
 	}
 	for iNdEx < l {
@@ -6697,10 +6705,10 @@ func (m *StreamList) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Streams) < c {
-				m.Streams = make([]Stream, 0, c)
-			} else {
-				m.Streams = m.Streams[:0]
+			if need := len(m.Streams) + c; cap(m.Streams) < need {
+				grown := make([]Stream, len(m.Streams), need)
+				copy(grown, m.Streams)
+				m.Streams = grown
 			}
 		}
 	}
@@ -6870,10 +6878,10 @@ func (m *CachedSources) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.CachedSource) < c {
-				m.CachedSource = make([][]byte, 0, c)
-			} else {
-				m.CachedSource = m.CachedSource[:0]
+			if need := len(m.CachedSource) + c; cap(m.CachedSource) < need {
+				grown := make([][]byte, len(m.CachedSource), need)
+				copy(grown, m.CachedSource)
+				m.CachedSource = grown
 			}
 		}
 	}

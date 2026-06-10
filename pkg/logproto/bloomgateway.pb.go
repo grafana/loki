@@ -723,20 +723,20 @@ func (m *FilterChunkRefRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Refs) < c {
-				m.Refs = make([]*GroupedChunkRefs, 0, c)
-			} else {
-				m.Refs = m.Refs[:0]
+			if need := len(m.Refs) + c; cap(m.Refs) < need {
+				grown := make([]*GroupedChunkRefs, len(m.Refs), need)
+				copy(grown, m.Refs)
+				m.Refs = grown
 			}
 		}
 		if c := field6count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Blocks) < c {
-				m.Blocks = make([]string, 0, c)
-			} else {
-				m.Blocks = m.Blocks[:0]
+			if need := len(m.Blocks) + c; cap(m.Blocks) < need {
+				grown := make([]string, len(m.Blocks), need)
+				copy(grown, m.Blocks)
+				m.Blocks = grown
 			}
 		}
 	}
@@ -1054,10 +1054,10 @@ func (m *FilterChunkRefResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.ChunkRefs) < c {
-				m.ChunkRefs = make([]*GroupedChunkRefs, 0, c)
-			} else {
-				m.ChunkRefs = m.ChunkRefs[:0]
+			if need := len(m.ChunkRefs) + c; cap(m.ChunkRefs) < need {
+				grown := make([]*GroupedChunkRefs, len(m.ChunkRefs), need)
+				copy(grown, m.ChunkRefs)
+				m.ChunkRefs = grown
 			}
 		}
 	}
@@ -1369,10 +1369,10 @@ func (m *GroupedChunkRefs) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Refs) < c {
-				m.Refs = make([]*ShortRef, 0, c)
-			} else {
-				m.Refs = m.Refs[:0]
+			if need := len(m.Refs) + c; cap(m.Refs) < need {
+				grown := make([]*ShortRef, len(m.Refs), need)
+				copy(grown, m.Refs)
+				m.Refs = grown
 			}
 		}
 	}
@@ -1665,10 +1665,10 @@ func (m *PrefetchBloomBlocksRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Blocks) < c {
-				m.Blocks = make([]string, 0, c)
-			} else {
-				m.Blocks = m.Blocks[:0]
+			if need := len(m.Blocks) + c; cap(m.Blocks) < need {
+				grown := make([]string, len(m.Blocks), need)
+				copy(grown, m.Blocks)
+				m.Blocks = grown
 			}
 		}
 	}

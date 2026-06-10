@@ -1627,20 +1627,20 @@ func (m *DeletionManifest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Requests) < c {
-				m.Requests = make([]DeleteRequest, 0, c)
-			} else {
-				m.Requests = m.Requests[:0]
+			if need := len(m.Requests) + c; cap(m.Requests) < need {
+				grown := make([]DeleteRequest, len(m.Requests), need)
+				copy(grown, m.Requests)
+				m.Requests = grown
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.DuplicateRequests) < c {
-				m.DuplicateRequests = make([]DeleteRequest, 0, c)
-			} else {
-				m.DuplicateRequests = m.DuplicateRequests[:0]
+			if need := len(m.DuplicateRequests) + c; cap(m.DuplicateRequests) < need {
+				grown := make([]DeleteRequest, len(m.DuplicateRequests), need)
+				copy(grown, m.DuplicateRequests)
+				m.DuplicateRequests = grown
 			}
 		}
 	}
@@ -1914,10 +1914,10 @@ func (m *ChunkIDs) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.IDs) < c {
-				m.IDs = make([]string, 0, c)
-			} else {
-				m.IDs = m.IDs[:0]
+			if need := len(m.IDs) + c; cap(m.IDs) < need {
+				grown := make([]string, len(m.IDs), need)
+				copy(grown, m.IDs)
+				m.IDs = grown
 			}
 		}
 	}
@@ -2087,17 +2087,19 @@ func (m *ChunksGroup) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Requests) < c {
-				m.Requests = make([]DeleteRequest, 0, c)
-			} else {
-				m.Requests = m.Requests[:0]
+			if need := len(m.Requests) + c; cap(m.Requests) < need {
+				grown := make([]DeleteRequest, len(m.Requests), need)
+				copy(grown, m.Requests)
+				m.Requests = grown
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.Chunks = make(map[string]ChunkIDs, c)
+			if m.Chunks == nil {
+				m.Chunks = make(map[string]ChunkIDs, c)
+			}
 		}
 	}
 	for iNdEx < l {
@@ -2441,10 +2443,10 @@ func (m *Segment) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.ChunksGroups) < c {
-				m.ChunksGroups = make([]ChunksGroup, 0, c)
-			} else {
-				m.ChunksGroups = m.ChunksGroups[:0]
+			if need := len(m.ChunksGroups) + c; cap(m.ChunksGroups) < need {
+				grown := make([]ChunksGroup, len(m.ChunksGroups), need)
+				copy(grown, m.ChunksGroups)
+				m.ChunksGroups = grown
 			}
 		}
 	}
@@ -2735,20 +2737,20 @@ func (m *DeletionJob) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.ChunkIDs) < c {
-				m.ChunkIDs = make([]string, 0, c)
-			} else {
-				m.ChunkIDs = m.ChunkIDs[:0]
+			if need := len(m.ChunkIDs) + c; cap(m.ChunkIDs) < need {
+				grown := make([]string, len(m.ChunkIDs), need)
+				copy(grown, m.ChunkIDs)
+				m.ChunkIDs = grown
 			}
 		}
 		if c := field4count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.DeleteRequests) < c {
-				m.DeleteRequests = make([]DeleteRequest, 0, c)
-			} else {
-				m.DeleteRequests = m.DeleteRequests[:0]
+			if need := len(m.DeleteRequests) + c; cap(m.DeleteRequests) < need {
+				grown := make([]DeleteRequest, len(m.DeleteRequests), need)
+				copy(grown, m.DeleteRequests)
+				m.DeleteRequests = grown
 			}
 		}
 	}
@@ -3282,16 +3284,18 @@ func (m *StorageUpdates) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.RebuiltChunks = make(map[string]Chunk, c)
+			if m.RebuiltChunks == nil {
+				m.RebuiltChunks = make(map[string]Chunk, c)
+			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.ChunksToDeIndex) < c {
-				m.ChunksToDeIndex = make([]string, 0, c)
-			} else {
-				m.ChunksToDeIndex = m.ChunksToDeIndex[:0]
+			if need := len(m.ChunksToDeIndex) + c; cap(m.ChunksToDeIndex) < need {
+				grown := make([]string, len(m.ChunksToDeIndex), need)
+				copy(grown, m.ChunksToDeIndex)
+				m.ChunksToDeIndex = grown
 			}
 		}
 	}
@@ -3633,7 +3637,9 @@ func (m *StorageUpdatesCollection) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.StorageUpdates = make(map[string]StorageUpdates, c)
+			if m.StorageUpdates == nil {
+				m.StorageUpdates = make(map[string]StorageUpdates, c)
+			}
 		}
 	}
 	for iNdEx < l {

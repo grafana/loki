@@ -417,11 +417,11 @@ func (m *Region) GetEvents() []Event {
 	return nil
 }
 
-func (m *Region) GetStatus() *Status {
+func (m *Region) GetStatus() Status {
 	if m != nil {
-		return &m.Status
+		return m.Status
 	}
-	return nil
+	return Status{}
 }
 
 func (m *Event) GetName() string {
@@ -466,11 +466,11 @@ func (m *Attribute) GetKey() string {
 	return ""
 }
 
-func (m *Attribute) GetValue() *AttributeValue {
+func (m *Attribute) GetValue() AttributeValue {
 	if m != nil {
-		return &m.Value
+		return m.Value
 	}
-	return nil
+	return AttributeValue{}
 }
 
 func (m *AttributeValue) GetKind() AttributeValue_Kind {
@@ -536,11 +536,11 @@ func (m *Observation) GetStatisticId() uint32 {
 	return 0
 }
 
-func (m *Observation) GetValue() *ObservationValue {
+func (m *Observation) GetValue() ObservationValue {
 	if m != nil {
-		return &m.Value
+		return m.Value
 	}
-	return nil
+	return ObservationValue{}
 }
 
 func (m *Observation) GetCount() uint32 {
@@ -1371,20 +1371,20 @@ func (m *Capture) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Regions) < c {
-				m.Regions = make([]Region, 0, c)
-			} else {
-				m.Regions = m.Regions[:0]
+			if need := len(m.Regions) + c; cap(m.Regions) < need {
+				grown := make([]Region, len(m.Regions), need)
+				copy(grown, m.Regions)
+				m.Regions = grown
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Statistics) < c {
-				m.Statistics = make([]Statistic, 0, c)
-			} else {
-				m.Statistics = m.Statistics[:0]
+			if need := len(m.Statistics) + c; cap(m.Statistics) < need {
+				grown := make([]Statistic, len(m.Statistics), need)
+				copy(grown, m.Statistics)
+				m.Statistics = grown
 			}
 		}
 	}
@@ -1608,30 +1608,30 @@ func (m *Region) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Observations) < c {
-				m.Observations = make([]Observation, 0, c)
-			} else {
-				m.Observations = m.Observations[:0]
+			if need := len(m.Observations) + c; cap(m.Observations) < need {
+				grown := make([]Observation, len(m.Observations), need)
+				copy(grown, m.Observations)
+				m.Observations = grown
 			}
 		}
 		if c := field7count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Attributes) < c {
-				m.Attributes = make([]Attribute, 0, c)
-			} else {
-				m.Attributes = m.Attributes[:0]
+			if need := len(m.Attributes) + c; cap(m.Attributes) < need {
+				grown := make([]Attribute, len(m.Attributes), need)
+				copy(grown, m.Attributes)
+				m.Attributes = grown
 			}
 		}
 		if c := field8count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Events) < c {
-				m.Events = make([]Event, 0, c)
-			} else {
-				m.Events = m.Events[:0]
+			if need := len(m.Events) + c; cap(m.Events) < need {
+				grown := make([]Event, len(m.Events), need)
+				copy(grown, m.Events)
+				m.Events = grown
 			}
 		}
 	}
@@ -2177,10 +2177,10 @@ func (m *Event) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Attributes) < c {
-				m.Attributes = make([]Attribute, 0, c)
-			} else {
-				m.Attributes = m.Attributes[:0]
+			if need := len(m.Attributes) + c; cap(m.Attributes) < need {
+				grown := make([]Attribute, len(m.Attributes), need)
+				copy(grown, m.Attributes)
+				m.Attributes = grown
 			}
 		}
 	}

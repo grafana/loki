@@ -92,13 +92,13 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 	case *logproto.VolumeRequest:
 		factory = func(start, end time.Time) {
 			reqs = append(reqs, &logproto.VolumeRequest{
-				From:         model.TimeFromUnix(start.Unix()),
-				Through:      model.TimeFromUnix(end.Unix()),
-				Matchers:     r.GetMatchers(),
-				Limit:        r.Limit,
-				TargetLabels: r.TargetLabels,
-				AggregateBy:  r.AggregateBy,
-				CachingOpts:  r.CachingOpts,
+				From:           model.TimeFromUnix(start.Unix()),
+				Through:        model.TimeFromUnix(end.Unix()),
+				Matchers:       r.GetMatchers(),
+				Limit:          r.Limit,
+				TargetLabels:   r.TargetLabels,
+				AggregateBy:    r.AggregateBy,
+				CachingOptions: r.CachingOptions,
 			})
 		}
 	case *DetectedFieldsRequest:

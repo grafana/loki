@@ -1005,10 +1005,10 @@ func (m *ExceedsLimitsRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Streams) < c {
-				m.Streams = make([]*StreamMetadata, 0, c)
-			} else {
-				m.Streams = m.Streams[:0]
+			if need := len(m.Streams) + c; cap(m.Streams) < need {
+				grown := make([]*StreamMetadata, len(m.Streams), need)
+				copy(grown, m.Streams)
+				m.Streams = grown
 			}
 		}
 	}
@@ -1223,10 +1223,10 @@ func (m *ExceedsLimitsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Results) < c {
-				m.Results = make([]*ExceedsLimitsResult, 0, c)
-			} else {
-				m.Results = m.Results[:0]
+			if need := len(m.Results) + c; cap(m.Results) < need {
+				grown := make([]*ExceedsLimitsResult, len(m.Results), need)
+				copy(grown, m.Results)
+				m.Results = grown
 			}
 		}
 	}
@@ -1568,7 +1568,9 @@ func (m *GetAssignedPartitionsResponse) unmarshal(dAtA []byte, depth int) error 
 			if c > preCapMax {
 				c = preCapMax
 			}
-			m.AssignedPartitions = make(map[int32]int64, c)
+			if m.AssignedPartitions == nil {
+				m.AssignedPartitions = make(map[int32]int64, c)
+			}
 		}
 	}
 	for iNdEx < l {
@@ -2185,10 +2187,10 @@ func (m *UpdateRatesRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Streams) < c {
-				m.Streams = make([]*StreamMetadata, 0, c)
-			} else {
-				m.Streams = m.Streams[:0]
+			if need := len(m.Streams) + c; cap(m.Streams) < need {
+				grown := make([]*StreamMetadata, len(m.Streams), need)
+				copy(grown, m.Streams)
+				m.Streams = grown
 			}
 		}
 	}
@@ -2403,10 +2405,10 @@ func (m *UpdateRatesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Results) < c {
-				m.Results = make([]*UpdateRatesResult, 0, c)
-			} else {
-				m.Results = m.Results[:0]
+			if need := len(m.Results) + c; cap(m.Results) < need {
+				grown := make([]*UpdateRatesResult, len(m.Results), need)
+				copy(grown, m.Results)
+				m.Results = grown
 			}
 		}
 	}

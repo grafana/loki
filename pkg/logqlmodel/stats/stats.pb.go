@@ -343,109 +343,109 @@ func (m *Cache) String() string {
 	return fmt.Sprintf("%v", *m)
 }
 
-func (m *Result) GetSummary() *Summary {
+func (m *Result) GetSummary() Summary {
 	if m != nil {
-		return &m.Summary
+		return m.Summary
 	}
-	return nil
+	return Summary{}
 }
 
-func (m *Result) GetQuerier() *Querier {
+func (m *Result) GetQuerier() Querier {
 	if m != nil {
-		return &m.Querier
+		return m.Querier
 	}
-	return nil
+	return Querier{}
 }
 
-func (m *Result) GetIngester() *Ingester {
+func (m *Result) GetIngester() Ingester {
 	if m != nil {
-		return &m.Ingester
+		return m.Ingester
 	}
-	return nil
+	return Ingester{}
 }
 
-func (m *Result) GetCaches() *Caches {
+func (m *Result) GetCaches() Caches {
 	if m != nil {
-		return &m.Caches
+		return m.Caches
 	}
-	return nil
+	return Caches{}
 }
 
-func (m *Result) GetIndex() *Index {
+func (m *Result) GetIndex() Index {
 	if m != nil {
-		return &m.Index
+		return m.Index
 	}
-	return nil
+	return Index{}
 }
 
-func (m *Caches) GetChunk() *Cache {
+func (m *Caches) GetChunk() Cache {
 	if m != nil {
-		return &m.Chunk
+		return m.Chunk
 	}
-	return nil
+	return Cache{}
 }
 
-func (m *Caches) GetIndex() *Cache {
+func (m *Caches) GetIndex() Cache {
 	if m != nil {
-		return &m.Index
+		return m.Index
 	}
-	return nil
+	return Cache{}
 }
 
-func (m *Caches) GetResult() *Cache {
+func (m *Caches) GetResult() Cache {
 	if m != nil {
-		return &m.Result
+		return m.Result
 	}
-	return nil
+	return Cache{}
 }
 
-func (m *Caches) GetStatsResult() *Cache {
+func (m *Caches) GetStatsResult() Cache {
 	if m != nil {
-		return &m.StatsResult
+		return m.StatsResult
 	}
-	return nil
+	return Cache{}
 }
 
-func (m *Caches) GetVolumeResult() *Cache {
+func (m *Caches) GetVolumeResult() Cache {
 	if m != nil {
-		return &m.VolumeResult
+		return m.VolumeResult
 	}
-	return nil
+	return Cache{}
 }
 
-func (m *Caches) GetSeriesResult() *Cache {
+func (m *Caches) GetSeriesResult() Cache {
 	if m != nil {
-		return &m.SeriesResult
+		return m.SeriesResult
 	}
-	return nil
+	return Cache{}
 }
 
-func (m *Caches) GetLabelResult() *Cache {
+func (m *Caches) GetLabelResult() Cache {
 	if m != nil {
-		return &m.LabelResult
+		return m.LabelResult
 	}
-	return nil
+	return Cache{}
 }
 
-func (m *Caches) GetInstantMetricResult() *Cache {
+func (m *Caches) GetInstantMetricResult() Cache {
 	if m != nil {
-		return &m.InstantMetricResult
+		return m.InstantMetricResult
 	}
-	return nil
+	return Cache{}
 }
 
-func (m *Caches) GetLogResult() *Cache {
+func (m *Caches) GetLogResult() Cache {
 	if m != nil {
-		return &m.LogResult
+		return m.LogResult
 	}
-	return nil
+	return Cache{}
 }
 
-func (m *Caches) GetTaskResult() *Cache {
+func (m *Caches) GetTaskResult() Cache {
 	if m != nil {
-		return &m.TaskResult
+		return m.TaskResult
 	}
-	return nil
+	return Cache{}
 }
 
 func (m *Summary) GetBytesProcessedPerSecond() int64 {
@@ -588,11 +588,11 @@ func (m *Index) GetBloomFilterTime() float64 {
 	return 0
 }
 
-func (m *Querier) GetStore() *Store {
+func (m *Querier) GetStore() Store {
 	if m != nil {
-		return &m.Store
+		return m.Store
 	}
-	return nil
+	return Store{}
 }
 
 func (m *Querier) GetQuerierExecTime() float64 {
@@ -630,11 +630,11 @@ func (m *Ingester) GetTotalLinesSent() int64 {
 	return 0
 }
 
-func (m *Ingester) GetStore() *Store {
+func (m *Ingester) GetStore() Store {
 	if m != nil {
-		return &m.Store
+		return m.Store
 	}
-	return nil
+	return Store{}
 }
 
 func (m *Ingester) GetRecvWaitTime() float64 {
@@ -679,11 +679,11 @@ func (m *Store) GetQueryUsedV2Engine() bool {
 	return false
 }
 
-func (m *Store) GetChunk() *Chunk {
+func (m *Store) GetChunk() Chunk {
 	if m != nil {
-		return &m.Chunk
+		return m.Chunk
 	}
-	return nil
+	return Chunk{}
 }
 
 func (m *Store) GetChunkRefsFetchTime() int64 {
@@ -707,11 +707,11 @@ func (m *Store) GetPipelineWrapperFilteredLines() int64 {
 	return 0
 }
 
-func (m *Store) GetDataobj() *Dataobj {
+func (m *Store) GetDataobj() Dataobj {
 	if m != nil {
-		return &m.Dataobj
+		return m.Dataobj
 	}
-	return nil
+	return Dataobj{}
 }
 
 func (m *Dataobj) GetPrePredicateDecompressedRows() int64 {

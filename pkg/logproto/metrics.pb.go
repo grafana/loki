@@ -687,20 +687,20 @@ func (m *WriteRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Timeseries) < c {
-				m.Timeseries = make([]PreallocTimeseries, 0, c)
-			} else {
-				m.Timeseries = m.Timeseries[:0]
+			if need := len(m.Timeseries) + c; cap(m.Timeseries) < need {
+				grown := make([]PreallocTimeseries, len(m.Timeseries), need)
+				copy(grown, m.Timeseries)
+				m.Timeseries = grown
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Metadata) < c {
-				m.Metadata = make([]*MetricMetadata, 0, c)
-			} else {
-				m.Metadata = m.Metadata[:0]
+			if need := len(m.Metadata) + c; cap(m.Metadata) < need {
+				grown := make([]*MetricMetadata, len(m.Metadata), need)
+				copy(grown, m.Metadata)
+				m.Metadata = grown
 			}
 		}
 	}
@@ -1036,20 +1036,20 @@ func (m *TimeSeries) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Labels) < c {
-				m.Labels = make([]LabelAdapter, 0, c)
-			} else {
-				m.Labels = m.Labels[:0]
+			if need := len(m.Labels) + c; cap(m.Labels) < need {
+				grown := make([]LabelAdapter, len(m.Labels), need)
+				copy(grown, m.Labels)
+				m.Labels = grown
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Samples) < c {
-				m.Samples = make([]LegacySample, 0, c)
-			} else {
-				m.Samples = m.Samples[:0]
+			if need := len(m.Samples) + c; cap(m.Samples) < need {
+				grown := make([]LegacySample, len(m.Samples), need)
+				copy(grown, m.Samples)
+				m.Samples = grown
 			}
 		}
 	}
@@ -1489,10 +1489,10 @@ func (m *Metric) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Labels) < c {
-				m.Labels = make([]LabelAdapter, 0, c)
-			} else {
-				m.Labels = m.Labels[:0]
+			if need := len(m.Labels) + c; cap(m.Labels) < need {
+				grown := make([]LabelAdapter, len(m.Labels), need)
+				copy(grown, m.Labels)
+				m.Labels = grown
 			}
 		}
 	}

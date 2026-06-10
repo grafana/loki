@@ -14,15 +14,12 @@ import (
 )
 
 type MockRequest struct {
-	Path  string    `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Start time.Time `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
-	End   time.Time `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
-	Step  int64     `protobuf:"varint,4,opt,name=step,proto3" json:"step,omitempty"`
-	Query string    `protobuf:"bytes,6,opt,name=query,proto3" json:"query,omitempty"`
-	// CachingOpts frees the GetCachingOptions identifier for a hand-written
-	// value getter satisfying the resultscache.Request interface (wiresmith
-	// message getters return pointers).
-	CachingOpts CachingOptions `protobuf:"bytes,7,opt,name=cachingOptions,proto3" json:"cachingOptions,omitempty"`
+	Path           string         `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Start          time.Time      `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
+	End            time.Time      `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
+	Step           int64          `protobuf:"varint,4,opt,name=step,proto3" json:"step,omitempty"`
+	Query          string         `protobuf:"bytes,6,opt,name=query,proto3" json:"query,omitempty"`
+	CachingOptions CachingOptions `protobuf:"bytes,7,opt,name=cachingOptions,proto3" json:"cachingOptions,omitempty"`
 }
 
 type MockResponse struct {
@@ -131,11 +128,11 @@ func (m *MockRequest) GetQuery() string {
 	return ""
 }
 
-func (m *MockRequest) GetCachingOpts() *CachingOptions {
+func (m *MockRequest) GetCachingOptions() CachingOptions {
 	if m != nil {
-		return &m.CachingOpts
+		return m.CachingOptions
 	}
-	return nil
+	return CachingOptions{}
 }
 
 func (m *MockResponse) GetLabels() []*MockLabelsPair {
@@ -203,7 +200,7 @@ func (m *MockRequest) Size() int {
 		n += 1 + protowire.SizeVarint(uint64(len(m.Query))) + len(m.Query)
 	}
 	{
-		s := m.CachingOpts.Size()
+		s := m.CachingOptions.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
 		}
@@ -291,7 +288,7 @@ func (m *MockRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	i := len(dAtA)
 	{
-		size, err := m.CachingOpts.MarshalToSizedBuffer(dAtA[:i])
+		size, err := m.CachingOptions.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -790,7 +787,7 @@ func (m *MockRequest) unmarshal(dAtA []byte, depth int) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.CachingOpts.unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
+			if err := m.CachingOptions.unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -888,20 +885,20 @@ func (m *MockResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Labels) < c {
-				m.Labels = make([]*MockLabelsPair, 0, c)
-			} else {
-				m.Labels = m.Labels[:0]
+			if need := len(m.Labels) + c; cap(m.Labels) < need {
+				grown := make([]*MockLabelsPair, len(m.Labels), need)
+				copy(grown, m.Labels)
+				m.Labels = grown
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if cap(m.Samples) < c {
-				m.Samples = make([]*MockSample, 0, c)
-			} else {
-				m.Samples = m.Samples[:0]
+			if need := len(m.Samples) + c; cap(m.Samples) < need {
+				grown := make([]*MockSample, len(m.Samples), need)
+				copy(grown, m.Samples)
+				m.Samples = grown
 			}
 		}
 	}
