@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/loki/common"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
@@ -682,6 +683,22 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	if !reflect.DeepEqual(cfg.Common.Storage.ObjectStore, defaults.StorageConfig.ObjectStore.Config) {
 		applyConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.ObjectStore.Config = r.Common.Storage.ObjectStore
+
+			// Like the legacy storage types above, the common object storage config
+			// must also be applied to the ruler storage. The ruler reads its bucket
+			// configuration from the separate ruler_storage section when
+			// use_thanos_objstore is enabled, so without this the ruler would not
+			// inherit common settings such as TLS or credentials.
+			// The ruler backend cannot be stored in the bucket config itself, so it is
+			// inferred from which backend is configured in the common config; if none
+			// or several backends are configured we cannot infer it and leave the
+			// ruler storage untouched.
+			if r.StorageConfig.UseThanosObjstore {
+				if backend := commonObjectStoreBackend(&r.Common.Storage.ObjectStore, &defaults.StorageConfig.ObjectStore.Config); backend != "" {
+					r.RulerStorage.Backend = backend
+					r.RulerStorage.Config = r.Common.Storage.ObjectStore
+				}
+			}
 		}
 	}
 
@@ -694,6 +711,37 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	}
 
 	return nil
+}
+
+// commonObjectStoreBackend returns the name of the single object storage backend
+// configured in the common config, or an empty string when none or more than one
+// backend is configured.
+func commonObjectStoreBackend(common, defaults *bucket.Config) string {
+	backends := []struct {
+		name       string
+		configured bool
+	}{
+		{bucket.S3, !reflect.DeepEqual(common.S3, defaults.S3)},
+		{bucket.GCS, !reflect.DeepEqual(common.GCS, defaults.GCS)},
+		{bucket.Azure, !reflect.DeepEqual(common.Azure, defaults.Azure)},
+		{bucket.Swift, !reflect.DeepEqual(common.Swift, defaults.Swift)},
+		{bucket.Filesystem, !reflect.DeepEqual(common.Filesystem, defaults.Filesystem)},
+		{bucket.Alibaba, !reflect.DeepEqual(common.Alibaba, defaults.Alibaba)},
+		{bucket.BOS, !reflect.DeepEqual(common.BOS, defaults.BOS)},
+	}
+
+	backend := ""
+	for _, b := range backends {
+		if !b.configured {
+			continue
+		}
+		if backend != "" {
+			return ""
+		}
+		backend = b.name
+	}
+
+	return backend
 }
 
 func betterTSDBShipperDefaults(cfg *ConfigWrapper) {
