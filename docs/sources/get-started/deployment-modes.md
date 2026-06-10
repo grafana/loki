@@ -14,7 +14,19 @@ You can configure the behavior of the single binary with the `-target` command-l
 
 Because Loki decouples the data it stores from the software which ingests and queries it, you can easily redeploy a cluster under a different mode as your needs change, with minimal or no configuration changes.
 
+## Comparison of deployment modes
+
+| | [Monolithic](#monilithic-mode) | [HA Monolithic](#ha-monolithic-mode) | [Microservices](#microservices-mode) |
+|---|---|---|---|
+| Durability | ✅ | ✅ | ✅ |
+| High availability | ❌ | ✅ | ✅ |
+| Separation of concerns | ❌ | ❌ | ✅ |
+| Operational complexity | 🟩 low  | 🟧 medium| 🟥 high |
+| Scalability | 🟥 low | 🟧 medium | 🟩 high |
+
 ## Monolithic mode
+
+Also known as **single binary** deployment.
 
 The simplest mode of operation is the monolithic deployment mode. You enable monolithic mode by setting the `-target=all` command line parameter. This mode runs all of Loki’s microservice components inside a single process as a single binary or Docker image.
 
@@ -22,50 +34,47 @@ The simplest mode of operation is the monolithic deployment mode. You enable mon
 
 Monolithic mode is useful for getting started quickly to experiment with Loki, as well as for small read/write volumes of up to approximately 20GB per day.
 
-You can horizontally scale a monolithic mode deployment to more instances by using a shared object store, and by configuring the [`ring` section](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#common) of the `loki.yaml` file to share state between all instances, but the recommendation is to use microservices deployment mode if you need to scale your deployment.
-
-You can configure high availability by running two Loki instances using `memberlist_config` configuration and a shared object store and setting the `replication_factor` to `3`. You route traffic to all the Loki instances in a round robin fashion.
-
 Query parallelization is limited by the number of instances and the setting `max_query_parallelism` which is defined in the `loki.yaml` file.
 
-## Simple Scalable
+## HA Monolithic mode
 
-{{< admonition type="note" >}}
-Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
-{{< /admonition >}}
+Also known as **HA single binary** deployment. This mode replaces the deprecated Simple Scalable Deployment (SSD), which will be removed in Loki 4.0.
 
-The simple scalable deployment is the default configuration installed by the [Loki Helm Chart](../../setup/install/helm/). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode). Simple scalable deployment is also referred to as SSD.
+HA monolithic mode sits between [monolithic mode](#monolithic-mode) and [microservices mode](#microservices-mode): it provides high availability and moderate horizontal scalability without the operational complexity of managing individual microservices.
+If you need fine-grained, per-component scaling, use microservices mode instead.
 
-{{< admonition type="note" >}}
-This deployment mode is sometimes referred to by the acronym SSD for simple scalable deployment, not to be confused with solid state drives. Loki uses an object store.
-{{< /admonition >}}
+You can horizontally scale a monolithic mode deployment to more instances by using a shared object store, and by configuring the [`ring` section](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#common) of the `loki.yaml` file to share cluster state between all instances.
 
-Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets. These targets can be scaled independently, letting you customize your Loki deployment to meet your business needs for log ingestion and log query so that your infrastructure costs better match how you use Loki.
+### Configuration requirements
 
-The simple scalable deployment mode can scale close to a TB of logs per day. Even though scaling it further may be possible, at that scale, the microservices mode will be a better choice in terms of scalability and ease of operations
+The following requirements must be met to run Loki in HA monolithic mode:
 
-![Simple scalable mode diagram](../scalable-monolithic-mode.png "Simple scalable mode")
+1. **Run every instance with `-target=all`.**
+   All replicas use the single-binary target so that every process serves every component.
 
-The three execution paths in simple scalable mode are each activated by appending the following arguments to Loki on startup:
+1. **Shared object storage.**
+   All instances must read from and write to the same S3-compatible bucket (or equivalent) for chunk data and, if rulers are used, a separate bucket for ruler data.
+   Local disk is only used for ephemeral caches and the write-ahead log (WAL).
 
-- `-target=write` - The write target is stateful and is controlled by a Kubernetes StatefulSet. It contains the following components:
-  * Distributor
-  * Ingester
-- `-target=read` - The read target is stateless and can be run as a Kubernetes Deployment that can be scaled automatically (Note that in the official helm chart it is currently deployed as a stateful set). It contains the following components:
-  * Query Frontend
-  * Querier
-- `-target=backend` - The backend target is stateful, and is controlled by a Kubernetes StatefulSet. Contains the following components:
-  - Compactor
-  - Index Gateway
-  - Query Scheduler
-  - Ruler
-  - Bloom Planner (experimental)
-  - Bloom Builder (experimental)
-  - Bloom Gateway (experimental)
+1. **Memberlist for ring state.**
+   Configure the `memberlist` block so that every instance knows the addresses of all other instances.
+   Set `common.ring.kvstore.store: memberlist` so that all internal rings (ingester, distributor, and so on) use the shared memberlist cluster.
 
-The simple scalable deployment mode requires a reverse proxy to be deployed in front of Loki, to direct client API requests to either the read or write nodes. The Loki Helm chart includes a default reverse proxy configuration, using Nginx.
+1. **Replication factor of 3.**
+   Set `common.replication_factor: 3` and run **at least three** instances so that the cluster can tolerate the loss of one instance without data loss.
+
+1. **Dedicated compactor instance.**
+   Designate one instance as the main compactor by setting `compactor.horizontal_scaling_mode: main` on one instance and `worker` on all others. The address of the main compactor needs to be set in `common.compactor_grpc_address`.
+
+1. **Load balancer in front of all instances.**
+   Route all inbound push and query traffic to every replica in round-robin order.
+
+See the [HA single binary example](https://github.com/grafana/loki/tree/main/examples/ha-singlebinary) for a more complete config.
 
 ## Microservices mode
+
+Also known as **distributed** deployment.
+
 The microservices deployment mode runs components of Loki as distinct processes. The microservices deployment is also referred to as a Distributed deployment. Each process is invoked specifying its `target`.
 For release 3.3 the components are:
 
