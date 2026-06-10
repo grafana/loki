@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 var tracer = otel.Tracer("pkg/querier/worker")
@@ -175,7 +176,7 @@ func newQuerierWorkerWithProcessor(grpcCfg grpcclient.Config, maxConcReq int, dn
 	}
 
 	if ring != nil {
-		w, err := util.NewRingWatcher(log.With(logger, "component", "querier-scheduler-worker"), ring, dnsLookupPeriod, f)
+		w, err := lokiring.NewRingWatcher(log.With(logger, "component", "querier-scheduler-worker"), ring, dnsLookupPeriod, f)
 		if err != nil {
 			return nil, err
 		}

@@ -1,4 +1,4 @@
-package util //nolint:revive
+package ring
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -17,13 +19,13 @@ const (
 type ringWatcher struct {
 	log           log.Logger
 	ring          ring.ReadRing
-	notifications DNSNotifications
+	notifications util.DNSNotifications
 	lookupPeriod  time.Duration
 	addresses     []string
 }
 
 // NewRingWatcher creates a new Ring watcher and returns a service that is wrapping it.
-func NewRingWatcher(log log.Logger, ring ring.ReadRing, lookupPeriod time.Duration, notifications DNSNotifications) (services.Service, error) {
+func NewRingWatcher(log log.Logger, ring ring.ReadRing, lookupPeriod time.Duration, notifications util.DNSNotifications) (services.Service, error) {
 	w := &ringWatcher{
 		log:           log,
 		ring:          ring,

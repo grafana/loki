@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/v3/pkg/util"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 type frontendSchedulerWorkers struct {
@@ -49,7 +50,7 @@ func newFrontendSchedulerWorkers(cfg Config, frontendAddress string, ring ring.R
 	switch {
 	case ring != nil:
 		// Use the scheduler ring and RingWatcher to find schedulers.
-		w, err := util.NewRingWatcher(log.With(logger, "component", "frontend-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
+		w, err := lokiring.NewRingWatcher(log.With(logger, "component", "frontend-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
 		if err != nil {
 			return nil, err
 		}

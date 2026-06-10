@@ -635,7 +635,7 @@ func (s *Scheduler) running(ctx context.Context) error {
 			if !s.cfg.UseSchedulerRing {
 				continue
 			}
-			isInSet, err := lokiring.IsInReplicationSet(s.ringManager.Ring, util.RingKeyOfLeader, s.ringManager.RingLifecycler.GetInstanceAddr())
+			isInSet, err := lokiring.IsInReplicationSet(s.ringManager.Ring, lokiring.RingKeyOfLeader, s.ringManager.RingLifecycler.GetInstanceAddr())
 			if err != nil {
 				level.Error(s.log).Log("msg", "failed to query the ring to see if scheduler instance is in ReplicatonSet, will try again", "err", err)
 				continue
