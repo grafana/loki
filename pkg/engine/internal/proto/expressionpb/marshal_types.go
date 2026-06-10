@@ -51,6 +51,7 @@ var (
 		VARIADIC_OP_PARSE_JSON:     types.VariadicOpParseJSON,
 		VARIADIC_OP_PARSE_LABELFMT: types.VariadicOpParseLabelfmt,
 		VARIADIC_OP_PARSE_LINEFMT:  types.VariadicOpParseLinefmt,
+		VARIADIC_OP_PARSE_REGEXP:   types.VariadicOpParseRegexp,
 	}
 
 	nativeColumnTypeLookup = map[ColumnType]types.ColumnType{

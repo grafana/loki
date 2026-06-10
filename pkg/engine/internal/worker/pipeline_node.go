@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -63,6 +64,9 @@ type pipelineNode struct {
 	BatchesIn int64
 	// RowsOut is the number of rows this operator produced.
 	RowsOut int64
+	// RowsIn is the sum of rows produced by this operator's direct children (its
+	// input from upstream operators; zero for a leaf, whose input is storage).
+	RowsIn int64
 }
 
 // buildPipelineNodes assembles one [pipelineNode] per operator region from the
@@ -72,8 +76,8 @@ type pipelineNode struct {
 // Parent/child relationships are resolved within the supplied set. A record's
 // ParentOperatorID is preserved only when it refers to another record in
 // regions, so an operator whose parent is a non-operator region (such as the
-// task root) reports the zero ID. BatchesIn and the exclusive SelfDuration are
-// computed from each operator's direct children within the set.
+// task root) reports the zero ID. BatchesIn, RowsIn, and the exclusive
+// SelfDuration are computed from each operator's direct children within the set.
 func buildPipelineNodes(regions []pipelineRegionStat) []pipelineNode {
 	// Index regions by ID and group direct children by parent so each operator's
 	// children can be resolved in a single pass.
@@ -93,10 +97,12 @@ func buildPipelineNodes(regions []pipelineRegionStat) []pipelineNode {
 		var (
 			childReadDuration time.Duration
 			batchesIn         int64
+			rowsIn            int64
 		)
 		for _, c := range children[r.ID] {
 			childReadDuration += c.ReadDuration
 			batchesIn += c.ReadCalls
+			rowsIn += c.RowsOut
 		}
 
 		self := r.ReadDuration - childReadDuration
@@ -117,6 +123,7 @@ func buildPipelineNodes(regions []pipelineRegionStat) []pipelineNode {
 			BatchesOut:       r.ReadCalls,
 			BatchesIn:        batchesIn,
 			RowsOut:          r.RowsOut,
+			RowsIn:           rowsIn,
 		})
 	}
 	return nodes
@@ -164,32 +171,62 @@ func pipelineRegionsFromCapture(capture *xcap.Capture) []pipelineRegionStat {
 	return out
 }
 
-// logPipelineNodes emits one pipeline-node debug log line per operator in the
-// task's operator tree, read from the task's finalized capture. It reads only
-// already-collected statistics and adds nothing to the per-batch hot path.
-// Emission is gated at debug level, like the execution-plan-detail log, because
-// there is one line per operator per task.
-//
-// op_self_ms is wall-clock self-time, not true CPU. operator_id /
-// parent_operator_id are the per-task xcap region identifiers describing this
-// task's operator tree, not the physical-plan node ids. query_id is omitted
-// because it isn't available to the worker; the logger already carries task_id,
-// and the per-task summary log carries query_id, so join on task_id to recover it.
-func logPipelineNodes(logger log.Logger, capture *xcap.Capture) {
-	for _, node := range buildPipelineNodes(pipelineRegionsFromCapture(capture)) {
-		var parent string
-		if !node.ParentOperatorID.IsZero() {
-			parent = node.ParentOperatorID.String()
-		}
-		level.Debug(logger).Log(
-			"msg", "pipeline-node",
-			"operator_id", node.OperatorID.String(),
-			"parent_operator_id", parent,
-			"op_type", node.OpType,
-			"op_self_ms", node.SelfDuration.Milliseconds(),
-			"batches_out", node.BatchesOut,
-			"batches_in", node.BatchesIn,
-			"rows_out", node.RowsOut,
-		)
+// packedPipelineNode is one operator in the packed per-task pipeline trace.
+// Parent is the array index of the operator's parent, or -1 when it has no
+// operator parent.
+type packedPipelineNode struct {
+	Op         string `json:"op"`
+	Parent     int    `json:"parent"`
+	SelfMS     int64  `json:"self_ms"`
+	BatchesIn  int64  `json:"batches_in"`
+	BatchesOut int64  `json:"batches_out"`
+	RowsIn     int64  `json:"rows_in"`
+	RowsOut    int64  `json:"rows_out"`
+}
+
+// packPipelineNodes converts the per-operator records into the packed form
+// emitted in the pipeline trace, replacing each operator's parent ID with the
+// parent's index in the returned slice (-1 when it has no operator parent).
+func packPipelineNodes(nodes []pipelineNode) []packedPipelineNode {
+	index := make(map[xcap.ID]int, len(nodes))
+	for i, n := range nodes {
+		index[n.OperatorID] = i
 	}
+
+	packed := make([]packedPipelineNode, len(nodes))
+	for i, n := range nodes {
+		parent := -1
+		if !n.ParentOperatorID.IsZero() {
+			if p, ok := index[n.ParentOperatorID]; ok {
+				parent = p
+			}
+		}
+		packed[i] = packedPipelineNode{
+			Op:         n.OpType,
+			Parent:     parent,
+			SelfMS:     n.SelfDuration.Milliseconds(),
+			BatchesIn:  n.BatchesIn,
+			BatchesOut: n.BatchesOut,
+			RowsIn:     n.RowsIn,
+			RowsOut:    n.RowsOut,
+		}
+	}
+	return packed
+}
+
+// logPipelineTrace emits one always-on line for a task that executed operators,
+// packing its operator tree (see packedPipelineNode) as a JSON array. self_ms
+// is wall-clock self-time, not CPU; join on task_id (carried by the logger) to
+// the per-task summary to recover query_id.
+func logPipelineTrace(logger log.Logger, nodes []pipelineNode) {
+	if len(nodes) == 0 {
+		return
+	}
+
+	packed, err := json.Marshal(packPipelineNodes(nodes))
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to encode pipeline trace", "err", err)
+		return
+	}
+	level.Info(logger).Log("msg", "pipeline-trace", "pipeline", string(packed))
 }

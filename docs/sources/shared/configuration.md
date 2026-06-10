@@ -1627,6 +1627,12 @@ dataobj:
     # CLI flag: -dataobj.compaction.toc-consolidate-timeout
     [toc_consolidate_timeout: <duration> | default = 30s]
 
+    # Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap.
+    # Planning, IndexMerge task execution, and per-output audit logging still
+    # run, but the ToC is never mutated.
+    # CLI flag: -dataobj.compaction.dry-run
+    [dry_run: <boolean> | default = false]
+
     # Experimental: Plan version hashed into IndexMerge output paths. Bump to
     # invalidate previously-written outputs after a planner-algorithm change.
     # CLI flag: -dataobj.compaction.plan-version
@@ -3440,6 +3446,11 @@ dataobj_tee:
   # to 0 to disable batching.
   # CLI flag: -distributor.dataobj-tee.rate-batch-window
   [rate_batch_window: <duration> | default = 0s]
+
+  # Enables use of rendezvous hashing. When this is false, consistent hashing is
+  # used instead.
+  # CLI flag: -distributor.dataobj-tee.use-rendezvous-hashing
+  [use_rendezvous_hashing: <boolean> | default = false]
 ```
 
 ### etcd

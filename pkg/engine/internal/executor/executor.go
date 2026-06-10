@@ -50,6 +50,10 @@ type Config struct {
 	// IndexobjCfg is the builder config for index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
+	// IndexMergeObserver is used  by compaction to populate output-size
+	// histograms. Optional; nil disables observation.
+	IndexMergeObserver IndexMergeObserver
+
 	// Shared, used by both query and compaction executors.
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
@@ -67,6 +71,10 @@ type Config struct {
 	TaskCaches TaskCacheRegistry
 }
 
+type IndexMergeObserver interface {
+	ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64)
+}
+
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
 		plan:               plan,
@@ -82,6 +90,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		taskCaches:         cfg.TaskCaches,
 		scratchStore:       cfg.ScratchStore,
 		indexobjCfg:        cfg.IndexobjCfg,
+		indexMergeObserver: cfg.IndexMergeObserver,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -114,6 +123,8 @@ type Context struct {
 
 	scratchStore scratch.Store
 	indexobjCfg  logsobj.BuilderBaseConfig
+
+	indexMergeObserver IndexMergeObserver
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -147,7 +158,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	case *physical.Filter:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeFilter(ctx, n, inputs))
 	case *physical.Projection:
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeProjection(ctx, n, inputs))
+		return NewObservedPipeline(operatorRegionName(n), nodeAttributes(n), c.executeProjection(ctx, n, inputs))
 	case *physical.RangeAggregation:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeRangeAggregation(ctx, n, inputs))
 	case *physical.VectorAggregation:
@@ -568,6 +579,22 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 	}
 
 	return pipeline
+}
+
+// operatorRegionName returns the xcap region name for a node. For a parse or
+// format projection it appends the function (e.g. "Projection/PARSE_LOGFMT") so
+// per-parser cost is attributable instead of lumped under "Projection".
+func operatorRegionName(n physical.Node) string {
+	name := n.Type().String()
+	if p, ok := n.(*physical.Projection); ok {
+		for _, e := range p.Expressions {
+			if v, ok := e.(*physical.VariadicExpr); ok {
+				name += "/" + v.Op.String()
+				break
+			}
+		}
+	}
+	return name
 }
 
 // nodeAttributes returns OTel span attributes relevant to the given physical

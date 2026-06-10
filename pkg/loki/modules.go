@@ -381,6 +381,8 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.ingestLimitsFrontendRing,
 		t.Cfg.IngestLimits.NumPartitions,
 		t.dataObjConsumerPartitionRing,
+		t.dataObjConsumerPartitionKVClient,
+		consumer.PartitionRingKey,
 		logger,
 	)
 	if err != nil {
@@ -2282,6 +2284,7 @@ func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create KV store for dataobj ring watcher: %w", err)
 	}
+	t.dataObjConsumerPartitionKVClient = kvClient
 	ringOptions := ring.DefaultPartitionRingOptions()
 	ringOptions.ShuffleShardCacheSize = t.Cfg.DataObj.Consumer.PartitionRingConfig.ShuffleShardCacheSize
 
