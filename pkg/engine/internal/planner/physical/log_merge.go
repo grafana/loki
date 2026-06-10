@@ -24,7 +24,7 @@ type LogMerge struct {
 
 	// Runs are the K piles the merge consumes; each RunRef references LOG
 	// sections in object storage.
-	Runs []*compactionv2pb.RunRef
+	Runs []compactionv2pb.RunRef
 
 	// SourceIndexPaths is the set of unique source-index paths referenced across
 	// all Runs. Used by the consolidation step to know which indexes the merge's

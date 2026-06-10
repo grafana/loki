@@ -15,9 +15,9 @@ func TestLogMerge_CloneIsDeepCopy(t *testing.T) {
 		NodeID:         ulid.Make(),
 		Tenant:         "tenant-29",
 		ToCWindowStart: 1715126400_000_000_000,
-		Runs: []*compactionv2pb.RunRef{
+		Runs: []compactionv2pb.RunRef{
 			{
-				Sections: []*compactionv2pb.SectionRef{
+				Sections: []compactionv2pb.SectionRef{
 					{ObjectPath: "objs/a.dataobj", SectionIndex: 0, MinKey: []string{"a"}, MaxKey: []string{"f"}},
 				},
 			},
@@ -43,14 +43,15 @@ func TestLogMerge_CloneIsDeepCopy(t *testing.T) {
 		"Clone must deep-copy SourceIndexPaths")
 }
 
-// TestLogMerge_Clone_TolerateNilElements verifies cloneRuns does not
-// panic on nil *RunRef or nil *SectionRef entries.
-func TestLogMerge_Clone_TolerateNilElements(t *testing.T) {
+// TestLogMerge_Clone_TolerateZeroElements verifies cloneRuns does not
+// panic on zero-value RunRef or SectionRef entries (the value-typed
+// equivalent of the nil entries the pointer-shaped slices used to allow).
+func TestLogMerge_Clone_TolerateZeroElements(t *testing.T) {
 	orig := &LogMerge{
 		NodeID: ulid.Make(),
-		Runs: []*compactionv2pb.RunRef{
-			nil,
-			{Sections: []*compactionv2pb.SectionRef{nil}},
+		Runs: []compactionv2pb.RunRef{
+			{},
+			{Sections: []compactionv2pb.SectionRef{{}}},
 		},
 	}
 	require.NotPanics(t, func() { _ = orig.Clone() })

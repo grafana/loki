@@ -8,28 +8,28 @@ import (
 
 var (
 	nativeRangeAggregationLookup = map[AggregateRangeOp]types.RangeAggregationType{
-		AGGREGATE_RANGE_OP_INVALID: types.RangeAggregationTypeInvalid,
-		AGGREGATE_RANGE_OP_COUNT:   types.RangeAggregationTypeCount,
-		AGGREGATE_RANGE_OP_SUM:     types.RangeAggregationTypeSum,
-		AGGREGATE_RANGE_OP_MAX:     types.RangeAggregationTypeMax,
-		AGGREGATE_RANGE_OP_MIN:     types.RangeAggregationTypeMin,
-		AGGREGATE_RANGE_OP_BYTES:   types.RangeAggregationTypeBytes,
-		AGGREGATE_RANGE_OP_AVG:     types.RangeAggregationTypeAvg,
+		AggregateRangeOp_AGGREGATE_RANGE_OP_INVALID: types.RangeAggregationTypeInvalid,
+		AggregateRangeOp_AGGREGATE_RANGE_OP_COUNT:   types.RangeAggregationTypeCount,
+		AggregateRangeOp_AGGREGATE_RANGE_OP_SUM:     types.RangeAggregationTypeSum,
+		AggregateRangeOp_AGGREGATE_RANGE_OP_MAX:     types.RangeAggregationTypeMax,
+		AggregateRangeOp_AGGREGATE_RANGE_OP_MIN:     types.RangeAggregationTypeMin,
+		AggregateRangeOp_AGGREGATE_RANGE_OP_BYTES:   types.RangeAggregationTypeBytes,
+		AggregateRangeOp_AGGREGATE_RANGE_OP_AVG:     types.RangeAggregationTypeAvg,
 	}
 
 	nativeVectorAggregationLookup = map[AggregateVectorOp]types.VectorAggregationType{
-		AGGREGATE_VECTOR_OP_INVALID:   types.VectorAggregationTypeInvalid,
-		AGGREGATE_VECTOR_OP_SUM:       types.VectorAggregationTypeSum,
-		AGGREGATE_VECTOR_OP_MAX:       types.VectorAggregationTypeMax,
-		AGGREGATE_VECTOR_OP_MIN:       types.VectorAggregationTypeMin,
-		AGGREGATE_VECTOR_OP_COUNT:     types.VectorAggregationTypeCount,
-		AGGREGATE_VECTOR_OP_AVG:       types.VectorAggregationTypeAvg,
-		AGGREGATE_VECTOR_OP_STDDEV:    types.VectorAggregationTypeStddev,
-		AGGREGATE_VECTOR_OP_STDVAR:    types.VectorAggregationTypeStdvar,
-		AGGREGATE_VECTOR_OP_BOTTOMK:   types.VectorAggregationTypeBottomK,
-		AGGREGATE_VECTOR_OP_TOPK:      types.VectorAggregationTypeTopK,
-		AGGREGATE_VECTOR_OP_SORT:      types.VectorAggregationTypeSort,
-		AGGREGATE_VECTOR_OP_SORT_DESC: types.VectorAggregationTypeSortDesc,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_INVALID:   types.VectorAggregationTypeInvalid,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_SUM:       types.VectorAggregationTypeSum,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_MAX:       types.VectorAggregationTypeMax,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_MIN:       types.VectorAggregationTypeMin,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_COUNT:     types.VectorAggregationTypeCount,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_AVG:       types.VectorAggregationTypeAvg,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_STDDEV:    types.VectorAggregationTypeStddev,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_STDVAR:    types.VectorAggregationTypeStdvar,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_BOTTOMK:   types.VectorAggregationTypeBottomK,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_TOPK:      types.VectorAggregationTypeTopK,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_SORT:      types.VectorAggregationTypeSort,
+		AggregateVectorOp_AGGREGATE_VECTOR_OP_SORT_DESC: types.VectorAggregationTypeSortDesc,
 	}
 )
 

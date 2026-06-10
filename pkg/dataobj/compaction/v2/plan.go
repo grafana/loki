@@ -25,7 +25,7 @@ import (
 // determinism contract.
 func Plan(
 	ctx context.Context,
-	sections []*compactionv2pb.SectionRef,
+	sections []compactionv2pb.SectionRef,
 	tenant string,
 	k int,
 ) []*compactionv2pb.TaskSpec {
@@ -43,9 +43,9 @@ func Plan(
 	}
 
 	// Materialize runs as RunRefs in creation order.
-	runs := make([]*compactionv2pb.RunRef, len(calculated))
+	runs := make([]compactionv2pb.RunRef, len(calculated))
 	for i, r := range calculated {
-		runs[i] = &compactionv2pb.RunRef{Sections: r.sections}
+		runs[i] = compactionv2pb.RunRef{Sections: r.sections}
 	}
 
 	// Group into ⌈P/K⌉ TaskSpec batches.

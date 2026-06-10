@@ -252,7 +252,7 @@ func (c *coordinator) runTenantCycle(
 // every section across all Runs in a task. Used as input to
 // indexMergePath.Build. The output is unsorted; Build sorts internally so
 // order here doesn't affect the resulting path.
-func taskSectionIDs(runs []*compactionv2pb.RunRef) []string {
+func taskSectionIDs(runs []compactionv2pb.RunRef) []string {
 	var ids []string
 	for _, r := range runs {
 		for _, s := range r.Sections {

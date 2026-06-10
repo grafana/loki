@@ -137,7 +137,7 @@ func (c *protobufCodec) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {
 		return DiscardFrame{ID: k.Discard.Id}, nil
 
 	case *wirepb.Frame_Message:
-		msg, err := c.messageFromPbMessage(k.Message)
+		msg, err := c.messageFromPbMessage(&k.Message)
 		if err != nil {
 			return nil, err
 		}
@@ -199,7 +199,7 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 		var metadata http.Header
 		if len(k.TaskAssign.Metadata) > 0 {
 			metadata = make(http.Header)
-			httpgrpc.ToHeader(k.TaskAssign.Metadata, metadata)
+			httpgrpc.ToHeader(wirepb.AdaptersToHeaders(k.TaskAssign.Metadata), metadata)
 		}
 
 		return TaskAssignMessage{
@@ -341,17 +341,17 @@ func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workf
 
 func (c *protobufCodec) taskStateFromPbTaskState(state wirepb.TaskState) (workflow.TaskState, error) {
 	switch state {
-	case wirepb.TASK_STATE_CREATED:
+	case wirepb.TaskState_TASK_STATE_CREATED:
 		return workflow.TaskStateCreated, nil
-	case wirepb.TASK_STATE_PENDING:
+	case wirepb.TaskState_TASK_STATE_PENDING:
 		return workflow.TaskStatePending, nil
-	case wirepb.TASK_STATE_RUNNING:
+	case wirepb.TaskState_TASK_STATE_RUNNING:
 		return workflow.TaskStateRunning, nil
-	case wirepb.TASK_STATE_COMPLETED:
+	case wirepb.TaskState_TASK_STATE_COMPLETED:
 		return workflow.TaskStateCompleted, nil
-	case wirepb.TASK_STATE_CANCELLED:
+	case wirepb.TaskState_TASK_STATE_CANCELLED:
 		return workflow.TaskStateCancelled, nil
-	case wirepb.TASK_STATE_FAILED:
+	case wirepb.TaskState_TASK_STATE_FAILED:
 		return workflow.TaskStateFailed, nil
 	default:
 		return workflow.TaskStateCancelled, fmt.Errorf("task state %v is unknown", state)
@@ -360,20 +360,20 @@ func (c *protobufCodec) taskStateFromPbTaskState(state wirepb.TaskState) (workfl
 
 func (c *protobufCodec) streamStateFromPbStreamState(state wirepb.StreamState) (workflow.StreamState, error) {
 	switch state {
-	case wirepb.STREAM_STATE_IDLE:
+	case wirepb.StreamState_STREAM_STATE_IDLE:
 		return workflow.StreamStateIdle, nil
-	case wirepb.STREAM_STATE_OPEN:
+	case wirepb.StreamState_STREAM_STATE_OPEN:
 		return workflow.StreamStateOpen, nil
-	case wirepb.STREAM_STATE_BLOCKED:
+	case wirepb.StreamState_STREAM_STATE_BLOCKED:
 		return workflow.StreamStateBlocked, nil
-	case wirepb.STREAM_STATE_CLOSED:
+	case wirepb.StreamState_STREAM_STATE_CLOSED:
 		return workflow.StreamStateClosed, nil
 	default:
 		return workflow.StreamStateIdle, fmt.Errorf("stream state %v is unknown", state)
 	}
 }
 
-func (c *protobufCodec) nodeStreamMapFromPbNodeStreamList(pbMap map[string]*wirepb.StreamList, fragment *physical.Plan) (map[physical.Node][]*workflow.Stream, error) {
+func (c *protobufCodec) nodeStreamMapFromPbNodeStreamList(pbMap map[string]wirepb.StreamList, fragment *physical.Plan) (map[physical.Node][]*workflow.Stream, error) {
 	result := make(map[physical.Node][]*workflow.Stream)
 
 	// Build a map of node IDs to nodes from the fragment
@@ -409,7 +409,7 @@ func (c *protobufCodec) nodeStreamMapFromPbNodeStreamList(pbMap map[string]*wire
 	return result, nil
 }
 
-func (c *protobufCodec) cachedSourcesFromPb(pbMap map[string]*wirepb.CachedSources, fragment *physical.Plan) (map[physical.Node]workflow.CachedSources, error) {
+func (c *protobufCodec) cachedSourcesFromPb(pbMap map[string]wirepb.CachedSources, fragment *physical.Plan) (map[physical.Node]workflow.CachedSources, error) {
 	if len(pbMap) == 0 {
 		return nil, nil
 	}
@@ -429,9 +429,6 @@ func (c *protobufCodec) cachedSourcesFromPb(pbMap map[string]*wirepb.CachedSourc
 		if !ok {
 			return nil, fmt.Errorf("cached-source node ID %q not found in fragment", nodeIDStr)
 		}
-		if cs == nil {
-			return nil, fmt.Errorf("cached-source entry for node ID %q is nil", nodeIDStr)
-		}
 		result[node] = cs.CachedSource
 	}
 	return result, nil
@@ -447,12 +444,12 @@ func (c *protobufCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
 	switch v := from.(type) {
 	case AckFrame:
 		f.Kind = &wirepb.Frame_Ack{
-			Ack: &wirepb.AckFrame{Id: v.ID},
+			Ack: wirepb.AckFrame{Id: v.ID},
 		}
 
 	case NackFrame:
 		f.Kind = &wirepb.Frame_Nack{
-			Nack: &wirepb.NackFrame{
+			Nack: wirepb.NackFrame{
 				Id:    v.ID,
 				Error: c.errorToPb(v.Error),
 			},
@@ -460,7 +457,7 @@ func (c *protobufCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
 
 	case DiscardFrame:
 		f.Kind = &wirepb.Frame_Discard{
-			Discard: &wirepb.DiscardFrame{Id: v.ID},
+			Discard: wirepb.DiscardFrame{Id: v.ID},
 		}
 
 	case MessageFrame:
@@ -469,7 +466,7 @@ func (c *protobufCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
 			return nil, err
 		}
 		mf.Id = v.ID
-		f.Kind = &wirepb.Frame_Message{Message: mf}
+		f.Kind = &wirepb.Frame_Message{Message: *mf}
 
 	default:
 		panic(fmt.Errorf("unknown frame type: %T", v))
@@ -499,17 +496,17 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 	switch v := from.(type) {
 	case WorkerHelloMessage:
 		mf.Kind = &wirepb.MessageFrame_WorkerHello{
-			WorkerHello: &wirepb.WorkerHelloMessage{Threads: uint64(v.Threads)},
+			WorkerHello: wirepb.WorkerHelloMessage{Threads: uint64(v.Threads)},
 		}
 
 	case WorkerSubscribeMessage:
 		mf.Kind = &wirepb.MessageFrame_WorkerSubscribe{
-			WorkerSubscribe: &wirepb.WorkerSubscribeMessage{},
+			WorkerSubscribe: wirepb.WorkerSubscribeMessage{},
 		}
 
 	case WorkerReadyMessage:
 		mf.Kind = &wirepb.MessageFrame_WorkerReady{
-			WorkerReady: &wirepb.WorkerReadyMessage{},
+			WorkerReady: wirepb.WorkerReadyMessage{},
 		}
 
 	case TaskAssignMessage:
@@ -524,23 +521,23 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 		}
 
 		mf.Kind = &wirepb.MessageFrame_TaskAssign{
-			TaskAssign: &wirepb.TaskAssignMessage{
+			TaskAssign: wirepb.TaskAssignMessage{
 				Task:         task,
 				StreamStates: streamStates,
-				Metadata:     httpgrpc.FromHeader(v.Metadata),
+				Metadata:     wirepb.HeadersToAdapters(httpgrpc.FromHeader(v.Metadata)),
 			},
 		}
 
 	case TaskCancelMessage:
 		mf.Kind = &wirepb.MessageFrame_TaskCancel{
-			TaskCancel: &wirepb.TaskCancelMessage{
+			TaskCancel: wirepb.TaskCancelMessage{
 				Id: protoUlid.ULID(v.ID),
 			},
 		}
 
 	case TaskFlagMessage:
 		mf.Kind = &wirepb.MessageFrame_TaskFlag{
-			TaskFlag: &wirepb.TaskFlagMessage{
+			TaskFlag: wirepb.TaskFlagMessage{
 				Id:            protoUlid.ULID(v.ID),
 				Interruptible: v.Interruptible,
 			},
@@ -553,7 +550,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 		}
 
 		mf.Kind = &wirepb.MessageFrame_TaskStatus{
-			TaskStatus: &wirepb.TaskStatusMessage{
+			TaskStatus: wirepb.TaskStatusMessage{
 				Id:     protoUlid.ULID(v.ID),
 				Status: *status,
 			},
@@ -561,7 +558,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 
 	case StreamBindMessage:
 		mf.Kind = &wirepb.MessageFrame_StreamBind{
-			StreamBind: &wirepb.StreamBindMessage{
+			StreamBind: wirepb.StreamBindMessage{
 				StreamId: protoUlid.ULID(v.StreamID),
 				Receiver: v.Receiver.String(),
 			},
@@ -574,7 +571,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 			return nil, fmt.Errorf("failed to serialize arrow record: %w", err)
 		}
 		mf.Kind = &wirepb.MessageFrame_StreamData{
-			StreamData: &wirepb.StreamDataMessage{
+			StreamData: wirepb.StreamDataMessage{
 				StreamId: protoUlid.ULID(v.StreamID),
 				Data:     data,
 			},
@@ -582,7 +579,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 
 	case StreamStatusMessage:
 		mf.Kind = &wirepb.MessageFrame_StreamStatus{
-			StreamStatus: &wirepb.StreamStatusMessage{
+			StreamStatus: wirepb.StreamStatusMessage{
 				StreamId: protoUlid.ULID(v.StreamID),
 				State:    c.streamStateToPbStreamState(v.State),
 			},
@@ -620,11 +617,11 @@ func (c *protobufCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) 
 	return &wirepb.Task{
 		Ulid:          protoUlid.ULID(from.ULID),
 		TenantId:      from.TenantID,
-		Fragment:      fragment,
+		Fragment:      *fragment,
 		Sources:       sources,
 		Sinks:         sinks,
 		CachedSources: cachedSources,
-		MaxTimeRange: &physicalpb.TimeRange{
+		MaxTimeRange: physicalpb.TimeRange{
 			Start: from.MaxTimeRange.Start,
 			End:   from.MaxTimeRange.End,
 		},
@@ -659,54 +656,54 @@ func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wir
 func (c *protobufCodec) taskStateToPbTaskState(state workflow.TaskState) wirepb.TaskState {
 	switch state {
 	case workflow.TaskStateCreated:
-		return wirepb.TASK_STATE_CREATED
+		return wirepb.TaskState_TASK_STATE_CREATED
 	case workflow.TaskStatePending:
-		return wirepb.TASK_STATE_PENDING
+		return wirepb.TaskState_TASK_STATE_PENDING
 	case workflow.TaskStateRunning:
-		return wirepb.TASK_STATE_RUNNING
+		return wirepb.TaskState_TASK_STATE_RUNNING
 	case workflow.TaskStateCompleted:
-		return wirepb.TASK_STATE_COMPLETED
+		return wirepb.TaskState_TASK_STATE_COMPLETED
 	case workflow.TaskStateCancelled:
-		return wirepb.TASK_STATE_CANCELLED
+		return wirepb.TaskState_TASK_STATE_CANCELLED
 	case workflow.TaskStateFailed:
-		return wirepb.TASK_STATE_FAILED
+		return wirepb.TaskState_TASK_STATE_FAILED
 	default:
-		return wirepb.TASK_STATE_INVALID
+		return wirepb.TaskState_TASK_STATE_INVALID
 	}
 }
 
 func (c *protobufCodec) streamStateToPbStreamState(state workflow.StreamState) wirepb.StreamState {
 	switch state {
 	case workflow.StreamStateIdle:
-		return wirepb.STREAM_STATE_IDLE
+		return wirepb.StreamState_STREAM_STATE_IDLE
 	case workflow.StreamStateOpen:
-		return wirepb.STREAM_STATE_OPEN
+		return wirepb.StreamState_STREAM_STATE_OPEN
 	case workflow.StreamStateBlocked:
-		return wirepb.STREAM_STATE_BLOCKED
+		return wirepb.StreamState_STREAM_STATE_BLOCKED
 	case workflow.StreamStateClosed:
-		return wirepb.STREAM_STATE_CLOSED
+		return wirepb.StreamState_STREAM_STATE_CLOSED
 	default:
-		return wirepb.STREAM_STATE_INVALID
+		return wirepb.StreamState_STREAM_STATE_INVALID
 	}
 }
 
-func (c *protobufCodec) nodeStreamMapToPbNodeStreamList(nodeMap map[physical.Node][]*workflow.Stream) (map[string]*wirepb.StreamList, error) {
-	result := make(map[string]*wirepb.StreamList)
+func (c *protobufCodec) nodeStreamMapToPbNodeStreamList(nodeMap map[physical.Node][]*workflow.Stream) (map[string]wirepb.StreamList, error) {
+	result := make(map[string]wirepb.StreamList)
 
 	for node, streams := range nodeMap {
 		// Get the node ID
 		nodeID := node.ID()
 		nodeIDStr := nodeID.String()
 
-		pbStreams := make([]*wirepb.Stream, len(streams))
+		pbStreams := make([]wirepb.Stream, len(streams))
 		for i, s := range streams {
-			pbStreams[i] = &wirepb.Stream{
+			pbStreams[i] = wirepb.Stream{
 				Ulid:     protoUlid.ULID(s.ULID),
 				TenantId: s.TenantID,
 			}
 		}
 
-		result[nodeIDStr] = &wirepb.StreamList{
+		result[nodeIDStr] = wirepb.StreamList{
 			Streams: pbStreams,
 		}
 	}
@@ -714,13 +711,13 @@ func (c *protobufCodec) nodeStreamMapToPbNodeStreamList(nodeMap map[physical.Nod
 	return result, nil
 }
 
-func (c *protobufCodec) cachedSourcesToPb(srcs map[physical.Node]workflow.CachedSources) map[string]*wirepb.CachedSources {
+func (c *protobufCodec) cachedSourcesToPb(srcs map[physical.Node]workflow.CachedSources) map[string]wirepb.CachedSources {
 	if len(srcs) == 0 {
 		return nil
 	}
-	result := make(map[string]*wirepb.CachedSources, len(srcs))
+	result := make(map[string]wirepb.CachedSources, len(srcs))
 	for node, cs := range srcs {
-		result[node.ID().String()] = &wirepb.CachedSources{CachedSource: cs}
+		result[node.ID().String()] = wirepb.CachedSources{CachedSource: cs}
 	}
 	return result
 }

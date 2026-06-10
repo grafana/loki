@@ -14,9 +14,9 @@ func TestBuildIndexMergePlan_SingleRoot(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
 	task := &compactionv2pb.TaskSpec{
 		Tenant: "t1",
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "i0", SectionIndex: 0}}},
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "i1", SectionIndex: 0}}},
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "i0", SectionIndex: 0}}},
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "i1", SectionIndex: 0}}},
 		},
 	}
 	output := "indexes/tenants/t1/aa/aaaa"
@@ -43,7 +43,7 @@ func TestBuildIndexMergePlan_AssignsFreshNodeID(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
 	task := &compactionv2pb.TaskSpec{
 		Tenant: "t1",
-		Runs:   []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "i0", SectionIndex: 0}}}},
+		Runs:   []compactionv2pb.RunRef{{Sections: []compactionv2pb.SectionRef{{ObjectPath: "i0", SectionIndex: 0}}}},
 	}
 
 	p1 := buildIndexMergePlan("t1", window, task, "out1", time.Minute)

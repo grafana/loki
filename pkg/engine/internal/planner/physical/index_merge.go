@@ -28,7 +28,7 @@ type IndexMerge struct {
 	// pointing at INDEX sections (postings + stats) in object storage.
 	// The executor sources source-index paths from Runs[*].Sections[*].ObjectPath;
 	// there is no separate SourceIndexPaths field on IndexMerge.
-	Runs []*compactionv2pb.RunRef
+	Runs []compactionv2pb.RunRef
 
 	// OutputIndexPath is the deterministic object-storage key where the
 	// executor writes the merged index object. Existence-check at executor
@@ -65,28 +65,21 @@ func (*IndexMerge) CacheKey(_ context.Context) string { return "" }
 
 // cloneRuns deep-copies a RunRef slice including the nested SectionRef
 // slices (whose MinKey / MaxKey are themselves slices). Used by both
-// IndexMerge.Clone and LogMerge.Clone. Nil RunRef and nil SectionRef
-// entries are tolerated and pass through as nil.
-func cloneRuns(runs []*compactionv2pb.RunRef) []*compactionv2pb.RunRef {
+// IndexMerge.Clone and LogMerge.Clone.
+func cloneRuns(runs []compactionv2pb.RunRef) []compactionv2pb.RunRef {
 	if runs == nil {
 		return nil
 	}
-	out := make([]*compactionv2pb.RunRef, len(runs))
-	for i, r := range runs {
-		if r == nil {
-			continue
+	out := make([]compactionv2pb.RunRef, len(runs))
+	for i := range runs {
+		sections := make([]compactionv2pb.SectionRef, len(runs[i].Sections))
+		for j := range runs[i].Sections {
+			cp := runs[i].Sections[j]
+			cp.MinKey = slices.Clone(cp.MinKey)
+			cp.MaxKey = slices.Clone(cp.MaxKey)
+			sections[j] = cp
 		}
-		sections := make([]*compactionv2pb.SectionRef, len(r.Sections))
-		for j, s := range r.Sections {
-			if s == nil {
-				continue
-			}
-			cp := *s
-			cp.MinKey = slices.Clone(s.MinKey)
-			cp.MaxKey = slices.Clone(s.MaxKey)
-			sections[j] = &cp
-		}
-		out[i] = &compactionv2pb.RunRef{Sections: sections}
+		out[i] = compactionv2pb.RunRef{Sections: sections}
 	}
 	return out
 }

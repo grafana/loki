@@ -14,8 +14,8 @@ var _ = rand.Float64
 
 // sec is a small constructor for SectionRef test fixtures with single-column
 // MinKey/MaxKey values (the common case in existing tests).
-func sec(path string, idx int32, minKey, maxKey string) *compactionv2pb.SectionRef {
-	return &compactionv2pb.SectionRef{
+func sec(path string, idx int32, minKey, maxKey string) compactionv2pb.SectionRef {
+	return compactionv2pb.SectionRef{
 		ObjectPath:   path,
 		SectionIndex: idx,
 		MinKey:       []string{minKey},
@@ -26,8 +26,8 @@ func sec(path string, idx int32, minKey, maxKey string) *compactionv2pb.SectionR
 // secT is a constructor for SectionRef test fixtures with multi-column
 // MinKey/MaxKey tuples (for tests that exercise multi-column sort_schema
 // semantics).
-func secT(path string, idx int32, minKey, maxKey []string) *compactionv2pb.SectionRef {
-	return &compactionv2pb.SectionRef{
+func secT(path string, idx int32, minKey, maxKey []string) compactionv2pb.SectionRef {
+	return compactionv2pb.SectionRef{
 		ObjectPath:   path,
 		SectionIndex: idx,
 		MinKey:       minKey,
@@ -37,15 +37,15 @@ func secT(path string, idx int32, minKey, maxKey []string) *compactionv2pb.Secti
 
 func TestPatienceSort_Empty(t *testing.T) {
 	require.Nil(t, calculateRuns(nil))
-	require.Nil(t, calculateRuns([]*compactionv2pb.SectionRef{}))
+	require.Nil(t, calculateRuns([]compactionv2pb.SectionRef{}))
 }
 
 func TestPatienceSort_SingleSection(t *testing.T) {
 	s := sec("obj-1", 0, "a", "b")
-	got := calculateRuns([]*compactionv2pb.SectionRef{s})
+	got := calculateRuns([]compactionv2pb.SectionRef{s})
 
 	require.Len(t, got, 1)
-	require.Equal(t, []*compactionv2pb.SectionRef{s}, got[0].sections)
+	require.Equal(t, []compactionv2pb.SectionRef{s}, got[0].sections)
 	require.Equal(t, []string{"b"}, got[0].topMaxKey)
 }
 
@@ -54,10 +54,10 @@ func TestPatienceSort_AllNonOverlapping(t *testing.T) {
 	s2 := sec("o", 1, "c", "d")
 	s3 := sec("o", 2, "e", "f")
 
-	got := calculateRuns([]*compactionv2pb.SectionRef{s1, s2, s3})
+	got := calculateRuns([]compactionv2pb.SectionRef{s1, s2, s3})
 
 	require.Len(t, got, 1, "all non-overlapping sections should form exactly one pile")
-	require.Equal(t, []*compactionv2pb.SectionRef{s1, s2, s3}, got[0].sections)
+	require.Equal(t, []compactionv2pb.SectionRef{s1, s2, s3}, got[0].sections)
 	require.Equal(t, []string{"f"}, got[0].topMaxKey)
 }
 
@@ -67,7 +67,7 @@ func TestPatienceSort_AllOverlapping(t *testing.T) {
 	s2 := sec("o", 1, "b", "n")
 	s3 := sec("o", 2, "c", "o")
 
-	got := calculateRuns([]*compactionv2pb.SectionRef{s1, s2, s3})
+	got := calculateRuns([]compactionv2pb.SectionRef{s1, s2, s3})
 
 	require.Len(t, got, 3)
 	for _, p := range got {
@@ -84,14 +84,14 @@ func TestPatienceSort_BestFit(t *testing.T) {
 	s2 := sec("o", 1, "01", "10") // overlaps s1; creates pile1
 	s3 := sec("o", 2, "12", "20") // MinKey > both top_max_keys; pick pile1
 
-	got := calculateRuns([]*compactionv2pb.SectionRef{s1, s2, s3})
+	got := calculateRuns([]compactionv2pb.SectionRef{s1, s2, s3})
 
 	require.Len(t, got, 2, "expected 2 piles")
 	// pile1 (created second) should now contain s2 and s3.
-	require.Equal(t, []*compactionv2pb.SectionRef{s2, s3}, got[1].sections)
+	require.Equal(t, []compactionv2pb.SectionRef{s2, s3}, got[1].sections)
 	require.Equal(t, []string{"20"}, got[1].topMaxKey)
 	// pile0 should still hold only s1.
-	require.Equal(t, []*compactionv2pb.SectionRef{s1}, got[0].sections)
+	require.Equal(t, []compactionv2pb.SectionRef{s1}, got[0].sections)
 	require.Equal(t, []string{"05"}, got[0].topMaxKey)
 }
 
@@ -109,14 +109,14 @@ func TestPatienceSort_TiebreakerOnCreationOrder(t *testing.T) {
 	s3 := sec("o", 2, "06", "10")
 	s4 := sec("o", 3, "11", "20")
 
-	got := calculateRuns([]*compactionv2pb.SectionRef{s1, s2, s3, s4})
+	got := calculateRuns([]compactionv2pb.SectionRef{s1, s2, s3, s4})
 
 	require.Len(t, got, 3)
 	// pile0 (slice index 0, the oldest) should have received s4.
-	require.Equal(t, []*compactionv2pb.SectionRef{s1, s4}, got[0].sections,
+	require.Equal(t, []compactionv2pb.SectionRef{s1, s4}, got[0].sections,
 		"among piles with equal topMaxKey, append to the OLDEST")
 	// pile2 unchanged.
-	require.Equal(t, []*compactionv2pb.SectionRef{s3}, got[2].sections,
+	require.Equal(t, []compactionv2pb.SectionRef{s3}, got[2].sections,
 		"newer pile is NOT chosen on tie")
 }
 
@@ -131,7 +131,7 @@ func TestPatienceSort_StableIDTiebreaker(t *testing.T) {
 
 	// Feed in deliberately scrambled order — output must still be deterministic
 	// per the stable_id tiebreaker.
-	got := calculateRuns([]*compactionv2pb.SectionRef{c, b, a})
+	got := calculateRuns([]compactionv2pb.SectionRef{c, b, a})
 
 	require.Len(t, got, 3)
 	require.Equal(t, a, got[0].sections[0], "pile0 expected to hold stable_id-smallest section")
@@ -141,7 +141,7 @@ func TestPatienceSort_StableIDTiebreaker(t *testing.T) {
 
 func TestPatienceSort_Determinism_Shuffled(t *testing.T) {
 	// Build a non-trivial input — a few overlapping and non-overlapping sections.
-	base := []*compactionv2pb.SectionRef{
+	base := []compactionv2pb.SectionRef{
 		sec("o", 0, "01", "03"),
 		sec("o", 1, "02", "04"),
 		sec("o", 2, "05", "07"),
@@ -153,13 +153,13 @@ func TestPatienceSort_Determinism_Shuffled(t *testing.T) {
 	}
 
 	// Reference result: feed in input order.
-	want := calculateRuns(append([]*compactionv2pb.SectionRef(nil), base...))
+	want := calculateRuns(append([]compactionv2pb.SectionRef(nil), base...))
 
 	// Try 10 different deterministic shuffles. Use a seeded math/rand so the
 	// test is reproducible.
 	r := rand.New(rand.NewSource(42))
 	for trial := 0; trial < 10; trial++ {
-		shuffled := append([]*compactionv2pb.SectionRef(nil), base...)
+		shuffled := append([]compactionv2pb.SectionRef(nil), base...)
 		r.Shuffle(len(shuffled), func(i, j int) {
 			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
 		})
@@ -204,10 +204,10 @@ func TestCalculateRuns_MultiColumn_PrefixOrder(t *testing.T) {
 	a := secT("o", 0, []string{"api", "zoo"}, []string{"api", "zzz"})
 	b := secT("o", 1, []string{"apiv2", "aaa"}, []string{"apiv2", "aaa"})
 
-	got := calculateRuns([]*compactionv2pb.SectionRef{a, b})
+	got := calculateRuns([]compactionv2pb.SectionRef{a, b})
 
 	require.Len(t, got, 1, "non-overlapping sections should form one run")
-	require.Equal(t, []*compactionv2pb.SectionRef{a, b}, got[0].sections,
+	require.Equal(t, []compactionv2pb.SectionRef{a, b}, got[0].sections,
 		"prefix on column 0 must place 'api' before 'apiv2' regardless of column 1")
 }
 
@@ -226,10 +226,10 @@ func TestCalculateRuns_MultiColumn_SecondColumnDecides(t *testing.T) {
 	c := secT("o", 2, []string{"api", "staging"}, []string{"api", "staging"})
 
 	// Feed in jumbled order; sort step must reorder by tuple compare.
-	got := calculateRuns([]*compactionv2pb.SectionRef{c, a, b})
+	got := calculateRuns([]compactionv2pb.SectionRef{c, a, b})
 
 	require.Len(t, got, 1, "non-overlapping sections should form one run")
-	require.Equal(t, []*compactionv2pb.SectionRef{a, b, c}, got[0].sections,
+	require.Equal(t, []compactionv2pb.SectionRef{a, b, c}, got[0].sections,
 		"with equal column 0, column 1 must decide the order (prod < qa < staging)")
 }
 
@@ -258,7 +258,7 @@ func TestCalculateRuns_MultiColumn_OverlapAcrossColumns(t *testing.T) {
 	a := secT("o", 0, []string{"api", "prod"}, []string{"apiv2", "aaa"})
 	b := secT("o", 1, []string{"api", "zoo"}, []string{"api", "zzz"})
 
-	got := calculateRuns([]*compactionv2pb.SectionRef{a, b})
+	got := calculateRuns([]compactionv2pb.SectionRef{a, b})
 
 	require.Len(t, got, 2, "overlapping sections must produce separate runs")
 }
@@ -267,8 +267,8 @@ func TestCalculateRuns_MultiColumn_OverlapAcrossColumns(t *testing.T) {
 // MinTimestamp/MaxTimestamp values (for tests that exercise the timestamp
 // component of the composite sort key). MinKey/MaxKey are still []string
 // tuples; pass single-element slices for the single-column case.
-func secTS(path string, idx int32, minKey, maxKey []string, minTs, maxTs int64) *compactionv2pb.SectionRef {
-	return &compactionv2pb.SectionRef{
+func secTS(path string, idx int32, minKey, maxKey []string, minTs, maxTs int64) compactionv2pb.SectionRef {
+	return compactionv2pb.SectionRef{
 		ObjectPath:   path,
 		SectionIndex: idx,
 		MinKey:       minKey,
@@ -293,10 +293,10 @@ func TestCalculateRuns_Timestamp_NonOverlap(t *testing.T) {
 	a := secTS("o", 0, []string{"api"}, []string{"api"}, 100, 200)
 	b := secTS("o", 1, []string{"api"}, []string{"api"}, 300, 400)
 
-	got := calculateRuns([]*compactionv2pb.SectionRef{b, a}) // jumbled
+	got := calculateRuns([]compactionv2pb.SectionRef{b, a}) // jumbled
 
 	require.Len(t, got, 1, "same-label, non-overlapping time should form one run")
-	require.Equal(t, []*compactionv2pb.SectionRef{a, b}, got[0].sections,
+	require.Equal(t, []compactionv2pb.SectionRef{a, b}, got[0].sections,
 		"composite sort key must order by timestamp when labels tie: a (ts=100) before b (ts=300)")
 }
 
@@ -312,7 +312,7 @@ func TestCalculateRuns_Timestamp_Overlap(t *testing.T) {
 	a := secTS("o", 0, []string{"api"}, []string{"api"}, 100, 300)
 	b := secTS("o", 1, []string{"api"}, []string{"api"}, 200, 400)
 
-	got := calculateRuns([]*compactionv2pb.SectionRef{a, b})
+	got := calculateRuns([]compactionv2pb.SectionRef{a, b})
 
 	require.Len(t, got, 2, "same-label, time-overlapping sections must form separate runs")
 }
@@ -331,9 +331,9 @@ func TestCalculateRuns_Timestamp_NumericOrder(t *testing.T) {
 	a := secTS("o", 0, []string{"api"}, []string{"api"}, 9, 9)
 	b := secTS("o", 1, []string{"api"}, []string{"api"}, 10, 10)
 
-	got := calculateRuns([]*compactionv2pb.SectionRef{b, a}) // jumbled
+	got := calculateRuns([]compactionv2pb.SectionRef{b, a}) // jumbled
 
 	require.Len(t, got, 1, "non-overlapping (one timestamp each) -> one run")
-	require.Equal(t, []*compactionv2pb.SectionRef{a, b}, got[0].sections,
+	require.Equal(t, []compactionv2pb.SectionRef{a, b}, got[0].sections,
 		"timestamps must compare numerically: ts=9 < ts=10")
 }
