@@ -268,7 +268,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		e.metrics.query.subqueries.WithLabelValues(statusNotImplemented, q.queryType).Inc()
 		e.metrics.query.stageFailures.WithLabelValues(stageLogicalPlanning, statusNotImplemented, q.queryType).Inc()
 		q.RecordError(ctx, errors.New("failed to create logical plan"))
-		return logqlmodel.Result{}, ErrNotSupported
+		return logqlmodel.Result{}, err
 	}
 	gotrace.Log(ctx, "logical_planning", "done")
 
@@ -392,7 +392,7 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Pa
 	if err != nil {
 		level.Warn(q.Logger()).Log("msg", "failed to create logical plan", "err", err)
 		q.RecordError(ctx, err)
-		return nil, ErrNotSupported
+		return nil, fmt.Errorf("%w: %w", ErrNotSupported, err)
 	}
 
 	var opt logical.Optimizer
@@ -402,7 +402,7 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, q *query, params logql.Pa
 	if err != nil {
 		level.Warn(q.Logger()).Log("msg", "failed to optimize logical plan", "err", err)
 		q.RecordError(ctx, err)
-		return nil, ErrNotSupported
+		return nil, fmt.Errorf("%w: %w", ErrNotSupported, err)
 	}
 
 	duration := timer.ObserveDuration()
