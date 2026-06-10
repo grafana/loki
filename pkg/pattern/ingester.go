@@ -220,7 +220,7 @@ func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(
 		(*string)(&cfg.IngestMode),
 		prefix+"tee.ingest-mode",
-		string(IngestModeInMemory),
+		string(IngestModeKafka),
 		`How records are ingested: "kafka" reads from a Kafka topic; "inmemory" uses an in-process channel (experimental, single-node, no durability guarantees, each replica holds independent data).`,
 	)
 	f.DurationVar(
