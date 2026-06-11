@@ -163,7 +163,7 @@ func Test_Retention(t *testing.T) {
 			store.Stop()
 
 			// marks and sweep
-			expiration := NewExpirationChecker(tt.limits)
+			expiration := NewExpirationChecker(tt.limits, nil)
 			workDir := filepath.Join(t.TempDir(), "retention")
 			// must not fail the process because deletion must be retried
 			chunkClient := newMockChunkClient(true)
@@ -265,18 +265,18 @@ func Test_EmptyTable(t *testing.T) {
 	require.Len(t, tables, 1)
 
 	// disabled retention should not do anything to the table
-	empty, modified, err := markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{}), nil, util_log.Logger)
+	empty, modified, err := markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{}, nil), nil, util_log.Logger)
 	require.NoError(t, err)
 	require.False(t, empty)
 	require.False(t, modified)
 
 	// Set a very low retention to make sure all chunks are marked for deletion which will create an empty table.
-	empty, modified, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}), nil, util_log.Logger)
+	empty, modified, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}, nil), nil, util_log.Logger)
 	require.NoError(t, err)
 	require.True(t, empty)
 	require.True(t, modified)
 
-	_, _, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}), nil, util_log.Logger)
+	_, _, err = markForDelete(context.Background(), 0, tables[0].name, &noopWriter{}, newTable("test"), NewExpirationChecker(&fakeLimits{}, nil), nil, util_log.Logger)
 	require.Equal(t, err, errNoChunksFound)
 }
 
@@ -306,6 +306,44 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	c := chunk.NewChunk(userID, fp, metric, chunkenc.NewFacade(chunkEnc, blockSize, targetSize), from, through)
 	require.NoError(t, c.Encode())
 	return c
+}
+
+func TestChunkRewriterPreservesIngestedAtWhenReindexing(t *testing.T) {
+	now := model.Now()
+	schema := allSchemas[3] // v12
+	tableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
+	ingestedAt := now.Add(-30 * time.Minute)
+
+	originalChunk := createChunk(t, "1", labels.FromStrings("foo", "bar"), tableInterval.Start, tableInterval.Start.Add(2*time.Hour))
+	originalChunk.IngestedAt = ingestedAt
+	require.NoError(t, originalChunk.Encode())
+
+	store := newTestStore(t)
+	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{originalChunk}))
+	store.Stop()
+
+	indexTables := store.indexTables()
+	require.Len(t, indexTables, 1)
+	indexTable := indexTables[0]
+
+	cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
+	wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(originalChunk.UserID), Chunk{
+		ChunkID: getChunkID(originalChunk.ChunkRef),
+		From:    originalChunk.From,
+		Through: originalChunk.Through,
+	}, tableInterval, func(ts time.Time, _ string, _ labels.Labels) bool {
+		return ts.UnixNano() <= tableInterval.Start.Add(time.Hour).UnixNano()
+	})
+	require.NoError(t, err)
+	require.True(t, linesDeleted)
+	require.True(t, wroteChunks)
+	require.Equal(t, []model.Time{ingestedAt}, indexTable.indexedIngestedAt)
+
+	chunks := store.GetChunks(originalChunk.UserID, originalChunk.From, originalChunk.Through, originalChunk.Metric)
+	require.Len(t, chunks, 2)
+	for _, chk := range chunks {
+		require.Equal(t, ingestedAt, chk.IngestedAt)
+	}
 }
 
 func TestChunkRewriter(t *testing.T) {
@@ -1070,7 +1108,7 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 
 	for i, table := range tables {
 		empty, _, err := markForDelete(context.Background(), 0, table.name, &noopWriter{}, table,
-			NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}), nil, util_log.Logger)
+			NewExpirationChecker(fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: retentionPeriod}}}, nil), nil, util_log.Logger)
 		require.NoError(t, err)
 		if i == 7 {
 			require.False(t, empty)

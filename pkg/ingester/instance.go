@@ -284,12 +284,14 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 
-	chunkfmt, headfmt, err := i.chunkFormatAt(minTs(&pushReqStream))
+	streamTime := minTs(&pushReqStream)
+	chunkfmt, headfmt, err := i.chunkFormatAt(streamTime)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
+	writesIngestedAt := i.schemaconfig.SupportsIngestedAtForTime(streamTime)
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
+	s := newStream(chunkfmt, headfmt, writesIngestedAt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -375,15 +377,17 @@ func (i *instance) onStreamCreated(s *stream) {
 func (i *instance) createStreamByFP(ctx context.Context, ls labels.Labels, fp model.Fingerprint) (*stream, error) {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
 
-	chunkfmt, headfmt, err := i.chunkFormatAt(model.Now())
+	now := model.Now()
+	chunkfmt, headfmt, err := i.chunkFormatAt(now)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream for fingerprint: %w", err)
 	}
+	writesIngestedAt := i.schemaconfig.SupportsIngestedAtForTime(now)
 
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, ls))
 	policy := i.resolvePolicyForStream(ctx, ls)
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
+	s := newStream(chunkfmt, headfmt, writesIngestedAt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
 
 	i.onStreamCreated(s)
 

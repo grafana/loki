@@ -83,6 +83,7 @@ type stream struct {
 
 	chunkFormat          byte
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
+	writesIngestedAt     bool
 
 	configs *runtime.TenantConfigs
 
@@ -98,6 +99,8 @@ type chunkDesc struct {
 	reason  string
 
 	lastUpdated time.Time
+	// Wall-clock time of the latest successful append to this chunk.
+	lastIngestedAt time.Time
 }
 
 type entryWithError struct {
@@ -108,6 +111,7 @@ type entryWithError struct {
 func newStream(
 	chunkFormat byte,
 	headBlockFmt chunkenc.HeadBlockFmt,
+	writesIngestedAt bool,
 	cfg *Config,
 	limits RateLimiterStrategy,
 	tenant string,
@@ -137,6 +141,7 @@ func newStream(
 		writeFailures:        writeFailures,
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
+		writesIngestedAt:     writesIngestedAt,
 
 		configs:        configs,
 		retentionHours: retentionHours,
@@ -162,6 +167,13 @@ func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err er
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
 	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
+}
+
+func (s *stream) newChunkDesc() chunkDesc {
+	return chunkDesc{
+		chunk:          s.NewChunk(),
+		lastIngestedAt: time.Now(),
+	}
 }
 
 func (s *stream) Push(
@@ -210,9 +222,7 @@ func (s *stream) Push(
 
 	prevNumChunks := len(s.chunks)
 	if prevNumChunks == 0 {
-		s.chunks = append(s.chunks, chunkDesc{
-			chunk: s.NewChunk(),
-		})
+		s.chunks = append(s.chunks, s.newChunkDesc())
 		s.metrics.chunksCreatedTotal.Inc()
 		s.metrics.chunkCreatedStats.Inc(1)
 	}
@@ -334,7 +344,8 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 			chunk = s.cutChunk(ctx)
 		}
 
-		chunk.lastUpdated = time.Now()
+		now := time.Now()
+		chunk.lastUpdated = now
 		dup, err := chunk.chunk.Append(&entries[i])
 		if err != nil {
 			invalid = append(invalid, entryWithError{&entries[i], err})
@@ -348,6 +359,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		if dup {
 			s.handleLoggingOfDuplicateEntry(entries[i])
 		}
+		chunk.lastIngestedAt = now
 
 		s.entryCt++
 		s.lastLine.ts = entries[i].Timestamp
@@ -380,7 +392,6 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 }
 
 func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
-
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
 		rateLimitedSamples, rateLimitedBytes int
@@ -508,9 +519,7 @@ func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
 	s.metrics.chunksCreatedTotal.Inc()
 	s.metrics.chunkCreatedStats.Inc(1)
 
-	s.chunks = append(s.chunks, chunkDesc{
-		chunk: s.NewChunk(),
-	})
+	s.chunks = append(s.chunks, s.newChunkDesc())
 	return &s.chunks[len(s.chunks)-1]
 }
 

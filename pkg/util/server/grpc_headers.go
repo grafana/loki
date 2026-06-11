@@ -10,8 +10,9 @@ import (
 )
 
 func injectHTTPHeadersIntoGRPCRequest(ctx context.Context) context.Context {
-	header := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader)
-	if header == "" {
+	disablePipelineWrappersHeader := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader)
+	backfillHeader := httpreq.ExtractHeader(ctx, httpreq.LokiBackfillHeader)
+	if disablePipelineWrappersHeader == "" && backfillHeader == "" {
 		return ctx
 	}
 
@@ -21,7 +22,12 @@ func injectHTTPHeadersIntoGRPCRequest(ctx context.Context) context.Context {
 		md = metadata.New(map[string]string{})
 	}
 	md = md.Copy()
-	md.Set(httpreq.LokiDisablePipelineWrappersHeader, header)
+	if disablePipelineWrappersHeader != "" {
+		md.Set(httpreq.LokiDisablePipelineWrappersHeader, disablePipelineWrappersHeader)
+	}
+	if backfillHeader != "" {
+		md.Set(httpreq.LokiBackfillHeader, backfillHeader)
+	}
 
 	return metadata.NewOutgoingContext(ctx, md)
 }
@@ -33,12 +39,17 @@ func extractHTTPHeadersFromGRPCRequest(ctx context.Context) context.Context {
 		return ctx
 	}
 
-	headerValues := md.Get(httpreq.LokiDisablePipelineWrappersHeader)
-	if len(headerValues) == 0 {
-		return ctx
+	disablePipelineWrappersHeaderValues := md.Get(httpreq.LokiDisablePipelineWrappersHeader)
+	if len(disablePipelineWrappersHeaderValues) > 0 {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, disablePipelineWrappersHeaderValues[0])
 	}
 
-	return httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, headerValues[0])
+	backfillHeaderValues := md.Get(httpreq.LokiBackfillHeader)
+	if len(backfillHeaderValues) > 0 {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiBackfillHeader, backfillHeaderValues[0])
+	}
+
+	return ctx
 }
 
 func UnaryClientHTTPHeadersInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {

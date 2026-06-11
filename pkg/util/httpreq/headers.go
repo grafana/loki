@@ -15,6 +15,10 @@ var (
 	LokiActorPathHeader               = "X-Loki-Actor-Path"
 	LokiDisablePipelineWrappersHeader = "X-Loki-Disable-Pipeline-Wrappers"
 
+	// LokiBackfillHeader marks a push as backfill traffic.
+	LokiBackfillHeader      = "X-Loki-Backfill"
+	LokiBackfillHeaderValue = "true"
+
 	// LokiActorPathDelimiter is the delimiter used to serialise the hierarchy of the actor.
 	LokiActorPathDelimiter = "|"
 )

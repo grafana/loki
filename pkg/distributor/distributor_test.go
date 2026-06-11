@@ -46,6 +46,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
+	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -726,7 +727,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 					distributorLimits.IngestionPartitionsTenantShardSize = test.shardSize
 					overrides, err := validation.NewOverrides(*distributorLimits, nil)
 					require.NoError(t, err)
-					validator, err := NewValidator(overrides, nil)
+					validator, err := NewValidator(overrides, nil, storageconfig.SchemaConfig{})
 					require.NoError(t, err)
 					d.validator = validator
 				}
@@ -914,7 +915,7 @@ func TestStreamShard(t *testing.T) {
 			overrides, err := validation.NewOverrides(*distributorLimits, nil)
 			require.NoError(t, err)
 
-			validator, err := NewValidator(overrides, nil)
+			validator, err := NewValidator(overrides, nil, storageconfig.SchemaConfig{})
 			require.NoError(t, err)
 
 			d := Distributor{
@@ -958,7 +959,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 	overrides, err := validation.NewOverrides(*distributorLimits, nil)
 	require.NoError(t, err)
 
-	validator, err := NewValidator(overrides, nil)
+	validator, err := NewValidator(overrides, nil, storageconfig.SchemaConfig{})
 	require.NoError(t, err)
 
 	t.Run("it generates 4 shards across 2 calls when calculated shards = 2 * entries per call", func(t *testing.T) {
@@ -1287,7 +1288,7 @@ func BenchmarkShardStream(b *testing.B) {
 	overrides, err := validation.NewOverrides(*distributorLimits, nil)
 	require.NoError(b, err)
 
-	validator, err := NewValidator(overrides, nil)
+	validator, err := NewValidator(overrides, nil, storageconfig.SchemaConfig{})
 	require.NoError(b, err)
 
 	distributorBuilder := func(shards int) *Distributor {
@@ -1350,7 +1351,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	d := distributors[0]
 	request := makeWriteRequest(10, 10)
 	streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
-	vCtx := d.validator.getValidationContextForTime(testTime, "123")
+	vCtx := d.validator.getValidationContextForTime(context.Background(), testTime, "123")
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
@@ -1391,7 +1392,7 @@ func TestParseStreamLabels(t *testing.T) {
 		distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 		d := distributors[0]
 
-		vCtx := d.validator.getValidationContextForTime(testTime, "123")
+		vCtx := d.validator.getValidationContextForTime(context.Background(), testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
 			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, logproto.Stream{
@@ -2004,7 +2005,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
 		limitsFrontendCfg := limits_frontend_client.Config{}
 
-		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, nil, log.NewNopLogger())
+		d, err := New(distributorConfig, storageconfig.SchemaConfig{}, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d

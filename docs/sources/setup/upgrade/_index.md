@@ -50,6 +50,34 @@ Before configuring any v14 period, upgrade all components to a version that can
 read the v14 index format. Rolling back after v14 data has been written requires
 stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
 
+#### Ingestion-time retention and the `X-Loki-Backfill` header
+
+With schema v14, retention is measured from each chunk's latest ingestion
+timestamp rather than its log timestamp. A chunk-level timestamp is used, so a
+chunk that receives multiple appends is retained until the latest append is past
+the configured retention period. Unflushed chunks recovered from a checkpoint are
+stamped with the recovery time because their original unflushed ingestion time is
+not present in the checkpoint.
+
+Clients that intentionally write old data can set the `X-Loki-Backfill: true`
+header on `/loki/api/v1/push` to relax the write-path age gates
+(`reject_old_samples` and the ingester too-far-behind cut) for entries that land
+in a v14 period. The period is selected from the log entry timestamp, not from
+the ingestion time. Rate limits are still enforced.
+
+The header is ignored for entries that resolve to a v13 (or older) period, so it
+is safe to send against a v13 deployment. Backfilling archived data whose log
+timestamps predate the v14 schema period requires a target schema configuration
+where v14 covers those timestamps. Otherwise Loki rejects the backfill according
+to the normal age gates; if operators bypass those gates by other means, retention
+for those pre-v14 entries falls back to log time because the index cannot persist
+`IngestedAt`.
+
+`X-Loki-Backfill` is an internal trust boundary: it is honored from any client
+that can reach the push endpoint, and gateway/public authorization for it is out
+of scope. Operators who do not want callers relaxing age gates should not expose
+it through their gateway.
+
 ### Breaking change: Removal of various configuration options
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.

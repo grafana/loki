@@ -79,3 +79,18 @@ func TestExtractHTTPHeaderFromGRPCRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestBackfillHeaderGRPCRoundTrip(t *testing.T) {
+	ctx := httpreq.InjectHeader(context.Background(), httpreq.LokiBackfillHeader, httpreq.LokiBackfillHeaderValue)
+	ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
+
+	ctx = injectHTTPHeadersIntoGRPCRequest(ctx)
+	md, ok := metadata.FromOutgoingContext(ctx)
+	require.True(t, ok)
+	require.Equal(t, []string{httpreq.LokiBackfillHeaderValue}, md.Get(httpreq.LokiBackfillHeader))
+	require.Equal(t, []string{"true"}, md.Get(httpreq.LokiDisablePipelineWrappersHeader))
+
+	srvCtx := extractHTTPHeadersFromGRPCRequest(metadata.NewIncomingContext(context.Background(), md))
+	require.Equal(t, httpreq.LokiBackfillHeaderValue, httpreq.ExtractHeader(srvCtx, httpreq.LokiBackfillHeader))
+	require.Equal(t, "true", httpreq.ExtractHeader(srvCtx, httpreq.LokiDisablePipelineWrappersHeader))
+}

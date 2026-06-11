@@ -9,10 +9,14 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -23,13 +27,14 @@ const (
 type Validator struct {
 	Limits
 	usageTracker push.UsageTracker
+	schemaConfig config.SchemaConfig
 }
 
-func NewValidator(l Limits, t push.UsageTracker) (*Validator, error) {
+func NewValidator(l Limits, t push.UsageTracker, schemaConfig config.SchemaConfig) (*Validator, error) {
 	if l == nil {
 		return nil, errors.New("nil Limits")
 	}
-	return &Validator{l, t}, nil
+	return &Validator{l, t, schemaConfig}, nil
 }
 
 type validationContext struct {
@@ -60,12 +65,15 @@ type validationContext struct {
 	blockIngestionStatusCode int
 	enforcedLabels           []string
 
+	backfill bool
+
 	userID string
 }
 
-func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {
+func (v Validator) getValidationContextForTime(ctx context.Context, now time.Time, userID string) validationContext {
 	return validationContext{
 		userID:                        userID,
+		backfill:                      httpreq.ExtractHeader(ctx, httpreq.LokiBackfillHeader) == httpreq.LokiBackfillHeaderValue,
 		rejectOldSample:               v.RejectOldSamples(userID),
 		rejectOldSampleMaxAge:         now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
 		creationGracePeriod:           now.Add(v.CreationGracePeriod(userID)).UnixNano(),
@@ -98,7 +106,9 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 	structuredMetadataSizeBytes := util.StructuredMetadataSize(entry.StructuredMetadata)
 	entrySize := float64(len(entry.Line) + structuredMetadataSizeBytes)
 
-	if vCtx.rejectOldSample && ts < vCtx.rejectOldSampleMaxAge {
+	// The backfill header is ignored for periods that cannot persist IngestedAt.
+	if vCtx.rejectOldSample && ts < vCtx.rejectOldSampleMaxAge &&
+		!(vCtx.backfill && v.schemaConfig.SupportsIngestedAtForTime(model.TimeFromUnixNano(ts))) {
 		// Makes time string on the error message formatted consistently.
 		formatedEntryTime := entry.Timestamp.Format(timeFormat)
 		formatedRejectMaxAgeTime := time.Unix(0, vCtx.rejectOldSampleMaxAge).Format(timeFormat)

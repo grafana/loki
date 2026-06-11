@@ -22,6 +22,7 @@ func TestStreamsMap(t *testing.T) {
 		newStream(
 			chunkfmt,
 			headfmt,
+			false,
 			defaultConfig(),
 			limiter.rateLimitStrategy,
 			"fake",
@@ -37,6 +38,7 @@ func TestStreamsMap(t *testing.T) {
 		newStream(
 			chunkfmt,
 			headfmt,
+			false,
 			defaultConfig(),
 			limiter.rateLimitStrategy,
 			"fake",

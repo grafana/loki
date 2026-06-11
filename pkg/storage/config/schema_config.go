@@ -429,6 +429,13 @@ func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 	}
 }
 
+// SupportsIngestedAt reports whether chunks written under this period's schema
+// persist the per-chunk ingestion timestamp.
+func (cfg *PeriodConfig) SupportsIngestedAt() bool {
+	format, err := cfg.TSDBFormat()
+	return err == nil && format >= index.FormatV4
+}
+
 // Validate the period config.
 func (cfg PeriodConfig) validate() error {
 	if cfg.IndexType == types.IndexTypeTSDB && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
@@ -704,6 +711,16 @@ func (cfg SchemaConfig) SchemaForTime(t model.Time) (PeriodConfig, error) {
 		}
 	}
 	return PeriodConfig{}, fmt.Errorf("no schema config found for time %v", t)
+}
+
+// SupportsIngestedAtForTime reports whether the schema period active at time t
+// persists the per-chunk ingestion timestamp.
+func (cfg SchemaConfig) SupportsIngestedAtForTime(t model.Time) bool {
+	p, err := cfg.SchemaForTime(t)
+	if err != nil {
+		return false
+	}
+	return p.SupportsIngestedAt()
 }
 
 // TableFor calculates the table shard for a given point in time.

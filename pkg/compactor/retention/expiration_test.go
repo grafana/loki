@@ -106,7 +106,7 @@ func Test_expirationChecker_Expired(t *testing.T) {
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
 
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -126,6 +126,49 @@ func Test_expirationChecker_Expired(t *testing.T) {
 			actual, nonDeletedIntervalFilters := e.Expired([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), nil, "", model.Now())
 			require.Equal(t, tt.want, actual)
 			require.Nil(t, nonDeletedIntervalFilters)
+		})
+	}
+}
+
+func Test_expirationChecker_Expired_UsesIngestedAt(t *testing.T) {
+	d := defaultLimitsTestConfig()
+	d.RetentionPeriod = model.Duration(time.Hour)
+	o, err := overridesTestConfig(d, fakeOverrides{})
+	require.NoError(t, err)
+	e := NewExpirationChecker(o, nil)
+
+	now := model.Now()
+	tests := []struct {
+		name  string
+		chunk Chunk
+		want  bool
+	}{
+		{
+			name:  "zero IngestedAt falls back to Through (expired)",
+			chunk: Chunk{From: now.Add(-3 * time.Hour), Through: now.Add(-2 * time.Hour)},
+			want:  true,
+		},
+		{
+			name:  "zero IngestedAt falls back to Through (not expired)",
+			chunk: Chunk{From: now.Add(-3 * time.Hour), Through: now.Add(-30 * time.Minute)},
+			want:  false,
+		},
+		{
+			name:  "old Through but recent IngestedAt is retained",
+			chunk: Chunk{From: now.Add(-72 * time.Hour), Through: now.Add(-48 * time.Hour), IngestedAt: now.Add(-30 * time.Minute)},
+			want:  false,
+		},
+		{
+			name:  "old IngestedAt expires even if Through were recent",
+			chunk: Chunk{From: now.Add(-3 * time.Hour), Through: now.Add(-1 * time.Minute), IngestedAt: now.Add(-2 * time.Hour)},
+			want:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual, filterFn := e.Expired([]byte("1"), tt.chunk, mustParseLabels(`{foo="buzz"}`), nil, "", now)
+			require.Equal(t, tt.want, actual)
+			require.Nil(t, filterFn)
 		})
 	}
 }
@@ -183,7 +226,7 @@ func Test_expirationChecker_Expired_zeroValue(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -231,7 +274,7 @@ func Test_expirationChecker_Expired_zeroValueOverride(t *testing.T) {
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
 
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 	tests := []struct {
 		name   string
 		userID string
@@ -267,10 +310,11 @@ func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 
-	chunkFrom := model.Now().Add(-3 * time.Hour)
-	chunkThrough := model.Now().Add(-2 * time.Hour)
+	now := model.Now()
+	chunkFrom := now.Add(-3 * time.Hour)
+	chunkThrough := now.Add(-2 * time.Hour)
 	tests := []struct {
 		name         string
 		userID       string
@@ -279,13 +323,15 @@ func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
 		tableEndTime model.Time
 		want         bool
 	}{
-		{"tenant with no override should not delete", "1", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-48 * time.Hour), false},
-		{"tenant with override tableEndTime within retention period should not delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-1 * time.Hour), false},
-		{"tenant with override should delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-48 * time.Hour), true},
+		{"tenant with no override should not delete", "1", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, now.Add(-48 * time.Hour), false},
+		{"tenant with override tableEndTime within retention period should not delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, now.Add(-1 * time.Hour), false},
+		{"tenant with override should delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, now.Add(-48 * time.Hour), true},
+		{"tenant with override old tableEndTime but recent IngestedAt should not delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough, IngestedAt: now.Add(-1 * time.Hour)}, now.Add(-48 * time.Hour), false},
+		{"tenant with override expired IngestedAt should delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough, IngestedAt: now.Add(-48 * time.Hour)}, now.Add(-1 * time.Hour), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual := e.DropFromIndex([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), tt.tableEndTime, model.Now())
+			actual := e.DropFromIndex([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), tt.tableEndTime, now)
 			require.Equal(t, tt.want, actual)
 		})
 	}
@@ -306,7 +352,7 @@ func Test_expirationChecker_CanSkipSeries(t *testing.T) {
 	}
 	o, err := overridesTestConfig(d, f)
 	require.NoError(t, err)
-	e := NewExpirationChecker(o)
+	e := NewExpirationChecker(o, nil)
 
 	tests := []struct {
 		name        string

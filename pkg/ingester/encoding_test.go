@@ -110,6 +110,17 @@ func Test_EncodingChunks(t *testing.T) {
 					require.Nil(t, err)
 					matched.chunk = nil
 
+					// Unflushed chunks are re-stamped with a recovery-time
+					// lastIngestedAt (their ingestion timestamp); flushed chunks are
+					// not. Normalize the non-deterministic value before the
+					// structural comparison.
+					if matched.flushed.IsZero() {
+						require.False(t, to.lastIngestedAt.IsZero(), "unflushed recovered chunk should stamp lastIngestedAt")
+					} else {
+						require.True(t, to.lastIngestedAt.IsZero(), "flushed recovered chunk should not restamp lastIngestedAt")
+					}
+					to.lastIngestedAt = time.Time{}
+
 					require.Equal(t, exp, enc)
 					require.Equal(t, matched, to)
 
