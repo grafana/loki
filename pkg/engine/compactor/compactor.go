@@ -86,8 +86,8 @@ func New(params PlannerParams) (*Planner, error) {
 }
 
 // Scheduler returns the embedded compactor Scheduler. Used by the Loki
-// module-init wiring to register the scheduler's HTTP handler on the
-// Loki router (when running in remote-transport mode) and to register
+// module-init wiring to register the scheduler's WireService on the
+// Loki gRPC server (when running in remote-transport mode) and to register
 // scheduler metrics.
 func (c *Planner) Scheduler() *Scheduler {
 	return c.scheduler
@@ -98,7 +98,7 @@ func (c *Planner) Scheduler() *Scheduler {
 func (c *Planner) starting(ctx context.Context) error {
 	level.Info(c.logger).Log(
 		"msg", "starting dataobj compaction planner",
-		"scheduler_endpoint", c.cfg.Scheduler.Endpoint,
+		"scheduler_advertise_addr", c.cfg.Scheduler.AdvertiseAddr,
 	)
 
 	if err := services.StartAndAwaitRunning(ctx, c.scheduler.Service()); err != nil {

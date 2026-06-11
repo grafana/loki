@@ -80,10 +80,6 @@ type Config struct {
 	// If NumThreads is set to 0, NumThreads defaults to [runtime.GOMAXPROCS].
 	NumThreads int
 
-	// Absolute path of the endpoint where the frame handler is registered.
-	// Used for connecting to scheduler and other workers.
-	Endpoint string
-
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`

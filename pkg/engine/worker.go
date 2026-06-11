@@ -4,20 +4,20 @@ import (
 	"flag"
 	"fmt"
 	"net"
-	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -56,10 +56,6 @@ type WorkerParams struct {
 	// If nil, the worker only listens for in-process connections.
 	AdvertiseAddr net.Addr
 
-	// Absolute path of the endpoint where the frame handler is registered.
-	// Used for connecting to scheduler and other workers.
-	Endpoint string
-
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer
@@ -83,8 +79,7 @@ type Worker struct {
 	// Our public API is a lightweight wrapper around the internal API.
 
 	inner    *worker.Worker
-	endpoint string
-	handler  http.Handler
+	listener wire.Listener
 }
 
 // NewWorker creates a new Worker instance. Use [Worker.Service] to manage the
@@ -99,13 +94,8 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		params.Config.SchedulerLookupInterval = time.Second
 	}
 
-	if params.Endpoint == "" {
-		params.Endpoint = "/api/v2/frame"
-	}
-
 	var (
 		listener wire.Listener
-		handler  http.Handler
 		dialer   wire.Dialer
 
 		// localSchedulerAddress is the local scheduler to connect to. Left nil
@@ -115,12 +105,12 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 
 	switch {
 	case params.AdvertiseAddr != nil:
-		remoteListener := wire.NewHTTP2Listener(
+		remoteListener := wire.NewGRPCListener(
 			params.AdvertiseAddr,
-			wire.WithHTTP2ListenerLogger(params.Logger),
+			wire.WithGRPCListenerLogger(params.Logger),
 		)
-		listener, handler = remoteListener, remoteListener
-		dialer = wire.NewHTTP2Dialer(params.Endpoint)
+		listener = remoteListener
+		dialer = wire.NewGRPCDialer()
 
 	case params.LocalScheduler != nil:
 		localListener := &wire.Local{Address: wire.LocalWorker}
@@ -159,8 +149,6 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		PrefetchBytes: int64(params.Executor.PrefetchBytes),
 		NumThreads:    params.Config.WorkerThreads,
 
-		Endpoint: params.Endpoint,
-
 		StreamFilterer: params.StreamFilterer,
 		TaskCaches:     taskCaches,
 		ScratchStore:   params.ScratchStore,
@@ -174,20 +162,20 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 
 	return &Worker{
 		inner:    inner,
-		endpoint: params.Endpoint,
-		handler:  handler,
+		listener: listener,
 	}, nil
 }
 
-// RegisterWorkerServer registers the [wire.Listener] of the inner worker as
-// http.Handler on the provided router.
+// RegisterWorkerServer registers the [wire.GRPCListener] of the inner worker
+// on the provided gRPC server.
 //
 // RegisterWorkerServer is a no-op if an advertise address is not provided.
-func (w *Worker) RegisterWorkerServer(router *mux.Router) {
-	if w.handler == nil {
+func (w *Worker) RegisterWorkerServer(srv *grpc.Server) {
+	grpcLis, ok := w.listener.(*wire.GRPCListener)
+	if !ok {
 		return
 	}
-	router.Path(w.endpoint).Methods("POST").Handler(w.handler)
+	wirepb.RegisterWireServiceServer(srv, grpcLis)
 }
 
 // Service returns the service used to manage the lifecycle of the Worker.

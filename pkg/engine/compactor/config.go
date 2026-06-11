@@ -56,9 +56,9 @@ type Config struct {
 	// Uint32Var.
 	PlanVersion uint `yaml:"plan_version"`
 
-	// Scheduler holds the scheduler-side knobs: advertise_addr and
-	// endpoint for the embedded engine.Scheduler instance. See
-	// pkg/engine/scheduler.go for the underlying SchedulerParams.
+	// Scheduler holds the scheduler-side knobs: advertise_addr for the
+	// embedded engine.Scheduler instance. See pkg/engine/scheduler.go for the
+	// underlying SchedulerParams.
 	Scheduler SchedulerConfig `yaml:"scheduler"`
 
 	// Worker holds the worker-side knobs for the dataobj-compaction-worker
@@ -78,14 +78,8 @@ type Config struct {
 type SchedulerConfig struct {
 	// AdvertiseAddr is the host:port the embedded scheduler advertises to
 	// remote workers. Empty string keeps the scheduler in-process-only
-	// (no HTTP listener registered).
+	// (no gRPC service registered).
 	AdvertiseAddr string `yaml:"advertise_addr"`
-
-	// Endpoint is the absolute path on the Loki HTTP router where the
-	// embedded scheduler listens for worker frame traffic. Defaults to
-	// "/api/v2/compaction-frame" so it never collides with the
-	// query-engine scheduler at "/api/v2/frame".
-	Endpoint string `yaml:"endpoint"`
 }
 
 // WorkerConfig holds the worker-side parameters that get passed to
@@ -107,7 +101,7 @@ type WorkerConfig struct {
 	// initializes (enforced in NewWorker, not in Config.Validate, so
 	// planner-only deployments validate cleanly with the default empty
 	// value).
-	// Example: dnssrv+_compaction-frame._tcp.compactor-scheduler.svc.cluster.local
+	// Example: dnssrv+_grpc._tcp.compactor-scheduler.svc.cluster.local
 	SchedulerLookupAddress string `yaml:"scheduler_lookup_address"`
 
 	// SchedulerLookupInterval is how often the worker re-runs the DNS-SRV
@@ -120,19 +114,12 @@ type WorkerConfig struct {
 	// uses no LocalScheduler, and engine.NewWorker requires one of
 	// AdvertiseAddr or LocalScheduler to be set.
 	AdvertiseAddr string `yaml:"advertise_addr"`
-
-	// Endpoint is the absolute path on the worker's HTTP router where the
-	// wire frame handler is registered. Defaults to
-	// "/api/v2/compaction-frame" so it never collides with the
-	// query-engine worker at "/api/v2/frame".
-	Endpoint string `yaml:"endpoint"`
 }
 
 // Default values intentionally chosen conservative for the scaffold; the
 // real values get tuned alongside the coordinator in a follow-up change.
 const (
 	defaultMaxRunningCompactionTasks = 16
-	defaultEndpoint                  = "/api/v2/compaction-frame"
 
 	defaultPollingInterval       = 5 * time.Minute
 	defaultMaxRunsPerTask        = 8
@@ -166,8 +153,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Plan version hashed into IndexMerge output paths. Bump to invalidate previously-written outputs after a planner-algorithm change.")
 	f.StringVar(&cfg.Scheduler.AdvertiseAddr, prefix+"scheduler.advertise-addr", "",
 		"Experimental: host:port the embedded compaction scheduler advertises to compaction workers. Empty string keeps the scheduler in-process-only.")
-	f.StringVar(&cfg.Scheduler.Endpoint, prefix+"scheduler.endpoint", defaultEndpoint,
-		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
 
 	_ = cfg.IndexobjBuilder.TargetPageSize.Set("2KB")
@@ -184,13 +169,11 @@ func (cfg *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 	f.IntVar(&cfg.WorkerThreads, prefix+"worker-threads", 0,
 		"Experimental: Number of task-execution threads. 0 uses GOMAXPROCS.")
 	f.StringVar(&cfg.SchedulerLookupAddress, prefix+"scheduler-lookup-address", "",
-		"Experimental: DNS-SRV address used to discover compaction schedulers. Required when -target=dataobj-compaction-worker. Example: dnssrv+_compaction-frame._tcp.compactor-scheduler.svc.cluster.local")
+		"Experimental: DNS-SRV address used to discover compaction schedulers. Required when -target=dataobj-compaction-worker. Example: dnssrv+_grpc._tcp.compactor-scheduler.svc.cluster.local")
 	f.DurationVar(&cfg.SchedulerLookupInterval, prefix+"scheduler-lookup-interval", 10*time.Second,
 		"Experimental: Interval at which to re-run the DNS-SRV lookup.")
 	f.StringVar(&cfg.AdvertiseAddr, prefix+"advertise-addr", "",
 		"Experimental: host:port the embedded compaction worker advertises to schedulers. Required when -target=dataobj-compaction-worker.")
-	f.StringVar(&cfg.Endpoint, prefix+"endpoint", defaultEndpoint,
-		"Experimental: HTTP path the embedded compaction worker registers its frame handler on.")
 }
 
 // Validate returns nil while the compaction planner is disabled.
@@ -201,9 +184,6 @@ func (cfg *Config) Validate() error {
 
 	if cfg.MaxRunningCompactionTasks < 0 {
 		return errInvalidMaxRunningCompactionTasks
-	}
-	if cfg.Scheduler.Endpoint == "" {
-		return errEmptySchedulerEndpoint
 	}
 	if cfg.PollingInterval <= 0 {
 		return errInvalidPollingInterval
@@ -225,7 +205,6 @@ func (cfg *Config) Validate() error {
 // them with errors.Is.
 var (
 	errInvalidMaxRunningCompactionTasks = errors.New("dataobj.compaction.max_running_compaction_tasks must be >= 0")
-	errEmptySchedulerEndpoint           = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
 	errInvalidPollingInterval           = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
 	errInvalidToCConsolidateTimeout     = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
 	errInvalidMaxRunsPerTask            = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")

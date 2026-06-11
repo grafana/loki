@@ -26,7 +26,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
-	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 )
 
 var (
@@ -105,7 +104,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		} else if err := services.StartAndAwaitRunning(ctx, schedSvc); err != nil {
 			return nil, fmt.Errorf("starting scheduler service: %w", err)
 		}
-		schedAdvertiseAddr = schedSrv.HTTPListenAddr()
+		schedAdvertiseAddr = schedSrv.GRPCListenAddr()
 	}
 
 	sched, err := engine.NewScheduler(engine.SchedulerParams{
@@ -126,7 +125,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		} else if err := services.StartAndAwaitRunning(ctx, workerSvc); err != nil {
 			return nil, fmt.Errorf("starting worker service: %w", err)
 		}
-		workerAdvertiseAddr = workerSrv.HTTPListenAddr()
+		workerAdvertiseAddr = workerSrv.GRPCListenAddr()
 		schedLookupAddr = schedAdvertiseAddr.String()
 	}
 
@@ -160,8 +159,8 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	}
 
 	if *remoteTransport {
-		sched.RegisterSchedulerServer(schedSrv.HTTP)
-		worker.RegisterWorkerServer(workerSrv.HTTP)
+		sched.RegisterSchedulerServer(schedSrv.GRPC)
+		worker.RegisterWorkerServer(workerSrv.GRPC)
 	}
 
 	newEngine, err := engine.New(engine.Params{
@@ -193,6 +192,9 @@ func newServerService(name string, logger log.Logger, registerer prometheus.Regi
 		HTTPListenNetwork: "tcp",
 		HTTPListenAddress: "localhost",
 		HTTPListenPort:    0,
+		GRPCListenNetwork: "tcp",
+		GRPCListenAddress: "localhost",
+		GRPCListenPort:    0,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -220,9 +222,6 @@ func newServerService(name string, logger log.Logger, registerer prometheus.Regi
 			return nil
 		},
 	)
-
-	// Enable HTTP/2
-	serverutil.EnableUnencryptedHTTP2(serv.HTTPServer)
 
 	return serv, svc, nil
 }

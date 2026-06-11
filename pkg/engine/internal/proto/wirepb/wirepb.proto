@@ -273,3 +273,13 @@ enum StreamState {
   STREAM_STATE_BLOCKED = 3; // Stream blocked by backpressure.
   STREAM_STATE_CLOSED = 4; // Stream closed, no longer transmitting.
 }
+
+// WireService provides the bidirectional streaming transport between
+// scheduler peers (scheduler ↔ worker, worker ↔ worker).
+//
+// Callers MUST set the "wire-peer-addr" metadata key to their own
+// advertise address (host:port) so the server can establish the
+// logical RemoteAddr of the resulting Conn.
+service WireService {
+  rpc Pipe(stream Frame) returns (stream Frame);
+}

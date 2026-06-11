@@ -9,8 +9,7 @@ import (
 
 // TestConfig_ValidateRejectsBadValues verifies that each new coordinator-loop
 // knob is validated when Enabled is true. The pre-existing
-// MaxRunningCompactionTasks and Scheduler.Endpoint validations are exercised
-// in compactor_test.go.
+// MaxRunningCompactionTasks validation is exercised in compactor_test.go.
 func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -27,8 +26,7 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var cfg Config
 			cfg.RegisterFlags(flag.NewFlagSet("test", flag.ContinueOnError))
-			cfg.Enabled = true                       // validation is gated on Enabled
-			cfg.Scheduler.Endpoint = defaultEndpoint // satisfy existing scheduler-endpoint check
+			cfg.Enabled = true // validation is gated on Enabled
 			tc.mutate(&cfg)
 			err := cfg.Validate()
 			require.ErrorIs(t, err, tc.wantErr)

@@ -51,6 +51,32 @@ The legacy Prometheus-compatible `/api/prom` endpoints that were deprecated in L
 
 You must migrate any clients, dashboards, or automation that still use these endpoints to their `/loki/api/v1/` equivalents before upgrading. Requests to the removed endpoints will result in `404` errors.
 
+### Breaking change: Dataobj query-engine and compaction transport switched from HTTP/2 to gRPC
+
+The experimental dataobj query-engine (scheduler ↔ worker) and the dataobj compaction transport have been migrated from a custom HTTP/2 bidirectional transport to a standard gRPC bidi-streaming service (`WireService`).
+
+**Action required for operators running `dataobj-compaction-planner`, `dataobj-compaction-worker`, or a multi-component dataobj query-engine deployment:**
+
+1. **Removed HTTP routes** – The following HTTP paths no longer exist and must be removed from any ingress rules, firewalls, or health checks:
+   - `POST /api/v2/frame` (query-engine frame transport)
+   - `POST /api/v2/compaction-frame` (compaction frame transport)
+
+2. **Advertise address must target the gRPC port** – `advertise_addr` for both schedulers and workers must now resolve to the gRPC listen port (default **9095**), not the HTTP port (default 3100). Update `-dataobj.compaction.scheduler.advertise-addr` and `-dataobj.compaction.worker.advertise-addr` accordingly.
+
+   The same applies to distributed query-engine deployments (`-query-engine.distributed=true`). The scheduler and worker now derive their advertise address from the gRPC listen port (default **9095**), not the HTTP port, so ensure that port is the one reachable between the query-engine scheduler and workers.
+
+3. **Raise gRPC message-size limits** – The WireService streams raw engine frames that can exceed the default 4 MiB gRPC limit. Both limits must be raised to at least **256 MiB** on every node participating in the dataobj engine:
+   ```yaml
+   server:
+     grpc_server_max_recv_msg_size: 268435456  # 256 MiB
+     grpc_server_max_send_msg_size: 268435456  # 256 MiB
+   ```
+   Or via flags: `-server.grpc-max-recv-msg-size-bytes=268435456 -server.grpc-max-send-msg-size-bytes=268435456`
+
+4. **Removed configuration flags** – The following flags have been removed:
+   - `-dataobj.compaction.scheduler.endpoint`
+   - `-dataobj.compaction.worker.endpoint`
+
 ### Breaking change: Removal of various configuration options
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.

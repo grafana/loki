@@ -1,13 +1,10 @@
 package wire
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/oklog/ulid/v2"
 
@@ -25,97 +22,12 @@ var DefaultFrameCodec = &protobufCodec{
 }
 
 // protobufCodec implements a protobuf-based codec for frames.
-// Messages are length-prefixed: [uvarint length][protobuf payload]
+// It converts between wire.Frame values and their wirepb.Frame protobuf
+// representations using frameToPbFrame / frameFromPbFrame.  The former
+// length-prefix I/O layer (EncodeTo / DecodeFrom) has been removed; framing
+// is now handled by the gRPC transport layer.
 type protobufCodec struct {
 	*arrowcodec.ArrowCodec
-}
-
-// byteReaderAdapter adapts an io.Reader to io.ByteReader without buffering.
-// This is used to read uvarint length prefixes byte-by-byte without
-// consuming extra data that might be needed for subsequent reads.
-type byteReaderAdapter struct {
-	r io.Reader
-}
-
-func (br *byteReaderAdapter) ReadByte() (byte, error) {
-	var b [1]byte
-	_, err := io.ReadFull(br.r, b[:])
-	return b[0], err
-}
-
-// EncodeTo encodes a frame as protobuf and writes it to the writer.
-// Format: [uvarint length][protobuf payload]
-func (c *protobufCodec) EncodeTo(w io.Writer, frame Frame) error {
-	// Convert wire.Frame to protobuf
-	pbFrame, err := c.frameToPbFrame(frame)
-	if err != nil {
-		panic(fmt.Errorf("failed to convert frame to protobuf: %w", err))
-	}
-
-	// Marshal to bytes
-	data, err := proto.Marshal(pbFrame)
-	if err != nil {
-		panic(fmt.Errorf("failed to marshal protobuf: %w", err))
-	}
-
-	// Write length prefix (uvarint)
-	length := uint64(len(data))
-	buf := make([]byte, binary.MaxVarintLen64)
-	n := binary.PutUvarint(buf, length)
-	if _, err := w.Write(buf[:n]); err != nil {
-		return fmt.Errorf("failed to write length prefix: %w", err)
-	}
-
-	// Write payload
-	written, err := w.Write(data)
-	if err != nil {
-		return fmt.Errorf("failed to write payload: %w", err)
-	}
-	if written != len(data) {
-		return fmt.Errorf("incomplete write: wrote %d bytes, expected %d", written, len(data))
-	}
-
-	return nil
-}
-
-// DecodeFrom reads and decodes a frame from the bound reader.
-// Format: [uvarint length][protobuf payload]
-func (c *protobufCodec) DecodeFrom(r io.Reader) (Frame, error) {
-	// Read length prefix (uvarint)
-	// binary.ReadUvarint requires a ByteReader, so we wrap if needed
-	byteReader, ok := r.(io.ByteReader)
-	if !ok {
-		byteReader = &byteReaderAdapter{r: r}
-	}
-
-	length, err := binary.ReadUvarint(byteReader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read length prefix: %w", err)
-	}
-
-	// Read payload
-	data := make([]byte, length)
-	n, err := io.ReadFull(r, data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read payload: %w", err)
-	}
-	if uint64(n) != length {
-		return nil, fmt.Errorf("incomplete read: read %d bytes, expected %d", n, length)
-	}
-
-	// Unmarshal protobuf
-	pbFrame := &wirepb.Frame{}
-	if err := proto.Unmarshal(data, pbFrame); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal protobuf: %w", err)
-	}
-
-	// Convert protobuf to wire.Frame
-	frame, err := c.frameFromPbFrame(pbFrame)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert protobuf to frame: %w", err)
-	}
-
-	return frame, nil
 }
 
 func (c *protobufCodec) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {

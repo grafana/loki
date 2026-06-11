@@ -2,7 +2,6 @@ package compactor
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"testing"
 	"time"
@@ -22,7 +21,6 @@ func TestPlanner_BootShutdown(t *testing.T) {
 	cfg := Config{
 		Enabled: true,
 		Scheduler: SchedulerConfig{
-			Endpoint: defaultEndpoint,
 			// AdvertiseAddr left empty -> scheduler runs in-process only.
 		},
 		PollingInterval:           defaultPollingInterval,
@@ -72,21 +70,10 @@ func TestConfig_Validate_EnabledRejectsBadValues(t *testing.T) {
 		cfg := Config{
 			Enabled:                   true,
 			MaxRunningCompactionTasks: -1,
-			Scheduler:                 SchedulerConfig{Endpoint: defaultEndpoint},
 		}
 		err := cfg.Validate()
 		require.Error(t, err)
 		require.ErrorIs(t, err, errInvalidMaxRunningCompactionTasks)
-	})
-
-	t.Run("empty scheduler endpoint", func(t *testing.T) {
-		cfg := Config{
-			Enabled:   true,
-			Scheduler: SchedulerConfig{Endpoint: ""},
-		}
-		err := cfg.Validate()
-		require.Error(t, err)
-		require.True(t, errors.Is(err, errEmptySchedulerEndpoint))
 	})
 
 	t.Run("happy path", func(t *testing.T) {
@@ -105,7 +92,6 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 		Enabled: true,
 		Scheduler: SchedulerConfig{
 			AdvertiseAddr: "not-a-valid-host:port:::",
-			Endpoint:      defaultEndpoint,
 		},
 	}
 	bucket := objstore.NewInMemBucket()

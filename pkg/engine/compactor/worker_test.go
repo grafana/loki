@@ -25,7 +25,6 @@ func validWorkerCfg() WorkerConfig {
 		SchedulerLookupAddress:  "127.0.0.1:65535",
 		SchedulerLookupInterval: time.Second,
 		AdvertiseAddr:           "127.0.0.1:0",
-		Endpoint:                defaultEndpoint,
 	}
 }
 
@@ -110,25 +109,6 @@ func TestNewWorker_RequiresAdvertiseAddr(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "advertise_addr",
-		"error must name the missing field for operator clarity, got: %v", err)
-}
-
-// TestNewWorker_RequiresEndpoint pins the worker-side precondition that
-// Endpoint must be non-empty. Empty Endpoint would otherwise silently
-// fall through to engine.NewWorker's default ("/api/v2/frame") which
-// collides with the query-engine worker's path.
-func TestNewWorker_RequiresEndpoint(t *testing.T) {
-	cfg := validWorkerCfg()
-	cfg.Endpoint = ""
-	_, err := NewWorker(WorkerParams{
-		Config:       cfg,
-		Bucket:       objstore.NewInMemBucket(),
-		ScratchStore: scratch.NewMemory(),
-		Logger:       log.NewNopLogger(),
-		Registerer:   prometheus.NewRegistry(),
-	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "endpoint",
 		"error must name the missing field for operator clarity, got: %v", err)
 }
 

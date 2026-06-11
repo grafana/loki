@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -228,7 +227,7 @@ func doLocalQueryWithV1Engine(params logql.LiteralParams, bucketName string) (lo
 func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams, bucket objstore.Bucket) (logqlmodel.Result, error) {
 	ctx := user.InjectOrgID(context.Background(), orgID)
 
-	schedSrv, schedSvc, err := newServerService("scheduler", 3101, logger, prometheus.NewRegistry())
+	schedSrv, schedSvc, err := newServerService("scheduler", 3101, 3201, logger, prometheus.NewRegistry())
 	if err != nil {
 		return logqlmodel.Result{}, fmt.Errorf("failed to create scheduler server: %w", err)
 	} else if err := services.StartAndAwaitRunning(ctx, schedSvc); err != nil {
@@ -236,17 +235,17 @@ func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams, bucket 
 	}
 	sched, err := engine.NewScheduler(engine.SchedulerParams{
 		Logger:        glog.With(logger, "component", "scheduler"),
-		AdvertiseAddr: schedSrv.HTTPListenAddr(),
+		AdvertiseAddr: schedSrv.GRPCListenAddr(),
 	})
 	if err != nil {
 		return logqlmodel.Result{}, fmt.Errorf("creating scheduler: %w", err)
 	} else if err := services.StartAndAwaitRunning(ctx, sched.Service()); err != nil {
 		return logqlmodel.Result{}, fmt.Errorf("starting scheduler service: %w", err)
 	}
-	sched.RegisterSchedulerServer(schedSrv.HTTP)
+	sched.RegisterSchedulerServer(schedSrv.GRPC)
 
 	// worker
-	workerSrv, workerSvc, err := newServerService("worker", 3102, logger, prometheus.NewRegistry())
+	workerSrv, workerSvc, err := newServerService("worker", 3102, 3202, logger, prometheus.NewRegistry())
 	if err != nil {
 		return logqlmodel.Result{}, fmt.Errorf("failed to create worker server: %w", err)
 	} else if err := services.StartAndAwaitRunning(ctx, workerSvc); err != nil {
@@ -258,12 +257,12 @@ func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams, bucket 
 	workerLogger := glog.With(logger, "component", "worker")
 	worker, err := engine.NewWorker(engine.WorkerParams{
 		Logger:         workerLogger,
-		AdvertiseAddr:  workerSrv.HTTPListenAddr(),
+		AdvertiseAddr:  workerSrv.GRPCListenAddr(),
 		Bucket:         bucket,
 		Metastore:      metastore.NewObjectMetastore(bucket, msConfig, workerLogger, metastoreMetrics),
 		LocalScheduler: nil,
 		Config: engine.WorkerConfig{
-			SchedulerLookupAddress:  schedSrv.HTTPListenAddr().String(),
+			SchedulerLookupAddress:  schedSrv.GRPCListenAddr().String(),
 			SchedulerLookupInterval: time.Minute,
 			WorkerThreads:           64,
 		},
@@ -276,7 +275,7 @@ func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams, bucket 
 	} else if err := services.StartAndAwaitRunning(ctx, worker.Service()); err != nil {
 		return logqlmodel.Result{}, fmt.Errorf("starting worker service: %w", err)
 	}
-	worker.RegisterWorkerServer(workerSrv.HTTP)
+	worker.RegisterWorkerServer(workerSrv.GRPC)
 
 	engineLogger := glog.With(logger, "component", "engine")
 	e, err := engine.New(engine.Params{
@@ -298,7 +297,7 @@ func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams, bucket 
 	return e.Execute(ctx, params)
 }
 
-func newServerService(name string, httpPort int, logger glog.Logger, registerer prometheus.Registerer) (*server.Server, services.Service, error) {
+func newServerService(name string, httpPort, grpcPort int, logger glog.Logger, registerer prometheus.Registerer) (*server.Server, services.Service, error) {
 	logger = glog.With(logger, "component", "server", "server", name)
 	serv, err := server.New(server.Config{
 		Log:               logger,
@@ -306,6 +305,9 @@ func newServerService(name string, httpPort int, logger glog.Logger, registerer 
 		HTTPListenNetwork: "tcp",
 		HTTPListenAddress: "localhost",
 		HTTPListenPort:    httpPort,
+		GRPCListenNetwork: "tcp",
+		GRPCListenAddress: "localhost",
+		GRPCListenPort:    grpcPort,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -333,9 +335,6 @@ func newServerService(name string, httpPort int, logger glog.Logger, registerer 
 			return nil
 		},
 	)
-
-	// Enable HTTP/2
-	serverutil.EnableUnencryptedHTTP2(serv.HTTPServer)
 
 	return serv, svc, nil
 }

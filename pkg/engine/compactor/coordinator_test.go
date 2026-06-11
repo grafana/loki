@@ -92,7 +92,6 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 			ToCConsolidateTimeout:     30 * time.Second,
 			MaxRunningCompactionTasks: 4,
 			PlanVersion:               1,
-			Scheduler:                 SchedulerConfig{Endpoint: defaultEndpoint},
 		},
 		logger:          log.NewNopLogger(),
 		bucket:          bucket,

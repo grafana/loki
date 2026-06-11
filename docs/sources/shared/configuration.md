@@ -1639,11 +1639,6 @@ dataobj:
       # CLI flag: -dataobj.compaction.scheduler.advertise-addr
       [advertise_addr: <string> | default = ""]
 
-      # Experimental: HTTP path the embedded compaction scheduler listens on for
-      # worker frame traffic.
-      # CLI flag: -dataobj.compaction.scheduler.endpoint
-      [endpoint: <string> | default = "/api/v2/compaction-frame"]
-
     worker:
       # Experimental: Number of task-execution threads. 0 uses GOMAXPROCS.
       # CLI flag: -dataobj.compaction.worker.worker-threads
@@ -1651,7 +1646,7 @@ dataobj:
 
       # Experimental: DNS-SRV address used to discover compaction schedulers.
       # Required when -target=dataobj-compaction-worker. Example:
-      # dnssrv+_compaction-frame._tcp.compactor-scheduler.svc.cluster.local
+      # dnssrv+_grpc._tcp.compactor-scheduler.svc.cluster.local
       # CLI flag: -dataobj.compaction.worker.scheduler-lookup-address
       [scheduler_lookup_address: <string> | default = ""]
 
@@ -1663,11 +1658,6 @@ dataobj:
       # schedulers. Required when -target=dataobj-compaction-worker.
       # CLI flag: -dataobj.compaction.worker.advertise-addr
       [advertise_addr: <string> | default = ""]
-
-      # Experimental: HTTP path the embedded compaction worker registers its
-      # frame handler on.
-      # CLI flag: -dataobj.compaction.worker.endpoint
-      [endpoint: <string> | default = "/api/v2/compaction-frame"]
 
     indexobj_builder:
       # The target maximum amount of uncompressed data to hold in data pages

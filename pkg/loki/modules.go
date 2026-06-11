@@ -1392,7 +1392,7 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 
 	// Determine the advertise address. Results in nil if not running
 	// distributed execution.
-	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
+	listenPort := uint16(t.Cfg.Server.GRPCListenPort)
 	advertiseAddr, err := t.Cfg.QueryEngine.AdvertiseAddr(listenPort)
 	if err != nil {
 		return nil, err
@@ -1402,7 +1402,6 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 		Logger: log.With(util_log.Logger, "component", "query-engine-scheduler"),
 
 		AdvertiseAddr: advertiseAddr,
-		Endpoint:      "/api/v2/frame",
 	})
 	if err != nil {
 		return nil, err
@@ -1417,9 +1416,9 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 		func(_ services.State, _ error) { sched.UnregisterMetrics(prometheus.DefaultRegisterer) },
 	))
 
-	// Only register HTTP handler when running distributed query execution
+	// Only register gRPC service when running distributed query execution
 	if t.Cfg.QueryEngine.Distributed {
-		sched.RegisterSchedulerServer(t.Server.HTTP)
+		sched.RegisterSchedulerServer(t.Server.GRPC)
 	}
 
 	t.queryEngineV2Scheduler = sched
@@ -1433,7 +1432,7 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 
 	// Determine the advertise address. Results in nil if not running
 	// distributed execution.
-	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
+	listenPort := uint16(t.Cfg.Server.GRPCListenPort)
 	advertiseAddr, err := t.Cfg.QueryEngine.AdvertiseAddr(listenPort)
 	if err != nil {
 		return nil, err
@@ -1456,7 +1455,6 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		LocalScheduler: t.queryEngineV2Scheduler,
 
 		AdvertiseAddr: advertiseAddr,
-		Endpoint:      "/api/v2/frame",
 
 		Metastore: metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics),
 
@@ -1477,9 +1475,9 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		func(_ services.State, _ error) { worker.UnregisterMetrics(prometheus.DefaultRegisterer) },
 	))
 
-	// Only register HTTP handler when running distributed query execution
+	// Only register gRPC service when running distributed query execution
 	if t.Cfg.QueryEngine.Distributed {
-		worker.RegisterWorkerServer(t.Server.HTTP)
+		worker.RegisterWorkerServer(t.Server.GRPC)
 	}
 
 	return worker.Service(), nil
@@ -2401,11 +2399,11 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		func(_ services.State, _ error) { c.Scheduler().UnregisterMetrics(prometheus.DefaultRegisterer) },
 	))
 
-	// Only register the HTTP frame handler when the user provided an
-	// advertise address (i.e., remote-worker mode). In-process-only mode
-	// does not need a router registration.
+	// Only register the gRPC service when the user provided an advertise
+	// address (i.e., remote-worker mode). In-process-only mode does not
+	// need a service registration.
 	if t.Cfg.DataObj.Compaction.Scheduler.AdvertiseAddr != "" {
-		c.Scheduler().RegisterSchedulerServer(t.Server.HTTP)
+		c.Scheduler().RegisterSchedulerServer(t.Server.GRPC)
 	}
 
 	// Return the Compactor wrapper rather than c.Scheduler().Service():
@@ -2469,8 +2467,8 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	))
 
 	// AdvertiseAddr is required by NewWorker, so RegisterWorkerServer
-	// always installs a real handler here.
-	w.RegisterWorkerServer(t.Server.HTTP)
+	// always registers the gRPC service here.
+	w.RegisterWorkerServer(t.Server.GRPC)
 
 	t.dataObjCompactionWorker = w
 	return w.Service(), nil
