@@ -9,12 +9,14 @@ type Kind int
 const (
 	KindInvalid Kind = iota
 
-	KindArray // KindArray holds a single array.
+	KindArray   // KindArray holds a single array.
+	KindChunked // KindChunked holds a set of layout chunks.
 )
 
 var kindNames = [...]string{
 	KindInvalid: "invalid",
 	KindArray:   "array",
+	KindChunked: "chunked",
 }
 
 // String returns the string representation of k.

@@ -902,7 +902,7 @@ func (o *Overrides) TSDBMaxBytesPerShard(userID string) int {
 }
 
 // TSDBShardingStrategy returns the sharding strategy to use in query planning.
-func (o *Overrides) TSDBShardingStrategy(userID string) string {
+func (o *Overrides) TSDBShardingStrategy(_ context.Context, userID string) string {
 	return o.getOverridesForUser(userID).TSDBShardingStrategy
 }
 

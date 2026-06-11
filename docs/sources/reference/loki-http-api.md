@@ -89,16 +89,8 @@ These HTTP endpoints are exposed by the `ruler` component:
 - [`POST /loki/api/v1/rules/{namespace}`](#set-rule-group)
 - [`DELETE /loki/api/v1/rules/{namespace}/{groupName}`](#delete-rule-group)
 - [`DELETE /loki/api/v1/rules/{namespace}`](#delete-namespace)
-- [`GET /api/prom/rules`](#list-rule-groups)
-- [`GET /api/prom/rules/{namespace}`](#get-rule-groups-by-namespace)
-- [`GET /api/prom/rules/{namespace}/{groupName}`](#get-rule-group)
-- [`POST /api/prom/rules/{namespace}`](#set-rule-group)
-- [`DELETE /api/prom/rules/{namespace}/{groupName}`](#delete-rule-group)
-- [`DELETE /api/prom/rules/{namespace}`](#delete-namespace)
 - [`GET /prometheus/api/v1/rules`](#list-rules)
 - [`GET /prometheus/api/v1/alerts`](#list-alerts)
-
-API endpoints starting with `/api/prom` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
 ### Log deletion endpoints
 
@@ -113,22 +105,6 @@ These endpoints are exposed by the `compactor`, `backend`, and `all` components:
 These HTTP endpoints are exposed by all individual components:
 
 - [`GET /loki/api/v1/format_query`](#format-a-logql-query)
-
-### Deprecated endpoints
-
-{{< admonition type="note" >}}
-The following endpoints are deprecated.While they still exist and work, they should not be used for new deployments.
-Existing deployments should upgrade to use the supported endpoints.
-{{< /admonition >}}
-
-| Deprecated | Replacement |
-| ---------- | ----------- |
-| `POST /api/prom/push` | [`POST /loki/api/v1/push`](#ingest-logs) |
-| `GET /api/prom/tail` | [`GET /loki/api/v1/tail`](#stream-logs) |
-| `GET /api/prom/query` | [`GET /loki/api/v1/query`](#query-logs-at-a-single-point-in-time) |
-| `GET /api/prom/label` | [`GET /loki/api/v1/labels`](#query-labels) |
-| `GET /api/prom/label/<name>/values` | [`GET /loki/api/v1/label/<name>/values`](#query-label-values) |
-| `GET /api/prom/series` | [`GET /loki/api/v1/series`](#query-streams) |
 
 ## Format
 

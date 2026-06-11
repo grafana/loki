@@ -87,12 +87,12 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		"two backends with the same path prefix": {
 			backends: []mockedBackend{
 				{
-					pathPrefix: "/api/prom",
-					handler:    mockQueryResponse("/api/prom"+constants.PathLokiQuery, 200, querySingleMetric1),
+					pathPrefix: "/loki/api/v1",
+					handler:    mockQueryResponse("/loki/api/v1"+constants.PathLokiQuery, 200, querySingleMetric1),
 				},
 				{
-					pathPrefix: "/api/prom",
-					handler:    mockQueryResponse("/api/prom"+constants.PathLokiQuery, 200, querySingleMetric2),
+					pathPrefix: "/loki/api/v1",
+					handler:    mockQueryResponse("/loki/api/v1"+constants.PathLokiQuery, 200, querySingleMetric2),
 				},
 			},
 			preferredBackendIdx: 0,

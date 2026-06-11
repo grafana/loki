@@ -28,6 +28,12 @@ type (
 	Array struct {
 		Metadata array.Array
 	}
+
+	// Chunked partitions an Array into chunks.
+	Chunked struct {
+		Type   types.Type
+		Chunks []Layout
+	}
 )
 
 // Kind returns [KindArray].
@@ -45,8 +51,28 @@ func (l *Array) Len() int {
 	return l.Metadata.RowCount
 }
 
+// Kind returns [KindChunked].
+func (l *Chunked) Kind() Kind {
+	return KindChunked
+}
+
+// DataType returns the data type of the Chunked layout.
+func (l *Chunked) DataType() types.Type {
+	return l.Type
+}
+
+// Len returns the total number of rows across all chunks.
+func (l *Chunked) Len() int {
+	var total int
+	for _, c := range l.Chunks {
+		total += c.Len()
+	}
+	return total
+}
+
 //
 // Sealed marker implementations.
 //
 
-func (l *Array) isLayout() {}
+func (l *Array) isLayout()   {}
+func (l *Chunked) isLayout() {}

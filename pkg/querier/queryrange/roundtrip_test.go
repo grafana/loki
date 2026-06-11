@@ -1202,7 +1202,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "range_query_prom",
-			path:       "/api/prom/query",
+			path:       "/loki/api/v1/query_range",
 			expectedOp: QueryRangeOp,
 		},
 		{
@@ -1217,7 +1217,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "series_query_prom",
-			path:       "/api/prom/series",
+			path:       "/loki/api/v1/series",
 			expectedOp: SeriesOp,
 		},
 		{
@@ -1227,7 +1227,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/api/prom/labels",
+			path:       "/loki/api/v1/labels",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1237,7 +1237,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/api/prom/label",
+			path:       "/loki/api/v1/label",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1247,7 +1247,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "label_values_query_prom",
-			path:       "/api/prom/label/__name__/values",
+			path:       "/loki/api/v1/label/__name__/values",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1402,6 +1402,7 @@ type fakeLimits struct {
 	maxMetadataCacheFreshness   time.Duration
 	volumeEnabled               bool
 	enableMultiVariantQueries   bool
+	tsdbShardingStrategy        func(context.Context, string) string
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1529,7 +1530,10 @@ func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
 }
 
-func (f fakeLimits) TSDBShardingStrategy(string) string {
+func (f fakeLimits) TSDBShardingStrategy(ctx context.Context, userID string) string {
+	if f.tsdbShardingStrategy != nil {
+		return f.tsdbShardingStrategy(ctx, userID)
+	}
 	return logql.PowerOfTwoVersion.String()
 }
 

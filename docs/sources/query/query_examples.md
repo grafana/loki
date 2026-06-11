@@ -116,7 +116,7 @@ Consider this logfmt log line.
 To extract the method and the path of this logfmt log line,
 
 ```log
-level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"
+level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /loki/api/v1/query_range (200) 1.5s"
 ```
 
 To extract the method and the path,
@@ -126,7 +126,7 @@ use multiple parsers (logfmt and regexp):
 {job="loki-ops/query-frontend"} | logfmt | line_format "{{.msg}}" | regexp "(?P<method>\\w+) (?P<path>[\\w|/]+) \\((?P<status>\\d+?)\\) (?P<duration>.*)"
 ```
 
-This is possible because the `| line_format` reformats the log line to become `POST /api/prom/api/v1/query_range (200) 1.5s` which can then be parsed with the `| regexp ...` parser.
+This is possible because the `| line_format` reformats the log line to become `POST /loki/api/v1/query_range (200) 1.5s` which can then be parsed with the `| regexp ...` parser.
 
 ## Log line formatting examples
 
