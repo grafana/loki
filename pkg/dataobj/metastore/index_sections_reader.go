@@ -24,7 +24,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -56,17 +55,13 @@ type indexSectionsReader struct {
 	hasData            bool // Whether initialization pulled data to read
 	readStreams        bool
 	matchingStreamIDs  map[int64]struct{}
-	matchingStreamRefs map[postings.StreamRef]struct{}
 	labelNamesByStream map[int64][]string
 
-	streamsReaders       []*streams.Reader
-	pointersReaders      []*pointers.Reader
-	bloomReaders         []*pointers.Reader
-	postingsReader       *postings.Reader
-	readPostingsSections bool
+	streamsReaders  []*streams.Reader
+	pointersReaders []*pointers.Reader
+	bloomReaders    []*pointers.Reader
 
-	pointersReaderIdx    int
-	postingsPointersRead bool
+	pointersReaderIdx int
 
 	// Stats
 	bloomRowsRead            uint64
@@ -88,7 +83,6 @@ func newIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
-	readPostingsSections bool,
 ) *indexSectionsReader {
 	// Only keep equal predicates for bloom filtering
 	var equalPredicates []*labels.Matcher
@@ -103,17 +97,15 @@ func newIndexSectionsReader(
 	}
 
 	return &indexSectionsReader{
-		logger:               logger,
-		obj:                  obj,
-		matchers:             matchers,
-		predicates:           equalPredicates,
-		batchSize:            batchSize,
-		start:                start,
-		end:                  end,
-		matchingStreamIDs:    make(map[int64]struct{}),
-		matchingStreamRefs:   make(map[postings.StreamRef]struct{}),
-		labelNamesByStream:   make(map[int64][]string),
-		readPostingsSections: readPostingsSections,
+		logger:             logger,
+		obj:                obj,
+		matchers:           matchers,
+		predicates:         equalPredicates,
+		batchSize:          batchSize,
+		start:              start,
+		end:                end,
+		matchingStreamIDs:  make(map[int64]struct{}),
+		labelNamesByStream: make(map[int64][]string),
 	}
 }
 
@@ -160,7 +152,6 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	var (
 		unopenedStreams  []*dataobj.Section
 		unopenedPointers []*dataobj.Section
-		unopenedPostings *dataobj.Section
 	)
 
 	for _, section := range r.obj.Sections() {
@@ -173,21 +164,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 			unopenedStreams = append(unopenedStreams, section)
 		case pointers.CheckSection(section):
 			unopenedPointers = append(unopenedPointers, section)
-		case postings.CheckSection(section):
-			if unopenedPostings != nil {
-				return fmt.Errorf("multiple postings sections found for tenant %s", targetTenant)
-			}
-			unopenedPostings = section
 		}
-	}
-
-	// todo(shantanu): Is there a better way?
-	r.readPostingsSections = r.readPostingsSections && unopenedPostings != nil
-	if r.readPostingsSections {
-		unopenedStreams = nil
-		unopenedPointers = nil
-	} else {
-		unopenedPostings = nil
 	}
 
 	r.streamsReaders = make([]*streams.Reader, len(unopenedStreams))
@@ -247,29 +224,10 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		})
 	}
 
-	if unopenedPostings != nil {
-		section := unopenedPostings
-		g.Go(func() error {
-			sec, err := postings.Open(ctx, section)
-			if err != nil {
-				return fmt.Errorf("opening postings section: %w", err)
-			}
-
-			reader, err := r.openPostingsReader(ctx, sec)
-			if err != nil {
-				return err
-			}
-
-			r.postingsReader = reader
-			return nil
-		})
-	}
-
 	if err := g.Wait(); err != nil {
 		closeAll(r.streamsReaders)
 		closeAll(r.pointersReaders)
 		closeAll(r.bloomReaders)
-		closeIfNotNil(r.postingsReader)
 		return err
 	}
 
@@ -336,20 +294,6 @@ func (r *indexSectionsReader) openStreamsReader(
 		return nil, fmt.Errorf("opening streams reader: %w", err)
 	}
 
-	return reader, nil
-}
-
-func (r *indexSectionsReader) openPostingsReader(
-	ctx context.Context,
-	sec *postings.Section,
-) (*postings.Reader, error) {
-	reader := postings.NewReader(postings.ReaderOptions{
-		Columns:   sec.Columns(),
-		Allocator: memory.DefaultAllocator,
-	})
-	if err := reader.Open(ctx); err != nil {
-		return nil, fmt.Errorf("opening postings reader: %w", err)
-	}
 	return reader, nil
 }
 
@@ -536,94 +480,57 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
 	}()
 
-	if r.readPostingsSections {
-		if r.postingsReader != nil {
-			pr := r.postingsReader
-			streamRefs, labelNamesByRef, err := pr.ResolveMatchingStreamRefs(ctx, r.matchers)
-			if err != nil {
-				return fmt.Errorf("resolving labels via postings: %w", err)
-			}
+	for _, sr := range r.streamsReaders {
+		if sr == nil {
+			// Sections can be skipped during Open if they don't have relevant data.
+			continue
+		}
 
-			if streamRefs != nil {
-				r.matchingStreamRefs = streamRefs
-				r.matchingStreamIDs = make(map[int64]struct{}, len(streamRefs))
-				for streamRef := range streamRefs {
-					r.matchingStreamIDs[streamRef.StreamID] = struct{}{}
-				}
-			}
-			if labelNamesByRef != nil {
-				r.labelNamesByStream = make(map[int64][]string, len(labelNamesByRef))
-				for streamRef, names := range labelNamesByRef {
-					r.addLabelNamesForStream(streamRef.StreamID, names)
-				}
-			}
+		streamIDColumnIndex := slices.IndexFunc(sr.Columns(), func(c *streams.Column) bool { return c.Type == streams.ColumnTypeStreamID })
+		if streamIDColumnIndex < 0 {
+			return fmt.Errorf("streams schema missing stream_id column")
+		}
 
-			streamLabelNames, err := pr.StreamLabelColumnNames(ctx)
-			if err != nil {
-				return fmt.Errorf("resolving stream label names via postings: %w", err)
-			}
-			if len(streamLabelNames) > 0 {
-				for streamID := range r.matchingStreamIDs {
-					r.addLabelNamesForStream(streamID, streamLabelNames)
-				}
+		var requestedLabelNames []string
+		for _, col := range sr.Columns() {
+			if col.Name != "" && col.Type == streams.ColumnTypeLabel {
+				requestedLabelNames = append(requestedLabelNames, col.Name)
 			}
 		}
-	} else {
-		for _, sr := range r.streamsReaders {
-			if sr == nil {
-				// Sections can be skipped during Open if they don't have relevant data.
-				continue
+
+		for {
+			rec, err := sr.Read(ctx, r.batchSize)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return fmt.Errorf("reading streams record batch: %w", err)
 			}
 
-			streamIDColumnIndex := slices.IndexFunc(sr.Columns(), func(c *streams.Column) bool { return c.Type == streams.ColumnTypeStreamID })
-			if streamIDColumnIndex < 0 {
-				return fmt.Errorf("streams schema missing stream_id column")
-			}
-
-			var requestedLabelNames []string
-			for _, col := range sr.Columns() {
-				if col.Name != "" && col.Type == streams.ColumnTypeLabel {
-					requestedLabelNames = append(requestedLabelNames, col.Name)
+			if rec != nil && rec.NumRows() > 0 {
+				streamIDCol, ok := rec.Column(streamIDColumnIndex).(*array.Int64)
+				if !ok {
+					return fmt.Errorf("stream_id column has unexpected type %T", rec.Column(streamIDColumnIndex))
 				}
-			}
-
-			for {
-				rec, err := sr.Read(ctx, r.batchSize)
-				if err != nil && !errors.Is(err, io.EOF) {
-					return fmt.Errorf("reading streams record batch: %w", err)
-				}
-
-				if rec != nil && rec.NumRows() > 0 {
-					streamIDCol, ok := rec.Column(streamIDColumnIndex).(*array.Int64)
-					if !ok {
-						return fmt.Errorf("stream_id column has unexpected type %T", rec.Column(streamIDColumnIndex))
+				for i := 0; i < int(rec.NumRows()); i++ {
+					if streamIDCol.IsNull(i) {
+						continue
 					}
-					for i := 0; i < int(rec.NumRows()); i++ {
-						if streamIDCol.IsNull(i) {
-							continue
-						}
-						streamID := streamIDCol.Value(i)
-						r.matchingStreamIDs[streamID] = struct{}{}
-						r.addLabelNamesForStream(streamID, requestedLabelNames)
-					}
-				}
-
-				if errors.Is(err, io.EOF) {
-					break
+					streamID := streamIDCol.Value(i)
+					r.matchingStreamIDs[streamID] = struct{}{}
+					r.addLabelNamesForStream(streamID, requestedLabelNames)
 				}
 			}
 
-			// Eagerly close the streams reader to release resources.
-			if err := sr.Close(); err != nil {
-				level.Warn(utillog.WithContext(ctx, r.logger)).Log("msg", "error closing streams reader", "err", err)
+			if errors.Is(err, io.EOF) {
+				break
 			}
+		}
+
+		// Eagerly close the streams reader to release resources.
+		if err := sr.Close(); err != nil {
+			level.Warn(utillog.WithContext(ctx, r.logger)).Log("msg", "error closing streams reader", "err", err)
 		}
 	}
 
 	streamsRead := len(r.matchingStreamIDs)
-	if r.readPostingsSections {
-		streamsRead = len(r.matchingStreamRefs)
-	}
 	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(streamsRead)))
 
 	r.filterBloomPredicates()
@@ -660,7 +567,6 @@ func (r *indexSectionsReader) Close() {
 	closeAll(r.streamsReaders)
 	closeAll(r.pointersReaders)
 	closeAll(r.bloomReaders)
-	closeIfNotNil(r.postingsReader)
 
 	if r.readSpan != nil {
 		r.readSpan.End()
@@ -687,10 +593,6 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 	defer func(start time.Time) {
 		r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
 	}(time.Now())
-
-	if r.readPostingsSections {
-		return r.readPointersFromPostings(ctx)
-	}
 
 	for r.pointersReaderIdx < len(r.pointersReaders) {
 		pr := r.pointersReaders[r.pointersReaderIdx]
@@ -736,36 +638,6 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 	}
 
 	return nil, io.EOF
-}
-
-// readPointersFromPostings reads section pointers from the new postings section
-func (r *indexSectionsReader) readPointersFromPostings(ctx context.Context) (arrow.RecordBatch, error) {
-	if r.postingsPointersRead {
-		return nil, io.EOF
-	}
-	if r.postingsReader == nil {
-		r.postingsPointersRead = true
-		return nil, io.EOF
-	}
-
-	pr := r.postingsReader
-	rec, err := pr.ReadPointersForStreams(ctx, r.matchingStreamRefs, r.start, r.end)
-	if err != nil {
-		// Preserve the contract that a transient error surfaces on every
-		// call (not just the first): leave postingsPointersRead false so a
-		// caller that retries does not get silent io.EOF. The one-shot
-		// behaviour is enforced only on a successful read below.
-		return nil, fmt.Errorf("reading postings pointers: %w", err)
-	}
-	r.postingsPointersRead = true
-
-	if rec == nil || rec.NumRows() == 0 {
-		return nil, io.EOF
-	}
-
-	r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
-	r.bloomRowsRead += uint64(rec.NumRows())
-	return rec, nil
 }
 
 func (r *indexSectionsReader) filterPointersByMatchingStreamID(
@@ -836,7 +708,7 @@ func (r *indexSectionsReader) readWithBloomFiltering(ctx context.Context) (arrow
 	chunks := make([][]arrow.Array, commonSchema.NumFields())
 	filteredRows := 0
 	for _, rec := range recs {
-		mask, err := r.buildKeepBitmask(rec, matchedSectionKeys)
+		mask, err := buildKeepBitmask(rec, matchedSectionKeys)
 		if err != nil {
 			return nil, fmt.Errorf("build keep bitmask: %w", err)
 		}
@@ -934,10 +806,6 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 		predicateIndexesByName[predicate.Name] = append(predicateIndexesByName[predicate.Name], i)
 	}
 
-	if r.readPostingsSections {
-		return r.readMatchedSectionKeysFromPostings(ctx)
-	}
-
 	sectionMatches := make(map[SectionKey]map[int]struct{})
 
 	for _, br := range r.bloomReaders {
@@ -1016,35 +884,6 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 	return matchedSectionKeys, nil
 }
 
-// readMatchedSectionKeysFromPostings reads bloom rows from the postings section and converts
-// postings.Key into metastore.SectionKey
-func (r *indexSectionsReader) readMatchedSectionKeysFromPostings(ctx context.Context) (map[SectionKey]struct{}, error) {
-	if r.postingsReader == nil {
-		return map[SectionKey]struct{}{}, nil
-	}
-
-	pr := r.postingsReader
-	rec, err := pr.ReadBloomRows(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("reading postings bloom rows: %w", err)
-	}
-	if rec == nil || rec.NumRows() == 0 {
-		return map[SectionKey]struct{}{}, nil
-	}
-
-	batches := []arrow.RecordBatch{rec}
-	postingsKeys, err := postings.MatchSections(ctx, batches, r.predicates)
-	if err != nil {
-		return nil, fmt.Errorf("matching postings bloom rows: %w", err)
-	}
-
-	matched := make(map[SectionKey]struct{}, len(postingsKeys))
-	for k := range postingsKeys {
-		matched[SectionKey{ObjectPath: k.ObjectPath, SectionIdx: k.SectionIndex}] = struct{}{}
-	}
-	return matched, nil
-}
-
 func bloomFilterMayContain(bloomBytes []byte, value string) bool {
 	var bf bloom.BloomFilter
 	if _, err := bf.ReadFrom(bytes.NewReader(bloomBytes)); err != nil {
@@ -1053,7 +892,9 @@ func bloomFilterMayContain(bloomBytes []byte, value string) bool {
 	return bf.TestString(value)
 }
 
-func (r *indexSectionsReader) buildKeepBitmask(rec arrow.RecordBatch, matchedSectionKeys map[SectionKey]struct{}) (arrow.Array, error) {
+// buildKeepBitmask returns a boolean mask selecting the rows of rec whose
+// (object path, section) tuple is present in matchedSectionKeys.
+func buildKeepBitmask(rec arrow.RecordBatch, matchedSectionKeys map[SectionKey]struct{}) (arrow.Array, error) {
 	maskB := array.NewBooleanBuilder(memory.DefaultAllocator)
 	maskB.Reserve(int(rec.NumRows()))
 
