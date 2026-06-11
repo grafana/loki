@@ -59,11 +59,11 @@ type indexSectionsReader struct {
 	matchingStreamRefs map[postings.StreamRef]struct{}
 	labelNamesByStream map[int64][]string
 
-	streamsReaders      []*streams.Reader
-	pointersReaders     []*pointers.Reader
-	bloomReaders        []*pointers.Reader
-	postingsReader      *postings.Reader
-	usePostingsSections bool
+	streamsReaders       []*streams.Reader
+	pointersReaders      []*pointers.Reader
+	bloomReaders         []*pointers.Reader
+	postingsReader       *postings.Reader
+	readPostingsSections bool
 
 	pointersReaderIdx    int
 	postingsPointersRead bool
@@ -88,7 +88,7 @@ func newIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
-	usePostingsSections bool,
+	readPostingsSections bool,
 ) *indexSectionsReader {
 	// Only keep equal predicates for bloom filtering
 	var equalPredicates []*labels.Matcher
@@ -103,17 +103,17 @@ func newIndexSectionsReader(
 	}
 
 	return &indexSectionsReader{
-		logger:              logger,
-		obj:                 obj,
-		matchers:            matchers,
-		predicates:          equalPredicates,
-		batchSize:           batchSize,
-		start:               start,
-		end:                 end,
-		matchingStreamIDs:   make(map[int64]struct{}),
-		matchingStreamRefs:  make(map[postings.StreamRef]struct{}),
-		labelNamesByStream:  make(map[int64][]string),
-		usePostingsSections: usePostingsSections,
+		logger:               logger,
+		obj:                  obj,
+		matchers:             matchers,
+		predicates:           equalPredicates,
+		batchSize:            batchSize,
+		start:                start,
+		end:                  end,
+		matchingStreamIDs:    make(map[int64]struct{}),
+		matchingStreamRefs:   make(map[postings.StreamRef]struct{}),
+		labelNamesByStream:   make(map[int64][]string),
+		readPostingsSections: readPostingsSections,
 	}
 }
 
@@ -182,8 +182,8 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	}
 
 	// todo(shantanu): Is there a better way?
-	r.usePostingsSections = r.usePostingsSections && unopenedPostings != nil
-	if r.usePostingsSections {
+	r.readPostingsSections = r.readPostingsSections && unopenedPostings != nil
+	if r.readPostingsSections {
 		unopenedStreams = nil
 		unopenedPointers = nil
 	} else {
@@ -536,7 +536,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
 	}()
 
-	if r.usePostingsSections {
+	if r.readPostingsSections {
 		if r.postingsReader != nil {
 			pr := r.postingsReader
 			streamRefs, labelNamesByRef, err := pr.ResolveMatchingStreamRefs(ctx, r.matchers)
@@ -621,7 +621,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 	}
 
 	streamsRead := len(r.matchingStreamIDs)
-	if r.usePostingsSections {
+	if r.readPostingsSections {
 		streamsRead = len(r.matchingStreamRefs)
 	}
 	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(streamsRead)))
@@ -688,7 +688,7 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 		r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
 	}(time.Now())
 
-	if r.usePostingsSections {
+	if r.readPostingsSections {
 		return r.readPointersFromPostings(ctx)
 	}
 
@@ -934,7 +934,7 @@ func (r *indexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[S
 		predicateIndexesByName[predicate.Name] = append(predicateIndexesByName[predicate.Name], i)
 	}
 
-	if r.usePostingsSections {
+	if r.readPostingsSections {
 		return r.readMatchedSectionKeysFromPostings(ctx)
 	}
 
