@@ -400,7 +400,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		{
 			name: "POST-filtered",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("POST", "http://test"+constants.PathLokiQuery, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+				r, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
 				r.Header["Content-Type"] = []string{"application/json"}
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
