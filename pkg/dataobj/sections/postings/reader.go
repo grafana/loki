@@ -1279,25 +1279,187 @@ func (r *Reader) Close() error {
 }
 
 // ResolveLabelNames returns distinct label names for the provided stream refs.
-// Phase 0: this is a stub and intentionally returns [ErrLabelLookupNotImplemented].
 func (r *Reader) ResolveLabelNames(ctx context.Context, streamRefs map[StreamRef]struct{}) ([]string, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
 	}
-	_ = ctx
-	_ = streamRefs
-	return nil, ErrLabelLookupNotImplemented
+	return r.resolveDistinctLabelStrings(ctx, streamRefs, ColumnTypeColumnName)
 }
 
 // ResolveLabelValues returns distinct label values for the provided stream refs.
-// Phase 0: this is a stub and intentionally returns [ErrLabelLookupNotImplemented].
 func (r *Reader) ResolveLabelValues(ctx context.Context, streamRefs map[StreamRef]struct{}) ([]string, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
 	}
-	_ = ctx
-	_ = streamRefs
-	return nil, ErrLabelLookupNotImplemented
+	return r.resolveDistinctLabelStrings(ctx, streamRefs, ColumnTypeLabelValue)
+}
+
+func (r *Reader) resolveDistinctLabelStrings(
+	ctx context.Context,
+	streamRefs map[StreamRef]struct{},
+	labelColumnType ColumnType,
+) ([]string, error) {
+	defer r.alloc.Reclaim()
+
+	labelCols, err := findColumnsByType(r.opts.Columns, labelColumnType)
+	if err != nil {
+		return nil, fmt.Errorf("finding %s column: %w", labelColumnType, err)
+	}
+	kindCols, err := findColumnsByType(r.opts.Columns, ColumnTypeKind)
+	if err != nil {
+		return nil, fmt.Errorf("finding kind column: %w", err)
+	}
+	colLabel, colKind := labelCols[0], kindCols[0]
+
+	filterByStreamRefs := streamRefs != nil
+	if filterByStreamRefs && len(streamRefs) == 0 {
+		return nil, nil
+	}
+
+	innerColumns := []*columnar.Column{colLabel.inner, colKind.inner}
+	var (
+		colObjectPath, colStreamIDBitmap *Column
+	)
+	if filterByStreamRefs {
+		streamFilterCols, err := findColumnsByType(r.opts.Columns, ColumnTypeObjectPath, ColumnTypeStreamIDBitmap)
+		if err != nil {
+			return nil, fmt.Errorf("finding stream filter columns: %w", err)
+		}
+		colObjectPath, colStreamIDBitmap = streamFilterCols[0], streamFilterCols[1]
+		innerColumns = append(innerColumns, colObjectPath.inner, colStreamIDBitmap.inner)
+	}
+
+	innerSection := colLabel.Section.inner
+	dset, err := columnar.MakeDataset(innerSection, innerColumns)
+	if err != nil {
+		return nil, fmt.Errorf("creating dataset: %w", err)
+	}
+	if len(dset.Columns()) != len(innerColumns) {
+		return nil, fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(innerColumns))
+	}
+
+	columnLookup := map[*Column]dataset.Column{
+		colLabel: dset.Columns()[0],
+		colKind:  dset.Columns()[1],
+	}
+	if filterByStreamRefs {
+		columnLookup[colObjectPath] = dset.Columns()[2]
+		columnLookup[colStreamIDBitmap] = dset.Columns()[3]
+	}
+
+	kindEq := EqualPredicate{
+		Column: colKind,
+		Value:  scalar.NewInt64Scalar(int64(KindLabel)),
+	}
+	preds, err := mapPredicates([]Predicate{kindEq}, columnLookup)
+	if err != nil {
+		return nil, fmt.Errorf("mapping predicates: %w", err)
+	}
+
+	innerOptions := dataset.RowReaderOptions{
+		Dataset:    dset,
+		Columns:    dset.Columns(),
+		Predicates: preds,
+		Prefetch:   true,
+	}
+	adapter := columnar.NewReaderAdapter(innerOptions)
+	defer func() { _ = adapter.Close() }()
+	if err := adapter.Open(ctx); err != nil {
+		return nil, fmt.Errorf("opening adapter: %w", err)
+	}
+
+	fields := []arrow.Field{
+		columnToField(colLabel),
+		columnToField(colKind),
+	}
+	if filterByStreamRefs {
+		fields = append(fields, columnToField(colObjectPath), columnToField(colStreamIDBitmap))
+	}
+	innerSchema := arrow.NewSchema(fields, nil)
+
+	seen := make(map[string]struct{})
+	var values []string
+	for {
+		colBatch, readErr := adapter.Read(ctx, r.alloc, readResolveMatchingStreamRefsBatchSize)
+		if colBatch != nil && colBatch.NumRows() > 0 {
+			rb, convErr := arrowconv.ToRecordBatch(colBatch, innerSchema)
+			if convErr != nil {
+				return nil, fmt.Errorf("converting columnar batch to arrow: %w", convErr)
+			}
+
+			valueCol, ok := rb.Column(0).(*array.String)
+			if !ok {
+				return nil, fmt.Errorf("label column has unexpected type %T", rb.Column(0))
+			}
+
+			var (
+				objectPathCol *array.String
+				bitmapCol     *array.Binary
+			)
+			if filterByStreamRefs {
+				objectPathCol, ok = rb.Column(2).(*array.String)
+				if !ok {
+					return nil, fmt.Errorf("object_path column has unexpected type %T", rb.Column(2))
+				}
+				bitmapCol, ok = rb.Column(3).(*array.Binary)
+				if !ok {
+					return nil, fmt.Errorf("stream_id_bitmap column has unexpected type %T", rb.Column(3))
+				}
+			}
+
+			for i := range int(rb.NumRows()) {
+				if valueCol.IsNull(i) {
+					continue
+				}
+
+				if filterByStreamRefs {
+					if objectPathCol.IsNull(i) || bitmapCol.IsNull(i) {
+						continue
+					}
+					if !bitmapMatchesAnyStreamRef(objectPathCol.Value(i), bitmapCol.Value(i), streamRefs) {
+						continue
+					}
+				}
+
+				value := valueCol.Value(i)
+				if _, exists := seen[value]; exists {
+					continue
+				}
+				seen[value] = struct{}{}
+				values = append(values, value)
+			}
+		}
+
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return nil, fmt.Errorf("reading label rows: %w", readErr)
+		}
+	}
+
+	return values, nil
+}
+
+func bitmapMatchesAnyStreamRef(objectPath string, bitmapBytes []byte, streamRefs map[StreamRef]struct{}) bool {
+	for byteIdx, bitmapByte := range bitmapBytes {
+		if bitmapByte == 0 {
+			continue
+		}
+		for bitPos := 0; bitPos < 8; bitPos++ {
+			if (bitmapByte>>uint(bitPos))&1 == 0 {
+				continue
+			}
+			streamRef := StreamRef{
+				ObjectPath: objectPath,
+				StreamID:   int64(byteIdx*8 + bitPos),
+			}
+			if _, found := streamRefs[streamRef]; found {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // StreamLabelColumnNames returns the distinct column_name values across KindLabel rows
