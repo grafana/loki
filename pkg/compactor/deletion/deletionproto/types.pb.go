@@ -411,6 +411,7 @@ type Chunk struct {
 	Checksum    uint32                                  `protobuf:"varint,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
 	KB          uint32                                  `protobuf:"varint,5,opt,name=KB,proto3" json:"KB,omitempty"`
 	Entries     uint32                                  `protobuf:"varint,6,opt,name=entries,proto3" json:"entries,omitempty"`
+	IngestedAt  github_com_prometheus_common_model.Time `protobuf:"varint,7,opt,name=ingestedAt,proto3,customtype=github.com/prometheus/common/model.Time" json:"ingestedAt"`
 }
 
 func (m *Chunk) Reset()      { *m = Chunk{} }
@@ -940,6 +941,9 @@ func (this *Chunk) Equal(that interface{}) bool {
 	if this.Entries != that1.Entries {
 		return false
 	}
+	if !this.IngestedAt.Equal(that1.IngestedAt) {
+		return false
+	}
 	return true
 }
 func (this *StorageUpdates) Equal(that interface{}) bool {
@@ -1139,7 +1143,7 @@ func (this *Chunk) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 10)
+	s := make([]string, 0, 11)
 	s = append(s, "&deletionproto.Chunk{")
 	s = append(s, "From: "+fmt.Sprintf("%#v", this.From)+",\n")
 	s = append(s, "Through: "+fmt.Sprintf("%#v", this.Through)+",\n")
@@ -1147,6 +1151,7 @@ func (this *Chunk) GoString() string {
 	s = append(s, "Checksum: "+fmt.Sprintf("%#v", this.Checksum)+",\n")
 	s = append(s, "KB: "+fmt.Sprintf("%#v", this.KB)+",\n")
 	s = append(s, "Entries: "+fmt.Sprintf("%#v", this.Entries)+",\n")
+	s = append(s, "IngestedAt: "+fmt.Sprintf("%#v", this.IngestedAt)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1566,6 +1571,11 @@ func (m *Chunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.IngestedAt != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.IngestedAt))
+		i--
+		dAtA[i] = 0x38
+	}
 	if m.Entries != 0 {
 		i = encodeVarintTypes(dAtA, i, uint64(m.Entries))
 		i--
@@ -1911,6 +1921,9 @@ func (m *Chunk) Size() (n int) {
 	if m.Entries != 0 {
 		n += 1 + sovTypes(uint64(m.Entries))
 	}
+	if m.IngestedAt != 0 {
+		n += 1 + sovTypes(uint64(m.IngestedAt))
+	}
 	return n
 }
 
@@ -2097,6 +2110,7 @@ func (this *Chunk) String() string {
 		`Checksum:` + fmt.Sprintf("%v", this.Checksum) + `,`,
 		`KB:` + fmt.Sprintf("%v", this.KB) + `,`,
 		`Entries:` + fmt.Sprintf("%v", this.Entries) + `,`,
+		`IngestedAt:` + fmt.Sprintf("%v", this.IngestedAt) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -3361,6 +3375,25 @@ func (m *Chunk) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.Entries |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IngestedAt", wireType)
+			}
+			m.IngestedAt = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.IngestedAt |= github_com_prometheus_common_model.Time(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

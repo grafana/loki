@@ -30,3 +30,7 @@ func (c *Chunk) GetSize() uint32 {
 func (c *Chunk) GetEntriesCount() uint32 {
 	return c.Entries
 }
+
+func (c *Chunk) GetIngestedAt() model.Time {
+	return c.IngestedAt
+}

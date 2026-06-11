@@ -35,6 +35,7 @@ type Chunk interface {
 	GetChecksum() uint32
 	GetSize() uint32
 	GetEntriesCount() uint32
+	GetIngestedAt() model.Time
 }
 
 type JobRunner struct {
@@ -165,6 +166,9 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 			newChunkStart,
 			newChunkEnd,
 		)
+		// Preserve the source chunk's ingestion timestamp so the rewritten chunk
+		// keeps ingestion-time retention semantics under schema v14.
+		newChunk.IngestedAt = chks[0].IngestedAt
 
 		err = newChunk.Encode()
 		if err != nil {
@@ -186,6 +190,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 			Checksum:    newChunk.Checksum,
 			KB:          uint32(math.Round(float64(newChunk.Data.UncompressedSize()) / float64(1<<10))),
 			Entries:     uint32(newChunk.Data.Entries()),
+			IngestedAt:  newChunk.IngestedAt,
 		}
 		return nil
 	})

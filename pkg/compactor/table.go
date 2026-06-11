@@ -76,6 +76,7 @@ type Chunk interface {
 	GetChecksum() uint32
 	GetSize() uint32
 	GetEntriesCount() uint32
+	GetIngestedAt() model.Time
 }
 
 type MakeEmptyUserIndexSetFunc func(userID string) (IndexSet, error)

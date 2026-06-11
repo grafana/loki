@@ -130,6 +130,10 @@ func (c dummyChunk) GetEntriesCount() uint32 {
 	return c.entries
 }
 
+func (c dummyChunk) GetIngestedAt() model.Time {
+	return c.ingestedAt
+}
+
 func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
