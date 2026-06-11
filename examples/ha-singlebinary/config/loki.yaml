@@ -74,6 +74,7 @@ ingester:
     dir: /loki/wal
     enabled: true
     replay_memory_ceiling: 1GB
+    flush_on_shutdown: true
   lifecycler:
     num_tokens: 512
     tokens_file_path: /loki/ring-tokens

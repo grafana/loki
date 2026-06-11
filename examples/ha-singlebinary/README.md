@@ -29,3 +29,46 @@ Then replace the `image` in `docker-compose.yaml`.
 ```bash
 docker compose up
 ```
+
+## Architecture
+
+```mermaid
+graph TB
+    Client(["Client"])
+    nginx["Load Balancer\n:3100"]
+    subgraph ring ["Ring (RF=3)"]
+        subgraph loki1_container ["loki-1"]
+            loki1["-target=all\n:3100\n:9095\n:7946"]
+            loki1 --- loki1_vol[("local disk")]
+        end
+        subgraph loki2_container ["loki-2"]
+            loki2["-target=all\n:3100\n:9095\n:7946"]
+            loki2 --- loki2_vol[("local disk")]
+        end
+        subgraph loki3_container ["loki-3"]
+            loki3["-target=all\n:3100\n:9095\n:7946"]
+            loki3 --- loki3_vol[("local disk")]
+        end
+        subgraph loki4_container ["loki-4"]
+            loki4["-target=all\n:3100\n:9095\n:7946"]
+            loki4 --- loki4_vol[("local disk")]
+        end
+        subgraph loki5_container ["loki-5"]
+            loki5["-target=all\n:3100\n:9095\n:7946"]
+            loki5 --- loki5_vol[("local disk")]
+        end
+    end
+
+
+    objstore[("Object Storage\n(S3, GCS, Azure Blob, ...)")]
+
+    Client -->|"HTTP :3100"| nginx
+
+    nginx ---> loki1
+    nginx ---> loki2
+    nginx ---> loki3
+    nginx ---> loki4
+    nginx ---> loki5
+
+    loki1 & loki2 & loki3 & loki4 & loki5 -----|"write/read"| objstore
+```
