@@ -166,7 +166,7 @@ func Test_seriesLimiter(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.Direction_FORWARD,
 		Path:      "/query_range",
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(`rate({app="foo"} |= "foo"[1m])`),
 		},
 	}
@@ -670,7 +670,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		EndTs:     testTime,
 		Direction: logproto.Direction_FORWARD,
 		Path:      "/loki/api/v1/query_range",
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{app="foo"} |= "foo"`),
 		},
 	}
@@ -1003,7 +1003,7 @@ func Test_MaxQuerySize(t *testing.T) {
 				EndTs:     tc.queryEnd,
 				Direction: logproto.Direction_FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(tc.query),
 				},
 			}
@@ -1134,7 +1134,7 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 				EndTs:     tc.queryEnd,
 				Direction: logproto.Direction_FORWARD,
 				Path:      "/query_range",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(tc.query),
 				},
 			}

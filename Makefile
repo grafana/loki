@@ -200,7 +200,34 @@ WIRESMITH_PROTO_GROUP_logproto := \
 	./pkg/logproto/sketch.proto \
 	./pkg/storage/chunk/cache/resultscache/types.proto \
 	./pkg/storage/chunk/cache/resultscache/test_types.proto
-WIRESMITH_PROTO_GROUPS := engine logqlstats querierstats limits leaves compaction logproto
+# The queryrange cluster (phase 3). Each group stages already-migrated
+# dependency protos (logproto family, stats, resultscache, deletionproto,
+# httpgrpcpb) import-only for resolution; only the group's own protos are
+# emitted. push.proto is -M-pinned wherever it is transitively reachable
+# (via queryrange). The two `package stats` protos (logqlmodel/stats and
+# querier/stats) must never share a walk, so the queryrange chain (which uses
+# logqlmodel/stats) and the frontend chain (which uses querier/stats) are
+# split; frontend stages logqlmodel/stats -M-pinned for the transitive
+# queryrange import.
+WIRESMITH_PROTO_GROUP_httpgrpc := ./pkg/util/httpgrpcpb/httpgrpcpb.proto
+WIRESMITH_PROTO_GROUP_bloombuild := \
+	./pkg/bloombuild/protos/types.proto \
+	./pkg/bloombuild/protos/service.proto
+WIRESMITH_PROTO_GROUP_compactorgrpc := ./pkg/compactor/client/grpc/grpc.proto
+WIRESMITH_PROTO_GROUP_checkpoint := ./pkg/ingester/checkpoint.proto
+WIRESMITH_PROTO_GROUP_ruler := \
+	./pkg/ruler/rulespb/rules.proto \
+	./pkg/ruler/base/ruler.proto
+WIRESMITH_PROTO_GROUP_queryrange := \
+	./pkg/querier/queryrange/queryrangebase/definitions/definitions.proto \
+	./pkg/querier/queryrange/queryrangebase/queryrange.proto \
+	./pkg/querier/queryrange/queryrange.proto
+WIRESMITH_PROTO_GROUP_scheduler := ./pkg/scheduler/schedulerpb/scheduler.proto
+WIRESMITH_PROTO_GROUP_frontend := \
+	./pkg/lokifrontend/frontend/v1/frontendv1pb/frontend.proto \
+	./pkg/lokifrontend/frontend/v2/frontendv2pb/frontend.proto
+WIRESMITH_PROTO_GROUPS := engine logqlstats querierstats limits leaves compaction logproto \
+	httpgrpc bloombuild compactorgrpc checkpoint ruler queryrange scheduler frontend
 
 WIRESMITH_PROTO_DEFS := $(foreach g,$(WIRESMITH_PROTO_GROUPS),$(WIRESMITH_PROTO_GROUP_$(g)))
 # wiresmith emits sibling files next to each <name>.pb.go; <name>_grpc.pb.go
@@ -539,6 +566,35 @@ wiresmith-protos: clean-wiresmith-protos
 				protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_logproto))"; \
 				imports="pkg/push/push.proto pkg/logqlmodel/stats/stats.proto vendor/github.com/gogo/protobuf/gogoproto/gogo.proto=gogoproto/gogo.proto"; \
 				mflags="-M pkg/push/push.proto=github.com/grafana/loki/pkg/push" ;; \
+			httpgrpc) protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_httpgrpc))" ;; \
+			bloombuild) \
+				protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_bloombuild))"; \
+				imports="pkg/logproto/bloomgateway.proto pkg/logproto/logproto.proto pkg/logqlmodel/stats/stats.proto pkg/storage/chunk/cache/resultscache/types.proto pkg/push/push.proto vendor/github.com/gogo/protobuf/gogoproto/gogo.proto=gogoproto/gogo.proto"; \
+				mflags="-M pkg/push/push.proto=github.com/grafana/loki/pkg/push -M pkg/bloombuild/protos/types.proto=github.com/grafana/loki/v3/pkg/bloombuild/protos;protos -M pkg/bloombuild/protos/service.proto=github.com/grafana/loki/v3/pkg/bloombuild/protos;protos" ;; \
+			compactorgrpc) \
+				protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_compactorgrpc))"; \
+				imports="pkg/compactor/deletion/deletionproto/types.proto"; \
+				mflags="-M pkg/compactor/client/grpc/grpc.proto=github.com/grafana/loki/v3/pkg/compactor/client/grpc;grpc" ;; \
+			checkpoint) \
+				protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_checkpoint))"; \
+				imports="pkg/logproto/logproto.proto pkg/logqlmodel/stats/stats.proto pkg/storage/chunk/cache/resultscache/types.proto pkg/push/push.proto vendor/github.com/gogo/protobuf/gogoproto/gogo.proto=gogoproto/gogo.proto"; \
+				mflags="-M pkg/push/push.proto=github.com/grafana/loki/pkg/push -M pkg/ingester/checkpoint.proto=github.com/grafana/loki/v3/pkg/ingester;ingester" ;; \
+			ruler) \
+				protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_ruler))"; \
+				imports="pkg/logproto/logproto.proto pkg/logqlmodel/stats/stats.proto pkg/storage/chunk/cache/resultscache/types.proto pkg/push/push.proto vendor/github.com/gogo/protobuf/gogoproto/gogo.proto=gogoproto/gogo.proto"; \
+				mflags="-M pkg/push/push.proto=github.com/grafana/loki/pkg/push -M pkg/ruler/base/ruler.proto=github.com/grafana/loki/v3/pkg/ruler/base;base" ;; \
+			queryrange) \
+				protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_queryrange))"; \
+				imports="pkg/logproto/logproto.proto pkg/logproto/indexgateway.proto pkg/logproto/pattern.proto pkg/logproto/sketch.proto pkg/logqlmodel/stats/stats.proto pkg/storage/chunk/cache/resultscache/types.proto pkg/push/push.proto vendor/github.com/gogo/googleapis/google/rpc/status.proto=github.com/gogo/googleapis/google/rpc/status.proto vendor/github.com/gogo/protobuf/gogoproto/gogo.proto=gogoproto/gogo.proto"; \
+				mflags="-M pkg/push/push.proto=github.com/grafana/loki/pkg/push" ;; \
+			scheduler) \
+				protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_scheduler))"; \
+				imports="pkg/util/httpgrpcpb/httpgrpcpb.proto pkg/querier/queryrange/queryrange.proto pkg/querier/queryrange/queryrangebase/queryrange.proto pkg/querier/queryrange/queryrangebase/definitions/definitions.proto pkg/logproto/logproto.proto pkg/logproto/indexgateway.proto pkg/logproto/pattern.proto pkg/logproto/sketch.proto pkg/logqlmodel/stats/stats.proto pkg/storage/chunk/cache/resultscache/types.proto pkg/push/push.proto vendor/github.com/gogo/googleapis/google/rpc/status.proto=github.com/gogo/googleapis/google/rpc/status.proto vendor/github.com/gogo/protobuf/gogoproto/gogo.proto=gogoproto/gogo.proto"; \
+				mflags="-M pkg/push/push.proto=github.com/grafana/loki/pkg/push -M pkg/scheduler/schedulerpb/scheduler.proto=github.com/grafana/loki/v3/pkg/scheduler/schedulerpb;schedulerpb -M github.com/gogo/googleapis/google/rpc/status.proto=github.com/gogo/googleapis/google/rpc;rpc" ;; \
+			frontend) \
+				protos="$(patsubst ./%,%,$(WIRESMITH_PROTO_GROUP_frontend))"; \
+				imports="pkg/util/httpgrpcpb/httpgrpcpb.proto pkg/querier/stats/stats.proto pkg/querier/queryrange/queryrange.proto pkg/querier/queryrange/queryrangebase/queryrange.proto pkg/querier/queryrange/queryrangebase/definitions/definitions.proto pkg/logproto/logproto.proto pkg/logproto/indexgateway.proto pkg/logproto/pattern.proto pkg/logproto/sketch.proto pkg/logqlmodel/stats/stats.proto pkg/storage/chunk/cache/resultscache/types.proto pkg/push/push.proto vendor/github.com/gogo/googleapis/google/rpc/status.proto=github.com/gogo/googleapis/google/rpc/status.proto vendor/github.com/gogo/protobuf/gogoproto/gogo.proto=gogoproto/gogo.proto"; \
+				mflags="-M pkg/push/push.proto=github.com/grafana/loki/pkg/push -M pkg/logqlmodel/stats/stats.proto=github.com/grafana/loki/v3/pkg/logqlmodel/stats -M github.com/gogo/googleapis/google/rpc/status.proto=github.com/gogo/googleapis/google/rpc;rpc -M pkg/lokifrontend/frontend/v1/frontendv1pb/frontend.proto=github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb;frontendv1pb -M pkg/lokifrontend/frontend/v2/frontendv2pb/frontend.proto=github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb;frontendv2pb" ;; \
 		esac; \
 		stage=$$(mktemp -d); \
 		staged=""; \
@@ -552,6 +608,11 @@ wiresmith-protos: clean-wiresmith-protos
 			mkdir -p $$stage/$$(dirname $$dst); \
 			cp $$src $$stage/$$dst; \
 		done; \
+		status=$$stage/github.com/gogo/googleapis/google/rpc/status.proto; \
+		if [ -f $$status ]; then \
+			sed -i.bak 's#^option go_package = "rpc";#option go_package = "github.com/gogo/googleapis/google/rpc";#' $$status; \
+			rm -f $$status.bak; \
+		fi; \
 		wiresmith --proto_path=$$stage --out=. --module=github.com/grafana/loki/v3 $$mflags $$staged || exit 1; \
 		rm -rf $$stage; \
 	done

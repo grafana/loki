@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/richardartoul/molecule"
 	"github.com/richardartoul/molecule/src/codec"
@@ -15,15 +14,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
-// Pull fiel numbers from protobuf message descriptions.
-var (
-	queryResponse               *QueryResponse
-	_, queryResponseDescription = descriptor.ForMessage(queryResponse)
-	seriesResponseFieldNumber   = queryResponseDescription.GetFieldDescriptor("series").GetNumber()
-
-	seriesResponse               *LokiSeriesResponse
-	_, seriesResponseDescription = descriptor.ForMessage(seriesResponse)
-	dataFieldNumber              = seriesResponseDescription.GetFieldDescriptor("Data").GetNumber()
+// Protobuf field numbers, formerly read from gogo message descriptors which
+// wiresmith does not emit. They are fixed by the wire format and must match
+// queryrange.proto: QueryResponse.series = 2 and LokiSeriesResponse.Data = 2.
+const (
+	seriesResponseFieldNumber int32 = 2
+	dataFieldNumber           int32 = 2
 )
 
 // GetLokiSeriesResponseView returns a view on the series response of a
@@ -73,7 +69,7 @@ func (v *LokiSeriesResponseView) WithHeaders(h []queryrangebase.PrometheusRespon
 }
 
 func (v *LokiSeriesResponseView) SetHeader(name, value string) {
-	v.headers = setHeader(v.headers, name, value)
+	v.headers = setHeaderValue(v.headers, name, value)
 }
 
 // Implement proto.Message
@@ -251,7 +247,7 @@ func (v *MergedSeriesResponseView) WithHeaders(headers []queryrangebase.Promethe
 }
 
 func (v *MergedSeriesResponseView) SetHeader(name, value string) {
-	v.headers = setHeader(v.headers, name, value)
+	v.headers = setHeaderValue(v.headers, name, value)
 }
 
 // Implement proto.Message

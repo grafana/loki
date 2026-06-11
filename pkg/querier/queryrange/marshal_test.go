@@ -44,7 +44,7 @@ func TestResultToResponse(t *testing.T) {
 				Response: &logproto.QuantileSketchMatrix{
 					Values: []*logproto.QuantileSketchVector{},
 				},
-				Headers: []queryrangebase.PrometheusResponseHeader(nil),
+				Headers: []*queryrangebase.PrometheusResponseHeader(nil),
 			},
 		},
 	}
@@ -63,7 +63,7 @@ func TestResponseWrap(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
 		response queryrangebase.Response
-		expected isQueryResponse_Response
+		expected QueryResponse_Response
 	}{
 		{"volume", &VolumeResponse{}, &QueryResponse_Volume{}},
 		{"series", &LokiSeriesResponse{}, &QueryResponse_Series{}},

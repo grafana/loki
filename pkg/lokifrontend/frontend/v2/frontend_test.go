@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
@@ -90,7 +91,7 @@ func sendResponseWithDelay(f *Frontend, delay time.Duration, userID string, quer
 	_, _ = f.QueryResult(ctx, &frontendv2pb.QueryResultRequest{
 		QueryID: queryID,
 		Response: &frontendv2pb.QueryResultRequest_HttpResponse{
-			HttpResponse: resp,
+			HttpResponse: *httpgrpcpb.FromHTTPResponse(resp),
 		},
 		Stats: &stats.Stats{},
 	})
@@ -130,7 +131,7 @@ func TestFrontendBasicWorkflowProto(t *testing.T) {
 
 	req := &queryrange.LokiRequest{
 		Query: `{foo="bar"} | json`,
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{foo="bar"} | json`),
 		},
 	}
@@ -399,11 +400,11 @@ func TestProtobufBackwardsCompatibility(t *testing.T) {
 	expected := &frontendv2pb.QueryResultRequest{
 		QueryID: 42,
 		Response: &frontendv2pb.QueryResultRequest_HttpResponse{
-			HttpResponse: &httpgrpc.HTTPResponse{
+			HttpResponse: *httpgrpcpb.FromHTTPResponse(&httpgrpc.HTTPResponse{
 				Code:    200,
 				Headers: []*httpgrpc.Header{{Key: "foo", Values: []string{"bar"}}},
 				Body:    []byte("Hello world!"),
-			},
+			}),
 		},
 		Stats: &stats.Stats{
 			FetchedSeriesCount: 100,
@@ -423,6 +424,7 @@ func TestProtobufBackwardsCompatibility(t *testing.T) {
 }
 
 type mockScheduler struct {
+	schedulerpb.UnimplementedSchedulerForFrontendServer
 	t *testing.T
 	f *Frontend
 

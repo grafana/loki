@@ -29,7 +29,7 @@ func TestEngineRouter_split(t *testing.T) {
 		Step:      1000, // 1 second step
 		Direction: logproto.Direction_BACKWARD,
 		Path:      "/query",
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(`{app="foo"}`),
 		},
 	}
@@ -161,7 +161,7 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 			Step:      step,
 			Direction: logproto.Direction_BACKWARD,
 			Path:      "/query",
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: syntax.MustParseExpr(`{app="foo"}`),
 			},
 		}
@@ -337,7 +337,7 @@ func Test_engineRouter_Do(t *testing.T) {
 				Step:      1000,
 				Direction: logproto.Direction_BACKWARD,
 				Path:      "/api/prom/query_range",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"}`),
 				},
 			},

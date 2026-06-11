@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/stats"
 	lokigrpc "github.com/grafana/loki/v3/pkg/util/httpgrpc"
+	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -82,6 +83,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Frontend implements GrpcRoundTripper. It queues HTTP requests,
 // dispatches them to backends via gRPC, and handles retries for requests which failed.
 type Frontend struct {
+	frontendv2pb.UnimplementedFrontendForQuerierServer
 	services.Service
 
 	cfg Config
@@ -266,12 +268,13 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	case resp := <-freq.response:
 		switch concrete := resp.Response.(type) {
 		case *frontendv2pb.QueryResultRequest_HttpResponse:
-			if stats.ShouldTrackHTTPGRPCResponse(concrete.HttpResponse) {
+			httpResp := httpgrpcpb.ToHTTPResponse(&concrete.HttpResponse)
+			if stats.ShouldTrackHTTPGRPCResponse(httpResp) {
 				stats := stats.FromContext(ctx)
 				stats.Merge(resp.Stats) // Safe if stats is nil.
 			}
 
-			return concrete.HttpResponse, nil
+			return httpResp, nil
 		default:
 			return nil, fmt.Errorf("unsupported response type for roundtrip: %T", resp.Response)
 		}
@@ -345,19 +348,20 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		}
 		switch concrete := resp.Response.(type) {
 		case *frontendv2pb.QueryResultRequest_HttpResponse:
-			if stats.ShouldTrackHTTPGRPCResponse(concrete.HttpResponse) {
+			httpResp := httpgrpcpb.ToHTTPResponse(&concrete.HttpResponse)
+			if stats.ShouldTrackHTTPGRPCResponse(httpResp) {
 				stats := stats.FromContext(ctx)
 				stats.Merge(resp.Stats) // Safe if stats is nil.
 			}
 
-			return f.codec.DecodeHTTPGrpcResponse(concrete.HttpResponse, req)
+			return f.codec.DecodeHTTPGrpcResponse(httpResp, req)
 		case *frontendv2pb.QueryResultRequest_QueryResponse:
-			if stats.ShouldTrackQueryResponse(concrete.QueryResponse.Status) {
+			if stats.ShouldTrackQueryResponse(concrete.QueryResponse.Status.Status()) {
 				stats := stats.FromContext(ctx)
 				stats.Merge(resp.Stats) // Safe if stats is nil.
 			}
 
-			return queryrange.QueryResponseUnwrap(concrete.QueryResponse)
+			return queryrange.QueryResponseUnwrap(&concrete.QueryResponse)
 		default:
 			return nil, fmt.Errorf("unexpected frontend v2 response type: %T", concrete)
 		}
