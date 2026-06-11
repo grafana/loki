@@ -280,7 +280,7 @@ func (w *Worker) run(ctx context.Context) error {
 func (w *Worker) runAcceptLoop(ctx context.Context) {
 	for {
 		conn, err := w.listener.Accept(ctx)
-		if err != nil && ctx.Err() == nil {
+		if err != nil && ctx.Err() != nil {
 			return
 		} else if err != nil {
 			level.Warn(w.logger).Log("msg", "failed to accept connection", "err", err)

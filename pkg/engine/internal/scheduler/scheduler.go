@@ -131,7 +131,7 @@ func (s *Scheduler) run(ctx context.Context) error {
 func (s *Scheduler) runAcceptLoop(ctx context.Context) error {
 	for {
 		conn, err := s.listener.Accept(ctx)
-		if err != nil && ctx.Err() == nil {
+		if err != nil && ctx.Err() != nil {
 			return nil
 		} else if err != nil {
 			level.Warn(s.logger).Log("msg", "failed to accept connection", "err", err)
