@@ -361,7 +361,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
 	github.com/googleapis/gax-go/v2 v2.21.0 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.9 // indirect
-	github.com/grafana/wiresmith v0.0.0
+	github.com/grafana/wiresmith v0.0.0-20260611140145-c489c2b3685d
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
@@ -447,5 +447,3 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.4.0
 
 replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20260507144615-6c81ea69c9a9
-
-replace github.com/grafana/wiresmith => /Users/oleg-kozlyuk/Projects/wiresmith/wiresmith-databases
