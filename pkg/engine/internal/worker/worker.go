@@ -316,10 +316,10 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 	// Handle communication with the peer until the context is canceled or some
 	// error occurs.
 	err := peer.Serve(ctx)
-	if err != nil && ctx.Err() == nil && !errors.Is(err, wire.ErrConnClosed) {
-		level.Warn(logger).Log("msg", "serve error", "err", err)
-	} else {
+	if ctx.Err() != nil || errors.Is(err, wire.ErrConnClosed) {
 		level.Debug(logger).Log("msg", "connection closed")
+	} else if err != nil {
+		level.Warn(logger).Log("msg", "serve error", "err", err)
 	}
 }
 
@@ -345,7 +345,11 @@ func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
 		// terminated connections, so we reset it as long as the dial succeeds.
 		bo.Reset()
 
-		if err := w.handleSchedulerConn(ctx, logger, conn); err != nil && ctx.Err() == nil {
+		err = w.handleSchedulerConn(ctx, logger, conn)
+		if ctx.Err() != nil {
+			level.Debug(logger).Log("msg", "context canceled. stopping scheduler loop")
+			break
+		} else if err != nil {
 			level.Warn(logger).Log("msg", "connection to scheduler closed; will reconnect after backoff", "err", err)
 			bo.Wait()
 			continue
