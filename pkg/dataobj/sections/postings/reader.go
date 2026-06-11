@@ -142,6 +142,10 @@ type Reader struct {
 
 var errReaderNotOpen = errors.New("reader not opened")
 
+// ErrLabelLookupNotImplemented indicates label name/value lookup has not been
+// implemented for postings.Reader yet.
+var ErrLabelLookupNotImplemented = errors.New("postings label lookup not implemented")
+
 // NewReader creates a new Reader. Options are not validated until the first
 // call to [Reader.Open].
 func NewReader(opts ReaderOptions) *Reader {
@@ -1272,6 +1276,28 @@ func (r *Reader) Close() error {
 		return r.inner.Close()
 	}
 	return nil
+}
+
+// ResolveLabelNames returns distinct label names for the provided stream refs.
+// Phase 0: this is a stub and intentionally returns [ErrLabelLookupNotImplemented].
+func (r *Reader) ResolveLabelNames(ctx context.Context, streamRefs map[StreamRef]struct{}) ([]string, error) {
+	if !r.ready {
+		return nil, errReaderNotOpen
+	}
+	_ = ctx
+	_ = streamRefs
+	return nil, ErrLabelLookupNotImplemented
+}
+
+// ResolveLabelValues returns distinct label values for the provided stream refs.
+// Phase 0: this is a stub and intentionally returns [ErrLabelLookupNotImplemented].
+func (r *Reader) ResolveLabelValues(ctx context.Context, streamRefs map[StreamRef]struct{}) ([]string, error) {
+	if !r.ready {
+		return nil, errReaderNotOpen
+	}
+	_ = ctx
+	_ = streamRefs
+	return nil, ErrLabelLookupNotImplemented
 }
 
 // StreamLabelColumnNames returns the distinct column_name values across KindLabel rows

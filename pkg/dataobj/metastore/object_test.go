@@ -152,6 +152,19 @@ func TestLabelsEmptyMatcher(t *testing.T) {
 	})
 }
 
+func TestLabels_UsePostingsSections_FallsBackToStreams(t *testing.T) {
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+	}
+
+	queryMetastoreWithConfig(t, tenantID, Config{UsePostingsSections: true}, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
+		require.NoError(t, err)
+		require.Len(t, matchedLabels, len(matchers))
+	})
+}
+
 func TestValues(t *testing.T) {
 	matchers := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -211,6 +224,19 @@ func TestValuesEmptyMatcher(t *testing.T) {
 		for _, expectedValue := range []string{"foo", "prod", "bar", "dev", "baz", "a"} {
 			require.NotEqual(t, slices.Index(matchedValues, expectedValue), -1)
 		}
+	})
+}
+
+func TestValues_UsePostingsSections_FallsBackToStreams(t *testing.T) {
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+	}
+
+	queryMetastoreWithConfig(t, tenantID, Config{UsePostingsSections: true}, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
+		require.NoError(t, err)
+		require.Len(t, matchedValues, len(matchers))
 	})
 }
 
@@ -773,6 +799,10 @@ func TestDataobjSectionDescriptorMerge_NilMapPanic(t *testing.T) {
 }
 
 func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
+	queryMetastoreWithConfig(t, tenant, Config{}, mfunc)
+}
+
+func queryMetastoreWithConfig(t *testing.T, tenant string, cfg Config, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
 	now := time.Now().UTC()
 	start := now.Add(-time.Hour * 5)
 	end := now.Add(time.Hour * 5)
@@ -783,7 +813,7 @@ func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, tim
 		builder.addStreamAndFlush(tenant, stream)
 	}
 
-	mstore := newTestObjectMetastore(builder.bucket)
+	mstore := newTestObjectMetastoreWithConfig(builder.bucket, cfg)
 	defer func() {
 		require.NoError(t, mstore.bucket.Close())
 	}()
@@ -826,5 +856,9 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 }
 
 func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
-	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
+	return newTestObjectMetastoreWithConfig(bucket, Config{})
+}
+
+func newTestObjectMetastoreWithConfig(bucket objstore.Bucket, cfg Config) *ObjectMetastore {
+	return NewObjectMetastore(bucket, cfg, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
 }
