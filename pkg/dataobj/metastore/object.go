@@ -294,16 +294,16 @@ func (m *ObjectMetastore) Values(ctx context.Context, start, end time.Time, matc
 }
 
 func (m *ObjectMetastore) labelsFromPostings(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
-	return m.lookupLabelsFromPostings(ctx, start, end, func(reader *postings.Reader) ([]string, error) {
-		return reader.ResolveLabelNames(ctx, nil)
+	return m.lookupLabelsFromPostings(ctx, start, end, func(reader *postings.Reader, streamRefs map[postings.StreamRef]struct{}) ([]string, error) {
+		return reader.ResolveLabelNames(ctx, streamRefs)
 	}, func(streamLabel labels.Label) string {
 		return streamLabel.Name
 	}, matchers...)
 }
 
 func (m *ObjectMetastore) valuesFromPostings(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
-	return m.lookupLabelsFromPostings(ctx, start, end, func(reader *postings.Reader) ([]string, error) {
-		return reader.ResolveLabelValues(ctx, nil)
+	return m.lookupLabelsFromPostings(ctx, start, end, func(reader *postings.Reader, streamRefs map[postings.StreamRef]struct{}) ([]string, error) {
+		return reader.ResolveLabelValues(ctx, streamRefs)
 	}, func(streamLabel labels.Label) string {
 		return streamLabel.Value
 	}, matchers...)
@@ -312,7 +312,7 @@ func (m *ObjectMetastore) valuesFromPostings(ctx context.Context, start, end tim
 func (m *ObjectMetastore) lookupLabelsFromPostings(
 	ctx context.Context,
 	start, end time.Time,
-	lookupPostings func(*postings.Reader) ([]string, error),
+	lookupPostings func(*postings.Reader, map[postings.StreamRef]struct{}) ([]string, error),
 	labelSelector func(labels.Label) string,
 	matchers ...*labels.Matcher,
 ) ([]string, error) {
@@ -349,7 +349,15 @@ func (m *ObjectMetastore) lookupLabelsFromPostings(
 			} else if reader != nil {
 				defer reader.Close()
 
-				values, err := lookupPostings(reader)
+				var matchingStreamRefs map[postings.StreamRef]struct{}
+				if len(matchers) > 0 {
+					matchingStreamRefs, _, err = reader.ResolveMatchingStreamRefs(ctx, matchers)
+					if err != nil {
+						return fmt.Errorf("resolving matching streams from postings %s: %w", entry.Path, err)
+					}
+				}
+
+				values, err := lookupPostings(reader, matchingStreamRefs)
 				if err != nil && !errors.Is(err, postings.ErrLabelLookupNotImplemented) {
 					return fmt.Errorf("resolving postings labels from %s: %w", entry.Path, err)
 				}
