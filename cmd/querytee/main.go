@@ -101,16 +101,11 @@ func lokiReadRoutes(cfg Config) []querytee.Route {
 		{Path: constants.PathLokiLabels, RouteName: "api_v1_labels", Methods: []string{"GET"}, ResponseComparator: nil},
 		{Path: constants.PathLokiLabelNameValues, RouteName: "api_v1_label_name_values", Methods: []string{"GET"}, ResponseComparator: nil},
 		{Path: constants.PathLokiSeries, RouteName: "api_v1_series", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: constants.PathPromQuery, RouteName: "api_prom_query", Methods: []string{"GET", "POST"}, ResponseComparator: samplesComparator},
-		{Path: constants.PathPromLabel, RouteName: "api_prom_label", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: constants.PathPromLabelNameValues, RouteName: "api_prom_label_name_values", Methods: []string{"GET"}, ResponseComparator: nil},
-		{Path: constants.PathPromSeries, RouteName: "api_prom_series", Methods: []string{"GET"}, ResponseComparator: nil},
 	}
 }
 
 func lokiWriteRoutes() []querytee.Route {
 	return []querytee.Route{
 		{Path: constants.PathLokiPush, RouteName: "api_v1_push", Methods: []string{"POST"}, ResponseComparator: nil},
-		{Path: constants.PathPromPush, RouteName: "api_prom_push", Methods: []string{"POST"}, ResponseComparator: nil},
 	}
 }

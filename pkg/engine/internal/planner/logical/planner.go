@@ -19,11 +19,14 @@ import (
 )
 
 var (
-	errUnimplemented     = errors.New("query contains unimplemented features")
-	unimplementedFeature = func(s string) error { return fmt.Errorf("%w: %s", errUnimplemented, s) }
+	errUnimplemented = errors.New("query contains unimplemented features")
 
 	tracer = otel.Tracer("pkg/engine/internal/planner/logical")
 )
+
+func unimplementedFeature(s string) error {
+	return fmt.Errorf("%w: %s", errUnimplemented, s)
+}
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
@@ -228,10 +231,10 @@ func buildPlanForLogQuery(
 				return true
 			case syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
 				// keeping these as a distinct cases so we remember to implement them later
-				err = errUnimplemented
+				err = unimplementedFeature(fmt.Sprintf("log parser %q", e.Op))
 				return false
 			default:
-				err = errUnimplemented
+				err = unimplementedFeature(fmt.Sprintf("log parser %q", e.Op))
 				return false
 			}
 		case *syntax.LabelFilterExpr:
@@ -247,7 +250,7 @@ func buildPlanForLogQuery(
 			}
 			return true
 		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
-			err = errUnimplemented
+			err = unimplementedFeature(fmt.Sprintf("expression parser %T", e))
 			return false // do not traverse children
 		case *syntax.LineFmtExpr:
 			hasFmtExpr = true
@@ -277,7 +280,7 @@ func buildPlanForLogQuery(
 
 			return true
 		default:
-			err = errUnimplemented
+			err = unimplementedFeature(fmt.Sprintf("log pipeline stage %T", e))
 			return false // do not traverse children
 		}
 	})
@@ -298,7 +301,7 @@ func buildPlanForLogQuery(
 func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Value, error) {
 	// offsets are not yet supported.
 	if e.Left.Offset != 0 {
-		return nil, errUnimplemented
+		return nil, unimplementedFeature("range aggregation with offset")
 	}
 
 	logSelectorExpr, err := e.Selector()
@@ -329,7 +332,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 		case syntax.OpConvDuration, syntax.OpConvDurationSeconds:
 			unwrapOperation = types.UnaryOpCastDuration
 		default:
-			return nil, errUnimplemented
+			return nil, unimplementedFeature(fmt.Sprintf("unwrap conversion operation %q", e.Left.Unwrap.Operation))
 		}
 
 		// Unwrap turns a column into numerical `value` column, and that original column should be dropped from the result.
@@ -381,7 +384,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 			rangeAggType = types.RangeAggregationTypeCount // rate is implemented as count_over_time/$interval
 		}
 	default:
-		return nil, errUnimplemented
+		return nil, unimplementedFeature(fmt.Sprintf("range aggregation operation %q", e.Operation))
 	}
 
 	builder = builder.RangeAggregation(
@@ -408,7 +411,7 @@ func walkVectorAggregation(e *syntax.VectorAggregationExpr, wc *walkContext) (Va
 
 	vecAggType := convertVectorAggregationType(e.Operation)
 	if vecAggType == types.VectorAggregationTypeInvalid {
-		return nil, errUnimplemented
+		return nil, unimplementedFeature(fmt.Sprintf("vector aggregation operation %q", e.Operation))
 	}
 
 	return &VectorAggregation{
@@ -446,13 +449,13 @@ func walkBinOp(e *syntax.BinOpExpr, wc *walkContext) (Value, error) {
 
 	op := convertBinaryArithmeticOp(e.Op)
 	if op == types.BinaryOpInvalid {
-		return nil, errUnimplemented
+		return nil, unimplementedFeature(fmt.Sprintf("binary operator %q", e.Op))
 	}
 
 	// this is to check that there is only one non-literal input on either side, otherwise it is not implemented yet.
 	// TODO remove when inner joins on timestamp are implemented
 	if hasNonMathExpressionChild(left) && hasNonMathExpressionChild(right) {
-		return nil, errUnimplemented
+		return nil, unimplementedFeature("binary operation between two non-scalar expressions")
 	}
 
 	return &BinOp{
@@ -484,7 +487,7 @@ func walk(e syntax.Expr, wc *walkContext) (Value, error) {
 		return walkLiteral(e, wc)
 	}
 
-	return nil, errUnimplemented
+	return nil, unimplementedFeature(fmt.Sprintf("sample expression %T", e))
 }
 
 func buildPlanForSampleQuery(ctx context.Context, e syntax.SampleExpr, params logql.Params, deletes []*deletion.Request) (Value, error) {
