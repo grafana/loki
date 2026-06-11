@@ -313,3 +313,25 @@ blocker) is resolved by the value-getter mode.
 - The gogo pipeline (`make protos`) still generates the remaining gogo protos
   (push/push-rf1, indexgateway, vendored Thanos/dskit) and excludes the
   migrated ones via `WIRESMITH_PROTO_DEFS`.
+
+## Benchmarks (Apple M4 Pro, benchstat-grade — DB-9, 2026-06-11)
+
+gogo baseline (d62c5906a9) vs wiresmith `wiresmith` branch. Method: two
+`go test -c` binaries **alternated** 20 rounds; benchstat.
+
+| Bench | pkg | Result |
+|---|---|---|
+| `Benchmark_DecodeMergeEncodeCycle` | querier/queryrange | **parity** — time p=0.068, B/op p=0.285, allocs p=0.176 (all non-significant) |
+| `BenchmarkMerge{A,Some,Many}{Label,Series}Response` (×6) | logproto | **parity** — every metric non-significant; B/op and allocs byte-identical |
+
+Loki shows **no regression and no win** — straight parity. Two reasons the
+proto path is invisible here: `DecodeMergeEncodeCycle` decodes each response
+into a *fresh* message (no reuse → no pre-scan accumulation, unlike tempo's
+`EncodeDecode`) and is dominated by the trailing JSON re-encode (~435 MiB/op);
+the `logproto` `Merge*` benchmarks are ns-scale merge logic that barely touches
+the wire codec. Loki's migrated protos lean on compat annotations (105
+`pointer`, 34 `customtype`, 32 `casttype`, 53 `stdtime`, 36 `no_presence_all`);
+of these only `pointer` on *repeated* message fields (`[]*T`→`[]T`) is a real
+latency/alloc lever, and its payoff is on decode-heavy paths not exercised by
+these benchmarks (customtype/casttype are perf-*preserving*; stdtime/enum/
+no_presence are API-only). Not pursued under DB-9.
