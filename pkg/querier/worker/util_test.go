@@ -56,8 +56,8 @@ func TestHandleQueryRequest(t *testing.T) {
 			code:   http.StatusBadRequest,
 		},
 		"parser error wrapped in a gRPC status": {
-      // A parse error that a downstream layer already converted into a gRPC
-      // status carrying a non-HTTP code should still be reported as 400.
+			// A parse error that a downstream layer already converted into a gRPC
+			// status carrying a non-HTTP code should still be reported as 400.
 			err:    grpcStatusErr{code: codes.Unknown, err: logqlmodel.ErrParse},
 			errMsg: "failed to parse",
 			code:   http.StatusBadRequest,
