@@ -637,7 +637,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 	if m.readPostingsSections {
 		hasPostings, err := hasPostingsSection(ctx, idxObj)
 		if err != nil {
-			// todo: enter a log line here
+			level.Error(utillog.WithContext(ctx, m.logger)).Log("msg", "failed to check for postings section", "path", req.IndexPath, "err", err)
 			return IndexSectionsReaderResponse{}, err
 		}
 		// Index objects written before postings still read from streams sections

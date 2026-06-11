@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/compute"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
@@ -15,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -329,4 +331,37 @@ func (r *postingsIndexSectionsReader) Close() {
 
 func (r *postingsIndexSectionsReader) totalReadRows() uint64 {
 	return r.bloomRowsRead
+}
+
+// closeIfNotNil closes c unless it is the zero value (e.g. a nil pointer).
+func closeIfNotNil[C closable](c C) {
+	var zero C
+	if c == zero {
+		return
+	}
+	_ = c.Close()
+}
+
+// buildKeepBitmask returns a boolean mask selecting the rows of rec whose
+// (object path, section) tuple is present in matchedSectionKeys.
+func buildKeepBitmask(rec arrow.RecordBatch, matchedSectionKeys map[SectionKey]struct{}) (arrow.Array, error) {
+	maskB := array.NewBooleanBuilder(memory.DefaultAllocator)
+	maskB.Reserve(int(rec.NumRows()))
+
+	buf := make([]pointers.SectionPointer, rec.NumRows())
+	num, err := pointers.FromRecordBatch(rec, buf, pointers.PopulateSectionKey)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range num {
+		sk := SectionKey{
+			ObjectPath: buf[i].Path,
+			SectionIdx: buf[i].Section,
+		}
+		_, keep := matchedSectionKeys[sk]
+		maskB.Append(keep)
+	}
+
+	return maskB.NewBooleanArray(), nil
 }

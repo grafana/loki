@@ -138,10 +138,6 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		return fmt.Errorf("extracting org ID: %w", err)
 	}
 
-	// todo(shantanu): revisit this
-	ctx, dispatchSpan := xcap.StartSpan(ctx, tracer, "metastore.indexSectionsReader.init.dispatch")
-	defer dispatchSpan.End()
-
 	sStart, sEnd := r.scalarTimestamps()
 
 	predicateKeys := make(map[string]struct{}, len(r.predicates))
@@ -248,14 +244,6 @@ func closeAll[C closable](cs []C) {
 		}
 		_ = c.Close()
 	}
-}
-
-func closeIfNotNil[C closable](c C) {
-	var zero C
-	if c == zero {
-		return
-	}
-	_ = c.Close()
 }
 
 func (r *indexSectionsReader) scalarTimestamps() (*scalar.Timestamp, *scalar.Timestamp) {
@@ -530,15 +518,15 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		}
 	}
 
-	streamsRead := len(r.matchingStreamIDs)
-	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(streamsRead)))
+	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
 
 	r.filterBloomPredicates()
 	r.readStreams = true
-	r.hasData = streamsRead > 0
+	r.hasData = len(r.matchingStreamIDs) > 0
 	return nil
 }
 
+// filterLabelPredicates removes predicates that reference known stream labels.
 // This prevents false negatives on structured metadata columns with the same name.
 func (r *indexSectionsReader) filterBloomPredicates() {
 	allLabelNames := r.allLabelNames()
@@ -562,7 +550,6 @@ func (r *indexSectionsReader) allLabelNames() []string {
 	return slices.Collect(maps.Keys(allLabelNamesMap))
 }
 
-// Close releases readers held by this indexSectionsReader.
 func (r *indexSectionsReader) Close() {
 	closeAll(r.streamsReaders)
 	closeAll(r.pointersReaders)
@@ -708,7 +695,7 @@ func (r *indexSectionsReader) readWithBloomFiltering(ctx context.Context) (arrow
 	chunks := make([][]arrow.Array, commonSchema.NumFields())
 	filteredRows := 0
 	for _, rec := range recs {
-		mask, err := buildKeepBitmask(rec, matchedSectionKeys)
+		mask, err := r.buildKeepBitmask(rec, matchedSectionKeys)
 		if err != nil {
 			return nil, fmt.Errorf("build keep bitmask: %w", err)
 		}
@@ -892,9 +879,7 @@ func bloomFilterMayContain(bloomBytes []byte, value string) bool {
 	return bf.TestString(value)
 }
 
-// buildKeepBitmask returns a boolean mask selecting the rows of rec whose
-// (object path, section) tuple is present in matchedSectionKeys.
-func buildKeepBitmask(rec arrow.RecordBatch, matchedSectionKeys map[SectionKey]struct{}) (arrow.Array, error) {
+func (r *indexSectionsReader) buildKeepBitmask(rec arrow.RecordBatch, matchedSectionKeys map[SectionKey]struct{}) (arrow.Array, error) {
 	maskB := array.NewBooleanBuilder(memory.DefaultAllocator)
 	maskB.Reserve(int(rec.NumRows()))
 
