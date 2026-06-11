@@ -224,9 +224,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}
-
-	closeQuery := runOnceFunc(q.Close)
-	defer closeQuery()
+	defer q.Close()
 
 	// We save the pre-query logger so we can pass it to buildPhysicalPlan,
 	// which creates a subquery.
@@ -295,7 +293,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		q.RecordError(ctx, errors.New("failed to create execution plan"))
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
-	closeWorkflow := runOnceFunc(func() {
+	closeWorkflow := sync.OnceFunc(func() {
 		// workflow close can spend non-trivial time as it needs to send
 		// cancel messages to running tasks and close open streams.
 		start := time.Now()
@@ -314,11 +312,11 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		q.RecordError(ctx, errors.New("failed to execute query"))
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
-	closePipeline := runOnceFunc(func() {
+	closePipeline := func() {
 		start := time.Now()
 		pipeline.Close()
 		q.rootRegion.Record(statCloseDuration.Observe(int64(time.Since(start))))
-	})
+	}
 	defer closePipeline()
 
 	gotrace.Log(ctx, "collect_result", "start")
@@ -339,7 +337,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// End() span to record observations as attributes.
 	span.End()
 
-	closeQuery()
+	q.Close()
 
 	totalQueueTime := xcap.Value[int64](q.capture, schedulerstat.TaskQueueDuration)
 	stats := q.capture.ToStatsSummary(q.Duration(), time.Duration(totalQueueTime), builder.Len())
@@ -917,9 +915,4 @@ func phaseStatus(err error) string {
 		return "success"
 	}
 	return "failed"
-}
-
-func runOnceFunc(fn func()) func() {
-	var once sync.Once
-	return func() { once.Do(fn) }
 }
