@@ -81,12 +81,6 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		}
 	}
 
-	// Detect typed client errors before inspecting the gRPC status. A downstream
-	// layer may wrap a query error (e.g. a LogQL parse error) in a gRPC status
-	// with a non-HTTP code such as codes.Unknown; without this check it would
-	// fall through to the status branch below and be reported as 500, which both
-	// pollutes the server-error SLO and causes the query-frontend to retry a
-	// non-retryable client error.
 	if isClientError(err, &queryErr, &userErr) {
 		return http.StatusBadRequest, err
 	}
@@ -117,9 +111,7 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 }
 
 // isClientError reports whether err is (or wraps) a Loki query error that is
-// the client's fault and must be reported as HTTP 400. These errors are not
-// retryable; classifying them as 5xx would both pollute server-error SLOs and
-// trigger pointless retries in the query-frontend.
+// the client's fault and is  not retryable.
 func isClientError(err error, queryErr *storage_errors.QueryError, userErr *UserError) bool {
 	return errors.As(err, queryErr) ||
 		errors.As(err, userErr) ||
@@ -140,9 +132,6 @@ func WrapError(err error) *rpc.Status {
 		userErr  UserError
 	)
 
-	// Classify typed client errors before falling back to an existing gRPC
-	// status. A query error wrapped in a gRPC status with a non-HTTP code would
-	// otherwise be propagated verbatim and later mistaken for a 5xx server error.
 	if !isClientError(err, &queryErr, &userErr) {
 		if s, ok := status.FromError(err); ok {
 			return s.Proto()
