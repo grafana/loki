@@ -612,7 +612,7 @@ func TestIndexSectionsReader_PathSelection(t *testing.T) {
 			t.Parallel()
 
 			r := newIndexSectionsReader(log.NewNopLogger(), tc.buildObj(t), start, end, matchers, nil, 8192, false)
-			r.usePostingsSections = tc.gate
+			r.readPostingsSections = tc.gate
 			t.Cleanup(r.Close)
 			require.NoError(t, r.Open(ctx))
 
@@ -906,7 +906,7 @@ func TestIndexSectionsReader_PostingsPath_StreamLabelPredicateOnDisjointName(t *
 	predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "team", "ops")}
 
 	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192, false)
-	r.usePostingsSections = true
+	r.readPostingsSections = true
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -969,7 +969,7 @@ func TestIndexSectionsReader_PostingsPath_NoPostingsReader_ShortCircuit(t *testi
 	require.Nil(t, r.postingsReader, "no postings section ⇒ no postings reader")
 
 	// Flip the gate on post-Open (with no postings reader) to hit the defensive short-circuit.
-	r.usePostingsSections = true
+	r.readPostingsSections = true
 
 	_, err := r.Read(ctx)
 	require.ErrorIs(t, err, io.EOF, "no postings reader ⇒ postings path returns io.EOF cleanly")
@@ -1073,7 +1073,7 @@ func TestIndexSectionsReader_PostingsOnly_EndToEnd(t *testing.T) {
 
 	t.Run("selector resolves to matching streams from postings alone", func(t *testing.T) {
 		r := newIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, nil, 8192, false)
-		r.usePostingsSections = true
+		r.readPostingsSections = true
 		t.Cleanup(r.Close)
 		require.NoError(t, r.Open(ctx))
 
@@ -1110,7 +1110,7 @@ func TestIndexSectionsReader_PostingsOnly_EndToEnd(t *testing.T) {
 
 	t.Run("time window outside the data returns EOF", func(t *testing.T) {
 		r := newIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-30*time.Minute), now, appFoo, nil, 8192, false)
-		r.usePostingsSections = true
+		r.readPostingsSections = true
 		t.Cleanup(r.Close)
 		require.NoError(t, r.Open(ctx))
 
@@ -1122,7 +1122,7 @@ func TestIndexSectionsReader_PostingsOnly_EndToEnd(t *testing.T) {
 	t.Run("structured-metadata bloom selects the section", func(t *testing.T) {
 		predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd")}
 		r := newIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 8192, false)
-		r.usePostingsSections = true
+		r.readPostingsSections = true
 		t.Cleanup(r.Close)
 		require.NoError(t, r.Open(ctx))
 
@@ -1143,7 +1143,7 @@ func TestIndexSectionsReader_PostingsOnly_EndToEnd(t *testing.T) {
 	t.Run("structured-metadata bloom miss prunes the section", func(t *testing.T) {
 		predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "doesnotexist")}
 		r := newIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 8192, false)
-		r.usePostingsSections = true
+		r.readPostingsSections = true
 		t.Cleanup(r.Close)
 		require.NoError(t, r.Open(ctx))
 
