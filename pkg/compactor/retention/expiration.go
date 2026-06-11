@@ -1,12 +1,12 @@
 package retention
 
 import (
+	"cmp"
 	"fmt"
 	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -39,8 +39,6 @@ type ExpirationChecker interface {
 type expirationChecker struct {
 	tenantsRetention         *TenantsRetention
 	latestRetentionStartTime latestRetentionStartTime
-	// Unlabeled to avoid per-tenant cardinality.
-	chunksExpiredByIngestionTime prometheus.Counter
 }
 
 type Limits interface {
@@ -51,14 +49,9 @@ type Limits interface {
 	PoliciesStreamMapping(userID string) validation.PolicyStreamMapping
 }
 
-func NewExpirationChecker(limits Limits, r prometheus.Registerer) ExpirationChecker {
+func NewExpirationChecker(limits Limits, _ prometheus.Registerer) ExpirationChecker {
 	return &expirationChecker{
 		tenantsRetention: NewTenantsRetention(limits),
-		chunksExpiredByIngestionTime: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki_compactor",
-			Name:      "chunks_expired_by_ingestion_time_total",
-			Help:      "Number of chunks expired using the per-chunk ingestion timestamp (schema v14).",
-		}),
 	}
 }
 
@@ -72,16 +65,8 @@ func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels
 	}
 	// IngestedAt is the latest append time, so mixed live/backfilled chunks are
 	// retained until their newest ingested content expires.
-	expirationFrom := chk.Through
-	usingIngestedAt := chk.IngestedAt != 0
-	if usingIngestedAt {
-		expirationFrom = chk.IngestedAt
-	}
-	expired := now.Sub(expirationFrom) > period
-	if expired && usingIngestedAt && e.chunksExpiredByIngestionTime != nil {
-		e.chunksExpiredByIngestionTime.Inc()
-	}
-	return expired, nil
+	expirationFrom := cmp.Or(chk.IngestedAt, chk.Through)
+	return now.Sub(expirationFrom) > period, nil
 }
 
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.

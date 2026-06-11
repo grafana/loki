@@ -215,7 +215,7 @@ func TestFlushPersistsLastIngestedAt(t *testing.T) {
 	firstIngestedAt := s.chunks[0].lastIngestedAt
 	require.False(t, firstIngestedAt.IsZero())
 
-	time.Sleep(10 * time.Millisecond)
+	s.chunks[0].lastIngestedAt = time.Now().Add(-time.Hour)
 	req.Streams[0].Entries = []logproto.Entry{{Timestamp: time.Unix(2, 0), Line: "second"}}
 	require.NoError(t, ins.Push(ctx, req))
 	lastIngestedAt := s.chunks[0].lastIngestedAt

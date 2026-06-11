@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
 
@@ -82,10 +81,9 @@ type stream struct {
 
 	writeFailures *writefailures.Manager
 
-	chunkFormat               byte
-	chunkHeadBlockFormat      chunkenc.HeadBlockFmt
-	writesIngestedAt          bool
-	supportsIngestedAtForTime func(model.Time) bool
+	chunkFormat          byte
+	chunkHeadBlockFormat chunkenc.HeadBlockFmt
+	writesIngestedAt     bool
 
 	configs *runtime.TenantConfigs
 
@@ -144,9 +142,6 @@ func newStream(
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
 		writesIngestedAt:     writesIngestedAt,
-		supportsIngestedAtForTime: func(model.Time) bool {
-			return writesIngestedAt
-		},
 
 		configs:        configs,
 		retentionHours: retentionHours,
@@ -397,9 +392,6 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 }
 
 func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
-	// The backfill header is ignored for periods that cannot persist IngestedAt.
-	backfill := httpreq.ExtractHeader(ctx, httpreq.LokiBackfillHeader) == httpreq.LokiBackfillHeaderValue
-
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
 		rateLimitedSamples, rateLimitedBytes int
@@ -440,8 +432,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
-		backfillAllowed := backfill && s.supportsIngestedAtForTime(model.TimeFromUnixNano(entries[i].Timestamp.UnixNano()))
-		if !isReplay && !backfillAllowed && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
+		if !isReplay && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++

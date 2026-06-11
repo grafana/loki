@@ -9,33 +9,24 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
-// propagatedHTTPHeaders is allow-listed to avoid leaking sensitive headers into gRPC metadata.
-var propagatedHTTPHeaders = []string{
-	httpreq.LokiDisablePipelineWrappersHeader,
-	httpreq.LokiBackfillHeader,
-}
-
 func injectHTTPHeadersIntoGRPCRequest(ctx context.Context) context.Context {
-	var md metadata.MD
-	var copied bool
-	for _, header := range propagatedHTTPHeaders {
-		value := httpreq.ExtractHeader(ctx, header)
-		if value == "" {
-			continue
-		}
-		if !copied {
-			if existing, ok := metadata.FromOutgoingContext(ctx); ok {
-				md = existing.Copy()
-			} else {
-				md = metadata.New(map[string]string{})
-			}
-			copied = true
-		}
-		md.Set(header, value)
+	disablePipelineWrappersHeader := httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader)
+	backfillHeader := httpreq.ExtractHeader(ctx, httpreq.LokiBackfillHeader)
+	if disablePipelineWrappersHeader == "" && backfillHeader == "" {
+		return ctx
 	}
 
-	if !copied {
-		return ctx
+	// inject into GRPC metadata
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		md = metadata.New(map[string]string{})
+	}
+	md = md.Copy()
+	if disablePipelineWrappersHeader != "" {
+		md.Set(httpreq.LokiDisablePipelineWrappersHeader, disablePipelineWrappersHeader)
+	}
+	if backfillHeader != "" {
+		md.Set(httpreq.LokiBackfillHeader, backfillHeader)
 	}
 
 	return metadata.NewOutgoingContext(ctx, md)
@@ -44,15 +35,18 @@ func injectHTTPHeadersIntoGRPCRequest(ctx context.Context) context.Context {
 func extractHTTPHeadersFromGRPCRequest(ctx context.Context) context.Context {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
+		// No metadata, just return as is
 		return ctx
 	}
 
-	for _, header := range propagatedHTTPHeaders {
-		headerValues := md.Get(header)
-		if len(headerValues) == 0 {
-			continue
-		}
-		ctx = httpreq.InjectHeader(ctx, header, headerValues[0])
+	disablePipelineWrappersHeaderValues := md.Get(httpreq.LokiDisablePipelineWrappersHeader)
+	if len(disablePipelineWrappersHeaderValues) > 0 {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, disablePipelineWrappersHeaderValues[0])
+	}
+
+	backfillHeaderValues := md.Get(httpreq.LokiBackfillHeader)
+	if len(backfillHeaderValues) > 0 {
+		ctx = httpreq.InjectHeader(ctx, httpreq.LokiBackfillHeader, backfillHeaderValues[0])
 	}
 
 	return ctx
