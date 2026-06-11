@@ -60,7 +60,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 
 	// Send a frame from client to server
 	testFrame := wire.AckFrame{ID: 42}
-	err = clientConn.Send(ctx, testFrame)
+	err = clientConn.SendBatch(ctx, []wire.Frame{testFrame})
 	require.NoError(t, err)
 
 	// Receive on server
@@ -70,7 +70,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 
 	// Send a frame back from server to client
 	responseFrame := wire.AckFrame{ID: 43}
-	err = serverConn.Send(ctx, responseFrame)
+	err = serverConn.SendBatch(ctx, []wire.Frame{responseFrame})
 	require.NoError(t, err)
 
 	// Receive on client
@@ -525,7 +525,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Send message frame
 			frame := wire.MessageFrame{ID: 123, Message: tc.message}
-			err := clientConn.Send(ctx, frame)
+			err := clientConn.SendBatch(ctx, []wire.Frame{frame})
 			require.NoError(t, err)
 
 			// Receive and verify
@@ -584,7 +584,7 @@ func TestHTTP_NoPanicOnServerWriteAfterClose(t *testing.T) {
 	for range 100 {
 		wg.Go(func() {
 			for range 10_000 {
-				err := serverConn.Send(ctx, wire.AckFrame{ID: 1})
+				err := serverConn.SendBatch(ctx, []wire.Frame{wire.AckFrame{ID: 1}})
 				if err != nil && errors.Is(err, wire.ErrConnClosed) {
 					return
 				}
@@ -641,7 +641,7 @@ func TestHTTP_NoPanicOnClientWriteAfterClose(t *testing.T) {
 	for range 100 {
 		wg.Go(func() {
 			for range 10_000 {
-				err := clientConn.Send(ctx, wire.AckFrame{ID: 1})
+				err := clientConn.SendBatch(ctx, []wire.Frame{wire.AckFrame{ID: 1}})
 				if err != nil && errors.Is(err, wire.ErrConnClosed) {
 					return
 				}

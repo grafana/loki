@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -177,6 +178,7 @@ type http2Conn struct {
 	cleanup            func() // Optional cleanup function
 
 	writeMu   sync.Mutex
+	writeBuf  bytes.Buffer // reusable encode buffer, guarded by writeMu
 	closeOnce sync.Once
 	closed    chan struct{}
 
@@ -228,8 +230,11 @@ func (c *http2Conn) readLoop(ctx context.Context) {
 	}
 }
 
-// Send sends a frame over the connection.
-func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
+func (c *http2Conn) SendBatch(ctx context.Context, frames []Frame) error {
+	if len(frames) == 0 {
+		return nil
+	}
+
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
@@ -243,19 +248,25 @@ func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
 	default:
 	}
 
-	err := c.codec.EncodeTo(c.writer, frame)
-	if err != nil && isHTTP2Error(err) {
-		return ErrConnClosed
-	} else if err != nil {
-		return fmt.Errorf("write frame: %w", err)
+	c.writeBuf.Reset()
+	for _, frame := range frames {
+		if err := c.codec.EncodeTo(&c.writeBuf, frame); err != nil {
+			return fmt.Errorf("encode frame: %w", err)
+		}
 	}
 
-	// Flush after each frame to ensure immediate delivery
-	if c.responseController != nil {
-		err := c.responseController.Flush()
-		if err != nil && isHTTP2Error(err) {
+	if _, err := c.writer.Write(c.writeBuf.Bytes()); err != nil {
+		if isHTTP2Error(err) {
 			return ErrConnClosed
-		} else if err != nil {
+		}
+		return fmt.Errorf("write frames: %w", err)
+	}
+
+	if c.responseController != nil {
+		if err := c.responseController.Flush(); err != nil {
+			if isHTTP2Error(err) {
+				return ErrConnClosed
+			}
 			return fmt.Errorf("flush response: %w", err)
 		}
 	}
