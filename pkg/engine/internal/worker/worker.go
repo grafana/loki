@@ -345,7 +345,7 @@ func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
 		// terminated connections, so we reset it as long as the dial succeeds.
 		bo.Reset()
 
-		if err := w.handleSchedulerConn(ctx, logger, conn); err != nil && ctx.Err() != nil {
+		if err := w.handleSchedulerConn(ctx, logger, conn); err != nil && ctx.Err() == nil {
 			level.Warn(logger).Log("msg", "connection to scheduler closed; will reconnect after backoff", "err", err)
 			bo.Wait()
 			continue
