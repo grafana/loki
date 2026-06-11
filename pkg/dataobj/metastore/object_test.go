@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
@@ -827,4 +828,67 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 
 func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
 	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
+}
+
+func TestIndexSectionsReader_ReaderSelection(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+
+	uploadFixture := func(t *testing.T, obj *dataobj.Object) (objstore.Bucket, string) {
+		t.Helper()
+
+		bucket := objstore.NewInMemBucket()
+		up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+		require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
+
+		path, err := up.Upload(context.Background(), obj)
+		require.NoError(t, err)
+		return bucket, path
+	}
+
+	tests := []struct {
+		name                 string
+		readPostingsSections bool
+		buildObj             func(*testing.T) *dataobj.Object
+		wantPostingsReader   bool
+	}{
+		{"flag off uses streams+pointers reader", false, buildCombinedFixture, false},
+		{"flag on with postings section uses postings reader", true, buildCombinedFixture, true},
+		{"flag on without postings section falls back to streams+pointers reader", true, buildStreamsPointersFixture, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bucket, path := uploadFixture(t, tc.buildObj(t))
+			mstore := NewObjectMetastore(
+				bucket,
+				Config{ReadPostingsSections: tc.readPostingsSections},
+				log.NewNopLogger(),
+				NewObjectMetastoreMetrics(prometheus.NewRegistry()),
+			)
+
+			resp, err := mstore.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+				IndexPath: path,
+				SectionsRequest: SectionsRequest{
+					Start:    now.Add(-4 * time.Hour),
+					End:      now.Add(-time.Hour),
+					Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+				},
+			})
+			require.NoError(t, err)
+			t.Cleanup(resp.Reader.Close)
+
+			if tc.wantPostingsReader {
+				require.IsType(t, &postingsIndexSectionsReader{}, resp.Reader)
+			} else {
+				require.IsType(t, &indexSectionsReader{}, resp.Reader)
+			}
+
+			// Both readers must resolve the same matching stream row.
+			require.NoError(t, resp.Reader.Open(ctx))
+			rec, err := resp.Reader.Read(ctx)
+			require.NoError(t, err)
+			require.NotNil(t, rec)
+			require.Equal(t, int64(1), rec.NumRows())
+		})
+	}
 }
