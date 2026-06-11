@@ -744,7 +744,8 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			iw, err := NewFileWriterWithVersion(context.Background(), FormatV2, filepath.Join(dir, name))
+			chunkSampleTestFormat := FormatV2
+			iw, err := NewFileWriterWithVersion(context.Background(), chunkSampleTestFormat, filepath.Join(dir, name))
 			require.NoError(t, err)
 
 			syms := []string{}
@@ -811,7 +812,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 				dw := encoding.DecWrap(tsdb_enc.Decbuf{B: d.Get()})
 				dw.Skip(cs.offset)
 				chunkMeta := ChunkMeta{}
-				require.NoError(t, readChunkMeta(FormatV2, &dw, cs.prevChunkMaxt, &chunkMeta))
+				require.NoError(t, readChunkMeta(chunkSampleTestFormat, &dw, cs.prevChunkMaxt, &chunkMeta))
 				require.Equal(t, tc.chunkMetas[tc.expectedChunkSamples[i].idx], chunkMeta)
 			}
 

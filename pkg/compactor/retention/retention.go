@@ -29,13 +29,9 @@ import (
 var chunkBucket = []byte("chunks")
 
 type Chunk struct {
-	ChunkID string
-	From    model.Time
-	Through model.Time
-	// IngestedAt is the chunk's ingestion timestamp, populated from
-	// ChunkMeta.IngestedAt. It is recorded for every chunk written under TSDB
-	// FormatV4 (schema v14) and is zero for legacy formats (v13 and below),
-	// where retention falls back to Through. See expirationChecker.Expired.
+	ChunkID    string
+	From       model.Time
+	Through    model.Time
 	IngestedAt model.Time
 }
 

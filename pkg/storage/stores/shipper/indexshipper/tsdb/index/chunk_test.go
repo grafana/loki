@@ -406,11 +406,13 @@ func mkChks(n int) (chks []ChunkMeta) {
 }
 
 func chkFrom(i int) ChunkMeta {
+	const ingestedAtOffset = 1000
+
 	return ChunkMeta{
 		Checksum:   uint32(i),
 		MinTime:    int64(i),
 		MaxTime:    int64(i + 1),
-		IngestedAt: int64(1000 + i),
+		IngestedAt: ingestedAtOffset + int64(i),
 		KB:         uint32(i),
 		Entries:    uint32(i),
 	}

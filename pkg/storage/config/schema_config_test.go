@@ -296,10 +296,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 	}
 }
 
-// TestPeriodConfig_TSDBFormat_V14NotAcceptedBeforeSchemaPR guards the Phase 1
-// boundary: the FormatV4 encoder exists, but no production schema can select
-// it yet. Schema v14 must fail validation and must not map to FormatV4.
-func TestPeriodConfig_TSDBFormat_V14NotAcceptedBeforeSchemaPR(t *testing.T) {
+func TestPeriodConfig_TSDBFormat_V14RequiresSchemaSupport(t *testing.T) {
 	v14 := PeriodConfig{
 		Schema:    "v14",
 		RowShards: 16,
@@ -315,7 +312,7 @@ func TestPeriodConfig_TSDBFormat_V14NotAcceptedBeforeSchemaPR(t *testing.T) {
 
 	format, err := v14.TSDBFormat()
 	require.NoError(t, err)
-	require.Equal(t, index.FormatV3, format, "schema v14 must not map to FormatV4 before the schema writer PR")
+	require.Equal(t, index.FormatV3, format)
 
 	v13 := v14
 	v13.Schema = "v13"
