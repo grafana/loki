@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/v3/pkg/util"
 	httpgrpcutil "github.com/grafana/loki/v3/pkg/util/httpgrpc"
+	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -159,9 +160,9 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 
 			switch r := request.Request.(type) {
 			case *schedulerpb.SchedulerToQuerier_HttpRequest:
-				sp.runHTTPRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, r.HttpRequest)
+				sp.runHTTPRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, httpgrpcpb.ToHTTPRequest(&r.HttpRequest))
 			case *schedulerpb.SchedulerToQuerier_QueryRequest:
-				sp.runQueryRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, r.QueryRequest)
+				sp.runQueryRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, &r.QueryRequest)
 			default:
 				// todo: how should we handle the error here?
 				level.Error(logger).Log("msg", "error, unexpected request type from scheduler", "type", reflect.TypeOf(request))
@@ -196,14 +197,14 @@ func (sp *schedulerProcessor) runQueryRequest(ctx context.Context, logger log.Lo
 
 		errMsg := fmt.Sprintf("response larger than the max message size (%d vs %d)", response.Size(), sp.maxMessageSize)
 		response = &queryrange.QueryResponse{
-			Status: status.New(http.StatusRequestEntityTooLarge, errMsg).Proto(),
+			Status: queryrange.FromRPCStatus(status.New(http.StatusRequestEntityTooLarge, errMsg).Proto()),
 		}
 	}
 
 	result := &frontendv2pb.QueryResultRequest{
 		QueryID: queryID,
 		Response: &frontendv2pb.QueryResultRequest_QueryResponse{
-			QueryResponse: response,
+			QueryResponse: *response,
 		},
 		Stats: stats,
 	}
@@ -235,7 +236,7 @@ func (sp *schedulerProcessor) runHTTPRequest(ctx context.Context, logger log.Log
 	result := &frontendv2pb.QueryResultRequest{
 		QueryID: queryID,
 		Response: &frontendv2pb.QueryResultRequest_HttpResponse{
-			HttpResponse: response,
+			HttpResponse: *httpgrpcpb.FromHTTPResponse(response),
 		},
 		Stats: stats,
 	}

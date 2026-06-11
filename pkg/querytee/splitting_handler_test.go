@@ -276,7 +276,7 @@ func TestSplittingHandler_RoutingModeV1Preferred_SkipsToDefaultWhenNotSampling(t
 		Step:    60000,
 		Limit:   100,
 		Path:    constants.PathLokiQueryRange,
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: expr,
 		},
 	}
@@ -365,7 +365,7 @@ func TestSplittingHandler_AlwaysSplitsEvenWhenNotSampling(t *testing.T) {
 				Step:    60000,                   // 1 minute step in milliseconds (required for metric queries)
 				Limit:   100,
 				Path:    constants.PathLokiQueryRange,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: expr,
 				},
 			}
@@ -507,7 +507,7 @@ func TestSplittingHandler_V1Preferred_SplitsWhenSampling(t *testing.T) {
 		Step:    60000,
 		Limit:   100,
 		Path:    constants.PathLokiQueryRange,
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: expr,
 		},
 	}
@@ -583,7 +583,7 @@ func TestSplittingHandler_SkipFanoutDisabled_AlwaysSplits(t *testing.T) {
 				Step:    60000,
 				Limit:   100,
 				Path:    constants.PathLokiQueryRange,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: expr,
 				},
 			}
@@ -899,7 +899,7 @@ func TestSplittingHandler_MultiTenantQuery_RoutesToV1Only(t *testing.T) {
 				Step:    60000,
 				Limit:   100,
 				Path:    constants.PathLokiQueryRange,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: expr,
 				},
 			}

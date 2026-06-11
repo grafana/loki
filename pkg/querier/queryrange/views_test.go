@@ -22,7 +22,7 @@ import (
 func TestGetLokiSeriesResponse(t *testing.T) {
 	p := QueryResponse{
 		Response: &QueryResponse_Series{
-			Series: &LokiSeriesResponse{
+			Series: LokiSeriesResponse{
 				Status: "success",
 				Data: []logproto.SeriesIdentifier{
 					{

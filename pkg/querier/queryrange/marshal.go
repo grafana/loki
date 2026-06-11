@@ -228,37 +228,37 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 }
 
 func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
-	if res.Status != nil && res.Status.Code != int32(rpc.OK) {
-		return nil, status.ErrorProto(res.Status)
+	if s := res.Status.Status(); s != nil && s.Code != int32(rpc.OK) {
+		return nil, status.ErrorProto(s)
 	}
 
 	switch concrete := res.Response.(type) {
 	case *QueryResponse_Series:
-		return concrete.Series, nil
+		return &concrete.Series, nil
 	case *QueryResponse_Labels:
-		return concrete.Labels, nil
+		return &concrete.Labels, nil
 	case *QueryResponse_Stats:
-		return concrete.Stats, nil
+		return &concrete.Stats, nil
 	case *QueryResponse_ShardsResponse:
-		return concrete.ShardsResponse, nil
+		return &concrete.ShardsResponse, nil
 	case *QueryResponse_Prom:
-		return concrete.Prom, nil
+		return &concrete.Prom, nil
 	case *QueryResponse_Streams:
-		return concrete.Streams, nil
+		return &concrete.Streams, nil
 	case *QueryResponse_Volume:
-		return concrete.Volume, nil
+		return &concrete.Volume, nil
 	case *QueryResponse_TopkSketches:
-		return concrete.TopkSketches, nil
+		return &concrete.TopkSketches, nil
 	case *QueryResponse_QuantileSketches:
-		return concrete.QuantileSketches, nil
+		return &concrete.QuantileSketches, nil
 	case *QueryResponse_PatternsResponse:
-		return concrete.PatternsResponse, nil
+		return &concrete.PatternsResponse, nil
 	case *QueryResponse_DetectedLabels:
-		return concrete.DetectedLabels, nil
+		return &concrete.DetectedLabels, nil
 	case *QueryResponse_DetectedFields:
-		return concrete.DetectedFields, nil
+		return &concrete.DetectedFields, nil
 	case *QueryResponse_CountMinSketches:
-		return concrete.CountMinSketches, nil
+		return &concrete.CountMinSketches, nil
 	default:
 		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
 	}
@@ -266,42 +266,42 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 
 func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	p := &QueryResponse{
-		Status: status.New(codes.OK, "").Proto(),
+		Status: FromRPCStatus(status.New(codes.OK, "").Proto()),
 	}
 
 	switch response := res.(type) {
 	case *LokiPromResponse:
-		p.Response = &QueryResponse_Prom{response}
+		p.Response = &QueryResponse_Prom{*response}
 	case *LokiResponse:
-		p.Response = &QueryResponse_Streams{response}
+		p.Response = &QueryResponse_Streams{*response}
 	case *LokiSeriesResponse:
-		p.Response = &QueryResponse_Series{response}
+		p.Response = &QueryResponse_Series{*response}
 	case *MergedSeriesResponseView:
 		mat, err := response.Materialize()
 		if err != nil {
 			return p, err
 		}
-		p.Response = &QueryResponse_Series{mat}
+		p.Response = &QueryResponse_Series{*mat}
 	case *LokiLabelNamesResponse:
-		p.Response = &QueryResponse_Labels{response}
+		p.Response = &QueryResponse_Labels{*response}
 	case *IndexStatsResponse:
-		p.Response = &QueryResponse_Stats{response}
+		p.Response = &QueryResponse_Stats{*response}
 	case *VolumeResponse:
-		p.Response = &QueryResponse_Volume{response}
+		p.Response = &QueryResponse_Volume{*response}
 	case *TopKSketchesResponse:
-		p.Response = &QueryResponse_TopkSketches{response}
+		p.Response = &QueryResponse_TopkSketches{*response}
 	case *QuantileSketchResponse:
-		p.Response = &QueryResponse_QuantileSketches{response}
+		p.Response = &QueryResponse_QuantileSketches{*response}
 	case *ShardsResponse:
-		p.Response = &QueryResponse_ShardsResponse{response}
+		p.Response = &QueryResponse_ShardsResponse{*response}
 	case *QueryPatternsResponse:
-		p.Response = &QueryResponse_PatternsResponse{response}
+		p.Response = &QueryResponse_PatternsResponse{*response}
 	case *DetectedLabelsResponse:
-		p.Response = &QueryResponse_DetectedLabels{response}
+		p.Response = &QueryResponse_DetectedLabels{*response}
 	case *DetectedFieldsResponse:
-		p.Response = &QueryResponse_DetectedFields{response}
+		p.Response = &QueryResponse_DetectedFields{*response}
 	case *CountMinSketchResponse:
-		p.Response = &QueryResponse_CountMinSketches{response}
+		p.Response = &QueryResponse_CountMinSketches{*response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
@@ -312,7 +312,7 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 // QueryResponseWrapError wraps an error in the QueryResponse protobuf.
 func QueryResponseWrapError(err error) *QueryResponse {
 	return &QueryResponse{
-		Status: server.WrapError(err),
+		Status: FromRPCStatus(server.WrapError(err)),
 	}
 }
 
@@ -364,50 +364,50 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 
 	switch concrete := req.Request.(type) {
 	case *QueryRequest_Series:
-		return concrete.Series, ctx, nil
+		return &concrete.Series, ctx, nil
 	case *QueryRequest_Instant:
-		if concrete.Instant.Plan == nil {
+		if concrete.Instant.Plan.AST == nil {
 			parsed, err := syntax.ParseExpr(concrete.Instant.GetQuery())
 			if err != nil {
 				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
-			concrete.Instant.Plan = &plan.QueryPlan{
+			concrete.Instant.Plan = plan.QueryPlan{
 				AST: parsed,
 			}
 		}
 
-		return concrete.Instant, ctx, nil
+		return &concrete.Instant, ctx, nil
 	case *QueryRequest_Stats:
-		return concrete.Stats, ctx, nil
+		return &concrete.Stats, ctx, nil
 	case *QueryRequest_ShardsRequest:
-		return concrete.ShardsRequest, ctx, nil
+		return &concrete.ShardsRequest, ctx, nil
 	case *QueryRequest_Volume:
-		return concrete.Volume, ctx, nil
+		return &concrete.Volume, ctx, nil
 	case *QueryRequest_Streams:
-		if concrete.Streams.Plan == nil {
+		if concrete.Streams.Plan.AST == nil {
 			parsed, err := syntax.ParseExpr(concrete.Streams.GetQuery())
 			if err != nil {
 				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
-			concrete.Streams.Plan = &plan.QueryPlan{
+			concrete.Streams.Plan = plan.QueryPlan{
 				AST: parsed,
 			}
 		}
 
-		return concrete.Streams, ctx, nil
+		return &concrete.Streams, ctx, nil
 	case *QueryRequest_Labels:
 		return &LabelRequest{
-			LabelRequest: *concrete.Labels,
+			LabelRequest: concrete.Labels,
 		}, ctx, nil
 	case *QueryRequest_PatternsRequest:
-		return concrete.PatternsRequest, ctx, nil
+		return &concrete.PatternsRequest, ctx, nil
 	case *QueryRequest_DetectedLabels:
 		return &DetectedLabelsRequest{
-			DetectedLabelsRequest: *concrete.DetectedLabels,
+			DetectedLabelsRequest: concrete.DetectedLabels,
 		}, ctx, nil
 	case *QueryRequest_DetectedFields:
 		return &DetectedFieldsRequest{
-			DetectedFieldsRequest: *concrete.DetectedFields,
+			DetectedFieldsRequest: concrete.DetectedFields,
 		}, ctx, nil
 	default:
 		return nil, ctx, fmt.Errorf("unsupported request type while unwrapping, got (%T)", req.Request)
@@ -421,25 +421,25 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 
 	switch req := r.(type) {
 	case *LokiSeriesRequest:
-		result.Request = &QueryRequest_Series{Series: req}
+		result.Request = &QueryRequest_Series{Series: *req}
 	case *LabelRequest:
-		result.Request = &QueryRequest_Labels{Labels: &req.LabelRequest}
+		result.Request = &QueryRequest_Labels{Labels: req.LabelRequest}
 	case *logproto.IndexStatsRequest:
-		result.Request = &QueryRequest_Stats{Stats: req}
+		result.Request = &QueryRequest_Stats{Stats: *req}
 	case *logproto.VolumeRequest:
-		result.Request = &QueryRequest_Volume{Volume: req}
+		result.Request = &QueryRequest_Volume{Volume: *req}
 	case *LokiInstantRequest:
-		result.Request = &QueryRequest_Instant{Instant: req}
+		result.Request = &QueryRequest_Instant{Instant: *req}
 	case *LokiRequest:
-		result.Request = &QueryRequest_Streams{Streams: req}
+		result.Request = &QueryRequest_Streams{Streams: *req}
 	case *logproto.ShardsRequest:
-		result.Request = &QueryRequest_ShardsRequest{ShardsRequest: req}
+		result.Request = &QueryRequest_ShardsRequest{ShardsRequest: *req}
 	case *logproto.QueryPatternsRequest:
-		result.Request = &QueryRequest_PatternsRequest{PatternsRequest: req}
+		result.Request = &QueryRequest_PatternsRequest{PatternsRequest: *req}
 	case *DetectedLabelsRequest:
-		result.Request = &QueryRequest_DetectedLabels{DetectedLabels: &req.DetectedLabelsRequest}
+		result.Request = &QueryRequest_DetectedLabels{DetectedLabels: req.DetectedLabelsRequest}
 	case *DetectedFieldsRequest:
-		result.Request = &QueryRequest_DetectedFields{DetectedFields: &req.DetectedFieldsRequest}
+		result.Request = &QueryRequest_DetectedFields{DetectedFields: req.DetectedFieldsRequest}
 	default:
 		return nil, fmt.Errorf("unsupported request type while wrapping, got (%T)", r)
 	}

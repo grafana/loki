@@ -11,6 +11,7 @@ import (
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -62,10 +63,10 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 				return &schedulerpb.SchedulerToQuerier{
 					QueryID: 1,
 					Request: &schedulerpb.SchedulerToQuerier_HttpRequest{
-						HttpRequest: &httpgrpc.HTTPRequest{
+						HttpRequest: *httpgrpcpb.FromHTTPRequest(&httpgrpc.HTTPRequest{
 							Method: "GET",
 							Url:    `/loki/api/v1/query_range?query={foo="bar"}&step=10&limit=200&direction=FORWARD`,
-						},
+						}),
 					},
 					FrontendAddress: "127.0.0.2",
 					UserID:          "user-1",

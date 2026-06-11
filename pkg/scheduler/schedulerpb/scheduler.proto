@@ -2,13 +2,15 @@ syntax = "proto3";
 
 package schedulerpb;
 
-import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
-import "gogoproto/gogo.proto";
+import "pkg/util/httpgrpcpb/httpgrpcpb.proto";
+import "wiresmith/options.proto";
 import "pkg/querier/queryrange/queryrange.proto";
 
 option go_package = "schedulerpb";
-option (gogoproto.marshaler_all) = true;
-option (gogoproto.unmarshaler_all) = true;
+
+// Drop the per-message presence bitmap: gogoproto nullable=false parity
+// (see WIRESMITH_MIGRATION.md).
+option (wiresmith.options.no_presence_all) = true;
 
 // Scheduler interface exposed to Queriers.
 service SchedulerForQuerier {
@@ -36,7 +38,7 @@ message SchedulerToQuerier {
   uint64 queryID = 1;
 
   oneof request {
-    httpgrpc.HTTPRequest httpRequest = 2 [deprecated = true];
+    loki.httpgrpcpb.HTTPRequest httpRequest = 2 [deprecated = true];
     queryrange.QueryRequest queryRequest = 8;
   }
 
@@ -63,6 +65,7 @@ service SchedulerForFrontend {
 }
 
 enum FrontendToSchedulerType {
+  option (wiresmith.options.enum_no_prefix) = true;
   INIT = 0;
   ENQUEUE = 1;
   CANCEL = 2;
@@ -81,7 +84,7 @@ message FrontendToScheduler {
   // Following are used by ENQUEUE only.
   string userID = 4;
   oneof request {
-    httpgrpc.HTTPRequest httpRequest = 5 [deprecated = true];
+    loki.httpgrpcpb.HTTPRequest httpRequest = 5 [deprecated = true];
     queryrange.QueryRequest queryRequest = 8;
   }
   bool statsEnabled = 6;
@@ -90,6 +93,7 @@ message FrontendToScheduler {
 }
 
 enum SchedulerToFrontendStatus {
+  option (wiresmith.options.enum_no_prefix) = true;
   OK = 0;
   TOO_MANY_REQUESTS_PER_TENANT = 1;
   ERROR = 2;

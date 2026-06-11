@@ -1089,7 +1089,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		return &LokiSeriesResponse{
 			Status:  resp.Status,
 			Version: uint32(loghttp.GetVersion(req.Path)),
-			Headers: httpResponseHeadersToPromResponseHeaders(headers),
+			Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 			Data:    resp.Data,
 		}, nil
 	case *LabelRequest:
@@ -1101,7 +1101,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			Status:  resp.Status,
 			Version: uint32(loghttp.GetVersion(req.Path())),
 			Data:    resp.Data,
-			Headers: httpResponseHeadersToPromResponseHeaders(headers),
+			Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *logproto.IndexStatsRequest:
 		var resp logproto.IndexStatsResponse
@@ -1110,7 +1110,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &IndexStatsResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *logproto.ShardsRequest:
 		var resp logproto.ShardsResponse
@@ -1119,7 +1119,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &ShardsResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *logproto.VolumeRequest:
 		var resp logproto.VolumeResponse
@@ -1128,7 +1128,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &VolumeResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *DetectedFieldsRequest:
 		var resp logproto.DetectedFieldsResponse
@@ -1137,7 +1137,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &DetectedFieldsResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *logproto.QueryPatternsRequest:
 		var resp logproto.QueryPatternsResponse
@@ -1146,7 +1146,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &QueryPatternsResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *DetectedLabelsRequest:
 		var resp logproto.DetectedLabelsResponse
@@ -1155,7 +1155,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &DetectedLabelsResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	default:
 		var resp loghttp.QueryResponse
@@ -1202,7 +1202,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 					ResultType: loghttp.ResultTypeStream,
 					Result:     resp.Data.Result.(loghttp.Streams).ToProto(),
 				},
-				Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+				Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 				Warnings: resp.Warnings,
 			}, nil
 		case loghttp.ResultTypeVector:
@@ -1841,7 +1841,7 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 				Step:    r.GetStep(),
 				StartTs: r.GetStart(),
 				EndTs:   r.GetEnd(),
-				Plan:    &plan.QueryPlan{AST: expr},
+				Plan:    plan.QueryPlan{AST: expr},
 			},
 		}, nil
 	default:
@@ -2290,7 +2290,7 @@ func parseRangeQuery(r *http.Request) (*LokiRequest, error) {
 		Path:        r.URL.Path,
 		Shards:      rangeQuery.Shards,
 		StoreChunks: storeChunks,
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: parsed,
 		},
 	}, nil
@@ -2320,7 +2320,7 @@ func parseInstantQuery(r *http.Request) (*LokiInstantRequest, error) {
 		Path:        r.URL.Path,
 		Shards:      req.Shards,
 		StoreChunks: storeChunks,
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: parsed,
 		},
 	}, nil

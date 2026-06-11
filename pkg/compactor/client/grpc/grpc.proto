@@ -2,9 +2,13 @@ syntax = "proto3";
 
 package grpc;
 
-import "gogoproto/gogo.proto";
+import "wiresmith/options.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/compactor/deletion/deletionproto/types.proto";
+
+// Drop the per-message presence bitmap: gogoproto nullable=false parity
+// (see WIRESMITH_MIGRATION.md).
+option (wiresmith.options.no_presence_all) = true;
 
 service Compactor {
   rpc GetDeleteRequests(GetDeleteRequestsRequest) returns (GetDeleteRequestsResponse);
@@ -15,18 +19,12 @@ message GetDeleteRequestsRequest {
   bool forQuerytimeFiltering = 1;
   // Time range for overlap filtering. If present, only returns delete requests
   // that overlap with the given time range.
-  google.protobuf.Timestamp start_time = 2 [
-    (gogoproto.nullable) = false,
-    (gogoproto.stdtime) = true
-  ];
-  google.protobuf.Timestamp end_time = 3 [
-    (gogoproto.nullable) = false,
-    (gogoproto.stdtime) = true
-  ];
+  google.protobuf.Timestamp start_time = 2 [(wiresmith.options.stdtime) = true];
+  google.protobuf.Timestamp end_time = 3 [(wiresmith.options.stdtime) = true];
 }
 
 message GetDeleteRequestsResponse {
-  repeated deletionproto.DeleteRequest deleteRequests = 1;
+  repeated deletionproto.DeleteRequest deleteRequests = 1 [(wiresmith.options.pointer) = true];
 }
 
 message GetCacheGenNumbersRequest {}
@@ -44,6 +42,7 @@ message Job {
 
 // JobType represents the type of job
 enum JobType {
+  option (wiresmith.options.enum_no_prefix) = true;
   JOB_TYPE_DELETION = 0;
   // Add more job types as needed
 }

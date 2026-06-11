@@ -83,7 +83,7 @@ func Test_splitQuery(t *testing.T) {
 					EndTs:     end,
 					Direction: logproto.Direction_BACKWARD,
 					Path:      "/query",
-					Plan: &plan.QueryPlan{
+					Plan: plan.QueryPlan{
 						AST: syntax.MustParseExpr(`{app="foo"}`),
 					},
 				}
@@ -99,7 +99,7 @@ func Test_splitQuery(t *testing.T) {
 					EndTs:     end,
 					Direction: logproto.Direction_BACKWARD,
 					Path:      "/query",
-					Plan: &plan.QueryPlan{
+					Plan: plan.QueryPlan{
 						AST: syntax.MustParseExpr(`{app="foo"}`),
 					},
 				}
@@ -1331,12 +1331,12 @@ func Test_splitMetricQuery(t *testing.T) {
 		},
 	} {
 		// Set query plans
-		tc.input.Plan = &plan.QueryPlan{
+		tc.input.Plan = plan.QueryPlan{
 			AST: syntax.MustParseExpr(tc.input.Query),
 		}
 
 		for _, e := range tc.expected {
-			e.(*LokiRequest).Plan = &plan.QueryPlan{
+			e.(*LokiRequest).Plan = plan.QueryPlan{
 				AST: syntax.MustParseExpr(e.GetQuery()),
 			}
 		}

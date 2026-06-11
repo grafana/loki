@@ -283,11 +283,6 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 			Statistics: res.Statistics,
 		}, nil
 	case logqlmodel.ValueTypeStreams:
-		respHeaders := make([]queryrangebase.PrometheusResponseHeader, 0, len(res.Headers))
-		for i := range res.Headers {
-			respHeaders = append(respHeaders, *res.Headers[i])
-		}
-
 		return &LokiResponse{
 			Status:     loghttp.QueryStatusSuccess,
 			Direction:  params.Direction(),
@@ -298,7 +293,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 				ResultType: loghttp.ResultTypeStream,
 				Result:     value.(loghttp.Streams).ToProto(),
 			},
-			Headers:  respHeaders,
+			Headers:  res.Headers,
 			Warnings: res.Warnings,
 		}, nil
 	case parser.ValueTypeVector:

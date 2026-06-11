@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/v3/pkg/util"
 	lokigrpc "github.com/grafana/loki/v3/pkg/util/httpgrpc"
+	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 	lokihttpreq "github.com/grafana/loki/v3/pkg/util/httpreq"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
@@ -52,6 +53,8 @@ var errSchedulerIsNotRunning = errors.New("scheduler is not running")
 
 // Scheduler is responsible for queueing and dispatching queries to Queriers.
 type Scheduler struct {
+	schedulerpb.UnimplementedSchedulerForFrontendServer
+	schedulerpb.UnimplementedSchedulerForQuerierServer
 	services.Service
 
 	cfg Config
@@ -368,7 +371,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		frontendAddress: frontendAddr,
 		tenantID:        msg.UserID,
 		queryID:         msg.QueryID,
-		request:         msg.GetHttpRequest(),
+		request:         httpgrpcpb.ToHTTPRequest(msg.GetHttpRequest()),
 		queryRequest:    msg.GetQueryRequest(),
 		statsEnabled:    msg.StatsEnabled,
 	}
@@ -511,15 +514,16 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 			UserID:          req.tenantID,
 			QueryID:         req.queryID,
 			FrontendAddress: req.frontendAddress,
-			Request: &schedulerpb.SchedulerToQuerier_HttpRequest{
-				HttpRequest: req.request,
-			},
-			StatsEnabled: req.statsEnabled,
+			StatsEnabled:    req.statsEnabled,
 		}
-		// Override HttpRequest if new request type is set.
+		// Prefer the new query request type; fall back to the HTTP request.
 		if req.queryRequest != nil {
 			msg.Request = &schedulerpb.SchedulerToQuerier_QueryRequest{
-				QueryRequest: req.queryRequest,
+				QueryRequest: *req.queryRequest,
+			}
+		} else {
+			msg.Request = &schedulerpb.SchedulerToQuerier_HttpRequest{
+				HttpRequest: *httpgrpcpb.FromHTTPRequest(req.request),
 			}
 		}
 		err := querier.Send(msg)
@@ -578,10 +582,10 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
 		QueryID: req.queryID,
 		Response: &frontendv2pb.QueryResultRequest_HttpResponse{
-			HttpResponse: &httpgrpc.HTTPResponse{
+			HttpResponse: *httpgrpcpb.FromHTTPResponse(&httpgrpc.HTTPResponse{
 				Code: http.StatusInternalServerError,
 				Body: []byte(requestErr.Error()),
-			},
+			}),
 		},
 	})
 

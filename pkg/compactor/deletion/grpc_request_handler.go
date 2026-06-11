@@ -15,6 +15,7 @@ import (
 )
 
 type GRPCRequestHandler struct {
+	grpc.UnimplementedCompactorServer
 	deleteRequestsStore DeleteRequestsStore
 	limits              Limits
 }

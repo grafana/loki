@@ -62,7 +62,7 @@ func Test_newRulerClientFactory(t *testing.T) {
 	assert.Equal(t, uint64(2), metrics[0].GetMetric()[0].GetHistogram().GetSampleCount())
 }
 
-type mockRulerServer struct{}
+type mockRulerServer struct{ UnimplementedRulerServer }
 
 func (m *mockRulerServer) Rules(context.Context, *RulesRequest) (*RulesResponse, error) {
 	return &RulesResponse{}, nil

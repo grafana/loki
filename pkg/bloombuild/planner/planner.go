@@ -37,6 +37,7 @@ var (
 )
 
 type Planner struct {
+	protos.UnimplementedPlannerForBuilderServer
 	services.Service
 	// Subservices manager.
 	subservices        *services.Manager

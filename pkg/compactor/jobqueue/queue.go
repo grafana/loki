@@ -39,6 +39,7 @@ type Builder interface {
 
 // Queue implements the job queue service
 type Queue struct {
+	grpc.UnimplementedJobQueueServer
 	queue                     chan *grpc.Job
 	builders                  map[grpc.JobType]builder
 	wg                        sync.WaitGroup

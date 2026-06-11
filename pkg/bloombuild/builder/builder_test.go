@@ -214,6 +214,7 @@ func Test_BuilderLoop_Timeout(t *testing.T) {
 }
 
 type fakePlannerServer struct {
+	protos.UnimplementedPlannerForBuilderServer
 	tasks          []*protos.ProtoTask
 	completedTasks atomic.Int64
 	erroredTasks   atomic.Int64

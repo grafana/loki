@@ -204,7 +204,7 @@ func makeDownstreamRequest(
 		Path:      "/loki/api/v1/query_range",
 	}
 
-	lokiReq.Plan = &plan.QueryPlan{
+	lokiReq.Plan = plan.QueryPlan{
 		AST: expr,
 	}
 

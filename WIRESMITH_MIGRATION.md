@@ -2,25 +2,31 @@
 
 Status of generating Loki's protobuf Go code with
 [wiresmith](https://github.com/grafana/wiresmith) instead of the current
-`protoc --gogoslick_out` toolchain. **Updated 2026-06-10 (phase 2)** against
-the wiresmith `databases` branch (commit 9407011, local worktree at
+`protoc --gogoslick_out` toolchain. **Updated 2026-06-11 (phase 3)** against
+the wiresmith `databases` branch (local worktree at
 `../wiresmith-databases`; `go.mod` `replace` points there).
 
 Phase 1 (previous revision of this doc) migrated 8 protos and identified
 blockers W1–W4. The `databases` branch fixed W1 (`-M` go_package exemption),
 W3 (unused import after customtype) and mitigated W4 (`XXX_` bitmap rename +
-`no_presence`); this phase regenerated everything, migrated the isolated
-leaf protos and the entire logproto-rooted cluster, and found three new
-issues (N1–N3 below).
+`no_presence`); phase 2 regenerated everything, migrated the isolated leaf
+protos and the entire logproto-rooted cluster, and found N1–N4. Phase 3
+migrated the queryrange/scheduler/frontend-v1+v2/ruler/bloombuild/compactor-
+grpc/checkpoint cluster; the `databases` branch had since gained a
+**value-getter** mode that downgrades N2 from a blocker to a non-issue (see
+N2 below).
 
 ---
 
 ## TL;DR
 
-- **22 of 38 protos are now wiresmith-generated**, including Loki's core
-  wire types (`logproto`, `resultscache`, `sketch`, `metrics`, `pattern`,
-  `bloomgateway`, `ingester-rf1`) and four gRPC service suites. Full repo
-  builds; `go vet ./...` clean; full `go test -count=1 ./pkg/...` green.
+- **The vast majority of Loki-authored protos are now wiresmith-generated**,
+  including Loki's core wire types (`logproto`, `resultscache`, `sketch`,
+  `metrics`, `pattern`, `bloomgateway`, `ingester-rf1`) and the entire
+  queryrange/scheduler/frontend/ruler/bloombuild/compactor-grpc/checkpoint
+  cluster, spanning all of Loki's gRPC service suites. Full repo builds;
+  `go vet ./...` clean (3 pre-existing unrelated nits); migrated-cluster
+  `go test -count=1` suites green.
 - `pkg/push` deliberately **stays on gogo**: with the fixed `-M`, push.proto
   is staged import-only and pinned
   (`-M pkg/push/push.proto=github.com/grafana/loki/pkg/push`), so the
@@ -31,10 +37,9 @@ issues (N1–N3 below).
   exported `XXX_fieldsPresent` bitmap carries no `json:"-"` tag and leaks
   into `encoding/json` output (N1), and Loki's consumers are built around
   gogo `nullable=false` struct parity anyway.
-- Remaining gogo protos (16): `push`/`push-rf1` (deliberate),
-  `indexgateway` (N3 blocker), and the queryrange/scheduler/frontend/ruler/
-  bloombuild/checkpoint/compactor-grpc cluster (next phase; no known hard
-  blocker except per-case items listed under "Path to full removal").
+- Remaining gogo protos: `push`/`push-rf1` (deliberate — see below),
+  `indexgateway` (N3 blocker), and the vendored Thanos/dskit protos (stay
+  gogo regardless). The queryrange cluster is now migrated (phase 3).
 
 ---
 
@@ -42,7 +47,8 @@ issues (N1–N3 below).
 
 Branch `wiresmith`. Phase-2 commits: `efea73e6fb` (toolchain + no_presence
 regeneration), `c953e4507d` (leaf protos), `f3e71adab2` (logproto cluster).
-All listed packages and their direct consumers pass `go test`.
+Phase 3 is a single commit migrating the queryrange cluster. All listed
+packages and their direct consumers pass `go test`.
 
 ### Generation model
 
@@ -50,7 +56,12 @@ All listed packages and their direct consumers pass `go test`.
 invocation per **generation group**, each with a disjoint temp staging tree
 mirroring repo paths. Groups exist because wiresmith enforces go_package
 consistency across its whole `--proto_path` walk; `-M`-pinned files are
-exempt (new), which the `logproto` group uses for `push.proto`.
+exempt (new), which the `logproto` group uses for `push.proto`. Each phase-3
+group stages its already-migrated dependency protos (logproto family, stats,
+resultscache, deletionproto, httpgrpcpb) **import-only** for resolution and
+`-M`-pins its own outputs (and `push.proto`, plus `google.rpc.Status` where
+reachable) so only the group's own files are emitted. `make wiresmith-protos`
+is reproducible: a fresh run reproduces all generated files byte-identically.
 
 | Group | Protos | Notes |
 |---|---|---|
@@ -61,6 +72,14 @@ exempt (new), which the `logproto` group uses for `push.proto`.
 | leaves | xcap, datasetmd, filemd, metastore, deletionproto | casttype `model.Time`/`DeleteRequestStatus`; map nil-sentinel → `Chunk.IsZero()`; datasetmd/filemd pointer=true for parity across ~45 consumer files |
 | compaction | dataobj/compaction/proto | pointer=true on message fields |
 | logproto | logproto, metrics, pattern, bloomgateway, ingester-rf1, sketch, resultscache types + test_types | see below |
+| httpgrpc | util/httpgrpcpb | wire-identical local copy of dskit `httpgrpc.HTTPRequest/Response/Header` (see queryrange cluster below) |
+| bloombuild | bloombuild/protos types+service | stages logproto/stats/resultscache import-only |
+| compactorgrpc | compactor/client/grpc | `Compactor`+`JobQueue` services; stages deletionproto import-only |
+| checkpoint | ingester/checkpoint | stages logproto/stats/resultscache import-only; `-M` checkpoint→`pkg/ingester` |
+| ruler | rulespb/rules, ruler/base/ruler | `LabelAdapter` customtype; `AnyAdapter` for `RuleGroupDesc.Options` (W2); `UnimplementedRulerServer` |
+| queryrange | queryrangebase/definitions, queryrangebase/queryrange, queryrange/queryrange | phase-3 centerpiece — see below |
+| scheduler | scheduler/schedulerpb | stages httpgrpcpb + the queryrange chain import-only; `-M` for `google.rpc` |
+| frontend | frontend v1+v2 | uses `querier/stats` (so split from queryrange, which uses `logqlmodel/stats`); `logqlmodel/stats` `-M`-pinned for the transitive queryrange import |
 
 ### The logproto cluster (phase 2 centerpiece)
 
@@ -108,6 +127,60 @@ exempt (new), which the `logproto` group uses for `push.proto`.
 
 ---
 
+## The queryrange cluster (phase 3)
+
+Migrated: `queryrangebase/definitions`, `queryrangebase/queryrange`,
+`queryrange/queryrange`, `scheduler/schedulerpb`, `frontend v1`/`v2`,
+`ruler/rulespb` + `ruler/base/ruler`, `bloombuild/protos`,
+`compactor/client/grpc`, `ingester/checkpoint`.
+
+- **N2 solved by value getters (no customname needed).** The `databases`
+  branch now emits **value** getters for value-shaped fields under
+  `no_presence`, so the generated code directly satisfies the gogo
+  `nullable=false` `Request`/`Response` interfaces: e.g.
+  `LokiResponse.GetStatistics() stats.Result`, `LokiRequest.GetPlan()
+  plan.QueryPlan`, `QueryResponse.GetStatus() RPCStatusAdapter` are all
+  value-returning. This is the change that unblocked the whole cluster — the
+  phase-2 `customname`+hand-written-getter workaround (VolumeRequest /
+  MockRequest) was **not** needed here. A few hand-written value getters
+  remain for stdtime fields where the field name differs from the getter
+  (`LokiRequest.GetStart/GetEnd() time.Time` over `StartTs/EndTs`,
+  `codec.go`).
+- **QueryPlan customtype is value-shaped.** `Query/Instant/SampleQuery.plan`
+  uses `customtype = plan.QueryPlan` with no `pointer`, so the field is a
+  value `plan.QueryPlan` (was `*queryrange.Plan`); absence is `req.Plan.AST
+  == nil`. Same nil-AST `Size()` guard as the logproto-cluster
+  `plan.QueryPlan` adapter applies.
+- **`RPCStatusAdapter`** (`rpc_status_adapter.go`): `QueryResponse.status`
+  is wire-declared `google.rpc.Status` (a gogo-generated vendored type) but
+  carries this customtype value bridge in Go — wiresmith cannot embed
+  another runtime's messages (W2). Mirrors `resultscache.AnyAdapter`;
+  delegates Size/Marshal/Unmarshal/Equal/Compare to gogo `rpc.Status`. A
+  zero adapter `.Status()` yields nil for old `*rpc.Status` parity. The
+  `google.rpc.Status` proto is staged with its go_package rewritten to the
+  gogo import path and `-M`-pinned (see Makefile `status.proto` sed).
+- **`rulespb.AnyAdapter`** (`any_adapter.go`): same pattern for
+  `RuleGroupDesc.Options` (`repeated google.protobuf.Any`), bridging gogo
+  `types.Any`.
+- **`util/httpgrpcpb`**: wiresmith-generated, wire-identical local copies of
+  dskit's `httpgrpc.HTTPRequest/HTTPResponse/Header`. The vendored dskit
+  protos are gogo and cannot be embedded by wiresmith code, and oneof
+  variants cannot use customtype bridges — so the queryrange/scheduler/
+  frontend protos reference these copies. `convert.go` has
+  `From*/To*` helpers; `pkg/util/httpgrpc/carrier.go` converts at the
+  boundary (`Request.GetHttpRequest()` now returns `*httpgrpcpb.HTTPRequest`).
+- **gogo registry interop (N4):** `gogo_registry.go` (in `queryrange` and
+  `queryrangebase`) `proto.RegisterType`-s the migrated response/request
+  message types under their original gogo FQNs, so the results cache's gogo
+  `types.Any` (`Marshal/UnmarshalAny`, TypeUrl-based) still resolves them.
+- **gRPC servers** embed the generated `Unimplemented*Server` (modern
+  grpc-go `mustEmbed*` contract): `GRPCRequestHandler`
+  (`UnimplementedCompactorServer`), `jobqueue.Queue`
+  (`UnimplementedJobQueueServer`), `ruler.Ruler` (`UnimplementedRulerServer`),
+  `bloombuild planner.Planner` (`UnimplementedPlannerForBuilderServer`).
+
+---
+
 ## Remaining wiresmith blockers / gaps (ranked)
 
 ### N1 — `XXX_fieldsPresent` has no `json:"-"` tag
@@ -125,23 +198,21 @@ exempt (new), which the `logproto` group uses for `push.proto`.
 - **Severity:** major if presence is wanted alongside JSON; for Loki,
   neutralized by no_presence.
 
-### N2 — message getters always return pointers; gogo `nullable=false` getters returned values
+### N2 — message getters always return pointers (RESOLVED on `databases`)
 
-- **Evidence:** `*VolumeRequest` stopped satisfying `definitions.Request`
-  (`have GetCachingOptions() *resultscache.CachingOptions, want ...
-  CachingOptions`). Under `no_presence` the getter is `&m.Field`
-  unconditionally; there is no value-getter mode.
-- **Impact:** every getter-shaped interface spanning gogo and wiresmith
-  implementations breaks. Hit twice (VolumeRequest, MockRequest); will
-  recur for the queryrange `Request`/`Response` interfaces in the next
-  phase (e.g. `GetStatistics() stats.Result`, implemented today by gogo
-  value getters on ~10 response types).
-- **Workaround:** `customname` the field, hand-write the value getter.
-- **Suggested fix:** a `value_getters`/gogo-parity option (at least under
-  `no_presence`, where nil-signaling via the getter is meaningless anyway).
-- **Severity:** **top remaining blocker** for the queryrange phase — the
-  workaround is per-field and pollutes the public Go API with renamed
-  fields.
+- **Evidence (phase 2):** `*VolumeRequest` stopped satisfying
+  `definitions.Request` (`have GetCachingOptions()
+  *resultscache.CachingOptions, want ... CachingOptions`). Under
+  `no_presence` the getter was `&m.Field` unconditionally.
+- **Resolution:** the `databases` branch now emits **value** getters for
+  value-shaped fields under `no_presence`. The phase-3 queryrange cluster
+  relied on this: `GetStatistics() stats.Result`, `GetPlan()
+  plan.QueryPlan`, `GetStatus() RPCStatusAdapter` are generated as value
+  getters and satisfy the gogo `nullable=false` `Request`/`Response`
+  interfaces with **no** `customname` renames. The phase-2
+  `customname`+hand-written-getter workaround (VolumeRequest, MockRequest)
+  remains in the logproto cluster but is no longer the recommended pattern.
+- **Severity:** resolved; was previously the top blocker for queryrange.
 
 ### N3 — one Go import path cannot host two proto packages
 
@@ -167,19 +238,23 @@ exempt (new), which the `logproto` group uses for `push.proto`.
   tests failed until the mocks were `proto.RegisterType`-ed manually.
 - **Impact:** any TypeUrl/reflection path through gogo (`types.*Any`,
   `jsonpb`, `proto.MessageType`) breaks for migrated messages. The
-  queryrange phase hits this hard: cache extents store responses as `Any`.
-- **Workaround:** hand-written `init()` registration (name must match the
-  old gogo FQN).
+  queryrange phase hit this directly: results-cache extents store responses
+  as gogo `types.Any`.
+- **Workaround (used in phase 3):** hand-written `init()` registration in
+  `gogo_registry.go` (`queryrange` and `queryrangebase`), names matching the
+  old gogo FQN.
 - **Suggested fix:** optional gogo-registry registration in generated code,
   or a documented helper.
-- **Severity:** moderate now, major for the queryrange phase.
+- **Severity:** moderate; handled per-package by the registry shim.
 
 ### Carried over, still relevant
 
 - **W2 (by design):** wiresmith messages cannot embed messages generated by
   other runtimes — forces leaf-first ordering and customtype envelopes
-  (`HeaderAdapter`, `AnyAdapter`). Will bite again for
-  `ruler/base/ruler.proto`, which embeds vendored Thanos/dskit gogo types.
+  (`HeaderAdapter`, `resultscache.AnyAdapter`, `rulespb.AnyAdapter`,
+  `RPCStatusAdapter`). For dskit `httpgrpc` (oneof variants, which cannot use
+  customtype) phase 3 generated a wire-identical local copy
+  (`util/httpgrpcpb`) with boundary conversions instead.
 - **stdtime/stdduration are value-only** — `*time.Time` fields
   (`LabelRequest`) forced into value shape; semantic change (zero time vs
   nil) absorbed at call sites.
@@ -194,39 +269,34 @@ exempt (new), which the `logproto` group uses for `push.proto`.
 
 ## Is full gogoproto removal from Loki's codegen path in reach?
 
-**Close, but not yet.** What's left and what gates it:
+**Very close.** The queryrange cluster (phase 3) is done; what's left:
 
-1. **queryrange cluster** (`definitions`, `queryrangebase/queryrange`,
-   `queryrange`, `scheduler`, `frontend v1/v2`, `bloombuild`, `checkpoint`,
-   `compactor/grpc`): no hard generation blocker, but
-   - N2 (pointer getters) hits the central `Request`/`Response` interfaces —
-     migrate-and-rename works but is ugly at this scale; a wiresmith
-     value-getter option would collapse the cost;
-   - N4 (gogo Any registry) needs registration shims or switching the
-     extent plumbing off gogo `types.Any`;
-   - `queryrange.proto` embeds `LokiResponse` etc. with heavy custom JSON
-     marshalers — a large but mechanical consumer surface.
-2. **ruler.proto / rules.proto**: embed vendored gogo types (Thanos
-   store-gateway, cortexpb) → W2; needs customtype envelopes per field.
-   The vendored protos themselves (`thanos`, `dskit`) stay gogo regardless —
-   **gogo can leave Loki's protoc pipeline, but not Loki's go.mod**.
-3. **indexgateway.proto**: gated solely on N3.
-4. **push/push-rf1**: gated on a product decision (wiresmith dep in the
+1. **indexgateway.proto**: gated solely on N3 (one Go import path cannot host
+   two proto packages).
+2. **push/push-rf1**: gated on a product decision (wiresmith dep in the
    standalone module, or keep the current import-only arrangement forever,
    which works fine).
-5. The `service PusherRF1` duplication and the vendored `push.proto` copy
+3. The `service PusherRF1` duplication and the vendored `push.proto` copy
    should be fixed in Loki regardless.
+4. The vendored Thanos/dskit protos stay gogo regardless — **gogo can leave
+   Loki's protoc pipeline, but not Loki's go.mod**.
 
-With N2 + N3 fixed in wiresmith and adapters for ruler's vendored types,
-every Loki-authored proto could be wiresmith-generated and the
-`--gogoslick_out` pipeline reduced to the vendored Thanos/dskit protos.
+With N3 fixed in wiresmith (and the `push` decision made), every
+Loki-authored proto could be wiresmith-generated and the `--gogoslick_out`
+pipeline reduced to the vendored Thanos/dskit protos. N2 (the prior top
+blocker) is resolved by the value-getter mode.
 
 ---
 
 ## Test evidence
 
-- `go build ./...`, `go vet ./pkg/...` (also `cmd`, `tools`): clean.
-- `go test -count=1 ./pkg/...` full sweep: green (after phase 2).
+- `go build ./...`: clean. `go vet ./...`: clean except 3 pre-existing
+  unrelated nits (metastore_test context-leak, logql engine_test
+  json-tag-repeat from vendored push, ruler/registry.go unkeyed-fields).
+- Phase-2 full sweep `go test -count=1 ./pkg/...`: green.
+- Phase-3 migrated-cluster suites `go test -count=1`: green (queryrange/...,
+  scheduler, ruler/..., frontend v1+v2, compactor/..., bloombuild/...,
+  querier/worker, querytee, ingester).
 - `pkg/push`: `go test ./...` inside the module: green; `go.mod` untouched.
 - stats JSON golden (`pkg/logqlmodel/stats/json_test.go`): byte-identical
   output vs gogo; it caught both the jsontag contract (phase 1) and the N1
@@ -238,6 +308,8 @@ every Loki-authored proto could be wiresmith-generated and the
 ## Reproduction
 
 - Regenerate: `make wiresmith-protos BUILD_IN_CONTAINER=false` (wiresmith
-  binary built from the `databases` branch on PATH).
-- The gogo pipeline (`make protos`) still generates the remaining 16 protos
-  and excludes the migrated ones via `WIRESMITH_PROTO_DEFS`.
+  binary built from the `databases` branch on PATH). Reproducible —
+  byte-identical output across runs.
+- The gogo pipeline (`make protos`) still generates the remaining gogo protos
+  (push/push-rf1, indexgateway, vendored Thanos/dskit) and excludes the
+  migrated ones via `WIRESMITH_PROTO_DEFS`.

@@ -237,6 +237,7 @@ type MultiTenantManager interface {
 //	|                                                               |
 //	+---------------------------------------------------------------+
 type Ruler struct {
+	UnimplementedRulerServer
 	services.Service
 
 	cfg        Config

@@ -429,7 +429,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"query_hash", queryHash,
 		)
 
-		if op.Plan == nil {
+		if op.Plan.AST == nil {
 			return nil, errors.New("query plan is empty")
 		}
 

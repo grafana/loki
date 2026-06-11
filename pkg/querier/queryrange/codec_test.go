@@ -69,7 +69,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Path:      "/query_range",
 			StartTs:   start,
 			EndTs:     end,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: syntax.MustParseExpr(`{foo="bar"}`),
 			},
 		}, false},
@@ -85,7 +85,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Path:      "/query_range",
 			StartTs:   start,
 			EndTs:     end,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: syntax.MustParseExpr(`{foo="bar"}`),
 			},
 		}, false},
@@ -101,7 +101,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Path:      "/api/prom/query",
 			StartTs:   start,
 			EndTs:     end,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: syntax.MustParseExpr(`{foo="bar"} |~ "foo"`),
 			},
 		}, false},
@@ -333,7 +333,7 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 				Direction: logproto.Direction_FORWARD,
 				Path:      "/v1/query",
 				TimeTs:    start,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"}`),
 				},
 				CachingOptions: queryrangebase.CachingOptions{
@@ -362,7 +362,7 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 				Path:      "/query_range",
 				StartTs:   start,
 				EndTs:     end,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"}`),
 				},
 				CachingOptions: queryrangebase.CachingOptions{
@@ -397,7 +397,7 @@ func TestParamsFromRequest_CachingOptions(t *testing.T) {
 				Query:   `{foo="bar"}`,
 				StartTs: start,
 				EndTs:   end,
-				Plan:    &plan.QueryPlan{AST: expr},
+				Plan:    plan.QueryPlan{AST: expr},
 				CachingOptions: queryrangebase.CachingOptions{
 					Disabled: true,
 				},
@@ -408,7 +408,7 @@ func TestParamsFromRequest_CachingOptions(t *testing.T) {
 			req: &LokiInstantRequest{
 				Query:  `{foo="bar"}`,
 				TimeTs: start,
-				Plan:   &plan.QueryPlan{AST: expr},
+				Plan:   plan.QueryPlan{AST: expr},
 				CachingOptions: queryrangebase.CachingOptions{
 					Disabled: true,
 				},

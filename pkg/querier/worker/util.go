@@ -126,7 +126,7 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 	r, ctx, err := codec.QueryRequestUnwrap(ctx, request)
 	if err != nil {
 		return &queryrange.QueryResponse{
-			Status: status.New(codes.Internal, err.Error()).Proto(),
+			Status: queryrange.FromRPCStatus(status.New(codes.Internal, err.Error()).Proto()),
 		}
 	}
 
@@ -134,7 +134,7 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 	if err != nil {
 		if s, ok := status.FromError(err); ok {
 			return &queryrange.QueryResponse{
-				Status: s.Proto(),
+				Status: queryrange.FromRPCStatus(s.Proto()),
 			}
 		}
 
@@ -146,7 +146,7 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 	response, err := queryrange.QueryResponseWrap(resp)
 	if err != nil {
 		return &queryrange.QueryResponse{
-			Status: status.New(codes.Internal, err.Error()).Proto(),
+			Status: queryrange.FromRPCStatus(status.New(codes.Internal, err.Error()).Proto()),
 		}
 	}
 

@@ -48,7 +48,7 @@ var (
 			Direction: logproto.Direction_BACKWARD,
 			Limit:     defaultReq().Limit,
 			Version:   1,
-			Headers: []definitions.PrometheusResponseHeader{
+			Headers: []*definitions.PrometheusResponseHeader{
 				{Name: "Header", Values: []string{"value"}},
 			},
 			Data: LokiData{
@@ -69,7 +69,7 @@ var (
 			Direction: logproto.Direction_BACKWARD,
 			Limit:     100,
 			Version:   1,
-			Headers: []definitions.PrometheusResponseHeader{
+			Headers: []*definitions.PrometheusResponseHeader{
 				{Name: "Header", Values: []string{"value"}},
 			},
 			Data: LokiData{
@@ -179,7 +179,7 @@ func Test_astMapper(t *testing.T) {
 
 	req := defaultReq()
 	req.Query = `{foo="bar"}`
-	req.Plan = &plan.QueryPlan{
+	req.Plan = plan.QueryPlan{
 		AST: syntax.MustParseExpr(req.Query),
 	}
 	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
@@ -325,7 +325,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 
 			req := defaultReq()
 			req.Query = tc.query
-			req.Plan = &plan.QueryPlan{
+			req.Plan = plan.QueryPlan{
 				AST: syntax.MustParseExpr(tc.query),
 			}
 			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
@@ -364,7 +364,7 @@ func Test_ShardingByPass(t *testing.T) {
 
 	req := defaultReq()
 	req.Query = `1+1`
-	req.Plan = &plan.QueryPlan{
+	req.Plan = plan.QueryPlan{
 		AST: syntax.MustParseExpr(req.Query),
 	}
 
@@ -464,7 +464,7 @@ func Test_InstantSharding(t *testing.T) {
 		Query:  `rate({app="foo"}[1m])`,
 		TimeTs: util.TimeFromMillis(10),
 		Path:   "/v1/query",
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(`rate({app="foo"}[1m])`),
 		},
 	})
@@ -592,7 +592,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			req:  defaultReq().WithStartEnd(now.Add(-time.Hour).Time(), now.Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
-				Headers: []definitions.PrometheusResponseHeader{
+				Headers: []*definitions.PrometheusResponseHeader{
 					{Name: "Header", Values: []string{"value"}},
 				},
 			},
@@ -603,7 +603,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			req:  defaultReq().WithStartEnd(confs[0].From.Time.Time(), confs[0].From.Time.Add(time.Hour).Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
-				Headers: []definitions.PrometheusResponseHeader{
+				Headers: []*definitions.PrometheusResponseHeader{
 					{Name: "Header", Values: []string{"value"}},
 				},
 			},
@@ -648,7 +648,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			req:  defaultReq().WithStartEnd(confs[0].From.Time.Time(), now.Time()).WithQuery(`{foo="bar"}`),
 			resp: &LokiResponse{
 				Status: loghttp.QueryStatusSuccess,
-				Headers: []definitions.PrometheusResponseHeader{
+				Headers: []*definitions.PrometheusResponseHeader{
 					{Name: "Header", Values: []string{"value"}},
 				},
 			},
@@ -733,7 +733,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			// currently all the tests call `defaultReq()` which creates an instance of the type LokiRequest
 			// if in the future that isn't true, we need another way to access the Plan field of an arbitrary query type
 			// or we should set the Plan in calls to `GetExpression` if the Plan is nil by calling `ParseExpr` or similar
-			tc.req.(*LokiRequest).Plan = &plan.QueryPlan{
+			tc.req.(*LokiRequest).Plan = plan.QueryPlan{
 				AST: syntax.MustParseExpr(tc.req.GetQuery()),
 			}
 
@@ -873,7 +873,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 		TimeTs:    testTime,
 		Direction: logproto.Direction_FORWARD,
 		Path:      "/loki/api/v1/query",
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(q),
 		},
 	}
@@ -936,7 +936,7 @@ func Test_ConstantShardingDefaultIndexType(t *testing.T) {
 		TimeTs:    model.Now().Add(-1 * time.Hour).Time(),
 		Direction: logproto.Direction_FORWARD,
 		Path:      "/loki/api/v1/query",
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(q),
 		},
 	}

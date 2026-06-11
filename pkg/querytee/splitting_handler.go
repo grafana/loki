@@ -330,7 +330,7 @@ func (f *SplittingHandler) shouldSample(tenants []string, httpReq *http.Request)
 func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	switch op := req.(type) {
 	case *queryrange.LokiRequest:
-		if op.Plan == nil {
+		if op.Plan.AST == nil {
 			err := errors.New("query plan is empty")
 			query := req.GetQuery()
 			level.Warn(f.logger).Log("msg", "query plan is empty", "query", query, "err", err)

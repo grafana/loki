@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler/limits"
 	"github.com/grafana/loki/v3/pkg/util"
 	lokigrpc "github.com/grafana/loki/v3/pkg/util/httpgrpc"
+	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 )
 
 var tracer = otel.Tracer("pkg/lokifrontend/frontend/v1")
@@ -54,6 +55,7 @@ type Limits interface {
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
 // for requests which failed.
 type Frontend struct {
+	frontendv1pb.UnimplementedFrontendServer
 	services.Service
 
 	cfg    Config
@@ -230,7 +232,7 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 		go func() {
 			err = server.Send(&frontendv1pb.FrontendToClient{
 				Type:         frontendv1pb.HTTP_REQUEST,
-				HttpRequest:  req.request,
+				HttpRequest:  httpgrpcpb.FromHTTPRequest(req.request),
 				StatsEnabled: stats.IsEnabled(req.originalCtx),
 			})
 			if err != nil {
@@ -262,12 +264,13 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 
 		// Happy path: merge the stats and propagate the response.
 		case resp := <-resps:
-			if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
+			httpResp := httpgrpcpb.ToHTTPResponse(resp.HttpResponse)
+			if stats.ShouldTrackHTTPGRPCResponse(httpResp) {
 				stats := stats.FromContext(req.originalCtx)
 				stats.Merge(resp.Stats) // Safe if stats is nil.
 			}
 
-			req.response <- resp.HttpResponse
+			req.response <- httpResp
 		}
 	}
 }
@@ -284,10 +287,10 @@ func getQuerierID(server frontendv1pb.Frontend_ProcessServer) (string, error) {
 		Type: frontendv1pb.GET_ID,
 		// Old queriers don't support GET_ID, and will try to use the request.
 		// To avoid confusing them, include dummy request.
-		HttpRequest: &httpgrpc.HTTPRequest{
+		HttpRequest: httpgrpcpb.FromHTTPRequest(&httpgrpc.HTTPRequest{
 			Method: "GET",
 			Url:    "/invalid_request_sent_by_frontend",
-		},
+		}),
 	})
 	if err != nil {
 		return "", err

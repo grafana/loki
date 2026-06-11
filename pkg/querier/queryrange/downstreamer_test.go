@@ -357,7 +357,7 @@ func TestParamsToLokiRequest(t *testing.T) {
 				Path:        "/loki/api/v1/query",
 				Shards:      nil,
 				StoreChunks: nil,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(qs),
 				},
 				CachingOptions: resultscache.CachingOptions{
@@ -378,7 +378,7 @@ func TestParamsToLokiRequest(t *testing.T) {
 				Path:        "/loki/api/v1/query",
 				Shards:      nil,
 				StoreChunks: nil,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(qs),
 				},
 				CachingOptions: resultscache.CachingOptions{

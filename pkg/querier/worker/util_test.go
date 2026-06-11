@@ -74,7 +74,7 @@ func TestHandleQueryRequest(t *testing.T) {
 			require.Contains(t, response.Status.Message, tc.errMsg)
 
 			// errors that are not HTTP errors yet will be mapped by util.server.WriteError.
-			if httpResp, ok := httpgrpc.HTTPResponseFromError(status.ErrorProto(response.Status)); ok {
+			if httpResp, ok := httpgrpc.HTTPResponseFromError(status.ErrorProto(response.Status.Status())); ok {
 				require.Equal(t, tc.code, int(httpResp.Code))
 			}
 		})

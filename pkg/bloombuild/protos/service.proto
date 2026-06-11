@@ -2,12 +2,14 @@ syntax = "proto3";
 
 package protos;
 
-import "gogoproto/gogo.proto";
+import "wiresmith/options.proto";
 import "pkg/bloombuild/protos/types.proto";
 
 option go_package = "protos";
-option (gogoproto.marshaler_all) = true;
-option (gogoproto.unmarshaler_all) = true;
+
+// Drop the per-message presence bitmap: gogoproto nullable=false parity
+// (see WIRESMITH_MIGRATION.md).
+option (wiresmith.options.no_presence_all) = true;
 
 service PlannerForBuilder {
   rpc BuilderLoop(stream BuilderToPlanner) returns (stream PlannerToBuilder) {}
@@ -18,13 +20,12 @@ service PlannerForBuilder {
 message BuilderToPlanner {
   string builderID = 1;
   ProtoTaskResult result = 2 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "result"
+    (wiresmith.options.jsontag) = "result"
   ];
 }
 
 message PlannerToBuilder {
-  ProtoTask task = 1;
+  ProtoTask task = 1 [(wiresmith.options.pointer) = true];
 }
 
 message NotifyBuilderShutdownRequest {
