@@ -146,7 +146,8 @@ func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLa
 
 	// The execution plan can be way more verbose than the physical plan, so we
 	// only log it at debug level.
-	level.Debug(q.logger).Log(
+	// Sprint is expensive on large workflows due to iterating all the nodes, so also execute it off the hot path.
+	go level.Debug(q.logger).Log(
 		"msg", "execution-plan-detail",
 		"plan", workflow.Sprint(wf),
 	)
