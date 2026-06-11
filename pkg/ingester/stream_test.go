@@ -114,9 +114,9 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 	}
 }
 
-// TestPushStampsFirstSeen verifies every chunk records its creation time so it
-// can be persisted as IngestedAt under FormatV4.
-func TestPushStampsFirstSeen(t *testing.T) {
+// TestPushStampsLastIngestedAt verifies every chunk records its latest append
+// time so it can be persisted as IngestedAt under FormatV4.
+func TestPushStampsLastIngestedAt(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
@@ -146,8 +146,8 @@ func TestPushStampsFirstSeen(t *testing.T) {
 	}, recordPool.GetRecord(), 0, true, false, nil, "loki")
 	require.NoError(t, err)
 	require.Len(t, s.chunks, 1)
-	require.False(t, s.chunks[0].firstSeen.IsZero(), "chunk should stamp firstSeen at creation")
-	require.False(t, s.chunks[0].firstSeen.Before(before), "firstSeen should be set to creation time")
+	require.False(t, s.chunks[0].lastIngestedAt.IsZero(), "chunk should stamp lastIngestedAt")
+	require.False(t, s.chunks[0].lastIngestedAt.Before(before), "lastIngestedAt should be set to append time")
 }
 
 func TestPushDeduplication(t *testing.T) {
@@ -402,10 +402,11 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 }
 
 // TestStream_BackfillBypassesTooFarBehind verifies the backfill header lets old
-// entries skip the too-far-behind cut only when the stream persists IngestedAt
-// (schema v14). Under v13 (writesIngestedAt false) the header is ignored.
+// entries skip the too-far-behind cut only when the entry's schema period
+// persists IngestedAt (schema v14). Under v13, or when an existing v14 stream
+// receives an entry for a v13 period, the header is ignored.
 func TestStream_BackfillBypassesTooFarBehind(t *testing.T) {
-	newTestStream := func(writesIngestedAt bool) *stream {
+	newTestStream := func(writesIngestedAt bool, supportsIngestedAtForTime func(model.Time) bool) *stream {
 		cfg := defaultIngesterTestConfig(t)
 		cfg.MaxChunkAge = time.Minute
 		l := validation.Limits{PerStreamRateLimit: 1 << 20, PerStreamRateLimitBurst: 1 << 20}
@@ -415,6 +416,9 @@ func TestStream_BackfillBypassesTooFarBehind(t *testing.T) {
 		retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
 		chunkfmt, headfmt := defaultChunkFormat(t)
 		s := newStream(chunkfmt, headfmt, writesIngestedAt, &cfg, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), labels.FromStrings("foo", "bar"), NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
+		if supportsIngestedAtForTime != nil {
+			s.supportsIngestedAtForTime = supportsIngestedAtForTime
+		}
 		s.highestTs = time.Now()
 		return s
 	}
@@ -422,16 +426,20 @@ func TestStream_BackfillBypassesTooFarBehind(t *testing.T) {
 	oldEntry := []logproto.Entry{{Line: "old", Timestamp: time.Now().AddDate(-1, 0, 0)}}
 	backfillCtx := httpreq.InjectHeader(context.Background(), httpreq.LokiBackfillHeader, httpreq.LokiBackfillHeaderValue)
 
-	t.Run("v14 stream with header bypasses", func(t *testing.T) {
-		_, failed := newTestStream(true).validateEntries(backfillCtx, oldEntry, false, true, &mockUsageTracker{}, "loki")
+	t.Run("v14 period with header bypasses", func(t *testing.T) {
+		_, failed := newTestStream(true, nil).validateEntries(backfillCtx, oldEntry, false, true, &mockUsageTracker{}, "loki")
 		require.Empty(t, failed)
 	})
-	t.Run("v14 stream without header rejects", func(t *testing.T) {
-		_, failed := newTestStream(true).validateEntries(context.Background(), oldEntry, false, true, &mockUsageTracker{}, "loki")
+	t.Run("v14 period without header rejects", func(t *testing.T) {
+		_, failed := newTestStream(true, nil).validateEntries(context.Background(), oldEntry, false, true, &mockUsageTracker{}, "loki")
 		require.NotEmpty(t, failed)
 	})
-	t.Run("v13 stream ignores header", func(t *testing.T) {
-		_, failed := newTestStream(false).validateEntries(backfillCtx, oldEntry, false, true, &mockUsageTracker{}, "loki")
+	t.Run("v13 period ignores header", func(t *testing.T) {
+		_, failed := newTestStream(false, nil).validateEntries(backfillCtx, oldEntry, false, true, &mockUsageTracker{}, "loki")
+		require.NotEmpty(t, failed)
+	})
+	t.Run("existing v14 stream ignores header for v13 entry period", func(t *testing.T) {
+		_, failed := newTestStream(true, func(model.Time) bool { return false }).validateEntries(backfillCtx, oldEntry, false, true, &mockUsageTracker{}, "loki")
 		require.NotEmpty(t, failed)
 	})
 }

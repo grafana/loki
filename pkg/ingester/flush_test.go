@@ -186,6 +186,49 @@ func Test_Flush(t *testing.T) {
 	require.NoError(t, ing.flushChunks(ctx, 0, lbs, buildChunkDecs(t), &sync.RWMutex{}))
 }
 
+func TestFlushPersistsLastIngestedAt(t *testing.T) {
+	store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	ins, err := ing.GetOrCreateInstance("foo")
+	require.NoError(t, err)
+
+	var flushedIngestedAt model.Time
+	store.onPut = func(_ context.Context, chunks []chunk.Chunk) error {
+		require.Len(t, chunks, 1)
+		flushedIngestedAt = chunks[0].IngestedAt
+		return nil
+	}
+
+	lbs := labels.FromStrings("foo", "bar")
+	req := &logproto.PushRequest{Streams: []logproto.Stream{{
+		Labels:  lbs.String(),
+		Entries: []logproto.Entry{{Timestamp: time.Unix(1, 0), Line: "first"}},
+	}}}
+	require.NoError(t, ins.Push(ctx, req))
+
+	fp := ins.getHashForLabels(lbs)
+	s, ok := ins.streams.LoadByFP(fp)
+	require.True(t, ok)
+	require.Len(t, s.chunks, 1)
+	firstIngestedAt := s.chunks[0].lastIngestedAt
+	require.False(t, firstIngestedAt.IsZero())
+
+	time.Sleep(10 * time.Millisecond)
+	req.Streams[0].Entries = []logproto.Entry{{Timestamp: time.Unix(2, 0), Line: "second"}}
+	require.NoError(t, ins.Push(ctx, req))
+	lastIngestedAt := s.chunks[0].lastIngestedAt
+	require.True(t, lastIngestedAt.After(firstIngestedAt), "second append should advance lastIngestedAt")
+
+	require.NoError(t, ing.flushOp(gokitlog.NewNopLogger(), &flushOp{
+		immediate: true,
+		userID:    "foo",
+		fp:        fp,
+	}))
+	require.Equal(t, model.TimeFromUnixNano(lastIngestedAt.UnixNano()), flushedIngestedAt)
+}
+
 func buildChunkDecs(t testing.TB) []*chunkDesc {
 	res := make([]*chunkDesc, 10)
 	for i := range res {

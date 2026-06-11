@@ -308,6 +308,44 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	return c
 }
 
+func TestChunkRewriterPreservesIngestedAtWhenReindexing(t *testing.T) {
+	now := model.Now()
+	schema := allSchemas[3] // v12
+	tableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
+	ingestedAt := now.Add(-30 * time.Minute)
+
+	originalChunk := createChunk(t, "1", labels.FromStrings("foo", "bar"), tableInterval.Start, tableInterval.Start.Add(2*time.Hour))
+	originalChunk.IngestedAt = ingestedAt
+	require.NoError(t, originalChunk.Encode())
+
+	store := newTestStore(t)
+	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{originalChunk}))
+	store.Stop()
+
+	indexTables := store.indexTables()
+	require.Len(t, indexTables, 1)
+	indexTable := indexTables[0]
+
+	cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
+	wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(originalChunk.UserID), Chunk{
+		ChunkID: getChunkID(originalChunk.ChunkRef),
+		From:    originalChunk.From,
+		Through: originalChunk.Through,
+	}, tableInterval, func(ts time.Time, _ string, _ labels.Labels) bool {
+		return ts.UnixNano() <= tableInterval.Start.Add(time.Hour).UnixNano()
+	})
+	require.NoError(t, err)
+	require.True(t, linesDeleted)
+	require.True(t, wroteChunks)
+	require.Equal(t, []model.Time{ingestedAt}, indexTable.indexedIngestedAt)
+
+	chunks := store.GetChunks(originalChunk.UserID, originalChunk.From, originalChunk.Through, originalChunk.Metric)
+	require.Len(t, chunks, 2)
+	for _, chk := range chunks {
+		require.Equal(t, ingestedAt, chk.IngestedAt)
+	}
+}
+
 func TestChunkRewriter(t *testing.T) {
 	minListMarkDelay = 1 * time.Second
 	now := model.Now()

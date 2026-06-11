@@ -93,12 +93,16 @@ func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.
 // We check if tableEndTime is out of retention period, calculated using the labels from the chunk.
 // If the tableEndTime is out of retention then we can drop the chunk entry without removing the chunk from the store.
-func (e *expirationChecker) DropFromIndex(userID []byte, _ Chunk, labels labels.Labels, tableEndTime model.Time, now model.Time) bool {
+// For chunks with IngestedAt, retention is measured from the ingestion timestamp instead of the table end time.
+func (e *expirationChecker) DropFromIndex(userID []byte, chk Chunk, labels labels.Labels, tableEndTime model.Time, now model.Time) bool {
 	userIDStr := unsafeGetString(userID)
 	period := e.tenantsRetention.RetentionPeriodFor(userIDStr, labels)
 	// The 0 value should disable retention
 	if period <= 0 {
 		return false
+	}
+	if chk.IngestedAt != 0 {
+		return now.Sub(chk.IngestedAt) > period
 	}
 	return now.Sub(tableEndTime) > period
 }

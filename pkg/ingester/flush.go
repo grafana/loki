@@ -440,9 +440,9 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			firstTime,
 			lastTime,
 		)
-		// firstSeen is the chunk's ingestion timestamp. It is persisted to the
-		// index only under TSDB FormatV4 (schema v14); legacy encoders drop it.
-		ch.IngestedAt = model.TimeFromUnixNano(c.firstSeen.UnixNano())
+		// lastIngestedAt is the chunk's latest ingestion timestamp. It is persisted
+		// to the index only under TSDB FormatV4 (schema v14); legacy encoders drop it.
+		ch.IngestedAt = model.TimeFromUnixNano(c.lastIngestedAt.UnixNano())
 
 		// encodeChunk mutates the chunk so we must pass by reference
 		if err := i.encodeChunk(ctx, &ch, c); err != nil {

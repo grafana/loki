@@ -292,6 +292,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	writesIngestedAt := i.schemaconfig.SupportsIngestedAtForTime(streamTime)
 
 	s := newStream(chunkfmt, headfmt, writesIngestedAt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
+	s.supportsIngestedAtForTime = i.schemaconfig.SupportsIngestedAtForTime
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -388,6 +389,7 @@ func (i *instance) createStreamByFP(ctx context.Context, ls labels.Labels, fp mo
 	policy := i.resolvePolicyForStream(ctx, ls)
 
 	s := newStream(chunkfmt, headfmt, writesIngestedAt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
+	s.supportsIngestedAtForTime = i.schemaconfig.SupportsIngestedAtForTime
 
 	i.onStreamCreated(s)
 

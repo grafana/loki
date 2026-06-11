@@ -340,8 +340,9 @@ func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
 	require.NoError(t, err)
 	e := NewExpirationChecker(o, nil)
 
-	chunkFrom := model.Now().Add(-3 * time.Hour)
-	chunkThrough := model.Now().Add(-2 * time.Hour)
+	now := model.Now()
+	chunkFrom := now.Add(-3 * time.Hour)
+	chunkThrough := now.Add(-2 * time.Hour)
 	tests := []struct {
 		name         string
 		userID       string
@@ -350,13 +351,15 @@ func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
 		tableEndTime model.Time
 		want         bool
 	}{
-		{"tenant with no override should not delete", "1", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-48 * time.Hour), false},
-		{"tenant with override tableEndTime within retention period should not delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-1 * time.Hour), false},
-		{"tenant with override should delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, model.Now().Add(-48 * time.Hour), true},
+		{"tenant with no override should not delete", "1", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, now.Add(-48 * time.Hour), false},
+		{"tenant with override tableEndTime within retention period should not delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, now.Add(-1 * time.Hour), false},
+		{"tenant with override should delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough}, now.Add(-48 * time.Hour), true},
+		{"tenant with override old tableEndTime but recent IngestedAt should not delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough, IngestedAt: now.Add(-1 * time.Hour)}, now.Add(-48 * time.Hour), false},
+		{"tenant with override expired IngestedAt should delete", "2", `{foo="buzz"}`, Chunk{From: chunkFrom, Through: chunkThrough, IngestedAt: now.Add(-48 * time.Hour)}, now.Add(-1 * time.Hour), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual := e.DropFromIndex([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), tt.tableEndTime, model.Now())
+			actual := e.DropFromIndex([]byte(tt.userID), tt.chunk, mustParseLabels(tt.labels), tt.tableEndTime, now)
 			require.Equal(t, tt.want, actual)
 		})
 	}

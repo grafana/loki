@@ -127,8 +127,9 @@ func mustParseLabels(labels string) labels.Labels {
 }
 
 type table struct {
-	name   string
-	chunks map[string]map[string][]logproto.ChunkRef
+	name              string
+	chunks            map[string]map[string][]logproto.ChunkRef
+	indexedIngestedAt []model.Time
 }
 
 func (t *table) ChunkExists(_ []byte, _ labels.Labels, _ logproto.ChunkRef) (bool, error) {
@@ -167,9 +168,10 @@ func (t *table) ForEachSeries(ctx context.Context, callback SeriesCallback) erro
 	return ctx.Err()
 }
 
-func (t *table) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, _ model.Time, _ uint32, _ uint32) (bool, error) {
+func (t *table) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labels, ingestedAt model.Time, _ uint32, _ uint32) (bool, error) {
 	seriesID := lbls.String()
 	t.chunks[chunkRef.UserID][seriesID] = append(t.chunks[chunkRef.UserID][seriesID], chunkRef)
+	t.indexedIngestedAt = append(t.indexedIngestedAt, ingestedAt)
 	return true, nil
 }
 

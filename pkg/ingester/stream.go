@@ -84,10 +84,13 @@ type stream struct {
 
 	chunkFormat          byte
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
-	// writesIngestedAt is true when this stream's schema period persists the
-	// per-chunk ingestion timestamp (TSDB FormatV4 / schema v14+). It gates the
-	// backfill too-far-behind bypass so v13 streams ignore the backfill header.
+	// writesIngestedAt is true when this stream's creation schema period persists
+	// the per-chunk ingestion timestamp (TSDB FormatV4 / schema v14+).
 	writesIngestedAt bool
+	// supportsIngestedAtForTime reports whether the schema period for an entry
+	// timestamp persists IngestedAt. It gates the backfill too-far-behind bypass
+	// per entry so v13 periods ignore the backfill header.
+	supportsIngestedAtForTime func(model.Time) bool
 
 	configs *runtime.TenantConfigs
 
@@ -103,11 +106,11 @@ type chunkDesc struct {
 	reason  string
 
 	lastUpdated time.Time
-	// firstSeen is the wall-clock time the chunk was created (i.e. when its
-	// first entry was ingested). It is the source of chunk.Chunk.IngestedAt at
-	// flush time and is recorded for every chunk; it is only persisted to the
-	// index under TSDB FormatV4 (schema v14) and dropped for legacy formats.
-	firstSeen time.Time
+	// lastIngestedAt is the wall-clock time of the latest successful append to
+	// this chunk. It is the source of chunk.Chunk.IngestedAt at flush time and is
+	// recorded for every chunk; it is only persisted to the index under TSDB
+	// FormatV4 (schema v14) and dropped for legacy formats.
+	lastIngestedAt time.Time
 }
 
 type entryWithError struct {
@@ -149,6 +152,9 @@ func newStream(
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
 		writesIngestedAt:     writesIngestedAt,
+		supportsIngestedAtForTime: func(model.Time) bool {
+			return writesIngestedAt
+		},
 
 		configs:        configs,
 		retentionHours: retentionHours,
@@ -176,12 +182,12 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
-// newChunkDesc creates a chunkDesc, stamping firstSeen with the current time so
-// every chunk carries its ingestion timestamp.
+// newChunkDesc creates a chunkDesc, stamping lastIngestedAt with the current time so
+// every chunk carries an ingestion timestamp even before the first append returns.
 func (s *stream) newChunkDesc() chunkDesc {
 	return chunkDesc{
-		chunk:     s.NewChunk(),
-		firstSeen: time.Now(),
+		chunk:          s.NewChunk(),
+		lastIngestedAt: time.Now(),
 	}
 }
 
@@ -353,7 +359,8 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 			chunk = s.cutChunk(ctx)
 		}
 
-		chunk.lastUpdated = time.Now()
+		now := time.Now()
+		chunk.lastUpdated = now
 		dup, err := chunk.chunk.Append(&entries[i])
 		if err != nil {
 			invalid = append(invalid, entryWithError{&entries[i], err})
@@ -367,6 +374,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		if dup {
 			s.handleLoggingOfDuplicateEntry(entries[i])
 		}
+		chunk.lastIngestedAt = now
 
 		s.entryCt++
 		s.lastLine.ts = entries[i].Timestamp
@@ -399,11 +407,11 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 }
 
 func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
-	// Backfill traffic may bypass the too-far-behind cut, but only when this
-	// stream's period persists the ingestion timestamp (FormatV4 / schema v14+).
-	// Under v13 the header is ignored. Rate limits are still enforced below.
-	backfill := s.writesIngestedAt &&
-		httpreq.ExtractHeader(ctx, httpreq.LokiBackfillHeader) == httpreq.LokiBackfillHeaderValue
+	// Backfill traffic may bypass the too-far-behind cut, but only when the
+	// entry's schema period persists the ingestion timestamp (FormatV4 / schema
+	// v14+). Under v13, or when the entry lands in a legacy period, the header is
+	// ignored. Rate limits are still enforced below.
+	backfill := httpreq.ExtractHeader(ctx, httpreq.LokiBackfillHeader) == httpreq.LokiBackfillHeaderValue
 
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
@@ -445,7 +453,8 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
-		if !isReplay && !backfill && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
+		backfillAllowed := backfill && s.supportsIngestedAtForTime(model.TimeFromUnixNano(entries[i].Timestamp.UnixNano()))
+		if !isReplay && !backfillAllowed && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++
