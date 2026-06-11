@@ -551,10 +551,6 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 		return nil, ErrNotSupported
 	}
 
-	span.SetAttributes(
-		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
-	)
-
 	span.SetStatus(codes.Ok, "")
 	return physicalPlan, nil
 }
@@ -597,11 +593,16 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 		}),
 
 		"rules_fired", encodePhysicalRules(rules),
-
-		// Large plans result in log line truncation, retain the other
-		// kvs by moving this to the end.
-		"plan", planStr,
 	)
+
+	// PrintAsTree can take significant amount of time, so get it off the hot path.
+	go func() {
+		plan := physical.PrintAsTree(plan)
+		level.Debug(q.Logger()).Log(
+			"msg", "physical-plan",
+			"plan", plan,
+		)
+	}()
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, logger log.Logger, cacheEnabled bool) physical.MetastoreSectionsResolver {
@@ -645,15 +646,14 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 
 			return nil
 		}(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("index query: build workflow: %w", err)
 		}
 
-		// Disable admission lanes for metastore queries
 		useAdmissionLanes := false
 		wf, err := q.Prepare(ctx, plan, useAdmissionLanes)
 		if err != nil {
 			q.RecordError(ctx, err)
-			return nil, fmt.Errorf("index query: build workflow: %w", err)
+			return nil, fmt.Errorf("index query: prepare workflow: %w", err)
 		}
 		defer func() {
 			start := time.Now()
