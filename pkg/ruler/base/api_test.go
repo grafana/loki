@@ -541,7 +541,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 
 			a := NewAPI(r, r.store, log.NewNopLogger())
 
-			req := requestFor(t, "GET", "https://localhost:8080/api/prom/api/v1/rules"+tc.queryParams, nil, tc.tenantID)
+			req := requestFor(t, "GET", "https://localhost:8080/loki/api/v1/rules"+tc.queryParams, nil, tc.tenantID)
 			w := httptest.NewRecorder()
 			a.PrometheusRules(w, req)
 
@@ -619,7 +619,7 @@ func TestRuler_PrometheusAlerts(t *testing.T) {
 
 			a := NewAPI(r, r.store, log.NewNopLogger())
 
-			req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/alerts", nil, test.tenantID)
+			req := requestFor(t, http.MethodGet, "https://localhost:8080/loki/api/v1/alerts", nil, test.tenantID)
 			w := httptest.NewRecorder()
 			a.PrometheusAlerts(w, req)
 

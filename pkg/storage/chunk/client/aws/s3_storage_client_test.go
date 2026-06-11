@@ -606,7 +606,7 @@ func TestPutObject_SwiftRejects_AWSChunked(t *testing.T) {
 			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
 <Error>
   <Code>NotImplemented</Code>
-  <Message>Transfering payloads in multiple chunks using aws-chunked is not supported</Message>
+  <Message>Transferring payloads in multiple chunks using aws-chunked is not supported</Message>
 </Error>`))
 			return
 		}

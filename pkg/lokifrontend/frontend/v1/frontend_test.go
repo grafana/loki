@@ -30,7 +30,6 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -62,12 +61,12 @@ func init() {
 const (
 	query        = "/loki/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
 	responseBody = `{"status":"success","data":{"resultType":"Matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
-	labelQuery   = `/api/prom/label/foo/values`
+	labelQuery   = `/loki/api/v1/label/foo/values`
 )
 
 func TestFrontend(t *testing.T) {
 	handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
+		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: 1}, nil
 	})
 	test := func(addr string, _ *Frontend) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, labelQuery), nil)
@@ -83,7 +82,7 @@ func TestFrontend(t *testing.T) {
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		assert.JSONEq(t, `{"values":["Hello", "world"]}`, string(body))
+		assert.JSONEq(t, `{"status":"success","data":["Hello","world"]}`, string(body))
 	}
 
 	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
@@ -99,7 +98,7 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		traceID := sp.SpanContext().TraceID().String()
 		observedTraceID <- traceID
 
-		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
+		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: 1}, nil
 	})
 
 	test := func(addr string, _ *Frontend) {
@@ -126,7 +125,7 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		assert.JSONEq(t, `{"values":["Hello", "world"]}`, string(body))
+		assert.JSONEq(t, `{"status":"success","data":["Hello","world"]}`, string(body))
 
 		// Query should do one call.
 		assert.Equal(t, traceID, <-observedTraceID)
@@ -203,7 +202,7 @@ func TestFrontendCancel(t *testing.T) {
 
 func TestFrontendMetricsCleanup(t *testing.T) {
 	handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
+		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: 1}, nil
 	})
 
 	for _, matchMaxConcurrency := range []bool{false, true} {
@@ -223,7 +222,7 @@ func TestFrontendMetricsCleanup(t *testing.T) {
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 
-			assert.JSONEq(t, `{"values":["Hello", "world"]}`, string(body))
+			assert.JSONEq(t, `{"status":"success","data":["Hello","world"]}`, string(body))
 
 			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 				# HELP loki_query_frontend_queue_length Number of queries in the queue.
