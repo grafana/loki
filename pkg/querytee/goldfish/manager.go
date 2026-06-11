@@ -549,6 +549,9 @@ func getQueryType(path, query string) string {
 	if path == constants.PathLokiLabels || path == constants.PathLokiLabel {
 		return logql.QueryTypeLabels
 	}
+	if strings.HasPrefix(path, constants.PathLokiLabel+"/") && strings.HasSuffix(path, "/values") {
+		return logql.QueryTypeLabels
+	}
 	if path == constants.PathLokiIndexStats {
 		return logql.QueryTypeStats
 	}
