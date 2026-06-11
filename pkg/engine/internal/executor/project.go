@@ -152,7 +152,12 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				return nil, err
 			}
 			_, shouldDelete := renamedLabelSources[ident.ShortName()]
-			shouldDelete = shouldDelete && ident.ColumnType() == types.ColumnTypeLabel // only overwrite labels, not other column types
+			// A `label_format dst=src` rename removes the source label regardless of
+			// which category it came from (stream label, structured metadata, or a
+			// parsed field), matching the classic engine which
+			// deletes the name from every category. Only builtin/generated columns
+			// (timestamp, message, __error__, value) must be preserved.
+			shouldDelete = shouldDelete && isLabelLikeColumn(ident.ColumnType())
 			if !ident.Equal(semconv.ColumnIdentValue) && !shouldDelete {
 				outputCols = append(outputCols, batch.Column(i))
 				outputFields = append(outputFields, field)
@@ -197,6 +202,19 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		outputSchema := arrow.NewSchema(outputFields, &metadata)
 		return array.NewRecordBatch(outputSchema, outputCols, batch.NumRows()), nil
 	}, input), nil
+}
+
+// isLabelLikeColumn reports whether a column of the given type participates in
+// the label set that LogQL operates on (and therefore can be the source of a
+// `label_format` rename). Builtin and generated columns (timestamp, message,
+// __error__, value) are excluded.
+func isLabelLikeColumn(ct types.ColumnType) bool {
+	switch ct {
+	case types.ColumnTypeLabel, types.ColumnTypeParsed, types.ColumnTypeMetadata, types.ColumnTypeAmbiguous:
+		return true
+	default:
+		return false
+	}
 }
 
 func labelFmtRenameSources(expr physical.Expression) map[string]struct{} {
