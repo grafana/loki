@@ -173,73 +173,95 @@ func TestResolveLabelStreams_ObjectScopedStreamIDs(t *testing.T) {
 	require.ElementsMatch(t, []string{"app"}, names[target])
 }
 
-func TestResolveLabelNames_All(t *testing.T) {
-	r := openLabelResolveFixture(t, []labelFixtureEntry{
-		{name: "env", value: "prod", streamIDs: []int64{1, 2}},
-		{name: "app", value: "foo", streamIDs: []int64{2}},
-		{name: "region", value: "us", streamIDs: []int64{1}},
-	})
-
-	got, err := r.ResolveLabelNames(t.Context(), nil)
-	require.NoError(t, err)
-	require.ElementsMatch(t, []string{"env", "app", "region"}, got)
-}
-
-func TestResolveLabelValues_All(t *testing.T) {
-	r := openLabelResolveFixture(t, []labelFixtureEntry{
-		{name: "env", value: "prod", streamIDs: []int64{1, 2}},
-		{name: "app", value: "foo", streamIDs: []int64{2}},
-		{name: "app", value: "bar", streamIDs: []int64{3}},
-	})
-
-	got, err := r.ResolveLabelValues(t.Context(), nil)
-	require.NoError(t, err)
-	require.ElementsMatch(t, []string{"prod", "foo", "bar"}, got)
-}
-
-func TestResolveLabelNames_FilteredByStreamRefs(t *testing.T) {
-	r := openLabelResolveFixture(t, []labelFixtureEntry{
-		{objectPath: "/obj-a", name: "app", value: "foo", streamIDs: []int64{1}},
-		{objectPath: "/obj-a", name: "env", value: "prod", streamIDs: []int64{1}},
-		{objectPath: "/obj-a", name: "app", value: "bar", streamIDs: []int64{2}},
-		{objectPath: "/obj-b", name: "app", value: "baz", streamIDs: []int64{1}},
-	})
-
-	filter := map[postings.StreamRef]struct{}{
-		{ObjectPath: "/obj-a", StreamID: 1}: {},
+func TestResolveLabelNames(t *testing.T) {
+	tests := []struct {
+		name       string
+		entries    []labelFixtureEntry
+		streamRefs map[postings.StreamRef]struct{}
+		want       []string
+	}{
+		{
+			name: "all",
+			entries: []labelFixtureEntry{
+				{name: "env", value: "prod", streamIDs: []int64{1, 2}},
+				{name: "app", value: "foo", streamIDs: []int64{2}},
+				{name: "region", value: "us", streamIDs: []int64{1}},
+			},
+			want: []string{"env", "app", "region"},
+		},
+		{
+			name: "filtered_by_stream_refs",
+			entries: []labelFixtureEntry{
+				{objectPath: "/obj-a", name: "app", value: "foo", streamIDs: []int64{1}},
+				{objectPath: "/obj-a", name: "env", value: "prod", streamIDs: []int64{1}},
+				{objectPath: "/obj-a", name: "app", value: "bar", streamIDs: []int64{2}},
+				{objectPath: "/obj-b", name: "app", value: "baz", streamIDs: []int64{1}},
+			},
+			streamRefs: map[postings.StreamRef]struct{}{
+				{ObjectPath: "/obj-a", StreamID: 1}: {},
+			},
+			want: []string{"app", "env"},
+		},
+		{
+			name: "empty_stream_refs",
+			entries: []labelFixtureEntry{
+				{name: "env", value: "prod", streamIDs: []int64{1}},
+				{name: "app", value: "foo", streamIDs: []int64{1}},
+			},
+			streamRefs: map[postings.StreamRef]struct{}{},
+			want:       []string{},
+		},
 	}
 
-	got, err := r.ResolveLabelNames(t.Context(), filter)
-	require.NoError(t, err)
-	require.ElementsMatch(t, []string{"app", "env"}, got)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := openLabelResolveFixture(t, tc.entries)
+			got, err := r.ResolveLabelNames(t.Context(), tc.streamRefs)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.want, got)
+		})
+	}
 }
 
-func TestResolveLabelValues_FilteredByStreamRefs(t *testing.T) {
-	r := openLabelResolveFixture(t, []labelFixtureEntry{
-		{objectPath: "/obj-a", name: "app", value: "foo", streamIDs: []int64{1}},
-		{objectPath: "/obj-a", name: "env", value: "prod", streamIDs: []int64{1}},
-		{objectPath: "/obj-a", name: "app", value: "bar", streamIDs: []int64{2}},
-		{objectPath: "/obj-b", name: "app", value: "baz", streamIDs: []int64{1}},
-	})
-
-	filter := map[postings.StreamRef]struct{}{
-		{ObjectPath: "/obj-a", StreamID: 1}: {},
+func TestResolveLabelValues(t *testing.T) {
+	tests := []struct {
+		name       string
+		entries    []labelFixtureEntry
+		streamRefs map[postings.StreamRef]struct{}
+		want       []string
+	}{
+		{
+			name: "all",
+			entries: []labelFixtureEntry{
+				{name: "env", value: "prod", streamIDs: []int64{1, 2}},
+				{name: "app", value: "foo", streamIDs: []int64{2}},
+				{name: "app", value: "bar", streamIDs: []int64{3}},
+			},
+			want: []string{"prod", "foo", "bar"},
+		},
+		{
+			name: "filtered_by_stream_refs",
+			entries: []labelFixtureEntry{
+				{objectPath: "/obj-a", name: "app", value: "foo", streamIDs: []int64{1}},
+				{objectPath: "/obj-a", name: "env", value: "prod", streamIDs: []int64{1}},
+				{objectPath: "/obj-a", name: "app", value: "bar", streamIDs: []int64{2}},
+				{objectPath: "/obj-b", name: "app", value: "baz", streamIDs: []int64{1}},
+			},
+			streamRefs: map[postings.StreamRef]struct{}{
+				{ObjectPath: "/obj-a", StreamID: 1}: {},
+			},
+			want: []string{"foo", "prod"},
+		},
 	}
 
-	got, err := r.ResolveLabelValues(t.Context(), filter)
-	require.NoError(t, err)
-	require.ElementsMatch(t, []string{"foo", "prod"}, got)
-}
-
-func TestResolveLabelNames_EmptyStreamRefs(t *testing.T) {
-	r := openLabelResolveFixture(t, []labelFixtureEntry{
-		{name: "env", value: "prod", streamIDs: []int64{1}},
-		{name: "app", value: "foo", streamIDs: []int64{1}},
-	})
-
-	got, err := r.ResolveLabelNames(t.Context(), map[postings.StreamRef]struct{}{})
-	require.NoError(t, err)
-	require.Empty(t, got)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := openLabelResolveFixture(t, tc.entries)
+			got, err := r.ResolveLabelValues(t.Context(), tc.streamRefs)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.want, got)
+		})
+	}
 }
 
 func resolveToStreamIDs(tb testing.TB, r *postings.Reader, matchers []*labels.Matcher) (map[int64]struct{}, map[int64][]string, error) {

@@ -228,19 +228,6 @@ func TestValuesEmptyMatcher(t *testing.T) {
 	})
 }
 
-func TestValues_UsePostingsSections_FallsBackToStreams(t *testing.T) {
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-	}
-
-	queryMetastoreWithConfig(t, tenantID, Config{UsePostingsSections: true}, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
-		require.NoError(t, err)
-		require.Len(t, matchedValues, len(matchers))
-	})
-}
-
 func TestLabels_UsePostingsSections_CombinedObjectPrefersPostings(t *testing.T) {
 	queryMetastoreWithIndexBuilder(t, tenantID, Config{UsePostingsSections: true}, func(builder *indexobj.Builder) {
 		_, err := builder.AppendStream(tenantID, streams.Stream{

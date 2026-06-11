@@ -142,10 +142,6 @@ type Reader struct {
 
 var errReaderNotOpen = errors.New("reader not opened")
 
-// ErrLabelLookupNotImplemented indicates label name/value lookup has not been
-// implemented for postings.Reader yet.
-var ErrLabelLookupNotImplemented = errors.New("postings label lookup not implemented")
-
 // NewReader creates a new Reader. Options are not validated until the first
 // call to [Reader.Open].
 func NewReader(opts ReaderOptions) *Reader {
