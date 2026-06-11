@@ -37,6 +37,23 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### New Kafka configuration parameter: `sasl_mechanism`
+
+The Kafka configuration block has a new optional parameter `sasl_mechanism` to control which SASL authentication mechanism is used when connecting to Kafka brokers.
+
+Supported values: `PLAIN` (default), `SCRAM-SHA-256`, `SCRAM-SHA-512`.
+
+The default value is `PLAIN`, preserving full backwards compatibility with existing deployments. No action is required unless your broker requires SCRAM-SHA-256 or SCRAM-SHA-512 (for example, AWS MSK or Confluent Cloud with SCRAM-only authentication).
+
+```yaml
+kafka:
+  sasl_username: my-user
+  sasl_password: ${KAFKA_PASSWORD}
+  sasl_mechanism: SCRAM-SHA-256  # or SCRAM-SHA-512; defaults to PLAIN
+```
+
+Equivalently, use the CLI flag `-kafka.sasl-mechanism`.
+
 ### Breaking change: Removal of various configuration options
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
