@@ -248,16 +248,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 
 func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
 	if m.usePostingsSections {
-		postingsLabels, err := m.labelsFromPostings(ctx, start, end, matchers...)
-		if err == nil {
-			return postingsLabels, nil
-		}
-		if !errors.Is(err, postings.ErrLabelLookupNotImplemented) {
-			return nil, err
-		}
-		level.Debug(utillog.WithContext(ctx, m.logger)).Log(
-			"msg", "postings label names resolution not implemented, falling back to streams labels path",
-		)
+		return m.labelsFromPostings(ctx, start, end, matchers...)
 	}
 
 	uniqueLabels := map[string]struct{}{}
@@ -273,13 +264,7 @@ func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matc
 
 func (m *ObjectMetastore) Values(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
 	if m.usePostingsSections {
-		postingsValues, err := m.valuesFromPostings(ctx, start, end, matchers...)
-		if err == nil {
-			return postingsValues, nil
-		}
-		if !errors.Is(err, postings.ErrLabelLookupNotImplemented) {
-			return nil, err
-		}
+		return m.valuesFromPostings(ctx, start, end, matchers...)
 	}
 
 	values := map[string]struct{}{}
@@ -358,17 +343,16 @@ func (m *ObjectMetastore) lookupLabelsFromPostings(
 				}
 
 				values, err := lookupPostings(reader, matchingStreamRefs)
-				if err != nil && !errors.Is(err, postings.ErrLabelLookupNotImplemented) {
+				if err != nil {
 					return fmt.Errorf("resolving postings labels from %s: %w", entry.Path, err)
 				}
-				if err == nil {
-					mu.Lock()
-					for _, value := range values {
-						results[value] = struct{}{}
-					}
-					mu.Unlock()
-					return nil
+
+				mu.Lock()
+				for _, value := range values {
+					results[value] = struct{}{}
 				}
+				mu.Unlock()
+				return nil
 			}
 
 			valuesFromStreamSections := map[string]struct{}{}
@@ -378,7 +362,7 @@ func (m *ObjectMetastore) lookupLabelsFromPostings(
 				})
 			})
 			if err != nil {
-				return fmt.Errorf("resolving legacy labels from stream section. %s: %w", entry.Path, err)
+				return fmt.Errorf("resolving stream labels from stream section %s: %w", entry.Path, err)
 			}
 
 			mu.Lock()

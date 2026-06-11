@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -237,6 +238,94 @@ func TestValues_UsePostingsSections_FallsBackToStreams(t *testing.T) {
 		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
 		require.NoError(t, err)
 		require.Len(t, matchedValues, len(matchers))
+	})
+}
+
+func TestLabels_UsePostingsSections_CombinedObjectPrefersPostings(t *testing.T) {
+	queryMetastoreWithIndexBuilder(t, tenantID, Config{UsePostingsSections: true}, func(builder *indexobj.Builder) {
+		_, err := builder.AppendStream(tenantID, streams.Stream{
+			ID: 1,
+			Labels: labels.New(
+				labels.Label{Name: "app", Value: "foo"},
+				labels.Label{Name: "streams_only", Value: "streams"},
+			),
+			MinTimestamp:     now.Add(-3 * time.Hour),
+			MaxTimestamp:     now.Add(-2 * time.Hour),
+			UncompressedSize: 5,
+			Rows:             1,
+		})
+		require.NoError(t, err)
+		require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
+
+		builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+			ObjectPath:       "test-path",
+			SectionIndex:     0,
+			ColumnName:       "app",
+			LabelValue:       "foo",
+			StreamID:         1,
+			Timestamp:        now.Add(-3 * time.Hour),
+			UncompressedSize: 5,
+		})
+		builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+			ObjectPath:       "test-path",
+			SectionIndex:     0,
+			ColumnName:       "postings_only",
+			LabelValue:       "postings",
+			StreamID:         1,
+			Timestamp:        now.Add(-3 * time.Hour),
+			UncompressedSize: 5,
+		})
+	}, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
+		matchedLabels, err := mstore.Labels(ctx, start, end, matchers...)
+		require.NoError(t, err)
+		require.Contains(t, matchedLabels, "app")
+		require.Contains(t, matchedLabels, "postings_only")
+		require.NotContains(t, matchedLabels, "streams_only")
+	})
+}
+
+func TestValues_UsePostingsSections_CombinedObjectPrefersPostings(t *testing.T) {
+	queryMetastoreWithIndexBuilder(t, tenantID, Config{UsePostingsSections: true}, func(builder *indexobj.Builder) {
+		_, err := builder.AppendStream(tenantID, streams.Stream{
+			ID: 1,
+			Labels: labels.New(
+				labels.Label{Name: "app", Value: "foo"},
+				labels.Label{Name: "streams_only", Value: "streams"},
+			),
+			MinTimestamp:     now.Add(-3 * time.Hour),
+			MaxTimestamp:     now.Add(-2 * time.Hour),
+			UncompressedSize: 5,
+			Rows:             1,
+		})
+		require.NoError(t, err)
+		require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
+
+		builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+			ObjectPath:       "test-path",
+			SectionIndex:     0,
+			ColumnName:       "app",
+			LabelValue:       "foo",
+			StreamID:         1,
+			Timestamp:        now.Add(-3 * time.Hour),
+			UncompressedSize: 5,
+		})
+		builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
+			ObjectPath:       "test-path",
+			SectionIndex:     0,
+			ColumnName:       "postings_only",
+			LabelValue:       "postings",
+			StreamID:         1,
+			Timestamp:        now.Add(-3 * time.Hour),
+			UncompressedSize: 5,
+		})
+	}, func(ctx context.Context, start, end time.Time, mstore Metastore) {
+		matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
+		matchedValues, err := mstore.Values(ctx, start, end, matchers...)
+		require.NoError(t, err)
+		require.Contains(t, matchedValues, "foo")
+		require.Contains(t, matchedValues, "postings")
+		require.NotContains(t, matchedValues, "streams")
 	})
 }
 
@@ -800,6 +889,43 @@ func TestDataobjSectionDescriptorMerge_NilMapPanic(t *testing.T) {
 
 func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
 	queryMetastoreWithConfig(t, tenant, Config{}, mfunc)
+}
+
+func queryMetastoreWithIndexBuilder(
+	t *testing.T,
+	tenant string,
+	cfg Config,
+	setupBuilder func(builder *indexobj.Builder),
+	mfunc func(context.Context, time.Time, time.Time, Metastore),
+) {
+	start := now.Add(-5 * time.Hour)
+	end := now.Add(5 * time.Hour)
+
+	builder := newFixtureBuilder(t)
+	setupBuilder(builder)
+	timeRanges := builder.TimeRanges()
+	require.NotEmpty(t, timeRanges)
+
+	obj := flushFixture(t, builder)
+
+	bucket := objstore.NewInMemBucket()
+
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
+	path, err := uploader.Upload(context.Background(), obj)
+	require.NoError(t, err)
+
+	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	require.NoError(t, metastoreTocWriter.RegisterMetrics(prometheus.NewPedanticRegistry()))
+	require.NoError(t, metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges))
+
+	mstore := newTestObjectMetastoreWithConfig(bucket, cfg)
+	defer func() {
+		require.NoError(t, mstore.bucket.Close())
+	}()
+
+	ctx := user.InjectOrgID(context.Background(), tenant)
+	mfunc(ctx, start, end, mstore)
 }
 
 func queryMetastoreWithConfig(t *testing.T, tenant string, cfg Config, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
