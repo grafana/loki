@@ -31,7 +31,7 @@ var fixtureBuildMu sync.Mutex
 func TestIndexSectionsReader_NoSelectorReturnsEOF(t *testing.T) {
 	t.Parallel()
 
-	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192, false)
+	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192)
 	require.NoError(t, r.Open(context.Background()))
 
 	rec, err := r.Read(context.Background())
@@ -42,7 +42,7 @@ func TestIndexSectionsReader_NoSelectorReturnsEOF(t *testing.T) {
 func TestIndexSectionsReader_ReadBeforeOpenReturnsError(t *testing.T) {
 	t.Parallel()
 
-	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192, false)
+	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192)
 
 	rec, err := r.Read(context.Background())
 	require.ErrorIs(t, err, errIndexSectionsReaderNotOpen)
@@ -80,7 +80,7 @@ func TestIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 	end := now.Add(-time.Hour)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192)
 
 	// Context without org ID should fail during Open.
 	require.Error(t, r.Open(context.Background()))
@@ -128,7 +128,7 @@ func TestIndexSectionsReader_FiltersByStreamMatcherAndTime(t *testing.T) {
 	end := now.Add(-time.Hour)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -181,7 +181,7 @@ func TestIndexSectionsReader_NoPredicatesPassthrough(t *testing.T) {
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
 	// No predicates - should pass through all matching records
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -236,7 +236,7 @@ func TestIndexSectionsReader_IgnoresNonEqualPredicates(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchRegexp, "traceID", "abcd"),
 	}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192, false)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -285,7 +285,7 @@ func TestIndexSectionsReader_FiltersByBloomOnSectionKey(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
 	}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192, false)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -346,7 +346,7 @@ func TestIndexSectionsReader_PredicateMissReturnsEOF(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "traceID", "doesnotexist"),
 	}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192, false)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -400,7 +400,7 @@ func TestIndexSectionsReader_LabelPredicatesFiltered(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 	}
 
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192, false)
+	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -484,7 +484,6 @@ func TestIndexSectionsReader_MultipleBlooms(t *testing.T) {
 					labels.MustNewMatcher(labels.MatchEqual, "userID", tc.userIDValue),
 				},
 				8192,
-				false,
 			)
 			t.Cleanup(r.Close)
 			require.NoError(t, r.Open(ctx))
@@ -506,7 +505,7 @@ func TestIndexSectionsReader_MultipleBlooms(t *testing.T) {
 func TestIndexSectionsReader_Read_SkipsNilStreamsReader(t *testing.T) {
 	t.Parallel()
 
-	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192, false)
+	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192)
 	r.initialized = true
 	r.streamsReaders = []*streams.Reader{nil}
 	t.Cleanup(r.Close)
@@ -525,7 +524,7 @@ func TestIndexSectionsReader_Read_SkipsNilStreamsReader(t *testing.T) {
 func TestIndexSectionsReader_Read_SkipsNilPointersReader(t *testing.T) {
 	t.Parallel()
 
-	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192, false)
+	r := newIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 8192)
 	r.initialized = true
 	r.readStreams = true
 	r.hasData = true
@@ -554,7 +553,6 @@ func TestIndexSectionsReader_ReadMatchedSectionKeys_SkipsNilBloomReader(t *testi
 		nil,
 		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd")},
 		8192,
-		false,
 	)
 	r.bloomReaders = []*pointers.Reader{nil}
 
@@ -580,103 +578,6 @@ func newTestBloomBytes(t *testing.T, vals ...string) []byte {
 	bytes, err := traceBloom.MarshalBinary()
 	require.NoError(t, err)
 	return bytes
-}
-
-func TestIndexSectionsReader_PathSelection(t *testing.T) {
-	t.Parallel()
-
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-	start := now.Add(-4 * time.Hour)
-	end := now.Add(-time.Hour)
-	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-
-	const (
-		streamsPointersPath = "streams+pointers"
-		postingsPath        = "postings"
-	)
-
-	tests := []struct {
-		name     string
-		buildObj func(*testing.T) *dataobj.Object
-		gate     bool
-		wantPath string
-	}{
-		{"streams+pointers object stays on streams+pointers path", buildStreamsPointersFixture, true, streamsPointersPath},
-		{"gate off on combined fixture runs streams+pointers path", buildCombinedFixture, false, streamsPointersPath},
-		{"postings object uses postings path", buildPostingsFixture, true, postingsPath},
-		{"combined section object favors postings", buildCombinedFixture, true, postingsPath},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			r := newIndexSectionsReader(log.NewNopLogger(), tc.buildObj(t), start, end, matchers, nil, 8192, false)
-			r.readPostingsSections = tc.gate
-			t.Cleanup(r.Close)
-			require.NoError(t, r.Open(ctx))
-
-			switch tc.wantPath {
-			case streamsPointersPath:
-				require.Nil(t, r.postingsReader, "streams+pointers path ⇒ no postings reader opened")
-				require.NotEmpty(t, r.pointersReaders, "streams+pointers path ⇒ pointers readers populated")
-			case postingsPath:
-				require.Empty(t, r.pointersReaders, "postings path ⇒ pointers slice empty even when the section exists")
-				require.Empty(t, r.bloomReaders, "postings path ⇒ bloom slice empty even when the section exists")
-				require.NotNil(t, r.postingsReader, "postings path ⇒ one postings.Reader opened")
-			}
-
-			rec, err := r.Read(ctx)
-			require.NoError(t, err)
-			require.NotNil(t, rec)
-			require.Equal(t, int64(1), rec.NumRows(), "one matching stream row")
-			require.Equal(t, int64(1), columnByName(t, rec, "stream_id.int64").(*array.Int64).Value(0))
-
-			// The postings path must emit the same schema the streams+pointers path produces.
-			if tc.wantPath == postingsPath {
-				requirePostingsSchema(t, rec)
-			}
-		})
-	}
-}
-
-func TestIndexSectionsReader_PostingsPath_MultiplePostingsSectionsReturnsError(t *testing.T) {
-	t.Parallel()
-
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-	start := now.Add(-4 * time.Hour)
-	end := now.Add(-time.Hour)
-	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-
-	obj := buildMultiPostingsSectionsFixture(t)
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, true)
-
-	err := r.Open(ctx)
-	require.ErrorContains(t, err, "multiple postings sections found")
-}
-
-// requirePostingsSchema asserts rec carries the postings.ReadPointersForStreams output
-// schema (9 pointer columns + InternalLabelsFieldName), proving the postings path
-// emits the same schema as the streams+pointers path.
-func requirePostingsSchema(t *testing.T, rec arrow.RecordBatch) {
-	t.Helper()
-
-	require.Equal(t, 10, len(rec.Schema().Fields()),
-		"postings.ReadPointersForStreams output has 9 columns + InternalLabelsFieldName")
-
-	for _, name := range []string{
-		"path.path.utf8",
-		"section.int64",
-		"pointer_kind.int64",
-		"stream_id.int64",
-		"stream_id_ref.int64",
-		"min_timestamp.timestamp",
-		"max_timestamp.timestamp",
-		"row_count.int64",
-		"uncompressed_size.int64",
-	} {
-		columnByName(t, rec, name) // fails the test if the column is absent
-	}
 }
 
 // newFixtureBuilder returns an indexobj.Builder configured for the reader fixtures.
@@ -726,81 +627,6 @@ func buildStreamsPointersFixture(t *testing.T) *dataobj.Object {
 	return flushFixture(t, builder)
 }
 
-func buildPostingsFixture(t *testing.T) *dataobj.Object {
-	t.Helper()
-
-	builder := newFixtureBuilder(t)
-
-	_, err := builder.AppendStream(tenantID, streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
-		Rows:             1,
-	})
-	require.NoError(t, err)
-
-	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
-		ObjectPath:       "test-path",
-		SectionIndex:     0,
-		ColumnName:       "app",
-		LabelValue:       "foo",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	})
-
-	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
-	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
-		ObjectPath:       "test-path",
-		SectionIndex:     0,
-		ColumnName:       "traceID",
-		Value:            "abcd",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	}))
-
-	return flushFixture(t, builder)
-}
-
-func buildMultiPostingsSectionsFixture(t *testing.T) *dataobj.Object {
-	t.Helper()
-
-	first := postings.NewBuilder(nil, 0, 0)
-	first.SetTenant(tenantID)
-	first.ObserveLabelPosting(postings.LabelObservation{
-		ObjectPath:       "test-path-1",
-		SectionIndex:     0,
-		ColumnName:       "app",
-		LabelValue:       "foo",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	})
-
-	second := postings.NewBuilder(nil, 0, 0)
-	second.SetTenant(tenantID)
-	second.ObserveLabelPosting(postings.LabelObservation{
-		ObjectPath:       "test-path-2",
-		SectionIndex:     0,
-		ColumnName:       "app",
-		LabelValue:       "foo",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	})
-
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(first))
-	require.NoError(t, objBuilder.Append(second))
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
-	return obj
-}
-
 func buildCombinedFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
@@ -840,315 +666,4 @@ func buildCombinedFixture(t *testing.T) *dataobj.Object {
 	}))
 
 	return flushFixture(t, builder)
-}
-
-func buildPostingsMultiLabelFixture(t *testing.T) *dataobj.Object {
-	t.Helper()
-
-	builder := newFixtureBuilder(t)
-
-	_, err := builder.AppendStream(tenantID, streams.Stream{
-		ID: 1,
-		Labels: labels.New(
-			labels.Label{Name: "app", Value: "foo"},
-			labels.Label{Name: "team", Value: "ops"},
-		),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
-		Rows:             1,
-	})
-	require.NoError(t, err)
-
-	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
-		ObjectPath:       "test-path",
-		SectionIndex:     0,
-		ColumnName:       "app",
-		LabelValue:       "foo",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	})
-	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
-		ObjectPath:       "test-path",
-		SectionIndex:     0,
-		ColumnName:       "team",
-		LabelValue:       "ops",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	})
-
-	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
-	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
-		ObjectPath:       "test-path",
-		SectionIndex:     0,
-		ColumnName:       "traceID",
-		Value:            "abcd",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	}))
-
-	return flushFixture(t, builder)
-}
-
-func TestIndexSectionsReader_PostingsPath_StreamLabelPredicateOnDisjointName(t *testing.T) {
-	t.Parallel()
-
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-
-	obj := buildPostingsMultiLabelFixture(t)
-
-	start := now.Add(-4 * time.Hour)
-	end := now.Add(-time.Hour)
-	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-	predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "team", "ops")}
-
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 8192, false)
-	r.readPostingsSections = true
-	t.Cleanup(r.Close)
-	require.NoError(t, r.Open(ctx))
-
-	require.NotNil(t, r.postingsReader, "postings path: one postings reader opened")
-
-	var total int64
-	for {
-		rec, err := r.Read(ctx)
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		if rec != nil {
-			total += rec.NumRows()
-		}
-	}
-
-	require.Greater(t, total, int64(0),
-		"postings path must filter the stream-label predicate (team=ops) out of the bloom check; "+
-			"without the  fix, MatchSections AND-drops every section and Read returns EOF")
-}
-
-func TestIndexSectionsReader_PostingsPath_StreamIDCollisionAcrossObjects(t *testing.T) {
-	t.Parallel()
-
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-	start := now.Add(-4 * time.Hour)
-	end := now.Add(-time.Hour)
-	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-
-	obj := buildPostingsStreamIDCollisionFixture(t)
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, true)
-	t.Cleanup(r.Close)
-	require.NoError(t, r.Open(ctx))
-
-	rec, err := r.Read(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, rec)
-	require.Equal(t, int64(1), rec.NumRows(), "only one object/stream should match app=foo")
-
-	pathCol := columnByName(t, rec, "path.path.utf8").(*array.String)
-	require.Equal(t, "obj-a", pathCol.Value(0),
-		"stream-id collisions across objects must not leak pointers from non-matching objects")
-}
-
-func TestIndexSectionsReader_PostingsPath_NoPostingsReader_ShortCircuit(t *testing.T) {
-	t.Parallel()
-
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-
-	obj := buildStreamsPointersFixture(t)
-
-	start := now.Add(-4 * time.Hour)
-	end := now.Add(-time.Hour)
-	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-
-	r := newIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 8192, false)
-	t.Cleanup(r.Close)
-	require.NoError(t, r.Open(ctx))
-	require.Nil(t, r.postingsReader, "no postings section ⇒ no postings reader")
-
-	// Flip the gate on post-Open (with no postings reader) to hit the defensive short-circuit.
-	r.readPostingsSections = true
-
-	_, err := r.Read(ctx)
-	require.ErrorIs(t, err, io.EOF, "no postings reader ⇒ postings path returns io.EOF cleanly")
-	require.Empty(t, r.matchingStreamIDs, "short-circuit must not populate matchingStreamIDs")
-}
-
-func buildPostingsStreamIDCollisionFixture(t *testing.T) *dataobj.Object {
-	t.Helper()
-
-	builder := postings.NewBuilder(nil, 0, 0)
-	builder.SetTenant(tenantID)
-
-	builder.ObserveLabelPosting(postings.LabelObservation{
-		ObjectPath:       "obj-a",
-		SectionIndex:     0,
-		ColumnName:       "app",
-		LabelValue:       "foo",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	})
-	builder.ObserveLabelPosting(postings.LabelObservation{
-		ObjectPath:       "obj-b",
-		SectionIndex:     0,
-		ColumnName:       "app",
-		LabelValue:       "bar",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	})
-
-	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(builder))
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
-	return obj
-}
-
-// buildPostingsOnlyFixture writes only postings observations (no AppendStream /
-// ObserveLogLine), so Flush emits a postings section and no streams or pointers.
-func buildPostingsOnlyFixture(t *testing.T) *dataobj.Object {
-	t.Helper()
-
-	builder := newFixtureBuilder(t)
-
-	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
-		ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "foo",
-		StreamID: 1, Timestamp: now.Add(-3 * time.Hour), UncompressedSize: 5,
-	})
-	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
-		ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "bar",
-		StreamID: 2, Timestamp: now.Add(-3 * time.Hour), UncompressedSize: 5,
-	})
-
-	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
-	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
-		ObjectPath: "test-path", SectionIndex: 0, ColumnName: "traceID", Value: "abcd",
-		StreamID: 1, Timestamp: now.Add(-3 * time.Hour), UncompressedSize: 5,
-	}))
-
-	return flushFixture(t, builder)
-}
-
-func columnByName(t *testing.T, rec arrow.RecordBatch, name string) arrow.Array {
-	t.Helper()
-	for i, f := range rec.Schema().Fields() {
-		if f.Name == name {
-			return rec.Column(i)
-		}
-	}
-	require.Failf(t, "missing column", "record batch has no column %q", name)
-	return nil
-}
-
-func TestIndexSectionsReader_PostingsOnly_EndToEnd(t *testing.T) {
-	t.Parallel()
-
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-	obj := buildPostingsOnlyFixture(t)
-
-	inWindowStart, inWindowEnd := now.Add(-4*time.Hour), now.Add(-time.Hour)
-	appFoo := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-
-	t.Run("object has only a postings section", func(t *testing.T) {
-		var nStreams, nPointers, nPostings int
-		for _, s := range obj.Sections() {
-			switch {
-			case streams.CheckSection(s):
-				nStreams++
-			case pointers.CheckSection(s):
-				nPointers++
-			case postings.CheckSection(s):
-				nPostings++
-			}
-		}
-		require.Zero(t, nStreams, "fixture must not write a streams section")
-		require.Zero(t, nPointers, "fixture must not write a pointers section")
-		require.GreaterOrEqual(t, nPostings, 1, "fixture must write a postings section")
-	})
-
-	t.Run("selector resolves to matching streams from postings alone", func(t *testing.T) {
-		r := newIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, nil, 8192, false)
-		r.readPostingsSections = true
-		t.Cleanup(r.Close)
-		require.NoError(t, r.Open(ctx))
-
-		require.Empty(t, r.streamsReaders)
-		require.Empty(t, r.pointersReaders)
-		require.Empty(t, r.bloomReaders)
-		require.NotNil(t, r.postingsReader)
-
-		gotStreamIDs := map[int64]struct{}{}
-		var rows int64
-		for {
-			rec, err := r.Read(ctx)
-			if err == io.EOF {
-				break
-			}
-			require.NoError(t, err)
-			if rec == nil || rec.NumRows() == 0 {
-				continue
-			}
-			rows += rec.NumRows()
-			sid := columnByName(t, rec, "stream_id.int64").(*array.Int64)
-			path := columnByName(t, rec, "path.path.utf8").(*array.String)
-			section := columnByName(t, rec, "section.int64").(*array.Int64)
-			for i := 0; i < int(rec.NumRows()); i++ {
-				gotStreamIDs[sid.Value(i)] = struct{}{}
-				require.Equal(t, "test-path", path.Value(i))
-				require.Equal(t, int64(0), section.Value(i))
-			}
-		}
-
-		require.Equal(t, int64(1), rows, "app=foo selects stream 1 only (stream 2 is app=bar)")
-		require.Equal(t, map[int64]struct{}{1: {}}, gotStreamIDs)
-	})
-
-	t.Run("time window outside the data returns EOF", func(t *testing.T) {
-		r := newIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-30*time.Minute), now, appFoo, nil, 8192, false)
-		r.readPostingsSections = true
-		t.Cleanup(r.Close)
-		require.NoError(t, r.Open(ctx))
-
-		rec, err := r.Read(ctx)
-		require.ErrorIs(t, err, io.EOF)
-		require.Nil(t, rec)
-	})
-
-	t.Run("structured-metadata bloom selects the section", func(t *testing.T) {
-		predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd")}
-		r := newIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 8192, false)
-		r.readPostingsSections = true
-		t.Cleanup(r.Close)
-		require.NoError(t, r.Open(ctx))
-
-		var rows int64
-		for {
-			rec, err := r.Read(ctx)
-			if err == io.EOF {
-				break
-			}
-			require.NoError(t, err)
-			if rec != nil {
-				rows += rec.NumRows()
-			}
-		}
-		require.Equal(t, int64(1), rows, "traceID=abcd is in the section bloom ⇒ section kept")
-	})
-
-	t.Run("structured-metadata bloom miss prunes the section", func(t *testing.T) {
-		predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "doesnotexist")}
-		r := newIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 8192, false)
-		r.readPostingsSections = true
-		t.Cleanup(r.Close)
-		require.NoError(t, r.Open(ctx))
-
-		rec, err := r.Read(ctx)
-		require.ErrorIs(t, err, io.EOF, "traceID miss ⇒ no section matched ⇒ EOF")
-		require.Nil(t, rec)
-	})
 }
