@@ -80,21 +80,16 @@ func TestExtractHTTPHeaderFromGRPCRequest(t *testing.T) {
 	}
 }
 
-// TestBackfillHeaderGRPCRoundTrip proves X-Loki-Backfill survives the
-// context -> gRPC metadata -> context propagation, and that multiple
-// allow-listed headers propagate together.
 func TestBackfillHeaderGRPCRoundTrip(t *testing.T) {
 	ctx := httpreq.InjectHeader(context.Background(), httpreq.LokiBackfillHeader, httpreq.LokiBackfillHeaderValue)
 	ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
 
-	// client side: context -> outgoing gRPC metadata
 	ctx = injectHTTPHeadersIntoGRPCRequest(ctx)
 	md, ok := metadata.FromOutgoingContext(ctx)
 	require.True(t, ok)
 	require.Equal(t, []string{httpreq.LokiBackfillHeaderValue}, md.Get(httpreq.LokiBackfillHeader))
 	require.Equal(t, []string{"true"}, md.Get(httpreq.LokiDisablePipelineWrappersHeader))
 
-	// server side: incoming gRPC metadata -> context
 	srvCtx := extractHTTPHeadersFromGRPCRequest(metadata.NewIncomingContext(context.Background(), md))
 	require.Equal(t, httpreq.LokiBackfillHeaderValue, httpreq.ExtractHeader(srvCtx, httpreq.LokiBackfillHeader))
 	require.Equal(t, "true", httpreq.ExtractHeader(srvCtx, httpreq.LokiDisablePipelineWrappersHeader))

@@ -420,9 +420,6 @@ func singleSchemaConfig(version string) config.SchemaConfig {
 	}
 }
 
-// TestValidator_BackfillHeaderRejectOldSamples verifies the X-Loki-Backfill
-// header bypasses RejectOldSamples only when the entry's schema period persists
-// the ingestion timestamp (schema v14); under v13 the header is ignored.
 func TestValidator_BackfillHeaderRejectOldSamples(t *testing.T) {
 	oldEntry := logproto.Entry{Timestamp: testTime.Add(-5 * time.Hour), Line: "old"}
 	overrides := fakeLimits{&validation.Limits{

@@ -114,8 +114,6 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 	}
 }
 
-// TestPushStampsLastIngestedAt verifies every chunk records its latest append
-// time so it can be persisted as IngestedAt under FormatV4.
 func TestPushStampsLastIngestedAt(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
@@ -401,10 +399,6 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	require.Equal(t, 13.0, tracker.discardedBytes)
 }
 
-// TestStream_BackfillBypassesTooFarBehind verifies the backfill header lets old
-// entries skip the too-far-behind cut only when the entry's schema period
-// persists IngestedAt (schema v14). Under v13, or when an existing v14 stream
-// receives an entry for a v13 period, the header is ignored.
 func TestStream_BackfillBypassesTooFarBehind(t *testing.T) {
 	newTestStream := func(writesIngestedAt bool, supportsIngestedAtForTime func(model.Time) bool) *stream {
 		cfg := defaultIngesterTestConfig(t)

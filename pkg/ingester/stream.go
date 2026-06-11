@@ -82,14 +82,9 @@ type stream struct {
 
 	writeFailures *writefailures.Manager
 
-	chunkFormat          byte
-	chunkHeadBlockFormat chunkenc.HeadBlockFmt
-	// writesIngestedAt is true when this stream's creation schema period persists
-	// the per-chunk ingestion timestamp (TSDB FormatV4 / schema v14+).
-	writesIngestedAt bool
-	// supportsIngestedAtForTime reports whether the schema period for an entry
-	// timestamp persists IngestedAt. It gates the backfill too-far-behind bypass
-	// per entry so v13 periods ignore the backfill header.
+	chunkFormat               byte
+	chunkHeadBlockFormat      chunkenc.HeadBlockFmt
+	writesIngestedAt          bool
 	supportsIngestedAtForTime func(model.Time) bool
 
 	configs *runtime.TenantConfigs
@@ -106,10 +101,7 @@ type chunkDesc struct {
 	reason  string
 
 	lastUpdated time.Time
-	// lastIngestedAt is the wall-clock time of the latest successful append to
-	// this chunk. It is the source of chunk.Chunk.IngestedAt at flush time and is
-	// recorded for every chunk; it is only persisted to the index under TSDB
-	// FormatV4 (schema v14) and dropped for legacy formats.
+	// Wall-clock time of the latest successful append to this chunk.
 	lastIngestedAt time.Time
 }
 
@@ -182,8 +174,6 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
-// newChunkDesc creates a chunkDesc, stamping lastIngestedAt with the current time so
-// every chunk carries an ingestion timestamp even before the first append returns.
 func (s *stream) newChunkDesc() chunkDesc {
 	return chunkDesc{
 		chunk:          s.NewChunk(),
@@ -407,10 +397,7 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 }
 
 func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
-	// Backfill traffic may bypass the too-far-behind cut, but only when the
-	// entry's schema period persists the ingestion timestamp (FormatV4 / schema
-	// v14+). Under v13, or when the entry lands in a legacy period, the header is
-	// ignored. Rate limits are still enforced below.
+	// The backfill header is ignored for periods that cannot persist IngestedAt.
 	backfill := httpreq.ExtractHeader(ctx, httpreq.LokiBackfillHeader) == httpreq.LokiBackfillHeaderValue
 
 	var (

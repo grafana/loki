@@ -9,11 +9,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
-// propagatedHTTPHeaders is the allow-list of Loki HTTP headers carried across the
-// gRPC boundary (stored in/restored from context). We propagate an explicit set
-// rather than copying all headers to avoid leaking sensitive headers (e.g.
-// Authorization) into gRPC metadata. The gRPC metadata key is the header name
-// itself (metadata keys are case-insensitive ASCII, which these names satisfy).
+// propagatedHTTPHeaders is allow-listed to avoid leaking sensitive headers into gRPC metadata.
 var propagatedHTTPHeaders = []string{
 	httpreq.LokiDisablePipelineWrappersHeader,
 	httpreq.LokiBackfillHeader,
@@ -48,7 +44,6 @@ func injectHTTPHeadersIntoGRPCRequest(ctx context.Context) context.Context {
 func extractHTTPHeadersFromGRPCRequest(ctx context.Context) context.Context {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		// No metadata, just return as is
 		return ctx
 	}
 

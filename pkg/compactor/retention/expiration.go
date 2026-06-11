@@ -39,9 +39,7 @@ type ExpirationChecker interface {
 type expirationChecker struct {
 	tenantsRetention         *TenantsRetention
 	latestRetentionStartTime latestRetentionStartTime
-	// chunksExpiredByIngestionTime counts chunks expired using the per-chunk
-	// ingestion timestamp (FormatV4 / schema v14) rather than Through. It is an
-	// unlabeled counter to avoid per-tenant cardinality.
+	// Unlabeled to avoid per-tenant cardinality.
 	chunksExpiredByIngestionTime prometheus.Counter
 }
 
@@ -72,12 +70,8 @@ func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels
 	if period <= 0 {
 		return false, nil
 	}
-	// Prefer the ingestion timestamp (set for FormatV4 / schema v14 chunks) so
-	// retention is measured from when data was ingested rather than from the
-	// log timestamp. Legacy chunks have IngestedAt == 0 and fall back to
-	// Through. If a chunk ever mixed backfilled and live lines, IngestedAt is
-	// the latest ingestion time, which is the conservative choice (matches the
-	// Through semantics of keeping data until the newest content expires).
+	// IngestedAt is the latest append time, so mixed live/backfilled chunks are
+	// retained until their newest ingested content expires.
 	expirationFrom := chk.Through
 	usingIngestedAt := chk.IngestedAt != 0
 	if usingIngestedAt {
@@ -93,7 +87,6 @@ func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.
 // We check if tableEndTime is out of retention period, calculated using the labels from the chunk.
 // If the tableEndTime is out of retention then we can drop the chunk entry without removing the chunk from the store.
-// For chunks with IngestedAt, retention is measured from the ingestion timestamp instead of the table end time.
 func (e *expirationChecker) DropFromIndex(userID []byte, chk Chunk, labels labels.Labels, tableEndTime model.Time, now model.Time) bool {
 	userIDStr := unsafeGetString(userID)
 	period := e.tenantsRetention.RetentionPeriodFor(userIDStr, labels)

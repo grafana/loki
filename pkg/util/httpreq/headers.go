@@ -15,11 +15,7 @@ var (
 	LokiActorPathHeader               = "X-Loki-Actor-Path"
 	LokiDisablePipelineWrappersHeader = "X-Loki-Disable-Pipeline-Wrappers"
 
-	// LokiBackfillHeader marks a push as backfill traffic: the client is
-	// intentionally writing old data and asks Loki to relax write-path age gates
-	// (reject_old_samples and the ingester too-far-behind cut). It is honored
-	// only when every targeted period uses a schema that can persist the
-	// ingestion timestamp (TSDB FormatV4 / schema v14); under v13 it is ignored.
+	// LokiBackfillHeader marks a push as backfill traffic.
 	LokiBackfillHeader      = "X-Loki-Backfill"
 	LokiBackfillHeaderValue = "true"
 
