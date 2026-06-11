@@ -554,7 +554,7 @@ func convertMatcherType(t labels.MatchType) (types.BinaryOp, error) {
 	case labels.MatchNotRegexp:
 		return types.BinaryOpNotMatchRe, nil
 	}
-	return types.BinaryOpInvalid, fmt.Errorf("unsupported matcher type %s", t)
+	return types.BinaryOpInvalid, unimplementedFeature(fmt.Sprintf("unsupported matcher type %s", t))
 }
 
 func convertLineFilterExpr(expr *syntax.LineFilterExpr) (Value, error) {
@@ -642,7 +642,7 @@ func convertLineMatchType(op log.LineMatchType) (types.BinaryOp, error) {
 	//case log.LineMatchNotPattern:
 	//	return types.BinaryOpNotMatchPattern, nil
 	default:
-		return types.BinaryOpInvalid, fmt.Errorf("unsupported matcher type %s", op)
+		return types.BinaryOpInvalid, unimplementedFeature(fmt.Sprintf("unsupported line match type %s", op))
 	}
 }
 
