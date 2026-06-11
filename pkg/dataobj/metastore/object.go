@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -246,6 +247,10 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 }
 
 func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
+	if m.usePostingsSections {
+		return m.labelsFromPostings(ctx, start, end, matchers...)
+	}
+
 	uniqueLabels := map[string]struct{}{}
 
 	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
@@ -258,6 +263,10 @@ func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matc
 }
 
 func (m *ObjectMetastore) Values(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
+	if m.usePostingsSections {
+		return m.valuesFromPostings(ctx, start, end, matchers...)
+	}
+
 	values := map[string]struct{}{}
 
 	err := m.forEachLabel(ctx, start, end, func(label labels.Label) {
@@ -267,6 +276,144 @@ func (m *ObjectMetastore) Values(ctx context.Context, start, end time.Time, matc
 	}, matchers...)
 
 	return slices.Collect(maps.Keys(values)), err
+}
+
+func (m *ObjectMetastore) labelsFromPostings(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
+	return m.lookupLabelsFromPostings(ctx, start, end, func(reader *postings.Reader, streamRefs map[postings.StreamRef]struct{}) ([]string, error) {
+		return reader.ResolveLabelNames(ctx, streamRefs)
+	}, func(streamLabel labels.Label) string {
+		return streamLabel.Name
+	}, matchers...)
+}
+
+func (m *ObjectMetastore) valuesFromPostings(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
+	return m.lookupLabelsFromPostings(ctx, start, end, func(reader *postings.Reader, streamRefs map[postings.StreamRef]struct{}) ([]string, error) {
+		return reader.ResolveLabelValues(ctx, streamRefs)
+	}, func(streamLabel labels.Label) string {
+		return streamLabel.Value
+	}, matchers...)
+}
+
+func (m *ObjectMetastore) lookupLabelsFromPostings(
+	ctx context.Context,
+	start, end time.Time,
+	lookupPostings func(*postings.Reader, map[postings.StreamRef]struct{}) ([]string, error),
+	labelSelector func(labels.Label) string,
+	matchers ...*labels.Matcher,
+) ([]string, error) {
+	tenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("extracting org ID: %w", err)
+	}
+
+	var tocPaths []string
+	for path := range IterTableOfContentsPaths(start, end) {
+		tocPaths = append(tocPaths, path)
+	}
+
+	entries, err := m.listObjectsFromTables(ctx, tocPaths, start, end)
+	if err != nil {
+		return nil, err
+	}
+
+	predicate := streamPredicateFromMatchers(start, end, matchers...)
+	results := make(map[string]struct{})
+	var mu sync.Mutex
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(m.parallelism)
+	for _, entry := range entries {
+		g.Go(func() error {
+			object, err := dataobj.FromBucket(ctx, m.bucket, entry.Path, 0)
+			if err != nil {
+				return fmt.Errorf("getting object %s from bucket: %w", entry.Path, err)
+			}
+
+			if reader, err := openPostingsReaderForObject(ctx, entry.Path, tenant, object); err != nil {
+				return err
+			} else if reader != nil {
+				defer reader.Close()
+
+				var matchingStreamRefs map[postings.StreamRef]struct{}
+				if len(matchers) > 0 {
+					matchingStreamRefs, _, err = reader.ResolveMatchingStreamRefs(ctx, matchers)
+					if err != nil {
+						return fmt.Errorf("resolving matching streams from postings %s: %w", entry.Path, err)
+					}
+				}
+
+				values, err := lookupPostings(reader, matchingStreamRefs)
+				if err != nil {
+					return fmt.Errorf("resolving postings labels from %s: %w", entry.Path, err)
+				}
+
+				mu.Lock()
+				for _, value := range values {
+					results[value] = struct{}{}
+				}
+				mu.Unlock()
+				return nil
+			}
+
+			valuesFromStreamSections := map[string]struct{}{}
+			err = forEachStream(ctx, object, predicate, func(stream streams.Stream) {
+				stream.Labels.Range(func(streamLabel labels.Label) {
+					valuesFromStreamSections[labelSelector(streamLabel)] = struct{}{}
+				})
+			})
+			if err != nil {
+				return fmt.Errorf("resolving stream labels from stream section %s: %w", entry.Path, err)
+			}
+
+			mu.Lock()
+			for value := range valuesFromStreamSections {
+				results[value] = struct{}{}
+			}
+			mu.Unlock()
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return slices.Collect(maps.Keys(results)), nil
+}
+
+func openPostingsReaderForObject(
+	ctx context.Context,
+	objectPath string,
+	targetTenant string,
+	object *dataobj.Object,
+) (*postings.Reader, error) {
+	var postingsSection *dataobj.Section
+
+	for _, section := range object.Sections() {
+		if section.Tenant != targetTenant || !postings.CheckSection(section) {
+			continue
+		}
+		if postingsSection != nil {
+			return nil, fmt.Errorf("multiple postings sections found for tenant %s in %s", targetTenant, objectPath)
+		}
+		postingsSection = section
+	}
+
+	if postingsSection == nil {
+		return nil, nil
+	}
+
+	sec, err := postings.Open(ctx, postingsSection)
+	if err != nil {
+		return nil, fmt.Errorf("opening postings section from %s: %w", objectPath, err)
+	}
+
+	reader := postings.NewReader(postings.ReaderOptions{
+		Columns: sec.Columns(),
+	})
+	if err := reader.Open(ctx); err != nil {
+		return nil, fmt.Errorf("opening postings reader from %s: %w", objectPath, err)
+	}
+	return reader, nil
 }
 
 func (m *ObjectMetastore) forEachLabel(ctx context.Context, start, end time.Time, foreach func(labels.Label), matchers ...*labels.Matcher) error {
