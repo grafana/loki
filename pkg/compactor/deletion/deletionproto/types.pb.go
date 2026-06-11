@@ -1044,16 +1044,16 @@ func (this *DeletionManifest) GoString() string {
 	s := make([]string, 0, 8)
 	s = append(s, "&deletionproto.DeletionManifest{")
 	if this.Requests != nil {
-		vs := make([]DeleteRequest, len(this.Requests))
+		vs := make([]*DeleteRequest, len(this.Requests))
 		for i := range vs {
-			vs[i] = this.Requests[i]
+			vs[i] = &this.Requests[i]
 		}
 		s = append(s, "Requests: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
 	if this.DuplicateRequests != nil {
-		vs := make([]DeleteRequest, len(this.DuplicateRequests))
+		vs := make([]*DeleteRequest, len(this.DuplicateRequests))
 		for i := range vs {
-			vs[i] = this.DuplicateRequests[i]
+			vs[i] = &this.DuplicateRequests[i]
 		}
 		s = append(s, "DuplicateRequests: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
@@ -1079,9 +1079,9 @@ func (this *ChunksGroup) GoString() string {
 	s := make([]string, 0, 6)
 	s = append(s, "&deletionproto.ChunksGroup{")
 	if this.Requests != nil {
-		vs := make([]DeleteRequest, len(this.Requests))
+		vs := make([]*DeleteRequest, len(this.Requests))
 		for i := range vs {
-			vs[i] = this.Requests[i]
+			vs[i] = &this.Requests[i]
 		}
 		s = append(s, "Requests: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
@@ -1110,9 +1110,9 @@ func (this *Segment) GoString() string {
 	s = append(s, "TableName: "+fmt.Sprintf("%#v", this.TableName)+",\n")
 	s = append(s, "UserID: "+fmt.Sprintf("%#v", this.UserID)+",\n")
 	if this.ChunksGroups != nil {
-		vs := make([]ChunksGroup, len(this.ChunksGroups))
+		vs := make([]*ChunksGroup, len(this.ChunksGroups))
 		for i := range vs {
-			vs[i] = this.ChunksGroups[i]
+			vs[i] = &this.ChunksGroups[i]
 		}
 		s = append(s, "ChunksGroups: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
@@ -1130,9 +1130,9 @@ func (this *DeletionJob) GoString() string {
 	s = append(s, "UserID: "+fmt.Sprintf("%#v", this.UserID)+",\n")
 	s = append(s, "ChunkIDs: "+fmt.Sprintf("%#v", this.ChunkIDs)+",\n")
 	if this.DeleteRequests != nil {
-		vs := make([]DeleteRequest, len(this.DeleteRequests))
+		vs := make([]*DeleteRequest, len(this.DeleteRequests))
 		for i := range vs {
-			vs[i] = this.DeleteRequests[i]
+			vs[i] = &this.DeleteRequests[i]
 		}
 		s = append(s, "DeleteRequests: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
@@ -2405,7 +2405,10 @@ func (m *DeleteRequest) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthTypes
 			}
 			if (iNdEx + skippy) > l {
@@ -2561,7 +2564,10 @@ func (m *DeletionManifest) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthTypes
 			}
 			if (iNdEx + skippy) > l {
@@ -2643,7 +2649,10 @@ func (m *ChunkIDs) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthTypes
 			}
 			if (iNdEx + skippy) > l {
@@ -2839,7 +2848,7 @@ func (m *ChunksGroup) Unmarshal(dAtA []byte) error {
 					if err != nil {
 						return err
 					}
-					if (skippy < 0) || (iNdEx+skippy) < 0 {
+					if skippy < 0 {
 						return ErrInvalidLengthTypes
 					}
 					if (iNdEx + skippy) > postIndex {
@@ -2856,7 +2865,10 @@ func (m *ChunksGroup) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthTypes
 			}
 			if (iNdEx + skippy) > l {
@@ -3023,7 +3035,10 @@ func (m *Segment) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthTypes
 			}
 			if (iNdEx + skippy) > l {
@@ -3203,7 +3218,10 @@ func (m *DeletionJob) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthTypes
 			}
 			if (iNdEx + skippy) > l {
@@ -3386,7 +3404,10 @@ func (m *Chunk) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthTypes
 			}
 			if (iNdEx + skippy) > l {
@@ -3548,7 +3569,7 @@ func (m *StorageUpdates) Unmarshal(dAtA []byte) error {
 					if err != nil {
 						return err
 					}
-					if (skippy < 0) || (iNdEx+skippy) < 0 {
+					if skippy < 0 {
 						return ErrInvalidLengthTypes
 					}
 					if (iNdEx + skippy) > postIndex {
@@ -3597,7 +3618,10 @@ func (m *StorageUpdates) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthTypes
 			}
 			if (iNdEx + skippy) > l {
@@ -3823,7 +3847,7 @@ func (m *StorageUpdatesCollection) Unmarshal(dAtA []byte) error {
 					if err != nil {
 						return err
 					}
-					if (skippy < 0) || (iNdEx+skippy) < 0 {
+					if skippy < 0 {
 						return ErrInvalidLengthTypes
 					}
 					if (iNdEx + skippy) > postIndex {
@@ -3840,7 +3864,10 @@ func (m *StorageUpdatesCollection) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthTypes
 			}
 			if (iNdEx + skippy) > l {
@@ -3858,7 +3885,6 @@ func (m *StorageUpdatesCollection) Unmarshal(dAtA []byte) error {
 func skipTypes(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
-	depth := 0
 	for iNdEx < l {
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
@@ -3890,8 +3916,10 @@ func skipTypes(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
+			return iNdEx, nil
 		case 1:
 			iNdEx += 8
+			return iNdEx, nil
 		case 2:
 			var length int
 			for shift := uint(0); ; shift += 7 {
@@ -3912,30 +3940,55 @@ func skipTypes(dAtA []byte) (n int, err error) {
 				return 0, ErrInvalidLengthTypes
 			}
 			iNdEx += length
-		case 3:
-			depth++
-		case 4:
-			if depth == 0 {
-				return 0, ErrUnexpectedEndOfGroupTypes
+			if iNdEx < 0 {
+				return 0, ErrInvalidLengthTypes
 			}
-			depth--
+			return iNdEx, nil
+		case 3:
+			for {
+				var innerWire uint64
+				var start int = iNdEx
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return 0, ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return 0, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					innerWire |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				innerWireType := int(innerWire & 0x7)
+				if innerWireType == 4 {
+					break
+				}
+				next, err := skipTypes(dAtA[start:])
+				if err != nil {
+					return 0, err
+				}
+				iNdEx = start + next
+				if iNdEx < 0 {
+					return 0, ErrInvalidLengthTypes
+				}
+			}
+			return iNdEx, nil
+		case 4:
+			return iNdEx, nil
 		case 5:
 			iNdEx += 4
+			return iNdEx, nil
 		default:
 			return 0, fmt.Errorf("proto: illegal wireType %d", wireType)
 		}
-		if iNdEx < 0 {
-			return 0, ErrInvalidLengthTypes
-		}
-		if depth == 0 {
-			return iNdEx, nil
-		}
 	}
-	return 0, io.ErrUnexpectedEOF
+	panic("unreachable")
 }
 
 var (
-	ErrInvalidLengthTypes        = fmt.Errorf("proto: negative length found during unmarshaling")
-	ErrIntOverflowTypes          = fmt.Errorf("proto: integer overflow")
-	ErrUnexpectedEndOfGroupTypes = fmt.Errorf("proto: unexpected end of group")
+	ErrInvalidLengthTypes = fmt.Errorf("proto: negative length found during unmarshaling")
+	ErrIntOverflowTypes   = fmt.Errorf("proto: integer overflow")
 )
