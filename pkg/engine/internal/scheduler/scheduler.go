@@ -188,10 +188,10 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	// Handle communication with the peer until the context is canceled or some
 	// error occurs.
 	err := peer.Serve(ctx)
-	if err != nil && ctx.Err() != nil && !errors.Is(err, wire.ErrConnClosed) {
-		level.Warn(logger).Log("msg", "serve error", "err", err)
-	} else {
+	if ctx.Err() != nil || errors.Is(err, wire.ErrConnClosed) {
 		level.Debug(logger).Log("msg", "connection closed")
+	} else if err != nil {
+		level.Warn(logger).Log("msg", "serve error", "err", err)
 	}
 
 	// Signal any worker routines associated with this connection to exit.
