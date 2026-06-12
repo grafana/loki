@@ -144,18 +144,15 @@ func columnarEncode(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *c
 		rowIdx++
 	}
 
-	// Set sort info: [kind(0), object_path(1), section_index(2), column_name(3), label_value(4)]
-	// Column indices: kind=0, object_path=1, section_index=2, column_name=3, label_value=4,
-	// bloom_filter=5, stream_id_bitmap=6, uncompressed_size=7, min_timestamp=8, max_timestamp=9.
-	// Data is sorted by [kind, objectPath, sectionIndex, columnName, labelValue]; timestamps
-	// are not part of the sort key.
 	enc.SetSortInfo(&datasetmd.SortInfo{
 		ColumnSorts: []*datasetmd.SortInfo_ColumnSort{
 			{ColumnIndex: 0, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // kind
-			{ColumnIndex: 1, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // object_path
-			{ColumnIndex: 2, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // section_index
 			{ColumnIndex: 3, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // column_name
 			{ColumnIndex: 4, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // label_value
+			{ColumnIndex: 8, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // min_timestamp
+			{ColumnIndex: 9, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // max_timestamp
+			{ColumnIndex: 1, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // object_path
+			{ColumnIndex: 2, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // section_index
 		},
 	})
 
