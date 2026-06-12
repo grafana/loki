@@ -4,6 +4,7 @@
     <alias>meson</alias>
     <alias>meson.build</alias>
     <filename>meson.build</filename>
+    <filename>meson.options</filename>
     <filename>meson_options.txt</filename>
     <mime_type>text/x-meson</mime_type>
   </config>

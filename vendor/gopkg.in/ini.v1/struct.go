@@ -156,7 +156,7 @@ func wrapStrictError(err error, isStrict bool) error {
 // because we want to use default value that is already assigned to struct.
 func setWithProperType(t reflect.Type, key *Key, field reflect.Value, delim string, allowShadow, isStrict bool) error {
 	vt := t
-	isPtr := t.Kind() == reflect.Ptr
+	isPtr := t.Kind() == reflect.Pointer
 	if isPtr {
 		vt = t.Elem()
 	}
@@ -278,7 +278,7 @@ func parseTagOptions(tag string) (rawName string, omitEmpty bool, allowShadow bo
 // mapToField maps the given value to the matching field of the given section.
 // The sectionIndex is the index (if non unique sections are enabled) to which the value should be added.
 func (s *Section) mapToField(val reflect.Value, isStrict bool, sectionIndex int, sectionName string) error {
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 	typ := val.Type()
@@ -299,8 +299,8 @@ func (s *Section) mapToField(val reflect.Value, isStrict bool, sectionIndex int,
 		}
 
 		isStruct := tpField.Type.Kind() == reflect.Struct
-		isStructPtr := tpField.Type.Kind() == reflect.Ptr && tpField.Type.Elem().Kind() == reflect.Struct
-		isAnonymousPtr := tpField.Type.Kind() == reflect.Ptr && tpField.Anonymous
+		isStructPtr := tpField.Type.Kind() == reflect.Pointer && tpField.Type.Elem().Kind() == reflect.Struct
+		isAnonymousPtr := tpField.Type.Kind() == reflect.Pointer && tpField.Anonymous
 		if isAnonymousPtr {
 			field.Set(reflect.New(tpField.Type.Elem()))
 		}
@@ -381,7 +381,7 @@ func (s *Section) mapToSlice(secName string, val reflect.Value, isStrict bool) (
 func (s *Section) mapTo(v interface{}, isStrict bool) error {
 	typ := reflect.TypeOf(v)
 	val := reflect.ValueOf(v)
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 		val = val.Elem()
 	} else {
@@ -500,13 +500,13 @@ func reflectSliceWithProperType(key *Key, field reflect.Value, delim string, all
 		case reflect.String:
 			buf.WriteString(slice.Index(i).String())
 		case reflect.Int, reflect.Int64:
-			buf.WriteString(fmt.Sprint(slice.Index(i).Int()))
+			fmt.Fprint(&buf, slice.Index(i).Int())
 		case reflect.Uint, reflect.Uint64:
-			buf.WriteString(fmt.Sprint(slice.Index(i).Uint()))
+			fmt.Fprint(&buf, slice.Index(i).Uint())
 		case reflect.Float64:
-			buf.WriteString(fmt.Sprint(slice.Index(i).Float()))
+			fmt.Fprint(&buf, slice.Index(i).Float())
 		case reflect.Bool:
-			buf.WriteString(fmt.Sprint(slice.Index(i).Bool()))
+			fmt.Fprint(&buf, slice.Index(i).Bool())
 		case reflectTime:
 			buf.WriteString(slice.Index(i).Interface().(time.Time).Format(time.RFC3339))
 		default:
@@ -535,7 +535,7 @@ func reflectWithProperType(t reflect.Type, key *Key, field reflect.Value, delim 
 		key.SetValue(fmt.Sprint(field.Interface().(time.Time).Format(time.RFC3339)))
 	case reflect.Slice:
 		return reflectSliceWithProperType(key, field, delim, allowShadow)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if !field.IsNil() {
 			return reflectWithProperType(t.Elem(), key, field.Elem(), delim, allowShadow)
 		}
@@ -559,7 +559,7 @@ func isEmptyValue(v reflect.Value) bool {
 		return v.Uint() == 0
 	case reflect.Float32, reflect.Float64:
 		return v.Float() == 0
-	case reflect.Interface, reflect.Ptr:
+	case reflect.Interface, reflect.Pointer:
 		return v.IsNil()
 	case reflectTime:
 		t, ok := v.Interface().(time.Time)
@@ -574,7 +574,7 @@ type StructReflector interface {
 }
 
 func (s *Section) reflectFrom(val reflect.Value) error {
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 	typ := val.Type()
@@ -606,14 +606,14 @@ func (s *Section) reflectFrom(val reflect.Value) error {
 			continue
 		}
 
-		if extends && tpField.Anonymous && (tpField.Type.Kind() == reflect.Ptr || tpField.Type.Kind() == reflect.Struct) {
+		if extends && tpField.Anonymous && (tpField.Type.Kind() == reflect.Pointer || tpField.Type.Kind() == reflect.Struct) {
 			if err := s.reflectFrom(field); err != nil {
 				return fmt.Errorf("reflect from field %q: %v", fieldName, err)
 			}
 			continue
 		}
 
-		if (tpField.Type.Kind() == reflect.Ptr && tpField.Type.Elem().Kind() == reflect.Struct) ||
+		if (tpField.Type.Kind() == reflect.Pointer && tpField.Type.Elem().Kind() == reflect.Struct) ||
 			(tpField.Type.Kind() == reflect.Struct && tpField.Type.Name() != "Time") {
 			// Note: The only error here is section doesn't exist.
 			sec, err := s.f.GetSection(fieldName)
@@ -641,7 +641,7 @@ func (s *Section) reflectFrom(val reflect.Value) error {
 			sliceOf := field.Type().Elem().Kind()
 
 			for i := 0; i < field.Len(); i++ {
-				if sliceOf != reflect.Struct && sliceOf != reflect.Ptr {
+				if sliceOf != reflect.Struct && sliceOf != reflect.Pointer {
 					return fmt.Errorf("field %q is not a slice of pointer or struct", fieldName)
 				}
 
@@ -688,11 +688,11 @@ func (s *Section) ReflectFrom(v interface{}) error {
 	val := reflect.ValueOf(v)
 
 	if s.name != DefaultSection && s.f.options.AllowNonUniqueSections &&
-		(typ.Kind() == reflect.Slice || typ.Kind() == reflect.Ptr) {
+		(typ.Kind() == reflect.Slice || typ.Kind() == reflect.Pointer) {
 		// Clear sections to make sure none exists before adding the new ones
 		s.f.DeleteSection(s.name)
 
-		if typ.Kind() == reflect.Ptr {
+		if typ.Kind() == reflect.Pointer {
 			sec, err := s.f.NewSection(s.name)
 			if err != nil {
 				return err
@@ -702,7 +702,7 @@ func (s *Section) ReflectFrom(v interface{}) error {
 
 		slice := val.Slice(0, val.Len())
 		sliceOf := val.Type().Elem().Kind()
-		if sliceOf != reflect.Ptr {
+		if sliceOf != reflect.Pointer {
 			return fmt.Errorf("not a slice of pointers")
 		}
 
@@ -721,7 +721,7 @@ func (s *Section) ReflectFrom(v interface{}) error {
 		return nil
 	}
 
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		val = val.Elem()
 	} else {
 		return errors.New("not a pointer to a struct")

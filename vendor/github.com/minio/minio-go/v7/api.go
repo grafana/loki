@@ -109,6 +109,15 @@ type Client struct {
 
 	trailingHeaderSupport bool
 	maxRetries            int
+
+	// RDMA dispatch state. rdmaEnabled mirrors Options.EnableRDMA;
+	// the rest are only touched by rdma.go (built with -tags=rdma) but
+	// have to live on the struct so the stub and the tagged build share
+	// one shape.
+	rdmaEnabled bool
+	rdmaOnce    sync.Once         //nolint:unused
+	rdmaHandle  *rdmaClientHandle //nolint:unused
+	rdmaInitErr error             //nolint:unused
 }
 
 // Options for New method
@@ -156,6 +165,11 @@ type Options struct {
 	// Number of times a request is retried. Defaults to 10 retries if this option is not configured.
 	// Set to 1 to disable retries.
 	MaxRetries int
+
+	// EnableRDMA causes PutObject / GetObject to dispatch to libminiocpp.so
+	// when the caller supplies PutObjectOptions.RDMABuffer / GetObjectOptions.RDMABuffer.
+	// No-op unless built with -tags=rdma.
+	EnableRDMA bool
 }
 
 // Global constants.
@@ -311,6 +325,7 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 	}
 
 	clnt.trailingHeaderSupport = opts.TrailingHeaders && clnt.overrideSignerType.IsV4()
+	clnt.rdmaEnabled = opts.EnableRDMA
 
 	// Sets bucket lookup style, whether server accepts DNS or Path lookup. Default is Auto - determined
 	// by the SDK. When Auto is specified, DNS lookup is used for Amazon/Google cloud endpoints and Path for all other endpoints.

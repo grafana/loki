@@ -1,9 +1,7 @@
 # INI
 
 [![GitHub Workflow Status](https://img.shields.io/github/checks-status/go-ini/ini/main?logo=github&style=for-the-badge)](https://github.com/go-ini/ini/actions?query=branch%3Amain)
-[![codecov](https://img.shields.io/codecov/c/github/go-ini/ini/master?logo=codecov&style=for-the-badge)](https://codecov.io/gh/go-ini/ini)
 [![GoDoc](https://img.shields.io/badge/GoDoc-Reference-blue?style=for-the-badge&logo=go)](https://pkg.go.dev/github.com/go-ini/ini?tab=doc)
-[![Sourcegraph](https://img.shields.io/badge/view%20on-Sourcegraph-brightgreen.svg?style=for-the-badge&logo=sourcegraph)](https://sourcegraph.com/github.com/go-ini/ini)
 
 ![](https://avatars0.githubusercontent.com/u/10216035?v=3&s=200)
 
@@ -27,10 +25,14 @@ Package ini provides INI file read and write functionality in Go.
 The minimum requirement of Go is **1.13**.
 
 ```sh
-$ go get gopkg.in/ini.v1
+$ go get gopkg.in/ini.v1@latest
 ```
 
-Please add `-u` flag to update in the future.
+> [!NOTE]
+> If you previously used `github.com/go-ini/ini` as the import path in your project, without updating all of your code, you can use the following command to replace the import path in your `go.mod`:
+> ```zsh
+> go mod edit -replace github.com/go-ini/ini=gopkg.in/ini.v1@latest
+> ```
 
 ## Getting Help
 

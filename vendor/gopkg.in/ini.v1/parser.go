@@ -130,13 +130,14 @@ func readKeyName(delimiters string, in []byte) (string, int, error) {
 
 	// Check if key name surrounded by quotes.
 	var keyQuote string
-	if line[0] == '"' {
+	switch line[0] {
+	case '"':
 		if len(line) > 6 && line[0:3] == `"""` {
 			keyQuote = `"""`
 		} else {
 			keyQuote = `"`
 		}
-	} else if line[0] == '`' {
+	case '`':
 		keyQuote = "`"
 	}
 
@@ -181,6 +182,13 @@ func (p *parser) readMultilines(line, val, valQuote string) (string, error) {
 
 		pos := strings.LastIndex(next, valQuote)
 		if pos > -1 {
+			// Check if the line ends with backslash continuation after the quote
+			restOfLine := strings.TrimRight(next[pos+len(valQuote):], "\r\n")
+			if !p.options.IgnoreContinuation && strings.HasSuffix(strings.TrimSpace(restOfLine), `\`) {
+				val += next
+				continue
+			}
+
 			val += next[:pos]
 
 			comment, has := cleanComment([]byte(next[pos:]))
@@ -253,7 +261,7 @@ func (p *parser) readValue(in []byte, bufferSize int) (string, error) {
 		}
 
 		if p.options.UnescapeValueDoubleQuotes && valQuote == `"` {
-			return strings.Replace(line[startIdx:pos+startIdx], `\"`, `"`, -1), nil
+			return strings.ReplaceAll(line[startIdx:pos+startIdx], `\"`, `"`), nil
 		}
 		return line[startIdx : pos+startIdx], nil
 	}

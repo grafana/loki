@@ -1,22 +1,13 @@
 version: "2"
 linters:
-  default: none
   enable:
-    - dupl
-    - errcheck
-    - gocyclo
-    - gosec
-    - govet
-    - ineffassign
-    - misspell
     - nakedret
-    - revive
-    - staticcheck
+    - rowserrcheck
+    - unconvert
     - unparam
-    - unused
   settings:
-    dupl:
-      threshold: 600
+    nakedret:
+      max-func-lines: 0 # Disallow any unnamed return statement
   exclusions:
     generated: lax
     presets:
@@ -30,10 +21,8 @@ linters:
       - examples$
 formatters:
   enable:
+    - gofmt
     - goimports
-  settings:
-    gofmt:
-      simplify: true
   exclusions:
     generated: lax
     paths:
