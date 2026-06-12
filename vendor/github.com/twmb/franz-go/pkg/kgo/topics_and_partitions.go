@@ -8,16 +8,21 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/twmb/franz-go/pkg/kerr"
+	"github.com/twmb/franz-go/pkg/kgo/internal/xsync"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
 /////////////
 // HELPERS // -- ugly types to eliminate the toil of nil maps and lookups
 /////////////
+
+type tidp struct {
+	id [16]byte
+	p  int32
+}
 
 func strtid(tid [16]byte) string {
 	return base64.RawURLEncoding.EncodeToString(tid[:])
@@ -211,6 +216,7 @@ func (m pausedTopics) delTopics(topics ...string) {
 			continue
 		}
 		pps.all = false
+		m[topic] = pps
 		if !pps.all && len(pps.m) == 0 {
 			delete(m, topic)
 		}
@@ -288,7 +294,7 @@ func newTopicPartitions() *topicPartitions {
 type topicPartitions struct {
 	v atomic.Value // *topicPartitionsData
 
-	partsMu     sync.Mutex
+	partsMu     xsync.Mutex
 	partitioner TopicPartitioner
 	lb          *leastBackupInput // for partitioning if the partitioner is a LoadTopicPartitioner
 }
@@ -542,18 +548,36 @@ type topicPartition struct {
 	// whether the data changed (leader or leader epoch, etc.).
 	topicPartitionData
 
-	// If we do not have a load error, we copy the records and cursor
-	// pointers from the old after updating any necessary fields in them
-	// (see migrate functions below).
+	// If we do not have a load error, we copy the records, cursor, or
+	// shareCursor pointer from the old after updating any necessary
+	// fields in them (see migrate functions below).
 	//
-	// Only one of records or cursor is non-nil.
-	records *recBuf
-	cursor  *cursor
+	// Exactly one of records, cursor, or shareCursor is non-nil. The
+	// records field is for produce, cursor for classic consume, and
+	// shareCursor for share consume. shareCursor lives forever on the
+	// topicPartition; its source field updates on leader migration.
+	records     *recBuf
+	cursor      *cursor
+	shareCursor *shareCursor
 }
+
+// partitionKind is what role a topicPartition plays for this client:
+// produce, classic consume, or share consume. Each partition is exactly
+// one of these.
+type partitionKind uint8
+
+const (
+	partitionKindProduce partitionKind = iota
+	partitionKindConsume
+	partitionKindShare
+)
 
 func (tp *topicPartition) partition() int32 {
 	if tp.records != nil {
 		return tp.records.partition
+	}
+	if tp.shareCursor != nil {
+		return tp.shareCursor.partition
 	}
 	return tp.cursor.partition
 }
@@ -592,6 +616,12 @@ func (old *topicPartition) migrateProductionTo(new *topicPartition) { //nolint:r
 	old.records.mu.Lock() // guard setting sink and topic partition data
 	old.records.sink = new.records.sink
 	old.records.topicPartitionData = new.topicPartitionData
+	// okOnSink tracks "the last response on this recBuf's current sink
+	// was a success", which gates >1 in-flight per #223. After a sink
+	// change, a stale true from the old sink could allow pipelining two
+	// unresolved requests on the new sink before its first ack. Reset so
+	// the new sink re-earns pipelining through its own response.
+	old.records.okOnSink = false
 	old.records.mu.Unlock()
 
 	// After the unlock above, record buffering can trigger drains
@@ -627,9 +657,13 @@ func (old *topicPartition) migrateCursorTo( //nolint:revive // old/new naming ma
 	// leader epoch on the new broker to see if we experienced data loss
 	// before we can use this cursor.
 	//
-	// Metadata ensures that leaderEpoch is non-negative only if the broker
-	// supports KIP-320.
-	if new.leaderEpoch != -1 && old.cursor.lastConsumedEpoch >= 0 {
+	// We can only validate against a real (non-negative) leader epoch.
+	// Metadata reports a non-negative epoch only if the broker supports
+	// KIP-320, and the metadata merge keeps our last known real epoch
+	// rather than ever migrating us to the -1 "no leader" sentinel (see
+	// mergeTopicPartitions), so a negative epoch here means we genuinely
+	// have nothing to validate against and must skip validation.
+	if new.leaderEpoch >= 0 && old.cursor.lastConsumedEpoch >= 0 {
 		// Since the cursor consumed messages, it is definitely usable.
 		// We use it so that the epoch load can finish using it
 		// properly.
@@ -647,6 +681,19 @@ func (old *topicPartition) migrateCursorTo( //nolint:revive // old/new naming ma
 
 	old.cursor.source.addCursor(old.cursor)
 	new.cursor = old.cursor
+}
+
+func (tp *topicPartition) migrateShareCursorTo(cl *Client, new *topicPartition) {
+	c := tp.shareCursor
+	cl.sinksAndSourcesMu.Lock()
+	sns := cl.sinksAndSources[new.leader]
+	cl.sinksAndSourcesMu.Unlock()
+	if oldSource := c.source.Load(); oldSource != nil {
+		oldSource.removeShareCursor(c)
+	}
+	c.source.Store(sns.source)
+	sns.source.addShareCursor(c)
+	new.shareCursor = c
 }
 
 type kip951move struct {
@@ -753,16 +800,55 @@ func (k *kip951move) ensureBrokers(cl *Client) {
 		return
 	}
 
-	kbs := make([]kmsg.MetadataResponseBroker, 0, len(k.brokers))
+	// We only add or replace individual brokers here, never remove
+	// unrelated ones. updateBrokers does a full merge-sort that
+	// removes any existing broker not in the input list. The KIP-951
+	// response only includes brokers relevant to the move (a subset),
+	// so calling updateBrokers would destroy all other brokers. Those
+	// destroyed brokers get recreated on the next metadata refresh as
+	// new objects with new connections, which breaks the single-
+	// connection-per-broker ordering guarantee that Kafka requires
+	// for idempotent/transactional produce.
+	cl.brokersMu.Lock()
+	defer cl.brokersMu.Unlock()
+
+	if cl.stopBrokers {
+		return
+	}
+
+	var changed bool
 	for _, b := range k.brokers {
-		kbs = append(kbs, kmsg.MetadataResponseBroker{
+		nb := kmsg.MetadataResponseBroker{
 			NodeID: b.NodeID,
 			Host:   b.Host,
 			Port:   b.Port,
 			Rack:   b.Rack,
-		})
+		}
+		var found bool
+		for i, existing := range cl.brokers {
+			if existing.meta.NodeID != b.NodeID {
+				continue
+			}
+			found = true
+			if !existing.meta.equals(nb) {
+				existing.stopForever()
+				cl.brokers[i] = cl.newBroker(b.NodeID, b.Host, b.Port, b.Rack)
+				changed = true
+			}
+			break
+		}
+		if !found {
+			cl.brokers = append(cl.brokers, cl.newBroker(b.NodeID, b.Host, b.Port, b.Rack))
+			changed = true
+		}
 	}
-	cl.updateBrokers(kbs)
+
+	if changed {
+		sort.Slice(cl.brokers, func(i, j int) bool {
+			return cl.brokers[i].meta.NodeID < cl.brokers[j].meta.NodeID
+		})
+		cl.reinitAnyBrokerOrd()
+	}
 }
 
 func (k *kip951move) maybeBeginMove(cl *Client) {
