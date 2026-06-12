@@ -16,6 +16,7 @@
 legacy-read-mode: "Legacy read SSD mode is deprecated and will be eventually removed. Use the new read and backend targets."
 
 ruler:
+  datasource_uid: "Use limits_config.ruler_grafana_datasource_uid instead."
   remote_write:
     client: "Use clients instead."
 
