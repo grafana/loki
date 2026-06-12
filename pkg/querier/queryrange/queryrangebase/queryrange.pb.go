@@ -642,7 +642,7 @@ func (m *PrometheusRequest) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field8count int
 		for preIdx < l {
@@ -1108,6 +1108,10 @@ func (m *PrometheusRequest) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *PrometheusRequest) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *PrometheusResponse) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1125,7 +1129,7 @@ func (m *PrometheusResponse) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field5count int
 		var field6count int
@@ -1517,6 +1521,10 @@ func (m *PrometheusResponse) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *PrometheusResponse) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *PrometheusData) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1534,7 +1542,7 @@ func (m *PrometheusData) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		for preIdx < l {
@@ -1733,6 +1741,10 @@ func (m *PrometheusData) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *PrometheusData) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *SampleStream) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1750,7 +1762,7 @@ func (m *SampleStream) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		var field2count int
@@ -1962,4 +1974,8 @@ func (m *SampleStream) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *SampleStream) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }

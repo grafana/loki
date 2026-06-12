@@ -660,7 +660,7 @@ func (m *FilterChunkRefRequest) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field3count int
 		var field6count int
@@ -973,6 +973,10 @@ func (m *FilterChunkRefRequest) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *FilterChunkRefRequest) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *FilterChunkRefResponse) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -990,7 +994,7 @@ func (m *FilterChunkRefResponse) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -1142,6 +1146,10 @@ func (m *FilterChunkRefResponse) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *FilterChunkRefResponse) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *ShortRef) Unmarshal(b []byte) error {
@@ -1303,7 +1311,7 @@ func (m *GroupedChunkRefs) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field3count int
 		for preIdx < l {
@@ -1580,6 +1588,10 @@ func (m *GroupedChunkRefs) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *GroupedChunkRefs) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *PrefetchBloomBlocksRequest) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1597,7 +1609,7 @@ func (m *PrefetchBloomBlocksRequest) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -1746,6 +1758,10 @@ func (m *PrefetchBloomBlocksRequest) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *PrefetchBloomBlocksRequest) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *PrefetchBloomBlocksResponse) Unmarshal(b []byte) error {

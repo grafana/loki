@@ -945,7 +945,7 @@ func (m *ExceedsLimitsRequest) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		for preIdx < l {
@@ -1144,6 +1144,10 @@ func (m *ExceedsLimitsRequest) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *ExceedsLimitsRequest) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *ExceedsLimitsResponse) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1161,7 +1165,7 @@ func (m *ExceedsLimitsResponse) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -1313,6 +1317,10 @@ func (m *ExceedsLimitsResponse) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *ExceedsLimitsResponse) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *ExceedsLimitsResult) Unmarshal(b []byte) error {
@@ -1504,7 +1512,7 @@ func (m *GetAssignedPartitionsResponse) unmarshal(dAtA []byte, depth int) error 
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -1747,6 +1755,10 @@ func (m *GetAssignedPartitionsResponse) unmarshal(dAtA []byte, depth int) error 
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *GetAssignedPartitionsResponse) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *StreamMetadata) Unmarshal(b []byte) error {
@@ -2123,7 +2135,7 @@ func (m *UpdateRatesRequest) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		for preIdx < l {
@@ -2322,6 +2334,10 @@ func (m *UpdateRatesRequest) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *UpdateRatesRequest) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *UpdateRatesResponse) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -2339,7 +2355,7 @@ func (m *UpdateRatesResponse) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -2491,6 +2507,10 @@ func (m *UpdateRatesResponse) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *UpdateRatesResponse) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *UpdateRatesResult) Unmarshal(b []byte) error {

@@ -1115,7 +1115,7 @@ func (m *ProtoSeries) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		for preIdx < l {
@@ -1297,6 +1297,10 @@ func (m *ProtoSeries) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *ProtoSeries) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *ProtoGapWithBlocks) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1314,7 +1318,7 @@ func (m *ProtoGapWithBlocks) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		var field3count int
@@ -1571,6 +1575,10 @@ func (m *ProtoGapWithBlocks) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *ProtoGapWithBlocks) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *ProtoTask) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1588,7 +1596,7 @@ func (m *ProtoTask) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field6count int
 		for preIdx < l {
@@ -1971,6 +1979,10 @@ func (m *ProtoTask) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *ProtoTask) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *ProtoMeta) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1988,7 +2000,7 @@ func (m *ProtoMeta) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		var field3count int
@@ -2240,6 +2252,10 @@ func (m *ProtoMeta) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *ProtoMeta) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *ProtoTaskResult) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -2257,7 +2273,7 @@ func (m *ProtoTaskResult) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field3count int
 		for preIdx < l {
@@ -2499,4 +2515,8 @@ func (m *ProtoTaskResult) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *ProtoTaskResult) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }

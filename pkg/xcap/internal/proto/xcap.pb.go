@@ -1308,7 +1308,7 @@ func (m *Capture) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		var field2count int
@@ -1521,6 +1521,10 @@ func (m *Capture) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *Capture) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *Region) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1538,7 +1542,7 @@ func (m *Region) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field4count int
 		var field7count int
@@ -2090,6 +2094,10 @@ func (m *Region) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *Region) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *Event) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -2107,7 +2115,7 @@ func (m *Event) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field3count int
 		for preIdx < l {
@@ -2353,6 +2361,10 @@ func (m *Event) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *Event) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *Status) Unmarshal(b []byte) error {

@@ -870,7 +870,7 @@ func (m *RulesRequest) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		var field3count int
@@ -1161,6 +1161,10 @@ func (m *RulesRequest) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *RulesRequest) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *RulesResponse) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1178,7 +1182,7 @@ func (m *RulesResponse) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -1332,6 +1336,10 @@ func (m *RulesResponse) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *RulesResponse) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *GroupStateDesc) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1349,7 +1357,7 @@ func (m *GroupStateDesc) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		for preIdx < l {
@@ -1651,6 +1659,10 @@ func (m *GroupStateDesc) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *GroupStateDesc) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *RuleStateDesc) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1668,7 +1680,7 @@ func (m *RuleStateDesc) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field5count int
 		for preIdx < l {
@@ -2105,6 +2117,10 @@ func (m *RuleStateDesc) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *RuleStateDesc) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *AlertStateDesc) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -2122,7 +2138,7 @@ func (m *AlertStateDesc) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		var field3count int
@@ -2640,4 +2656,8 @@ func (m *AlertStateDesc) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *AlertStateDesc) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
