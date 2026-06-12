@@ -435,17 +435,23 @@ func (am *authenticatedMatcher) match(data *rpcData) bool {
 		return am.stringMatcher.Match("")
 	}
 	cert := data.certs[0]
-	// The order of matching as per the RBAC documentation (see package-level comments)
-	// is as follows: URI SANs, DNS SANs, and then subject name.
-	for _, uriSAN := range cert.URIs {
-		if am.stringMatcher.Match(uriSAN.String()) {
-			return true
+	// Use the first non-empty identity source in priority order:
+	// URI SANs, then DNS SANs, then Subject.
+	if len(cert.URIs) > 0 {
+		for _, uriSAN := range cert.URIs {
+			if am.stringMatcher.Match(uriSAN.String()) {
+				return true
+			}
 		}
+		return false
 	}
-	for _, dnsSAN := range cert.DNSNames {
-		if am.stringMatcher.Match(dnsSAN) {
-			return true
+	if len(cert.DNSNames) > 0 {
+		for _, dnsSAN := range cert.DNSNames {
+			if am.stringMatcher.Match(dnsSAN) {
+				return true
+			}
 		}
+		return false
 	}
 	return am.stringMatcher.Match(cert.Subject.String())
 }
