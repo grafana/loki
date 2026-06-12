@@ -406,6 +406,11 @@ test: all ## run the unit tests
 test-integration:
 	$(GOTEST) -count=1 -v -tags=integration -timeout 15m ./integration
 
+# Container-based end-to-end tests (see integration/e2e/README.md). These build
+# the Loki image and run it in Docker, so they need a running Docker daemon.
+test-integration-e2e: loki-image
+	LOKI_IMAGE=$(LOKI_IMAGE) $(GOTEST) -count=1 -v -tags=requires_docker -timeout 15m ./integration/e2e/...
+
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
