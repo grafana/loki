@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/dustin/go-humanize"
@@ -968,4 +969,33 @@ func Test_Reader_Stats(t *testing.T) {
 	require.Equal(t, int64(3), obsMap[xcap.StatDatasetRowsAfterPruning.Name()])
 	require.Equal(t, int64(3), obsMap[xcap.StatDatasetPrimaryRowsRead.Name()])
 	require.Equal(t, int64(1), obsMap[xcap.StatDatasetSecondaryRowsRead.Name()])
+}
+
+func BenchmarkRowReader_Read(b *testing.B) {
+	totalValues := 64 * 1024
+	values := make([]string, totalValues)
+	for i := range values {
+		values[i] = fmt.Sprintf("value %d [%s]", i, strings.Repeat("A", 100))
+	}
+
+	col := buildReaderTestColumn(b, "data", values)
+
+	r := NewRowReader(RowReaderOptions{
+		Columns: []Column{col},
+	})
+	batch := make([]Row, 8192)
+	for b.Loop() {
+		r.Reset(RowReaderOptions{
+			Columns: []Column{col},
+		})
+		_ = r.Open(context.Background())
+		for {
+			_, err := r.Read(context.Background(), batch)
+			if err == io.EOF {
+				break
+			}
+		}
+	}
+	b.SetBytes(int64(col.Desc.UncompressedSize))
+	b.ReportMetric(float64(totalValues*b.N)/b.Elapsed().Seconds(), "values/s")
 }
