@@ -595,7 +595,7 @@ func (w *Creator) encodeChunkMeta(dst *encoding.Encbuf, chk ChunkMeta, prevChunk
 	dst.PutUvarint32(chk.Entries)
 	dst.PutBE32(chk.Checksum)
 	if w.Version >= FormatV4 {
-		dst.PutUvarint64(uint64(chk.IngestedAt))
+		dst.PutVarint64(chk.IngestedAt - chk.MaxTime)
 	}
 }
 
@@ -2093,7 +2093,7 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 	chunkPos := bufLen - d.Len()
 	chunkMeta := &ChunkMeta{}
 	// FormatV2 is passed deliberately: the version only gates whether the
-	// trailing IngestedAt uvarint is decoded (FormatV4+). This page-marker
+	// trailing IngestedAt delta is decoded (FormatV4+). This page-marker
 	// sample buffer never carries IngestedAt, so forcing a pre-V4 decode here
 	// reads the legacy layout regardless of the file's actual index version.
 	if err := readChunkMeta(FormatV2, &d, 0, chunkMeta); err != nil {
@@ -2514,7 +2514,7 @@ func readChunkMetaWithForcedMintime(version int, d *encoding.Decbuf, mint int64,
 	chunkMeta.Checksum = d.Be32()
 	chunkMeta.IngestedAt = 0
 	if version >= FormatV4 {
-		chunkMeta.IngestedAt = int64(d.Uvarint64())
+		chunkMeta.IngestedAt = chunkMeta.MaxTime + d.Varint64()
 	}
 
 	if d.Err() != nil {

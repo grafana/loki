@@ -464,6 +464,48 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 	}
 }
 
+func TestChunkEncodingIngestedAtDelta(t *testing.T) {
+	// IngestedAt is delta-encoded against MaxTime, so values on either side of
+	// MaxTime and far from it must round-trip exactly.
+	for _, tc := range []struct {
+		desc string
+		chk  ChunkMeta
+	}{
+		{
+			desc: "ingested shortly after maxtime",
+			chk:  ChunkMeta{MinTime: 100, MaxTime: 200, IngestedAt: 5200, KB: 1, Entries: 1, Checksum: 1},
+		},
+		{
+			desc: "ingested before maxtime (clock drift / future-dated entries)",
+			chk:  ChunkMeta{MinTime: 100, MaxTime: 5000, IngestedAt: 4000, KB: 1, Entries: 1, Checksum: 1},
+		},
+		{
+			desc: "large backfill delta",
+			chk:  ChunkMeta{MinTime: 100, MaxTime: 200, IngestedAt: 1_700_000_000_000, KB: 1, Entries: 1, Checksum: 1},
+		},
+		{
+			desc: "zero ingestedAt",
+			chk:  ChunkMeta{MinTime: 100, MaxTime: 200, IngestedAt: 0, KB: 1, Entries: 1, Checksum: 1},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			chks := []ChunkMeta{tc.chk}
+			var w Creator
+			w.Version = FormatV4
+			primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+			scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+			w.addChunks(chks, &primary, &scratch, ChunkPageSize)
+
+			decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
+			dec := newDecoder(nil, 0)
+
+			dst := []ChunkMeta{}
+			require.Nil(t, dec.readChunks(FormatV4, &decbuf, 0, 0, math.MaxInt64, &dst))
+			require.Equal(t, chks, dst)
+		})
+	}
+}
+
 func TestSearchWithPageMarkers(t *testing.T) {
 	for _, pageSize := range []int{
 		2,
