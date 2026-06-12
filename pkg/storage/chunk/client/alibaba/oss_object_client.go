@@ -10,12 +10,10 @@ import (
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/aliyun/credentials-go/credentials"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -282,17 +280,25 @@ func (c *Credentials) GetSecurityToken() string {
 }
 
 func (cp *CredentialsProvider) GetCredentials() oss.Credentials {
+	cred, err := cp.GetCredentialsE()
+	if err != nil {
+		return &Credentials{}
+	}
+
+	return cred
+}
+
+func (cp *CredentialsProvider) GetCredentialsE() (oss.Credentials, error) {
 	cred, err := cp.cred.GetCredential()
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to get credentials", "err", err)
-		return &Credentials{}
+		return nil, err
 	}
 
 	return &Credentials{
 		AccessKeyId:     *cred.AccessKeyId,
 		AccessKeySecret: *cred.AccessKeySecret,
 		SecurityToken:   *cred.SecurityToken,
-	}
+	}, nil
 }
 
 func NewEcsCredentialsProvider(credential credentials.Credential) CredentialsProvider {
