@@ -6834,6 +6834,12 @@ tsdb_shipper:
     # CLI flag: -tsdb.shipper.index-gateway-client.time-based-sharding-buckets
     [time_based_sharding_buckets: <list of strings> | default = []]
 
+    # Minimum number of index gateway instances included in the shuffle shard,
+    # regardless of the max-capacity setting. A value of 0 disables the minimum.
+    # Only applies to simple mode.
+    # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
+    [min_shuffle_shard_size: <int> | default = 3]
+
   [ingestername: <string> | default = ""]
 
   [mode: <string> | default = ""]
