@@ -72,7 +72,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.5
-	github.com/prometheus/prometheus v0.311.3-0.20260415124738-34cebfe9536c
+	github.com/prometheus/prometheus v0.311.3
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker/v2 v2.4.0
@@ -147,6 +147,8 @@ require (
 	k8s.io/utils v0.0.0-20251218160917-61b37f7a4624
 	zombiezen.com/go/sqlite v1.4.2
 )
+
+require github.com/grafana/e2e v0.1.2-0.20260504080022-0f57c9f0da68
 
 require (
 	cel.dev/expr v0.25.1 // indirect
@@ -441,3 +443,8 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.4.0
 
 replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20260507144615-6c81ea69c9a9
+
+// github.com/grafana/e2e (used by integration/e2e) requires a newer prometheus
+// tag than the commit Loki pins. Keep Loki's pinned prometheus; e2e only uses the
+// stable model/labels and prompb packages.
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.311.3-0.20260415124738-34cebfe9536c
