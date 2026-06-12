@@ -54,8 +54,8 @@ type RegisterContainerInstanceInput struct {
 	// http://169.254.169.254/latest/dynamic/instance-identity/signature/
 	InstanceIdentityDocumentSignature *string
 
-	// The devices that are available on the container instance. The only supported
-	// device type is a GPU.
+	// The devices that are available on the container instance. The supported device
+	// types are GPUs and Neuron devices.
 	PlatformDevices []types.PlatformDevice
 
 	// The metadata that you apply to the container instance to help you categorize
@@ -141,7 +141,7 @@ func (c *Client) addOperationRegisterContainerInstanceMiddlewares(stack *middlew
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -163,9 +163,6 @@ func (c *Client) addOperationRegisterContainerInstanceMiddlewares(stack *middlew
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

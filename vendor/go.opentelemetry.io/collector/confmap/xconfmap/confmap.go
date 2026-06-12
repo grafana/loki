@@ -25,3 +25,11 @@ type ExpandedValue = internal.ExpandedValue
 func ToStringMapRaw(conf *confmap.Conf) map[string]any {
 	return internal.ToStringMapRaw(conf)
 }
+
+// WithUnredacted returns a MarshalOption that configures the confmap to
+// bypass redaction of opaque string values.
+func WithUnredacted() confmap.MarshalOption {
+	return internal.MarshalOptionFunc(func(opts *internal.MarshalOptions) {
+		opts.OpaqueUnredacted = true
+	})
+}

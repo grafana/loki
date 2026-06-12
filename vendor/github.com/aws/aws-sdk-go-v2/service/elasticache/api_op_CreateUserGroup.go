@@ -37,7 +37,7 @@ type CreateUserGroupInput struct {
 	// This member is required.
 	Engine *string
 
-	// The ID of the user group.
+	// The ID of the user group. This value is stored as a lowercase string.
 	//
 	// This member is required.
 	UserGroupId *string
@@ -124,7 +124,7 @@ func (c *Client) addOperationCreateUserGroupMiddlewares(stack *middleware.Stack,
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -146,9 +146,6 @@ func (c *Client) addOperationCreateUserGroupMiddlewares(stack *middleware.Stack,
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

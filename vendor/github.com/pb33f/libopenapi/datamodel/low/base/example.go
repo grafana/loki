@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package base
@@ -6,6 +6,7 @@ package base
 import (
 	"context"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -29,6 +30,8 @@ type Example struct {
 	RootNode        *yaml.Node
 	index           *index.SpecIndex
 	context         context.Context
+	nodeStore       sync.Map
+	reference       low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -86,14 +89,21 @@ func (ex *Example) Hash() uint64 {
 // Build extracts extensions and example value
 func (ex *Example) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	ex.KeyNode = keyNode
-	ex.Reference = new(low.Reference)
+	ex.reference = low.Reference{}
+	ex.Reference = &ex.reference
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		ex.SetReference(ref, root)
 	}
 	root = utils.NodeAlias(root)
 	ex.RootNode = root
 	utils.CheckForMergeNodes(root)
-	ex.Nodes = low.ExtractNodes(ctx, root)
+	ex.nodeStore = sync.Map{}
+	ex.Nodes = &ex.nodeStore
+	if len(root.Content) > 0 {
+		ex.NodeMap.ExtractNodes(root, false)
+	} else {
+		ex.AddNode(root.Line, root)
+	}
 	ex.Extensions = low.ExtractExtensions(root)
 	ex.context = ctx
 	ex.index = idx
@@ -109,14 +119,7 @@ func (ex *Example) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 			ValueNode: vn,
 		}
 
-		// extract nodes for all value nodes down the tree.
-		expChildNodes := low.ExtractNodesRecursive(ctx, vn)
-		expChildNodes.Range(func(k, v interface{}) bool {
-			if arr, ko := v.([]*yaml.Node); ko {
-				ex.Nodes.Store(k, arr)
-			}
-			return true
-		})
+		low.MergeRecursiveNodesIfLineAbsent(ex.Nodes, vn)
 	}
 
 	// OpenAPI 3.2+ dataValue field
@@ -127,14 +130,7 @@ func (ex *Example) Build(ctx context.Context, keyNode, root *yaml.Node, idx *ind
 			ValueNode: dataVn,
 		}
 
-		// extract nodes for all dataValue nodes down the tree.
-		expChildNodes := low.ExtractNodesRecursive(ctx, dataVn)
-		expChildNodes.Range(func(k, v interface{}) bool {
-			if arr, ko := v.([]*yaml.Node); ko {
-				ex.Nodes.Store(k, arr)
-			}
-			return true
-		})
+		low.MergeRecursiveNodesIfLineAbsent(ex.Nodes, dataVn)
 	}
 
 	// OpenAPI 3.2+ serializedValue field

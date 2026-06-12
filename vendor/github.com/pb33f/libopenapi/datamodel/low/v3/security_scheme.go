@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -6,6 +6,7 @@ package v3
 import (
 	"context"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -40,6 +41,8 @@ type SecurityScheme struct {
 	RootNode          *yaml.Node
 	index             *index.SpecIndex
 	context           context.Context
+	nodeStore         sync.Map
+	reference         low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -77,14 +80,21 @@ func (ss *SecurityScheme) GetExtensions() *orderedmap.Map[low.KeyReference[strin
 // Build will extract OAuthFlows and extensions from the node.
 func (ss *SecurityScheme) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	ss.KeyNode = keyNode
-	ss.Reference = new(low.Reference)
+	ss.reference = low.Reference{}
+	ss.Reference = &ss.reference
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		ss.SetReference(ref, root)
 	}
 	root = utils.NodeAlias(root)
 	ss.RootNode = root
 	utils.CheckForMergeNodes(root)
-	ss.Nodes = low.ExtractNodes(ctx, root)
+	ss.nodeStore = sync.Map{}
+	ss.Nodes = &ss.nodeStore
+	if len(root.Content) > 0 {
+		ss.NodeMap.ExtractNodes(root, false)
+	} else {
+		ss.AddNode(root.Line, root)
+	}
 	ss.Extensions = low.ExtractExtensions(root)
 	ss.index = idx
 	ss.context = ctx

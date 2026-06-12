@@ -35,17 +35,18 @@ type UpdateConnectivityInput struct {
 	// This member is required.
 	ClusterArn *string
 
-	// Information about the broker access configuration.
-	//
-	// This member is required.
-	ConnectivityInfo *types.ConnectivityInfo
-
 	// The version of the MSK cluster to update. Cluster versions aren't simple
 	// numbers. You can describe an MSK cluster to find its version. When this update
 	// operation is successful, it generates a new cluster version.
 	//
 	// This member is required.
 	CurrentVersion *string
+
+	// Information about the broker access configuration.
+	ConnectivityInfo *types.ConnectivityInfo
+
+	// Access control settings for zookeeper
+	ZookeeperAccess *types.ZookeeperAccess
 
 	noSmithyDocumentSerde
 }
@@ -98,7 +99,7 @@ func (c *Client) addOperationUpdateConnectivityMiddlewares(stack *middleware.Sta
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -120,9 +121,6 @@ func (c *Client) addOperationUpdateConnectivityMiddlewares(stack *middleware.Sta
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

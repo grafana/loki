@@ -41,18 +41,23 @@ type UpdateReplicationInfoInput struct {
 	// This member is required.
 	ReplicatorArn *string
 
-	// The ARN of the source Kafka cluster.
-	//
-	// This member is required.
-	SourceKafkaClusterArn *string
-
-	// The ARN of the target Kafka cluster.
-	//
-	// This member is required.
-	TargetKafkaClusterArn *string
-
 	// Updated consumer group replication information.
 	ConsumerGroupReplication *types.ConsumerGroupReplicationUpdate
+
+	// Configuration for delivering replicator logs to customer destinations.
+	LogDelivery *types.LogDelivery
+
+	// The ARN of the source Kafka cluster.
+	SourceKafkaClusterArn *string
+
+	// The ID of the source Kafka cluster.
+	SourceKafkaClusterId *string
+
+	// The ARN of the target Kafka cluster.
+	TargetKafkaClusterArn *string
+
+	// The ID of the target Kafka cluster.
+	TargetKafkaClusterId *string
 
 	// Updated topic replication information.
 	TopicReplication *types.TopicReplicationUpdate
@@ -108,7 +113,7 @@ func (c *Client) addOperationUpdateReplicationInfoMiddlewares(stack *middleware.
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -130,9 +135,6 @@ func (c *Client) addOperationUpdateReplicationInfoMiddlewares(stack *middleware.
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

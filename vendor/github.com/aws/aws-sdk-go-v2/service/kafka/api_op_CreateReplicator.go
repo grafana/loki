@@ -55,6 +55,9 @@ type CreateReplicatorInput struct {
 	// A summary description of the replicator.
 	Description *string
 
+	// Configuration for delivering replicator logs to customer destinations.
+	LogDelivery *types.LogDelivery
+
 	// List of tags to attach to created Replicator.
 	Tags map[string]string
 
@@ -112,7 +115,7 @@ func (c *Client) addOperationCreateReplicatorMiddlewares(stack *middleware.Stack
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -134,9 +137,6 @@ func (c *Client) addOperationCreateReplicatorMiddlewares(stack *middleware.Stack
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

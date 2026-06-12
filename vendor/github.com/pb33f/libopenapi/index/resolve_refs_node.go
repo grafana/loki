@@ -36,6 +36,7 @@ func resolveRefsInNode(node *yaml.Node, idx *SpecIndex, seen map[string]struct{}
 	}
 }
 
+// resolveRefsInMappingNode handles $ref resolution for a single mapping node, including sibling merging.
 func resolveRefsInMappingNode(node *yaml.Node, idx *SpecIndex, seen map[string]struct{}) *yaml.Node {
 	ref, hasRef := findRefInMappingNode(node)
 	if !hasRef {
@@ -81,6 +82,7 @@ func resolveRefsInMappingNode(node *yaml.Node, idx *SpecIndex, seen map[string]s
 	return cloneMappingNodeWithResolvedChildren(node, idx, seen)
 }
 
+// hasNonRefSiblings returns true if the mapping node contains keys other than "$ref".
 func hasNonRefSiblings(node *yaml.Node) bool {
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		key := node.Content[i]
@@ -91,6 +93,7 @@ func hasNonRefSiblings(node *yaml.Node) bool {
 	return false
 }
 
+// findRefInMappingNode extracts the "$ref" value from a mapping node, if present.
 func findRefInMappingNode(node *yaml.Node) (string, bool) {
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		key := node.Content[i]
@@ -102,6 +105,7 @@ func findRefInMappingNode(node *yaml.Node) (string, bool) {
 	return "", false
 }
 
+// extractResolvedSiblingPairs collects all non-$ref key-value pairs from a mapping, resolving their values.
 func extractResolvedSiblingPairs(node *yaml.Node, idx *SpecIndex, seen map[string]struct{}) []*yaml.Node {
 	out := make([]*yaml.Node, 0, len(node.Content))
 	for i := 0; i+1 < len(node.Content); i += 2 {
@@ -115,6 +119,7 @@ func extractResolvedSiblingPairs(node *yaml.Node, idx *SpecIndex, seen map[strin
 	return out
 }
 
+// cloneMappingNodeWithResolvedChildren shallow-clones a mapping node, recursively resolving each child value.
 func cloneMappingNodeWithResolvedChildren(node *yaml.Node, idx *SpecIndex, seen map[string]struct{}) *yaml.Node {
 	clone := *node
 	clone.Content = make([]*yaml.Node, 0, len(node.Content))
@@ -126,6 +131,7 @@ func cloneMappingNodeWithResolvedChildren(node *yaml.Node, idx *SpecIndex, seen 
 	return &clone
 }
 
+// mergeResolvedMappingWithSiblings combines a resolved mapping with sibling key-value pairs; siblings win on conflict.
 func mergeResolvedMappingWithSiblings(resolved *yaml.Node, siblings []*yaml.Node) *yaml.Node {
 	merged := *resolved
 	merged.Content = make([]*yaml.Node, 0, len(resolved.Content)+len(siblings))

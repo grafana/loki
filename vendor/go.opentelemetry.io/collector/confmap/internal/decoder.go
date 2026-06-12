@@ -13,7 +13,6 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 
-	"go.opentelemetry.io/collector/confmap/internal/metadata"
 	"go.opentelemetry.io/collector/confmap/internal/third_party/composehook"
 )
 
@@ -66,6 +65,10 @@ func Decode(input, result any, settings UnmarshalOptions, skipTopLevelUnmarshale
 			mapKeyStringToMapKeyTextUnmarshalerHookFunc(),
 			mapstructure.StringToTimeDurationHookFunc(),
 			mapstructure.TextUnmarshallerHookFunc(),
+			// This must come before unmarshalerHookFunc; the two may both want to trigger
+			// their corresponding interface for structs implementing both, and the scalar
+			// interfaces are the ones that will sometimes defer to the non-scalar interfaces.
+			scalarUnmarshalerHookFunc(),
 			unmarshalerHookFunc(result, skipTopLevelUnmarshaler && !settings.ForceUnmarshaler),
 			// after the main unmarshaler hook is called,
 			// we unmarshal the embedded structs if present to merge with the result:
@@ -100,22 +103,18 @@ func useExpandValue() mapstructure.DecodeHookFuncType {
 	) (any, error) {
 		if exp, ok := data.(ExpandedValue); ok {
 			var useOriginal bool
-			if metadata.ConfmapNewExpandedValueSanitizerFeatureGate.IsEnabled() {
-				// Check if the target field is string, *string, **string, etc.
-				baseType := to
-				pointed := false
-				for baseType.Kind() == reflect.Pointer {
-					baseType = baseType.Elem()
-					pointed = true
-				}
-				useOriginal = baseType.Kind() == reflect.String
+			// Check if the target field is string, *string, **string, etc.
+			baseType := to
+			pointed := false
+			for baseType.Kind() == reflect.Pointer {
+				baseType = baseType.Elem()
+				pointed = true
+			}
+			useOriginal = baseType.Kind() == reflect.String
 
-				// If the parsed value is nil and the target is a pointer, use the parsed value.
-				if pointed && exp.Value == nil {
-					useOriginal = false
-				}
-			} else {
-				useOriginal = to.Kind() == reflect.String
+			// If the parsed value is nil and the target is a pointer, use the parsed value.
+			if pointed && exp.Value == nil {
+				useOriginal = false
 			}
 
 			v := castTo(exp, useOriginal)
@@ -126,19 +125,6 @@ func useExpandValue() mapstructure.DecodeHookFuncType {
 				return reflect.Zero(to).Interface(), nil
 			}
 			return v, nil
-		}
-
-		if !metadata.ConfmapNewExpandedValueSanitizerFeatureGate.IsEnabled() {
-			switch to.Kind() {
-			case reflect.Array, reflect.Slice, reflect.Map:
-				if isStringyStructure(to) {
-					// If the target field is a stringy structure, sanitize to use the original string value everywhere.
-					return sanitizeToStr(data), nil
-				}
-
-				// Otherwise, sanitize to use the parsed value everywhere.
-				return sanitize(data), nil
-			}
 		}
 		return data, nil
 	}
