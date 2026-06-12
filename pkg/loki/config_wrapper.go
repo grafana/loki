@@ -153,6 +153,13 @@ func lastTSDBConfig(configs []config.PeriodConfig) int {
 // - "instance-addr", the address advertised to be used by other components.
 // - "instance-interface-names", a list of net interfaces used when looking for addresses.
 func applyInstanceConfigs(r, defaults *ConfigWrapper) {
+	// Derive instance_addr from grpc_listen_address when not explicitly set.
+	if reflect.DeepEqual(r.Common.InstanceAddr, defaults.Common.InstanceAddr) &&
+		r.Server.GRPCListenAddress != "" &&
+		r.Server.GRPCListenAddress != defaults.Server.GRPCListenAddress {
+		r.Common.InstanceAddr = r.Server.GRPCListenAddress
+	}
+
 	if !reflect.DeepEqual(r.Common.InstanceAddr, defaults.Common.InstanceAddr) {
 		if reflect.DeepEqual(r.Common.Ring.InstanceAddr, defaults.Common.Ring.InstanceAddr) {
 			r.Common.Ring.InstanceAddr = r.Common.InstanceAddr
