@@ -558,6 +558,13 @@ type CreateServiceOutput struct {
 	// if the service uses the CODE_DEPLOY deployment controller, the
 	// deploymentController , taskSets and deployments parameters will be returned,
 	// however the deployments parameter will be an empty list.
+	//
+	// The response includes a lifecycleHookDetails field, which is an empty array
+	// when the service is created or updated. The values are populated when a
+	// lifecycle hook executes and are available as part of the service deployment
+	// details ([DescribeServiceDeployments] ).
+	//
+	// [DescribeServiceDeployments]: https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_DescribeServiceDeployments.html
 	Service *types.Service
 
 	// Metadata pertaining to the operation's result.
@@ -600,7 +607,7 @@ func (c *Client) addOperationCreateServiceMiddlewares(stack *middleware.Stack, o
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -622,9 +629,6 @@ func (c *Client) addOperationCreateServiceMiddlewares(stack *middleware.Stack, o
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

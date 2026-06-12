@@ -106,7 +106,7 @@ type CopySnapshotInput struct {
 
 	// A name for the snapshot copy. ElastiCache does not permit overwriting a
 	// snapshot, therefore this name must be unique within its context - ElastiCache or
-	// an Amazon S3 bucket if exporting.
+	// an Amazon S3 bucket if exporting. This value is stored as a lowercase string.
 	//
 	// This member is required.
 	TargetSnapshotName *string
@@ -180,7 +180,7 @@ func (c *Client) addOperationCopySnapshotMiddlewares(stack *middleware.Stack, op
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -202,9 +202,6 @@ func (c *Client) addOperationCopySnapshotMiddlewares(stack *middleware.Stack, op
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

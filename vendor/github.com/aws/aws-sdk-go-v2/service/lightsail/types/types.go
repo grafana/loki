@@ -363,6 +363,12 @@ type Alarm struct {
 	// up your Lightsail information more easily.
 	SupportCode *string
 
+	// The tag keys and optional values for the resource. For more information about
+	// tags in Lightsail, see the [Amazon Lightsail Developer Guide].
+	//
+	// [Amazon Lightsail Developer Guide]: https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-tags
+	Tags []Tag
+
 	// The value against which the specified statistic is compared.
 	Threshold *float64
 
@@ -2311,6 +2317,12 @@ type HostKeyAttributes struct {
 // to viewers via a worldwide network of edge servers.
 type InputOrigin struct {
 
+	// The IP address type that the distribution uses when connecting to the origin.
+	//
+	// The possible values are ipv4 for IPv4 only, ipv6 for IPv6 only, and dualstack
+	// for IPv4 and IPv6.
+	IpAddressType OriginIpAddressTypeEnum
+
 	// The name of the origin resource.
 	Name *string
 
@@ -3683,6 +3695,12 @@ type Operation struct {
 // pulls content from an origin, caches it, and serves it to viewers via a
 // worldwide network of edge servers.
 type Origin struct {
+
+	// The IP address type that the distribution uses when connecting to the origin.
+	//
+	// The possible values are ipv4 for IPv4 only, ipv6 for IPv6 only, and dualstack
+	// for IPv4 and IPv6.
+	IpAddressType OriginIpAddressTypeEnum
 
 	// The name of the origin resource.
 	Name *string

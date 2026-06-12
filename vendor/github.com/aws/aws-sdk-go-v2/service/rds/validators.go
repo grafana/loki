@@ -1910,6 +1910,26 @@ func (m *validateOpDescribeReservedDBInstancesOfferings) HandleInitialize(ctx co
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpDescribeServerlessV2PlatformVersions struct {
+}
+
+func (*validateOpDescribeServerlessV2PlatformVersions) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpDescribeServerlessV2PlatformVersions) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*DescribeServerlessV2PlatformVersionsInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpDescribeServerlessV2PlatformVersionsInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpDescribeSourceRegions struct {
 }
 
@@ -3548,6 +3568,10 @@ func addOpDescribeReservedDBInstancesValidationMiddleware(stack *middleware.Stac
 
 func addOpDescribeReservedDBInstancesOfferingsValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpDescribeReservedDBInstancesOfferings{}, middleware.After)
+}
+
+func addOpDescribeServerlessV2PlatformVersionsValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpDescribeServerlessV2PlatformVersions{}, middleware.After)
 }
 
 func addOpDescribeSourceRegionsValidationMiddleware(stack *middleware.Stack) error {
@@ -5646,6 +5670,23 @@ func validateOpDescribeReservedDBInstancesOfferingsInput(v *DescribeReservedDBIn
 		return nil
 	}
 	invalidParams := smithy.InvalidParamsError{Context: "DescribeReservedDBInstancesOfferingsInput"}
+	if v.Filters != nil {
+		if err := validateFilterList(v.Filters); err != nil {
+			invalidParams.AddNested("Filters", err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpDescribeServerlessV2PlatformVersionsInput(v *DescribeServerlessV2PlatformVersionsInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "DescribeServerlessV2PlatformVersionsInput"}
 	if v.Filters != nil {
 		if err := validateFilterList(v.Filters); err != nil {
 			invalidParams.AddNested("Filters", err.(smithy.InvalidParamsError))
