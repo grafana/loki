@@ -906,10 +906,22 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 					return err
 				}
 
+				maxErrors := replicationSet.MaxErrors
+				// With RF=2 the quorum is calculated as floor(RF/2)+1 = 2, which requires
+				// all replicas, giving zero fault tolerance. A single slow or failing ingester
+				// then blocks every push indefinitely or completely fails request. All requests
+				// would need to succeed all the time.
+				//
+				// Mirror Thanos quorum https://github.com/thanos-io/thanos/blob/v0.41.0/pkg/receive/handler.go#L1058
+				// Allow one failure so RF=2 matches the fault tolerance of RF≥3 and return as soon as one ingester
+				// succeeds and let the second write complete in the background.
+				if d.ingestersRing.ReplicationFactor() == 2 && maxErrors == 0 {
+					maxErrors = 1
+				}
 				streamTrackers[i] = streamTracker{
 					KeyedStream: stream,
-					minSuccess:  len(replicationSet.Instances) - replicationSet.MaxErrors,
-					maxFailures: replicationSet.MaxErrors,
+					minSuccess:  len(replicationSet.Instances) - maxErrors,
+					maxFailures: maxErrors,
 				}
 				for _, ingester := range replicationSet.Instances {
 					streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streamTrackers[i])

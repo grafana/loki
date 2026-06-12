@@ -615,6 +615,74 @@ func TestDistributorPushErrors(t *testing.T) {
 		require.Equal(t, 0, len(ingesters[0].pushed))
 		require.Equal(t, 0, len(ingesters[2].pushed))
 	})
+
+	t.Run("with RF=2 a single ingester failure still succeeds", func(t *testing.T) {
+		distributors, ingesters := prepareWithRF(t, 1, 2, 2, limits, nil)
+		ingesters[0].failAfter = 5 * time.Millisecond
+		ingesters[1].succeedAfter = 10 * time.Millisecond
+
+		request := makeWriteRequest(10, 64)
+		_, err := distributors[0].Push(ctx, request)
+		require.NoError(t, err)
+
+		// The successful ingester must have received the data.
+		require.Eventually(t, func() bool {
+			return len(ingesters[1].pushed) == 1
+		}, time.Second, 10*time.Millisecond)
+
+		// The failing ingester must not have written anything.
+		require.Equal(t, 0, len(ingesters[0].pushed))
+	})
+
+	t.Run("with RF=2 both ingester failures result in error", func(t *testing.T) {
+		distributors, ingesters := prepareWithRF(t, 1, 2, 2, limits, nil)
+		ingesters[0].failAfter = 5 * time.Millisecond
+		ingesters[1].failAfter = 10 * time.Millisecond
+
+		request := makeWriteRequest(10, 64)
+		_, err := distributors[0].Push(ctx, request)
+		require.Error(t, err)
+
+		require.Equal(t, 0, len(ingesters[0].pushed))
+		require.Equal(t, 0, len(ingesters[1].pushed))
+	})
+
+	t.Run("with RF=2 push returns after first ingester succeeds without waiting for second", func(t *testing.T) {
+		distributors, ingesters := prepareWithRF(t, 1, 2, 2, limits, nil)
+		// First ingester responds quickly, second is very slow.
+		ingesters[0].succeedAfter = 5 * time.Millisecond
+		ingesters[1].succeedAfter = 500 * time.Millisecond
+
+		request := makeWriteRequest(10, 64)
+		start := time.Now()
+		_, err := distributors[0].Push(ctx, request)
+		elapsed := time.Since(start)
+
+		require.NoError(t, err)
+		// Should return well before the slow ingester finishes.
+		require.Less(t, elapsed, 200*time.Millisecond)
+
+		// First ingester succeeded immediately.
+		require.Equal(t, 1, len(ingesters[0].pushed))
+
+		// Second ingester eventually gets the write via background context.
+		require.Eventually(t, func() bool {
+			return len(ingesters[1].pushed) == 1
+		}, 2*time.Second, 10*time.Millisecond)
+	})
+
+	t.Run("with RF=3 degraded to 2 instances a single failure still errors", func(t *testing.T) {
+		distributors, ingesters := prepareWithRF(t, 1, 2, 3, limits, nil)
+		ingesters[0].failAfter = 5 * time.Millisecond
+		ingesters[1].succeedAfter = 10 * time.Millisecond
+
+		request := makeWriteRequest(10, 64)
+		_, err := distributors[0].Push(ctx, request)
+
+		// minSuccess=2 with only 2 instances means one failure is fatal.
+		require.Error(t, err)
+		require.Equal(t, 0, len(ingesters[0].pushed))
+	})
 }
 
 func TestDistributorPushToKafka(t *testing.T) {
@@ -1913,6 +1981,10 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 }
 
 func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
+	return prepareWithRF(t, numDistributors, numIngesters, 3, limits, factory)
+}
+
+func prepareWithRF(t *testing.T, numDistributors, numIngesters, replicationFactor int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
 	t.Helper()
 	distributors, ingesters := prepareButDontStart(t, numDistributors, numIngesters, limits, factory)
 	startAndWaitRunningDistributors(t, distributors)
@@ -1958,7 +2030,7 @@ func prepareButDontStart(t *testing.T, numDistributors, numIngesters int, limits
 			Mock: kvStore,
 		},
 		HeartbeatTimeout:  60 * time.Minute,
-		ReplicationFactor: 3,
+		ReplicationFactor: replicationFactor,
 	}, ingester.RingKey, ingester.RingKey, nil, nil)
 
 	require.NoError(t, err)
