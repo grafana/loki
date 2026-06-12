@@ -10,3 +10,9 @@
 vendor/github.com/buger/goterm/
 prof.cpu
 prof.mem
+.proof/
+tests/
+PROOF_*.md
+REQPROOF_*.md
+proof-ux-log.md
+PROOF_UNDER_MODELED_REQUIREMENTS_PROPOSAL.md
