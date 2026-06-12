@@ -794,6 +794,8 @@ func BenchmarkTenantHeads(b *testing.B) {
 					{},
 				})
 			}
+			matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
 				var wg sync.WaitGroup
@@ -811,7 +813,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 							0, math.MaxInt64,
 							res,
 							nil,
-							labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							matcher,
 						)
 					}(r)
 				}
