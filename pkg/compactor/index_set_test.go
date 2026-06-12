@@ -313,13 +313,13 @@ func TestIndexSet_RemoveFilesFromStorageRetries(t *testing.T) {
 func setDeleteSourceObjectsBackoffConfigForTest(t *testing.T) func() {
 	t.Helper()
 
-	originalConfig := deleteSourceObjectsBackoffConfig
-	deleteSourceObjectsBackoffConfig.MinBackoff = time.Nanosecond
-	deleteSourceObjectsBackoffConfig.MaxBackoff = time.Nanosecond
-	deleteSourceObjectsBackoffConfig.MaxRetries = 3
+	originalConfig := deleteFileBackoffConfig
+	deleteFileBackoffConfig.MinBackoff = time.Nanosecond
+	deleteFileBackoffConfig.MaxBackoff = time.Nanosecond
+	deleteFileBackoffConfig.MaxRetries = 3
 
 	return func() {
-		deleteSourceObjectsBackoffConfig = originalConfig
+		deleteFileBackoffConfig = originalConfig
 	}
 }
 
