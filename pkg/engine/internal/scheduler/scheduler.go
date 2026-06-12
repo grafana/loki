@@ -664,6 +664,10 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		s.resourcesMut.Lock()
 		defer s.resourcesMut.Unlock()
 
+		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
+		queueDuration := assignTime.Sub(t.QueueTime())
+		s.metrics.taskQueueSeconds.Observe(assignTime.Sub(t.QueueTime()).Seconds())
+
 		if t.State().Terminal() {
 			// The task reached a terminal state between TryAssign and now. The
 			// worker may still have the assignment, so we tell it to not
@@ -673,10 +677,6 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		}
 
 		worker.Assign(t)
-		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
-		queueDuration := assignTime.Sub(t.QueueTime())
-		s.metrics.taskQueueSeconds.Observe(queueDuration.Seconds())
-		t.region.Record(schedulerstat.TaskQueueDuration.Observe(queueDuration.Nanoseconds()))
 
 		if t.wfRegion != nil {
 			t.wfRegion.Record(StatAssignedTasks.Observe(1))
