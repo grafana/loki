@@ -268,3 +268,28 @@ queries:
       log_format: logfmt
       detected_fields:
         - error
+  - description: Group by a label_format-renamed source field
+    query: sum by (msg) (count_over_time(${SELECTOR} | logfmt | label_format msg_label=msg [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - logfmt
+      - label_format
+      - rename
+      - grouping
+    notes: >
+      Regression for the v2 label_format rename source-drop fix. `label_format
+      msg_label=msg` is a rename, so the source label `msg` must be removed
+      (matching v1's LabelsBuilder.Del, which deletes the name from every label
+      category). Grouping by `msg` after the rename must therefore collapse to a
+      single series whose `msg` is absent. Pre-fix the v2 engine kept the parsed
+      source column `msg` (the projection only dropped rename sources of type
+      stream-label, not parsed/metadata), so this produced one series per distinct
+      msg value instead of the single v1 series. Must equal v1.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - msg

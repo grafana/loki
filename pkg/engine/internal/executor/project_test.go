@@ -958,57 +958,124 @@ func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
 }
 
 func TestNewProjectPipeline_LabelFmtRenameDropsSourceColumn(t *testing.T) {
-	schema := arrow.NewSchema([]arrow.Field{
-		semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
-		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
-		semconv.FieldFromFQN("utf8.label.bar", false),
-	}, nil)
-
 	ts := time.Unix(1700000000, 0).UTC()
-	rows := arrowtest.Rows{
+
+	msg := "rename bar to foo"
+	tests := []struct {
+		name string
+		// dataFields/dataValues are the input columns in addition to the
+		// constant message and timestamp columns.
+		dataFields []arrow.Field
+		dataValues arrowtest.Row
+		labelFmts  []log.LabelFmt
+		expected   arrowtest.Rows
+	}{
 		{
-			"utf8.builtin.message":           "rename bar to foo",
-			"timestamp_ns.builtin.timestamp": ts,
-			"utf8.label.bar":                 "dev",
+			name:       "stream label source is dropped",
+			dataFields: []arrow.Field{semconv.FieldFromFQN("utf8.label.bar", false)},
+			dataValues: arrowtest.Row{"utf8.label.bar": "dev"},
+			labelFmts:  []log.LabelFmt{{Name: "foo", Value: "bar", Rename: true}},
+			expected: arrowtest.Rows{{
+				"utf8.builtin.message":           msg,
+				"timestamp_ns.builtin.timestamp": ts,
+				"utf8.label.foo":                 "dev",
+			}},
 		},
-	}
-
-	input := NewArrowtestPipeline(schema, rows)
-	parseExpr := &physical.VariadicExpr{
-		Op: types.VariadicOpParseLabelfmt,
-		Expressions: []physical.Expression{
-			&physical.ColumnExpr{Ref: semconv.ColumnIdentMessage.ColumnRef()},
-			physical.NewLiteral([]string{}),
-			physical.NewLiteral([]log.LabelFmt{
-				{Name: "foo", Value: "bar", Rename: true},
-			}),
-		},
-	}
-
-	proj := &physical.Projection{
-		Expressions: []physical.Expression{parseExpr},
-		All:         true,
-		Expand:      true,
-	}
-
-	pipeline, err := NewProjectPipeline(input, proj, newExpressionEvaluator())
-	require.NoError(t, err)
-	record, err := pipeline.Read(t.Context())
-	require.NoError(t, err)
-
-	fieldNames := make([]string, 0, len(record.Schema().Fields()))
-	for _, field := range record.Schema().Fields() {
-		fieldNames = append(fieldNames, field.Name)
-	}
-	require.NotContains(t, fieldNames, "utf8.label.bar")
-
-	actualRows, err := arrowtest.RecordRows(record)
-	require.NoError(t, err)
-	require.Equal(t, arrowtest.Rows{
 		{
-			"utf8.builtin.message":           "rename bar to foo",
-			"timestamp_ns.builtin.timestamp": ts,
-			"utf8.label.foo":                 "dev",
+			name:       "parsed source is dropped",
+			dataFields: []arrow.Field{semconv.FieldFromFQN("utf8.parsed.bar", false)},
+			dataValues: arrowtest.Row{"utf8.parsed.bar": "dev"},
+			labelFmts:  []log.LabelFmt{{Name: "foo", Value: "bar", Rename: true}},
+			expected: arrowtest.Rows{{
+				"utf8.builtin.message":           msg,
+				"timestamp_ns.builtin.timestamp": ts,
+				"utf8.label.foo":                 "dev",
+			}},
 		},
-	}, actualRows)
+		{
+			name:       "metadata source is dropped",
+			dataFields: []arrow.Field{semconv.FieldFromFQN("utf8.metadata.bar", false)},
+			dataValues: arrowtest.Row{"utf8.metadata.bar": "dev"},
+			labelFmts:  []log.LabelFmt{{Name: "foo", Value: "bar", Rename: true}},
+			expected: arrowtest.Rows{{
+				"utf8.builtin.message":           msg,
+				"timestamp_ns.builtin.timestamp": ts,
+				"utf8.label.foo":                 "dev",
+			}},
+		},
+		{
+			// Generated columns are not label-like, so the source column survives
+			// the rename even though its short name matches the rename source.
+			name:       "generated source is preserved",
+			dataFields: []arrow.Field{semconv.FieldFromFQN("utf8.generated.bar", false)},
+			dataValues: arrowtest.Row{"utf8.generated.bar": "dev"},
+			labelFmts:  []log.LabelFmt{{Name: "foo", Value: "bar", Rename: true}},
+			expected: arrowtest.Rows{{
+				"utf8.builtin.message":           msg,
+				"timestamp_ns.builtin.timestamp": ts,
+				"utf8.generated.bar":             "dev",
+				"utf8.label.foo":                 "dev",
+			}},
+		},
+		{
+			// Collision: the rename destination `foo` already exists as a label.
+			// The source `bar` is dropped and the existing `foo` is overwritten
+			// with the source's value (mirrors v1 "rename and overwrite existing
+			// label").
+			name: "rename overwrites existing destination label",
+			dataFields: []arrow.Field{
+				semconv.FieldFromFQN("utf8.label.foo", false),
+				semconv.FieldFromFQN("utf8.label.bar", false),
+			},
+			dataValues: arrowtest.Row{"utf8.label.foo": "old", "utf8.label.bar": "dev"},
+			labelFmts:  []log.LabelFmt{{Name: "foo", Value: "bar", Rename: true}},
+			expected: arrowtest.Rows{{
+				"utf8.builtin.message":           msg,
+				"timestamp_ns.builtin.timestamp": ts,
+				"utf8.label.foo":                 "dev",
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := arrow.NewSchema(append([]arrow.Field{
+				semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
+				semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
+			}, tt.dataFields...), nil)
+
+			row := arrowtest.Row{
+				"utf8.builtin.message":           msg,
+				"timestamp_ns.builtin.timestamp": ts,
+			}
+			for k, v := range tt.dataValues {
+				row[k] = v
+			}
+
+			input := NewArrowtestPipeline(schema, arrowtest.Rows{row})
+			parseExpr := &physical.VariadicExpr{
+				Op: types.VariadicOpParseLabelfmt,
+				Expressions: []physical.Expression{
+					&physical.ColumnExpr{Ref: semconv.ColumnIdentMessage.ColumnRef()},
+					physical.NewLiteral([]string{}),
+					physical.NewLiteral(tt.labelFmts),
+				},
+			}
+
+			proj := &physical.Projection{
+				Expressions: []physical.Expression{parseExpr},
+				All:         true,
+				Expand:      true,
+			}
+
+			pipeline, err := NewProjectPipeline(input, proj, newExpressionEvaluator())
+			require.NoError(t, err)
+			record, err := pipeline.Read(t.Context())
+			require.NoError(t, err)
+
+			actualRows, err := arrowtest.RecordRows(record)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, actualRows)
+		})
+	}
 }
