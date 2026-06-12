@@ -66,7 +66,7 @@ type HTTPFilter struct {
 	// yet supported).
 	Name string
 	// Filter is the HTTP filter found in the registry for the config type.
-	Filter httpfilter.Filter
+	Filter httpfilter.Builder
 	// Config contains the filter's configuration
 	Config httpfilter.FilterConfig
 }

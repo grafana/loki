@@ -18,21 +18,14 @@
 package cdsbalancer
 
 import (
-	"context"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"sync/atomic"
-	"unsafe"
 
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
 	"google.golang.org/grpc/connectivity"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/tls/certprovider"
 	"google.golang.org/grpc/internal/balancer/nop"
-	xdsinternal "google.golang.org/grpc/internal/credentials/xds"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/pretty"
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
@@ -59,11 +52,6 @@ var (
 		// balancer because the cdsBalancer does not deal with subConns.
 		return builder.Build(cc, opts), nil
 	}
-	buildProvider = buildProviderFunc
-
-	// x509SystemCertPoolFunc is used for mocking the system cert pool for
-	// tests.
-	x509SystemCertPoolFunc = x509.SystemCertPool
 )
 
 func init() {
@@ -91,34 +79,15 @@ func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Bal
 		return nop.NewBalancer(cc, fmt.Errorf("%q LB policy does not implement a config parser", priority.Name))
 	}
 
-	hi := xdsinternal.NewHandshakeInfo(nil, nil, nil, false)
-	xdsHIPtr := unsafe.Pointer(hi)
 	b := &cdsBalancer{
 		bOpts:             opts,
 		childConfigParser: parser,
-		xdsHIPtr:          &xdsHIPtr,
 		clusterConfigs:    make(map[string]*xdsresource.ClusterResult),
 		priorityConfigs:   make(map[string]*priorityConfig),
+		cc:                cc,
 	}
 	b.logger = prefixLogger(b)
-	b.ccw = &ccWrapper{
-		ClientConn: cc,
-		xdsHIPtr:   b.xdsHIPtr,
-		logger:     b.logger,
-	}
 	b.logger.Infof("Created")
-
-	var creds credentials.TransportCredentials
-	switch {
-	case opts.DialCreds != nil:
-		creds = opts.DialCreds
-	case opts.CredsBundle != nil:
-		creds = opts.CredsBundle.TransportCredentials()
-	}
-	if xc, ok := creds.(interface{ UsesXDS() bool }); ok && xc.UsesXDS() {
-		b.xdsCredsInUse = true
-	}
-	b.logger.Infof("xDS credentials in use: %v", b.xdsCredsInUse)
 	return b
 }
 
@@ -154,13 +123,10 @@ type cdsBalancer struct {
 	// The following fields are initialized at build time and are either
 	// read-only after that or provide their own synchronization, and therefore
 	// do not need to be guarded by a mutex.
-	ccw               *ccWrapper            // ClientConn interface passed to child LB.
+	cc                balancer.ClientConn   // ClientConn interface passed to child LB.
 	bOpts             balancer.BuildOptions // BuildOptions passed to child LB.
 	childConfigParser balancer.ConfigParser // Config parser for cluster_resolver LB policy.
 	logger            *grpclog.PrefixLogger // Prefix logger for all logging.
-	xdsCredsInUse     bool
-
-	xdsHIPtr *unsafe.Pointer // Accessed atomically.
 
 	// All fields below are accessed only from methods implementing the
 	// balancer.Balancer interface. Since gRPC guarantees that these methods are
@@ -182,97 +148,6 @@ type cdsBalancer struct {
 	// names. But to make sure the names across leaf clusters doesn't conflict,
 	// we need a seq ID. This ID is incremented for each new cluster.
 	childNameGeneratorSeqID uint64
-
-	// The certificate providers are cached here to that they can be closed when
-	// a new provider is to be created.
-	cachedRoot     certprovider.Provider
-	cachedIdentity certprovider.Provider
-}
-
-// handleSecurityConfig processes the security configuration received from the
-// management server, creates appropriate certificate provider plugins, and
-// updates the HandshakeInfo which is added as an address attribute in
-// NewSubConn() calls.
-func (b *cdsBalancer) handleSecurityConfig(config *xdsresource.SecurityConfig) error {
-	// If xdsCredentials are not in use, i.e, the user did not want to get
-	// security configuration from an xDS server, we should not be acting on the
-	// received security config here. Doing so poses a security threat.
-	if !b.xdsCredsInUse {
-		return nil
-	}
-	var xdsHI *xdsinternal.HandshakeInfo
-
-	// Security config being nil is a valid case where the management server has
-	// not sent any security configuration. The xdsCredentials implementation
-	// handles this by delegating to its fallback credentials.
-	if config == nil {
-		// We need to explicitly set the fields to nil here since this might be
-		// a case of switching from a good security configuration to an empty
-		// one where fallback credentials are to be used.
-		xdsHI = xdsinternal.NewHandshakeInfo(nil, nil, nil, false)
-		atomic.StorePointer(b.xdsHIPtr, unsafe.Pointer(xdsHI))
-		return nil
-
-	}
-
-	// A root provider is required whether we are using TLS or mTLS.
-	cpc := b.xdsClient.BootstrapConfig().CertProviderConfigs()
-	var rootProvider certprovider.Provider
-	if config.UseSystemRootCerts {
-		rootProvider = systemRootCertsProvider{}
-	} else {
-		rp, err := buildProvider(cpc, config.RootInstanceName, config.RootCertName, false, true)
-		if err != nil {
-			return err
-		}
-		rootProvider = rp
-	}
-
-	// The identity provider is only present when using mTLS.
-	var identityProvider certprovider.Provider
-	if name, cert := config.IdentityInstanceName, config.IdentityCertName; name != "" {
-		var err error
-		identityProvider, err = buildProvider(cpc, name, cert, true, false)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Close the old providers and cache the new ones.
-	if b.cachedRoot != nil {
-		b.cachedRoot.Close()
-	}
-	if b.cachedIdentity != nil {
-		b.cachedIdentity.Close()
-	}
-	b.cachedRoot = rootProvider
-	b.cachedIdentity = identityProvider
-	xdsHI = xdsinternal.NewHandshakeInfo(rootProvider, identityProvider, config.SubjectAltNameMatchers, false)
-	atomic.StorePointer(b.xdsHIPtr, unsafe.Pointer(xdsHI))
-	return nil
-}
-
-func buildProviderFunc(configs map[string]*certprovider.BuildableConfig, instanceName, certName string, wantIdentity, wantRoot bool) (certprovider.Provider, error) {
-	cfg, ok := configs[instanceName]
-	if !ok {
-		// Defensive programming. If a resource received from the management
-		// server contains a certificate provider instance name that is not
-		// found in the bootstrap, the resource is NACKed by the xDS client.
-		return nil, fmt.Errorf("certificate provider instance %q not found in bootstrap file", instanceName)
-	}
-	provider, err := cfg.Build(certprovider.BuildOptions{
-		CertName:     certName,
-		WantIdentity: wantIdentity,
-		WantRoot:     wantRoot,
-	})
-	if err != nil {
-		// This error is not expected since the bootstrap process parses the
-		// config and makes sure that it is acceptable to the plugin. Still, it
-		// is possible that the plugin parses the config successfully, but its
-		// Build() method errors out.
-		return nil, fmt.Errorf("xds: failed to get security plugin instance (%+v): %v", cfg, err)
-	}
-	return provider, nil
 }
 
 // UpdateClientConnState receives the serviceConfig, xdsConfig,
@@ -348,14 +223,6 @@ func (b *cdsBalancer) handleXDSConfigUpdate() error {
 	if clusterUpdate.Err != nil {
 		return clusterUpdate.Err
 	}
-
-	if err := b.handleSecurityConfig(clusterUpdate.Config.Cluster.SecurityCfg); err != nil {
-		// If the security config is invalid, for example, if the provider
-		// instance is not found in the bootstrap config, we need to put the
-		// channel in transient failure.
-		return b.annotateErrorWithNodeID(fmt.Errorf("received Cluster resource that contains invalid security config: %v", err))
-
-	}
 	return b.handleClusterUpdate()
 }
 
@@ -401,7 +268,7 @@ func (b *cdsBalancer) handleClusterUpdate() error {
 // configuration is then pushed to the child policy.
 func (b *cdsBalancer) updateChildConfig() error {
 	if b.childLB == nil {
-		childLB, err := newChildBalancer(b.ccw, b.bOpts)
+		childLB, err := newChildBalancer(b.cc, b.bOpts)
 		if err != nil {
 			return fmt.Errorf("failed to create child policy of type %s: %v", priority.Name, err)
 		}
@@ -424,14 +291,10 @@ func (b *cdsBalancer) updateChildConfig() error {
 		for j := range endpoints[i].Addresses {
 			addr := endpoints[i].Addresses[j]
 			addr.BalancerAttributes = endpoints[i].Attributes
-			// BalancerAttributes need to be present in endpoint addresses. This
-			// temporary workaround is required to make load reporting work
-			// with the old pickfirst policy which creates SubConns with multiple
-			// addresses. Since the addresses can be from different localities,
-			// an Address.BalancerAttribute is used to identify the locality of the
-			// address used by the transport. This workaround can be removed once
-			// the old pickfirst is removed.
-			// See https://github.com/grpc/grpc-go/issues/7339
+			// BalancerAttributes are used for the following:
+			// * Authority Override.
+			// * grpc.lb.backend_service metric label propagation.
+			// See https://github.com/grpc/grpc-go/issues/6472
 			endpoints[i].Addresses[j] = addr
 		}
 	}
@@ -534,7 +397,7 @@ func (b *cdsBalancer) closeChildPolicyAndReportTF(err error) {
 		b.childLB.Close()
 		b.childLB = nil
 	}
-	b.ccw.UpdateState(balancer.State{
+	b.cc.UpdateState(balancer.State{
 		ConnectivityState: connectivity.TransientFailure,
 		Picker:            base.NewErrPicker(err),
 	})
@@ -546,12 +409,6 @@ func (b *cdsBalancer) Close() {
 	if b.childLB != nil {
 		b.childLB.Close()
 		b.childLB = nil
-	}
-	if b.cachedRoot != nil {
-		b.cachedRoot.Close()
-	}
-	if b.cachedIdentity != nil {
-		b.cachedIdentity.Close()
 	}
 	if b.unsubscribe != nil {
 		b.unsubscribe()
@@ -612,51 +469,4 @@ func (b *cdsBalancer) onClusterError(name string, err error) {
 	} else {
 		b.onClusterResourceError(name, err)
 	}
-}
-
-// ccWrapper wraps the balancer.ClientConn passed to the CDS balancer at
-// creation and intercepts the NewSubConn() and UpdateAddresses() call from the
-// child policy to add security configuration required by xDS credentials.
-//
-// Other methods of the balancer.ClientConn interface are not overridden and
-// hence get the original implementation.
-type ccWrapper struct {
-	balancer.ClientConn
-
-	xdsHIPtr *unsafe.Pointer
-	logger   *grpclog.PrefixLogger
-}
-
-// NewSubConn intercepts NewSubConn() calls from the child policy and adds an
-// address attribute which provides all information required by the xdsCreds
-// handshaker to perform the TLS handshake.
-func (ccw *ccWrapper) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
-	newAddrs := make([]resolver.Address, len(addrs))
-	for i, addr := range addrs {
-		newAddrs[i] = xdsinternal.SetHandshakeInfo(addr, ccw.xdsHIPtr)
-	}
-
-	// No need to override opts.StateListener; just forward all calls to the
-	// child that created the SubConn.
-	return ccw.ClientConn.NewSubConn(newAddrs, opts)
-}
-
-func (ccw *ccWrapper) UpdateAddresses(sc balancer.SubConn, _ []resolver.Address) {
-	ccw.logger.Errorf("UpdateAddresses(%v) called unexpectedly", sc)
-}
-
-// systemRootCertsProvider implements a certprovider.Provider that returns the
-// system default root certificates for validation.
-type systemRootCertsProvider struct{}
-
-func (systemRootCertsProvider) Close() {}
-
-func (systemRootCertsProvider) KeyMaterial(context.Context) (*certprovider.KeyMaterial, error) {
-	rootCAs, err := x509SystemCertPoolFunc()
-	if err != nil {
-		return nil, err
-	}
-	return &certprovider.KeyMaterial{
-		Roots: rootCAs,
-	}, nil
 }
