@@ -30,6 +30,11 @@ const (
 	// A larger factor weights recent samples more heavily while a smaller
 	// factor weights historic samples more heavily.
 	smoothingFactor = .4
+
+	// defaultLimitsTenant is a sentinel used to probe global/default limits when
+	// AllByUserID returns nil (no per-tenant overrides are configured). The value
+	// has no storage impact; any string would return the same result.
+	defaultLimitsTenant = "fake"
 )
 
 type RateStoreConfig struct {
@@ -220,8 +225,8 @@ func (s *rateStore) wasUpdated(tenantID string, streamID uint64, lastUpdated map
 func (s *rateStore) anyShardingEnabled() bool {
 	limits := s.limits.AllByUserID()
 	if len(limits) == 0 {
-		// There aren't any tenant limits, check the default
-		return s.limits.ShardStreams("fake").Enabled
+		// No per-tenant overrides; check the global default.
+		return s.limits.ShardStreams(defaultLimitsTenant).Enabled
 	}
 
 	for user := range limits {

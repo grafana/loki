@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	rt "runtime"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -85,6 +86,7 @@ import (
 type Config struct {
 	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
 	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
+	NoAuthTenant string                 `yaml:"no_auth_tenant,omitempty"`
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
@@ -157,7 +159,12 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	)
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true,
 		"Enables authentication through the X-Scope-OrgID header, which must be present if true. "+
-			"If false, the OrgID will always be set to 'fake'.",
+			"If false, the OrgID will always be set to the value of -auth.no-auth-tenant.",
+	)
+	f.StringVar(&c.NoAuthTenant, "auth.no-auth-tenant", "fake",
+		"Tenant ID to use when auth is disabled. Defaults to 'fake' for backwards compatibility. "+
+			"Safe to change on a fresh cluster; on an existing cluster, data stored under the old "+
+			"tenant path must be migrated first (see cmd/migrate).",
 	)
 	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0,
 		"The amount of virtual memory in bytes to reserve as ballast in order to optimize garbage collection. "+
@@ -358,6 +365,9 @@ func (c *Config) Validate() error {
 	if err := c.Distributor.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))
 	}
+	if err := c.validateNoAuthTenant(); err != nil {
+		errs = append(errs, err)
+	}
 
 	errs = append(errs, validateSchemaValues(c)...)
 	errs = append(errs, ValidateConfigCompatibility(*c)...)
@@ -378,6 +388,13 @@ func (c *Config) Validate() error {
 
 func (c *Config) isTarget(m string) bool {
 	return util.StringsContain(c.Target, m)
+}
+
+func (c *Config) validateNoAuthTenant() error {
+	if !c.AuthEnabled && strings.TrimSpace(c.NoAuthTenant) == "" {
+		return errors.New("CONFIG ERROR: no_auth_tenant cannot be empty when auth_enabled is false")
+	}
+	return nil
 }
 
 type Frontend interface {
@@ -487,6 +504,9 @@ func New(cfg Config) (*Loki, error) {
 }
 
 func (t *Loki) setupAuthMiddleware() {
+	if !t.Cfg.AuthEnabled {
+		level.Info(util_log.Logger).Log("msg", "auth disabled", "no_auth_tenant", t.Cfg.NoAuthTenant)
+	}
 	t.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&t.Cfg.Server, t.Cfg.AuthEnabled,
 		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
 		[]string{
@@ -499,7 +519,9 @@ func (t *Loki) setupAuthMiddleware() {
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
 			"/grpc.JobQueue/Loop",
-		})
+		},
+		t.Cfg.NoAuthTenant,
+	)
 }
 
 func (t *Loki) setupGRPCRecoveryMiddleware() {
