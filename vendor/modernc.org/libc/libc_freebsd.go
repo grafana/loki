@@ -2501,3 +2501,7 @@ func X__inline_isnanl(t *TLS, x float64) int32 {
 	}
 	return Xisnan(t, x)
 }
+
+func AtomicLoadNUint8(ptr uintptr, memorder int32) uint8 {
+	return byte(a_load_8(ptr))
+}

@@ -7813,9 +7813,11 @@ func X_wfindnext64i32(tls *TLS, handle types.Intptr_t, fileinfo uintptr) (r int3
 }
 
 // wchar_t *_wfullpath(
-//    wchar_t *absPath,
-//    const wchar_t *relPath,
-//    size_t maxLength
+//
+//	wchar_t *absPath,
+//	const wchar_t *relPath,
+//	size_t maxLength
+//
 // );
 func X_wfullpath(tls *TLS, absPath, relPath uintptr, maxLength Tsize_t) (r uintptr) {
 	r0, _, err := procWfullpath.Call(absPath, relPath, uintptr(maxLength))
