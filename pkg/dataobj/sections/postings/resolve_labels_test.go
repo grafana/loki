@@ -1,6 +1,7 @@
 package postings_test
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -229,7 +230,7 @@ type labelFixtureEntry struct {
 func openLabelResolveFixture(tb testing.TB, entries []labelFixtureEntry) *postings.Reader {
 	tb.Helper()
 
-	pb := postings.NewBuilder(nil, 0, 0)
+	pb := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 1000).UTC()
 	for _, e := range entries {

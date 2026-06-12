@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func checkBit(data []byte, n int) bool {
 
 // TestBuilder_Empty verifies that an empty builder produces no sections.
 func TestBuilder_Empty(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 	require.Zero(t, b.EstimatedSize(), "empty builder should have zero size")
 	// An empty builder writes 0 bytes; the dataobj builder would fail to flush
 	// without any data. This verifies the postings builder is truly empty.
@@ -41,7 +42,7 @@ func TestBuilder_Empty(t *testing.T) {
 
 // TestBuilder_LabelPostingRoundTrip verifies a label posting round-trips correctly.
 func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 1000).UTC()
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 3, Timestamp: ts, UncompressedSize: 4096})
@@ -84,7 +85,7 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 
 // TestBuilder_BloomPostingRoundTrip verifies a bloom posting round-trips correctly.
 func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 500).UTC()
 	b.PrepareBloomColumn("/tenant/abc/obj2", 1, "service_name", 100)
@@ -135,7 +136,7 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 
 // TestBuilder_MixedPostings verifies both Bloom and Label postings work together.
 func TestBuilder_MixedPostings(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 100).UTC()
 	ts2 := time.Unix(0, 300).UTC()
@@ -164,7 +165,7 @@ func TestBuilder_MixedPostings(t *testing.T) {
 // entries, blooms by [ColumnName, MinTimestamp, ...] and labels by
 // [ColumnName, LabelValue, MinTimestamp, ...].
 func TestBuilder_SortOrder(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	// Prepare and add bloom entries.
 	b.PrepareBloomColumn("", 0, "col_a", 10)
@@ -210,7 +211,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 // (ColumnName, LabelValue) run, MinTimestamp outranks ObjectPath: the row with
 // the earlier MinTimestamp sorts first even when its ObjectPath is larger.
 func TestBuilder_SortOrder_TimeBeforeObject(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	// Same column_name=env, label_value=prod. The earlier-timestamp row has the
 	// LARGER ObjectPath, so only MinTimestamp-before-ObjectPath yields this order.
@@ -230,7 +231,7 @@ func TestBuilder_SortOrder_TimeBeforeObject(t *testing.T) {
 
 // TestBuilder_NullableHandling verifies nullable column correctness.
 func TestBuilder_NullableHandling(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 0).UTC()
 
@@ -260,7 +261,7 @@ func TestBuilder_NullableHandling(t *testing.T) {
 
 // TestBuilder_BitmapCorrectness verifies that stream ID bitmaps are LSB-encoded correctly.
 func TestBuilder_BitmapCorrectness(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 0).UTC()
 	b.PrepareBloomColumn("", 0, "col", 10)
@@ -292,7 +293,7 @@ func TestBuilder_BitmapCorrectness(t *testing.T) {
 // TestBuilder_BitmapNormalization verifies that bitmaps of different sizes are
 // padded to the same length.
 func TestBuilder_BitmapNormalization(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 0).UTC()
 	// "a": stream ID 0 → 1-byte bitmap
@@ -316,7 +317,7 @@ func TestBuilder_BitmapNormalization(t *testing.T) {
 // rows to be split across multiple pages.
 func TestBuilder_SectionSplitting(t *testing.T) {
 	// Use a very small page size to force splitting across multiple pages.
-	b := NewBuilder(nil, 100, 2)
+	b := NewBuilder(nil, 100, 2, math.MaxInt)
 
 	ts := time.Unix(0, 0).UTC()
 	for i := range 6 {
@@ -333,7 +334,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 
 // TestBuilder_AllBloom verifies that a builder with only Bloom postings works.
 func TestBuilder_AllBloom(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 0).UTC()
 	for i := range 3 {
@@ -356,7 +357,7 @@ func TestBuilder_AllBloom(t *testing.T) {
 
 // TestBuilder_AllLabel verifies that a builder with only Label postings works.
 func TestBuilder_AllLabel(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 0).UTC()
 	for i := range 3 {
@@ -378,7 +379,7 @@ func TestBuilder_AllLabel(t *testing.T) {
 
 // TestBuilder_FlushResetsBuilder verifies that a flush resets the builder.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 0)
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", LabelValue: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
@@ -395,7 +396,7 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 
 // TestBuilder_Type verifies that the section type is correct.
 func TestBuilder_Type(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 	require.Equal(t, sectionType, b.Type())
 }
 
@@ -417,7 +418,7 @@ func TestCheckSection(t *testing.T) {
 }
 
 func TestReader_SmallBatchSize(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 	ts := time.Unix(0, 0)
 	for i := range 5 {
 		b.ObserveLabelPosting(LabelObservation{ColumnName: "col", LabelValue: fmt.Sprintf("val%d", i), Timestamp: ts})
@@ -452,7 +453,7 @@ func TestReader_SmallBatchSize(t *testing.T) {
 // TestBuilder_ObserveLabelPosting verifies that multiple stream IDs for the
 // same key are aggregated into a single posting entry.
 func TestBuilder_ObserveLabelPosting(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	minTs := time.Unix(0, 100).UTC()
 	midTs := time.Unix(0, 200).UTC()
@@ -499,7 +500,7 @@ func TestBuilder_ObserveLabelPosting(t *testing.T) {
 
 // TestBuilder_ObserveBloomPosting verifies bloom observation: prepare, observe, check membership and bitmap.
 func TestBuilder_ObserveBloomPosting(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 100)
 	b.PrepareBloomColumn("/obj", 0, "service_name", 100)
@@ -546,7 +547,7 @@ func TestBuilder_ObserveBloomPosting(t *testing.T) {
 // TestBuilder_MixedObservations verifies bloom and label observations produce
 // the correct sort order (bloom before label).
 func TestBuilder_MixedObservations(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 100).UTC()
 
@@ -571,7 +572,7 @@ func TestBuilder_MixedObservations(t *testing.T) {
 // TestBuilder_ObserveBloomUnprepared verifies that observing an unprepared bloom
 // column returns an error.
 func TestBuilder_ObserveBloomUnprepared(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 0)
 	err := b.ObserveBloomPosting(BloomObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "unprepared_col", Value: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
@@ -583,7 +584,7 @@ func TestBuilder_ObserveBloomUnprepared(t *testing.T) {
 // (objectPath, sectionIndex) for the same (columnName, labelValue) produce
 // distinct posting rows.
 func TestBuilder_MultipleObjectContexts(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 0).UTC()
 
@@ -641,7 +642,7 @@ func TestBuilder_MultipleObjectContexts(t *testing.T) {
 // TestBuilder_BloomBytes verifies that BloomBytes returns valid marshaled bloom
 // data matching what was observed.
 func TestBuilder_BloomBytes(t *testing.T) {
-	b := NewBuilder(nil, 0, 0)
+	b := NewBuilder(nil, 0, 0, math.MaxInt)
 
 	ts := time.Unix(0, 0)
 	b.PrepareBloomColumn("/obj", 0, "col", 50)
@@ -676,7 +677,7 @@ func TestBuilder_BloomBytes(t *testing.T) {
 // bloom-filter bytes to feed into AppendBloomEntry.
 func mustBuildBloomBytes(t *testing.T, objectPath string, sectionIndex int64, columnName, value string, ts time.Time) []byte {
 	t.Helper()
-	tempBuilder := NewBuilder(nil, 0, 0)
+	tempBuilder := NewBuilder(nil, 0, 0, math.MaxInt)
 	tempBuilder.PrepareBloomColumn(objectPath, sectionIndex, columnName, 100)
 	err := tempBuilder.ObserveBloomPosting(BloomObservation{
 		ObjectPath:       objectPath,

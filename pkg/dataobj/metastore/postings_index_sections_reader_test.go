@@ -3,6 +3,7 @@ package metastore
 import (
 	"context"
 	"io"
+	"math"
 	"testing"
 	"time"
 
@@ -341,7 +342,7 @@ func buildPostingsFixture(t *testing.T) *dataobj.Object {
 func buildMultiPostingsSectionsFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
-	first := postings.NewBuilder(nil, 0, 0)
+	first := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	first.SetTenant(tenantID)
 	first.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "test-path-1",
@@ -353,7 +354,7 @@ func buildMultiPostingsSectionsFixture(t *testing.T) *dataobj.Object {
 		UncompressedSize: 5,
 	})
 
-	second := postings.NewBuilder(nil, 0, 0)
+	second := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	second.SetTenant(tenantID)
 	second.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "test-path-2",
@@ -428,7 +429,7 @@ func buildPostingsMultiLabelFixture(t *testing.T) *dataobj.Object {
 func buildPostingsStreamIDCollisionFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
-	builder := postings.NewBuilder(nil, 0, 0)
+	builder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	builder.SetTenant(tenantID)
 
 	builder.ObserveLabelPosting(postings.LabelObservation{

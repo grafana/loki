@@ -2,6 +2,7 @@ package postings_test
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -141,7 +142,7 @@ func TestReadPointersForStreams_StreamIDFilter(t *testing.T) {
 }
 
 func TestReadPointersForStreams_ObjectScopedFilter(t *testing.T) {
-	pb := postings.NewBuilder(nil, 0, 0)
+	pb := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	pb.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "/test/objA",
 		SectionIndex:     0,
@@ -203,7 +204,7 @@ func TestReadPointersForStreams_ObjectScopedFilter(t *testing.T) {
 }
 
 func TestReadPointersForStreams_DeduplicatesAcrossLabelRows(t *testing.T) {
-	pb := postings.NewBuilder(nil, 0, 0)
+	pb := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	for _, obs := range []postings.LabelObservation{
 		// app=foo row for stream 1
 		{
@@ -343,7 +344,7 @@ func TestReadPointersForStreams_EmptyStreamRefs(t *testing.T) {
 }
 
 func TestReadPointersForStreams_NoParentObject(t *testing.T) {
-	pb := postings.NewBuilder(nil, 0, 0)
+	pb := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	pb.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "/test/objB",
 		SectionIndex:     0,
@@ -407,7 +408,7 @@ func buildJoinedFixture(t *testing.T, testStreams []testStream) joinedFixture {
 	const objectPath = "/test/obj"
 	const sectionIndex = int64(0)
 
-	pb := postings.NewBuilder(nil, 0, 0)
+	pb := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	sb := streams.NewBuilder(nil, 0, 0)
 	ptrb := pointers.NewBuilder(nil, 0, 0)
 

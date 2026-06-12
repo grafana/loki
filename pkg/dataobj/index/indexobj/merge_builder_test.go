@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"testing"
 	"time"
 
@@ -169,7 +170,7 @@ func TestMergeBuilder_AppendPostingsBloomEntry(t *testing.T) {
 	timeVal := time.Unix(0, 500).UTC()
 
 	// Create valid bloom bytes using an observation builder
-	tempBuilder := postings.NewBuilder(nil, 0, 0)
+	tempBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	tempBuilder.PrepareBloomColumn("/obj2", 1, "service_name", 100)
 	err = tempBuilder.ObserveBloomPosting(postings.BloomObservation{
 		ObjectPath:       "/obj2",
