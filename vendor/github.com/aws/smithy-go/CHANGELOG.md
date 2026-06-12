@@ -1,3 +1,12 @@
+# Release (2026-06-05)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.2
+  * **Bug Fix**: Fix incorrect serialization of unions in CBOR-based protocols.
+
 # Release (2026-06-04)
 
 ## General Highlights
