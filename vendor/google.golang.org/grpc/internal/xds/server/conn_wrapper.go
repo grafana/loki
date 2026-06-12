@@ -97,7 +97,7 @@ func (c *connWrapper) XDSHandshakeInfo() (*xdsinternal.HandshakeInfo, error) {
 		// did not provide any security configuration and therefore we should
 		// return an empty HandshakeInfo here so that the xdsCreds can use the
 		// configured fallback credentials.
-		return xdsinternal.NewHandshakeInfo(nil, nil, nil, false), nil
+		return xdsinternal.NewHandshakeInfo(nil, nil, nil, false, "", false, false), nil
 	}
 
 	cpc := c.parent.xdsC.BootstrapConfig().CertProviderConfigs()
@@ -119,7 +119,7 @@ func (c *connWrapper) XDSHandshakeInfo() (*xdsinternal.HandshakeInfo, error) {
 	c.identityProvider = ip
 	c.rootProvider = rp
 
-	return xdsinternal.NewHandshakeInfo(c.rootProvider, c.identityProvider, nil, secCfg.RequireClientCert), nil
+	return xdsinternal.NewHandshakeInfo(c.rootProvider, c.identityProvider, nil, secCfg.RequireClientCert, "", false, false), nil
 }
 
 // PassServerTransport drains the passed in ServerTransport if draining is set,

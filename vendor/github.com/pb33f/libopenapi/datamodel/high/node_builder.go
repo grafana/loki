@@ -5,6 +5,7 @@ package high
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -38,6 +39,32 @@ type RenderableInlineWithContext interface {
 }
 
 const renderZero = "renderZero"
+
+func originalFloatLexeme(value float64, lowValue any) (string, bool) {
+	vnut, ok := lowValue.(low.HasValueNodeUntyped)
+	if !ok {
+		return "", false
+	}
+
+	valueNode := vnut.GetValueNode()
+	if valueNode == nil || !utils.IsNodeNumberValue(valueNode) {
+		return "", false
+	}
+
+	parsed, err := strconv.ParseFloat(valueNode.Value, 64)
+	if err != nil {
+		return "", false
+	}
+
+	if parsed != value {
+		return "", false
+	}
+	if value == 0 && math.Signbit(parsed) != math.Signbit(value) {
+		return "", false
+	}
+
+	return valueNode.Value, true
+}
 
 // NewNodeBuilder will create a new NodeBuilder instance, this is the only way to create a NodeBuilder.
 // The function accepts a high level object and a low level object (need to be siblings/same type).
@@ -384,6 +411,9 @@ func (n *NodeBuilder) AddYAMLNode(parent *yaml.Node, entry *nodes.NodeEntry) *ya
 			precision = len(strings.Split(fmt.Sprint(entry.StringValue), ".")[1])
 		}
 		val := strconv.FormatFloat(value.(float64), 'f', precision, 64)
+		if original, ok := originalFloatLexeme(value.(float64), entry.LowValue); ok {
+			val = original
+		}
 		// Always create float node for float64 values, even if they don't contain decimal points
 		// This handles cases like negative zero (-0.0) which formats as "-0" but should remain float
 		valueNode = utils.CreateFloatNode(val)
@@ -589,6 +619,9 @@ func (n *NodeBuilder) AddYAMLNode(parent *yaml.Node, entry *nodes.NodeEntry) *ya
 				encodeSkip = true
 				if *b != 0 || entry.RenderZero {
 					formatFloat := strconv.FormatFloat(*b, 'f', -1, 64)
+					if original, ok := originalFloatLexeme(*b, entry.LowValue); ok {
+						formatFloat = original
+					}
 
 					// Always create float node for float64 values, even if they're whole numbers
 					// This handles cases like negative zero (-0.0) and ensures type consistency

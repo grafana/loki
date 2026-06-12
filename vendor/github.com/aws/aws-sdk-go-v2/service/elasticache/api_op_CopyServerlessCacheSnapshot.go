@@ -37,7 +37,7 @@ type CopyServerlessCacheSnapshotInput struct {
 	SourceServerlessCacheSnapshotName *string
 
 	// The identifier for the snapshot to be created. Available for Valkey, Redis OSS
-	// and Serverless Memcached only.
+	// and Serverless Memcached only. This value is stored as a lowercase string.
 	//
 	// This member is required.
 	TargetServerlessCacheSnapshotName *string
@@ -100,7 +100,7 @@ func (c *Client) addOperationCopyServerlessCacheSnapshotMiddlewares(stack *middl
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -122,9 +122,6 @@ func (c *Client) addOperationCopyServerlessCacheSnapshotMiddlewares(stack *middl
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

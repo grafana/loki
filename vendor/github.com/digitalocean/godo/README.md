@@ -9,6 +9,14 @@ You can view the client API docs here: [http://godoc.org/github.com/digitalocean
 
 You can view DigitalOcean API docs here: [https://docs.digitalocean.com/reference/api/api-reference/](https://docs.digitalocean.com/reference/api/api-reference/)
 
+> **🚀 New in v1.191.0 — AI & Inference support**
+>
+> `godo` now ships first-class support for DigitalOcean's
+> [Gradient AI Platform](https://www.digitalocean.com/products/gradient): chat
+> completions (with streaming), image generation, embeddings, batch inference,
+> model listing, and more — all from the same `Client`. Jump to
+> [**AI & Inference**](#ai--inference) to get started.
+
 ## Install
 ```sh
 go get github.com/digitalocean/godo@vX.Y.Z
@@ -33,11 +41,8 @@ access different parts of the DigitalOcean API.
 
 ### Authentication
 
-Currently, Personal Access Token (PAT) is the only method of
-authenticating with the API. You can manage your tokens
-at the DigitalOcean Control Panel [Applications Page](https://cloud.digitalocean.com/settings/applications).
-
-You can then use your token to create a new client:
+You can manage API tokens at the DigitalOcean Control Panel
+[Applications Page](https://cloud.digitalocean.com/settings/applications).
 
 ```go
 package main
@@ -51,7 +56,65 @@ func main() {
 }
 ```
 
+> **Credentials for inference APIs**
+>
+> What matters is the **credential** you pass to `godo.NewFromToken`, not which
+> DigitalOcean API you call:
+>
+> | What you're calling | What you need |
+> | --- | --- |
+> | Infrastructure APIs (`Droplets`, `Kubernetes`, `Volumes`, …) | A DigitalOcean API token (PAT). |
+> | Inference APIs (`Chat`, `Models`, `Embeddings`, `ImageGenerations`, `Messages`, `Responses`, `BatchInference`, …) | A PAT created with **full access** scope, **or** a Gradient **Model Access Key**. |
+>
+> If you only have a limited-scope PAT, infrastructure calls will work but
+> inference calls will fail with `401`. Create a new PAT with full access, or use
+> a Model Access Key instead.
+>
+> ```go
+> // Either credential works with godo.NewFromToken:
+> client := godo.NewFromToken(os.Getenv("DIGITALOCEAN_TOKEN"))  // full-access PAT
+> client := godo.NewFromToken(os.Getenv("MODEL_ACCESS_KEY"))    // Gradient model access key
+> ```
+
 If you need to provide a `context.Context` to your new client, you should use [`godo.NewClient`](https://godoc.org/github.com/digitalocean/godo#NewClient) to manually construct a client instead.
+
+## AI & Inference
+
+> Talk to models on DigitalOcean's [Gradient AI Platform](https://www.digitalocean.com/products/gradient) with the same `godo.Client`.
+
+The [Serverless Inference API](https://docs.digitalocean.com/reference/api/reference/serverless-inference/) is available at `https://inference.do-ai.run/`. Use a **DigitalOcean PAT with full access scope** or a Gradient **Model Access Key** — see the [credentials note](#authentication) above.
+
+#### Chat completion
+
+```go
+completion, _, err := client.Chat.Completions.New(ctx, &godo.ChatCompletionNewParams{
+    Model: "llama3.3-70b-instruct",
+    Messages: []godo.ChatCompletionMessage{
+        godo.UserMessage("Write me a haiku"),
+    },
+})
+```
+
+#### List models
+
+```go
+page, _, err := client.Models.List(ctx)
+for _, m := range page.Data {
+    fmt.Println(m.ID)
+}
+```
+
+#### Image generation
+
+```go
+image, _, err := client.ImageGenerations.Generate(ctx, &godo.ImageGenerateParams{
+    Model:  "stable-diffusion-3.5-large",
+    Prompt: "A friendly cartoon shark typing on a laptop at a sunny beach",
+    N:      1,
+})
+```
+
+For streaming, embeddings, messages, responses, async invocations, batch inference, agent inference, and full runnable programs, see [`examples/serverless-inference/`](examples/serverless-inference/) and [`examples/agent-inference/`](examples/agent-inference/).
 
 ## Examples
 

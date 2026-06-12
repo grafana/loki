@@ -50,11 +50,16 @@ func unmarshalRouteConfigResource(r *anypb.Any, opts *xdsclient.DecodeOptions) (
 		return "", RouteConfigUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
 	}
 
+	if rc.GetName() == "" {
+		return "", RouteConfigUpdate{}, fmt.Errorf("empty resource name in route config resource")
+	}
+
 	u, err := generateRDSUpdateFromRouteConfiguration(rc, opts)
 	if err != nil {
 		return rc.GetName(), RouteConfigUpdate{}, err
 	}
 	u.Raw = r
+
 	return rc.GetName(), u, nil
 }
 
