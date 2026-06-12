@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	metricsPrefix = "lokistack_"
+	metricsPrefix   = "lokistack_"
+	factorMebibytes = 1024 * 1024
 )
 
 var (
@@ -124,7 +125,20 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 			)
 		}
 
-		componentReplicas := getComponentReplicas(&stack)
+		defaults := manifests.DefaultLokiStackSpec(stack.Spec.Size)
+		if defaults == nil ||
+			defaults.Template == nil ||
+			defaults.Limits == nil ||
+			defaults.Limits.Global == nil ||
+			defaults.Limits.Global.IngestionLimits == nil {
+			l.log.Error(nil, "invalid defaults for LokiStack size",
+				"stack", stack.Name,
+				"namespace", stack.Namespace,
+				"size", stack.Spec.Size)
+			continue
+		}
+
+		componentReplicas := getComponentReplicas(&stack, defaults)
 		for component, replicas := range componentReplicas {
 			componentLabels := append(labels, component)
 			m <- prometheus.MustNewConstMetric(
@@ -134,20 +148,17 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 				componentLabels...)
 		}
 
-		if ingestionRate := getGlobalIngestionRateLimit(&stack); ingestionRate > 0 {
+		if ingestionRate := getGlobalIngestionRateLimit(&stack, defaults); ingestionRate > 0 {
 			m <- prometheus.MustNewConstMetric(
 				lokiStackIngestionRateLimitDesc,
 				prometheus.GaugeValue,
-				float64(ingestionRate*1024*1024),
+				float64(ingestionRate)*factorMebibytes,
 				labels...)
 		}
 	}
 }
 
 func getStorageCredentialsMode(stack *lokiv1.LokiStack) string {
-	if stack.Status.Storage.CredentialMode != "" {
-		return string(stack.Status.Storage.CredentialMode)
-	}
 	if stack.Spec.Storage.Secret.CredentialMode != "" {
 		return string(stack.Spec.Storage.Secret.CredentialMode)
 	}
@@ -155,14 +166,14 @@ func getStorageCredentialsMode(stack *lokiv1.LokiStack) string {
 }
 
 func getCurrentSchemaVersion(stack *lokiv1.LokiStack) string {
-	if len(stack.Spec.Storage.Schemas) == 0 {
+	if len(stack.Status.Storage.Schemas) == 0 {
 		return string(lokiv1.ObjectStorageSchemaV11)
 	}
 
-	return string(stack.Spec.Storage.Schemas[len(stack.Spec.Storage.Schemas)-1].Version)
+	return string(stack.Status.Storage.Schemas[len(stack.Status.Storage.Schemas)-1].Version)
 }
 
-func getGlobalIngestionRateLimit(stack *lokiv1.LokiStack) int32 {
+func getGlobalIngestionRateLimit(stack *lokiv1.LokiStack, defaults *lokiv1.LokiStackSpec) int32 {
 	if stack.Spec.Limits != nil &&
 		stack.Spec.Limits.Global != nil &&
 		stack.Spec.Limits.Global.IngestionLimits != nil &&
@@ -170,17 +181,10 @@ func getGlobalIngestionRateLimit(stack *lokiv1.LokiStack) int32 {
 		return stack.Spec.Limits.Global.IngestionLimits.IngestionRate
 	}
 
-	defaults := manifests.DefaultLokiStackSpec(stack.Spec.Size)
-
 	return defaults.Limits.Global.IngestionLimits.IngestionRate
 }
 
-func getComponentReplicas(stack *lokiv1.LokiStack) map[string]int32 {
-	defaults := manifests.DefaultLokiStackSpec(stack.Spec.Size)
-	if defaults == nil || defaults.Template == nil {
-		return map[string]int32{}
-	}
-
+func getComponentReplicas(stack *lokiv1.LokiStack, defaults *lokiv1.LokiStackSpec) map[string]int32 {
 	userTemplate := &lokiv1.LokiTemplateSpec{}
 	if stack.Spec.Template != nil {
 		userTemplate = stack.Spec.Template
