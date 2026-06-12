@@ -112,6 +112,7 @@
         "api_op_DescribePendingMaintenanceActions.go",
         "api_op_DescribeReservedDBInstances.go",
         "api_op_DescribeReservedDBInstancesOfferings.go",
+        "api_op_DescribeServerlessV2PlatformVersions.go",
         "api_op_DescribeSourceRegions.go",
         "api_op_DescribeTenantDatabases.go",
         "api_op_DescribeValidDBInstanceModifications.go",

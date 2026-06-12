@@ -200,6 +200,50 @@ func (DestinationType) Values() []DestinationType {
 	}
 }
 
+type Durability string
+
+// Enum values for Durability
+const (
+	DurabilityDefault  Durability = "default"
+	DurabilityAsync    Durability = "async"
+	DurabilitySync     Durability = "sync"
+	DurabilityDisabled Durability = "disabled"
+)
+
+// Values returns all known values for Durability. Note that this can be expanded
+// in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (Durability) Values() []Durability {
+	return []Durability{
+		"default",
+		"async",
+		"sync",
+		"disabled",
+	}
+}
+
+type EffectiveDurability string
+
+// Enum values for EffectiveDurability
+const (
+	EffectiveDurabilityAsync    EffectiveDurability = "async"
+	EffectiveDurabilitySync     EffectiveDurability = "sync"
+	EffectiveDurabilityDisabled EffectiveDurability = "disabled"
+)
+
+// Values returns all known values for EffectiveDurability. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (EffectiveDurability) Values() []EffectiveDurability {
+	return []EffectiveDurability{
+		"async",
+		"sync",
+		"disabled",
+	}
+}
+
 type InputAuthenticationType string
 
 // Enum values for InputAuthenticationType
@@ -541,6 +585,27 @@ func (SourceType) Values() []SourceType {
 		"serverless-cache-snapshot",
 		"user",
 		"user-group",
+	}
+}
+
+type StorageEncryptionType string
+
+// Enum values for StorageEncryptionType
+const (
+	StorageEncryptionTypeNone           StorageEncryptionType = "none"
+	StorageEncryptionTypeSseElasticache StorageEncryptionType = "sse-elasticache"
+	StorageEncryptionTypeSseKms         StorageEncryptionType = "sse-kms"
+)
+
+// Values returns all known values for StorageEncryptionType. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (StorageEncryptionType) Values() []StorageEncryptionType {
+	return []StorageEncryptionType{
+		"none",
+		"sse-elasticache",
+		"sse-kms",
 	}
 }
 

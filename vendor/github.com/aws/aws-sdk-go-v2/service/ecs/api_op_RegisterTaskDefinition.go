@@ -111,6 +111,8 @@ type RegisterTaskDefinitionInput struct {
 	ExecutionRoleArn *string
 
 	// The Elastic Inference accelerators to use for the containers in the task.
+	//
+	// Deprecated: This feature is no longer available.
 	InferenceAccelerators []types.InferenceAccelerator
 
 	// The IPC resource namespace to use for the containers in the task. The valid
@@ -359,7 +361,7 @@ func (c *Client) addOperationRegisterTaskDefinitionMiddlewares(stack *middleware
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -381,9 +383,6 @@ func (c *Client) addOperationRegisterTaskDefinitionMiddlewares(stack *middleware
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

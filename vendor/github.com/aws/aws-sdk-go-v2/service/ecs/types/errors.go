@@ -300,6 +300,64 @@ func (e *ConflictException) ErrorCode() string {
 }
 func (e *ConflictException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
+// The specified daemon isn't active. You can't update a daemon that's inactive.
+// If you have previously deleted a daemon, you can re-create it with [CreateDaemon].
+//
+// [CreateDaemon]: https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_CreateDaemon.html
+type DaemonNotActiveException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *DaemonNotActiveException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *DaemonNotActiveException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *DaemonNotActiveException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "DaemonNotActiveException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *DaemonNotActiveException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// The specified daemon wasn't found. You can view your available daemons with [ListDaemons].
+// Amazon ECS daemons are cluster specific and Region specific.
+//
+// [ListDaemons]: https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_ListDaemons.html
+type DaemonNotFoundException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *DaemonNotFoundException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *DaemonNotFoundException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *DaemonNotFoundException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "DaemonNotFoundException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *DaemonNotFoundException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
 // The specified parameter isn't valid. Review the available parameters for the
 // API request.
 //

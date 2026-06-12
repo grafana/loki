@@ -8,7 +8,7 @@ Concurrent data structures for Go. Aims to provide more scalable alternatives fo
 
 Apart from direct library dependencies, `xsync` data structures can also be met in-code in other libraries like [Otter](https://github.com/maypok86/otter/blob/8c526307556486ea0337280a4211135720bc29cc/internal/hashmap/map.go) caching library.
 
-Covered with tests following the approach described [here](https://puzpuzpuz.dev/testing-concurrent-code-for-fun-and-profit).
+Covered with concurrent stress tests following the approach described [here](https://puzpuzpuz.dev/testing-concurrent-code-for-fun-and-profit).
 
 ## Benchmarks
 
@@ -132,7 +132,8 @@ Make sure to implement proper back-off strategy to handle failed optimistic oper
 A `MPMCQueue` is a bounded multi-producer multi-consumer concurrent queue.
 
 ```go
-q := xsync.NewMPMCQueue[string](1024)
+// capacity is rounded up to the next power of 2 (1000 -> 1024)
+q := xsync.NewMPMCQueue[string](1000)
 // producer optimistically inserts an item into the queue
 // optimistic insertion attempt; doesn't block
 inserted := q.TryEnqueue("bar")

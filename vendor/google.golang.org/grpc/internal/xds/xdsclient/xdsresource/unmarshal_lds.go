@@ -18,14 +18,14 @@
 package xdsresource
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"net"
+	"net/netip"
 	"strconv"
 
 	v1xdsudpatypepb "github.com/cncf/xds/go/udpa/type/v1"
 	v3xdsxdstypepb "github.com/cncf/xds/go/xds/type/v3"
+	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3listenerpb "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	v3routepb "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	v3httppb "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
@@ -51,11 +51,16 @@ func unmarshalListenerResource(r *anypb.Any, opts *xdsclient.DecodeOptions) (str
 		return "", ListenerUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
 	}
 
+	if lis.GetName() == "" {
+		return "", ListenerUpdate{}, fmt.Errorf("empty resource name in listener resource")
+	}
+
 	lu, err := processListener(lis, opts)
 	if err != nil {
 		return lis.GetName(), ListenerUpdate{}, err
 	}
 	lu.Raw = r
+
 	return lis.GetName(), *lu, nil
 }
 
@@ -143,7 +148,7 @@ func unwrapHTTPFilterConfig(config *anypb.Any) (proto.Message, string, error) {
 	}
 }
 
-func validateHTTPFilterConfig(cfg *anypb.Any, lds, optional bool) (httpfilter.Filter, httpfilter.FilterConfig, error) {
+func validateHTTPFilterConfig(cfg *anypb.Any, lds, optional bool) (httpfilter.Builder, httpfilter.FilterConfig, error) {
 	config, typeURL, err := unwrapHTTPFilterConfig(cfg)
 	if err != nil {
 		return nil, nil, err
@@ -217,13 +222,13 @@ func processHTTPFilters(filters []*v3httppb.HttpFilter, server bool) ([]HTTPFilt
 			continue
 		}
 		if server {
-			if _, ok := httpFilter.(httpfilter.ServerInterceptorBuilder); !ok {
+			if _, ok := httpFilter.(httpfilter.ServerFilterBuilder); !ok {
 				if filter.GetIsOptional() {
 					continue
 				}
 				return nil, fmt.Errorf("HTTP filter %q not supported server-side", name)
 			}
-		} else if _, ok := httpFilter.(httpfilter.ClientInterceptorBuilder); !ok {
+		} else if _, ok := httpFilter.(httpfilter.ClientFilterBuilder); !ok {
 			if filter.GetIsOptional() {
 				continue
 			}
@@ -396,21 +401,16 @@ func buildFilterChainMap(fcs []*v3listenerpb.FilterChain) (NetworkFilterChainMap
 
 func addFilterChainsForDestPrefixes(dstPrefixEntries []*dstPrefixEntry, fc *v3listenerpb.FilterChain) ([]*dstPrefixEntry, error) {
 	ranges := fc.GetFilterChainMatch().GetPrefixRanges()
-	dstPrefixes := make([]*net.IPNet, 0, len(ranges))
-	for _, pr := range ranges {
-		cidr := fmt.Sprintf("%s/%d", pr.GetAddressPrefix(), pr.GetPrefixLen().GetValue())
-		_, ipnet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse destination prefix range: %+v", pr)
-		}
-		dstPrefixes = append(dstPrefixes, ipnet)
+	dstPrefixes, err := parsePrefixRanges(ranges)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse destination prefix ranges: %v", err)
 	}
 
 	var entry *dstPrefixEntry
 	if len(dstPrefixes) == 0 {
 		// Use the unspecified entry when destination prefix is unspecified, and
-		// set the `net` field to nil.
-		dstPrefixEntries, entry = getOrCreateDestPrefixEntry(dstPrefixEntries, nil)
+		// set the `prefix` field to nil.
+		dstPrefixEntries, entry = getOrCreateDestPrefixEntry(dstPrefixEntries, netip.Prefix{})
 		if err := addFilterChainsForServerNames(entry, fc); err != nil {
 			return nil, err
 		}
@@ -429,9 +429,9 @@ func addFilterChainsForDestPrefixes(dstPrefixEntries []*dstPrefixEntry, fc *v3li
 // provided slice with the same destination prefix as the provided prefix. If
 // such an entry is found, it is returned. Otherwise, a new entry is created and
 // appended to the slice, and the new entry is returned.
-func getOrCreateDestPrefixEntry(dstPrefixEntries []*dstPrefixEntry, prefix *net.IPNet) ([]*dstPrefixEntry, *dstPrefixEntry) {
+func getOrCreateDestPrefixEntry(dstPrefixEntries []*dstPrefixEntry, prefix netip.Prefix) ([]*dstPrefixEntry, *dstPrefixEntry) {
 	for _, e := range dstPrefixEntries {
-		if ipNetEqual(e.entry.Prefix, prefix) {
+		if e.entry.Prefix == prefix {
 			return dstPrefixEntries, e
 		}
 	}
@@ -513,18 +513,13 @@ func addFilterChainsForSourceType(entry *DestinationPrefixEntry, fc *v3listenerp
 
 func addFilterChainsForSourcePrefixes(srcPrefixes *SourcePrefixes, fc *v3listenerpb.FilterChain) error {
 	ranges := fc.GetFilterChainMatch().GetSourcePrefixRanges()
-	prefixes := make([]*net.IPNet, 0, len(ranges))
-	for _, pr := range ranges {
-		cidr := fmt.Sprintf("%s/%d", pr.GetAddressPrefix(), pr.GetPrefixLen().GetValue())
-		_, ipnet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			return fmt.Errorf("failed to parse source prefix range: %+v", pr)
-		}
-		prefixes = append(prefixes, ipnet)
+	prefixes, err := parsePrefixRanges(ranges)
+	if err != nil {
+		return fmt.Errorf("failed to parse source prefix ranges: %v", err)
 	}
 
 	if len(prefixes) == 0 {
-		return getOrCreateSourcePrefixEntry(srcPrefixes, nil, fc)
+		return getOrCreateSourcePrefixEntry(srcPrefixes, netip.Prefix{}, fc)
 	}
 	for _, prefix := range prefixes {
 		if err := getOrCreateSourcePrefixEntry(srcPrefixes, prefix, fc); err != nil {
@@ -534,6 +529,27 @@ func addFilterChainsForSourcePrefixes(srcPrefixes *SourcePrefixes, fc *v3listene
 	return nil
 }
 
+func parsePrefixRanges(ranges []*v3corepb.CidrRange) ([]netip.Prefix, error) {
+	prefixes := make([]netip.Prefix, 0, len(ranges))
+	for _, pr := range ranges {
+		addrStr := pr.GetAddressPrefix()
+		bits := int(pr.GetPrefixLen().GetValue())
+
+		addr, err := netip.ParseAddr(addrStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid address: %q", addrStr)
+		}
+		prefix := netip.PrefixFrom(addr.Unmap(), bits).Masked()
+
+		if !prefix.IsValid() {
+			return nil, fmt.Errorf(`length %d is invalid for "%s" (max %d)`, bits, addrStr, addr.BitLen())
+		}
+
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes, nil
+}
+
 // getOrCreateSourcePrefixEntry looks for an existing SourcePrefixEntry in the
 // provided SourcePrefixes with the same source prefix as the provided prefix. If
 // such an entry is found, the provided filter chain is added to the entry and
@@ -541,9 +557,9 @@ func addFilterChainsForSourcePrefixes(srcPrefixes *SourcePrefixes, fc *v3listene
 // SourcePrefixes, the provided filter chain is added to the new entry, and nil
 // is returned. If there are multiple filter chains with overlapping matching
 // rules, an error is returned.
-func getOrCreateSourcePrefixEntry(srcPrefixes *SourcePrefixes, prefix *net.IPNet, fc *v3listenerpb.FilterChain) error {
+func getOrCreateSourcePrefixEntry(srcPrefixes *SourcePrefixes, prefix netip.Prefix, fc *v3listenerpb.FilterChain) error {
 	for i := range srcPrefixes.Entries {
-		if ipNetEqual(srcPrefixes.Entries[i].Prefix, prefix) {
+		if srcPrefixes.Entries[i].Prefix == prefix {
 			return addFilterChainsForSourcePorts(&srcPrefixes.Entries[i], fc)
 		}
 	}
@@ -585,14 +601,4 @@ func addFilterChainsForSourcePorts(entry *SourcePrefixEntry, fc *v3listenerpb.Fi
 		entry.PortMap[port] = fcc
 	}
 	return nil
-}
-
-func ipNetEqual(a, b *net.IPNet) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	return a.IP.Equal(b.IP) && bytes.Equal(a.Mask, b.Mask)
 }

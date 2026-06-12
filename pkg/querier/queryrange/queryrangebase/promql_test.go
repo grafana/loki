@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +22,40 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+// requireEqualPromQLResults compares two query results. Warnings are compared by
+// message only: Prometheus attaches source positions to annotations, and the
+// base query string differs from the sharded rewrite so positions never match.
+func requireEqualPromQLResults(t *testing.T, expected, actual *promql.Result) {
+	t.Helper()
+	require.Equal(t, expected.Err, actual.Err)
+	require.Equal(t, expected.Value, actual.Value)
+	require.Equal(t, sortedAnnotationStrings(expected.Warnings), sortedAnnotationStrings(actual.Warnings))
+}
+
+func sortedAnnotationStrings(a annotations.Annotations) []string {
+	if len(a) == 0 {
+		return nil
+	}
+	s := make([]string, 0, len(a))
+	for _, err := range a {
+		s = append(s, err.Error())
+	}
+	sort.Strings(s)
+	return s
+}
+
+// promqlResultsEquivalent is like requireEqualPromQLResults but returns a bool
+// (for cases that need inequality checks with the same warning normalization).
+func promqlResultsEquivalent(a, b *promql.Result) bool {
+	if a.Err != b.Err {
+		return false
+	}
+	if !reflect.DeepEqual(a.Value, b.Value) {
+		return false
+	}
+	return reflect.DeepEqual(sortedAnnotationStrings(a.Warnings), sortedAnnotationStrings(b.Warnings))
+}
 
 var (
 	start  = time.Unix(1000, 0)
@@ -330,10 +366,10 @@ func Test_PromQL(t *testing.T) {
 			t.Logf("base: %v\n", baseResult)
 			t.Logf("shard: %v\n", shardResult)
 			if tt.shouldEqual {
-				require.Equal(t, baseResult, shardResult)
+				requireEqualPromQLResults(t, baseResult, shardResult)
 				return
 			}
-			require.NotEqual(t, baseResult, shardResult)
+			require.False(t, promqlResultsEquivalent(baseResult, shardResult))
 		})
 	}
 }
@@ -543,9 +579,12 @@ func Test_FunctionParallelism(t *testing.T) {
 			t.Logf("base: %+v\n", baseResult)
 			t.Logf("shard: %+v\n", shardResult)
 			if !tc.approximate {
-				require.Equal(t, baseResult, shardResult)
+				requireEqualPromQLResults(t, baseResult, shardResult)
 			} else {
 				// Some functions yield tiny differences when sharded due to combining floating point calculations.
+				require.Equal(t, baseResult.Err, shardResult.Err)
+				require.Equal(t, sortedAnnotationStrings(baseResult.Warnings), sortedAnnotationStrings(shardResult.Warnings))
+
 				baseSeries := baseResult.Value.(promql.Matrix)[0]
 				shardSeries := shardResult.Value.(promql.Matrix)[0]
 

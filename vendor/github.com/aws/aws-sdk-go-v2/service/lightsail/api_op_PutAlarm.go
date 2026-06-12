@@ -26,6 +26,10 @@ import (
 // completely overwrites the previous configuration of the alarm. The alarm is then
 // evaluated with the updated configuration.
 //
+// The put alarm operation supports tag-based access control via request tags. For
+// more information, see the [Lightsail Developer Guide].
+//
+// [Lightsail Developer Guide]: https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-controlling-access-using-tags
 // [Alarms in Amazon Lightsail]: https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-alarms
 func (c *Client) PutAlarm(ctx context.Context, params *PutAlarmInput, optFns ...func(*Options)) (*PutAlarmOutput, error) {
 	if params == nil {
@@ -162,6 +166,11 @@ type PutAlarmInput struct {
 	// The notification trigger defaults to ALARM if you don't specify this parameter.
 	NotificationTriggers []types.AlarmState
 
+	// The tag keys and optional values to add to the alarm during create.
+	//
+	// Use the TagResource action to tag a resource after it's created.
+	Tags []types.Tag
+
 	// Sets how this alarm will handle missing data points.
 	//
 	// An alarm can treat missing data in the following ways:
@@ -230,7 +239,7 @@ func (c *Client) addOperationPutAlarmMiddlewares(stack *middleware.Stack, option
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -252,9 +261,6 @@ func (c *Client) addOperationPutAlarmMiddlewares(stack *middleware.Stack, option
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

@@ -1,3 +1,41 @@
+# 1.9.0 (Mar 30, 2026)
+
+ENHANCEMENTS:
+
+Support parsing versions with custom prefixes via opt-in option in https://github.com/hashicorp/go-version/pull/79
+
+INTERNAL:
+
+- Bump the github-actions-backward-compatible group across 1 directory with 2 updates in https://github.com/hashicorp/go-version/pull/179
+- Bump the github-actions-breaking group with 4 updates in https://github.com/hashicorp/go-version/pull/180
+- Bump the github-actions-backward-compatible group with 3 updates in https://github.com/hashicorp/go-version/pull/182
+- Update GitHub Actions to trigger on pull requests and update go version in https://github.com/hashicorp/go-version/pull/185
+- Bump actions/upload-artifact from 6.0.0 to 7.0.0 in the github-actions-breaking group across 1 directory in https://github.com/hashicorp/go-version/pull/183
+- Bump the github-actions-backward-compatible group across 1 directory with 2 updates in https://github.com/hashicorp/go-version/pull/186
+
+# 1.8.0 (Nov 28, 2025)
+
+ENHANCEMENTS:
+
+- Add benchmark test for version.String() in https://github.com/hashicorp/go-version/pull/159
+- Bytes implementation in https://github.com/hashicorp/go-version/pull/161
+
+INTERNAL:
+
+- Add CODEOWNERS file in .github/CODEOWNERS in https://github.com/hashicorp/go-version/pull/145
+- Linting in https://github.com/hashicorp/go-version/pull/151
+- Correct typos in comments in https://github.com/hashicorp/go-version/pull/134
+- Migrate GitHub Actions updates from TSCCR to Dependabot in https://github.com/hashicorp/go-version/pull/155
+- Bump the github-actions-backward-compatible group with 2 updates in https://github.com/hashicorp/go-version/pull/157
+- Update doc reference in README in https://github.com/hashicorp/go-version/pull/135
+- Bump the github-actions-breaking group with 3 updates in https://github.com/hashicorp/go-version/pull/156
+- [Compliance] - PR Template Changes Required in https://github.com/hashicorp/go-version/pull/158
+- Bump actions/cache from 4.2.3 to 4.2.4 in the github-actions-backward-compatible group in https://github.com/hashicorp/go-version/pull/167
+- Bump actions/checkout from 4.2.2 to 5.0.0 in the github-actions-breaking group in https://github.com/hashicorp/go-version/pull/166
+- Bump the github-actions-breaking group across 1 directory with 2 updates in https://github.com/hashicorp/go-version/pull/171
+- [IND-4226] [COMPLIANCE] Update Copyright Headers in https://github.com/hashicorp/go-version/pull/172
+- drop init() in https://github.com/hashicorp/go-version/pull/175
+
 # 1.7.0 (May 24, 2024)
 
 ENHANCEMENTS:

@@ -3,4 +3,4 @@
 package lightsail
 
 // goModuleVersion is the tagged release for this module
-const goModuleVersion = "1.51.0"
+const goModuleVersion = "1.55.3"

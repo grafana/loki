@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -6,6 +6,7 @@ package v3
 import (
 	"context"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -38,6 +39,8 @@ type Link struct {
 	RootNode     *yaml.Node
 	index        *index.SpecIndex
 	context      context.Context
+	nodeStore    sync.Map
+	reference    low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -80,14 +83,21 @@ func (l *Link) GetKeyNode() *yaml.Node {
 // Build will extract extensions and servers from the node.
 func (l *Link) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	l.KeyNode = keyNode
-	l.Reference = new(low.Reference)
+	l.reference = low.Reference{}
+	l.Reference = &l.reference
 	if ok, _, ref := utils.IsNodeRefValue(root); ok {
 		l.SetReference(ref, root)
 	}
 	root = utils.NodeAlias(root)
 	l.RootNode = root
 	utils.CheckForMergeNodes(root)
-	l.Nodes = low.ExtractNodes(ctx, root)
+	l.nodeStore = sync.Map{}
+	l.Nodes = &l.nodeStore
+	if len(root.Content) > 0 {
+		l.NodeMap.ExtractNodes(root, false)
+	} else {
+		l.AddNode(root.Line, root)
+	}
 	l.Extensions = low.ExtractExtensions(root)
 	l.index = idx
 	l.context = ctx

@@ -6,15 +6,6 @@ import (
 	"go.opentelemetry.io/collector/featuregate"
 )
 
-var PdataUseCustomProtoEncodingFeatureGate = featuregate.GlobalRegistry().MustRegister(
-	"pdata.useCustomProtoEncoding",
-	featuregate.StageStable,
-	featuregate.WithRegisterDescription("When enabled, enable custom proto encoding. This is a required step to enable featuregate pdata.useProtoPooling."),
-	featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/issues/13631"),
-	featuregate.WithRegisterFromVersion("v0.133.0"),
-	featuregate.WithRegisterToVersion("v0.137.0"),
-)
-
 var PdataUseProtoPoolingFeatureGate = featuregate.GlobalRegistry().MustRegister(
 	"pdata.useProtoPooling",
 	featuregate.StageAlpha,
