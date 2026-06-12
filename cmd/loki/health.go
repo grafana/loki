@@ -3,14 +3,17 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
-	"gopkg.in/yaml.v2"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
 )
 
 const (
@@ -19,37 +22,68 @@ const (
 	healthTimeout    = 5 * time.Second
 )
 
-type serverHealthConfig struct {
-	Server struct {
-		HTTPListenAddress string `yaml:"http_listen_address"`
-		HTTPListenPort    int    `yaml:"http_listen_port"`
-		HTTPTLSConfig     struct {
-			TLSCertPath string `yaml:"cert_file"`
-			TLSKeyPath  string `yaml:"key_file"`
-			ClientCAs   string `yaml:"client_ca_file"`
-		} `yaml:"http_tls_config"`
-	} `yaml:"server"`
+type healthFlags struct {
+	health          bool
+	healthURL       string
+	configFile      string
+	configExpandEnv bool
+	tlsCert         string
+	tlsKey          string
+	tlsCA           string
+	skipVerify      bool
+}
+
+func parseHealthFlags(args []string) *healthFlags {
+	fs := flag.NewFlagSet("health", flag.ContinueOnError)
+	fs.Usage = func() {}
+
+	f := &healthFlags{}
+	fs.BoolVar(&f.health, "health", false, "")
+	fs.StringVar(&f.healthURL, "health.url", "", "")
+	fs.StringVar(&f.configFile, "config.file", "", "")
+	fs.BoolVar(&f.configExpandEnv, "config.expand-env", false, "")
+	fs.StringVar(&f.tlsCert, "health.tls.cert", "", "")
+	fs.StringVar(&f.tlsKey, "health.tls.key", "", "")
+	fs.StringVar(&f.tlsCA, "health.tls.ca", "", "")
+	fs.BoolVar(&f.skipVerify, "health.tls.skip-verify", false, "")
+
+	for len(args) > 0 {
+		err := fs.Parse(args)
+		if err == nil {
+			break
+		}
+		remaining := fs.Args()
+		if len(remaining) == 0 {
+			break
+		}
+		if !strings.HasPrefix(remaining[0], "-") {
+			args = remaining[1:]
+		} else {
+			args = remaining
+		}
+	}
+	return f
 }
 
 // CheckHealth checks if args contain the -health flag
 func CheckHealth(args []string) bool {
-	pattern := regexp.MustCompile(`^-+` + healthFlag + `$`)
-	for _, a := range args {
-		if pattern.MatchString(a) {
-			return true
-		}
-	}
-	return false
+	f := parseHealthFlags(args)
+	return f.health
 }
 
 // RunHealthCheck performs a health check against the /ready endpoint.
 // Returns exit code 0 if healthy, 1 if unhealthy.
 func RunHealthCheck(args []string) int {
-	serverCfg := loadServerHealthConfig(args)
+	f := parseHealthFlags(args)
+	serverCfg, err := loadServerHealthConfig(f)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
+		return 1
+	}
 
-	url := getHealthURL(args, serverCfg)
+	url := getHealthURL(f, serverCfg)
 
-	tlsConfig, err := getTLSConfig(args, serverCfg)
+	tlsConfig, err := getTLSConfig(f, serverCfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Health check TLS config error: %v\n", err)
 		return 1
@@ -78,40 +112,40 @@ func RunHealthCheck(args []string) int {
 	return 1
 }
 
-// loadServerHealthConfig parses server TLS/address fields from the -config.file arg.
-func loadServerHealthConfig(args []string) *serverHealthConfig {
-	cfgFile := getArgValue(args, "config.file")
-	if cfgFile == "" {
-		return nil
+// loadServerHealthConfig parses server TLS/address fields from the config file,
+// using dynamic unmarshaller to handle environment variables and defaults.
+func loadServerHealthConfig(f *healthFlags) (*loki.Config, error) {
+	if f.configFile == "" {
+		return nil, nil
 	}
 
-	data, err := os.ReadFile(cfgFile)
-	if err != nil {
-		return nil
+	// We construct a clean set of arguments containing only standard config flags
+	// that we've already parsed successfully using the flag package.
+	// This avoids passing health-check specific flags to Loki's dynamic config loader.
+	var loaderArgs []string
+	if f.configFile != "" {
+		loaderArgs = append(loaderArgs, "-config.file="+f.configFile)
+	}
+	if f.configExpandEnv {
+		loaderArgs = append(loaderArgs, "-config.expand-env=true")
 	}
 
-	var cfg serverHealthConfig
-	cfg.Server.HTTPListenPort = 3100
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil
+	// We use a fresh FlagSet to parse defaults and config file without contaminating the global flag.CommandLine.
+	fs := flag.NewFlagSet("health-config-loader", flag.ContinueOnError)
+	fs.Usage = func() {}
+
+	var wrapper loki.ConfigWrapper
+	if err := cfg.DynamicUnmarshal(&wrapper, loaderArgs, fs); err != nil {
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
 	}
-	return &cfg
+
+	return &wrapper.Config, nil
 }
 
 // getHealthURL extracts the URL from args or derives it from the server config.
-func getHealthURL(args []string, serverCfg *serverHealthConfig) string {
-	urlPattern := regexp.MustCompile(`^-+health\.url[=:]?(.*)$`)
-	argPattern := regexp.MustCompile(`^-`)
-
-	for i, a := range args {
-		if matches := urlPattern.FindStringSubmatch(a); matches != nil {
-			if matches[1] != "" {
-				return matches[1]
-			}
-			if i+1 < len(args) && !argPattern.MatchString(args[i+1]) {
-				return args[i+1]
-			}
-		}
+func getHealthURL(f *healthFlags, serverCfg *loki.Config) string {
+	if f.healthURL != "" {
+		return f.healthURL
 	}
 
 	if serverCfg != nil {
@@ -127,10 +161,10 @@ func getHealthURL(args []string, serverCfg *serverHealthConfig) string {
 		if port == 0 {
 			port = 3100
 		}
-		return fmt.Sprintf("%s://%s/ready", scheme, addr+":"+strconv.Itoa(port))
+		return fmt.Sprintf("%s://%s/ready", scheme, net.JoinHostPort(addr, strconv.Itoa(port)))
 	}
 
-	if getArgValue(args, "health.tls.cert") != "" || getArgValue(args, "health.tls.ca") != "" {
+	if f.tlsCert != "" || f.tlsCA != "" {
 		return "https://localhost:3100/ready"
 	}
 
@@ -139,17 +173,21 @@ func getHealthURL(args []string, serverCfg *serverHealthConfig) string {
 
 // getTLSConfig builds a *tls.Config for the health check client.
 // Explicit flags take priority; falls back to server config when none are set.
-func getTLSConfig(args []string, serverCfg *serverHealthConfig) (*tls.Config, error) {
-	cert := getArgValue(args, "health.tls.cert")
-	key := getArgValue(args, "health.tls.key")
-	ca := getArgValue(args, "health.tls.ca")
-	skip := hasFlag(args, "health.tls.skip-verify")
+func getTLSConfig(f *healthFlags, serverCfg *loki.Config) (*tls.Config, error) {
+	cert := f.tlsCert
+	key := f.tlsKey
+	ca := f.tlsCA
+	skip := f.skipVerify
 
 	if serverCfg != nil && cert == "" && key == "" && ca == "" && !skip {
 		ca = serverCfg.Server.HTTPTLSConfig.ClientCAs
 		if serverCfg.Server.HTTPTLSConfig.TLSCertPath != "" && ca == "" {
-			skip = true
+			return nil, fmt.Errorf("server TLS is enabled but client CA is not configured; use -health.tls.skip-verify to skip verification")
 		}
+	}
+
+	if skip && ca != "" {
+		return nil, fmt.Errorf("cannot use both -health.tls.skip-verify and -health.tls.ca")
 	}
 
 	if cert == "" && key == "" && ca == "" && !skip {
@@ -158,6 +196,7 @@ func getTLSConfig(args []string, serverCfg *serverHealthConfig) (*tls.Config, er
 
 	cfg := &tls.Config{
 		InsecureSkipVerify: skip, //nolint:gosec
+		MinVersion:         tls.VersionTLS13,
 	}
 
 	if ca != "" {
@@ -184,33 +223,4 @@ func getTLSConfig(args []string, serverCfg *serverHealthConfig) (*tls.Config, er
 	}
 
 	return cfg, nil
-}
-
-// getArgValue extracts a named flag's value from args (-flag=value or -flag value).
-func getArgValue(args []string, flag string) string {
-	pattern := regexp.MustCompile(`^-+` + regexp.QuoteMeta(flag) + `[=:]?(.*)$`)
-	argPattern := regexp.MustCompile(`^-`)
-
-	for i, a := range args {
-		if matches := pattern.FindStringSubmatch(a); matches != nil {
-			if matches[1] != "" {
-				return matches[1]
-			}
-			if i+1 < len(args) && !argPattern.MatchString(args[i+1]) {
-				return args[i+1]
-			}
-		}
-	}
-	return ""
-}
-
-// hasFlag checks if a boolean flag is present in args
-func hasFlag(args []string, flag string) bool {
-	pattern := regexp.MustCompile(`^-+` + regexp.QuoteMeta(flag) + `$`)
-	for _, a := range args {
-		if pattern.MatchString(a) {
-			return true
-		}
-	}
-	return false
 }
