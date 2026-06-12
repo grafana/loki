@@ -65,7 +65,6 @@ type serialIndexer struct {
 	// Worker management
 	buildRequestChan chan buildRequest
 	buildWorkerWg    sync.WaitGroup
-	downloadWorkerWg sync.WaitGroup
 }
 
 // newSerialIndexer creates a new self-contained SerialIndexer
@@ -126,7 +125,6 @@ func (si *serialIndexer) stopping(_ error) error {
 	close(si.buildRequestChan)
 
 	// Wait for workers to finish
-	si.downloadWorkerWg.Wait()
 	si.buildWorkerWg.Wait()
 
 	level.Info(si.logger).Log("msg", "stopped serial indexer")
@@ -292,6 +290,10 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 	// downloadedObjects is closed from the worker, which owns the lifetime of the chan.
 	downloadedObjects := make(chan downloadedObject)
 
+	// Ensure the download workers are terminated when the function returns
+	enqueueCtx, enqueueCancel := context.WithCancel(ctx)
+	defer enqueueCancel()
+
 	go downloadWorker(ctx, si.logger, downloadQueue, si.objectBucket, downloadedObjects)
 	go func() {
 		// Submit jobs to the worker. Close downloadQueue when all jobs are submitted,
@@ -300,7 +302,7 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 		for _, event := range events {
 			select {
 			case downloadQueue <- event:
-			case <-ctx.Done():
+			case <-enqueueCtx.Done():
 				return
 			}
 		}
