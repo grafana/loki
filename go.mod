@@ -101,7 +101,7 @@ require (
 	github.com/DataDog/sketches-go v1.4.8
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.21.4
-	github.com/IBM/ibm-cos-sdk-go v1.14.0
+	github.com/IBM/ibm-cos-sdk-go v1.14.1
 	github.com/apache/arrow-go/v18 v18.6.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.99.1
 	github.com/axiomhq/hyperloglog v0.2.6
