@@ -11,6 +11,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
+var allChunkFormats = []int{FormatV2, FormatV3, FormatV4}
+
 // Test all sort variants
 func TestChunkMetasSort(t *testing.T) {
 	for _, tc := range []struct {
@@ -419,11 +421,7 @@ func chkFrom(i int) ChunkMeta {
 }
 
 func TestChunkEncodingRoundTrip(t *testing.T) {
-	for _, version := range []int{
-		FormatV2,
-		FormatV3,
-		FormatV4,
-	} {
+	for _, version := range allChunkFormats {
 		for _, nChks := range []int{
 			0,
 			8,
@@ -612,11 +610,7 @@ func TestSearchWithPageMarkers(t *testing.T) {
 
 func TestDecoderChunkStats(t *testing.T) {
 	for _, pageSize := range []int{2, 10} {
-		for _, version := range []int{
-			FormatV2,
-			FormatV3,
-			FormatV4,
-		} {
+		for _, version := range allChunkFormats {
 			for _, tc := range []struct {
 				desc          string
 				chks          []ChunkMeta
@@ -731,7 +725,7 @@ func BenchmarkChunkStats(b *testing.B) {
 		chks := mkChks(nChks)
 		// Only request the middle 20% of chunks.
 		from, through := int64(nChks*40/100), int64(nChks*60/100)
-		for _, version := range []int{FormatV2, FormatV3, FormatV4} {
+		for _, version := range allChunkFormats {
 			b.Run(fmt.Sprintf("version %d/%d chunks", version, nChks), func(b *testing.B) {
 				var w Creator
 				w.Version = version
@@ -756,7 +750,7 @@ func BenchmarkReadChunks(b *testing.B) {
 		res := ChunkMetasPool.Get()
 		// Only request the middle 20% of chunks.
 		from, through := int64(nChks*40/100), int64(nChks*60/100)
-		for _, version := range []int{FormatV2, FormatV3, FormatV4} {
+		for _, version := range allChunkFormats {
 			b.Run(fmt.Sprintf("version %d/%d chunks", version, nChks), func(b *testing.B) {
 				var w Creator
 				w.Version = version
