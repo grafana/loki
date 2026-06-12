@@ -412,6 +412,10 @@ does not apply to them. Parity re-confirmed against the same gogo baseline
 435 MiB p=0.256, allocs 102.8k p=0.177; logproto `Merge*` ×6 all
 non-significant (time geomean −0.31%), B/op and allocs byte-identical.
 
-NOTE: the committed generated code is now ahead of the `go.mod` pin
-(`4f41063`) — regen-vs-pinned-binary checks will mismatch until a wiresmith
-release containing `databases`@`854b4c6` is published and pinned.
+NOTE: `go.mod` is now pinned to the `databases` pseudo-version
+`v0.0.0-20260612130815-854b4c6268c2` (`databases`@`854b4c6`), which is the
+binary that produced the committed generated code — regen-vs-pinned-binary is
+byte-identical. Remaining step: bump to the `wiresmith` main pseudo-version
+once `databases` merges to main. The squash-merge will orphan the `854b4c6`
+commit, but the module proxy keeps the pseudo-version fetchable indefinitely,
+so the pin stays valid until that bump.
