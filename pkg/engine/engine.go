@@ -312,11 +312,11 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		q.RecordError(ctx, errors.New("failed to execute query"))
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
-	closePipeline := func() {
+	closePipeline := sync.OnceFunc(func() {
 		start := time.Now()
 		pipeline.Close()
 		q.rootRegion.Record(statCloseDuration.Observe(int64(time.Since(start))))
-	}
+	})
 	defer closePipeline()
 
 	gotrace.Log(ctx, "collect_result", "start")
