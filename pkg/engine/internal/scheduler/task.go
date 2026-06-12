@@ -205,12 +205,15 @@ func (t *task) TryAssign(doAssign func() error) error {
 //
 // The recorded durations partition the task's total lifetime:
 //
-//   - [schedulerstat.TaskQueueDuration] is recorded if the task was enqueued
-//     but never assigned to a worker (covering pre-assignment cancellations
-//     of queued tasks). Tasks that were assigned have their queue duration
-//     recorded earlier, at assignment time.
+//   - [schedulerstat.TaskQueueDuration] is recorded for any task that was
+//     enqueued. It spans from enqueue until assignment, or until the terminal
+//     state if the task was never assigned. Recording it here, rather than in
+//     [finalizeAssignment] to ensure we record it before the region ends for
+//     tasks that reach terminal state even before assignment finalization.
+//
 //   - [schedulerstat.TaskExecutionDuration] is recorded for any task that
 //     was assigned to a worker.
+//
 //   - [schedulerstat.TaskTotalDuration] is always recorded.
 //
 // It also records [schedulerstat.TaskFinishTime], the absolute terminal
@@ -225,8 +228,14 @@ func (t *task) RecordTerminalObservations(now time.Time) {
 
 	t.region.Record(schedulerstat.TaskAssignmentRetries.Observe(int64(requeues)))
 
-	if !queueTime.IsZero() && assignTime.IsZero() {
-		t.region.Record(schedulerstat.TaskQueueDuration.Observe(now.Sub(queueTime).Nanoseconds()))
+	if !queueTime.IsZero() {
+		// Queue time ends at assignment, or at the terminal state if the task
+		// was never assigned.
+		queueEnd := now
+		if !assignTime.IsZero() {
+			queueEnd = assignTime
+		}
+		t.region.Record(schedulerstat.TaskQueueDuration.Observe(queueEnd.Sub(queueTime).Nanoseconds()))
 	}
 	if !assignTime.IsZero() {
 		t.region.Record(schedulerstat.TaskExecutionDuration.Observe(now.Sub(assignTime).Nanoseconds()))

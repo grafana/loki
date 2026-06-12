@@ -133,7 +133,7 @@ func (t *thread) setState(state threadState) {
 func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer job.Close()
 
-	setupStart := time.Now()
+	startTime := time.Now()
 	taskType := taskTypeLabel(job.Task)
 
 	ctx, task := gotrace.NewTask(ctx, "thread.runJob")
@@ -164,7 +164,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		countCachedSources += len(streams)
 	}
 
-	startTime := time.Now()
 	level.Info(logger).Log(
 		"msg", "starting task",
 		"plan", physical.PrintAsTree(job.Task.Fragment),
@@ -301,7 +300,9 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 	// Record the time spent preparing the task before we begin draining its
 	// pipeline (planning, pipeline construction, and source binding setup).
-	t.Metrics.setupSeconds.WithLabelValues(taskType).Observe(time.Since(setupStart).Seconds())
+	setupDuration := time.Since(startTime)
+	span.Record(workerstat.TaskExecutionSetupDuration.Observe(setupDuration.Nanoseconds()))
+	t.Metrics.setupSeconds.WithLabelValues(taskType).Observe(setupDuration.Seconds())
 
 	gotrace.Log(ctx, "drain_pipeline", "start")
 	_, drainErr := t.drainPipeline(ctx, taskType, pipeline, sinksForJob(job), logger)

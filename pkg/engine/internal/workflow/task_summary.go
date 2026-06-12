@@ -29,11 +29,12 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		durExecution = xcap.Value[int64](capture, schedulerstat.TaskExecutionDuration)
 		durOther     = durTotal - durStaging - durQueue - durExecution
 
+		durExecutionSetup    = xcap.Value[int64](capture, workerstat.TaskExecutionSetupDuration)
 		durExecutionOpen     = xcap.Value[int64](capture, workerstat.TaskExecutionOpenDuration)
 		durExecutionRead     = xcap.Value[int64](capture, workerstat.TaskExecutionReadDuration)
 		durExecutionReadRecv = xcap.Value[int64](capture, workerstat.TaskExecutionReadRecvDuration)
 		durExecutionSend     = xcap.Value[int64](capture, workerstat.TaskExecutionSendDuration)
-		durExecutionOther    = durExecution - durExecutionOpen - durExecutionRead - durExecutionSend
+		durExecutionOther    = durExecution - durExecutionSetup - durExecutionOpen - durExecutionRead - durExecutionSend
 
 		pagesDownloaded = xcap.Value[int64](capture, xcap.StatDatasetPrimaryPagesDownloaded) + xcap.Value[int64](capture, xcap.StatDatasetSecondaryPagesDownloaded)
 		bytesDownloaded = xcap.Value[int64](capture, xcap.StatDatasetPrimaryColumnBytes) + xcap.Value[int64](capture, xcap.StatDatasetSecondaryColumnBytes)
@@ -65,6 +66,7 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		"duration_other_ms", time.Duration(durOther).Milliseconds(),
 
 		// Breakdown timings
+		"duration_execution_setup_ms", time.Duration(durExecutionSetup).Milliseconds(),
 		"duration_execution_open_ms", time.Duration(durExecutionOpen).Milliseconds(),
 		"duration_execution_read_ms", time.Duration(durExecutionRead).Milliseconds(),
 		"duration_execution_read_recv_ms", time.Duration(durExecutionReadRecv).Milliseconds(),
