@@ -365,6 +365,11 @@ func parseLines(input arrow.RecordBatch, sourceCol *array.String, columnBuilders
 
 		// Add values for parsed keys
 		for key, value := range parsed {
+			if key == semconv.ColumnIdentError.ShortName() ||
+				key == semconv.ColumnIdentErrorDetails.ShortName() {
+				continue // reserved; managed by error-handling above
+			}
+
 			seenKeys[key] = struct{}{}
 			builder, exists := columnBuilders[key]
 			if !exists {

@@ -807,10 +807,10 @@ func readStatsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.
 	return rows
 }
 
-// countingBucket wraps an objstore.Bucket and counts Exists and Upload calls.
+// countingBucket wraps an objstore.Bucket and counts Get and Upload calls.
 type countingBucket struct {
 	underlying  objstore.Bucket
-	existsCount int64
+	getCount    int64
 	uploadCount int64
 }
 
@@ -826,11 +826,11 @@ func (cb *countingBucket) Upload(ctx context.Context, name string, r io.Reader) 
 }
 
 func (cb *countingBucket) Exists(ctx context.Context, name string) (bool, error) {
-	cb.existsCount++
 	return cb.underlying.Exists(ctx, name)
 }
 
 func (cb *countingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	cb.getCount++
 	return cb.underlying.Get(ctx, name)
 }
 
@@ -896,8 +896,8 @@ func (cb *countingBucket) Close() error {
 	return cb.underlying.Close()
 }
 
-func (cb *countingBucket) ExistsCount() int64 {
-	return cb.existsCount
+func (cb *countingBucket) GetCount() int64 {
+	return cb.getCount
 }
 
 func (cb *countingBucket) UploadCount() int64 {
@@ -905,7 +905,7 @@ func (cb *countingBucket) UploadCount() int64 {
 }
 
 func (cb *countingBucket) ResetCounts() {
-	cb.existsCount = 0
+	cb.getCount = 0
 	cb.uploadCount = 0
 }
 
@@ -1223,8 +1223,8 @@ func TestExecuteIndexMerge_ExistenceShortCircuit(t *testing.T) {
 	err = execCtx.doIndexMerge(ctx, node)
 	require.NoError(t, err)
 
-	// Verify Exists was called once and Upload was not called.
-	require.Equal(t, int64(1), bucket.ExistsCount())
+	// Verify the output was probed once via Get and Upload was not called.
+	require.Equal(t, int64(1), bucket.GetCount())
 	require.Equal(t, int64(0), bucket.UploadCount())
 }
 

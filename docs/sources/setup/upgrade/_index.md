@@ -37,6 +37,20 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Removal of deprecated `/api/prom` API endpoints
+
+The legacy Prometheus-compatible `/api/prom` endpoints that were deprecated in Loki 2.x have been removed:
+
+| Removed endpoint  | Replacement |
+| ----------------- | ----------- |
+| `/api/prom/push`  | [Ingest logs](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#ingest-logs) |
+| `/api/prom/tail`  | [Stream logs](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#stream-logs) |
+| `/api/prom/query` | [Query logs at a single point in time](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#query-logs-at-a-single-point-in-time) |
+| `/api/prom/label` | [Query labels](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#query-labels) |
+| `/api/prom/rules` | [Rules endpoints](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#rules-endpoints) |
+
+You must migrate any clients, dashboards, or automation that still use these endpoints to their `/loki/api/v1/` equivalents before upgrading. Requests to the removed endpoints will result in `404` errors.
+
 ### Breaking change: Removal of various configuration options
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.

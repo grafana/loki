@@ -33,22 +33,6 @@ const (
 	PathLokiPush = "/loki/api/v1/push"
 )
 
-// Prometheus-compatible (legacy) API path constants.
-const (
-	PathPromQuery           = "/api/prom/query"
-	PathPromLabel           = "/api/prom/label"
-	PathPromLabelPrefix     = "/api/prom/label/" // prefix for path matching
-	PathPromLabelSuffix     = "/values"
-	PathPromLabelNameValues = "/api/prom/label/{name}/values"
-	PathPromSeries          = "/api/prom/series"
-	PathPromPush            = "/api/prom/push"
-	PathPromTail            = "/api/prom/tail"
-	// Ruler
-	PathPromRules               = "/api/prom/rules"
-	PathPromRulesNamespace      = "/api/prom/rules/{namespace}"
-	PathPromRulesNamespaceGroup = "/api/prom/rules/{namespace}/{groupName}"
-)
-
 // Prometheus API paths (used by ruler).
 const (
 	PathPrometheusRules  = "/prometheus/api/v1/rules"
