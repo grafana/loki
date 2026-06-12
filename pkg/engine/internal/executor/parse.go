@@ -420,3 +420,15 @@ func unsafeBytes(s string) []byte {
 func unsafeString(b []byte) string {
 	return unsafe.String(unsafe.SliceData(b), len(b))
 }
+
+// valueStrOrEmpty returns the column's string value at row i, treating null
+// entries as the empty string. This matches v1 query engine where
+// an absent label reads as "": template expressions
+// like `{{.field}}` then render consistently regardless of whether the parser
+// produced a null entry on a present column or omitted the column entirely.
+func valueStrOrEmpty(col arrow.Array, i int) string {
+	if col.IsNull(i) {
+		return ""
+	}
+	return col.ValueStr(i)
+}
