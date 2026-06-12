@@ -13,6 +13,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
@@ -29,6 +30,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/grafana/loki/v3/pkg/labelaccess"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
@@ -51,9 +54,9 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/loki/codec"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
-	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/v3/pkg/pattern"
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -75,6 +78,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/fakeauth"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
+
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -85,6 +89,7 @@ import (
 type Config struct {
 	Target       flagext.StringSliceCSV `yaml:"target,omitempty"`
 	AuthEnabled  bool                   `yaml:"auth_enabled,omitempty"`
+	LBAC         labelaccess.Config     `yaml:"lbac,omitempty" category:"experimental"`
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
@@ -159,6 +164,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"Enables authentication through the X-Scope-OrgID header, which must be present if true. "+
 			"If false, the OrgID will always be set to 'fake'.",
 	)
+	c.LBAC.RegisterFlags(f)
 	f.IntVar(&c.BallastBytes, "config.ballast-bytes", 0,
 		"The amount of virtual memory in bytes to reserve as ballast in order to optimize garbage collection. "+
 			"Larger ballasts result in fewer garbage collection passes, reducing CPU overhead at the cost of heap size. "+
@@ -385,12 +391,6 @@ type Frontend interface {
 	CheckReady(_ context.Context) error
 }
 
-// Codec defines methods to encode and decode requests from HTTP, httpgrpc and Protobuf.
-type Codec interface {
-	transport.Codec
-	worker.RequestCodec
-}
-
 // Loki is the root datastructure for Loki.
 type Loki struct {
 	Cfg Config
@@ -459,7 +459,7 @@ type Loki struct {
 	PushParserWrapper  push.RequestParserWrapper
 	HTTPAuthMiddleware middleware.Interface
 
-	Codec   Codec
+	Codec   codec.Codec
 	Metrics *server.Metrics
 
 	UsageTracker push.UsageTracker
@@ -479,11 +479,13 @@ func New(cfg Config) (*Loki, error) {
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
 	loki.setupGRPCRecoveryMiddleware()
+
 	if err := loki.setupModuleManager(); err != nil {
 		return nil, err
 	}
 
 	return loki, nil
+
 }
 
 func (t *Loki) setupAuthMiddleware() {
@@ -500,6 +502,16 @@ func (t *Loki) setupAuthMiddleware() {
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
 			"/grpc.JobQueue/Loop",
 		})
+
+	if t.Cfg.LBAC.Enabled {
+		level.Info(util_log.Logger).Log("msg", "LBAC enabled")
+		t.HTTPAuthMiddleware = middleware.Merge(
+			t.HTTPAuthMiddleware,
+			labelaccess.NewLabelAccessMiddleware(
+				log.With(util_log.Logger, "component", "label_access_middleware"),
+			),
+		)
+	}
 }
 
 func (t *Loki) setupGRPCRecoveryMiddleware() {
@@ -947,6 +959,13 @@ func (t *Loki) setupModuleManager() error {
 
 	if t.isModuleActive(Ingester) {
 		if err := mm.AddDependency(Analytics, Ring); err != nil {
+			return err
+		}
+	}
+
+	if t.Cfg.LBAC.Enabled {
+		err := t.setupLBAC()
+		if err != nil {
 			return err
 		}
 	}
