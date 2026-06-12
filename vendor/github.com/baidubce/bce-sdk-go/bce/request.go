@@ -361,8 +361,9 @@ func NewBodyFromReaderV2(r io.Reader, size int64) (*Body, error) {
 // BceRequest defines the request structure for accessing BCE services
 type BceRequest struct {
 	http.Request
-	requestId   string
-	clientError *BceClientError
+	requestId        string
+	clientError      *BceClientError
+	withOutRequestId bool
 }
 
 func (b *BceRequest) RequestId() string { return b.requestId }
@@ -372,6 +373,10 @@ func (b *BceRequest) SetRequestId(val string) { b.requestId = val }
 func (b *BceRequest) ClientError() *BceClientError { return b.clientError }
 
 func (b *BceRequest) SetClientError(err *BceClientError) { b.clientError = err }
+
+func (b *BceRequest) SetWithOutRequestId(val bool) { b.withOutRequestId = val }
+
+func (b *BceRequest) WithOutRequestId() bool { return b.withOutRequestId }
 
 func (b *BceRequest) SetBody(body *Body) { // override SetBody derived from http.Request
 	if _, ok := body.Stream().(*TeeReadNopCloser); ok {
@@ -395,7 +400,9 @@ func (b *BceRequest) BuildHttpRequest() {
 		// Construct the request ID with UUID
 		b.requestId = util.NewRequestId()
 	}
-	b.SetHeader(http.BCE_REQUEST_ID, b.requestId)
+	if !b.withOutRequestId {
+		b.SetHeader(http.BCE_REQUEST_ID, b.requestId)
+	}
 }
 
 func (b *BceRequest) String() string {
