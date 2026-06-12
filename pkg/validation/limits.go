@@ -434,9 +434,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(
 		&l.TSDBShardingStrategy,
 		"limits.tsdb-sharding-strategy",
-		logql.PowerOfTwoVersion.String(),
+		logql.BoundedVersion.String(),
 		fmt.Sprintf(
-			"sharding strategy to use in query planning. Suggested to use %s once all nodes can recognize it.",
+			"DEPRECATED: Defines the sharding strategy to use in query planning. Use '%s' only.",
 			logql.BoundedVersion.String(),
 		),
 	)
@@ -682,8 +682,8 @@ func (l *Limits) Validate() error {
 		}
 	}
 
-	if _, err := logql.ParseShardVersion(l.TSDBShardingStrategy); err != nil {
-		return errors.Wrap(err, "invalid tsdb sharding strategy")
+	if l.TSDBShardingStrategy != logql.BoundedVersion.String() {
+		return fmt.Errorf("invalid tsdb sharding strategy, only %s is supported", logql.BoundedVersion.String())
 	}
 
 	if _, err := compression.ParseCodec(l.BloomBlockEncoding); err != nil {

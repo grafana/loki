@@ -4498,10 +4498,10 @@ discover_generic_fields:
 # CLI flag: -querier.tsdb-max-bytes-per-shard
 [tsdb_max_bytes_per_shard: <int> | default = 600MB]
 
-# sharding strategy to use in query planning. Suggested to use bounded once all
-# nodes can recognize it.
+# DEPRECATED: Defines the sharding strategy to use in query planning. Use
+# 'bounded' only.
 # CLI flag: -limits.tsdb-sharding-strategy
-[tsdb_sharding_strategy: <string> | default = "power_of_two"]
+[tsdb_sharding_strategy: <string> | default = "bounded"]
 
 # Precompute chunks for TSDB queries. This can improve query performance at the
 # cost of increased memory usage by computing chunks once during planning,
