@@ -30,6 +30,7 @@ local grafana = import 'grafonnet/grafana.libsonnet';
         // This dashboard uses the new grid system in order to place panels (using gridPos).
         // Because of this we can't use the mixin's addRow() and addPanel().
         schemaVersion: 27,
+        uid: 'canary',
         rows: null,
         // ugly hack, copy pasta the tag/link
         // code from the loki-mixin
