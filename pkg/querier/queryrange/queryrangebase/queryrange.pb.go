@@ -702,10 +702,8 @@ func (m *PrometheusRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusRequestHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusRequestHeader, 0, c)
 			}
 		}
 	}
@@ -1190,20 +1188,16 @@ func (m *PrometheusResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 		if c := field6count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Warnings) + c; cap(m.Warnings) < need {
-				grown := make([]string, len(m.Warnings), need)
-				copy(grown, m.Warnings)
-				m.Warnings = grown
+			if len(m.Warnings) == 0 && cap(m.Warnings) < c {
+				m.Warnings = make([]string, 0, c)
 			}
 		}
 	}
@@ -1600,10 +1594,8 @@ func (m *PrometheusData) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Result) + c; cap(m.Result) < need {
-				grown := make([]SampleStream, len(m.Result), need)
-				copy(grown, m.Result)
-				m.Result = grown
+			if len(m.Result) == 0 && cap(m.Result) < c {
+				m.Result = make([]SampleStream, 0, c)
 			}
 		}
 	}
@@ -1821,20 +1813,16 @@ func (m *SampleStream) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Labels) + c; cap(m.Labels) < need {
-				grown := make([]logproto.LabelAdapter, len(m.Labels), need)
-				copy(grown, m.Labels)
-				m.Labels = grown
+			if len(m.Labels) == 0 && cap(m.Labels) < c {
+				m.Labels = make([]logproto.LabelAdapter, 0, c)
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Samples) + c; cap(m.Samples) < need {
-				grown := make([]logproto.LegacySample, len(m.Samples), need)
-				copy(grown, m.Samples)
-				m.Samples = grown
+			if len(m.Samples) == 0 && cap(m.Samples) < c {
+				m.Samples = make([]logproto.LegacySample, 0, c)
 			}
 		}
 	}

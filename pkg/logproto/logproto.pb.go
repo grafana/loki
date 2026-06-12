@@ -6179,10 +6179,8 @@ func (m *UniqueLabelValues) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Values) + c; cap(m.Values) < need {
-				grown := make([]string, len(m.Values), need)
-				copy(grown, m.Values)
-				m.Values = grown
+			if len(m.Values) == 0 && cap(m.Values) < c {
+				m.Values = make([]string, 0, c)
 			}
 		}
 	}
@@ -6407,10 +6405,8 @@ func (m *StreamRatesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.StreamRates) + c; cap(m.StreamRates) < need {
-				grown := make([]*StreamRate, len(m.StreamRates), need)
-				copy(grown, m.StreamRates)
-				m.StreamRates = grown
+			if len(m.StreamRates) == 0 && cap(m.StreamRates) < c {
+				m.StreamRates = make([]*StreamRate, 0, c)
 			}
 		}
 	}
@@ -6798,20 +6794,16 @@ func (m *QueryRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Shards) + c; cap(m.Shards) < need {
-				grown := make([]string, len(m.Shards), need)
-				copy(grown, m.Shards)
-				m.Shards = grown
+			if len(m.Shards) == 0 && cap(m.Shards) < c {
+				m.Shards = make([]string, 0, c)
 			}
 		}
 		if c := field8count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Deletes) + c; cap(m.Deletes) < need {
-				grown := make([]*Delete, len(m.Deletes), need)
-				copy(grown, m.Deletes)
-				m.Deletes = grown
+			if len(m.Deletes) == 0 && cap(m.Deletes) < c {
+				m.Deletes = make([]*Delete, 0, c)
 			}
 		}
 	}
@@ -7325,20 +7317,16 @@ func (m *SampleQueryRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Shards) + c; cap(m.Shards) < need {
-				grown := make([]string, len(m.Shards), need)
-				copy(grown, m.Shards)
-				m.Shards = grown
+			if len(m.Shards) == 0 && cap(m.Shards) < c {
+				m.Shards = make([]string, 0, c)
 			}
 		}
 		if c := field5count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Deletes) + c; cap(m.Deletes) < need {
-				grown := make([]*Delete, len(m.Deletes), need)
-				copy(grown, m.Deletes)
-				m.Deletes = grown
+			if len(m.Deletes) == 0 && cap(m.Deletes) < c {
+				m.Deletes = make([]*Delete, 0, c)
 			}
 		}
 	}
@@ -8058,20 +8046,16 @@ func (m *QueryResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Streams) + c; cap(m.Streams) < need {
-				grown := make([]push.Stream, len(m.Streams), need)
-				copy(grown, m.Streams)
-				m.Streams = grown
+			if len(m.Streams) == 0 && cap(m.Streams) < c {
+				m.Streams = make([]push.Stream, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Warnings) + c; cap(m.Warnings) < need {
-				grown := make([]string, len(m.Warnings), need)
-				copy(grown, m.Warnings)
-				m.Warnings = grown
+			if len(m.Warnings) == 0 && cap(m.Warnings) < c {
+				m.Warnings = make([]string, 0, c)
 			}
 		}
 	}
@@ -8337,20 +8321,16 @@ func (m *SampleQueryResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Series) + c; cap(m.Series) < need {
-				grown := make([]Series, len(m.Series), need)
-				copy(grown, m.Series)
-				m.Series = grown
+			if len(m.Series) == 0 && cap(m.Series) < c {
+				m.Series = make([]Series, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Warnings) + c; cap(m.Warnings) < need {
-				grown := make([]string, len(m.Warnings), need)
-				copy(grown, m.Warnings)
-				m.Warnings = grown
+			if len(m.Warnings) == 0 && cap(m.Warnings) < c {
+				m.Warnings = make([]string, 0, c)
 			}
 		}
 	}
@@ -8886,10 +8866,8 @@ func (m *LabelResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Values) + c; cap(m.Values) < need {
-				grown := make([]string, len(m.Values), need)
-				copy(grown, m.Values)
-				m.Values = grown
+			if len(m.Values) == 0 && cap(m.Values) < c {
+				m.Values = make([]string, 0, c)
 			}
 		}
 	}
@@ -9286,10 +9264,8 @@ func (m *Series) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Samples) + c; cap(m.Samples) < need {
-				grown := make([]Sample, len(m.Samples), need)
-				copy(grown, m.Samples)
-				m.Samples = grown
+			if len(m.Samples) == 0 && cap(m.Samples) < c {
+				m.Samples = make([]Sample, 0, c)
 			}
 		}
 	}
@@ -9787,10 +9763,8 @@ func (m *TailResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.DroppedStreams) + c; cap(m.DroppedStreams) < need {
-				grown := make([]*DroppedStream, len(m.DroppedStreams), need)
-				copy(grown, m.DroppedStreams)
-				m.DroppedStreams = grown
+			if len(m.DroppedStreams) == 0 && cap(m.DroppedStreams) < c {
+				m.DroppedStreams = make([]*DroppedStream, 0, c)
 			}
 		}
 	}
@@ -10010,20 +9984,16 @@ func (m *SeriesRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Groups) + c; cap(m.Groups) < need {
-				grown := make([]string, len(m.Groups), need)
-				copy(grown, m.Groups)
-				m.Groups = grown
+			if len(m.Groups) == 0 && cap(m.Groups) < c {
+				m.Groups = make([]string, 0, c)
 			}
 		}
 		if c := field4count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Shards) + c; cap(m.Shards) < need {
-				grown := make([]string, len(m.Shards), need)
-				copy(grown, m.Shards)
-				m.Shards = grown
+			if len(m.Shards) == 0 && cap(m.Shards) < c {
+				m.Shards = make([]string, 0, c)
 			}
 		}
 	}
@@ -10333,10 +10303,8 @@ func (m *SeriesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Series) + c; cap(m.Series) < need {
-				grown := make([]SeriesIdentifier, len(m.Series), need)
-				copy(grown, m.Series)
-				m.Series = grown
+			if len(m.Series) == 0 && cap(m.Series) < c {
+				m.Series = make([]SeriesIdentifier, 0, c)
 			}
 		}
 	}
@@ -10654,10 +10622,8 @@ func (m *SeriesIdentifier) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Labels) + c; cap(m.Labels) < need {
-				grown := make([]SeriesIdentifier_LabelsEntry, len(m.Labels), need)
-				copy(grown, m.Labels)
-				m.Labels = grown
+			if len(m.Labels) == 0 && cap(m.Labels) < c {
+				m.Labels = make([]SeriesIdentifier_LabelsEntry, 0, c)
 			}
 		}
 	}
@@ -11772,10 +11738,8 @@ func (m *GetChunkIDsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.ChunkIDs) + c; cap(m.ChunkIDs) < need {
-				grown := make([]string, len(m.ChunkIDs), need)
-				copy(grown, m.ChunkIDs)
-				m.ChunkIDs = grown
+			if len(m.ChunkIDs) == 0 && cap(m.ChunkIDs) < c {
+				m.ChunkIDs = make([]string, 0, c)
 			}
 		}
 	}
@@ -12157,10 +12121,8 @@ func (m *ChunkRefGroup) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Refs) + c; cap(m.Refs) < need {
-				grown := make([]*ChunkRef, len(m.Refs), need)
-				copy(grown, m.Refs)
-				m.Refs = grown
+			if len(m.Refs) == 0 && cap(m.Refs) < c {
+				m.Refs = make([]*ChunkRef, 0, c)
 			}
 		}
 	}
@@ -12886,10 +12848,8 @@ func (m *GetChunkRefRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Filters) + c; cap(m.Filters) < need {
-				grown := make([]syntax.LineFilter, len(m.Filters), need)
-				copy(grown, m.Filters)
-				m.Filters = grown
+			if len(m.Filters) == 0 && cap(m.Filters) < c {
+				m.Filters = make([]syntax.LineFilter, 0, c)
 			}
 		}
 	}
@@ -13208,10 +13168,8 @@ func (m *GetChunkRefResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Refs) + c; cap(m.Refs) < need {
-				grown := make([]*ChunkRef, len(m.Refs), need)
-				copy(grown, m.Refs)
-				m.Refs = grown
+			if len(m.Refs) == 0 && cap(m.Refs) < c {
+				m.Refs = make([]*ChunkRef, 0, c)
 			}
 		}
 	}
@@ -13587,10 +13545,8 @@ func (m *GetSeriesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Series) + c; cap(m.Series) < need {
-				grown := make([]IndexSeries, len(m.Series), need)
-				copy(grown, m.Series)
-				m.Series = grown
+			if len(m.Series) == 0 && cap(m.Series) < c {
+				m.Series = make([]IndexSeries, 0, c)
 			}
 		}
 	}
@@ -13760,10 +13716,8 @@ func (m *IndexSeries) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Labels) + c; cap(m.Labels) < need {
-				grown := make([]LabelAdapter, len(m.Labels), need)
-				copy(grown, m.Labels)
-				m.Labels = grown
+			if len(m.Labels) == 0 && cap(m.Labels) < c {
+				m.Labels = make([]LabelAdapter, 0, c)
 			}
 		}
 	}
@@ -14263,10 +14217,8 @@ func (m *VolumeRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.TargetLabels) + c; cap(m.TargetLabels) < need {
-				grown := make([]string, len(m.TargetLabels), need)
-				copy(grown, m.TargetLabels)
-				m.TargetLabels = grown
+			if len(m.TargetLabels) == 0 && cap(m.TargetLabels) < c {
+				m.TargetLabels = make([]string, 0, c)
 			}
 		}
 	}
@@ -14682,10 +14634,8 @@ func (m *VolumeResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Volumes) + c; cap(m.Volumes) < need {
-				grown := make([]Volume, len(m.Volumes), need)
-				copy(grown, m.Volumes)
-				m.Volumes = grown
+			if len(m.Volumes) == 0 && cap(m.Volumes) < c {
+				m.Volumes = make([]Volume, 0, c)
 			}
 		}
 	}
@@ -15375,20 +15325,16 @@ func (m *DetectedFieldsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Fields) + c; cap(m.Fields) < need {
-				grown := make([]*DetectedField, len(m.Fields), need)
-				copy(grown, m.Fields)
-				m.Fields = grown
+			if len(m.Fields) == 0 && cap(m.Fields) < c {
+				m.Fields = make([]*DetectedField, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Values) + c; cap(m.Values) < need {
-				grown := make([]string, len(m.Values), need)
-				copy(grown, m.Values)
-				m.Values = grown
+			if len(m.Values) == 0 && cap(m.Values) < c {
+				m.Values = make([]string, 0, c)
 			}
 		}
 	}
@@ -15634,20 +15580,16 @@ func (m *DetectedField) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Parsers) + c; cap(m.Parsers) < need {
-				grown := make([]string, len(m.Parsers), need)
-				copy(grown, m.Parsers)
-				m.Parsers = grown
+			if len(m.Parsers) == 0 && cap(m.Parsers) < c {
+				m.Parsers = make([]string, 0, c)
 			}
 		}
 		if c := field6count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.JsonPath) + c; cap(m.JsonPath) < need {
-				grown := make([]string, len(m.JsonPath), need)
-				copy(grown, m.JsonPath)
-				m.JsonPath = grown
+			if len(m.JsonPath) == 0 && cap(m.JsonPath) < c {
+				m.JsonPath = make([]string, 0, c)
 			}
 		}
 	}
@@ -16223,10 +16165,8 @@ func (m *DetectedLabelsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.DetectedLabels) + c; cap(m.DetectedLabels) < need {
-				grown := make([]*DetectedLabel, len(m.DetectedLabels), need)
-				copy(grown, m.DetectedLabels)
-				m.DetectedLabels = grown
+			if len(m.DetectedLabels) == 0 && cap(m.DetectedLabels) < c {
+				m.DetectedLabels = make([]*DetectedLabel, 0, c)
 			}
 		}
 	}

@@ -1710,10 +1710,8 @@ func (m *SingleTenantObjectSource) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Streams) + c; cap(m.Streams) < need {
-				grown := make([]*Stream, len(m.Streams), need)
-				copy(grown, m.Streams)
-				m.Streams = grown
+			if len(m.Streams) == 0 && cap(m.Streams) < c {
+				m.Streams = make([]*Stream, 0, c)
 			}
 		}
 	}
@@ -1911,10 +1909,8 @@ func (m *MultiTenantObjectSource) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.TenantStreams) + c; cap(m.TenantStreams) < need {
-				grown := make([]*TenantStream, len(m.TenantStreams), need)
-				copy(grown, m.TenantStreams)
-				m.TenantStreams = grown
+			if len(m.TenantStreams) == 0 && cap(m.TenantStreams) < c {
+				m.TenantStreams = make([]*TenantStream, 0, c)
 			}
 		}
 	}
@@ -2112,10 +2108,8 @@ func (m *CompactionManifest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.SourceIndexes) + c; cap(m.SourceIndexes) < need {
-				grown := make([]string, len(m.SourceIndexes), need)
-				copy(grown, m.SourceIndexes)
-				m.SourceIndexes = grown
+			if len(m.SourceIndexes) == 0 && cap(m.SourceIndexes) < c {
+				m.SourceIndexes = make([]string, 0, c)
 			}
 		}
 	}
@@ -2747,10 +2741,8 @@ func (m *CompactionJobResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Paths) + c; cap(m.Paths) < need {
-				grown := make([]string, len(m.Paths), need)
-				copy(grown, m.Paths)
-				m.Paths = grown
+			if len(m.Paths) == 0 && cap(m.Paths) < c {
+				m.Paths = make([]string, 0, c)
 			}
 		}
 	}
@@ -2917,10 +2909,8 @@ func (m *IndexingJob) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Paths) + c; cap(m.Paths) < need {
-				grown := make([]string, len(m.Paths), need)
-				copy(grown, m.Paths)
-				m.Paths = grown
+			if len(m.Paths) == 0 && cap(m.Paths) < c {
+				m.Paths = make([]string, 0, c)
 			}
 		}
 	}
@@ -3282,10 +3272,8 @@ func (m *IndexingJobResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Indexes) + c; cap(m.Indexes) < need {
-				grown := make([]IndexInfo, len(m.Indexes), need)
-				copy(grown, m.Indexes)
-				m.Indexes = grown
+			if len(m.Indexes) == 0 && cap(m.Indexes) < c {
+				m.Indexes = make([]IndexInfo, 0, c)
 			}
 		}
 	}

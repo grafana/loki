@@ -746,10 +746,8 @@ func (m *QueryPatternsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Series) + c; cap(m.Series) < need {
-				grown := make([]*PatternSeries, len(m.Series), need)
-				copy(grown, m.Series)
-				m.Series = grown
+			if len(m.Series) == 0 && cap(m.Series) < c {
+				m.Series = make([]*PatternSeries, 0, c)
 			}
 		}
 	}
@@ -919,10 +917,8 @@ func (m *PatternSeries) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Samples) + c; cap(m.Samples) < need {
-				grown := make([]*PatternSample, len(m.Samples), need)
-				copy(grown, m.Samples)
-				m.Samples = grown
+			if len(m.Samples) == 0 && cap(m.Samples) < c {
+				m.Samples = make([]*PatternSample, 0, c)
 			}
 		}
 	}

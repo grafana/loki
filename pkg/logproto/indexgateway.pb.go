@@ -732,20 +732,16 @@ func (m *ShardsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Shards) + c; cap(m.Shards) < need {
-				grown := make([]Shard, len(m.Shards), need)
-				copy(grown, m.Shards)
-				m.Shards = grown
+			if len(m.Shards) == 0 && cap(m.Shards) < c {
+				m.Shards = make([]Shard, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.ChunkGroups) + c; cap(m.ChunkGroups) < need {
-				grown := make([]ChunkRefGroup, len(m.ChunkGroups), need)
-				copy(grown, m.ChunkGroups)
-				m.ChunkGroups = grown
+			if len(m.ChunkGroups) == 0 && cap(m.ChunkGroups) < c {
+				m.ChunkGroups = make([]ChunkRefGroup, 0, c)
 			}
 		}
 	}

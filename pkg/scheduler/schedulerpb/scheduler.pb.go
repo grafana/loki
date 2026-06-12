@@ -1296,10 +1296,8 @@ func (m *FrontendToScheduler) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.QueuePath) + c; cap(m.QueuePath) < need {
-				grown := make([]string, len(m.QueuePath), need)
-				copy(grown, m.QueuePath)
-				m.QueuePath = grown
+			if len(m.QueuePath) == 0 && cap(m.QueuePath) < c {
+				m.QueuePath = make([]string, 0, c)
 			}
 		}
 	}

@@ -3520,10 +3520,8 @@ func (m *LokiRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Shards) + c; cap(m.Shards) < need {
-				grown := make([]string, len(m.Shards), need)
-				copy(grown, m.Shards)
-				m.Shards = grown
+			if len(m.Shards) == 0 && cap(m.Shards) < c {
+				m.Shards = make([]string, 0, c)
 			}
 		}
 	}
@@ -4134,10 +4132,8 @@ func (m *LokiInstantRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Shards) + c; cap(m.Shards) < need {
-				grown := make([]string, len(m.Shards), need)
-				copy(grown, m.Shards)
-				m.Shards = grown
+			if len(m.Shards) == 0 && cap(m.Shards) < c {
+				m.Shards = make([]string, 0, c)
 			}
 		}
 	}
@@ -4749,20 +4745,16 @@ func (m *LokiResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 		if c := field10count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Warnings) + c; cap(m.Warnings) < need {
-				grown := make([]string, len(m.Warnings), need)
-				copy(grown, m.Warnings)
-				m.Warnings = grown
+			if len(m.Warnings) == 0 && cap(m.Warnings) < c {
+				m.Warnings = make([]string, 0, c)
 			}
 		}
 	}
@@ -5293,20 +5285,16 @@ func (m *LokiSeriesRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Match) + c; cap(m.Match) < need {
-				grown := make([]string, len(m.Match), need)
-				copy(grown, m.Match)
-				m.Match = grown
+			if len(m.Match) == 0 && cap(m.Match) < c {
+				m.Match = make([]string, 0, c)
 			}
 		}
 		if c := field5count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Shards) + c; cap(m.Shards) < need {
-				grown := make([]string, len(m.Shards), need)
-				copy(grown, m.Shards)
-				m.Shards = grown
+			if len(m.Shards) == 0 && cap(m.Shards) < c {
+				m.Shards = make([]string, 0, c)
 			}
 		}
 	}
@@ -5664,20 +5652,16 @@ func (m *LokiSeriesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Data) + c; cap(m.Data) < need {
-				grown := make([]logproto.SeriesIdentifier, len(m.Data), need)
-				copy(grown, m.Data)
-				m.Data = grown
+			if len(m.Data) == 0 && cap(m.Data) < c {
+				m.Data = make([]logproto.SeriesIdentifier, 0, c)
 			}
 		}
 		if c := field4count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 	}
@@ -6018,20 +6002,16 @@ func (m *LokiLabelNamesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Data) + c; cap(m.Data) < need {
-				grown := make([]string, len(m.Data), need)
-				copy(grown, m.Data)
-				m.Data = grown
+			if len(m.Data) == 0 && cap(m.Data) < c {
+				m.Data = make([]string, 0, c)
 			}
 		}
 		if c := field4count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 	}
@@ -6366,10 +6346,8 @@ func (m *LokiData) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Result) + c; cap(m.Result) < need {
-				grown := make([]push.Stream, len(m.Result), need)
-				copy(grown, m.Result)
-				m.Result = grown
+			if len(m.Result) == 0 && cap(m.Result) < c {
+				m.Result = make([]push.Stream, 0, c)
 			}
 		}
 	}
@@ -6740,10 +6718,8 @@ func (m *IndexStatsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 	}
@@ -6963,10 +6939,8 @@ func (m *VolumeResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 	}
@@ -7189,20 +7163,16 @@ func (m *TopKSketchesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Warnings) + c; cap(m.Warnings) < need {
-				grown := make([]string, len(m.Warnings), need)
-				copy(grown, m.Warnings)
-				m.Warnings = grown
+			if len(m.Warnings) == 0 && cap(m.Warnings) < c {
+				m.Warnings = make([]string, 0, c)
 			}
 		}
 	}
@@ -7517,20 +7487,16 @@ func (m *QuantileSketchResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Warnings) + c; cap(m.Warnings) < need {
-				grown := make([]string, len(m.Warnings), need)
-				copy(grown, m.Warnings)
-				m.Warnings = grown
+			if len(m.Warnings) == 0 && cap(m.Warnings) < c {
+				m.Warnings = make([]string, 0, c)
 			}
 		}
 	}
@@ -7845,20 +7811,16 @@ func (m *CountMinSketchResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Warnings) + c; cap(m.Warnings) < need {
-				grown := make([]string, len(m.Warnings), need)
-				copy(grown, m.Warnings)
-				m.Warnings = grown
+			if len(m.Warnings) == 0 && cap(m.Warnings) < c {
+				m.Warnings = make([]string, 0, c)
 			}
 		}
 	}
@@ -8170,10 +8132,8 @@ func (m *ShardsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 	}
@@ -8393,10 +8353,8 @@ func (m *DetectedFieldsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 	}
@@ -8616,10 +8574,8 @@ func (m *QueryPatternsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 	}
@@ -8839,10 +8795,8 @@ func (m *DetectedLabelsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*definitions.PrometheusResponseHeader, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*definitions.PrometheusResponseHeader, 0, c)
 			}
 		}
 	}

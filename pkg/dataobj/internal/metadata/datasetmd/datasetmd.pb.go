@@ -1588,20 +1588,16 @@ func (m *SectionMetadata) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Columns) + c; cap(m.Columns) < need {
-				grown := make([]*ColumnDesc, len(m.Columns), need)
-				copy(grown, m.Columns)
-				m.Columns = grown
+			if len(m.Columns) == 0 && cap(m.Columns) < c {
+				m.Columns = make([]*ColumnDesc, 0, c)
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Dictionary) + c; cap(m.Dictionary) < need {
-				grown := make([]string, len(m.Dictionary), need)
-				copy(grown, m.Dictionary)
-				m.Dictionary = grown
+			if len(m.Dictionary) == 0 && cap(m.Dictionary) < c {
+				m.Dictionary = make([]string, 0, c)
 			}
 		}
 	}
@@ -2390,10 +2386,8 @@ func (m *ColumnMetadata) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Pages) + c; cap(m.Pages) < need {
-				grown := make([]*PageDesc, len(m.Pages), need)
-				copy(grown, m.Pages)
-				m.Pages = grown
+			if len(m.Pages) == 0 && cap(m.Pages) < c {
+				m.Pages = make([]*PageDesc, 0, c)
 			}
 		}
 	}
@@ -3188,20 +3182,16 @@ func (m *SortInfo) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.ColumnSorts) + c; cap(m.ColumnSorts) < need {
-				grown := make([]*SortInfo_ColumnSort, len(m.ColumnSorts), need)
-				copy(grown, m.ColumnSorts)
-				m.ColumnSorts = grown
+			if len(m.ColumnSorts) == 0 && cap(m.ColumnSorts) < c {
+				m.ColumnSorts = make([]*SortInfo_ColumnSort, 0, c)
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.SchemaLabels) + c; cap(m.SchemaLabels) < need {
-				grown := make([]string, len(m.SchemaLabels), need)
-				copy(grown, m.SchemaLabels)
-				m.SchemaLabels = grown
+			if len(m.SchemaLabels) == 0 && cap(m.SchemaLabels) < c {
+				m.SchemaLabels = make([]string, 0, c)
 			}
 		}
 	}
