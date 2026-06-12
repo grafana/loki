@@ -203,6 +203,19 @@ func (cfg *Config) configureTransport(backend string, rt http.RoundTripper) erro
 	return nil
 }
 
+// buildBaseTransport returns the HTTP transport the backend client would build internally,
+// so it can be wrapped (e.g. by hedging) while preserving TLS settings. Returning (nil, nil)
+// signals the caller to fall through to the backend's default behavior — used for backends
+// where transport pre-building isn't yet implemented. See issue #21854.
+func (cfg *Config) buildBaseTransport(backend string) (http.RoundTripper, error) {
+	switch backend {
+	case S3:
+		return s3.NewBaseHTTPTransport(cfg.S3)
+	default:
+		return nil, nil
+	}
+}
+
 // NewClient creates a new bucket client based on the configured backend
 func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger) (objstore.InstrumentedBucket, error) {
 	var (
