@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -532,7 +531,7 @@ func (f *File) SaveToIndent(filename, indent string) error {
 		return err
 	}
 
-	return ioutil.WriteFile(filename, buf.Bytes(), 0666)
+	return os.WriteFile(filename, buf.Bytes(), 0666)
 }
 
 // SaveTo writes content to file system.
