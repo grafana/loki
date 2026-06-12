@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
@@ -21,6 +22,7 @@ import (
 
 	ring_client "github.com/grafana/dskit/ring/client"
 
+	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
@@ -130,12 +132,58 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	)
 }
 
+// IngestMode determines how the consumer receives records.
+type IngestMode string
+
+const (
+	// IngestModeKafka reads records from a Kafka topic (default).
+	IngestModeKafka IngestMode = "kafka"
+	// IngestModeInMemory receives records via an in-process Go channel (no Kafka required).
+	IngestModeInMemory          IngestMode = "inmemory"
+	defaultPatternConsumerGroup            = "pattern-ingester"
+	defaultTopic                           = "" // set via flag -kafka.topic; how to pass to here?
+	// DefaultKafkaSessionTimeout is the consumer-group session timeout used
+	// when KafkaSessionTimeout is unset. It must be long enough that a
+	// normal pod restart completes before the broker considers the member
+	// dead (and triggers a rebalance), but short enough that a genuinely
+	// dead pod is evicted promptly so its partitions get reassigned.
+	defaultKafkaSessionTimeout = 2 * time.Minute
+	DefaultFlushCheckInterval  = 5 * time.Minute
+	DefaultStartupTimeout      = 1 * time.Minute
+)
+
 type TeeConfig struct {
-	BatchFlushInterval time.Duration `yaml:"batch_flush_interval"`
-	FlushQueueSize     int           `yaml:"flush_queue_size"`
-	FlushWorkerCount   int           `yaml:"flush_worker_count"`
-	MaxBufferedBytes   int           `yaml:"max_buffered_bytes"`
-	StopFlushTimeout   time.Duration `yaml:"stop_flush_timeout"`
+	BatchFlushInterval      time.Duration `yaml:"batch_flush_interval"`
+	FlushQueueSize          int           `yaml:"flush_queue_size"`
+	FlushWorkerCount        int           `yaml:"flush_worker_count"`
+	MaxBufferedBytes        int           `yaml:"max_buffered_bytes"`
+	StopFlushTimeout        time.Duration `yaml:"stop_flush_timeout"`
+	IngestMode              IngestMode    `yaml:"ingest_mode"`
+	KafkaConfig             kafka.Config  `yaml:"-"`
+	RingConfig              RingConfig    `yaml:"ring_config"`
+	KafkaSessionTimeout     time.Duration `yaml:"kafka_session_timeout"`
+	KafkaInstanceId         string        `yaml:"kafka_instance_id"`
+	disableStaticMembership bool          `yaml:"-"`
+}
+
+type RingConfig struct {
+	Key               string              `yaml:"key"`
+	Memberlist        memberlist.KVConfig `yaml:"memberlist"`
+	WatcherBufferSize int                 `yaml:"watcher_buffer_size"`
+
+	// StartupTimeout bounds how long the builder will wait for the
+	// partition ring to be populated (PartitionsCount > 0) before
+	// failing service startup. This is intentionally a hard failure:
+	// if it's misconfigured (wrong KV key, wrong cluster label, ring
+	// not yet provisioned), the pod must crashloop.
+	StartupTimeout time.Duration `yaml:"startup_timeout"`
+}
+
+func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
+	f.StringVar(&cfg.Key, prefix+"ring.key", "pattern-ingester", "The key to use for the pattern ingester ring.")
+	f.IntVar(&cfg.WatcherBufferSize, prefix+"ring.watcher-buffer-size", 0, "Size of the buffer for key watchers.")
+	cfg.Memberlist.RegisterFlagsWithPrefix(f, prefix+"ring.memberlist.")
+	f.DurationVar(&cfg.StartupTimeout, prefix+"ring.startup-timeout", DefaultStartupTimeout, "How long to wait for the partition ring to be populated before failing startup.")
 }
 
 func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
@@ -169,6 +217,36 @@ func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 		30*time.Second,
 		"The max time we will try to flush any remaining logs to be mined when the service is stopped",
 	)
+	f.StringVar(
+		(*string)(&cfg.IngestMode),
+		prefix+"tee.ingest-mode",
+		string(IngestModeKafka),
+		`How records are ingested: "kafka" reads from a Kafka topic; "inmemory" uses an in-process channel (experimental, single-node, no durability guarantees, each replica holds independent data).`,
+	)
+	f.DurationVar(
+		&cfg.KafkaSessionTimeout,
+		prefix+"tee.kafka-session-timeout",
+		defaultKafkaSessionTimeout,
+		"The Kafka session timeout",
+	)
+	f.StringVar(
+		&cfg.KafkaInstanceId,
+		prefix+"tee.kafka-instance-id",
+		"",
+		"The Kafka instance ID",
+	)
+	cfg.RingConfig.RegisterFlags(f, prefix+"tee.")
+}
+
+func (cfg *TeeConfig) Validate() error {
+	switch cfg.IngestMode {
+	case IngestModeKafka:
+	case IngestModeInMemory:
+	default:
+		return fmt.Errorf("unknown ingest_mode %q: must be %q or %q", cfg.IngestMode, IngestModeKafka, IngestModeInMemory)
+	}
+
+	return nil
 }
 
 func (cfg *Config) Validate() error {
@@ -190,7 +268,9 @@ func (cfg *Config) Validate() error {
 	if cfg.VolumeThreshold < 0 || cfg.VolumeThreshold > 1 {
 		return fmt.Errorf("volume_threshold (%v) must be between 0 and 1", cfg.VolumeThreshold)
 	}
-
+	if err := cfg.TeeConfig.Validate(); err != nil {
+		return err
+	}
 	return cfg.LifecyclerConfig.Validate()
 }
 

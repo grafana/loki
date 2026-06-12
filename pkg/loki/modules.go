@@ -821,34 +821,66 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 		_ = level.Debug(logger).Log("msg", " pattern ingester tee service disabled")
 		return nil, nil
 	}
-	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
+	_ = level.Debug(logger).Log("msg", "initializing pattern ingester...")
 
-	svc, err := pattern.NewTeeService(
-		t.Cfg.Pattern,
-		t.Overrides,
-		t.PatternRingClient,
-		t.tenantConfigs,
-		t.Cfg.MetricsNamespace,
-		prometheus.DefaultRegisterer,
-		logger,
-	)
-	if err != nil {
-		return nil, err
+	if t.Cfg.Pattern.TeeConfig.IngestMode == pattern.IngestMode(pattern.IngestModeInMemory) {
+		_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
+		svc, err := pattern.NewTeeService(
+			t.Cfg.Pattern,
+			t.Overrides,
+			t.PatternRingClient,
+			t.tenantConfigs,
+			t.Cfg.MetricsNamespace,
+			prometheus.DefaultRegisterer,
+			logger,
+		)
+		if err != nil {
+			return nil, err
+		}
+		t.Tee = distributor.WrapTee(t.Tee, svc)
+		return services.NewBasicService(
+			svc.Start,
+			func(_ context.Context) error {
+				svc.WaitUntilDone()
+				return nil
+			},
+			func(_ error) error {
+				svc.WaitUntilDone()
+				return nil
+			},
+		), nil
+	} else {
+		_ = level.Debug(logger).Log("msg", "initializing pattern ingester Kafka service...")
+		svc, err := pattern.NewKafkaService(t.Cfg.Pattern,
+			t.Overrides,
+			t.PatternRingClient,
+			t.tenantConfigs,
+			t.Cfg.MetricsNamespace,
+			prometheus.DefaultRegisterer,
+			logger,
+			t.Cfg.KafkaConfig,
+		)
+		if err != nil {
+			return nil, err
+		}
+		return services.NewBasicService(
+			func(ctx context.Context) error {
+				if err := svc.StartAsync(ctx); err != nil {
+					return err
+				}
+				return svc.AwaitRunning(ctx)
+			},
+			func(_ context.Context) error {
+				svc.WaitUntilDone()
+				return nil
+			},
+			func(_ error) error {
+				svc.WaitUntilDone()
+				return nil
+			},
+		), nil
+
 	}
-
-	t.Tee = distributor.WrapTee(t.Tee, svc)
-
-	return services.NewBasicService(
-		svc.Start,
-		func(_ context.Context) error {
-			svc.WaitUntilDone()
-			return nil
-		},
-		func(_ error) error {
-			svc.WaitUntilDone()
-			return nil
-		},
-	), nil
 }
 
 func (t *Loki) initStore() (services.Service, error) {
