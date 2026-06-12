@@ -45,11 +45,17 @@ func (a byDir) EntriesCount() (n int) {
 
 func (a byDir) merge() []logproto.Entry {
 	result := make([]logproto.Entry, 0, a.EntriesCount())
-
-	sort.Sort(a)
-	for _, m := range a.markers {
-		result = append(result, m...)
+	
+	for _, m := range a.markers { 
+		result = append(result, m...) 
 	}
+
+	sort.SliceStable(result, func(i, j int) bool {
+		if a.direction == logproto.BACKWARD {
+			return result[i].Timestamp.After(result[j].Timestamp)
+		}
+		return result[i].Timestamp.Before(result[j].Timestamp)
+	})
 	return result
 }
 
