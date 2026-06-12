@@ -109,9 +109,6 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 	var (
 		inputReadTime time.Duration
 		startedAt     = time.Now()
-
-		labelValuesCache = newLabelValuesCache()
-		fieldsCache      = newFieldsCache()
 	)
 
 	v.aggregator.Reset() // reset before reading new inputs
@@ -160,17 +157,8 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 
 			v.aggregator.AddLabels(groupingFields)
 
-			for row := range int(record.NumRows()) {
-				if valueArr.IsNull(row) {
-					continue
-				}
-
-				labelValues := labelValuesCache.getLabelValues(arrays, row)
-				labels := fieldsCache.getFields(arrays, groupingFields, row)
-
-				if err := v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues); err != nil {
-					return nil, err
-				}
+			if err := v.aggregator.BatchAddSample(tsCol, valueArr, nil, arrays, groupingFields); err != nil {
+				return nil, err
 			}
 		}
 	}

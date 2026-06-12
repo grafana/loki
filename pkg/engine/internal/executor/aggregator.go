@@ -46,6 +46,10 @@ type aggregator struct {
 	// Track unique series across all timestamps to enforce maxSeries limit
 	maxSeries    int                          // maximum number of unique series allowed (0 means no limit)
 	uniqueSeries map[uint64]map[string]string // tracks unique series across all timestamps
+
+	// batchRowKeys caches grouping keys by source row index during BatchAddSample.
+	batchRowKeys         []uint64
+	batchRowKeysComputed []bool
 }
 
 // newAggregator creates a new aggregator with the specified grouping.
@@ -82,85 +86,204 @@ func (a *aggregator) SetMaxSeries(maxSeries int) {
 	a.maxSeries = maxSeries
 }
 
-// Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
-// It expects labelValues to be in the same order as the groupBy columns.
-func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) error {
-	if len(labels) != len(labelValues) {
-		panic("len(labels) != len(labelValues)")
-	}
-
+func (a *aggregator) pointForTimestamp(ts time.Time) map[uint64]*groupState {
 	point, ok := a.points[ts]
 	if !ok {
 		point = make(map[uint64]*groupState)
 		a.points[ts] = point
 	}
+	return point
+}
 
-	var key uint64
-	if len(labelValues) != 0 {
-		a.digest.Reset()
-		for i, val := range labelValues {
-			if i > 0 {
-				_, _ = a.digest.Write([]byte{0}) // separator
+// computeGroupKeyFromColumns computes a grouping key from the non-null label columns at row.
+// Null columns are skipped, matching the sparse grouping semantics used by range and vector aggregators.
+func (a *aggregator) computeGroupKeyFromColumns(labelCols []*array.String, labelFields []arrow.Field, row int) uint64 {
+	a.digest.Reset()
+	first := true
+	for i, col := range labelCols {
+		if col.IsNull(row) {
+			continue
+		}
+
+		if !first {
+			_, _ = a.digest.Write([]byte{0}) // separator
+		}
+		first = false
+
+		_, _ = a.digest.WriteString(labelFields[i].Name)
+		_, _ = a.digest.Write([]byte("="))
+		_, _ = a.digest.WriteString(col.Value(row))
+	}
+	return a.digest.Sum64()
+}
+
+// ensureSeriesFromColumns registers a new unique series for key using label values read
+// from Arrow columns at row. Null columns are skipped.
+func (a *aggregator) ensureSeriesFromColumns(key uint64, labelCols []*array.String, labelFields []arrow.Field, row int) error {
+	if _, exists := a.uniqueSeries[key]; exists {
+		return nil
+	}
+
+	if a.maxSeries > 0 && len(a.uniqueSeries) >= a.maxSeries {
+		return ErrSeriesLimitExceeded
+	}
+
+	var series map[string]string
+	if len(labelFields) > 0 {
+		series = make(map[string]string)
+		for i, col := range labelCols {
+			if col.IsNull(row) {
+				continue
 			}
 
-			_, _ = a.digest.WriteString(labels[i].Name)
-			_, _ = a.digest.Write([]byte("="))
-			_, _ = a.digest.WriteString(val)
+			v := col.Value(row)
+			cloned, ok := a.clonedLabelValues[v]
+			if !ok {
+				cloned = strings.Clone(v)
+				a.clonedLabelValues[v] = cloned
+			}
+			series[labelFields[i].Name] = cloned
 		}
-		key = a.digest.Sum64()
 	}
+
+	a.uniqueSeries[key] = series
+	return nil
+}
+
+// AddSample accumulates value at ts, grouping by the non-null label columns at row.
+func (a *aggregator) AddSample(ts time.Time, value float64, labelCols []*array.String, labelFields []arrow.Field, row int) error {
+	key := a.computeGroupKeyFromColumns(labelCols, labelFields, row)
+	return a.addSampleWithKey(ts, key, value, labelCols, labelFields, row)
+}
+
+// BatchAddSample ingests samples from columnar arrays.
+// Sample i aggregates at outputTs[i] with value values[i]. When sourceRows is nil,
+// sample i uses label row i; otherwise label row sourceRows[i].
+// values may be nil for count aggregations.
+func (a *aggregator) BatchAddSample(
+	outputTs *array.Timestamp,
+	values *array.Float64,
+	sourceRows *array.Int32,
+	labelCols []*array.String,
+	labelFields []arrow.Field,
+) error {
+	n := outputTs.Len()
+	if values != nil && values.Len() != n {
+		panic("BatchAddSample: outputTs and values length mismatch")
+	}
+	if sourceRows != nil && sourceRows.Len() != n {
+		panic("BatchAddSample: outputTs and sourceRows length mismatch")
+	}
+	if n == 0 {
+		return nil
+	}
+
+	a.prepareBatchRowKeys(a.maxSourceRow(sourceRows, labelCols, n) + 1)
+
+	for i := range n {
+		row := i
+		if sourceRows != nil {
+			if sourceRows.IsNull(i) {
+				continue
+			}
+			row = int(sourceRows.Value(i))
+		}
+
+		if !a.batchRowKeysComputed[row] {
+			a.batchRowKeys[row] = a.computeGroupKeyFromColumns(labelCols, labelFields, row)
+			a.batchRowKeysComputed[row] = true
+		}
+
+		var value float64
+		if values != nil {
+			if values.IsNull(i) {
+				continue
+			}
+			value = values.Value(i)
+		}
+
+		ts := outputTs.Value(i).ToTime(arrow.Nanosecond)
+		if err := a.addSampleWithKey(ts, a.batchRowKeys[row], value, labelCols, labelFields, row); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (a *aggregator) maxSourceRow(sourceRows *array.Int32, labelCols []*array.String, n int) int {
+	if sourceRows != nil {
+		maxRow := 0
+		for i := range n {
+			if sourceRows.IsNull(i) {
+				continue
+			}
+			row := int(sourceRows.Value(i))
+			if row > maxRow {
+				maxRow = row
+			}
+		}
+		return maxRow
+	}
+
+	if len(labelCols) > 0 {
+		return labelCols[0].Len() - 1
+	}
+
+	return n - 1
+}
+
+func (a *aggregator) prepareBatchRowKeys(n int) {
+	if cap(a.batchRowKeys) < n {
+		a.batchRowKeys = make([]uint64, n)
+		a.batchRowKeysComputed = make([]bool, n)
+		return
+	}
+
+	a.batchRowKeys = a.batchRowKeys[:n]
+	a.batchRowKeysComputed = a.batchRowKeysComputed[:n]
+	clear(a.batchRowKeysComputed)
+}
+
+func (a *aggregator) addSampleWithKey(ts time.Time, key uint64, value float64, labelCols []*array.String, labelFields []arrow.Field, row int) error {
+	point := a.pointForTimestamp(ts)
 
 	if state, ok := point[key]; ok {
-		// TODO: handle hash collisions
+		a.accumulate(state, value)
+		return nil
+	}
 
-		// accumulate value based on aggregation type
-		switch a.operation {
-		case aggregationOperationSum:
-			state.value += value
-		case aggregationOperationMax:
-			if value > state.value {
-				state.value = value
-			}
-		case aggregationOperationMin:
-			if value < state.value {
-				state.value = value
-			}
-		case aggregationOperationAvg:
-			state.value += value
-		}
+	if err := a.ensureSeriesFromColumns(key, labelCols, labelFields, row); err != nil {
+		return err
+	}
 
-		state.count++
-	} else {
-		if series, exists := a.uniqueSeries[key]; !exists {
-			// Check series limit before adding a new series
-			if a.maxSeries > 0 && len(a.uniqueSeries) >= a.maxSeries {
-				return ErrSeriesLimitExceeded
-			}
-
-			if len(labels) > 0 {
-				series = make(map[string]string)
-				for i, v := range labelValues {
-					// copy the value as this is backed by the arrow array data buffer.
-					// We could retain the record to avoid this copy, but that would hold
-					// all other columns in memory for as long as the query is evaluated.
-					cloned, ok := a.clonedLabelValues[v]
-					if !ok {
-						cloned = strings.Clone(v)
-						a.clonedLabelValues[v] = cloned
-					}
-					series[labels[i].Name] = cloned
-				}
-			}
-
-			a.uniqueSeries[key] = series
-		}
-
-		point[key] = &groupState{
-			value: value,
-			count: int64(1),
-		}
+	point[key] = &groupState{
+		value: value,
+		count: 1,
 	}
 	return nil
+}
+
+// accumulate updates an existing groupState for the configured aggregation operation.
+func (a *aggregator) accumulate(state *groupState, value float64) {
+	// TODO: handle hash collisions
+
+	switch a.operation {
+	case aggregationOperationSum:
+		state.value += value
+	case aggregationOperationMax:
+		if value > state.value {
+			state.value = value
+		}
+	case aggregationOperationMin:
+		if value < state.value {
+			state.value = value
+		}
+	case aggregationOperationAvg:
+		state.value += value
+	}
+
+	state.count++
 }
 
 func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
