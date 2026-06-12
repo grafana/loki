@@ -17,6 +17,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
+func timeUnix(sec, nsec int64) time.Time { return time.Unix(sec, nsec).UTC() }
+
 // checkBit returns true if bit n is set in the LSB-encoded bitmap data.
 func checkBit(data []byte, n int) bool {
 	byteIdx := n / 8
@@ -158,9 +160,9 @@ func TestBuilder_MixedPostings(t *testing.T) {
 	require.NotNil(t, rows[1]["label_value.utf8"])
 }
 
-// TestBuilder_SortOrder verifies the sort order: bloom entries before label entries,
-// sorted by [objectPath, sectionIndex, columnName] for blooms and
-// [objectPath, sectionIndex, columnName, labelValue] for labels.
+// TestBuilder_SortOrder verifies the sort order: bloom entries before label
+// entries, blooms by [ColumnName, MinTimestamp, ...] and labels by
+// [ColumnName, LabelValue, MinTimestamp, ...].
 func TestBuilder_SortOrder(t *testing.T) {
 	b := NewBuilder(nil, 0, 0)
 
@@ -202,6 +204,28 @@ func TestBuilder_SortOrder(t *testing.T) {
 	require.Equal(t, int64(KindLabel), rows[3]["kind.int64"])
 	require.Equal(t, "col_a", rows[3]["column_name.utf8"])
 	require.Equal(t, "beta", rows[3]["label_value.utf8"])
+}
+
+// TestBuilder_SortOrder_TimeBeforeObject verifies that within a
+// (ColumnName, LabelValue) run, MinTimestamp outranks ObjectPath: the row with
+// the earlier MinTimestamp sorts first even when its ObjectPath is larger.
+func TestBuilder_SortOrder_TimeBeforeObject(t *testing.T) {
+	b := NewBuilder(nil, 0, 0)
+
+	// Same column_name=env, label_value=prod. The earlier-timestamp row has the
+	// LARGER ObjectPath, so only MinTimestamp-before-ObjectPath yields this order.
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: timeUnix(0, 300), UncompressedSize: 0})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/z", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 2, Timestamp: timeUnix(0, 100), UncompressedSize: 0})
+
+	sections := flushAndOpenSections(t, b)
+	require.Len(t, sections, 1)
+	rows, _ := readAllRows(t, sections[0])
+	require.Len(t, rows, 2)
+
+	// Earlier MinTimestamp (100, on "/z") sorts before later MinTimestamp (300,
+	// on "/a"), even though "/z" > "/a".
+	require.Equal(t, "/z", rows[0]["object_path.utf8"])
+	require.Equal(t, "/a", rows[1]["object_path.utf8"])
 }
 
 // TestBuilder_NullableHandling verifies nullable column correctness.
