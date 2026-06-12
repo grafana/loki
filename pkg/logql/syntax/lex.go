@@ -109,7 +109,12 @@ var functionTokens = map[string]int{
 	OpRangeTypeFirst:       FIRST_OVER_TIME,
 	OpRangeTypeLast:        LAST_OVER_TIME,
 	OpRangeTypeAbsent:      ABSENT_OVER_TIME,
-	OpTypeVector:           VECTOR,
+	// internal range ops emitted by the shard mapper; must be parseable so
+	// sharded downstream queries round-trip.
+	OpRangeTypeQuantileSketch:     QUANTILE_SKETCH_OVER_TIME,
+	OpRangeTypeFirstWithTimestamp: FIRST_OVER_TIME_TS,
+	OpRangeTypeLastWithTimestamp:  LAST_OVER_TIME_TS,
+	OpTypeVector:                  VECTOR,
 
 	// vec ops
 	OpTypeSum:      SUM,
