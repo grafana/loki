@@ -16,13 +16,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-type fakeLimits struct {
+type noOpAdmissionLaneLimits struct {
 	logql.Limits
-	parallelism int
+	t *testing.T
 }
 
-func (l *fakeLimits) MaxScanTaskParallelism(_ string) int {
-	return l.parallelism
+func (l *noOpAdmissionLaneLimits) MaxScanTaskParallelism(_ string) int {
+	l.t.Fatal("max_scan_task_parallelism should be a no-op")
+	return 0
 }
 
 func newTestEngine(t *testing.T, limits logql.Limits) *Engine {
@@ -48,49 +49,18 @@ func minimalPlan() *physical.Plan {
 	return physical.FromGraph(g)
 }
 
-func TestEngine_AdmissionLanes(t *testing.T) {
-	const tenantID = "test-tenant"
-	const parallelism = 42
+func TestEngine_MaxScanTaskParallelismIsNoop(t *testing.T) {
+	limits := &noOpAdmissionLaneLimits{Limits: logql.NoLimits, t: t}
+	e := newTestEngine(t, limits)
 
-	limits := &fakeLimits{
-		Limits:      logql.NoLimits,
-		parallelism: parallelism,
-	}
+	ctx := user.InjectOrgID(t.Context(), "test-tenant")
+	q, ctx, err := e.newQuery(ctx, log.NewNopLogger(), "test", false)
+	require.NoError(t, err)
+	defer q.Close()
 
-	tests := []struct {
-		name              string
-		useAdmissionLanes bool
-		wantMaxScanTasks  int
-	}{
-		{
-			name:              "admission lanes enabled",
-			useAdmissionLanes: true,
-			wantMaxScanTasks:  parallelism,
-		},
-		{
-			name:              "admission lanes disabled",
-			useAdmissionLanes: false,
-			wantMaxScanTasks:  0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			e := newTestEngine(t, limits)
-
-			ctx := user.InjectOrgID(t.Context(), tenantID)
-			q, ctx, err := e.newQuery(ctx, log.NewNopLogger(), "test", false)
-			require.NoError(t, err)
-			defer q.Close()
-
-			wf, err := q.Prepare(ctx, minimalPlan(), tt.useAdmissionLanes)
-			require.NoError(t, err)
-			defer wf.Close()
-
-			require.EqualValues(t, tt.wantMaxScanTasks, wf.Opts().MaxRunningScanTasks)
-			require.EqualValues(t, 0, wf.Opts().MaxRunningOtherTasks)
-		})
-	}
+	wf, err := q.Prepare(ctx, minimalPlan())
+	require.NoError(t, err)
+	defer wf.Close()
 }
 
 func TestEngine_IsMetricQuery(t *testing.T) {

@@ -51,24 +51,6 @@ type Options struct {
 	Tenant string    // Tenant ID associated with the workflow.
 	Actor  []string  // Optional path to the actor that is generating the workflow.
 
-	// MaxRunningScanTasks specifies the maximum number of scan tasks that may
-	// run concurrently within a single workflow. 0 means no limit.
-	MaxRunningScanTasks int
-
-	// MaxRunningOtherTasks specifies the maximum number of non-scan tasks that
-	// may run concurrently within a single workflow. 0 means no limit.
-	MaxRunningOtherTasks int
-
-	// MaxRunningCompactionTasks specifies the maximum number of compaction
-	// tasks that may run concurrently within a single workflow. 0 means no
-	// limit.
-	//
-	// The lane is dormant in query workflows (typeFor never classifies a
-	// query task as compaction); compactor workflows opt in by populating
-	// this field once the dataobj-compaction physical-plan node types and
-	// the corresponding typeFor classification land.
-	MaxRunningCompactionTasks int
-
 	// DebugTasks toggles debug messages for a task. This is very verbose and
 	// should only be enabled for debugging purposes.
 	//
@@ -144,8 +126,6 @@ type Workflow struct {
 
 	streamsMut   sync.RWMutex
 	streamStates map[*Stream]StreamState
-
-	admissionControl *admissionControl
 }
 
 // New creates a new Workflow from a physical plan. New returns an error if the
@@ -339,64 +319,14 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	return wrapped, nil
 }
 
-// dispatchTasks groups the slice of tasks by their associated "admission lane" (token bucket)
-// and dispatches them to the runner.
-// Tasks from different admission lanes are dispatched concurrently.
-// The caller needs to wait on the returned error group.
+// dispatchTasks dispatches tasks to the runner.
 func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
-	wf.admissionControl = newAdmissionControl(
-		int64(wf.opts.MaxRunningScanTasks),
-		int64(wf.opts.MaxRunningOtherTasks),
-		int64(wf.opts.MaxRunningCompactionTasks),
-	)
-
-	// this span captures the time spent waiting for all tasks to be admitted
-	// but not the time spent to assign them all to workers.
-	//
-	// context is not updated here to avoid making this a parent of
-	// task spans since admission span ends once all tasks are admitted,
-	// but tasks can still be running after it ends.
-	_, span := tracer.Start(ctx, "wf.taskAdmission")
-	defer span.End()
-
 	region := xcap.RegionFromContext(ctx)
 	region.Record(xcap.StatTaskCount.Observe(int64(len(tasks))))
 
-	groups := wf.admissionControl.groupByType(tasks)
-	// taskTypeCompaction is appended last because the loop is sequential
-	// (each lane is fully drained before the next): a populated Compaction
-	// lane should never delay Scan dispatch. The lane is currently dormant
-	// — typeFor does not classify any task as compaction — so this slot is
-	// always empty for query workflows. It will be populated once the
-	// dataobj-compaction node types and typeFor classification land.
-	for _, taskType := range []taskType{
-		taskTypeOther,
-		taskTypeScan,
-		taskTypeCompaction,
-	} {
-		lane := wf.admissionControl.get(taskType)
-		tasks := groups[taskType]
-
-		var offset, batchSize int64
-		total := int64(len(tasks))
-
-		for ; offset < total; offset += batchSize {
-			batchSize = int64(1)
-
-			start := time.Now()
-			if err := lane.Acquire(ctx, batchSize); err != nil {
-				return fmt.Errorf("failed to acquire tokens from admission lane %s: %w", taskType, err)
-			}
-
-			region.Record(xcap.StatTaskAdmissionWaitDuration.Observe(time.Since(start).Seconds()))
-
-			batch := tasks[offset : offset+batchSize]
-			if err := wf.runner.Start(ctx, batch...); err != nil {
-				return fmt.Errorf("failed to start tasks: %w", err)
-			}
-		}
+	if err := wf.runner.Start(ctx, tasks...); err != nil {
+		return fmt.Errorf("failed to start tasks: %w", err)
 	}
-
 	return nil
 }
 
@@ -541,13 +471,6 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 		// Use the first failure from a task as the failure for the entire
 		// workflow.
 		wf.resultsPipeline.SetError(newStatus.Error)
-	}
-
-	if wf.admissionControl == nil {
-		level.Warn(wf.logger).Log("msg", "admission control was not initialized")
-	} else if oldState == TaskStatePending || oldState == TaskStateRunning {
-		// Release tokens only if the task was already enqueued and therefore either pending or running.
-		defer wf.admissionControl.laneFor(task).Release(1)
 	}
 
 	if newStatus.Capture != nil {
