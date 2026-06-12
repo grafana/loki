@@ -233,6 +233,16 @@ func ValidateGroups(grps ...rulefmt.RuleGroup) (errs []error) {
 			)
 		}
 
+		for k, v := range g.Labels {
+			if !model.LabelName(k).IsValid() || k == model.MetricNameLabel {
+				errs = append(errs, errors.Errorf("invalid label name: %s", k))
+			}
+
+			if !model.LabelValue(v).IsValid() {
+				errs = append(errs, errors.Errorf("invalid label value: %s", v))
+			}
+		}
+
 		set[g.Name] = struct{}{}
 
 		for _, r := range g.Rules {
