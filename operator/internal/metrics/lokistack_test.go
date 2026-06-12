@@ -58,6 +58,16 @@ func TestLokiStackMetricsCollect(t *testing.T) {
 								},
 							},
 						},
+						Status: lokiv1.LokiStackStatus{
+							Storage: lokiv1.LokiStackStorageStatus{
+								Schemas: []lokiv1.ObjectStorageSchema{
+									{
+										Version:       lokiv1.ObjectStorageSchemaV11,
+										EffectiveDate: "2020-01-01",
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -114,6 +124,14 @@ lokistack_status_condition{condition="Ready",reason="",size="1x.demo",stack_name
 									Type:   string(lokiv1.ConditionWarning),
 									Status: metav1.ConditionTrue,
 									Reason: string(lokiv1.ReasonStorageNeedsSchemaUpdate),
+								},
+							},
+							Storage: lokiv1.LokiStackStorageStatus{
+								Schemas: []lokiv1.ObjectStorageSchema{
+									{
+										Version:       lokiv1.ObjectStorageSchemaV11,
+										EffectiveDate: "2020-01-01",
+									},
 								},
 							},
 						},
@@ -187,6 +205,14 @@ lokistack_status_condition{condition="Warning",reason="StorageNeedsSchemaUpdate"
 									Reason: string(lokiv1.ReasonStorageNeedsSchemaUpdate),
 								},
 							},
+							Storage: lokiv1.LokiStackStorageStatus{
+								Schemas: []lokiv1.ObjectStorageSchema{
+									{
+										Version:       lokiv1.ObjectStorageSchemaV11,
+										EffectiveDate: "2020-01-01",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -254,6 +280,16 @@ lokistack_status_condition{condition="Warning",reason="StorageNeedsSchemaUpdate"
 						Status: lokiv1.LokiStackStatus{
 							Storage: lokiv1.LokiStackStorageStatus{
 								CredentialMode: lokiv1.CredentialModeToken,
+								Schemas: []lokiv1.ObjectStorageSchema{
+									{
+										Version:       lokiv1.ObjectStorageSchemaV12,
+										EffectiveDate: "2024-01-01",
+									},
+									{
+										Version:       lokiv1.ObjectStorageSchemaV13,
+										EffectiveDate: "2025-01-01",
+									},
+								},
 							},
 						},
 					},
@@ -320,6 +356,16 @@ lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_nam
 								},
 							},
 						},
+						Status: lokiv1.LokiStackStatus{
+							Storage: lokiv1.LokiStackStorageStatus{
+								Schemas: []lokiv1.ObjectStorageSchema{
+									{
+										Version:       lokiv1.ObjectStorageSchemaV13,
+										EffectiveDate: "2025-01-01",
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -381,6 +427,12 @@ lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_nam
 						Status: lokiv1.LokiStackStatus{
 							Storage: lokiv1.LokiStackStorageStatus{
 								CredentialMode: lokiv1.CredentialModeTokenCCO,
+								Schemas: []lokiv1.ObjectStorageSchema{
+									{
+										Version:       lokiv1.ObjectStorageSchemaV11,
+										EffectiveDate: "2020-01-01",
+									},
+								},
 							},
 						},
 					},
