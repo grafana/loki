@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9/internal"
 	"github.com/redis/go-redis/v9/internal/maintnotifications/logs"
 	"github.com/redis/go-redis/v9/internal/proto"
+	uberatomic "go.uber.org/atomic"
 )
 
 var noDeadline = time.Time{}
@@ -81,8 +82,10 @@ type Conn struct {
 	bw *bufio.Writer
 	wr *proto.Writer
 
-	// Lightweight mutex to protect reader operations during handoff
-	// Only used for the brief period during SetNetConn and HasBufferedData/PeekReplyTypeSafe
+	// Lightweight mutex to protect reader operations during handoff and health checks
+	// Used during:
+	// - SetNetConn (write lock for resetting reader state)
+	// - HasBufferedData/PeekReplyTypeSafe (read lock for safe concurrent peek operations)
 	readerMu sync.RWMutex
 
 	// State machine for connection state management
@@ -102,10 +105,14 @@ type Conn struct {
 
 	pooled    bool
 	pubsub    bool
-	closed    atomic.Bool
 	createdAt time.Time
 	expiresAt time.Time
 	poolName  string // Name of the pool this connection belongs to (for metrics)
+
+	// When a goroutine closes a connection, it usually knows the reason, so closeReason is not needed.
+	// closeReason is only used when an in-use connection is closed by another goroutine,
+	// to inform the goroutine using the connection why the connection was closed.
+	closeReason uberatomic.String
 
 	// maintenanceNotifications upgrade support: relaxed timeouts during migrations/failovers
 
@@ -576,6 +583,41 @@ func (cn *Conn) getEffectiveWriteTimeout(normalTimeout time.Duration) time.Durat
 	}
 }
 
+// SetOnClose installs fn as the callback invoked exactly once when this
+// connection is closed (via Conn.Close).
+//
+// IMPORTANT: SetOnClose OVERWRITES any previously installed callback — it
+// does not compose, chain, or deduplicate. A Conn has room for a single
+// onClose hook by design, because its lifecycle is bounded (a Conn is
+// created, optionally re-initialized on its own net.Conn, and then closed
+// once) and the pool's OnRemove hooks handle any registry-level cleanup
+// that must survive the net.Conn being swapped.
+//
+// This has a subtle implication for per-connection subscriptions such as
+// the unsubscribe function returned by StreamingCredentialsProvider
+// (e.g. EntraID token rotation): if SetOnClose is called twice on the
+// same Conn with DIFFERENT unsubscribe closures — for example because
+// initConn ran a second time and obtained a fresh Subscribe() —
+// the previous unsubscribe is dropped and will NEVER run, leaking a
+// subscription on the provider. Callers must therefore ensure either:
+//
+//   - the provider's Subscribe is idempotent for the same listener (the
+//     streaming credentials Manager deduplicates listeners by connection
+//     id, so re-Subscribe returns an equivalent unsubscribe), OR
+//   - the previous callback has already been invoked before SetOnClose is
+//     called again.
+//
+// Design note: unlike the client-level onCloseHooks registry (see
+// redis.baseClient), there is intentionally NO named-hook dedup or
+// multi-callback support on Conn. This is a deliberate trade-off to keep
+// the Conn object slim — a pool can hold thousands of Conn values and
+// each one is a hot allocation, so paying for a sync.Mutex plus a
+// map[string]func() error per connection to support a feature that would
+// only be used by at most one subsystem today (streaming credentials) is
+// not worth the per-connection memory and allocation cost. For a single
+// Conn there is at most one meaningful close callback at any point in
+// time, and a richer registry here would not even solve the "stale
+// closure" hazard described above.
 func (cn *Conn) SetOnClose(fn func() error) {
 	cn.onClose = fn
 }
@@ -882,18 +924,20 @@ func (cn *Conn) WithWriter(
 }
 
 func (cn *Conn) IsClosed() bool {
-	return cn.closed.Load() || cn.stateMachine.GetState() == StateClosed
+	return cn.stateMachine.GetState() == StateClosed
 }
 
 func (cn *Conn) Close() error {
-	cn.closed.Store(true)
-
+	if cn.IsClosed() {
+		return nil
+	}
 	// Transition to CLOSED state
 	cn.stateMachine.Transition(StateClosed)
 
 	if cn.onClose != nil {
 		// ignore error
 		_ = cn.onClose()
+		cn.onClose = nil
 	}
 
 	// Lock-free netConn access for better performance

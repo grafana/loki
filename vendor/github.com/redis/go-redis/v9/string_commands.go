@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,8 @@ type StringCmdable interface {
 	Incr(ctx context.Context, key string) *IntCmd
 	IncrBy(ctx context.Context, key string, value int64) *IntCmd
 	IncrByFloat(ctx context.Context, key string, value float64) *FloatCmd
+	IncrEXInt(ctx context.Context, key string, args IncrEXIntArgs) *IncrEXIntCmd
+	IncrEXFloat(ctx context.Context, key string, args IncrEXFloatArgs) *IncrEXFloatCmd
 	LCS(ctx context.Context, q *LCSQuery) *LCSCmd
 	MGet(ctx context.Context, keys ...string) *SliceCmd
 	MSet(ctx context.Context, values ...interface{}) *StatusCmd
@@ -197,6 +200,129 @@ func (c cmdable) IncrByFloat(ctx context.Context, key string, value float64) *Fl
 	return cmd
 }
 
+// IncrEXIntArgs are the arguments to IncrEXInt (the BYINT variant of INCREX).
+//
+// If By is zero and HasBy is false, the server increments by 1.
+// HasLBound/HasUBound gate the optional LBOUND/UBOUND clauses so that 0 is a
+// valid bound. Expiration is shared with the SET command via ExpirationOption.
+type IncrEXIntArgs struct {
+	By    int64
+	HasBy bool
+
+	LBound, UBound       int64
+	HasLBound, HasUBound bool
+
+	// Saturate clamps the result to LBOUND/UBOUND (or LLONG_MAX/MIN when no
+	// explicit bound is given) when the increment would exceed it. Without
+	// this flag, out-of-bounds operations are rejected: the key and TTL are
+	// left unchanged and the reply is [current_value, 0].
+	Saturate bool
+
+	// Expiration sets the TTL semantics: EX, PX, EXAT, PXAT, or PERSIST.
+	Expiration *ExpirationOption
+
+	// ENX applies the expiration only when the key does not already have an
+	// expiration. Requires Expiration to set one of EX/PX/EXAT/PXAT.
+	ENX bool
+}
+
+// IncrEXFloatArgs are the arguments to IncrEXFloat (the BYFLOAT variant of
+// INCREX). BYFLOAT is always sent — even when By is zero — to keep the
+// operation in float mode on the server side; omitting BYFLOAT would cause
+// the server to treat the call as an integer increment by 1.
+// HasLBound/HasUBound gate the optional LBOUND/UBOUND clauses so that 0 is
+// a valid bound.
+type IncrEXFloatArgs struct {
+	By float64
+
+	LBound, UBound       float64
+	HasLBound, HasUBound bool
+
+	// Saturate clamps the result to LBOUND/UBOUND (or ±LDBL_MAX when no
+	// explicit bound is given) when the increment would exceed it. Without
+	// this flag, out-of-bounds operations are rejected: the key and TTL are
+	// left unchanged and the reply is [current_value, 0].
+	Saturate bool
+
+	Expiration *ExpirationOption
+
+	ENX bool
+}
+
+// IncrEXInt Redis `INCREX key [BYINT amount] [LBOUND value] [UBOUND value]
+// [SATURATE] [EX seconds | PX ms | EXAT ts | PXAT ts | PERSIST] [ENX]`
+// command.
+//
+// Atomically increments the integer value stored at key, optionally
+// constraining the result to a range and applying expiration semantics.
+// Returns the new value and the increment that was actually applied. When
+// the increment would exceed LBOUND/UBOUND and SATURATE is not set, the key
+// and TTL are left unchanged and the reply is [current_value, 0].
+//
+// Available since Redis 8.8.
+// For more information, see https://redis.io/commands/increx
+func (c cmdable) IncrEXInt(ctx context.Context, key string, a IncrEXIntArgs) *IncrEXIntCmd {
+	args := make([]interface{}, 0, 14)
+	args = append(args, "increx", key)
+	if a.HasBy {
+		args = append(args, "byint", a.By)
+	}
+	if a.HasLBound {
+		args = append(args, "lbound", a.LBound)
+	}
+	if a.HasUBound {
+		args = append(args, "ubound", a.UBound)
+	}
+	if a.Saturate {
+		args = append(args, "saturate")
+	}
+	args = appendIncrEXTail(args, a.Expiration, a.ENX)
+
+	cmd := NewIncrEXIntCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// IncrEXFloat Redis `INCREX key [BYFLOAT amount] [LBOUND value] [UBOUND value]
+// [SATURATE] [EX seconds | PX ms | EXAT ts | PXAT ts | PERSIST] [ENX]`
+// command.
+//
+// Available since Redis 8.8.
+// For more information, see https://redis.io/commands/increx
+func (c cmdable) IncrEXFloat(ctx context.Context, key string, a IncrEXFloatArgs) *IncrEXFloatCmd {
+	args := make([]interface{}, 0, 14)
+	args = append(args, "increx", key, "byfloat", a.By)
+	if a.HasLBound {
+		args = append(args, "lbound", a.LBound)
+	}
+	if a.HasUBound {
+		args = append(args, "ubound", a.UBound)
+	}
+	if a.Saturate {
+		args = append(args, "saturate")
+	}
+	args = appendIncrEXTail(args, a.Expiration, a.ENX)
+
+	cmd := NewIncrEXFloatCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func appendIncrEXTail(args []interface{}, exp *ExpirationOption, enx bool) []interface{} {
+	if exp != nil {
+		switch exp.Mode {
+		case EX, PX, EXAT, PXAT:
+			args = append(args, strings.ToLower(string(exp.Mode)), exp.Value)
+		case PERSIST:
+			args = append(args, "persist")
+		}
+	}
+	if enx {
+		args = append(args, "enx")
+	}
+	return args
+}
+
 type SetCondition string
 
 const (
@@ -219,6 +345,8 @@ const (
 	PXAT ExpirationMode = "PXAT"
 	// KEEPTTL keeps the existing TTL
 	KEEPTTL ExpirationMode = "KEEPTTL"
+	// PERSIST removes the existing TTL. Used by INCREX.
+	PERSIST ExpirationMode = "PERSIST"
 )
 
 type ExpirationOption struct {
@@ -429,8 +557,6 @@ func (c cmdable) SetEx(ctx context.Context, key string, value interface{}, expir
 
 // SetNX sets the value of a key only if the key does not exist.
 //
-// Deprecated: Use Set with NX option instead as of Redis 2.6.12.
-//
 // Zero expiration means the key has no expiration time.
 // KeepTTL is a Redis KEEPTTL option to keep existing TTL, it requires your redis-server version >= 6.0,
 // otherwise you will receive an error: (error) ERR syntax error.
@@ -438,8 +564,7 @@ func (c cmdable) SetNX(ctx context.Context, key string, value interface{}, expir
 	var cmd *BoolCmd
 	switch expiration {
 	case 0:
-		// Use old `SETNX` to support old Redis versions.
-		cmd = NewBoolCmd(ctx, "setnx", key, value)
+		cmd = NewBoolCmd(ctx, "set", key, value, "nx")
 	case KeepTTL:
 		cmd = NewBoolCmd(ctx, "set", key, value, "keepttl", "nx")
 	default:

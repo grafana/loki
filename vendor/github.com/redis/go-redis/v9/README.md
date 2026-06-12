@@ -18,15 +18,23 @@
 
 In `go-redis` we are aiming to support the last three releases of Redis. Currently, this means we do support:
 - [Redis 8.0](https://raw.githubusercontent.com/redis/redis/8.0/00-RELEASENOTES) - using Redis CE 8.0
-- [Redis 8.2](https://raw.githubusercontent.com/redis/redis/8.2/00-RELEASENOTES) - using Redis CE 8.2 
+- [Redis 8.2](https://raw.githubusercontent.com/redis/redis/8.2/00-RELEASENOTES) - using Redis CE 8.2
 - [Redis 8.4](https://raw.githubusercontent.com/redis/redis/8.4/00-RELEASENOTES) - using Redis CE 8.4
+- [Redis 8.8](https://raw.githubusercontent.com/redis/redis/8.8/00-RELEASENOTES) - using Redis CE 8.8
 
-Although the `go.mod` states it requires at minimum `go 1.21`, our CI is configured to run the tests against all three
-versions of Redis and multiple versions of Go ([1.21](https://go.dev/doc/devel/release#go1.21.0),
-[1.23](https://go.dev/doc/devel/release#go1.23.0), oldstable, and stable). We observe that some modules related test may not pass with
+Although the `go.mod` states it requires at minimum `go 1.24`, our CI is configured to run the tests against all supported
+versions of Redis and multiple versions of Go ([1.24](https://go.dev/doc/devel/release#go1.24.0), oldstable, and stable). We observe that some modules related test may not pass with
 Redis Stack 7.2 and some commands are changed with Redis CE 8.0.
 Although it is not officially supported, `go-redis/v9`  should be able to work with any Redis 7.0+.
 Please do refer to the documentation and the tests if you experience any issues.
+
+### Array data type (Redis 8.8+)
+
+Starting with Redis 8.8, go-redis exposes the new array data type via the `AR*` command family
+(`ARSET`, `ARGET`, `ARGETRANGE`, `ARMSET`, `ARMGET`, `ARINSERT`, `ARDEL`, `ARDELRANGE`,
+`ARLEN`, `ARCOUNT`, `ARNEXT`, `ARSEEK`, `ARSCAN`, `ARGREP`, `ARRING`, `ARLASTITEMS`,
+`ARINFO`/`ARINFOFULL`, and the `AROP*` reducers). See `array_commands.go` for the full
+surface. The API is experimental and may change in a future release.
 
 ## How do I Redis?
 
@@ -49,6 +57,7 @@ Please do refer to the documentation and the tests if you experience any issues.
 - [Chat](https://discord.gg/W4txy5AeKM)
 - [Reference](https://pkg.go.dev/github.com/redis/go-redis/v9)
 - [Examples](https://pkg.go.dev/github.com/redis/go-redis/v9#pkg-examples)
+- [Release notes](./RELEASE-NOTES.md) ([GitHub Releases](https://github.com/redis/go-redis/releases))
 
 ## old documentation
 
@@ -134,6 +143,29 @@ func ExampleClient() {
     // Output: key value
     // key2 does not exist
 }
+```
+
+### Dial retries and backoff
+
+Connection establishment can be retried by the connection pool when dialing fails.
+
+- **`DialerRetries`**: maximum number of dial attempts (default: 5).
+- **`DialerRetryTimeout`**: default delay between attempts when no custom backoff is provided (default: 100ms).
+- **`DialerRetryBackoff`**: optional function hook to control the delay between attempts.
+
+Example:
+
+```go
+rdb := redis.NewClient(&redis.Options{
+	Addr: "localhost:6379",
+
+	DialerRetries:      5,
+	DialerRetryTimeout: 100 * time.Millisecond, // used when DialerRetryBackoff is nil
+
+	// Optional: exponential backoff with jitter and a cap.
+	DialerRetryBackoff: redis.DialRetryBackoffExponential(100*time.Millisecond, 2*time.Second),
+})
+defer rdb.Close()
 ```
 
 ### Authentication
@@ -333,18 +365,17 @@ rdb := redis.NewClient(&redis.Options{
 })
 ```
 
-#### Unstable RESP3 Structures for RediSearch Commands
-When integrating Redis with application functionalities using RESP3, it's important to note that some response structures aren't final yet. This is especially true for more complex structures like search and query results. We recommend using RESP2 when using the search and query capabilities, but we plan to stabilize the RESP3-based API-s in the coming versions. You can find more guidance in the upcoming release notes.
+#### RESP3 for RediSearch Commands (`UnstableResp3` is deprecated)
+As of v9.20, `FT.SEARCH`, `FT.AGGREGATE`, `FT.INFO`, `FT.SPELLCHECK`, and `FT.SYNDUMP`
+parse RESP3 (map) responses into the same typed result objects as RESP2. **No flag
+is required — `Val()` / `Result()` work uniformly on both protocols.**
 
-To enable unstable RESP3, set the option in your client configuration:
+The legacy `UnstableResp3` option is now a **no-op** and is retained on every
+options struct only for backwards compatibility. It will be removed in a future
+release; new code should not set it.
 
-```go
-redis.NewClient(&redis.Options{
-			UnstableResp3: true,
-		})
-```
-**Note:** When UnstableResp3 mode is enabled, it's necessary to use RawResult() and RawVal() to retrieve a raw data.
-          Since, raw response is the only option for unstable search commands Val() and Result() calls wouldn't have any affect on them:
+`RawResult()` / `RawVal()` continue to work for callers that prefer the raw RESP
+payload directly:
 
 ```go
 res1, err := client.FTSearchWithArgs(ctx, "txt", "foo bar", &redis.FTSearchOptions{}).RawResult()
