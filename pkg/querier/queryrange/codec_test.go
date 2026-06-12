@@ -2566,6 +2566,57 @@ func mkResps(nResps, nStreams, nLogs int, direction logproto.Direction) (resps [
 	return resps
 }
 
+// Test_mergeOrderedNonOverlappingStreams_Dedupe is a regression test for
+// duplicate log lines surfacing under stream sharding / query sharding.
+//
+// The query-frontend assumes split/shard sub-query responses are
+// non-overlapping and merges matching streams by concatenation (byDir.merge).
+// When the same physical stream is returned by more than one sub-query — which
+// happens for stream-sharded, high-volume streams read back across multiple
+// query shards/splits — the identical entries were concatenated and surfaced to
+// the client as duplicate log lines. They must be deduplicated.
+func Test_mergeOrderedNonOverlappingStreams_Dedupe(t *testing.T) {
+	const lbls = `{foo="bar", __stream_shard__="0"}`
+
+	mkResp := func() *LokiResponse {
+		return &LokiResponse{
+			Data: LokiData{
+				Result: []logproto.Stream{
+					{
+						Labels: lbls,
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(1, 0), Line: "line a"},
+							{Timestamp: time.Unix(2, 0), Line: "line b"},
+							{Timestamp: time.Unix(3, 0), Line: "line c"},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	for _, dir := range []logproto.Direction{logproto.FORWARD, logproto.BACKWARD} {
+		t.Run(dir.String(), func(t *testing.T) {
+			// Three sub-query responses each return the SAME stream with the
+			// SAME entries (overlapping).
+			resps := []*LokiResponse{mkResp(), mkResp(), mkResp()}
+
+			got := mergeOrderedNonOverlappingStreams(resps, 100, dir)
+
+			require.Len(t, got, 1, "expected a single merged stream")
+			require.Equal(t, lbls, got[0].Labels)
+
+			lines := make([]string, 0, len(got[0].Entries))
+			for _, e := range got[0].Entries {
+				lines = append(lines, e.Line)
+			}
+			require.Equal(t, 3, len(got[0].Entries),
+				"identical entries from overlapping sub-queries must be deduplicated, got %v", lines)
+			require.ElementsMatch(t, []string{"line a", "line b", "line c"}, lines)
+		})
+	}
+}
+
 type buffer struct {
 	buff []byte
 	io.ReadCloser
