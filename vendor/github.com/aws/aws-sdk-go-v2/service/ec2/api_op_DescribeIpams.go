@@ -47,7 +47,11 @@ type DescribeIpamsInput struct {
 	// The IDs of the IPAMs you want information on.
 	IpamIds []string
 
-	// The maximum number of results to return in the request.
+	// The maximum number of items to return for this request. To get the next page of
+	// items, make another request with the token returned in the output. For more
+	// information, see [Pagination].
+	//
+	// [Pagination]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/Query-Requests.html#api-pagination
 	MaxResults *int32
 
 	// The token for the next page of results.
@@ -105,7 +109,7 @@ func (c *Client) addOperationDescribeIpamsMiddlewares(stack *middleware.Stack, o
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -127,9 +131,6 @@ func (c *Client) addOperationDescribeIpamsMiddlewares(stack *middleware.Stack, o
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {
@@ -170,7 +171,11 @@ func (c *Client) addOperationDescribeIpamsMiddlewares(stack *middleware.Stack, o
 
 // DescribeIpamsPaginatorOptions is the paginator options for DescribeIpams
 type DescribeIpamsPaginatorOptions struct {
-	// The maximum number of results to return in the request.
+	// The maximum number of items to return for this request. To get the next page of
+	// items, make another request with the token returned in the output. For more
+	// information, see [Pagination].
+	//
+	// [Pagination]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/Query-Requests.html#api-pagination
 	Limit int32
 
 	// Set to true if pagination should stop if the service returns a pagination token

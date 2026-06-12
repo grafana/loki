@@ -1432,16 +1432,14 @@ type ReplicationGroup struct {
 	// The ARN (Amazon Resource Name) of the replication group.
 	ARN *string
 
-	// A flag that enables encryption at-rest when set to true .
+	// A flag that enables encryption at-rest on the cluster when set to true . In some
+	// cases, encryption at-rest may be enabled even when this value is false. Use
+	// StorageEncryptionType to view the effective encryption state of a cluster.
 	//
 	// You cannot modify the value of AtRestEncryptionEnabled after the cluster is
-	// created. To enable encryption at-rest on a cluster you must set
-	// AtRestEncryptionEnabled to true when you create a cluster.
+	// created.
 	//
-	// Required: Only available when creating a replication group in an Amazon VPC
-	// using Redis OSS version 3.2.6 , 4.x or later.
-	//
-	// Default: false
+	// Default: true when using Valkey, false when using Redis OSS
 	AtRestEncryptionEnabled *bool
 
 	// A flag that enables using an AuthToken (password) when issuing Valkey or Redis
@@ -1495,8 +1493,21 @@ type ReplicationGroup struct {
 	// The user supplied description of the replication group.
 	Description *string
 
-	// The engine used in a replication group. The options are redis, memcached or
-	// valkey.
+	// The durability setting of the replication group. For more information, see [Durability].
+	//
+	// [Durability]: http://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Durability.html
+	Durability Durability
+
+	// The effective durability of the replication group. When Durability is set to
+	// default , the service resolves the actual durability based on the engine
+	// version, cluster mode, and other parameters. This field reflects the resolved
+	// value. For more information, see [Configuring Durability].
+	//
+	// [Configuring Durability]: http://docs.aws.amazon.com/AmazonElastiCache/latest/dg/ConfiguringDurability.html
+	EffectiveDurability EffectiveDurability
+
+	// The engine used in a replication group. The options are valkey, memcached or
+	// redis.
 	Engine *string
 
 	// The name of the Global datastore and role of this replication group in the
@@ -1578,6 +1589,12 @@ type ReplicationGroup struct {
 	// The current state of this replication group - creating , available , modifying ,
 	// deleting , create-failed , snapshotting .
 	Status *string
+
+	// Indicates the type of encryption for data stored at rest in the replication
+	// group. The value is none if at-rest encryption is not enabled, sse-elasticache
+	// if an ElastiCache service-managed key is used, or sse-kms if a customer-managed
+	// KMS key is used.
+	StorageEncryptionType StorageEncryptionType
 
 	// A flag that enables in-transit encryption when set to true .
 	//
@@ -2001,6 +2018,12 @@ type ServerlessCache struct {
 	// The version number of the engine the serverless cache is compatible with.
 	MajorEngineVersion *string
 
+	// The type of IP address protocol used by the serverless cache. Must be either
+	// ipv4 | ipv6 | dual_stack . ipv6 is only supported with IPv6-only subnets. If
+	// not specified, defaults to ipv4 , unless all provided subnets are IPv6-only, in
+	// which case it defaults to ipv6 .
+	NetworkType NetworkType
+
 	// Represents the information required for client programs to connect to a cache
 	// node. This value is read-only.
 	ReaderEndpoint *Endpoint
@@ -2011,13 +2034,20 @@ type ServerlessCache struct {
 	// The unique identifier of the serverless cache.
 	ServerlessCacheName *string
 
-	// The current setting for the number of serverless cache snapshots the system
-	// will retain. Available for Valkey, Redis OSS and Serverless Memcached only.
+	// The number of days for which ElastiCache retains automatic snapshots before
+	// deleting them. Available for Valkey, Redis OSS and Serverless Memcached only.
+	// The maximum value allowed is 35 days.
 	SnapshotRetentionLimit *int32
 
 	// The current status of the serverless cache. The allowed values are CREATING,
 	// AVAILABLE, DELETING, CREATE-FAILED and MODIFYING.
 	Status *string
+
+	// Indicates the type of encryption for data stored at rest in the serverless
+	// cache. Serverless caches are always encrypted at rest. The value is
+	// sse-elasticache if an ElastiCache service-managed key is used, or sse-kms if a
+	// customer-managed KMS key is used.
+	StorageEncryptionType StorageEncryptionType
 
 	// If no subnet IDs are given and your VPC is in us-west-1, then ElastiCache will
 	// select 2 default subnets across AZs in your VPC. For all other Regions, if no
@@ -2283,6 +2313,13 @@ type Snapshot struct {
 	//
 	// [Data tiering]: https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/data-tiering.html
 	DataTiering DataTieringStatus
+
+	// The durability setting of the cluster when the snapshot was taken. When
+	// restoring from this snapshot, the cluster uses this durability setting unless
+	// overridden in the restore request. For more information, see [Durability].
+	//
+	// [Durability]: http://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Durability.html
+	Durability Durability
 
 	// The name of the cache engine ( memcached or redis ) used by the source cluster.
 	Engine *string

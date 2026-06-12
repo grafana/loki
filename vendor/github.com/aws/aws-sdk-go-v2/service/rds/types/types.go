@@ -4716,6 +4716,8 @@ type PendingMaintenanceAction struct {
 	//
 	//   - os-upgrade
 	//
+	//   - serverless-platform-version-update
+	//
 	//   - system-update
 	//
 	// For more information about these actions, see [Maintenance actions for Amazon Aurora] or [Maintenance actions for Amazon RDS].
@@ -5399,6 +5401,39 @@ type ServerlessV2FeaturesSupport struct {
 	// If the minimum capacity is 0 ACUs, the engine version or platform version
 	// supports the automatic pause/resume feature of Aurora Serverless v2.
 	MinCapacity *float64
+
+	noSmithyDocumentSerde
+}
+
+// This data type is used as a response element in the action
+// DescribeServerlessV2PlatformVersions .
+type ServerlessV2PlatformVersionInfo struct {
+
+	// The name of the database engine.
+	Engine *string
+
+	// Indicates whether this platform version is the default version for the engine.
+	// The default platform version is the version used for new DB clusters.
+	IsDefault *bool
+
+	// Specifies any Aurora Serverless v2 properties or limits that differ between
+	// Aurora Serverless v2 platform versions. You can retrieve the platform version of
+	// an existing DB cluster and check whether that version supports certain Aurora
+	// Serverless v2 features before you attempt to use those features.
+	ServerlessV2FeaturesSupport *ServerlessV2FeaturesSupport
+
+	// The version number of the serverless platform.
+	ServerlessV2PlatformVersion *string
+
+	// The description of the serverless platform.
+	ServerlessV2PlatformVersionDescription *string
+
+	// The status of the serverless platform. Valid statuses are the following:
+	//
+	//   - enabled - The platform version is in use.
+	//
+	//   - disabled - The platform version is not in use.
+	Status *string
 
 	noSmithyDocumentSerde
 }
