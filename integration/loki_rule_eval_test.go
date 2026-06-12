@@ -63,7 +63,7 @@ func testRuleEval(t *testing.T, mode string) {
 	clu.AddComponent(
 		"ingester",
 		"-target=ingester",
-		"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 	)
 	require.NoError(t, clu.Run())
 
@@ -89,7 +89,7 @@ func testRuleEval(t *testing.T, mode string) {
 			"query-scheduler",
 			"-target=query-scheduler",
 			"-query-scheduler.use-scheduler-ring=false",
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 		)
 		require.NoError(t, clu.Run())
 
@@ -97,14 +97,14 @@ func testRuleEval(t *testing.T, mode string) {
 			"querier",
 			"-target=querier",
 			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 		)
 		tQueryFrontend = clu.AddComponent(
 			"query-frontend",
 			"-target=query-frontend",
 			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 		)
 		require.NoError(t, clu.Run())
