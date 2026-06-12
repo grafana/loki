@@ -199,7 +199,7 @@ func UnmarshalModel(rawInput interface{}, propertyName string, result interface{
 
 	// Now delegate the work to the appropriate internal unmarshal function.
 	switch rResultType.Kind() {
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Pointer, reflect.Interface:
 		// Unmarshal a single instance of a model.
 		err = unmarshalModelInstance(rawInput, propertyName, result, unmarshaller)
 
@@ -788,7 +788,7 @@ func getUnmarshalResultType(result interface{}) (ptrType reflect.Type, err error
 // This will be something like "mypackagev1.Foo" or "mypackagev1.FooIntf"
 func getModelResultType(result interface{}) string {
 	rResultType := reflect.TypeOf(result).Elem()
-	if rResultType.Kind() == reflect.Ptr {
+	if rResultType.Kind() == reflect.Pointer {
 		rResultType = rResultType.Elem()
 	}
 
