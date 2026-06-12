@@ -18,20 +18,25 @@ type Builder struct {
 	labels  *labelAggregator
 	blooms  *bloomAggregator
 
-	pageSizeHint    int
-	pageMaxRowCount int
+	pageSizeHint      int
+	pageMaxRowCount   int
+	targetSectionSize int
 }
 
+// NewBuilder creates a new Builder.
+//
 // pageSizeHint and pageMaxRowCount control page splitting of the underlying
-// column builders (0 means use defaults).
-// metrics may be nil to disable instrumentation.
-func NewBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount int) *Builder {
+// column builders (0 means use defaults). targetSectionSize is the uncompressed
+// size threshold at which Flush splits accumulated entries into multiple
+// sections; it must be > 0. metrics may be nil to disable instrumentation.
+func NewBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount, targetSectionSize int) *Builder {
 	return &Builder{
-		metrics:         metrics,
-		labels:          newLabelAggregator(),
-		blooms:          newBloomAggregator(),
-		pageSizeHint:    pageSizeHint,
-		pageMaxRowCount: pageMaxRowCount,
+		metrics:           metrics,
+		labels:            newLabelAggregator(),
+		blooms:            newBloomAggregator(),
+		pageSizeHint:      pageSizeHint,
+		pageMaxRowCount:   pageMaxRowCount,
+		targetSectionSize: targetSectionSize,
 	}
 }
 
