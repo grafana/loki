@@ -479,10 +479,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 
 	e.metrics.observePhysicalShape(physicalPlanShapeOf(physicalPlan))
 
-	printPhysicalPlanSummary(q, physicalPlan, duration, rules)
-	span.SetAttributes(
-		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
-	)
+	printPhysicalPlanSummary(q, physicalPlan, duration, rules, span)
 
 	span.SetStatus(codes.Ok, "")
 	return physicalPlan, nil
@@ -490,7 +487,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 
 // printExecutionSummary prints a general summary of the execution, including
 // timing and cache information.
-func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Duration, rules map[string]bool) {
+func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Duration, rules map[string]bool, span *xcap.Span) {
 	var (
 		indexQueryDuration, _ = q.capture.Value(statPhysicalIndexQueryDuration).Int64()
 		optimizeDuration, _   = q.capture.Value(statPhysicalOptimizeDuration).Int64()
@@ -517,11 +514,21 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 		}),
 
 		"rules_fired", encodePhysicalRules(rules),
-
-		// Large plans result in log line truncation, retain the other
-		// kvs by moving this to the end.
-		"plan", physical.PrintAsTree(plan),
 	)
+
+	// PrintAsTree can take significant amount of time, so get it off the hot path.
+	go func() {
+		plan := physical.PrintAsTree(plan)
+		level.Debug(q.Logger()).Log(
+			"msg", "physical-plan-detail",
+			"plan", plan,
+		)
+		if span != nil && span.IsRecording() {
+			span.SetAttributes(
+				attribute.String("plan", plan),
+			)
+		}
+	}()
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, logger log.Logger, cacheEnabled bool) physical.MetastoreSectionsResolver {
@@ -562,7 +569,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 
 			// Index queries plan via planner.Plan and don't run the rule-based
 			// optimizer, so there are no rule firings to report here.
-			printPhysicalPlanSummary(q, plan, duration, nil)
+			printPhysicalPlanSummary(q, plan, duration, nil, nil)
 		}
 
 		// Disable admission lanes for metastore queries
