@@ -127,9 +127,18 @@ func (v *verifier) verifySearchTree() (map[uint]bool, error) {
 }
 
 func (v *verifier) verifyDataSectionSeparator() error {
-	separatorStart := v.reader.Metadata.NodeCount * v.reader.Metadata.RecordSize / 4
+	separatorStart := searchTreeSizeBytes(
+		v.reader.Metadata.NodeCount,
+		v.reader.Metadata.RecordSize,
+	)
+	separatorEnd := separatorStart + dataSectionSeparatorSize
+	if separatorEnd < separatorStart || separatorEnd > uint(len(v.reader.buffer)) {
+		return mmdberrors.NewInvalidDatabaseError(
+			"unexpected end of database while reading data section separator",
+		)
+	}
 
-	separator := v.reader.buffer[separatorStart : separatorStart+dataSectionSeparatorSize]
+	separator := v.reader.buffer[separatorStart:separatorEnd]
 
 	for _, b := range separator {
 		if b != 0 {

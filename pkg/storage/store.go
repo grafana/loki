@@ -7,26 +7,20 @@ import (
 	"slices"
 	"time"
 
-	"go.opentelemetry.io/otel"
-
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-
-	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
-
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/grafana/dskit/tenant"
+	"go.opentelemetry.io/otel"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -43,6 +37,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 var tracer = otel.Tracer("pkg/storage")
@@ -90,10 +85,8 @@ type LokiStore struct {
 	clientMetrics      ClientMetrics
 	registerer         prometheus.Registerer
 
-	indexReadCache   cache.Cache
-	chunksCache      cache.Cache
-	chunksCacheL2    cache.Cache
-	writeDedupeCache cache.Cache
+	chunksCache   cache.Cache
+	chunksCacheL2 cache.Cache
 
 	limits StoreLimits
 	logger log.Logger
@@ -119,20 +112,6 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		}
 	}
 
-	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger, stats.IndexCache, metricsNamespace)
-	if err != nil {
-		return nil, err
-	}
-
-	if cache.IsCacheConfigured(storeCfg.WriteDedupeCacheConfig) {
-		level.Warn(logger).Log("msg", "write dedupe cache is deprecated along with legacy index types. Consider using TSDB index which does not require a write dedupe cache.")
-	}
-
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger, stats.WriteDedupeCache, metricsNamespace)
-	if err != nil {
-		return nil, err
-	}
-
 	chunkCacheCfg := storeCfg.ChunkCacheConfig
 	chunkCacheCfg.Prefix = "chunks"
 	chunksCache, err := cache.New(chunkCacheCfg, registerer, logger, stats.ChunkCache, metricsNamespace)
@@ -150,16 +129,8 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 
 	// Cache is shared by multiple stores, which means they will try and Stop
 	// it more than once.  Wrap in a StopOnce to prevent this.
-	indexReadCache = cache.StopOnce(indexReadCache)
 	chunksCache = cache.StopOnce(chunksCache)
 	chunksCacheL2 = cache.StopOnce(chunksCacheL2)
-	writeDedupeCache = cache.StopOnce(writeDedupeCache)
-
-	// Lets wrap all caches except chunksCache with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers.
-	// chunksCache is not wrapped because chunks content can't be anyways modified without changing its ID so there is no use of
-	// invalidating chunks cache. Also chunks can be fetched only by their ID found in index and we are anyways removing the index and invalidating index cache here.
-	indexReadCache = cache.NewCacheGenNumMiddleware(indexReadCache)
-	writeDedupeCache = cache.NewCacheGenNumMiddleware(writeDedupeCache)
 
 	err = schemaCfg.Load()
 	if err != nil {
@@ -180,10 +151,8 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		chunkMetrics:       NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
 		registerer:         registerer,
 
-		indexReadCache:   indexReadCache,
-		chunksCache:      chunksCache,
-		chunksCacheL2:    chunksCacheL2,
-		writeDedupeCache: writeDedupeCache,
+		chunksCache:   chunksCache,
+		chunksCacheL2: chunksCacheL2,
 
 		logger: logger,
 		limits: limits,

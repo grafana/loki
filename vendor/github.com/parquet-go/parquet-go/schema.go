@@ -516,6 +516,7 @@ func appendStructFields(path []string, t reflect.Type, fields []reflect.StructFi
 
 		ftags := fromStructTag(f.Tag)
 
+		parquetNameSet := false
 		if tag := ftags.parquet; tag != "" {
 			name, _ := split(tag)
 			if tag != "-," && name == "-" {
@@ -523,13 +524,14 @@ func appendStructFields(path []string, t reflect.Type, fields []reflect.StructFi
 			}
 			if name != "" {
 				f.Name = name
+				parquetNameSet = true
 			}
 		}
 
 		// If no explicit parquet name was set, check for protobuf tag name.
 		// This allows protobuf-generated structs to use their proto field names
 		// (typically snake_case) as parquet column names.
-		if f.Name == t.Field(i).Name { // Name wasn't changed by parquet tag
+		if !parquetNameSet {
 			if protoName := protoFieldNameFromTag(f.Tag); protoName != "" {
 				f.Name = protoName
 			}
@@ -1010,6 +1012,9 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 			case "json":
 				setNode(JSON())
 
+			case "variant":
+				setNode(Variant())
+
 			case "delta":
 				switch t.Kind() {
 				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
@@ -1039,9 +1044,21 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 				}
 
 			case "split":
-				switch t.Kind() {
-				case reflect.Float32, reflect.Float64:
+				kind := t.Kind()
+				baseType := t
+				if kind == reflect.Ptr {
+					kind = t.Elem().Kind()
+					baseType = t.Elem()
+				}
+				switch kind {
+				case reflect.Float32, reflect.Float64, reflect.Int32, reflect.Int64:
 					setEncoding(&ByteStreamSplit)
+				case reflect.Array:
+					if baseType.Elem().Kind() == reflect.Uint8 {
+						setEncoding(&ByteStreamSplit)
+					} else {
+						throwInvalidTag(t, name, option)
+					}
 				default:
 					throwInvalidTag(t, name, option)
 				}
@@ -1085,19 +1102,30 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 				if err != nil {
 					throwInvalidTag(t, name, option+args)
 				}
-				var baseType Type
-				switch t.Kind() {
-				case reflect.Int32:
-					baseType = Int32Type
-				case reflect.Int64:
-					baseType = Int64Type
-				case reflect.Array, reflect.Slice:
-					baseType = FixedLenByteArrayType(decimalFixedLenByteArraySize(precision))
-				default:
-					throwInvalidTag(t, name, option)
+				decimalBaseType := func(et reflect.Type) Type {
+					switch et.Kind() {
+					case reflect.Int32:
+						return Int32Type
+					case reflect.Int64:
+						return Int64Type
+					case reflect.Array, reflect.Slice:
+						return FixedLenByteArrayType(decimalFixedLenByteArraySize(precision))
+					}
+					return nil
 				}
-
-				setNode(Decimal(scale, precision, baseType))
+				if t.Kind() == reflect.Ptr {
+					baseType := decimalBaseType(t.Elem())
+					if baseType == nil {
+						throwInvalidTag(t, name, option)
+					}
+					setNode(Optional(Decimal(scale, precision, baseType)))
+				} else {
+					baseType := decimalBaseType(t)
+					if baseType == nil {
+						throwInvalidTag(t, name, option)
+					}
+					setNode(Decimal(scale, precision, baseType))
+				}
 
 			case "string":
 				switch {
@@ -1122,10 +1150,13 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 				case reflect.Int32:
 					setNode(Date())
 				case reflect.Ptr:
-					// Support *time.Time with date tag
-					if t.Elem() == reflect.TypeFor[time.Time]() {
+					elem := t.Elem()
+					switch {
+					case elem == reflect.TypeFor[time.Time]():
 						setNode(Optional(Date()))
-					} else {
+					case elem.Kind() == reflect.Int32:
+						setNode(Optional(Date()))
+					default:
 						throwInvalidTag(t, name, option)
 					}
 				default:
@@ -1195,15 +1226,21 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					}
 					setNode(TimestampAdjusted(timeUnit, adjusted))
 				case reflect.Ptr:
-					// Support *time.Time with timestamp tags
-					if t.Elem() == reflect.TypeFor[time.Time]() {
+					elem := t.Elem()
+					switch {
+					case elem == reflect.TypeFor[time.Time]():
 						timeUnit, adjusted, err := parseTimestampArgs(args)
 						if err != nil {
 							throwInvalidTag(t, name, option+args)
 						}
-						// Wrap in Optional for schema correctness (nil pointers = NULL values)
 						setNode(Optional(TimestampAdjusted(timeUnit, adjusted)))
-					} else {
+					case elem.Kind() == reflect.Int64:
+						timeUnit, adjusted, err := parseTimestampArgs(args)
+						if err != nil {
+							throwInvalidTag(t, name, option+args)
+						}
+						setNode(Optional(TimestampAdjusted(timeUnit, adjusted)))
+					default:
 						throwInvalidTag(t, name, option)
 					}
 				default:
@@ -1217,6 +1254,16 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					default:
 						throwInvalidTag(t, name, option)
 					}
+				}
+
+			case "interval":
+				switch {
+				case t == reflect.TypeOf(Interval{}):
+					setNode(IntervalNode())
+				case t.Kind() == reflect.Array && t.Elem().Kind() == reflect.Uint8 && t.Len() == 12:
+					setNode(IntervalNode())
+				default:
+					throwInvalidTag(t, name, option)
 				}
 
 			case "int":

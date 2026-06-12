@@ -76,9 +76,7 @@ message WorkerHelloMessage {
 }
 
 // WorkerSubscribeMessage is sent by a scheduler to request a WorkerReadyMessage
-// from workers once they have at least one worker thread available.
-//
-// The subscription is cleared once the next WorkerReadyMessage is sent.
+// from workers whenever they transition from being fully occupied to having worker threads available.
 message WorkerSubscribeMessage {}
 
 // WorkerReadyMessage is sent by a worker to the scheduler to signal that

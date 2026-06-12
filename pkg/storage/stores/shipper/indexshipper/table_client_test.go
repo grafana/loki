@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 func TestBoltDBShipperTableClient(t *testing.T) {
@@ -46,7 +45,7 @@ func TestBoltDBShipperTableClient(t *testing.T) {
 	checkExpectedTables(t, tableClient, foldersWithFiles)
 }
 
-func checkExpectedTables(t *testing.T, tableClient index.TableClient, expectedTables map[string][]string) {
+func checkExpectedTables(t *testing.T, tableClient TableClient, expectedTables map[string][]string) {
 	actualTables, err := tableClient.ListTables(context.Background())
 	require.NoError(t, err)
 

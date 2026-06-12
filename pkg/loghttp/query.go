@@ -13,11 +13,7 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/dskit/httpgrpc"
-
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -527,23 +523,6 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 
 	if result.Interval < 0 {
 		return nil, errNegativeInterval
-	}
-
-	if GetVersion(r.URL.Path) == VersionLegacy {
-		result.Query, err = parseRegexQuery(r)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-		}
-
-		expr, err := syntax.ParseExpr(result.Query)
-		if err != nil {
-			return nil, err
-		}
-
-		// short circuit metric queries
-		if _, ok := expr.(syntax.SampleExpr); ok {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, "legacy endpoints only support %s result type", logqlmodel.ValueTypeStreams)
-		}
 	}
 
 	return &result, nil

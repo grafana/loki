@@ -18,12 +18,15 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -82,6 +85,11 @@ type thread struct {
 	Logger         log.Logger
 	StreamFilterer executor.RequestStreamFilterer
 	TaskCaches     executor.TaskCacheRegistry
+	ScratchStore   scratch.Store
+	IndexobjCfg    logsobj.BuilderBaseConfig
+
+	// IndexMergeObserver is optional; nil for query-only workers.
+	IndexMergeObserver executor.IndexMergeObserver
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -124,6 +132,9 @@ func (t *thread) setState(state threadState) {
 
 func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer job.Close()
+
+	setupStart := time.Now()
+	taskType := taskTypeLabel(job.Task)
 
 	ctx, task := gotrace.NewTask(ctx, "thread.runJob")
 	defer task.End()
@@ -169,6 +180,10 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,
 		TaskCaches:     t.TaskCaches,
+		ScratchStore:   t.ScratchStore,
+		IndexobjCfg:    t.IndexobjCfg,
+
+		IndexMergeObserver: t.IndexMergeObserver,
 
 		GetExternalInputs: func(fnCtx context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
@@ -284,8 +299,12 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
 
+	// Record the time spent preparing the task before we begin draining its
+	// pipeline (planning, pipeline construction, and source binding setup).
+	t.Metrics.setupSeconds.WithLabelValues(taskType).Observe(time.Since(setupStart).Seconds())
+
 	gotrace.Log(ctx, "drain_pipeline", "start")
-	_, drainErr := t.drainPipeline(ctx, pipeline, sinksForJob(job), logger)
+	_, drainErr := t.drainPipeline(ctx, taskType, pipeline, sinksForJob(job), logger)
 	gotrace.Log(ctx, "drain_pipeline", "done")
 
 	var terminalStatus workflow.TaskStatus
@@ -317,6 +336,23 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	capture.End()
 	terminalStatus.Capture = capture
 
+	// Build the task's operator tree once from the finalized capture (cold
+	// path), then both log it and record per-operator-type cost.
+	pipelineNodes := buildPipelineNodes(pipelineRegionsFromCapture(capture))
+	logPipelineTrace(logger, pipelineNodes)
+	t.Metrics.observeOperatorCost(pipelineNodes)
+
+	// Expose task I/O counts as worker counters by reading the values already
+	// accumulated in the per-task capture (the same stats logged in the task
+	// summary). Only leaf tasks download from object storage today, so these are
+	// zero for non-leaf tasks; recording unconditionally keeps the counters
+	// correct if a non-leaf task ever starts downloading.
+	pagesDownloaded := xcap.Value[int64](capture, xcap.StatDatasetPrimaryPagesDownloaded) +
+		xcap.Value[int64](capture, xcap.StatDatasetSecondaryPagesDownloaded)
+	t.Metrics.pagesDownloadedTotal.Add(float64(pagesDownloaded))
+	t.Metrics.pagesPrunedTotal.Add(float64(xcap.Value[int64](capture, dataobj.StatDatasetPagesPruned)))
+	t.Metrics.bytesDownloadedTotal.Add(float64(xcap.Value[int64](capture, dataobj.StatObjectBytesDownloaded)))
+
 	duration := time.Since(startTime)
 
 	logValues := []any{
@@ -327,7 +363,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
 
 	level.Info(logger).Log(logValues...)
-	t.Metrics.taskExecSeconds.Observe(duration.Seconds())
+	t.Metrics.taskExecSeconds.WithLabelValues(taskType).Observe(duration.Seconds())
 
 	// Send the terminal status synchronously so the scheduler can update its
 	// thread-capacity bookkeeping and merge the Capture before the worker
@@ -336,12 +372,54 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	// We use a detached context so a cancelled job context does not prevent us
 	// from delivering the final status (and in particular, the Capture).
 	sendCtx := context.WithoutCancel(ctx)
-	if err := job.Scheduler.SendMessage(sendCtx, wire.TaskStatusMessage{
+	sendStart := time.Now()
+	sendErr := job.Scheduler.SendMessage(sendCtx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
 		Status: terminalStatus,
-	}); err != nil {
-		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
+	})
+	t.Metrics.statusUpdateSeconds.Observe(time.Since(sendStart).Seconds())
+	if sendErr != nil {
+		t.Metrics.statusUpdateErrorsTotal.WithLabelValues(statusUpdateErrorClass(sendErr)).Inc()
+		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", sendErr)
 	}
+}
+
+// taskTypeLabel returns the task_type metric label for task: [taskTypeLeaf] if
+// the task has no external task sources (it reads directly from storage),
+// otherwise [taskTypeNonLeaf]. This mirrors the leaf/non-leaf classification
+// used in the per-task summary log.
+func taskTypeLabel(task *workflow.Task) string {
+	if len(task.Sources) == 0 {
+		return taskTypeLeaf
+	}
+	return taskTypeNonLeaf
+}
+
+// statusUpdateErrorClass maps an error from the status-update send path to a
+// bounded label value for the status_update_errors_total counter.
+func statusUpdateErrorClass(err error) string {
+	switch {
+	case err == nil:
+		return "none"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, wire.ErrConnClosed):
+		return "conn_closed"
+	}
+
+	var wireErr *wire.Error
+	if errors.As(err, &wireErr) {
+		switch {
+		case wireErr.Code >= 400 && wireErr.Code < 500:
+			return "rejected"
+		case wireErr.Code >= 500:
+			return "server_error"
+		}
+	}
+
+	return "other"
 }
 
 // recordBatchBytes returns the total in-memory size in bytes of all column
@@ -354,30 +432,46 @@ func recordBatchBytes(rec arrow.RecordBatch) int64 {
 	return n
 }
 
-func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
+func (t *thread) drainPipeline(ctx context.Context, taskType string, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
-	startRead := time.Now()
-	if err := pipeline.Open(ctx); err != nil {
-		return 0, err
-	}
-	readDuration := time.Since(startRead)
-
 	var (
-		totalRows        int
-		totalComputeTime time.Duration
-		totalWriteTime   time.Duration
+		openDuration  time.Duration
+		totalReadTime time.Duration
+		totalSendTime time.Duration
 	)
 
+	// Record on every exit, including failures, so a task that errors still
+	// reports where its time went; the region observations feed the summary log.
+	defer func() {
+		t.Metrics.taskOpenSeconds.WithLabelValues(taskType).Observe(openDuration.Seconds())
+		t.Metrics.taskReadSeconds.WithLabelValues(taskType).Observe(totalReadTime.Seconds())
+		t.Metrics.taskSendSeconds.WithLabelValues(taskType).Observe(totalSendTime.Seconds())
+
+		region.Record(workerstat.TaskExecutionOpenDuration.Observe(openDuration.Nanoseconds()))
+		region.Record(workerstat.TaskExecutionReadDuration.Observe(totalReadTime.Nanoseconds()))
+		region.Record(workerstat.TaskExecutionSendDuration.Observe(totalSendTime.Nanoseconds()))
+	}()
+
+	startOpen := time.Now()
+	openErr := pipeline.Open(ctx)
+	openDuration = time.Since(startOpen)
+	if openErr != nil {
+		return 0, openErr
+	}
+
+	var totalRows int
 	for {
-		startCompute := time.Now()
+		startRead := time.Now()
 		rec, err := pipeline.Read(ctx)
-		computeDuration := time.Since(startCompute)
+		readDuration := time.Since(startRead)
+		// Count every pass toward the task total; the per-pass histogram skips
+		// error passes to avoid skewing pass latencies.
+		totalReadTime += readDuration
 		if err == nil || errors.Is(err, executor.EOF) {
-			t.Metrics.passComputeSeconds.Observe(computeDuration.Seconds())
-			totalComputeTime += computeDuration
+			t.Metrics.passReadSeconds.Observe(readDuration.Seconds())
 		}
-		if err != nil && errors.Is(err, executor.EOF) {
+		if errors.Is(err, executor.EOF) {
 			break
 		} else if err != nil {
 			return totalRows, err
@@ -401,26 +495,15 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 				level.Warn(logger).Log("msg", "failed to send result", "err", err)
 			}
 		}
-		writeDuration := time.Since(startSend)
-		t.Metrics.passWriteSeconds.Observe(writeDuration.Seconds())
-		totalWriteTime += writeDuration
+		sendDuration := time.Since(startSend)
+		t.Metrics.passSendSeconds.Observe(sendDuration.Seconds())
+		totalSendTime += sendDuration
 
 		region.Record(xcap.TaskRecordsSent.Observe(1))
 		region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
 		region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(rec)))
-		region.Record(xcap.TaskSendDuration.Observe(writeDuration.Seconds()))
+		region.Record(xcap.TaskSendDuration.Observe(sendDuration.Seconds()))
 	}
-
-	// Task-wide phase durations.
-	t.Metrics.taskReadSeconds.Observe(readDuration.Seconds())
-	t.Metrics.taskComputeSeconds.Observe(totalComputeTime.Seconds())
-	t.Metrics.taskWriteSeconds.Observe(totalWriteTime.Seconds())
-
-	// Record execution sub-phase durations on the task region so the workflow
-	// can include them in the per-task summary log.
-	region.Record(workerstat.TaskExecutionOpenDuration.Observe(readDuration.Nanoseconds()))
-	region.Record(workerstat.TaskExecutionReadDuration.Observe(totalComputeTime.Nanoseconds()))
-	region.Record(workerstat.TaskExecutionSendDuration.Observe(totalWriteTime.Nanoseconds()))
 
 	return totalRows, nil
 }

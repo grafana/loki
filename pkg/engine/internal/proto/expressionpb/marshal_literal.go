@@ -1,6 +1,9 @@
 package expressionpb
 
-import "github.com/grafana/loki/v3/pkg/engine/internal/types"
+import (
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+)
 
 type literalMarshaler interface {
 	MarshalLiteral() (types.Literal, error)
@@ -62,6 +65,12 @@ func (e *LiteralExpression_StringListLiteral) MarshalLiteral() (types.Literal, e
 
 // MarshalLiteral converts a protobuf literal into a types literal.
 // Returns an error if the conversion fails or is unsupported.
+func (e *LiteralExpression_LabelFmtListLiteral) MarshalLiteral() (types.Literal, error) {
+	return e.LabelFmtListLiteral.MarshalLiteral()
+}
+
+// MarshalLiteral converts a protobuf literal into a types literal.
+// Returns an error if the conversion fails or is unsupported.
 func (l *NullLiteral) MarshalLiteral() (types.Literal, error) {
 	return types.NullLiteral{}, nil
 }
@@ -112,4 +121,14 @@ func (l *BytesLiteral) MarshalLiteral() (types.Literal, error) {
 // Returns an error if the conversion fails or is unsupported.
 func (l *StringListLiteral) MarshalLiteral() (types.Literal, error) {
 	return types.StringListLiteral(l.Value), nil
+}
+
+// MarshalLiteral converts a protobuf literal into a types literal.
+// Returns an error if the conversion fails or is unsupported.
+func (l *LabelFmtListLiteral) MarshalLiteral() (types.Literal, error) {
+	labelFmts := make([]log.LabelFmt, len(l.Value))
+	for i, value := range l.Value {
+		labelFmts[i] = log.LabelFmt{Name: value.Name, Value: value.Value, Rename: value.Rename}
+	}
+	return types.LabelFmtListLiteral(labelFmts), nil
 }

@@ -5,7 +5,8 @@ on:
     types:
       - released
 
-  workflow_dispatch: # for manual testing
+permissions:
+  contents: read
 
 jobs:
   weekly-release-pr:
@@ -18,16 +19,19 @@ jobs:
       RELEASE_VERSION: "${{ github.event.release.tag_name || 'test' }}"
       BUILD_IN_CONTAINER: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
-      - uses: gabe565/setup-helm-docs-action@d5c35bdc9133cfbea3b671acadf50a29029e87c2 # v1.0.4
-        with:
-          version: v1.11.2
+      - name: Install helm-docs
+        run: |
+          HELM_DOCS_VERSION="v1.11.2"
+          curl -fsSL "https://github.com/norwoodj/helm-docs/releases/download/${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION#v}_Linux_x86_64.tar.gz" \
+            | tar -xzf - -C "$RUNNER_TEMP" helm-docs
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Generate GitHub App Token
         id: app-token
-        uses: grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0 # create-github-app-token/v0.2.2
+        uses: grafana/shared-workflows/actions/create-github-app-token@ae92934a14a48b94494dbc06d74a81d47fe08a40 # create-github-app-token/v0.2.2
         with:
           github_app: loki-gh-app
 
@@ -37,7 +41,7 @@ jobs:
           bash .github/workflows/scripts/helm-tagged-release.sh ${RELEASE_VERSION}
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
           token: ${{ steps.app-token.outputs.token }}
           title: "chore: release loki helm chart ${{ steps.update.outputs.new_chart_version }}"

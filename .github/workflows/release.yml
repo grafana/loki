@@ -2,12 +2,12 @@ concurrency:
   group: "create-release-${{ github.sha }}"
 env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
+  GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "65e24dba101c1535cf29bab695e1b12855803e4a"
+  RELEASE_LIB_REF: "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
   RELEASE_REPO: "grafana/loki"
-  USE_GITHUB_APP_TOKEN: true
 jobs:
   createRelease:
     env:
@@ -43,44 +43,31 @@ jobs:
     - name: "setup node"
       uses: "actions/setup-node@v4"
       with:
-        node-version: 20
+        node-version: 24
         package-manager-cache: false
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up Cloud SDK"
-      uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
-      with:
-        version: ">= 452.0.0"
+    - name: "enable corepack"
+      run: "corepack enable"
     - id: "get_github_app_token"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
         github_app: "${{ env.GITHUB_APP }}"
-    - env:
-        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
-      id: "github_app_token"
-      name: "set github token"
-      run: |
-        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
-        else
-          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
-        fi
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
     - name: "download binaries"
       run: |
         echo "downloading binaries to $(pwd)/dist"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/$(echo ${SHA} | tr -d '"')/dist .
+        mkdir -p dist
+        gcloud artifacts generic download \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --package=binaries \
+          --version=$(echo ${SHA} | tr -d '"') \
+          --destination=dist/
       working-directory: "release"
     - env:
-        GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        GH_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         OUTPUTS_NAME: "${{ needs.shouldRelease.outputs.name }}"
       id: "check_release"
       name: "check if release exists"
@@ -101,14 +88,14 @@ jobs:
     - env:
         OUTPUTS_BRANCH: "${{ needs.shouldRelease.outputs.branch }}"
         OUTPUTS_PR_NUMBER: "${{ needs.shouldRelease.outputs.prNumber }}"
-        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         SHA: "${{ needs.shouldRelease.outputs.sha }}"
       id: "release"
       if: "${{ !fromJSON(steps.check_release.outputs.exists) }}"
       name: "create release"
       run: |
-        npm install
-        npm exec -- release-please github-release \
+        yarn install
+        yarn exec -- release-please github-release \
           --draft \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
@@ -117,21 +104,27 @@ jobs:
           --shas-to-tag "$(echo $OUTPUTS_PR_NUMBER | tr -d '"'):$(echo ${SHA} | tr -d '"')"
       working-directory: "lib"
     - env:
-        GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        GH_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         OUTPUTS_NAME: "${{ needs.shouldRelease.outputs.name }}"
       id: "upload"
       name: "upload artifacts"
       run: |
         gh release upload --clobber $(echo $OUTPUTS_NAME | tr -d '"') dist/*
       working-directory: "release"
-    - if: "${{ fromJSON(env.PUBLISH_TO_GCS) }}"
-      name: "release artifacts"
-      uses: "google-github-actions/upload-cloud-storage@386ab77f37fdf51c0e38b3d229fad286861cc0d0"
-      with:
-        destination: "${{ env.PUBLISH_BUCKET }}"
-        parent: false
+    - env:
         path: "release/dist"
-        process_gcloudignore: false
+      if: "${{ fromJSON(env.PUBLISH_TO_GCS) }}"
+      name: "release artifacts"
+      run: |
+        echo "downloading binaries to $(pwd)/dist"
+        gcloud artifacts generic upload \
+          --project="grafanalabs-global" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-prod" \
+          --location="us" \
+          --source-directory=${{ env.path }}, \
+          --package=binaries \
+          --version=${{ github.sha }}
+      working-directory: "release"
   createReleaseBranch:
     needs:
     - "publishRelease"
@@ -153,28 +146,16 @@ jobs:
       name: "extract branch name"
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
-      working-directory: "release"
     - id: "get_github_app_token"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:
-        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
-      id: "github_app_token"
-      name: "set github token"
-      run: |
-        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
-        else
-          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
-        fi
-    - env:
-        GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        GH_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         OUTPUTS_BRANCH: "${{ steps.extract_branch.outputs.branch }}"
         OUTPUTS_NAME: "${{ needs.publishRelease.outputs.name }}"
-        OUTPUTS_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         VERSION: "${{ needs.publishRelease.outputs.name }}"
       id: "create_branch"
       name: "create release branch"
@@ -243,31 +224,26 @@ jobs:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up Cloud SDK"
-      uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
-      with:
-        version: ">= 452.0.0"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - name: "Login to DockerHub (from vault)"
-      uses: "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
     - env:
         SHA: "${{ needs.createRelease.outputs.sha }}"
       name: "download and prepare plugins"
       run: |
-        echo "downloading images to $(pwd)/plugins"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/$(echo ${SHA} | tr -d '"')/plugins .
+        echo "downloading plugins to $(pwd)/plugins"
+        gcloud artifacts generic download \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --package=plugins \
+          --version=$(echo ${SHA} | tr -d '"') \
+          --destination=plugins/
         mkdir -p "release/clients/cmd/docker-driver"
     - name: "publish docker driver"
       uses: "./lib/actions/push-images"
@@ -291,31 +267,26 @@ jobs:
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
-    - id: "fetch_gcs_credentials"
-      name: "fetch gcs credentials from vault"
-      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-      with:
-        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
-    - name: "auth gcs"
-      uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
-      with:
-        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up Cloud SDK"
-      uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
-      with:
-        version: ">= 452.0.0"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - name: "Login to DockerHub (from vault)"
-      uses: "grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
     - env:
         SHA: "${{ needs.createRelease.outputs.sha }}"
       name: "download images"
       run: |
         echo "downloading images to $(pwd)/images"
-        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/$(echo ${SHA} | tr -d '"')/images .
+        gcloud artifacts generic download \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --package=images \
+          --version=$(echo ${SHA} | tr -d '"') \
+          --destination=images/
     - name: "publish docker images"
       uses: "./lib/actions/push-images"
       with:
@@ -341,23 +312,12 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - id: "get_github_app_token"
-      if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
       name: "get github app token"
       uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:
-        OUTPUTS_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
-      id: "github_app_token"
-      name: "set github token"
-      run: |
-        if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
-          echo "token=$OUTPUTS_TOKEN" >> $GITHUB_OUTPUT
-        else
-          echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
-        fi
-    - env:
-        GH_TOKEN: "${{ steps.github_app_token.outputs.token }}"
+        GH_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
         OUTPUTS_IS_LATEST: "${{ needs.createRelease.outputs.isLatest }}"
         OUTPUTS_NAME: "${{ needs.createRelease.outputs.name }}"
       if: "${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}"
@@ -396,7 +356,6 @@ jobs:
       name: "extract branch name"
       run: |
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
-      working-directory: "release"
     - id: "should_release"
       name: "should a release be created?"
       uses: "./lib/actions/should-release"

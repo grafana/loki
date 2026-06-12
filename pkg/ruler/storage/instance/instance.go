@@ -25,7 +25,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb/wlog"
-	"gopkg.in/yaml.v2"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/util"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/wal"
@@ -72,11 +72,13 @@ type Config struct {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 	*c = DefaultConfig
 
-	type plain Config
-	return unmarshal((*plain)(c))
+	type raw Config
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	return value.Load((*raw)(c), yaml.WithKnownFields(true))
 }
 
 // MarshalYAML implements yaml.Marshaler.
@@ -89,13 +91,18 @@ func (c Config) MarshalYAML() (interface{}, error) {
 		return nil, err
 	}
 
-	// Use a yaml.MapSlice rather than a map[string]interface{} so
-	// order of keys is retained compared to just calling MarshalConfig.
-	var m yaml.MapSlice
-	if err := yaml.Unmarshal(bb, &m); err != nil {
+	// Use a yaml.Node to preserve key order compared to map[string]interface{}.
+	// yaml.Unmarshal into a Node produces a DocumentNode wrapper; unwrap it
+	// to return the actual mapping node so the caller's marshaler doesn't
+	// encounter a nested document-start marker.
+	var doc yaml.Node
+	if err := yaml.Unmarshal(bb, &doc); err != nil {
 		return nil, err
 	}
-	return m, nil
+	if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
+		return doc.Content[0], nil
+	}
+	return &doc, nil
 }
 
 // ApplyDefaults applies default configurations to the configuration to all
