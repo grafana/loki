@@ -485,10 +485,8 @@ func (m *CachedResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Extents) + c; cap(m.Extents) < need {
-				grown := make([]Extent, len(m.Extents), need)
-				copy(grown, m.Extents)
-				m.Extents = grown
+			if len(m.Extents) == 0 && cap(m.Extents) < c {
+				m.Extents = make([]Extent, 0, c)
 			}
 		}
 	}

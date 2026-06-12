@@ -934,20 +934,16 @@ func (m *Series) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Labels) + c; cap(m.Labels) < need {
-				grown := make([]logproto.LabelAdapter, len(m.Labels), need)
-				copy(grown, m.Labels)
-				m.Labels = grown
+			if len(m.Labels) == 0 && cap(m.Labels) < c {
+				m.Labels = make([]logproto.LabelAdapter, 0, c)
 			}
 		}
 		if c := field4count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Chunks) + c; cap(m.Chunks) < need {
-				grown := make([]Chunk, len(m.Chunks), need)
-				copy(grown, m.Chunks)
-				m.Chunks = grown
+			if len(m.Chunks) == 0 && cap(m.Chunks) < c {
+				m.Chunks = make([]Chunk, 0, c)
 			}
 		}
 	}

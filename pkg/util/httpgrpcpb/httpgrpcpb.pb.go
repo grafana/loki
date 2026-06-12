@@ -442,10 +442,8 @@ func (m *HTTPRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*Header, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*Header, 0, c)
 			}
 		}
 	}
@@ -750,10 +748,8 @@ func (m *HTTPResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Headers) + c; cap(m.Headers) < need {
-				grown := make([]*Header, len(m.Headers), need)
-				copy(grown, m.Headers)
-				m.Headers = grown
+			if len(m.Headers) == 0 && cap(m.Headers) < c {
+				m.Headers = make([]*Header, 0, c)
 			}
 		}
 	}
@@ -996,10 +992,8 @@ func (m *Header) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Values) + c; cap(m.Values) < need {
-				grown := make([]string, len(m.Values), need)
-				copy(grown, m.Values)
-				m.Values = grown
+			if len(m.Values) == 0 && cap(m.Values) < c {
+				m.Values = make([]string, 0, c)
 			}
 		}
 	}

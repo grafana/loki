@@ -930,10 +930,8 @@ func (m *GetDeleteRequestsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.DeleteRequests) + c; cap(m.DeleteRequests) < need {
-				grown := make([]*deletionproto.DeleteRequest, len(m.DeleteRequests), need)
-				copy(grown, m.DeleteRequests)
-				m.DeleteRequests = grown
+			if len(m.DeleteRequests) == 0 && cap(m.DeleteRequests) < c {
+				m.DeleteRequests = make([]*deletionproto.DeleteRequest, 0, c)
 			}
 		}
 	}

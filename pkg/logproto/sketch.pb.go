@@ -1464,10 +1464,8 @@ func (m *QuantileSketchMatrix) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Values) + c; cap(m.Values) < need {
-				grown := make([]*QuantileSketchVector, len(m.Values), need)
-				copy(grown, m.Values)
-				m.Values = grown
+			if len(m.Values) == 0 && cap(m.Values) < c {
+				m.Values = make([]*QuantileSketchVector, 0, c)
 			}
 		}
 	}
@@ -1637,10 +1635,8 @@ func (m *QuantileSketchVector) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Samples) + c; cap(m.Samples) < need {
-				grown := make([]*QuantileSketchSample, len(m.Samples), need)
-				copy(grown, m.Samples)
-				m.Samples = grown
+			if len(m.Samples) == 0 && cap(m.Samples) < c {
+				m.Samples = make([]*QuantileSketchSample, 0, c)
 			}
 		}
 	}
@@ -1810,10 +1806,8 @@ func (m *QuantileSketchSample) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Metric) + c; cap(m.Metric) < need {
-				grown := make([]*LabelPair, len(m.Metric), need)
-				copy(grown, m.Metric)
-				m.Metric = grown
+			if len(m.Metric) == 0 && cap(m.Metric) < c {
+				m.Metric = make([]*LabelPair, 0, c)
 			}
 		}
 	}
@@ -2304,10 +2298,8 @@ func (m *TDigest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Processed) + c; cap(m.Processed) < need {
-				grown := make([]*TDigest_Centroid, len(m.Processed), need)
-				copy(grown, m.Processed)
-				m.Processed = grown
+			if len(m.Processed) == 0 && cap(m.Processed) < c {
+				m.Processed = make([]*TDigest_Centroid, 0, c)
 			}
 		}
 	}
@@ -2744,10 +2736,8 @@ func (m *CountMinSketchVector) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Metrics) + c; cap(m.Metrics) < need {
-				grown := make([]*Labels, len(m.Metrics), need)
-				copy(grown, m.Metrics)
-				m.Metrics = grown
+			if len(m.Metrics) == 0 && cap(m.Metrics) < c {
+				m.Metrics = make([]*Labels, 0, c)
 			}
 		}
 	}
@@ -2995,10 +2985,8 @@ func (m *Labels) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Metric) + c; cap(m.Metric) < need {
-				grown := make([]*LabelPair, len(m.Metric), need)
-				copy(grown, m.Metric)
-				m.Metric = grown
+			if len(m.Metric) == 0 && cap(m.Metric) < c {
+				m.Metric = make([]*LabelPair, 0, c)
 			}
 		}
 	}
@@ -3286,10 +3274,8 @@ func (m *TopK) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.List) + c; cap(m.List) < need {
-				grown := make([]*TopK_Pair, len(m.List), need)
-				copy(grown, m.List)
-				m.List = grown
+			if len(m.List) == 0 && cap(m.List) < c {
+				m.List = make([]*TopK_Pair, 0, c)
 			}
 		}
 	}
@@ -3690,10 +3676,8 @@ func (m *TopKMatrix) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Values) + c; cap(m.Values) < need {
-				grown := make([]*TopKMatrix_Vector, len(m.Values), need)
-				copy(grown, m.Values)
-				m.Values = grown
+			if len(m.Values) == 0 && cap(m.Values) < c {
+				m.Values = make([]*TopKMatrix_Vector, 0, c)
 			}
 		}
 	}

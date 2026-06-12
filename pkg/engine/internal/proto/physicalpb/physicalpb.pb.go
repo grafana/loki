@@ -3246,20 +3246,16 @@ func (m *Plan) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Nodes) + c; cap(m.Nodes) < need {
-				grown := make([]Node, len(m.Nodes), need)
-				copy(grown, m.Nodes)
-				m.Nodes = grown
+			if len(m.Nodes) == 0 && cap(m.Nodes) < c {
+				m.Nodes = make([]Node, 0, c)
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Edges) + c; cap(m.Edges) < need {
-				grown := make([]PlanEdge, len(m.Edges), need)
-				copy(grown, m.Edges)
-				m.Edges = grown
+			if len(m.Edges) == 0 && cap(m.Edges) < c {
+				m.Edges = make([]PlanEdge, 0, c)
 			}
 		}
 	}
@@ -5031,10 +5027,8 @@ func (m *Grouping) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Columns) + c; cap(m.Columns) < need {
-				grown := make([]expressionpb.ColumnExpression, len(m.Columns), need)
-				copy(grown, m.Columns)
-				m.Columns = grown
+			if len(m.Columns) == 0 && cap(m.Columns) < c {
+				m.Columns = make([]expressionpb.ColumnExpression, 0, c)
 			}
 		}
 	}
@@ -5399,20 +5393,16 @@ func (m *DataObjScan) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Projections) + c; cap(m.Projections) < need {
-				grown := make([]expressionpb.ColumnExpression, len(m.Projections), need)
-				copy(grown, m.Projections)
-				m.Projections = grown
+			if len(m.Projections) == 0 && cap(m.Projections) < c {
+				m.Projections = make([]expressionpb.ColumnExpression, 0, c)
 			}
 		}
 		if c := field5count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Predicates) + c; cap(m.Predicates) < need {
-				grown := make([]expressionpb.Expression, len(m.Predicates), need)
-				copy(grown, m.Predicates)
-				m.Predicates = grown
+			if len(m.Predicates) == 0 && cap(m.Predicates) < c {
+				m.Predicates = make([]expressionpb.Expression, 0, c)
 			}
 		}
 	}
@@ -6003,10 +5993,8 @@ func (m *Filter) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Predicates) + c; cap(m.Predicates) < need {
-				grown := make([]expressionpb.Expression, len(m.Predicates), need)
-				copy(grown, m.Predicates)
-				m.Predicates = grown
+			if len(m.Predicates) == 0 && cap(m.Predicates) < c {
+				m.Predicates = make([]expressionpb.Expression, 0, c)
 			}
 		}
 	}
@@ -6290,10 +6278,8 @@ func (m *Projection) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Expressions) + c; cap(m.Expressions) < need {
-				grown := make([]expressionpb.Expression, len(m.Expressions), need)
-				copy(grown, m.Expressions)
-				m.Expressions = grown
+			if len(m.Expressions) == 0 && cap(m.Expressions) < c {
+				m.Expressions = make([]expressionpb.Expression, 0, c)
 			}
 		}
 	}
@@ -6953,30 +6939,24 @@ func (m *ScanSet) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Targets) + c; cap(m.Targets) < need {
-				grown := make([]ScanTarget, len(m.Targets), need)
-				copy(grown, m.Targets)
-				m.Targets = grown
+			if len(m.Targets) == 0 && cap(m.Targets) < c {
+				m.Targets = make([]ScanTarget, 0, c)
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Projections) + c; cap(m.Projections) < need {
-				grown := make([]expressionpb.ColumnExpression, len(m.Projections), need)
-				copy(grown, m.Projections)
-				m.Projections = grown
+			if len(m.Projections) == 0 && cap(m.Projections) < c {
+				m.Projections = make([]expressionpb.ColumnExpression, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Predicates) + c; cap(m.Predicates) < need {
-				grown := make([]expressionpb.Expression, len(m.Predicates), need)
-				copy(grown, m.Predicates)
-				m.Predicates = grown
+			if len(m.Predicates) == 0 && cap(m.Predicates) < c {
+				m.Predicates = make([]expressionpb.Expression, 0, c)
 			}
 		}
 	}
@@ -7520,10 +7500,8 @@ func (m *PointersScan) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Predicates) + c; cap(m.Predicates) < need {
-				grown := make([]expressionpb.Expression, len(m.Predicates), need)
-				copy(grown, m.Predicates)
-				m.Predicates = grown
+			if len(m.Predicates) == 0 && cap(m.Predicates) < c {
+				m.Predicates = make([]expressionpb.Expression, 0, c)
 			}
 		}
 	}
@@ -8030,10 +8008,8 @@ func (m *IndexMerge) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Runs) + c; cap(m.Runs) < need {
-				grown := make([]proto.RunRef, len(m.Runs), need)
-				copy(grown, m.Runs)
-				m.Runs = grown
+			if len(m.Runs) == 0 && cap(m.Runs) < c {
+				m.Runs = make([]proto.RunRef, 0, c)
 			}
 		}
 	}

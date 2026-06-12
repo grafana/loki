@@ -805,30 +805,24 @@ func (m *Metadata) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Sections) + c; cap(m.Sections) < need {
-				grown := make([]*SectionInfo, len(m.Sections), need)
-				copy(grown, m.Sections)
-				m.Sections = grown
+			if len(m.Sections) == 0 && cap(m.Sections) < c {
+				m.Sections = make([]*SectionInfo, 0, c)
 			}
 		}
 		if c := field2count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Dictionary) + c; cap(m.Dictionary) < need {
-				grown := make([]string, len(m.Dictionary), need)
-				copy(grown, m.Dictionary)
-				m.Dictionary = grown
+			if len(m.Dictionary) == 0 && cap(m.Dictionary) < c {
+				m.Dictionary = make([]string, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Types) + c; cap(m.Types) < need {
-				grown := make([]*SectionType, len(m.Types), need)
-				copy(grown, m.Types)
-				m.Types = grown
+			if len(m.Types) == 0 && cap(m.Types) < c {
+				m.Types = make([]*SectionType, 0, c)
 			}
 		}
 	}

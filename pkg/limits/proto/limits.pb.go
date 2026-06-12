@@ -1005,10 +1005,8 @@ func (m *ExceedsLimitsRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Streams) + c; cap(m.Streams) < need {
-				grown := make([]*StreamMetadata, len(m.Streams), need)
-				copy(grown, m.Streams)
-				m.Streams = grown
+			if len(m.Streams) == 0 && cap(m.Streams) < c {
+				m.Streams = make([]*StreamMetadata, 0, c)
 			}
 		}
 	}
@@ -1223,10 +1221,8 @@ func (m *ExceedsLimitsResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Results) + c; cap(m.Results) < need {
-				grown := make([]*ExceedsLimitsResult, len(m.Results), need)
-				copy(grown, m.Results)
-				m.Results = grown
+			if len(m.Results) == 0 && cap(m.Results) < c {
+				m.Results = make([]*ExceedsLimitsResult, 0, c)
 			}
 		}
 	}
@@ -2187,10 +2183,8 @@ func (m *UpdateRatesRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Streams) + c; cap(m.Streams) < need {
-				grown := make([]*StreamMetadata, len(m.Streams), need)
-				copy(grown, m.Streams)
-				m.Streams = grown
+			if len(m.Streams) == 0 && cap(m.Streams) < c {
+				m.Streams = make([]*StreamMetadata, 0, c)
 			}
 		}
 	}
@@ -2405,10 +2399,8 @@ func (m *UpdateRatesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Results) + c; cap(m.Results) < need {
-				grown := make([]*UpdateRatesResult, len(m.Results), need)
-				copy(grown, m.Results)
-				m.Results = grown
+			if len(m.Results) == 0 && cap(m.Results) < c {
+				m.Results = make([]*UpdateRatesResult, 0, c)
 			}
 		}
 	}

@@ -2726,10 +2726,8 @@ func (m *VariadicExpression) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Args) + c; cap(m.Args) < need {
-				grown := make([]Expression, len(m.Args), need)
-				copy(grown, m.Args)
-				m.Args = grown
+			if len(m.Args) == 0 && cap(m.Args) < c {
+				m.Args = make([]Expression, 0, c)
 			}
 		}
 	}
@@ -4169,10 +4167,8 @@ func (m *StringListLiteral) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Value) + c; cap(m.Value) < need {
-				grown := make([]string, len(m.Value), need)
-				copy(grown, m.Value)
-				m.Value = grown
+			if len(m.Value) == 0 && cap(m.Value) < c {
+				m.Value = make([]string, 0, c)
 			}
 		}
 	}
@@ -4339,10 +4335,8 @@ func (m *LabelFmtListLiteral) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Value) + c; cap(m.Value) < need {
-				grown := make([]LabelFmtLiteral, len(m.Value), need)
-				copy(grown, m.Value)
-				m.Value = grown
+			if len(m.Value) == 0 && cap(m.Value) < c {
+				m.Value = make([]LabelFmtLiteral, 0, c)
 			}
 		}
 	}

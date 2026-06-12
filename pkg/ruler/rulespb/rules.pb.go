@@ -490,20 +490,16 @@ func (m *RuleGroupDesc) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Rules) + c; cap(m.Rules) < need {
-				grown := make([]*RuleDesc, len(m.Rules), need)
-				copy(grown, m.Rules)
-				m.Rules = grown
+			if len(m.Rules) == 0 && cap(m.Rules) < c {
+				m.Rules = make([]*RuleDesc, 0, c)
 			}
 		}
 		if c := field9count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Options) + c; cap(m.Options) < need {
-				grown := make([]AnyAdapter, len(m.Options), need)
-				copy(grown, m.Options)
-				m.Options = grown
+			if len(m.Options) == 0 && cap(m.Options) < c {
+				m.Options = make([]AnyAdapter, 0, c)
 			}
 		}
 	}
@@ -937,20 +933,16 @@ func (m *RuleDesc) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Labels) + c; cap(m.Labels) < need {
-				grown := make([]logproto.LabelAdapter, len(m.Labels), need)
-				copy(grown, m.Labels)
-				m.Labels = grown
+			if len(m.Labels) == 0 && cap(m.Labels) < c {
+				m.Labels = make([]logproto.LabelAdapter, 0, c)
 			}
 		}
 		if c := field6count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Annotations) + c; cap(m.Annotations) < need {
-				grown := make([]logproto.LabelAdapter, len(m.Annotations), need)
-				copy(grown, m.Annotations)
-				m.Annotations = grown
+			if len(m.Annotations) == 0 && cap(m.Annotations) < c {
+				m.Annotations = make([]logproto.LabelAdapter, 0, c)
 			}
 		}
 	}

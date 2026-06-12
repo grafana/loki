@@ -723,20 +723,16 @@ func (m *FilterChunkRefRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Refs) + c; cap(m.Refs) < need {
-				grown := make([]*GroupedChunkRefs, len(m.Refs), need)
-				copy(grown, m.Refs)
-				m.Refs = grown
+			if len(m.Refs) == 0 && cap(m.Refs) < c {
+				m.Refs = make([]*GroupedChunkRefs, 0, c)
 			}
 		}
 		if c := field6count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Blocks) + c; cap(m.Blocks) < need {
-				grown := make([]string, len(m.Blocks), need)
-				copy(grown, m.Blocks)
-				m.Blocks = grown
+			if len(m.Blocks) == 0 && cap(m.Blocks) < c {
+				m.Blocks = make([]string, 0, c)
 			}
 		}
 	}
@@ -1054,10 +1050,8 @@ func (m *FilterChunkRefResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.ChunkRefs) + c; cap(m.ChunkRefs) < need {
-				grown := make([]*GroupedChunkRefs, len(m.ChunkRefs), need)
-				copy(grown, m.ChunkRefs)
-				m.ChunkRefs = grown
+			if len(m.ChunkRefs) == 0 && cap(m.ChunkRefs) < c {
+				m.ChunkRefs = make([]*GroupedChunkRefs, 0, c)
 			}
 		}
 	}
@@ -1369,10 +1363,8 @@ func (m *GroupedChunkRefs) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Refs) + c; cap(m.Refs) < need {
-				grown := make([]*ShortRef, len(m.Refs), need)
-				copy(grown, m.Refs)
-				m.Refs = grown
+			if len(m.Refs) == 0 && cap(m.Refs) < c {
+				m.Refs = make([]*ShortRef, 0, c)
 			}
 		}
 	}
@@ -1665,10 +1657,8 @@ func (m *PrefetchBloomBlocksRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Blocks) + c; cap(m.Blocks) < need {
-				grown := make([]string, len(m.Blocks), need)
-				copy(grown, m.Blocks)
-				m.Blocks = grown
+			if len(m.Blocks) == 0 && cap(m.Blocks) < c {
+				m.Blocks = make([]string, 0, c)
 			}
 		}
 	}

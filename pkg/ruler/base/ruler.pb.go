@@ -936,30 +936,24 @@ func (m *RulesRequest) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.RuleName) + c; cap(m.RuleName) < need {
-				grown := make([]string, len(m.RuleName), need)
-				copy(grown, m.RuleName)
-				m.RuleName = grown
+			if len(m.RuleName) == 0 && cap(m.RuleName) < c {
+				m.RuleName = make([]string, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.RuleGroup) + c; cap(m.RuleGroup) < need {
-				grown := make([]string, len(m.RuleGroup), need)
-				copy(grown, m.RuleGroup)
-				m.RuleGroup = grown
+			if len(m.RuleGroup) == 0 && cap(m.RuleGroup) < c {
+				m.RuleGroup = make([]string, 0, c)
 			}
 		}
 		if c := field4count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.File) + c; cap(m.File) < need {
-				grown := make([]string, len(m.File), need)
-				copy(grown, m.File)
-				m.File = grown
+			if len(m.File) == 0 && cap(m.File) < c {
+				m.File = make([]string, 0, c)
 			}
 		}
 	}
@@ -1244,10 +1238,8 @@ func (m *RulesResponse) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Groups) + c; cap(m.Groups) < need {
-				grown := make([]*GroupStateDesc, len(m.Groups), need)
-				copy(grown, m.Groups)
-				m.Groups = grown
+			if len(m.Groups) == 0 && cap(m.Groups) < c {
+				m.Groups = make([]*GroupStateDesc, 0, c)
 			}
 		}
 	}
@@ -1417,10 +1409,8 @@ func (m *GroupStateDesc) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.ActiveRules) + c; cap(m.ActiveRules) < need {
-				grown := make([]*RuleStateDesc, len(m.ActiveRules), need)
-				copy(grown, m.ActiveRules)
-				m.ActiveRules = grown
+			if len(m.ActiveRules) == 0 && cap(m.ActiveRules) < c {
+				m.ActiveRules = make([]*RuleStateDesc, 0, c)
 			}
 		}
 	}
@@ -1738,10 +1728,8 @@ func (m *RuleStateDesc) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Alerts) + c; cap(m.Alerts) < need {
-				grown := make([]*AlertStateDesc, len(m.Alerts), need)
-				copy(grown, m.Alerts)
-				m.Alerts = grown
+			if len(m.Alerts) == 0 && cap(m.Alerts) < c {
+				m.Alerts = make([]*AlertStateDesc, 0, c)
 			}
 		}
 	}
@@ -2197,20 +2185,16 @@ func (m *AlertStateDesc) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Labels) + c; cap(m.Labels) < need {
-				grown := make([]logproto.LabelAdapter, len(m.Labels), need)
-				copy(grown, m.Labels)
-				m.Labels = grown
+			if len(m.Labels) == 0 && cap(m.Labels) < c {
+				m.Labels = make([]logproto.LabelAdapter, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Annotations) + c; cap(m.Annotations) < need {
-				grown := make([]logproto.LabelAdapter, len(m.Annotations), need)
-				copy(grown, m.Annotations)
-				m.Annotations = grown
+			if len(m.Annotations) == 0 && cap(m.Annotations) < c {
+				m.Annotations = make([]logproto.LabelAdapter, 0, c)
 			}
 		}
 	}

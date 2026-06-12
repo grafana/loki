@@ -1175,10 +1175,8 @@ func (m *ProtoSeries) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Chunks) + c; cap(m.Chunks) < need {
-				grown := make([]*logproto.ShortRef, len(m.Chunks), need)
-				copy(grown, m.Chunks)
-				m.Chunks = grown
+			if len(m.Chunks) == 0 && cap(m.Chunks) < c {
+				m.Chunks = make([]*logproto.ShortRef, 0, c)
 			}
 		}
 	}
@@ -1379,20 +1377,16 @@ func (m *ProtoGapWithBlocks) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Series) + c; cap(m.Series) < need {
-				grown := make([]*ProtoSeries, len(m.Series), need)
-				copy(grown, m.Series)
-				m.Series = grown
+			if len(m.Series) == 0 && cap(m.Series) < c {
+				m.Series = make([]*ProtoSeries, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.BlockRef) + c; cap(m.BlockRef) < need {
-				grown := make([]string, len(m.BlockRef), need)
-				copy(grown, m.BlockRef)
-				m.BlockRef = grown
+			if len(m.BlockRef) == 0 && cap(m.BlockRef) < c {
+				m.BlockRef = make([]string, 0, c)
 			}
 		}
 	}
@@ -1654,10 +1648,8 @@ func (m *ProtoTask) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Gaps) + c; cap(m.Gaps) < need {
-				grown := make([]*ProtoGapWithBlocks, len(m.Gaps), need)
-				copy(grown, m.Gaps)
-				m.Gaps = grown
+			if len(m.Gaps) == 0 && cap(m.Gaps) < c {
+				m.Gaps = make([]*ProtoGapWithBlocks, 0, c)
 			}
 		}
 	}
@@ -2059,20 +2051,16 @@ func (m *ProtoMeta) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.SourcesTSDBs) + c; cap(m.SourcesTSDBs) < need {
-				grown := make([]string, len(m.SourcesTSDBs), need)
-				copy(grown, m.SourcesTSDBs)
-				m.SourcesTSDBs = grown
+			if len(m.SourcesTSDBs) == 0 && cap(m.SourcesTSDBs) < c {
+				m.SourcesTSDBs = make([]string, 0, c)
 			}
 		}
 		if c := field3count; c > 0 {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.BlockRefs) + c; cap(m.BlockRefs) < need {
-				grown := make([]string, len(m.BlockRefs), need)
-				copy(grown, m.BlockRefs)
-				m.BlockRefs = grown
+			if len(m.BlockRefs) == 0 && cap(m.BlockRefs) < c {
+				m.BlockRefs = make([]string, 0, c)
 			}
 		}
 	}
@@ -2329,10 +2317,8 @@ func (m *ProtoTaskResult) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.CreatedMetas) + c; cap(m.CreatedMetas) < need {
-				grown := make([]*ProtoMeta, len(m.CreatedMetas), need)
-				copy(grown, m.CreatedMetas)
-				m.CreatedMetas = grown
+			if len(m.CreatedMetas) == 0 && cap(m.CreatedMetas) < c {
+				m.CreatedMetas = make([]*ProtoMeta, 0, c)
 			}
 		}
 	}

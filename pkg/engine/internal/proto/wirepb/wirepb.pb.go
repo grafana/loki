@@ -4431,10 +4431,8 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Metadata) + c; cap(m.Metadata) < need {
-				grown := make([]HeaderAdapter, len(m.Metadata), need)
-				copy(grown, m.Metadata)
-				m.Metadata = grown
+			if len(m.Metadata) == 0 && cap(m.Metadata) < c {
+				m.Metadata = make([]HeaderAdapter, 0, c)
 			}
 		}
 	}
@@ -4811,10 +4809,8 @@ func (m *Header) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Values) + c; cap(m.Values) < need {
-				grown := make([]string, len(m.Values), need)
-				copy(grown, m.Values)
-				m.Values = grown
+			if len(m.Values) == 0 && cap(m.Values) < c {
+				m.Values = make([]string, 0, c)
 			}
 		}
 	}
@@ -6705,10 +6701,8 @@ func (m *StreamList) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.Streams) + c; cap(m.Streams) < need {
-				grown := make([]Stream, len(m.Streams), need)
-				copy(grown, m.Streams)
-				m.Streams = grown
+			if len(m.Streams) == 0 && cap(m.Streams) < c {
+				m.Streams = make([]Stream, 0, c)
 			}
 		}
 	}
@@ -6878,10 +6872,8 @@ func (m *CachedSources) unmarshal(dAtA []byte, depth int) error {
 			if c > preCapMax {
 				c = preCapMax
 			}
-			if need := len(m.CachedSource) + c; cap(m.CachedSource) < need {
-				grown := make([][]byte, len(m.CachedSource), need)
-				copy(grown, m.CachedSource)
-				m.CachedSource = grown
+			if len(m.CachedSource) == 0 && cap(m.CachedSource) < c {
+				m.CachedSource = make([][]byte, 0, c)
 			}
 		}
 	}
