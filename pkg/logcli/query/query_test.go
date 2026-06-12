@@ -909,3 +909,47 @@ func TestParallelJobs(t *testing.T) {
 		)
 	}
 }
+
+func TestDoQueryParallelWithoutStdout(t *testing.T) {
+	streams := []logproto.Stream{
+		{
+			Labels: "{test=\"simple\"}",
+			Entries: []logproto.Entry{
+				{Timestamp: time.Unix(10, 0), Line: "line1"},
+				{Timestamp: time.Unix(300, 0), Line: "line2"},
+				{Timestamp: time.Unix(600, 0), Line: "line3"},
+				{Timestamp: time.Unix(900, 0), Line: "line4"},
+				{Timestamp: time.Unix(1200, 0), Line: "line5"},
+				{Timestamp: time.Unix(1500, 0), Line: "line6"},
+				{Timestamp: time.Unix(1800, 0), Line: "line7"},
+				{Timestamp: time.Unix(2100, 0), Line: "line8"},
+				{Timestamp: time.Unix(2400, 0), Line: "line9"},
+				{Timestamp: time.Unix(3400, 0), Line: "line10"},
+			},
+		},
+	}
+	client := newTestQueryClient(streams...)
+	q := &Query{
+		BatchSize:          1000,
+		Limit:              0,
+		QueryString:        "{test=\"simple\"}",
+		ParallelDuration:   30 * time.Minute,
+		ParallelMaxWorkers: 4,
+		PartPathPrefix:     "/tmp/my_query",
+		MergeParts:         true,
+		Start:              mustParseTime("1970-01-01 00:00:00"),
+		End:                mustParseTime("1970-01-01 01:00:00"),
+	}
+	location, _ := time.LoadLocation("UTC")
+	outputOptions := &output.LogOutputOptions{
+		Timezone: location,
+	}
+
+	var outputBuffer bytes.Buffer
+	out, err := output.NewLogOutput(&outputBuffer, "default", outputOptions)
+	assert.Nil(t, err)
+
+	q.DoQueryParallel(client, out, false)
+
+	assert.NotEmpty(t, outputBuffer.Bytes())
+}

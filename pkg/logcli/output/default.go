@@ -47,6 +47,11 @@ func (o DefaultOutput) WithWriter(w io.Writer) LogOutput {
 	}
 }
 
+// GetWriter returns the internal writer of the output
+func (o DefaultOutput) GetWriter() io.Writer {
+	return o.w
+}
+
 // add some padding after labels
 func padLabel(ls loghttp.LabelSet, maxLabelsLen int) string {
 	labels := ls.String()
