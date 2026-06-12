@@ -395,3 +395,23 @@ of these only `pointer` on *repeated* message fields (`[]*T`→`[]T`) is a real
 latency/alloc lever, and its payoff is on decode-heavy paths not exercised by
 these benchmarks (customtype/casttype are perf-*preserving*; stdtime/enum/
 no_presence are API-only). Not pursued under DB-9.
+
+### Regen against `databases`@`854b4c6` — `UnmarshalNoPrescan` emission (2026-06-12)
+
+The compiler now emits an `UnmarshalNoPrescan(dAtA []byte) error` method on every
+pre-scan-bearing message (skips only the *top-level* pre-scan via a depth
+sentinel; nested pre-scans preserved), and the pre-scan guard became
+`if l >= 256 && depth >= 0`. Loki regenerated to stay in sync with the compiler
+tempo/mimir now use: 28 `.pb.go` files, exactly 129 guard swaps + 129 new
+methods, zero other changes, regen reproducible (two runs byte-identical).
+**No call sites adopted** — Loki was already at straight parity, so there is
+nothing to recover; the hot pooled-decode paths checked (logproto WAL/push
+`TimeSeries`/`WriteRequest`) are not pre-scan-bearing, so `UnmarshalNoPrescan`
+does not apply to them. Parity re-confirmed against the same gogo baseline
+(alternated, n=20): queryrange `DecodeMergeEncodeCycle` time p=0.341, B/op
+435 MiB p=0.256, allocs 102.8k p=0.177; logproto `Merge*` ×6 all
+non-significant (time geomean −0.31%), B/op and allocs byte-identical.
+
+NOTE: the committed generated code is now ahead of the `go.mod` pin
+(`4f41063`) — regen-vs-pinned-binary checks will mismatch until a wiresmith
+release containing `databases`@`854b4c6` is published and pinned.

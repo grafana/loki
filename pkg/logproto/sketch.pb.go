@@ -1404,7 +1404,7 @@ func (m *QuantileSketchMatrix) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -1558,6 +1558,10 @@ func (m *QuantileSketchMatrix) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *QuantileSketchMatrix) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *QuantileSketchVector) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1575,7 +1579,7 @@ func (m *QuantileSketchVector) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -1729,6 +1733,10 @@ func (m *QuantileSketchVector) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *QuantileSketchVector) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *QuantileSketchSample) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1746,7 +1754,7 @@ func (m *QuantileSketchSample) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field3count int
 		for preIdx < l {
@@ -1976,6 +1984,10 @@ func (m *QuantileSketchSample) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *QuantileSketchSample) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *QuantileSketch) Unmarshal(b []byte) error {
@@ -2238,7 +2250,7 @@ func (m *TDigest) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field4count int
 		for preIdx < l {
@@ -2435,6 +2447,10 @@ func (m *TDigest) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *TDigest) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *CountMinSketch) Unmarshal(b []byte) error {
@@ -2676,7 +2692,7 @@ func (m *CountMinSketchVector) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field3count int
 		for preIdx < l {
@@ -2908,6 +2924,10 @@ func (m *CountMinSketchVector) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *CountMinSketchVector) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *Labels) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -2925,7 +2945,7 @@ func (m *Labels) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -3079,6 +3099,10 @@ func (m *Labels) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *Labels) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *TopK_Pair) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -3214,7 +3238,7 @@ func (m *TopK) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		for preIdx < l {
@@ -3463,6 +3487,10 @@ func (m *TopK) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *TopK) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *TopKMatrix_Vector) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -3616,7 +3644,7 @@ func (m *TopKMatrix) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -3768,4 +3796,8 @@ func (m *TopKMatrix) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *TopKMatrix) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }

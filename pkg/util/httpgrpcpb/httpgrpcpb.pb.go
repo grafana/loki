@@ -382,7 +382,7 @@ func (m *HTTPRequest) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field3count int
 		for preIdx < l {
@@ -671,6 +671,10 @@ func (m *HTTPRequest) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *HTTPRequest) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *HTTPResponse) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -688,7 +692,7 @@ func (m *HTTPResponse) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		for preIdx < l {
@@ -915,6 +919,10 @@ func (m *HTTPResponse) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *HTTPResponse) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *Header) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -932,7 +940,7 @@ func (m *Header) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		for preIdx < l {
@@ -1126,4 +1134,8 @@ func (m *Header) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *Header) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }

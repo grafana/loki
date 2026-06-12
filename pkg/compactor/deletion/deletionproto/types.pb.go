@@ -1564,7 +1564,7 @@ func (m *DeletionManifest) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		var field2count int
@@ -1833,6 +1833,10 @@ func (m *DeletionManifest) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *DeletionManifest) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *ChunkIDs) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1850,7 +1854,7 @@ func (m *ChunkIDs) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -2001,6 +2005,10 @@ func (m *ChunkIDs) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *ChunkIDs) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *ChunksGroup) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -2018,7 +2026,7 @@ func (m *ChunksGroup) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		var field2count int
@@ -2358,6 +2366,10 @@ func (m *ChunksGroup) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *ChunksGroup) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *Segment) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -2375,7 +2387,7 @@ func (m *Segment) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field3count int
 		for preIdx < l {
@@ -2647,6 +2659,10 @@ func (m *Segment) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *Segment) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *DeletionJob) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -2664,7 +2680,7 @@ func (m *DeletionJob) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field3count int
 		var field4count int
@@ -2964,6 +2980,10 @@ func (m *DeletionJob) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *DeletionJob) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *Chunk) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -3207,7 +3227,7 @@ func (m *StorageUpdates) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		var field2count int
@@ -3544,6 +3564,10 @@ func (m *StorageUpdates) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *StorageUpdates) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *StorageUpdatesCollection) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -3561,7 +3585,7 @@ func (m *StorageUpdatesCollection) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field3count int
 		for preIdx < l {
@@ -3930,4 +3954,8 @@ func (m *StorageUpdatesCollection) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *StorageUpdatesCollection) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }

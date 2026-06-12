@@ -4360,7 +4360,7 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		var field3count int
@@ -4732,6 +4732,10 @@ func (m *TaskAssignMessage) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *TaskAssignMessage) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *Header) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -4749,7 +4753,7 @@ func (m *Header) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
 		for preIdx < l {
@@ -4943,6 +4947,10 @@ func (m *Header) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *Header) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *TaskCancelMessage) Unmarshal(b []byte) error {
@@ -5785,7 +5793,7 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field4count int
 		var field5count int
@@ -6624,6 +6632,10 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *Task) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *StreamList) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -6641,7 +6653,7 @@ func (m *StreamList) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -6795,6 +6807,10 @@ func (m *StreamList) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *StreamList) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *CachedSources) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -6812,7 +6828,7 @@ func (m *CachedSources) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -6961,6 +6977,10 @@ func (m *CachedSources) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *CachedSources) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *Stream) Unmarshal(b []byte) error {

@@ -427,7 +427,7 @@ func (m *RuleGroupDesc) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field4count int
 		var field9count int
@@ -853,6 +853,10 @@ func (m *RuleGroupDesc) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *RuleGroupDesc) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *RuleDesc) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -870,7 +874,7 @@ func (m *RuleDesc) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field5count int
 		var field6count int
@@ -1267,4 +1271,8 @@ func (m *RuleDesc) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *RuleDesc) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }

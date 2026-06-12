@@ -1650,7 +1650,7 @@ func (m *SingleTenantObjectSource) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -1832,6 +1832,10 @@ func (m *SingleTenantObjectSource) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *SingleTenantObjectSource) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *MultiTenantObjectSource) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -1849,7 +1853,7 @@ func (m *MultiTenantObjectSource) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -2031,6 +2035,10 @@ func (m *MultiTenantObjectSource) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
+func (m *MultiTenantObjectSource) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
 func (m *CompactionManifest) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
@@ -2048,7 +2056,7 @@ func (m *CompactionManifest) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field3count int
 		for preIdx < l {
@@ -2275,6 +2283,10 @@ func (m *CompactionManifest) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *CompactionManifest) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *SingleTenantObjectSourceWithTenantID) Unmarshal(b []byte) error {
@@ -2681,7 +2693,7 @@ func (m *CompactionJobResponse) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -2830,6 +2842,10 @@ func (m *CompactionJobResponse) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *CompactionJobResponse) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *IndexingJob) Unmarshal(b []byte) error {
@@ -2849,7 +2865,7 @@ func (m *IndexingJob) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -2998,6 +3014,10 @@ func (m *IndexingJob) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *IndexingJob) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
 
 func (m *IndexInfo) Unmarshal(b []byte) error {
@@ -3212,7 +3232,7 @@ func (m *IndexingJobResponse) unmarshal(dAtA []byte, depth int) error {
 	}
 	l := len(dAtA)
 	iNdEx := 0
-	if l >= 256 {
+	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field1count int
 		for preIdx < l {
@@ -3364,4 +3384,8 @@ func (m *IndexingJobResponse) unmarshal(dAtA []byte, depth int) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func (m *IndexingJobResponse) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
 }
