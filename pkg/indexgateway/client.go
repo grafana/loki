@@ -102,7 +102,7 @@ type GatewayClient struct {
 	logger                            log.Logger
 	cfg                               ClientConfig
 	storeGatewayClientRequestDuration *prometheus.HistogramVec
-	dnsProvider                       *discovery.DNS
+	dnsProvider                       discovery.DNS
 	pool                              *client.Pool
 	ring                              ring.ReadRing
 	limits                            Limits
@@ -202,9 +202,6 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		//TODO(ewelch) we can't use metrics in the provider because of duplicate registration errors
 		dnsProvider := discovery.NewDNS(logger, sgClient.cfg.PoolConfig.ClientCleanupPeriod, sgClient.cfg.Address, nil)
 		sgClient.dnsProvider = dnsProvider
-
-		// Make an attempt to do one DNS lookup so we can start with addresses
-		dnsProvider.RunOnce()
 
 		discovery := func() ([]string, error) {
 			return dnsProvider.Addresses(), nil
@@ -320,19 +317,7 @@ func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeReques
 }
 
 func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsRequest) (res *logproto.ShardsResponse, err error) {
-
-	// We try to get the shards from the index gateway,
-	// but if it's not implemented, we fall back to the stats.
-	// We limit the maximum number of errors to 2 to avoid
-	// cascading all requests to new node(s) when
-	// the idx-gw replicas start to update to a version
-	// which supports the new API.
-	var (
-		maxErrs = 2
-		errCt   int
-	)
-
-	if err := s.poolDoWithStrategy(
+	if err := s.poolDo(
 		ctx,
 		func(client logproto.IndexGatewayClient) error {
 			perReplicaResult := &logproto.ShardsResponse{}
@@ -363,28 +348,17 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 		func(addrs []string) []string {
 			return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
 		},
-		func(_ error) bool {
-			errCt++
-			return errCt <= maxErrs
-		},
 	); err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
+const maxErrors int = 2
+
 // poolDo executes the given function for each Index Gateway instance in the ring mapping to the correct tenant in the index.
 // In case of callback failure, we'll try another member of the ring for that tenant ID.
 func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logproto.IndexGatewayClient) error, filterServerList func([]string) []string) error {
-	return s.poolDoWithStrategy(ctx, callback, filterServerList, func(error) bool { return true })
-}
-
-func (s *GatewayClient) poolDoWithStrategy(
-	ctx context.Context,
-	callback func(client logproto.IndexGatewayClient) error,
-	filterServerList func([]string) []string,
-	shouldRetry func(error) bool,
-) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return errors.Wrap(err, "index gateway client get tenant ID")
@@ -410,6 +384,7 @@ func (s *GatewayClient) poolDoWithStrategy(
 		addrs[i], addrs[j] = addrs[j], addrs[i]
 	})
 
+	errCount := 0
 	var lastErr error
 	for _, addr := range addrs {
 		if s.cfg.LogGatewayRequests {
@@ -425,9 +400,10 @@ func (s *GatewayClient) poolDoWithStrategy(
 		client := (genericClient.(logproto.IndexGatewayClient))
 		if err := callback(client); err != nil {
 			lastErr = err
+			errCount++
 			level.Error(s.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
 
-			if !shouldRetry(err) {
+			if errCount > maxErrors {
 				return err
 			}
 			continue

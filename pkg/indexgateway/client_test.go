@@ -2,6 +2,7 @@ package indexgateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -9,17 +10,39 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
+	dskitclient "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
+	"github.com/grafana/loki/v3/pkg/util/discovery"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
+
+type mockDnsProvider struct {
+	addrs []string
+}
+
+func newMockDnsProvider(addrs []string) discovery.DNS {
+	return &mockDnsProvider{
+		addrs: addrs,
+	}
+}
+
+func (m *mockDnsProvider) Addresses() []string {
+	return m.addrs
+}
+
+func (m *mockDnsProvider) Stop() {}
 
 type mockIndexGatewayServer struct {
 	logproto.IndexGatewayServer
@@ -28,6 +51,25 @@ type mockIndexGatewayServer struct {
 func (m mockIndexGatewayServer) GetChunkRef(context.Context, *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
 	return &logproto.GetChunkRefResponse{}, nil
 }
+
+type mockGatewayConn struct {
+	logproto.IndexGatewayClient
+	grpc_health_v1.HealthClient
+	returnErrors bool
+}
+
+func (m *mockGatewayConn) GetChunkRef(context.Context, *logproto.GetChunkRefRequest, ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
+	if m.returnErrors {
+		return nil, errors.New("mock error")
+	}
+	return &logproto.GetChunkRefResponse{}, nil
+}
+
+func (m *mockGatewayConn) Check(context.Context, *grpc_health_v1.HealthCheckRequest, ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+}
+
+func (m *mockGatewayConn) Close() error { return nil }
 
 type mockTenantLimits map[string]*validation.Limits
 
@@ -154,6 +196,78 @@ func TestGatewayClient_RingMode(t *testing.T) {
 		require.Len(t, addrs, s)
 		require.ElementsMatch(t, addrs, []string{"index-gateway-2", "index-gateway-3", "index-gateway-5"})
 	})
+}
+
+func createSimpleGatewayClient(t *testing.T, addrs []string) (log.Logger, *dskitclient.Pool, *GatewayClient) {
+	logger := log.NewNopLogger()
+	r := prometheus.NewRegistry()
+	o, _ := validation.NewOverrides(validation.Limits{}, nil)
+	client, err := NewGatewayClient(
+		ClientConfig{
+			Mode:             "simple",
+			GRPCClientConfig: grpcclient.Config{},
+			Address:          "1.1.1.1",
+		},
+		r, o, logger, constants.Loki)
+	require.NoError(t, err)
+	defer client.Stop()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), client.pool))
+	client.dnsProvider = newMockDnsProvider(addrs)
+	pool := configurePool(t, client, logger, 0)
+	return logger, pool, client
+}
+
+func configurePool(t *testing.T, client *GatewayClient, logger log.Logger, numErrorsToReturn int) *dskitclient.Pool {
+	pool := dskitclient.NewPool(
+		"test",
+		dskitclient.PoolConfig{CheckInterval: time.Hour},
+		func() ([]string, error) { return client.dnsProvider.Addresses(), nil },
+		dskitclient.PoolAddrFunc(func(string) (dskitclient.PoolClient, error) {
+			var returnErrors bool
+			if numErrorsToReturn > 0 {
+				numErrorsToReturn--
+				returnErrors = true
+			} else {
+				returnErrors = false
+			}
+			return &mockGatewayConn{returnErrors: returnErrors}, nil
+		}),
+		nil, logger,
+	)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), pool))
+	client.pool = pool
+	return pool
+}
+
+func TestGatewayClient_SimpleMode_Retries(t *testing.T) {
+	logger, _, client := createSimpleGatewayClient(t, []string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"})
+	ctx := user.InjectOrgID(context.Background(), "tenant-123")
+
+	// Retry up to 2 errors
+	for numErrorsToReturn := 0; numErrorsToReturn <= 2; numErrorsToReturn++ {
+		configurePool(t, client, logger, numErrorsToReturn)
+		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		require.NoError(t, err)
+	}
+
+	// Fail after 3 errors
+	configurePool(t, client, logger, 3)
+	_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+	require.Error(t, err)
+}
+
+func TestGatewayClient_SimpleMode_ShuffleSharding(t *testing.T) {
+	_, pool, client := createSimpleGatewayClient(t, []string{
+		"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4",
+		"5.5.5.5", "6.6.6.6", "7.7.7.7", "8.8.8.8", "9.9.9.9",
+	})
+	client.limits = mockLimits{maxCapacity: 0.5}
+	for i := 0; i < 1000; i++ {
+		ctx := user.InjectOrgID(context.Background(), "tenant-01")
+		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		require.NoError(t, err)
+	}
+	require.Len(t, pool.RegisteredAddresses(), 5)
 }
 
 func TestDoubleRegistration(t *testing.T) {

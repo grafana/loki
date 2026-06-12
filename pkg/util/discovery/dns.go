@@ -9,23 +9,28 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/dns"
+	dskitdns "github.com/grafana/dskit/dns"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type DNS struct {
+type DNS interface {
+	Addresses() []string
+	Stop()
+}
+
+type dns struct {
 	logger        log.Logger
 	cleanupPeriod time.Duration
 	addresses     []string
 	stop          chan struct{}
 	done          sync.WaitGroup
 	once          sync.Once
-	dnsProvider   *dns.Provider
+	dnsProvider   *dskitdns.Provider
 }
 
-func NewDNS(logger log.Logger, cleanupPeriod time.Duration, address string, reg prometheus.Registerer) *DNS {
-	dnsProvider := dns.NewProvider(dns.GolangResolverType, 0, logger, reg)
-	d := &DNS{
+func NewDNS(logger log.Logger, cleanupPeriod time.Duration, address string, reg prometheus.Registerer) DNS {
+	dnsProvider := dskitdns.NewProvider(dskitdns.GolangResolverType, 0, logger, reg)
+	d := &dns{
 		logger:        logger,
 		cleanupPeriod: cleanupPeriod,
 		addresses:     strings.Split(address, ","),
@@ -33,27 +38,24 @@ func NewDNS(logger log.Logger, cleanupPeriod time.Duration, address string, reg 
 		done:          sync.WaitGroup{},
 		dnsProvider:   dnsProvider,
 	}
+	d.runDiscovery() // Make an attempt to do one DNS lookup so we can start with addresses
 	go d.discoveryLoop()
 	d.done.Add(1)
 	return d
 }
 
-func (d *DNS) RunOnce() {
-	d.runDiscovery()
-}
-
-func (d *DNS) Addresses() []string {
+func (d *dns) Addresses() []string {
 	return d.dnsProvider.Addresses()
 }
 
-func (d *DNS) Stop() {
+func (d *dns) Stop() {
 	// Integration tests were calling Stop() multiple times, so we need to make sure
 	// that we only close the stop channel once.
 	d.once.Do(func() { close(d.stop) })
 	d.done.Wait()
 }
 
-func (d *DNS) discoveryLoop() {
+func (d *dns) discoveryLoop() {
 	ticker := time.NewTicker(d.cleanupPeriod)
 	defer func() {
 		ticker.Stop()
@@ -70,7 +72,7 @@ func (d *DNS) discoveryLoop() {
 	}
 }
 
-func (d *DNS) runDiscovery() {
+func (d *dns) runDiscovery() {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, fmt.Errorf("DNS lookup timeout: %v", d.addresses))
 	defer cancel()
 	err := d.dnsProvider.Resolve(ctx, d.addresses)

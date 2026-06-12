@@ -118,7 +118,7 @@ type GatewayClient struct {
 	logger      log.Logger
 	metrics     *clientMetrics
 	pool        clientPool
-	dnsProvider *discovery.DNS
+	dnsProvider discovery.DNS
 }
 
 func NewClient(cfg ClientConfig, registerer prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
@@ -138,8 +138,6 @@ func NewClient(cfg ClientConfig, registerer prometheus.Registerer, logger log.Lo
 	}
 
 	dnsProvider := discovery.NewDNS(logger, cfg.PoolConfig.CheckInterval, cfg.Addresses, nil)
-	// Make an attempt to do one DNS lookup so we can start with addresses
-	dnsProvider.RunOnce()
 
 	pool, err := NewJumpHashClientPool(clientFactory, dnsProvider, cfg.PoolConfig.CheckInterval, logger)
 	if err != nil {
