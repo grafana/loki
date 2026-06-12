@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -159,6 +160,24 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 			require.EqualValues(t, ComponentLabels(LabelIngesterComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 		})
 	}
+}
+
+func TestNewIngesterStatefulSet_HasTokensFileArg(t *testing.T) {
+	ss := NewIngesterStatefulSet(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1.LokiTemplateSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	})
+
+	container := ss.Spec.Template.Spec.Containers[0]
+	require.Contains(t, container.Args, fmt.Sprintf("-ingester.tokens-file-path=%s", ingesterTokensFilePath))
 }
 
 func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
