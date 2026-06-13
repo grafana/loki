@@ -287,7 +287,7 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 	}
 
 	// Always add the requestor page to the batch if it's uncached.
-	if requestor != nil && len(requestor.data) == 0 {
+	if requestor.data == nil || len(requestor.data.Bytes()) == 0 {
 		pageBatch = append(pageBatch, requestor)
 	}
 
@@ -485,6 +485,15 @@ func (dl *rowReaderDownloader) Reset(dset Dataset) {
 	dl.origPrimary = sliceclear.Clear(dl.origPrimary)
 	dl.origSecondary = sliceclear.Clear(dl.origSecondary)
 
+	// release memory
+	for _, col := range dl.allColumns {
+		// Garbage collect any unused pages; this prevents them from being included
+		// in the batchSize calculation and also allows them to be freed by the GC.
+		col := col.(*readerColumn)
+		if col != nil {
+			col.Close()
+		}
+	}
 	dl.allColumns = sliceclear.Clear(dl.allColumns)
 	dl.primary = sliceclear.Clear(dl.primary)
 	dl.secondary = sliceclear.Clear(dl.secondary)
@@ -563,10 +572,19 @@ func (col *readerColumn) GC() {
 		if page.rows.End <= col.dl.readRange.Start {
 			// This page is entirely before the read range. We can clear it.
 			//
-			// TODO(rfratto): should this be released back to some kind of pool that
-			// decoders use so we don't have to allocate bytes every time a page is
-			// downloaded?
-			page.data = nil
+			if page.data != nil {
+				page.data.Close()
+				page.data = nil
+			}
+		}
+	}
+}
+
+// Close releases all cached data, whether or not it has been read.
+func (col *readerColumn) Close() {
+	for _, page := range col.pages {
+		if page.data != nil {
+			page.data.Close()
 		}
 	}
 }
@@ -576,7 +594,7 @@ func (col *readerColumn) Size() int {
 	var size int
 	for _, page := range col.pages {
 		if page.data != nil {
-			size += len(page.data)
+			size += len(page.data.Bytes())
 		}
 	}
 	return size

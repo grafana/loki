@@ -411,12 +411,8 @@ func encodeColumn(enc *columnar.Encoder, columnType ColumnType, column *tableCol
 		if err != nil {
 			return fmt.Errorf("reading %s page: %w", columnType, err)
 		}
-
-		memPage := &dataset.MemPage{
-			Desc: *page.PageDesc(),
-			Data: data,
-		}
-		if err := columnEnc.AppendPage(memPage); err != nil {
+		memPage := dataset.MemPage{*page.PageDesc(), dataset.NewNonReleasableData(data.Bytes())}
+		if err := columnEnc.AppendPage(&memPage); err != nil {
 			return fmt.Errorf("appending %s page: %w", columnType, err)
 		}
 	}
