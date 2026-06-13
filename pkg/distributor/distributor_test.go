@@ -2555,6 +2555,105 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	require.Equal(t, "policy1", policy)
 }
 
+func TestDistributor_PushPolicyRejectOldSamplesOverride(t *testing.T) {
+	oldEntry := logproto.Entry{
+		Timestamp: time.Now().Add(-2 * time.Hour),
+		Line:      "old log line",
+	}
+
+	boolPtr := func(v bool) *bool {
+		return &v
+	}
+
+	tests := []struct {
+		name                   string
+		tenantRejectOldSamples bool
+		policy                 string
+		override               *bool
+		labels                 string
+		expectErr              bool
+	}{
+		{
+			name:                   "tenant setting applies when no policy override matches",
+			tenantRejectOldSamples: true,
+			policy:                 "finance",
+			labels:                 `{team="ops"}`,
+			expectErr:              true,
+		},
+		{
+			name:                   "matching policy override disables old sample rejection",
+			tenantRejectOldSamples: true,
+			policy:                 "finance",
+			override:               boolPtr(false),
+			labels:                 `{team="finance"}`,
+			expectErr:              false,
+		},
+		{
+			name:                   "matching policy override enables old sample rejection",
+			tenantRejectOldSamples: false,
+			policy:                 "finance",
+			override:               boolPtr(true),
+			labels:                 `{team="finance"}`,
+			expectErr:              true,
+		},
+		{
+			name:                   "matching policy nil override uses tenant setting",
+			tenantRejectOldSamples: true,
+			policy:                 "finance",
+			override:               nil,
+			labels:                 `{team="finance"}`,
+			expectErr:              true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			vLimits := &validation.Limits{}
+			flagext.DefaultValues(vLimits)
+			vLimits.RejectOldSamples = tc.tenantRejectOldSamples
+			vLimits.RejectOldSamplesMaxAge = model.Duration(1 * time.Hour)
+			vLimits.CreationGracePeriod = model.Duration(1 * time.Hour)
+			vLimits.PolicyStreamMapping = validation.PolicyStreamMapping{
+				tc.policy: []*validation.PriorityStream{
+					{
+						Selector: `{team="finance"}`,
+						Priority: 1,
+					},
+				},
+			}
+			vLimits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+				tc.policy: {
+					RejectOldSamples: tc.override,
+				},
+			}
+			require.NoError(t, vLimits.Validate())
+
+			distributors, ingesters := prepare(t, 1, 3, vLimits, nil)
+			req := &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels:  tc.labels,
+						Entries: []logproto.Entry{oldEntry},
+					},
+				},
+			}
+
+			resp, err := distributors[0].Push(ctx, req)
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "timestamp too old")
+				require.Nil(t, ingesters[0].Peek())
+				require.Nil(t, ingesters[1].Peek())
+				require.Nil(t, ingesters[2].Peek())
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, success, resp)
+		})
+	}
+}
+
 func TestDistributor_PushIngestLimits(t *testing.T) {
 	tests := []struct {
 		name                      string
