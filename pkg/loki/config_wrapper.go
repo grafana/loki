@@ -477,6 +477,10 @@ func applyPathPrefixDefaults(r, defaults *ConfigWrapper) {
 			r.Ruler.RulePath = fmt.Sprintf("%s/rules-temp", prefix)
 		}
 
+		if r.Ruler.WAL.Dir == defaults.Ruler.WAL.Dir {
+			r.Ruler.WAL.Dir = fmt.Sprintf("%s/ruler-wal", prefix)
+		}
+
 		if r.Ingester.WAL.Dir == defaults.Ingester.WAL.Dir {
 			r.Ingester.WAL.Dir = fmt.Sprintf("%s/wal", prefix)
 		}
