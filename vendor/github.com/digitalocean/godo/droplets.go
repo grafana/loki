@@ -237,6 +237,7 @@ type DropletCreateRequest struct {
 	VPCUUID           string                      `json:"vpc_uuid,omitempty"`
 	WithDropletAgent  *bool                       `json:"with_droplet_agent,omitempty"`
 	BackupPolicy      *DropletBackupPolicyRequest `json:"backup_policy,omitempty"`
+	PublicNetworking  *bool                       `json:"public_networking,omitempty"`
 }
 
 // DropletMultiCreateRequest is a request to create multiple Droplets.
@@ -255,6 +256,7 @@ type DropletMultiCreateRequest struct {
 	VPCUUID           string                      `json:"vpc_uuid,omitempty"`
 	WithDropletAgent  *bool                       `json:"with_droplet_agent,omitempty"`
 	BackupPolicy      *DropletBackupPolicyRequest `json:"backup_policy,omitempty"`
+	PublicNetworking  *bool                       `json:"public_networking,omitempty"`
 }
 
 // DropletBackupPolicyRequest defines the backup policy when creating a Droplet.

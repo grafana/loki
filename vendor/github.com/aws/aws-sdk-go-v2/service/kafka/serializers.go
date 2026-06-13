@@ -649,6 +649,13 @@ func awsRestjson1_serializeOpDocumentCreateReplicatorInput(v *CreateReplicatorIn
 		}
 	}
 
+	if v.LogDelivery != nil {
+		ok := object.Key("logDelivery")
+		if err := awsRestjson1_serializeDocumentLogDelivery(v.LogDelivery, ok); err != nil {
+			return err
+		}
+	}
+
 	if v.ReplicationInfoList != nil {
 		ok := object.Key("replicationInfoList")
 		if err := awsRestjson1_serializeDocument__listOfReplicationInfo(v.ReplicationInfoList, ok); err != nil {
@@ -4522,6 +4529,13 @@ func awsRestjson1_serializeOpDocumentUpdateConnectivityInput(v *UpdateConnectivi
 		ok.String(*v.CurrentVersion)
 	}
 
+	if v.ZookeeperAccess != nil {
+		ok := object.Key("zookeeperAccess")
+		if err := awsRestjson1_serializeDocumentZookeeperAccess(v.ZookeeperAccess, ok); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -4837,14 +4851,31 @@ func awsRestjson1_serializeOpDocumentUpdateReplicationInfoInput(v *UpdateReplica
 		ok.String(*v.CurrentVersion)
 	}
 
+	if v.LogDelivery != nil {
+		ok := object.Key("logDelivery")
+		if err := awsRestjson1_serializeDocumentLogDelivery(v.LogDelivery, ok); err != nil {
+			return err
+		}
+	}
+
 	if v.SourceKafkaClusterArn != nil {
 		ok := object.Key("sourceKafkaClusterArn")
 		ok.String(*v.SourceKafkaClusterArn)
 	}
 
+	if v.SourceKafkaClusterId != nil {
+		ok := object.Key("sourceKafkaClusterId")
+		ok.String(*v.SourceKafkaClusterId)
+	}
+
 	if v.TargetKafkaClusterArn != nil {
 		ok := object.Key("targetKafkaClusterArn")
 		ok.String(*v.TargetKafkaClusterArn)
+	}
+
+	if v.TargetKafkaClusterId != nil {
+		ok := object.Key("targetKafkaClusterId")
+		ok.String(*v.TargetKafkaClusterId)
 	}
 
 	if v.TopicReplication != nil {
@@ -5292,6 +5323,23 @@ func awsRestjson1_serializeDocumentAmazonMskCluster(v *types.AmazonMskCluster, v
 	return nil
 }
 
+func awsRestjson1_serializeDocumentApacheKafkaCluster(v *types.ApacheKafkaCluster, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.ApacheKafkaClusterId != nil {
+		ok := object.Key("apacheKafkaClusterId")
+		ok.String(*v.ApacheKafkaClusterId)
+	}
+
+	if v.BootstrapBrokerString != nil {
+		ok := object.Key("bootstrapBrokerString")
+		ok.String(*v.BootstrapBrokerString)
+	}
+
+	return nil
+}
+
 func awsRestjson1_serializeDocumentBrokerEBSVolumeInfo(v *types.BrokerEBSVolumeInfo, value smithyjson.Value) error {
 	object := value.Object()
 	defer object.Close()
@@ -5488,6 +5536,11 @@ func awsRestjson1_serializeDocumentConsumerGroupReplication(v *types.ConsumerGro
 	object := value.Object()
 	defer object.Close()
 
+	if len(v.ConsumerGroupOffsetSyncMode) > 0 {
+		ok := object.Key("consumerGroupOffsetSyncMode")
+		ok.String(string(v.ConsumerGroupOffsetSyncMode))
+	}
+
 	if v.ConsumerGroupsToExclude != nil {
 		ok := object.Key("consumerGroupsToExclude")
 		if err := awsRestjson1_serializeDocument__listOf__stringMax256(v.ConsumerGroupsToExclude, ok); err != nil {
@@ -5667,9 +5720,44 @@ func awsRestjson1_serializeDocumentKafkaCluster(v *types.KafkaCluster, value smi
 		}
 	}
 
+	if v.ApacheKafkaCluster != nil {
+		ok := object.Key("apacheKafkaCluster")
+		if err := awsRestjson1_serializeDocumentApacheKafkaCluster(v.ApacheKafkaCluster, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.ClientAuthentication != nil {
+		ok := object.Key("clientAuthentication")
+		if err := awsRestjson1_serializeDocumentKafkaClusterClientAuthentication(v.ClientAuthentication, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.EncryptionInTransit != nil {
+		ok := object.Key("encryptionInTransit")
+		if err := awsRestjson1_serializeDocumentKafkaClusterEncryptionInTransit(v.EncryptionInTransit, ok); err != nil {
+			return err
+		}
+	}
+
 	if v.VpcConfig != nil {
 		ok := object.Key("vpcConfig")
 		if err := awsRestjson1_serializeDocumentKafkaClusterClientVpcConfig(v.VpcConfig, ok); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func awsRestjson1_serializeDocumentKafkaClusterClientAuthentication(v *types.KafkaClusterClientAuthentication, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.SaslScram != nil {
+		ok := object.Key("saslScram")
+		if err := awsRestjson1_serializeDocumentKafkaClusterSaslScramAuthentication(v.SaslScram, ok); err != nil {
 			return err
 		}
 	}
@@ -5691,6 +5779,54 @@ func awsRestjson1_serializeDocumentKafkaClusterClientVpcConfig(v *types.KafkaClu
 	if v.SubnetIds != nil {
 		ok := object.Key("subnetIds")
 		if err := awsRestjson1_serializeDocument__listOf__string(v.SubnetIds, ok); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func awsRestjson1_serializeDocumentKafkaClusterEncryptionInTransit(v *types.KafkaClusterEncryptionInTransit, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if len(v.EncryptionType) > 0 {
+		ok := object.Key("encryptionType")
+		ok.String(string(v.EncryptionType))
+	}
+
+	if v.RootCaCertificate != nil {
+		ok := object.Key("rootCaCertificate")
+		ok.String(*v.RootCaCertificate)
+	}
+
+	return nil
+}
+
+func awsRestjson1_serializeDocumentKafkaClusterSaslScramAuthentication(v *types.KafkaClusterSaslScramAuthentication, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if len(v.Mechanism) > 0 {
+		ok := object.Key("mechanism")
+		ok.String(string(v.Mechanism))
+	}
+
+	if v.SecretArn != nil {
+		ok := object.Key("secretArn")
+		ok.String(*v.SecretArn)
+	}
+
+	return nil
+}
+
+func awsRestjson1_serializeDocumentLogDelivery(v *types.LogDelivery, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.ReplicatorLogDelivery != nil {
+		ok := object.Key("replicatorLogDelivery")
+		if err := awsRestjson1_serializeDocumentReplicatorLogDelivery(v.ReplicatorLogDelivery, ok); err != nil {
 			return err
 		}
 	}
@@ -5892,6 +6028,11 @@ func awsRestjson1_serializeDocumentReplicationInfo(v *types.ReplicationInfo, val
 		ok.String(*v.SourceKafkaClusterArn)
 	}
 
+	if v.SourceKafkaClusterId != nil {
+		ok := object.Key("sourceKafkaClusterId")
+		ok.String(*v.SourceKafkaClusterId)
+	}
+
 	if len(v.TargetCompressionType) > 0 {
 		ok := object.Key("targetCompressionType")
 		ok.String(string(v.TargetCompressionType))
@@ -5900,6 +6041,11 @@ func awsRestjson1_serializeDocumentReplicationInfo(v *types.ReplicationInfo, val
 	if v.TargetKafkaClusterArn != nil {
 		ok := object.Key("targetKafkaClusterArn")
 		ok.String(*v.TargetKafkaClusterArn)
+	}
+
+	if v.TargetKafkaClusterId != nil {
+		ok := object.Key("targetKafkaClusterId")
+		ok.String(*v.TargetKafkaClusterId)
 	}
 
 	if v.TopicReplication != nil {
@@ -5931,6 +6077,90 @@ func awsRestjson1_serializeDocumentReplicationTopicNameConfiguration(v *types.Re
 	if len(v.Type) > 0 {
 		ok := object.Key("type")
 		ok.String(string(v.Type))
+	}
+
+	return nil
+}
+
+func awsRestjson1_serializeDocumentReplicatorCloudWatchLogs(v *types.ReplicatorCloudWatchLogs, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.Enabled != nil {
+		ok := object.Key("enabled")
+		ok.Boolean(*v.Enabled)
+	}
+
+	if v.LogGroup != nil {
+		ok := object.Key("logGroup")
+		ok.String(*v.LogGroup)
+	}
+
+	return nil
+}
+
+func awsRestjson1_serializeDocumentReplicatorFirehose(v *types.ReplicatorFirehose, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.DeliveryStream != nil {
+		ok := object.Key("deliveryStream")
+		ok.String(*v.DeliveryStream)
+	}
+
+	if v.Enabled != nil {
+		ok := object.Key("enabled")
+		ok.Boolean(*v.Enabled)
+	}
+
+	return nil
+}
+
+func awsRestjson1_serializeDocumentReplicatorLogDelivery(v *types.ReplicatorLogDelivery, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.CloudWatchLogs != nil {
+		ok := object.Key("cloudWatchLogs")
+		if err := awsRestjson1_serializeDocumentReplicatorCloudWatchLogs(v.CloudWatchLogs, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.Firehose != nil {
+		ok := object.Key("firehose")
+		if err := awsRestjson1_serializeDocumentReplicatorFirehose(v.Firehose, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.S3 != nil {
+		ok := object.Key("s3")
+		if err := awsRestjson1_serializeDocumentReplicatorS3(v.S3, ok); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func awsRestjson1_serializeDocumentReplicatorS3(v *types.ReplicatorS3, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.Bucket != nil {
+		ok := object.Key("bucket")
+		ok.String(*v.Bucket)
+	}
+
+	if v.Enabled != nil {
+		ok := object.Key("enabled")
+		ok.Boolean(*v.Enabled)
+	}
+
+	if v.Prefix != nil {
+		ok := object.Key("prefix")
+		ok.String(*v.Prefix)
 	}
 
 	return nil
@@ -6273,6 +6503,18 @@ func awsRestjson1_serializeDocumentVpcConnectivityScram(v *types.VpcConnectivity
 }
 
 func awsRestjson1_serializeDocumentVpcConnectivityTls(v *types.VpcConnectivityTls, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.Enabled != nil {
+		ok := object.Key("enabled")
+		ok.Boolean(*v.Enabled)
+	}
+
+	return nil
+}
+
+func awsRestjson1_serializeDocumentZookeeperAccess(v *types.ZookeeperAccess, value smithyjson.Value) error {
 	object := value.Object()
 	defer object.Close()
 

@@ -4,12 +4,14 @@
 package base
 
 import (
+	"fmt"
 	"hash/maphash"
 
 	"go.yaml.in/yaml/v4"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/orderedmap"
+	"github.com/pb33f/libopenapi/utils"
 )
 
 // Discriminator is only used by OpenAPI 3+ documents, it represents a polymorphic discriminator used for schemas
@@ -29,6 +31,68 @@ type Discriminator struct {
 	RootNode       *yaml.Node
 	low.Reference
 	low.NodeMap
+}
+
+// ValidateDiscriminatorMappingValueNodes checks that discriminator mapping values are scalar strings.
+func ValidateDiscriminatorMappingValueNodes(discriminatorNode *yaml.Node) error {
+	discriminatorNode = utils.NodeAlias(discriminatorNode)
+	if discriminatorNode == nil || discriminatorNode.Kind != yaml.MappingNode {
+		return nil
+	}
+	utils.CheckForMergeNodes(discriminatorNode)
+
+	for i := 0; i < len(discriminatorNode.Content); i += 2 {
+		keyNode := utils.NodeAlias(discriminatorNode.Content[i])
+		if keyNode == nil {
+			continue
+		}
+		if keyNode.Value != "mapping" {
+			continue
+		}
+
+		mappingNode := utils.NodeAlias(discriminatorNode.Content[i+1])
+		if mappingNode == nil || mappingNode.Kind != yaml.MappingNode {
+			return fmt.Errorf("discriminator.mapping must be an object")
+		}
+		utils.CheckForMergeNodes(mappingNode)
+
+		for j := 0; j < len(mappingNode.Content); j += 2 {
+			keyNode := utils.NodeAlias(mappingNode.Content[j])
+			if keyNode == nil {
+				continue
+			}
+			mappingName := keyNode.Value
+			valueNode := utils.NodeAlias(mappingNode.Content[j+1])
+			if valueNode == nil || valueNode.Kind != yaml.ScalarNode || valueNode.Tag != "!!str" {
+				return fmt.Errorf("discriminator.mapping.%s must be a string, found %s", mappingName, describeDiscriminatorMappingNode(valueNode))
+			}
+		}
+		return nil
+	}
+
+	return nil
+}
+
+func describeDiscriminatorMappingNode(node *yaml.Node) string {
+	if node == nil {
+		return "nil"
+	}
+	if node.Kind == yaml.ScalarNode {
+		return node.Tag
+	}
+
+	switch node.Kind {
+	case yaml.MappingNode:
+		return "object"
+	case yaml.SequenceNode:
+		return "array"
+	case yaml.DocumentNode:
+		return "document"
+	case yaml.AliasNode:
+		return "alias"
+	default:
+		return fmt.Sprintf("kind %d", node.Kind)
+	}
 }
 
 // GetRootNode will return the root yaml node of the Discriminator object

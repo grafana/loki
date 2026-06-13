@@ -63,6 +63,12 @@ type CreateServerlessCacheInput struct {
 	// cache.
 	MajorEngineVersion *string
 
+	// The IP protocol version used by the serverless cache. Must be either ipv4 | ipv6
+	// | dual_stack . ipv6 is only supported with IPv6-only subnets. If not specified,
+	// defaults to ipv4 , unless all provided subnets are IPv6-only, in which case it
+	// defaults to ipv6 .
+	NetworkType types.NetworkType
+
 	// A list of the one or more VPC security groups to be associated with the
 	// serverless cache. The security group will authorize traffic access for the VPC
 	// end-point (private-link). If no other information is given this will be the
@@ -73,10 +79,9 @@ type CreateServerlessCacheInput struct {
 	// Available for Valkey, Redis OSS and Serverless Memcached only.
 	SnapshotArnsToRestore []string
 
-	// The number of snapshots that will be retained for the serverless cache that is
-	// being created. As new snapshots beyond this limit are added, the oldest
-	// snapshots will be deleted on a rolling basis. Available for Valkey, Redis OSS
-	// and Serverless Memcached only.
+	// The number of days for which ElastiCache retains automatic snapshots before
+	// deleting them. Available for Valkey, Redis OSS and Serverless Memcached only.
+	// The maximum value allowed is 35 days.
 	SnapshotRetentionLimit *int32
 
 	// A list of the identifiers of the subnets where the VPC endpoint for the
@@ -140,7 +145,7 @@ func (c *Client) addOperationCreateServerlessCacheMiddlewares(stack *middleware.
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -162,9 +167,6 @@ func (c *Client) addOperationCreateServerlessCacheMiddlewares(stack *middleware.
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

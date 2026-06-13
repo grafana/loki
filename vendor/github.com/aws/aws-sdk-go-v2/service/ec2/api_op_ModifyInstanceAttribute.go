@@ -102,6 +102,12 @@ type ModifyInstanceAttributeInput struct {
 	// PV instance can make it unreachable.
 	EnaSupport *types.AttributeBooleanValue
 
+	// Enables or disables the instance for Amazon Web Services Nitro Enclaves. For
+	// more information, see the [Amazon Web Services Nitro Enclaves User Guide].
+	//
+	// [Amazon Web Services Nitro Enclaves User Guide]: https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave.html
+	EnclaveOptions *types.EnclaveOptionsRequest
+
 	// Replaces the security groups of the instance with the specified security
 	// groups. You must specify the ID of at least one security group, even if it's
 	// just the default security group for the VPC.
@@ -203,7 +209,7 @@ func (c *Client) addOperationModifyInstanceAttributeMiddlewares(stack *middlewar
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -225,9 +231,6 @@ func (c *Client) addOperationModifyInstanceAttributeMiddlewares(stack *middlewar
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

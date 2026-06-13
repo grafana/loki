@@ -6502,6 +6502,11 @@ func awsAwsquery_serializeOpDocumentCreateReplicationGroupInput(v *CreateReplica
 		objectKey.Boolean(*v.DataTieringEnabled)
 	}
 
+	if len(v.Durability) > 0 {
+		objectKey := object.Key("Durability")
+		objectKey.String(string(v.Durability))
+	}
+
 	if v.Engine != nil {
 		objectKey := object.Key("Engine")
 		objectKey.String(*v.Engine)
@@ -6698,6 +6703,11 @@ func awsAwsquery_serializeOpDocumentCreateServerlessCacheInput(v *CreateServerle
 	if v.MajorEngineVersion != nil {
 		objectKey := object.Key("MajorEngineVersion")
 		objectKey.String(*v.MajorEngineVersion)
+	}
+
+	if len(v.NetworkType) > 0 {
+		objectKey := object.Key("NetworkType")
+		objectKey.String(string(v.NetworkType))
 	}
 
 	if v.SecurityGroupIds != nil {
@@ -8155,6 +8165,11 @@ func awsAwsquery_serializeOpDocumentModifyReplicationGroupInput(v *ModifyReplica
 	if len(v.ClusterMode) > 0 {
 		objectKey := object.Key("ClusterMode")
 		objectKey.String(string(v.ClusterMode))
+	}
+
+	if len(v.Durability) > 0 {
+		objectKey := object.Key("Durability")
+		objectKey.String(string(v.Durability))
 	}
 
 	if v.Engine != nil {

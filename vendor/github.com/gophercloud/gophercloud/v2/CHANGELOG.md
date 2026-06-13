@@ -1,3 +1,29 @@
+## v2.12.0 (2026-04-10)
+
+* [GH-3653](https://github.com/gophercloud/gophercloud/pull/3653) [v2] Fix clouds.yaml search path to use XDG convention on all platforms
+* [GH-3660](https://github.com/gophercloud/gophercloud/pull/3660) [v2] Use jammy amphora in octavia epoxy job
+* [GH-3670](https://github.com/gophercloud/gophercloud/pull/3670) [v2] Implement READ operations on Placement traits
+* [GH-3673](https://github.com/gophercloud/gophercloud/pull/3673) [v2] Github action fixes
+* [GH-3674](https://github.com/gophercloud/gophercloud/pull/3674) [v2] Update acceptance README to remove mentions of Packstack
+* [GH-3678](https://github.com/gophercloud/gophercloud/pull/3678) [v2] Implement CREATE/UPDATE operation on Placement traits
+* [GH-3679](https://github.com/gophercloud/gophercloud/pull/3679) [v2] Implement DELETE operations on Placement traits
+* [GH-3682](https://github.com/gophercloud/gophercloud/pull/3682) [v2] Implement resource_classes GET operations
+* [GH-3683](https://github.com/gophercloud/gophercloud/pull/3683) [v2] Implement resource classes CREATE operations
+* [GH-3684](https://github.com/gophercloud/gophercloud/pull/3684) [v2] Implement resource classes DELETE operation
+* [GH-3690](https://github.com/gophercloud/gophercloud/pull/3690) [v2] Add metric-storage (Aetos) v1 service support
+* [GH-3691](https://github.com/gophercloud/gophercloud/pull/3691) [v2] Implement GET/UPDATE/DELETE operations on Placement resource providers inventories
+* [GH-3692](https://github.com/gophercloud/gophercloud/pull/3692) [v2] Fix TestCreateTempURL flaky test by removing hardcoded port dependency
+* [GH-3695](https://github.com/gophercloud/gophercloud/pull/3695) [v2] Remove legacy workflows
+* [GH-3698](https://github.com/gophercloud/gophercloud/pull/3698) build(deps): bump golang.org/x/crypto from 0.33.0 to 0.49.0
+* [GH-3699](https://github.com/gophercloud/gophercloud/pull/3699) build(deps): bump actions/setup-go from 6.3.0 to 6.4.0
+* [GH-3700](https://github.com/gophercloud/gophercloud/pull/3700) build(deps): bump github/codeql-action from 4.34.1 to 4.35.1
+* [GH-3703](https://github.com/gophercloud/gophercloud/pull/3703) [v2] CI: prefer github mirrors whenever possible
+* [GH-3708](https://github.com/gophercloud/gophercloud/pull/3708) [v2] Implement Placement allocationcandidates
+
+## v2.11.1 (2026-03-10)
+
+* [GH-3648](https://github.com/gophercloud/gophercloud/pull/3648) [v2] Do not specify go patch version
+
 ## v2.11.0 (2026-03-04)
 
 * [GH-3602](https://github.com/gophercloud/gophercloud/pull/3602) [v2] Add PCIAddress field to baremetal InterfaceType

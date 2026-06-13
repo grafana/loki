@@ -214,12 +214,7 @@ func (xc *xdsChannel) onResponse(resp response, onDone func()) ([]string, error)
 		return nil, xdsresource.NewErrorf(xdsresource.ErrorTypeResourceTypeUnsupported, "Resource type URL %q unknown in response from server", resp.typeURL)
 	}
 
-	// Decode the resources and build the list of resource names to return.
-	opts := &DecodeOptions{
-		Config:       xc.clientConfig,
-		ServerConfig: xc.serverConfig,
-	}
-	updates, md, err := decodeResponse(opts, &rType, resp)
+	updates, md, err := xc.decodeResponse(&rType, resp)
 	var names []string
 	for name := range updates {
 		names = append(names, name)
@@ -243,11 +238,15 @@ func (xc *xdsChannel) onResponse(resp response, onDone func()) ([]string, error)
 // If there are any errors decoding the resources, the metadata will indicate
 // that the update was NACKed, and the returned error will contain information
 // about all errors encountered by this function.
-func decodeResponse(opts *DecodeOptions, rType *ResourceType, resp response) (map[string]dataAndErrTuple, xdsresource.UpdateMetadata, error) {
+func (xc *xdsChannel) decodeResponse(rType *ResourceType, resp response) (map[string]dataAndErrTuple, xdsresource.UpdateMetadata, error) {
 	timestamp := time.Now()
 	md := xdsresource.UpdateMetadata{
 		Version:   resp.version,
 		Timestamp: timestamp,
+	}
+	opts := &DecodeOptions{
+		Config:       xc.clientConfig,
+		ServerConfig: xc.serverConfig,
 	}
 
 	topLevelErrors := make([]error, 0)          // Tracks deserialization errors, where we don't have a resource name.
@@ -268,6 +267,10 @@ func decodeResponse(opts *DecodeOptions, rType *ResourceType, resp response) (ma
 		// Name field of the result is left unpopulated only when resource
 		// deserialization fails.
 		name := ""
+		if result == nil && err == nil {
+			xc.logger.Errorf("Decode() returned nil result and nil error for resource: %v", r)
+			continue
+		}
 		if result != nil {
 			name = xdsresource.ParseName(result.Name).String()
 		}

@@ -12,7 +12,9 @@ import (
 )
 
 // Describes the specified instance types. By default, all instance types for the
-// current Region are described. Alternatively, you can filter the results.
+// current Region are described. Alternatively, you can filter the results. To
+// include instance types that are not supported in the current Region, set
+// IncludeUnsupportedInRegion to true .
 func (c *Client) DescribeInstanceTypes(ctx context.Context, params *DescribeInstanceTypesInput, optFns ...func(*Options)) (*DescribeInstanceTypesOutput, error) {
 	if params == nil {
 		params = &DescribeInstanceTypesInput{}
@@ -199,6 +201,10 @@ type DescribeInstanceTypesInput struct {
 	//   be configured for the instance type. For example, "1" or "1,2".
 	Filters []types.Filter
 
+	// If true , the response includes instance types that are not supported in the
+	// current Region, in addition to the supported types. Default: false .
+	IncludeUnsupportedInRegion *bool
+
 	// The instance types.
 	InstanceTypes []types.InstanceType
 
@@ -265,7 +271,7 @@ func (c *Client) addOperationDescribeInstanceTypesMiddlewares(stack *middleware.
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -287,9 +293,6 @@ func (c *Client) addOperationDescribeInstanceTypesMiddlewares(stack *middleware.
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

@@ -79,14 +79,14 @@ var (
 	dataCachePurgeHook   = func() {}
 	resetBackoffHook     = func() {}
 
-	cacheEntriesMetric = estats.RegisterInt64Gauge(estats.MetricDescriptor{
+	cacheEntriesMetric = estats.RegisterInt64AsyncGauge(estats.MetricDescriptor{
 		Name:        "grpc.lb.rls.cache_entries",
 		Description: "EXPERIMENTAL. Number of entries in the RLS cache.",
 		Unit:        "{entry}",
 		Labels:      []string{"grpc.target", "grpc.lb.rls.server_target", "grpc.lb.rls.instance_uuid"},
 		Default:     false,
 	})
-	cacheSizeMetric = estats.RegisterInt64Gauge(estats.MetricDescriptor{
+	cacheSizeMetric = estats.RegisterInt64AsyncGauge(estats.MetricDescriptor{
 		Name:        "grpc.lb.rls.cache_size",
 		Description: "EXPERIMENTAL. The current size of the RLS cache.",
 		Unit:        "By",
@@ -94,25 +94,28 @@ var (
 		Default:     false,
 	})
 	defaultTargetPicksMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
-		Name:        "grpc.lb.rls.default_target_picks",
-		Description: "EXPERIMENTAL. Number of LB picks sent to the default target.",
-		Unit:        "{pick}",
-		Labels:      []string{"grpc.target", "grpc.lb.rls.server_target", "grpc.lb.rls.data_plane_target", "grpc.lb.pick_result"},
-		Default:     false,
+		Name:           "grpc.lb.rls.default_target_picks",
+		Description:    "EXPERIMENTAL. Number of LB picks sent to the default target.",
+		Unit:           "{pick}",
+		Labels:         []string{"grpc.target", "grpc.lb.rls.server_target", "grpc.lb.rls.data_plane_target", "grpc.lb.pick_result"},
+		OptionalLabels: []string{"grpc.client.call.custom"},
+		Default:        false,
 	})
 	targetPicksMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
-		Name:        "grpc.lb.rls.target_picks",
-		Description: "EXPERIMENTAL. Number of LB picks sent to each RLS target. Note that if the default target is also returned by the RLS server, RPCs sent to that target from the cache will be counted in this metric, not in grpc.rls.default_target_picks.",
-		Unit:        "{pick}",
-		Labels:      []string{"grpc.target", "grpc.lb.rls.server_target", "grpc.lb.rls.data_plane_target", "grpc.lb.pick_result"},
-		Default:     false,
+		Name:           "grpc.lb.rls.target_picks",
+		Description:    "EXPERIMENTAL. Number of LB picks sent to each RLS target. Note that if the default target is also returned by the RLS server, RPCs sent to that target from the cache will be counted in this metric, not in grpc.rls.default_target_picks.",
+		Unit:           "{pick}",
+		Labels:         []string{"grpc.target", "grpc.lb.rls.server_target", "grpc.lb.rls.data_plane_target", "grpc.lb.pick_result"},
+		OptionalLabels: []string{"grpc.client.call.custom"},
+		Default:        false,
 	})
 	failedPicksMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
-		Name:        "grpc.lb.rls.failed_picks",
-		Description: "EXPERIMENTAL. Number of LB picks failed due to either a failed RLS request or the RLS channel being throttled.",
-		Unit:        "{pick}",
-		Labels:      []string{"grpc.target", "grpc.lb.rls.server_target"},
-		Default:     false,
+		Name:           "grpc.lb.rls.failed_picks",
+		Description:    "EXPERIMENTAL. Number of LB picks failed due to either a failed RLS request or the RLS channel being throttled.",
+		Unit:           "{pick}",
+		Labels:         []string{"grpc.target", "grpc.lb.rls.server_target"},
+		OptionalLabels: []string{"grpc.client.call.custom"},
+		Default:        false,
 	})
 )
 
@@ -140,7 +143,9 @@ func (rlsBB) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.
 		updateCh:           buffer.NewUnbounded(),
 	}
 	lb.logger = internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf("[rls-experimental-lb %p] ", lb))
-	lb.dataCache = newDataCache(maxCacheSize, lb.logger, cc.MetricsRecorder(), opts.Target.String())
+	lb.dataCache = newDataCache(maxCacheSize, lb.logger, opts.Target.String())
+	metricsRecorder := cc.MetricsRecorder()
+	lb.unregisterMetricHandler = metricsRecorder.RegisterAsyncReporter(lb, cacheEntriesMetric, cacheSizeMetric)
 	lb.bg = balancergroup.New(balancergroup.Options{
 		CC:                      cc,
 		BuildOpts:               opts,
@@ -161,6 +166,9 @@ type rlsBalancer struct {
 	purgeTicker        *time.Ticker
 	dataCachePurgeHook func()
 	logger             *internalgrpclog.PrefixLogger
+
+	// unregisterMetricHandler is the function to deregister the async metric reporter.
+	unregisterMetricHandler func()
 
 	// If both cacheMu and stateMu need to be acquired, the former must be
 	// acquired first to prevent a deadlock. This order restriction is due to the
@@ -488,6 +496,7 @@ func (b *rlsBalancer) Close() {
 	if b.ctrlCh != nil {
 		b.ctrlCh.close()
 	}
+	b.unregisterMetricHandler()
 	b.bg.Close()
 	b.stateMu.Unlock()
 
@@ -701,4 +710,24 @@ func (b *rlsBalancer) releaseChildPolicyReferences(targets []string) {
 		}
 	}
 	b.stateMu.Unlock()
+}
+
+// Report reports the metrics data to the provided recorder.
+func (b *rlsBalancer) Report(r estats.AsyncMetricsRecorder) error {
+	b.cacheMu.Lock()
+	currentSize := b.dataCache.currentSize
+	entriesLen := int64(len(b.dataCache.entries))
+	rlsServerTarget := b.dataCache.rlsServerTarget
+	grpcTarget := b.dataCache.grpcTarget
+	uuid := b.dataCache.uuid
+	shutdown := b.dataCache.shutdown.HasFired()
+	b.cacheMu.Unlock()
+
+	if shutdown {
+		return nil
+	}
+
+	cacheSizeMetric.Record(r, currentSize, grpcTarget, rlsServerTarget, uuid)
+	cacheEntriesMetric.Record(r, entriesLen, grpcTarget, rlsServerTarget, uuid)
+	return nil
 }

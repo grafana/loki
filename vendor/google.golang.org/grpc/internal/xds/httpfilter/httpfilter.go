@@ -16,8 +16,8 @@
  *
  */
 
-// Package httpfilter contains the HTTPFilter interface and a registry for
-// storing and retrieving their implementations.
+// Package httpfilter contains interface definitions for xDS-based HTTP filters
+// and a registry for filter builders.
 package httpfilter
 
 import (
@@ -31,11 +31,11 @@ type FilterConfig interface {
 	isFilterConfig()
 }
 
-// Filter defines the parsing functionality of an HTTP filter.  A Filter may
-// optionally implement either ClientInterceptorBuilder or
-// ServerInterceptorBuilder or both, indicating it is capable of working on the
-// client side or server side or both, respectively.
-type Filter interface {
+// Builder defines the parsing functionality of an HTTP filter.  A Builder may
+// optionally implement either ClientFilterBuilder or ServerFilterBuilder or
+// both, indicating it is capable of working on the client side or server side
+// or both, respectively.
+type Builder interface {
 	// TypeURLs are the proto message types supported by this filter.  A filter
 	// will be registered by each of its supported message types.
 	TypeURLs() []string
@@ -56,53 +56,79 @@ type Filter interface {
 	IsTerminal() bool
 }
 
-// ClientInterceptorBuilder constructs a Client Interceptor.  If this type is
-// implemented by a Filter, it is capable of working on a client.
-type ClientInterceptorBuilder interface {
-	// BuildClientInterceptor uses the FilterConfigs produced above to produce
-	// an HTTP filter interceptor for clients.  config will always be non-nil,
-	// but override may be nil if no override config exists for the filter.  It
-	// is valid for Build to return a nil Interceptor and a nil error.  In this
-	// case, the RPC will not be intercepted by this filter.
-	BuildClientInterceptor(config, override FilterConfig) (iresolver.ClientInterceptor, error)
+// ClientFilterBuilder is an optional interface that a Builder can implement to
+// indicate its capability to build client-side filters.
+type ClientFilterBuilder interface {
+	// BuildClientFilter constructs a ClientFilter.
+	BuildClientFilter() ClientFilter
 }
 
-// ServerInterceptorBuilder constructs a Server Interceptor.  If this type is
-// implemented by a Filter, it is capable of working on a server.
-type ServerInterceptorBuilder interface {
-	// BuildServerInterceptor uses the FilterConfigs produced above to produce
-	// an HTTP filter interceptor for servers.  config will always be non-nil,
-	// but override may be nil if no override config exists for the filter.  It
-	// is valid for Build to return a nil Interceptor and a nil error.  In this
-	// case, the RPC will not be intercepted by this filter.
+// ClientFilter represents the actual filter implementation on the client side.
+// Implementations are free to maintain internal state when required, and share
+// it across interceptors. Filter instances are retained by the resolver as long
+// as they are present in the LDS configuration.
+type ClientFilter interface {
+	// BuildClientInterceptor uses the given FilterConfigs to produce an HTTP
+	// filter interceptor for clients. config will always be non-nil, but
+	// override may be nil if no override config exists for the filter.
+	//
+	// It is valid for this method to return a nil Interceptor and a nil error.
+	// In this case, the RPC will not be intercepted by this filter.
+	BuildClientInterceptor(config, override FilterConfig) (iresolver.ClientInterceptor, error)
+
+	// Close is called when the filter is no longer needed.
+	Close()
+}
+
+// ServerFilterBuilder is an optional interface that a Builder can implement to
+// indicate its capability to build server-side filters.
+type ServerFilterBuilder interface {
+	// BuildServerFilter constructs a ServerFilter.
+	BuildServerFilter() ServerFilter
+}
+
+// ServerFilter represents the actual filter implementation on the server side.
+// Implementations are free to maintain internal state when required, and share
+// it across interceptors. Filter instances are retained by the server as long
+// as they are present in any of the filter chains in the LDS configuration.
+type ServerFilter interface {
+	// BuildServerInterceptor uses the given FilterConfigs to produce
+	// an HTTP filter interceptor for servers. config will always be non-nil,
+	// but override may be nil if no override config exists for the filter.
+	//
+	// It is valid for this method to return a nil Interceptor and a nil error.
+	// In this case, the RPC will not be intercepted by this filter.
 	BuildServerInterceptor(config, override FilterConfig) (iresolver.ServerInterceptor, error)
+
+	// Close is called when the filter is no longer needed.
+	Close()
 }
 
 var (
-	// m is a map from scheme to filter.
-	m = make(map[string]Filter)
+	// registeredBuilders is a map from scheme to filter builder.
+	registeredBuilders = make(map[string]Builder)
 )
 
-// Register registers the HTTP filter Builder to the filter map. b.TypeURLs()
+// Register registers the HTTP Filter Builder with the registry. b.TypeURLs()
 // will be used as the types for this filter.
 //
 // NOTE: this function must only be called during initialization time (i.e. in
 // an init() function), and is not thread-safe. If multiple filters are
 // registered with the same type URL, the one registered last will take effect.
-func Register(b Filter) {
+func Register(b Builder) {
 	for _, u := range b.TypeURLs() {
-		m[u] = b
+		registeredBuilders[u] = b
 	}
 }
 
-// UnregisterForTesting unregisters the HTTP Filter for testing purposes.
+// UnregisterForTesting unregisters the HTTP Filter Builder for testing purposes.
 func UnregisterForTesting(typeURL string) {
-	delete(m, typeURL)
+	delete(registeredBuilders, typeURL)
 }
 
-// Get returns the HTTPFilter registered with typeURL.
+// Get returns the HTTP Filter Builder registered with typeURL.
 //
-// If no filter is register with typeURL, nil will be returned.
-func Get(typeURL string) Filter {
-	return m[typeURL]
+// If no filter builder is register with typeURL, nil will be returned.
+func Get(typeURL string) Builder {
+	return registeredBuilders[typeURL]
 }
