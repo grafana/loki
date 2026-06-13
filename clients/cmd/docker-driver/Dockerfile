@@ -12,13 +12,13 @@ WORKDIR /src/loki
 ARG GOARCH
 RUN make clean && make BUILD_IN_CONTAINER=false GOARCH=${GOARCH} clients/cmd/docker-driver/docker-driver
 
-FROM alpine:3.23.4@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11 AS temp
+FROM alpine:3.24.0@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4 AS temp
 
 ARG GOARCH
 
 RUN apk add --update --no-cache --arch=${GOARCH} ca-certificates tzdata
 
-FROM --platform=linux/${GOARCH} alpine:3.23.4@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
+FROM --platform=linux/${GOARCH} alpine:3.24.0@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
 
 COPY --from=temp /etc/ca-certificates.conf /etc/ca-certificates.conf
 COPY --from=temp /usr/share/ca-certificates /usr/share/ca-certificates
