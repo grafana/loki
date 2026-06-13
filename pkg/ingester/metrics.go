@@ -71,6 +71,7 @@ type ingesterMetrics struct {
 
 	flushQueueLength       prometheus.Gauge
 	duplicateLogBytesTotal *prometheus.CounterVec
+	replayEntriesAccepted  *prometheus.CounterVec
 	streamsOwnershipCheck  prometheus.Histogram
 }
 
@@ -169,6 +170,10 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name: "loki_ingester_wal_duplicate_entries_total",
 			Help: "Entries discarded during WAL replay due to existing in checkpoints.",
 		}),
+		replayEntriesAccepted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_ingester_replay_entries_accepted_total",
+			Help: "Number of entries accepted via replay age-gate bypass.",
+		}, []string{"tenant"}),
 		recoveredBytesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_recovered_bytes_total",
 			Help: "Total number of bytes recovered from the WAL.",

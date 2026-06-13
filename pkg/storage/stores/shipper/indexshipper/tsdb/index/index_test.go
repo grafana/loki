@@ -151,6 +151,21 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestIndexRW_Create_Open_V4(t *testing.T) {
+	dir := t.TempDir()
+	fn := filepath.Join(dir, IndexFilename)
+
+	iw, err := NewWriter(context.Background(), FormatV4, fn)
+	require.NoError(t, err)
+	_, err = iw.Close(false)
+	require.NoError(t, err)
+
+	ir, err := NewFileReader(fn)
+	require.NoError(t, err)
+	require.Equal(t, FormatV4, ir.Version())
+	require.NoError(t, ir.Close())
+}
+
 func TestIndexRW_Postings(t *testing.T) {
 	dir := t.TempDir()
 
@@ -796,7 +811,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 				dw := encoding.DecWrap(tsdb_enc.Decbuf{B: d.Get()})
 				dw.Skip(cs.offset)
 				chunkMeta := ChunkMeta{}
-				require.NoError(t, readChunkMeta(&dw, cs.prevChunkMaxt, &chunkMeta))
+				require.NoError(t, readChunkMeta(FormatV2, &dw, cs.prevChunkMaxt, &chunkMeta))
 				require.Equal(t, tc.chunkMetas[tc.expectedChunkSamples[i].idx], chunkMeta)
 			}
 

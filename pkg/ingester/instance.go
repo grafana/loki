@@ -204,6 +204,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record.UserID = i.instanceID
 	defer recordPool.PutRecord(record)
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
+	replay := httpreq.ExtractHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader) == "true"
 
 	var appendErr error
 	for _, reqStream := range req.Streams {
@@ -228,7 +229,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, 0, false, rateLimitWholeStream, i.customStreamsTracker, req.Format)
+		_, appendErr = s.Push(ctx, reqStream.Entries, replay, record, 0, false, rateLimitWholeStream, i.customStreamsTracker, req.Format)
 		s.chunkMtx.Unlock()
 	}
 
@@ -290,6 +291,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	}
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
+	s.replayAgeGateBypass = i.replayAgeGateBypass()
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -384,10 +386,21 @@ func (i *instance) createStreamByFP(ctx context.Context, ls labels.Labels, fp mo
 	policy := i.resolvePolicyForStream(ctx, ls)
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
+	s.replayAgeGateBypass = i.replayAgeGateBypass()
 
 	i.onStreamCreated(s)
 
 	return s, nil
+}
+
+func (i *instance) replayAgeGateBypass() func(entryTimestamp, now time.Time) bool {
+	return func(entryTimestamp, now time.Time) bool {
+		if !i.limiter.limits.RejectOldSamples(i.instanceID) {
+			return false
+		}
+
+		return entryTimestamp.Before(now.Add(-i.limiter.limits.RejectOldSamplesMaxAge(i.instanceID)))
+	}
 }
 
 // chunkFormatAt returns chunk formats to use at given period of time.

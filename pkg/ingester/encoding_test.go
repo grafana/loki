@@ -1,10 +1,13 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -110,6 +113,11 @@ func Test_EncodingChunks(t *testing.T) {
 					require.Nil(t, err)
 					matched.chunk = nil
 
+					if matched.flushed.IsZero() {
+						require.False(t, to.firstSeen.IsZero())
+						to.firstSeen = time.Time{}
+					}
+
 					require.Equal(t, exp, enc)
 					require.Equal(t, matched, to)
 
@@ -203,4 +211,46 @@ func Test_EncodingCheckpoint(t *testing.T) {
 
 		require.Equal(t, exp, got)
 	}
+}
+
+func TestFromWireChunksRecoveryStampsFirstSeenAndFlushesNonZeroIngestedAt(t *testing.T) {
+	conf := defaultIngesterTestConfig(t)
+	c := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.GZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, conf.BlockSize, conf.TargetChunkSize)
+	dup, err := c.Append(&logproto.Entry{
+		Timestamp: time.Unix(1, 0),
+		Line:      "replayed entry",
+	})
+	require.False(t, dup)
+	require.NoError(t, err)
+
+	wireChunks, err := toWireChunks([]chunkDesc{{chunk: c}}, nil)
+	require.NoError(t, err)
+
+	chunks := make([]Chunk, 0, len(wireChunks))
+	for _, wireChunk := range wireChunks {
+		chunks = append(chunks, wireChunk.Chunk)
+	}
+
+	_, headfmt := defaultChunkFormat(t)
+	before := time.Now()
+	descs, err := fromWireChunks(&conf, headfmt, chunks)
+	require.NoError(t, err)
+	after := time.Now()
+
+	require.Len(t, descs, 1)
+	require.False(t, descs[0].firstSeen.IsZero())
+	require.False(t, descs[0].firstSeen.Before(before))
+	require.False(t, descs[0].firstSeen.After(after))
+
+	store, ing := newTestStore(t, conf, nil)
+	defer ing.StopAsync()
+
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	lbls := labels.FromStrings("foo", "bar")
+	require.NoError(t, ing.flushChunks(ctx, 0, lbls, []*chunkDesc{&descs[0]}, &sync.RWMutex{}))
+
+	store.mtx.Lock()
+	defer store.mtx.Unlock()
+	require.Len(t, store.chunks["fake"], 1)
+	require.NotZero(t, store.chunks["fake"][0].IngestedAt)
 }

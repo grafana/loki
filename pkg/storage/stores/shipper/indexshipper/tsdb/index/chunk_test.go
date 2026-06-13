@@ -407,11 +407,12 @@ func mkChks(n int) (chks []ChunkMeta) {
 
 func chkFrom(i int) ChunkMeta {
 	return ChunkMeta{
-		Checksum: uint32(i),
-		MinTime:  int64(i),
-		MaxTime:  int64(i + 1),
-		KB:       uint32(i),
-		Entries:  uint32(i),
+		Checksum:   uint32(i),
+		MinTime:    int64(i),
+		MaxTime:    int64(i + 1),
+		IngestedAt: int64(1000 + i),
+		KB:         uint32(i),
+		Entries:    uint32(i),
 	}
 }
 
@@ -419,6 +420,7 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 	for _, version := range []int{
 		FormatV2,
 		FormatV3,
+		FormatV4,
 	} {
 		for _, nChks := range []int{
 			0,
@@ -448,6 +450,11 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 					if len(chks) == 0 {
 						require.Equal(t, 0, len(dst))
 					} else {
+						if version < FormatV4 {
+							for i := range chks {
+								chks[i].IngestedAt = 0
+							}
+						}
 						require.Equal(t, chks, dst)
 					}
 				})
@@ -582,22 +589,23 @@ func TestSearchWithPageMarkers(t *testing.T) {
 				},
 			},
 		} {
-			t.Run(fmt.Sprintf("%s-pagesize-%d", tc.desc, pageSize), func(t *testing.T) {
-				var w Creator
-				w.Version = FormatV3
-				primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
-				scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
-				w.addChunks(tc.chks, &primary, &scratch, pageSize)
+			for _, version := range []int{FormatV3, FormatV4} {
+				t.Run(fmt.Sprintf("%s-pagesize-%d-version-%d", tc.desc, pageSize, version), func(t *testing.T) {
+					var w Creator
+					w.Version = version
+					primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+					scratch := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+					w.addChunks(tc.chks, &primary, &scratch, pageSize)
 
-				decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
-				dec := newDecoder(nil, 0)
-				dst := []ChunkMeta{}
-				require.Nil(t, dec.readChunksV3(&decbuf, tc.mint, tc.maxt, &dst))
-				require.Equal(t, tc.exp, dst)
-			})
+					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
+					dec := newDecoder(nil, 0)
+					dst := []ChunkMeta{}
+					require.Nil(t, dec.readChunksV3(version, &decbuf, tc.mint, tc.maxt, &dst))
+					require.Equal(t, tc.exp, dst)
+				})
+			}
 		}
 	}
-
 }
 
 func TestDecoderChunkStats(t *testing.T) {
@@ -605,6 +613,7 @@ func TestDecoderChunkStats(t *testing.T) {
 		for _, version := range []int{
 			FormatV2,
 			FormatV3,
+			FormatV4,
 		} {
 			for _, tc := range []struct {
 				desc          string
@@ -720,7 +729,7 @@ func BenchmarkChunkStats(b *testing.B) {
 		chks := mkChks(nChks)
 		// Only request the middle 20% of chunks.
 		from, through := int64(nChks*40/100), int64(nChks*60/100)
-		for _, version := range []int{FormatV2, FormatV3} {
+		for _, version := range []int{FormatV2, FormatV3, FormatV4} {
 			b.Run(fmt.Sprintf("version %d/%d chunks", version, nChks), func(b *testing.B) {
 				var w Creator
 				w.Version = version
@@ -745,7 +754,7 @@ func BenchmarkReadChunks(b *testing.B) {
 		res := ChunkMetasPool.Get()
 		// Only request the middle 20% of chunks.
 		from, through := int64(nChks*40/100), int64(nChks*60/100)
-		for _, version := range []int{FormatV2, FormatV3} {
+		for _, version := range []int{FormatV2, FormatV3, FormatV4} {
 			b.Run(fmt.Sprintf("version %d/%d chunks", version, nChks), func(b *testing.B) {
 				var w Creator
 				w.Version = version

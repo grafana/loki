@@ -88,6 +88,8 @@ type stream struct {
 
 	retentionHours string
 	policy         string
+
+	replayAgeGateBypass func(entryTimestamp, now time.Time) bool
 }
 
 type chunkDesc struct {
@@ -98,6 +100,7 @@ type chunkDesc struct {
 	reason  string
 
 	lastUpdated time.Time
+	firstSeen   time.Time
 }
 
 type entryWithError struct {
@@ -164,9 +167,21 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
+func (s *stream) newChunkDesc(replay bool) chunkDesc {
+	c := chunkDesc{
+		chunk: s.NewChunk(),
+	}
+	if replay {
+		c.firstSeen = time.Now()
+	}
+	return c
+}
+
 func (s *stream) Push(
 	ctx context.Context,
 	entries []logproto.Entry,
+	// Whether this push is archive replay traffic.
+	replay bool,
 	// WAL record to add push contents to.
 	// May be nil to disable this functionality.
 	record *wal.Record,
@@ -191,8 +206,8 @@ func (s *stream) Push(
 		defer s.chunkMtx.Unlock()
 	}
 
-	isReplay := counter > 0
-	if isReplay && counter <= s.entryCt {
+	walReplay := counter > 0
+	if walReplay && counter <= s.entryCt {
 		var byteCt int
 		for _, e := range entries {
 			byteCt += len(e.Line)
@@ -203,21 +218,20 @@ func (s *stream) Push(
 		return 0, ErrEntriesExist
 	}
 
-	toStore, invalid := s.validateEntries(ctx, entries, isReplay, rateLimitWholeStream, usageTracker, format)
+	isReplay := replay || walReplay
+	toStore, invalid := s.validateEntries(ctx, entries, replay, isReplay, rateLimitWholeStream, usageTracker, format)
 	if rateLimitWholeStream && hasRateLimitErr(invalid) {
 		return 0, errorForFailedEntries(s, invalid, len(entries))
 	}
 
 	prevNumChunks := len(s.chunks)
 	if prevNumChunks == 0 {
-		s.chunks = append(s.chunks, chunkDesc{
-			chunk: s.NewChunk(),
-		})
+		s.chunks = append(s.chunks, s.newChunkDesc(replay))
 		s.metrics.chunksCreatedTotal.Inc()
 		s.metrics.chunkCreatedStats.Inc(1)
 	}
 
-	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, usageTracker, format)
+	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, replay, usageTracker, format)
 	s.recordAndSendToTailers(record, storedEntries)
 
 	if len(s.chunks) != prevNumChunks {
@@ -317,7 +331,7 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 	}
 }
 
-func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, format string) (int, []logproto.Entry, []entryWithError) {
+func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, replay bool, usageTracker push.UsageTracker, format string) (int, []logproto.Entry, []entryWithError) {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("stream started to store entries", trace.WithAttributes(
 		attribute.String("labels", s.labelsString)),
@@ -330,8 +344,11 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 	storedEntries := make([]logproto.Entry, 0, len(entries))
 	for i := 0; i < len(entries); i++ {
 		chunk := &s.chunks[len(s.chunks)-1]
+		if replay != !chunk.firstSeen.IsZero() && chunk.chunk.UncompressedSize() > 0 {
+			chunk = s.cutChunk(ctx, replay)
+		}
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
-			chunk = s.cutChunk(ctx)
+			chunk = s.cutChunk(ctx, replay)
 		}
 
 		chunk.lastUpdated = time.Now()
@@ -379,7 +396,7 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 
 }
 
-func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
+func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, replay, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
 
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
@@ -430,6 +447,9 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		}
 
 		validBytes += entryBytes
+		if replay && s.replayAgeGateBypass != nil && s.replayAgeGateBypass(entries[i].Timestamp, now) {
+			s.metrics.replayEntriesAccepted.WithLabelValues(s.tenant).Inc()
+		}
 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line
@@ -488,7 +508,7 @@ func (s *stream) reportMetrics(ctx context.Context, outOfOrderSamples, outOfOrde
 	}
 }
 
-func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
+func (s *stream) cutChunk(ctx context.Context, replay bool) *chunkDesc {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("stream started to cut chunk")
 	defer sp.AddEvent("stream finished to cut chunk")
@@ -508,9 +528,7 @@ func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
 	s.metrics.chunksCreatedTotal.Inc()
 	s.metrics.chunkCreatedStats.Inc(1)
 
-	s.chunks = append(s.chunks, chunkDesc{
-		chunk: s.NewChunk(),
-	})
+	s.chunks = append(s.chunks, s.newChunkDesc(replay))
 	return &s.chunks[len(s.chunks)-1]
 }
 

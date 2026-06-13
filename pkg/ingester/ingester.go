@@ -32,6 +32,8 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	grpcmetadata "google.golang.org/grpc/metadata"
+
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -60,6 +62,7 @@ import (
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/wal"
@@ -999,6 +1002,8 @@ func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 
 // Push implements logproto.Pusher.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+	ctx = injectReplayHeaderFromGRPCMetadata(ctx)
+
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1021,6 +1026,24 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return &logproto.PushResponse{}, err
 	}
 	return &logproto.PushResponse{}, instance.Push(ctx, req)
+}
+
+func injectReplayHeaderFromGRPCMetadata(ctx context.Context) context.Context {
+	if httpreq.ExtractHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader) == httpreq.AdaptiveTelemetryReplayHeaderValue {
+		return ctx
+	}
+
+	md, ok := grpcmetadata.FromIncomingContext(ctx)
+	if !ok {
+		return ctx
+	}
+
+	values := md.Get(server_util.LokiReplayGRPCMetadataKey)
+	if len(values) == 0 || values[0] != httpreq.AdaptiveTelemetryReplayHeaderValue {
+		return ctx
+	}
+
+	return httpreq.InjectHeader(ctx, httpreq.AdaptiveTelemetryReplayHeader, httpreq.AdaptiveTelemetryReplayHeaderValue)
 }
 
 // GetStreamRates returns a response containing all streams and their current rate

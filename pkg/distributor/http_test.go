@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -159,6 +160,75 @@ func TestRequestParserWrapping(t *testing.T) {
 
 		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 		// The test should complete without panicking
+	})
+
+	t.Run("it injects replay header into request context for the push path", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		limits.RejectOldSamples = false
+		distributors, _ := prepare(t, 1, 3, limits, nil)
+
+		var observedHeader string
+		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
+			return func(
+				userID string,
+				req *http.Request,
+				limits push.Limits,
+				tenantConfigs *runtime.TenantConfigs,
+				maxLineSize int,
+				maxLineSizeTruncate int64,
+				usageTracker push.UsageTracker,
+				streamResolver push.StreamResolver,
+				logger log.Logger,
+			) (*logproto.PushRequest, *push.Stats, error) {
+				observedHeader = httpreq.ExtractHeader(req.Context(), httpreq.AdaptiveTelemetryReplayHeader)
+				return requestParser(userID, req, limits, tenantConfigs, maxLineSize, maxLineSizeTruncate, usageTracker, streamResolver, logger)
+			}
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
+		require.NoError(t, err)
+		req.Header.Set(httpreq.AdaptiveTelemetryReplayHeader, "true")
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, constants.Loki)
+
+		require.Equal(t, "true", observedHeader)
+	})
+
+	t.Run("it leaves replay header unset in request context when absent", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		limits.RejectOldSamples = false
+		distributors, _ := prepare(t, 1, 3, limits, nil)
+
+		var observedHeader string
+		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
+			return func(
+				userID string,
+				req *http.Request,
+				limits push.Limits,
+				tenantConfigs *runtime.TenantConfigs,
+				maxLineSize int,
+				maxLineSizeTruncate int64,
+				usageTracker push.UsageTracker,
+				streamResolver push.StreamResolver,
+				logger log.Logger,
+			) (*logproto.PushRequest, *push.Stats, error) {
+				observedHeader = httpreq.ExtractHeader(req.Context(), httpreq.AdaptiveTelemetryReplayHeader)
+				return requestParser(userID, req, limits, tenantConfigs, maxLineSize, maxLineSizeTruncate, usageTracker, streamResolver, logger)
+			}
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
+		require.NoError(t, err)
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, constants.Loki)
+
+		require.Empty(t, observedHeader)
 	})
 }
 
