@@ -131,8 +131,6 @@ type Config struct {
 	// If empty, all fields are returned. This allows filtering of sensitive or unwanted configuration.
 	TenantLimitsAllowPublish []string `yaml:"tenant_limits_allow_publish" json:"tenant_limits_allowlist_fields"`
 
-	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden|deprecated"`
-
 	Common common.Config `yaml:"common,omitempty"`
 
 	ShutdownDelay time.Duration `yaml:"shutdown_delay"`
@@ -165,9 +163,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"The ballast will not consume physical memory, because it is never read from. "+
 			"It will, however, distort metrics, because it is counted as live memory. ",
 	)
-
-	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", false, "Deprecated. Set to true to enable the legacy read mode which includes the components from the backend target. "+
-		"This setting is deprecated and will be removed in the next minor release.")
 
 	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
 
@@ -361,7 +356,6 @@ func (c *Config) Validate() error {
 
 	errs = append(errs, validateSchemaValues(c)...)
 	errs = append(errs, ValidateConfigCompatibility(*c)...)
-	errs = append(errs, validateBackendAndLegacyReadMode(c)...)
 	errs = append(errs, validateSchemaRequirements(c)...)
 	errs = append(errs, validateDirectoriesExist(c)...)
 
@@ -803,9 +797,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(ScratchStore, t.initScratchStore)
 
 	mm.RegisterModule(All, nil)
-	mm.RegisterModule(Read, nil)
-	mm.RegisterModule(Write, nil)
-	mm.RegisterModule(Backend, nil)
 
 	// Add dependencies
 	deps := map[string][]string{
@@ -855,10 +846,6 @@ func (t *Loki) setupModuleManager() error {
 		DataObjCompactionWorker:      {ScratchStore, Server, UIRing},
 		ScratchStore:                 {},
 
-		Read:    {QueryFrontend, Querier},
-		Write:   {Ingester, Distributor, PatternIngester},
-		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomPlanner, BloomBuilder, BloomGateway},
-
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor, UI},
 	}
 
@@ -890,8 +877,8 @@ func (t *Loki) setupModuleManager() error {
 		}
 	}
 
-	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
-	if t.Cfg.isTarget(Querier) || t.Cfg.isTarget(Ruler) || t.Cfg.isTarget(Read) || t.Cfg.isTarget(Backend) {
+	// Add IngesterQuerier as a dependency for store when target is either querier or ruler.
+	if t.Cfg.isTarget(Querier) || t.Cfg.isTarget(Ruler) {
 		deps[Store] = append(deps[Store], IngesterQuerier)
 	}
 
@@ -908,12 +895,8 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	// Initialise query tags interceptors on targets running ingester
-	if t.Cfg.isTarget(Ingester) || t.Cfg.isTarget(Write) || t.Cfg.isTarget(All) {
+	if t.Cfg.isTarget(Ingester) || t.Cfg.isTarget(All) {
 		deps[Server] = append(deps[Server], IngesterGRPCInterceptors)
-	}
-
-	if t.Cfg.LegacyReadTarget {
-		deps[Read] = append(deps[Read], deps[Backend]...)
 	}
 
 	if t.Cfg.InternalServer.Enable {

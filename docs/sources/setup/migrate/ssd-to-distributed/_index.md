@@ -14,7 +14,7 @@ keywords:
 This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a [distributed microservices deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) of Loki. Before starting the migration, make sure you have read the [considerations](#considerations) section.
 
 {{< admonition type="note" >}}
-Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released. You should plan to migrate from SSD to distributed before Loki 4.0 releases.
+Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. You should plan to migrate from SSD to distributed before Loki 4.0 releases.
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
