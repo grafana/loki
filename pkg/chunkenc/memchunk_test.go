@@ -45,6 +45,7 @@ var testEncodings = []compression.Codec{
 	compression.Snappy,
 	compression.Flate,
 	compression.Zstd,
+	compression.S2,
 }
 
 var (
