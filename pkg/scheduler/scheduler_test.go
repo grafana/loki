@@ -160,6 +160,18 @@ func TestProtobufBackwardsCompatibility(t *testing.T) {
 	})
 }
 
+func TestConfig_Validate_AcceptsInertRingParams(t *testing.T) {
+	// NumTokens and ReplicationFactor are fixed for the scheduler ring, so a configured
+	// value is inert (it is enforced at ring construction, not here). Validate must not
+	// reject a mismatch: common.replication_factor propagates into this field automatically
+	// and a fatal error would crash an otherwise valid config. See issue #19890.
+	cfg := Config{}
+	cfg.SchedulerRing.NumTokens = 999
+	cfg.SchedulerRing.ReplicationFactor = 1
+
+	require.NoError(t, cfg.Validate())
+}
+
 type mockSchedulerForFrontendFrontendLoopServer struct {
 	msg    *schedulerpb.SchedulerToFrontend
 	recvFn func() (*schedulerpb.FrontendToScheduler, error)
