@@ -416,7 +416,6 @@ func TestReader_SmallBatchSize(t *testing.T) {
 		if batch != nil {
 			require.LessOrEqual(t, batch.NumRows(), int64(2), "batch should not exceed batchSize")
 			totalRows += batch.NumRows()
-			batch.Release()
 		}
 		if errors.Is(err, io.EOF) {
 			break
