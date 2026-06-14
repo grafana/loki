@@ -121,11 +121,11 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 		Command("prepare", "Modifies a set of rules by including an specific label in aggregations.").
 		Action(r.prepare)
 	formatCmd := rulesCmd.
-		Command("format", "Formats a set of rule files. It reorders keys alphabetically, uses 4 spaces as indentation, and formats PromQL expressions to a single line. `lint` is an alias for `format` and is deprecated.").
+		Command("format", "Formats a set of rule files. It reorders keys alphabetically, uses 4 spaces as indentation, and formats PromQL expressions to a single line. The `lint` alias is deprecated and kept only for backward compatibility.").
 		Alias("lint").
 		Action(r.format)
 	checkCmd := rulesCmd.
-		Command("check", "Runs various best practice checks against rules.").
+		Command("check", "Lints rules against best-practice checks without rewriting the files.").
 		Action(r.checkRecordingRuleNames)
 
 	// Require Loki cluster address and tentant ID on all these commands

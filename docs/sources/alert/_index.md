@@ -232,6 +232,9 @@ An example workflow is included below:
 # format the rules.yaml file, reordering keys and reformatting PromQL expressions
 lokitool rules format ./output/rules.yaml
 
+# lint the rules against best practices without rewriting the file
+lokitool rules check ./output/rules.yaml
+
 # diff rules against the currently managed ruleset in Loki
 lokitool rules diff --rule-dirs=./output
 
@@ -256,6 +259,10 @@ lokitool rules sync --rule-dirs=./output --namespaces-regex='^prod-.*'
 # print the remote ruleset
 lokitool rules print
 ```
+
+{{< admonition type="note" >}}
+`lokitool rules lint` is a deprecated alias for `lokitool rules format` and is kept only for backward compatibility.
+{{< /admonition >}}
 
 {{< admonition type="note" >}}
 The `diff` and `sync` commands support namespace filtering with the following flags (only one can be used at a time):
