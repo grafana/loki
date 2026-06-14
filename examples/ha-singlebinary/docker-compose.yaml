@@ -1,0 +1,178 @@
+# =============================================================================
+# Loki Single Binary – Docker Compose
+# =============================================================================
+# Services
+#   minio            – S3-compatible object storage (chunks + ruler buckets)
+#   minio-init       – one-shot container that creates required MinIO buckets
+#   loki-1/2/3/4/5   – Loki single-binary replicas (target=all), RF=3
+#   nginx            – reverse proxy / load balancer in front of Loki
+#
+# Usage
+#   docker compose up -d
+#
+# Loki ring:      http://localhost:3100/ring
+# MinIO console:  http://localhost:9001  (loki / supersecret)
+# =============================================================================
+
+name: loki-ha-singlebinary
+
+# ---------------------------------------------------------------------------
+# Re-usable fragment
+# ---------------------------------------------------------------------------
+x-loki-common: &loki-common
+  image: grafana/loki:high-available-single-binary-03cd800 # Run `make loki-image` in root of the Loki repository and copy the image tag here
+  command:
+    [
+      "-config.file=/etc/loki/loki.yaml",
+      "-config.expand-env=true",
+      "-target=all",
+    ]
+  depends_on:
+    minio-init:
+      condition: service_completed_successfully
+  networks:
+    - loki
+  healthcheck:
+    test: ["CMD", "/usr/bin/loki", "-health"]
+    interval: 10s
+    timeout: 5s
+    retries: 10
+    start_period: 30s
+
+services:
+  # ---------------------------------------------------------------------------
+  # MinIO – object storage backend
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    entrypoint: ["minio", "server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: loki
+      MINIO_ROOT_PASSWORD: supersecret
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # MinIO web console
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - loki
+
+  # ---------------------------------------------------------------------------
+  # minio-init – creates buckets once MinIO is healthy, then exits.
+  # ---------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set minio http://minio:9000 loki supersecret &&
+        mc mb --ignore-existing minio/loki-chunks &&
+        mc mb --ignore-existing minio/loki-ruler &&
+        echo 'Buckets created.'
+      "
+    networks:
+      - loki
+
+  # ---------------------------------------------------------------------------
+  # Loki replicas (single binary, target=all)
+  # ---------------------------------------------------------------------------
+  loki-1:
+    <<: *loki-common
+    container_name: loki-1
+    hostname: loki-1
+    environment:
+      LOKI_INSTANCE_ID: loki-1
+      COMPACTOR_MODE: main
+    volumes:
+      - ./config/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-1-data:/loki
+
+  loki-2:
+    <<: *loki-common
+    container_name: loki-2
+    hostname: loki-2
+    environment:
+      LOKI_INSTANCE_ID: loki-2
+    volumes:
+      - ./config/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-2-data:/loki
+
+  loki-3:
+    <<: *loki-common
+    container_name: loki-3
+    hostname: loki-3
+    environment:
+      LOKI_INSTANCE_ID: loki-3
+    volumes:
+      - ./config/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-3-data:/loki
+
+  loki-4:
+    <<: *loki-common
+    container_name: loki-4
+    hostname: loki-4
+    environment:
+      LOKI_INSTANCE_ID: loki-4
+    volumes:
+      - ./config/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-4-data:/loki
+
+  loki-5:
+    <<: *loki-common
+    container_name: loki-5
+    hostname: loki-5
+    environment:
+      LOKI_INSTANCE_ID: loki-5
+    volumes:
+      - ./config/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-5-data:/loki
+
+  # ---------------------------------------------------------------------------
+  # NGINX – reverse proxy / load balancer
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "3100:3100" # Loki HTTP API (push + query)
+    depends_on:
+      - loki-1
+      - loki-2
+      - loki-3
+      - loki-4
+      - loki-5
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/nginx-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - loki
+
+# ---------------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------------
+volumes:
+  minio-data:
+  loki-1-data:
+  loki-2-data:
+  loki-3-data:
+  loki-4-data:
+  loki-5-data:
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  loki:
+    driver: bridge
