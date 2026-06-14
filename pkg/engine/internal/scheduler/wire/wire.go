@@ -43,7 +43,7 @@ type Conn interface {
 	//
 	// Send returns an error if the context is canceled or if the connection is
 	// closed.
-	Send(context.Context, Frame) error
+	SendBatch(context.Context, []Frame) error
 
 	// Recv receives the next Frame from the peer. Recv blocks until a Frame is
 	// available. Recv returns an error if the context is canceled or if the

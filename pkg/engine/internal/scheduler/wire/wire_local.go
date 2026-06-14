@@ -136,15 +136,17 @@ type localConn struct {
 
 var _ Conn = (*localConn)(nil)
 
-func (c *localConn) Send(ctx context.Context, frame Frame) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-c.alive.Done(): // Conn closed
-		return ErrConnClosed
-	case c.write <- frame:
-		return nil
+func (c *localConn) SendBatch(ctx context.Context, frames []Frame) error {
+	for _, frame := range frames {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-c.alive.Done(): // Conn closed
+			return ErrConnClosed
+		case c.write <- frame:
+		}
 	}
+	return nil
 }
 
 func (c *localConn) Recv(ctx context.Context) (Frame, error) {

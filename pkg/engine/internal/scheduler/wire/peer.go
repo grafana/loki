@@ -149,6 +149,7 @@ func (p *Peer) handleIncoming(ctx context.Context) error {
 }
 
 func (p *Peer) handleOutgoing(ctx context.Context) error {
+	var batch []Frame
 	for {
 		select {
 		case <-ctx.Done():
@@ -156,10 +157,25 @@ func (p *Peer) handleOutgoing(ctx context.Context) error {
 		case <-p.done:
 			return nil // Closed connection.
 		case frame := <-p.outgoing:
-			if err := p.Conn.Send(ctx, frame); err != nil && ctx.Err() == nil {
-				level.Warn(p.Logger).Log("msg", "failed to send message", "error", err)
-				p.notifyError(frame, err)
+			batch = append(batch[:0], frame)
+			drainOutgoing(p.outgoing, &batch)
+			if err := p.Conn.SendBatch(ctx, batch); err != nil && ctx.Err() == nil {
+				level.Warn(p.Logger).Log("msg", "failed to send messages", "error", err, "batch", len(batch))
+				for _, f := range batch {
+					p.notifyError(f, err)
+				}
 			}
+		}
+	}
+}
+
+func drainOutgoing(ch <-chan Frame, batch *[]Frame) {
+	for {
+		select {
+		case f := <-ch:
+			*batch = append(*batch, f)
+		default:
+			return
 		}
 	}
 }
