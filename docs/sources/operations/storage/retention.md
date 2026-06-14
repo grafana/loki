@@ -54,6 +54,63 @@ Marker files should be stored on a persistent disk to ensure that the chunks pen
 Grafana Labs recommends running Compactor as a stateful deployment (StatefulSet when using Kubernetes) with a persistent storage for storing marker files.
 {{< /admonition >}}
 
+### Object store lifecycle policies
+
+When using object storage backends (S3, GCS, Azure Blob), you may want to configure bucket lifecycle policies as an additional safety net. However, lifecycle policies must be configured carefully to avoid deleting data that Loki still needs.
+
+#### Bucket object layout
+
+Loki stores the following objects in the configured bucket:
+
+| Path pattern | Purpose | Safe to lifecycle-delete? |
+|---|---|---|
+| `<tenant_id>/` (for example, `fake/`) | Chunk objects for the tenant. `fake` is the default tenant ID in single-tenant mode. | Yes, but only objects older than your retention period plus the `retention-delete-delay`. |
+| `index/` | TSDB index files uploaded by ingesters and compacted by the Compactor. | No. Loki manages index lifecycle internally. Deleting active index files causes query failures. |
+| `loki_cluster_seed.json` | Cluster identification file used for anonymous usage reporting. | No. This file is small and must persist for the lifetime of the cluster. Deleting it causes a new cluster identity to be generated. |
+| `markers/` | Marker files written by the Compactor to track chunks pending deletion. | No. Deleting these causes chunks to be retained past their retention period. |
+
+#### Recommendations
+
+- **Do not apply a blanket lifecycle policy** (for example, "delete all objects older than 30 days") to the entire bucket. This will delete index files and the cluster seed.
+- If you use lifecycle policies, scope them only to tenant chunk prefixes (for example, `fake/*` or `<org_id>/*`).
+- Set the lifecycle expiration to be **longer** than your Loki retention period plus the `compactor.retention-delete-delay` (default 2h). This ensures the Compactor has time to process deletions before the lifecycle policy acts.
+- If Loki retention is enabled and working correctly, external lifecycle policies are not required. They serve only as a fallback safety net.
+
+#### Example: S3 lifecycle rule (safety net only)
+
+```xml
+<LifecycleConfiguration>
+  <Rule>
+    <ID>loki-chunk-safety-net</ID>
+    <Filter>
+      <Prefix>fake/</Prefix>
+    </Filter>
+    <Status>Enabled</Status>
+    <Expiration>
+      <Days>395</Days>
+    </Expiration>
+  </Rule>
+</LifecycleConfiguration>
+```
+
+In this example, the lifecycle rule only targets chunk objects under the `fake/` tenant prefix and uses a 395-day expiration (assuming a 365-day Loki retention period plus 30 days of buffer).
+
+#### Example: GCS lifecycle rule
+
+```json
+{
+  "rule": [
+    {
+      "action": {"type": "Delete"},
+      "condition": {
+        "age": 395,
+        "matchesPrefix": ["fake/"]
+      }
+    }
+  ]
+}
+```
+
 ### Retention Configuration
 
 This Compactor configuration example activates retention.
