@@ -1,5 +1,12 @@
 ## Main
 
+## [0.10.3](https://github.com/grafana/loki/compare/operator/v0.10.2...operator/v0.10.3) (2026-06-12)
+
+
+### Bug Fixes
+
+* **operator:** Clarify LokiIngesterFlushFailureRateCritical alert description ([#22341](https://github.com/grafana/loki/issues/22341)) ([bdae5cc](https://github.com/grafana/loki/commit/bdae5cc804356ff36b476f6e4aead8e5162aaf1d))
+
 ## [0.10.2](https://github.com/grafana/loki/compare/operator/v0.10.1...operator/v0.10.2) (2026-06-09)
 
 
