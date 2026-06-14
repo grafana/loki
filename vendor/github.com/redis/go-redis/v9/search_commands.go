@@ -408,11 +408,13 @@ const (
 type FTHybridVectorExpression struct {
 	VectorField string
 	VectorData  Vector
-	// VectorParamName specifies the parameter name for passing vector data via PARAMS mechanism.
-	// REQUIRED for Redis 8.6+ (inline vector blobs are not supported in 8.6+).
-	// Optional for Redis 8.4-8.5 (both inline and PARAMS are supported).
-	// When set, the vector blob will be passed as: VSIM @field $VectorParamName PARAMS ... VectorParamName <blob>
-	// When empty, the vector blob will be inlined: VSIM @field <blob> (fails on Redis 8.6+)
+	// VectorParamName optionally specifies the parameter name used to pass the
+	// vector data via the PARAMS mechanism.
+	// Vector data is always passed via PARAMS because inline vector blobs are no
+	// longer supported by Redis. When left empty, the library generates a unique
+	// parameter name automatically (e.g. "__vector_param_0") without mutating
+	// FTHybridOptions.Params and without colliding with any explicit names.
+	// The vector blob is passed as: VSIM @field $VectorParamName ... PARAMS ... VectorParamName <blob>
 	VectorParamName string
 	Method          FTHybridVectorMethod
 	MethodParams    []interface{}
@@ -3700,8 +3702,32 @@ func hybridVectorBytes(blob []byte) ([]byte, error) {
 	return blob, nil
 }
 
+// generateVectorParamName returns a parameter name that is not already present
+// in params. It is used to pass vector data via the PARAMS mechanism when the
+// caller does not provide a VectorParamName, since inline vector blobs are no
+// longer supported by Redis.
+func generateVectorParamName(params map[string]interface{}) string {
+	for i := 0; ; i++ {
+		name := fmt.Sprintf("__vector_param_%d", i)
+		if _, ok := params[name]; !ok {
+			return name
+		}
+	}
+}
+
 // FTHybridWithArgs - Executes a hybrid search with advanced options
 // FTHybridWithArgs is still experimental, the command behaviour and signature may change
+//
+// Vector data is always sent through the PARAMS mechanism, because inline vector
+// blobs are no longer supported by Redis. For every vector expression whose
+// VectorParamName is empty, a unique name is generated (e.g. "__vector_param_0")
+// and the corresponding blob is passed via PARAMS.
+//
+// options.Params is never mutated: the command is built from a local copy that
+// combines the caller-provided params with any generated vector parameters. This
+// makes it safe to reuse the same *FTHybridOptions across multiple calls. Generated
+// names are also reserved against all explicit VectorParamName values, so they never
+// collide with explicit names (even those following the "__vector_param_N" pattern).
 func (c cmdable) FTHybridWithArgs(ctx context.Context, index string, options *FTHybridOptions) *FTHybridCmd {
 	args := []interface{}{"FT.HYBRID", index}
 
@@ -3722,6 +3748,23 @@ func (c cmdable) FTHybridWithArgs(ctx context.Context, index string, options *FT
 			}
 		}
 
+		// Vector data is always passed via the PARAMS mechanism (inline vector blobs
+		// are no longer supported by Redis). When vectors are present, build a local
+		// copy of the caller-provided params so options.Params is never mutated, and
+		// pre-reserve any explicit VectorParamName values so generated names never
+		// collide with them.
+		params := options.Params
+		if len(options.VectorExpressions) > 0 {
+			params = make(map[string]interface{}, len(options.Params)+len(options.VectorExpressions))
+			for k, v := range options.Params {
+				params[k] = v
+			}
+			for _, vectorExpr := range options.VectorExpressions {
+				if vectorExpr.VectorParamName != "" {
+					params[vectorExpr.VectorParamName] = nil
+				}
+			}
+		}
 		// Add vector expressions
 		for _, vectorExpr := range options.VectorExpressions {
 			args = append(args, "VSIM", "@"+vectorExpr.VectorField)
@@ -3733,19 +3776,15 @@ func (c cmdable) FTHybridWithArgs(ctx context.Context, index string, options *FT
 				return cmd
 			}
 
-			// If VectorParamName is provided, use PARAMS mechanism (required for Redis 8.6+)
-			// If not provided, inline the vector blob (works on Redis 8.4/8.5, fails on 8.6+)
-			if vectorExpr.VectorParamName != "" {
-				// Use PARAMS mechanism
-				args = append(args, "$"+vectorExpr.VectorParamName)
-				if options.Params == nil {
-					options.Params = make(map[string]interface{})
-				}
-				options.Params[vectorExpr.VectorParamName] = vectorBlob
-			} else {
-				// Inline the vector blob (deprecated in Redis 8.6+)
-				args = append(args, vectorBlob)
+			// When VectorParamName is not provided, generate a unique name. Generated
+			// names are tracked only in the local params map, never written back to
+			// options.Params.
+			paramName := vectorExpr.VectorParamName
+			if paramName == "" {
+				paramName = generateVectorParamName(params)
 			}
+			args = append(args, "$"+paramName)
+			params[paramName] = vectorBlob
 
 			if vectorExpr.Method != "" {
 				args = append(args, vectorExpr.Method)
@@ -3856,11 +3895,13 @@ func (c cmdable) FTHybridWithArgs(ctx context.Context, index string, options *FT
 		}
 
 		// Add PARAMS
-		if len(options.Params) > 0 {
-			args = append(args, "PARAMS", len(options.Params)*2)
-			for key, value := range options.Params {
-				// Parameter keys should already have '$' prefix from the user
-				// Don't add it again if it's already there
+		// Emit from the local params map, which contains the caller-provided params
+		// plus any generated vector parameter names. options.Params is left untouched.
+		if len(params) > 0 {
+			args = append(args, "PARAMS", len(params)*2)
+			for key, value := range params {
+				// PARAMS entries are passed without a '$' prefix; they are referenced in
+				// the query and clauses using "$<name>".
 				args = append(args, key, value)
 			}
 		}
