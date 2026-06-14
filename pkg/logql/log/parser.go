@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/logqlerr"
 
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
@@ -437,7 +437,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if l.strict && l.dec.Err() != nil {
 		addErrLabel(errLogfmt, l.dec.Err(), lbs)
 
-		if !parserHints.ShouldContinueParsingLine(logqlmodel.ErrorLabel, lbs) {
+		if !parserHints.ShouldContinueParsingLine(logqlerr.ErrorLabel, lbs) {
 			return line, false
 		}
 		return line, true
@@ -782,7 +782,7 @@ func addErrLabel(msg string, err error, lbs *LabelsBuilder) {
 	}
 
 	if lbs.ParserLabelHints().PreserveError() {
-		lbs.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
+		lbs.Set(ParsedLabel, logqlerr.PreserveErrorLabel, "true")
 	}
 }
 
@@ -791,7 +791,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 	err := jsonparser.ObjectEach(entry, func(key, value []byte, typ jsonparser.ValueType, _ int) error {
 		switch typ {
 		case jsonparser.String:
-			if unsafeGetString(key) == logqlmodel.PackedEntryKey {
+			if unsafeGetString(key) == logqlerr.PackedEntryKey {
 				// Inlined bytes escape to save allocs
 				var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 				bU, err := jsonparser.Unescape(value, stackbuf[:])

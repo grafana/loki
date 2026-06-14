@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
-	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/syntaxutil"
 )
 
 // LineMatchType is an enum for line matching types.
@@ -652,7 +652,7 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (MatcherFilterer, er
 	// attempt to improve regex with tricks
 	filter, ok := defaultRegexSimplifier.Simplify(reg, isLabel)
 	if !ok {
-		util.AllNonGreedy(reg)
+		syntaxutil.AllNonGreedy(reg)
 		regex := reg.String()
 		if isLabel {
 			// label regexes are anchored to
@@ -700,13 +700,13 @@ func (s *RegexSimplifier) Simplify(reg *syntax.Regexp, isLabel bool) (MatcherFil
 	case syntax.OpConcat:
 		return s.simplifyConcat(reg, nil)
 	case syntax.OpCapture:
-		util.ClearCapture(reg)
+		syntaxutil.ClearCapture(reg)
 		return s.Simplify(reg, isLabel)
 	case syntax.OpLiteral:
 		if isLabel {
-			return s.newEqualFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
+			return s.newEqualFilter([]byte(string(reg.Rune)), syntaxutil.IsCaseInsensitive(reg)), true
 		}
-		return s.newContainsFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
+		return s.newContainsFilter([]byte(string(reg.Rune)), syntaxutil.IsCaseInsensitive(reg)), true
 	case syntax.OpStar:
 		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
 			return TrueFilter, true
@@ -724,7 +724,7 @@ func (s *RegexSimplifier) Simplify(reg *syntax.Regexp, isLabel bool) (MatcherFil
 // simplifyAlternate simplifies, when possible, alternate regexp expressions such as:
 // (foo|bar) or (foo|(bar|buzz)).
 func (s *RegexSimplifier) simplifyAlternate(reg *syntax.Regexp, isLabel bool) (MatcherFilterer, bool) {
-	util.ClearCapture(reg.Sub...)
+	syntaxutil.ClearCapture(reg.Sub...)
 	// attempt to simplify the first leg
 	f, ok := s.Simplify(reg.Sub[0], isLabel)
 	if !ok {
@@ -747,7 +747,7 @@ func (s *RegexSimplifier) simplifyAlternate(reg *syntax.Regexp, isLabel bool) (M
 // Or a literal and alternates operation (see simplifyConcatAlternate), which represent a multiplication of alternates.
 // Anything else is rejected.
 func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (MatcherFilterer, bool) {
-	util.ClearCapture(reg.Sub...)
+	syntaxutil.ClearCapture(reg.Sub...)
 	// remove empty match as we don't need them for filtering
 	i := 0
 	for _, r := range reg.Sub {
@@ -776,7 +776,7 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 			}
 			literals++
 			baseLiteral = append(baseLiteral, []byte(string(sub.Rune))...)
-			baseLiteralIsCaseInsensitive = util.IsCaseInsensitive(sub)
+			baseLiteralIsCaseInsensitive = syntaxutil.IsCaseInsensitive(sub)
 			continue
 		}
 		// if we have an alternate we must also have a base literal to apply the concatenation with.
@@ -815,7 +815,7 @@ func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []
 		// and alternate expression is marked as case insensitive. For example, for the original expression
 		// f|f(?i)oo the extracted expression would be "f (?:)|(?i:OO)" i.e. f with empty match
 		// and fOO. For fOO, we can't initialize containsFilter with caseInsensitve variable as either true or false
-		isAltCaseInsensitive := util.IsCaseInsensitive(alt)
+		isAltCaseInsensitive := syntaxutil.IsCaseInsensitive(alt)
 		if !baseLiteralIsCaseInsensitive && isAltCaseInsensitive {
 			return nil, false
 		}
