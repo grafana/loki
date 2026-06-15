@@ -12,6 +12,17 @@ import "pkg/engine/internal/proto/ulid/ulid.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb";
 
+// WireTransport carries the bidirectional frame stream used for communication
+// between schedulers and workers. A single Connect stream multiplexes all
+// message kinds in both directions for the lifetime of a peer connection,
+// replacing the hand-rolled HTTP/2 transport.
+service WireTransport {
+  // Connect opens a bidirectional stream of frames between two peers. The
+  // dialing peer advertises its callback address via the "loki-peer-address"
+  // metadata header so the accepting peer can identify it.
+  rpc Connect(stream Frame) returns (stream Frame);
+}
+
 message Frame {
   oneof kind {
     AckFrame ack = 1;

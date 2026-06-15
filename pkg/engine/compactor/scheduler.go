@@ -3,12 +3,11 @@ package compactor
 import (
 	"fmt"
 	"net"
-	"net/http"
 
 	"github.com/go-kit/log"
-	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -19,9 +18,11 @@ import (
 // coordinator can access the internal *scheduler.Scheduler.
 type Scheduler struct {
 	inner    *scheduler.Scheduler
-	endpoint string
 	listener wire.Listener
-	handler  http.Handler
+
+	// grpcListener is the remote transport listener when an advertise address
+	// is configured. nil in in-process-only mode.
+	grpcListener *wire.GRPCListener
 }
 
 // newScheduler constructs a compactor Scheduler. Empty AdvertiseAddr keeps
@@ -33,12 +34,12 @@ func newScheduler(cfg SchedulerConfig, logger log.Logger) (*Scheduler, error) {
 	}
 
 	var (
-		listener wire.Listener
-		handler  http.Handler
+		listener     wire.Listener
+		grpcListener *wire.GRPCListener
 	)
 	if advertiseAddr != nil {
-		rl := wire.NewHTTP2Listener(advertiseAddr, wire.WithHTTP2ListenerLogger(logger))
-		listener, handler = rl, rl
+		grpcListener = wire.NewGRPCListener(advertiseAddr, wire.WithGRPCListenerLogger(logger))
+		listener = grpcListener
 	} else {
 		listener = &wire.Local{Address: wire.LocalScheduler}
 	}
@@ -51,10 +52,9 @@ func newScheduler(cfg SchedulerConfig, logger log.Logger) (*Scheduler, error) {
 		return nil, err
 	}
 	return &Scheduler{
-		inner:    inner,
-		endpoint: cfg.Endpoint,
-		listener: listener,
-		handler:  handler,
+		inner:        inner,
+		listener:     listener,
+		grpcListener: grpcListener,
 	}, nil
 }
 
@@ -72,18 +72,18 @@ func (s *Scheduler) UnregisterMetrics(reg prometheus.Registerer) {
 	s.inner.UnregisterMetrics(reg)
 }
 
-// RegisterSchedulerServer installs the wire.Listener HTTP handler on the
-// supplied router at the configured endpoint. No-op when no advertise
-// address was provided (in-process-only mode).
-func (s *Scheduler) RegisterSchedulerServer(router *mux.Router) {
-	if s.handler == nil {
+// RegisterSchedulerServer installs the wire.Listener gRPC service on the
+// supplied server. No-op when no advertise address was provided
+// (in-process-only mode).
+func (s *Scheduler) RegisterSchedulerServer(srv *grpc.Server) {
+	if s.grpcListener == nil {
 		return
 	}
-	router.Path(s.endpoint).Methods("POST").Handler(s.handler)
+	s.grpcListener.Register(srv)
 }
 
 // resolveAdvertiseAddr converts the raw config string into a net.Addr suitable
-// for wire.NewHTTP2Listener. Empty string returns nil (keeps the scheduler
+// for wire.NewGRPCListener. Empty string returns nil (keeps the scheduler
 // in-process-only).
 func resolveAdvertiseAddr(raw string) (net.Addr, error) {
 	if raw == "" {

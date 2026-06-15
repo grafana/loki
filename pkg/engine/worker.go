@@ -4,16 +4,16 @@ import (
 	"flag"
 	"fmt"
 	"net"
-	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -82,10 +82,20 @@ type WorkerParams struct {
 type Worker struct {
 	// Our public API is a lightweight wrapper around the internal API.
 
-	inner    *worker.Worker
-	endpoint string
-	handler  http.Handler
+	inner *worker.Worker
+
+	// grpcListener is the remote transport listener when running in remote
+	// (distributed) mode. nil when the worker only serves in-process
+	// connections.
+	grpcListener *wire.GRPCListener
 }
+
+// maxWireMessageSize bounds the size of a single wire frame the worker will
+// send or receive over gRPC. Stream data frames carry Arrow record batches,
+// which can be large, so this is set well above gRPC's 4 MiB default. The
+// receiving side is additionally bounded by the shared gRPC server's
+// -server.grpc-max-recv-msg-size-bytes.
+const maxWireMessageSize = 100 << 20 // 100 MiB
 
 // NewWorker creates a new Worker instance. Use [Worker.Service] to manage the
 // lifecycle of the Worker.
@@ -104,9 +114,9 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 	}
 
 	var (
-		listener wire.Listener
-		handler  http.Handler
-		dialer   wire.Dialer
+		listener     wire.Listener
+		grpcListener *wire.GRPCListener
+		dialer       wire.Dialer
 
 		// localSchedulerAddress is the local scheduler to connect to. Left nil
 		// when using remote transport.
@@ -115,12 +125,18 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 
 	switch {
 	case params.AdvertiseAddr != nil:
-		remoteListener := wire.NewHTTP2Listener(
+		grpcListener = wire.NewGRPCListener(
 			params.AdvertiseAddr,
-			wire.WithHTTP2ListenerLogger(params.Logger),
+			wire.WithGRPCListenerLogger(params.Logger),
 		)
-		listener, handler = remoteListener, remoteListener
-		dialer = wire.NewHTTP2Dialer(params.Endpoint)
+		listener = grpcListener
+		dialer = wire.NewGRPCDialer(
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithDefaultCallOptions(
+				grpc.MaxCallRecvMsgSize(maxWireMessageSize),
+				grpc.MaxCallSendMsgSize(maxWireMessageSize),
+			),
+		)
 
 	case params.LocalScheduler != nil:
 		localListener := &wire.Local{Address: wire.LocalWorker}
@@ -173,21 +189,20 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 	}
 
 	return &Worker{
-		inner:    inner,
-		endpoint: params.Endpoint,
-		handler:  handler,
+		inner:        inner,
+		grpcListener: grpcListener,
 	}, nil
 }
 
-// RegisterWorkerServer registers the [wire.Listener] of the inner worker as
-// http.Handler on the provided router.
+// RegisterWorkerServer registers the [wire.Listener] of the inner worker on the
+// provided gRPC server.
 //
 // RegisterWorkerServer is a no-op if an advertise address is not provided.
-func (w *Worker) RegisterWorkerServer(router *mux.Router) {
-	if w.handler == nil {
+func (w *Worker) RegisterWorkerServer(srv *grpc.Server) {
+	if w.grpcListener == nil {
 		return
 	}
-	router.Path(w.endpoint).Methods("POST").Handler(w.handler)
+	w.grpcListener.Register(srv)
 }
 
 // Service returns the service used to manage the lifecycle of the Worker.

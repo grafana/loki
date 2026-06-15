@@ -499,6 +499,10 @@ func (t *Loki) setupAuthMiddleware() {
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
 			"/grpc.JobQueue/Loop",
+			// The query-engine wire transport multiplexes frames for many
+			// tenants over a single stream; per-frame tenancy lives in the
+			// payload (Task.tenant_id), so the stream itself carries no org id.
+			"/loki.wire.WireTransport/Connect",
 		})
 }
 

@@ -2,12 +2,11 @@ package engine
 
 import (
 	"net"
-	"net/http"
 
 	"github.com/go-kit/log"
-	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -22,8 +21,9 @@ type SchedulerParams struct {
 	// If nil, the scheduler only listens for in-process connections.
 	AdvertiseAddr net.Addr
 
-	// Absolute path of the endpoint where the frame handler is registered.
-	// Used for connecting to scheduler and other workers.
+	// Endpoint is retained for backwards compatibility. It is unused by the
+	// gRPC transport, which serves on the shared gRPC server at a fixed method
+	// path.
 	Endpoint string
 }
 
@@ -33,9 +33,12 @@ type Scheduler struct {
 	// Our public API is a lightweight wrapper around the internal API.
 
 	inner    *scheduler.Scheduler
-	endpoint string
 	listener wire.Listener
-	handler  http.Handler
+
+	// grpcListener is the remote transport listener when running in remote
+	// (distributed) mode. nil when the scheduler only serves in-process
+	// connections.
+	grpcListener *wire.GRPCListener
 }
 
 // NewScheduler creates a new Scheduler. Use [Scheduler.Service] to manage the
@@ -44,21 +47,18 @@ func NewScheduler(params SchedulerParams) (*Scheduler, error) {
 	if params.Logger == nil {
 		params.Logger = log.NewNopLogger()
 	}
-	if params.Endpoint == "" {
-		params.Endpoint = "/api/v2/frame"
-	}
 
 	var (
-		listener wire.Listener
-		handler  http.Handler
+		listener     wire.Listener
+		grpcListener *wire.GRPCListener
 	)
 
 	if params.AdvertiseAddr != nil {
-		remoteListener := wire.NewHTTP2Listener(
+		grpcListener = wire.NewGRPCListener(
 			params.AdvertiseAddr,
-			wire.WithHTTP2ListenerLogger(params.Logger),
+			wire.WithGRPCListenerLogger(params.Logger),
 		)
-		listener, handler = remoteListener, remoteListener
+		listener = grpcListener
 	} else {
 		listener = &wire.Local{Address: wire.LocalScheduler}
 	}
@@ -72,22 +72,21 @@ func NewScheduler(params SchedulerParams) (*Scheduler, error) {
 	}
 
 	return &Scheduler{
-		inner:    inner,
-		endpoint: params.Endpoint,
-		listener: listener,
-		handler:  handler,
+		inner:        inner,
+		listener:     listener,
+		grpcListener: grpcListener,
 	}, nil
 }
 
 // RegisterSchedulerServer registers the [wire.Listener] of the inner scheduler
-// as http.Handler on the provided router.
+// on the provided gRPC server.
 //
 // RegisterSchedulerServer is a no-op if an advertise address is not provided.
-func (s *Scheduler) RegisterSchedulerServer(router *mux.Router) {
-	if s.handler == nil {
+func (s *Scheduler) RegisterSchedulerServer(srv *grpc.Server) {
+	if s.grpcListener == nil {
 		return
 	}
-	router.Path(s.endpoint).Methods("POST").Handler(s.handler)
+	s.grpcListener.Register(srv)
 }
 
 // Service returns the service used to manage the lifecycle of the Scheduler.

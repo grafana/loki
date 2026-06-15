@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/go-kit/log"
-	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -112,10 +112,10 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 // Service returns the service used to manage the lifecycle of the Worker.
 func (w *Worker) Service() services.Service { return w.inner.Service() }
 
-// RegisterWorkerServer registers the worker's HTTP frame handler on the
-// provided router. No-op when the worker was constructed without an
+// RegisterWorkerServer registers the worker's gRPC frame service on the
+// provided server. No-op when the worker was constructed without an
 // advertise address.
-func (w *Worker) RegisterWorkerServer(router *mux.Router) { w.inner.RegisterWorkerServer(router) }
+func (w *Worker) RegisterWorkerServer(srv *grpc.Server) { w.inner.RegisterWorkerServer(srv) }
 
 // RegisterMetrics registers metrics about w to report to reg.
 func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
