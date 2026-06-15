@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -241,7 +242,7 @@ func (f *Formatter) writeHTML(w io.Writer, style *chroma.Style, tokens []chroma.
 			fmt.Fprintf(w, "body { %s; }\n", css[chroma.Background])
 			fmt.Fprint(w, "</style>")
 		}
-		fmt.Fprintf(w, "<body%s>\n", f.styleAttr(css, chroma.Background))
+		fmt.Fprintf(w, "<body%s>\n", f.styleAttrWithMode(css, chroma.Background, style))
 	}
 
 	wrapInTable := f.lineNumbers && f.lineNumbersInTable
@@ -252,10 +253,10 @@ func (f *Formatter) writeHTML(w io.Writer, style *chroma.Style, tokens []chroma.
 
 	if wrapInTable {
 		// List line numbers in its own <td>
-		fmt.Fprintf(w, "<div%s>\n", f.styleAttr(css, chroma.PreWrapper))
+		fmt.Fprintf(w, "<div%s>\n", f.styleAttrWithMode(css, chroma.PreWrapper, style))
 		fmt.Fprintf(w, "<table%s><tr>", f.styleAttr(css, chroma.LineTable))
 		fmt.Fprintf(w, "<td%s>\n", f.styleAttr(css, chroma.LineTableTD))
-		fmt.Fprintf(w, "%s", f.preWrapper.Start(false, f.styleAttr(css, chroma.PreWrapper)))
+		fmt.Fprintf(w, "%s", f.preWrapper.Start(false, f.styleAttrWithMode(css, chroma.PreWrapper, style)))
 		for index := range lines {
 			line := f.baseLineNumber + index
 			highlight, next := f.shouldHighlight(highlightIndex, line)
@@ -277,7 +278,7 @@ func (f *Formatter) writeHTML(w io.Writer, style *chroma.Style, tokens []chroma.
 		fmt.Fprintf(w, "<td%s>\n", f.styleAttr(css, chroma.LineTableTD, "width:100%"))
 	}
 
-	fmt.Fprintf(w, "%s", f.preWrapper.Start(true, f.styleAttr(css, chroma.PreWrapper)))
+	fmt.Fprintf(w, "%s", f.preWrapper.Start(true, f.styleAttrWithMode(css, chroma.PreWrapper, style)))
 
 	highlightIndex = 0
 	for index, tokens := range lines {
@@ -288,7 +289,7 @@ func (f *Formatter) writeHTML(w io.Writer, style *chroma.Style, tokens []chroma.
 			highlightIndex++
 		}
 
-		if !(f.preventSurroundingPre || f.inlineCode) {
+		if !f.preventSurroundingPre && !f.inlineCode {
 			// Start of Line
 			fmt.Fprint(w, `<span`)
 
@@ -321,7 +322,7 @@ func (f *Formatter) writeHTML(w io.Writer, style *chroma.Style, tokens []chroma.
 			fmt.Fprint(w, html)
 		}
 
-		if !(f.preventSurroundingPre || f.inlineCode) {
+		if !f.preventSurroundingPre && !f.inlineCode {
 			fmt.Fprint(w, `</span>`) // End of CodeLine
 
 			fmt.Fprint(w, `</span>`) // End of Line
@@ -414,6 +415,26 @@ func (f *Formatter) styleAttr(styles map[chroma.TokenType]string, tt chroma.Toke
 	return fmt.Sprintf(` style="%s"`, strings.Join(css, ";"))
 }
 
+// modeClass returns the CSS class corresponding to the style's mode (eg.
+// "light" or "dark"), with the formatter's class prefix applied.
+func (f *Formatter) modeClass(style *chroma.Style) string {
+	return f.prefix + style.Mode().String()
+}
+
+// styleAttrWithMode is like styleAttr but, in classes mode, appends the
+// style's mode class alongside the existing class. Used for the outer
+// wrapper and standalone <body> so external CSS can target the mode.
+func (f *Formatter) styleAttrWithMode(styles map[chroma.TokenType]string, tt chroma.TokenType, style *chroma.Style) string {
+	if !f.Classes {
+		return f.styleAttr(styles, tt)
+	}
+	cls := f.class(tt)
+	if cls == "" {
+		return ""
+	}
+	return fmt.Sprintf(` class="%s %s"`, cls, f.modeClass(style))
+}
+
 func (f *Formatter) tabWidthStyle() string {
 	if f.tabWidth != 0 && f.tabWidth != 8 {
 		return fmt.Sprintf("-moz-tab-size: %[1]d; -o-tab-size: %[1]d; tab-size: %[1]d;", f.tabWidth)
@@ -437,20 +458,32 @@ func (f *Formatter) writeCSSRule(w io.Writer, comment string, selector string, s
 }
 
 // WriteCSS writes CSS style definitions (without any surrounding HTML).
+//
+// Rules are scoped by the style's mode (eg. ".chroma.dark") so that CSS
+// generated from a light and dark style can be combined without conflict.
+// To support dynamic theme switching, call WriteCSS with both styles,
+// concatenate the output, and toggle the wrapper's mode class (added
+// automatically by Format) at runtime. Tokens that one theme leaves
+// unstyled fall back to that theme's ".chroma.<mode>" text/background
+// via the CSS cascade; pass WithAllClasses(true) if you need every
+// token's rule materialised explicitly for both themes.
 func (f *Formatter) WriteCSS(w io.Writer, style *chroma.Style) error {
 	css := f.styleCache.get(style, false)
+	modeCls := f.modeClass(style)
+	chromaSel := fmt.Sprintf(".%schroma.%s", f.prefix, modeCls)
+	bgSel := fmt.Sprintf(".%sbg.%s", f.prefix, modeCls)
 
 	// Special-case background as it is mapped to the outer ".chroma" class.
-	if err := f.writeCSSRule(w, chroma.Background.String(), fmt.Sprintf(".%sbg", f.prefix), css[chroma.Background]); err != nil {
+	if err := f.writeCSSRule(w, chroma.Background.String(), bgSel, css[chroma.Background]); err != nil {
 		return err
 	}
 	// Special-case PreWrapper as it is the ".chroma" class.
-	if err := f.writeCSSRule(w, chroma.PreWrapper.String(), fmt.Sprintf(".%schroma", f.prefix), css[chroma.PreWrapper]); err != nil {
+	if err := f.writeCSSRule(w, chroma.PreWrapper.String(), chromaSel, css[chroma.PreWrapper]); err != nil {
 		return err
 	}
 	// Special-case code column of table to expand width.
 	if f.lineNumbers && f.lineNumbersInTable {
-		selector := fmt.Sprintf(".%schroma .%s:last-child", f.prefix, f.class(chroma.LineTableTD))
+		selector := fmt.Sprintf("%s .%s:last-child", chromaSel, f.class(chroma.LineTableTD))
 		if err := f.writeCSSRule(w, chroma.LineTableTD.String(), selector, "width: 100%;"); err != nil {
 			return err
 		}
@@ -460,7 +493,7 @@ func (f *Formatter) WriteCSS(w io.Writer, style *chroma.Style) error {
 		targetedLineCSS := StyleEntryToCSS(style.Get(chroma.LineHighlight))
 		for _, tt := range []chroma.TokenType{chroma.LineNumbers, chroma.LineNumbersTable} {
 			comment := fmt.Sprintf("%s targeted by URL anchor", tt)
-			selector := fmt.Sprintf(".%schroma .%s:target", f.prefix, f.class(tt))
+			selector := fmt.Sprintf("%s .%s:target", chromaSel, f.class(tt))
 			if err := f.writeCSSRule(w, comment, selector, targetedLineCSS); err != nil {
 				return err
 			}
@@ -481,7 +514,7 @@ func (f *Formatter) WriteCSS(w io.Writer, style *chroma.Style) error {
 		if class == "" {
 			continue
 		}
-		if err := f.writeCSSRule(w, tt.String(), fmt.Sprintf(".%schroma .%s", f.prefix, class), css[tt]); err != nil {
+		if err := f.writeCSSRule(w, tt.String(), fmt.Sprintf("%s .%s", chromaSel, class), css[tt]); err != nil {
 			return err
 		}
 	}
@@ -613,8 +646,7 @@ func (l *styleCache) get(style *chroma.Style, compress bool) map[chroma.TokenTyp
 	defer l.mu.Unlock()
 
 	// Look for an existing entry.
-	for i := len(l.cache) - 1; i >= 0; i-- {
-		entry := l.cache[i]
+	for i, entry := range slices.Backward(l.cache) {
 		if entry.style == style && entry.compressed == compress {
 			// Top of the cache, no need to adjust the order.
 			if i == len(l.cache)-1 {
