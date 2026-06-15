@@ -356,7 +356,11 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 
 			return f.codec.DecodeHTTPGrpcResponse(httpResp, req)
 		case *frontendv2pb.QueryResultRequest_QueryResponse:
-			if stats.ShouldTrackQueryResponse(concrete.QueryResponse.Status.Status()) {
+			// RPCStatusAdapter.Status() yields nil for a zero/OK status (gogo
+			// parity); ShouldTrackQueryResponse dereferences its argument, so
+			// only consult it when a status is present. A nil status is a
+			// successful response, which is tracked anyway.
+			if rpcStatus := concrete.QueryResponse.Status.Status(); rpcStatus != nil && stats.ShouldTrackQueryResponse(rpcStatus) {
 				stats := stats.FromContext(ctx)
 				stats.Merge(resp.Stats) // Safe if stats is nil.
 			}
