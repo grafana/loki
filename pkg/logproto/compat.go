@@ -23,7 +23,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
@@ -109,13 +108,17 @@ func CopyToLabelAdapters(dst []LabelAdapter, src labels.Labels) []LabelAdapter {
 }
 
 func EmptyLabelAdapters() []LabelAdapter {
-	return FromLabelsToLabelAdapters(labels.EmptyLabels())
+	return nil
 }
 
 // FromLabelAdaptersToMetric converts []LabelAdapter to a model.Metric.
 // Don't do this on any performance sensitive paths.
 func FromLabelAdaptersToMetric(ls []LabelAdapter) model.Metric {
-	return util.LabelsToMetric(FromLabelAdaptersToLabels(ls))
+	m := make(model.Metric, len(ls))
+	for _, la := range ls {
+		m[model.LabelName(la.Name)] = model.LabelValue(la.Value)
+	}
+	return m
 }
 
 // FromMetricsToLabelAdapters converts model.Metric to []LabelAdapter.

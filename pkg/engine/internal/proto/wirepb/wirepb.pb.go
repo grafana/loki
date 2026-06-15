@@ -223,9 +223,7 @@ type WorkerHelloMessage struct {
 }
 
 // WorkerSubscribeMessage is sent by a scheduler to request a WorkerReadyMessage
-// from workers once they have at least one worker thread available.
-//
-// The subscription is cleared once the next WorkerReadyMessage is sent.
+// from workers whenever they transition from being fully occupied to having worker threads available.
 type WorkerSubscribeMessage struct {
 }
 

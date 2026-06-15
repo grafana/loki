@@ -8,6 +8,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -71,11 +72,12 @@ func newTopkPipeline(opts topkOptions) (*topkPipeline, error) {
 		inputs:     opts.Inputs,
 		sortByTime: sortByTime,
 		batch: &topkBatch{
-			Fields:     fields,
-			Ascending:  opts.Ascending,
-			NullsFirst: opts.NullsFirst,
-			K:          opts.K,
-			MaxUnused:  opts.MaxUnused,
+			Fields:        fields,
+			Ascending:     opts.Ascending,
+			NullsFirst:    opts.NullsFirst,
+			K:             opts.K,
+			MaxUnused:     opts.MaxUnused,
+			labelsBuilder: labels.NewScratchBuilder(1),
 		},
 	}, nil
 }

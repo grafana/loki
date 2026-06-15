@@ -193,6 +193,11 @@ func (n *AggregateVector) MarshalPhysical(nodeID ulid.ULID) (physical.Node, erro
 // MarshalPhysical converts a protobuf DataObjScan into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
 func (n *DataObjScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	predicates, err := marshalExpressions(n.Predicates)
+	if err != nil {
+		return nil, err
+	}
+
 	return &physical.DataObjScan{
 		NodeID: nodeID,
 
@@ -200,7 +205,7 @@ func (n *DataObjScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		Section:      int(n.Section),
 		StreamIDs:    n.StreamIds,
 		Projections:  marshalColumnExpressions(n.Projections),
-		Predicates:   marshalExpressions(n.Predicates),
+		Predicates:   predicates,
 		MaxTimeRange: marshalTimeRange(n.MaxTimeRange),
 	}, nil
 }
@@ -213,20 +218,20 @@ func marshalTimeRange(timeRange TimeRange) physical.TimeRange {
 	}
 }
 
-func marshalExpressions(exprs []expressionpb.Expression) []physical.Expression {
+func marshalExpressions(exprs []expressionpb.Expression) ([]physical.Expression, error) {
 	if exprs == nil {
-		return nil
+		return nil, nil
 	}
 
 	out := make([]physical.Expression, len(exprs))
 	for i := range exprs {
 		expression, err := exprs[i].MarshalPhysical()
 		if err != nil {
-			return nil
+			return nil, err
 		}
 		out[i] = expression
 	}
-	return out
+	return out, nil
 }
 
 func marshalExpression(expr *expressionpb.Expression) (physical.Expression, error) {
@@ -239,10 +244,15 @@ func marshalExpression(expr *expressionpb.Expression) (physical.Expression, erro
 // MarshalPhysical converts a protobuf Filter into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
 func (n *Filter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	predicates, err := marshalExpressions(n.Predicates)
+	if err != nil {
+		return nil, err
+	}
+
 	return &physical.Filter{
 		NodeID: nodeID,
 
-		Predicates: marshalExpressions(n.Predicates),
+		Predicates: predicates,
 	}, nil
 }
 
@@ -260,10 +270,15 @@ func (n *Limit) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 // MarshalPhysical converts a protobuf Projection into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
 func (n *Projection) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	expressions, err := marshalExpressions(n.Expressions)
+	if err != nil {
+		return nil, err
+	}
+
 	return &physical.Projection{
 		NodeID: nodeID,
 
-		Expressions: marshalExpressions(n.Expressions),
+		Expressions: expressions,
 		All:         n.All,
 		Expand:      n.Expand,
 		Drop:        n.Drop,
@@ -313,12 +328,17 @@ func (n *ScanSet) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		targets[i] = target
 	}
 
+	predicates, err := marshalExpressions(n.Predicates)
+	if err != nil {
+		return nil, err
+	}
+
 	return &physical.ScanSet{
 		NodeID: nodeID,
 
 		Targets:     targets,
 		Projections: marshalColumnExpressions(n.Projections),
-		Predicates:  marshalExpressions(n.Predicates),
+		Predicates:  predicates,
 	}, nil
 }
 
@@ -399,12 +419,17 @@ func (n *PointersScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) 
 		return nil, err
 	}
 
+	predicates, err := marshalExpressions(n.Predicates)
+	if err != nil {
+		return nil, err
+	}
+
 	return &physical.PointersScan{
 		NodeID: nodeID,
 
 		Location:   physical.DataObjLocation(n.Location),
 		Selector:   selector,
-		Predicates: marshalExpressions(n.Predicates),
+		Predicates: predicates,
 		Start:      n.Start,
 		End:        n.End,
 	}, nil

@@ -89,24 +89,24 @@ func (e *ErrStreamRateLimit) Error() string {
 		e.Bytes.String())
 }
 
-// MutatedSamples is a metric of the total number of lines mutated, by reason.
+// MutatedSamples is a metric of the total number of lines mutated, by reason and tenant.
 var MutatedSamples = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "mutated_samples_total",
 		Help:      "The total number of samples that have been mutated.",
 	},
-	[]string{ReasonLabel, "truncated"},
+	[]string{ReasonLabel, "tenant"},
 )
 
-// MutatedBytes is a metric of the total mutated bytes, by reason.
+// MutatedBytes is a metric of the total mutated bytes, by reason and tenant.
 var MutatedBytes = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "mutated_bytes_total",
 		Help:      "The total number of bytes that have been mutated.",
 	},
-	[]string{ReasonLabel, "truncated"},
+	[]string{ReasonLabel, "tenant"},
 )
 
 // DiscardedBytes is a metric of the total discarded bytes, by reason.

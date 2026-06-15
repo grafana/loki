@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid/v2"
@@ -20,8 +19,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -127,9 +126,6 @@ type Workflow struct {
 	resultsPipeline *streamPipe
 	manifest        *Manifest
 
-	statsMut sync.Mutex
-	stats    stats.Result
-
 	captureMut sync.Mutex
 	// used to merge and link task regions
 	capture      *xcap.Capture
@@ -137,8 +133,9 @@ type Workflow struct {
 
 	span *xcap.Span
 
-	tasksMut   sync.RWMutex
-	taskStates map[*Task]TaskState
+	tasksMut         sync.RWMutex
+	taskStates       map[*Task]TaskState
+	pendingSummaries map[*Task]pendingSummary // Holds terminal task state until Close.
 
 	streamsMut   sync.RWMutex
 	streamStates map[*Stream]StreamState
@@ -171,11 +168,12 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 	if graph.Len() == 0 {
 		level.Debug(logger).Log("msg", "workflow plan is empty")
 		return &Workflow{
-			opts:         opts,
-			logger:       logger,
-			runner:       runner,
-			taskStates:   make(map[*Task]TaskState),
-			streamStates: make(map[*Stream]StreamState),
+			opts:             opts,
+			logger:           logger,
+			runner:           runner,
+			taskStates:       make(map[*Task]TaskState),
+			streamStates:     make(map[*Stream]StreamState),
+			pendingSummaries: make(map[*Task]pendingSummary),
 		}, nil
 	}
 
@@ -193,8 +191,9 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 		resultsStream:   results,
 		resultsPipeline: newStreamPipe(),
 
-		taskStates:   make(map[*Task]TaskState),
-		streamStates: make(map[*Stream]StreamState),
+		taskStates:       make(map[*Task]TaskState),
+		streamStates:     make(map[*Stream]StreamState),
+		pendingSummaries: make(map[*Task]pendingSummary),
 	}
 	// Detach cancellation from the caller's ctx so a cancellation of the
 	// planning context does not abort the manifest registration, but keep
@@ -286,6 +285,11 @@ func (wf *Workflow) Close() {
 	if err := wf.runner.UnregisterManifest(context.Background(), wf.manifest); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to unregister workflow manifest", "err", err)
 	}
+
+	// UnregisterManifest synchronously drives every remaining task to a terminal
+	// state and delivers its status, so by here the DAG and all per-task finish
+	// times are recorded and the critical path is complete.
+	wf.flushTaskSummaries()
 }
 
 // Run executes the workflow, returning a pipeline to read results from. The
@@ -305,29 +309,19 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	// wf.Run tracks the lifetime of the workflow execution.
 	ctx, wf.span = xcap.StartSpan(ctx, tracer, "wf.Run")
 
-	wrapped := &wrappedPipeline{
-		inner: wf.resultsPipeline,
-		onClose: func() {
-			// Merge final stats results back into the caller.
-			wf.statsMut.Lock()
-			defer wf.statsMut.Unlock()
-			stats.JoinResults(ctx, wf.stats)
-		},
-	}
-
 	// Start dispatching in background goroutine
 	gotrace.Log(ctx, "dispatch_tasks", "starting dispatch of "+strconv.Itoa(len(wf.manifest.Tasks))+" tasks")
 	go func() {
 		err := wf.dispatchTasks(ctx, wf.manifest.Tasks)
 		if err != nil {
 			wf.resultsPipeline.SetError(err)
-			wrapped.Close()
+			wf.resultsPipeline.Close()
 		} else {
 			gotrace.Log(ctx, "dispatch_tasks", "all tasks dispatched")
 		}
 	}()
 
-	return wrapped, nil
+	return wf.resultsPipeline, nil
 }
 
 // dispatchTasks groups the slice of tasks by their associated "admission lane" (token bucket)
@@ -493,6 +487,9 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	wf.tasksMut.Lock()
 	oldState := wf.taskStates[task]
 	wf.taskStates[task] = newStatus.State
+	if newStatus.State.Terminal() && oldState != newStatus.State {
+		wf.recordTerminal(task, oldState, newStatus)
+	}
 	wf.tasksMut.Unlock()
 
 	if newStatus.State.Terminal() {
@@ -500,6 +497,23 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	} else {
 		wf.handleNonTerminalStateChange(ctx, task, newStatus)
 	}
+}
+
+// recordTerminal stashes a terminal task's summary and finish time for Close to
+// emit. Recording both under one lock is what lets flushTaskSummaries trust that
+// observing every task terminal implies every summary and finish is present.
+// wf.tasksMut must be held.
+func (wf *Workflow) recordTerminal(task *Task, oldState TaskState, newStatus TaskStatus) {
+	summary := pendingSummary{
+		oldState: oldState,
+		status:   newStatus,
+	}
+	if newStatus.Capture != nil {
+		if finish, ok := xcap.TryValue[int64](newStatus.Capture, schedulerstat.TaskFinishTime); ok {
+			summary.taskFinishNanos = finish
+		}
+	}
+	wf.pendingSummaries[task] = summary
 }
 
 func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, oldState TaskState, newStatus TaskStatus) {
@@ -523,10 +537,6 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 
 	if newStatus.Capture != nil {
 		wf.mergeCapture(newStatus.Capture)
-	}
-
-	if newStatus.Statistics != nil {
-		wf.mergeResults(*newStatus.Statistics)
 	}
 
 	// task reached a terminal state. We need to detect if task's immediate
@@ -562,9 +572,6 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 
 	// Close the results pipeline if it was waiting on this task to finish.
 	wf.maybeCloseResults()
-
-	// Print the summary at the very end to track full end-to-end task time.
-	wf.printTaskSummary(task, oldState, newStatus)
 }
 
 func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task, newStatus TaskStatus) {
@@ -618,30 +625,4 @@ func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
 	defer wf.captureMut.Unlock()
 
 	wf.capture.Merge(wf.parentRegion, capture)
-}
-
-func (wf *Workflow) mergeResults(results stats.Result) {
-	wf.statsMut.Lock()
-	defer wf.statsMut.Unlock()
-
-	wf.stats.Merge(results)
-}
-
-type wrappedPipeline struct {
-	inner   executor.Pipeline
-	onClose func()
-}
-
-func (p *wrappedPipeline) Open(ctx context.Context) error {
-	return p.inner.Open(ctx)
-}
-
-func (p *wrappedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	return p.inner.Read(ctx)
-}
-
-// Close closes the resources of the pipeline.
-func (p *wrappedPipeline) Close() {
-	p.inner.Close()
-	p.onClose()
 }

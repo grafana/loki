@@ -2,15 +2,9 @@ package build
 
 import (
 	"runtime"
-
-	"github.com/prometheus/common/version"
-	prom "github.com/prometheus/prometheus/web/api/v1"
 )
 
-// Version information passed to Prometheus version package.
-// Package path as used by linker changes based on vendoring being used or not,
-// so it's easier just to use stable Loki path, and pass it to
-// Prometheus in the code.
+// These variables are set from the Makefile.
 var (
 	Version   string
 	Revision  string
@@ -21,21 +15,25 @@ var (
 )
 
 func init() {
-	version.Version = Version
-	version.Revision = Revision
-	version.Branch = Branch
-	version.BuildUser = BuildUser
-	version.BuildDate = BuildDate
-	version.GoVersion = runtime.Version()
+	GoVersion = runtime.Version()
 }
 
-func GetVersion() prom.PrometheusVersion {
-	return prom.PrometheusVersion{
-		Version:   version.Version,
-		Revision:  version.Revision,
-		Branch:    version.Branch,
-		BuildUser: version.BuildUser,
-		BuildDate: version.BuildDate,
-		GoVersion: version.GoVersion,
+func GetVersion() VersionInfo {
+	return VersionInfo{
+		Version:   Version,
+		Revision:  Revision,
+		Branch:    Branch,
+		BuildUser: BuildUser,
+		BuildDate: BuildDate,
+		GoVersion: GoVersion,
 	}
+}
+
+type VersionInfo struct {
+	Version   string `json:"version"`
+	Revision  string `json:"revision"`
+	Branch    string `json:"branch"`
+	BuildUser string `json:"buildUser"`
+	BuildDate string `json:"buildDate"`
+	GoVersion string `json:"goVersion"`
 }

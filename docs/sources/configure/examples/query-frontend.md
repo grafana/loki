@@ -40,7 +40,7 @@ data:
     # X-Scope-OrgID header. `fake` will be substituted in instead.
     auth_enabled: false
 
-    # We don't want the usual /api/prom prefix.
+    # We don't want the default prefix.
     http_prefix:
 
     server:

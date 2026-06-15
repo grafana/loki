@@ -107,11 +107,17 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 			}
 		}
 		if simpleKeyIdx < 0 {
+			// Column not present in the schema for this batch (e.g. when no row in
+			// the batch contributed a value for the key, so the parser never created it).
+			// To match v1 engine and the general template path's
+			// `missingkey=zero` semantic: render "" silently, do not raise a
+			// parser error / __error__ label.
 			result[types.ColumnNameBuiltinMessage] = ""
-			return "", fmt.Errorf("missing key %v", lf.simpleKey)
+			return "", nil
 		}
-		result[types.ColumnNameBuiltinMessage] = input.Column(simpleKeyIdx).ValueStr(0)
-		return input.Column(simpleKeyIdx).ValueStr(0), nil
+		val := valueStrOrEmpty(input.Column(simpleKeyIdx), 0)
+		result[types.ColumnNameBuiltinMessage] = val
+		return val, nil
 	}
 	var timestampIdx = -1
 	for i := 0; i < len(input.Columns()); i++ {
@@ -133,7 +139,7 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 
 	m := make(map[string]string)
 	for i := 0; i < len(input.Columns()); i++ {
-		m[semconv.MustParseFQN(input.ColumnName(i)).ColumnRef().Column] = input.Column(i).ValueStr(0)
+		m[semconv.MustParseFQN(input.ColumnName(i)).ColumnRef().Column] = valueStrOrEmpty(input.Column(i), 0)
 	}
 
 	if err := lf.Execute(lf.buf, m); err != nil {

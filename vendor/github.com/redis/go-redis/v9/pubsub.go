@@ -3,6 +3,8 @@ package redis
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +17,7 @@ import (
 )
 
 // PubSub implements Pub/Sub commands as described in
-// http://redis.io/topics/pubsub. Message receiving is NOT safe
+// https://redis.io/docs/latest/develop/pubsub. Message receiving is NOT safe
 // for concurrent use by multiple goroutines.
 //
 // PubSub automatically reconnects to Redis Server and resubscribes
@@ -56,9 +58,9 @@ func (c *PubSub) String() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	channels := mapKeys(c.channels)
-	channels = append(channels, mapKeys(c.patterns)...)
-	channels = append(channels, mapKeys(c.schannels)...)
+	channels := slices.Collect(maps.Keys(c.channels))
+	channels = append(channels, slices.Collect(maps.Keys(c.patterns))...)
+	channels = append(channels, slices.Collect(maps.Keys(c.schannels))...)
 	return fmt.Sprintf("PubSub(%s)", strings.Join(channels, ", "))
 }
 
@@ -85,7 +87,16 @@ func (c *PubSub) conn(ctx context.Context, newChannels []string) (*pool.Conn, er
 		c.opt.Addr = internal.RedisNull
 	}
 
-	channels := mapKeys(c.channels)
+	// Include c.schannels so reconnect-time routing of an SSubscribe-only
+	// PubSub picks the slot owner (channels[0] in ClusterClient.pubSub()'s
+	// newConn closure) instead of a random node.
+	// See https://github.com/redis/go-redis/issues/3806.
+	// c.patterns is intentionally NOT included: patterns are not slot-
+	// addressable, and adding them would force PSubscribe-only PubSubs to
+	// pin to a single node based on pattern-string hash, regressing the
+	// existing random-node behaviour.
+	channels := slices.Collect(maps.Keys(c.channels))
+	channels = append(channels, slices.Collect(maps.Keys(c.schannels))...)
 	channels = append(channels, newChannels...)
 
 	cn, err := c.newConn(ctx, c.opt.Addr, channels)
@@ -112,34 +123,24 @@ func (c *PubSub) resubscribe(ctx context.Context, cn *pool.Conn) error {
 	var firstErr error
 
 	if len(c.channels) > 0 {
-		firstErr = c._subscribe(ctx, cn, "subscribe", mapKeys(c.channels))
+		firstErr = c._subscribe(ctx, cn, "subscribe", slices.Collect(maps.Keys(c.channels)))
 	}
 
 	if len(c.patterns) > 0 {
-		err := c._subscribe(ctx, cn, "psubscribe", mapKeys(c.patterns))
+		err := c._subscribe(ctx, cn, "psubscribe", slices.Collect(maps.Keys(c.patterns)))
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 
 	if len(c.schannels) > 0 {
-		err := c._subscribe(ctx, cn, "ssubscribe", mapKeys(c.schannels))
+		err := c._subscribe(ctx, cn, "ssubscribe", slices.Collect(maps.Keys(c.schannels)))
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
 
 	return firstErr
-}
-
-func mapKeys(m map[string]struct{}) []string {
-	s := make([]string, len(m))
-	i := 0
-	for k := range m {
-		s[i] = k
-		i++
-	}
-	return s
 }
 
 func (c *PubSub) _subscribe(
@@ -284,9 +285,7 @@ func (c *PubSub) Unsubscribe(ctx context.Context, channels ...string) error {
 		}
 	} else {
 		// Unsubscribe from all channels.
-		for channel := range c.channels {
-			delete(c.channels, channel)
-		}
+		clear(c.channels)
 	}
 
 	err := c.subscribe(ctx, "unsubscribe", channels...)
@@ -305,9 +304,7 @@ func (c *PubSub) PUnsubscribe(ctx context.Context, patterns ...string) error {
 		}
 	} else {
 		// Unsubscribe from all patterns.
-		for pattern := range c.patterns {
-			delete(c.patterns, pattern)
-		}
+		clear(c.patterns)
 	}
 
 	err := c.subscribe(ctx, "punsubscribe", patterns...)
@@ -326,9 +323,7 @@ func (c *PubSub) SUnsubscribe(ctx context.Context, channels ...string) error {
 		}
 	} else {
 		// Unsubscribe from all channels.
-		for channel := range c.schannels {
-			delete(c.schannels, channel)
-		}
+		clear(c.schannels)
 	}
 
 	err := c.subscribe(ctx, "sunsubscribe", channels...)
@@ -352,6 +347,25 @@ func (c *PubSub) Ping(ctx context.Context, payload ...string) error {
 		args = append(args, payload[0])
 	}
 	cmd := NewCmd(ctx, args...)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cn, err := c.conn(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	err = c.writeCmd(ctx, cn, cmd)
+	c.releaseConn(ctx, cn, err, false)
+	return err
+}
+
+// ClientSetName assigns  a namee to the PubSub connection using  CLIENT SETNAME,
+// The name is visible in CLIENT LIST output and is useful for debugging
+// and identifying connections in a redis instance.
+func (c *PubSub) ClientSetName(ctx context.Context, name string) error {
+	cmd := NewStatusCmd(ctx, "client", "setname", name)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -171,8 +171,8 @@ func normalizeLogLevel(level string) string {
 	case bytes.EqualFold(levelBytes, fatal):
 		return constants.LogLevelFatal
 	default:
-		// Return the original value if it doesn't match any known level
-		return level
+		// Return unknown if it doesn't match any known level. This is consistent with detectLogLevelFromLogEntry
+		return constants.LogLevelUnknown
 	}
 }
 

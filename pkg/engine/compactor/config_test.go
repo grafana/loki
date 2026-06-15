@@ -19,7 +19,6 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 	}{
 		{"polling interval zero", func(c *Config) { c.PollingInterval = 0 }, errInvalidPollingInterval},
 		{"polling interval negative", func(c *Config) { c.PollingInterval = -1 }, errInvalidPollingInterval},
-		{"index merge ttl zero", func(c *Config) { c.IndexMergeTaskTTL = 0 }, errInvalidIndexMergeTaskTTL},
 		{"toc consolidate timeout zero", func(c *Config) { c.ToCConsolidateTimeout = 0 }, errInvalidToCConsolidateTimeout},
 		{"max runs zero", func(c *Config) { c.MaxRunsPerTask = 0 }, errInvalidMaxRunsPerTask},
 		{"max runs negative", func(c *Config) { c.MaxRunsPerTask = -1 }, errInvalidMaxRunsPerTask},

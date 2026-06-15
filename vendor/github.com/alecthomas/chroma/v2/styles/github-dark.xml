@@ -15,6 +15,7 @@
   <entry type="NameFunction" style="bold #d2a8ff"/>
   <entry type="NameLabel" style="bold #79c0ff"/>
   <entry type="NameNamespace" style="#ff7b72"/>
+  <entry type="NameOther" style="#e6edf3"/>
   <entry type="NameProperty" style="#79c0ff"/>
   <entry type="NameTag" style="#7ee787"/>
   <entry type="NameVariable" style="#79c0ff"/>

@@ -23,10 +23,12 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -88,6 +90,18 @@ type Config struct {
 
 	// TaskCaches is an optional registry of backing caches for task results.
 	TaskCaches executor.TaskCacheRegistry
+
+	// ScratchStore is an optional scratch store for index merge operations.
+	// Required for compaction tasks; may be nil for query-only workers.
+	ScratchStore scratch.Store
+
+	// IndexobjCfg is the builder config for index objects.
+	// Required for compaction tasks; may be nil for query-only workers.
+	IndexobjCfg logsobj.BuilderBaseConfig
+
+	// IndexMergeObserver is used  by compaction to populate output-size
+	// histograms. Optional; nil disables observation.
+	IndexMergeObserver executor.IndexMergeObserver
 }
 
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
@@ -188,6 +202,10 @@ func (w *Worker) run(ctx context.Context) error {
 			Metastore:      w.config.Metastore,
 			StreamFilterer: w.config.StreamFilterer,
 			TaskCaches:     w.taskCaches,
+			ScratchStore:   w.config.ScratchStore,
+			IndexobjCfg:    w.config.IndexobjCfg,
+
+			IndexMergeObserver: w.config.IndexMergeObserver,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,
@@ -298,10 +316,10 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 	// Handle communication with the peer until the context is canceled or some
 	// error occurs.
 	err := peer.Serve(ctx)
-	if err != nil && ctx.Err() != nil && !errors.Is(err, wire.ErrConnClosed) {
-		level.Warn(logger).Log("msg", "serve error", "err", err)
-	} else {
+	if ctx.Err() != nil || errors.Is(err, wire.ErrConnClosed) {
 		level.Debug(logger).Log("msg", "connection closed")
+	} else if err != nil {
+		level.Warn(logger).Log("msg", "serve error", "err", err)
 	}
 }
 
@@ -327,7 +345,11 @@ func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
 		// terminated connections, so we reset it as long as the dial succeeds.
 		bo.Reset()
 
-		if err := w.handleSchedulerConn(ctx, logger, conn); err != nil && ctx.Err() != nil {
+		err = w.handleSchedulerConn(ctx, logger, conn)
+		if ctx.Err() != nil {
+			level.Debug(logger).Log("msg", "context canceled. stopping scheduler loop")
+			break
+		} else if err != nil {
 			level.Warn(logger).Log("msg", "connection to scheduler closed; will reconnect after backoff", "err", err)
 			bo.Wait()
 			continue
@@ -367,7 +389,9 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		}
 
 		if err := w.jobManager.Send(ctx, job); err != nil {
-			job.Close() // Clean up resources associated with the job.
+			job.Close()                 // Clean up resources associated with the job.
+			_ = handleWorkerSubscribe() // handleWorkerSubscribe can only return nil
+			w.metrics.rejectedAssignmentsTotal.Inc()
 			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
 		}
 
@@ -420,24 +444,24 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 
 	g.Go(func() error {
 		for {
-			// Wait for a signal that we want to wait for a ready thread.
+			// Wait for the scheduler to require a WorkerReady message.
+			// This happens automatically before sending a http.StatusTooManyRequests error
 			select {
 			case <-ctx.Done():
 				return nil
 			case <-waitReady:
 			}
 
+			// Wait for a thread to become ready for another job
 			if err := w.jobManager.WaitReady(ctx); err != nil {
-				// Context got canceled; abort.
-				break
+				return nil
 			}
 
+			// Notify the scheduler.
 			if err := peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{}); err != nil {
 				level.Warn(logger).Log("msg", "failed to send ready message", "err", err)
 			}
 		}
-
-		return nil
 	})
 
 	// Wait for all worker goroutines to exit.

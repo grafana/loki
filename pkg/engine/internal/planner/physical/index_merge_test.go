@@ -2,7 +2,6 @@ package physical
 
 import (
 	"testing"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
@@ -23,7 +22,6 @@ func TestIndexMerge_CloneIsDeepCopy(t *testing.T) {
 			},
 		},
 		OutputIndexPath: "tenants/tenant-29/indexes/abc",
-		TaskTTL:         10 * time.Minute,
 	}
 
 	clone := orig.Clone().(*IndexMerge)

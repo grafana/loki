@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -88,7 +87,7 @@ func TestLabelsCache(t *testing.T) {
 	composeLabelsResp := func(lbls []string, splits int64) *LokiLabelNamesResponse {
 		return &LokiLabelNamesResponse{
 			Status:  "success",
-			Version: uint32(loghttp.VersionV1),
+			Version: 1,
 			Data:    lbls,
 			Statistics: stats.Result{
 				Summary: stats.Summary{
@@ -275,7 +274,7 @@ func TestLabelCache_freshness(t *testing.T) {
 
 			labelsResp := &LokiLabelNamesResponse{
 				Status:  "success",
-				Version: uint32(loghttp.VersionV1),
+				Version: 1,
 				Data:    []string{"bar", "buzz"},
 				Statistics: stats.Result{
 					Summary: stats.Summary{

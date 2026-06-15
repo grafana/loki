@@ -2,7 +2,6 @@ package physical
 
 import (
 	"testing"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
@@ -24,7 +23,6 @@ func TestLogMerge_CloneIsDeepCopy(t *testing.T) {
 		},
 		SourceIndexPaths: []string{"idx/x.idx"},
 		OutputPath:       "tenants/tenant-29/objects/abc",
-		TaskTTL:          10 * time.Minute,
 	}
 
 	clone := orig.Clone().(*LogMerge)

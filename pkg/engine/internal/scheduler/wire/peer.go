@@ -83,7 +83,7 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 			return err
 		}
 
-		p.Metrics.incFrameReceived(frame.FrameKind().String())
+		p.Metrics.incFrameReceived(frame)
 
 		switch frame := frame.(type) {
 		case MessageFrame:
@@ -237,9 +237,9 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 	p.sentRequests.Store(reqID, req)
 	defer p.sentRequests.Delete(reqID)
 
-	timer := p.Metrics.newMessageRTTTimer()
+	timer := p.Metrics.newMessageRTTTimer(message.Kind().String())
 	defer timer.ObserveDuration()
-	p.Metrics.incMessageSent()
+	p.Metrics.incMessageSent(message.Kind().String())
 
 	if err := p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message}); err != nil {
 		return err
@@ -266,7 +266,7 @@ func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 	p.lazyInit()
 
 	reqID := p.requestID.Inc()
-	p.Metrics.incMessageSent()
+	p.Metrics.incMessageSent(message.Kind().String())
 	return p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message})
 }
 

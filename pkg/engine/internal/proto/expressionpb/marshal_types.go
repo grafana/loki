@@ -49,6 +49,7 @@ var (
 		VariadicOp_VARIADIC_OP_INVALID:        types.VariadicOpInvalid,
 		VariadicOp_VARIADIC_OP_PARSE_LOGFMT:   types.VariadicOpParseLogfmt,
 		VariadicOp_VARIADIC_OP_PARSE_JSON:     types.VariadicOpParseJSON,
+		VariadicOp_VARIADIC_OP_PARSE_REGEXP:   types.VariadicOpParseRegexp,
 		VariadicOp_VARIADIC_OP_PARSE_LABELFMT: types.VariadicOpParseLabelfmt,
 		VariadicOp_VARIADIC_OP_PARSE_LINEFMT:  types.VariadicOpParseLinefmt,
 	}

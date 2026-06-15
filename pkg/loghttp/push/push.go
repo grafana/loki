@@ -28,14 +28,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
-	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/unmarshal"
-	unmarshal2 "github.com/grafana/loki/v3/pkg/util/unmarshal/legacy"
 )
 
 var (
@@ -372,11 +370,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 
 		// todo once https://github.com/weaveworks/common/commit/73225442af7da93ec8f6a6e2f7c8aafaee3f8840 is in Loki.
 		// We can try to pass the body as bytes.buffer instead to avoid reading into another buffer.
-		if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-			err = unmarshal.DecodePushRequest(body, &req)
-		} else {
-			err = unmarshal2.DecodePushRequest(body, &req)
-		}
+		err = unmarshal.DecodePushRequest(body, &req)
 
 		if err != nil {
 			return nil, err
