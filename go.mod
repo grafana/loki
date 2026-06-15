@@ -143,7 +143,7 @@ require (
 	golang.org/x/text v0.38.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gotest.tools v2.2.0+incompatible
-	k8s.io/apimachinery v0.36.1
+	k8s.io/apimachinery v0.36.2
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	zombiezen.com/go/sqlite v1.4.2
 )
