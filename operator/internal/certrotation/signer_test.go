@@ -1,6 +1,7 @@
 package certrotation
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -54,7 +55,11 @@ func TestSigningCAExpired_ExpiredSecret(t *testing.T) {
 	e := &CertExpiredError{}
 	require.Error(t, err)
 	require.ErrorAs(t, err, &e)
-	require.Contains(t, err.(*CertExpiredError).Reasons, "already expired")
+	require.Contains(t, func() *CertExpiredError {
+		target := &CertExpiredError{}
+		_ = errors.As(err, &target)
+		return target
+	}().Reasons, "already expired")
 }
 
 func TestBuildSigningCASecret_Create(t *testing.T) {

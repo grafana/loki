@@ -174,7 +174,7 @@ func TestNewGatewayDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *tes
 
 	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, AnnotationCertRotationRequiredAt)
-	require.Equal(t, annotations[AnnotationCertRotationRequiredAt], "deadbeef")
+	require.Equal(t, "deadbeef", annotations[AnnotationCertRotationRequiredAt])
 }
 
 func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
@@ -1487,7 +1487,7 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 	})
 
 	dpl := obj[2].(*appsv1.Deployment)
-	require.EqualValues(t, dpl.Spec.Template.Spec.TopologySpreadConstraints, []corev1.TopologySpreadConstraint{
+	require.Equal(t, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           2,
 			TopologyKey:       "zone",
@@ -1510,7 +1510,7 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, dpl.Spec.Template.Spec.TopologySpreadConstraints)
 }
 
 func TestBuildGateway_ExternalAccessControl(t *testing.T) {

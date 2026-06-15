@@ -6,6 +6,7 @@ import (
 
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -73,9 +74,9 @@ func TestGetTLSSecurityProfile(t *testing.T) {
 
 			profile, err := tlsprofile.GetTLSSecurityProfile(context.TODO(), k, tc.profile)
 
-			assert.Nil(t, err)
+			require.NoError(t, err)
 			assert.NotNil(t, profile)
-			assert.EqualValues(t, &tc.expected, profile)
+			assert.Equal(t, &tc.expected, profile)
 		})
 	}
 }
@@ -115,9 +116,9 @@ func TestGetTLSSecurityProfile_CustomProfile(t *testing.T) {
 
 	profile, err := tlsprofile.GetTLSSecurityProfile(context.TODO(), k, configv1.TLSProfileType("custom"))
 
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, profile)
-	assert.EqualValues(t, tlsCustomProfile, profile)
+	assert.Equal(t, tlsCustomProfile, profile)
 }
 
 func TestGetTLSSecurityProfile_APIServerNotFound(t *testing.T) {
@@ -132,6 +133,6 @@ func TestGetTLSSecurityProfile_APIServerNotFound(t *testing.T) {
 
 	profile, err := tlsprofile.GetTLSSecurityProfile(context.TODO(), k, "")
 
-	assert.NotNil(t, err)
+	require.Error(t, err)
 	assert.Nil(t, profile)
 }
