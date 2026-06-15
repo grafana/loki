@@ -220,6 +220,13 @@ type Distributor struct {
 	inflightBytesHighWatermark prometheus.Summary
 	inflightBytes              atomic.Int64
 
+	// bytesAcceptedTotal counts uncompressed bytes that survived all
+	// distributor-level rejections (validation, ingestion rate limit, ingest
+	// limits). Pairs naturally with discarded_bytes_total because both are
+	// derived from util.EntryTotalSize, which is not true of
+	// distributor_bytes_received_total.
+	bytesAcceptedTotal *prometheus.CounterVec
+
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
 	kafkaWriteBytesTotal   prometheus.Counter
@@ -427,6 +434,11 @@ func New(
 			Objectives: map[float64]float64{1.0: 0.1},
 			MaxAge:     time.Minute,
 		}),
+		bytesAcceptedTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_bytes_accepted_total",
+			Help:      "Uncompressed bytes (sum of util.EntryTotalSize) that survived all distributor-level rejections (validation, ingestion rate limit, ingest limits) and are about to be sent to ingesters/kafka. Pairs with distributor_discarded_bytes_total.",
+		}, []string{"tenant"}),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -841,6 +853,17 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			}
 			streams = accepted
 		}
+	}
+
+	// Record bytes that survived all distributor-level rejections. Recompute
+	// from the post-filter streams rather than reusing totalEntriesSize so
+	// any streams dropped by ingest limits are excluded.
+	acceptedBytes := 0
+	for _, s := range streams {
+		acceptedBytes += util.EntriesTotalSize(s.Stream.Entries)
+	}
+	if acceptedBytes > 0 {
+		d.bytesAcceptedTotal.WithLabelValues(tenantID).Add(float64(acceptedBytes))
 	}
 
 	tracker := PushTracker{
