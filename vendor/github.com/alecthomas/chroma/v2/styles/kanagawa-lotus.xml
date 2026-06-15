@@ -1,4 +1,4 @@
-<style name="kanagawa-lotus">
+<style name="kanagawa-lotus" counterpart="kanagawa-wave">
   <entry type="Background" style="bg:#f2ecbc #545464" />
   <entry type="CodeLine" style="#545464" />
   <entry type="Error" style="#e82424" />

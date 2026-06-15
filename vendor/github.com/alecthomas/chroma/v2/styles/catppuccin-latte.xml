@@ -1,4 +1,4 @@
-<style name="catppuccin-latte">
+<style name="catppuccin-latte" counterpart="catppuccin-mocha">
   <entry type="Background" style="bg:#eff1f5 #4c4f69"/>
   <entry type="CodeLine" style="#4c4f69"/>
   <entry type="Error" style="#d20f39"/>
