@@ -1584,6 +1584,11 @@ dataobj:
     # CLI flag: -dataobj-index-builder.max-age
     [max_age: <duration> | default = 1h]
 
+    # Experimental: When enabled, write index objects using postings+stats
+    # sections only and skip streams+pointers sections.
+    # CLI flag: -dataobj-index-builder.write-postings-sections-only
+    [write_postings_sections_only: <boolean> | default = false]
+
   metastore:
     # Experimental: A prefix to use for storing indexes in object storage. Used
     # for testing only.
