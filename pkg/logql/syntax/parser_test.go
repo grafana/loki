@@ -3375,6 +3375,10 @@ var ParseTestCases = []struct {
 		},
 		err: nil,
 	},
+	{
+		in:  `{pod="pod_name"} | \!=""`,
+		err: logqlmodel.NewParseError(`invalid identifier "\"`, 1, 20),
+	},
 }
 
 func TestParse(t *testing.T) {
