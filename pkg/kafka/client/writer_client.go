@@ -227,7 +227,8 @@ type Producer struct {
 
 	// Keep track of Kafka records size (bytes) currently in-flight in the Kafka client.
 	// This counter is used to implement a limit on the max buffered bytes.
-	bufferedBytes *atomic.Int64
+	bufferedBytes    int64
+	bufferedBytesMtx sync.Mutex
 
 	// The max buffered bytes allowed. Once this limit is reached, produce requests fail.
 	maxBufferedBytes int64
@@ -260,7 +261,6 @@ func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, r
 
 	producer := &Producer{
 		Client:           client,
-		bufferedBytes:    atomic.NewInt64(0),
 		maxBufferedBytes: maxBufferedBytes,
 
 		// Metrics.
@@ -302,11 +302,28 @@ func (c *Producer) Close() {
 // This function honors the configure max buffered bytes and refuse to produce a record, returnin kgo.ErrMaxBuffered,
 // if the configured limit is reached.
 func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.ProduceResults {
-	// Call interceptor with all records if configured
+	c.produceRequestsTotal.Add(float64(len(records)))
+
+	// Call interceptor with all records if configured.
 	if c.recordsInterceptor != nil {
 		if err := c.recordsInterceptor(ctx, records); err != nil {
+			c.produceFailuresTotal.
+				WithLabelValues(produceErrReason(err)).
+				Add(float64(len(records)))
 			return produceResultsForErr(records, err)
 		}
+	}
+
+	// Check that all records can fit within the limit.
+	totalSize := 0
+	for _, record := range records {
+		totalSize += len(record.Value)
+	}
+	if !c.reserveBufferedBytes(totalSize) {
+		c.produceFailuresTotal.
+			WithLabelValues(produceErrReason(kgo.ErrMaxBuffered)).
+			Add(float64(len(records)))
+		return produceResultsForErr(records, kgo.ErrMaxBuffered)
 	}
 
 	var (
@@ -316,12 +333,8 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		res       = make(kgo.ProduceResults, 0, len(records))
 	)
 
-	c.produceRequestsTotal.Add(float64(len(records)))
-
 	onProduceDone := func(r *kgo.Record, err error) {
-		if c.maxBufferedBytes > 0 {
-			c.bufferedBytes.Add(-int64(len(r.Value)))
-		}
+		c.releaseBufferedBytes(len(r.Value))
 
 		resMx.Lock()
 		res = append(res, kgo.ProduceResult{Record: r, Err: err})
@@ -339,30 +352,16 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		}
 	}
 
-	// Check that all records can fit within the limit.
-	var totalSize int64
 	for _, record := range records {
-		totalSize += int64(len(record.Value))
-	}
-
-	if c.maxBufferedBytes > 0 && c.bufferedBytes.Add(totalSize) > c.maxBufferedBytes {
-		// The records exceed what is left of the limit, we must fail them.
-		for _, record := range records {
-			// onProduceDone will dec the counter.
-			onProduceDone(record, kgo.ErrMaxBuffered)
-		}
-	} else {
-		for _, record := range records {
-			// We use a new context to avoid that other Produce() may be cancelled when this call's context is
-			// canceled. It's important to note that cancelling the context passed to Produce() doesn't actually
-			// prevent the data to be sent over the wire (because it's never removed from the buffer) but in some
-			// cases may cause all requests to fail with context cancelled.
-			//
-			// Produce() may theoretically block if the buffer is full, but we configure the Kafka client with
-			// unlimited buffer because we implement the buffer limit ourselves (see maxBufferedBytes). This means
-			// Produce() should never block for us in practice.
-			c.Produce(context.WithoutCancel(ctx), record, onProduceDone)
-		}
+		// We use a new context to avoid that other Produce() may be cancelled when this call's context is
+		// canceled. It's important to note that cancelling the context passed to Produce() doesn't actually
+		// prevent the data to be sent over the wire (because it's never removed from the buffer) but in some
+		// cases may cause all requests to fail with context cancelled.
+		//
+		// Produce() may theoretically block if the buffer is full, but we configure the Kafka client with
+		// unlimited buffer because we implement the buffer limit ourselves (see maxBufferedBytes). This means
+		// Produce() should never block for us in practice.
+		c.Produce(context.WithoutCancel(ctx), record, onProduceDone)
 	}
 
 	// Wait for a response or until the context has done.
@@ -373,6 +372,37 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		// Once we're done, it's guaranteed that no more results will be appended, so we can safely return it.
 		return res
 	}
+}
+
+// reserveBufferedBytes attempts to reserve size bytes of capacity. It returns
+// true on success, otherwise false. A reservation is unsuccessful if size
+// would cause the tee to exceed [TeeConfig.MaxBufferedBytes]. When
+// [TeeConfig.MaxBufferedBytes] is zero, the limit is disabled.
+//
+// All reserved sizes must be returned by calling releaseBufferedBytes with
+// the same value.
+//
+// It is safe for concurrent use.
+func (c *Producer) reserveBufferedBytes(size int) bool {
+	c.bufferedBytesMtx.Lock()
+	newVal := c.bufferedBytes + int64(size)
+	if c.maxBufferedBytes > 0 && newVal > c.maxBufferedBytes {
+		c.bufferedBytesMtx.Unlock()
+		return false
+	}
+	c.bufferedBytes = newVal
+	c.bufferedBytesMtx.Unlock()
+	return true
+}
+
+// releaseBufferedBytes returns size bytes of reserved capacity. It must be
+// called whenever previously reserved capacity is no longer needed.
+//
+// It is safe for concurrent use.
+func (c *Producer) releaseBufferedBytes(size int) {
+	c.bufferedBytesMtx.Lock()
+	defer c.bufferedBytesMtx.Unlock()
+	c.bufferedBytes -= int64(size)
 }
 
 // produceResultsForErr returns a [kgo.ProduceResults] that contains all records and
