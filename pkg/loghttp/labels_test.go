@@ -74,10 +74,6 @@ func TestLabelsMap(t *testing.T) {
 	)
 }
 
-func timePtr(t time.Time) *time.Time {
-	return &t
-}
-
 func requestWithVar(req *http.Request, name, value string) *http.Request {
 	return mux.SetURLVars(req, map[string]string{
 		name: value,
