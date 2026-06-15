@@ -56,21 +56,17 @@ func (e *EvaluatorWithJitter) Eval(ctx context.Context, qs string, now time.Time
 }
 
 func (e *EvaluatorWithJitter) calculateJitter(qs string, logger log.Logger) time.Duration {
-	var h uint32
-
 	// rules can be evaluated concurrently, so we protect the hasher with a mutex
 	e.mu.Lock()
-	{
-		_, err := e.hasher.Write([]byte(qs))
-		if err != nil {
-			level.Warn(logger).Log("msg", "could not hash query to determine rule jitter", "err", err)
-			return 0
-		}
+	defer e.mu.Unlock()
 
-		h = e.hasher.Sum32()
-		e.hasher.Reset()
+	if _, err := e.hasher.Write([]byte(qs)); err != nil {
+		level.Warn(logger).Log("msg", "could not hash query to determine rule jitter", "err", err)
+		return 0
 	}
-	e.mu.Unlock()
+
+	h := e.hasher.Sum32()
+	e.hasher.Reset()
 
 	ratio := float32(h) / math.MaxUint32
 	return time.Duration(ratio * float32(e.maxJitter.Nanoseconds()))
