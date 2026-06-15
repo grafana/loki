@@ -675,7 +675,6 @@ func configureObsGatewayServerPKI(
 	serverName := fqdn(serviceName, namespace)
 	gwArgs = append(gwArgs,
 		"--tls.client-auth-type=NoClientCert",
-		"--tls.min-version=VersionTLS12",
 		fmt.Sprintf("--tls.server.cert-file=%s", gatewayServerHTTPTLSCert()),
 		fmt.Sprintf("--tls.server.key-file=%s", gatewayServerHTTPTLSKey()),
 		fmt.Sprintf("--tls.healthchecks.server-name=%s", serverName),
