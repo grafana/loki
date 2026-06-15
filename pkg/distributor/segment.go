@@ -216,3 +216,21 @@ func numPartitionsForRateConsistentHashing(rateBytes, perPartitionRateBytes uint
 	// than or equal to the number of partitions, which is an int.
 	return int(partitions)
 }
+
+type streamShardPartitionResolver struct {
+	ringReader ring.PartitionRingReader
+	reg        prometheus.Registerer
+	logger     log.Logger
+}
+
+func newStreamShardPartitionResolver(ringReader ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *streamShardPartitionResolver {
+	return &streamShardPartitionResolver{
+		ringReader: ringReader,
+		reg:        reg,
+		logger:     logger,
+	}
+}
+
+func (r *streamShardPartitionResolver) Resolve(_ string, _ segmentationKey, hashKey uint32, _, _ uint64) (int32, error) {
+	return r.ringReader.PartitionRing().ActivePartitionForKey(hashKey)
+}

@@ -321,11 +321,8 @@ func New(
 				)
 				servs = append(servs, rendezvousPartitionWatcher)
 			}
-			resolver := newSegmentationPartitionResolver(
-				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
-				cfg.DataObjTeeConfig.UseRendezvousHashing,
+			resolver := newStreamShardPartitionResolver(
 				dataObjConsumerPartitionRing,
-				rendezvousPartitionWatcher,
 				registerer,
 				logger,
 			)

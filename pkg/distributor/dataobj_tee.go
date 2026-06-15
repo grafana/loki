@@ -71,7 +71,7 @@ type DataObjTee struct {
 	rateBatcher  *rateBatcher // nil if batching is disabled
 	limits       Limits
 	kafkaClient  KafkaProducer
-	resolver     *segmentationPartitionResolver
+	resolver     *streamShardPartitionResolver
 	logger       log.Logger
 
 	// Metrics.
@@ -86,7 +86,7 @@ type DataObjTee struct {
 // NewDataObjTee returns a new DataObjTee.
 func NewDataObjTee(
 	cfg *DataObjTeeConfig,
-	resolver *segmentationPartitionResolver,
+	resolver *streamShardPartitionResolver,
 	limitsClient *ingestLimits,
 	limits Limits,
 	kafkaClient KafkaProducer,
