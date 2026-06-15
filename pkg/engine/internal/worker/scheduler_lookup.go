@@ -27,7 +27,7 @@ func newSchedulerLookup(logger log.Logger, address string, lookupInterval time.D
 		logger = log.NewNopLogger()
 	}
 
-	provider := dns.NewProvider(logger, nil, dns.GolangResolverType)
+	provider := dns.NewProvider(dns.GolangResolverType, 0, logger, nil)
 
 	return &schedulerLookup{
 		logger:   logger,

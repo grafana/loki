@@ -1,13 +1,14 @@
 name: helm-release
 
 on:
-  workflow_dispatch: # for manual testing
   push:
     branches:
       - main
-      - k[0-9]+
     paths:
       - 'production/helm/loki/Chart.yaml'
+
+permissions:
+  contents: read
 
 jobs:
   call-update-helm-repo:

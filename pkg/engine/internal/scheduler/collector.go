@@ -33,9 +33,7 @@ var _ prometheus.Collector = (*collector)(nil)
 // saturation average metrics will only be computed after calling
 // [collector.Process].
 func newCollector(sched *Scheduler) *collector {
-	var (
-		loadSource ewma.SourceFunc = func() float64 { return computeLoad(sched) }
-	)
+	var loadSource ewma.SourceFunc = func() float64 { return computeLoad(sched) }
 
 	return &collector{
 		sched: sched,
@@ -148,9 +146,7 @@ func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
 }
 
 func (mc *collector) collectConnStats(ch chan<- prometheus.Metric) {
-	var (
-		totalConnections int
-	)
+	var totalConnections int
 
 	mc.sched.connections.Range(func(key, _ any) bool {
 		wc := key.(*workerConn)
@@ -173,7 +169,7 @@ func (mc *collector) collectAssignStats(ch chan<- prometheus.Metric) {
 	mc.sched.assignMut.RLock()
 	defer mc.sched.assignMut.RUnlock()
 
-	ch <- prometheus.MustNewConstMetric(mc.readyWorkers, prometheus.GaugeValue, float64(len(mc.sched.readyWorkers)))
+	ch <- prometheus.MustNewConstMetric(mc.readyWorkers, prometheus.GaugeValue, float64(len(mc.sched.connectedWorkers)))
 	ch <- prometheus.MustNewConstMetric(mc.taskQueue, prometheus.GaugeValue, float64(mc.sched.taskQueue.Len()))
 }
 

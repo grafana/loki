@@ -224,6 +224,6 @@ tests:
               summary: "Loki ingester has critical flush failure rate"
               description: |
                 Loki ingester ingester-0 in the namespace my-ns has a critical flush failure rate of
-                25% over the last 5 minutes. This requires immediate attention as data is
+                25%. This requires immediate attention as data is
                 not being flushed to the storage. Validate if the storage configuration is still valid and if the storage is
                 still reachable. Current failure rate: 25% Threshold: 20%

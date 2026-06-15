@@ -75,19 +75,14 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 	// Return 400 if any of the errors in the MultiError are client errors (4xx)
 	if ok {
 		for _, e := range me {
-			if errors.As(e, &queryErr) ||
-				errors.Is(e, logqlmodel.ErrLimit) ||
-				errors.Is(e, logqlmodel.ErrParse) ||
-				errors.Is(e, logqlmodel.ErrPipeline) ||
-				errors.Is(e, logqlmodel.ErrBlocked) ||
-				errors.Is(e, logqlmodel.ErrParseMatchers) ||
-				errors.Is(e, logqlmodel.ErrUnsupportedSyntaxForInstantQuery) ||
-				errors.Is(e, user.ErrNoOrgID) ||
-				errors.As(e, &userErr) ||
-				errors.Is(e, logqlmodel.ErrVariantsDisabled) {
+			if isClientError(e, &queryErr, &userErr) {
 				return http.StatusBadRequest, err
 			}
 		}
+	}
+
+	if isClientError(err, &queryErr, &userErr) {
+		return http.StatusBadRequest, err
 	}
 
 	if s, isRPC := status.FromError(err); isRPC {
@@ -105,21 +100,7 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return StatusClientClosedRequest, errors.New(ErrClientCanceled)
 	case errors.Is(err, context.DeadlineExceeded):
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
-	case errors.As(err, &queryErr):
-		return http.StatusBadRequest, err
-	case errors.Is(err, logqlmodel.ErrLimit) ||
-		errors.Is(err, logqlmodel.ErrIntervalLimit) ||
-		errors.Is(err, logqlmodel.ErrParse) ||
-		errors.Is(err, logqlmodel.ErrPipeline) ||
-		errors.Is(err, logqlmodel.ErrBlocked) ||
-		errors.Is(err, logqlmodel.ErrParseMatchers) ||
-		errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery):
-		return http.StatusBadRequest, err
-	case errors.Is(err, user.ErrNoOrgID):
-		return http.StatusBadRequest, err
-	case errors.As(err, &userErr):
-		return http.StatusBadRequest, err
-	case errors.Is(err, logqlmodel.ErrVariantsDisabled):
+	case errors.Is(err, logqlmodel.ErrIntervalLimit):
 		return http.StatusBadRequest, err
 	default:
 		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
@@ -129,10 +110,32 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 	}
 }
 
+// isClientError reports whether err is (or wraps) a Loki query error that is
+// the client's fault and is  not retryable.
+func isClientError(err error, queryErr *storage_errors.QueryError, userErr *UserError) bool {
+	return errors.As(err, queryErr) ||
+		errors.As(err, userErr) ||
+		errors.Is(err, logqlmodel.ErrLimit) ||
+		errors.Is(err, logqlmodel.ErrParse) ||
+		errors.Is(err, logqlmodel.ErrPipeline) ||
+		errors.Is(err, logqlmodel.ErrBlocked) ||
+		errors.Is(err, logqlmodel.ErrParseMatchers) ||
+		errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery) ||
+		errors.Is(err, logqlmodel.ErrVariantsDisabled) ||
+		errors.Is(err, user.ErrNoOrgID)
+}
+
 // WrapError wraps an error in a protobuf status.
 func WrapError(err error) *rpc.Status {
-	if s, ok := status.FromError(err); ok {
-		return s.Proto()
+	var (
+		queryErr storage_errors.QueryError
+		userErr  UserError
+	)
+
+	if !isClientError(err, &queryErr, &userErr) {
+		if s, ok := status.FromError(err); ok {
+			return s.Proto()
+		}
 	}
 
 	code, err := ClientHTTPStatusAndError(err)

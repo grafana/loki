@@ -1,7 +1,6 @@
 package distributor
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -11,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/v3/pkg/distributor/rendezvous"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
@@ -37,25 +37,37 @@ func getSegmentationKey(stream KeyedStream) (segmentationKey, error) {
 	if serviceName := labels.Get("service_name"); serviceName != "" {
 		return segmentationKey(serviceName), nil
 	}
-	return segmentationKey("unknown_service"), nil
+	return "unknown_service", nil
 }
 
 // segmentationPartitionResolver resolves the partition for a segmentation key.
 type segmentationPartitionResolver struct {
 	perPartitionRateBytes uint64
+	useRendezvousHashing  bool
 	ringReader            ring.PartitionRingReader
+	partitionRingWatcher  *rendezvous.PartitionRingWatcher
 	logger                log.Logger
 
 	// Metrics.
-	resolveFailed prometheus.Counter
-	resolveTotal  prometheus.Counter
+	resolveFailed                   prometheus.Counter
+	resolveTotal                    prometheus.Counter
+	tenantShuffleShardSize          prometheus.Histogram
+	segmentationKeyShuffleShardSize prometheus.Histogram
 }
 
 // newSegmentationPartitionResolver returns a new segmentationPartitionResolver.
-func newSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *segmentationPartitionResolver {
+func newSegmentationPartitionResolver(
+	perPartitionRateBytes uint64,
+	useRendezvousHashing bool,
+	ringReader ring.PartitionRingReader,
+	partitionWatcher *rendezvous.PartitionRingWatcher,
+	reg prometheus.Registerer,
+	logger log.Logger) *segmentationPartitionResolver {
 	return &segmentationPartitionResolver{
 		perPartitionRateBytes: perPartitionRateBytes,
+		useRendezvousHashing:  useRendezvousHashing,
 		ringReader:            ringReader,
+		partitionRingWatcher:  partitionWatcher,
 		resolveFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_failed_total",
 			Help: "Total number of segmentation keys that could not be resolved.",
@@ -64,11 +76,82 @@ func newSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 			Name: "loki_distributor_segmentation_partition_resolver_keys_total",
 			Help: "Total number of segmentation keys passed to the resolver.",
 		}),
+		tenantShuffleShardSize: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_distributor_segmentation_partition_resolver_tenant_shuffle_shard_size",
+			Help:                            "The size of the shuffle shard created by sharding on tenant ID, observed per request",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		segmentationKeyShuffleShardSize: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_distributor_segmentation_partition_resolver_segmentation_key_shuffle_shard_size",
+			Help:                            "The size of the shuffle shard created by sharding on segmentation key, observed per request",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
 		logger: logger,
 	}
 }
 
-func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateBytes uint64) (int32, error) {
+func (r *segmentationPartitionResolver) Resolve(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateBytesLimit uint64) (int32, error) {
+	if r.useRendezvousHashing {
+		return r.resolveRendezvousHashing(tenant, key, hashKey, rateBytes, tenantRateBytesLimit)
+	}
+
+	// TODO(danhopper): remove consistent hashing once we have confidence in rendezvous hashing
+	return r.resolveConsistentHashing(tenant, key, hashKey, rateBytes, tenantRateBytesLimit)
+}
+
+func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateLimitBytes uint64) (int32, error) {
+	r.resolveTotal.Inc()
+
+	shuffleSharder := r.partitionRingWatcher.ShuffleSharder()
+
+	// Shuffle shard for the tenant based on their ingestion rate limit.
+	// This ensures that streams are not only co-located within the same
+	// segmentation key, but also segmentation keys for a tenant are as
+	// co-located as possible.
+	var numTenantShuffleShardPartitions int
+	if tenantRateLimitBytes == 0 {
+		// For tenants without a rate limit, send data to all partitions.
+		numTenantShuffleShardPartitions = shuffleSharder.Size()
+	} else {
+		numTenantShuffleShardPartitions = numPartitionsForRateRendezvousHashing(tenantRateLimitBytes, r.perPartitionRateBytes, shuffleSharder.Size())
+	}
+	shuffleSharder = shuffleSharder.ShuffleShard(tenant, numTenantShuffleShardPartitions)
+
+	// Shuffle shard for the segmentation key.
+	numSegKeyShuffleShardPartitions := numPartitionsForRateRendezvousHashing(rateBytes, r.perPartitionRateBytes, shuffleSharder.Size())
+	shuffleSharder = shuffleSharder.ShuffleShard(string(key), numSegKeyShuffleShardPartitions)
+
+	r.tenantShuffleShardSize.Observe(float64(numTenantShuffleShardPartitions))
+	r.segmentationKeyShuffleShardSize.Observe(float64(numSegKeyShuffleShardPartitions))
+
+	// Finally, shard based on the hash key.
+	partition, err := shuffleSharder.Shard(hashKey)
+	if err != nil {
+		r.resolveFailed.Inc()
+	}
+	return partition, err
+}
+
+// numPartitionsForRateRendezvousHashing returns the number of partitions needed to keep within
+// perPartitionRateBytes. It cannot exceed the total number of partitions.
+func numPartitionsForRateRendezvousHashing(rateBytes, perPartitionRateBytes uint64, numPartitions int) int {
+	partitions := (rateBytes + perPartitionRateBytes - 1) / perPartitionRateBytes
+	// Must be at least 1 partition.
+	partitions = max(partitions, 1)
+	// Must not exceed the total number of partitions.
+	partitions = min(partitions, uint64(numPartitions))
+	// We can convert back to int here because partitions is guaranteed to be less
+	// than or equal to the number of partitions, which is an int.
+	return int(partitions)
+}
+
+func (r *segmentationPartitionResolver) resolveConsistentHashing(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateLimitBytes uint64) (int32, error) {
 	r.resolveTotal.Inc()
 	// We use a snapshot of the partition ring to ensure resolving the
 	// partition for a segmentation key is determinstic even if the ring
@@ -85,7 +168,7 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 	// This ensures that streams are not only co-located within the same
 	// segmentation key, but also segmentation keys for a tenant are as
 	// co-located as possible.
-	subring, err := r.tenantShuffleShard(ctx, ring, tenant, tenantRateBytes)
+	subring, err := r.tenantShuffleShardConsistentHashing(ring, tenant, tenantRateLimitBytes)
 	if err != nil {
 		r.resolveFailed.Inc()
 		return 0, fmt.Errorf("failed to shuffle shard tenant: %w", err)
@@ -95,7 +178,7 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 	if rateBytes == 0 {
 		return subring.ActivePartitionForKey(hashKey)
 	}
-	numShuffleShardPartitions := numPartitionsForRate(rateBytes, r.perPartitionRateBytes, subring.ActivePartitionsCount())
+	numShuffleShardPartitions := numPartitionsForRateConsistentHashing(rateBytes, r.perPartitionRateBytes, subring.ActivePartitionsCount())
 	// If the segmentation key is small enough that it does not need to be sharded,
 	// we can avoid doing an expensive shuffle shard.
 	if numShuffleShardPartitions == 1 {
@@ -111,19 +194,19 @@ func (r *segmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 	return subring.ActivePartitionForKey(hashKey)
 }
 
-// tenantShuffleShard returns a subring for the tenant based on their rate limit.
-func (r *segmentationPartitionResolver) tenantShuffleShard(_ context.Context, ring *ring.PartitionRing, tenant string, tenantRateBytes uint64) (*ring.PartitionRing, error) {
+// tenantShuffleShardConsistentHashing returns a subring for the tenant based on their rate limit.
+func (r *segmentationPartitionResolver) tenantShuffleShardConsistentHashing(ring *ring.PartitionRing, tenant string, tenantRateLimitBytes uint64) (*ring.PartitionRing, error) {
 	// If the tenant has no limit, return the full ring.
-	if tenantRateBytes == 0 {
+	if tenantRateLimitBytes == 0 {
 		return ring, nil
 	}
-	numShuffleShardPartitions := numPartitionsForRate(tenantRateBytes, r.perPartitionRateBytes, ring.ActivePartitionsCount())
+	numShuffleShardPartitions := numPartitionsForRateConsistentHashing(tenantRateLimitBytes, r.perPartitionRateBytes, ring.ActivePartitionsCount())
 	return ring.ShuffleShard(tenant, numShuffleShardPartitions)
 }
 
-// numPartitionsForRate returns the number of partitions needed to keep within
+// numPartitionsForRateRendezvousHashing returns the number of partitions needed to keep within
 // perPartitionRateBytes. It cannot exceed the total number of partitions.
-func numPartitionsForRate(rateBytes, perPartitionRateBytes uint64, numPartitions int) int {
+func numPartitionsForRateConsistentHashing(rateBytes, perPartitionRateBytes uint64, numPartitions int) int {
 	partitions := rateBytes / perPartitionRateBytes
 	// Must be at least 1 partition.
 	partitions = max(partitions, 1)

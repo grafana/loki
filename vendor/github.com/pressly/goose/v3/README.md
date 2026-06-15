@@ -343,7 +343,7 @@ You can use these annotations multiple times within a file.
 This feature is disabled by default for backward compatibility with existing scripts.
 
 For `PL/pgSQL` functions or other statements where substitution is not desired, wrap the annotations
-explicitly around the relevant parts. For example, to exclude escaping the `**` characters:
+explicitly around the relevant parts. For example, to exclude escaping the `$$` characters:
 
 ```sql
 -- +goose StatementBegin

@@ -28,6 +28,7 @@ type task struct {
 	queueTime   time.Time // Time when task was enqueued.
 	assignTime  time.Time // Time when task was assigned to a worker.
 	interrupted bool      // Cancellation requested but not yet confirmed.
+	requeues    int       // Number of times the task was requeued after a failed assignment.
 
 	// capture holds individual task information from any source:
 	//
@@ -153,6 +154,14 @@ func (t *task) MarkQueued() {
 	t.queueTime = time.Now()
 }
 
+// MarkRequeued records that the task was requeued after a failed assignment
+// attempt, incrementing its assignment retry count.
+func (t *task) MarkRequeued() {
+	t.mut.Lock()
+	defer t.mut.Unlock()
+	t.requeues++
+}
+
 // MarkInterrupted records that cancellation has been requested for this task.
 func (t *task) MarkInterrupted() bool {
 	t.mut.Lock()
@@ -196,27 +205,42 @@ func (t *task) TryAssign(doAssign func() error) error {
 //
 // The recorded durations partition the task's total lifetime:
 //
-//   - [schedulerstat.TaskQueueDuration] is recorded if the task was enqueued
-//     but never assigned to a worker (covering pre-assignment cancellations
-//     of queued tasks). Tasks that were assigned have their queue duration
-//     recorded earlier, at assignment time.
+//   - [schedulerstat.TaskQueueDuration] is recorded for any task that was
+//     enqueued. It spans from enqueue until assignment, or until the terminal
+//     state if the task was never assigned. Recording it here, rather than in
+//     [finalizeAssignment] to ensure we record it before the region ends for
+//     tasks that reach terminal state even before assignment finalization.
+//
 //   - [schedulerstat.TaskExecutionDuration] is recorded for any task that
 //     was assigned to a worker.
+//
 //   - [schedulerstat.TaskTotalDuration] is always recorded.
+//
+// It also records [schedulerstat.TaskFinishTime], the absolute terminal
+// timestamp, which the workflow uses to approximate the query's critical path.
 //
 // RecordTerminalObservations must only be called once per task and only when
 // the task has reached a terminal state.
 func (t *task) RecordTerminalObservations(now time.Time) {
 	t.mut.RLock()
-	queueTime, assignTime := t.queueTime, t.assignTime
+	queueTime, assignTime, requeues := t.queueTime, t.assignTime, t.requeues
 	t.mut.RUnlock()
 
-	if !queueTime.IsZero() && assignTime.IsZero() {
-		t.region.Record(schedulerstat.TaskQueueDuration.Observe(now.Sub(queueTime).Nanoseconds()))
+	t.region.Record(schedulerstat.TaskAssignmentRetries.Observe(int64(requeues)))
+
+	if !queueTime.IsZero() {
+		// Queue time ends at assignment, or at the terminal state if the task
+		// was never assigned.
+		queueEnd := now
+		if !assignTime.IsZero() {
+			queueEnd = assignTime
+		}
+		t.region.Record(schedulerstat.TaskQueueDuration.Observe(queueEnd.Sub(queueTime).Nanoseconds()))
 	}
 	if !assignTime.IsZero() {
 		t.region.Record(schedulerstat.TaskExecutionDuration.Observe(now.Sub(assignTime).Nanoseconds()))
 	}
 	t.region.Record(schedulerstat.TaskTotalDuration.Observe(now.Sub(t.createTime).Nanoseconds()))
+	t.region.Record(schedulerstat.TaskFinishTime.Observe(now.UnixNano()))
 	t.region.End()
 }

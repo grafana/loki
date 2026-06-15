@@ -60,6 +60,11 @@ func (c cmdable) eval(ctx context.Context, name, payload string, keys []string, 
 		cmd.SetFirstKeyPos(3)
 	}
 	_ = c(ctx, cmd)
+	if err := cmd.Err(); err != nil {
+		if HasErrorPrefix(err, "NOSCRIPT") {
+			cmd.SetErr(ErrNoScript)
+		}
+	}
 	return cmd
 }
 

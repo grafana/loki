@@ -235,6 +235,8 @@ type indexValueEntry struct {
 type unlockIndex map[string]indexEntry
 
 // This is the prevalent value for Intel and AMD CPUs as-at 2018.
+//
+//nolint:unused // used only by the cache-line padding field below, which is itself unused by design.
 const cacheLineSize = 64
 
 // Roughly

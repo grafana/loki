@@ -1,0 +1,96 @@
+project:
+    name: jsonparser
+    specs:
+        - path: specs/stakeholder
+          prefix: STK-REQ
+          type: stakeholder
+        - path: specs/system
+          prefix: SYS-REQ
+          type: system
+          parent_spec: specs/stakeholder
+    obligation_classes:
+        - nominal
+        - missing_path
+        - malformed_input
+        - truncated_at_value_boundary
+        - truncated_mid_structure
+        - truncated_mid_key
+        - empty_input
+        - boundary
+        - type_mismatch
+        - negative_array_index
+        - sentinel_value_boundary
+        - error_propagation
+        - no_path_provided
+        - nested_mutation
+        - callback_error_propagation
+        - truncated_escape_sequence
+        - partial_literal
+        - truncated_mid_element
+        - determinism
+        - idempotency
+        - nil_safety
+        - encoding_safety
+        - edge_case
+    commands:
+        build: go build ./...
+        test: mkdir -p .proof/coverage .proof/test-results && go test ./... -count=1 -coverprofile=.proof/coverage/unit.coverprofile -json > .proof/test-results/go-test.json 2>&1
+    # Fixtures are generated artifacts, not committed to the repo.
+    # MC/DC coverage is enforced through test annotations instead.
+    # To regenerate locally:
+    #   proof testgen specs/system parser --output tests/
+    #   proof proptest specs/system parser --source z3 --output tests/parser/
+    checks:
+        solver_latency_clean:
+            threshold: 360
+        coverage_threshold:
+            threshold: 80
+            auto_link: false
+            report_path: .proof/coverage/unit.coverprofile
+            format: go-cover
+        test_results:
+            auto_link: true
+            report_path: .proof/test-results/go-test.json
+        slow_tests:
+            enabled: true
+        code_mcdc:
+            severity: warn
+            engine: go
+            package_pattern: ./...
+            coverpkg: ./...
+            go_test_args:
+                - -race
+            min_decision_percent: 100
+            min_condition_percent: 100
+            max_incomplete_decisions: 0
+            targets:
+                - id: parser
+                  enabled: true
+                  language: go
+                  scope: ./...
+        test_mcdc_annotations:
+            enabled: true
+        mcdc_coverage: {}
+        proof_complexity_clean:
+            max_formalized_requirements: 120
+            max_variables: 280
+            max_guarantees: 120
+        evidence_diversity:
+            min_classes:
+                A: 3
+                B: 2
+                C: 1
+    approval:
+        required_for:
+            assurance_levels:
+                - A
+                - B
+        roles:
+            - system_owner
+            - lead_engineer
+        comment_required: true
+    documentation:
+        sources:
+            - path: .
+              type: auto
+        threshold: 0

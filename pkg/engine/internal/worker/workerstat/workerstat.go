@@ -9,6 +9,10 @@ import "github.com/grafana/loki/v3/pkg/xcap"
 // and the worker.
 
 var (
+	// TaskExecutionSetupDuration is the time (in nanoseconds) spent preparing a
+	// task for execution before its pipeline is opened and drained.
+	TaskExecutionSetupDuration = xcap.NewStatisticInt64("worker.task.execution.setup.duration", xcap.AggregationTypeSum)
+
 	// TaskExecutionOpenDuration is the time (in nanoseconds) spent opening the
 	// root pipeline before the worker began draining record batches from it.
 	TaskExecutionOpenDuration = xcap.NewStatisticInt64("worker.task.execution.open.duration", xcap.AggregationTypeSum)

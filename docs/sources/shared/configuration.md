@@ -1523,16 +1523,6 @@ dataobj:
     # CLI flag: -dataobj-consumer.max-builder-age
     [max_builder_age: <duration> | default = 1h]
 
-    # How records are ingested: "kafka" reads from a Kafka topic; "inmemory"
-    # uses an in-process channel (experimental, single-node, no durability
-    # guarantees, each replica holds independent data).
-    # CLI flag: -dataobj-consumer.ingest-mode
-    [ingest_mode: <string> | default = "kafka"]
-
-    # Internal buffer size for records for inmemory ingestion.
-    # CLI flag: -dataobj-consumer.channel-size
-    [channel_size: <int> | default = 10000]
-
     # The name of the Kafka topic.
     # CLI flag: -dataobj-consumer.topic
     [topic: <string> | default = ""]
@@ -1612,11 +1602,36 @@ dataobj:
     # CLI flag: -dataobj.compaction.enabled
     [enabled: <boolean> | default = false]
 
-    # Experimental: Per-workflow cap on concurrent compaction tasks (IndexMerge
-    # / LogMerge). Currently unused; reserved for the engine scheduler's
-    # compaction admission lane added in a follow-up change.
+    # Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks
+    # dispatched by the coordinator. 0 means unlimited (one goroutine per task
+    # with no admission throttle).
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
+
+    # Experimental: Coordinator main-loop cadence.
+    # CLI flag: -dataobj.compaction.polling-interval
+    [polling_interval: <duration> | default = 5m]
+
+    # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
+    # with K.
+    # CLI flag: -dataobj.compaction.max-runs-per-task
+    [max_runs_per_task: <int> | default = 8]
+
+    # Experimental: Coordinator-side timeout around the inline ToC
+    # ReplaceIndexPointers call. Not a task TTL.
+    # CLI flag: -dataobj.compaction.toc-consolidate-timeout
+    [toc_consolidate_timeout: <duration> | default = 30s]
+
+    # Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap.
+    # Planning, IndexMerge task execution, and per-output audit logging still
+    # run, but the ToC is never mutated.
+    # CLI flag: -dataobj.compaction.dry-run
+    [dry_run: <boolean> | default = false]
+
+    # Experimental: Plan version hashed into IndexMerge output paths. Bump to
+    # invalidate previously-written outputs after a planner-algorithm change.
+    # CLI flag: -dataobj.compaction.plan-version
+    [plan_version: <int> | default = 1]
 
     scheduler:
       # Experimental: host:port the embedded compaction scheduler advertises to
@@ -1653,6 +1668,45 @@ dataobj:
       # frame handler on.
       # CLI flag: -dataobj.compaction.worker.endpoint
       [endpoint: <string> | default = "/api/v2/compaction-frame"]
+
+    indexobj_builder:
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
+      # CLI flag: -dataobj.compaction.indexobj-builder.target-page-size
+      [target_page_size: <int> | default = 2KiB]
+
+      # The maximum row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
+      # CLI flag: -dataobj.compaction.indexobj-builder.max-page-rows
+      [max_page_rows: <int> | default = 0]
+
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj.compaction.indexobj-builder.target-builder-memory-limit
+      [target_object_size: <int> | default = 4MiB]
+
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
+      # CLI flag: -dataobj.compaction.indexobj-builder.target-section-size
+      [target_section_size: <int> | default = 2MiB]
+
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
+      # CLI flag: -dataobj.compaction.indexobj-builder.buffer-size
+      [buffer_size: <int> | default = 16KiB]
+
+      # The maximum number of dataobj section stripes to merge into a section at
+      # once. Must be greater than 1.
+      # CLI flag: -dataobj.compaction.indexobj-builder.section-stripe-merge-limit
+      [section_stripe_merge_limit: <int> | default = 2]
+
+      # Expected compression ratio for log data, used to estimate compressed
+      # output size from uncompressed buffered records. Only takes effect with
+      # ordered append. Set to 0 or 1 to disable.
+      # CLI flag: -dataobj.compaction.indexobj-builder.estimated-compression-ratio
+      [estimated_compression_ratio: <int> | default = 8]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
@@ -2437,8 +2491,6 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `query-engine.task-results-cache`
 - `store.chunks-cache`
 - `store.chunks-cache-l2`
-- `store.index-cache-read`
-- `store.index-cache-write`
 
 &nbsp;
 
@@ -2530,7 +2582,7 @@ memcached_client:
 
   # The TLS configuration.
   # The CLI flags prefix for this block configuration is:
-  # store.index-cache-write.memcached
+  # store.chunks-cache-l2.memcached
   [<tls_config>]
 
 redis:
@@ -2625,12 +2677,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # component.
 # The CLI flags prefix for this block configuration is: store.chunks-cache-l2
 [chunk_cache_config_l2: <cache_config>]
-
-# Write dedupe cache is deprecated along with legacy index types (aws,
-# aws-dynamo, grpc-store).
-# Consider using TSDB index which does not require a write dedupe cache.
-# The CLI flags prefix for this block configuration is: store.index-cache-write
-[write_dedupe_cache_config: <cache_config>]
 
 # Chunks fetched from queriers before this duration will not be written to the
 # cache. A value of 0 will write all chunks to the cache
@@ -3396,10 +3442,10 @@ dataobj_tee:
   # CLI flag: -distributor.dataobj-tee.rate-batch-window
   [rate_batch_window: <duration> | default = 0s]
 
-# Timeout for sending a record to the in-memory queue before returning
-# backpressure to the caller. Defaults to 5s. Set to 0 for no timeout.
-# CLI flag: -distributor.inmemory-dataobj-push-timeout
-[inmemory_dataobj_push_timeout: <duration> | default = 5s]
+  # Enables use of rendezvous hashing. When this is false, consistent hashing is
+  # used instead.
+  # CLI flag: -distributor.dataobj-tee.use-rendezvous-hashing
+  [use_rendezvous_hashing: <boolean> | default = false]
 ```
 
 ### etcd
@@ -5093,6 +5139,24 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.notify-interval
 [notify_interval: <duration> | default = 0s]
 
+# Size of the internal queue for messages received from other nodes. Increasing
+# this value may help to avoid dropping messages when the node is processing a
+# large number of messages from other nodes.
+# CLI flag: -memberlist.received-messages-queue-size
+[received_messages_queue_size: <int> | default = 1024]
+
+# Size of the per-key internal queue for processing messages received from other
+# nodes. Increasing this value may help to avoid dropping per-key updates when
+# the node is processing many updates for the same key.
+# CLI flag: -memberlist.processed-messages-queue-size
+[processed_messages_queue_size: <int> | default = 1024]
+
+# Compression algorithm used for outgoing messages when
+# -memberlist.compression-enabled is true. Supported values: lzw, snappy.
+# Ignored when -memberlist.compression-enabled is false.
+# CLI flag: -memberlist.compression-algorithm
+[compression_algorithm: <string> | default = "lzw"]
+
 # Gossip address to advertise to other members in the cluster. Used for NAT
 # traversal.
 # CLI flag: -memberlist.advertise-addr
@@ -6075,10 +6139,19 @@ Configuration for 'runtime config' module, responsible for reloading runtime con
 # CLI flag: -runtime-config.reload-period
 [period: <duration> | default = 10s]
 
-# Comma separated list of yaml files with the configuration that can be updated
-# at runtime. Runtime config files will be merged from left to right.
+# Comma separated list of yaml files or URLs with the configuration that can be
+# updated at runtime. Runtime config files will be merged from left to right.
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
+
+# HTTP client timeout when fetching runtime config from URLs.
+# CLI flag: -runtime-config.http-client-timeout
+[http_client_timeout: <duration> | default = 30s]
+
+http_client_cluster_validation:
+  # Primary cluster validation label.
+  # CLI flag: -runtime-config.http-client-cluster-validation.label
+  [label: <string> | default = ""]
 ```
 
 ### s3_storage_config
@@ -6606,11 +6679,6 @@ hedging:
 # Storage (COS) backend.
 [cos: <cos_storage_config>]
 
-# Cache validity for active index entries. Should be no higher than
-# -ingester.max-chunk-idle.
-# CLI flag: -store.index-cache-validity
-[index_cache_validity: <duration> | default = 5m]
-
 congestion_control:
   # Use storage congestion control (default: disabled).
   # CLI flag: -store.congestion-control.enabled
@@ -6664,11 +6732,6 @@ congestion_control:
 # storage. Example: loki/
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
-
-# The cache_config block configures the cache backend for a specific Loki
-# component.
-# The CLI flags prefix for this block configuration is: store.index-cache-read
-[index_queries_cache_config: <cache_config>]
 
 # Disable broad index queries which results in reduced cache usage and faster
 # query performance at the expense of somewhat higher QPS on the index store.
@@ -7406,8 +7469,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `ruler.ring.etcd`
 - `store.chunks-cache-l2.memcached`
 - `store.chunks-cache.memcached`
-- `store.index-cache-read.memcached`
-- `store.index-cache-write.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
 - `ui.ring.etcd`
 

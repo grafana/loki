@@ -84,6 +84,29 @@ type Memberlist struct {
 
 	// metricLabels is the slice of labels to put on all emitted metrics
 	metricLabels []metrics.Label
+
+	// compressionType is the wire-level algorithm tag derived from
+	// config.CompressionAlgorithm at construction time. Cached here so
+	// per-message send paths avoid string parsing.
+	compressionType compressionType
+
+	// compressMetricLabels is metricLabels + an "algo" label set to the
+	// configured compressionType. Precomputed at construction so the
+	// per-send compress hot path can pass it directly to
+	// metrics.IncrCounterWithLabels without rebuilding the slice on each
+	// call.
+	compressMetricLabels []metrics.Label
+
+	// compressSkippedSizeWorseLabels is compressMetricLabels + a
+	// reason label, precomputed so the size-skipped fallback path
+	// doesn't allocate when fired (incompressible
+	// payloads can hit this often enough to matter).
+	compressSkippedSizeWorseLabels []metrics.Label
+
+	// decompressLZWLabels and decompressSnappyLabels are metricLabels +
+	// an "algo" label set to the corresponding algorithm name.
+	decompressLZWLabels    []metrics.Label
+	decompressSnappyLabels []metrics.Label
 }
 
 // BuildVsnArray creates the array of Vsn
@@ -135,6 +158,11 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 	logger := conf.Logger
 	if logger == nil {
 		logger = log.New(logDest, "", log.LstdFlags)
+	}
+
+	typ, err := resolveCompressionType(conf.CompressionAlgorithm)
+	if err != nil {
+		return nil, err
 	}
 
 	// Set up a network transport by default if a custom one wasn't given
@@ -221,7 +249,9 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 		broadcasts:           &TransmitLimitedQueue{RetransmitMult: conf.RetransmitMult},
 		logger:               logger,
 		metricLabels:         conf.MetricLabels,
+		compressionType:      typ,
 	}
+	m.initCompressionMetricLabels()
 	m.broadcasts.NumNodes = func() int {
 		return m.estNumNodes()
 	}

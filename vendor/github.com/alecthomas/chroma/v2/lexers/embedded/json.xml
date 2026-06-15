@@ -4,7 +4,9 @@
     <alias>json</alias>
     <filename>*.json</filename>
     <filename>*.jsonc</filename>
+    <filename>*.json5</filename>
     <filename>*.avsc</filename>
+    <filename>.luaurc</filename>
     <mime_type>application/json</mime_type>
     <dot_all>true</dot_all>
     <not_multiline>true</not_multiline>

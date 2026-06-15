@@ -3,7 +3,6 @@ package physical
 import (
 	"context"
 	"slices"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 
@@ -34,10 +33,6 @@ type IndexMerge struct {
 	// executor writes the merged index object. Existence-check at executor
 	// start short-circuits if a previous task already produced this object.
 	OutputIndexPath string
-
-	// TaskTTL is the per-task execution deadline enforced by the executor
-	// via context.WithDeadline.
-	TaskTTL time.Duration
 }
 
 // ID implements the Node interface.
@@ -54,7 +49,6 @@ func (n *IndexMerge) Clone() Node {
 		ToCWindowStart:  n.ToCWindowStart,
 		Runs:            cloneRuns(n.Runs),
 		OutputIndexPath: n.OutputIndexPath,
-		TaskTTL:         n.TaskTTL,
 	}
 }
 

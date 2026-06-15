@@ -73,6 +73,13 @@ func (e *LiteralExpression_StringListLiteral) UnmarshalLiteral(literal types.Lit
 	return e.StringListLiteral.UnmarshalLiteral(literal)
 }
 
+// UnmarshalLiteral reads from literal into e. Returns an error if the conversion fails
+// or is unsupported.
+func (e *LiteralExpression_LabelFmtListLiteral) UnmarshalLiteral(literal types.Literal) error {
+	e.LabelFmtListLiteral = new(LabelFmtListLiteral)
+	return e.LabelFmtListLiteral.UnmarshalLiteral(literal)
+}
+
 // UnmarshalLiteral reads from literal into l. Returns an error if the conversion fails
 // or is unsupported.
 func (l *NullLiteral) UnmarshalLiteral(literal types.Literal) error {
@@ -178,5 +185,21 @@ func (l *StringListLiteral) UnmarshalLiteral(literal types.Literal) error {
 	}
 
 	*l = StringListLiteral{Value: val.Value()}
+	return nil
+}
+
+// UnmarshalLiteral reads from literal into l. Returns an error if the conversion fails
+// or is unsupported.
+func (l *LabelFmtListLiteral) UnmarshalLiteral(literal types.Literal) error {
+	val, ok := literal.(types.LabelFmtListLiteral)
+	if !ok {
+		return fmt.Errorf("unsupported literal type: %T", literal)
+	}
+
+	labelFmts := make([]*LabelFmtLiteral, len(val.Value()))
+	for i, value := range val.Value() {
+		labelFmts[i] = &LabelFmtLiteral{Name: value.Name, Value: value.Value, Rename: value.Rename}
+	}
+	*l = LabelFmtListLiteral{Value: labelFmts}
 	return nil
 }

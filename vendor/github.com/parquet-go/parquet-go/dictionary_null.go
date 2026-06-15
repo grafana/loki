@@ -11,7 +11,7 @@ type nullDictionary struct {
 	nullPage
 }
 
-func newNullDictionary(typ Type, columnIndex int16, numValues int32, _ encoding.Values) *nullDictionary {
+func newNullDictionary(typ Type, columnIndex uint16, numValues int32, _ encoding.Values) *nullDictionary {
 	return &nullDictionary{
 		nullPage: *newNullPage(typ, columnIndex, numValues),
 	}

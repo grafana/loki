@@ -7,13 +7,14 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus TaskStatus) {
+func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus TaskStatus, onCriticalPath bool) {
 	capture := newStatus.Capture
 	if capture == nil {
 		// Every terminal notification carries the per-task capture. Skip
@@ -28,11 +29,12 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		durExecution = xcap.Value[int64](capture, schedulerstat.TaskExecutionDuration)
 		durOther     = durTotal - durStaging - durQueue - durExecution
 
+		durExecutionSetup    = xcap.Value[int64](capture, workerstat.TaskExecutionSetupDuration)
 		durExecutionOpen     = xcap.Value[int64](capture, workerstat.TaskExecutionOpenDuration)
 		durExecutionRead     = xcap.Value[int64](capture, workerstat.TaskExecutionReadDuration)
 		durExecutionReadRecv = xcap.Value[int64](capture, workerstat.TaskExecutionReadRecvDuration)
 		durExecutionSend     = xcap.Value[int64](capture, workerstat.TaskExecutionSendDuration)
-		durExecutionOther    = durExecution - durExecutionOpen - durExecutionRead - durExecutionSend
+		durExecutionOther    = durExecution - durExecutionSetup - durExecutionOpen - durExecutionRead - durExecutionSend
 
 		pagesDownloaded = xcap.Value[int64](capture, xcap.StatDatasetPrimaryPagesDownloaded) + xcap.Value[int64](capture, xcap.StatDatasetSecondaryPagesDownloaded)
 		bytesDownloaded = xcap.Value[int64](capture, xcap.StatDatasetPrimaryColumnBytes) + xcap.Value[int64](capture, xcap.StatDatasetSecondaryColumnBytes)
@@ -52,6 +54,7 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 
 		// Outcome
 		"status", taskStatusName(newStatus.State),
+		"on_critical_path", onCriticalPath,
 		"cancellation_phase", cancellationPhaseName(oldState, newStatus.State),
 		"error", newStatus.Error,
 
@@ -63,11 +66,15 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		"duration_other_ms", time.Duration(durOther).Milliseconds(),
 
 		// Breakdown timings
+		"duration_execution_setup_ms", time.Duration(durExecutionSetup).Milliseconds(),
 		"duration_execution_open_ms", time.Duration(durExecutionOpen).Milliseconds(),
 		"duration_execution_read_ms", time.Duration(durExecutionRead).Milliseconds(),
 		"duration_execution_read_recv_ms", time.Duration(durExecutionReadRecv).Milliseconds(),
 		"duration_execution_send_ms", time.Duration(durExecutionSend).Milliseconds(),
 		"duration_execution_other_ms", time.Duration(durExecutionOther).Milliseconds(),
+
+		// Assignment
+		"assignment_retry_count", xcap.Value[int64](capture, schedulerstat.TaskAssignmentRetries),
 
 		// Stage 9 (leaf) counters.
 		"pages_total", xcap.Value[int64](capture, dataobj.StatDatasetPagesTotal),
@@ -86,14 +93,53 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		// Task result cache.
 		"cache_check", taskResultCacheOutcome(capture),
 	)
+
+	if isScanTask(task) {
+		// print log section data locality as a separate log line.
+		wf.printTaskLogLocalitySummary(task, capture)
+	}
+}
+
+func (wf *Workflow) printTaskLogLocalitySummary(task *Task, capture *xcap.Capture) {
+	rowsTotal := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, xcap.StatDatasetMaxRows)
+	relevantRows := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamRelevantRows)
+	streamPagesTotal := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamPagesTotal)
+	streamRelevantPages := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamRelevantPages)
+	streamPageRuns := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamPageRuns)
+
+	level.Info(wf.logger).Log(
+		"msg", "task-log-locality-summary",
+		// Identity
+		"task_id", task.ULID,
+		"query_id", wf.opts.ID,
+		"parent_task_id", wf.parentTaskID(task),
+
+		// Locality
+		"dataset_rows_total", rowsTotal,
+		"stream_relevant_rows", relevantRows,
+		"stream_pages_total", streamPagesTotal,
+		"stream_relevant_pages", streamRelevantPages,
+		"stream_page_runs", streamPageRuns,
+		"stream_row_relevance", ratio(relevantRows, rowsTotal),
+		"stream_page_relevance", ratio(streamRelevantPages, streamPagesTotal),
+		"stream_page_fragmentation", ratio(streamPageRuns, streamRelevantPages),
+	)
+}
+
+func ratio(part, total int64) float64 {
+	if total <= 0 {
+		return 0
+	}
+
+	return float64(part) / float64(total)
 }
 
 // parentTaskID returns the task's parent ULID, or the zero ULID if the task
 // is a root (one-parent assumption per the workflow planner).
+//
+// tasksMut must be held by the caller.
 func (wf *Workflow) parentTaskID(task *Task) any {
-	wf.tasksMut.RLock()
 	parents := wf.graph.Parents(task)
-	wf.tasksMut.RUnlock()
 
 	if len(parents) == 0 {
 		return nil

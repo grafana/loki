@@ -24,7 +24,6 @@ import (
 	"unicode/utf8"
 
 	dto "github.com/prometheus/client_model/go"
-	"go.yaml.in/yaml/v2"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -77,14 +76,6 @@ const (
 	// strings.
 	UTF8Validation
 )
-
-var _ interface {
-	yaml.Marshaler
-	yaml.Unmarshaler
-	json.Marshaler
-	json.Unmarshaler
-	fmt.Stringer
-} = new(ValidationScheme)
 
 // String returns the string representation of s.
 func (s ValidationScheme) String() string {

@@ -10,6 +10,8 @@ on:
         type: string
         required: true
 
+permissions: {}
+
 jobs:
   create-operator-pull-request:
     runs-on: ubuntu-latest
@@ -20,7 +22,7 @@ jobs:
     steps:
       - name: Get GitHub App Token
         id: get-github-app-token
-        uses: grafana/shared-workflows/actions/create-github-app-token@259ba21cb3ff07724f331e26d926d655d24b317b # create-github-app-token/v0.2.3
+        uses: grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e # create-github-app-token/v0.3.1
         with:
           github_app: loki-operator-hub-publisher
 
@@ -55,14 +57,14 @@ jobs:
               --force
 
       - name: Checkout operatorhub repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: grafanabot/${{ inputs.repo }}
           token: ${{ steps.get-github-app-token.outputs.token }}
           persist-credentials: false
 
       - name: Checkout loki to tmp/ directory
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: grafana/loki
           token: ${{ steps.get-github-app-token.outputs.token }}
@@ -80,7 +82,7 @@ jobs:
 
       - name: Add OpenShift Supported versions to redhat catalog
         if: ${{ inputs.org == 'redhat-openshift-ecosystem' }}
-        uses: fjogeleit/yaml-update-action@04ff6ec06568fd21197db746472e36cc425de850 # v0.16.1
+        uses: fjogeleit/yaml-update-action@dffe9a5223d84653c13374032382f6bb5de8e5ef # v0.17.0
         with:
           valueFile: "operators/loki-operator/${{ env.version }}/metadata/annotations.yaml"
           propertyPath: "annotations['com.redhat.openshift.versions']"

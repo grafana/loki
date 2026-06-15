@@ -1,6 +1,6 @@
-FROM golang:1.26.2
+FROM golang:1.26.4@sha256:87a41d2539e5671777734e91f467499ed5eafb1fb1f77221dff2744db7a51775
 ENV CGO_ENABLED=0
-RUN go install github.com/go-delve/delve/cmd/dlv@v1.24.2
+RUN go install github.com/go-delve/delve/cmd/dlv@v1.26.3
 
 FROM alpine:3.23.4@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
 

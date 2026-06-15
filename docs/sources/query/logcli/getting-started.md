@@ -2113,9 +2113,9 @@ logcli labels job
 ```
 
 ```bash
-https://logs-dev-ops-tools1.grafana.net/api/prom/label/job/values
-loki-ops/consul
-loki-ops/loki-gw
+https://logs-prod-008.grafana.net/loki/api/v1/label/job/values
+loki-prod/consul
+loki-prod/loki-gw
 ```
 
 Print all labels and their unique values. This command is especially useful for finding [high-cardinality labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/#cardinality) in the index.
@@ -2145,12 +2145,12 @@ cluster             1          10
 Get all logs for a given stream
 
 ```bash
-logcli query '{job="loki-ops/consul"}'
+logcli query '{job="loki-prod/consul"}'
 ```
 
 ```bash
-https://logs-dev-ops-tools1.grafana.net/api/prom/query?query=%7Bjob%3D%22loki-ops%2Fconsul%22%7D&limit=30&start=1529928228&end=1529931828&direction=backward&regexp=
-Common labels: {job="loki-ops/consul", namespace="loki-ops"}
+https://logs-prod-008.grafana.net/loki/api/v1/query?query=%7Bjob%3D%22loki-prod%2Fconsul%22%7D&limit=30&start=1529928228&end=1529931828&direction=backward&regexp=
+Common labels: {job="loki-prod/consul", namespace="loki-prod"}
 2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Snapshot to 475409 complete
 2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Compacting logs from 456973 to 465169
 ```

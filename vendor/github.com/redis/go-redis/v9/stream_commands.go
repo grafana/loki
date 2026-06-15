@@ -29,11 +29,13 @@ type StreamCmdable interface {
 	XGroupDelConsumer(ctx context.Context, stream, group, consumer string) *IntCmd
 	XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSliceCmd
 	XAck(ctx context.Context, stream, group string, ids ...string) *IntCmd
+	XNack(ctx context.Context, a *XNackArgs) *IntCmd
 	XPending(ctx context.Context, stream, group string) *XPendingCmd
 	XPendingExt(ctx context.Context, a *XPendingExtArgs) *XPendingExtCmd
 	XClaim(ctx context.Context, a *XClaimArgs) *XMessageSliceCmd
 	XClaimJustID(ctx context.Context, a *XClaimArgs) *StringSliceCmd
 	XAutoClaim(ctx context.Context, a *XAutoClaimArgs) *XAutoClaimCmd
+	XAutoClaimWithDeleted(ctx context.Context, a *XAutoClaimArgs) *XAutoClaimWithDeletedCmd
 	XAutoClaimJustID(ctx context.Context, a *XAutoClaimArgs) *XAutoClaimJustIDCmd
 	XTrimMaxLen(ctx context.Context, key string, maxLen int64) *IntCmd
 	XTrimMaxLenApprox(ctx context.Context, key string, maxLen, limit int64) *IntCmd
@@ -359,6 +361,71 @@ func (c cmdable) XAck(ctx context.Context, stream, group string, ids ...string) 
 	return cmd
 }
 
+// XNACK modes. See [XNackArgs.Mode].
+const (
+	XNackModeSilent = "SILENT"
+	XNackModeFail   = "FAIL"
+	XNackModeFatal  = "FATAL"
+)
+
+// XNackArgs represents the arguments for the XNACK command (Redis >= 8.8).
+//
+// XNACK negatively acknowledges one or more messages in a consumer group's
+// Pending Entries List (PEL), releasing them back to the group so they can be
+// redelivered to another consumer via XREADGROUP.
+type XNackArgs struct {
+	Stream string
+	Group  string
+
+	// Mode controls how the delivery counter is adjusted for each NACKed entry.
+	// Must be one of [XNackModeSilent], [XNackModeFail], or [XNackModeFatal]:
+	//   - SILENT: the consumer is shutting down or experiencing internal errors
+	//     unrelated to the message. The delivery counter is decremented by 1,
+	//     undoing the increment that happened when the message was delivered.
+	//   - FAIL: the consumer could not process the message (e.g. insufficient
+	//     memory), but another consumer might succeed. The delivery counter is
+	//     left unchanged.
+	//   - FATAL: the message is invalid or suspected malicious. The delivery
+	//     counter is set to MAXINT, which will immediately move the message to
+	//     the Dead Letter Queue (DLQ) if one is configured for the group.
+	Mode string
+
+	// IDs is the list of message IDs to NACK. All IDs must already be in the
+	// group's PEL (i.e. previously delivered via XREADGROUP), unless Force is set.
+	IDs []string
+
+	// RetryCount sets the delivery counter to an explicit value, overriding the
+	// counter adjustment that would otherwise be applied by Mode.
+	// Leave nil to let Mode control the counter (the common case).
+	RetryCount *uint64
+
+	// Force allows NACKing message IDs that are not yet in the group's PEL,
+	// creating new unowned NACKed PEL entries for them directly.
+	// This is analogous to the FORCE flag in XCLAIM.
+	// Primarily used internally by Redis during AOF rewrite to reconstruct
+	// NACKed entries, but can also be used to manually inject entries.
+	Force bool
+}
+
+// XNack executes the XNACK command. See [XNackArgs] for the full argument documentation.
+// Requires Redis >= 8.8.
+func (c cmdable) XNack(ctx context.Context, a *XNackArgs) *IntCmd {
+	args := make([]interface{}, 0, 9+len(a.IDs))
+	args = append(args, "xnack", a.Stream, a.Group, a.Mode, "ids", len(a.IDs))
+	for _, id := range a.IDs {
+		args = append(args, id)
+	}
+	if a.RetryCount != nil {
+		args = append(args, "retrycount", *a.RetryCount)
+	}
+	if a.Force {
+		args = append(args, "force")
+	}
+	cmd := NewIntCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
 func (c cmdable) XPending(ctx context.Context, stream, group string) *XPendingCmd {
 	cmd := NewXPendingCmd(ctx, "xpending", stream, group)
 	_ = c(ctx, cmd)
@@ -402,6 +469,13 @@ type XAutoClaimArgs struct {
 func (c cmdable) XAutoClaim(ctx context.Context, a *XAutoClaimArgs) *XAutoClaimCmd {
 	args := xAutoClaimArgs(ctx, a)
 	cmd := NewXAutoClaimCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) XAutoClaimWithDeleted(ctx context.Context, a *XAutoClaimArgs) *XAutoClaimWithDeletedCmd {
+	args := xAutoClaimArgs(ctx, a)
+	cmd := NewXAutoClaimWithDeletedCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }

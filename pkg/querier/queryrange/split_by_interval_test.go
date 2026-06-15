@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -1376,7 +1376,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
 			Limit:     r.(*LokiRequest).Limit,
-			Version:   uint32(loghttp.VersionV1),
+			Version:   1,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{
@@ -1415,7 +1415,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Limit:     1000,
 				Step:      1,
 				Direction: logproto.BACKWARD,
-				Path:      "/api/prom/query_range",
+				Path:      "/loki/api/v1/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
@@ -1448,7 +1448,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Limit:     1000,
 				Step:      1,
 				Direction: logproto.FORWARD,
-				Path:      "/api/prom/query_range",
+				Path:      "/loki/api/v1/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
@@ -1481,7 +1481,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Limit:     2,
 				Step:      1,
 				Direction: logproto.FORWARD,
-				Path:      "/api/prom/query_range",
+				Path:      "/loki/api/v1/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
@@ -1512,7 +1512,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 				Limit:     2,
 				Step:      1,
 				Direction: logproto.BACKWARD,
-				Path:      "/api/prom/query_range",
+				Path:      "/loki/api/v1/query_range",
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
@@ -1550,7 +1550,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 	next := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiSeriesResponse{
 			Status:  "success",
-			Version: uint32(loghttp.VersionV1),
+			Version: 1,
 			Data: []logproto.SeriesIdentifier{
 				{
 					Labels: []logproto.SeriesIdentifier_LabelsEntry{
@@ -1782,7 +1782,7 @@ func Test_ExitEarly(t *testing.T) {
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
 			Limit:     r.(*LokiRequest).Limit,
-			Version:   uint32(loghttp.VersionV1),
+			Version:   1,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{
@@ -1817,7 +1817,7 @@ func Test_ExitEarly(t *testing.T) {
 		Limit:     2,
 		Step:      1,
 		Direction: logproto.FORWARD,
-		Path:      "/api/prom/query_range",
+		Path:      "/loki/api/v1/query_range",
 	}
 
 	expected := &LokiResponse{
@@ -1869,7 +1869,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
 			Limit:     r.(*LokiRequest).Limit,
-			Version:   uint32(loghttp.VersionV1),
+			Version:   1,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{
@@ -1905,7 +1905,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 		Limit:     uint32(n / 2),
 		Step:      1,
 		Direction: logproto.FORWARD,
-		Path:      "/api/prom/query_range",
+		Path:      "/loki/api/v1/query_range",
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
