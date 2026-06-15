@@ -30,13 +30,13 @@ groups:
     expr: |
       count(
         lokistack_info
-      ) by (size, object_storage_type, credential_mode, schema_version)
+      ) by (stack_namespace, size, object_storage_type, credential_mode, schema_version)
   # Component replicas by size: total replica count per component and size
   - record: openshift_logging:lokistack_component_replicas:sum
     expr: |
       sum(
         lokistack_component_replicas
-      ) by (component, size)
+      ) by (stack_namespace, component, size)
   # Average user-configured ingestion rate limit (MB)
   - record: openshift_logging:lokistack_global_ingestion_rate_limit_bytes:avg
     expr: |
@@ -46,15 +46,13 @@ groups:
   # Ingester CPU usage per LokiStack (cores)
   - record: openshift_logging:lokistack_ingester_cpu_cores:sum
     expr: |
-      sum by (size) (
-        sum by (stack_namespace, stack_name) (
+      sum by (size, stack_namespace, stack_name) (
+        label_replace(
           label_replace(
-            label_replace(
-              rate(container_cpu_usage_seconds_total{container="loki-ingester"}[5m]),
-              "stack_name", "$1", "pod", "(.*)-ingester-.*"
-            ),
-            "stack_namespace", "$1", "namespace", "(.*)"
-          )
+            rate(container_cpu_usage_seconds_total{container="loki-ingester"}[5m]),
+            "stack_name", "$1", "pod", "(.+)-ingester-.+"
+          ),
+          "stack_namespace", "$1", "namespace", "(.+)"
         )
         * on (stack_namespace, stack_name) group_left(size)
         lokistack_info
@@ -62,21 +60,19 @@ groups:
   # Ingester memory usage by size (bytes)
   - record: openshift_logging:lokistack_ingester_memory_working_set_bytes:sum
     expr: |
-      sum by (size) (
-        sum by (stack_namespace, stack_name) (
+      sum by (size, stack_namespace, stack_name) (
+        label_replace(
           label_replace(
-            label_replace(
-              container_memory_working_set_bytes{container="loki-ingester",pod=~".*-ingester-.*"},
-              "stack_name",
-              "$1",
-              "pod",
-              "(.*)-ingester-.*"
-            ),
-            "stack_namespace",
+            container_memory_working_set_bytes{container="loki-ingester",pod=~".+-ingester-.+"},
+            "stack_name",
             "$1",
-            "namespace",
-            "(.*)"
-          )
+            "pod",
+            "(.+)-ingester-.+"
+          ),
+          "stack_namespace",
+          "$1",
+          "namespace",
+          "(.+)"
         )
         * on (stack_namespace, stack_name) group_left(size)
         lokistack_info
@@ -84,21 +80,19 @@ groups:
   # Total bytes received by size (bytes/s)
   - record: openshift_logging:lokistack_ingestion_received_bytes_per_second:sum
     expr: |
-      sum by (size) (
-        sum by (stack_namespace, stack_name) (
+      sum by (size, stack_namespace, stack_name) (
+        label_replace(
           label_replace(
-            label_replace(
-              rate(loki_distributor_bytes_received_total[5m]),
-              "stack_name",
-              "$1",
-              "pod",
-              "(.*)-distributor-.*"
-            ),
-            "stack_namespace",
+            rate(loki_distributor_bytes_received_total[5m]),
+            "stack_name",
             "$1",
-            "namespace",
-            "(.*)"
-          )
+            "pod",
+            "(.+)-distributor-.+"
+          ),
+          "stack_namespace",
+          "$1",
+          "namespace",
+          "(.+)"
         )
         * on (stack_namespace, stack_name) group_left(size)
         lokistack_info
@@ -106,21 +100,19 @@ groups:
   # Total bytes discarded by size and reason (bytes/s)
   - record: openshift_logging:lokistack_ingestion_discarded_bytes_per_second:sum
     expr: |
-      sum by (size, reason) (
-        sum by (stack_namespace, stack_name, reason) (
+      sum by (size, stack_namespace, stack_name, reason) (
+        label_replace(
           label_replace(
-            label_replace(
-              rate(loki_discarded_bytes_total[5m]),
-              "stack_name",
-              "$1",
-              "pod",
-              "(.*)-distributor-.*"
-            ),
-            "stack_namespace",
+            rate(loki_discarded_bytes_total[5m]),
+            "stack_name",
             "$1",
-            "namespace",
-            "(.*)"
-          )
+            "pod",
+            "(.+)-distributor-.+"
+          ),
+          "stack_namespace",
+          "$1",
+          "namespace",
+          "(.+)"
         )
         * on (stack_namespace, stack_name) group_left(size)
         lokistack_info

@@ -267,16 +267,16 @@ tests:
       - eval_time: 5m
         expr: openshift_logging:lokistack_info:count
         exp_samples:
-          - labels: 'openshift_logging:lokistack_info:count{size="1x.small",object_storage_type="s3",credential_mode="static",schema_version="v13"}'
+          - labels: 'openshift_logging:lokistack_info:count{size="1x.small",stack_namespace="my-ns",object_storage_type="s3",credential_mode="static",schema_version="v13"}'
             value: 1
-          - labels: 'openshift_logging:lokistack_info:count{size="1x.small",object_storage_type="gcs",credential_mode="token",schema_version="v12"}'
+          - labels: 'openshift_logging:lokistack_info:count{size="1x.small",stack_namespace="my-ns",object_storage_type="gcs",credential_mode="token",schema_version="v12"}'
             value: 1
-          - labels: 'openshift_logging:lokistack_info:count{size="1x.medium",object_storage_type="azure",credential_mode="token-cco",schema_version="v13"}'
+          - labels: 'openshift_logging:lokistack_info:count{size="1x.medium",stack_namespace="my-ns",object_storage_type="azure",credential_mode="token-cco",schema_version="v13"}'
             value: 1
       - eval_time: 5m
         expr: openshift_logging:lokistack_component_replicas:sum
         exp_samples:
-          - labels: 'openshift_logging:lokistack_component_replicas:sum{component="ingester",size="1x.medium"}'
+          - labels: 'openshift_logging:lokistack_component_replicas:sum{component="ingester",size="1x.medium",stack_namespace="my-ns"}'
             value: 5
       - eval_time: 5m
         expr: openshift_logging:lokistack_global_ingestion_rate_limit_bytes:avg
@@ -286,24 +286,24 @@ tests:
       - eval_time: 5m
         expr: openshift_logging:lokistack_ingester_cpu_cores:sum
         exp_samples:
-          - labels: 'openshift_logging:lokistack_ingester_cpu_cores:sum{size="1x.small"}'
+          - labels: 'openshift_logging:lokistack_ingester_cpu_cores:sum{size="1x.small",stack_namespace="my-ns",stack_name="mystack"}'
             value: 1
       - eval_time: 5m
         expr: openshift_logging:lokistack_ingester_memory_working_set_bytes:sum
         exp_samples:
-          - labels: 'openshift_logging:lokistack_ingester_memory_working_set_bytes:sum{size="1x.small"}'
+          - labels: 'openshift_logging:lokistack_ingester_memory_working_set_bytes:sum{size="1x.small",stack_namespace="my-ns",stack_name="mystack"}'
             value: 4294967296
       - eval_time: 5m
         expr: openshift_logging:lokistack_ingestion_received_bytes_per_second:sum
         exp_samples:
-          - labels: 'openshift_logging:lokistack_ingestion_received_bytes_per_second:sum{size="1x.small"}'
+          - labels: 'openshift_logging:lokistack_ingestion_received_bytes_per_second:sum{size="1x.small",stack_namespace="my-ns",stack_name="mystack1"}'
             value: 83886080
-          - labels: 'openshift_logging:lokistack_ingestion_received_bytes_per_second:sum{size="1x.medium"}'
+          - labels: 'openshift_logging:lokistack_ingestion_received_bytes_per_second:sum{size="1x.medium",stack_namespace="my-ns",stack_name="mystack2"}'
             value: 94371840
       - eval_time: 5m
         expr: openshift_logging:lokistack_ingestion_discarded_bytes_per_second:sum
         exp_samples:
-          - labels: 'openshift_logging:lokistack_ingestion_discarded_bytes_per_second:sum{reason="line_too_long",size="1x.small"}'
+          - labels: 'openshift_logging:lokistack_ingestion_discarded_bytes_per_second:sum{reason="line_too_long",size="1x.small",stack_namespace="my-ns",stack_name="mystack1"}'
             value: 3145728
-          - labels: 'openshift_logging:lokistack_ingestion_discarded_bytes_per_second:sum{reason="rate_limited",size="1x.medium"}'
+          - labels: 'openshift_logging:lokistack_ingestion_discarded_bytes_per_second:sum{reason="rate_limited",size="1x.medium",stack_namespace="my-ns",stack_name="mystack2"}'
             value: 5242880
