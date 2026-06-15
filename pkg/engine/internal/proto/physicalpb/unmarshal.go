@@ -11,12 +11,12 @@ func (p *Plan) UnmarshalPhysical(from *physical.Plan) error {
 	graph := from.Graph()
 
 	*p = Plan{
-		Nodes: make([]*Node, 0, graph.Len()),
-		Edges: make([]*PlanEdge, 0),
+		Nodes: make([]Node, 0, graph.Len()),
+		Edges: make([]PlanEdge, 0),
 	}
 
 	for node := range graph.Nodes() {
-		protoNode := &Node{}
+		protoNode := Node{}
 		if err := protoNode.UnmarshalPhysical(node); err != nil {
 			return err
 		}
@@ -25,7 +25,7 @@ func (p *Plan) UnmarshalPhysical(from *physical.Plan) error {
 
 	for node := range graph.Nodes() {
 		for _, child := range graph.Children(node) {
-			edge := &PlanEdge{
+			edge := PlanEdge{
 				Parent: NodeID{Value: ulid.ULID(node.ID())},
 				Child:  NodeID{Value: ulid.ULID(child.ID())},
 			}

@@ -75,13 +75,13 @@ func (s *Section) SortInfo() *datasetmd.SortInfo { return s.sortInfo }
 // as a tuple of [ColumnType] and [SortDirection].
 func (s *Section) PrimarySortOrder() (dataset.ColumnType, datasetmd.SortDirection, error) {
 	if s.sortInfo == nil || len(s.sortInfo.ColumnSorts) == 0 {
-		return dataset.ColumnType{}, datasetmd.SORT_DIRECTION_UNSPECIFIED, fmt.Errorf("missing sort order information")
+		return dataset.ColumnType{}, datasetmd.SortDirection_SORT_DIRECTION_UNSPECIFIED, fmt.Errorf("missing sort order information")
 	}
 
 	si := s.sortInfo.ColumnSorts[0] // primary sort order
 	idx := int(si.ColumnIndex)
 	if idx < 0 || idx >= len(s.columns) {
-		return dataset.ColumnType{}, datasetmd.SORT_DIRECTION_UNSPECIFIED, fmt.Errorf("invalid column reference in sort info")
+		return dataset.ColumnType{}, datasetmd.SortDirection_SORT_DIRECTION_UNSPECIFIED, fmt.Errorf("invalid column reference in sort info")
 	}
 
 	return s.columns[idx].Type, si.Direction, nil

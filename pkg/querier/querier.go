@@ -310,7 +310,7 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 		return nil, err
 	}
 
-	if *req.Start, *req.End, err = querier_limits.ValidateQueryTimeRangeLimits(ctx, userID, q.limits, *req.Start, *req.End); err != nil {
+	if req.Start, req.End, err = querier_limits.ValidateQueryTimeRangeLimits(ctx, userID, q.limits, req.Start, req.End); err != nil {
 		return nil, err
 	}
 
@@ -329,15 +329,15 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
 
 	var ingesterValues [][]string
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		g.Go(func() error {
 			var err error
 			timeFramedReq := *req
-			timeFramedReq.Start = &ingesterQueryInterval.start
-			timeFramedReq.End = &ingesterQueryInterval.end
+			timeFramedReq.Start = ingesterQueryInterval.start
+			timeFramedReq.End = ingesterQueryInterval.end
 
 			ingesterValues, err = q.ingesterQuerier.Label(ctx, &timeFramedReq)
 			return err
@@ -513,9 +513,9 @@ func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, throug
 			Limit:     1,
 			Start:     from,
 			End:       through,
-			Direction: logproto.FORWARD,
+			Direction: logproto.Direction_FORWARD,
 			Shards:    shards,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: parsed,
 			},
 		},
@@ -874,9 +874,9 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			Start:     req.Start,
 			End:       req.End,
 			Limit:     req.LineLimit,
-			Direction: logproto.BACKWARD,
+			Direction: logproto.Direction_BACKWARD,
 			Selector:  expr.String(),
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		},

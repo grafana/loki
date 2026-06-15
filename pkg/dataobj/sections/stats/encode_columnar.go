@@ -113,21 +113,21 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 	columnSorts := make([]*datasetmd.SortInfo_ColumnSort, 0, 1+len(labelKeys)+2)
 	columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
 		ColumnIndex: 2, // sort_schema
-		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+		Direction:   datasetmd.SortDirection_SORT_DIRECTION_ASCENDING,
 	})
 	for i := range labelKeys {
 		columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
 			ColumnIndex: uint32(7 + i),
-			Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+			Direction:   datasetmd.SortDirection_SORT_DIRECTION_ASCENDING,
 		})
 	}
 	columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
 		ColumnIndex: 3, // min_timestamp
-		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+		Direction:   datasetmd.SortDirection_SORT_DIRECTION_ASCENDING,
 	})
 	columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
 		ColumnIndex: 4, // max_timestamp
-		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+		Direction:   datasetmd.SortDirection_SORT_DIRECTION_ASCENDING,
 	})
 	enc.SetSortInfo(&datasetmd.SortInfo{ColumnSorts: columnSorts})
 
@@ -158,11 +158,11 @@ func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*d
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
 			Logical:  logicalType.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
 	})
 }
 
@@ -172,11 +172,11 @@ func numberColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*d
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64,
 			Logical:  logicalType.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
-		Compression: datasetmd.COMPRESSION_TYPE_NONE,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 	})
 }
 
@@ -187,11 +187,11 @@ func labelColumnBuilder(labelName string, pageSize, pageRowCount int) (*dataset.
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypeLabel.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
 	})
 }
 

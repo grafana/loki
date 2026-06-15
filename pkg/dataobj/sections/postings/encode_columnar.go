@@ -26,11 +26,11 @@ func columnarEncode(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *c
 		PageSizeHint:    pageSizeHint,
 		PageMaxRowCount: pageMaxRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64,
 			Logical:  ColumnTypeKind.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
-		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
 	})
 	if err != nil {
 		return fmt.Errorf("creating kind column: %w", err)
@@ -60,11 +60,11 @@ func columnarEncode(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *c
 		PageSizeHint:    pageSizeHint,
 		PageMaxRowCount: pageMaxRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypeBloomFilter.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-		Compression: datasetmd.COMPRESSION_TYPE_NONE, // bloom data is pre-compressed
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_NONE, // bloom data is pre-compressed
 	})
 	if err != nil {
 		return fmt.Errorf("creating bloom_filter column: %w", err)
@@ -151,11 +151,11 @@ func columnarEncode(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *c
 	// are not part of the sort key.
 	enc.SetSortInfo(&datasetmd.SortInfo{
 		ColumnSorts: []*datasetmd.SortInfo_ColumnSort{
-			{ColumnIndex: 0, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // kind
-			{ColumnIndex: 1, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // object_path
-			{ColumnIndex: 2, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // section_index
-			{ColumnIndex: 3, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // column_name
-			{ColumnIndex: 4, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // label_value
+			{ColumnIndex: 0, Direction: datasetmd.SortDirection_SORT_DIRECTION_ASCENDING}, // kind
+			{ColumnIndex: 1, Direction: datasetmd.SortDirection_SORT_DIRECTION_ASCENDING}, // object_path
+			{ColumnIndex: 2, Direction: datasetmd.SortDirection_SORT_DIRECTION_ASCENDING}, // section_index
+			{ColumnIndex: 3, Direction: datasetmd.SortDirection_SORT_DIRECTION_ASCENDING}, // column_name
+			{ColumnIndex: 4, Direction: datasetmd.SortDirection_SORT_DIRECTION_ASCENDING}, // label_value
 		},
 	})
 
@@ -188,11 +188,11 @@ func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*d
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
 			Logical:  logicalType.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
 	})
 }
 
@@ -204,11 +204,11 @@ func numberColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*d
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64,
 			Logical:  logicalType.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
-		Compression: datasetmd.COMPRESSION_TYPE_NONE,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 	})
 }
 

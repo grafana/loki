@@ -284,7 +284,7 @@ func translateLogsPredicate(p RowPredicate, dsetColumns []dataset.Column, actual
 		return dataset.FuncPredicate{
 			Column: messageColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
-				if value.Type() == datasetmd.PHYSICAL_TYPE_BINARY {
+				if value.Type() == datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY {
 					// To handle older dataobjs that still use string type for message column. This can be removed in future.
 					return p.Keep(value.Binary())
 				}
@@ -370,13 +370,13 @@ func findDatasetColumn(columns []dataset.Column, actual []*Column, check func(*C
 
 func valueToString(value dataset.Value) string {
 	switch value.Type() {
-	case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_UNSPECIFIED:
 		return ""
-	case datasetmd.PHYSICAL_TYPE_INT64:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_INT64:
 		return strconv.FormatInt(value.Int64(), 10)
-	case datasetmd.PHYSICAL_TYPE_UINT64:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64:
 		return strconv.FormatUint(value.Uint64(), 10)
-	case datasetmd.PHYSICAL_TYPE_BINARY:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY:
 		return unsafeString(value.Binary())
 	default:
 		panic(fmt.Sprintf("unsupported value type %s", value.Type()))

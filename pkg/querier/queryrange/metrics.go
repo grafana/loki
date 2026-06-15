@@ -68,11 +68,11 @@ func QueryMetricsMiddleware(metrics *QueryMetrics) queryrangebase.Middleware {
 			var expr syntax.Expr
 			switch r := req.(type) {
 			case *LokiRequest:
-				if r.Plan != nil {
+				if r.Plan.AST != nil {
 					expr = r.Plan.AST
 				}
 			case *LokiInstantRequest:
-				if r.Plan != nil {
+				if r.Plan.AST != nil {
 					expr = r.Plan.AST
 				}
 			default:

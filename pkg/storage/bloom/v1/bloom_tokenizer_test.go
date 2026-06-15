@@ -49,7 +49,7 @@ func TestTokenizerPopulate(t *testing.T) {
 		context.Background(),
 		time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
 		time.Unix(0, math.MaxInt64),
-		logproto.FORWARD,
+		logproto.Direction_FORWARD,
 		log.NewNoopPipeline().ForStream(labels.EmptyLabels()),
 	)
 	require.Nil(t, err)
@@ -94,7 +94,7 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 		context.Background(),
 		time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
 		time.Unix(0, math.MaxInt64),
-		logproto.FORWARD,
+		logproto.Direction_FORWARD,
 		log.NewNoopPipeline().ForStream(labels.EmptyLabels()),
 	)
 	require.Nil(t, err)
@@ -136,7 +136,7 @@ func chunkRefItrFromMetadata(metadata ...push.LabelsAdapter) (iter.EntryIterator
 		context.Background(),
 		time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
 		time.Unix(0, math.MaxInt64),
-		logproto.FORWARD,
+		logproto.Direction_FORWARD,
 		log.NewNoopPipeline().ForStream(labels.EmptyLabels()),
 	)
 	return itr, err
@@ -219,7 +219,7 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 			context.Background(),
 			time.Unix(0, 0), // TODO: Parameterize/better handle the timestamps?
 			time.Unix(0, math.MaxInt64),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			log.NewNoopPipeline().ForStream(labels.EmptyLabels()),
 		)
 		require.Nil(b, err)

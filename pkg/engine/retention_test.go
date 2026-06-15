@@ -42,7 +42,7 @@ func (f fakeParams) End() time.Time                          { return f.end }
 func (f fakeParams) Step() time.Duration                     { return 0 }
 func (f fakeParams) Interval() time.Duration                 { return 0 }
 func (f fakeParams) Limit() uint32                           { return 0 }
-func (f fakeParams) Direction() logproto.Direction           { return logproto.BACKWARD }
+func (f fakeParams) Direction() logproto.Direction           { return logproto.Direction_BACKWARD }
 func (f fakeParams) Shards() []string                        { return nil }
 func (f fakeParams) GetExpression() syntax.Expr              { return nil }
 func (f fakeParams) GetStoreChunks() *logproto.ChunkRefGroup { return nil }

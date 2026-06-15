@@ -40,7 +40,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum(bytes_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(180, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(bytes_over_time({app="foo"}[3m]))`),
 				},
 			},
@@ -58,7 +58,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum(bytes_over_time({app="foo"}[3h]))`,
 				TimeTs: twelve34,
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(bytes_over_time({app="foo"}[3h]))`),
 				},
 			},
@@ -77,7 +77,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum by (bar) (bytes_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(180, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (bar) (bytes_over_time({app="foo"}[3m]))`),
 				},
 			},
@@ -95,7 +95,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum by (bar) (bytes_over_time({app="foo"}[3h]))`,
 				TimeTs: twelve34,
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (bar) (bytes_over_time({app="foo"}[3h]))`),
 				},
 			},
@@ -114,7 +114,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum(count_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(180, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(count_over_time({app="foo"}[3m]))`),
 				},
 			},
@@ -132,7 +132,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum(count_over_time({app="foo"}[3h]))`,
 				TimeTs: twelve34,
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(count_over_time({app="foo"}[3h]))`),
 				},
 			},
@@ -151,7 +151,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum by (bar) (count_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(180, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (bar) (count_over_time({app="foo"}[3m]))`),
 				},
 			},
@@ -169,7 +169,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum by (bar) (count_over_time({app="foo"}[3h]))`,
 				TimeTs: twelve34,
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (bar) (count_over_time({app="foo"}[3h]))`),
 				},
 			},
@@ -188,7 +188,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum(sum_over_time({app="foo"} | unwrap bar [3m]))`,
 				TimeTs: time.Unix(180, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(sum_over_time({app="foo"} | unwrap bar [3m]))`),
 				},
 			},
@@ -206,7 +206,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum(sum_over_time({app="foo"} | unwrap bar [3h]))`,
 				TimeTs: twelve34,
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(sum_over_time({app="foo"} | unwrap bar [3h]))`),
 				},
 			},
@@ -225,7 +225,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum by (bar) (sum_over_time({app="foo"} | unwrap bar [3m]))`,
 				TimeTs: time.Unix(180, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (bar) (sum_over_time({app="foo"} | unwrap bar [3m]))`),
 				},
 			},
@@ -243,7 +243,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 				Query:  `sum by (bar) (sum_over_time({app="foo"} | unwrap bar [3h]))`,
 				TimeTs: twelve34,
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (bar) (sum_over_time({app="foo"} | unwrap bar [3h]))`),
 				},
 			},
@@ -315,7 +315,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum(bytes_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(bytes_over_time({app="foo"}[3m]))`),
 				},
 			},
@@ -331,7 +331,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum by (bar) (bytes_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (bar) (bytes_over_time({app="foo"}[3m]))`),
 				},
 			},
@@ -347,7 +347,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum(count_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(count_over_time({app="foo"}[3m]))`),
 				},
 			},
@@ -363,7 +363,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum by (bar) (count_over_time({app="foo"}[3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (bar) (count_over_time({app="foo"}[3m]))`),
 				},
 			},
@@ -379,7 +379,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum(sum_over_time({app="foo"} | unwrap bar [3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(sum_over_time({app="foo"} | unwrap bar [3m]))`),
 				},
 			},
@@ -395,7 +395,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Query:  `sum by (bar) (sum_over_time({app="foo"} | unwrap bar [3m]))`,
 				TimeTs: time.Unix(1, 0),
 				Path:   "/loki/api/v1/query",
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (bar) (sum_over_time({app="foo"} | unwrap bar [3m]))`),
 				},
 			},
@@ -435,7 +435,7 @@ func subQueryRequestResponseWithQueryTime(expectedSubQuery string, sampleValue f
 			Query:  expectedSubQuery,
 			TimeTs: exec,
 			Path:   "/loki/api/v1/query",
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: syntax.MustParseExpr(expectedSubQuery),
 			},
 		},
@@ -468,7 +468,7 @@ func subQueryRequestResponse(expectedSubQuery string, sampleValue float64) query
 			Query:  expectedSubQuery,
 			TimeTs: time.Unix(1, 0),
 			Path:   "/loki/api/v1/query",
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: syntax.MustParseExpr(expectedSubQuery),
 			},
 		},

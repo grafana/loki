@@ -324,7 +324,7 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
 				end:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
 				interval:  5 * time.Minute,
 				limit:     1000,
-				direction: logproto.BACKWARD,
+				direction: logproto.Direction_BACKWARD,
 			}
 
 			logicalPlan, err := logical.BuildPlan(context.Background(), q)

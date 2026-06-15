@@ -105,14 +105,14 @@ func (p *MemPage) open(compression datasetmd.CompressionType) (openedPage, io.Cl
 	)
 
 	switch compression {
-	case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
+	case datasetmd.CompressionType_COMPRESSION_TYPE_UNSPECIFIED, datasetmd.CompressionType_COMPRESSION_TYPE_NONE:
 		// Data is already uncompressed; nothing to do.
 		return openedPage{
 			PresenceData: presenceData,
 			ValueData:    compressedValuesData,
 		}, io.NopCloser(nil), nil
 
-	case datasetmd.COMPRESSION_TYPE_SNAPPY:
+	case datasetmd.CompressionType_COMPRESSION_TYPE_SNAPPY:
 		sr := snappyPool.Get().(*snappy.Reader)
 		sr.Reset(bytes.NewReader(compressedValuesData))
 		defer func() {
@@ -140,7 +140,7 @@ func (p *MemPage) open(compression datasetmd.CompressionType) (openedPage, io.Cl
 			ValueData:    decompressed.Bytes(),
 		}, closer, nil
 
-	case datasetmd.COMPRESSION_TYPE_ZSTD:
+	case datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD:
 		zr, err := getZstdDecoder()
 		if err != nil {
 			return openedPage{}, nil, err

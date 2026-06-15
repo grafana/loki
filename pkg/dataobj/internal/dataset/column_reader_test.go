@@ -115,9 +115,9 @@ func buildMultiPageColumn(t *testing.T, values []string) *MemColumn {
 
 	builder, err := NewColumnBuilder("", BuilderOptions{
 		PageSizeHint: 128, // Small page size to force multiple pages
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 	})
 	require.NoError(t, err)
 

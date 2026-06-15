@@ -65,11 +65,11 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Query:     `{foo="bar"}`,
 			Limit:     200,
 			Step:      10000, // step is expected in ms
-			Direction: logproto.FORWARD,
+			Direction: logproto.Direction_FORWARD,
 			Path:      "/query_range",
 			StartTs:   start,
 			EndTs:     end,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: syntax.MustParseExpr(`{foo="bar"}`),
 			},
 		}, false},
@@ -81,15 +81,14 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Limit:     200,
 			Step:      14000, // step is expected in ms; calculated default if request param not present
 			Interval:  10000, // interval is expected in ms
-			Direction: logproto.BACKWARD,
+			Direction: logproto.Direction_BACKWARD,
 			Path:      "/query_range",
 			StartTs:   start,
 			EndTs:     end,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: syntax.MustParseExpr(`{foo="bar"}`),
 			},
 		}, false},
-
 		{"series", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/series?start=%d&end=%d&match={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
@@ -315,10 +314,10 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 			&LokiInstantRequest{
 				Query:     `{foo="bar"}`,
 				Limit:     200,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/v1/query",
 				TimeTs:    start,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"}`),
 				},
 				CachingOptions: queryrangebase.CachingOptions{
@@ -343,11 +342,11 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 				Query:     `{foo="bar"}`,
 				Limit:     200,
 				Step:      10000, // step is expected in ms
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Path:      "/query_range",
 				StartTs:   start,
 				EndTs:     end,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"}`),
 				},
 				CachingOptions: queryrangebase.CachingOptions{
@@ -382,7 +381,7 @@ func TestParamsFromRequest_CachingOptions(t *testing.T) {
 				Query:   `{foo="bar"}`,
 				StartTs: start,
 				EndTs:   end,
-				Plan:    &plan.QueryPlan{AST: expr},
+				Plan:    plan.QueryPlan{AST: expr},
 				CachingOptions: queryrangebase.CachingOptions{
 					Disabled: true,
 				},
@@ -393,7 +392,7 @@ func TestParamsFromRequest_CachingOptions(t *testing.T) {
 			req: &LokiInstantRequest{
 				Query:  `{foo="bar"}`,
 				TimeTs: start,
-				Plan:   &plan.QueryPlan{AST: expr},
+				Plan:   plan.QueryPlan{AST: expr},
 				CachingOptions: queryrangebase.CachingOptions{
 					Disabled: true,
 				},
@@ -468,10 +467,10 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		},
 		{
 			"streams v1", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(streamsString))},
-			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
+			&LokiRequest{Direction: logproto.Direction_FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Limit:     100,
 				Version:   1,
 				Data: LokiData{
@@ -483,10 +482,10 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		},
 		{
 			"streams v1 with structured metadata", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(streamsStringWithStructuredMetdata))},
-			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
+			&LokiRequest{Direction: logproto.Direction_FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Limit:     100,
 				Version:   1,
 				Data: LokiData{
@@ -498,10 +497,10 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		},
 		{
 			"streams v1 with categorized labels", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(streamsStringWithCategories))},
-			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
+			&LokiRequest{Direction: logproto.Direction_FORWARD, Limit: 100, Path: "/loki/api/v1/query_range"},
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Limit:     100,
 				Version:   1,
 				Data: LokiData{
@@ -511,7 +510,6 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				Statistics: statsResult,
 			}, "",
 		},
-
 		{
 			"series", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesString))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
@@ -694,8 +692,8 @@ func TestLabelRequestSpanLogging(t *testing.T) {
 	end := now.Add(1000 * time.Second)
 	req := LabelRequest{
 		LabelRequest: logproto.LabelRequest{
-			Start: &now,
-			End:   &end,
+			Start: now,
+			End:   end,
 		},
 	}
 
@@ -947,7 +945,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 		Limit:     200,
 		Step:      86400000, // nanoseconds
 		Interval:  10000000, // nanoseconds
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Path:      "/query_range",
 		StartTs:   start,
 		EndTs:     end,
@@ -1057,8 +1055,8 @@ func Test_codec_labels_DecodeRequest(t *testing.T) {
 	r := &http.Request{URL: u}
 	req, err := DefaultCodec.DecodeRequest(context.TODO(), r, nil)
 	require.NoError(t, err)
-	require.Equal(t, start, *req.(*LabelRequest).Start)
-	require.Equal(t, end, *req.(*LabelRequest).End)
+	require.Equal(t, start, req.(*LabelRequest).Start)
+	require.Equal(t, end, req.(*LabelRequest).End)
 	require.Equal(t, `{foo="bar"}`, req.(*LabelRequest).Query)
 	require.Equal(t, "/loki/api/v1/labels", req.(*LabelRequest).Path())
 
@@ -1078,8 +1076,8 @@ func Test_codec_labels_DecodeRequest(t *testing.T) {
 	r = mux.SetURLVars(r, map[string]string{"name": "__name__"})
 	req, err = DefaultCodec.DecodeRequest(context.TODO(), r, nil)
 	require.NoError(t, err)
-	require.Equal(t, start, *req.(*LabelRequest).Start)
-	require.Equal(t, end, *req.(*LabelRequest).End)
+	require.Equal(t, start, req.(*LabelRequest).Start)
+	require.Equal(t, end, req.(*LabelRequest).End)
 	require.Equal(t, `{foo="bar"}`, req.(*LabelRequest).Query)
 	require.Equal(t, "/loki/api/v1/label/__name__/values", req.(*LabelRequest).Path())
 
@@ -1193,7 +1191,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			"loki v1", "/loki/api/v1/query_range",
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Limit:     100,
 				Version:   1,
 				Data: LokiData{
@@ -1207,7 +1205,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			"loki v1 with categories", "/loki/api/v1/query_range",
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 				Limit:     100,
 				Version:   1,
 				Data: LokiData{
@@ -1221,7 +1219,6 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				httpreq.LokiEncodingFlagsHeader: string(httpreq.FlagCategorizeLabels),
 			},
 		},
-
 		{
 			"loki series", "/loki/api/v1/series",
 			&LokiSeriesResponse{
@@ -1364,7 +1361,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
 					Warnings:  []string{"warning"},
-					Direction: logproto.BACKWARD,
+					Direction: logproto.Direction_BACKWARD,
 					Limit:     100,
 					Version:   1,
 					Data: LokiData{
@@ -1389,7 +1386,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
-					Direction: logproto.BACKWARD,
+					Direction: logproto.Direction_BACKWARD,
 					Limit:     100,
 					Version:   1,
 					Data: LokiData{
@@ -1417,7 +1414,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
 				Warnings:   []string{"warning"},
-				Direction:  logproto.BACKWARD,
+				Direction:  logproto.Direction_BACKWARD,
 				Limit:      100,
 				Version:    1,
 				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
@@ -1453,7 +1450,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			[]queryrangebase.Response{
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
-					Direction: logproto.BACKWARD,
+					Direction: logproto.Direction_BACKWARD,
 					Limit:     6,
 					Version:   1,
 					Data: LokiData{
@@ -1479,7 +1476,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
-					Direction: logproto.BACKWARD,
+					Direction: logproto.Direction_BACKWARD,
 					Limit:     6,
 					Version:   1,
 					Data: LokiData{
@@ -1505,7 +1502,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
-				Direction:  logproto.BACKWARD,
+				Direction:  logproto.Direction_BACKWARD,
 				Limit:      6,
 				Version:    1,
 				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
@@ -1538,7 +1535,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			[]queryrangebase.Response{
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
-					Direction: logproto.FORWARD,
+					Direction: logproto.Direction_FORWARD,
 					Limit:     100,
 					Version:   1,
 					Data: LokiData{
@@ -1563,7 +1560,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
-					Direction: logproto.FORWARD,
+					Direction: logproto.Direction_FORWARD,
 					Limit:     100,
 					Version:   1,
 					Data: LokiData{
@@ -1590,7 +1587,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
-				Direction:  logproto.FORWARD,
+				Direction:  logproto.Direction_FORWARD,
 				Limit:      100,
 				Version:    1,
 				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
@@ -1626,7 +1623,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			[]queryrangebase.Response{
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
-					Direction: logproto.FORWARD,
+					Direction: logproto.Direction_FORWARD,
 					Limit:     5,
 					Version:   1,
 					Data: LokiData{
@@ -1651,7 +1648,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 				&LokiResponse{
 					Status:    loghttp.QueryStatusSuccess,
-					Direction: logproto.FORWARD,
+					Direction: logproto.Direction_FORWARD,
 					Limit:     5,
 					Version:   1,
 					Data: LokiData{
@@ -1678,7 +1675,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 			},
 			&LokiResponse{
 				Status:     loghttp.QueryStatusSuccess,
-				Direction:  logproto.FORWARD,
+				Direction:  logproto.Direction_FORWARD,
 				Limit:      5,
 				Version:    1,
 				Statistics: stats.Result{Summary: stats.Summary{Splits: 2}},
@@ -2530,10 +2527,10 @@ func BenchmarkResponseMerge(b *testing.B) {
 			mergeOrderedNonOverlappingStreams,
 		},
 	} {
-		input := mkResps(resps, streams, logsPerStream, logproto.FORWARD)
+		input := mkResps(resps, streams, logsPerStream, logproto.Direction_FORWARD)
 		b.Run(tc.desc, func(b *testing.B) {
 			for n := 0; n < b.N; n++ {
-				tc.fn(input, tc.limit, logproto.FORWARD)
+				tc.fn(input, tc.limit, logproto.Direction_FORWARD)
 			}
 		})
 	}
@@ -2553,7 +2550,7 @@ func mkResps(nResps, nStreams, nLogs int, direction logproto.Direction) (resps [
 					Line:      fmt.Sprintf("%d", k),
 				})
 
-				if direction == logproto.BACKWARD {
+				if direction == logproto.Direction_BACKWARD {
 					for x, y := 0, len(stream.Entries)-1; x < len(stream.Entries)/2; x, y = x+1, y-1 {
 						stream.Entries[x], stream.Entries[y] = stream.Entries[y], stream.Entries[x]
 					}
@@ -2629,7 +2626,7 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 	}
 	resp, err := DefaultCodec.EncodeResponse(ctx, req, &LokiResponse{
 		Status:    loghttp.QueryStatusSuccess,
-		Direction: logproto.BACKWARD,
+		Direction: logproto.Direction_BACKWARD,
 		Version:   1,
 		Limit:     1000,
 		Data: LokiData{
@@ -2655,7 +2652,7 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 			Limit:     100,
 			StartTs:   start,
 			EndTs:     end,
-			Direction: logproto.BACKWARD,
+			Direction: logproto.Direction_BACKWARD,
 			Path:      u.String(),
 		})
 		require.Nil(b, err)
@@ -2695,7 +2692,7 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 			Limit:     100,
 			StartTs:   start,
 			EndTs:     end,
-			Direction: logproto.BACKWARD,
+			Direction: logproto.Direction_BACKWARD,
 			Path:      u.String(),
 		})
 		require.NoError(b, err)

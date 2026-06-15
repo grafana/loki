@@ -105,7 +105,7 @@ func (t *tailer) loop() {
 			}
 
 			// while sending new stream pop lined up dropped streams metadata for sending to querier
-			tailResponse := logproto.TailResponse{Stream: stream, DroppedStreams: t.popDroppedStreams()}
+			tailResponse := logproto.TailResponse{Stream: *stream, DroppedStreams: t.popDroppedStreams()}
 			err = t.conn.Send(&tailResponse)
 			if err != nil {
 				// Don't log any error due to tail client closing the connection

@@ -15,7 +15,7 @@ func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 	// Build statistics map from proto statistics
 	statsIndex := make(map[uint32]Statistic, len(protoCapture.Statistics))
 	for i, protoStat := range protoCapture.Statistics {
-		stat, err := unmarshalStatistic(protoStat)
+		stat, err := unmarshalStatistic(&protoStat)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal statistic: %w", err)
 		}
@@ -23,8 +23,8 @@ func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 	}
 
 	// Unmarshal regions
-	for _, protoRegion := range protoCapture.Regions {
-		region, err := fromProtoRegion(protoRegion, statsIndex)
+	for i := range protoCapture.Regions {
+		region, err := fromProtoRegion(&protoCapture.Regions[i], statsIndex)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal region: %w", err)
 		}
@@ -47,7 +47,7 @@ func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Stati
 			return nil, fmt.Errorf("invalid statistic_id %d in observation", protoObs.StatisticId)
 		}
 
-		value, err := unmarshalObservationValue(protoObs.Value)
+		value, err := unmarshalObservationValue(&protoObs.Value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal observation value: %w", err)
 		}
@@ -122,13 +122,13 @@ func unmarshalStatistic(protoStat *proto.Statistic) (Statistic, error) {
 // unmarshalDataType converts a proto DataType to Go DataType.
 func unmarshalDataType(protoType proto.DataType) (DataType, error) {
 	switch protoType {
-	case proto.DATA_TYPE_INVALID:
+	case proto.DataType_DATA_TYPE_INVALID:
 		return DataTypeInvalid, nil
-	case proto.DATA_TYPE_INT64:
+	case proto.DataType_DATA_TYPE_INT64:
 		return DataTypeInt64, nil
-	case proto.DATA_TYPE_FLOAT64:
+	case proto.DataType_DATA_TYPE_FLOAT64:
 		return DataTypeFloat64, nil
-	case proto.DATA_TYPE_BOOL:
+	case proto.DataType_DATA_TYPE_BOOL:
 		return DataTypeBool, nil
 	default:
 		return DataTypeInvalid, fmt.Errorf("unknown data type: %v", protoType)
@@ -138,17 +138,17 @@ func unmarshalDataType(protoType proto.DataType) (DataType, error) {
 // unmarshalAggregationType converts a proto AggregationType to Go AggregationType.
 func unmarshalAggregationType(protoType proto.AggregationType) (AggregationType, error) {
 	switch protoType {
-	case proto.AGGREGATION_TYPE_INVALID:
+	case proto.AggregationType_AGGREGATION_TYPE_INVALID:
 		return AggregationTypeInvalid, nil
-	case proto.AGGREGATION_TYPE_SUM:
+	case proto.AggregationType_AGGREGATION_TYPE_SUM:
 		return AggregationTypeSum, nil
-	case proto.AGGREGATION_TYPE_MIN:
+	case proto.AggregationType_AGGREGATION_TYPE_MIN:
 		return AggregationTypeMin, nil
-	case proto.AGGREGATION_TYPE_MAX:
+	case proto.AggregationType_AGGREGATION_TYPE_MAX:
 		return AggregationTypeMax, nil
-	case proto.AGGREGATION_TYPE_LAST:
+	case proto.AggregationType_AGGREGATION_TYPE_LAST:
 		return AggregationTypeLast, nil
-	case proto.AGGREGATION_TYPE_FIRST:
+	case proto.AggregationType_AGGREGATION_TYPE_FIRST:
 		return AggregationTypeFirst, nil
 	default:
 		return AggregationTypeInvalid, fmt.Errorf("unknown aggregation type: %v", protoType)

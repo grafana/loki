@@ -87,7 +87,7 @@ func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, directi
 	}
 
 	start := -1
-	if direction == logproto.BACKWARD {
+	if direction == logproto.Direction_BACKWARD {
 		start = j - i
 	}
 
@@ -137,10 +137,10 @@ type dumbChunkIterator struct {
 
 func (i *dumbChunkIterator) Next() bool {
 	switch i.direction {
-	case logproto.BACKWARD:
+	case logproto.Direction_BACKWARD:
 		i.i--
 		return i.i >= 0
-	case logproto.FORWARD:
+	case logproto.Direction_FORWARD:
 		i.i++
 		return i.i < len(i.entries)
 	default:

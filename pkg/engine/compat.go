@@ -298,7 +298,7 @@ func forEachNotNullRowColValue(numRows int, col arrow.Array, f func(rowIdx int))
 func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
 	// Executor does not guarantee order of entries, so we sort them here.
 	for i, stream := range b.data {
-		if b.direction == logproto.BACKWARD {
+		if b.direction == logproto.Direction_BACKWARD {
 			sort.Slice(stream.Entries, func(a, b int) bool {
 				return stream.Entries[a].Timestamp.After(stream.Entries[b].Timestamp)
 			})

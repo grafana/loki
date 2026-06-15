@@ -124,7 +124,7 @@ func TestMetricStepAlignMiddleware(t *testing.T) {
 				StartTs: tt.startTs,
 				EndTs:   tt.endTs,
 				Step:    tt.step,
-				Plan:    &plan.QueryPlan{AST: expr},
+				Plan:    plan.QueryPlan{AST: expr},
 			}
 
 			_, err = handler.Do(context.Background(), req)
@@ -175,7 +175,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 			StartTs:   startTime,
 			EndTs:     now,
 			Direction: 0,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -200,7 +200,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 			StartTs:   startTime,
 			EndTs:     now,
 			Direction: 0,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -236,7 +236,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 			StartTs:   startTime,
 			EndTs:     now,
 			Direction: 0,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -280,7 +280,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 			StartTs:   startTime,
 			EndTs:     now,
 			Direction: 0,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -315,7 +315,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 			StartTs:   startTime,
 			EndTs:     now,
 			Direction: 0,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -357,7 +357,7 @@ func TestQueryHandler_Do_LokiInstantRequest(t *testing.T) {
 			Limit:     100,
 			TimeTs:    now,
 			Direction: 0,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -381,7 +381,7 @@ func TestQueryHandler_Do_LokiInstantRequest(t *testing.T) {
 			Limit:     100,
 			TimeTs:    now,
 			Direction: 0,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -412,7 +412,7 @@ func TestQueryHandler_Do_LokiInstantRequest(t *testing.T) {
 			Limit:     100,
 			TimeTs:    now,
 			Direction: 0,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -487,7 +487,7 @@ func TestQueryHandler_ValidTimeRange(t *testing.T) {
 				StartTs:   tt.startTime,
 				EndTs:     tt.endTime,
 				Direction: 0,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: expr,
 				},
 			}
@@ -540,7 +540,7 @@ func TestQueryHandler_ValidateMaxEntriesLimits(t *testing.T) {
 			StartTs:   startTime,
 			EndTs:     now,
 			Direction: 0,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -571,7 +571,7 @@ func TestQueryHandler_ValidateMaxEntriesLimits(t *testing.T) {
 			StartTs:   startTime,
 			EndTs:     now,
 			Direction: 0,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -596,7 +596,7 @@ func TestQueryHandler_ValidateMaxEntriesLimits(t *testing.T) {
 			StartTs:   startTime,
 			EndTs:     now,
 			Direction: 0,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -898,7 +898,7 @@ func TestQueryHandler_ValidateRequest(t *testing.T) {
 				StartTs:   tt.startTs,
 				EndTs:     tt.endTs,
 				Direction: 0,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: expr,
 				},
 			}
@@ -964,7 +964,7 @@ func TestExecutorHandler_AlignQueriesWithStep(t *testing.T) {
 			Step:    stepMs,
 			StartTs: unalignedStart,
 			EndTs:   unalignedEnd,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -998,7 +998,7 @@ func TestExecutorHandler_AlignQueriesWithStep(t *testing.T) {
 			Step:    stepMs,
 			StartTs: unalignedStart,
 			EndTs:   unalignedEnd,
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: expr,
 			},
 		}
@@ -1155,7 +1155,7 @@ func TestQueryHandler_ValidateInstantRequest(t *testing.T) {
 				Limit:     tt.limit,
 				TimeTs:    tt.timeTs,
 				Direction: 0,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: expr,
 				},
 			}

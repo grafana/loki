@@ -313,11 +313,11 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 			PageSizeHint:    b.pageSize,
 			PageMaxRowCount: b.pageRowCount,
 			Type: dataset.ColumnType{
-				Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+				Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
 				Logical:  ColumnTypeLabel.String(),
 			},
-			Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-			Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+			Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+			Compression: datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
 			Statistics: dataset.StatisticsOptions{
 				StoreRangeStats: true,
 			},
@@ -387,11 +387,11 @@ func numberColumnBuilder(columnType ColumnType, pageSize, pageRowCount int) (*da
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64,
 			Logical:  columnType.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
-		Compression: datasetmd.COMPRESSION_TYPE_NONE,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},

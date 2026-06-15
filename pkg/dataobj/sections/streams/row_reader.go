@@ -313,13 +313,13 @@ func findDatasetColumn(columns []dataset.Column, actual []*Column, check func(*C
 
 func valueToString(value dataset.Value) string {
 	switch value.Type() {
-	case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_UNSPECIFIED:
 		return ""
-	case datasetmd.PHYSICAL_TYPE_INT64:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_INT64:
 		return strconv.FormatInt(value.Int64(), 10)
-	case datasetmd.PHYSICAL_TYPE_UINT64:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64:
 		return strconv.FormatUint(value.Uint64(), 10)
-	case datasetmd.PHYSICAL_TYPE_BINARY:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY:
 		return unsafeString(value.Binary())
 	default:
 		panic(fmt.Sprintf("unsupported value type %s", value.Type()))

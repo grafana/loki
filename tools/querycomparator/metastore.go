@@ -41,7 +41,7 @@ func addMetastoreCommand(app *kingpin.Application) {
 
 		bucket := MustGCSDataobjBucket(cfg.Bucket)
 
-		params, err := logql.NewLiteralParams(cfg.Query, parsed.StartTime, parsed.EndTime, 0, 0, logproto.BACKWARD, 10, nil, nil)
+		params, err := logql.NewLiteralParams(cfg.Query, parsed.StartTime, parsed.EndTime, 0, 0, logproto.Direction_BACKWARD, 10, nil, nil)
 		if err != nil {
 			return err
 		}

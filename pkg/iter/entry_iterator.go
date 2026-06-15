@@ -240,10 +240,10 @@ func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) Entr
 
 func treeLess(direction logproto.Direction) (maxVal sortFields, less func(a, b sortFields) bool) {
 	switch direction {
-	case logproto.BACKWARD:
+	case logproto.Direction_BACKWARD:
 		maxVal = sortFields{timeNanos: math.MinInt64}
 		less = lessDescending
-	case logproto.FORWARD:
+	case logproto.Direction_FORWARD:
 		maxVal = sortFields{timeNanos: math.MaxInt64}
 		less = lessAscending
 	default:

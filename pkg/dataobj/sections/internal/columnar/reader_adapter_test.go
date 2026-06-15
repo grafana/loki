@@ -16,9 +16,9 @@ import (
 
 func TestReaderAdapter_ReadPreservesUTF8Nulls(t *testing.T) {
 	builder, err := dataset.NewColumnBuilder("path", dataset.BuilderOptions{
-		Type:        dataset.ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "path"},
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-		Compression: datasetmd.COMPRESSION_TYPE_NONE,
+		Type:        dataset.ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "path"},
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 	})
 	require.NoError(t, err)
 

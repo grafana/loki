@@ -14,7 +14,13 @@ syntax = "proto3";
 
 package dataobj.metadata.dataset.v2;
 
+import "wiresmith/options.proto";
+
 option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd";
+
+// Drop the per-message presence bitmap: gogoproto nullable=false parity
+// (see WIRESMITH_MIGRATION.md).
+option (wiresmith.options.no_presence_all) = true;
 
 // SectionInfoExtension holds basic information about how to read this section.
 // It is encoded into the extension data field of
@@ -33,20 +39,20 @@ message SectionInfoExtension {
 // be retrieved on demand.
 message SectionMetadata {
   // The list of columns in the dataset.
-  repeated ColumnDesc columns = 1;
+  repeated ColumnDesc columns = 1 [(wiresmith.options.pointer) = true];
 
   // Dictionary for deduplicating logical types and column tags. The first
   // element (index zero) is reserved for invalid strings ("").
   repeated string dictionary = 2;
 
   // Sort information about the columns.
-  SortInfo sort_info = 3;
+  SortInfo sort_info = 3 [(wiresmith.options.pointer) = true];
 }
 
 // ColumnDesc describes an individual column within a data set.
 message ColumnDesc {
   // Type holds the type of data in the column.
-  ColumnType type = 1;
+  ColumnType type = 1 [(wiresmith.options.pointer) = true];
 
   // Tag is an optional string that can be used to distinguish between
   // different columns with the same type.
@@ -93,7 +99,7 @@ message ColumnDesc {
   uint64 column_metadata_length = 10;
 
   // Statistics for this column.
-  Statistics statistics = 11;
+  Statistics statistics = 11 [(wiresmith.options.pointer) = true];
 }
 
 // ColumnType represents the type of data in a column, combined from its
@@ -150,7 +156,7 @@ enum CompressionType {
 // offset and size is retrieved from within [ColumnDesc].
 message ColumnMetadata {
   // Pages within the column.
-  repeated PageDesc pages = 1;
+  repeated PageDesc pages = 1 [(wiresmith.options.pointer) = true];
 }
 
 // PageDesc describes an individual page within a column.
@@ -182,7 +188,7 @@ message PageDesc {
   uint64 data_size = 8;
 
   // Optional statistics for the page.
-  Statistics statistics = 9;
+  Statistics statistics = 9 [(wiresmith.options.pointer) = true];
 }
 
 // EncodingType represents the valid types that a sequence of values which a
@@ -244,7 +250,7 @@ message SortInfo {
   // section is sorted based on the value of a single column, this field will
   // contain a single element. Otherwise, this field will contain multiple
   // elements when compound sorting is used.
-  repeated ColumnSort column_sorts = 1;
+  repeated ColumnSort column_sorts = 1 [(wiresmith.options.pointer) = true];
 
   // schema_labels, if non-empty, indicates that rows are sorted by the values
   // of these fully-qualified sort keys (in order) as the primary sort keys,

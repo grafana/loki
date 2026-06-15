@@ -66,7 +66,7 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	if err != nil {
 		return nil, fmt.Errorf("log selector is invalid after matcher update: %w", err)
 	}
-	params.Plan = &plan.QueryPlan{
+	params.Plan = plan.QueryPlan{
 		AST: parsed,
 	}
 

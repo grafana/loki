@@ -28,7 +28,7 @@ func TestResponseFormat(t *testing.T) {
 		{
 			url: "/loki/api/v1/query",
 			response: &LokiResponse{
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Limit:     200,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
@@ -65,7 +65,7 @@ func TestResponseFormat(t *testing.T) {
 		{
 			url: "/loki/api/v1/query_range",
 			response: &LokiResponse{
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Limit:     200,
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,

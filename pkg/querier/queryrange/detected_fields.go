@@ -199,12 +199,12 @@ func makeDownstreamRequest(
 		Step:      req.GetStep(),
 		StartTs:   req.GetStartTs(),
 		EndTs:     req.GetEndTs(),
-		Direction: logproto.BACKWARD,
+		Direction: logproto.Direction_BACKWARD,
 		Limit:     req.GetLineLimit(),
 		Path:      "/loki/api/v1/query_range",
 	}
 
-	lokiReq.Plan = &plan.QueryPlan{
+	lokiReq.Plan = plan.QueryPlan{
 		AST: expr,
 	}
 

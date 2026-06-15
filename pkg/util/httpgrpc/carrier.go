@@ -8,11 +8,15 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 )
 
 type Request interface {
 	GetQueryRequest() *queryrange.QueryRequest
-	GetHttpRequest() *weaveworks_httpgrpc.HTTPRequest
+	// GetHttpRequest returns the wiresmith-local HTTP request representation
+	// (see pkg/util/httpgrpcpb); it is converted to the dskit type where the
+	// span-carrier needs it.
+	GetHttpRequest() *httpgrpcpb.HTTPRequest
 }
 
 // Used to transfer trace information from/to HTTP request.
@@ -75,7 +79,7 @@ func ExtractSpanFromRequest(ctx context.Context, req Request) context.Context {
 	}
 
 	if r := req.GetHttpRequest(); r != nil {
-		return ExtractSpanFromHTTPRequest(ctx, r)
+		return ExtractSpanFromHTTPRequest(ctx, httpgrpcpb.ToHTTPRequest(r))
 	}
 
 	return ctx

@@ -65,7 +65,7 @@ func TestParseRangeQuery(t *testing.T) {
 			}, &RangeQuery{
 				Step:      time.Hour,
 				Query:     `{foo="bar"}`,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Start:     time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC),
 				End:       time.Date(2017, 07, 10, 21, 42, 24, 760738998, time.UTC),
 				Limit:     1000,
@@ -110,7 +110,7 @@ func TestParseInstantQuery(t *testing.T) {
 				URL: mustParseURL(`?query={foo="bar"}&time=2017-06-10T21:42:24.760738998Z&limit=1000&direction=BACKWARD`),
 			}, &InstantQuery{
 				Query:     `{foo="bar"}`,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Ts:        time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC),
 				Limit:     1000,
 			}, false,

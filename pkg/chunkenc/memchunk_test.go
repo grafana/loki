@@ -205,7 +205,7 @@ func TestBlock(t *testing.T) {
 
 				noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
 
-				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.Direction_FORWARD, noopStreamPipeline)
 				require.NoError(t, err)
 
 				idx := 0
@@ -302,7 +302,7 @@ func TestBlock(t *testing.T) {
 				})
 
 				t.Run("bounded-iteration", func(t *testing.T) {
-					it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, noopStreamPipeline)
+					it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.Direction_FORWARD, noopStreamPipeline)
 					require.NoError(t, err)
 
 					idx := 2
@@ -343,7 +343,7 @@ func TestCorruptChunk(t *testing.T) {
 				for i, c := range cases {
 					chk.blocks = []block{{b: c.data}}
 					noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
-					it, err := chk.Iterator(ctx, start, end, logproto.FORWARD, noopStreamPipeline)
+					it, err := chk.Iterator(ctx, start, end, logproto.Direction_FORWARD, noopStreamPipeline)
 					require.NoError(t, err, "case %d", i)
 
 					idx := 0
@@ -377,7 +377,7 @@ func TestReadFormatV1(t *testing.T) {
 	}
 
 	noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
-	it, err := r.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+	it, err := r.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.Direction_FORWARD, noopStreamPipeline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +408,7 @@ func TestRoundtripV2(t *testing.T) {
 				assertLines := func(c *MemChunk) {
 					require.Equal(t, enc, c.Encoding())
 					noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
-					it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+					it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.Direction_FORWARD, noopStreamPipeline)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -515,7 +515,7 @@ func TestSerialization(t *testing.T) {
 					bc, err := NewByteChunk(byt, testBlockSize, testTargetSize)
 					require.NoError(t, err)
 
-					it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+					it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 					require.NoError(t, err)
 					for i := 0; i < numSamples; i++ {
 						require.True(t, it.Next())
@@ -604,7 +604,7 @@ func TestChunkFilling(t *testing.T) {
 				require.Equal(t, int64(lines), i)
 
 				noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
-				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, noopStreamPipeline)
+				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.Direction_FORWARD, noopStreamPipeline)
 				require.NoError(t, err)
 				i = 0
 				for it.Next() {
@@ -824,7 +824,7 @@ func TestChunkStats(t *testing.T) {
 	statsCtx, ctx := stats.NewContext(context.Background())
 
 	noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
-	it, err := c.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, noopStreamPipeline)
+	it, err := c.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.Direction_BACKWARD, noopStreamPipeline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -853,7 +853,7 @@ func TestChunkStats(t *testing.T) {
 		t.Fatal(err)
 	}
 	statsCtx, ctx = stats.NewContext(context.Background())
-	it, err = cb.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, noopStreamPipeline)
+	it, err = cb.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.Direction_BACKWARD, noopStreamPipeline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -903,7 +903,7 @@ func TestIteratorClose(t *testing.T) {
 					c := newMemChunkWithFormat(f.chunkFormat, enc, f.headBlockFmt, testBlockSize, testTargetSize)
 					inserted := fillChunk(c)
 					noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
-					iter, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, inserted), logproto.BACKWARD, noopStreamPipeline)
+					iter, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, inserted), logproto.Direction_BACKWARD, noopStreamPipeline)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -981,7 +981,7 @@ func BenchmarkRead(b *testing.B) {
 				for n := 0; n < b.N; n++ {
 					for _, c := range chunks {
 						// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-						iterator, err := c.Iterator(ctx, time.Unix(0, 0), time.Now(), logproto.FORWARD, nomatchPipeline{})
+						iterator, err := c.Iterator(ctx, time.Unix(0, 0), time.Now(), logproto.Direction_FORWARD, nomatchPipeline{})
 						if err != nil {
 							panic(err)
 						}
@@ -1051,7 +1051,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
 				noop := noopTestPipeline{}
-				iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.BACKWARD, noop)
+				iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.Direction_BACKWARD, noop)
 				if err != nil {
 					panic(err)
 				}
@@ -1075,7 +1075,7 @@ func TestGenerateDataSize(t *testing.T) {
 			for _, c := range chunks {
 				noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
 				// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.FORWARD, noopStreamPipeline)
+				iterator, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Now(), logproto.Direction_FORWARD, noopStreamPipeline)
 				if err != nil {
 					panic(err)
 				}
@@ -1114,7 +1114,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 
 				for n := 0; n < b.N; n++ {
 					noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
-					iter := h.Iterator(context.Background(), logproto.BACKWARD, 0, math.MaxInt64, noopStreamPipeline)
+					iter := h.Iterator(context.Background(), logproto.Direction_BACKWARD, 0, math.MaxInt64, noopStreamPipeline)
 
 					for iter.Next() {
 						_ = iter.At()
@@ -1245,15 +1245,15 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 		direction  logproto.Direction
 		expect     []bool // array of expected values for next call in sequence
 	}{
-		{time.Unix(0, 0), time.Unix(0, 1), logproto.FORWARD, []bool{false}},
-		{time.Unix(0, 1), time.Unix(0, 2), logproto.FORWARD, []bool{true, false}},
-		{time.Unix(0, 1), time.Unix(0, 3), logproto.FORWARD, []bool{true, true, false}},
-		{time.Unix(0, 2), time.Unix(0, 3), logproto.FORWARD, []bool{true, false}},
+		{time.Unix(0, 0), time.Unix(0, 1), logproto.Direction_FORWARD, []bool{false}},
+		{time.Unix(0, 1), time.Unix(0, 2), logproto.Direction_FORWARD, []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 3), logproto.Direction_FORWARD, []bool{true, true, false}},
+		{time.Unix(0, 2), time.Unix(0, 3), logproto.Direction_FORWARD, []bool{true, false}},
 
-		{time.Unix(0, 0), time.Unix(0, 1), logproto.BACKWARD, []bool{false}},
-		{time.Unix(0, 1), time.Unix(0, 2), logproto.BACKWARD, []bool{true, false}},
-		{time.Unix(0, 1), time.Unix(0, 3), logproto.BACKWARD, []bool{true, true, false}},
-		{time.Unix(0, 2), time.Unix(0, 3), logproto.BACKWARD, []bool{true, false}},
+		{time.Unix(0, 0), time.Unix(0, 1), logproto.Direction_BACKWARD, []bool{false}},
+		{time.Unix(0, 1), time.Unix(0, 2), logproto.Direction_BACKWARD, []bool{true, false}},
+		{time.Unix(0, 1), time.Unix(0, 3), logproto.Direction_BACKWARD, []bool{true, true, false}},
+		{time.Unix(0, 2), time.Unix(0, 3), logproto.Direction_BACKWARD, []bool{true, false}},
 	} {
 		t.Run(
 			fmt.Sprintf("mint:%d,maxt:%d,direction:%s", tt.mint.UnixNano(), tt.maxt.UnixNano(), tt.direction),
@@ -1293,7 +1293,7 @@ func TestMemchunkLongLine(t *testing.T) {
 				require.NoError(t, err)
 			}
 			noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
-			it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.FORWARD, noopStreamPipeline)
+			it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, 100), logproto.Direction_FORWARD, noopStreamPipeline)
 			require.NoError(t, err)
 			for i := 1; i <= 10; i++ {
 				require.True(t, it.Next())
@@ -1448,7 +1448,7 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					}
 					var iters []iter.EntryIterator
 					for _, lbs := range labelsSet {
-						it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.FORWARD, p.ForStream(lbs))
+						it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.Direction_FORWARD, p.ForStream(lbs))
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -1537,7 +1537,7 @@ func Test_HeadIteratorReverse(t *testing.T) {
 				require.NoError(t, err)
 				p, err := expr.Pipeline()
 				require.NoError(t, err)
-				it, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(0, i), logproto.BACKWARD, p.ForStream(labels.FromStrings("app", "foo")))
+				it, err := c.Iterator(context.TODO(), time.Unix(0, 0), time.Unix(0, i), logproto.Direction_BACKWARD, p.ForStream(labels.FromStrings("app", "foo")))
 				require.NoError(t, err)
 				for it.Next() {
 					total--
@@ -1654,7 +1654,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 				require.Equal(t, tc.shouldNotChangeChunk, bytes.Equal(origChunkBytes, newChunkBytes))
 
 				// iterate originalChunk from slice start to slice end + nanosecond. Adding a nanosecond here to be inclusive of sample at end time.
-				originalChunkItr, err := originalChunk.Iterator(context.Background(), chkFrom, chkThrough.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+				originalChunkItr, err := originalChunk.Iterator(context.Background(), chkFrom, chkThrough.Add(time.Nanosecond), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 				require.NoError(t, err)
 
 				var expectedEntries []logproto.Entry
@@ -1669,7 +1669,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 				require.NoError(t, originalChunkItr.Err())
 
 				// iterate newChunk for whole chunk interval which should include all the samples in the chunk and hence align it with expected values.
-				newChunkItr, err := newChunk.Iterator(context.Background(), chkFrom, chkThrough.Add(time.Second), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+				newChunkItr, err := newChunk.Iterator(context.Background(), chkFrom, chkThrough.Add(time.Second), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 				require.NoError(t, err)
 
 				for _, expectedEntry := range expectedEntries {
@@ -1770,7 +1770,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 			require.NoError(t, err)
 
 			// iterate originalChunk from slice start to slice end + nanosecond. Adding a nanosecond here to be inclusive of sample at end time.
-			originalChunkItr, err := originalChunk.Iterator(context.Background(), chkFrom, chkThrough.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+			originalChunkItr, err := originalChunk.Iterator(context.Background(), chkFrom, chkThrough.Add(time.Nanosecond), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 			require.NoError(t, err)
 			originalChunkSamples := 0
 			for originalChunkItr.Next() {
@@ -1779,7 +1779,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 			require.Equal(t, tc.nrMatching+tc.nrNotMatching, originalChunkSamples)
 
 			// iterate newChunk for whole chunk interval which should include all the samples in the chunk and hence align it with expected values.
-			newChunkItr, err := newChunk.Iterator(context.Background(), chkFrom, chkThrough.Add(time.Nanosecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+			newChunkItr, err := newChunk.Iterator(context.Background(), chkFrom, chkThrough.Add(time.Nanosecond), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 			require.NoError(t, err)
 			newChunkSamples := 0
 			for newChunkItr.Next() {
@@ -2168,7 +2168,7 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						// This is to ensure that the iterator is correctly closed.
 						for i := 0; i < 2; i++ {
 							sts, ctx := stats.NewContext(context.Background())
-							it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, pipeline.ForStream(streamLabels))
+							it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.Direction_FORWARD, pipeline.ForStream(streamLabels))
 							require.NoError(t, err)
 
 							var lines []string
@@ -2342,10 +2342,10 @@ func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
 					require.Len(t, decodedChkWithIncorrectOffset.blocks, len(chk.blocks))
 
 					// both chunks should have same log lines
-					origChunkItr, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+					origChunkItr, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 					require.NoError(t, err)
 
-					corruptChunkItr, err := decodedChkWithIncorrectOffset.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+					corruptChunkItr, err := decodedChkWithIncorrectOffset.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 					require.NoError(t, err)
 
 					numEntriesFound := 0
@@ -2432,7 +2432,7 @@ func TestChunk_reorder(t *testing.T) {
 
 func readAllChunkEntries(t *testing.T, c *MemChunk) []logproto.Entry {
 	from, to := c.Bounds()
-	itr, err := c.Iterator(context.Background(), from, to.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+	itr, err := c.Iterator(context.Background(), from, to.Add(time.Millisecond), logproto.Direction_FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	require.NoError(t, err)
 
 	var allEntries []logproto.Entry

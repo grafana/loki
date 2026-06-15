@@ -55,7 +55,7 @@ func (m *mockTailLogSelector) SelectLogs(ctx context.Context, params logql.Selec
 
 func mockTailResponse(stream logproto.Stream) *logproto.TailResponse {
 	return &logproto.TailResponse{
-		Stream:         &stream,
+		Stream:         stream,
 		DroppedStreams: []*logproto.DroppedStream{},
 	}
 }

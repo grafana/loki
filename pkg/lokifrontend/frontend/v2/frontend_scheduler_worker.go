@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 )
 
 type frontendSchedulerWorkers struct {
@@ -284,20 +285,21 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 
 		case req := <-w.requestCh:
 			msg := &schedulerpb.FrontendToScheduler{
-				Type:      schedulerpb.ENQUEUE,
-				QueryID:   req.queryID,
-				UserID:    req.tenantID,
-				QueuePath: req.actor,
-				Request: &schedulerpb.FrontendToScheduler_HttpRequest{
-					HttpRequest: req.request,
-				},
+				Type:            schedulerpb.ENQUEUE,
+				QueryID:         req.queryID,
+				UserID:          req.tenantID,
+				QueuePath:       req.actor,
 				FrontendAddress: w.frontendAddr,
 				StatsEnabled:    req.statsEnabled,
 			}
 
 			if req.queryRequest != nil {
 				msg.Request = &schedulerpb.FrontendToScheduler_QueryRequest{
-					QueryRequest: req.queryRequest,
+					QueryRequest: *req.queryRequest,
+				}
+			} else {
+				msg.Request = &schedulerpb.FrontendToScheduler_HttpRequest{
+					HttpRequest: *httpgrpcpb.FromHTTPRequest(req.request),
 				}
 			}
 

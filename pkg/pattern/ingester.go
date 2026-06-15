@@ -204,6 +204,9 @@ type Limits interface {
 
 type Ingester struct {
 	services.Service
+	// Embedded to satisfy the wiresmith/protoc-gen-go-grpc generated server
+	// interface, which requires forward-compatible embedding.
+	logproto.UnimplementedPatternServer
 	lifecycler *ring.Lifecycler
 	ringClient RingClient
 

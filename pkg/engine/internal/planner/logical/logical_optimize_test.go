@@ -23,7 +23,7 @@ func Test_simplifyRegexPass(t *testing.T) {
 		time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
 		0 /* step */, 0, /* duration */
-		logproto.BACKWARD,
+		logproto.Direction_BACKWARD,
 		1000,
 		[]string{"0_of_1"},
 		nil,
@@ -92,7 +92,7 @@ func TestOptimizer_Report(t *testing.T) {
 				time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
 				time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
 				0 /* step */, 0, /* duration */
-				logproto.BACKWARD,
+				logproto.Direction_BACKWARD,
 				1000,
 				[]string{"0_of_1"},
 				nil,
@@ -122,7 +122,7 @@ func Test_simplifyRegexPass_IgnoreStreamSelector(t *testing.T) {
 		time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
 		0 /* step */, 0, /* duration */
-		logproto.BACKWARD,
+		logproto.Direction_BACKWARD,
 		1000,
 		[]string{"0_of_1"},
 		nil,
@@ -161,7 +161,7 @@ func Test_simplifyRegexPass_Negate(t *testing.T) {
 		time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
 		0 /* step */, 0, /* duration */
-		logproto.BACKWARD,
+		logproto.Direction_BACKWARD,
 		1000,
 		[]string{"0_of_1"},
 		nil,
@@ -199,7 +199,7 @@ func Test_simplifyRegexPass_CaseInsensitiveNegate(t *testing.T) {
 		time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
 		0 /* step */, 0, /* duration */
-		logproto.BACKWARD,
+		logproto.Direction_BACKWARD,
 		1000,
 		[]string{"0_of_1"},
 		nil,

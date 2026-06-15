@@ -168,10 +168,10 @@ func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scr
 // bounds (empty MinKey/MaxKey); the planner's composite (MinKey, MinTimestamp)
 // sort key degrades to single-axis timestamp ordering, which is sufficient
 // for index-only compaction.
-func sectionRefsFor(indexes []indexEntry) []*compactionv2pb.SectionRef {
-	out := make([]*compactionv2pb.SectionRef, len(indexes))
+func sectionRefsFor(indexes []indexEntry) []compactionv2pb.SectionRef {
+	out := make([]compactionv2pb.SectionRef, len(indexes))
 	for i, e := range indexes {
-		out[i] = &compactionv2pb.SectionRef{
+		out[i] = compactionv2pb.SectionRef{
 			ObjectPath:   e.Path,
 			SectionIndex: 0,
 			MinTimestamp: e.Start.UnixNano(),

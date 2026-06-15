@@ -187,7 +187,7 @@ type metricStepAlign struct {
 }
 
 func (m metricStepAlign) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	if req, ok := r.(*queryrange.LokiRequest); ok && req.Plan != nil {
+	if req, ok := r.(*queryrange.LokiRequest); ok && req.Plan.AST != nil {
 		if _, isSample := req.Plan.AST.(syntax.SampleExpr); isSample {
 			return m.aligned.Do(ctx, r)
 		}

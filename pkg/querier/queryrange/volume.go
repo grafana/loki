@@ -114,10 +114,7 @@ func ToPrometheusResponse(respsCh chan *bucketedVolumeResponse, aggregateBySerie
 
 		if headers == nil {
 			headers = make([]*definitions.PrometheusResponseHeader, len(resp.Headers))
-			for i, header := range resp.Headers {
-				h := header
-				headers[i] = &h
-			}
+			copy(headers, resp.Headers)
 		}
 
 		for _, volume := range resp.Response.Volumes {

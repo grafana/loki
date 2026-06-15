@@ -13,12 +13,13 @@ import (
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/sync/errgroup"
 )
 
 // addCompareCommand adds the compare command to the application
@@ -44,7 +45,7 @@ func addCompareCommand(app *kingpin.Application) {
 			return err
 		}
 
-		params, err := logql.NewLiteralParams(cfg.Query, parsed.StartTime, parsed.EndTime, 0, 0, logproto.BACKWARD, uint32(cfg.Limit), nil, nil)
+		params, err := logql.NewLiteralParams(cfg.Query, parsed.StartTime, parsed.EndTime, 0, 0, logproto.Direction_BACKWARD, uint32(cfg.Limit), nil, nil)
 		if err != nil {
 			return err
 		}
