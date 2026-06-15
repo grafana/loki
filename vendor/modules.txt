@@ -15,7 +15,7 @@ charm.land/bubbles/v2/viewport
 # charm.land/bubbletea/v2 v2.0.7
 ## explicit; go 1.25.0
 charm.land/bubbletea/v2
-# charm.land/lipgloss/v2 v2.0.3
+# charm.land/lipgloss/v2 v2.0.4
 ## explicit; go 1.25.0
 charm.land/lipgloss/v2
 # cloud.google.com/go v0.123.0

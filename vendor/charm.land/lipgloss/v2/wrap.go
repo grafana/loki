@@ -63,6 +63,12 @@ func (w *WrapWriter) Link() uv.Link {
 
 // Write writes to the buffer.
 func (w *WrapWriter) Write(p []byte) (int, error) {
+	if w.p == nil {
+		// The writer has been closed and its parser returned to the pool.
+		// Writing after close can happen during out-of-order teardown of
+		// nested writer chains; treat it as a no-op rather than panicking.
+		return len(p), nil
+	}
 	for i := range p {
 		b := p[i]
 		w.p.Advance(b)
