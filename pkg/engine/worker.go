@@ -105,10 +105,7 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 
 	switch {
 	case params.AdvertiseAddr != nil:
-		remoteListener := wire.NewGRPCListener(
-			params.AdvertiseAddr,
-			wire.WithGRPCListenerLogger(params.Logger),
-		)
+		remoteListener := wire.NewGRPCListener(params.AdvertiseAddr, params.Logger)
 		listener = remoteListener
 		dialer = wire.NewGRPCDialer()
 

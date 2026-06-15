@@ -41,7 +41,7 @@ func prepareGRPCListener(t *testing.T) (*wire.GRPCListener, func()) {
 	require.NoError(t, err)
 
 	addr := lis.Addr()
-	grpcLis := wire.NewGRPCListener(addr, wire.WithGRPCListenerLogger(log.NewNopLogger()))
+	grpcLis := wire.NewGRPCListener(addr, log.NewNopLogger())
 
 	// 256 MiB to match wireMaxGRPCMessageBytes on the client side.
 	const maxMsgSize = 256 * 1024 * 1024

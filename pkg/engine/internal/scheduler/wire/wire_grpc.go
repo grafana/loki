@@ -207,21 +207,6 @@ func isGRPCConnError(err error) bool {
 
 // --- GRPCListener ---
 
-// grpcListenerOpts holds optional configuration for GRPCListener.
-type grpcListenerOpts struct {
-	Logger log.Logger
-}
-
-// GRPCListenerOptFunc is a functional option for NewGRPCListener.
-type GRPCListenerOptFunc func(*grpcListenerOpts)
-
-// WithGRPCListenerLogger sets the logger for a GRPCListener.
-func WithGRPCListenerLogger(l log.Logger) GRPCListenerOptFunc {
-	return func(o *grpcListenerOpts) {
-		o.Logger = l
-	}
-}
-
 // GRPCListener implements Listener and wirepb.WireServiceServer.  It accepts
 // incoming bidi-streaming Pipe calls and converts them into wire.Conn
 // instances that can be retrieved by the scheduler or worker via Accept.
@@ -239,16 +224,16 @@ var (
 )
 
 // NewGRPCListener creates a GRPCListener that advertises the given addr.
-// The addr is used as the LocalAddr for all accepted connections.
-// The listener must be registered on a *grpc.Server via
-// wirepb.RegisterWireServiceServer before it can accept connections.
-func NewGRPCListener(addr net.Addr, opts ...GRPCListenerOptFunc) *GRPCListener {
-	o := &grpcListenerOpts{Logger: log.NewNopLogger()}
-	for _, fn := range opts {
-		fn(o)
+// The addr is used as the LocalAddr for all accepted connections. A nil
+// logger is treated as a no-op logger. The listener must be registered on a
+// *grpc.Server via wirepb.RegisterWireServiceServer before it can accept
+// connections.
+func NewGRPCListener(addr net.Addr, logger log.Logger) *GRPCListener {
+	if logger == nil {
+		logger = log.NewNopLogger()
 	}
 	return &GRPCListener{
-		logger:   o.Logger,
+		logger:   logger,
 		addr:     addr,
 		incoming: make(chan *grpcConn),
 		closed:   make(chan struct{}),
@@ -330,15 +315,13 @@ func (l *GRPCListener) Addr() net.Addr { return l.addr }
 // --- GRPCDialer ---
 
 // GRPCDialer implements Dialer for gRPC-based connections.
-type GRPCDialer struct {
-	codec *protobufCodec
-}
+type GRPCDialer struct{}
 
 var _ Dialer = (*GRPCDialer)(nil)
 
 // NewGRPCDialer creates a GRPCDialer.
 func NewGRPCDialer() *GRPCDialer {
-	return &GRPCDialer{codec: DefaultFrameCodec}
+	return &GRPCDialer{}
 }
 
 // Dial opens a gRPC bidi-streaming connection to the peer at to.

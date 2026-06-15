@@ -32,7 +32,7 @@ func newScheduler(cfg SchedulerConfig, logger log.Logger) (*Scheduler, error) {
 
 	var listener wire.Listener
 	if advertiseAddr != nil {
-		listener = wire.NewGRPCListener(advertiseAddr, wire.WithGRPCListenerLogger(logger))
+		listener = wire.NewGRPCListener(advertiseAddr, logger)
 	} else {
 		listener = &wire.Local{Address: wire.LocalScheduler}
 	}
