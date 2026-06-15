@@ -144,7 +144,7 @@ lokistack_component_replicas{component="compactor",size="1x.small",stack_name="t
 lokistack_component_replicas{component="distributor",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
 lokistack_component_replicas{component="gateway",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
 lokistack_component_replicas{component="index-gateway",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
-lokistack_component_replicas{component="ingester",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="ingester",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 3
 lokistack_component_replicas{component="querier",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
 lokistack_component_replicas{component="query-frontend",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
 lokistack_component_replicas{component="ruler",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
@@ -223,7 +223,7 @@ lokistack_component_replicas{component="compactor",size="1x.small",stack_name="t
 lokistack_component_replicas{component="distributor",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
 lokistack_component_replicas{component="gateway",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
 lokistack_component_replicas{component="index-gateway",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
-lokistack_component_replicas{component="ingester",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
+lokistack_component_replicas{component="ingester",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 3
 lokistack_component_replicas{component="querier",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
 lokistack_component_replicas{component="query-frontend",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
 lokistack_component_replicas{component="ruler",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 2
@@ -301,7 +301,7 @@ lokistack_component_replicas{component="compactor",size="1x.small",stack_name="s
 lokistack_component_replicas{component="distributor",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
 lokistack_component_replicas{component="gateway",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
 lokistack_component_replicas{component="index-gateway",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
-lokistack_component_replicas{component="ingester",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
+lokistack_component_replicas{component="ingester",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 3
 lokistack_component_replicas{component="querier",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
 lokistack_component_replicas{component="query-frontend",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
 lokistack_component_replicas{component="ruler",size="1x.small",stack_name="storage-stack",stack_namespace="test-ns"} 2
