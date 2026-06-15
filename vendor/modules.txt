@@ -1484,7 +1484,7 @@ github.com/prometheus/sigv4
 # github.com/puzpuzpuz/xsync/v4 v4.4.0
 ## explicit; go 1.24
 github.com/puzpuzpuz/xsync/v4
-# github.com/redis/go-redis/v9 v9.20.0
+# github.com/redis/go-redis/v9 v9.20.1
 ## explicit; go 1.24
 github.com/redis/go-redis/v9
 github.com/redis/go-redis/v9/auth
