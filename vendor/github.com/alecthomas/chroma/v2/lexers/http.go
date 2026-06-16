@@ -122,7 +122,7 @@ func (d *httpBodyContentTyper) Tokenise(options *TokeniseOptions, text string) (
 					if err != nil {
 						panic(err)
 					}
-					return EOF
+					return subIterator()
 				}
 			}
 		}

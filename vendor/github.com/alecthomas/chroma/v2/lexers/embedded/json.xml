@@ -2,12 +2,15 @@
   <config>
     <name>JSON</name>
     <alias>json</alias>
+    <alias>jsonl</alias>
     <filename>*.json</filename>
+    <filename>*.jsonl</filename>
     <filename>*.jsonc</filename>
     <filename>*.json5</filename>
     <filename>*.avsc</filename>
     <filename>.luaurc</filename>
     <mime_type>application/json</mime_type>
+    <mime_type>application/jsonl</mime_type>
     <dot_all>true</dot_all>
     <not_multiline>true</not_multiline>
   </config>

@@ -7,7 +7,7 @@
   </config>
   <rules>
     <state name="package">
-      <rule pattern="[a-zA-Z_]\w*">
+      <rule pattern="[a-zA-Z_][\w.]*">
         <token type="NameNamespace"/>
         <pop depth="1"/>
       </rule>
@@ -16,7 +16,7 @@
       </rule>
     </state>
     <state name="message">
-      <rule pattern="[a-zA-Z_]\w*">
+      <rule pattern="[a-zA-Z_][\w.]*">
         <token type="NameClass"/>
         <pop depth="1"/>
       </rule>
@@ -34,7 +34,7 @@
       </rule>
     </state>
     <state name="root">
-      <rule pattern="[ \t]+">
+      <rule pattern="\s+">
         <token type="Text"/>
       </rule>
       <rule pattern="[,;{}\[\]()&lt;&gt;]">
@@ -46,8 +46,11 @@
       <rule pattern="/(\\\n)?\*(.|\n)*?\*(\\\n)?/">
         <token type="CommentMultiline"/>
       </rule>
-      <rule pattern="\b(extensions|required|repeated|optional|returns|default|option|packed|import|ctype|oneof|max|rpc|to)\b">
+      <rule pattern="\b(ctype|default|edition|export|local|max|option|optional|packed|public|repeated|required|reserved|returns|stream|syntax|to|weak)\b">
         <token type="Keyword"/>
+      </rule>
+      <rule pattern="\b(extensions|map)\b">
+        <token type="KeywordDeclaration"/>
       </rule>
       <rule pattern="(sfixed32|sfixed64|fixed32|fixed64|sint32|sint64|double|string|uint32|uint64|int32|float|int64|bytes|bool)\b">
         <token type="KeywordType"/>
@@ -62,6 +65,9 @@
         </bygroups>
         <push state="package"/>
       </rule>
+      <rule pattern="import\b">
+        <token type="KeywordNamespace"/>
+      </rule>
       <rule pattern="(message|extend)(\s+)">
         <bygroups>
           <token type="KeywordDeclaration"/>
@@ -69,7 +75,7 @@
         </bygroups>
         <push state="message"/>
       </rule>
-      <rule pattern="(enum|group|service)(\s+)">
+      <rule pattern="(enum|group|oneof|rpc|service)(\s+)">
         <bygroups>
           <token type="KeywordDeclaration"/>
           <token type="Text"/>

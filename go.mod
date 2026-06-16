@@ -148,7 +148,10 @@ require (
 	zombiezen.com/go/sqlite v1.4.2
 )
 
-require gopkg.in/ini.v1 v1.67.2 // indirect
+require (
+	github.com/dlclark/regexp2/v2 v2.1.1 // indirect
+	gopkg.in/ini.v1 v1.67.2 // indirect
+)
 
 require (
 	cel.dev/expr v0.25.1 // indirect
@@ -181,7 +184,6 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/containerd/containerd/v2 v2.2.4 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
-	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
@@ -309,7 +311,7 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/alecthomas/chroma/v2 v2.24.1
+	github.com/alecthomas/chroma/v2 v2.26.1
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.29 // indirect

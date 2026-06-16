@@ -1,4 +1,4 @@
-<style name="xcode-dark">
+<style name="xcode-dark" counterpart="xcode">
   <entry type="Error" style="#960050"/>
   <entry type="Background" style="#ffffff bg:#1f1f24"/>
   <entry type="Keyword" style="#fc5fa3"/>
