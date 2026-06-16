@@ -131,7 +131,6 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 	require.NotNil(t, pdb.Spec.MaxUnavailable.IntVal)
 	require.Equal(t, int32(1), pdb.Spec.MaxUnavailable.IntVal)
 	require.EqualValues(t, ComponentLabels(LabelIngesterComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
-
 }
 
 func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
