@@ -17,7 +17,8 @@ var (
 )
 
 func init() {
-	// Copy settings for this build into Prometheus common package, where they are fetched by Prometheus client_golang.
+	// Loki uses the metrics from prometheus/common/version. Here we set the values
+	// that are used in those metrics.
 	version.Version = Version
 	version.Revision = Revision
 	version.Branch = Branch
