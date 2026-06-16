@@ -812,9 +812,9 @@ const readResolveMatchingStreamRefsBatchSize = 4096
 type matcherIndex int
 
 // ResolveMatchingStreamRefs returns the object-scoped streams matching every matcher against KindLabel rows.
-func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labels.Matcher) (map[StreamRef]struct{}, map[StreamRef][]string, error) {
+func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labels.Matcher) (map[StreamRef]struct{}, error) {
 	if !r.ready {
-		return nil, nil, errReaderNotOpen
+		return nil, errReaderNotOpen
 	}
 
 	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ResolveMatchingStreamRefs")
@@ -823,7 +823,7 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 	defer r.alloc.Reclaim()
 
 	if len(matchers) == 0 {
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	equalMatchers, otherMatchers := splitByMatchType(matchers)
@@ -836,7 +836,7 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 		ColumnTypeKind,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("finding ResolveMatchingStreamRefs columns: %w", err)
+		return nil, fmt.Errorf("finding ResolveMatchingStreamRefs columns: %w", err)
 	}
 	colObjectPath, colColumnName, colLabelValue, colStreamIDBitmap, colKind := cols[0], cols[1], cols[2], cols[3], cols[4]
 
@@ -851,9 +851,9 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 
 	dset, err := columnar.MakeDataset(innerSection, innerColumns)
 	if err != nil {
-		return nil, nil, fmt.Errorf("creating dataset: %w", err)
+		return nil, fmt.Errorf("creating dataset: %w", err)
 	} else if len(dset.Columns()) != len(innerColumns) {
-		return nil, nil, fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(innerColumns))
+		return nil, fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(innerColumns))
 	}
 
 	columnLookup := map[*Column]dataset.Column{
@@ -920,7 +920,7 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 
 	preds, err := mapPredicates([]Predicate{builtPredicate}, columnLookup)
 	if err != nil {
-		return nil, nil, fmt.Errorf("mapping predicates: %w", err)
+		return nil, fmt.Errorf("mapping predicates: %w", err)
 	}
 
 	innerOptions := dataset.RowReaderOptions{
@@ -932,7 +932,7 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 	adapter := columnar.NewReaderAdapter(innerOptions)
 	defer func() { _ = adapter.Close() }()
 	if err := adapter.Open(ctx); err != nil {
-		return nil, nil, fmt.Errorf("opening ResolveMatchingStreamRefs adapter: %w", err)
+		return nil, fmt.Errorf("opening ResolveMatchingStreamRefs adapter: %w", err)
 	}
 
 	// Inner schema (5 fields) used by arrowconv.ToRecordBatch — must match
@@ -946,7 +946,6 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 	}, nil)
 
 	perMatcherStreams := make(map[matcherIndex]map[StreamRef]struct{})
-	labelNamesByStreamSet := make(map[StreamRef]map[string]struct{})
 	activeMatchers := make([]*labels.Matcher, 0, len(matchers))
 
 	for _, m := range matchers {
@@ -962,22 +961,21 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 		if colBatch != nil && colBatch.NumRows() > 0 {
 			innerRB, convErr := arrowconv.ToRecordBatch(colBatch, innerSchema)
 			if convErr != nil {
-				return nil, nil, fmt.Errorf("converting ResolveMatchingStreamRefs columnar batch to arrow: %w", convErr)
+				return nil, fmt.Errorf("converting ResolveMatchingStreamRefs columnar batch to arrow: %w", convErr)
 			}
 			if err := accumulateLabelRows(
 				innerRB,
 				activeMatchers,
 				perMatcherStreams,
-				labelNamesByStreamSet,
 			); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 		}
 		if errors.Is(readErr, io.EOF) {
 			break
 		}
 		if readErr != nil {
-			return nil, nil, fmt.Errorf("reading ResolveMatchingStreamRefs batch: %w", readErr)
+			return nil, fmt.Errorf("reading ResolveMatchingStreamRefs batch: %w", readErr)
 		}
 	}
 
@@ -1002,26 +1000,8 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 			}
 		}
 	}
-
-	// Flatten the inversion to slices, scoped to the surviving matching stream refs.
-	var labelNamesByStream map[StreamRef][]string
-	if len(matchingStreams) > 0 {
-		labelNamesByStream = make(map[StreamRef][]string, len(matchingStreams))
-		for streamRef := range matchingStreams {
-			nameSet := labelNamesByStreamSet[streamRef]
-			if len(nameSet) == 0 {
-				continue
-			}
-			names := make([]string, 0, len(nameSet))
-			for n := range nameSet {
-				names = append(names, n)
-			}
-			labelNamesByStream[streamRef] = names
-		}
-	}
-
 	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsLabelsResolved.Observe(int64(len(matchingStreams))))
-	return matchingStreams, labelNamesByStream, nil
+	return matchingStreams, nil
 }
 
 func splitByMatchType(ms []*labels.Matcher) (equal, other []*labels.Matcher) {
@@ -1043,7 +1023,6 @@ func accumulateLabelRows(
 	rb arrow.RecordBatch,
 	matchers []*labels.Matcher,
 	perMatcherStreams map[matcherIndex]map[StreamRef]struct{},
-	labelNamesByStreamSet map[StreamRef]map[string]struct{},
 ) error {
 	if rb.NumRows() == 0 {
 		return nil
@@ -1116,14 +1095,6 @@ func accumulateLabelRows(
 					}
 					set[streamRef] = struct{}{}
 				}
-
-				// Record column_name for the inversion (scoped later to matching streams).
-				nameSet, exists := labelNamesByStreamSet[streamRef]
-				if !exists {
-					nameSet = make(map[string]struct{})
-					labelNamesByStreamSet[streamRef] = nameSet
-				}
-				nameSet[name] = struct{}{}
 			}
 		}
 	}

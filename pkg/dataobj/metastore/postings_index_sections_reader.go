@@ -187,18 +187,12 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 	}()
 
 	if r.postingsReader != nil {
-		streamRefs, labelNamesByRef, err := r.postingsReader.ResolveMatchingStreamRefs(ctx, r.matchers)
+		streamRefs, err := r.postingsReader.ResolveMatchingStreamRefs(ctx, r.matchers)
 		if err != nil {
 			return fmt.Errorf("resolving labels via postings: %w", err)
 		}
-
 		if streamRefs != nil {
 			r.matchingStreamRefs = streamRefs
-		}
-		for _, names := range labelNamesByRef {
-			for _, name := range names {
-				r.streamLabelNames[name] = struct{}{}
-			}
 		}
 
 		streamLabelNames, err := r.postingsReader.StreamLabelColumnNames(ctx)
