@@ -34,6 +34,8 @@ type Limits interface {
 	IngestionRateStrategy() string
 	IngestionRateBytes(userID string) float64
 	IngestionBurstSizeBytes(userID string) int
+	PolicyIngestionRateBytes(userID, policy string) (float64, bool)
+	PolicyIngestionBurstSizeBytes(userID, policy string) (int, bool)
 	AllowStructuredMetadata(userID string) bool
 	MaxStructuredMetadataSize(userID string) int
 	MaxStructuredMetadataCount(userID string) int

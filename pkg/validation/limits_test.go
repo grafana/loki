@@ -13,11 +13,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "go.yaml.in/yaml/v4"
+	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
@@ -667,6 +669,77 @@ func TestLimits_PolicyOverrideLimits(t *testing.T) {
 	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
 	require.False(t, ok)
 	require.Equal(t, 0, limit)
+}
+
+func TestLimits_PolicyRateOverrides(t *testing.T) {
+	limits := &Limits{
+		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
+			"finance": {
+				IngestionRateMB:         2,
+				IngestionBurstSizeMB:    4,
+				PerStreamRateLimit:      flagext.ByteSize(3 * 1024 * 1024),
+				PerStreamRateLimitBurst: flagext.ByteSize(5 * 1024 * 1024),
+			},
+			// ops sets a rate but no burst; burst accessors should report 0/empty so callers
+			// can fall back to the tenant burst.
+			"ops": {
+				IngestionRateMB: 1,
+			},
+			// zero entry: an existing policy key whose values are all zero must REPLACE (return
+			// true with zero values), not be treated as "no override".
+			"zero": {},
+		},
+	}
+
+	overrides := &Overrides{defaultLimits: limits, tenantLimits: nil}
+
+	// finance: full override present.
+	rateBytes, ok := overrides.PolicyIngestionRateBytes("tenant1", "finance")
+	require.True(t, ok)
+	require.Equal(t, float64(2*bytesInMB), rateBytes)
+	burstBytes, ok := overrides.PolicyIngestionBurstSizeBytes("tenant1", "finance")
+	require.True(t, ok)
+	require.Equal(t, 4*bytesInMB, burstBytes)
+	psrl, ok := overrides.PolicyPerStreamRateLimit("tenant1", "finance")
+	require.True(t, ok)
+	require.Equal(t, RateLimit{Limit: rate.Limit(3 * 1024 * 1024), Burst: 5 * 1024 * 1024}, psrl)
+
+	// ops: rate set, burst unset -> burst accessor reports (0, true).
+	rateBytes, ok = overrides.PolicyIngestionRateBytes("tenant1", "ops")
+	require.True(t, ok)
+	require.Equal(t, float64(1*bytesInMB), rateBytes)
+	burstBytes, ok = overrides.PolicyIngestionBurstSizeBytes("tenant1", "ops")
+	require.True(t, ok)
+	require.Equal(t, 0, burstBytes)
+
+	// zero: entry exists -> overrides apply with zero values (REPLACE, not inherit).
+	rateBytes, ok = overrides.PolicyIngestionRateBytes("tenant1", "zero")
+	require.True(t, ok)
+	require.Equal(t, float64(0), rateBytes)
+	psrl, ok = overrides.PolicyPerStreamRateLimit("tenant1", "zero")
+	require.True(t, ok)
+	require.Equal(t, RateLimit{Limit: 0, Burst: 0}, psrl)
+
+	// non-existent policy -> false.
+	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "nonexistent")
+	require.False(t, ok)
+	_, ok = overrides.PolicyIngestionBurstSizeBytes("tenant1", "nonexistent")
+	require.False(t, ok)
+	_, ok = overrides.PolicyPerStreamRateLimit("tenant1", "nonexistent")
+	require.False(t, ok)
+
+	// empty policy -> false.
+	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "")
+	require.False(t, ok)
+	_, ok = overrides.PolicyPerStreamRateLimit("tenant1", "")
+	require.False(t, ok)
+
+	// nil map -> false.
+	limits.PolicyOverrideLimits = nil
+	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "finance")
+	require.False(t, ok)
+	_, ok = overrides.PolicyPerStreamRateLimit("tenant1", "finance")
+	require.False(t, ok)
 }
 
 func TestOTLPConfig(t *testing.T) {

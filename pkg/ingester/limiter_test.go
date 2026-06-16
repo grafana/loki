@@ -12,6 +12,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -166,6 +167,36 @@ func TestStreamCountLimiter_DelegateStreamLimits(t *testing.T) {
 	err = scl.AssertNewStreamAllowed("test", noPolicy)
 
 	assert.NoError(t, err, "stream count limit should be skipped when delegateStreamLimits is enabled")
+}
+
+func TestTenantBasedStrategy_PolicyRateLimit(t *testing.T) {
+	limits, err := validation.NewOverrides(validation.Limits{
+		PerStreamRateLimit:      flagext.ByteSize(10 * 1024),
+		PerStreamRateLimitBurst: flagext.ByteSize(20 * 1024),
+		PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
+			"finance": {
+				PerStreamRateLimit:      flagext.ByteSize(100 * 1024),
+				PerStreamRateLimitBurst: flagext.ByteSize(200 * 1024),
+			},
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	strategy := &TenantBasedStrategy{limits: limits}
+
+	tenantLimit := validation.RateLimit{Limit: rate.Limit(10 * 1024), Burst: 20 * 1024}
+	policyLimit := validation.RateLimit{Limit: rate.Limit(100 * 1024), Burst: 200 * 1024}
+
+	// No policy -> tenant per-stream rate limit.
+	assert.Equal(t, tenantLimit, strategy.RateLimit("test", noPolicy))
+	// Matching policy -> override (REPLACE).
+	assert.Equal(t, policyLimit, strategy.RateLimit("test", "finance"))
+	// Unknown policy -> tenant per-stream rate limit.
+	assert.Equal(t, tenantLimit, strategy.RateLimit("test", "unknown"))
+
+	// Disabled -> unlimited regardless of policy.
+	strategy.SetDisabled(true)
+	assert.Equal(t, validation.Unlimited, strategy.RateLimit("test", "finance"))
 }
 
 func TestLimiter_minNonZero(t *testing.T) {

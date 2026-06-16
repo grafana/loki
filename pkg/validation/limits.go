@@ -662,6 +662,15 @@ func (l *Limits) Validate() error {
 		}
 	}
 
+	for policy, pl := range l.PolicyOverrideLimits {
+		if pl.IngestionRateMB < 0 || pl.IngestionBurstSizeMB < 0 {
+			return fmt.Errorf("policy_override_limits[%q]: ingestion_rate_mb and ingestion_burst_size_mb must be >= 0", policy)
+		}
+		if pl.PerStreamRateLimit.Val() < 0 || pl.PerStreamRateLimitBurst.Val() < 0 {
+			return fmt.Errorf("policy_override_limits[%q]: per_stream_rate_limit and per_stream_rate_limit_burst must be >= 0", policy)
+		}
+	}
+
 	if _, err := deletionmode.ParseMode(l.DeletionMode); err != nil {
 		return err
 	}
@@ -849,6 +858,60 @@ func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, b
 		return policyLimits.MaxGlobalStreamsPerUser, true
 	}
 	return 0, false
+}
+
+// PolicyIngestionRateBytes returns the per-policy ingestion rate in bytes/sec and true if a
+// policy override entry exists; otherwise 0 and false. When true, the value replaces the
+// tenant-level ingestion rate for streams resolved to the policy.
+func (o *Overrides) PolicyIngestionRateBytes(userID, policy string) (float64, bool) {
+	if policy == "" {
+		return 0, false
+	}
+	limits := o.getOverridesForUser(userID)
+	if len(limits.PolicyOverrideLimits) == 0 {
+		return 0, false
+	}
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return policyLimits.IngestionRateMB * bytesInMB, true
+	}
+	return 0, false
+}
+
+// PolicyIngestionBurstSizeBytes returns the per-policy ingestion burst size in bytes and true if
+// a policy override entry exists; otherwise 0 and false. A returned burst of 0 means the caller
+// should fall back to the tenant burst (a policy may set a rate without an explicit burst).
+func (o *Overrides) PolicyIngestionBurstSizeBytes(userID, policy string) (int, bool) {
+	if policy == "" {
+		return 0, false
+	}
+	limits := o.getOverridesForUser(userID)
+	if len(limits.PolicyOverrideLimits) == 0 {
+		return 0, false
+	}
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return int(policyLimits.IngestionBurstSizeMB * bytesInMB), true
+	}
+	return 0, false
+}
+
+// PolicyPerStreamRateLimit returns the per-policy per-stream rate limit and true if a policy
+// override entry exists; otherwise an empty RateLimit and false. When true, the value replaces
+// the tenant-level per-stream rate limit for streams resolved to the policy.
+func (o *Overrides) PolicyPerStreamRateLimit(userID, policy string) (RateLimit, bool) {
+	if policy == "" {
+		return RateLimit{}, false
+	}
+	limits := o.getOverridesForUser(userID)
+	if len(limits.PolicyOverrideLimits) == 0 {
+		return RateLimit{}, false
+	}
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return RateLimit{
+			Limit: rate.Limit(float64(policyLimits.PerStreamRateLimit.Val())),
+			Burst: policyLimits.PerStreamRateLimitBurst.Val(),
+		}, true
+	}
+	return RateLimit{}, false
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
@@ -1459,9 +1522,15 @@ type OverwriteMarshalingStringMap struct {
 }
 
 // PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
+// When a policy entry exists, its rate-limit values replace the tenant-level values for
+// streams resolved to that policy (REPLACE semantics); 0 means unlimited/zero, not "inherit".
 type PolicyOverridableLimits struct {
-	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"max_streams_per_user for a specific policy. 0 means unlimited."`
-	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"max_global_streams_per_user for a specific policy. 0 means unlimited."`
+	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"max_streams_per_user for a specific policy. 0 means unlimited."`
+	MaxGlobalStreamsPerUser int              `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"max_global_streams_per_user for a specific policy. 0 means unlimited."`
+	IngestionRateMB         float64          `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb" doc:"ingestion_rate_mb for a specific policy. Replaces the tenant ingestion_rate_mb for streams matching the policy."`
+	IngestionBurstSizeMB    float64          `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb" doc:"ingestion_burst_size_mb for a specific policy. When unset (0), falls back to the tenant ingestion_burst_size_mb."`
+	PerStreamRateLimit      flagext.ByteSize `yaml:"per_stream_rate_limit" json:"per_stream_rate_limit" doc:"per_stream_rate_limit for a specific policy. Replaces the tenant per_stream_rate_limit for streams matching the policy."`
+	PerStreamRateLimitBurst flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst" doc:"per_stream_rate_limit_burst for a specific policy."`
 }
 
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {

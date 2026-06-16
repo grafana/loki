@@ -642,7 +642,12 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	var ingestionBlockedError error
-	var totalEntriesSize, totalLineCount int
+
+	// Ingestion rate limiting is bucketed by the effective rate-limit target: streams whose
+	// resolved policy has a per-policy ingestion rate override are metered against their own
+	// per-(tenant,policy) bucket, replacing the tenant-wide limit; all other streams share the
+	// tenant-wide bucket (keyed by "").
+	rlBuckets := map[string]*rateLimitBucket{}
 
 	err = func() error {
 		sp := trace.SpanFromContext(ctx)
@@ -774,15 +779,27 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 				n++
 				entrySize := util.EntryTotalSize(&entry)
-				totalEntriesSize += entrySize
 				streamEntriesSize += entrySize
-				totalLineCount++
 			}
 			stream.Entries = stream.Entries[:n]
 			if len(stream.Entries) == 0 {
 				// Empty stream after validating all the entries
 				continue
 			}
+
+			// Attribute this stream's bytes/lines to its rate-limit bucket.
+			_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, policy)
+			bucketKey := ""
+			if hasRateOverride {
+				bucketKey = policy
+			}
+			b := rlBuckets[bucketKey]
+			if b == nil {
+				b = &rateLimitBucket{policy: policy, hasOverride: hasRateOverride}
+				rlBuckets[bucketKey] = b
+			}
+			b.bytes += streamEntriesSize
+			b.lines += n
 
 			maybeShardStreams(stream, lbs, streamEntriesSize, policy)
 		}
@@ -805,13 +822,40 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, totalEntriesSize) {
-		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format)
+	// Enforce the ingestion rate limit per bucket. A bucket with a per-policy override is
+	// metered independently from the tenant-wide bucket. If any bucket is over its limit we
+	// reject the whole request (preserving the existing whole-request-reject behavior) but
+	// only attribute the offending bucket's bytes as discarded.
+	var rateLimitErr error
+	for _, b := range rlBuckets {
+		limiterKey := tenantID
+		if b.hasOverride {
+			limiterKey = encodeRateLimitKey(tenantID, b.policy)
+		}
+		if d.ingestionRateLimiter.AllowN(now, limiterKey, b.bytes) {
+			continue
+		}
 
-		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), totalLineCount, totalEntriesSize)
+		limit := int(d.ingestionRateLimiter.Limit(now, limiterKey))
+		if b.hasOverride {
+			bucket := b // capture for the closure
+			d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, func(policy string) bool {
+				return policy == bucket.policy
+			})
+			err = fmt.Errorf(validation.RateLimitedPolicyErrorMsg, tenantID, b.policy, limit, b.lines, b.bytes)
+		} else {
+			d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, func(policy string) bool {
+				_, hasOverride := d.validator.PolicyIngestionRateBytes(tenantID, policy)
+				return !hasOverride
+			})
+			err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, limit, b.lines, b.bytes)
+		}
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+		rateLimitErr = httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+	}
+	if rateLimitErr != nil {
+		return nil, rateLimitErr
 	}
 
 	// These limits are checked after the ingestion rate limit as this
@@ -824,7 +868,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				for _, stream := range rejected {
 					discardedStreams = append(discardedStreams, stream.Stream)
 				}
-				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format)
+				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
 
 				// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
 				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
@@ -988,6 +1032,18 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, 
 	return len(missingLbs) > 0, missingLbs
 }
 
+// rateLimitBucket accumulates the bytes and line count of the streams metered against a
+// single ingestion rate-limit bucket (either the tenant-wide bucket or a per-policy bucket).
+type rateLimitBucket struct {
+	policy      string
+	hasOverride bool
+	bytes       int
+	lines       int
+}
+
+// trackDiscardedData tracks discarded samples and bytes. When policyMatch is non-nil, only
+// streams whose resolved policy satisfies it are tracked (used to attribute discards to a
+// single ingestion rate-limit bucket); a nil policyMatch tracks all streams.
 func (d *Distributor) trackDiscardedData(
 	ctx context.Context,
 	streams []logproto.Stream,
@@ -996,11 +1052,15 @@ func (d *Distributor) trackDiscardedData(
 	reason string,
 	streamResolver push.StreamResolver,
 	format string,
+	policyMatch func(policy string) bool,
 ) {
 	for _, stream := range streams {
 		lbs, _, _, retentionHours, policy, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
 		if err != nil {
 			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
+			continue
+		}
+		if policyMatch != nil && !policyMatch(policy) {
 			continue
 		}
 		discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
