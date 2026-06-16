@@ -135,7 +135,7 @@ func (e expressionEvaluator) lookupColumnExpr(colExpr *physical.ColumnExpr, inpu
 			// TODO(ashwanth): Support other data types in CoalesceVector.
 			// For now, ensure all vectors are strings to avoid type conflicts.
 			if ident.DataType() != types.Loki.String {
-				return nil, false, fmt.Errorf("column %s has datatype %s, but expression expects %s", ident.ShortName(), ident.DataType(), types.Loki.String)
+				continue
 			}
 			vecs = append(vecs, &columnWithType{col: input.Column(idx), ct: ident.ColumnType()})
 		}
