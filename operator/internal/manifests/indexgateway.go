@@ -252,7 +252,6 @@ func NewIndexGatewayHTTPService(opts Options) *corev1.Service {
 // index-gateway pods.
 func NewIndexGatewayPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 	l := ComponentLabels(LabelIndexGatewayComponent, opts.Name)
-	mu := intstr.FromInt(1)
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodDisruptionBudget",
@@ -267,7 +266,7 @@ func NewIndexGatewayPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBud
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MaxUnavailable: &mu,
+			MaxUnavailable: ptr.To(intstr.FromInt32(1)),
 		},
 	}
 }

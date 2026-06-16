@@ -382,8 +382,6 @@ func ruleVolumeItems(configMapName string, tenants map[string]TenantConfig) []co
 // NewRulerPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack ruler pods.
 func NewRulerPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 	l := ComponentLabels(LabelRulerComponent, opts.Name)
-	mu := intstr.FromInt(1)
-
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodDisruptionBudget",
@@ -398,7 +396,7 @@ func NewRulerPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MaxUnavailable: &mu,
+			MaxUnavailable: ptr.To(intstr.FromInt32(1)),
 		},
 	}
 }

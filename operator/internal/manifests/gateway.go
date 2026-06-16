@@ -520,7 +520,6 @@ func NewServiceAccountTokenSecret(opts Options) client.Object {
 // Gateway pods.
 func NewGatewayPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 	l := ComponentLabels(LabelGatewayComponent, opts.Name)
-	mu := intstr.FromInt(1)
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodDisruptionBudget",
@@ -535,7 +534,7 @@ func NewGatewayPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MaxUnavailable: &mu,
+			MaxUnavailable: ptr.To(intstr.FromInt32(1)),
 		},
 	}
 }
