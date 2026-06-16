@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  - description: line_format renders empty template output as empty line, not original raw line
+    query: ${SELECTOR} | logfmt | line_format `{{.error}}`
+    kind: log
+    time_range:
+      length: 24h
+    directions: backward # forward log queries unsupported by v2 engine
+    tags:
+      - logfmt
+      - line_format
+      - absent-field
+      - empty-rendering
+    notes: >
+      Regression for the v2 mergeColumns "empty-as-missing" bug.
+      The `error` logfmt field is only emitted for error-level lines, so its
+      parsed column is null for every non-error row. After PR #22342,
+      valueStrOrEmpty renders null entries as "" at the template-input
+      boundary, so `{{.error}}` renders to "" on non-error rows. Before the
+      mergeColumns fix, the projection layer treated that "" as "missing,
+      keep old" and silently returned the original raw log line for those
+      rows — making line_format appear to have no effect. v1 always
+      overwrites the line with the template output, including an empty
+      result. The returned lines and per-stream counts must match v1 across
+      both error and non-error rows.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - error
