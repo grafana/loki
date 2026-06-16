@@ -1,0 +1,64 @@
+version: '3'
+
+tasks:
+  benchcmp:
+    desc: Compare current benchmarks against an optional commit, defaulting to HEAD
+    vars:
+      BENCH_COUNT: '{{default "5" .COUNT}}'
+      REF:
+        sh: |
+          if [ -n "{{.COMMIT}}" ]; then
+            printf '%s\n' "{{.COMMIT}}"
+          elif [ -n "{{.CLI_ARGS}}" ]; then
+            set -- {{.CLI_ARGS}}
+            printf '%s\n' "$1"
+          else
+            printf '%s\n' HEAD
+          fi
+      COMMIT_HASH:
+        sh: git rev-parse --verify "{{.REF}}^{commit}"
+    cmds:
+      - |
+        set -eu
+
+        mkdir -p benchmarks
+
+        base_file="benchmarks/{{.COMMIT_HASH}}-count{{.BENCH_COUNT}}.txt"
+        new_file="benchmarks/new.txt"
+        base_tmp=""
+        new_tmp=""
+        worktree_dir="$(mktemp -d /tmp/regexp2-benchcmp.XXXXXX)"
+
+        cleanup() {
+          if [ -n "$base_tmp" ]; then
+            rm -f "$base_tmp"
+          fi
+          if [ -n "$new_tmp" ]; then
+            rm -f "$new_tmp"
+          fi
+          git worktree remove --force "$worktree_dir" >/dev/null 2>&1 || true
+        }
+        trap cleanup EXIT
+
+        if [ -f "$base_file" ] && grep -q '^Benchmark' "$base_file"; then
+          printf 'Using cached baseline benchmarks from %s...\n' "$base_file"
+        else
+          if [ -f "$base_file" ]; then
+            printf 'Ignoring cached baseline without benchmark results at %s...\n' "$base_file"
+          fi
+          printf 'Running baseline benchmarks for %s (%s samples)...\n' "{{.COMMIT_HASH}}" "{{.BENCH_COUNT}}"
+          git worktree add --detach "$worktree_dir" "{{.COMMIT_HASH}}"
+          base_tmp="$(mktemp "${base_file}.tmp.XXXXXX")"
+          (cd "$worktree_dir" && env GOWORK=off go test -run '^$' -bench . -benchmem -count "{{.BENCH_COUNT}}" ./...) > "$base_tmp"
+          mv "$base_tmp" "$base_file"
+          base_tmp=""
+        fi
+
+        printf 'Running current benchmarks (%s samples)...\n' "{{.BENCH_COUNT}}"
+        new_tmp="$(mktemp "${new_file}.tmp.XXXXXX")"
+        env GOWORK=off go test -run '^$' -bench . -benchmem -count "{{.BENCH_COUNT}}" ./... > "$new_tmp"
+        mv "$new_tmp" "$new_file"
+        new_tmp=""
+
+        printf 'Comparing benchmark results with benchstat...\n'
+        benchstat "$base_file" "$new_file"

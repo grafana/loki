@@ -52,7 +52,7 @@ type Colour int32
 
 // NewColour creates a Colour directly from RGB values.
 func NewColour(r, g, b uint8) Colour {
-	return ParseColour(fmt.Sprintf("%02x%02x%02x", r, g, b))
+	return Colour(int32(r)<<16|int32(g)<<8|int32(b)) + 1
 }
 
 // Distance between this colour and another.
