@@ -2,7 +2,6 @@ package postings_test
 
 import (
 	"context"
-	"math"
 	"testing"
 	"time"
 
@@ -17,7 +16,7 @@ import (
 func TestRowReader_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 
-	b := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
 	ts := time.Unix(0, 0).UTC()
 
 	b.ObserveLabelPosting(postings.LabelObservation{
@@ -83,7 +82,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 	ctx := context.Background()
 
-	b := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
 	ts := time.Unix(0, 0).UTC()
 
 	b.ObserveLabelPosting(postings.LabelObservation{
@@ -137,7 +136,7 @@ func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 func TestRowReader_CloseIdempotent(t *testing.T) {
 	ctx := context.Background()
 
-	b := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
 	b.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:   "/obj",
 		SectionIndex: 0,

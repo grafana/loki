@@ -13,16 +13,16 @@ import (
 // postingsEncoder encodes sorted posting entries into size-bounded sections,
 // splitting at run boundaries. Stateless and reusable across flushes.
 type postingsEncoder struct {
-	pageSizeHint      int
-	pageMaxRowCount   int
-	targetSectionSize int
+	pageSizeHint           int
+	pageMaxRowCount        int
+	targetSectionSizeBytes int
 }
 
-func newPostingsEncoder(pageSizeHint, pageMaxRowCount, targetSectionSize int) *postingsEncoder {
+func newPostingsEncoder(pageSizeHint, pageMaxRowCount, targetSectionSizeBytes int) *postingsEncoder {
 	return &postingsEncoder{
-		pageSizeHint:      pageSizeHint,
-		pageMaxRowCount:   pageMaxRowCount,
-		targetSectionSize: targetSectionSize,
+		pageSizeHint:           pageSizeHint,
+		pageMaxRowCount:        pageMaxRowCount,
+		targetSectionSizeBytes: targetSectionSizeBytes,
 	}
 }
 
@@ -30,7 +30,7 @@ func newPostingsEncoder(pageSizeHint, pageMaxRowCount, targetSectionSize int) *p
 // writing each to w, and returns the total bytes written.
 func (p *postingsEncoder) encodeBloomEntries(w dataobj.SectionWriter, tenant string, entries []BloomEntry) (int64, error) {
 	var total int64
-	err := encodeInSections(entries, p.targetSectionSize, bloomEntrySize, func(section []BloomEntry) error {
+	err := encodeInSections(entries, p.targetSectionSizeBytes, bloomEntrySize, func(section []BloomEntry) error {
 		n, err := p.writeSection(w, tenant, section, nil)
 		if err != nil {
 			return err
@@ -45,7 +45,7 @@ func (p *postingsEncoder) encodeBloomEntries(w dataobj.SectionWriter, tenant str
 // writing each to w, and returns the total bytes written.
 func (p *postingsEncoder) encodeLabelEntries(w dataobj.SectionWriter, tenant string, entries []LabelEntry) (int64, error) {
 	var total int64
-	err := encodeInSections(entries, p.targetSectionSize, labelEntrySize, func(section []LabelEntry) error {
+	err := encodeInSections(entries, p.targetSectionSizeBytes, labelEntrySize, func(section []LabelEntry) error {
 		n, err := p.writeSection(w, tenant, nil, section)
 		if err != nil {
 			return err

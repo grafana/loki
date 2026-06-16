@@ -27,15 +27,15 @@ type MergeBuilder struct {
 // posting entries.
 //
 // pageSizeHint and pageMaxRowCount control page splitting of the underlying
-// column builders (0 means use defaults). targetSectionSize is the uncompressed
-// size threshold at which Flush splits accumulated entries into multiple
+// column builders (0 means use defaults). targetSectionSizeBytes is the uncompressed
+// size threshold in bytes at which Flush splits accumulated entries into multiple
 // sections; it must be > 0. metrics may be nil to disable instrumentation.
-func NewMergeBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount, targetSectionSize int) *MergeBuilder {
+func NewMergeBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount, targetSectionSizeBytes int) *MergeBuilder {
 	return &MergeBuilder{
 		metrics: metrics,
 		labels:  make(map[labelPostingKey]LabelEntry),
 		blooms:  make(map[bloomPostingKey]BloomEntry),
-		encoder: newPostingsEncoder(pageSizeHint, pageMaxRowCount, targetSectionSize),
+		encoder: newPostingsEncoder(pageSizeHint, pageMaxRowCount, targetSectionSizeBytes),
 	}
 }
 
