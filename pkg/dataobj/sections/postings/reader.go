@@ -811,13 +811,16 @@ const readResolveMatchingStreamRefsBatchSize = 4096
 
 type matcherIndex int
 
-// ResolveMatchingStreamRefs returns the object-scoped streams matching every matcher against KindLabel rows.
-func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labels.Matcher) (map[StreamRef]struct{}, error) {
+// ResolvePerMatcherStreams returns, for each matcher (by position), the set of
+// stream refs in this section that satisfy it. It does NOT intersect across
+// matchers; callers combine results (e.g. across sections) before applying the
+// AND. Returns (nil, nil) when matchers is empty.
+func (r *Reader) ResolvePerMatcherStreams(ctx context.Context, matchers []*labels.Matcher) ([]map[StreamRef]struct{}, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ResolveMatchingStreamRefs")
+	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ResolvePerMatcherStreams")
 	defer span.End()
 
 	defer r.alloc.Reclaim()
@@ -836,7 +839,7 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 		ColumnTypeKind,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("finding ResolveMatchingStreamRefs columns: %w", err)
+		return nil, fmt.Errorf("finding ResolvePerMatcherStreams columns: %w", err)
 	}
 	colObjectPath, colColumnName, colLabelValue, colStreamIDBitmap, colKind := cols[0], cols[1], cols[2], cols[3], cols[4]
 
@@ -932,7 +935,7 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 	adapter := columnar.NewReaderAdapter(innerOptions)
 	defer func() { _ = adapter.Close() }()
 	if err := adapter.Open(ctx); err != nil {
-		return nil, fmt.Errorf("opening ResolveMatchingStreamRefs adapter: %w", err)
+		return nil, fmt.Errorf("opening ResolvePerMatcherStreams adapter: %w", err)
 	}
 
 	// Inner schema (5 fields) used by arrowconv.ToRecordBatch — must match
@@ -961,7 +964,7 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 		if colBatch != nil && colBatch.NumRows() > 0 {
 			innerRB, convErr := arrowconv.ToRecordBatch(colBatch, innerSchema)
 			if convErr != nil {
-				return nil, fmt.Errorf("converting ResolveMatchingStreamRefs columnar batch to arrow: %w", convErr)
+				return nil, fmt.Errorf("converting ResolvePerMatcherStreams columnar batch to arrow: %w", convErr)
 			}
 			if err := accumulateLabelRows(
 				innerRB,
@@ -975,33 +978,48 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 			break
 		}
 		if readErr != nil {
-			return nil, fmt.Errorf("reading ResolveMatchingStreamRefs batch: %w", readErr)
+			return nil, fmt.Errorf("reading ResolvePerMatcherStreams batch: %w", readErr)
 		}
 	}
 
-	// AND across matchers: a stream ref must appear in every matcher's set.
-	var matchingStreams map[StreamRef]struct{}
-	if len(activeMatchers) == 0 {
-		// Defensive: short-circuited at the top of ResolveMatchingStreamRefs, but if
-		// every matcher was nil we land here.
-		matchingStreams = make(map[StreamRef]struct{})
-	} else {
-		first := perMatcherStreams[matcherIndex(0)]
-		matchingStreams = make(map[StreamRef]struct{}, len(first))
-		for streamRef := range first {
-			matchingStreams[streamRef] = struct{}{}
+	out := make([]map[StreamRef]struct{}, len(activeMatchers))
+	for i := range activeMatchers {
+		out[i] = perMatcherStreams[matcherIndex(i)]
+		if out[i] == nil {
+			out[i] = map[StreamRef]struct{}{}
 		}
-		for i := 1; i < len(activeMatchers) && len(matchingStreams) > 0; i++ {
-			next := perMatcherStreams[matcherIndex(i)]
-			for streamRef := range matchingStreams {
-				if _, ok := next[streamRef]; !ok {
-					delete(matchingStreams, streamRef)
-				}
+	}
+	return out, nil
+}
+
+func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labels.Matcher) (map[StreamRef]struct{}, error) {
+	perMatcher, err := r.ResolvePerMatcherStreams(ctx, matchers)
+	if err != nil {
+		return nil, err
+	}
+	matchingStreams := intersectStreamRefSets(perMatcher)
+	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsLabelsResolved.Observe(int64(len(matchingStreams))))
+	return matchingStreams, nil
+}
+
+// intersectStreamRefSets returns the AND of the per-matcher stream-ref sets: a
+// ref survives only if present in every set. Empty input yields an empty set.
+func intersectStreamRefSets(perMatcher []map[StreamRef]struct{}) map[StreamRef]struct{} {
+	if len(perMatcher) == 0 {
+		return map[StreamRef]struct{}{}
+	}
+	result := make(map[StreamRef]struct{}, len(perMatcher[0]))
+	for ref := range perMatcher[0] {
+		result[ref] = struct{}{}
+	}
+	for i := 1; i < len(perMatcher) && len(result) > 0; i++ {
+		for ref := range result {
+			if _, ok := perMatcher[i][ref]; !ok {
+				delete(result, ref)
 			}
 		}
 	}
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsLabelsResolved.Observe(int64(len(matchingStreams))))
-	return matchingStreams, nil
+	return result
 }
 
 func splitByMatchType(ms []*labels.Matcher) (equal, other []*labels.Matcher) {
