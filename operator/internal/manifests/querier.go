@@ -2,7 +2,6 @@ package manifests
 
 import (
 	"fmt"
-	"math"
 	"path"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -231,10 +230,7 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 // NewQuerierPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack querier pods.
 func NewQuerierPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 	l := ComponentLabels(LabelQuerierComponent, opts.Name)
-
-	// Have at least N-1 replicas available, unless N==1 in which case the minimum available is 1.
-	replicas := opts.Stack.Template.Querier.Replicas
-	ma := intstr.FromInt(int(math.Max(1, float64(replicas-1))))
+	mu := intstr.FromInt(1)
 
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
@@ -250,7 +246,7 @@ func NewQuerierPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MinAvailable: &ma,
+			MaxUnavailable: &mu,
 		},
 	}
 }

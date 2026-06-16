@@ -1445,8 +1445,8 @@ func TestBuildGateway_PodDisruptionBudget(t *testing.T) {
 	require.NotNil(t, pdb)
 	require.Equal(t, "abcd-gateway", pdb.Name)
 	require.Equal(t, "efgh", pdb.Namespace)
-	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
-	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
+	require.NotNil(t, pdb.Spec.MaxUnavailable.IntVal)
+	require.Equal(t, int32(1), pdb.Spec.MaxUnavailable.IntVal)
 	require.EqualValues(t, ComponentLabels(LabelGatewayComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 }
 

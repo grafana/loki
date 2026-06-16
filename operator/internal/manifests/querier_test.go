@@ -109,60 +109,6 @@ func TestBuildQuerier_PodDisruptionBudget(t *testing.T) {
 		want policyv1.PodDisruptionBudget
 	}{
 		{
-			name: "Querier with 1 replica",
-			opts: Options{
-				Name:      "abcd",
-				Namespace: "efgh",
-				Stack: lokiv1.LokiStackSpec{
-					Template: &lokiv1.LokiTemplateSpec{
-						Querier: &lokiv1.LokiComponentSpec{
-							Replicas: 1,
-						},
-					},
-				},
-			},
-			want: policyv1.PodDisruptionBudget{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "abcd-querier",
-					Namespace: "efgh",
-					Labels:    ComponentLabels(LabelQuerierComponent, "abcd"),
-				},
-				Spec: policyv1.PodDisruptionBudgetSpec{
-					MinAvailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
-					Selector: &metav1.LabelSelector{
-						MatchLabels: ComponentLabels(LabelQuerierComponent, "abcd"),
-					},
-				},
-			},
-		},
-		{
-			name: "Querier with 2 replicas",
-			opts: Options{
-				Name:      "abcd",
-				Namespace: "efgh",
-				Stack: lokiv1.LokiStackSpec{
-					Template: &lokiv1.LokiTemplateSpec{
-						Querier: &lokiv1.LokiComponentSpec{
-							Replicas: 2,
-						},
-					},
-				},
-			},
-			want: policyv1.PodDisruptionBudget{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "abcd-querier",
-					Namespace: "efgh",
-					Labels:    ComponentLabels(LabelQuerierComponent, "abcd"),
-				},
-				Spec: policyv1.PodDisruptionBudgetSpec{
-					MinAvailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
-					Selector: &metav1.LabelSelector{
-						MatchLabels: ComponentLabels(LabelQuerierComponent, "abcd"),
-					},
-				},
-			},
-		},
-		{
 			name: "Querier with 3 replicas",
 			opts: Options{
 				Name:      "abcd",
@@ -182,7 +128,7 @@ func TestBuildQuerier_PodDisruptionBudget(t *testing.T) {
 					Labels:    ComponentLabels(LabelQuerierComponent, "abcd"),
 				},
 				Spec: policyv1.PodDisruptionBudgetSpec{
-					MinAvailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 2},
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
 					Selector: &metav1.LabelSelector{
 						MatchLabels: ComponentLabels(LabelQuerierComponent, "abcd"),
 					},

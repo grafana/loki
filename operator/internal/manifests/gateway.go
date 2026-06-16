@@ -535,7 +535,7 @@ func NewGatewayPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MinAvailable: &mu,
+			MaxUnavailable: &mu,
 		},
 	}
 }

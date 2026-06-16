@@ -251,7 +251,7 @@ func newDistributorPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudg
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MinAvailable: &mu,
+			MaxUnavailable: &mu,
 		},
 	}
 }
