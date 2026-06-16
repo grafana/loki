@@ -19,7 +19,7 @@ type printStreamsCommand struct {
 	streamIDs *[]int64
 }
 
-func (cmd *printStreamsCommand) run(c *kingpin.ParseContext) error {
+func (cmd *printStreamsCommand) run(_ *kingpin.ParseContext) error {
 	for _, f := range *cmd.files {
 		cmd.printStreamsInFile(f)
 	}
@@ -46,10 +46,9 @@ func (cmd *printStreamsCommand) printStreamsInFile(name string) {
 func (cmd *printStreamsCommand) printStreams(ctx context.Context, dataObj *dataobj.Object) {
 	var (
 		tmp            = make([]logs.Record, 512)
-		printAll       = false
 		printStreamIDs = make(map[int64]struct{})
 	)
-	printAll = len(*cmd.streamIDs) == 0
+	printAll := len(*cmd.streamIDs) == 0
 	for _, id := range *cmd.streamIDs {
 		printStreamIDs[id] = struct{}{}
 	}
