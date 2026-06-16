@@ -46,6 +46,8 @@ type Config struct {
 	// Configurations related to fetching runtime configurations from HTTP URLs rather than local files.
 	HTTPClientTimeout           time.Duration                       `yaml:"http_client_timeout" category:"advanced"`
 	HTTPClientClusterValidation clusterutil.ClusterValidationConfig `yaml:"http_client_cluster_validation" category:"advanced"`
+	// HTTPClientDisableKeepAlives disables HTTP keep-alives for the runtime config HTTP client.
+	HTTPClientDisableKeepAlives bool `yaml:"http_client_disable_keep_alives" category:"advanced"`
 }
 
 // RegisterFlagsWithPrefix registers flags under the specified prefix, which could be empty.
@@ -54,6 +56,7 @@ func (mc *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&mc.LoadPath, prefix+"file", "Comma separated list of yaml files or URLs with the configuration that can be updated at runtime. Runtime config files will be merged from left to right.")
 	f.DurationVar(&mc.ReloadPeriod, prefix+"reload-period", 10*time.Second, "How often to check runtime config files.")
 	f.DurationVar(&mc.HTTPClientTimeout, prefix+"http-client-timeout", 30*time.Second, "HTTP client timeout when fetching runtime config from URLs.")
+	f.BoolVar(&mc.HTTPClientDisableKeepAlives, prefix+"http-client-disable-keep-alives", true, "Disable HTTP keep-alives for the runtime config HTTP client. When enabled, each reload opens a new connection, which prevents long-lived connections from being pinned to a single backend when the runtime config URL is served by multiple replicas behind a connection-level (L4) load balancer, such as a Kubernetes Service.")
 	mc.HTTPClientClusterValidation.RegisterFlagsWithPrefix(prefix+"http-client-cluster-validation.", f)
 }
 
@@ -383,7 +386,10 @@ func (om *Manager) GetConfig() interface{} {
 }
 
 func httpTransport(cfg Config, configName string, registerer prometheus.Registerer, logger log.Logger) http.RoundTripper {
-	rt := http.DefaultTransport
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DisableKeepAlives = cfg.HTTPClientDisableKeepAlives
+
+	var rt http.RoundTripper = transport
 	if cfg.HTTPClientClusterValidation.Label != "" {
 		invalidClusterValidations := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "client_invalid_cluster_validation_label_requests_total",
@@ -397,7 +403,7 @@ func httpTransport(cfg Config, configName string, registerer prometheus.Register
 			level.Warn(logger).Log("msg", msg, "method", method, "cluster_validation_label", cfg.HTTPClientClusterValidation.Label, "component", "runtimeconfig", "load_path", cfg.LoadPath)
 			invalidClusterValidations.WithLabelValues(method).Inc()
 		}
-		rt = middleware.ClusterValidationRoundTripper(cfg.HTTPClientClusterValidation.Label, reporter, http.DefaultTransport)
+		rt = middleware.ClusterValidationRoundTripper(cfg.HTTPClientClusterValidation.Label, reporter, transport)
 	}
 	return rt
 }

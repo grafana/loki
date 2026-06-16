@@ -486,6 +486,8 @@ github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 h1:JeSE6pjso5T
 github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674/go.mod h1:r4w70xmWCQKmi1ONH4KIaBptdivuRPyosB9RmPlGEwA=
 github.com/grafana/dskit v0.0.0-20260605193902-3f568b4219b0 h1:M5ol2sYaIAitAEeJqVF6EiB0EyEnN5uq6seGzrBjmcI=
 github.com/grafana/dskit v0.0.0-20260605193902-3f568b4219b0/go.mod h1:6n9jITeGJSb4RIAEj9RyeXaRG3hoC1KNl22tRiVPQ/8=
+github.com/grafana/dskit v0.0.0-20260616114202-8985d0f800b1 h1:uXe3yNDBUBjcfD4uHiHr5dPfRvd5U0leTarwRT4Pcdk=
+github.com/grafana/dskit v0.0.0-20260616114202-8985d0f800b1/go.mod h1:6n9jITeGJSb4RIAEj9RyeXaRG3hoC1KNl22tRiVPQ/8=
 github.com/grafana/gomemcache v0.0.0-20251127154401-74f93547077b h1:5qp8/5YPt/Z2RW5QHsxvwE05+LWQYIXydP2MwOkMfb8=
 github.com/grafana/gomemcache v0.0.0-20251127154401-74f93547077b/go.mod h1:j/s0jkda4UXTemDs7Pgw/vMT06alWc42CHisvYac0qw=
 github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675 h1:U94jQ2TQr1m3HNyE8efSdyaBbDrdPaWImXyenuKZ/nw=
