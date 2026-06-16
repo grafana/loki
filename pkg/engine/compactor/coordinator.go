@@ -229,6 +229,7 @@ func (c *coordinator) runTenantCycle(
 		return tenantCycleFailed
 	}
 	c.metrics.observeTenantCycle(tenant, "compacted", tenantDuration, stats)
+	c.metrics.observeEntries(tenant, entries, c.clock())
 	return tenantCycleCompacted
 }
 

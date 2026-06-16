@@ -140,11 +140,6 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 			Required().
 			StringVar(&r.ClientConfig.ID)
 
-		c.Flag("use-legacy-routes", "If set, API requests to loki will use the legacy /api/prom/ routes, alternatively set LOKI_USE_LEGACY_ROUTES.").
-			Default("false").
-			Envar("LOKI_USE_LEGACY_ROUTES").
-			BoolVar(&r.ClientConfig.UseLegacyRoutes)
-
 		c.Flag("tls-ca-path", "TLS CA certificate to verify Loki API as part of mTLS, alternatively set LOKI_TLS_CA_PATH.").
 			Default("").
 			Envar("LOKI_TLS_CA_PATH").
@@ -245,11 +240,6 @@ func (r *RuleCommand) setup(_ *kingpin.ParseContext) error {
 		ruleLoadTimestamp,
 		ruleLoadSuccessTimestamp,
 	)
-
-	// Loki's non-legacy route does not match Cortex, but the legacy one does.
-	if r.Backend == rules.LokiBackend {
-		r.ClientConfig.UseLegacyRoutes = true
-	}
 
 	cli, err := client.New(r.ClientConfig)
 	if err != nil {

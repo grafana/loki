@@ -242,6 +242,19 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 		switch expr.Operation {
 
 		case syntax.OpTypeSum:
+			if syntax.ReducesLabels(expr.Left) {
+				// skip the opaque per-shard rewrite at this level. If labels are
+				// reduced (e.g. an inner range aggregation has by/without, or a
+				// parser-stage drops/keeps/renames labels), the same series may
+				// exist on multiple shards. Per-shard partial results from a
+				// non-additive inner range aggregation (avg_over_time,
+				// max_over_time, ...) cannot be combined by an outer sum.
+				// Fall through to recursively map the inner expression first —
+				// mapRangeAggregationExpr knows how to decompose each range
+				// aggregation correctly (e.g. avg_over_time into
+				// sum_over_time/count_over_time) — and then re-wrap with sum.
+				break
+			}
 			// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
 			return m.wrappedShardedVectorAggr(expr, r)
 

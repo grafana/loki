@@ -2,10 +2,8 @@
   <config>
     <name>Lua</name>
     <alias>lua</alias>
-    <alias>luau</alias>
     <filename>*.lua</filename>
     <filename>*.wlua</filename>
-    <filename>*.luau</filename>
     <mime_type>text/x-lua</mime_type>
     <mime_type>application/x-lua</mime_type>
   </config>

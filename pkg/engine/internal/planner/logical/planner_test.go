@@ -551,6 +551,44 @@ RETURN %17
 	})
 }
 
+// TestConvertAST_UnimplementedErrorNamesFeature ensures that when the planner
+// rejects a query it cannot build, the returned error names the specific
+// unsupported feature (wrapping errUnimplemented) rather than the bare sentinel.
+func TestConvertAST_UnimplementedErrorNamesFeature(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		statement string
+		feature   string
+	}{
+		{
+			name:      "range aggregation with offset",
+			statement: `count_over_time({app="foo"}[5m] offset 5m)`,
+			feature:   "range aggregation with offset",
+		},
+		{
+			name:      "unsupported log parser",
+			statement: `{app="foo"} | pattern "<msg>"`,
+			feature:   `log parser "pattern"`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := &query{
+				statement: tc.statement,
+				start:     3600,
+				end:       7200,
+				step:      time.Minute,
+				direction: logproto.BACKWARD,
+				limit:     1000,
+			}
+
+			plan, err := BuildPlan(context.Background(), q)
+			require.Nil(t, plan)
+			require.ErrorIs(t, err, errUnimplemented)
+			require.ErrorContains(t, err, tc.feature)
+		})
+	}
+}
+
 func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {
 	t.Run("creates projection with unary cast operation instruction for metric query with unwrap duration", func(t *testing.T) {
 		// Query with duration unwrap in a sum_over_time metric query

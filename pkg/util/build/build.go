@@ -2,6 +2,8 @@ package build
 
 import (
 	"runtime"
+
+	"github.com/prometheus/common/version"
 )
 
 // These variables are set from the Makefile.
@@ -15,6 +17,12 @@ var (
 )
 
 func init() {
+	// Copy settings for this build into Prometheus common package, where they are fetched by Prometheus client_golang.
+	version.Version = Version
+	version.Revision = Revision
+	version.Branch = Branch
+	version.BuildUser = BuildUser
+	version.BuildDate = BuildDate
 	GoVersion = runtime.Version()
 }
 

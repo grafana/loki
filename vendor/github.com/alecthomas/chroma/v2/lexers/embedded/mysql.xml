@@ -38,7 +38,7 @@
       <rule pattern="\s+">
         <token type="TextWhitespace"/>
       </rule>
-      <rule pattern="(#|--\s+).*\n?">
+      <rule pattern="(#|--).*\n?">
         <token type="CommentSingle"/>
       </rule>
       <rule pattern="/\*">

@@ -414,7 +414,6 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.InternalServer.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 	}
 
-	t.Server.HTTP.Path(constants.PathPromPush).Methods("POST").Handler(lokiPushHandler)
 	t.Server.HTTP.Path(constants.PathLokiPush).Methods("POST").Handler(lokiPushHandler)
 	t.Server.HTTP.Path("/otlp/v1/logs").Methods("POST").Handler(otlpPushHandler)
 	return t.distributor, nil
@@ -690,16 +689,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		router.Path(constants.PathLokiIndexVolumeRange).Methods("GET", "POST").Handler(volumeRangeHTTPMiddleware.Wrap(httpHandler))
 		router.Path(constants.PathLokiPatterns).Methods("GET", "POST").Handler(httpHandler)
 
-		router.Path(constants.PathPromQuery).Methods("GET", "POST").Handler(
-			middleware.Merge(
-				httpMiddleware,
-				querier.WrapQuerySpanAndTimeout("query.LogQuery", t.Overrides),
-			).Wrap(httpHandler),
-		)
-
-		router.Path(constants.PathPromLabel).Methods("GET", "POST").Handler(labelsHTTPMiddleware.Wrap(httpHandler))
-		router.Path(constants.PathPromLabelNameValues).Methods("GET", "POST").Handler(labelsHTTPMiddleware.Wrap(httpHandler))
-		router.Path(constants.PathPromSeries).Methods("GET", "POST").Handler(seriesHTTPMiddleware.Wrap(httpHandler))
 	}
 
 	// We always want to register tail routes externally, tail requests are different from normal queries, they
@@ -713,7 +702,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// on the external router.
 	tailQuerier := tail.NewQuerier(t.ingesterQuerier, t.Querier, deleteStore, t.Overrides, t.Cfg.Querier.TailMaxDuration, tail.NewMetrics(prometheus.DefaultRegisterer), log.With(util_log.Logger, "component", "tail-querier"))
 	t.Server.HTTP.Path(constants.PathLokiTail).Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(tailQuerier.TailHandler)))
-	t.Server.HTTP.Path(constants.PathPromTail).Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(tailQuerier.TailHandler)))
 
 	internalMiddlewares := []queryrangebase.Middleware{
 		serverutil.RecoveryMiddleware,
@@ -1295,17 +1283,11 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path(constants.PathLokiIndexShards).Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path(constants.PathLokiIndexVolume).Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path(constants.PathLokiIndexVolumeRange).Methods("GET", "POST").Handler(frontendHandler)
-	t.Server.HTTP.Path(constants.PathPromQuery).Methods("GET", "POST").Handler(frontendHandler)
-	t.Server.HTTP.Path(constants.PathPromLabel).Methods("GET", "POST").Handler(frontendHandler)
-	t.Server.HTTP.Path(constants.PathPromLabelNameValues).Methods("GET", "POST").Handler(frontendHandler)
-	t.Server.HTTP.Path(constants.PathPromSeries).Methods("GET", "POST").Handler(frontendHandler)
-
 	// Only register tailing requests if this process does not act as a Querier
 	// If this process is also a Querier the Querier will register the tail endpoints.
 	if !t.isModuleActive(Querier) {
 		// defer tail endpoints to the default handler
 		t.Server.HTTP.Path(constants.PathLokiTail).Methods("GET", "POST").Handler(defaultHandler)
-		t.Server.HTTP.Path(constants.PathPromTail).Methods("GET", "POST").Handler(defaultHandler)
 	}
 
 	if t.frontend == nil {
@@ -1604,14 +1586,6 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		// Prometheus Rule API Routes
 		t.Server.HTTP.Path(constants.PathPrometheusRules).Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.PrometheusRules)))
 		t.Server.HTTP.Path(constants.PathPrometheusAlerts).Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.PrometheusAlerts)))
-
-		// Ruler Legacy API Routes
-		t.Server.HTTP.Path(constants.PathPromRules).Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
-		t.Server.HTTP.Path(constants.PathPromRulesNamespace).Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
-		t.Server.HTTP.Path(constants.PathPromRulesNamespace).Methods("POST").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.CreateRuleGroup)))
-		t.Server.HTTP.Path(constants.PathPromRulesNamespace).Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteNamespace)))
-		t.Server.HTTP.Path(constants.PathPromRulesNamespaceGroup).Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.GetRuleGroup)))
-		t.Server.HTTP.Path(constants.PathPromRulesNamespaceGroup).Methods("DELETE").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.DeleteRuleGroup)))
 
 		// Ruler API Routes
 		t.Server.HTTP.Path(constants.PathLokiRules).Methods("GET").Handler(t.HTTPAuthMiddleware.Wrap(http.HandlerFunc(t.rulerAPI.ListRules)))
@@ -2411,6 +2385,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		Bucket:          indexBucket,
 		MetastoreWriter: tocWriter,
 		Logger:          logger,
+		Registerer:      prometheus.DefaultRegisterer,
 	})
 	if err != nil {
 		return nil, err

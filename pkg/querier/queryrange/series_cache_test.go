@@ -11,8 +11,6 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/loghttp"
-
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -98,7 +96,7 @@ func TestSeriesCache(t *testing.T) {
 
 		return &LokiSeriesResponse{
 			Status:  "success",
-			Version: uint32(loghttp.VersionV1),
+			Version: 1,
 			Data:    data,
 			Statistics: stats.Result{
 				Summary: stats.Summary{
@@ -321,7 +319,7 @@ func TestSeriesCache_freshness(t *testing.T) {
 
 			seriesResp := &LokiSeriesResponse{
 				Status:  "success",
-				Version: uint32(loghttp.VersionV1),
+				Version: 1,
 				Data: []logproto.SeriesIdentifier{
 					{
 						Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "cluster", Value: "eu-west"}, {Key: "namespace", Value: "prod"}},

@@ -205,9 +205,11 @@ func TestMappingStrings(t *testing.T) {
 			in: `max(sum by (abc) (rate({foo="bar"} | json | label_format bazz=buzz [5m])))`,
 			out: `max(
 				sum by (abc) (
-					downstream<sumby(abc)(rate({foo="bar"}|json|label_formatbazz=buzz[5m])),shard=0_of_2>
-					++
-					downstream<sumby(abc)(rate({foo="bar"}|json|label_formatbazz=buzz[5m])),shard=1_of_2>
+					sum without() (
+						downstream<rate({foo="bar"}|json|label_formatbazz=buzz[5m]),shard=0_of_2>
+						++
+						downstream<rate({foo="bar"}|json|label_formatbazz=buzz[5m]),shard=1_of_2>
+					)
 				)
 			)`,
 		},
@@ -323,9 +325,11 @@ func TestMappingStrings(t *testing.T) {
 		{
 			in: `sum(count_over_time({foo="bar"} | logfmt | label_format bar=baz | bar="buz" [5m])) by (bar)`,
 			out: `sum by (bar) (
-				downstream<sum by (bar) (count_over_time({foo="bar"}|logfmt|label_formatbar=baz|bar="buz"[5m])),shard=0_of_2>
-				++
-				downstream<sum by (bar) (count_over_time({foo="bar"}|logfmt|label_formatbar=baz|bar="buz"[5m])),shard=1_of_2>
+				sum without() (
+					downstream<count_over_time({foo="bar"}|logfmt|label_formatbar=baz|bar="buz"[5m]),shard=0_of_2>
+					++
+					downstream<count_over_time({foo="bar"}|logfmt|label_formatbar=baz|bar="buz"[5m]),shard=1_of_2>
+				)
 			)`,
 		},
 		{
@@ -401,18 +405,50 @@ func TestMappingStrings(t *testing.T) {
 			)`,
 		},
 		{
+			in: `sum(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]) by (cluster))`,
+			out: `sum(
+				(
+					sum by (cluster) (
+						downstream<sum by (cluster) (sum_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | unwrap busy [5m])),shard=0_of_2>
+						++
+						downstream<sum by (cluster) (sum_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | unwrap busy [5m])),shard=1_of_2>
+					)
+					/
+					sum by (cluster) (
+						downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" [5m])),shard=0_of_2>
+						++
+						downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" [5m])),shard=1_of_2>
+					)
+				)
+			)`,
+		},
+		{
+			in: `sum(max_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]) by (cluster))`,
+			out: `sum(
+				max by (cluster) (
+					downstream<max_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | unwrap busy [5m]) by (cluster),shard=0_of_2>
+					++
+					downstream<max_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | unwrap busy [5m]) by (cluster),shard=1_of_2>
+				)
+			)`,
+		},
+		{
 			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json | keep busy | unwrap busy [5m])`,
 			out: `(
 				sum without() (
-					downstream<sum without() (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=0_of_2>
-					++
-					downstream<sum without() (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=1_of_2>
+					sum without() (
+						downstream<sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m]),shard=0_of_2>
+						++
+						downstream<sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m]),shard=1_of_2>
+					)
 				)
 				/
 				sum without(busy) (
-					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
-					++
-					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+					sum without() (
+						downstream<count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m]),shard=0_of_2>
+						++
+						downstream<count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m]),shard=1_of_2>
+					)
 				)
 			)`,
 		},
@@ -420,15 +456,19 @@ func TestMappingStrings(t *testing.T) {
 			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json | keep busy | unwrap busy [5m]) without (foo)`,
 			out: `(
 				sum without(foo) (
-					downstream<sum without(foo) (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=0_of_2>
-					++
-					downstream<sum without(foo) (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=1_of_2>
+					sum without() (
+						downstream<sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m]),shard=0_of_2>
+						++
+						downstream<sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m]),shard=1_of_2>
+					)
 				)
 				/
 				sum without(foo,busy) (
-					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
-					++
-					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+					sum without() (
+						downstream<count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m]),shard=0_of_2>
+						++
+						downstream<count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m]),shard=1_of_2>
+					)
 				)
 			)`,
 		},

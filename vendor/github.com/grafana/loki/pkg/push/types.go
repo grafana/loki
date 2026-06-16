@@ -27,31 +27,6 @@ type Entry struct {
 	Parsed             LabelsAdapter `protobuf:"bytes,4,opt,name=parsed,proto3" json:"parsed,omitempty"`
 }
 
-// MarshalJSON implements json.Marshaler.
-// In Loki, this method should only be used by the
-// Legacy encoder used when hitting the deprecated /api/promt/query endpoint.
-// We will ignore the categorized labels and only return the stream labels.
-func (m *Stream) MarshalJSON() ([]byte, error) {
-	return json.Marshal(struct {
-		Labels  string  `json:"labels"`
-		Entries []Entry `json:"entries"`
-	}{
-		Labels:  m.Labels,
-		Entries: m.Entries,
-	})
-}
-
-// MarshalJSON implements json.Marshaler.
-// In Loki, this method should only be used by the
-// Legacy encoder used when hitting the deprecated /api/promt/query endpoint.
-// We will ignore the structured metadata.
-func (m *Entry) MarshalJSON() ([]byte, error) {
-	type raw Entry
-	e := raw(*m)
-	e.StructuredMetadata = nil
-	return json.Marshal(e)
-}
-
 // LabelAdapter should be a copy of the Prometheus labels.Label type.
 // We cannot import Prometheus in this package because it would create many dependencies
 // in other projects importing this package. Instead, we copy the definition here, which should

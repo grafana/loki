@@ -717,7 +717,7 @@ func NewRoundTripperFromConfigWithContext(ctx context.Context, cfg HTTPClientCon
 					return nil, fmt.Errorf("unable to use client secret: %w", err)
 				}
 			}
-			rt = NewOAuth2RoundTripper(oauthCredential, cfg.OAuth2, rt, &opts)
+			rt = NewOAuth2RoundTripper(oauthCredential, cfg.OAuth2, rt, optFuncs...)
 		}
 
 		if cfg.HTTPHeaders != nil {
@@ -942,16 +942,26 @@ type oauth2RoundTripper struct {
 	client          *http.Client
 }
 
-func NewOAuth2RoundTripper(oauthCredential SecretReader, config *OAuth2, next http.RoundTripper, opts *httpClientOptions) http.RoundTripper {
+// NewOAuth2RoundTripper returns a round tripper that performs OAuth2
+// authentication. The opts variadic parameter accepts any HTTPClientOption
+// (e.g. WithDialContextFunc, WithKeepAlivesDisabled) so that callers outside
+// this package can fully configure the transport without needing access to the
+// unexported *httpClientOptions type.
+func NewOAuth2RoundTripper(oauthCredential SecretReader, config *OAuth2, next http.RoundTripper, optFuncs ...HTTPClientOption) http.RoundTripper {
 	if oauthCredential == nil {
 		oauthCredential = NewInlineSecret("")
+	}
+
+	opts := defaultHTTPClientOptions
+	for _, opt := range optFuncs {
+		opt.applyToHTTPClientOptions(&opts)
 	}
 
 	return &oauth2RoundTripper{
 		config: config,
 		// A correct tokenSource will be added later on.
 		lastRT:          &oauth2.Transport{Base: next},
-		opts:            opts,
+		opts:            &opts,
 		oauthCredential: oauthCredential,
 	}
 }
@@ -977,6 +987,7 @@ func (rt *oauth2RoundTripper) newOauth2TokenSource(req *http.Request, clientCred
 			IdleConnTimeout:       10 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
+			DialContext:           rt.opts.dialContextFunc,
 		}, nil
 	}
 
@@ -1052,6 +1063,12 @@ func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 		secret    string
 		needsInit bool
 	)
+
+	// This should not happen when config goes through the normal Prometheus
+	// validation path, but guard against a nil credential to avoid a panic.
+	if rt.oauthCredential == nil {
+		return nil, errors.New("oauth2 client secret is required")
+	}
 
 	rt.mtx.RLock()
 	secret = rt.lastSecret
@@ -1460,7 +1477,7 @@ func (t *tlsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	rt := t.rt
 	t.mtx.RUnlock()
 	if equal {
-		// The CA cert hasn't changed, use the existing RoundTripper.
+		// The TLS materials (CA, cert, key) haven't changed, use the existing RoundTripper.
 		return rt.RoundTrip(req)
 	}
 
@@ -1468,10 +1485,7 @@ func (t *tlsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// The cert and key files are read separately by the client
 	// using GetClientCertificate.
 	tlsConfig := t.tlsConfig.Clone()
-	if !updateRootCA(tlsConfig, caData) {
-		if t.settings.CA == nil {
-			return nil, errors.New("unable to use specified CA cert: none configured")
-		}
+	if t.settings.CA != nil && !updateRootCA(tlsConfig, caData) {
 		return nil, fmt.Errorf("unable to use specified CA cert %s", t.settings.CA.Description())
 	}
 	rt, err = t.newRT(tlsConfig)

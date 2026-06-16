@@ -37,8 +37,15 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 		return errors.New("no object store bucket configured")
 	}
 
-	// Check if output already exists (short-circuit on retry)
-	exists, err := c.bucket.Exists(ctx, node.OutputIndexPath)
+	// Check if output already exists (short-circuit on retry).
+	//
+	// We probe with a GetObject rather than Exists/HeadObject: under IRSA roles
+	// that grant s3:GetObject/s3:PutObject but not s3:ListBucket, a HeadObject on
+	// a missing key returns 403 AccessDenied instead of 404 NoSuchKey, which
+	// objstore surfaces as a hard error. GetObject returns a genuine NoSuchKey on
+	// a missing key without requiring ListBucket. Treat access-denied here as
+	// "not present" too, so a restrictive read policy never blocks the merge.
+	exists, err := c.outputExists(ctx, node.OutputIndexPath)
 	if err != nil {
 		return fmt.Errorf("checking output existence: %w", err)
 	}
@@ -102,6 +109,23 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, obj.Size(), uncompressedBytes)
 	}
 	return nil
+}
+
+// outputExists reports whether the IndexMerge output object is already present.
+// It probes with GetObject so a restrictive read policy (s3:GetObject without
+// s3:ListBucket) still yields a correct answer: a missing key returns
+// not-found, and an access-denied response is treated as not-present rather
+// than a fatal error.
+func (c *Context) outputExists(ctx context.Context, path string) (bool, error) {
+	rc, err := c.bucket.Get(ctx, path)
+	if err != nil {
+		if c.bucket.IsObjNotFoundErr(err) || c.bucket.IsAccessDeniedErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	_ = rc.Close()
+	return true, nil
 }
 
 // classifyRuns scans all sections of each referenced source object and

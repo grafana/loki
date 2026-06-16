@@ -137,6 +137,9 @@ type UniversalOptions struct {
 	// Only applies to cluster clients. Default is 15 seconds.
 	FailingTimeoutSeconds int
 
+	// Deprecated: All RediSearch commands now have stable RESP3 parsing and this
+	// flag is a no-op. It is kept for backwards compatibility and will be removed
+	// in a future release.
 	UnstableResp3 bool
 
 	// PushNotificationProcessor is the processor for handling push notifications.
@@ -372,6 +375,8 @@ var (
 //  3. If the number of Addrs is two or more, or IsClusterMode option is specified,
 //     a ClusterClient is returned.
 //  4. Otherwise, a single-node Client is returned.
+//
+// Passing nil UniversalOptions will cause a panic.
 func NewUniversalClient(opts *UniversalOptions) UniversalClient {
 	if opts == nil {
 		panic("redis: NewUniversalClient nil options")

@@ -1,6 +1,6 @@
 ---
 
-x-default-image: &default-image ${CLIENT_LIBS_TEST_IMAGE:-redislabs/client-libs-test:8.6.0}
+x-default-image: &default-image ${CLIENT_LIBS_TEST_IMAGE:-redislabs/client-libs-test:8.8.0}
 
 services:
   redis:
@@ -164,9 +164,9 @@ services:
       - PORT=6390
     command: ${REDIS_EXTRA_ARGS:---enable-debug-command yes --enable-module-command yes --tls-auth-clients optional --save ""}
     ports:
-      - 6390:6390
-      - 6391:6391
-      - 6392:6392
+      - "6390:6390"
+      - "6391:6391"
+      - "6392:6392"
     volumes:
       - "./dockers/ring:/redis/work"
     profiles:

@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
-	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 )
 
@@ -44,7 +43,6 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	encodingFlags := httpreq.ExtractEncodingFlags(r)
-	version := loghttp.GetVersion(r.RequestURI)
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -112,11 +110,7 @@ func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
 		select {
 		case response = <-responseChan:
 			var err error
-			if version == loghttp.VersionV1 {
-				err = marshal.WriteTailResponseJSON(*response, connWriter, encodingFlags)
-			} else {
-				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
-			}
+			err = marshal.WriteTailResponseJSON(*response, connWriter, encodingFlags)
 			if err != nil {
 				level.Error(logger).Log("msg", "Error writing to websocket", "err", err)
 				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
