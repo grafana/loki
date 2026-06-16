@@ -10,8 +10,9 @@ import "github.com/grafana/loki/v3/pkg/xcap"
 
 var (
 	// TaskStagingDuration is the time (in nanoseconds) a task spent staged
-	// between scheduler registration and being enqueued for assignment. Not
-	// recorded for tasks that never reached the queue.
+	// between scheduler registration and being enqueued for assignment. For
+	// a task that was never enqueued, this stat captures the entire duration
+	// from registration to terminal state.
 	TaskStagingDuration = xcap.NewStatisticInt64("scheduler.task.staging.duration", xcap.AggregationTypeSum)
 
 	// TaskQueueDuration is the time (in nanoseconds) a task spent enqueued before
