@@ -16,6 +16,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -61,6 +63,10 @@ func (cmd *dumpCommand) dumpFile(name string) {
 			cmd.dumpStreamsSection(context.TODO(), offset, sec)
 		case logs.CheckSection(sec):
 			cmd.dumpLogsSection(context.TODO(), offset, sec)
+		case postings.CheckSection(sec):
+			cmd.dumpPostingsSection(context.TODO(), offset, sec)
+		case stats.CheckSection(sec):
+			cmd.dumpStatsSection(context.TODO(), offset, sec)
 		default:
 			fmt.Printf("unknown section: %s\n", sec.Type)
 		}
@@ -216,6 +222,67 @@ func (cmd *dumpCommand) dumpLogsSection(ctx context.Context, offset int, sec *da
 				fmt.Println("")
 			}
 		}
+	}
+}
+
+func (cmd *dumpCommand) dumpPostingsSection(ctx context.Context, offset int, sec *dataobj.Section) {
+	postingsSec, err := postings.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(err)
+	}
+	bold := color.New(color.Bold)
+	bold.Println("Postings section:")
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
+
+	r := postings.NewRowReader(ctx, postingsSec)
+	defer r.Close()
+	for r.Next() {
+		row := r.At()
+		switch row.Kind {
+		case postings.KindLabel:
+			bold.Printf("\t\t[Label] path: %s, section: %d, column: %s, value: %s, bitmap: %d bytes, uncompressedSize: %d, start: %s, end: %s\n",
+				row.ObjectPath, row.SectionIndex, row.ColumnName, row.LabelValue,
+				len(row.StreamIDBitmap), row.UncompressedSize,
+				time.Unix(0, row.MinTimestamp).UTC().Format(time.RFC3339Nano),
+				time.Unix(0, row.MaxTimestamp).UTC().Format(time.RFC3339Nano))
+		case postings.KindBloom:
+			bold.Printf("\t\t[Bloom] path: %s, section: %d, column: %s, bloom: %d bytes, bitmap: %d bytes, uncompressedSize: %d, start: %s, end: %s\n",
+				row.ObjectPath, row.SectionIndex, row.ColumnName,
+				len(row.BloomFilter), len(row.StreamIDBitmap), row.UncompressedSize,
+				time.Unix(0, row.MinTimestamp).UTC().Format(time.RFC3339Nano),
+				time.Unix(0, row.MaxTimestamp).UTC().Format(time.RFC3339Nano))
+		default:
+			fmt.Printf("\t\tunknown posting kind: %v\n", row.Kind)
+		}
+	}
+	if err := r.Err(); err != nil {
+		exitWithErr(err)
+	}
+}
+
+func (cmd *dumpCommand) dumpStatsSection(ctx context.Context, offset int, sec *dataobj.Section) {
+	statsSec, err := stats.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(err)
+	}
+	bold := color.New(color.Bold)
+	bold.Println("Stats section:")
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
+
+	r := stats.NewRowReader(ctx, statsSec)
+	defer r.Close()
+	for r.Next() {
+		s := r.At()
+		bold.Printf("\t\tpath: %s, section: %d, sortSchema: %s, rows: %d, uncompressedSize: %d, start: %s, end: %s, labels:\n",
+			s.ObjectPath, s.SectionIndex, s.SortSchema, s.RowCount, s.UncompressedSize,
+			time.Unix(0, s.MinTimestamp).UTC().Format(time.RFC3339Nano),
+			time.Unix(0, s.MaxTimestamp).UTC().Format(time.RFC3339Nano))
+		for name, value := range s.Labels {
+			fmt.Printf("\t\t\t%s=%s\n", name, value)
+		}
+	}
+	if err := r.Err(); err != nil {
+		exitWithErr(err)
 	}
 }
 
