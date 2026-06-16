@@ -6,7 +6,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // Builder aggregates posting observations and builds bitmaps and bloom filters
@@ -18,9 +17,7 @@ type Builder struct {
 	labels  *labelAggregator
 	blooms  *bloomAggregator
 
-	pageSizeHint      int
-	pageMaxRowCount   int
-	targetSectionSize int
+	encoder *postingsEncoder
 }
 
 // NewBuilder creates a new Builder.
@@ -31,12 +28,10 @@ type Builder struct {
 // sections; it must be > 0. metrics may be nil to disable instrumentation.
 func NewBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount, targetSectionSize int) *Builder {
 	return &Builder{
-		metrics:           metrics,
-		labels:            newLabelAggregator(),
-		blooms:            newBloomAggregator(),
-		pageSizeHint:      pageSizeHint,
-		pageMaxRowCount:   pageMaxRowCount,
-		targetSectionSize: targetSectionSize,
+		metrics: metrics,
+		labels:  newLabelAggregator(),
+		blooms:  newBloomAggregator(),
+		encoder: newPostingsEncoder(pageSizeHint, pageMaxRowCount, targetSectionSize),
 	}
 }
 
@@ -91,7 +86,7 @@ func (b *Builder) Reset() {
 // [dataobj.SectionWriter] and returns the number of bytes written.
 //
 // After a successful flush, the builder is reset.
-func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
+func (b *Builder) Flush(w dataobj.SectionWriter) (int64, error) {
 	labelEntries := b.labels.Entries()
 	bloomEntries, err := b.blooms.Entries()
 	if err != nil {
@@ -110,17 +105,14 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	sortLabelEntries(labelEntries)
 	sortBloomEntries(bloomEntries)
 
-	var enc columnar.Encoder
-	defer enc.Reset()
-
-	if err := columnarEncode(bloomEntries, labelEntries, &enc, b.pageSizeHint, b.pageMaxRowCount); err != nil {
-		return 0, fmt.Errorf("encoding postings: %w", err)
+	nBloom, err := b.encoder.encodeBloomEntries(w, b.tenant, bloomEntries)
+	if err != nil {
+		return 0, err
 	}
-
-	enc.SetTenant(b.tenant)
-	n, err = enc.Flush(w)
-	if err == nil {
-		b.Reset()
+	nLabel, err := b.encoder.encodeLabelEntries(w, b.tenant, labelEntries)
+	if err != nil {
+		return 0, err
 	}
-	return n, err
+	b.Reset()
+	return nBloom + nLabel, nil
 }

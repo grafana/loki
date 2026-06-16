@@ -148,17 +148,22 @@ func TestBuilder_MixedPostings(t *testing.T) {
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj2", SectionIndex: 0, ColumnName: "col_b", LabelValue: "myval", StreamID: 3, Timestamp: ts2, UncompressedSize: 0})
 
 	sections := flushAndOpenSections(t, b)
-	require.Len(t, sections, 1)
+	require.Greater(t, len(sections), 0)
 
-	rows, _ := readAllRows(t, sections[0])
-	require.Len(t, rows, 2)
+	// Collect all rows from all sections
+	var allRows arrowtest.Rows
+	for _, sec := range sections {
+		rows, _ := readAllRows(t, sec)
+		allRows = append(allRows, rows...)
+	}
+	require.Len(t, allRows, 2)
 
 	// Bloom (KindBloom=0) sorts before Label (KindLabel=1).
-	require.Equal(t, int64(KindBloom), rows[0]["kind.int64"])
-	require.Equal(t, nil, rows[0]["label_value.utf8"])
+	require.Equal(t, int64(KindBloom), allRows[0]["kind.int64"])
+	require.Equal(t, nil, allRows[0]["label_value.utf8"])
 
-	require.Equal(t, int64(KindLabel), rows[1]["kind.int64"])
-	require.NotNil(t, rows[1]["label_value.utf8"])
+	require.Equal(t, int64(KindLabel), allRows[1]["kind.int64"])
+	require.NotNil(t, allRows[1]["label_value.utf8"])
 }
 
 // TestBuilder_SortOrder verifies the sort order: bloom entries before label
@@ -180,31 +185,36 @@ func TestBuilder_SortOrder(t *testing.T) {
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col_a", LabelValue: "alpha", StreamID: 0, Timestamp: time.Unix(0, 50), UncompressedSize: 0})
 
 	sections := flushAndOpenSections(t, b)
-	require.Len(t, sections, 1)
+	require.Greater(t, len(sections), 0)
 
-	rows, _ := readAllRows(t, sections[0])
-	require.Len(t, rows, 4) // 2 bloom + 2 label (alpha aggregated into 1, beta into 1)
+	// Collect all rows from all sections
+	var allRows arrowtest.Rows
+	for _, sec := range sections {
+		rows, _ := readAllRows(t, sec)
+		allRows = append(allRows, rows...)
+	}
+	require.Len(t, allRows, 4) // 2 bloom + 2 label (alpha aggregated into 1, beta into 1)
 
 	// Expected order:
 	// 0: KindBloom, col_a
 	// 1: KindBloom, col_b
 	// 2: KindLabel, col_a, alpha (aggregated)
 	// 3: KindLabel, col_a, beta (aggregated)
-	require.Equal(t, int64(KindBloom), rows[0]["kind.int64"])
-	require.Equal(t, "col_a", rows[0]["column_name.utf8"])
-	require.Equal(t, nil, rows[0]["label_value.utf8"])
+	require.Equal(t, int64(KindBloom), allRows[0]["kind.int64"])
+	require.Equal(t, "col_a", allRows[0]["column_name.utf8"])
+	require.Equal(t, nil, allRows[0]["label_value.utf8"])
 
-	require.Equal(t, int64(KindBloom), rows[1]["kind.int64"])
-	require.Equal(t, "col_b", rows[1]["column_name.utf8"])
-	require.Equal(t, nil, rows[1]["label_value.utf8"])
+	require.Equal(t, int64(KindBloom), allRows[1]["kind.int64"])
+	require.Equal(t, "col_b", allRows[1]["column_name.utf8"])
+	require.Equal(t, nil, allRows[1]["label_value.utf8"])
 
-	require.Equal(t, int64(KindLabel), rows[2]["kind.int64"])
-	require.Equal(t, "col_a", rows[2]["column_name.utf8"])
-	require.Equal(t, "alpha", rows[2]["label_value.utf8"])
+	require.Equal(t, int64(KindLabel), allRows[2]["kind.int64"])
+	require.Equal(t, "col_a", allRows[2]["column_name.utf8"])
+	require.Equal(t, "alpha", allRows[2]["label_value.utf8"])
 
-	require.Equal(t, int64(KindLabel), rows[3]["kind.int64"])
-	require.Equal(t, "col_a", rows[3]["column_name.utf8"])
-	require.Equal(t, "beta", rows[3]["label_value.utf8"])
+	require.Equal(t, int64(KindLabel), allRows[3]["kind.int64"])
+	require.Equal(t, "col_a", allRows[3]["column_name.utf8"])
+	require.Equal(t, "beta", allRows[3]["label_value.utf8"])
 }
 
 // TestBuilder_SortOrder_TimeBeforeObject verifies that within a
@@ -241,19 +251,24 @@ func TestBuilder_NullableHandling(t *testing.T) {
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", LabelValue: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 
 	sections := flushAndOpenSections(t, b)
-	require.Len(t, sections, 1)
+	require.Greater(t, len(sections), 0)
 
-	rows, _ := readAllRows(t, sections[0])
-	require.Len(t, rows, 2)
+	// Collect all rows from all sections
+	var allRows arrowtest.Rows
+	for _, sec := range sections {
+		rows, _ := readAllRows(t, sec)
+		allRows = append(allRows, rows...)
+	}
+	require.Len(t, allRows, 2)
 
 	// Bloom posting: label_value is nil, bloom_filter is non-null
-	bloom := rows[0]
+	bloom := allRows[0]
 	require.Equal(t, int64(KindBloom), bloom["kind.int64"])
 	require.Nil(t, bloom["label_value.utf8"], "Bloom posting should have nil LabelValue")
 	require.NotNil(t, bloom["bloom_filter.binary"], "Bloom posting should have non-nil BloomFilter")
 
 	// Label posting: bloom_filter is null, label_value is non-nil
-	label := rows[1]
+	label := allRows[1]
 	require.Equal(t, int64(KindLabel), label["kind.int64"])
 	require.NotNil(t, label["label_value.utf8"], "Label posting should have non-nil LabelValue")
 	require.Nil(t, label["bloom_filter.binary"], "Label posting should have nil BloomFilter")
@@ -560,14 +575,19 @@ func TestBuilder_MixedObservations(t *testing.T) {
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "col_a", Value: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 
 	sections := flushAndOpenSections(t, b)
-	require.Len(t, sections, 1)
+	require.Greater(t, len(sections), 0)
 
-	rows, _ := readAllRows(t, sections[0])
-	require.Len(t, rows, 2)
+	// Collect all rows from all sections
+	var allRows arrowtest.Rows
+	for _, sec := range sections {
+		rows, _ := readAllRows(t, sec)
+		allRows = append(allRows, rows...)
+	}
+	require.Len(t, allRows, 2)
 
 	// Bloom should be first regardless of observation order.
-	require.Equal(t, int64(KindBloom), rows[0]["kind.int64"], "bloom should sort before label")
-	require.Equal(t, int64(KindLabel), rows[1]["kind.int64"])
+	require.Equal(t, int64(KindBloom), allRows[0]["kind.int64"], "bloom should sort before label")
+	require.Equal(t, int64(KindLabel), allRows[1]["kind.int64"])
 }
 
 // TestBuilder_ObserveBloomUnprepared verifies that observing an unprepared bloom
@@ -805,4 +825,61 @@ func extractBinaryColumn(t *testing.T, table arrow.Table, field string) [][]byte
 		}
 	}
 	return out
+}
+
+// TestBuilder_SplitsIntoMultipleSections verifies Flush emits multiple sections
+// when accumulated entries exceed targetSectionSize.
+func TestBuilder_SplitsIntoMultipleSections(t *testing.T) {
+	b := NewBuilder(nil, 0, 0, 64)
+	ts := time.Unix(0, 0).UTC()
+	for _, lv := range []string{"a", "b", "c", "d", "e"} {
+		b.ObserveLabelPosting(LabelObservation{ObjectPath: "/o", SectionIndex: 0, ColumnName: "env", LabelValue: lv, StreamID: 0, Timestamp: ts, UncompressedSize: 0})
+	}
+
+	sections := flushAndOpenSections(t, b)
+	require.Greater(t, len(sections), 1, "expected multiple postings sections")
+
+	// Collect all label values across all sections (union).
+	allValues := map[string]struct{}{}
+	for _, sec := range sections {
+		rows, _ := readAllRows(t, sec)
+		for _, row := range rows {
+			lv, ok := row["label_value.utf8"].(string)
+			if ok {
+				allValues[lv] = struct{}{}
+			}
+		}
+	}
+	// All 5 label values must be present across the sections.
+	require.Len(t, allValues, 5, "all label values must be preserved across sections")
+}
+
+// TestBuilder_SplitsBloomAndLabelIntoSeparateSections verifies that with a small
+// targetSectionSize, bloom and label postings are split into multiple sections
+// and no section mixes bloom rows with label rows.
+func TestBuilder_SplitsBloomAndLabelIntoSeparateSections(t *testing.T) {
+	b := NewBuilder(nil, 0, 0, 64)
+	ts := time.Unix(0, 0).UTC()
+
+	for i := range 4 {
+		col := fmt.Sprintf("bcol%d", i)
+		b.PrepareBloomColumn("/o", 0, col, 10)
+		require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/o", SectionIndex: 0, ColumnName: col, Value: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0}))
+	}
+	for _, lv := range []string{"a", "b", "c", "d"} {
+		b.ObserveLabelPosting(LabelObservation{ObjectPath: "/o", SectionIndex: 0, ColumnName: "env", LabelValue: lv, StreamID: 0, Timestamp: ts, UncompressedSize: 0})
+	}
+
+	sections := flushAndOpenSections(t, b)
+	require.Greater(t, len(sections), 1, "expected multiple sections")
+
+	for si, sec := range sections {
+		rows, _ := readAllRows(t, sec)
+		require.NotEmpty(t, rows)
+		kinds := map[int64]struct{}{}
+		for _, row := range rows {
+			kinds[row["kind.int64"].(int64)] = struct{}{}
+		}
+		require.Len(t, kinds, 1, "section %d mixes bloom and label rows", si)
+	}
 }
