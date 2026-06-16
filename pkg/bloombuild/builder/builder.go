@@ -87,7 +87,7 @@ func New(
 	return b, nil
 }
 
-func (b *Builder) starting(ctx context.Context) error {
+func (b *Builder) starting(_ context.Context) error {
 	b.metrics.running.Set(1)
 	return nil
 }
