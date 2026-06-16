@@ -336,8 +336,9 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 		{
 			name: "MinIO k8s service endpoint with custom port",
 			opts: Options{
-				Name:      "test",
-				Namespace: "test-ns",
+				Name:                       "test",
+				Namespace:                  "test-ns",
+				NetworkPolicyObjStorePorts: []int32{9000},
 				ObjectStorage: storage.Options{
 					SharedStore: lokiv1.ObjectStorageSecretS3,
 					S3: &storage.S3StorageConfig{
@@ -350,8 +351,9 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 		{
 			name: "MinIO simple hostname with port",
 			opts: Options{
-				Name:      "test",
-				Namespace: "test-ns",
+				Name:                       "test",
+				Namespace:                  "test-ns",
+				NetworkPolicyObjStorePorts: []int32{8080},
 				ObjectStorage: storage.Options{
 					SharedStore: lokiv1.ObjectStorageSecretS3,
 					S3: &storage.S3StorageConfig{
@@ -364,8 +366,9 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 		{
 			name: "Swift endpoint with default SSL port",
 			opts: Options{
-				Name:      "test",
-				Namespace: "test-ns",
+				Name:                       "test",
+				Namespace:                  "test-ns",
+				NetworkPolicyObjStorePorts: []int32{5000, 443},
 				ObjectStorage: storage.Options{
 					SharedStore: lokiv1.ObjectStorageSecretSwift,
 					Swift: &storage.SwiftStorageConfig{
@@ -378,8 +381,9 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 		{
 			name: "Swift endpoint with OpenStack OpenShift default SSL port",
 			opts: Options{
-				Name:      "test",
-				Namespace: "test-ns",
+				Name:                       "test",
+				Namespace:                  "test-ns",
+				NetworkPolicyObjStorePorts: []int32{5000, 13808},
 				Gates: configv1.FeatureGates{
 					OpenShift: configv1.OpenShiftFeatureGates{
 						Enabled: true,
@@ -397,8 +401,9 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 		{
 			name: "AlibabaCloud endpoint with custom port",
 			opts: Options{
-				Name:      "test",
-				Namespace: "test-ns",
+				Name:                       "test",
+				Namespace:                  "test-ns",
+				NetworkPolicyObjStorePorts: []int32{8080},
 				ObjectStorage: storage.Options{
 					SharedStore: lokiv1.ObjectStorageSecretAlibabaCloud,
 					AlibabaCloud: &storage.AlibabaCloudStorageConfig{
@@ -425,8 +430,9 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 		{
 			name: "HTTPS proxy endpoint with custom port",
 			opts: Options{
-				Name:      "test",
-				Namespace: "test-ns",
+				Name:                       "test",
+				Namespace:                  "test-ns",
+				NetworkPolicyObjStorePorts: []int32{443, 8080, 6443},
 				ObjectStorage: storage.Options{
 					SharedStore: lokiv1.ObjectStorageSecretS3,
 					S3: &storage.S3StorageConfig{
