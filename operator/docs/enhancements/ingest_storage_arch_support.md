@@ -12,6 +12,7 @@ tracking-link:
 see-also:
   - Initial working LokiStack + Kafka PoC:  https://github.com/grafana/loki/compare/main...JoaoBraveCoding:loki:LOG-7377-poc
   - API Implementation + Strimzi resources: https://github.com/grafana/loki/compare/main...JoaoBraveCoding:loki:LOG-7377-api
+  - ADR 004 Tempo and Loki architecture change with Kafka: https://docs.google.com/document/d/1JP6DZW8qfaJkxw5SMmhmmQ69DdDYF4n8Tmo9kSBZJPM
 replaces:
   - 
 superseded-by:
@@ -30,7 +31,7 @@ The goal of this enhancement is to help the team define a path for the operator 
 
 ## Motivation
 
-We should migrate to the new ingest storage architecture as this will not only bring to our users the improvements mentioned before, but it will also ensure the operator continues on the supported path. The Grafana Loki team has not officially commented on the deprecation of the classical architecture but we suspect this will come once Loki moves to release 4.0. There is a chance the classical architecture might continue to exist but it will mainly be maintained by members of the Loki community.
+We should migrate to the new ingest storage architecture as this will not only bring to our users the improvements mentioned before, but it will also ensure the operator continues on the supported path. The Grafana Loki team has not officially commited to a deprecation date/target of the classical architecture but we suspect this will come once Loki moves to release 5.0. There is a chance the classical architecture might continue to exist but it will mainly be maintained by members of the Loki community.
 
 ### Goals
 
@@ -123,12 +124,27 @@ In the ingest storage architecture, each Kafka record represents one or more log
 | **Value** | Protobuf-serialized `logproto.Stream` containing: stream-labels (string), log entries (timestamp + line + structured metadata), and a stream hash |
 | **Partition** | Explicitly set by Loki via the partition ring |
 
-The distributor determines the target partition by hashing the stream-labels. It then sets the partition number directly on the Kafka record, so Kafka honors the explicit partition and ignores the key. The tenant ID is set as the key purely as metadata.
-
 If a single stream exceeds the maximum record size (`producer_max_record_size_bytes`, ~15MB by default), it is automatically split into multiple records, each containing a subset of entries but sharing the same labels and hash.
 
 Records are sent to Kafka uncompressed. Loki does not configure producer-side compression, although the client it uses supports it.
 Kafka-side compression can be used independently to mitigate this.
+
+###### Ingest Limits
+
+In the classical architecture, ingesters sit in the write path and enforce limits like max active streams per tenant locally. With ingest storage, distributors write to Kafka and ingesters consume asynchronously, so ingesters are no longer a reliable place to reject writes at ingestion time. Ingest-limits fills that gap: distributors call it before writing to Kafka.
+
+The component has two parts:
+
+- **ingest-limits-frontend**: Stateless router/aggregator; fans out requests to backend instances.
+- **ingest-limits**: Stateful backend; tracks active streams per tenant in memory.
+
+On each push, the distributor sends stream metadata (hash, size, ingestion policy) to the frontend, which routes each stream to the backend instance that owns its metadata partition (`streamHash % num_partitions`). The backend accepts or rejects streams against the tenant's max active stream limit. A stream is considered active if it was seen within the active window (default: 2h). The global limit (`max_global_streams_per_user`) is sharded across partitions, so each backend enforces `limit / num_partitions` for its share.
+
+The backend builds and replicates state via a dedicated Kafka metadata topic (separate from the log ingest topic). Unlike ingesters, which use static hostname-based partition assignment, ingest-limits uses Kafka consumer-group rebalancing to distribute metadata partitions across instances. The user would need to provision this additional topic.
+
+At the time of this writing, ingest-limits enforces max active streams per tenant only. Distributors continue to apply local byte-rate limiting (`ingestion_rate_mb`).
+
+The system is designed to fail open. If ingest-limits is unavailable, or individual streams cannot be checked, distributors accept those streams rather than blocking ingestion.
 
 ##### Read Path
 
@@ -203,11 +219,12 @@ Before (4 active partitions):
 
 **Graceful shutdown** of `ingester-3`:
 
-1. `ingester-3` receives a shutdown signal and calls its `prepare-downscale` endpoint
+1. Call the endpoint `prepare_partition_downscale` on `ingester-3`
 2. Partition 3 transitions to INACTIVE in the partition ring
 3. `ActivePartitionForKey()` skips INACTIVE partitions, so distributors reroute streams that would have gone to partition 3 to one of the remaining ACTIVE partitions (0, 1, or 2)
-4. `ingester-3` stops consuming from Kafka, then flushes its in-memory chunks to object storage as part of the lifecycler shutdown, and exits
-5. The INACTIVE partition entry remains in the ring for a grace period (default 13h) and is eventually removed
+4. `ingester-3` continues consuming from Kafka
+5. `ingester-3` receives the shutdown signal and flushes its in-memory chunks to object storage as part of the lifecycler shutdown, and exits
+6. The INACTIVE partition entry remains in the ring for a grace period (default 13h) and is eventually removed
 
 ```
 After (3 active partitions):
@@ -217,9 +234,7 @@ After (3 active partitions):
   partition 3: INACTIVE, no consumer
 ```
 
-The Kafka partition 3 still exists but no ingester consumes from it. Any unconsumed records in partition 3 remain in Kafka until Kafka's retention period expires. Streams that previously hashed to partition 3 are rerouted to whichever ACTIVE partition is next in the ring for their hash key.
-
-**Write path impact**: Writes are immediately rerouted away from partition 3. Since no ingester will consume from it, any writes that were not processed will be lost when Kafka's retention expires unless the partition is claimed again (e.g., by scaling back up).
+**Write path impact**: New writes are immediately rerouted away from partition 3 and consumed by the remaining ingesters. ingester-3 continues consuming only the backlog already present in Kafka partition 3 until shutdown. If it shuts down before that backlog is fully consumed and committed, those records are orphaned and will be lost when Kafka retention expires.
 
 **Read path impact**: Before shutting down, `ingester-3` flushes its in-memory data to object storage. After the flush, queriers serve all historical data from object storage.
 
@@ -229,14 +244,24 @@ The Kafka partition 3 still exists but no ingester consumes from it. Any unconsu
 
 The new API extensions are:
 
-- The addition of the IngestLimits component to `LokiTemplateSpec`.
+- The addition of the `IngestLimits` component to `LokiTemplateSpec`.
 - The new `IngestStorage` struct, to hold all the configuration concerning the new architecture.
 
-#### New Component: `IngestLimits`
+Note some of the details regarding `IngestStorage` have been agreen in the context of [ADR 004 Tempo and Loki architecture change with Kafka](https://docs.google.com/document/d/1JP6DZW8qfaJkxw5SMmhmmQ69DdDYF4n8Tmo9kSBZJPM) to align both Loki Operator and Tempo Operator in terms of API when interacting with Kafka.
+
+#### New Components: `IngestLimits` and `IngestLimitsFrontend`
+
+The ingest-limits system consists of two separate workloads with different characteristics:
+
+- **ingest-limits** (backend): Stateful; tracks active streams per tenant in memory using a dedicated Kafka metadata topic.
+- **ingest-limits-frontend**: Stateless router/aggregator; fans out requests from distributors to the correct backend instances.
+
+Because they scale independently and have different resource profiles, each gets its own field in `LokiTemplateSpec`:
 
 ```go
 type LokiTemplateSpec struct {
-	IngestLimits *LokiComponentSpec `json:"ingestLimits,omitempty"`
+	IngestLimits         *LokiComponentSpec `json:"ingestLimits,omitempty"`
+	IngestLimitsFrontend *LokiComponentSpec `json:"ingestLimitsFrontend,omitempty"`
 }
 ```
 
@@ -270,9 +295,20 @@ type KafkaSpec struct {
 	// Defaults to "loki".
 	Topic string `json:"topic,omitempty"`
 
-	// Secret for Kafka connection and authentication.
-	// Name of a secret in the same namespace as the LokiStack custom resource.
-	Secret KafkaSecretSpec `json:"secret"`
+	// MetadataTopic is the Kafka topic name used by the ingest-limits component
+	// to track stream metadata. If not set, defaults to "{Topic}-metadata".
+	MetadataTopic string `json:"metadataTopic,omitempty"`
+
+	// ReaderAddress defines the broker addresses for consumers (host:port, comma-separated).
+	ReaderAddress string `json:"readerAddress"`
+
+	// WriterAddress defines the broker addresses for producers (host:port, comma-separated).
+	WriterAddress string `json:"writerAddress"`
+
+	// Authentication for Kafka SASL authentication.
+	// For mTLS authentication, configure the certificate and privateKey
+	// fields in the TLS spec instead.
+	Authentication *KafkaAuthenticationSpec `json:"authentication,omitempty"`
 
 	// TLS configuration for the Kafka connection.
 	TLS *TLSSpec `json:"tls,omitempty"`
@@ -285,30 +321,40 @@ The `TLS` field reuses the existing `TLSSpec` type which provides:
 - `Certificate *ValueReference` — client certificate for mTLS authentication
 - `PrivateKey *SecretReference` — client private key for mTLS authentication
 
-#### `KafkaSecretSpec`
+#### `KafkaSASLMechanism`
 
 ```go
-type KafkaSecretSpec struct {
-	// Name of a secret in the same namespace as the LokiStack custom resource.
-	Name string `json:"name"`
+type KafkaSASLMechanism string
+
+const (
+	KafkaSASLMechanismPlain       KafkaSASLMechanism = "PLAIN"
+	KafkaSASLMechanismSCRAMSHA256 KafkaSASLMechanism = "SCRAM-SHA-256"
+	KafkaSASLMechanismSCRAMSHA512 KafkaSASLMechanism = "SCRAM-SHA-512"
+)
+```
+
+#### `KafkaAuthenticationSpec`
+
+```go
+type KafkaAuthenticationSpec struct {
+	// SASLMechanism defines the SASL mechanism to use for authentication.
+	SASLMechanism KafkaSASLMechanism `json:"saslMechanism"`
+
+	// Username is a reference to the key in a Secret containing the SASL username.
+	Username *SecretReference `json:"username"`
+
+	// Password is a reference to the key in a Secret containing the SASL password.
+	Password *SecretReference `json:"password"`
 }
 ```
 
-The referenced secret can contain the following keys:
+Each `SecretReference` points to a specific key in a specific Secret, allowing the username and password to live in separate secrets or share one.
 
-| Key | Required | Description |
-|-----|----------|-------------|
-| `readerAddress` | Always | Broker addresses for consumers (host:port, comma-separated) |
-| `writerAddress` | Always | Broker addresses for producers (host:port, comma-separated) |
-| `saslMechanism` | For SASL | One of `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512` |
-| `username` | For SASL | SASL username |
-| `password` | For SASL | SASL password |
+Authentication mode is inferred from the spec:
 
-Authentication mode is inferred from the secret contents and TLS spec:
-
-- **No auth**: Secret contains only `readerAddress` and `writerAddress`
-- **SASL**: Secret additionally contains `saslMechanism`, `username`, and `password`
-- **mTLS**: Secret contains only addresses; `tls.certificate` and `tls.privateKey` are set in the spec
+- **No auth**: `authentication` is not set, no TLS client certificate
+- **SASL**: `authentication` is set with `saslMechanism`, `username`, and `password`
+- **mTLS**: `authentication` is not set; `tls.certificate` and `tls.privateKey` are configured in the spec
 
 #### Example CR
 
@@ -329,8 +375,16 @@ spec:
   ingestStorage:
     kafka:
       topic: loki-logs
-      secret:
-        name: kafka-credentials
+      readerAddress: my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093
+      writerAddress: my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093
+      authentication:
+        saslMechanism: SCRAM-SHA-512
+        username:
+          key: username
+          secretName: kafka-credentials
+        password:
+          key: password
+          secretName: kafka-credentials
       tls:
         ca:
           key: ca.crt
@@ -343,9 +397,6 @@ metadata:
   name: kafka-credentials
 type: Opaque
 stringData:
-  readerAddress: my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093
-  writerAddress: my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093
-  saslMechanism: SCRAM-SHA-512
   username: loki-user
   password: secret-password
 ```
@@ -375,6 +426,9 @@ Investigation needs to be done to fully understand how to observe the new system
 - Misconfiguration of the Kafka cluster
   - We should write extensive documentation to support proper configuration
   - If Kafka is temporarily unavailable, each distributor can buffer up to `producer_max_buffered_bytes` (default: 1GB) of unacknowledged records before it starts rejecting new writes.
+- Grafana is experimenting with their own Kafka client optimized for warpstream. 
+  - We should monitor this to make sure they wouldn't swap the client upstream and break OSS
+  - Ref https://github.com/grafana/warpstream-go   
 
 ## Design Details
 
