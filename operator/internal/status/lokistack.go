@@ -23,6 +23,9 @@ type LokiStackStatusInfo struct {
 
 	// NetworkPolicies indicates which set of network policies has been deployed, if any
 	NetworkPolicies lokiv1.NetworkPolicyRuleSet
+
+	// NetworkPolicyObjStorePorts indicates the list of object storage ports
+	NetworkPolicyObjStorePorts []int32
 }
 
 const (

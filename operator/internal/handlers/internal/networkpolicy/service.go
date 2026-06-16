@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
@@ -143,5 +144,106 @@ func resolveTargetPort(service *corev1.Service, endpointSlices *discoveryv1.Endp
 			return 0
 		}
 	}
+	return 0
+}
+
+func DetermineObjectStoragePorts(ctx context.Context, log logr.Logger, k k8s.Client, objStore storage.Options, stack lokiv1.LokiStack) ([]int32, error) {
+	ports := []int32{}
+
+	servicePorts, err := ServicePortToPodPort(ctx, log, k, objStore)
+	if err != nil {
+		return nil, err
+	}
+	if len(servicePorts) > 0 {
+		ports = servicePorts
+	}
+
+	if len(ports) == 0 {
+		openShiftLogging := stack.Spec.Tenants != nil && stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging
+		ports = getEndpointPort(objStore, openShiftLogging)
+	}
+
+	// Default to HTTPS if no ports determined
+	if len(ports) == 0 {
+		ports = []int32{443}
+	}
+
+	// Add proxy ports if configured
+	ports = append(ports, getProxyPorts(stack.Spec.Proxy)...)
+
+	return ports, nil
+}
+
+func getProxyPorts(proxy *lokiv1.ClusterProxy) []int32 {
+	if proxy == nil {
+		return []int32{}
+	}
+
+	proxyPorts := make([]int32, 0, 2)
+	if proxy.HTTPProxy != "" {
+		if port := extractPort(proxy.HTTPProxy); port != 0 {
+			proxyPorts = append(proxyPorts, port)
+		}
+	}
+	if proxy.HTTPSProxy != "" {
+		if port := extractPort(proxy.HTTPSProxy); port != 0 {
+			proxyPorts = append(proxyPorts, port)
+		}
+	}
+	return proxyPorts
+}
+
+func getEndpointPort(storageOpts storage.Options, openShiftEnabled bool) []int32 {
+	// Many self-hosted object storage solutions use S3 API endpoints
+	// so we have to check for a port
+	if storageOpts.S3 != nil && storageOpts.S3.Endpoint != "" {
+		if port := extractPort(storageOpts.S3.Endpoint); port != 0 {
+			return []int32{port}
+		}
+	}
+
+	// AlibabaCloud Endpoint might includes ports
+	if storageOpts.AlibabaCloud != nil && storageOpts.AlibabaCloud.Endpoint != "" {
+		if port := extractPort(storageOpts.AlibabaCloud.Endpoint); port != 0 {
+			return []int32{port}
+		}
+	}
+
+	// Swift AuthURL might includes ports
+	if storageOpts.Swift != nil && storageOpts.Swift.AuthURL != "" {
+		swiftAuthURLPort := extractPort(storageOpts.Swift.AuthURL)
+		swiftObjectPort := int32(443)
+		if openShiftEnabled {
+			// Swift Proxy SSL (Red Hat OpenStack deployments)
+			swiftObjectPort = int32(13808)
+		}
+		if swiftAuthURLPort != 0 {
+			return []int32{swiftAuthURLPort, swiftObjectPort}
+		}
+		return []int32{swiftObjectPort}
+	}
+
+	return []int32{}
+}
+
+func extractPort(endpoint string) int32 {
+	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+		if u, err := url.Parse(endpoint); err == nil && u.Port() != "" {
+			if port, err := strconv.Atoi(u.Port()); err == nil {
+				return int32(port)
+			}
+		}
+		return 0
+	}
+
+	_, portStr, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return 0
+	}
+
+	if port, err := strconv.Atoi(portStr); err == nil {
+		return int32(port)
+	}
+
 	return 0
 }

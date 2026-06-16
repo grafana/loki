@@ -4187,6 +4187,18 @@ spec:
                 - None
                 - RestrictIngressEgress
                 type: string
+              networkPolicyStatus:
+                description: NetworkPolicyStatus provides details about the applied
+                  NetworkPolicies configuration
+                properties:
+                  objectStoragePorts:
+                    description: ObjectStoragePorts contains the TCP ports allowed
+                      for egress to object storage endpoints.
+                    items:
+                      format: int32
+                      type: integer
+                    type: array
+                type: object
               storage:
                 description: |-
                   Storage provides summary of all changes that have occurred
