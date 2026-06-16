@@ -374,14 +374,14 @@ func (is *indexSet) removeFileFromStorage(object storage.IndexFile) error {
 			level.Warn(is.logger).Log(
 				"msg", "delete from storage: retrying transient error",
 				"file", object.Name,
-				"err", "err",
+				"err", err,
 			)
 			retry.Wait()
 		} else if is.baseIndexSet.IsFileNotFoundErr(err) {
 			level.Warn(is.logger).Log(
 				"msg", "delete from storage: ignoring file not found error",
 				"file", object.Name,
-				"err", "err",
+				"err", err,
 			)
 			return nil
 		} else {
