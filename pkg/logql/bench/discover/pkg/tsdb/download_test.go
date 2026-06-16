@@ -22,6 +22,7 @@ type fakeIndexStorageClient struct {
 	listUserFilesFn  func(ctx context.Context, tableName, userID string, bypassCache bool) ([]shipperstorage.IndexFile, error)
 	getUserFileFn    func(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error)
 	isNotFoundErrFn  func(error) bool
+	isRetryableErrFn func(error) bool
 	listTablesFn     func(ctx context.Context) ([]string, error)
 	refreshTablesFn  func(ctx context.Context)
 	refreshTableFn   func(ctx context.Context, tableName string)
@@ -114,6 +115,13 @@ func (f fakeIndexStorageClient) IsFileNotFoundErr(err error) bool {
 		return false
 	}
 	return f.isNotFoundErrFn(err)
+}
+
+func (f fakeIndexStorageClient) IsRetryableErr(err error) bool {
+	if f.isRetryableErrFn == nil {
+		return false
+	}
+	return f.isRetryableErrFn(err)
 }
 
 func (f fakeIndexStorageClient) Stop() {

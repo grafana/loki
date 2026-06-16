@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -23,6 +25,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+var deleteFileBackoffConfig = backoff.Config{
+	MinBackoff: 100 * time.Millisecond,
+	MaxBackoff: time.Second,
+	MaxRetries: 5,
+}
 
 type IndexSet interface {
 	GetTableName() string
@@ -342,13 +350,46 @@ func (is *indexSet) removeFilesFromStorage() error {
 	level.Info(is.logger).Log("msg", "removing source db files from storage", "count", len(is.sourceObjects))
 
 	for _, object := range is.sourceObjects {
-		err := is.baseIndexSet.DeleteFile(is.ctx, is.tableName, is.userID, object.Name)
-		if err != nil {
+		if err := is.removeFileFromStorage(object); err != nil {
+			level.Error(is.logger).Log("msg", "failed to remove source db file from storage", "file", object.Name, "err", err)
 			return err
 		}
 	}
 
 	return nil
+}
+
+// removeFileFromStorage deletes the object from storage.
+// It retries transient errors and treats FileNotFound errors
+// as a success. A missing file should not stall compaction.
+func (is *indexSet) removeFileFromStorage(object storage.IndexFile) error {
+	retry := backoff.New(is.ctx, deleteFileBackoffConfig)
+	for retry.Ongoing() {
+		err := is.baseIndexSet.DeleteFile(is.ctx, is.tableName, is.userID, object.Name)
+		if err == nil {
+			return nil
+		}
+
+		if is.baseIndexSet.IsRetryableErr(err) {
+			level.Warn(is.logger).Log(
+				"msg", "delete from storage: retrying transient error",
+				"file", object.Name,
+				"err", err,
+			)
+			retry.Wait()
+		} else if is.baseIndexSet.IsFileNotFoundErr(err) {
+			level.Warn(is.logger).Log(
+				"msg", "delete from storage: ignoring file not found error",
+				"file", object.Name,
+				"err", err,
+			)
+			return nil
+		} else {
+			return err
+		}
+	}
+
+	return retry.Err()
 }
 
 // done takes care of file operations which includes:
