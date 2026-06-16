@@ -19,41 +19,74 @@ func TestLinefmtParser_Process(t *testing.T) {
 		[]arrow.Field{
 			semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
 			semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
-			semconv.FieldFromIdent(semconv.NewIdentifier("namespace", types.ColumnTypeMetadata, types.Loki.String), false),
+			semconv.FieldFromIdent(semconv.NewIdentifier("namespace", types.ColumnTypeMetadata, types.Loki.String), true),
 		},
 		nil, // No metadata
 	)
 	tests := []struct {
-		name      string
-		line      string
-		timeVal   arrow.Timestamp
-		namespace string
-		lineFmt   string
-		want      string
+		name          string
+		line          string
+		timeVal       arrow.Timestamp
+		namespace     string
+		nullNamespace bool // when true, append NULL for namespace instead of the namespace string
+		lineFmt       string
+		want          string
 	}{
 		{
-			"simple replacement",
-			"this is my test line of logs",
-			arrow.Timestamp(timestamp.UnixNano()),
-			"dev",
-			"{{.namespace}}",
-			"dev",
+			name:      "simple replacement",
+			line:      "this is my test line of logs",
+			timeVal:   arrow.Timestamp(timestamp.UnixNano()),
+			namespace: "dev",
+			lineFmt:   "{{.namespace}}",
+			want:      "dev",
 		},
 		{
-			"replacement plus addition",
-			"this is my test line of logs",
-			arrow.Timestamp(timestamp.UnixNano()),
-			"dev",
-			"{{.namespace}} foo",
-			"dev foo",
+			name:      "replacement plus addition",
+			line:      "this is my test line of logs",
+			timeVal:   arrow.Timestamp(timestamp.UnixNano()),
+			namespace: "dev",
+			lineFmt:   "{{.namespace}} foo",
+			want:      "dev foo",
 		},
 		{
-			"timestamp",
-			"this is my test line of logs",
-			arrow.Timestamp(timestamp.UnixNano()),
-			"dev",
-			"{{.timestamp}} foo",
-			timestamp.In(time.UTC).Format("2006-01-02T15:04:05.999999999Z") + " foo",
+			name:      "timestamp",
+			line:      "this is my test line of logs",
+			timeVal:   arrow.Timestamp(timestamp.UnixNano()),
+			namespace: "dev",
+			lineFmt:   "{{.timestamp}} foo",
+			want:      timestamp.In(time.UTC).Format("2006-01-02T15:04:05.999999999Z") + " foo",
+		},
+		{
+			// Null entries on a parsed/metadata column must render as "" to match v1 engine
+			name:          "simple-key path on null entry renders as empty",
+			line:          "line",
+			timeVal:       arrow.Timestamp(timestamp.UnixNano()),
+			nullNamespace: true,
+			lineFmt:       "{{.namespace}}",
+			want:          "",
+		},
+		{
+			// Same intent as above but exercises the general template path
+			// (mixed text + field reference).
+			name:          "general template path on null entry renders as empty",
+			line:          "line",
+			timeVal:       arrow.Timestamp(timestamp.UnixNano()),
+			nullNamespace: true,
+			lineFmt:       "{{.namespace}} foo",
+			want:          " foo",
+		},
+		{
+			// `{{.foo}}` references a key that is not in the schema (no column
+			// named "foo" was ever created). Simple-key path previously raised a
+			// "missing key" parser error which surfaced as an __error__ label on
+			// the row; v1 silently renders "" via Go template's missingkey=zero.
+			// Must render "" with no error.
+			name:      "simple-key path on missing key renders as empty",
+			line:      "line",
+			timeVal:   arrow.Timestamp(timestamp.UnixNano()),
+			namespace: "dev",
+			lineFmt:   "{{.foo}}",
+			want:      "",
 		},
 	}
 
@@ -64,18 +97,13 @@ func TestLinefmtParser_Process(t *testing.T) {
 			tsBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 			namespaceBuilder := array.NewStringBuilder(memory.DefaultAllocator)
 
-			// Append data to the builders
-			logs := make([]string, 1)
-			ts := make([]arrow.Timestamp, 1)
-			namespaces := make([]string, 1)
-
-			logs[0] = tt.line
-			ts[0] = tt.timeVal
-			namespaces[0] = tt.namespace
-
-			tsBuilder.AppendValues(ts, nil)
-			logBuilder.AppendValues(logs, nil)
-			namespaceBuilder.AppendValues(namespaces, nil)
+			logBuilder.Append(tt.line)
+			tsBuilder.Append(tt.timeVal)
+			if tt.nullNamespace {
+				namespaceBuilder.AppendNull()
+			} else {
+				namespaceBuilder.Append(tt.namespace)
+			}
 
 			// Build the arrays
 			logArray := logBuilder.NewArray()
@@ -94,6 +122,7 @@ func TestLinefmtParser_Process(t *testing.T) {
 		})
 	}
 }
+
 func TestBuildLinefmtColumns_TemplateExecutionErrorProducesErrorDetails(t *testing.T) {
 	timestamp := time.Now().In(time.UTC).Add(time.Second)
 	schema := arrow.NewSchema(

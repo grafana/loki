@@ -152,7 +152,12 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				return nil, err
 			}
 			_, shouldDelete := renamedLabelSources[ident.ShortName()]
-			shouldDelete = shouldDelete && ident.ColumnType() == types.ColumnTypeLabel // only overwrite labels, not other column types
+			// A `label_format dst=src` rename removes the source label regardless of
+			// which category it came from (stream label, structured metadata, or a
+			// parsed field), matching the classic engine which
+			// deletes the name from every category. Only builtin/generated columns
+			// (timestamp, message, __error__, value) must be preserved.
+			shouldDelete = shouldDelete && isLabelLikeColumn(ident.ColumnType())
 			if !ident.Equal(semconv.ColumnIdentValue) && !shouldDelete {
 				outputCols = append(outputCols, batch.Column(i))
 				outputFields = append(outputFields, field)
@@ -199,6 +204,19 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 	}, input), nil
 }
 
+// isLabelLikeColumn reports whether a column of the given type participates in
+// the label set that LogQL operates on (and therefore can be the source of a
+// `label_format` rename). Builtin and generated columns (timestamp, message,
+// __error__, value) are excluded.
+func isLabelLikeColumn(ct types.ColumnType) bool {
+	switch ct {
+	case types.ColumnTypeLabel, types.ColumnTypeParsed, types.ColumnTypeMetadata, types.ColumnTypeAmbiguous:
+		return true
+	default:
+		return false
+	}
+}
+
 func labelFmtRenameSources(expr physical.Expression) map[string]struct{} {
 	parseExpr, ok := expr.(*physical.VariadicExpr)
 	if !ok || parseExpr.Op != types.VariadicOpParseLabelfmt || len(parseExpr.Expressions) < 3 {
@@ -224,9 +242,18 @@ func labelFmtRenameSources(expr physical.Expression) map[string]struct{} {
 	return renameSources
 }
 
-// mergeColumns merges two columns by preferring non-null and non-empty values from the new column (b).
-// If b has a null or empty value at index i, keep the value from a at that index.
-// If b has a non-null and non-empty value at index i, use the value from b (overwriting a).
+// mergeColumns merges two columns by preferring values from the new column (b),
+// falling back to the old column (a) only where b is null. An explicit empty
+// string in b is treated as a real value and overwrites a.
+//
+// The null-vs-empty distinction matters: producers (line_format / label_format
+// / logfmt / json / regexp) emit null only when this row didn't contribute a
+// value for the key (so the old column's value should survive), and emit ""
+// when the value is genuinely empty (template rendered "", rename source was
+// "", parsed key extracted an empty value). Treating "" as a missing value
+// silently turned every "rendered to empty" into "keep original", which
+// diverges from v1 — most visibly for `line_format` whose output column always
+// collides with the builtin `message` column.
 func mergeColumns(a, b arrow.Array) arrow.Array {
 	// Only handle string arrays for now (which is what parsers produce)
 	aStr, aOk := a.(*array.String)
@@ -241,8 +268,8 @@ func mergeColumns(a, b arrow.Array) arrow.Array {
 	builder.Reserve(aStr.Len())
 
 	for i := range aStr.Len() {
-		if bStr.IsNull(i) || bStr.Value(i) == "" {
-			// New value is null or empty, keep old value
+		if bStr.IsNull(i) {
+			// New column has no value for this row, keep the old one.
 			if aStr.IsNull(i) {
 				builder.AppendNull()
 			} else {

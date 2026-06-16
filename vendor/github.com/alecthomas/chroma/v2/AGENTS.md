@@ -1,6 +1,6 @@
 Chroma is a syntax highlighting library, tool and web playground for Go. It is based on Pygments and includes importers for it, so most of the same concepts from Pygments apply to Chroma.
 
-This project is written in Go, uses Hermit to manage tooling, and Just for helper commands. Helper scripts are in ./scripts.
+This project is written in Go, uses Hermit to manage tooling, and Just for helper commands. Helper tooling is primarily in ./_tools.
 
 Language definitions are XML files defined in ./lexers/embedded/*.xml.
 

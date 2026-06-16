@@ -15,8 +15,8 @@ type VectorSetCmdable interface {
 	VEmb(ctx context.Context, key, element string, raw bool) *SliceCmd
 	VGetAttr(ctx context.Context, key, element string) *StringCmd
 	VInfo(ctx context.Context, key string) *MapStringInterfaceCmd
-	VLinks(ctx context.Context, key, element string) *StringSliceCmd
-	VLinksWithScores(ctx context.Context, key, element string) *VectorScoreSliceCmd
+	VLinks(ctx context.Context, key, element string) *StringSliceSliceCmd
+	VLinksWithScores(ctx context.Context, key, element string) *VectorScoreSliceSliceCmd
 	VRandMember(ctx context.Context, key string) *StringCmd
 	VRandMemberCount(ctx context.Context, key string, count int) *StringSliceCmd
 	VRem(ctx context.Context, key, element string) *BoolCmd
@@ -26,7 +26,10 @@ type VectorSetCmdable interface {
 	VSimWithScores(ctx context.Context, key string, val Vector) *VectorScoreSliceCmd
 	VSimWithArgs(ctx context.Context, key string, val Vector, args *VSimArgs) *StringSliceCmd
 	VSimWithArgsWithScores(ctx context.Context, key string, val Vector, args *VSimArgs) *VectorScoreSliceCmd
+	VSimWithArgsWithAttribs(ctx context.Context, key string, val Vector, args *VSimArgs) *VectorAttribSliceCmd
+	VSimWithArgsWithScoresWithAttribs(ctx context.Context, key string, val Vector, args *VSimArgs) *VectorScoreAttribSliceCmd
 	VRange(ctx context.Context, key, start, end string, count int64) *StringSliceCmd
+	VIsMember(ctx context.Context, key, element string) *BoolCmd
 }
 
 type Vector interface {
@@ -36,6 +39,11 @@ type Vector interface {
 const (
 	vectorFormatFP32   string = "FP32"
 	vectorFormatValues string = "Values"
+	vectorFormatF16    string = "FLOAT16"
+	vectorFormatBF16   string = "BFLOAT16"
+	vectorFormatF64    string = "FLOAT64"
+	vectorFormatI8     string = "INT8"
+	vectorFormatU8     string = "UINT8"
 )
 
 type VectorFP32 struct {
@@ -47,6 +55,66 @@ func (v *VectorFP32) Value() []any {
 }
 
 var _ Vector = (*VectorFP32)(nil)
+
+// VectorFloat16 represents a FLOAT16-encoded vector blob.
+// note: intended for search/index query commands such as FT.HYBRID.
+type VectorFloat16 struct {
+	Val []byte
+}
+
+func (v *VectorFloat16) Value() []any {
+	return []any{vectorFormatF16, v.Val}
+}
+
+var _ Vector = (*VectorFloat16)(nil)
+
+// VectorBFloat16 represents a BFLOAT16-encoded vector blob.
+// note: intended for search/index query commands such as FT.HYBRID.
+type VectorBFloat16 struct {
+	Val []byte
+}
+
+func (v *VectorBFloat16) Value() []any {
+	return []any{vectorFormatBF16, v.Val}
+}
+
+var _ Vector = (*VectorBFloat16)(nil)
+
+// VectorFloat64 represents a FLOAT64-encoded vector blob.
+// note: intended for search/index query commands such as FT.HYBRID.
+type VectorFloat64 struct {
+	Val []byte
+}
+
+func (v *VectorFloat64) Value() []any {
+	return []any{vectorFormatF64, v.Val}
+}
+
+var _ Vector = (*VectorFloat64)(nil)
+
+// VectorInt8 represents an INT8-encoded vector blob.
+// note: intended for search/index query commands such as FT.HYBRID.
+type VectorInt8 struct {
+	Val []byte
+}
+
+func (v *VectorInt8) Value() []any {
+	return []any{vectorFormatI8, v.Val}
+}
+
+var _ Vector = (*VectorInt8)(nil)
+
+// VectorUint8 represents a UINT8-encoded vector blob.
+// note: intended for search/index query commands such as FT.HYBRID.
+type VectorUint8 struct {
+	Val []byte
+}
+
+func (v *VectorUint8) Value() []any {
+	return []any{vectorFormatU8, v.Val}
+}
+
+var _ Vector = (*VectorUint8)(nil)
 
 type VectorValues struct {
 	Val []float64
@@ -77,6 +145,17 @@ var _ Vector = (*VectorRef)(nil)
 type VectorScore struct {
 	Name  string
 	Score float64
+}
+
+type VectorAttrib struct {
+	Name    string
+	Attribs *string
+}
+
+type VectorScoreAttrib struct {
+	Name    string
+	Score   float64
+	Attribs *string
 }
 
 // `VADD key (FP32 | VALUES num) vector element`
@@ -193,16 +272,16 @@ func (c cmdable) VInfo(ctx context.Context, key string) *MapStringInterfaceCmd {
 
 // `VLINKS key element`
 // note: the API is experimental and may be subject to change.
-func (c cmdable) VLinks(ctx context.Context, key, element string) *StringSliceCmd {
-	cmd := NewStringSliceCmd(ctx, "vlinks", key, element)
+func (c cmdable) VLinks(ctx context.Context, key, element string) *StringSliceSliceCmd {
+	cmd := NewStringSliceSliceCmd(ctx, "vlinks", key, element)
 	_ = c(ctx, cmd)
 	return cmd
 }
 
 // `VLINKS key element WITHSCORES`
 // note: the API is experimental and may be subject to change.
-func (c cmdable) VLinksWithScores(ctx context.Context, key, element string) *VectorScoreSliceCmd {
-	cmd := NewVectorInfoSliceCmd(ctx, "vlinks", key, element, "withscores")
+func (c cmdable) VLinksWithScores(ctx context.Context, key, element string) *VectorScoreSliceSliceCmd {
+	cmd := NewVectorScoreSliceSliceCmd(ctx, "vlinks", key, element, "withscores")
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -311,7 +390,7 @@ func (v VSimArgs) appendArgs(args []any) []any {
 		args = append(args, "nothread")
 	}
 	if v.Epsilon > 0 {
-		args = append(args, "Epsilon", v.Epsilon)
+		args = append(args, "epsilon", v.Epsilon)
 	}
 	return args
 }
@@ -347,12 +426,55 @@ func (c cmdable) VSimWithArgsWithScores(ctx context.Context, key string, val Vec
 	return cmd
 }
 
+// `VSIM key (ELE | FP32 | VALUES num) (vector | element) [WITHATTRIBS] [COUNT num] [EPSILON delta]
+// [EF search-exploration-factor] [FILTER expression] [FILTER-EF max-filtering-effort] [TRUTH] [NOTHREAD]`
+// WITHATTRIBS is only available in Redis v8.2.0+
+// note: the API is experimental and may be subject to change.
+func (c cmdable) VSimWithArgsWithAttribs(ctx context.Context, key string, val Vector, simArgs *VSimArgs) *VectorAttribSliceCmd {
+	if simArgs == nil {
+		simArgs = &VSimArgs{}
+	}
+	args := []any{"vsim", key}
+	args = append(args, val.Value()...)
+	args = append(args, "withattribs")
+	args = simArgs.appendArgs(args)
+	cmd := NewVectorAttribSliceCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// `VSIM key (ELE | FP32 | VALUES num) (vector | element) [WITHSCORES] [WITHATTRIBS] [COUNT num] [EPSILON delta]
+// [EF search-exploration-factor] [FILTER expression] [FILTER-EF max-filtering-effort] [TRUTH] [NOTHREAD]`
+// WITHATTRIBS is only available in Redis v8.2.0+
+// note: the API is experimental and may be subject to change.
+func (c cmdable) VSimWithArgsWithScoresWithAttribs(ctx context.Context, key string, val Vector, simArgs *VSimArgs) *VectorScoreAttribSliceCmd {
+	if simArgs == nil {
+		simArgs = &VSimArgs{}
+	}
+	args := []any{"vsim", key}
+	args = append(args, val.Value()...)
+	args = append(args, "withscores", "withattribs")
+	args = simArgs.appendArgs(args)
+	cmd := NewVectorScoreAttribSliceCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
 // `VRANGE key start end count`
 // a negative count means to return all the elements in the vector set.
 // note: the API is experimental and may be subject to change.
 func (c cmdable) VRange(ctx context.Context, key, start, end string, count int64) *StringSliceCmd {
 	args := []any{"vrange", key, start, end, count}
 	cmd := NewStringSliceCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// `VISMEMBER key element`
+// Check if an element exists in a vector set.
+// note: the API is experimental and may be subject to change.
+func (c cmdable) VIsMember(ctx context.Context, key, element string) *BoolCmd {
+	cmd := NewBoolCmd(ctx, "vismember", key, element)
 	_ = c(ctx, cmd)
 	return cmd
 }
