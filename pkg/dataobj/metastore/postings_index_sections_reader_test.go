@@ -65,7 +65,7 @@ func TestPostingsIndexSectionsReader_ReadsPointers(t *testing.T) {
 	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
-	require.NotNil(t, r.postingsReader, "postings section present ⇒ one postings.Reader opened")
+	require.NotEmpty(t, r.postingsReaders, "postings section present ⇒ one postings.Reader opened")
 
 	rec, err := r.Read(ctx)
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestPostingsIndexSectionsReader_ReadsPointers(t *testing.T) {
 	require.Nil(t, rec)
 }
 
-func TestPostingsIndexSectionsReader_MultiplePostingsSectionsReturnsError(t *testing.T) {
+func TestPostingsIndexSectionsReader_MultipleSections(t *testing.T) {
 	t.Parallel()
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
@@ -90,9 +90,22 @@ func TestPostingsIndexSectionsReader_MultiplePostingsSectionsReturnsError(t *tes
 
 	obj := buildMultiPostingsSectionsFixture(t)
 	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil)
+	t.Cleanup(r.Close)
+	require.NoError(t, r.Open(ctx))
 
-	err := r.Open(ctx)
-	require.ErrorContains(t, err, "multiple postings sections found")
+	var totalRows int64
+	for {
+		rec, err := r.Read(ctx)
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		if rec != nil {
+			totalRows += rec.NumRows()
+		}
+	}
+
+	require.Equal(t, int64(2), totalRows, "both postings sections should contribute pointers across multiple reads")
 }
 
 func TestPostingsIndexSectionsReader_NoPostingsSectionReturnsEOF(t *testing.T) {
@@ -107,7 +120,7 @@ func TestPostingsIndexSectionsReader_NoPostingsSectionReturnsEOF(t *testing.T) {
 	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
-	require.Nil(t, r.postingsReader, "no postings section ⇒ no postings reader")
+	require.Empty(t, r.postingsReaders, "no postings section ⇒ no postings reader")
 
 	rec, err := r.Read(ctx)
 	require.ErrorIs(t, err, io.EOF)
@@ -183,7 +196,7 @@ func TestPostingsIndexSectionsReader_EndToEnd(t *testing.T) {
 		r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, nil)
 		t.Cleanup(r.Close)
 		require.NoError(t, r.Open(ctx))
-		require.NotNil(t, r.postingsReader)
+		require.NotEmpty(t, r.postingsReaders)
 
 		gotStreamIDs := map[int64]struct{}{}
 		var rows int64
