@@ -22,7 +22,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -33,7 +32,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 // TODO(chaudum): Make configurable via (per-tenant?) setting.
@@ -54,9 +52,6 @@ type Builder struct {
 	bloomGateway bloomgateway.Client
 
 	client protos.PlannerForBuilderClient
-
-	// ringWatcher is nil when builder is run without an index gateway ring (default microservice mode)
-	ringWatcher *common.RingWatcher
 }
 
 func New(
@@ -70,7 +65,6 @@ func New(
 	bloomGateway bloomgateway.Client,
 	logger log.Logger,
 	r prometheus.Registerer,
-	rm *ring.RingManager, // Unused, please remove
 ) (*Builder, error) {
 	utillog.WarnExperimentalUse("Bloom Builder", logger)
 
@@ -89,32 +83,17 @@ func New(
 		logger:       logger,
 	}
 
-	if rm != nil {
-		b.ringWatcher = common.NewRingWatcher(rm.RingLifecycler.GetInstanceID(), rm.Ring, time.Minute, logger)
-	}
-
 	b.Service = services.NewBasicService(b.starting, b.running, b.stopping)
 	return b, nil
 }
 
 func (b *Builder) starting(ctx context.Context) error {
-	if b.ringWatcher != nil {
-		if err := services.StartAndAwaitRunning(ctx, b.ringWatcher); err != nil {
-			return fmt.Errorf("error starting builder subservices: %w", err)
-		}
-	}
 	b.metrics.running.Set(1)
 	return nil
 }
 
 func (b *Builder) stopping(_ error) error {
 	defer b.metrics.running.Set(0)
-
-	if b.ringWatcher != nil {
-		if err := services.StopAndAwaitTerminated(context.Background(), b.ringWatcher); err != nil {
-			return fmt.Errorf("error stopping builder subservices: %w", err)
-		}
-	}
 
 	if b.client != nil {
 		// The gRPC server we use from dskit expects the orgID to be injected into the context when auth is enabled
@@ -208,16 +187,7 @@ func standardizeRPCError(err error) error {
 }
 
 func (b *Builder) plannerAddress() string {
-	if b.ringWatcher == nil {
-		return b.cfg.PlannerAddress
-	}
-
-	addr, err := b.ringWatcher.GetLeaderAddress()
-	if err != nil {
-		return b.cfg.PlannerAddress
-	}
-
-	return addr
+	return b.cfg.PlannerAddress
 }
 
 func (b *Builder) connectAndBuild(ctx context.Context) error {
