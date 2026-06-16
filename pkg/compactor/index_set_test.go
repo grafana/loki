@@ -1,11 +1,15 @@
 package compactor
 
 import (
+	"context"
+	"errors"
+	"io"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -13,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
 type indexUpdatesRecorder struct {
@@ -223,4 +228,150 @@ func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 	require.Len(t, indexUpdatesRecorder.removedChunks, 0)
 	// it would not index any new chunks since all the source chunks were marked missing
 	require.Len(t, indexUpdatesRecorder.indexedChunks, 0)
+}
+
+func TestIndexSet_RemoveFilesFromStorageRetries(t *testing.T) {
+	restoreConfig := setDeleteSourceObjectsBackoffConfigForTest(t)
+	defer restoreConfig()
+
+	retryableErr := errors.New("transient error")
+	nonRetryableErr := errors.New("non-retryable error")
+
+	tests := []struct {
+		name              string
+		sourceObjects     []storage.IndexFile
+		deleteErrors      map[string][]error
+		retryableErr      error
+		expectedErr       error
+		expectedErrString string
+		expectedCalls     map[string]int
+	}{
+		{
+			name:          "retries retryable errors until delete succeeds",
+			sourceObjects: []storage.IndexFile{{Name: "source.gz"}},
+			deleteErrors: map[string][]error{
+				"source.gz": {retryableErr, retryableErr},
+			},
+			retryableErr: retryableErr,
+			expectedCalls: map[string]int{
+				"source.gz": 3,
+			},
+		},
+		{
+			name:          "fail after max retries",
+			sourceObjects: []storage.IndexFile{{Name: "failed.gz"}},
+			deleteErrors: map[string][]error{
+				"failed.gz": {retryableErr, retryableErr, retryableErr},
+			},
+			retryableErr:      retryableErr,
+			expectedErrString: "terminated after 3 retries",
+			expectedCalls: map[string]int{
+				"failed.gz": 3,
+			},
+		},
+		{
+			name:          "does not retry non-retryable errors",
+			sourceObjects: []storage.IndexFile{{Name: "source.gz"}},
+			deleteErrors: map[string][]error{
+				"source.gz": {nonRetryableErr},
+			},
+			retryableErr: retryableErr,
+			expectedErr:  nonRetryableErr,
+			expectedCalls: map[string]int{
+				"source.gz": 1,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseIndexSet := newDeleteRetryIndexSet(tt.sourceObjects, tt.deleteErrors, tt.retryableErr)
+			indexSet := &indexSet{
+				ctx:           context.Background(),
+				tableName:     "test",
+				baseIndexSet:  baseIndexSet,
+				sourceObjects: tt.sourceObjects,
+				logger:        log.NewNopLogger(),
+			}
+
+			err := indexSet.removeFilesFromStorage()
+			if tt.expectedErr != nil {
+				require.ErrorIs(t, err, tt.expectedErr)
+			} else if tt.expectedErrString != "" {
+				require.ErrorContains(t, err, tt.expectedErrString)
+			} else {
+				require.NoError(t, err)
+			}
+
+			for fileName, expectedCalls := range tt.expectedCalls {
+				require.Equal(t, expectedCalls, baseIndexSet.deleteCalls[fileName])
+			}
+		})
+	}
+}
+
+func setDeleteSourceObjectsBackoffConfigForTest(t *testing.T) func() {
+	t.Helper()
+
+	originalConfig := deleteFileBackoffConfig
+	deleteFileBackoffConfig.MinBackoff = time.Nanosecond
+	deleteFileBackoffConfig.MaxBackoff = time.Nanosecond
+	deleteFileBackoffConfig.MaxRetries = 3
+
+	return func() {
+		deleteFileBackoffConfig = originalConfig
+	}
+}
+
+type deleteRetryIndexSet struct {
+	sourceObjects []storage.IndexFile
+	deleteErrors  map[string][]error
+	deleteCalls   map[string]int
+	notFoundErr   error
+	retryableErr  error
+}
+
+func newDeleteRetryIndexSet(sourceObjects []storage.IndexFile, deleteErrors map[string][]error, retryableErr error) *deleteRetryIndexSet {
+	return &deleteRetryIndexSet{
+		sourceObjects: sourceObjects,
+		deleteErrors:  deleteErrors,
+		deleteCalls:   map[string]int{},
+		notFoundErr:   errors.New("not found"),
+		retryableErr:  retryableErr,
+	}
+}
+
+func (d *deleteRetryIndexSet) RefreshIndexTableCache(_ context.Context, _ string) {}
+
+func (d *deleteRetryIndexSet) ListFiles(_ context.Context, _, _ string, _ bool) ([]storage.IndexFile, error) {
+	return d.sourceObjects, nil
+}
+
+func (d *deleteRetryIndexSet) GetFile(_ context.Context, _, _, _ string) (io.ReadCloser, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (d *deleteRetryIndexSet) PutFile(_ context.Context, _, _, _ string, _ io.ReadSeeker) error {
+	return errors.New("not implemented")
+}
+
+func (d *deleteRetryIndexSet) DeleteFile(_ context.Context, _, _, fileName string) error {
+	calls := d.deleteCalls[fileName]
+	d.deleteCalls[fileName] = calls + 1
+	if calls < len(d.deleteErrors[fileName]) {
+		return d.deleteErrors[fileName][calls]
+	}
+	return nil
+}
+
+func (d *deleteRetryIndexSet) IsFileNotFoundErr(err error) bool {
+	return errors.Is(err, d.notFoundErr)
+}
+
+func (d *deleteRetryIndexSet) IsRetryableErr(err error) bool {
+	return errors.Is(err, d.retryableErr)
+}
+
+func (d *deleteRetryIndexSet) IsUserBasedIndexSet() bool {
+	return false
 }
