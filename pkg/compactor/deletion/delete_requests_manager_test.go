@@ -1450,6 +1450,9 @@ type mockDeleteRequestsStore struct {
 	getAllRequestedForQuerytimeFiltering bool
 
 	genNumber string
+
+	updatedCacheGenForUser string
+	updateGenErr           error
 }
 
 func (m *mockDeleteRequestsStore) GetUnprocessedShards(_ context.Context) ([]deletionproto.DeleteRequest, error) {
@@ -1506,6 +1509,11 @@ func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context,
 
 func (m *mockDeleteRequestsStore) GetCacheGenerationNumber(_ context.Context, _ string) (string, error) {
 	return m.genNumber, m.getErr
+}
+
+func (m *mockDeleteRequestsStore) UpdateCacheGenerationNumber(_ context.Context, userID string) error {
+	m.updatedCacheGenForUser = userID
+	return m.updateGenErr
 }
 
 func (m *mockDeleteRequestsStore) MarkShardAsProcessed(_ context.Context, req deletionproto.DeleteRequest) error {

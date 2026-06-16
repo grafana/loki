@@ -27,8 +27,9 @@ const (
 	PathLokiRulesNamespace      = "/loki/api/v1/rules/{namespace}"
 	PathLokiRulesNamespaceGroup = "/loki/api/v1/rules/{namespace}/{groupName}"
 	// Delete requests (compactor)
-	PathLokiDelete          = "/loki/api/v1/delete"
-	PathLokiCacheGenNumbers = "/loki/api/v1/cache/generation_numbers"
+	PathLokiDelete                  = "/loki/api/v1/delete"
+	PathLokiCacheGenNumbers         = "/loki/api/v1/cache/generation_numbers"
+	PathLokiIncreaseCacheGenNumbers = "/loki/api/v1/cache/increase_generation_numbers"
 	// Ingest
 	PathLokiPush = "/loki/api/v1/push"
 )

@@ -1835,6 +1835,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		t.Server.HTTP.Path(constants.PathLokiDelete).Methods("GET").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler))
 		t.Server.HTTP.Path(constants.PathLokiDelete).Methods("DELETE").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler))
 		t.Server.HTTP.Path(constants.PathLokiCacheGenNumbers).Methods("GET").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler))
+		t.Server.HTTP.Path(constants.PathLokiIncreaseCacheGenNumbers).Methods("POST", "PUT").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.UpdateCacheGenerationNumberHandler))
 		grpc.RegisterCompactorServer(t.Server.GRPC, t.compactor.DeleteRequestsGRPCHandler)
 	}
 
