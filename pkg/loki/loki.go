@@ -149,8 +149,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&c.Target, "target",
 		"A comma-separated list of components to run. "+
 			"The default value 'all' runs Loki in single binary mode. "+
-			"The value 'read' is an alias to run only read-path related components such as the querier and query-frontend, but all in the same process. "+
-			"The value 'write' is an alias to run only write-path related components such as the distributor and compactor, but all in the same process. "+
 			"A full list of available targets can be printed when running Loki with the '-list-targets' command line flag. ",
 	)
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true,
