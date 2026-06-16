@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -169,7 +170,14 @@ func TestUpdateCacheGenerationNumberStoreTypes(t *testing.T) {
 			bumped, err := tc.store.GetCacheGenerationNumber(context.Background(), user1)
 			require.NoError(t, err)
 			require.NotEqual(t, after, bumped)
-			require.Greater(t, bumped, after)
+
+			// the gen number is a unix nano timestamp; compare numerically so the
+			// assertion stays correct regardless of the string representation.
+			afterNum, err := strconv.ParseInt(after, 10, 64)
+			require.NoError(t, err)
+			bumpedNum, err := strconv.ParseInt(bumped, 10, 64)
+			require.NoError(t, err)
+			require.Greater(t, bumpedNum, afterNum)
 
 			// it should not affect other users
 			otherUser, err := tc.store.GetCacheGenerationNumber(context.Background(), user2)
