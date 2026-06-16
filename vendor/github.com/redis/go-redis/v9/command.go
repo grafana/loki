@@ -7125,7 +7125,9 @@ func (cmd *ClusterShardsCmd) readReply(rd *proto.Reader) error {
 						case "health":
 							cmd.val[i].Nodes[k].Health, err = rd.ReadString()
 						default:
-							return fmt.Errorf("redis: unexpected key %q in CLUSTER SHARDS node reply", nodeKey)
+							if err = rd.DiscardNext(); err != nil {
+								return err
+							}
 						}
 
 						if err != nil {
@@ -7134,7 +7136,9 @@ func (cmd *ClusterShardsCmd) readReply(rd *proto.Reader) error {
 					}
 				}
 			default:
-				return fmt.Errorf("redis: unexpected key %q in CLUSTER SHARDS reply", key)
+				if err = rd.DiscardNext(); err != nil {
+					return err
+				}
 			}
 		}
 	}
