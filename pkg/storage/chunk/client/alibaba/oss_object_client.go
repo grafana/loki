@@ -3,6 +3,7 @@ package alibaba
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -13,12 +14,23 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 const NoSuchKeyErr = "NoSuchKey"
+
+const (
+	SignatureVersionV1 = "v1"
+	SignatureVersionV4 = "v4"
+)
+
+var (
+	supportedSignatureVersions     = []string{SignatureVersionV1, SignatureVersionV4}
+	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
+)
 
 var ossRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: constants.Loki,
@@ -45,7 +57,7 @@ type OssConfig struct {
 	RAMRoleName          string         `yaml:"ram_role_name"`
 	ConnectionTimeoutSec int64          `yaml:"conn_timeout_sec"`
 	ReadWriteTimeoutSec  int64          `yaml:"read_write_timeout_sec"`
-	UseV1Auth            bool           `yaml:"use_v1_auth"`
+	SignatureVersion     string         `yaml:"signature_version"`
 }
 
 type Credentials struct {
@@ -70,8 +82,8 @@ func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Region, prefix+"oss.region", "", "Alibabacloud Region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"oss.access-key-id", "", "alibabacloud Access Key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "alibabacloud Secret Access Key")
-	f.StringVar(&cfg.RAMRoleName, prefix+"oss.ram-role-name", "", "Specify the RAM role name of the ECS instance. ECS RAM role-based access is enabled only when neither access_key_id nor secret_access_key is configured, and requires V4 signing (use_v1_auth must be false). If not set, the role name will be automatically retrieved from the ECS instance metadata.")
-	f.BoolVar(&cfg.UseV1Auth, prefix+"oss.use-v1-auth", false, "Use V1 signing instead of V4. V1 signing does not support ECS RAM role authentication; use only as an escape hatch if V4 signing breaks your setup.")
+	f.StringVar(&cfg.RAMRoleName, prefix+"oss.ram-role-name", "", "Specify the RAM role name of the ECS instance. ECS RAM role authentication is used only when neither access_key_id nor secret_access_key is configured and requires signature_version=v4. If not set, the role name will be automatically retrieved from the ECS instance metadata.")
+	f.StringVar(&cfg.SignatureVersion, prefix+"oss.signature-version", SignatureVersionV1, fmt.Sprintf("The signature version to use for authenticating against OSS. Supported values are: %s. ECS RAM role authentication requires signature_version=v4.", strings.Join(supportedSignatureVersions, ", ")))
 	f.Int64Var(&cfg.ConnectionTimeoutSec, prefix+"oss.conn-timeout-sec", 30, "Connection timeout in seconds")
 	f.Int64Var(&cfg.ReadWriteTimeoutSec, prefix+"oss.read-write-timeout-sec", 60, "Read/Write timeout in seconds")
 }
@@ -80,6 +92,11 @@ func (cfg *OssConfig) Validate() error {
 	if cfg.ReadWriteTimeoutSec <= 0 {
 		return errors.New("read write timeout must be greater than 0")
 	}
+
+	if !util.StringsContain(supportedSignatureVersions, cfg.SignatureVersion) {
+		return errUnsupportedSignatureVersion
+	}
+
 	return nil
 }
 
@@ -90,14 +107,13 @@ func NewOssObjectClient(_ context.Context, cfg OssConfig) (client.ObjectClient, 
 		return nil, err
 	}
 
-	if !cfg.UseV1Auth {
-		region := cfg.Region
-		if region == "" {
-			region = parseRegion(cfg.Endpoint)
+	if cfg.SignatureVersion == SignatureVersionV4 {
+		if cfg.Region == "" {
+			return nil, errors.New("region must be specified when signature_version=v4")
 		}
 
 		clientOptions = append(clientOptions,
-			oss.Region(region),
+			oss.Region(cfg.Region),
 			oss.AuthVersion(oss.AuthV4),
 		)
 	}
@@ -307,26 +323,13 @@ func NewEcsCredentialsProvider(credential credentials.Credential) CredentialsPro
 	}
 }
 
-// Parse the region from the endpoint, e.g., oss‑cn‑hangzhou‑internal → cn‑hangzhou. V4 signature requires the region to match the endpoint.
-func parseRegion(endpoint string) string {
-	endpoint = strings.TrimPrefix(endpoint, "https://")
-	endpoint = strings.TrimPrefix(endpoint, "http://")
-
-	host := strings.Split(endpoint, ".")[0]
-
-	host = strings.TrimPrefix(host, "oss-")
-	host = strings.TrimSuffix(host, "-internal")
-
-	return host
-}
-
 func buildAuth(cfg *OssConfig) (ak string, sk string, opts []oss.ClientOption, err error) {
 	if cfg.AccessKeyID != "" || cfg.SecretAccessKey.String() != "" {
 		return cfg.AccessKeyID, cfg.SecretAccessKey.String(), nil, nil
 	}
 
-	if cfg.UseV1Auth {
-		return cfg.AccessKeyID, cfg.SecretAccessKey.String(), nil, errors.New("ECS RAM role requires V4 signing; either set use_v1_auth=false or configure access_key_id and secret_access_key")
+	if cfg.SignatureVersion == SignatureVersionV1 {
+		return cfg.AccessKeyID, cfg.SecretAccessKey.String(), nil, errors.New("ECS RAM role-based access is enabled only when neither access_key_id nor secret_access_key is configured, and requires signature_version=v4.")
 	}
 
 	_, opts, err = buildRAMRoleProvider(cfg.RAMRoleName)
