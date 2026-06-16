@@ -1830,6 +1830,47 @@ func TestDistributor_PushIngestionRateLimitPolicyAllOrNothing(t *testing.T) {
 	assert.Equal(t, success, resp)
 }
 
+// TestDistributor_PushIngestionRateLimitMultiplePolicies verifies that when several policy
+// buckets are over their limit in the same request, the 429 error deterministically enumerates
+// all exceeded policies (sorted), regardless of map iteration order.
+func TestDistributor_PushIngestionRateLimitMultiplePolicies(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+	limits.IngestionRateMB = datasize.ByteSize(1000).MBytes()
+	limits.IngestionBurstSizeMB = datasize.ByteSize(1000).MBytes()
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"finance": []*validation.PriorityStream{{Selector: `{app="finance"}`, Priority: 1}},
+		"ops":     []*validation.PriorityStream{{Selector: `{app="ops"}`, Priority: 1}},
+	}
+	// Both policies get a 50-byte budget; the request puts each well over (bytes > burst), so
+	// both reservations are rejected deterministically on every attempt.
+	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"finance": {IngestionRateMB: datasize.ByteSize(50).MBytes(), IngestionBurstSizeMB: datasize.ByteSize(50).MBytes()},
+		"ops":     {IngestionRateMB: datasize.ByteSize(50).MBytes(), IngestionBurstSizeMB: datasize.ByteSize(50).MBytes()},
+	}
+	require.NoError(t, limits.Validate())
+
+	distributors, _ := prepare(t, 1, 5, limits, nil)
+
+	req := makeWriteRequestWithLabels(1, 60, []string{`{app="finance"}`}, false, false, false)
+	opsStreams := makeWriteRequestWithLabels(1, 70, []string{`{app="ops"}`}, false, false, false)
+	req.Streams = append(req.Streams, opsStreams.Streams...)
+
+	// The error must enumerate both policies in sorted order (finance before ops), with each
+	// bucket's own limit/lines/bytes.
+	expectedDetail := `policy "finance" (limit: 50 bytes/sec) ingesting 1 lines totaling 60 bytes; ` +
+		`policy "ops" (limit: 50 bytes/sec) ingesting 1 lines totaling 70 bytes`
+	expectedErr := httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedMultiErrorMsg, "test", expectedDetail)
+
+	// Push twice to demonstrate the message is deterministic (independent of map iteration order).
+	for i := 0; i < 2; i++ {
+		resp, err := distributors[0].Push(ctx, req)
+		assert.Nil(t, resp)
+		assert.Equal(t, expectedErr, err)
+	}
+}
+
 func TestDistributor_PushIngestionBlocked(t *testing.T) {
 	for _, tc := range []struct {
 		name               string

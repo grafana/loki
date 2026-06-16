@@ -11,10 +11,14 @@ type ReadLifecycler interface {
 	HealthyInstancesCount() int
 }
 
-// rateLimitKeySeparator separates the tenant from the policy in a composite rate-limit
-// key. Tenant IDs are numeric in practice so they never contain this separator; a key
-// without it is therefore tenant-only (the tenant-wide bucket), preserving backwards
-// compatibility with the previous tenant-keyed limiter.
+// rateLimitKeySeparator separates the tenant from the policy in a composite rate-limit key.
+//
+// decodeRateLimitKey splits on the FIRST ":", so a policy name may safely contain ":" — it is
+// kept verbatim as the suffix. The only ambiguity would be a tenant ID that itself contains
+// ":", which is vanishingly unlikely in practice (tenant/org IDs are numeric in our
+// deployments) and not worth guarding against with extra validation on the hot write path. A
+// key with no ":" is a tenant-only key (the tenant-wide bucket), which keeps the previous
+// tenant-keyed limiter behavior intact.
 const rateLimitKeySeparator = ":"
 
 // encodeRateLimitKey builds the key passed to the dskit rate limiter. With an empty policy

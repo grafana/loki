@@ -1522,8 +1522,11 @@ type OverwriteMarshalingStringMap struct {
 }
 
 // PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
-// When a policy entry exists, its rate-limit values replace the tenant-level values for
-// streams resolved to that policy (REPLACE semantics); 0 means unlimited/zero, not "inherit".
+// When a policy entry exists, its values apply to streams resolved to that policy with
+// REPLACE semantics: the rate and per-stream limits replace the tenant-level values,
+// including when set to 0. The one exception is IngestionBurstSizeMB, which falls back to
+// the tenant ingestion_burst_size_mb when left at 0 (see the field doc), since a policy may
+// set a rate without an explicit burst.
 type PolicyOverridableLimits struct {
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"max_streams_per_user for a specific policy. 0 means unlimited."`
 	MaxGlobalStreamsPerUser int              `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"max_global_streams_per_user for a specific policy. 0 means unlimited."`

@@ -108,6 +108,14 @@ func TestRateLimitKeyEncoding(t *testing.T) {
 	tenant, policy := decodeRateLimitKey(encodeRateLimitKey("123", "finance"))
 	assert.Equal(t, "123", tenant)
 	assert.Equal(t, "finance", policy)
+
+	// A policy name that itself contains the separator survives a round-trip: encode appends it
+	// after the first ":" and decode splits on the first ":" only, so the tenant stays correct
+	// and the full policy (colons included) is preserved. Only a tenant containing ":" would be
+	// ambiguous, which we accept as not occurring in practice.
+	tenant, policy = decodeRateLimitKey(encodeRateLimitKey("123", "team:finance:eu"))
+	assert.Equal(t, "123", tenant)
+	assert.Equal(t, "team:finance:eu", policy)
 }
 
 func TestIngestionRateStrategy_PolicyOverride(t *testing.T) {

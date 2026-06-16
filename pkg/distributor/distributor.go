@@ -835,7 +835,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		reservation *rate.Reservation
 	}
 	reservations := make([]bucketReservation, 0, len(rlBuckets))
-	var rejected *rateLimitBucket
+	var exceeded []*rateLimitBucket
 	for _, b := range rlBuckets {
 		limiterKey := tenantID
 		if b.hasOverride {
@@ -844,16 +844,15 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		r := d.ingestionRateLimiter.ReserveN(now, limiterKey, b.bytes)
 		reservations = append(reservations, bucketReservation{bucket: b, reservation: r})
 		// A reservation that isn't OK (bytes exceed the burst) or that requires a wait is not
-		// immediately allowed, which is equivalent to AllowN returning false. Once any bucket is
-		// rejected the whole request is rejected, so stop reserving from the rest (we only need
-		// to cancel what we've already reserved).
+		// immediately allowed, which is equivalent to AllowN returning false. We evaluate every
+		// bucket (rather than stopping at the first failure) so the rejection error can
+		// deterministically report all exceeded buckets.
 		if !r.OK() || r.DelayFrom(now) > 0 {
-			rejected = b
-			break
+			exceeded = append(exceeded, b)
 		}
 	}
 
-	if rejected != nil {
+	if len(exceeded) > 0 {
 		// Roll back every reservation so no tokens are consumed for a rejected request.
 		for _, br := range reservations {
 			br.reservation.CancelAt(now)
@@ -863,16 +862,20 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		// own policy label, handled by trackDiscardedData).
 		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, nil)
 
-		limiterKey := tenantID
-		if rejected.hasOverride {
-			limiterKey = encodeRateLimitKey(tenantID, rejected.policy)
-		}
-		limit := int(d.ingestionRateLimiter.Limit(now, limiterKey))
-		if rejected.hasOverride {
-			err = fmt.Errorf(validation.RateLimitedPolicyErrorMsg, tenantID, rejected.policy, limit, rejected.lines, rejected.bytes)
-		} else {
-			err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, limit, rejected.lines, rejected.bytes)
-		}
+		// Sort exceeded buckets deterministically: the tenant-wide bucket first, then policies
+		// alphabetically. This keeps the client-facing error (and tests) stable regardless of
+		// map iteration order.
+		slices.SortFunc(exceeded, func(a, b *rateLimitBucket) int {
+			if a.hasOverride != b.hasOverride {
+				if !a.hasOverride {
+					return -1 // tenant-wide bucket sorts first
+				}
+				return 1
+			}
+			return strings.Compare(a.policy, b.policy)
+		})
+
+		err = d.rateLimitError(now, tenantID, exceeded)
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
@@ -1059,6 +1062,38 @@ type rateLimitBucket struct {
 	hasOverride bool
 	bytes       int
 	lines       int
+}
+
+// rateLimitError builds the client-facing 429 error for the rate-limit buckets a request
+// exceeded. A single exceeded bucket uses the existing per-tenant or per-policy message; two
+// or more are enumerated deterministically (the caller sorts them). All limits are looked up
+// at the same "now" used for the reservation decision.
+func (d *Distributor) rateLimitError(now time.Time, tenantID string, exceeded []*rateLimitBucket) error {
+	limitOf := func(b *rateLimitBucket) int {
+		key := tenantID
+		if b.hasOverride {
+			key = encodeRateLimitKey(tenantID, b.policy)
+		}
+		return int(d.ingestionRateLimiter.Limit(now, key))
+	}
+
+	if len(exceeded) == 1 {
+		b := exceeded[0]
+		if b.hasOverride {
+			return fmt.Errorf(validation.RateLimitedPolicyErrorMsg, tenantID, b.policy, limitOf(b), b.lines, b.bytes)
+		}
+		return fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, limitOf(b), b.lines, b.bytes)
+	}
+
+	clauses := make([]string, 0, len(exceeded))
+	for _, b := range exceeded {
+		if b.hasOverride {
+			clauses = append(clauses, fmt.Sprintf("policy %q (limit: %d bytes/sec) ingesting %d lines totaling %d bytes", b.policy, limitOf(b), b.lines, b.bytes))
+		} else {
+			clauses = append(clauses, fmt.Sprintf("the tenant default (limit: %d bytes/sec) ingesting %d lines totaling %d bytes", limitOf(b), b.lines, b.bytes))
+		}
+	}
+	return fmt.Errorf(validation.RateLimitedMultiErrorMsg, tenantID, strings.Join(clauses, "; "))
 }
 
 // trackDiscardedData tracks discarded samples and bytes. When policyMatch is non-nil, only
