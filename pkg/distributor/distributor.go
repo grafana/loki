@@ -36,6 +36,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
+	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
@@ -822,40 +823,59 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	// Enforce the ingestion rate limit per bucket. A bucket with a per-policy override is
-	// metered independently from the tenant-wide bucket. If any bucket is over its limit we
-	// reject the whole request (preserving the existing whole-request-reject behavior) but
-	// only attribute the offending bucket's bytes as discarded.
-	var rateLimitErr error
+	// Enforce the ingestion rate limit per bucket as an all-or-nothing decision. A bucket with
+	// a per-policy override is metered independently from the tenant-wide bucket. We tentatively
+	// reserve each bucket's bytes and, if any bucket can't accept them immediately, cancel every
+	// reservation (returning the tokens) and reject the whole request. Using reservations rather
+	// than AllowN keeps the buckets independent: a request rejected because one bucket is over
+	// its limit does not consume tokens from the others, so an over-limit policy can't drain the
+	// budgets of unrelated policies across client retries.
+	type bucketReservation struct {
+		bucket      *rateLimitBucket
+		reservation *rate.Reservation
+	}
+	reservations := make([]bucketReservation, 0, len(rlBuckets))
+	var rejected *rateLimitBucket
 	for _, b := range rlBuckets {
 		limiterKey := tenantID
 		if b.hasOverride {
 			limiterKey = encodeRateLimitKey(tenantID, b.policy)
 		}
-		if d.ingestionRateLimiter.AllowN(now, limiterKey, b.bytes) {
-			continue
+		r := d.ingestionRateLimiter.ReserveN(now, limiterKey, b.bytes)
+		reservations = append(reservations, bucketReservation{bucket: b, reservation: r})
+		// A reservation that isn't OK (bytes exceed the burst) or that requires a wait is not
+		// immediately allowed, which is equivalent to AllowN returning false. Once any bucket is
+		// rejected the whole request is rejected, so stop reserving from the rest (we only need
+		// to cancel what we've already reserved).
+		if !r.OK() || r.DelayFrom(now) > 0 {
+			rejected = b
+			break
+		}
+	}
+
+	if rejected != nil {
+		// Roll back every reservation so no tokens are consumed for a rejected request.
+		for _, br := range reservations {
+			br.reservation.CancelAt(now)
 		}
 
+		// The whole request is dropped, so attribute every stream as discarded (each under its
+		// own policy label, handled by trackDiscardedData).
+		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, nil)
+
+		limiterKey := tenantID
+		if rejected.hasOverride {
+			limiterKey = encodeRateLimitKey(tenantID, rejected.policy)
+		}
 		limit := int(d.ingestionRateLimiter.Limit(now, limiterKey))
-		if b.hasOverride {
-			bucket := b // capture for the closure
-			d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, func(policy string) bool {
-				return policy == bucket.policy
-			})
-			err = fmt.Errorf(validation.RateLimitedPolicyErrorMsg, tenantID, b.policy, limit, b.lines, b.bytes)
+		if rejected.hasOverride {
+			err = fmt.Errorf(validation.RateLimitedPolicyErrorMsg, tenantID, rejected.policy, limit, rejected.lines, rejected.bytes)
 		} else {
-			d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, func(policy string) bool {
-				_, hasOverride := d.validator.PolicyIngestionRateBytes(tenantID, policy)
-				return !hasOverride
-			})
-			err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, limit, b.lines, b.bytes)
+			err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, limit, rejected.lines, rejected.bytes)
 		}
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
-		rateLimitErr = httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
-	}
-	if rateLimitErr != nil {
-		return nil, rateLimitErr
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 	}
 
 	// These limits are checked after the ingestion rate limit as this

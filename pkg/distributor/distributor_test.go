@@ -1789,6 +1789,47 @@ func TestDistributor_PushIngestionRateLimitedByPolicy(t *testing.T) {
 	assert.Equal(t, success, resp)
 }
 
+// TestDistributor_PushIngestionRateLimitPolicyAllOrNothing verifies that when a request mixes
+// streams from two policies and only one is over its limit, rejecting the request does NOT
+// consume tokens from the under-limit policy's bucket (the reservations are cancelled).
+func TestDistributor_PushIngestionRateLimitPolicyAllOrNothing(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+	limits.IngestionRateMB = datasize.ByteSize(1000).MBytes()
+	limits.IngestionBurstSizeMB = datasize.ByteSize(1000).MBytes()
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"finance": []*validation.PriorityStream{{Selector: `{app="finance"}`, Priority: 1}},
+		"ops":     []*validation.PriorityStream{{Selector: `{app="ops"}`, Priority: 1}},
+	}
+	// Both policies get a 50-byte budget.
+	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"finance": {IngestionRateMB: datasize.ByteSize(50).MBytes(), IngestionBurstSizeMB: datasize.ByteSize(50).MBytes()},
+		"ops":     {IngestionRateMB: datasize.ByteSize(50).MBytes(), IngestionBurstSizeMB: datasize.ByteSize(50).MBytes()},
+	}
+	require.NoError(t, limits.Validate())
+
+	distributors, _ := prepare(t, 1, 5, limits, nil)
+
+	// Request mixes a finance stream that is over its 50-byte budget (60 bytes) with an ops
+	// stream that is under its budget (40 bytes). The whole request must be rejected because
+	// finance is over limit.
+	req := makeWriteRequestWithLabels(1, 60, []string{`{app="finance"}`}, false, false, false)
+	opsStreams := makeWriteRequestWithLabels(1, 40, []string{`{app="ops"}`}, false, false, false)
+	req.Streams = append(req.Streams, opsStreams.Streams...)
+
+	resp, err := distributors[0].Push(ctx, req)
+	assert.Nil(t, resp)
+	assert.Equal(t, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedPolicyErrorMsg, "test", "finance", 50, 1, 60), err)
+
+	// The ops bucket must NOT have been drained by the rejected request: a fresh ops push that
+	// fills its entire 50-byte budget still succeeds. (Without reservation cancellation, the
+	// earlier 40 bytes would have been consumed and this 50-byte push would be rate limited.)
+	resp, err = distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 50, []string{`{app="ops"}`}, false, false, false))
+	assert.NoError(t, err)
+	assert.Equal(t, success, resp)
+}
+
 func TestDistributor_PushIngestionBlocked(t *testing.T) {
 	for _, tc := range []struct {
 		name               string
