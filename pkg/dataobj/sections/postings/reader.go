@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -74,6 +73,10 @@ func (opts *ReaderOptions) validate() error {
 	}
 
 	validateScalar := func(s scalar.Scalar) {
+		if s == nil {
+			errs = append(errs, fmt.Errorf("scalar is nil"))
+			return
+		}
 		_, ok := arrowconv.DatasetType(s.DataType())
 		if !ok {
 			errs = append(errs, fmt.Errorf("unsupported scalar type %s", s.DataType()))
@@ -266,368 +269,59 @@ func (r *Reader) init(ctx context.Context) error {
 	return nil
 }
 
-// readPointersBatchSize bounds per-batch allocations while amortising fixed costs when draining the adapter.
-const readPointersBatchSize = 4096
-
-// readPointersOutputSchema returns the Arrow schema emitted by ReadPointersForStreams.
-func readPointersOutputSchema() *arrow.Schema {
-	// makeColumnName mirrors pointers/reader.go:504-515.
-	makeColumnName := func(label, name string, dty arrow.DataType) string {
-		switch {
-		case label == "" && name == "":
-			return dty.Name()
-		case label == "" && name != "":
-			return name + "." + dty.Name()
-		default:
-			if name == "" {
-				name = "<invalid>"
-			}
-			return label + "." + name + "." + dty.Name()
-		}
-	}
-	mkLabelled := func(label, typeName string, dty arrow.DataType) arrow.Field {
-		return arrow.Field{
-			Name:     makeColumnName(label, typeName, dty),
-			Type:     dty,
-			Nullable: true,
-		}
-	}
-	mkPlain := func(typeName string, dty arrow.DataType) arrow.Field {
-		return arrow.Field{
-			Name:     makeColumnName("", typeName, dty),
-			Type:     dty,
-			Nullable: true,
-		}
-	}
-	fields := []arrow.Field{
-		// path column carries Tag="path" on the pointers side; all others have empty Tag.
-		mkLabelled("path", pointers.ColumnTypePath.String(), arrow.BinaryTypes.String),
-		mkPlain(pointers.ColumnTypeSection.String(), arrow.PrimitiveTypes.Int64),
-		mkPlain(pointers.ColumnTypePointerKind.String(), arrow.PrimitiveTypes.Int64),
-		mkPlain(pointers.ColumnTypeStreamID.String(), arrow.PrimitiveTypes.Int64),
-		mkPlain(pointers.ColumnTypeStreamIDRef.String(), arrow.PrimitiveTypes.Int64),
-		mkPlain(pointers.ColumnTypeMinTimestamp.String(), arrow.FixedWidthTypes.Timestamp_ns),
-		mkPlain(pointers.ColumnTypeMaxTimestamp.String(), arrow.FixedWidthTypes.Timestamp_ns),
-		mkPlain(pointers.ColumnTypeRowCount.String(), arrow.PrimitiveTypes.Int64),
-		mkPlain(pointers.ColumnTypeUncompressedSize.String(), arrow.PrimitiveTypes.Int64),
-		// Internal label-names column pointers.Reader appends with ColumnTypeStreamID; kept for schema parity.
-		{Name: pointers.InternalLabelsFieldName, Type: arrow.BinaryTypes.String, Nullable: true},
-	}
-	return arrow.NewSchema(fields, nil)
+// PointerRow is one deduplicated (object, section, stream) tuple produced by the
+// label scan ([Reader.ScanLabelsInto] then [StreamScan.Finalize]), carrying the
+// time bounds merged across that stream's label postings.
+type PointerRow struct {
+	ObjectPath   string
+	SectionIndex int64
+	StreamID     int64
+	MinTimestamp int64
+	MaxTimestamp int64
+	HasBounds    bool
 }
 
-// ReadPointersForStreams returns stream-pointer rows scoped to the provided stream refs.
-// Stream refs include object path context, which avoids accidental cross-object stream-ID
-// collisions when the same numeric stream ID appears in multiple source objects.
-func (r *Reader) ReadPointersForStreams(ctx context.Context, streamRefs map[StreamRef]struct{}, start, end time.Time) (arrow.RecordBatch, error) {
-	if !r.ready {
-		return nil, errReaderNotOpen
-	}
-
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ReadPointersForStreams")
-	defer span.End()
-	startTime := time.Now()
-	defer r.alloc.Reclaim()
-
-	outSchema := readPointersOutputSchema()
-	alloc := r.opts.Allocator
-	if alloc == nil {
-		alloc = memory.DefaultAllocator
-	}
-
-	postingsRows, err := r.collectPostingsRows(ctx, streamRefs, start, end)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(postingsRows) == 0 {
-		rb := buildEmptyRecord(alloc, outSchema)
-		xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(int64(0)))
-		xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersReadTime.Observe(time.Since(startTime).Seconds()))
-		return rb, nil
-	}
-
-	rb, err := buildReadPointersRecord(alloc, outSchema, postingsRows)
-	if err != nil {
-		return nil, fmt.Errorf("building ReadPointersForStreams output batch: %w", err)
-	}
-
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(rb.NumRows()))
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersReadTime.Observe(time.Since(startTime).Seconds()))
-	return rb, nil
-}
-
-// pointerJoinRow is one output tuple assembled from a postings row.
-type pointerJoinRow struct {
-	objectPath   string
-	sectionIndex int64
-	streamID     int64
-	minTimestamp int64 // ns since epoch
-	maxTimestamp int64 // ns since epoch
-	hasBounds    bool
-}
-
-type pointerJoinKey struct {
+type pointerRowKey struct {
 	objectPath   string
 	sectionIndex int64
 	streamID     int64
 }
 
-// collectPostingsRows reads KindLabel rows and emits one tuple per stream-id bit set in each
-// row's bitmap, applying streamRefs and [start,end] filters row-side.
-func (r *Reader) collectPostingsRows(
-	ctx context.Context,
-	streamRefs map[StreamRef]struct{},
-	start, end time.Time,
-) ([]pointerJoinRow, error) {
-	postingsCols, err := findColumnsByType(r.opts.Columns,
-		ColumnTypeKind,
-		ColumnTypeObjectPath,
-		ColumnTypeSectionIndex,
-		ColumnTypeStreamIDBitmap,
-		ColumnTypeMinTimestamp,
-		ColumnTypeMaxTimestamp,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("finding postings columns for ReadPointersForStreams: %w", err)
-	}
-	colKind, colObjectPath, colSectionIndex, colStreamIDBitmap, colMinTs, colMaxTs :=
-		postingsCols[0], postingsCols[1], postingsCols[2], postingsCols[3], postingsCols[4], postingsCols[5]
-
-	innerSection := colKind.Section.inner
-	innerColumns := []*columnar.Column{
-		colKind.inner, colObjectPath.inner, colSectionIndex.inner,
-		colStreamIDBitmap.inner, colMinTs.inner, colMaxTs.inner,
-	}
-
-	dset, err := columnar.MakeDataset(innerSection, innerColumns)
-	if err != nil {
-		return nil, fmt.Errorf("creating postings dataset: %w", err)
-	} else if len(dset.Columns()) != len(innerColumns) {
-		return nil, fmt.Errorf("postings dataset has %d columns, expected %d", len(dset.Columns()), len(innerColumns))
-	}
-
-	columnLookup := map[*Column]dataset.Column{
-		colKind:           dset.Columns()[0],
-		colObjectPath:     dset.Columns()[1],
-		colSectionIndex:   dset.Columns()[2],
-		colStreamIDBitmap: dset.Columns()[3],
-		colMinTs:          dset.Columns()[4],
-		colMaxTs:          dset.Columns()[5],
-	}
-
-	kindEq := EqualPredicate{
-		Column: colKind,
-		Value:  scalar.NewInt64Scalar(int64(KindLabel)),
-	}
-	preds, err := mapPredicates([]Predicate{kindEq}, columnLookup)
-	if err != nil {
-		return nil, fmt.Errorf("mapping postings predicates: %w", err)
-	}
-
-	innerOptions := dataset.RowReaderOptions{
-		Dataset:    dset,
-		Columns:    dset.Columns(),
-		Predicates: preds,
-		Prefetch:   true,
-	}
-	postingsAdapter := columnar.NewReaderAdapter(innerOptions)
-	defer func() { _ = postingsAdapter.Close() }()
-	if err := postingsAdapter.Open(ctx); err != nil {
-		return nil, fmt.Errorf("opening postings adapter for ReadPointersForStreams: %w", err)
-	}
-
-	// Schema for the inner postings projection (used by arrowconv.ToRecordBatch
-	// to convert columnar batches into arrow batches).
-	innerSchema := arrow.NewSchema([]arrow.Field{
-		columnToField(colKind),
-		columnToField(colObjectPath),
-		columnToField(colSectionIndex),
-		columnToField(colStreamIDBitmap),
-		columnToField(colMinTs),
-		columnToField(colMaxTs),
-	}, nil)
-
-	var out []pointerJoinRow
-	seen := make(map[pointerJoinKey]int)
-
-	for {
-		colBatch, readErr := postingsAdapter.Read(ctx, r.alloc, readPointersBatchSize)
-		if colBatch != nil && colBatch.NumRows() > 0 {
-			rb, err := arrowconv.ToRecordBatch(colBatch, innerSchema)
-			if err != nil {
-				return nil, fmt.Errorf("converting postings columnar batch to arrow: %w", err)
-			}
-			if err := appendPostingsJoinRows(rb, streamRefs, start.UnixNano(), end.UnixNano(), &out, seen); err != nil {
-				return nil, err
-			}
-		}
-		if errors.Is(readErr, io.EOF) {
-			break
-		}
-		if readErr != nil {
-			return nil, fmt.Errorf("reading postings batch for ReadPointersForStreams: %w", readErr)
-		}
-	}
-
-	return out, nil
-}
-
-// appendPostingsJoinRows decodes each row's LSB bitmap into one tuple per stream-id, skipping
-// rows outside [startNanos, endNanos] and stream-ids absent from streamRefs.
-func appendPostingsJoinRows(
-	rb arrow.RecordBatch,
-	streamRefs map[StreamRef]struct{},
-	startNanos, endNanos int64,
-	out *[]pointerJoinRow,
-	seen map[pointerJoinKey]int,
-) error {
-	if rb.NumRows() == 0 {
-		return nil
-	}
-
-	objectPathCol, ok := rb.Column(1).(*array.String)
-	if !ok {
-		return fmt.Errorf("postings object_path column has unexpected type %T", rb.Column(1))
-	}
-	sectionIndexCol, ok := rb.Column(2).(*array.Int64)
-	if !ok {
-		return fmt.Errorf("postings section_index column has unexpected type %T", rb.Column(2))
-	}
-	bitmapCol, ok := rb.Column(3).(*array.Binary)
-	if !ok {
-		return fmt.Errorf("postings stream_id_bitmap column has unexpected type %T", rb.Column(3))
-	}
-	minTsCol, ok := rb.Column(4).(*array.Timestamp)
-	if !ok {
-		return fmt.Errorf("postings min_timestamp column has unexpected type %T", rb.Column(4))
-	}
-	maxTsCol, ok := rb.Column(5).(*array.Timestamp)
-	if !ok {
-		return fmt.Errorf("postings max_timestamp column has unexpected type %T", rb.Column(5))
-	}
-
-	filterStreamRefs := len(streamRefs) > 0
-
-	for i := 0; i < int(rb.NumRows()); i++ {
-		if objectPathCol.IsNull(i) || sectionIndexCol.IsNull(i) || bitmapCol.IsNull(i) {
-			continue
-		}
-
-		// Time-range filter on the posting's [min, max]. A null bound cannot be
-		// evaluated, so don't prune on it; emit the bound as zero in that case.
-		var minTs, maxTs int64
-		hasBounds := false
-		if !minTsCol.IsNull(i) && !maxTsCol.IsNull(i) {
-			hasBounds = true
-			minTs = int64(minTsCol.Value(i))
-			maxTs = int64(maxTsCol.Value(i))
-			if maxTs < startNanos || minTs > endNanos {
-				continue // posting does not overlap the query window
-			}
-		}
-
-		objectPath := objectPathCol.Value(i)
-		sectionIndex := sectionIndexCol.Value(i)
-		bitmapBytes := bitmapCol.Value(i)
-
-		// LSB bitmap: byte b, bit p => streamID = b*8 + p (pkg/memory.Bitmap).
-		for byteIdx, b := range bitmapBytes {
-			if b == 0 {
-				continue
-			}
-			for bitPos := 0; bitPos < 8; bitPos++ {
-				if (b>>uint(bitPos))&1 == 0 {
-					continue
-				}
-				streamID := int64(byteIdx*8 + bitPos)
-				if filterStreamRefs {
-					streamRef := StreamRef{ObjectPath: objectPath, StreamID: streamID}
-					if _, keep := streamRefs[streamRef]; !keep {
-						continue
-					}
-				}
-				key := pointerJoinKey{
-					objectPath:   objectPath,
-					sectionIndex: sectionIndex,
-					streamID:     streamID,
-				}
-				if idx, exists := seen[key]; exists {
-					mergePointerJoinRowBounds(&(*out)[idx], minTs, maxTs, hasBounds)
-					continue
-				}
-
-				row := pointerJoinRow{
-					objectPath:   objectPath,
-					sectionIndex: sectionIndex,
-					streamID:     streamID,
-				}
-				mergePointerJoinRowBounds(&row, minTs, maxTs, hasBounds)
-
-				*out = append(*out, row)
-				seen[key] = len(*out) - 1
-			}
-		}
-	}
-	return nil
-}
-
-func mergePointerJoinRowBounds(row *pointerJoinRow, minTs, maxTs int64, hasBounds bool) {
+func mergePointerRowBounds(row *PointerRow, minTs, maxTs int64, hasBounds bool) {
 	if !hasBounds {
 		return
 	}
-	if !row.hasBounds {
-		row.minTimestamp = minTs
-		row.maxTimestamp = maxTs
-		row.hasBounds = true
+	if !row.HasBounds {
+		row.MinTimestamp = minTs
+		row.MaxTimestamp = maxTs
+		row.HasBounds = true
 		return
 	}
-	if minTs < row.minTimestamp {
-		row.minTimestamp = minTs
+	if minTs < row.MinTimestamp {
+		row.MinTimestamp = minTs
 	}
-	if maxTs > row.maxTimestamp {
-		row.maxTimestamp = maxTs
+	if maxTs > row.MaxTimestamp {
+		row.MaxTimestamp = maxTs
 	}
-}
-
-// buildReadPointersRecord builds the output batch from the assembled join rows in
-// readPointersOutputSchema field order.
-func buildReadPointersRecord(alloc memory.Allocator, schema *arrow.Schema, rows []pointerJoinRow) (arrow.RecordBatch, error) {
-	rb := array.NewRecordBuilder(alloc, schema)
-
-	for _, row := range rows {
-		rb.Field(0).(*array.StringBuilder).Append(row.objectPath)
-		rb.Field(1).(*array.Int64Builder).Append(row.sectionIndex)
-		rb.Field(2).(*array.Int64Builder).Append(int64(pointers.PointerKindStreamIndex))
-		rb.Field(3).(*array.Int64Builder).Append(row.streamID)
-		// stream_id_ref: new-format objects carry no cross-index ref, so it equals stream_id.
-		rb.Field(4).(*array.Int64Builder).Append(row.streamID)
-		rb.Field(5).(*array.TimestampBuilder).Append(arrow.Timestamp(row.minTimestamp))
-		rb.Field(6).(*array.TimestampBuilder).Append(arrow.Timestamp(row.maxTimestamp))
-		// row_count and uncompressed_size: postings carries no per-stream count; emit zero.
-		rb.Field(7).(*array.Int64Builder).Append(0)
-		rb.Field(8).(*array.Int64Builder).Append(0)
-		// __streamLabelNames__: null here, populated by upstream label resolution.
-		rb.Field(9).(*array.StringBuilder).AppendNull()
-	}
-
-	return rb.NewRecordBatch(), nil
-}
-
-// buildEmptyRecord returns a zero-row batch built via the same RecordBuilder path so its
-// schema is byte-for-byte equal to the populated case.
-func buildEmptyRecord(alloc memory.Allocator, schema *arrow.Schema) arrow.RecordBatch {
-	rb := array.NewRecordBuilder(alloc, schema)
-	return rb.NewRecordBatch()
 }
 
 // readBloomRowsBatchSize is the inner read size used by [Reader.ReadBloomRows]
-// when draining the columnar adapter. Mirrors readPointersBatchSize (4096) —
-// keeps per-batch allocations bounded while amortising fixed costs.
+// when draining the columnar adapter.
 const readBloomRowsBatchSize = 4096
 
-// ReadBloomRows returns arrow RecordBatch for KindBloom rows
+// ReadBloomRows returns arrow RecordBatch for all KindBloom rows.
 func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
+	return r.readBloomRows(ctx, nil)
+}
+
+// ReadBloomRowsForColumns returns KindBloom rows limited to the provided
+// column names. Empty names are ignored; an empty resulting set is equivalent to
+// [ReadBloomRows].
+func (r *Reader) ReadBloomRowsForColumns(ctx context.Context, columnNames []string) (arrow.RecordBatch, error) {
+	return r.readBloomRows(ctx, columnNames)
+}
+
+func (r *Reader) readBloomRows(ctx context.Context, columnNames []string) (arrow.RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
 	}
@@ -682,11 +376,8 @@ func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 		colKind:       dset.Columns()[4],
 	}
 
-	kindEq := EqualPredicate{
-		Column: colKind,
-		Value:  scalar.NewInt64Scalar(int64(KindBloom)),
-	}
-	preds, err := mapPredicates([]Predicate{kindEq}, columnLookup)
+	predicateExprs := buildBloomScanPredicates(colKind, outputCols[2], columnNames)
+	preds, err := mapPredicates(predicateExprs, columnLookup)
 	if err != nil {
 		return nil, fmt.Errorf("mapping predicates: %w", err)
 	}
@@ -722,6 +413,49 @@ func (r *Reader) ReadBloomRows(ctx context.Context) (arrow.RecordBatch, error) {
 
 	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsBloomRowsRead.Observe(collected.NumRows()))
 	return collected, nil
+}
+
+func buildBloomScanPredicates(colKind, colColumnName *Column, columnNames []string) []Predicate {
+	predicateExprs := []Predicate{
+		EqualPredicate{
+			Column: colKind,
+			Value:  scalar.NewInt64Scalar(int64(KindBloom)),
+		},
+	}
+
+	// Optional column-name pushdown to avoid scanning unrelated bloom rows.
+	if len(columnNames) == 0 {
+		return predicateExprs
+	}
+
+	uniq := make(map[string]struct{}, len(columnNames))
+	values := make([]scalar.Scalar, 0, len(columnNames))
+	for _, name := range columnNames {
+		if name == "" {
+			continue
+		}
+		if _, exists := uniq[name]; exists {
+			continue
+		}
+		uniq[name] = struct{}{}
+		values = append(values, scalar.NewStringScalar(name))
+	}
+	if len(values) == 0 {
+		return predicateExprs
+	}
+	if len(values) == 1 {
+		predicateExprs = append(predicateExprs, EqualPredicate{
+			Column: colColumnName,
+			Value:  values[0],
+		})
+		return predicateExprs
+	}
+
+	predicateExprs = append(predicateExprs, InPredicate{
+		Column: colColumnName,
+		Values: values,
+	})
+	return predicateExprs
 }
 
 // collectBloomRowBatches drains adapter into a single output batch
@@ -806,121 +540,157 @@ func appendBloomRowBatch(innerRB arrow.RecordBatch, rb *array.RecordBuilder) err
 	return nil
 }
 
-// readResolveMatchingStreamRefsBatchSize bounds per-batch allocations while amortising fixed costs.
-const readResolveMatchingStreamRefsBatchSize = 4096
+// streamScanBatchSize bounds per-batch allocations while amortising fixed costs when draining the scan adapter.
+const streamScanBatchSize = 4096
 
 type matcherIndex int
 
-// ResolveMatchingStreamRefs returns the object-scoped streams matching every matcher against KindLabel rows.
-func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labels.Matcher) (map[StreamRef]struct{}, map[StreamRef][]string, error) {
+// StreamScanResult carries everything produced by a single pass over KindLabel rows:
+type StreamScanResult struct {
+	MatchingStreamRefs map[StreamRef]struct{}
+	LabelColumnNames   []string
+	// MatchingLabelColumnNames is the distinct set of label names observed on
+	// the matched streams only.
+	MatchingLabelColumnNames []string
+	Pointers                 []PointerRow
+}
+
+// StreamScan holds the cross-section accumulators for one logical pass over KindLabel rows.
+type StreamScan struct {
+	activeMatchers     []*labels.Matcher
+	perMatcherStreams  map[matcherIndex]map[StreamRef]struct{}
+	perMatcherHasName  map[matcherIndex]map[StreamRef]struct{}
+	matchersByName     map[string][]matcherIndex
+	missingMatches     []bool
+	allStreams         map[StreamRef]struct{}
+	allColumnNames     map[string]struct{}
+	labelNamesByStream map[StreamRef]map[string]struct{}
+	pointerRows        []PointerRow
+	seen               map[pointerRowKey]int
+	startNanos         int64
+	endNanos           int64
+}
+
+// NewStreamScan returns an accumulator for resolving streams and pointers across
+// one or more postings sections. Feed each section's KindLabel rows with
+// [Reader.ScanLabelsInto], then call [StreamScan.Finalize] once.
+func NewStreamScan(matchers []*labels.Matcher, start, end time.Time) *StreamScan {
+	active := make([]*labels.Matcher, 0, len(matchers))
+	for _, m := range matchers {
+		if m == nil {
+			continue
+		}
+		active = append(active, m)
+	}
+
+	matchersByName := make(map[string][]matcherIndex, len(active))
+	perMatcherStreams := make(map[matcherIndex]map[StreamRef]struct{}, len(active))
+	perMatcherHasName := make(map[matcherIndex]map[StreamRef]struct{}, len(active))
+	missingMatches := make([]bool, len(active))
+	for i, m := range active {
+		idx := matcherIndex(i)
+		matchersByName[m.Name] = append(matchersByName[m.Name], idx)
+		perMatcherStreams[idx] = make(map[StreamRef]struct{})
+		perMatcherHasName[idx] = make(map[StreamRef]struct{})
+		missingMatches[i] = matcherMatchesMissingLabel(m)
+	}
+
+	return &StreamScan{
+		activeMatchers:     active,
+		perMatcherStreams:  perMatcherStreams,
+		perMatcherHasName:  perMatcherHasName,
+		matchersByName:     matchersByName,
+		missingMatches:     missingMatches,
+		allStreams:         make(map[StreamRef]struct{}),
+		allColumnNames:     make(map[string]struct{}),
+		labelNamesByStream: make(map[StreamRef]map[string]struct{}),
+		seen:               make(map[pointerRowKey]int),
+		startNanos:         start.UnixNano(),
+		endNanos:           end.UnixNano(),
+	}
+}
+
+func matcherMatchesMissingLabel(m *labels.Matcher) bool {
+	switch m.Type {
+	case labels.MatchEqual:
+		return m.Value == ""
+	case labels.MatchNotEqual:
+		return m.Value != ""
+	case labels.MatchRegexp, labels.MatchNotRegexp:
+		return m.Matches("")
+	default:
+		return false
+	}
+}
+
+// ScanLabelsInto drains this reader's KindLabel rows in batchSize-row batches into acc
+func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize int) error {
 	if !r.ready {
-		return nil, nil, errReaderNotOpen
+		return errReaderNotOpen
+	}
+	if batchSize <= 0 {
+		batchSize = streamScanBatchSize
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ResolveMatchingStreamRefs")
+	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ScanLabels")
 	defer span.End()
-
 	defer r.alloc.Reclaim()
-
-	if len(matchers) == 0 {
-		return nil, nil, nil
-	}
-
-	equalMatchers, otherMatchers := splitByMatchType(matchers)
 
 	cols, err := findColumnsByType(r.opts.Columns,
 		ColumnTypeObjectPath,
+		ColumnTypeSectionIndex,
 		ColumnTypeColumnName,
 		ColumnTypeLabelValue,
 		ColumnTypeStreamIDBitmap,
+		ColumnTypeMinTimestamp,
+		ColumnTypeMaxTimestamp,
 		ColumnTypeKind,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("finding ResolveMatchingStreamRefs columns: %w", err)
+		return fmt.Errorf("finding ScanLabels columns: %w", err)
 	}
-	colObjectPath, colColumnName, colLabelValue, colStreamIDBitmap, colKind := cols[0], cols[1], cols[2], cols[3], cols[4]
+	colObjectPath, colSectionIndex, colColumnName, colLabelValue, colStreamIDBitmap, colMinTs, colMaxTs, colKind :=
+		cols[0], cols[1], cols[2], cols[3], cols[4], cols[5], cols[6], cols[7]
 
 	innerSection := cols[0].Section.inner
 	innerColumns := []*columnar.Column{
 		colObjectPath.inner,
+		colSectionIndex.inner,
 		colColumnName.inner,
 		colLabelValue.inner,
 		colStreamIDBitmap.inner,
+		colMinTs.inner,
+		colMaxTs.inner,
 		colKind.inner,
 	}
 
 	dset, err := columnar.MakeDataset(innerSection, innerColumns)
 	if err != nil {
-		return nil, nil, fmt.Errorf("creating dataset: %w", err)
+		return fmt.Errorf("creating dataset: %w", err)
 	} else if len(dset.Columns()) != len(innerColumns) {
-		return nil, nil, fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(innerColumns))
+		return fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(innerColumns))
 	}
 
 	columnLookup := map[*Column]dataset.Column{
 		colObjectPath:     dset.Columns()[0],
-		colColumnName:     dset.Columns()[1],
-		colLabelValue:     dset.Columns()[2],
-		colStreamIDBitmap: dset.Columns()[3],
-		colKind:           dset.Columns()[4],
+		colSectionIndex:   dset.Columns()[1],
+		colColumnName:     dset.Columns()[2],
+		colLabelValue:     dset.Columns()[3],
+		colStreamIDBitmap: dset.Columns()[4],
+		colMinTs:          dset.Columns()[5],
+		colMaxTs:          dset.Columns()[6],
+		colKind:           dset.Columns()[7],
 	}
 
+	// Push only kind == KindLabel; the row loop does matcher eval, name
+	// collection, and pointer-bounds accumulation row-side.
 	kindEq := EqualPredicate{
 		Column: colKind,
 		Value:  scalar.NewInt64Scalar(int64(KindLabel)),
 	}
-	var builtPredicate Predicate = kindEq
-	// matchers is guaranteed non-empty here (early return above).
-
-	// Names targeted by a non-Equal matcher; they need a broad column_name=Name branch.
-	nonEqualNames := make(map[string]struct{})
-	for _, m := range otherMatchers {
-		nonEqualNames[m.Name] = struct{}{}
-	}
-
-	// addedBroad dedups the broad branch to at most one per Name.
-	addedBroad := make(map[string]struct{})
-
-	var branches []Predicate
-	// Branch (a): Equal-only Names get the precise AND(name, value) pushdown.
-	for _, m := range equalMatchers {
-		if _, hasNonEqual := nonEqualNames[m.Name]; hasNonEqual {
-			continue // handled by the broad branch below
-		}
-		pair := AndPredicate{
-			Left: EqualPredicate{
-				Column: colColumnName,
-				Value:  scalar.NewStringScalar(m.Name),
-			},
-			Right: EqualPredicate{
-				Column: colLabelValue,
-				Value:  scalar.NewStringScalar(m.Value),
-			},
-		}
-		branches = append(branches, pair)
-	}
-	// Branch (b): one broad column_name=Name per non-Equal Name; supersedes any
-	// shared Equal pair (skipped above), whose value is re-checked row-side.
-	for _, m := range otherMatchers {
-		if _, exists := addedBroad[m.Name]; exists {
-			continue
-		}
-		addedBroad[m.Name] = struct{}{}
-		branches = append(branches, EqualPredicate{
-			Column: colColumnName,
-			Value:  scalar.NewStringScalar(m.Name),
-		})
-	}
-	if len(branches) > 0 {
-		combinedOr := branches[0]
-		for i := 1; i < len(branches); i++ {
-			combinedOr = OrPredicate{Left: combinedOr, Right: branches[i]}
-		}
-		builtPredicate = AndPredicate{Left: kindEq, Right: combinedOr}
-	}
-
-	preds, err := mapPredicates([]Predicate{builtPredicate}, columnLookup)
+	preds, err := mapPredicates([]Predicate{kindEq}, columnLookup)
 	if err != nil {
-		return nil, nil, fmt.Errorf("mapping predicates: %w", err)
+		return fmt.Errorf("mapping predicates: %w", err)
 	}
 
 	innerOptions := dataset.RowReaderOptions{
@@ -932,169 +702,240 @@ func (r *Reader) ResolveMatchingStreamRefs(ctx context.Context, matchers []*labe
 	adapter := columnar.NewReaderAdapter(innerOptions)
 	defer func() { _ = adapter.Close() }()
 	if err := adapter.Open(ctx); err != nil {
-		return nil, nil, fmt.Errorf("opening ResolveMatchingStreamRefs adapter: %w", err)
+		return fmt.Errorf("opening ScanLabels adapter: %w", err)
 	}
 
-	// Inner schema (5 fields) used by arrowconv.ToRecordBatch — must match
-	// the columnar batch column count.
+	// Inner schema (8 fields) — must match the columnar batch column count/order.
 	innerSchema := arrow.NewSchema([]arrow.Field{
 		columnToField(colObjectPath),
+		columnToField(colSectionIndex),
 		columnToField(colColumnName),
 		columnToField(colLabelValue),
 		columnToField(colStreamIDBitmap),
+		columnToField(colMinTs),
+		columnToField(colMaxTs),
 		columnToField(colKind),
 	}, nil)
 
-	perMatcherStreams := make(map[matcherIndex]map[StreamRef]struct{})
-	labelNamesByStreamSet := make(map[StreamRef]map[string]struct{})
-	activeMatchers := make([]*labels.Matcher, 0, len(matchers))
-
-	for _, m := range matchers {
-		if m == nil {
-			continue
-		}
-		activeMatchers = append(activeMatchers, m)
-	}
-
-	// Drain the adapter, accumulating each row's stream IDs into the set of every matcher it satisfies.
 	for {
-		colBatch, readErr := adapter.Read(ctx, r.alloc, readResolveMatchingStreamRefsBatchSize)
+		colBatch, readErr := adapter.Read(ctx, r.alloc, batchSize)
 		if colBatch != nil && colBatch.NumRows() > 0 {
 			innerRB, convErr := arrowconv.ToRecordBatch(colBatch, innerSchema)
 			if convErr != nil {
-				return nil, nil, fmt.Errorf("converting ResolveMatchingStreamRefs columnar batch to arrow: %w", convErr)
+				return fmt.Errorf("converting ScanLabels columnar batch to arrow: %w", convErr)
 			}
-			if err := accumulateLabelRows(
+			if err := accumulateStreamScan(
 				innerRB,
-				activeMatchers,
-				perMatcherStreams,
-				labelNamesByStreamSet,
+				acc,
 			); err != nil {
-				return nil, nil, err
+				return err
 			}
 		}
 		if errors.Is(readErr, io.EOF) {
 			break
 		}
 		if readErr != nil {
-			return nil, nil, fmt.Errorf("reading ResolveMatchingStreamRefs batch: %w", readErr)
+			return fmt.Errorf("reading ScanLabels batch: %w", readErr)
 		}
 	}
 
-	// AND across matchers: a stream ref must appear in every matcher's set.
-	var matchingStreams map[StreamRef]struct{}
-	if len(activeMatchers) == 0 {
-		// Defensive: short-circuited at the top of ResolveMatchingStreamRefs, but if
-		// every matcher was nil we land here.
-		matchingStreams = make(map[StreamRef]struct{})
-	} else {
-		first := perMatcherStreams[matcherIndex(0)]
-		matchingStreams = make(map[StreamRef]struct{}, len(first))
-		for streamRef := range first {
-			matchingStreams[streamRef] = struct{}{}
-		}
-		for i := 1; i < len(activeMatchers) && len(matchingStreams) > 0; i++ {
-			next := perMatcherStreams[matcherIndex(i)]
-			for streamRef := range matchingStreams {
-				if _, ok := next[streamRef]; !ok {
-					delete(matchingStreams, streamRef)
-				}
-			}
-		}
+	return nil
+}
+
+// Finalize ANDs the per-matcher stream sets and scopes the accumulated pointer
+// rows to the surviving streams. It must be called once, after every section has
+// been scanned into the StreamScan.
+func (acc *StreamScan) Finalize(ctx context.Context) *StreamScanResult {
+	acc.applyMissingLabelSemantics()
+	matchingStreams := intersectMatcherStreams(acc.perMatcherStreams, len(acc.activeMatchers))
+
+	labelNames := make([]string, 0, len(acc.allColumnNames))
+	for name := range acc.allColumnNames {
+		labelNames = append(labelNames, name)
 	}
 
-	// Flatten the inversion to slices, scoped to the surviving matching stream refs.
-	var labelNamesByStream map[StreamRef][]string
-	if len(matchingStreams) > 0 {
-		labelNamesByStream = make(map[StreamRef][]string, len(matchingStreams))
-		for streamRef := range matchingStreams {
-			nameSet := labelNamesByStreamSet[streamRef]
-			if len(nameSet) == 0 {
-				continue
-			}
-			names := make([]string, 0, len(nameSet))
-			for n := range nameSet {
-				names = append(names, n)
-			}
-			labelNamesByStream[streamRef] = names
+	matchingLabelNamesMap := make(map[string]struct{})
+	for ref := range matchingStreams {
+		names := acc.labelNamesByStream[ref]
+		for name := range names {
+			matchingLabelNamesMap[name] = struct{}{}
+		}
+	}
+	matchingLabelNames := make([]string, 0, len(matchingLabelNamesMap))
+	for name := range matchingLabelNamesMap {
+		matchingLabelNames = append(matchingLabelNames, name)
+	}
+
+	// Scope the accumulated pointer rows (all streams) to the matching streams,
+	// preserving first-seen order.
+	var matchedRows []PointerRow
+	for _, row := range acc.pointerRows {
+		ref := StreamRef{ObjectPath: row.ObjectPath, StreamID: row.StreamID}
+		if _, ok := matchingStreams[ref]; ok {
+			matchedRows = append(matchedRows, row)
 		}
 	}
 
 	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsLabelsResolved.Observe(int64(len(matchingStreams))))
-	return matchingStreams, labelNamesByStream, nil
+	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(int64(len(matchedRows))))
+	return &StreamScanResult{
+		MatchingStreamRefs:       matchingStreams,
+		LabelColumnNames:         labelNames,
+		MatchingLabelColumnNames: matchingLabelNames,
+		Pointers:                 matchedRows,
+	}
 }
 
-func splitByMatchType(ms []*labels.Matcher) (equal, other []*labels.Matcher) {
-	for _, m := range ms {
-		if m == nil {
+func (acc *StreamScan) applyMissingLabelSemantics() {
+	if len(acc.activeMatchers) == 0 || len(acc.allStreams) == 0 {
+		return
+	}
+
+	for i := range acc.activeMatchers {
+		if !acc.missingMatches[i] {
 			continue
 		}
-		if m.Type == labels.MatchEqual {
-			equal = append(equal, m)
-		} else {
-			other = append(other, m)
+		idx := matcherIndex(i)
+		matched := acc.perMatcherStreams[idx]
+		hasName := acc.perMatcherHasName[idx]
+		for ref := range acc.allStreams {
+			if _, has := hasName[ref]; has {
+				continue
+			}
+			matched[ref] = struct{}{}
 		}
 	}
-	return equal, other
 }
 
-// accumulateLabelRows adds each row's stream IDs to perMatcherStreams[i] for every matcher
-func accumulateLabelRows(
+// intersectMatcherStreams ANDs the per-matcher stream sets: a stream survives
+// only if it appears under every matcher.
+func intersectMatcherStreams(perMatcherStreams map[matcherIndex]map[StreamRef]struct{}, activeMatchers int) map[StreamRef]struct{} {
+	if activeMatchers == 0 {
+		return make(map[StreamRef]struct{})
+	}
+	first := perMatcherStreams[matcherIndex(0)]
+	matchingStreams := make(map[StreamRef]struct{}, len(first))
+	for streamRef := range first {
+		matchingStreams[streamRef] = struct{}{}
+	}
+	for i := 1; i < activeMatchers && len(matchingStreams) > 0; i++ {
+		next := perMatcherStreams[matcherIndex(i)]
+		for streamRef := range matchingStreams {
+			if _, ok := next[streamRef]; !ok {
+				delete(matchingStreams, streamRef)
+			}
+		}
+	}
+	return matchingStreams
+}
+
+// accumulateStreamScan processes one batch of the unified KindLabel scan, feeding
+// three accumulators from a single decode of each row's bitmap:
+//   - perMatcherStreams: streams satisfying each matcher (matcher eval; ignores time)
+//   - allColumnNames: every distinct label name (independent of matchers and time)
+//   - pointerRows/seen: per-(object,section,stream) time bounds for ALL streams,
+//     pruned to rows overlapping [acc.startNanos,acc.endNanos]; scoped to matching streams
+//     by the caller.
+//
+// Column order: object_path, section_index, column_name, label_value,
+// stream_id_bitmap, min_timestamp, max_timestamp, kind.
+func accumulateStreamScan(
 	rb arrow.RecordBatch,
-	matchers []*labels.Matcher,
-	perMatcherStreams map[matcherIndex]map[StreamRef]struct{},
-	labelNamesByStreamSet map[StreamRef]map[string]struct{},
+	acc *StreamScan,
 ) error {
 	if rb.NumRows() == 0 {
 		return nil
 	}
 	objectPathCol, ok := rb.Column(0).(*array.String)
 	if !ok {
-		return fmt.Errorf("ResolveMatchingStreamRefs object_path has unexpected type %T", rb.Column(0))
+		return fmt.Errorf("ResolveStreamsAndPointers object_path has unexpected type %T", rb.Column(0))
 	}
-	columnNameCol, ok := rb.Column(1).(*array.String)
+	sectionIndexCol, ok := rb.Column(1).(*array.Int64)
 	if !ok {
-		return fmt.Errorf("ResolveMatchingStreamRefs column_name has unexpected type %T", rb.Column(1))
+		return fmt.Errorf("ResolveStreamsAndPointers section_index has unexpected type %T", rb.Column(1))
 	}
-	labelValueCol, ok := rb.Column(2).(*array.String)
+	columnNameCol, ok := rb.Column(2).(*array.String)
 	if !ok {
-		return fmt.Errorf("ResolveMatchingStreamRefs label_value has unexpected type %T", rb.Column(2))
+		return fmt.Errorf("ResolveStreamsAndPointers column_name has unexpected type %T", rb.Column(2))
 	}
-	bitmapCol, ok := rb.Column(3).(*array.Binary)
+	labelValueCol, ok := rb.Column(3).(*array.String)
 	if !ok {
-		return fmt.Errorf("ResolveMatchingStreamRefs stream_id_bitmap has unexpected type %T", rb.Column(3))
+		return fmt.Errorf("ResolveStreamsAndPointers label_value has unexpected type %T", rb.Column(3))
 	}
-
-	// Group matcher indexes by Name for O(1) per-row dispatch.
-	matchersByName := make(map[string][]matcherIndex, len(matchers))
-	for i, m := range matchers {
-		matchersByName[m.Name] = append(matchersByName[m.Name], matcherIndex(i))
+	bitmapCol, ok := rb.Column(4).(*array.Binary)
+	if !ok {
+		return fmt.Errorf("ResolveStreamsAndPointers stream_id_bitmap has unexpected type %T", rb.Column(4))
+	}
+	minTsCol, ok := rb.Column(5).(*array.Timestamp)
+	if !ok {
+		return fmt.Errorf("ResolveStreamsAndPointers min_timestamp has unexpected type %T", rb.Column(5))
+	}
+	maxTsCol, ok := rb.Column(6).(*array.Timestamp)
+	if !ok {
+		return fmt.Errorf("ResolveStreamsAndPointers max_timestamp has unexpected type %T", rb.Column(6))
 	}
 
 	for i := 0; i < int(rb.NumRows()); i++ {
-		if objectPathCol.IsNull(i) || columnNameCol.IsNull(i) || labelValueCol.IsNull(i) || bitmapCol.IsNull(i) {
+		// Full label-name set: any non-empty column_name, independent of the
+		// matcher and time logic below.
+		if !columnNameCol.IsNull(i) {
+			if name := columnNameCol.Value(i); name != "" {
+				acc.allColumnNames[name] = struct{}{}
+			}
+		}
+
+		// Both the matcher and pointer accumulators need object_path + bitmap.
+		if objectPathCol.IsNull(i) || bitmapCol.IsNull(i) {
 			continue
 		}
 		objectPath := objectPathCol.Value(i)
-		name := columnNameCol.Value(i)
-		value := labelValueCol.Value(i)
 		bitmapBytes := bitmapCol.Value(i)
 
-		// Matchers targeting this column; each contributes iff Matches(value).
-		applicable := matchersByName[name]
-		if len(applicable) == 0 {
-			continue // defensive: pushdown should already exclude untargeted columns
-		}
-		matched := make([]matcherIndex, 0, len(applicable))
-		for _, idx := range applicable {
-			if matchers[idx].Matches(value) {
-				matched = append(matched, idx)
+		// Matchers this row satisfies (needs column_name + label_value).
+		var targeted []matcherIndex
+		matchedSmall := [8]matcherIndex{}
+		matched := matchedSmall[:0]
+		labelName := ""
+		hasLabelName := false
+		if !columnNameCol.IsNull(i) && !labelValueCol.IsNull(i) {
+			name := columnNameCol.Value(i)
+			value := labelValueCol.Value(i)
+			labelName = name
+			hasLabelName = name != ""
+			targeted = acc.matchersByName[name]
+			if len(targeted) > cap(matched) {
+				matched = make([]matcherIndex, 0, len(targeted))
+			}
+			for _, idx := range targeted {
+				if acc.activeMatchers[idx].Matches(value) {
+					matched = append(matched, idx)
+				}
 			}
 		}
-		if len(matched) == 0 {
+
+		// Whether this row contributes pointer bounds (needs section_index;
+		// time-filtered). A null bound can't be pruned, so keep it and emit zero.
+		boundsOK := false
+		var sectionIndex int64
+		var minTs, maxTs int64
+		hasBounds := false
+		if !sectionIndexCol.IsNull(i) {
+			sectionIndex = sectionIndexCol.Value(i)
+			if !minTsCol.IsNull(i) && !maxTsCol.IsNull(i) {
+				hasBounds = true
+				minTs = int64(minTsCol.Value(i))
+				maxTs = int64(maxTsCol.Value(i))
+				boundsOK = !(maxTs < acc.startNanos || minTs > acc.endNanos)
+			} else {
+				boundsOK = true
+			}
+		}
+
+		if len(matched) == 0 && !boundsOK {
 			continue
 		}
 
+		// Single decode of the LSB bitmap: byte b, bit p set => streamID = b*8+p.
 		for byteIdx, b := range bitmapBytes {
 			if b == 0 {
 				continue
@@ -1103,27 +944,37 @@ func accumulateLabelRows(
 				if (b>>uint(bitPos))&1 == 0 {
 					continue
 				}
-				streamRef := StreamRef{
-					ObjectPath: objectPath,
-					StreamID:   int64(byteIdx*8 + bitPos),
+				streamID := int64(byteIdx*8 + bitPos)
+				ref := StreamRef{ObjectPath: objectPath, StreamID: streamID}
+				acc.allStreams[ref] = struct{}{}
+				if hasLabelName {
+					names := acc.labelNamesByStream[ref]
+					if names == nil {
+						names = make(map[string]struct{})
+						acc.labelNamesByStream[ref] = names
+					}
+					names[labelName] = struct{}{}
+				}
+
+				for _, idx := range targeted {
+					acc.perMatcherHasName[idx][ref] = struct{}{}
 				}
 
 				for _, idx := range matched {
-					set, exists := perMatcherStreams[idx]
-					if !exists {
-						set = make(map[StreamRef]struct{})
-						perMatcherStreams[idx] = set
-					}
-					set[streamRef] = struct{}{}
+					acc.perMatcherStreams[idx][ref] = struct{}{}
 				}
 
-				// Record column_name for the inversion (scoped later to matching streams).
-				nameSet, exists := labelNamesByStreamSet[streamRef]
-				if !exists {
-					nameSet = make(map[string]struct{})
-					labelNamesByStreamSet[streamRef] = nameSet
+				if boundsOK {
+					key := pointerRowKey{objectPath: objectPath, sectionIndex: sectionIndex, streamID: streamID}
+					if idx, exists := acc.seen[key]; exists {
+						mergePointerRowBounds(&acc.pointerRows[idx], minTs, maxTs, hasBounds)
+					} else {
+						row := PointerRow{ObjectPath: objectPath, SectionIndex: sectionIndex, StreamID: streamID}
+						mergePointerRowBounds(&row, minTs, maxTs, hasBounds)
+						acc.pointerRows = append(acc.pointerRows, row)
+						acc.seen[key] = len(acc.pointerRows) - 1
+					}
 				}
-				nameSet[name] = struct{}{}
 			}
 		}
 	}
@@ -1272,106 +1123,6 @@ func (r *Reader) Close() error {
 		return r.inner.Close()
 	}
 	return nil
-}
-
-// StreamLabelColumnNames returns the distinct column_name values across KindLabel rows
-func (r *Reader) StreamLabelColumnNames(ctx context.Context) ([]string, error) {
-	if !r.ready {
-		return nil, errReaderNotOpen
-	}
-
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.StreamLabelColumnNames")
-	defer span.End()
-	defer r.alloc.Reclaim()
-
-	// Project column_name (output) + kind (predicate-only, gates to KindLabel).
-	nameCols, err := findColumnsByType(r.opts.Columns, ColumnTypeColumnName)
-	if err != nil {
-		return nil, fmt.Errorf("finding column_name column: %w", err)
-	}
-	kindCols, err := findColumnsByType(r.opts.Columns, ColumnTypeKind)
-	if err != nil {
-		return nil, fmt.Errorf("finding kind column: %w", err)
-	}
-	colColumnName, colKind := nameCols[0], kindCols[0]
-
-	innerSection := colColumnName.Section.inner
-	innerColumns := []*columnar.Column{colColumnName.inner, colKind.inner}
-
-	dset, err := columnar.MakeDataset(innerSection, innerColumns)
-	if err != nil {
-		return nil, fmt.Errorf("creating dataset: %w", err)
-	} else if len(dset.Columns()) != len(innerColumns) {
-		return nil, fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(innerColumns))
-	}
-
-	columnLookup := map[*Column]dataset.Column{
-		colColumnName: dset.Columns()[0],
-		colKind:       dset.Columns()[1],
-	}
-
-	kindEq := EqualPredicate{
-		Column: colKind,
-		Value:  scalar.NewInt64Scalar(int64(KindLabel)),
-	}
-	preds, err := mapPredicates([]Predicate{kindEq}, columnLookup)
-	if err != nil {
-		return nil, fmt.Errorf("mapping predicates: %w", err)
-	}
-
-	innerOptions := dataset.RowReaderOptions{
-		Dataset:    dset,
-		Columns:    dset.Columns(),
-		Predicates: preds,
-		Prefetch:   true,
-	}
-	adapter := columnar.NewReaderAdapter(innerOptions)
-	defer func() { _ = adapter.Close() }()
-	if err := adapter.Open(ctx); err != nil {
-		return nil, fmt.Errorf("opening StreamLabelColumnNames adapter: %w", err)
-	}
-
-	innerSchema := arrow.NewSchema([]arrow.Field{
-		columnToField(colColumnName),
-		columnToField(colKind),
-	}, nil)
-
-	seen := make(map[string]struct{})
-	var names []string
-	for {
-		colBatch, readErr := adapter.Read(ctx, r.alloc, readBloomRowsBatchSize)
-		if colBatch != nil && colBatch.NumRows() > 0 {
-			rb, err := arrowconv.ToRecordBatch(colBatch, innerSchema)
-			if err != nil {
-				return nil, fmt.Errorf("converting columnar batch to arrow: %w", err)
-			}
-			nameCol, ok := rb.Column(0).(*array.String)
-			if !ok {
-				return nil, fmt.Errorf("column_name column has unexpected type %T", rb.Column(0))
-			}
-			for i := 0; i < int(rb.NumRows()); i++ {
-				if nameCol.IsNull(i) {
-					continue
-				}
-				name := nameCol.Value(i)
-				if name == "" {
-					continue
-				}
-				if _, dup := seen[name]; dup {
-					continue
-				}
-				seen[name] = struct{}{}
-				names = append(names, name)
-			}
-		}
-		if errors.Is(readErr, io.EOF) {
-			break
-		}
-		if readErr != nil {
-			return nil, fmt.Errorf("reading column_name rows: %w", readErr)
-		}
-	}
-	return names, nil
 }
 
 // columnsSchema builds the arrow schema for the given projected columns.

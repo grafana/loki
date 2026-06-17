@@ -4,9 +4,7 @@ import (
 	"fmt"
 )
 
-// findColumnsByType returns the columns from cols whose Type matches one of
-// the requested types, in the order requested. The first column found for
-// each requested type is returned.
+// findColumnsByType returns the columns from cols whose Type matches one of  the requested types
 func findColumnsByType(cols []*Column, types ...ColumnType) ([]*Column, error) {
 	result := make([]*Column, 0, len(types))
 	for _, t := range types {

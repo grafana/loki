@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
-func TestResolveMatchingStreamRefs_EqualMatchers_Single(t *testing.T) {
+func TestResolveStreamsAndPointers_EqualMatchers_Single(t *testing.T) {
 	r := openLabelResolveFixture(t, []labelFixtureEntry{
 		{name: "env", value: "prod", streamIDs: []int64{1, 2, 3}},
 		{name: "env", value: "staging", streamIDs: []int64{4, 5}},
@@ -28,13 +28,11 @@ func TestResolveMatchingStreamRefs_EqualMatchers_Single(t *testing.T) {
 		_, ok := got[id]
 		require.True(t, ok, "stream %d must be present in env=prod result", id)
 	}
-	require.NotNil(t, names, "labelNamesByStream must be populated when there is a match")
-	for _, id := range []int64{1, 2, 3} {
-		require.ElementsMatch(t, []string{"env"}, names[id], "labelNamesByStream[%d]", id)
-	}
+	require.ElementsMatch(t, []string{"env", "app"}, names,
+		"the resolution scan must return every distinct label name in the section")
 }
 
-func TestResolveMatchingStreamRefs_RegexFallback(t *testing.T) {
+func TestResolveStreamsAndPointers_RegexFallback(t *testing.T) {
 	r := openLabelResolveFixture(t, []labelFixtureEntry{
 		{name: "env", value: "prod", streamIDs: []int64{1, 2, 3}},
 		{name: "env", value: "staging", streamIDs: []int64{4, 5}},
@@ -52,7 +50,7 @@ func TestResolveMatchingStreamRefs_RegexFallback(t *testing.T) {
 	}
 }
 
-func TestResolveMatchingStreamRefs_LabelNamesByStream_Inversion(t *testing.T) {
+func TestResolveStreamsAndPointers_ReturnsAllLabelNames(t *testing.T) {
 	r := openLabelResolveFixture(t, []labelFixtureEntry{
 		{name: "env", value: "prod", streamIDs: []int64{1, 2}},
 		{name: "app", value: "foo", streamIDs: []int64{2, 7}},
@@ -68,11 +66,11 @@ func TestResolveMatchingStreamRefs_LabelNamesByStream_Inversion(t *testing.T) {
 	require.Len(t, got, 1, "only stream 2 appears under all 3 labels")
 	_, ok := got[2]
 	require.True(t, ok, "stream 2 must be the sole survivor of the 3-way AND")
-	require.ElementsMatch(t, []string{"env", "app", "region"}, names[2],
-		"labelNamesByStream[2] must contain all 3 contributing column names")
+	require.ElementsMatch(t, []string{"env", "app", "region"}, names,
+		"names must be the full distinct label-name set across all label rows")
 }
 
-func TestResolveMatchingStreamRefs_Mixed_Equal_And_Regex_DifferentNames(t *testing.T) {
+func TestResolveStreamsAndPointers_Mixed_Equal_And_Regex_DifferentNames(t *testing.T) {
 	r := openLabelResolveFixture(t, []labelFixtureEntry{
 		{name: "env", value: "prod", streamIDs: []int64{1, 2, 3}},
 		{name: "app", value: "foo", streamIDs: []int64{2, 4}},
@@ -95,11 +93,11 @@ func TestResolveMatchingStreamRefs_Mixed_Equal_And_Regex_DifferentNames(t *testi
 	_, has4 := got[4]
 	require.False(t, has4, "stream 4 (app=foo but no env=prod) must NOT appear")
 
-	require.ElementsMatch(t, []string{"env", "app"}, names[2],
-		"labelNamesByStream[2] must record both contributing columns")
+	require.ElementsMatch(t, []string{"env", "app"}, names,
+		"names must list every distinct label column in the section")
 }
 
-func TestResolveMatchingStreamRefs_MultiRegex_AND(t *testing.T) {
+func TestResolveStreamsAndPointers_MultiRegex_AND(t *testing.T) {
 	r := openLabelResolveFixture(t, []labelFixtureEntry{
 		{name: "env", value: "prod", streamIDs: []int64{1, 2}},
 		{name: "env", value: "staging", streamIDs: []int64{3}},
@@ -125,11 +123,11 @@ func TestResolveMatchingStreamRefs_MultiRegex_AND(t *testing.T) {
 	_, has5 := got[5]
 	require.False(t, has5, "stream 5 (app=bar) must NOT appear")
 
-	require.ElementsMatch(t, []string{"env", "app"}, names[2],
-		"labelNamesByStream[2] must record both contributing columns")
+	require.ElementsMatch(t, []string{"env", "app"}, names,
+		"names must list every distinct label column in the section")
 }
 
-func TestResolveMatchingStreamRefs_NotEqualMatcher_AcrossNames(t *testing.T) {
+func TestResolveStreamsAndPointers_NotEqualMatcher_AcrossNames(t *testing.T) {
 	r := openLabelResolveFixture(t, []labelFixtureEntry{
 		{name: "env", value: "prod", streamIDs: []int64{1, 2}},
 		{name: "env", value: "dev", streamIDs: []int64{3}},
@@ -153,16 +151,41 @@ func TestResolveMatchingStreamRefs_NotEqualMatcher_AcrossNames(t *testing.T) {
 	require.False(t, has1, "stream 1 (env=prod AND app=bar) must NOT appear — app!=bar rejects it")
 }
 
+func TestResolveStreamsAndPointers_NotEqualMatcher_IncludesStreamsMissingLabel(t *testing.T) {
+	r := openLabelResolveFixture(t, []labelFixtureEntry{
+		{name: "env", value: "prod", streamIDs: []int64{1, 2, 3}},
+		{name: "app", value: "bar", streamIDs: []int64{2}},
+	})
+
+	notEqual, err := labels.NewMatcher(labels.MatchNotEqual, "app", "bar")
+	require.NoError(t, err)
+
+	got, _, err := resolveToStreamIDs(t, r, []*labels.Matcher{
+		equalMatcher(t, "env", "prod"),
+		notEqual,
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 2,
+		"env=prod AND app!=bar must keep streams missing app label (1 and 3), not just streams with explicit app rows")
+	_, has1 := got[1]
+	require.True(t, has1, "stream 1 has env=prod and no app label, so app!=bar should include it")
+	_, has3 := got[3]
+	require.True(t, has3, "stream 3 has env=prod and no app label, so app!=bar should include it")
+	_, has2 := got[2]
+	require.False(t, has2, "stream 2 has app=bar, so app!=bar must exclude it")
+}
+
 func TestResolveLabelStreams_ObjectScopedStreamIDs(t *testing.T) {
 	r := openLabelResolveFixture(t, []labelFixtureEntry{
 		{objectPath: "/obj-a", name: "app", value: "foo", streamIDs: []int64{1}},
 		{objectPath: "/obj-b", name: "app", value: "bar", streamIDs: []int64{1}},
 	})
 
-	got, names, err := r.ResolveMatchingStreamRefs(t.Context(), []*labels.Matcher{
+	res, err := r.ResolveStreamsAndPointers(t.Context(), []*labels.Matcher{
 		equalMatcher(t, "app", "foo"),
-	})
+	}, time.Unix(0, 0), time.Unix(0, 1<<62))
 	require.NoError(t, err)
+	got, names := res.MatchingStreamRefs, res.LabelColumnNames
 	require.Len(t, got, 1, "only /obj-a stream 1 matches app=foo")
 
 	target := postings.StreamRef{ObjectPath: "/obj-a", StreamID: 1}
@@ -170,51 +193,27 @@ func TestResolveLabelStreams_ObjectScopedStreamIDs(t *testing.T) {
 	require.True(t, ok, "object-scoped stream ref must be present")
 	_, leaked := got[postings.StreamRef{ObjectPath: "/obj-b", StreamID: 1}]
 	require.False(t, leaked, "same numeric stream ID in another object must not leak into the result")
-	require.ElementsMatch(t, []string{"app"}, names[target])
+	require.ElementsMatch(t, []string{"app"}, names)
 }
 
-func resolveToStreamIDs(tb testing.TB, r *postings.Reader, matchers []*labels.Matcher) (map[int64]struct{}, map[int64][]string, error) {
+// resolveToStreamIDs runs ResolveStreamsAndPointers over a wide time window and
+// returns the matching stream IDs plus the full distinct label-name set (returned
+// verbatim — it is section-wide, not per-stream). Pointer rows are not asserted
+// here.
+func resolveToStreamIDs(tb testing.TB, r *postings.Reader, matchers []*labels.Matcher) (map[int64]struct{}, []string, error) {
 	tb.Helper()
 
-	matchingRefs, namesByRef, err := r.ResolveMatchingStreamRefs(tb.Context(), matchers)
+	res, err := r.ResolveStreamsAndPointers(tb.Context(), matchers, time.Unix(0, 0), time.Unix(0, 1<<62))
 	if err != nil {
 		return nil, nil, err
 	}
-	if matchingRefs == nil && namesByRef == nil {
-		return nil, nil, nil
-	}
 
-	matchingStreamIDs := make(map[int64]struct{}, len(matchingRefs))
-	for streamRef := range matchingRefs {
+	matchingStreamIDs := make(map[int64]struct{}, len(res.MatchingStreamRefs))
+	for streamRef := range res.MatchingStreamRefs {
 		matchingStreamIDs[streamRef.StreamID] = struct{}{}
 	}
 
-	if len(namesByRef) == 0 {
-		return matchingStreamIDs, nil, nil
-	}
-
-	nameSetByStreamID := make(map[int64]map[string]struct{}, len(namesByRef))
-	for streamRef, names := range namesByRef {
-		nameSet := nameSetByStreamID[streamRef.StreamID]
-		if nameSet == nil {
-			nameSet = make(map[string]struct{}, len(names))
-			nameSetByStreamID[streamRef.StreamID] = nameSet
-		}
-		for _, name := range names {
-			nameSet[name] = struct{}{}
-		}
-	}
-
-	namesByStreamID := make(map[int64][]string, len(nameSetByStreamID))
-	for streamID, nameSet := range nameSetByStreamID {
-		names := make([]string, 0, len(nameSet))
-		for name := range nameSet {
-			names = append(names, name)
-		}
-		namesByStreamID[streamID] = names
-	}
-
-	return matchingStreamIDs, namesByStreamID, nil
+	return matchingStreamIDs, res.LabelColumnNames, nil
 }
 
 type labelFixtureEntry struct {
