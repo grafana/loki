@@ -994,3 +994,62 @@ func TestBuilder_SplitPreservesAllEntries(t *testing.T) {
 	// All values should be preserved in sorted order.
 	require.Equal(t, expectedValues, allValues, "all entries must be preserved across sections")
 }
+
+func TestBuilder_TimeRange(t *testing.T) {
+	b := NewBuilder(nil, 0, 0, 1024)
+
+	min, max := b.TimeRange()
+	require.True(t, min.IsZero())
+	require.True(t, max.IsZero())
+	require.NotEqual(t, time.Unix(0, 0).UTC(), min, "empty min must not be the Unix epoch")
+
+	base := time.Unix(5000, 0).UTC()
+
+	// Label-only.
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x", StreamID: 1, Timestamp: base})
+	min, max = b.TimeRange()
+	require.Equal(t, base, min)
+	require.Equal(t, base, max)
+
+	// Bloom observation extends the range on both ends.
+	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 2, Timestamp: base.Add(-time.Hour)}))
+	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "w", StreamID: 3, Timestamp: base.Add(time.Hour)}))
+
+	min, max = b.TimeRange()
+	require.Equal(t, base.Add(-time.Hour), min)
+	require.Equal(t, base.Add(time.Hour), max)
+
+	// Reset clears the range back to empty (verifies Builder.Reset propagates
+	// to both aggregators).
+	b.Reset()
+	min, max = b.TimeRange()
+	require.True(t, min.IsZero(), "after Reset min must be zero")
+	require.True(t, max.IsZero(), "after Reset max must be zero")
+}
+
+func TestBuilder_TimeRange_BloomOnly(t *testing.T) {
+	b := NewBuilder(nil, 0, 0, 1024)
+	base := time.Unix(6000, 0).UTC()
+
+	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: base}))
+
+	min, max := b.TimeRange()
+	require.Equal(t, base, min)
+	require.Equal(t, base, max)
+}
+
+func TestBuilder_TimeRange_PreparedBloomNoObservation(t *testing.T) {
+	b := NewBuilder(nil, 0, 0, 1024)
+	base := time.Unix(7000, 0).UTC()
+
+	// Label observation sets the range.
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x", StreamID: 1, Timestamp: base})
+	// Prepared-but-unobserved bloom column must not widen the range.
+	b.PrepareBloomColumn("/a", 0, "svc", 16)
+
+	min, max := b.TimeRange()
+	require.Equal(t, base, min)
+	require.Equal(t, base, max)
+}
