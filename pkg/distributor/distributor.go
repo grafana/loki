@@ -823,62 +823,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	// Enforce the ingestion rate limit per bucket as an all-or-nothing decision. A bucket with
-	// a per-policy override is metered independently from the tenant-wide bucket. We tentatively
-	// reserve each bucket's bytes and, if any bucket can't accept them immediately, cancel every
-	// reservation (returning the tokens) and reject the whole request. Using reservations rather
-	// than AllowN keeps the buckets independent: a request rejected because one bucket is over
-	// its limit does not consume tokens from the others, so an over-limit policy can't drain the
-	// budgets of unrelated policies across client retries.
-	type bucketReservation struct {
-		bucket      *rateLimitBucket
-		reservation *rate.Reservation
-	}
-	reservations := make([]bucketReservation, 0, len(rlBuckets))
-	var exceeded []*rateLimitBucket
-	for _, b := range rlBuckets {
-		limiterKey := tenantID
-		if b.hasOverride {
-			limiterKey = encodeRateLimitKey(tenantID, b.policy)
-		}
-		r := d.ingestionRateLimiter.ReserveN(now, limiterKey, b.bytes)
-		reservations = append(reservations, bucketReservation{bucket: b, reservation: r})
-		// A reservation that isn't OK (bytes exceed the burst) or that requires a wait is not
-		// immediately allowed, which is equivalent to AllowN returning false. We evaluate every
-		// bucket (rather than stopping at the first failure) so the rejection error can
-		// deterministically report all exceeded buckets.
-		if !r.OK() || r.DelayFrom(now) > 0 {
-			exceeded = append(exceeded, b)
-		}
-	}
-
-	if len(exceeded) > 0 {
-		// Roll back every reservation so no tokens are consumed for a rejected request.
-		for _, br := range reservations {
-			br.reservation.CancelAt(now)
-		}
-
-		// The whole request is dropped, so attribute every stream as discarded (each under its
-		// own policy label, handled by trackDiscardedData).
-		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, nil)
-
-		// Sort exceeded buckets deterministically: the tenant-wide bucket first, then policies
-		// alphabetically. This keeps the client-facing error (and tests) stable regardless of
-		// map iteration order.
-		slices.SortFunc(exceeded, func(a, b *rateLimitBucket) int {
-			if a.hasOverride != b.hasOverride {
-				if !a.hasOverride {
-					return -1 // tenant-wide bucket sorts first
-				}
-				return 1
-			}
-			return strings.Compare(a.policy, b.policy)
-		})
-
-		err = d.rateLimitError(now, tenantID, exceeded)
-		d.writeFailuresManager.Log(tenantID, err)
-		// Return a 429 to indicate to the client they are being rate limited
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+	if err := d.enforceIngestionRateLimits(ctx, now, tenantID, rlBuckets, req.Streams, validationContext, streamResolver, format); err != nil {
+		return nil, err
 	}
 
 	// These limits are checked after the ingestion rate limit as this
@@ -1094,6 +1040,80 @@ func (d *Distributor) rateLimitError(now time.Time, tenantID string, exceeded []
 		}
 	}
 	return fmt.Errorf(validation.RateLimitedMultiErrorMsg, tenantID, strings.Join(clauses, "; "))
+}
+
+// enforceIngestionRateLimits applies the per-bucket ingestion rate limit as an all-or-nothing
+// decision. A bucket with a per-policy override is metered independently from the tenant-wide
+// bucket. We tentatively reserve each bucket's bytes and, if any bucket can't accept them
+// immediately, cancel every reservation (returning the tokens) and reject the whole request.
+// Using reservations rather than AllowN keeps the buckets independent: a request rejected
+// because one bucket is over its limit does not consume tokens from the others, so an
+// over-limit policy can't drain the budgets of unrelated policies across client retries.
+//
+// It returns a non-nil 429 error if any bucket is over its limit (all reservations are rolled
+// back); nil means the request was admitted (the reservations are kept and the tokens consumed).
+func (d *Distributor) enforceIngestionRateLimits(
+	ctx context.Context,
+	now time.Time,
+	tenantID string,
+	rlBuckets map[string]*rateLimitBucket,
+	streams []logproto.Stream,
+	validationContext validationContext,
+	streamResolver push.StreamResolver,
+	format string,
+) error {
+	type bucketReservation struct {
+		bucket      *rateLimitBucket
+		reservation *rate.Reservation
+	}
+	reservations := make([]bucketReservation, 0, len(rlBuckets))
+	var exceeded []*rateLimitBucket
+	for _, b := range rlBuckets {
+		limiterKey := tenantID
+		if b.hasOverride {
+			limiterKey = encodeRateLimitKey(tenantID, b.policy)
+		}
+		r := d.ingestionRateLimiter.ReserveN(now, limiterKey, b.bytes)
+		reservations = append(reservations, bucketReservation{bucket: b, reservation: r})
+		// A reservation that isn't OK (bytes exceed the burst) or that requires a wait is not
+		// immediately allowed, which is equivalent to AllowN returning false. We evaluate every
+		// bucket (rather than stopping at the first failure) so the rejection error can
+		// deterministically report all exceeded buckets.
+		if !r.OK() || r.DelayFrom(now) > 0 {
+			exceeded = append(exceeded, b)
+		}
+	}
+
+	if len(exceeded) == 0 {
+		return nil
+	}
+
+	// Roll back every reservation so no tokens are consumed for a rejected request.
+	for _, br := range reservations {
+		br.reservation.CancelAt(now)
+	}
+
+	// The whole request is dropped, so attribute every stream as discarded (each under its
+	// own policy label, handled by trackDiscardedData).
+	d.trackDiscardedData(ctx, streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, nil)
+
+	// Sort exceeded buckets deterministically: the tenant-wide bucket first, then policies
+	// alphabetically. This keeps the client-facing error (and tests) stable regardless of
+	// map iteration order.
+	slices.SortFunc(exceeded, func(a, b *rateLimitBucket) int {
+		if a.hasOverride != b.hasOverride {
+			if !a.hasOverride {
+				return -1 // tenant-wide bucket sorts first
+			}
+			return 1
+		}
+		return strings.Compare(a.policy, b.policy)
+	})
+
+	err := d.rateLimitError(now, tenantID, exceeded)
+	d.writeFailuresManager.Log(tenantID, err)
+	// Return a 429 to indicate to the client they are being rate limited
+	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 }
 
 // trackDiscardedData tracks discarded samples and bytes. When policyMatch is non-nil, only
