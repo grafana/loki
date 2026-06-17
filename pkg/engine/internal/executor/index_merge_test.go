@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"testing"
 	"time"
 
@@ -611,7 +612,7 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, _, path
 	ctx := context.Background()
 
 	// Build postings section with one label entry
-	postingsBuilder := postings.NewBuilder(nil, 0, 0)
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	ts := time.Unix(0, 1_000_000)
 
 	postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
@@ -703,7 +704,7 @@ func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, _, path str
 	t.Helper()
 	ctx := context.Background()
 
-	postingsBuilder := postings.NewBuilder(nil, 0, 0)
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	for _, obs := range observations {
 		postingsBuilder.ObserveLabelPosting(obs)
 	}

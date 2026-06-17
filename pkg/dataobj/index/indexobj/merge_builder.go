@@ -79,7 +79,7 @@ func (b *MergeBuilder) getStatsBuilderForTenant(tenantID string) *stats.Builder 
 
 func (b *MergeBuilder) getPostingsMergeBuilderForTenant(tenantID string) *postings.MergeBuilder {
 	if _, ok := b.postings[tenantID]; !ok {
-		pmb := postings.NewMergeBuilder(b.metrics.postings, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+		pmb := postings.NewMergeBuilder(b.metrics.postings, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, int(b.cfg.TargetSectionSize))
 		pmb.SetTenant(tenantID)
 		b.postings[tenantID] = pmb
 	}
