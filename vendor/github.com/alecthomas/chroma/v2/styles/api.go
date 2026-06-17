@@ -64,3 +64,32 @@ func Get(name string) *chroma.Style {
 	}
 	return Fallback
 }
+
+// GetForMode returns the named style if it already matches mode, otherwise its
+// registered counterpart if one exists and matches mode. If neither matches,
+// the originally-requested style is returned (or Fallback if the name is
+// unknown), so callers always get something usable.
+func GetForMode(name string, mode chroma.Mode) *chroma.Style {
+	style := Get(name)
+	if style.Mode() == mode {
+		return style
+	}
+	if style.Counterpart == "" {
+		return style
+	}
+	counterpart, ok := Registry[style.Counterpart]
+	if !ok || counterpart.Mode() != mode {
+		return style
+	}
+	return counterpart
+}
+
+// RegisterPair links two styles as light/dark counterparts of each other.
+//
+// Both styles are also registered if they are not already present.
+func RegisterPair(a, b *chroma.Style) {
+	Register(a)
+	Register(b)
+	a.Counterpart = strings.ToLower(b.Name)
+	b.Counterpart = strings.ToLower(a.Name)
+}

@@ -1,4 +1,4 @@
-<style name="github-dark">
+<style name="github-dark" counterpart="github">
   <entry type="Error" style="#f85149"/>
   <entry type="LineHighlight" style="bg:#6e7681"/>
   <entry type="LineNumbers" style="#6e7681"/>
