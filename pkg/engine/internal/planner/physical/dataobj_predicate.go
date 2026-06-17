@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -194,6 +195,21 @@ func buildLogsComparison(expr *BinaryExpr, columns []*logs.Column) (logs.Predica
 		return nil, err
 	}
 
+	// When the column is absent from this section, LogQL says an absent label
+	// compares as the empty string "" — the same semantic the post-scan filter
+	// layer already applies. Evaluate the operator against "" and prune the
+	// section accordingly. predicateForAbsentColumn returns ok=false to
+	// indicate the op/literal combination isn't string-shaped and the caller
+	// should fall through to the per-op default (preserved below for null
+	// literals and for numeric comparisons that aren't meaningful against "").
+	if col == nil {
+		if p, ok, err := predicateForAbsentColumn(expr.Op, s); err != nil {
+			return nil, err
+		} else if ok {
+			return p, nil
+		}
+	}
+
 	switch expr.Op {
 	case types.BinaryOpEq:
 		if col == nil && s.IsValid() {
@@ -289,9 +305,81 @@ func buildLogsComparison(expr *BinaryExpr, columns []*logs.Column) (logs.Predica
 	return nil, fmt.Errorf("unsupported binary operator %s in logs predicate", expr.Op)
 }
 
-// findLogsColumn finds a column by ref in the slice of columns. If ref is
-// invalid, findLogsColumn returns an error. If the column does not exist,
-// findLogsColumn returns nil.
+// predicateForAbsentColumn returns the section-level predicate for an
+// expression of the form `<absent column> op literal`. LogQL semantics — also
+// applied by the post-scan filter layer — treat an absent label as the empty
+// string "", so for string-typed literals the predicate reduces to a constant:
+// evaluate `"" op literal` and return TruePredicate (every row in the section
+// matches) or FalsePredicate (none match).
+//
+// Returns ok=false for non-string literals (null, integer, timestamp, etc.) so
+// the caller can fall through to the per-op default — those literals don't
+// have a meaningful "" comparison and the prior, conservative section-prune
+// behaviour is preserved.
+func predicateForAbsentColumn(op types.BinaryOp, s scalar.Scalar) (logs.Predicate, bool, error) {
+	var lit string
+	switch v := s.(type) {
+	case *scalar.String:
+		lit = string(v.Data())
+	case *scalar.Binary:
+		lit = string(v.Data())
+	default:
+		return nil, false, nil
+	}
+
+	var matches bool
+	switch op {
+	case types.BinaryOpEq:
+		matches = lit == ""
+	case types.BinaryOpNeq:
+		matches = lit != ""
+	case types.BinaryOpGt:
+		matches = "" > lit // always false ("" is the smallest string)
+	case types.BinaryOpGte:
+		matches = "" >= lit // true only when lit == ""
+	case types.BinaryOpLt:
+		matches = "" < lit // true for any non-empty lit
+	case types.BinaryOpLte:
+		matches = true // "" <= anything
+	case types.BinaryOpMatchSubstr:
+		matches = strings.Contains("", lit) // true only when lit == ""
+	case types.BinaryOpNotMatchSubstr:
+		matches = !strings.Contains("", lit)
+	case types.BinaryOpMatchRe:
+		re, err := regexp.Compile(lit)
+		if err != nil {
+			return nil, false, err
+		}
+		matches = re.MatchString("")
+	case types.BinaryOpNotMatchRe:
+		re, err := regexp.Compile(lit)
+		if err != nil {
+			return nil, false, err
+		}
+		matches = !re.MatchString("")
+	case types.BinaryOpEqCaseInsensitive:
+		matches = matchutil.EqualUpper([]byte(""), []byte(lit))
+	case types.BinaryOpNotEqCaseInsensitive:
+		matches = !matchutil.EqualUpper([]byte(""), []byte(lit))
+	case types.BinaryOpMatchSubstrCaseInsensitive:
+		matches = matchutil.ContainsUpper([]byte(""), []byte(lit))
+	case types.BinaryOpNotMatchSubstrCaseInsensitive:
+		matches = !matchutil.ContainsUpper([]byte(""), []byte(lit))
+	default:
+		// Pattern ops and any future ops without an "" evaluation rule:
+		// leave to the per-op default.
+		return nil, false, nil
+	}
+
+	if matches {
+		return logs.TruePredicate{}, true, nil
+	}
+	return logs.FalsePredicate{}, true, nil
+}
+
+// findLogsColumn finds a column by ref in the slice of columns. If ref is invalid,
+// findLogsColumn returns an error. If the column does not exist, findLogsColumn
+// returns nil.
 func findLogsColumn(ref types.ColumnRef, columns []*logs.Column) (*logs.Column, error) {
 	if ref.Type != types.ColumnTypeBuiltin && ref.Type != types.ColumnTypeMetadata && ref.Type != types.ColumnTypeAmbiguous {
 		return nil, fmt.Errorf("invalid column ref %s, expected builtin or metadata", ref)
