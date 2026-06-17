@@ -176,6 +176,11 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	for _, path := range paths {
 		entry := objects[path]
 		for _, sec := range entry.obj.Sections() {
+			// Index objects are multi-tenant; only merge sections for the tenant
+			// being compacted, or other tenants' rows leak into this output.
+			if sec.Tenant != node.Tenant {
+				continue
+			}
 			switch {
 			case postings.CheckSection(sec):
 				postingsSections = append(postingsSections, runSection{
