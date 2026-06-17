@@ -486,6 +486,8 @@ github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 h1:JeSE6pjso5T
 github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674/go.mod h1:r4w70xmWCQKmi1ONH4KIaBptdivuRPyosB9RmPlGEwA=
 github.com/grafana/dskit v0.0.0-20260616114202-8985d0f800b1 h1:uXe3yNDBUBjcfD4uHiHr5dPfRvd5U0leTarwRT4Pcdk=
 github.com/grafana/dskit v0.0.0-20260616114202-8985d0f800b1/go.mod h1:6n9jITeGJSb4RIAEj9RyeXaRG3hoC1KNl22tRiVPQ/8=
+github.com/grafana/dskit v0.0.0-20260617075001-eedb5a2df869 h1:DdJ4cAul4xmISI1GmryszT5tKm6214zj7kFiEc6V0eg=
+github.com/grafana/dskit v0.0.0-20260617075001-eedb5a2df869/go.mod h1:T0r0vLv/JwmOoSc/EOZw/5ni7r/djCoCdJ3/JnHDAjQ=
 github.com/grafana/gomemcache v0.0.0-20251127154401-74f93547077b h1:5qp8/5YPt/Z2RW5QHsxvwE05+LWQYIXydP2MwOkMfb8=
 github.com/grafana/gomemcache v0.0.0-20251127154401-74f93547077b/go.mod h1:j/s0jkda4UXTemDs7Pgw/vMT06alWc42CHisvYac0qw=
 github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675 h1:U94jQ2TQr1m3HNyE8efSdyaBbDrdPaWImXyenuKZ/nw=
@@ -496,6 +498,8 @@ github.com/grafana/objstore v0.0.0-20260507144615-6c81ea69c9a9 h1:w43KAzhhj6T7ef
 github.com/grafana/objstore v0.0.0-20260507144615-6c81ea69c9a9/go.mod h1:Quz9HUDjGidU0RQpoytzK4KqJ7kwzP+DMAm4K57/usM=
 github.com/grafana/otel-profiling-go v0.5.1 h1:stVPKAFZSa7eGiqbYuG25VcqYksR6iWvF3YH66t4qL8=
 github.com/grafana/otel-profiling-go v0.5.1/go.mod h1:ftN/t5A/4gQI19/8MoWurBEtC6gFw8Dns1sJZ9W4Tls=
+github.com/grafana/otel-profiling-go v0.6.0 h1:W7lOZaJj4IJISXMcM1UBk3fJF3tzF2OD6MJBJaQp1H8=
+github.com/grafana/otel-profiling-go v0.6.0/go.mod h1:cqLIDgNXlnzknJ0WLiEe+JPjZk2MZ4ftMdqRJRWj1ZM=
 github.com/grafana/pyroscope-go/godeltaprof v0.1.9 h1:c1Us8i6eSmkW+Ez05d3co8kasnuOY813tbMN8i/a3Og=
 github.com/grafana/pyroscope-go/godeltaprof v0.1.9/go.mod h1:2+l7K7twW49Ct4wFluZD3tZ6e0SjanjcUUBPVD/UuGU=
 github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc h1:GN2Lv3MGO7AS6PrRoT6yV5+wkrOpcszoIsO4+4ds248=
