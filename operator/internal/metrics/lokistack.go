@@ -28,7 +28,7 @@ var (
 	lokiStackInfoDesc = prometheus.NewDesc(
 		metricsPrefix+"info",
 		"Information about deployed LokiStack instances. Value is always 1.",
-		append(metricsCommonLabels, "object_storage_type", "credential_mode", "schema_version"), nil,
+		append(metricsCommonLabels, "object_storage_type", "credential_mode", "schema_version", "tenancy_mode"), nil,
 	)
 
 	lokiStackConditionsCountDesc = prometheus.NewDesc(
@@ -95,6 +95,7 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 			string(stack.Spec.Storage.Secret.Type),
 			storageCredentialsMode(&stack),
 			currentSchemaVersion(&stack),
+			tenancyMode(&stack),
 		)
 		m <- prometheus.MustNewConstMetric(lokiStackInfoDesc, prometheus.GaugeValue, 1.0, infoLabels...)
 
@@ -212,4 +213,11 @@ func componentReplicas(stack *lokiv1.LokiStack, defaults *lokiv1.LokiStackSpec) 
 		}
 	}
 	return replicas
+}
+
+func tenancyMode(stack *lokiv1.LokiStack) string {
+	if stack.Spec.Tenants == nil || stack.Spec.Tenants.Mode == "" {
+		return "static"
+	}
+	return string(stack.Spec.Tenants.Mode)
 }

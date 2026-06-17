@@ -75,11 +75,11 @@ tests:
       - series: 'loki_ingester_chunks_flush_requests_total{namespace="my-ns", pod="ingester-0"}'
         values: '0+100x20'
 
-      - series: 'lokistack_info{stack_namespace="my-ns",stack_name="mystack",size="1x.small",object_storage_type="s3",credential_mode="static",schema_version="v13"}'
+      - series: 'lokistack_info{stack_namespace="my-ns",stack_name="mystack",size="1x.small",object_storage_type="s3",credential_mode="static",schema_version="v13",tenancy_mode="static"}'
         values: '1+0x5'
-      - series: 'lokistack_info{stack_namespace="my-ns",stack_name="mystack1",size="1x.small",object_storage_type="gcs",credential_mode="token",schema_version="v12"}'
+      - series: 'lokistack_info{stack_namespace="my-ns",stack_name="mystack1",size="1x.small",object_storage_type="gcs",credential_mode="token",schema_version="v12",tenancy_mode="dynamic"}'
         values: '1+0x5'
-      - series: 'lokistack_info{stack_namespace="my-ns",stack_name="mystack2",size="1x.medium",object_storage_type="azure",credential_mode="token-cco",schema_version="v13"}'
+      - series: 'lokistack_info{stack_namespace="my-ns",stack_name="mystack2",size="1x.medium",object_storage_type="azure",credential_mode="token-cco",schema_version="v13",tenancy_mode="openshift-logging"}'
         values: '1+0x5'
       - series: 'lokistack_global_ingestion_rate_limit_bytes{stack_namespace="my-ns",stack_name="mystack",size="1x.small"}'
         values: '104857600+0x5'
@@ -267,11 +267,11 @@ tests:
       - eval_time: 5m
         expr: openshift_logging:lokistack_info:count
         exp_samples:
-          - labels: 'openshift_logging:lokistack_info:count{size="1x.small",stack_namespace="my-ns",object_storage_type="s3",credential_mode="static",schema_version="v13"}'
+          - labels: 'openshift_logging:lokistack_info:count{size="1x.small",stack_namespace="my-ns",object_storage_type="s3",credential_mode="static",schema_version="v13",tenancy_mode="static"}'
             value: 1
-          - labels: 'openshift_logging:lokistack_info:count{size="1x.small",stack_namespace="my-ns",object_storage_type="gcs",credential_mode="token",schema_version="v12"}'
+          - labels: 'openshift_logging:lokistack_info:count{size="1x.small",stack_namespace="my-ns",object_storage_type="gcs",credential_mode="token",schema_version="v12",tenancy_mode="dynamic"}'
             value: 1
-          - labels: 'openshift_logging:lokistack_info:count{size="1x.medium",stack_namespace="my-ns",object_storage_type="azure",credential_mode="token-cco",schema_version="v13"}'
+          - labels: 'openshift_logging:lokistack_info:count{size="1x.medium",stack_namespace="my-ns",object_storage_type="azure",credential_mode="token-cco",schema_version="v13",tenancy_mode="openshift-logging"}'
             value: 1
       - eval_time: 5m
         expr: openshift_logging:lokistack_component_replicas:sum
