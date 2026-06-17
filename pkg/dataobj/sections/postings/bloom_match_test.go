@@ -70,7 +70,7 @@ type bloomFixture struct {
 func buildBloomFixture(t *testing.T, entries []bloomFixtureEntry) bloomFixture {
 	t.Helper()
 
-	pb := postings.NewBuilder(nil, 0, 0)
+	pb := postings.NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 1000).UTC()
 	for _, e := range entries {

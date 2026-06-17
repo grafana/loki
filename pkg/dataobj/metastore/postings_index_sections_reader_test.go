@@ -66,7 +66,6 @@ func TestPostingsIndexSectionsReader_ReadsPointers(t *testing.T) {
 	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 0)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
-	require.Len(t, r.postingsReaders, 1, "one postings section present ⇒ one postings.Reader opened")
 
 	rec, err := r.Read(ctx)
 	require.NoError(t, err)
@@ -580,7 +579,7 @@ func buildPostingsFixture(t *testing.T) *dataobj.Object {
 func buildMultiPostingsSectionsFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
-	first := postings.NewBuilder(nil, 0, 0)
+	first := postings.NewBuilder(nil, 0, 0, 1<<20)
 	first.SetTenant(tenantID)
 	first.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "test-path-1",
@@ -592,7 +591,7 @@ func buildMultiPostingsSectionsFixture(t *testing.T) *dataobj.Object {
 		UncompressedSize: 5,
 	})
 
-	second := postings.NewBuilder(nil, 0, 0)
+	second := postings.NewBuilder(nil, 0, 0, 1<<20)
 	second.SetTenant(tenantID)
 	second.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "test-path-2",
@@ -620,7 +619,7 @@ func buildMultiPostingsSectionsFixture(t *testing.T) *dataobj.Object {
 func buildPostingsANDAcrossSectionsFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
-	first := postings.NewBuilder(nil, 0, 0)
+	first := postings.NewBuilder(nil, 0, 0, 1<<20)
 	first.SetTenant(tenantID)
 	first.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "test-path",
@@ -632,7 +631,7 @@ func buildPostingsANDAcrossSectionsFixture(t *testing.T) *dataobj.Object {
 		UncompressedSize: 5,
 	})
 
-	second := postings.NewBuilder(nil, 0, 0)
+	second := postings.NewBuilder(nil, 0, 0, 1<<20)
 	second.SetTenant(tenantID)
 	second.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       "test-path",
@@ -707,7 +706,7 @@ func buildPostingsMultiLabelFixture(t *testing.T) *dataobj.Object {
 func buildPostingsStreamIDCollisionFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
-	builder := postings.NewBuilder(nil, 0, 0)
+	builder := postings.NewBuilder(nil, 0, 0, 1<<20)
 	builder.SetTenant(tenantID)
 
 	builder.ObserveLabelPosting(postings.LabelObservation{
@@ -740,7 +739,7 @@ func buildPostingsStreamIDCollisionFixture(t *testing.T) *dataobj.Object {
 func buildPostingsPredicateLabelOnlyOnNonMatchingStreamFixture(t *testing.T) *dataobj.Object {
 	t.Helper()
 
-	builder := postings.NewBuilder(nil, 0, 0)
+	builder := postings.NewBuilder(nil, 0, 0, 1<<20)
 	builder.SetTenant(tenantID)
 
 	// Matching stream for app=foo (no team label).

@@ -228,7 +228,7 @@ type labelFixtureEntry struct {
 func openLabelResolveFixture(tb testing.TB, entries []labelFixtureEntry) *postings.Reader {
 	tb.Helper()
 
-	pb := postings.NewBuilder(nil, 0, 0)
+	pb := postings.NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 1000).UTC()
 	for _, e := range entries {
