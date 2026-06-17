@@ -1,4 +1,4 @@
-<style name="solarized-dark">
+<style name="solarized-dark" counterpart="solarized-light">
   <entry type="Other" style="#cb4b16"/>
   <entry type="Background" style="#93a1a1 bg:#002b36"/>
   <entry type="Keyword" style="#719e07"/>

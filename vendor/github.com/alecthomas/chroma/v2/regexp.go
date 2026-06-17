@@ -3,6 +3,7 @@ package chroma
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/dlclark/regexp2"
+	"github.com/dlclark/regexp2/v2"
 )
 
 // A Rule is the fundamental matching unit of the Regex lexer state machine.
@@ -70,9 +71,7 @@ func (r Rules) Clone() Rules {
 // Merge creates a clone of "r" then merges "rules" into the clone.
 func (r Rules) Merge(rules Rules) Rules {
 	out := r.Clone()
-	for k, v := range rules.Clone() {
-		out[k] = v
-	}
+	maps.Copy(out, rules.Clone())
 	return out
 }
 
@@ -177,19 +176,19 @@ type LexerState struct {
 	// Named Group matches.
 	NamedGroups map[string]string
 	// Custum context for mutators.
-	MutatorContext map[interface{}]interface{}
+	MutatorContext map[any]any
 	iteratorStack  []Iterator
 	options        *TokeniseOptions
 	newlineAdded   bool
 }
 
 // Set mutator context.
-func (l *LexerState) Set(key interface{}, value interface{}) {
+func (l *LexerState) Set(key any, value any) {
 	l.MutatorContext[key] = value
 }
 
 // Get mutator context.
-func (l *LexerState) Get(key interface{}) interface{} {
+func (l *LexerState) Get(key any) any {
 	return l.MutatorContext[key]
 }
 
@@ -369,7 +368,7 @@ func (r *RegexLexer) maybeCompile() (err error) {
 					pattern = "(?" + rule.flags + ")" + pattern
 				}
 				pattern = `\G` + pattern
-				rule.Regexp, err = regexp2.Compile(pattern, 0)
+				rule.Regexp, err = regexp2.Compile(pattern)
 				if err != nil {
 					return fmt.Errorf("failed to compile rule %s.%d: %s", state, i, err)
 				}
@@ -484,7 +483,7 @@ func (r *RegexLexer) Tokenise(options *TokeniseOptions, text string) (Iterator, 
 		Text:           []rune(text),
 		Stack:          []string{options.State},
 		Rules:          r.rules,
-		MutatorContext: map[interface{}]interface{}{},
+		MutatorContext: map[any]any{},
 	}
 	return state.Iterator, nil
 }
@@ -501,7 +500,7 @@ func (r *RegexLexer) MustRules() Rules {
 func matchRules(text []rune, pos int, rules []*CompiledRule) (int, *CompiledRule, []string, map[string]string) {
 	for i, rule := range rules {
 		match, err := rule.Regexp.FindRunesMatchStartingAt(text, pos)
-		if match != nil && err == nil && match.Index == pos {
+		if match != nil && err == nil && match.RuneIndex == pos {
 			groups := []string{}
 			namedGroups := make(map[string]string)
 			for _, g := range match.Groups() {

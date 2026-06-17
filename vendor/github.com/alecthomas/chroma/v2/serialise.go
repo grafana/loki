@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/dlclark/regexp2"
+	"github.com/dlclark/regexp2/v2"
 )
 
 // Serialisation of Chroma rules to XML. The format is:
@@ -440,14 +440,14 @@ func (t TokenType) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 }
 
 // This hijinks is a bit unfortunate but without it we can't deserialise into TokenType.
-func newFromTemplate(template interface{}) (value func() interface{}, target interface{}) {
+func newFromTemplate(template any) (value func() any, target any) {
 	t := reflect.TypeOf(template)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		v := reflect.New(t.Elem())
 		return v.Interface, v.Interface()
 	}
 	v := reflect.New(t)
-	return func() interface{} { return v.Elem().Interface() }, v.Interface()
+	return func() any { return v.Elem().Interface() }, v.Interface()
 }
 
 func (b *Emitters) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
