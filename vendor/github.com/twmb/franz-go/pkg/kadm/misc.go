@@ -117,9 +117,15 @@ func (cl *Client) FindTxnCoordinators(ctx context.Context, txnIDs ...string) Fin
 	return cl.findCoordinators(ctx, 1, txnIDs...)
 }
 
-// FindShareCoordinators returns the coordinator for all requested share groups.
-// Share group names have the format "groupId:topicId:partition".
-// This requires Kafka 3.9+.
+// FindShareCoordinators returns the coordinator for all requested share
+// partition keys. Each key identifies a single share partition and has the
+// format "<groupId>:<topicId>:<partition>", where topicId is the
+// base64url-no-padding encoding of the topic's UUID (Kafka's Uuid.toString
+// form, e.g. "gtb2stGYRk-vWZ2zAozmoA") and partition is decimal. The broker
+// parses from the right, so a groupId that itself contains colons is
+// supported.
+//
+// This requires Kafka 4.2+ (KIP-932).
 //
 // This may return *ShardErrors or *AuthError.
 func (cl *Client) FindShareCoordinators(ctx context.Context, shareGroups ...string) FindCoordinatorResponses {
@@ -1030,6 +1036,10 @@ func (cl *Client) UpdateFeatures(ctx context.Context, validateOnly bool, updates
 		reqUpdate.Feature = u.Feature
 		reqUpdate.MaxVersionLevel = u.MaxVersionLevel
 		reqUpdate.UpgradeType = u.UpgradeType
+		// v0 of UpdateFeatures predates UpgradeType and uses
+		// AllowDowngrade instead. Set it so v0 brokers honor a
+		// requested downgrade/delete.
+		reqUpdate.AllowDowngrade = u.UpgradeType >= 2 || u.MaxVersionLevel < 1
 		req.FeatureUpdates = append(req.FeatureUpdates, reqUpdate)
 	}
 
@@ -1041,11 +1051,21 @@ func (cl *Client) UpdateFeatures(ctx context.Context, validateOnly bool, updates
 	if err := maybeAuthErr(resp.ErrorCode); err != nil {
 		return nil, err
 	}
+
+	updated := make(UpdatedFeatures)
+	if resp.Version >= 2 {
+		// v2 dropped the per-feature Results slice. Treat the
+		// top-level error as the outcome for every requested
+		// feature; report success otherwise.
+		topErr := kerr.ErrorForCode(resp.ErrorCode)
+		for _, u := range updates {
+			updated[u.Feature] = FeatureUpdateResult{Feature: u.Feature, Err: topErr}
+		}
+		return updated, nil
+	}
 	if err := kerr.ErrorForCode(resp.ErrorCode); err != nil {
 		return nil, err
 	}
-
-	updated := make(UpdatedFeatures)
 	for _, r := range resp.Results {
 		if err := maybeAuthErr(r.ErrorCode); err != nil {
 			return nil, err

@@ -42,7 +42,7 @@ func TestEncodeLogsParquet(t *testing.T) {
 		Status:    loghttp.QueryStatusSuccess,
 		Direction: logproto.FORWARD,
 		Limit:     100,
-		Version:   uint32(loghttp.VersionV1),
+		Version:   1,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
 			Result:     logStreams,

@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid/v2"
@@ -22,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -127,9 +125,6 @@ type Workflow struct {
 	resultsStream   *Stream
 	resultsPipeline *streamPipe
 	manifest        *Manifest
-
-	statsMut sync.Mutex
-	stats    stats.Result
 
 	captureMut sync.Mutex
 	// used to merge and link task regions
@@ -314,29 +309,19 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	// wf.Run tracks the lifetime of the workflow execution.
 	ctx, wf.span = xcap.StartSpan(ctx, tracer, "wf.Run")
 
-	wrapped := &wrappedPipeline{
-		inner: wf.resultsPipeline,
-		onClose: func() {
-			// Merge final stats results back into the caller.
-			wf.statsMut.Lock()
-			defer wf.statsMut.Unlock()
-			stats.JoinResults(ctx, wf.stats)
-		},
-	}
-
 	// Start dispatching in background goroutine
 	gotrace.Log(ctx, "dispatch_tasks", "starting dispatch of "+strconv.Itoa(len(wf.manifest.Tasks))+" tasks")
 	go func() {
 		err := wf.dispatchTasks(ctx, wf.manifest.Tasks)
 		if err != nil {
 			wf.resultsPipeline.SetError(err)
-			wrapped.Close()
+			wf.resultsPipeline.Close()
 		} else {
 			gotrace.Log(ctx, "dispatch_tasks", "all tasks dispatched")
 		}
 	}()
 
-	return wrapped, nil
+	return wf.resultsPipeline, nil
 }
 
 // dispatchTasks groups the slice of tasks by their associated "admission lane" (token bucket)
@@ -554,10 +539,6 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 		wf.mergeCapture(newStatus.Capture)
 	}
 
-	if newStatus.Statistics != nil {
-		wf.mergeResults(*newStatus.Statistics)
-	}
-
 	// task reached a terminal state. We need to detect if task's immediate
 	// children should be canceled. We only look at immediate unterminated
 	// children, since canceling them will trigger onTaskChange to process
@@ -644,30 +625,4 @@ func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
 	defer wf.captureMut.Unlock()
 
 	wf.capture.Merge(wf.parentRegion, capture)
-}
-
-func (wf *Workflow) mergeResults(results stats.Result) {
-	wf.statsMut.Lock()
-	defer wf.statsMut.Unlock()
-
-	wf.stats.Merge(results)
-}
-
-type wrappedPipeline struct {
-	inner   executor.Pipeline
-	onClose func()
-}
-
-func (p *wrappedPipeline) Open(ctx context.Context) error {
-	return p.inner.Open(ctx)
-}
-
-func (p *wrappedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	return p.inner.Read(ctx)
-}
-
-// Close closes the resources of the pipeline.
-func (p *wrappedPipeline) Close() {
-	p.inner.Close()
-	p.onClose()
 }

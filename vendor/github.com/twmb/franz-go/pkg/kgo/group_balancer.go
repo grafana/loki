@@ -102,6 +102,10 @@ type ConsumerBalancer struct {
 	metadatas []kmsg.ConsumerMemberMetadata
 	topics    map[string]struct{}
 
+	// partitionRacks maps topic => partition index => leader rack.
+	// nil when rack-aware assignment is not active.
+	partitionRacks map[string][]string
+
 	err error
 }
 
@@ -138,6 +142,13 @@ func (b *ConsumerBalancer) MemberAt(n int) (*kmsg.JoinGroupResponseMember, *kmsg
 // allows you to fail balancing and return nil from Balance.
 func (b *ConsumerBalancer) SetError(err error) {
 	b.err = err
+}
+
+// PartitionRacks returns the partition rack mapping for rack-aware assignment
+// (KIP-881). The map is topic => partition index => leader rack. Returns nil
+// if no rack info is available.
+func (b *ConsumerBalancer) PartitionRacks() map[string][]string {
+	return b.partitionRacks
 }
 
 // MemberTopics returns the unique set of topics that all members are
@@ -403,7 +414,7 @@ func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupRespo
 			metaTopics = append(metaTopics, topic)
 		}
 
-		_, resp, err := g.cl.fetchMetadataForTopics(g.ctx, false, metaTopics, nil)
+		_, resp, err := g.cl.fetchMetadataByName(g.ctx, false, metaTopics, nil)
 		if err != nil {
 			return nil, fmt.Errorf("unable to fetch metadata for group topics: %v", err)
 		}
@@ -421,6 +432,13 @@ func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupRespo
 		}
 
 		g.initExternal(topicPartitionCount)
+	}
+
+	// KIP-881: build partition rack info for rack-aware assignment.
+	// We use cached broker racks and partition leaders from local
+	// metadata. This requires no extra fetches.
+	if cb, ok := memberBalancer.(*ConsumerBalancer); ok {
+		cb.partitionRacks = g.buildPartitionRacks(cb, topicPartitionCount)
 	}
 
 	// If the returned balancer is a ConsumerBalancer (which it likely
@@ -484,6 +502,59 @@ func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupRespo
 	}
 
 	return into.IntoSyncAssignment(), nil
+}
+
+// buildPartitionRacks builds a topic => partition => rack map for rack-aware
+// assignment (KIP-881). It uses cached broker racks and partition leader info
+// from local metadata. Returns nil if no rack info is available.
+func (g *groupConsumer) buildPartitionRacks(b *ConsumerBalancer, topicPartitionCount map[string]int32) map[string][]string {
+	// Check if any member has a rack.
+	var hasRack bool
+	for i := range b.metadatas {
+		if b.metadatas[i].Rack != nil {
+			hasRack = true
+			break
+		}
+	}
+	if !hasRack {
+		return nil
+	}
+
+	// Get broker ID => rack from cached broker metadata.
+	brokerRacks := g.cl.brokerRacks()
+	if len(brokerRacks) == 0 {
+		return nil
+	}
+
+	// Build partition racks from local topic metadata. Each
+	// partition's rack is determined by its leader broker's rack.
+	partitionRacks := make(map[string][]string, len(topicPartitionCount))
+	myTopics := g.tps.load()
+	for topic, numPartitions := range topicPartitionCount {
+		racks := make([]string, numPartitions)
+		if data, ok := myTopics[topic]; ok {
+			tpd := data.load()
+			for i, p := range tpd.partitions {
+				if p == nil || int32(i) >= numPartitions {
+					continue
+				}
+				if rack, ok := brokerRacks[p.leader]; ok {
+					racks[i] = rack
+				}
+			}
+		}
+		partitionRacks[topic] = racks
+	}
+
+	// Only return rack info if at least one partition has a rack.
+	for _, racks := range partitionRacks {
+		for _, r := range racks {
+			if r != "" {
+				return partitionRacks
+			}
+		}
+	}
+	return nil
 }
 
 // helper func; range and roundrobin use v0
@@ -622,6 +693,14 @@ func (r *rangeBalancer) MemberBalancer(members []kmsg.JoinGroupResponseMember) (
 }
 
 func (*rangeBalancer) Balance(b *ConsumerBalancer, topics map[string]int32) IntoSyncAssignment {
+	// Build member rack lookup for rack-aware assignment.
+	memberRack := make(map[string]string, len(b.members))
+	for i := range b.members {
+		if b.metadatas[i].Rack != nil {
+			memberRack[b.members[i].MemberID] = *b.metadatas[i].Rack
+		}
+	}
+
 	topics2PotentialConsumers := make(map[string][]*kmsg.JoinGroupResponseMember)
 	b.EachMember(func(member *kmsg.JoinGroupResponseMember, meta *kmsg.ConsumerMemberMetadata) {
 		for _, topic := range meta.Topics {
@@ -632,28 +711,53 @@ func (*rangeBalancer) Balance(b *ConsumerBalancer, topics map[string]int32) Into
 	plan := b.NewPlan()
 	for topic, potentialConsumers := range topics2PotentialConsumers {
 		sortJoinMemberPtrs(potentialConsumers)
+		numPartitions := int(topics[topic])
+		nConsumers := len(potentialConsumers)
+		div, rem := numPartitions/nConsumers, numPartitions%nConsumers
 
-		numPartitions := topics[topic]
-		partitions := make([]int32, numPartitions)
-		for i := range partitions {
-			partitions[i] = int32(i)
-		}
-		numParts := len(partitions)
-		div, rem := numParts/len(potentialConsumers), numParts%len(potentialConsumers)
+		assigned := make([]bool, numPartitions)
+		assignCount := make([]int, nConsumers)
 
-		var consumerIdx int
-		for len(partitions) > 0 {
-			num := div
-			if rem > 0 {
-				num++
-				rem--
+		// Phase 1: if rack info is available, assign rack-matching
+		// partitions first. This is a no-op when partitionRacks is nil.
+		if topicRacks := b.partitionRacks[topic]; topicRacks != nil {
+			for ci, consumer := range potentialConsumers {
+				rack := memberRack[consumer.MemberID]
+				if rack == "" {
+					continue
+				}
+				maxForConsumer := div
+				if ci < rem {
+					maxForConsumer++
+				}
+				for p := 0; p < numPartitions && assignCount[ci] < maxForConsumer; p++ {
+					if assigned[p] {
+						continue
+					}
+					if p < len(topicRacks) && topicRacks[p] == rack {
+						plan.AddPartition(consumer, topic, int32(p))
+						assigned[p] = true
+						assignCount[ci]++
+					}
+				}
 			}
+		}
 
-			member := potentialConsumers[consumerIdx]
-			plan.AddPartitions(member, topic, partitions[:num])
-
-			consumerIdx++
-			partitions = partitions[num:]
+		// Phase 2: assign remaining partitions using range.
+		pIdx := 0
+		for ci := 0; ci < nConsumers; ci++ {
+			maxForConsumer := div
+			if ci < rem {
+				maxForConsumer++
+			}
+			quota := maxForConsumer - assignCount[ci]
+			for pIdx < numPartitions && quota > 0 {
+				if !assigned[pIdx] {
+					plan.AddPartition(potentialConsumers[ci], topic, int32(pIdx))
+					quota--
+				}
+				pIdx++
+			}
 		}
 	}
 
@@ -781,6 +885,10 @@ func (s *stickyBalancer) Balance(b *ConsumerBalancer, topics map[string]int32) I
 	// See my (slightly rambling) comment on KAFKA-8432.
 	stickyMembers := make([]sticky.GroupMember, 0, len(b.Members()))
 	b.EachMember(func(member *kmsg.JoinGroupResponseMember, meta *kmsg.ConsumerMemberMetadata) {
+		var rack string
+		if meta.Rack != nil {
+			rack = *meta.Rack
+		}
 		stickyMembers = append(stickyMembers, sticky.GroupMember{
 			ID:          member.MemberID,
 			Topics:      meta.Topics,
@@ -788,10 +896,11 @@ func (s *stickyBalancer) Balance(b *ConsumerBalancer, topics map[string]int32) I
 			Owned:       meta.OwnedPartitions,
 			Generation:  meta.Generation,
 			Cooperative: s.cooperative,
+			Rack:        rack,
 		})
 	})
 
-	p := &BalancePlan{sticky.Balance(stickyMembers, topics)}
+	p := &BalancePlan{sticky.BalanceWithRacks(stickyMembers, topics, b.partitionRacks)}
 	if s.cooperative {
 		p.AdjustCooperative(b)
 	}

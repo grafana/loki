@@ -1,0 +1,84 @@
+let version = exec("git describe --tags --dirty --always") | trim
+# TinyGo's installation root; used to source `wasm_exec.js`.
+let tinygoroot = exec("tinygo env TINYGOROOT") | trim
+
+
+# Generate tokentype_enumer.go from types.go via `//go:generate`.
+tokentype = go.generate {
+  package = "."
+  inputs = ["types.go"]
+  outputs = ["tokentype_enumer.go"]
+}
+
+# Regenerate the lexer table in README.md by invoking the host `chroma` binary.
+# GOOS/GOARCH are cleared so cross-compile env vars don't break the local run.
+protected readme = exec {
+  command = "./table.py"
+  inputs = ["table.py", "lexers/**/*.go", "lexers/**/*.xml"]
+  output = "README.md"
+}
+
+# Format frontend JS sources in place. Runs as a sub-step of `index-min-js`,
+# so bundling always sees formatted sources.
+format-js = exec {
+  command = "biome format --write cmd/chromad/static/index.js cmd/chromad/static/chroma.js"
+  inputs = ["biome.js", "cmd/chromad/static/index.js", "cmd/chromad/static/chroma.js"]
+}
+
+# Copy TinyGo's wasm_exec.js into the chromad static assets.
+wasm-exec = exec {
+  command = "install -m644 '#{tinygoroot}/targets/wasm_exec.js' cmd/chromad/static/wasm_exec.js"
+  resolve = "sha256 '#{tinygoroot}/targets/wasm_exec.js'"
+  output = "cmd/chromad/static/wasm_exec.js"
+}
+
+# Build the chroma WASM module via tinygo (installed via hermit) for the
+# smaller output binary.
+chroma-wasm = exec {
+  command = "tinygo build -no-debug -target wasm -o cmd/chromad/static/chroma.wasm cmd/libchromawasm/main.go"
+  inputs = ["cmd/libchromawasm/**/*.go", "*.go", "lexers/**/*.go", "lexers/**/*.xml", "formatters/**/*.go", "styles/**/*.go"]
+  output = "cmd/chromad/static/chroma.wasm"
+}
+
+# Bundle and minify the frontend JS. Depends on `format-js` so the bundle
+# always reflects formatted sources.
+index-min-js = exec {
+  command = "esbuild --platform=browser --format=esm --bundle cmd/chromad/static/index.js --minify --external:./wasm_exec.js --outfile=cmd/chromad/static/index.min.js"
+  inputs = ["cmd/chromad/static/index.js", "cmd/chromad/static/chroma.js"]
+  output = "cmd/chromad/static/index.min.js"
+  depends_on = [format-js]
+}
+
+# Bundle and minify the frontend CSS.
+index-min-css = exec {
+  command = "esbuild --bundle cmd/chromad/static/index.css --minify --outfile=cmd/chromad/static/index.min.css"
+  inputs = ["cmd/chromad/static/index.css", "cmd/chromad/static/bulma.css"]
+  output = "cmd/chromad/static/index.min.css"
+}
+
+# Build the chromad server binary. cmd/chromad is a separate Go module, so
+# `dir` puts the build in there and `package = "."` resolves against that
+# module. `output` stays project-root-relative; bit absolutises it before
+# passing to `go build -o`. Defaults to linux/amd64 to match the deploy
+# target; override with GOOS/GOARCH env vars for local builds.
+chromad = go.exe {
+  dir = "cmd/chromad"
+  package = "."
+  output = "build/chromad"
+  flags = ["-ldflags", "-X 'main.version=#{version}'"]
+  goos = env("GOOS", "linux")
+  goarch = env("GOARCH", "amd64")
+  cgo = false
+  depends_on = [wasm-exec, chroma-wasm, index-min-js, index-min-css]
+}
+
+# Deploy chromad to swapoff.org. Must be explicitly selected.
+explicit upload = exec {
+  command = <<-EOF
+    scp #{chromad.path} root@swapoff.org:
+    ssh root@swapoff.org 'install -m755 ./chromad /srv/http/swapoff.org/bin && service chromad restart'
+  EOF
+  depends_on = [chromad]
+}
+
+target default = [chromad, readme, tokentype]

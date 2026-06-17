@@ -338,6 +338,66 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 	}
 }
 
+func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
+	type strategyContextKey struct{}
+
+	handler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		switch req.(type) {
+		case *logproto.IndexStatsRequest:
+			return &IndexStatsResponse{
+				Response: &logproto.IndexStatsResponse{
+					Bytes: 100,
+				},
+			}, nil
+		case *LokiRequest:
+			return lokiResps[0], nil
+		default:
+			return nil, fmt.Errorf("request not supported: %T", req)
+		}
+	})
+
+	calls := 0
+	mware := newASTMapperware(
+		ShardingConfigs{
+			config.PeriodConfig{
+				IndexType: types.IndexTypeTSDB,
+			},
+		},
+		testEngineOpts,
+		handler,
+		handler,
+		nil,
+		log.NewNopLogger(),
+		nilShardingMetrics,
+		fakeLimits{
+			maxSeries:               math.MaxInt32,
+			maxQueryParallelism:     1,
+			tsdbMaxQueryParallelism: 1,
+			queryTimeout:            time.Minute,
+			tsdbShardingStrategy: func(ctx context.Context, userID string) string {
+				calls++
+				require.Equal(t, "strategy-context", ctx.Value(strategyContextKey{}))
+				require.Equal(t, "tenant-a", userID)
+				return logql.PowerOfTwoVersion.String()
+			},
+		},
+		0,
+		[]string{},
+	)
+
+	req := defaultReq()
+	req.Query = `{app="foo"}`
+	req.Plan = &plan.QueryPlan{
+		AST: syntax.MustParseExpr(req.Query),
+	}
+	ctx := context.WithValue(context.Background(), strategyContextKey{}, "strategy-context")
+	ctx = user.InjectOrgID(ctx, "tenant-a")
+
+	_, err := mware.Do(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, 1, calls)
+}
+
 func Test_ShardingByPass(t *testing.T) {
 	called := 0
 	handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {

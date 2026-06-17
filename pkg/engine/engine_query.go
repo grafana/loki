@@ -103,11 +103,27 @@ func (q *query) Duration() time.Duration {
 
 // Prepare constucts a workflow from the given physical plan. The returned
 // workflow must be closed to release resources.
-func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLanes bool) (*workflow.Workflow, error) {
+func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLanes bool) (wf *workflow.Workflow, err error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "query.Prepare")
 	defer span.End()
 
 	timer := prometheus.NewTimer(q.engine.metrics.planning.prepare.WithLabelValues(q.queryType))
+	defer func() {
+		duration := timer.ObserveDuration()
+		span.Record(statPrepareDuration.Observe(int64(duration)))
+
+		taskLen := 0
+		if wf != nil {
+			taskLen = wf.Len()
+		}
+
+		level.Info(q.logger).Log(
+			"msg", "execution-plan-summary",
+			"status", phaseStatus(err),
+			"duration_ms", duration.Milliseconds(),
+			"tasks", taskLen,
+		)
+	}()
 
 	var maxRunningScanTasks int
 	if useAdmissionLanes {
@@ -134,26 +150,19 @@ func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLa
 		DebugTasks:   q.engine.limits.DebugEngineTasks(q.tenantID),
 		DebugStreams: q.engine.limits.DebugEngineStreams(q.tenantID),
 	}
-	wf, err := workflow.New(ctx, opts, q.logger, q.engine.scheduler.inner, plan)
+
+	wf, err = workflow.New(ctx, opts, q.logger, q.engine.scheduler.inner, plan)
 	if err != nil {
 		level.Warn(q.logger).Log("msg", "failed to create workflow", "err", err)
 		q.RecordError(ctx, err)
 		return nil, ErrNotSupported
 	}
 
-	duration := timer.ObserveDuration()
-	span.Record(statPrepareDuration.Observe(int64(duration)))
-
 	// The execution plan can be way more verbose than the physical plan, so we
 	// only log it at debug level.
 	level.Debug(q.logger).Log(
 		"msg", "execution-plan-detail",
 		"plan", workflow.Sprint(wf),
-	)
-	level.Info(q.logger).Log(
-		"msg", "execution-plan-summary",
-		"duration_ms", duration.Milliseconds(),
-		"tasks", wf.Len(),
 	)
 
 	span.SetStatus(codes.Ok, "")
@@ -199,8 +208,9 @@ func (q *query) Close() {
 		physicalPlanDuration, _ = q.capture.Value(statPhysicalPlanDuration).Int64()
 		prepareDuration, _      = q.capture.Value(statPrepareDuration).Int64()
 		executeDuration, _      = q.capture.Value(statExecutionDuration).Int64()
+		closeDuration, _        = q.capture.Value(statCloseDuration).Int64()
 
-		otherDuration = calculateResidual(q.finishTime.Sub(q.startTime), logicalPlanDuration, physicalPlanDuration, prepareDuration, executeDuration)
+		otherDuration = calculateResidual(q.finishTime.Sub(q.startTime), logicalPlanDuration, physicalPlanDuration, prepareDuration, executeDuration, closeDuration)
 	)
 
 	m := q.engine.metrics
@@ -208,6 +218,7 @@ func (q *query) Close() {
 	// The residual histogram mirrors the duration_other_ms field on the
 	// query-summary line below and is observed for every query.
 	m.query.other.WithLabelValues(q.queryType).Observe(otherDuration.Seconds())
+	m.query.close.WithLabelValues(q.queryType).Observe(time.Duration(closeDuration).Seconds())
 
 	// Fan-out histograms count tasks per query, matching how printExecutionSummary
 	// computes them: tasksPlanned is the count after pruning, and the pre-pruning
@@ -246,6 +257,7 @@ func (q *query) Close() {
 		"duration_physical_plan_ms", time.Duration(physicalPlanDuration).Milliseconds(),
 		"duration_prepare_ms", time.Duration(prepareDuration).Milliseconds(),
 		"duration_execute_ms", time.Duration(executeDuration).Milliseconds(),
+		"duration_close_ms", time.Duration(closeDuration).Milliseconds(),
 		"duration_other_ms", otherDuration.Milliseconds(),
 
 		"dominant_phase", calculateDominantPhase(map[string]time.Duration{
@@ -253,6 +265,7 @@ func (q *query) Close() {
 			"physical": time.Duration(physicalPlanDuration),
 			"prepare":  time.Duration(prepareDuration),
 			"execute":  time.Duration(executeDuration),
+			"close":    time.Duration(closeDuration),
 			"other":    otherDuration,
 		}),
 

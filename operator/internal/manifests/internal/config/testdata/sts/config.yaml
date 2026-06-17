@@ -42,6 +42,7 @@ ingester:
     final_sleep: 0s
     join_after: 30s
     num_tokens: 512
+    tokens_file_path: /tmp/loki/ring-tokens
     ring:
       replication_factor: 1
   max_chunk_age: 2h

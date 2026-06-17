@@ -1,14 +1,17 @@
 package redis
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"net"
 	"net/url"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -21,7 +24,6 @@ import (
 	"github.com/redis/go-redis/v9/internal/otel"
 	"github.com/redis/go-redis/v9/internal/pool"
 	"github.com/redis/go-redis/v9/internal/proto"
-	"github.com/redis/go-redis/v9/internal/rand"
 	"github.com/redis/go-redis/v9/internal/routing"
 	"github.com/redis/go-redis/v9/maintnotifications"
 	"github.com/redis/go-redis/v9/push"
@@ -104,6 +106,10 @@ type ClusterOptions struct {
 	// default: 100 milliseconds
 	DialerRetryTimeout time.Duration
 
+	// DialerRetryBackoff controls the delay between dial retry attempts.
+	// See Options.DialerRetryBackoff for details.
+	DialerRetryBackoff func(attempt int) time.Duration
+
 	ReadTimeout           time.Duration
 	WriteTimeout          time.Duration
 	ContextTimeoutEnabled bool
@@ -157,7 +163,9 @@ type ClusterOptions struct {
 
 	IdentitySuffix string // Add suffix to client name. Default is empty.
 
-	// UnstableResp3 enables Unstable mode for Redis Search module with RESP3.
+	// Deprecated: All RediSearch commands now have stable RESP3 parsing and this
+	// flag is a no-op. It is kept for backwards compatibility and will be removed
+	// in a future release.
 	UnstableResp3 bool
 
 	// PushNotificationProcessor is the processor for handling push notifications.
@@ -429,6 +437,7 @@ func (opt *ClusterOptions) clientOptions() *Options {
 		DialTimeout:        opt.DialTimeout,
 		DialerRetries:      opt.DialerRetries,
 		DialerRetryTimeout: opt.DialerRetryTimeout,
+		DialerRetryBackoff: opt.DialerRetryBackoff,
 		ReadTimeout:        opt.ReadTimeout,
 		WriteTimeout:       opt.WriteTimeout,
 
@@ -523,7 +532,7 @@ func (n *clusterNode) updateLatency() {
 	if successes == 0 {
 		// If none of the pings worked, set latency to some arbitrarily high value so this node gets
 		// least priority.
-		latency = float64((maximumNodeLatency) / time.Microsecond)
+		latency = float64(maximumNodeLatency / time.Microsecond)
 	} else {
 		latency = float64(dur) / float64(successes)
 	}
@@ -786,20 +795,6 @@ type clusterSlot struct {
 	nodes []*clusterNode
 }
 
-type clusterSlotSlice []*clusterSlot
-
-func (p clusterSlotSlice) Len() int {
-	return len(p)
-}
-
-func (p clusterSlotSlice) Less(i, j int) bool {
-	return p[i].start < p[j].start
-}
-
-func (p clusterSlotSlice) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
-}
-
 type clusterState struct {
 	nodes   *clusterNodes
 	Masters []*clusterNode
@@ -823,7 +818,7 @@ func newClusterState(
 		createdAt:  time.Now(),
 	}
 
-	originHost, _, _ := net.SplitHostPort(origin)
+	originHost, originPort, _ := net.SplitHostPort(origin)
 	isLoopbackOrigin := isLoopback(originHost)
 
 	for _, slot := range slots {
@@ -835,6 +830,11 @@ func newClusterState(
 			if !isLoopbackOrigin {
 				addr = replaceLoopbackHost(addr, originHost)
 			}
+			// TLS-only clusters (`--port 0 --tls-port 6379`) report port 0
+			// in CLUSTER SLOTS. Fall back to the origin port — by definition
+			// reachable, since it is the port that returned this slot map.
+			// See https://github.com/redis/go-redis/issues/3726.
+			addr = replaceZeroPort(addr, originPort)
 
 			node, err := c.nodes.GetOrCreateWithNodeAddress(addr, nodeAddress)
 			if err != nil {
@@ -858,7 +858,9 @@ func newClusterState(
 		})
 	}
 
-	sort.Sort(clusterSlotSlice(c.slots))
+	slices.SortFunc(c.slots, func(a, b *clusterSlot) int {
+		return cmp.Compare(a.start, b.start)
+	})
 
 	time.AfterFunc(time.Minute, func() {
 		nodes.GC(c.generation)
@@ -884,6 +886,21 @@ func replaceLoopbackHost(nodeAddr, originHost string) string {
 
 	// Use origin host which is not loopback and node port.
 	return net.JoinHostPort(originHost, nodePort)
+}
+
+// replaceZeroPort substitutes originPort for a node port of "0", which is
+// what CLUSTER SLOTS reports for TLS-only clusters started with
+// `--port 0 --tls-port <port>`. Non-zero ports and addresses without a
+// recoverable origin port are returned unchanged.
+func replaceZeroPort(nodeAddr, originPort string) string {
+	if originPort == "" || originPort == "0" {
+		return nodeAddr
+	}
+	nodeHost, nodePort, err := net.SplitHostPort(nodeAddr)
+	if err != nil || nodePort != "0" {
+		return nodeAddr
+	}
+	return net.JoinHostPort(nodeHost, originPort)
 }
 
 // isLoopback returns true if the host is a loopback address.
@@ -949,7 +966,7 @@ func (c *clusterState) slotClosestNode(slot int) (*clusterNode, error) {
 		return c.nodes.Random()
 	}
 
-	var allNodesFailing = true
+	allNodesFailing := true
 	var (
 		closestNonFailingNode *clusterNode
 		closestNode           *clusterNode
@@ -1139,8 +1156,12 @@ type ClusterClient struct {
 }
 
 // NewClusterClient returns a Redis Cluster client as described in
-// http://redis.io/topics/cluster-spec.
+// https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec.
+// Passing nil ClusterOptions will cause a panic.
 func NewClusterClient(opt *ClusterOptions) *ClusterClient {
+	if opt == nil {
+		panic("redis: NewClusterClient nil options")
+	}
 	opt.init()
 
 	c := &ClusterClient{
@@ -1185,7 +1206,8 @@ func NewClusterClient(opt *ClusterOptions) *ClusterClient {
 	return c
 }
 
-// Options returns read-only Options that were used to create the client.
+// Options returns read-only *ClusterOptions that were used to create the client.
+// Any alteration of the returned *ClusterOptions may result in undefined behaviour.
 func (c *ClusterClient) Options() *ClusterOptions {
 	return c.opt
 }
@@ -1295,7 +1317,7 @@ func (c *ClusterClient) process(ctx context.Context, cmd Cmder) error {
 			continue
 		}
 
-		if shouldRetry(lastErr, cmd.readTimeout() == nil) {
+		if shouldRetry(lastErr, cmd.readTimeout() == nil) && !cmd.NoRetry() {
 			// First retry the same node.
 			if attempt == 0 {
 				continue
@@ -1450,6 +1472,8 @@ func (c *ClusterClient) PoolStats() *PoolStats {
 		acc.Hits += s.Hits
 		acc.Misses += s.Misses
 		acc.Timeouts += s.Timeouts
+		acc.WaitCount += s.WaitCount
+		acc.WaitDurationNs += s.WaitDurationNs
 
 		acc.TotalConns += s.TotalConns
 		acc.IdleConns += s.IdleConns
@@ -1461,6 +1485,8 @@ func (c *ClusterClient) PoolStats() *PoolStats {
 		acc.Hits += s.Hits
 		acc.Misses += s.Misses
 		acc.Timeouts += s.Timeouts
+		acc.WaitCount += s.WaitCount
+		acc.WaitDurationNs += s.WaitDurationNs
 
 		acc.TotalConns += s.TotalConns
 		acc.IdleConns += s.IdleConns
@@ -1711,7 +1737,7 @@ func (c *ClusterClient) processPipelineNodeConn(
 		if isBadConn(err, false, node.Client.getAddr()) {
 			node.MarkAsFailing()
 		}
-		if shouldRetry(err, true) {
+		if shouldRetry(err, true) && !cmdsContainNoRetry(cmds) {
 			_ = c.mapCmdsByNode(ctx, failedCmds, cmds)
 		}
 		setCmdsErr(cmds, err)
@@ -1747,7 +1773,7 @@ func (c *ClusterClient) pipelineReadCmds(
 		}
 
 		if !isRedisError(err) {
-			if shouldRetry(err, true) {
+			if shouldRetry(err, true) && !cmdsContainNoRetry(cmds) {
 				_ = c.mapCmdsByNode(ctx, failedCmds, cmds)
 			}
 			setCmdsErr(cmds[i+1:], err)
@@ -1755,7 +1781,7 @@ func (c *ClusterClient) pipelineReadCmds(
 		}
 	}
 
-	if err := cmds[0].Err(); err != nil && shouldRetry(err, true) {
+	if err := cmds[0].Err(); err != nil && shouldRetry(err, true) && !cmdsContainNoRetry(cmds) {
 		_ = c.mapCmdsByNode(ctx, failedCmds, cmds)
 		return err
 	}
@@ -1913,13 +1939,23 @@ func (c *ClusterClient) processTxPipeline(ctx context.Context, cmds []Cmder) err
 func (c *ClusterClient) slottedKeyedCommands(ctx context.Context, cmds []Cmder) map[int][]Cmder {
 	cmdsSlots := map[int][]Cmder{}
 
+	// Peek once outside the loop, one RLock for the whole batch instead of
+	// two per command (one for the keyless check, one inside cmdSlot).
+	cachedInfo := c.cmdsInfoCache.Peek()
+
 	prefferedRandomSlot := -1
 	for _, cmd := range cmds {
-		if cmdFirstKeyPos(cmd) == 0 {
+		var info *CommandInfo
+		if cachedInfo != nil {
+			info = cachedInfo[cmd.Name()]
+		}
+
+		pos := cmdFirstKeyPosWithInfo(cmd, info)
+		if pos == 0 {
 			continue
 		}
 
-		slot := c.cmdSlot(cmd, prefferedRandomSlot)
+		slot := c.cmdSlotWithPos(cmd, pos, prefferedRandomSlot)
 		if prefferedRandomSlot == -1 {
 			prefferedRandomSlot = slot
 		}
@@ -1958,7 +1994,7 @@ func (c *ClusterClient) processTxPipelineNodeConn(
 	if err := cn.WithWriter(c.context(ctx), c.opt.WriteTimeout, func(wr *proto.Writer) error {
 		return writeCmds(wr, cmds)
 	}); err != nil {
-		if shouldRetry(err, true) {
+		if shouldRetry(err, true) && !cmdsContainNoRetry(cmds) {
 			_ = c.mapCmdsByNode(ctx, failedCmds, cmds)
 		}
 		setCmdsErr(cmds, err)
@@ -2102,9 +2138,17 @@ func (c *ClusterClient) Watch(ctx context.Context, fn func(*Tx) error, keys ...s
 			}
 		}
 
-		err = node.Client.Watch(ctx, fn, keys...)
+		// Track callback errors separately to avoid retrying user failures through cluster retry classification.
+		var fnErr error
+		err = node.Client.Watch(ctx, func(tx *Tx) error {
+			fnErr = fn(tx)
+			return fnErr
+		}, keys...)
 		if err == nil {
 			break
+		}
+		if fnErr != nil {
+			return fnErr
 		}
 
 		moved, ask, addr := isMovedError(err)
@@ -2305,13 +2349,29 @@ func (c *ClusterClient) cmdInfo(ctx context.Context, name string) *CommandInfo {
 	return info
 }
 
+// cmdInfoPeek returns the cached CommandInfo for the named command without
+// triggering a round-trip to Redis. It returns nil when the cache is cold.
+func (c *ClusterClient) cmdInfoPeek(name string) *CommandInfo {
+	if cmds := c.cmdsInfoCache.Peek(); cmds != nil {
+		return cmds[name]
+	}
+	return nil
+}
+
 func (c *ClusterClient) cmdSlot(cmd Cmder, prefferedSlot int) int {
+	info := c.cmdInfoPeek(cmd.Name())
+	return c.cmdSlotWithPos(cmd, cmdFirstKeyPosWithInfo(cmd, info), prefferedSlot)
+}
+
+// cmdSlotWithPos computes the cluster slot for cmd given a pre-resolved first key
+// position. Separating pos resolution from slot computation lets callers that
+// already know pos avoid a redundant Peek() call.
+func (c *ClusterClient) cmdSlotWithPos(cmd Cmder, pos int, prefferedSlot int) int {
 	args := cmd.Args()
 	if args[0] == "cluster" && (args[1] == "getkeysinslot" || args[1] == "countkeysinslot") {
 		return args[2].(int)
 	}
-
-	return cmdSlot(cmd, cmdFirstKeyPos(cmd), prefferedSlot)
+	return cmdSlot(cmd, pos, prefferedSlot)
 }
 
 func cmdSlot(cmd Cmder, pos int, prefferedRandomSlot int) int {

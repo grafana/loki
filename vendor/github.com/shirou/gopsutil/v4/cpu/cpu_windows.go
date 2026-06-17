@@ -25,6 +25,7 @@ var (
 	procGetLogicalProcessorInformationEx = common.Modkernel32.NewProc("GetLogicalProcessorInformationEx")
 	procGetSystemFirmwareTable           = common.Modkernel32.NewProc("GetSystemFirmwareTable")
 	procCallNtPowerInformation           = common.ModPowrProf.NewProc("CallNtPowerInformation")
+	procGetActiveProcessorGroupCount     = common.Modkernel32.NewProc("GetActiveProcessorGroupCount")
 )
 
 type win32_Processor struct { //nolint:revive //FIXME
@@ -263,6 +264,21 @@ func perCPUTimes() ([]TimesStat, error) {
 
 // makes call to Windows API function to retrieve performance information for each core
 func perfInfo() ([]win32_SystemProcessorPerformanceInformation, error) {
+	// On hosts with more than 64 logical CPUs Windows splits CPUs into Processor Groups
+	// (up to 64 logical CPUs per group). The non-Ex NtQuerySystemInformation only returns
+	// data for the calling thread's group, so whenever the Ex variant is available we
+	// iterate every active group and concatenate the results. See issue #887.
+	if common.ProcNtQuerySystemInformationEx.Find() == nil {
+		return perfInfoAllGroups()
+	}
+	return perfInfoSingleGroup()
+}
+
+// perfInfoSingleGroup queries SystemProcessorPerformanceInformation via the non-Ex
+// NtQuerySystemInformation call. This is the legacy fallback for environments where
+// NtQuerySystemInformationEx cannot be resolved; it only returns data for the calling
+// thread's processor group.
+func perfInfoSingleGroup() ([]win32_SystemProcessorPerformanceInformation, error) {
 	// Make maxResults large for safety.
 	// We can't invoke the api call with a results array that's too small.
 	// If we have more than 2056 cores on a single host, then it's probably the future.
@@ -286,16 +302,61 @@ func perfInfo() ([]win32_SystemProcessorPerformanceInformation, error) {
 
 	// check return code for errors
 	if retCode != 0 {
-		return nil, fmt.Errorf("call to NtQuerySystemInformation returned %d. err: %s", retCode, err.Error())
+		return nil, fmt.Errorf("call to NtQuerySystemInformation returned 0x%x: %w", retCode, err)
 	}
 
 	// calculate the number of returned elements based on the returned size
 	numReturnedElements := retSize / win32_SystemProcessorPerformanceInfoSize
 
 	// trim results to the number of returned elements
-	resultBuffer = resultBuffer[:numReturnedElements]
+	return resultBuffer[:numReturnedElements], nil
+}
 
-	return resultBuffer, nil
+// perfInfoAllGroups queries SystemProcessorPerformanceInformation for every active
+// processor group via NtQuerySystemInformationEx and concatenates the results. The
+// group index is passed as the InputBuffer per the Ex calling convention documented at
+// https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/sysinfo/queryex.htm
+func perfInfoAllGroups() ([]win32_SystemProcessorPerformanceInformation, error) {
+	// GetActiveProcessorGroupCount returns 0 only on failure; propagate the error
+	// rather than silently defaulting to a single group and returning partial data.
+	r, _, callErr := procGetActiveProcessorGroupCount.Call()
+	if r == 0 {
+		return nil, fmt.Errorf("GetActiveProcessorGroupCount returned 0: %w", callErr)
+	}
+	groupCount := uint16(r)
+
+	var result []win32_SystemProcessorPerformanceInformation
+	for g := uint16(0); g < groupCount; g++ {
+		numLP := windows.GetActiveProcessorCount(g)
+		if numLP == 0 {
+			return nil, fmt.Errorf("GetActiveProcessorCount returned 0 for processor group %d", g)
+		}
+		// buffer sized exactly for this group's logical CPU count
+		buf := make([]win32_SystemProcessorPerformanceInformation, numLP)
+		bufSize := uintptr(win32_SystemProcessorPerformanceInfoSize) * uintptr(numLP)
+		var retSize uint32
+		// InputBuffer is a USHORT (2 bytes) holding the target processor group index.
+		group := g
+		retCode, _, err := common.ProcNtQuerySystemInformationEx.Call(
+			win32_SystemProcessorPerformanceInformationClass, // System Information Class -> SystemProcessorPerformanceInformation
+			uintptr(unsafe.Pointer(&group)),                  // InputBuffer: pointer to USHORT group index
+			unsafe.Sizeof(group),                             // InputBufferLength: sizeof(USHORT) = 2
+			uintptr(unsafe.Pointer(&buf[0])),                 // pointer to first element in result buffer
+			bufSize,                                          // size of the buffer in memory
+			uintptr(unsafe.Pointer(&retSize)),                // pointer to the size of the returned results the windows proc will set this
+		)
+		if retCode != 0 {
+			return nil, fmt.Errorf("call to NtQuerySystemInformationEx(group=%d) returned 0x%x: %w", g, retCode, err)
+		}
+		// Guard against a retSize that is not a whole number of entries or exceeds
+		// the allocated buffer (e.g. CPU hot-add racing with GetActiveProcessorCount).
+		if retSize%win32_SystemProcessorPerformanceInfoSize != 0 || uintptr(retSize) > bufSize {
+			return nil, fmt.Errorf("NtQuerySystemInformationEx(group=%d) returned unexpected retSize=%d (bufSize=%d)", g, retSize, bufSize)
+		}
+		n := retSize / win32_SystemProcessorPerformanceInfoSize
+		result = append(result, buf[:n]...)
+	}
+	return result, nil
 }
 
 // SystemInfo is an equivalent representation of SYSTEM_INFO in the Windows API.

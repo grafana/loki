@@ -22,7 +22,6 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -188,10 +187,10 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	// Handle communication with the peer until the context is canceled or some
 	// error occurs.
 	err := peer.Serve(ctx)
-	if err != nil && ctx.Err() != nil && !errors.Is(err, wire.ErrConnClosed) {
-		level.Warn(logger).Log("msg", "serve error", "err", err)
-	} else {
+	if ctx.Err() != nil || errors.Is(err, wire.ErrConnClosed) {
 		level.Debug(logger).Log("msg", "connection closed")
+	} else if err != nil {
+		level.Warn(logger).Log("msg", "serve error", "err", err)
 	}
 
 	// Signal any worker routines associated with this connection to exit.
@@ -664,6 +663,10 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		s.resourcesMut.Lock()
 		defer s.resourcesMut.Unlock()
 
+		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
+		queueDuration := assignTime.Sub(t.QueueTime())
+		s.metrics.taskQueueSeconds.Observe(assignTime.Sub(t.QueueTime()).Seconds())
+
 		if t.State().Terminal() {
 			// The task reached a terminal state between TryAssign and now. The
 			// worker may still have the assignment, so we tell it to not
@@ -673,10 +676,6 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		}
 
 		worker.Assign(t)
-		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
-		queueDuration := assignTime.Sub(t.QueueTime())
-		s.metrics.taskQueueSeconds.Observe(queueDuration.Seconds())
-		t.region.Record(schedulerstat.TaskQueueDuration.Observe(queueDuration.Nanoseconds()))
 
 		if t.wfRegion != nil {
 			t.wfRegion.Record(StatAssignedTasks.Observe(1))
@@ -1177,7 +1176,6 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 		}
 
 		task.MarkQueued()
-		task.region.Record(schedulerstat.TaskStagingDuration.Observe(task.QueueTime().Sub(task.createTime).Nanoseconds()))
 		if err := s.taskQueue.Push(task.scope, task); err != nil {
 			level.Error(s.logger).Log("msg", "failed to enqueue task; task will not be executed", "id", task.inner.ULID, "err", err)
 		}
