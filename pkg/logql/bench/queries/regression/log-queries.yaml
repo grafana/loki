@@ -28,3 +28,26 @@ queries:
       log_format: logfmt
       detected_fields:
         - error
+  - description: filter `field=""` on absent column must match (not silently prune the section)
+    query: ${SELECTOR} | logfmt | field_that_does_not_exist=""
+    kind: log
+    time_range:
+      length: 24h
+    directions: backward # forward log queries unsupported by v2 engine
+    tags:
+      - logfmt
+      - label-filter
+      - absent-field
+      - empty-string
+      - section-prune
+    notes: >
+      Regression for the v2 scan-layer predicate-pushdown bug. LogQL says an
+      absent label compares as "" — the post-scan filter layer already treats
+      null column entries as "". But section-level pruning happens first:
+      `dataobjscan_predicate.go` returned FalsePredicate whenever a referenced
+      column was missing from a section AND the literal was non-null, which
+      silently dropped the section even for `field=""`. v1 returns all rows
+      (the absent label matches the empty literal). v2 must do the same.
+      Catches any regression to the section-prune layer.
+    requires:
+      log_format: logfmt

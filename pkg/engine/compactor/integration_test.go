@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"io"
+	"math"
 	"testing"
 	"time"
 
@@ -236,7 +237,7 @@ func pathsOf(entries []indexEntry) []string {
 func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, ts time.Time) {
 	t.Helper()
 
-	postingsBuilder := postings.NewBuilder(nil, 0, 0)
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 	postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:       path,
 		SectionIndex:     0,
