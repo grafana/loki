@@ -275,6 +275,11 @@ const (
 	ChecksumAlgorithmSha1      ChecksumAlgorithm = "SHA1"
 	ChecksumAlgorithmSha256    ChecksumAlgorithm = "SHA256"
 	ChecksumAlgorithmCrc64nvme ChecksumAlgorithm = "CRC64NVME"
+	ChecksumAlgorithmSha512    ChecksumAlgorithm = "SHA512"
+	ChecksumAlgorithmMd5       ChecksumAlgorithm = "MD5"
+	ChecksumAlgorithmXxhash64  ChecksumAlgorithm = "XXHASH64"
+	ChecksumAlgorithmXxhash3   ChecksumAlgorithm = "XXHASH3"
+	ChecksumAlgorithmXxhash128 ChecksumAlgorithm = "XXHASH128"
 )
 
 // Values returns all known values for ChecksumAlgorithm. Note that this can be
@@ -288,6 +293,11 @@ func (ChecksumAlgorithm) Values() []ChecksumAlgorithm {
 		"SHA1",
 		"SHA256",
 		"CRC64NVME",
+		"SHA512",
+		"MD5",
+		"XXHASH64",
+		"XXHASH3",
+		"XXHASH128",
 	}
 }
 
