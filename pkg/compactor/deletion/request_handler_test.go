@@ -373,42 +373,50 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 }
 
 func TestUpdateCacheGenerationNumberHandler(t *testing.T) {
-	t.Run("it bumps the cache generation number for the user", func(t *testing.T) {
-		store := &mockDeleteRequestsStore{}
-		h := NewDeleteRequestHandler(store, 0, 0, nil)
+	for _, tc := range []struct {
+		name               string
+		orgID              string
+		updateGenErr       error
+		expectedCode       int
+		expectedBody       string
+		expectedUpdateUser string
+	}{
+		{
+			name:               "it bumps the cache generation number for the user",
+			orgID:              "org-id",
+			expectedCode:       http.StatusNoContent,
+			expectedUpdateUser: "org-id",
+		},
+		{
+			name:               "it returns 500 when the store errors",
+			orgID:              "org-id",
+			updateGenErr:       errors.New("something bad"),
+			expectedCode:       http.StatusInternalServerError,
+			expectedUpdateUser: "org-id",
+		},
+		{
+			name:         "it returns 400 when there is no org id",
+			orgID:        "",
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "no org id\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &mockDeleteRequestsStore{updateGenErr: tc.updateGenErr}
+			h := NewDeleteRequestHandler(store, 0, 0, nil)
 
-		req := buildRequest("org-id", ``, "", "", false)
+			req := buildRequest(tc.orgID, ``, "", "", false)
 
-		w := httptest.NewRecorder()
-		h.UpdateCacheGenerationNumberHandler(w, req)
+			w := httptest.NewRecorder()
+			h.UpdateCacheGenerationNumberHandler(w, req)
 
-		require.Equal(t, http.StatusNoContent, w.Code)
-		require.Equal(t, "org-id", store.updatedCacheGenForUser)
-	})
-
-	t.Run("it returns 500 when the store errors", func(t *testing.T) {
-		store := &mockDeleteRequestsStore{updateGenErr: errors.New("something bad")}
-		h := NewDeleteRequestHandler(store, 0, 0, nil)
-
-		req := buildRequest("org-id", ``, "", "", false)
-
-		w := httptest.NewRecorder()
-		h.UpdateCacheGenerationNumberHandler(w, req)
-
-		require.Equal(t, http.StatusInternalServerError, w.Code)
-	})
-
-	t.Run("it returns 400 when there is no org id", func(t *testing.T) {
-		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, 0, 0, nil)
-
-		req := buildRequest("", ``, "", "", false)
-
-		w := httptest.NewRecorder()
-		h.UpdateCacheGenerationNumberHandler(w, req)
-
-		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Equal(t, "no org id\n", w.Body.String())
-	})
+			require.Equal(t, tc.expectedCode, w.Code)
+			require.Equal(t, tc.expectedUpdateUser, store.updatedCacheGenForUser)
+			if tc.expectedBody != "" {
+				require.Equal(t, tc.expectedBody, w.Body.String())
+			}
+		})
+	}
 }
 
 func buildRequest(orgID, query, start, end string, forQuerytimeFiltering bool) *http.Request {
