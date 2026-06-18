@@ -20,7 +20,7 @@ Because Loki decouples the data it stores from the software which ingests and qu
 |---|---|---|---|
 | Durability | ✅ | ✅ | ✅ |
 | High availability | ❌ | ✅ | ✅ |
-| Separation of concerns | ❌ | ❌ | ✅ |
+| Separation of execution paths | ❌ | ❌ | ✅ |
 | Operational complexity | 🟩 low  | 🟧 medium| 🟥 high |
 | Scalability | 🟥 low | 🟧 medium | 🟩 high |
 
@@ -69,7 +69,7 @@ The following requirements must be met to run Loki in HA monolithic mode:
 1. **Load balancer in front of all instances.**
    Route all inbound push and query traffic to every replica in round-robin order.
 
-See the [HA single binary example](https://github.com/grafana/loki/tree/main/examples/ha-singlebinary) for a more complete config.
+See the [Loki HA Monolithic example](https://github.com/grafana/loki/tree/main/examples/ha-monolithic) for a more complete configuration.
 
 ## Microservices mode
 
