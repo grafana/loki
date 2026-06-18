@@ -229,6 +229,8 @@ func (t *task) RecordTerminalObservations(now time.Time) {
 	t.region.Record(schedulerstat.TaskAssignmentRetries.Observe(int64(requeues)))
 
 	if !queueTime.IsZero() {
+		t.region.Record(schedulerstat.TaskStagingDuration.Observe(queueTime.Sub(t.createTime).Nanoseconds()))
+
 		// Queue time ends at assignment, or at the terminal state if the task
 		// was never assigned.
 		queueEnd := now
@@ -236,7 +238,12 @@ func (t *task) RecordTerminalObservations(now time.Time) {
 			queueEnd = assignTime
 		}
 		t.region.Record(schedulerstat.TaskQueueDuration.Observe(queueEnd.Sub(queueTime).Nanoseconds()))
+	} else {
+		// For a task that was never enqueued, record the entire duration
+		// from creation to terminal state as staging duration.
+		t.region.Record(schedulerstat.TaskStagingDuration.Observe(now.Sub(t.createTime).Nanoseconds()))
 	}
+
 	if !assignTime.IsZero() {
 		t.region.Record(schedulerstat.TaskExecutionDuration.Observe(now.Sub(assignTime).Nanoseconds()))
 	}

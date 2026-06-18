@@ -1035,6 +1035,39 @@ func TestNewProjectPipeline_LabelFmtRenameDropsSourceColumn(t *testing.T) {
 				"utf8.label.foo":                 "dev",
 			}},
 		},
+		{
+			// Template renders to empty (literal ""); the pre-existing destination
+			// label `foo` must be overwritten with "". v1 semantics: a template
+			// always writes its result, including an empty result.`
+			name: "template literal empty overwrites existing destination",
+			dataFields: []arrow.Field{
+				semconv.FieldFromFQN("utf8.label.foo", false),
+			},
+			dataValues: arrowtest.Row{"utf8.label.foo": "old"},
+			labelFmts:  []log.LabelFmt{{Name: "foo", Value: "", Rename: false}},
+			expected: arrowtest.Rows{{
+				"utf8.builtin.message":           msg,
+				"timestamp_ns.builtin.timestamp": ts,
+				"utf8.label.foo":                 "",
+			}},
+		},
+		{
+			// Template references a label whose value is empty; the rendered
+			// result is "" and that overwrites the pre-existing destination.
+			name: "template referencing empty-valued label overwrites existing destination",
+			dataFields: []arrow.Field{
+				semconv.FieldFromFQN("utf8.label.foo", false),
+				semconv.FieldFromFQN("utf8.label.bar", false),
+			},
+			dataValues: arrowtest.Row{"utf8.label.foo": "old", "utf8.label.bar": ""},
+			labelFmts:  []log.LabelFmt{{Name: "foo", Value: "{{.bar}}", Rename: false}},
+			expected: arrowtest.Rows{{
+				"utf8.builtin.message":           msg,
+				"timestamp_ns.builtin.timestamp": ts,
+				"utf8.label.bar":                 "",
+				"utf8.label.foo":                 "",
+			}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1076,6 +1109,113 @@ func TestNewProjectPipeline_LabelFmtRenameDropsSourceColumn(t *testing.T) {
 			actualRows, err := arrowtest.RecordRows(record)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, actualRows)
+		})
+	}
+}
+
+// TestNewProjectPipeline_LineFmtReplacesMessageWithEmpty verifies that when
+// `line_format` renders to "" the builtin `message` column is replaced with ""
+// — matching v1, which always overwrites the line with the template output
+// (including empty). Previously mergeColumns treated a new-column "" as
+// "missing, keep old" and silently kept the original raw log line.
+func TestNewProjectPipeline_LineFmtReplacesMessageWithEmpty(t *testing.T) {
+	ts := time.Unix(1700000000, 0).UTC()
+
+	tests := []struct {
+		name     string
+		template string
+		// extraFields/extraValues add a parsed column whose value the template
+		// may reference. Empty/nil means no extra column.
+		extraFields []arrow.Field
+		extraValues arrowtest.Row
+		// expectedMessage is the value of the builtin.message column after the
+		// pipeline runs.
+		expectedMessage string
+	}{
+		{
+			name:            "literal empty template renders to empty line",
+			template:        "",
+			expectedMessage: "",
+		},
+		{
+			name:            "missing-key under missingkey=zero renders to empty line",
+			template:        "{{.does_not_exist}}",
+			expectedMessage: "",
+		},
+		{
+			name:            "simple-key whose column does not exist in batch renders to empty line",
+			template:        "{{.also_missing}}",
+			expectedMessage: "",
+		},
+		{
+			name:            "simple-key whose column has an empty value renders to empty line",
+			template:        "{{.orgID}}",
+			extraFields:     []arrow.Field{semconv.FieldFromFQN("utf8.parsed.orgID", true)},
+			extraValues:     arrowtest.Row{"utf8.parsed.orgID": ""},
+			expectedMessage: "",
+		},
+		{
+			name:            "simple-key whose column has a non-empty value renders the value",
+			template:        "{{.orgID}}",
+			extraFields:     []arrow.Field{semconv.FieldFromFQN("utf8.parsed.orgID", true)},
+			extraValues:     arrowtest.Row{"utf8.parsed.orgID": "tenant-7"},
+			expectedMessage: "tenant-7",
+		},
+		{
+			name:            "general template rendering empty still replaces the line",
+			template:        "{{.orgID}}{{.also_missing}}",
+			extraFields:     []arrow.Field{semconv.FieldFromFQN("utf8.parsed.orgID", true)},
+			extraValues:     arrowtest.Row{"utf8.parsed.orgID": ""},
+			expectedMessage: "",
+		},
+		{
+			name:            "literal non-empty template replaces the line",
+			template:        "CONSTANT",
+			expectedMessage: "CONSTANT",
+		},
+	}
+
+	originalMsg := "time=... orgID=\"\" status=401"
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := arrow.NewSchema(append([]arrow.Field{
+				semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
+				semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
+			}, tt.extraFields...), nil)
+
+			row := arrowtest.Row{
+				"utf8.builtin.message":           originalMsg,
+				"timestamp_ns.builtin.timestamp": ts,
+			}
+			for k, v := range tt.extraValues {
+				row[k] = v
+			}
+
+			input := NewArrowtestPipeline(schema, arrowtest.Rows{row})
+			parseExpr := &physical.VariadicExpr{
+				Op: types.VariadicOpParseLinefmt,
+				Expressions: []physical.Expression{
+					&physical.ColumnExpr{Ref: semconv.ColumnIdentMessage.ColumnRef()},
+					physical.NewLiteral([]string{}),
+					physical.NewLiteral(tt.template),
+				},
+			}
+			proj := &physical.Projection{
+				Expressions: []physical.Expression{parseExpr},
+				All:         true,
+				Expand:      true,
+			}
+
+			pipeline, err := NewProjectPipeline(input, proj, newExpressionEvaluator())
+			require.NoError(t, err)
+			record, err := pipeline.Read(t.Context())
+			require.NoError(t, err)
+
+			actualRows, err := arrowtest.RecordRows(record)
+			require.NoError(t, err)
+			require.Len(t, actualRows, 1)
+			require.Equal(t, tt.expectedMessage, actualRows[0]["utf8.builtin.message"])
 		})
 	}
 }
