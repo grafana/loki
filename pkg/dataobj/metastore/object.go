@@ -642,16 +642,19 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		}
 		// Index objects written before postings still read from streams sections
 		if hasPostings {
-			reader := newPostingsIndexSectionsReader(
-				m.logger,
-				idxObj,
-				req.SectionsRequest.Start,
-				req.SectionsRequest.End,
-				req.SectionsRequest.Matchers,
-				req.SectionsRequest.Predicates,
-				req.BatchSize,
+			r := newXcapArrowRecordBatchReader(
+				newPostingsIndexSectionsReader(
+					m.logger,
+					idxObj,
+					req.SectionsRequest.Start,
+					req.SectionsRequest.End,
+					req.SectionsRequest.Matchers,
+					req.SectionsRequest.Predicates,
+					req.BatchSize,
+				),
+				"metastore.postingsIndexSectionsReader",
 			)
-			return IndexSectionsReaderResponse{Reader: reader}, nil
+			return IndexSectionsReaderResponse{Reader: r}, nil
 		}
 	}
 

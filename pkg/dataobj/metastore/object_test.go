@@ -880,9 +880,11 @@ func TestIndexSectionsReader_ReaderSelection(t *testing.T) {
 			t.Cleanup(resp.Reader.Close)
 
 			if tc.wantPostingsReader {
-				require.IsType(t, &postingsIndexSectionsReader{}, resp.Reader)
+				// The postings path is span-wrapped; the selected reader is the postings one.
+				require.IsType(t, &xcapArrowRecordBatchReader{}, resp.Reader)
+				require.IsType(t, &postingsIndexSectionsReader{}, unwrapReader(resp.Reader))
 			} else {
-				require.IsType(t, &indexSectionsReader{}, resp.Reader)
+				require.IsType(t, &indexSectionsReader{}, unwrapReader(resp.Reader))
 			}
 
 			// Both readers must resolve the same matching stream row.

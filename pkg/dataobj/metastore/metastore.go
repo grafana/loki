@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
@@ -68,10 +67,4 @@ type CollectSectionsRequest struct {
 
 type CollectSectionsResponse struct {
 	SectionsResponse SectionsResponse
-}
-
-type ArrowRecordBatchReader interface {
-	Open(ctx context.Context) error
-	Read(ctx context.Context) (arrow.RecordBatch, error)
-	Close()
 }

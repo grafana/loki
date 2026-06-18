@@ -50,9 +50,6 @@ type postingsIndexSectionsReader struct {
 
 	// Stats
 	bloomRowsRead uint64
-
-	// readSpan for recording observations, it is created once during the first Read.
-	readSpan *xcap.Span
 }
 
 func newPostingsIndexSectionsReader(
@@ -104,9 +101,6 @@ func (r *postingsIndexSectionsReader) init(ctx context.Context) error {
 		return nil
 	}
 
-	ctx, sp := xcap.StartSpan(ctx, tracer, "metastore.postingsIndexSectionsReader.Open")
-	defer sp.End()
-
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return fmt.Errorf("extracting org ID: %w", err)
@@ -149,12 +143,6 @@ func (r *postingsIndexSectionsReader) Read(ctx context.Context) (arrow.RecordBat
 		return nil, errIndexSectionsReaderNotOpen
 	}
 
-	if r.readSpan == nil {
-		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "metastore.postingsIndexSectionsReader.Read")
-	} else {
-		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
-	}
-
 	if err := r.lazyResolveStreams(ctx); err != nil {
 		return nil, err
 	}
@@ -173,37 +161,36 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 		return nil
 	}
 
+	if len(r.postingsReaders) == 0 {
+		return nil
+	}
+
 	region := xcap.RegionFromContext(ctx)
-	startTime := time.Now()
-	defer func() {
-		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
-	}()
+	defer func(since time.Time) {
+		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(since).Seconds()))
+	}(time.Now())
 
 	var matchingStreamRefs map[postings.StreamRef]struct{}
 	streamLabelNames := make(map[string]struct{})
 
-	if len(r.postingsReaders) > 0 {
-		pointerStart := time.Now()
+	defer func(since time.Time) {
+		region.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(since).Seconds()))
+	}(time.Now())
 
-		acc := postings.NewStreamScan(r.matchers, r.start, r.end)
-		for _, reader := range r.postingsReaders {
-			if err := reader.ScanLabelsInto(ctx, acc, r.batchSize); err != nil {
-				return fmt.Errorf("scanning postings labels: %w", err)
-			}
+	acc := postings.NewStreamScan(r.matchers, r.start, r.end)
+	for _, reader := range r.postingsReaders {
+		if err := reader.ScanLabelsInto(ctx, acc, r.batchSize); err != nil {
+			return fmt.Errorf("scanning postings labels: %w", err)
 		}
-		res := acc.Finalize(ctx)
-
-		if r.readSpan != nil {
-			r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(pointerStart).Seconds()))
-		}
-
-		matchingStreamRefs = res.MatchingStreamRefs
-		for _, name := range res.MatchingLabelColumnNames {
-			streamLabelNames[name] = struct{}{}
-		}
-		// Pointer rows come from the same scan; stash them for readPointers.
-		r.pointerRows = res.Pointers
 	}
+	res := acc.Finalize(ctx)
+
+	matchingStreamRefs = res.MatchingStreamRefs
+	for _, name := range res.MatchingLabelColumnNames {
+		streamLabelNames[name] = struct{}{}
+	}
+	// Pointer rows come from the same scan; stash them for readPointers.
+	r.pointerRows = res.Pointers
 
 	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(matchingStreamRefs))))
 
@@ -238,7 +225,7 @@ func (r *postingsIndexSectionsReader) readPointers(ctx context.Context) (arrow.R
 	r.pointerOffset = end
 
 	rec := buildPointersRecord(memory.DefaultAllocator, batch)
-	r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
+	xcap.RegionFromContext(ctx).Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
 	r.bloomRowsRead += uint64(rec.NumRows())
 	return rec, nil
 }
@@ -326,10 +313,6 @@ func (r *postingsIndexSectionsReader) readMatchedSectionKeys(ctx context.Context
 // Close releases the postings reader held by this postingsIndexSectionsReader.
 func (r *postingsIndexSectionsReader) Close() {
 	closeAll(r.postingsReaders)
-
-	if r.readSpan != nil {
-		r.readSpan.End()
-	}
 }
 
 func (r *postingsIndexSectionsReader) totalReadRows() uint64 {
