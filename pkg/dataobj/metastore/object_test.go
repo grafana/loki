@@ -15,9 +15,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -827,4 +829,124 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 
 func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
 	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
+}
+
+// uploadIndexObject uploads obj to a fresh in-memory bucket and returns a
+// metastore plus the object's path.
+func uploadIndexObject(t *testing.T, obj *dataobj.Object) (*ObjectMetastore, string) {
+	t.Helper()
+	bucket := objstore.NewInMemBucket()
+	up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
+	path, err := up.Upload(context.Background(), obj)
+	require.NoError(t, err)
+	return newTestObjectMetastore(bucket), path
+}
+
+// buildLegacyIndexObject builds an index object holding only streams+pointers
+// sections (no postings) for tenantID.
+func buildLegacyIndexObject(t *testing.T) *dataobj.Object {
+	t.Helper()
+	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          1024 * 1024,
+		TargetObjectSize:        10 * 1024 * 1024,
+		TargetSectionSize:       128,
+		BufferSize:              1024 * 1024,
+		SectionStripeMergeLimit: 2,
+	}, nil)
+	require.NoError(t, err)
+
+	_, err = builder.AppendStream(tenantID, streams.Stream{
+		ID:               1,
+		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
+		MinTimestamp:     now.Add(-3 * time.Hour),
+		MaxTimestamp:     now.Add(-2 * time.Hour),
+		UncompressedSize: 5,
+	})
+	require.NoError(t, err)
+	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+	return obj
+}
+
+func TestIndexSectionsReader_SelectsPostingsWhenPresent(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+	obj, closer := buildPostingsIndexObject(t, tenantID, []postings.LabelObservation{
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now.Add(-2 * time.Hour)},
+	})
+	defer closer()
+	m, path := uploadIndexObject(t, obj)
+
+	resp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+		IndexPath: path,
+		SectionsRequest: SectionsRequest{
+			Start:    now.Add(-4 * time.Hour),
+			End:      now,
+			Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+		},
+	})
+	require.NoError(t, err)
+	require.IsType(t, &postingsIndexSectionsReader{}, resp.Reader)
+}
+
+func TestIndexSectionsReader_FallbackWhenNoPostings(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+	m, path := uploadIndexObject(t, buildLegacyIndexObject(t))
+
+	resp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+		IndexPath: path,
+		SectionsRequest: SectionsRequest{
+			Start:    now.Add(-4 * time.Hour),
+			End:      now,
+			Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+		},
+	})
+	require.NoError(t, err)
+	require.IsType(t, &indexSectionsReader{}, resp.Reader)
+}
+
+// TestCollectSections_PostingsAndLegacyParity builds the same logical stream
+// (app=foo, source test-path/section 0/stream 1) as both a postings index and a
+// legacy streams+pointers index, resolves each via the full IndexSectionsReader
+// -> CollectSections path, and asserts the resolved section identity matches.
+// RowCount/Size legitimately differ (the postings path does not carry them), so
+// parity is asserted on section identity, stream membership, and ambiguous
+// labels only.
+func TestCollectSections_PostingsAndLegacyParity(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
+
+	collect := func(obj *dataobj.Object) *DataobjSectionDescriptor {
+		t.Helper()
+		m, path := uploadIndexObject(t, obj)
+		resp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+			IndexPath: path,
+			SectionsRequest: SectionsRequest{
+				Start:    now.Add(-4 * time.Hour),
+				End:      now,
+				Matchers: matchers,
+			},
+		})
+		require.NoError(t, err)
+		t.Cleanup(resp.Reader.Close)
+		out, err := m.CollectSections(ctx, CollectSectionsRequest{Reader: resp.Reader})
+		require.NoError(t, err)
+		require.Len(t, out.SectionsResponse.Sections, 1)
+		return out.SectionsResponse.Sections[0]
+	}
+
+	postingsObj, closer := buildPostingsIndexObject(t, tenantID, []postings.LabelObservation{
+		{ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now.Add(-3 * time.Hour)},
+	})
+	defer closer()
+
+	postingsDesc := collect(postingsObj)
+	legacyDesc := collect(buildLegacyIndexObject(t))
+
+	require.Equal(t, legacyDesc.SectionKey, postingsDesc.SectionKey)
+	require.ElementsMatch(t, legacyDesc.StreamIDs, postingsDesc.StreamIDs)
+	require.Equal(t, legacyDesc.AmbiguousPredicatesByStream, postingsDesc.AmbiguousPredicatesByStream)
 }

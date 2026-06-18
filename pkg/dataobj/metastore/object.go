@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -631,17 +632,48 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
-	reader := newIndexSectionsReader(
-		m.logger,
-		idxObj,
-		req.SectionsRequest.Start,
-		req.SectionsRequest.End,
-		req.SectionsRequest.Matchers,
-		req.SectionsRequest.Predicates,
-		req.BatchSize,
-	)
+	tenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return IndexSectionsReaderResponse{}, fmt.Errorf("extracting org ID: %w", err)
+	}
+
+	// Format selection is data-driven: an index object with a postings section
+	// for the tenant uses the postings reader; otherwise fall back to the legacy
+	// streams+pointers reader. Both satisfy ArrowRecordBatchReader.
+	var reader ArrowRecordBatchReader
+	if hasPostingsSection(idxObj, tenant) {
+		reader = newPostingsIndexSectionsReader(
+			m.logger,
+			idxObj,
+			req.SectionsRequest.Start,
+			req.SectionsRequest.End,
+			req.SectionsRequest.Matchers,
+			req.SectionsRequest.Predicates,
+			req.BatchSize,
+		)
+	} else {
+		reader = newIndexSectionsReader(
+			m.logger,
+			idxObj,
+			req.SectionsRequest.Start,
+			req.SectionsRequest.End,
+			req.SectionsRequest.Matchers,
+			req.SectionsRequest.Predicates,
+			req.BatchSize,
+		)
+	}
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil
+}
+
+// hasPostingsSection reports whether obj has a postings section owned by tenant.
+func hasPostingsSection(obj *dataobj.Object, tenant string) bool {
+	for _, sec := range obj.Sections() {
+		if sec.Tenant == tenant && postings.CheckSection(sec) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
