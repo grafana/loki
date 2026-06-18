@@ -956,14 +956,24 @@ func (m *SectionMetadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
 	for iNdEx := len(m.Dictionary) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.Dictionary[iNdEx])
 		copy(dAtA[i:], m.Dictionary[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Dictionary[iNdEx])))
+		if len(m.Dictionary[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Dictionary[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Dictionary[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -976,7 +986,12 @@ func (m *SectionMetadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1018,7 +1033,12 @@ func (m *ColumnDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x5a
 	}
@@ -1073,7 +1093,12 @@ func (m *ColumnDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1160,7 +1185,12 @@ func (m *ColumnMetadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1202,7 +1232,12 @@ func (m *PageDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x4a
 	}
@@ -1286,14 +1321,24 @@ func (m *Statistics) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.MaxValue) > 0 {
 		i -= len(m.MaxValue)
 		copy(dAtA[i:], m.MaxValue)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MaxValue)))
+		if len(m.MaxValue) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.MaxValue))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MaxValue)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.MinValue) > 0 {
 		i -= len(m.MinValue)
 		copy(dAtA[i:], m.MinValue)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MinValue)))
+		if len(m.MinValue) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.MinValue))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MinValue)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1374,7 +1419,12 @@ func (m *SortInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	for iNdEx := len(m.SchemaLabels) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.SchemaLabels[iNdEx])
 		copy(dAtA[i:], m.SchemaLabels[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SchemaLabels[iNdEx])))
+		if len(m.SchemaLabels[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.SchemaLabels[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SchemaLabels[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -1387,7 +1437,12 @@ func (m *SortInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

@@ -343,109 +343,109 @@ func (m *Cache) String() string {
 	return fmt.Sprintf("%v", *m)
 }
 
-func (m *Result) GetSummary() Summary {
+func (m *Result) GetSummary() *Summary {
 	if m != nil {
-		return m.Summary
+		return &m.Summary
 	}
-	return Summary{}
+	return nil
 }
 
-func (m *Result) GetQuerier() Querier {
+func (m *Result) GetQuerier() *Querier {
 	if m != nil {
-		return m.Querier
+		return &m.Querier
 	}
-	return Querier{}
+	return nil
 }
 
-func (m *Result) GetIngester() Ingester {
+func (m *Result) GetIngester() *Ingester {
 	if m != nil {
-		return m.Ingester
+		return &m.Ingester
 	}
-	return Ingester{}
+	return nil
 }
 
-func (m *Result) GetCaches() Caches {
+func (m *Result) GetCaches() *Caches {
 	if m != nil {
-		return m.Caches
+		return &m.Caches
 	}
-	return Caches{}
+	return nil
 }
 
-func (m *Result) GetIndex() Index {
+func (m *Result) GetIndex() *Index {
 	if m != nil {
-		return m.Index
+		return &m.Index
 	}
-	return Index{}
+	return nil
 }
 
-func (m *Caches) GetChunk() Cache {
+func (m *Caches) GetChunk() *Cache {
 	if m != nil {
-		return m.Chunk
+		return &m.Chunk
 	}
-	return Cache{}
+	return nil
 }
 
-func (m *Caches) GetIndex() Cache {
+func (m *Caches) GetIndex() *Cache {
 	if m != nil {
-		return m.Index
+		return &m.Index
 	}
-	return Cache{}
+	return nil
 }
 
-func (m *Caches) GetResult() Cache {
+func (m *Caches) GetResult() *Cache {
 	if m != nil {
-		return m.Result
+		return &m.Result
 	}
-	return Cache{}
+	return nil
 }
 
-func (m *Caches) GetStatsResult() Cache {
+func (m *Caches) GetStatsResult() *Cache {
 	if m != nil {
-		return m.StatsResult
+		return &m.StatsResult
 	}
-	return Cache{}
+	return nil
 }
 
-func (m *Caches) GetVolumeResult() Cache {
+func (m *Caches) GetVolumeResult() *Cache {
 	if m != nil {
-		return m.VolumeResult
+		return &m.VolumeResult
 	}
-	return Cache{}
+	return nil
 }
 
-func (m *Caches) GetSeriesResult() Cache {
+func (m *Caches) GetSeriesResult() *Cache {
 	if m != nil {
-		return m.SeriesResult
+		return &m.SeriesResult
 	}
-	return Cache{}
+	return nil
 }
 
-func (m *Caches) GetLabelResult() Cache {
+func (m *Caches) GetLabelResult() *Cache {
 	if m != nil {
-		return m.LabelResult
+		return &m.LabelResult
 	}
-	return Cache{}
+	return nil
 }
 
-func (m *Caches) GetInstantMetricResult() Cache {
+func (m *Caches) GetInstantMetricResult() *Cache {
 	if m != nil {
-		return m.InstantMetricResult
+		return &m.InstantMetricResult
 	}
-	return Cache{}
+	return nil
 }
 
-func (m *Caches) GetLogResult() Cache {
+func (m *Caches) GetLogResult() *Cache {
 	if m != nil {
-		return m.LogResult
+		return &m.LogResult
 	}
-	return Cache{}
+	return nil
 }
 
-func (m *Caches) GetTaskResult() Cache {
+func (m *Caches) GetTaskResult() *Cache {
 	if m != nil {
-		return m.TaskResult
+		return &m.TaskResult
 	}
-	return Cache{}
+	return nil
 }
 
 func (m *Summary) GetBytesProcessedPerSecond() int64 {
@@ -588,11 +588,11 @@ func (m *Index) GetBloomFilterTime() float64 {
 	return 0
 }
 
-func (m *Querier) GetStore() Store {
+func (m *Querier) GetStore() *Store {
 	if m != nil {
-		return m.Store
+		return &m.Store
 	}
-	return Store{}
+	return nil
 }
 
 func (m *Querier) GetQuerierExecTime() float64 {
@@ -630,11 +630,11 @@ func (m *Ingester) GetTotalLinesSent() int64 {
 	return 0
 }
 
-func (m *Ingester) GetStore() Store {
+func (m *Ingester) GetStore() *Store {
 	if m != nil {
-		return m.Store
+		return &m.Store
 	}
-	return Store{}
+	return nil
 }
 
 func (m *Ingester) GetRecvWaitTime() float64 {
@@ -679,11 +679,11 @@ func (m *Store) GetQueryUsedV2Engine() bool {
 	return false
 }
 
-func (m *Store) GetChunk() Chunk {
+func (m *Store) GetChunk() *Chunk {
 	if m != nil {
-		return m.Chunk
+		return &m.Chunk
 	}
-	return Chunk{}
+	return nil
 }
 
 func (m *Store) GetChunkRefsFetchTime() int64 {
@@ -707,11 +707,11 @@ func (m *Store) GetPipelineWrapperFilteredLines() int64 {
 	return 0
 }
 
-func (m *Store) GetDataobj() Dataobj {
+func (m *Store) GetDataobj() *Dataobj {
 	if m != nil {
-		return m.Dataobj
+		return &m.Dataobj
 	}
-	return Dataobj{}
+	return nil
 }
 
 func (m *Dataobj) GetPrePredicateDecompressedRows() int64 {
@@ -1356,7 +1356,12 @@ func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x2a
 		}
@@ -1368,7 +1373,12 @@ func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x22
 		}
@@ -1380,7 +1390,12 @@ func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x1a
 		}
@@ -1392,7 +1407,12 @@ func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x12
 		}
@@ -1404,7 +1424,12 @@ func (m *Result) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x0a
 		}
@@ -1448,7 +1473,12 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x52
 		}
@@ -1460,7 +1490,12 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x4a
 		}
@@ -1472,7 +1507,12 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x42
 		}
@@ -1484,7 +1524,12 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x3a
 		}
@@ -1496,7 +1541,12 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x32
 		}
@@ -1508,7 +1558,12 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x2a
 		}
@@ -1520,7 +1575,12 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x22
 		}
@@ -1532,7 +1592,12 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x1a
 		}
@@ -1544,7 +1609,12 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x12
 		}
@@ -1556,7 +1626,12 @@ func (m *Caches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x0a
 		}
@@ -1779,7 +1854,12 @@ func (m *Querier) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x0a
 		}
@@ -1829,7 +1909,12 @@ func (m *Ingester) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x2a
 		}
@@ -1913,7 +1998,12 @@ func (m *Store) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x42
 		}
@@ -1940,7 +2030,12 @@ func (m *Store) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x22
 		}

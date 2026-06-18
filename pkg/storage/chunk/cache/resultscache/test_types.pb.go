@@ -14,12 +14,15 @@ import (
 )
 
 type MockRequest struct {
-	Path           string         `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Start          time.Time      `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
-	End            time.Time      `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
-	Step           int64          `protobuf:"varint,4,opt,name=step,proto3" json:"step,omitempty"`
-	Query          string         `protobuf:"bytes,6,opt,name=query,proto3" json:"query,omitempty"`
-	CachingOptions CachingOptions `protobuf:"bytes,7,opt,name=cachingOptions,proto3" json:"cachingOptions,omitempty"`
+	Path  string    `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Start time.Time `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
+	End   time.Time `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
+	Step  int64     `protobuf:"varint,4,opt,name=step,proto3" json:"step,omitempty"`
+	Query string    `protobuf:"bytes,6,opt,name=query,proto3" json:"query,omitempty"`
+	// CachingOpts frees the GetCachingOptions identifier for a hand-written
+	// value getter satisfying the resultscache.Request interface (wiresmith
+	// message getters return pointers, der5).
+	CachingOpts CachingOptions `protobuf:"bytes,7,opt,name=cachingOptions,proto3" json:"cachingOptions,omitempty"`
 }
 
 type MockResponse struct {
@@ -128,11 +131,11 @@ func (m *MockRequest) GetQuery() string {
 	return ""
 }
 
-func (m *MockRequest) GetCachingOptions() CachingOptions {
+func (m *MockRequest) GetCachingOpts() *CachingOptions {
 	if m != nil {
-		return m.CachingOptions
+		return &m.CachingOpts
 	}
-	return CachingOptions{}
+	return nil
 }
 
 func (m *MockResponse) GetLabels() []*MockLabelsPair {
@@ -200,7 +203,7 @@ func (m *MockRequest) Size() int {
 		n += 1 + protowire.SizeVarint(uint64(len(m.Query))) + len(m.Query)
 	}
 	{
-		s := m.CachingOptions.Size()
+		s := m.CachingOpts.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
 		}
@@ -288,13 +291,18 @@ func (m *MockRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	i := len(dAtA)
 	{
-		size, err := m.CachingOptions.MarshalToSizedBuffer(dAtA[:i])
+		size, err := m.CachingOpts.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x3a
 		}
@@ -302,7 +310,12 @@ func (m *MockRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Query) > 0 {
 		i -= len(m.Query)
 		copy(dAtA[i:], m.Query)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Query)))
+		if len(m.Query) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Query))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Query)))
+		}
 		i--
 		dAtA[i] = 0x32
 	}
@@ -330,7 +343,12 @@ func (m *MockRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Path) > 0 {
 		i -= len(m.Path)
 		copy(dAtA[i:], m.Path)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Path)))
+		if len(m.Path) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Path))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Path)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -375,7 +393,12 @@ func (m *MockResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -388,7 +411,12 @@ func (m *MockResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -427,14 +455,24 @@ func (m *MockLabelsPair) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Value) > 0 {
 		i -= len(m.Value)
 		copy(dAtA[i:], m.Value)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value)))
+		if len(m.Value) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Value))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
 		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		if len(m.Name) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Name))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -787,7 +825,7 @@ func (m *MockRequest) unmarshal(dAtA []byte, depth int) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.CachingOptions.unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
+			if err := m.CachingOpts.unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
 				return err
 			}
 			iNdEx = postIndex

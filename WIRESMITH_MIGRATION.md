@@ -2,9 +2,24 @@
 
 Status of generating Loki's protobuf Go code with
 [wiresmith](https://github.com/grafana/wiresmith) instead of the current
-`protoc --gogoslick_out` toolchain. **Updated 2026-06-12** against the public,
-go-installable wiresmith `v0.0.0-20260611164808-4f41063d76a2` (`origin/main`
-@ `4f41063`). `go.mod` pins that published pseudo-version directly — no
+`protoc --gogoslick_out` toolchain.
+
+> **2026-06-18 (branch `wiresmith-der5-7m6-validate`):** `go.mod` pins the
+> published pseudo-version `v0.0.0-20260618101418-7b3348950083`
+> (`databases`@`7b33489`, now on `grafana/wiresmith`), no `replace`. This is
+> the commit "uniform pointer getters (der5) + google.protobuf.Any support
+> (7m6)". Regenerated against that compiler; regen is byte-identical to the
+> pinned vendored module (verified). der5 reopened N2 (handled via
+> `customname`, see below); 7m6 assessed but native anypb not adopted (see the
+> workaround review). The regen diff vs the `854b4c6` pin is: 59
+> message-getter value→pointer swaps (der5) + the `cachingOptions` customname
+> re-embed + a marshal one-byte length-prefix fast path (databases commit
+> `908fc13`, wire-identical) + the `*_reflect.pb.go` anypb import swap (7m6).
+> Build + touched-package tests green; `go mod verify` clean; vendor lists the
+> pin + `protohelpers` + the new `types/known/anypb`.
+
+**Earlier status (2026-06-12)** was against the public, go-installable
+wiresmith `v0.0.0-20260611164808-4f41063d76a2` (`origin/main` @ `4f41063`). `go.mod` pins that published pseudo-version directly — no
 `replace`, no `GOPRIVATE`/`insteadOf` (the repo is public). The committed
 `.pb.go` were regenerated against this post-zlce compiler: the O(n²)
 pre-scan merge-unmarshal fix (#134, the Option-A grow-block swap) now applies,
@@ -209,21 +224,41 @@ Migrated: `queryrangebase/definitions`, `queryrangebase/queryrange`,
 - **Severity:** major if presence is wanted alongside JSON; for Loki,
   neutralized by no_presence.
 
-### N2 — message getters always return pointers (RESOLVED upstream)
+### N2 — message getters always return pointers (REOPENED by der5; handled via customname)
 
 - **Evidence (phase 2):** `*VolumeRequest` stopped satisfying
   `definitions.Request` (`have GetCachingOptions()
   *resultscache.CachingOptions, want ... CachingOptions`). Under
   `no_presence` the getter was `&m.Field` unconditionally.
-- **Resolution:** wiresmith now emits **value** getters for value-shaped
-  fields under `no_presence`. The queryrange cluster relies on this:
-  `GetStatistics() stats.Result`, `GetPlan() plan.QueryPlan`,
-  `GetStatus() RPCStatusAdapter` are generated as value getters and satisfy
-  the gogo `nullable=false` `Request`/`Response` interfaces with **no**
-  `customname` renames. The earlier `customname`+hand-written-getter
-  workaround (`VolumeRequest`, `MockRequest`) was removed in commit
-  `b60e3d265d`.
-- **Severity:** resolved; was previously the top blocker for queryrange.
+- **Brief resolution (commit `b60e3d265d`):** the `databases` branch
+  temporarily emitted **value** getters for value-shaped fields under
+  `no_presence`, so `GetCachingOptions() CachingOptions` satisfied the gogo
+  `nullable=false` interfaces directly; the `customname`+hand-written-getter
+  workaround was removed.
+- **REOPENED by der5 (databases@7b33489, 2026-06-18):** der5 makes singular
+  message-field getters **uniformly pointer-shape (`*T`) in every presence
+  mode**, deliberately diverging from gogo `nullable=false` value getters
+  (the 2026-06-18 compiler audit deemed pointer getters safe for chained
+  calls). For Loki this re-breaks the `cachingOptions` interface-satisfaction:
+  `definitions.Request` and `resultscache.Request` both declare
+  `GetCachingOptions() CachingOptions` (value; `CachingOptions =
+  resultscache.CachingOptions`), but the generated getter is now
+  `*resultscache.CachingOptions`.
+- **Workaround (reinstated, the documented blessed pattern):** the
+  `cachingOptions` field is `customname`-renamed to `CachingOpts` on every
+  message that must satisfy those interfaces — `VolumeRequest`
+  (`logproto.proto`), `MockRequest` (`test_types.proto`), `PrometheusRequest`
+  (`queryrangebase/queryrange.proto`), `LokiRequest` + `LokiInstantRequest`
+  (`queryrange/queryrange.proto`) — freeing the `GetCachingOptions`
+  identifier for a hand-written **value** getter (`compat.go`,
+  `query_range.go`, `codec.go`, `cache_test.go`). Call sites that constructed
+  or read the struct field by name were updated `CachingOptions`→`CachingOpts`
+  (`codec.go`, `splitters.go`, `downstreamer.go`, and the matching `_test.go`
+  literals). **Verified: this was the ONLY der5 fallout in Loki** — a full
+  `go build ./...` plus `go test -run xxx ./pkg/...` compile-sweep confirmed
+  no other consumer (interface or call site) relied on value-getter shape;
+  all 59 getter-shape swaps are otherwise transparent.
+- **Severity:** moderate; mechanically handled per-message via customname.
 
 ### N3 — one Go import path cannot host two proto packages (RESOLVED upstream)
 
@@ -286,10 +321,35 @@ stdduration, customname, `Has<F>()`, no_presence). Decisions:
   `no_presence`; and the N3 indexgateway-stays-gogo arrangement — `-M` now
   allows two proto packages per Go package, so `indexgateway.proto` is
   wiresmith-generated.
+- **7m6 `google.protobuf.Any` support (databases@7b33489) — assessed,
+  native anypb NOT adopted for Loki's Any fields.** wiresmith now resolves a
+  `google.protobuf.Any` field to its shipped replacement
+  `github.com/grafana/wiresmith/types/known/anypb` (struct {TypeUrl,Value} +
+  wiresmith wire methods + `MarshalFrom`/`UnmarshalTo`/`UnmarshalNew`/
+  `TypeName`). Loki's two Any fields — `resultscache.Extent.response` and
+  `rulespb.RuleGroupDesc.options` — both carry `customtype = "AnyAdapter"`
+  bridges to **gogo** `types.Any`, NOT because native Any was missing, but
+  because the surrounding plumbing is gogo-runtime: the results-cache packs/
+  unpacks responses with gogo `types.MarshalAny`/`EmptyAny`/`UnmarshalAny`
+  (TypeUrl→**gogo**-registry resolution, fed by the N4 `gogo_registry.go`
+  shims) and marshals `CachedResponse` with gogo `proto.Marshal`; the ruler
+  interoperates with gogo cortex/mimir rule types. wiresmith's anypb helpers
+  are backed by the **official** runtime (`proto.Marshal`,
+  `protoregistry.GlobalTypes`), where Loki's wiresmith-generated response/rule
+  types are not registered — so `UnmarshalNew` could not resolve them.
+  Switching to native anypb would require moving the entire cache/ruler Any
+  serialization path off gogo and adding official-runtime registration, a
+  large change entangled with the deliberate N4 gogo-registry design — out of
+  scope and risky for wire compat. The only 7m6 effect actually applied:
+  regen swapped the **reflect-metadata** import in
+  `*_reflect.pb.go` from the official `types/known/anypb` to wiresmith's
+  `types/known/anypb` (benign; the field's Go shape stays `AnyAdapter`).
 - **Kept (no shipped feature obviates them):**
   - `gogo_registry.go` (N4) — `proto.RegisterType` is a gogo *runtime
     registry* concern; no codegen feature registers wiresmith types with
     gogo. Required while the results-cache `types.Any` path stays gogo.
+  - `AnyAdapter` bridges (`resultscache`, `rulespb`) — see the 7m6
+    assessment above; native anypb does not replace a *gogo* Any bridge.
   - `RPCStatusAdapter`, `rulespb.AnyAdapter`, `resultscache.AnyAdapter`,
     `wirepb.HeaderAdapter` (W2) — bridges to foreign-runtime *gogo* messages
     (`google.rpc.Status`, `types.Any`, `httpgrpc.Header`). customtype-on-

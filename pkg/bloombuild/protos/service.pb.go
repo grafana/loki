@@ -90,11 +90,11 @@ func (m *BuilderToPlanner) GetBuilderID() string {
 	return ""
 }
 
-func (m *BuilderToPlanner) GetResult() ProtoTaskResult {
+func (m *BuilderToPlanner) GetResult() *ProtoTaskResult {
 	if m != nil {
-		return m.Result
+		return &m.Result
 	}
-	return ProtoTaskResult{}
+	return nil
 }
 
 func (m *PlannerToBuilder) GetTask() *ProtoTask {
@@ -195,7 +195,12 @@ func (m *BuilderToPlanner) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x12
 		}
@@ -203,7 +208,12 @@ func (m *BuilderToPlanner) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.BuilderID) > 0 {
 		i -= len(m.BuilderID)
 		copy(dAtA[i:], m.BuilderID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.BuilderID)))
+		if len(m.BuilderID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.BuilderID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.BuilderID)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -245,7 +255,12 @@ func (m *PlannerToBuilder) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -284,7 +299,12 @@ func (m *NotifyBuilderShutdownRequest) MarshalToSizedBuffer(dAtA []byte) (int, e
 	if len(m.BuilderID) > 0 {
 		i -= len(m.BuilderID)
 		copy(dAtA[i:], m.BuilderID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.BuilderID)))
+		if len(m.BuilderID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.BuilderID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.BuilderID)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

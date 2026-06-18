@@ -133,11 +133,11 @@ func (m *ShardsResponse) GetShards() []Shard {
 	return nil
 }
 
-func (m *ShardsResponse) GetStatistics() stats.Result {
+func (m *ShardsResponse) GetStatistics() *stats.Result {
 	if m != nil {
-		return m.Statistics
+		return &m.Statistics
 	}
-	return stats.Result{}
+	return nil
 }
 
 func (m *ShardsResponse) GetChunkGroups() []ChunkRefGroup {
@@ -147,11 +147,11 @@ func (m *ShardsResponse) GetChunkGroups() []ChunkRefGroup {
 	return nil
 }
 
-func (m *Shard) GetBounds() FPBounds {
+func (m *Shard) GetBounds() *FPBounds {
 	if m != nil {
-		return m.Bounds
+		return &m.Bounds
 	}
-	return FPBounds{}
+	return nil
 }
 
 func (m *Shard) GetStats() *IndexStatsResponse {
@@ -288,7 +288,12 @@ func (m *ShardsRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Query) > 0 {
 		i -= len(m.Query)
 		copy(dAtA[i:], m.Query)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Query)))
+		if len(m.Query) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Query))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Query)))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -340,7 +345,12 @@ func (m *ShardsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -351,7 +361,12 @@ func (m *ShardsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x12
 		}
@@ -362,7 +377,12 @@ func (m *ShardsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -404,7 +424,12 @@ func (m *Shard) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -415,7 +440,12 @@ func (m *Shard) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x0a
 		}

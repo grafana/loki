@@ -246,14 +246,24 @@ func (m *CachedResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.Key) > 0 {
 		i -= len(m.Key)
 		copy(dAtA[i:], m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Key)))
+		if len(m.Key) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Key))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Key)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -305,7 +315,12 @@ func (m *Extent) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.TraceId) > 0 {
 		i -= len(m.TraceId)
 		copy(dAtA[i:], m.TraceId)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TraceId)))
+		if len(m.TraceId) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.TraceId))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TraceId)))
+		}
 		i--
 		dAtA[i] = 0x22
 	}

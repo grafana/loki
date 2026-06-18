@@ -360,6 +360,14 @@ func (m *VolumeRequest) GetQuery() string {
 	return m.Matchers
 }
 
+// GetCachingOptions implements definitions.Request with a value-typed getter;
+// the wiresmith-generated accessor is GetCachingOpts and returns a pointer
+// (der5: uniform pointer getters). The field is customname-renamed to
+// CachingOpts to free this identifier.
+func (m *VolumeRequest) GetCachingOptions() resultscache.CachingOptions {
+	return m.CachingOpts
+}
+
 // WithStartEnd clone the current request with different start and end timestamp.
 func (m *VolumeRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m

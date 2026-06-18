@@ -290,14 +290,24 @@ func (m *Chunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Head) > 0 {
 		i -= len(m.Head)
 		copy(dAtA[i:], m.Head)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Head)))
+		if len(m.Head) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Head))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Head)))
+		}
 		i--
 		dAtA[i] = 0x42
 	}
 	if len(m.Data) > 0 {
 		i -= len(m.Data)
 		copy(dAtA[i:], m.Data)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Data)))
+		if len(m.Data) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Data))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Data)))
+		}
 		i--
 		dAtA[i] = 0x3a
 	}
@@ -401,7 +411,12 @@ func (m *Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.LastLine) > 0 {
 		i -= len(m.LastLine)
 		copy(dAtA[i:], m.LastLine)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.LastLine)))
+		if len(m.LastLine) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.LastLine))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.LastLine)))
+		}
 		i--
 		dAtA[i] = 0x32
 	}
@@ -419,7 +434,12 @@ func (m *Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
@@ -447,7 +467,12 @@ func (m *Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.UserID) > 0 {
 		i -= len(m.UserID)
 		copy(dAtA[i:], m.UserID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		if len(m.UserID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.UserID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

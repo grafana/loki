@@ -1471,7 +1471,7 @@ func (this *VolumeRequest) Equal(that interface{}) bool {
 	if this.AggregateBy != that1.AggregateBy {
 		return false
 	}
-	if !this.CachingOptions.Equal(that1.CachingOptions) {
+	if !this.CachingOpts.Equal(that1.CachingOpts) {
 		return false
 	}
 	return true

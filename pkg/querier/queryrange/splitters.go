@@ -40,16 +40,16 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 		endTimeInclusive = false
 		factory = func(start, end time.Time) {
 			reqs = append(reqs, &LokiRequest{
-				Query:          r.Query,
-				Limit:          r.Limit,
-				Step:           r.Step,
-				Interval:       r.Interval,
-				Direction:      r.Direction,
-				Path:           r.Path,
-				StartTs:        start,
-				EndTs:          end,
-				Plan:           r.Plan,
-				CachingOptions: r.CachingOptions,
+				Query:       r.Query,
+				Limit:       r.Limit,
+				Step:        r.Step,
+				Interval:    r.Interval,
+				Direction:   r.Direction,
+				Path:        r.Path,
+				StartTs:     start,
+				EndTs:       end,
+				Plan:        r.Plan,
+				CachingOpts: r.CachingOpts,
 			})
 		}
 	case *LokiSeriesRequest:
@@ -92,13 +92,13 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 	case *logproto.VolumeRequest:
 		factory = func(start, end time.Time) {
 			reqs = append(reqs, &logproto.VolumeRequest{
-				From:           model.TimeFromUnix(start.Unix()),
-				Through:        model.TimeFromUnix(end.Unix()),
-				Matchers:       r.GetMatchers(),
-				Limit:          r.Limit,
-				TargetLabels:   r.TargetLabels,
-				AggregateBy:    r.AggregateBy,
-				CachingOptions: r.CachingOptions,
+				From:         model.TimeFromUnix(start.Unix()),
+				Through:      model.TimeFromUnix(end.Unix()),
+				Matchers:     r.GetMatchers(),
+				Limit:        r.Limit,
+				TargetLabels: r.TargetLabels,
+				AggregateBy:  r.AggregateBy,
+				CachingOpts:  r.CachingOpts,
 			})
 		}
 	case *DetectedFieldsRequest:
@@ -241,16 +241,16 @@ func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r qu
 
 	factory := func(start, end time.Time) {
 		reqs = append(reqs, &LokiRequest{
-			Query:          lokiReq.Query,
-			Limit:          lokiReq.Limit,
-			Step:           lokiReq.Step,
-			Interval:       lokiReq.Interval,
-			Direction:      lokiReq.Direction,
-			Path:           lokiReq.Path,
-			StartTs:        start,
-			EndTs:          end,
-			Plan:           lokiReq.Plan,
-			CachingOptions: lokiReq.CachingOptions,
+			Query:       lokiReq.Query,
+			Limit:       lokiReq.Limit,
+			Step:        lokiReq.Step,
+			Interval:    lokiReq.Interval,
+			Direction:   lokiReq.Direction,
+			Path:        lokiReq.Path,
+			StartTs:     start,
+			EndTs:       end,
+			Plan:        lokiReq.Plan,
+			CachingOpts: lokiReq.CachingOpts,
 		})
 	}
 

@@ -757,7 +757,12 @@ func (m *QuantileSketchMatrix) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -802,7 +807,12 @@ func (m *QuantileSketchVector) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -847,7 +857,12 @@ func (m *QuantileSketchSample) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -862,7 +877,12 @@ func (m *QuantileSketchSample) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -902,7 +922,12 @@ func (m *QuantileSketch) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	case *QuantileSketch_Ddsketch:
 		i -= len(v.Ddsketch)
 		copy(dAtA[i:], v.Ddsketch)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(v.Ddsketch)))
+		if len(v.Ddsketch) <= 0x7F {
+			dAtA[i-1] = uint8(len(v.Ddsketch))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(v.Ddsketch)))
+		}
 		i--
 		dAtA[i] = 0x12
 	case *QuantileSketch_Tdigest:
@@ -911,7 +936,12 @@ func (m *QuantileSketch) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1000,7 +1030,12 @@ func (m *TDigest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
@@ -1057,7 +1092,12 @@ func (m *CountMinSketch) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Hyperloglog) > 0 {
 		i -= len(m.Hyperloglog)
 		copy(dAtA[i:], m.Hyperloglog)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Hyperloglog)))
+		if len(m.Hyperloglog) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Hyperloglog))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Hyperloglog)))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
@@ -1121,7 +1161,12 @@ func (m *CountMinSketchVector) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -1131,7 +1176,12 @@ func (m *CountMinSketchVector) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -1181,7 +1231,12 @@ func (m *Labels) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1226,7 +1281,12 @@ func (m *TopK_Pair) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Event) > 0 {
 		i -= len(m.Event)
 		copy(dAtA[i:], m.Event)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Event)))
+		if len(m.Event) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Event))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Event)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1265,7 +1325,12 @@ func (m *TopK) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Hyperloglog) > 0 {
 		i -= len(m.Hyperloglog)
 		copy(dAtA[i:], m.Hyperloglog)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Hyperloglog)))
+		if len(m.Hyperloglog) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Hyperloglog))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Hyperloglog)))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -1278,7 +1343,12 @@ func (m *TopK) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -1288,7 +1358,12 @@ func (m *TopK) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1335,7 +1410,12 @@ func (m *TopKMatrix_Vector) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1380,7 +1460,12 @@ func (m *TopKMatrix) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

@@ -22,7 +22,10 @@ message PrometheusRequest {
   int64 step = 4;
   google.protobuf.Duration timeout = 5 [(wiresmith.options.stdduration) = true];
   string query = 6;
-  resultscache.CachingOptions cachingOptions = 7;
+  // CachingOpts frees the GetCachingOptions identifier for a hand-written
+  // value getter satisfying the definitions.Request interface (wiresmith
+  // message getters return pointers, der5).
+  resultscache.CachingOptions cachingOptions = 7 [(wiresmith.options.customname) = "CachingOpts"];
   repeated definitions.PrometheusRequestHeader Headers = 8 [
     (wiresmith.options.pointer) = true,
     (wiresmith.options.jsontag) = "-"

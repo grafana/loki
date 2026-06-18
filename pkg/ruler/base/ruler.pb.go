@@ -502,21 +502,36 @@ func (m *RulesRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	for iNdEx := len(m.File) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.File[iNdEx])
 		copy(dAtA[i:], m.File[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.File[iNdEx])))
+		if len(m.File[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.File[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.File[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
 	for iNdEx := len(m.RuleGroup) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.RuleGroup[iNdEx])
 		copy(dAtA[i:], m.RuleGroup[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.RuleGroup[iNdEx])))
+		if len(m.RuleGroup[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.RuleGroup[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.RuleGroup[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
 	for iNdEx := len(m.RuleName) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.RuleName[iNdEx])
 		copy(dAtA[i:], m.RuleName[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.RuleName[iNdEx])))
+		if len(m.RuleName[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.RuleName[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.RuleName[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -566,7 +581,12 @@ func (m *RulesResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -627,7 +647,12 @@ func (m *GroupStateDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -637,7 +662,12 @@ func (m *GroupStateDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -698,28 +728,48 @@ func (m *RuleStateDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x2a
 	}
 	if len(m.LastError) > 0 {
 		i -= len(m.LastError)
 		copy(dAtA[i:], m.LastError)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.LastError)))
+		if len(m.LastError) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.LastError))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.LastError)))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
 	if len(m.Health) > 0 {
 		i -= len(m.Health)
 		copy(dAtA[i:], m.Health)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Health)))
+		if len(m.Health) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Health))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Health)))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
 	if len(m.State) > 0 {
 		i -= len(m.State)
 		copy(dAtA[i:], m.State)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.State)))
+		if len(m.State) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.State))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.State)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -729,7 +779,12 @@ func (m *RuleStateDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -846,7 +901,12 @@ func (m *AlertStateDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.State) > 0 {
 		i -= len(m.State)
 		copy(dAtA[i:], m.State)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.State)))
+		if len(m.State) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.State))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.State)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

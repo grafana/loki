@@ -702,11 +702,11 @@ func (m *UnaryExpression) GetOp() UnaryOp {
 	return 0
 }
 
-func (m *UnaryExpression) GetValue() Expression {
+func (m *UnaryExpression) GetValue() *Expression {
 	if m != nil {
-		return m.Value
+		return &m.Value
 	}
-	return Expression{}
+	return nil
 }
 
 func (m *BinaryExpression) GetOp() BinaryOp {
@@ -716,18 +716,18 @@ func (m *BinaryExpression) GetOp() BinaryOp {
 	return 0
 }
 
-func (m *BinaryExpression) GetLeft() Expression {
+func (m *BinaryExpression) GetLeft() *Expression {
 	if m != nil {
-		return m.Left
+		return &m.Left
 	}
-	return Expression{}
+	return nil
 }
 
-func (m *BinaryExpression) GetRight() Expression {
+func (m *BinaryExpression) GetRight() *Expression {
 	if m != nil {
-		return m.Right
+		return &m.Right
 	}
-	return Expression{}
+	return nil
 }
 
 func (m *VariadicExpression) GetOp() VariadicOp {
@@ -1214,7 +1214,12 @@ func (m *Expression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x2a
 	case *Expression_Literal:
@@ -1223,7 +1228,12 @@ func (m *Expression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x22
 	case *Expression_Variadic:
@@ -1232,7 +1242,12 @@ func (m *Expression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x1a
 	case *Expression_Binary:
@@ -1241,7 +1256,12 @@ func (m *Expression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	case *Expression_Unary:
@@ -1250,7 +1270,12 @@ func (m *Expression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1293,7 +1318,12 @@ func (m *UnaryExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x12
 		}
@@ -1342,7 +1372,12 @@ func (m *BinaryExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x1a
 		}
@@ -1354,7 +1389,12 @@ func (m *BinaryExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x12
 		}
@@ -1402,7 +1442,12 @@ func (m *VariadicExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -1450,7 +1495,12 @@ func (m *LiteralExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x52
 	case *LiteralExpression_StringListLiteral:
@@ -1459,7 +1509,12 @@ func (m *LiteralExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x4a
 	case *LiteralExpression_BytesLiteral:
@@ -1468,7 +1523,12 @@ func (m *LiteralExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x42
 	case *LiteralExpression_DurationLiteral:
@@ -1477,7 +1537,12 @@ func (m *LiteralExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x3a
 	case *LiteralExpression_TimestampLiteral:
@@ -1486,7 +1551,12 @@ func (m *LiteralExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x32
 	case *LiteralExpression_FloatLiteral:
@@ -1495,7 +1565,12 @@ func (m *LiteralExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x2a
 	case *LiteralExpression_IntegerLiteral:
@@ -1504,7 +1579,12 @@ func (m *LiteralExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x22
 	case *LiteralExpression_StringLiteral:
@@ -1513,7 +1593,12 @@ func (m *LiteralExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x1a
 	case *LiteralExpression_BoolLiteral:
@@ -1522,7 +1607,12 @@ func (m *LiteralExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	case *LiteralExpression_NullLiteral:
@@ -1531,7 +1621,12 @@ func (m *LiteralExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1644,7 +1739,12 @@ func (m *StringLiteral) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Value) > 0 {
 		i -= len(m.Value)
 		copy(dAtA[i:], m.Value)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value)))
+		if len(m.Value) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Value))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1869,7 +1969,12 @@ func (m *StringListLiteral) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	for iNdEx := len(m.Value) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.Value[iNdEx])
 		copy(dAtA[i:], m.Value[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value[iNdEx])))
+		if len(m.Value[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Value[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1911,7 +2016,12 @@ func (m *LabelFmtListLiteral) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1960,14 +2070,24 @@ func (m *LabelFmtLiteral) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Value) > 0 {
 		i -= len(m.Value)
 		copy(dAtA[i:], m.Value)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value)))
+		if len(m.Value) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Value))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
 		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		if len(m.Name) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Name))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -2011,7 +2131,12 @@ func (m *ColumnExpression) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
 		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		if len(m.Name) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Name))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

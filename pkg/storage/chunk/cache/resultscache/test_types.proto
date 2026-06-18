@@ -18,7 +18,10 @@ message MockRequest {
   google.protobuf.Timestamp end = 3 [(wiresmith.options.stdtime) = true];
   int64 step = 4;
   string query = 6;
-  CachingOptions cachingOptions = 7;
+  // CachingOpts frees the GetCachingOptions identifier for a hand-written
+  // value getter satisfying the resultscache.Request interface (wiresmith
+  // message getters return pointers, der5).
+  CachingOptions cachingOptions = 7 [(wiresmith.options.customname) = "CachingOpts"];
 }
 
 message MockResponse {

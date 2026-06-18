@@ -16,14 +16,17 @@ import (
 )
 
 type PrometheusRequest struct {
-	Path           string                                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Start          time.Time                              `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
-	End            time.Time                              `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
-	Step           int64                                  `protobuf:"varint,4,opt,name=step,proto3" json:"step,omitempty"`
-	Timeout        time.Duration                          `protobuf:"bytes,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
-	Query          string                                 `protobuf:"bytes,6,opt,name=query,proto3" json:"query,omitempty"`
-	CachingOptions resultscache.CachingOptions            `protobuf:"bytes,7,opt,name=cachingOptions,proto3" json:"cachingOptions,omitempty"`
-	Headers        []*definitions.PrometheusRequestHeader `protobuf:"bytes,8,rep,name=Headers,proto3" json:"-"`
+	Path    string        `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Start   time.Time     `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
+	End     time.Time     `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
+	Step    int64         `protobuf:"varint,4,opt,name=step,proto3" json:"step,omitempty"`
+	Timeout time.Duration `protobuf:"bytes,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	Query   string        `protobuf:"bytes,6,opt,name=query,proto3" json:"query,omitempty"`
+	// CachingOpts frees the GetCachingOptions identifier for a hand-written
+	// value getter satisfying the definitions.Request interface (wiresmith
+	// message getters return pointers, der5).
+	CachingOpts resultscache.CachingOptions            `protobuf:"bytes,7,opt,name=cachingOptions,proto3" json:"cachingOptions,omitempty"`
+	Headers     []*definitions.PrometheusRequestHeader `protobuf:"bytes,8,rep,name=Headers,proto3" json:"-"`
 }
 
 type PrometheusResponse struct {
@@ -143,11 +146,11 @@ func (m *PrometheusRequest) GetQuery() string {
 	return ""
 }
 
-func (m *PrometheusRequest) GetCachingOptions() resultscache.CachingOptions {
+func (m *PrometheusRequest) GetCachingOpts() *resultscache.CachingOptions {
 	if m != nil {
-		return m.CachingOptions
+		return &m.CachingOpts
 	}
-	return resultscache.CachingOptions{}
+	return nil
 }
 
 func (m *PrometheusRequest) GetHeaders() []*definitions.PrometheusRequestHeader {
@@ -164,11 +167,11 @@ func (m *PrometheusResponse) GetStatus() string {
 	return ""
 }
 
-func (m *PrometheusResponse) GetData() PrometheusData {
+func (m *PrometheusResponse) GetData() *PrometheusData {
 	if m != nil {
-		return m.Data
+		return &m.Data
 	}
-	return PrometheusData{}
+	return nil
 }
 
 func (m *PrometheusResponse) GetErrorType() string {
@@ -254,7 +257,7 @@ func (m *PrometheusRequest) Size() int {
 		n += 1 + protowire.SizeVarint(uint64(len(m.Query))) + len(m.Query)
 	}
 	{
-		s := m.CachingOptions.Size()
+		s := m.CachingOpts.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
 		}
@@ -371,18 +374,28 @@ func (m *PrometheusRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x42
 	}
 	{
-		size, err := m.CachingOptions.MarshalToSizedBuffer(dAtA[:i])
+		size, err := m.CachingOpts.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x3a
 		}
@@ -390,7 +403,12 @@ func (m *PrometheusRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Query) > 0 {
 		i -= len(m.Query)
 		copy(dAtA[i:], m.Query)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Query)))
+		if len(m.Query) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Query))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Query)))
+		}
 		i--
 		dAtA[i] = 0x32
 	}
@@ -426,7 +444,12 @@ func (m *PrometheusRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Path) > 0 {
 		i -= len(m.Path)
 		copy(dAtA[i:], m.Path)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Path)))
+		if len(m.Path) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Path))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Path)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -465,7 +488,12 @@ func (m *PrometheusResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	for iNdEx := len(m.Warnings) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.Warnings[iNdEx])
 		copy(dAtA[i:], m.Warnings[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Warnings[iNdEx])))
+		if len(m.Warnings[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Warnings[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Warnings[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x32
 	}
@@ -478,21 +506,36 @@ func (m *PrometheusResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x2a
 	}
 	if len(m.Error) > 0 {
 		i -= len(m.Error)
 		copy(dAtA[i:], m.Error)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Error)))
+		if len(m.Error) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Error))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Error)))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
 	if len(m.ErrorType) > 0 {
 		i -= len(m.ErrorType)
 		copy(dAtA[i:], m.ErrorType)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ErrorType)))
+		if len(m.ErrorType) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.ErrorType))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ErrorType)))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -503,7 +546,12 @@ func (m *PrometheusResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		if size > 0 {
 			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			if size <= 0x7F {
+				dAtA[i-1] = uint8(size)
+				i--
+			} else {
+				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x12
 		}
@@ -511,7 +559,12 @@ func (m *PrometheusResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Status) > 0 {
 		i -= len(m.Status)
 		copy(dAtA[i:], m.Status)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Status)))
+		if len(m.Status) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Status))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Status)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -553,14 +606,24 @@ func (m *PrometheusData) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.ResultType) > 0 {
 		i -= len(m.ResultType)
 		copy(dAtA[i:], m.ResultType)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ResultType)))
+		if len(m.ResultType) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.ResultType))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ResultType)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -602,7 +665,12 @@ func (m *SampleStream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -1042,7 +1110,7 @@ func (m *PrometheusRequest) unmarshal(dAtA []byte, depth int) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.CachingOptions.UnmarshalWithDepth(dAtA[iNdEx:postIndex], depth+1); err != nil {
+			if err := m.CachingOpts.UnmarshalWithDepth(dAtA[iNdEx:postIndex], depth+1); err != nil {
 				return err
 			}
 			iNdEx = postIndex

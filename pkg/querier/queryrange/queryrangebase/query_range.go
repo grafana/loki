@@ -56,6 +56,14 @@ type prometheusCodec struct {
 	resultType model.ValueType
 }
 
+// GetCachingOptions implements definitions.Request with a value-typed getter;
+// the wiresmith-generated accessor is GetCachingOpts and returns a pointer
+// (der5: uniform pointer getters). The field is customname-renamed to
+// CachingOpts to free this identifier.
+func (q *PrometheusRequest) GetCachingOptions() resultscache.CachingOptions {
+	return q.CachingOpts
+}
+
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
 func (q *PrometheusRequest) WithStartEnd(start, end time.Time) Request {
 	clone := *q

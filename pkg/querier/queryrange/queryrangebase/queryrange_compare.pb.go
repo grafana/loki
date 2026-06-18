@@ -75,7 +75,7 @@ func (this *PrometheusRequest) Compare(that interface{}) int {
 		}
 		return 1
 	}
-	if c := this.CachingOptions.Compare(that1.CachingOptions); c != 0 {
+	if c := this.CachingOpts.Compare(that1.CachingOpts); c != 0 {
 		return c
 	}
 	if len(this.Headers) != len(that1.Headers) {

@@ -275,7 +275,12 @@ func (m *RuleGroupDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.User) > 0 {
 		i -= len(m.User)
 		copy(dAtA[i:], m.User)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.User)))
+		if len(m.User) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.User))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.User)))
+		}
 		i--
 		dAtA[i] = 0x32
 	}
@@ -288,7 +293,12 @@ func (m *RuleGroupDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
@@ -303,14 +313,24 @@ func (m *RuleGroupDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Namespace) > 0 {
 		i -= len(m.Namespace)
 		copy(dAtA[i:], m.Namespace)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Namespace)))
+		if len(m.Namespace) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Namespace))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Namespace)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
 		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		if len(m.Name) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Name))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -389,21 +409,36 @@ func (m *RuleDesc) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Alert) > 0 {
 		i -= len(m.Alert)
 		copy(dAtA[i:], m.Alert)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Alert)))
+		if len(m.Alert) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Alert))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Alert)))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
 	if len(m.Record) > 0 {
 		i -= len(m.Record)
 		copy(dAtA[i:], m.Record)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Record)))
+		if len(m.Record) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Record))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Record)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.Expr) > 0 {
 		i -= len(m.Expr)
 		copy(dAtA[i:], m.Expr)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Expr)))
+		if len(m.Expr) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Expr))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Expr)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

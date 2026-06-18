@@ -823,6 +823,12 @@ func (r *MockRequest) WithStartEndForCache(start time.Time, end time.Time) Reque
 	return &m
 }
 
+// GetCachingOptions implements Request with a value-typed getter; the
+// wiresmith-generated accessor is GetCachingOpts and returns a pointer
+// (der5: uniform pointer getters). The field is customname-renamed to
+// CachingOpts to free this identifier.
+func (m *MockRequest) GetCachingOptions() CachingOptions { return m.CachingOpts }
+
 type MockMerger struct{}
 
 func (m MockMerger) MergeResponse(responses ...Response) (Response, error) {

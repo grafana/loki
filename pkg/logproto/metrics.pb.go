@@ -383,7 +383,12 @@ func (m *WriteRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -478,7 +483,12 @@ func (m *TimeSeries) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -533,21 +543,36 @@ func (m *MetricMetadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Unit) > 0 {
 		i -= len(m.Unit)
 		copy(dAtA[i:], m.Unit)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Unit)))
+		if len(m.Unit) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Unit))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Unit)))
+		}
 		i--
 		dAtA[i] = 0x2a
 	}
 	if len(m.Help) > 0 {
 		i -= len(m.Help)
 		copy(dAtA[i:], m.Help)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Help)))
+		if len(m.Help) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Help))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Help)))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
 	if len(m.MetricFamilyName) > 0 {
 		i -= len(m.MetricFamilyName)
 		copy(dAtA[i:], m.MetricFamilyName)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MetricFamilyName)))
+		if len(m.MetricFamilyName) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.MetricFamilyName))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MetricFamilyName)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}

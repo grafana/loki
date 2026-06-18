@@ -512,7 +512,12 @@ func (m *QuerierToScheduler) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.QuerierID) > 0 {
 		i -= len(m.QuerierID)
 		copy(dAtA[i:], m.QuerierID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.QuerierID)))
+		if len(m.QuerierID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.QuerierID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.QuerierID)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -555,7 +560,12 @@ func (m *SchedulerToQuerier) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x42
 	case *SchedulerToQuerier_HttpRequest:
@@ -564,7 +574,12 @@ func (m *SchedulerToQuerier) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -581,14 +596,24 @@ func (m *SchedulerToQuerier) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.UserID) > 0 {
 		i -= len(m.UserID)
 		copy(dAtA[i:], m.UserID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		if len(m.UserID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.UserID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
 	if len(m.FrontendAddress) > 0 {
 		i -= len(m.FrontendAddress)
 		copy(dAtA[i:], m.FrontendAddress)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.FrontendAddress)))
+		if len(m.FrontendAddress) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.FrontendAddress))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.FrontendAddress)))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -636,7 +661,12 @@ func (m *FrontendToScheduler) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x42
 	case *FrontendToScheduler_HttpRequest:
@@ -645,14 +675,24 @@ func (m *FrontendToScheduler) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x2a
 	}
 	for iNdEx := len(m.QueuePath) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.QueuePath[iNdEx])
 		copy(dAtA[i:], m.QueuePath[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.QueuePath[iNdEx])))
+		if len(m.QueuePath[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.QueuePath[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.QueuePath[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x3a
 	}
@@ -669,7 +709,12 @@ func (m *FrontendToScheduler) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.UserID) > 0 {
 		i -= len(m.UserID)
 		copy(dAtA[i:], m.UserID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		if len(m.UserID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.UserID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
@@ -681,7 +726,12 @@ func (m *FrontendToScheduler) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.FrontendAddress) > 0 {
 		i -= len(m.FrontendAddress)
 		copy(dAtA[i:], m.FrontendAddress)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.FrontendAddress)))
+		if len(m.FrontendAddress) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.FrontendAddress))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.FrontendAddress)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -725,7 +775,12 @@ func (m *SchedulerToFrontend) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Error) > 0 {
 		i -= len(m.Error)
 		copy(dAtA[i:], m.Error)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Error)))
+		if len(m.Error) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Error))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Error)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -769,7 +824,12 @@ func (m *NotifyQuerierShutdownRequest) MarshalToSizedBuffer(dAtA []byte) (int, e
 	if len(m.QuerierID) > 0 {
 		i -= len(m.QuerierID)
 		copy(dAtA[i:], m.QuerierID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.QuerierID)))
+		if len(m.QuerierID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.QuerierID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.QuerierID)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

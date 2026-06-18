@@ -54,7 +54,7 @@ func (this *MockRequest) Equal(that interface{}) bool {
 	if this.Query != that1.Query {
 		return false
 	}
-	if !this.CachingOptions.Equal(that1.CachingOptions) {
+	if !this.CachingOpts.Equal(that1.CachingOpts) {
 		return false
 	}
 	return true

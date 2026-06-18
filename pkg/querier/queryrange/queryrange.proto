@@ -38,7 +38,10 @@ message LokiRequest {
     (wiresmith.options.pointer) = true,
     (wiresmith.options.jsontag) = "storeChunks"
   ];
-  resultscache.CachingOptions cachingOptions = 12;
+  // CachingOpts frees the GetCachingOptions identifier for a hand-written
+  // value getter satisfying the definitions.Request interface (wiresmith
+  // message getters return pointers, der5).
+  resultscache.CachingOptions cachingOptions = 12 [(wiresmith.options.customname) = "CachingOpts"];
 }
 
 message LokiInstantRequest {
@@ -55,7 +58,10 @@ message LokiInstantRequest {
     (wiresmith.options.pointer) = true,
     (wiresmith.options.jsontag) = "storeChunks"
   ];
-  resultscache.CachingOptions cachingOptions = 9;
+  // CachingOpts frees the GetCachingOptions identifier for a hand-written
+  // value getter satisfying the definitions.Request interface (wiresmith
+  // message getters return pointers, der5).
+  resultscache.CachingOptions cachingOptions = 9 [(wiresmith.options.customname) = "CachingOpts"];
 }
 
 message Plan {

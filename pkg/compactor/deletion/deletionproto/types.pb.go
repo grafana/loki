@@ -683,7 +683,12 @@ func (m *DeleteRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.UserID) > 0 {
 		i -= len(m.UserID)
 		copy(dAtA[i:], m.UserID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		if len(m.UserID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.UserID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		}
 		i--
 		dAtA[i] = 0x3a
 	}
@@ -695,14 +700,24 @@ func (m *DeleteRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Status) > 0 {
 		i -= len(m.Status)
 		copy(dAtA[i:], m.Status)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Status)))
+		if len(m.Status) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Status))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Status)))
+		}
 		i--
 		dAtA[i] = 0x2a
 	}
 	if len(m.Query) > 0 {
 		i -= len(m.Query)
 		copy(dAtA[i:], m.Query)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Query)))
+		if len(m.Query) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Query))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Query)))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
@@ -719,7 +734,12 @@ func (m *DeleteRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.RequestID) > 0 {
 		i -= len(m.RequestID)
 		copy(dAtA[i:], m.RequestID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.RequestID)))
+		if len(m.RequestID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.RequestID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.RequestID)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -771,7 +791,12 @@ func (m *DeletionManifest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -781,7 +806,12 @@ func (m *DeletionManifest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -820,7 +850,12 @@ func (m *ChunkIDs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	for iNdEx := len(m.IDs) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.IDs[iNdEx])
 		copy(dAtA[i:], m.IDs[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.IDs[iNdEx])))
+		if len(m.IDs[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.IDs[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.IDs[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -863,15 +898,30 @@ func (m *ChunksGroup) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 		i -= len(k)
 		copy(dAtA[i:], k)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+		if len(k) <= 0x7F {
+			dAtA[i-1] = uint8(len(k))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+		}
 		i--
 		dAtA[i] = 0x0a
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+		if baseI-i <= 0x7F {
+			dAtA[i-1] = uint8(baseI - i)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -881,7 +931,12 @@ func (m *ChunksGroup) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -928,21 +983,36 @@ func (m *Segment) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
 	if len(m.UserID) > 0 {
 		i -= len(m.UserID)
 		copy(dAtA[i:], m.UserID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		if len(m.UserID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.UserID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.TableName) > 0 {
 		i -= len(m.TableName)
 		copy(dAtA[i:], m.TableName)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TableName)))
+		if len(m.TableName) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.TableName))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TableName)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -984,28 +1054,48 @@ func (m *DeletionJob) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
 	for iNdEx := len(m.ChunkIDs) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.ChunkIDs[iNdEx])
 		copy(dAtA[i:], m.ChunkIDs[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ChunkIDs[iNdEx])))
+		if len(m.ChunkIDs[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.ChunkIDs[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ChunkIDs[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
 	if len(m.UserID) > 0 {
 		i -= len(m.UserID)
 		copy(dAtA[i:], m.UserID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		if len(m.UserID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.UserID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.TableName) > 0 {
 		i -= len(m.TableName)
 		copy(dAtA[i:], m.TableName)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TableName)))
+		if len(m.TableName) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.TableName))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TableName)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1106,7 +1196,12 @@ func (m *StorageUpdates) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	for iNdEx := len(m.ChunksToDeIndex) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.ChunksToDeIndex[iNdEx])
 		copy(dAtA[i:], m.ChunksToDeIndex[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ChunksToDeIndex[iNdEx])))
+		if len(m.ChunksToDeIndex[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.ChunksToDeIndex[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ChunksToDeIndex[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -1117,15 +1212,30 @@ func (m *StorageUpdates) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 		i -= len(k)
 		copy(dAtA[i:], k)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+		if len(k) <= 0x7F {
+			dAtA[i-1] = uint8(len(k))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+		}
 		i--
 		dAtA[i] = 0x0a
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+		if baseI-i <= 0x7F {
+			dAtA[i-1] = uint8(baseI - i)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -1168,29 +1278,54 @@ func (m *StorageUpdatesCollection) MarshalToSizedBuffer(dAtA []byte) (int, error
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 		i -= len(k)
 		copy(dAtA[i:], k)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+		if len(k) <= 0x7F {
+			dAtA[i-1] = uint8(len(k))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(k)))
+		}
 		i--
 		dAtA[i] = 0x0a
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+		if baseI-i <= 0x7F {
+			dAtA[i-1] = uint8(baseI - i)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
 	if len(m.UserID) > 0 {
 		i -= len(m.UserID)
 		copy(dAtA[i:], m.UserID)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		if len(m.UserID) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.UserID))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.UserID)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.TableName) > 0 {
 		i -= len(m.TableName)
 		copy(dAtA[i:], m.TableName)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TableName)))
+		if len(m.TableName) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.TableName))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TableName)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

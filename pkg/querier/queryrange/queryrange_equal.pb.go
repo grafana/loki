@@ -80,7 +80,7 @@ func (this *LokiRequest) Equal(that interface{}) bool {
 	if this.StoreChunks != nil && !this.StoreChunks.Equal(that1.StoreChunks) {
 		return false
 	}
-	if !this.CachingOptions.Equal(that1.CachingOptions) {
+	if !this.CachingOpts.Equal(that1.CachingOpts) {
 		return false
 	}
 	return true
@@ -137,7 +137,7 @@ func (this *LokiInstantRequest) Equal(that interface{}) bool {
 	if this.StoreChunks != nil && !this.StoreChunks.Equal(that1.StoreChunks) {
 		return false
 	}
-	if !this.CachingOptions.Equal(that1.CachingOptions) {
+	if !this.CachingOpts.Equal(that1.CachingOpts) {
 		return false
 	}
 	return true

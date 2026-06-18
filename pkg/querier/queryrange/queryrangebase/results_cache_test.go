@@ -34,12 +34,12 @@ var (
 		Query: "sum(container_memory_rss) by (namespace)",
 	}
 	noCacheRequest = &PrometheusRequest{
-		Path:           "/api/v1/query_range",
-		Start:          time.UnixMilli(1536673680 * 1e3),
-		End:            time.UnixMilli(1536716898 * 1e3),
-		Step:           120 * 1e3,
-		Query:          "sum(container_memory_rss) by (namespace)",
-		CachingOptions: CachingOptions{Disabled: true},
+		Path:        "/api/v1/query_range",
+		Start:       time.UnixMilli(1536673680 * 1e3),
+		End:         time.UnixMilli(1536716898 * 1e3),
+		Step:        120 * 1e3,
+		Query:       "sum(container_memory_rss) by (namespace)",
+		CachingOpts: CachingOptions{Disabled: true},
 	}
 	respHeaders = []*PrometheusResponseHeader{
 		{

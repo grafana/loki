@@ -137,14 +137,24 @@ func (m *PrometheusRequestHeader) MarshalToSizedBuffer(dAtA []byte) (int, error)
 	for iNdEx := len(m.Values) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.Values[iNdEx])
 		copy(dAtA[i:], m.Values[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Values[iNdEx])))
+		if len(m.Values[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Values[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Values[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
 		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		if len(m.Name) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Name))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -183,14 +193,24 @@ func (m *PrometheusResponseHeader) MarshalToSizedBuffer(dAtA []byte) (int, error
 	for iNdEx := len(m.Values) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.Values[iNdEx])
 		copy(dAtA[i:], m.Values[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Values[iNdEx])))
+		if len(m.Values[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Values[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Values[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
 		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		if len(m.Name) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Name))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

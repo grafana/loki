@@ -247,14 +247,24 @@ func (m *SectionRef) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	for iNdEx := len(m.MaxKey) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.MaxKey[iNdEx])
 		copy(dAtA[i:], m.MaxKey[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MaxKey[iNdEx])))
+		if len(m.MaxKey[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.MaxKey[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MaxKey[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
 	for iNdEx := len(m.MinKey) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.MinKey[iNdEx])
 		copy(dAtA[i:], m.MinKey[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MinKey[iNdEx])))
+		if len(m.MinKey[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.MinKey[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MinKey[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -266,7 +276,12 @@ func (m *SectionRef) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.ObjectPath) > 0 {
 		i -= len(m.ObjectPath)
 		copy(dAtA[i:], m.ObjectPath)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ObjectPath)))
+		if len(m.ObjectPath) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.ObjectPath))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ObjectPath)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -308,7 +323,12 @@ func (m *RunRef) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -350,14 +370,24 @@ func (m *TaskSpec) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
 	if len(m.Tenant) > 0 {
 		i -= len(m.Tenant)
 		copy(dAtA[i:], m.Tenant)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Tenant)))
+		if len(m.Tenant) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Tenant))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Tenant)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

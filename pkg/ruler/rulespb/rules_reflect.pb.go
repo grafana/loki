@@ -6,9 +6,9 @@ package rulespb
 import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/wiresmith/protohelpers"
+	"github.com/grafana/wiresmith/types/known/anypb"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoimpl"
-	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"reflect"
 	"unsafe"

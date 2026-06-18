@@ -67,6 +67,14 @@ func (r *LokiRequest) GetStart() time.Time {
 	return r.StartTs
 }
 
+// GetCachingOptions implements queryrangebase.Request with a value-typed
+// getter; the wiresmith-generated accessor is GetCachingOpts and returns a
+// pointer (der5: uniform pointer getters). The field is customname-renamed
+// to CachingOpts to free this identifier.
+func (r *LokiRequest) GetCachingOptions() resultscache.CachingOptions {
+	return r.CachingOpts
+}
+
 func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Request {
 	clone := *r
 	clone.StartTs = s
@@ -114,6 +122,14 @@ func (r *LokiInstantRequest) GetEnd() time.Time {
 
 func (r *LokiInstantRequest) GetStart() time.Time {
 	return r.TimeTs
+}
+
+// GetCachingOptions implements queryrangebase.Request with a value-typed
+// getter; the wiresmith-generated accessor is GetCachingOpts and returns a
+// pointer (der5: uniform pointer getters). The field is customname-renamed
+// to CachingOpts to free this identifier.
+func (r *LokiInstantRequest) GetCachingOptions() resultscache.CachingOptions {
+	return r.CachingOpts
 }
 
 func (r *LokiInstantRequest) WithStartEnd(s time.Time, _ time.Time) queryrangebase.Request {
@@ -343,7 +359,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
-		req.CachingOptions = queryrangebase.CachingOptions{
+		req.CachingOpts = queryrangebase.CachingOptions{
 			Disabled: disableCacheReq,
 		}
 
@@ -354,7 +370,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
-		req.CachingOptions = queryrangebase.CachingOptions{
+		req.CachingOpts = queryrangebase.CachingOptions{
 			Disabled: disableCacheReq,
 		}
 
@@ -418,7 +434,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Step:         0,
 			TargetLabels: req.TargetLabels,
 			AggregateBy:  req.AggregateBy,
-			CachingOptions: queryrangebase.CachingOptions{
+			CachingOpts: queryrangebase.CachingOptions{
 				Disabled: disableCacheReq,
 			},
 		}, err
@@ -436,7 +452,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Step:         req.Step.Milliseconds(),
 			TargetLabels: req.TargetLabels,
 			AggregateBy:  req.AggregateBy,
-			CachingOptions: queryrangebase.CachingOptions{
+			CachingOpts: queryrangebase.CachingOptions{
 				Disabled: disableCacheReq,
 			},
 		}, err
@@ -1886,7 +1902,7 @@ func (p paramsRangeWrapper) Shards() []string {
 }
 
 func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {
-	return p.LokiRequest.CachingOptions
+	return p.LokiRequest.CachingOpts
 }
 
 type paramsInstantWrapper struct {
@@ -1922,7 +1938,7 @@ func (p paramsInstantWrapper) Shards() []string {
 }
 
 func (p paramsInstantWrapper) CachingOptions() resultscache.CachingOptions {
-	return p.LokiInstantRequest.CachingOptions
+	return p.LokiInstantRequest.CachingOpts
 }
 
 type paramsSeriesWrapper struct {

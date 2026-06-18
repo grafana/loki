@@ -370,7 +370,12 @@ func (m *FilterChunkRefRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	for iNdEx := len(m.Blocks) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.Blocks[iNdEx])
 		copy(dAtA[i:], m.Blocks[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Blocks[iNdEx])))
+		if len(m.Blocks[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Blocks[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Blocks[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x32
 	}
@@ -396,7 +401,12 @@ func (m *FilterChunkRefRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -451,7 +461,12 @@ func (m *FilterChunkRefResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) 
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}
@@ -540,7 +555,12 @@ func (m *GroupedChunkRefs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x22
 	}
@@ -553,14 +573,24 @@ func (m *GroupedChunkRefs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
 		i--
 		dAtA[i] = 0x1a
 	}
 	if len(m.Tenant) > 0 {
 		i -= len(m.Tenant)
 		copy(dAtA[i:], m.Tenant)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Tenant)))
+		if len(m.Tenant) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Tenant))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Tenant)))
+		}
 		i--
 		dAtA[i] = 0x12
 	}
@@ -604,7 +634,12 @@ func (m *PrefetchBloomBlocksRequest) MarshalToSizedBuffer(dAtA []byte) (int, err
 	for iNdEx := len(m.Blocks) - 1; iNdEx >= 0; iNdEx-- {
 		i -= len(m.Blocks[iNdEx])
 		copy(dAtA[i:], m.Blocks[iNdEx])
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Blocks[iNdEx])))
+		if len(m.Blocks[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Blocks[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Blocks[iNdEx])))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

@@ -84,7 +84,12 @@ func (m *ProtoULID) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if len(m.Value) > 0 {
 		i -= len(m.Value)
 		copy(dAtA[i:], m.Value)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value)))
+		if len(m.Value) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Value))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value)))
+		}
 		i--
 		dAtA[i] = 0x0a
 	}

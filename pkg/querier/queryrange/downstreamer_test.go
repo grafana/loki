@@ -360,7 +360,7 @@ func TestParamsToLokiRequest(t *testing.T) {
 				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(qs),
 				},
-				CachingOptions: resultscache.CachingOptions{
+				CachingOpts: resultscache.CachingOptions{
 					Disabled: false,
 				},
 			},
@@ -381,7 +381,7 @@ func TestParamsToLokiRequest(t *testing.T) {
 				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(qs),
 				},
-				CachingOptions: resultscache.CachingOptions{
+				CachingOpts: resultscache.CachingOptions{
 					Disabled: true,
 				},
 			},

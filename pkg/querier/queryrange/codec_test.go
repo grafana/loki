@@ -336,7 +336,7 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"}`),
 				},
-				CachingOptions: queryrangebase.CachingOptions{
+				CachingOpts: queryrangebase.CachingOptions{
 					Disabled: true,
 				},
 			},
@@ -365,7 +365,7 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"}`),
 				},
-				CachingOptions: queryrangebase.CachingOptions{
+				CachingOpts: queryrangebase.CachingOptions{
 					Disabled: true,
 				},
 			},
@@ -398,7 +398,7 @@ func TestParamsFromRequest_CachingOptions(t *testing.T) {
 				StartTs: start,
 				EndTs:   end,
 				Plan:    plan.QueryPlan{AST: expr},
-				CachingOptions: queryrangebase.CachingOptions{
+				CachingOpts: queryrangebase.CachingOptions{
 					Disabled: true,
 				},
 			},
@@ -409,7 +409,7 @@ func TestParamsFromRequest_CachingOptions(t *testing.T) {
 				Query:  `{foo="bar"}`,
 				TimeTs: start,
 				Plan:   plan.QueryPlan{AST: expr},
-				CachingOptions: queryrangebase.CachingOptions{
+				CachingOpts: queryrangebase.CachingOptions{
 					Disabled: true,
 				},
 			},

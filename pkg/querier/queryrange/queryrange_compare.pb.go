@@ -121,7 +121,7 @@ func (this *LokiRequest) Compare(that interface{}) int {
 			return c
 		}
 	}
-	if c := this.CachingOptions.Compare(that1.CachingOptions); c != 0 {
+	if c := this.CachingOpts.Compare(that1.CachingOpts); c != 0 {
 		return c
 	}
 	return 0
@@ -207,7 +207,7 @@ func (this *LokiInstantRequest) Compare(that interface{}) int {
 			return c
 		}
 	}
-	if c := this.CachingOptions.Compare(that1.CachingOptions); c != 0 {
+	if c := this.CachingOpts.Compare(that1.CachingOpts); c != 0 {
 		return c
 	}
 	return 0
