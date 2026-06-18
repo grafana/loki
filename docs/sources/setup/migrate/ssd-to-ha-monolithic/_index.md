@@ -18,7 +18,7 @@ Simple Scalable Deployment (SSD) mode is being deprecated and will be removed wi
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
-This guide assumes a Docker compose setup with NGINX as gateway. However, the migration process can be mirrored for other deployment methods (Helm, Tanka, etc) as well.
+This guide assumes a Docker compose setup with NGINX as gateway. However, the migration process can be mirrored for other deployment methods (Helm, Tanka, etc.) as well.
 {{< /admonition >}}
 
 ## Considerations
