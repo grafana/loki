@@ -184,6 +184,80 @@ func TestRecordFrameTraffic(t *testing.T) {
 	)))
 }
 
+func TestRecvMessagesInfersPlaneBeforeRecordingFrameTraffic(t *testing.T) {
+	tests := []struct {
+		name    string
+		message Message
+		want    Plane
+	}{
+		{name: "stream data is data plane", message: StreamDataMessage{}, want: PlaneData},
+		{name: "worker hello is control plane", message: WorkerHelloMessage{}, want: PlaneControl},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewMetrics()
+			frame := MessageFrame{ID: 42, Message: tt.message}
+			size := 123
+
+			conn := &scriptedRecvConn{frame: frame, size: size}
+			p := &Peer{
+				Metrics: m,
+				Conn:    conn,
+				Role:    RoleScheduler,
+				Buffer:  1,
+			}
+			p.lazyInit()
+
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() { done <- p.recvMessages(ctx) }()
+
+			select {
+			case queued := <-p.incoming:
+				require.Equal(t, tt.want, queued.plane)
+			case <-time.After(time.Second):
+				t.Fatal("timeout waiting for queued message")
+			}
+
+			cancel()
+			require.NoError(t, <-done)
+
+			messageType := tt.message.Kind().String()
+			require.Equal(t, 1.0, testutil.ToFloat64(m.framesTotal.WithLabelValues(
+				string(RoleScheduler),
+				string(tt.want),
+				messageDirectionReceived,
+				FrameKindMessage.String(),
+				messageType,
+			)))
+			require.Equal(t, float64(size), testutil.ToFloat64(m.frameBytesTotal.WithLabelValues(
+				string(RoleScheduler),
+				string(tt.want),
+				messageDirectionReceived,
+				FrameKindMessage.String(),
+				messageType,
+			)))
+			require.Equal(t, 0.0, testutil.ToFloat64(m.framesTotal.WithLabelValues(
+				string(RoleScheduler),
+				string(PlaneUnknown),
+				messageDirectionReceived,
+				FrameKindMessage.String(),
+				messageType,
+			)))
+		})
+	}
+}
+
+func TestInferPlaneFromMessageDoesNotOverwriteKnownPlane(t *testing.T) {
+	p := &Peer{}
+	p.SetPlane(PlaneControl)
+	p.inferPlaneFromMessage(StreamDataMessage{})
+
+	_, plane := p.labels()
+	require.Equal(t, PlaneControl, plane)
+}
+
 func TestRecvMessagesRecordsAckFrameWithRequestMessageType(t *testing.T) {
 	m := NewMetrics()
 	ackFrame := AckFrame{ID: 42}

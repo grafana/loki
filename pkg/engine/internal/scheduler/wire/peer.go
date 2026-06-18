@@ -100,6 +100,23 @@ func (p *Peer) labels() (Role, Plane) {
 	return role, plane
 }
 
+func (p *Peer) inferPlaneFromMessage(message Message) {
+	// Frame traffic is recorded before the application handler runs. Classify
+	// new peers from the first message frame so those bytes don't land on the
+	// unknown plane; already-classified peers keep their existing plane.
+	_, plane := p.labels()
+	if plane != PlaneUnknown || message == nil {
+		return
+	}
+
+	switch message.Kind() {
+	case MessageKindStreamData:
+		p.SetPlane(PlaneData)
+	default:
+		p.SetPlane(PlaneControl)
+	}
+}
+
 type queuedMessage struct {
 	frame      MessageFrame
 	role       Role
@@ -156,10 +173,11 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 		}
 
 		p.Metrics.incFrameReceived(frame)
-		role, plane := p.labels()
 
 		switch frame := frame.(type) {
 		case MessageFrame:
+			p.inferPlaneFromMessage(frame.Message)
+			role, plane := p.labels()
 			messageType := frameMessageType(frame)
 			if hasFrameSize {
 				p.Metrics.recordFrame(role, plane, messageDirectionReceived, frame, messageType, frameSize)
@@ -177,6 +195,7 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 			}
 
 		case AckFrame:
+			role, plane := p.labels()
 			// If there's still a listener for this request, inform them of
 			// the success.
 			var req *request
@@ -199,6 +218,7 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 			}
 
 		case NackFrame:
+			role, plane := p.labels()
 			// If there's still a listener for this request, inform them of
 			// the error.
 			var req *request
@@ -221,6 +241,7 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 			}
 
 		case DiscardFrame:
+			role, plane := p.labels()
 			if hasFrameSize {
 				p.Metrics.recordFrame(role, plane, messageDirectionReceived, frame, frameMessageType(frame), frameSize)
 			}
