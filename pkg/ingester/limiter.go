@@ -33,6 +33,7 @@ type Limits interface {
 	PolicyMaxLocalStreamsPerUser(userID, policy string) int
 	PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool)
 	PerStreamRateLimit(userID string) validation.RateLimit
+	PolicyPerStreamRateLimit(userID, policy string) (validation.RateLimit, bool)
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
 
@@ -260,7 +261,7 @@ func (l *streamCountLimiter) getSuppliers(tenant string, policy string) (streamC
 }
 
 type RateLimiterStrategy interface {
-	RateLimit(tenant string) validation.RateLimit
+	RateLimit(tenant, policy string) validation.RateLimit
 	SetDisabled(bool)
 }
 
@@ -269,9 +270,17 @@ type TenantBasedStrategy struct {
 	limits   Limits
 }
 
-func (l *TenantBasedStrategy) RateLimit(tenant string) validation.RateLimit {
+func (l *TenantBasedStrategy) RateLimit(tenant, policy string) validation.RateLimit {
 	if l.disabled {
 		return validation.Unlimited
+	}
+
+	// A per-policy override replaces the tenant per-stream rate limit for streams
+	// resolved to that policy.
+	if policy != noPolicy {
+		if rl, ok := l.limits.PolicyPerStreamRateLimit(tenant, policy); ok {
+			return rl
+		}
 	}
 
 	return l.limits.PerStreamRateLimit(tenant)
@@ -283,7 +292,7 @@ func (l *TenantBasedStrategy) SetDisabled(disabled bool) {
 
 type NoLimitsStrategy struct{}
 
-func (l *NoLimitsStrategy) RateLimit(_ string) validation.RateLimit {
+func (l *NoLimitsStrategy) RateLimit(_, _ string) validation.RateLimit {
 	return validation.Unlimited
 }
 
@@ -296,15 +305,17 @@ type StreamRateLimiter struct {
 	recheckAt     time.Time
 	strategy      RateLimiterStrategy
 	tenant        string
+	policy        string
 	lim           *rate.Limiter
 }
 
-func NewStreamRateLimiter(strategy RateLimiterStrategy, tenant string, recheckPeriod time.Duration) *StreamRateLimiter {
-	rl := strategy.RateLimit(tenant)
+func NewStreamRateLimiter(strategy RateLimiterStrategy, tenant, policy string, recheckPeriod time.Duration) *StreamRateLimiter {
+	rl := strategy.RateLimit(tenant, policy)
 	return &StreamRateLimiter{
 		recheckPeriod: recheckPeriod,
 		strategy:      strategy,
 		tenant:        tenant,
+		policy:        policy,
 		lim:           rate.NewLimiter(rl.Limit, rl.Burst),
 	}
 }
@@ -317,7 +328,7 @@ func (l *StreamRateLimiter) AllowN(at time.Time, n int) bool {
 		oldLim := l.lim.Limit()
 		oldBurst := l.lim.Burst()
 
-		next := l.strategy.RateLimit(l.tenant)
+		next := l.strategy.RateLimit(l.tenant, l.policy)
 
 		if oldLim != next.Limit || oldBurst != next.Burst {
 			// Edge case: rate.Inf doesn't advance nicely when reconfigured.

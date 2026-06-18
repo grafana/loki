@@ -498,6 +498,54 @@ func TestPushRateLimit(t *testing.T) {
 	require.Equal(t, 20.0, tracker.discardedBytes)
 }
 
+func TestPushRateLimitPolicyOverride(t *testing.T) {
+	const policy = "finance"
+	// Tenant limit is generous (would allow the push), but the per-policy override is strict
+	// and must REPLACE it for streams resolved to the policy.
+	l := validation.Limits{
+		PerStreamRateLimit:      100,
+		PerStreamRateLimitBurst: 100,
+		PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
+			policy: {
+				PerStreamRateLimit:      10,
+				PerStreamRateLimitBurst: 10,
+			},
+		},
+	}
+	limits, err := validation.NewOverrides(l, nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
+	s := newStream(
+		chunkfmt,
+		headfmt,
+		defaultConfig(),
+		limiter.rateLimitStrategy,
+		"fake",
+		model.Fingerprint(0),
+		labels.FromStrings("foo", "bar"),
+		NewStreamRateCalculator(),
+		NilMetrics,
+		nil,
+		nil,
+		retentionHours,
+		policy,
+	)
+
+	entries := []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaaa"},
+		{Timestamp: time.Unix(1, 0), Line: "aaaaaaaaab"},
+	}
+	tracker := &mockUsageTracker{}
+	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true, tracker, "loki")
+	require.Error(t, err)
+	// The error must reference the policy override limit (10), not the tenant limit (100).
+	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PolicyOverrideLimits[policy].PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
+	require.Equal(t, 20.0, tracker.discardedBytes)
+}
+
 func TestPushRateLimitAllOrNothing(t *testing.T) {
 	l := validation.Limits{
 		PerStreamRateLimit:      10,

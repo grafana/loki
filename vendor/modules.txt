@@ -914,7 +914,7 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 ## explicit; go 1.20
 github.com/gorilla/websocket
-# github.com/grafana/dskit v0.0.0-20260605193902-3f568b4219b0
+# github.com/grafana/dskit v0.0.0-20260617075001-eedb5a2df869
 ## explicit; go 1.25.8
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/cancellation
@@ -967,8 +967,8 @@ github.com/grafana/jsonparser
 # github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952 => ./pkg/push
 ## explicit; go 1.26.4
 github.com/grafana/loki/pkg/push
-# github.com/grafana/otel-profiling-go v0.5.1
-## explicit; go 1.16
+# github.com/grafana/otel-profiling-go v0.6.0
+## explicit; go 1.25.0
 github.com/grafana/otel-profiling-go
 # github.com/grafana/pyroscope-go/godeltaprof v0.1.9
 ## explicit; go 1.18
