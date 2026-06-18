@@ -15,6 +15,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
@@ -119,7 +120,7 @@ func TestServicePortToPodPort(t *testing.T) {
 				WithScheme(scheme.Scheme).
 				Build()
 
-			gotPorts, err := ServicePortToPodPort(context.Background(), logr.Discard(), k, storage.Options{
+			gotPorts, err := portToPodPort(context.Background(), logr.Discard(), k, storage.Options{
 				S3: &storage.S3StorageConfig{
 					Endpoint: tt.endpoint,
 				},
@@ -374,6 +375,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 		stack         lokiv1.LokiStack
 		service       *corev1.Service
 		endpointSlice *discoveryv1.EndpointSlice
+		featureGates  configv1.FeatureGates
 		expectedPorts []int32
 		expectedError bool
 	}{
@@ -452,17 +454,15 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 			expectedPorts: []int32{5000, 443},
 		},
 		{
-			name: "Swift endpoint with OpenShift logging mode",
+			name: "Swift endpoint with OpenShift feature gate enabled (no logging mode)",
 			objStore: storage.Options{
 				Swift: &storage.SwiftStorageConfig{
 					AuthURL: "http://swift.example.com:5000/v3",
 				},
 			},
-			stack: lokiv1.LokiStack{
-				Spec: lokiv1.LokiStackSpec{
-					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftLogging,
-					},
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled: true,
 				},
 			},
 			expectedPorts: []int32{5000, 13808},
@@ -567,7 +567,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 
 			logger := log.NewLogger("")
 
-			ports, err := DetermineObjectStoragePorts(context.Background(), logger, k.Build(), tt.objStore, tt.stack)
+			ports, err := DetermineObjectStoragePorts(context.Background(), logger, k.Build(), tt.objStore, tt.stack, tt.featureGates)
 
 			if tt.expectedError {
 				require.Error(t, err)

@@ -214,5 +214,5 @@ func TestRefreshSuccess_NetworkPolicyPorts(t *testing.T) {
 		t.Fatalf("not a LokiStack: %T", updatedStack)
 	}
 
-	require.Equal(t, []int32{443}, updatedStack.Status.NetworkPolicyStatus.ObjectStoragePorts)
+	require.Equal(t, []int32{443}, updatedStack.Status.NetworkPolicyStatus.ObjectStorageAllowedEgressPorts)
 }

@@ -12,7 +12,6 @@ import (
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestBuildNetworkPolicies(t *testing.T) {
@@ -320,133 +319,31 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 		expectedPorts []int32
 	}{
 		{
-			name: "AWS S3 endpoint without port (defaults to 443)",
+			name: "single port",
 			opts: Options{
-				Name:      "test",
-				Namespace: "test-ns",
-				ObjectStorage: storage.Options{
-					SharedStore: lokiv1.ObjectStorageSecretS3,
-					S3: &storage.S3StorageConfig{
-						Endpoint: "https://s3.amazonaws.com",
-					},
-				},
+				Name:                       "test",
+				Namespace:                  "test-ns",
+				NetworkPolicyObjStorePorts: []int32{443},
 			},
 			expectedPorts: []int32{443},
 		},
 		{
-			name: "MinIO k8s service endpoint with custom port",
+			name: "multiple ports",
 			opts: Options{
 				Name:                       "test",
 				Namespace:                  "test-ns",
-				NetworkPolicyObjStorePorts: []int32{9000},
-				ObjectStorage: storage.Options{
-					SharedStore: lokiv1.ObjectStorageSecretS3,
-					S3: &storage.S3StorageConfig{
-						Endpoint: "http://minio.test.svc.cluster.local:9000",
-					},
-				},
+				NetworkPolicyObjStorePorts: []int32{9000, 8080, 6443},
 			},
-			expectedPorts: []int32{9000},
+			expectedPorts: []int32{9000, 8080, 6443},
 		},
 		{
-			name: "MinIO simple hostname with port",
+			name: "empty ports",
 			opts: Options{
 				Name:                       "test",
 				Namespace:                  "test-ns",
-				NetworkPolicyObjStorePorts: []int32{8080},
-				ObjectStorage: storage.Options{
-					SharedStore: lokiv1.ObjectStorageSecretS3,
-					S3: &storage.S3StorageConfig{
-						Endpoint: "minio.test.svc.cluster.local:8080",
-					},
-				},
+				NetworkPolicyObjStorePorts: []int32{},
 			},
-			expectedPorts: []int32{8080},
-		},
-		{
-			name: "Swift endpoint with default SSL port",
-			opts: Options{
-				Name:                       "test",
-				Namespace:                  "test-ns",
-				NetworkPolicyObjStorePorts: []int32{5000, 443},
-				ObjectStorage: storage.Options{
-					SharedStore: lokiv1.ObjectStorageSecretSwift,
-					Swift: &storage.SwiftStorageConfig{
-						AuthURL: "http://keystone.openstack.svc.cluster.local:5000/v3",
-					},
-				},
-			},
-			expectedPorts: []int32{5000, 443},
-		},
-		{
-			name: "Swift endpoint with OpenStack OpenShift default SSL port",
-			opts: Options{
-				Name:                       "test",
-				Namespace:                  "test-ns",
-				NetworkPolicyObjStorePorts: []int32{5000, 13808},
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
-						Enabled: true,
-					},
-				},
-				ObjectStorage: storage.Options{
-					SharedStore: lokiv1.ObjectStorageSecretSwift,
-					Swift: &storage.SwiftStorageConfig{
-						AuthURL: "http://keystone.openstack.svc.cluster.local:5000/v3",
-					},
-				},
-			},
-			expectedPorts: []int32{5000, 13808},
-		},
-		{
-			name: "AlibabaCloud endpoint with custom port",
-			opts: Options{
-				Name:                       "test",
-				Namespace:                  "test-ns",
-				NetworkPolicyObjStorePorts: []int32{8080},
-				ObjectStorage: storage.Options{
-					SharedStore: lokiv1.ObjectStorageSecretAlibabaCloud,
-					AlibabaCloud: &storage.AlibabaCloudStorageConfig{
-						Endpoint: "http://oss-emulator.default.svc.cluster.local:8080",
-					},
-				},
-			},
-			expectedPorts: []int32{8080},
-		},
-		{
-			name: "AlibabaCloud endpoint without port (defaults to 443)",
-			opts: Options{
-				Name:      "test",
-				Namespace: "test-ns",
-				ObjectStorage: storage.Options{
-					SharedStore: lokiv1.ObjectStorageSecretAlibabaCloud,
-					AlibabaCloud: &storage.AlibabaCloudStorageConfig{
-						Endpoint: "https://oss-cn-hangzhou.aliyuncs.com",
-					},
-				},
-			},
-			expectedPorts: []int32{443},
-		},
-		{
-			name: "HTTPS proxy endpoint with custom port",
-			opts: Options{
-				Name:                       "test",
-				Namespace:                  "test-ns",
-				NetworkPolicyObjStorePorts: []int32{443, 8080, 6443},
-				ObjectStorage: storage.Options{
-					SharedStore: lokiv1.ObjectStorageSecretS3,
-					S3: &storage.S3StorageConfig{
-						Endpoint: "https://s3.amazonaws.com",
-					},
-				},
-				Stack: lokiv1.LokiStackSpec{
-					Proxy: &lokiv1.ClusterProxy{
-						HTTPProxy:  "http://proxy.example.com:8080",
-						HTTPSProxy: "http://proxy.example.com:6443",
-					},
-				},
-			},
-			expectedPorts: []int32{443, 8080, 6443},
+			expectedPorts: []int32{},
 		},
 	}
 
@@ -471,10 +368,11 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 			egressRule := policy.Spec.Egress[0]
 			require.Empty(t, egressRule.To, "Egress should allow to any destination")
 
-			// Verify the port
-			require.Len(t, egressRule.Ports, len(tc.expectedPorts), "Ports array should have the expected length")
+			// Verify ports match what was provided in NetworkPolicyObjStorePorts
+			require.Len(t, egressRule.Ports, len(tc.expectedPorts), "Ports array should match NetworkPolicyObjStorePorts length")
 			for i, port := range egressRule.Ports {
-				require.Equal(t, tc.expectedPorts[i], port.Port.IntVal, "Port should match expected value")
+				require.Equal(t, tc.expectedPorts[i], port.Port.IntVal, "Port should match NetworkPolicyObjStorePorts value")
+				require.Equal(t, corev1.ProtocolTCP, *port.Protocol)
 			}
 		})
 	}

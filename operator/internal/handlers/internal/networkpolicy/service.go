@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
@@ -24,7 +25,7 @@ var (
 	errMissingWantedPort     = errors.New("couldn't resolve object storage service port to target Pod port")
 )
 
-func ServicePortToPodPort(ctx context.Context, log logr.Logger, k k8s.Client, objStore storage.Options) ([]int32, error) {
+func portToPodPort(ctx context.Context, log logr.Logger, k k8s.Client, objStore storage.Options) ([]int32, error) {
 	if objStore.S3 == nil {
 		return []int32{}, nil
 	}
@@ -147,10 +148,10 @@ func resolveTargetPort(service *corev1.Service, endpointSlices *discoveryv1.Endp
 	return 0
 }
 
-func DetermineObjectStoragePorts(ctx context.Context, log logr.Logger, k k8s.Client, objStore storage.Options, stack lokiv1.LokiStack) ([]int32, error) {
+func DetermineObjectStoragePorts(ctx context.Context, log logr.Logger, k k8s.Client, objStore storage.Options, stack lokiv1.LokiStack, fg configv1.FeatureGates) ([]int32, error) {
 	ports := []int32{}
 
-	servicePorts, err := ServicePortToPodPort(ctx, log, k, objStore)
+	servicePorts, err := portToPodPort(ctx, log, k, objStore)
 	if err != nil {
 		return nil, err
 	}
@@ -159,8 +160,7 @@ func DetermineObjectStoragePorts(ctx context.Context, log logr.Logger, k k8s.Cli
 	}
 
 	if len(ports) == 0 {
-		openShiftLogging := stack.Spec.Tenants != nil && stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging
-		ports = getEndpointPort(objStore, openShiftLogging)
+		ports = endpointPort(objStore, fg.OpenShift.Enabled)
 	}
 
 	// Default to HTTPS if no ports determined
@@ -169,12 +169,12 @@ func DetermineObjectStoragePorts(ctx context.Context, log logr.Logger, k k8s.Cli
 	}
 
 	// Add proxy ports if configured
-	ports = append(ports, getProxyPorts(stack.Spec.Proxy)...)
+	ports = append(ports, proxyPorts(stack.Spec.Proxy)...)
 
 	return ports, nil
 }
 
-func getProxyPorts(proxy *lokiv1.ClusterProxy) []int32 {
+func proxyPorts(proxy *lokiv1.ClusterProxy) []int32 {
 	if proxy == nil {
 		return []int32{}
 	}
@@ -193,7 +193,7 @@ func getProxyPorts(proxy *lokiv1.ClusterProxy) []int32 {
 	return proxyPorts
 }
 
-func getEndpointPort(storageOpts storage.Options, openShiftEnabled bool) []int32 {
+func endpointPort(storageOpts storage.Options, openShiftEnabled bool) []int32 {
 	// Many self-hosted object storage solutions use S3 API endpoints
 	// so we have to check for a port
 	if storageOpts.S3 != nil && storageOpts.S3.Endpoint != "" {
