@@ -219,9 +219,9 @@ func (b *topkBatch) less(left, right *topkReference) bool {
 
 	switch {
 	case b.Ascending:
-		return left.LabelHash < right.LabelHash
-	default:
 		return left.LabelHash > right.LabelHash
+	default:
+		return left.LabelHash < right.LabelHash
 	}
 }
 
