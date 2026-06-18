@@ -623,72 +623,74 @@ pattern_rate_threshold: 0.0
 	}
 }
 
+func ptr[T any](v T) *T { return &v }
+
 func TestLimits_PolicyOverrideLimits(t *testing.T) {
 	limits := &Limits{
 		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
-			"finance": {
-				MaxLocalStreamsPerUser:  100,
-				MaxGlobalStreamsPerUser: 1000,
-			},
-			"ops": {
-				MaxLocalStreamsPerUser:  50,
-				MaxGlobalStreamsPerUser: 500,
-			},
+			"finance": {MaxLocalStreamsPerUser: ptr(100), MaxGlobalStreamsPerUser: ptr(1000)},
+			"ops":     {MaxLocalStreamsPerUser: ptr(50), MaxGlobalStreamsPerUser: ptr(500)},
+			// Only local set: the global accessor must report "not overridden" (inherit tenant).
+			"partial": {MaxLocalStreamsPerUser: ptr(7)},
 		},
 	}
 
-	overrides := &Overrides{
-		defaultLimits: limits,
-		tenantLimits:  nil,
-	}
+	overrides := &Overrides{defaultLimits: limits, tenantLimits: nil}
 
-	// Test policy-specific limits
-	require.Equal(t, 100, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance"))
-	limit, ok := overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
+	v, ok := overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance")
 	require.True(t, ok)
-	require.Equal(t, 1000, limit)
-	require.Equal(t, 50, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "ops"))
-	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "ops")
+	require.Equal(t, 100, v)
+	v, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
 	require.True(t, ok)
-	require.Equal(t, 500, limit)
+	require.Equal(t, 1000, v)
+	v, ok = overrides.PolicyMaxLocalStreamsPerUser("tenant1", "ops")
+	require.True(t, ok)
+	require.Equal(t, 50, v)
+	v, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "ops")
+	require.True(t, ok)
+	require.Equal(t, 500, v)
 
-	// Test non-existent policy returns 0, false
-	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "nonexistent"))
-	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "nonexistent")
+	// Partial entry: local overridden, global inherits (footgun fix).
+	v, ok = overrides.PolicyMaxLocalStreamsPerUser("tenant1", "partial")
+	require.True(t, ok)
+	require.Equal(t, 7, v)
+	_, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "partial")
 	require.False(t, ok)
-	require.Equal(t, 0, limit)
 
-	// Test empty policy returns 0, false
-	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", ""))
-	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "")
+	// Non-existent / empty policy → not overridden.
+	_, ok = overrides.PolicyMaxLocalStreamsPerUser("tenant1", "nonexistent")
 	require.False(t, ok)
-	require.Equal(t, 0, limit)
+	_, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "nonexistent")
+	require.False(t, ok)
+	_, ok = overrides.PolicyMaxLocalStreamsPerUser("tenant1", "")
+	require.False(t, ok)
 
-	// Test nil PolicyOverrideLimits returns 0, false
+	// Nil PolicyOverrideLimits → not overridden.
 	limits.PolicyOverrideLimits = nil
-	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance"))
-	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
+	_, ok = overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance")
 	require.False(t, ok)
-	require.Equal(t, 0, limit)
+	_, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
+	require.False(t, ok)
 }
 
 func TestLimits_PolicyRateOverrides(t *testing.T) {
 	limits := &Limits{
+		// Tenant per-stream base, to verify burst inherits when only the rate is overridden.
+		PerStreamRateLimit:      flagext.ByteSize(9 * 1024 * 1024),
+		PerStreamRateLimitBurst: flagext.ByteSize(9 * 1024 * 1024),
 		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
 			"finance": {
-				IngestionRateMB:         2,
-				IngestionBurstSizeMB:    4,
-				PerStreamRateLimit:      flagext.ByteSize(3 * 1024 * 1024),
-				PerStreamRateLimitBurst: flagext.ByteSize(5 * 1024 * 1024),
+				IngestionRateMB:         ptr(2.0),
+				IngestionBurstSizeMB:    ptr(4.0),
+				PerStreamRateLimit:      ptr(flagext.ByteSize(3 * 1024 * 1024)),
+				PerStreamRateLimitBurst: ptr(flagext.ByteSize(5 * 1024 * 1024)),
 			},
-			// ops sets a rate but no burst; burst accessors should report 0/empty so callers
-			// can fall back to the tenant burst.
-			"ops": {
-				IngestionRateMB: 1,
-			},
-			// zero entry: an existing policy key whose values are all zero must REPLACE (return
-			// true with zero values), not be treated as "no override".
-			"zero": {},
+			// Rate set, burst unset → burst accessor reports "not overridden" (inherit tenant burst).
+			"ops": {IngestionRateMB: ptr(1.0)},
+			// Per-stream rate set, burst unset → returned RateLimit inherits the tenant burst.
+			"perstream": {PerStreamRateLimit: ptr(flagext.ByteSize(1 * 1024 * 1024))},
+			// Empty entry overrides nothing (nil-inherits everywhere).
+			"empty": {},
 		},
 	}
 
@@ -705,37 +707,34 @@ func TestLimits_PolicyRateOverrides(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, RateLimit{Limit: rate.Limit(3 * 1024 * 1024), Burst: 5 * 1024 * 1024}, psrl)
 
-	// ops: rate set, burst unset -> burst accessor reports (0, true).
+	// ops: rate overridden, burst NOT overridden.
 	rateBytes, ok = overrides.PolicyIngestionRateBytes("tenant1", "ops")
 	require.True(t, ok)
 	require.Equal(t, float64(1*bytesInMB), rateBytes)
-	burstBytes, ok = overrides.PolicyIngestionBurstSizeBytes("tenant1", "ops")
-	require.True(t, ok)
-	require.Equal(t, 0, burstBytes)
-
-	// zero: entry exists -> overrides apply with zero values (REPLACE, not inherit).
-	rateBytes, ok = overrides.PolicyIngestionRateBytes("tenant1", "zero")
-	require.True(t, ok)
-	require.Equal(t, float64(0), rateBytes)
-	psrl, ok = overrides.PolicyPerStreamRateLimit("tenant1", "zero")
-	require.True(t, ok)
-	require.Equal(t, RateLimit{Limit: 0, Burst: 0}, psrl)
-
-	// non-existent policy -> false.
-	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "nonexistent")
+	_, ok = overrides.PolicyIngestionBurstSizeBytes("tenant1", "ops")
 	require.False(t, ok)
-	_, ok = overrides.PolicyIngestionBurstSizeBytes("tenant1", "nonexistent")
+
+	// perstream: rate overridden; burst inherits the tenant per-stream burst.
+	psrl, ok = overrides.PolicyPerStreamRateLimit("tenant1", "perstream")
+	require.True(t, ok)
+	require.Equal(t, rate.Limit(1*1024*1024), psrl.Limit)
+	require.Equal(t, 9*1024*1024, psrl.Burst)
+
+	// empty entry → nothing overridden.
+	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "empty")
+	require.False(t, ok)
+	_, ok = overrides.PolicyPerStreamRateLimit("tenant1", "empty")
+	require.False(t, ok)
+
+	// non-existent / empty policy → false.
+	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "nonexistent")
 	require.False(t, ok)
 	_, ok = overrides.PolicyPerStreamRateLimit("tenant1", "nonexistent")
 	require.False(t, ok)
-
-	// empty policy -> false.
 	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "")
 	require.False(t, ok)
-	_, ok = overrides.PolicyPerStreamRateLimit("tenant1", "")
-	require.False(t, ok)
 
-	// nil map -> false.
+	// nil map → false.
 	limits.PolicyOverrideLimits = nil
 	_, ok = overrides.PolicyIngestionRateBytes("tenant1", "finance")
 	require.False(t, ok)
@@ -756,40 +755,50 @@ func TestPolicyShardStreams(t *testing.T) {
 		ShardStreams: base,
 		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
 			// Only flips time sharding; everything else must inherit the tenant config.
-			"foo": {ShardStreams: &shardstreams.PerPolicyConfigOverride{TimeShardingEnabled: &timeOn}},
+			"foo": {ShardStreams: &PerPolicyConfigOverride{TimeShardingEnabled: &timeOn}},
 			// Overrides the desired rate only.
-			"finance": {ShardStreams: &shardstreams.PerPolicyConfigOverride{DesiredRate: &desired}},
-			// Policy entry exists but has no shard_streams override → tenant config.
-			"ops": {IngestionRateMB: 5},
+			"finance": {ShardStreams: &PerPolicyConfigOverride{DesiredRate: &desired}},
+			// Policy entry exists but has no shard_streams override → not overridden, tenant config.
+			"ops": {IngestionRateMB: ptr(5.0)},
 		},
 	}
 	overrides := &Overrides{defaultLimits: limits, tenantLimits: nil}
 
-	// No policy → tenant config unchanged.
-	require.Equal(t, base, overrides.PolicyShardStreams("tenant1", ""))
+	// No policy → tenant config, not overridden.
+	cfg, ok := overrides.PolicyShardStreams("tenant1", "")
+	require.False(t, ok)
+	require.Equal(t, base, cfg)
 
-	// foo → only time sharding flipped, rest inherited.
-	got := overrides.PolicyShardStreams("tenant1", "foo")
+	// foo → overridden; only time sharding flipped, rest inherited.
+	got, ok := overrides.PolicyShardStreams("tenant1", "foo")
+	require.True(t, ok)
 	require.True(t, got.TimeShardingEnabled)
 	require.True(t, got.Enabled)
 	require.Equal(t, base.DesiredRate, got.DesiredRate)
 	require.Equal(t, base.TimeShardingIgnoreRecent, got.TimeShardingIgnoreRecent)
 
-	// finance → only desired rate overridden.
-	got = overrides.PolicyShardStreams("tenant1", "finance")
+	// finance → overridden; only desired rate changed.
+	got, ok = overrides.PolicyShardStreams("tenant1", "finance")
+	require.True(t, ok)
 	require.Equal(t, flagext.ByteSize(512*1024), got.DesiredRate)
 	require.False(t, got.TimeShardingEnabled)
 	require.True(t, got.Enabled)
 
-	// policy entry without a shard_streams override → tenant config.
-	require.Equal(t, base, overrides.PolicyShardStreams("tenant1", "ops"))
+	// policy entry without a shard_streams override → not overridden, tenant config.
+	cfg, ok = overrides.PolicyShardStreams("tenant1", "ops")
+	require.False(t, ok)
+	require.Equal(t, base, cfg)
 
-	// unknown policy → tenant config.
-	require.Equal(t, base, overrides.PolicyShardStreams("tenant1", "unknown"))
+	// unknown policy → not overridden, tenant config.
+	cfg, ok = overrides.PolicyShardStreams("tenant1", "unknown")
+	require.False(t, ok)
+	require.Equal(t, base, cfg)
 
-	// nil PolicyOverrideLimits → tenant config.
+	// nil PolicyOverrideLimits → not overridden, tenant config.
 	limits.PolicyOverrideLimits = nil
-	require.Equal(t, base, overrides.PolicyShardStreams("tenant1", "foo"))
+	cfg, ok = overrides.PolicyShardStreams("tenant1", "foo")
+	require.False(t, ok)
+	require.Equal(t, base, cfg)
 }
 
 func TestOTLPConfig(t *testing.T) {

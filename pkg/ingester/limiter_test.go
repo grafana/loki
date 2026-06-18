@@ -175,8 +175,8 @@ func TestTenantBasedStrategy_PolicyRateLimit(t *testing.T) {
 		PerStreamRateLimitBurst: flagext.ByteSize(20 * 1024),
 		PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
 			"finance": {
-				PerStreamRateLimit:      flagext.ByteSize(100 * 1024),
-				PerStreamRateLimitBurst: flagext.ByteSize(200 * 1024),
+				PerStreamRateLimit:      ptr(flagext.ByteSize(100 * 1024)),
+				PerStreamRateLimitBurst: ptr(flagext.ByteSize(200 * 1024)),
 			},
 		},
 	}, nil)
@@ -533,11 +533,11 @@ func (m *mockLimits) MaxGlobalStreamsPerUser(_ string) int {
 	return m.maxGlobalStreams
 }
 
-func (m *mockLimits) PolicyMaxLocalStreamsPerUser(_, policy string) int {
+func (m *mockLimits) PolicyMaxLocalStreamsPerUser(_, policy string) (int, bool) {
 	if policyLimit, exists := m.policyLimits[policy]; exists {
-		return policyLimit.local
+		return policyLimit.local, true
 	}
-	return 0
+	return 0, false
 }
 
 func (m *mockLimits) PolicyMaxGlobalStreamsPerUser(_, policy string) (int, bool) {
@@ -558,3 +558,5 @@ func (m *mockRingStrategy) convertGlobalToLocalLimit(globalLimit int, _ string) 
 	}
 	return int(float64(globalLimit) / float64(m.healthyInstances) * float64(m.replicationFactor))
 }
+
+func ptr[T any](v T) *T { return &v }

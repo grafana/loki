@@ -804,7 +804,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			b.bytes += streamEntriesSize
 			b.lines += n
 
-			maybeShardStreams(stream, lbs, streamEntriesSize, policy, d.validator.PolicyShardStreams(tenantID, policy))
+			shardCfg, _ := d.validator.PolicyShardStreams(tenantID, policy)
+			maybeShardStreams(stream, lbs, streamEntriesSize, policy, shardCfg)
 		}
 		return nil
 	}()

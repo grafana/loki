@@ -663,14 +663,8 @@ func (l *Limits) Validate() error {
 	}
 
 	for policy, pl := range l.PolicyOverrideLimits {
-		if pl.IngestionRateMB < 0 || pl.IngestionBurstSizeMB < 0 {
-			return fmt.Errorf("policy_override_limits[%q]: ingestion_rate_mb and ingestion_burst_size_mb must be >= 0", policy)
-		}
-		if pl.PerStreamRateLimit.Val() < 0 || pl.PerStreamRateLimitBurst.Val() < 0 {
-			return fmt.Errorf("policy_override_limits[%q]: per_stream_rate_limit and per_stream_rate_limit_burst must be >= 0", policy)
-		}
-		if pl.ShardStreams != nil && pl.ShardStreams.DesiredRate != nil && pl.ShardStreams.DesiredRate.Val() < 0 {
-			return fmt.Errorf("policy_override_limits[%q]: shard_streams.desired_rate must be >= 0", policy)
+		if err := pl.Validate(); err != nil {
+			return fmt.Errorf("policy_override_limits[%q]: %w", policy, err)
 		}
 	}
 
@@ -822,99 +816,10 @@ func (o *Overrides) MaxLocalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxLocalStreamsPerUser
 }
 
-// PolicyMaxLocalStreamsPerUser returns the maximum number of streams a user is allowed to store
-// in a single ingester for a specific policy. Returns 0 if no policy-specific override is set.
-func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) int {
-	if policy == "" {
-		return 0
-	}
-	limits := o.getOverridesForUser(userID)
-	if len(limits.PolicyOverrideLimits) == 0 {
-		return 0
-	}
-	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return policyLimits.MaxLocalStreamsPerUser
-	}
-	return 0
-}
-
 // MaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
 // across the cluster.
 func (o *Overrides) MaxGlobalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalStreamsPerUser
-}
-
-// PolicyMaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
-// across the cluster for a specific policy.
-// Returns 0 and false if the policy does not have a custom stream limit override.
-// Returns the custom stream limit override and true if it exists.
-func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool) {
-	if policy == "" {
-		return 0, false
-	}
-	limits := o.getOverridesForUser(userID)
-	if len(limits.PolicyOverrideLimits) == 0 {
-		return 0, false
-	}
-
-	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return policyLimits.MaxGlobalStreamsPerUser, true
-	}
-	return 0, false
-}
-
-// PolicyIngestionRateBytes returns the per-policy ingestion rate in bytes/sec and true if a
-// policy override entry exists; otherwise 0 and false. When true, the value replaces the
-// tenant-level ingestion rate for streams resolved to the policy.
-func (o *Overrides) PolicyIngestionRateBytes(userID, policy string) (float64, bool) {
-	if policy == "" {
-		return 0, false
-	}
-	limits := o.getOverridesForUser(userID)
-	if len(limits.PolicyOverrideLimits) == 0 {
-		return 0, false
-	}
-	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return policyLimits.IngestionRateMB * bytesInMB, true
-	}
-	return 0, false
-}
-
-// PolicyIngestionBurstSizeBytes returns the per-policy ingestion burst size in bytes and true if
-// a policy override entry exists; otherwise 0 and false. A returned burst of 0 means the caller
-// should fall back to the tenant burst (a policy may set a rate without an explicit burst).
-func (o *Overrides) PolicyIngestionBurstSizeBytes(userID, policy string) (int, bool) {
-	if policy == "" {
-		return 0, false
-	}
-	limits := o.getOverridesForUser(userID)
-	if len(limits.PolicyOverrideLimits) == 0 {
-		return 0, false
-	}
-	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return int(policyLimits.IngestionBurstSizeMB * bytesInMB), true
-	}
-	return 0, false
-}
-
-// PolicyPerStreamRateLimit returns the per-policy per-stream rate limit and true if a policy
-// override entry exists; otherwise an empty RateLimit and false. When true, the value replaces
-// the tenant-level per-stream rate limit for streams resolved to the policy.
-func (o *Overrides) PolicyPerStreamRateLimit(userID, policy string) (RateLimit, bool) {
-	if policy == "" {
-		return RateLimit{}, false
-	}
-	limits := o.getOverridesForUser(userID)
-	if len(limits.PolicyOverrideLimits) == 0 {
-		return RateLimit{}, false
-	}
-	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return RateLimit{
-			Limit: rate.Limit(float64(policyLimits.PerStreamRateLimit.Val())),
-			Burst: policyLimits.PerStreamRateLimitBurst.Val(),
-		}, true
-	}
-	return RateLimit{}, false
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
@@ -1243,21 +1148,6 @@ func (o *Overrides) ShardStreams(userID string) shardstreams.Config {
 	return o.getOverridesForUser(userID).ShardStreams
 }
 
-// PolicyShardStreams returns the effective shard_streams config for a stream resolved to the
-// given policy: the tenant shard_streams config with the policy's overrides (if any) applied.
-// A stream with no policy (or a policy without a shard_streams override) gets the tenant config.
-func (o *Overrides) PolicyShardStreams(userID, policy string) shardstreams.Config {
-	limits := o.getOverridesForUser(userID)
-	base := limits.ShardStreams
-	if policy == "" || len(limits.PolicyOverrideLimits) == 0 {
-		return base
-	}
-	if pl, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return pl.ShardStreams.ApplyTo(base)
-	}
-	return base
-}
-
 func (o *Overrides) BlockedQueries(_ context.Context, userID string) []*validation.BlockedQuery {
 	return o.getOverridesForUser(userID).BlockedQueries
 }
@@ -1537,26 +1427,6 @@ func (o *Overrides) getOverridesForUser(userID string) *Limits {
 // as opposed to merging.
 type OverwriteMarshalingStringMap struct {
 	m map[string]string
-}
-
-// PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
-// When a policy entry exists, its values apply to streams resolved to that policy with
-// REPLACE semantics: the rate and per-stream limits replace the tenant-level values,
-// including when set to 0. The one exception is IngestionBurstSizeMB, which falls back to
-// the tenant ingestion_burst_size_mb when left at 0 (see the field doc), since a policy may
-// set a rate without an explicit burst.
-type PolicyOverridableLimits struct {
-	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"max_streams_per_user for a specific policy. 0 means unlimited."`
-	MaxGlobalStreamsPerUser int              `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"max_global_streams_per_user for a specific policy. 0 means unlimited."`
-	IngestionRateMB         float64          `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb" doc:"ingestion_rate_mb for a specific policy. Replaces the tenant ingestion_rate_mb for streams matching the policy."`
-	IngestionBurstSizeMB    float64          `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb" doc:"ingestion_burst_size_mb for a specific policy. When unset (0), falls back to the tenant ingestion_burst_size_mb."`
-	PerStreamRateLimit      flagext.ByteSize `yaml:"per_stream_rate_limit" json:"per_stream_rate_limit" doc:"per_stream_rate_limit for a specific policy. Replaces the tenant per_stream_rate_limit for streams matching the policy."`
-	PerStreamRateLimitBurst flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst" doc:"per_stream_rate_limit_burst for a specific policy."`
-
-	// ShardStreams overrides the tenant shard_streams config for a specific policy. Only the
-	// fields set here change; unset fields inherit the tenant shard_streams config (see
-	// PerPolicyConfigOverride.ApplyTo).
-	ShardStreams *shardstreams.PerPolicyConfigOverride `yaml:"shard_streams" json:"shard_streams" doc:"shard_streams overrides for a specific policy. Only the set fields override the tenant shard_streams config."`
 }
 
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {

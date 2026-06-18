@@ -507,8 +507,8 @@ func TestPushRateLimitPolicyOverride(t *testing.T) {
 		PerStreamRateLimitBurst: 100,
 		PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
 			policy: {
-				PerStreamRateLimit:      10,
-				PerStreamRateLimitBurst: 10,
+				PerStreamRateLimit:      ptr(flagext.ByteSize(10)),
+				PerStreamRateLimitBurst: ptr(flagext.ByteSize(10)),
 			},
 		},
 	}
@@ -542,7 +542,7 @@ func TestPushRateLimitPolicyOverride(t *testing.T) {
 	_, err = s.Push(context.Background(), entries, recordPool.GetRecord(), 0, true, true, tracker, "loki")
 	require.Error(t, err)
 	// The error must reference the policy override limit (10), not the tenant limit (100).
-	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: l.PolicyOverrideLimits[policy].PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
+	require.Contains(t, err.Error(), (&validation.ErrStreamRateLimit{RateLimit: *l.PolicyOverrideLimits[policy].PerStreamRateLimit, Labels: s.labelsString, Bytes: flagext.ByteSize(len(entries[1].Line))}).Error())
 	require.Equal(t, 20.0, tracker.discardedBytes)
 }
 

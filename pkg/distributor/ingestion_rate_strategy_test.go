@@ -123,8 +123,8 @@ func TestIngestionRateStrategy_PolicyOverride(t *testing.T) {
 		IngestionRateMB:      1.0,
 		IngestionBurstSizeMB: 2.0,
 		PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
-			"finance": {IngestionRateMB: 5.0, IngestionBurstSizeMB: 10.0},
-			"ops":     {IngestionRateMB: 5.0}, // rate set, burst unset -> falls back to tenant burst
+			"finance": {IngestionRateMB: ptr(5.0), IngestionBurstSizeMB: ptr(10.0)},
+			"ops":     {IngestionRateMB: ptr(5.0)}, // rate set, burst unset -> falls back to tenant burst
 		},
 	}
 	overrides, err := validation.NewOverrides(limits, nil)

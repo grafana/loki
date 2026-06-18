@@ -36,7 +36,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -1768,8 +1767,8 @@ func TestDistributor_PushIngestionRateLimitedByPolicy(t *testing.T) {
 	}
 	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
 		"finance": {
-			IngestionRateMB:      datasize.ByteSize(50).MBytes(),
-			IngestionBurstSizeMB: datasize.ByteSize(50).MBytes(),
+			IngestionRateMB:      ptr(datasize.ByteSize(50).MBytes()),
+			IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes()),
 		},
 	}
 	// Validate populates the stream-selector matchers used by PolicyFor (the real config-load
@@ -1805,8 +1804,8 @@ func TestDistributor_PushIngestionRateLimitPolicyAllOrNothing(t *testing.T) {
 	}
 	// Both policies get a 50-byte budget.
 	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
-		"finance": {IngestionRateMB: datasize.ByteSize(50).MBytes(), IngestionBurstSizeMB: datasize.ByteSize(50).MBytes()},
-		"ops":     {IngestionRateMB: datasize.ByteSize(50).MBytes(), IngestionBurstSizeMB: datasize.ByteSize(50).MBytes()},
+		"finance": {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
+		"ops":     {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
 	}
 	require.NoError(t, limits.Validate())
 
@@ -1847,8 +1846,8 @@ func TestDistributor_PushIngestionRateLimitMultiplePolicies(t *testing.T) {
 	// Both policies get a 50-byte budget; the request puts each well over (bytes > burst), so
 	// both reservations are rejected deterministically on every attempt.
 	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
-		"finance": {IngestionRateMB: datasize.ByteSize(50).MBytes(), IngestionBurstSizeMB: datasize.ByteSize(50).MBytes()},
-		"ops":     {IngestionRateMB: datasize.ByteSize(50).MBytes(), IngestionBurstSizeMB: datasize.ByteSize(50).MBytes()},
+		"finance": {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
+		"ops":     {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
 	}
 	require.NoError(t, limits.Validate())
 
@@ -1886,7 +1885,7 @@ func TestDistributor_PushShardStreamsPolicyOverride(t *testing.T) {
 	}
 	timeOn := true
 	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
-		"foo": {ShardStreams: &shardstreams.PerPolicyConfigOverride{TimeShardingEnabled: &timeOn}},
+		"foo": {ShardStreams: &validation.PerPolicyConfigOverride{TimeShardingEnabled: &timeOn}},
 	}
 	require.NoError(t, limits.Validate())
 
@@ -3062,3 +3061,5 @@ func TestConfig_Validate(t *testing.T) {
 		})
 	}
 }
+
+func ptr[T any](v T) *T { return &v }
