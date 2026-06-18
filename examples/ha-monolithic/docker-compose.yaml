@@ -1,26 +1,20 @@
 # =============================================================================
-# Loki Single Binary – Docker Compose
+# Loki HA Monolithic – Docker Compose
 # =============================================================================
 # Services
 #   minio            – S3-compatible object storage (chunks + ruler buckets)
 #   minio-init       – one-shot container that creates required MinIO buckets
-#   loki-1/2/3/4/5   – Loki single-binary replicas (target=all), RF=3
+#   loki-1/2/3       – Loki single-binary replicas (target=all), RF=3
 #   nginx            – reverse proxy / load balancer in front of Loki
 #
 # Usage
 #   docker compose up -d
-#
-# Loki ring:      http://localhost:3100/ring
-# MinIO console:  http://localhost:9001  (loki / supersecret)
 # =============================================================================
 
-name: loki-ha-singlebinary
+name: loki-ha-monolithic
 
-# ---------------------------------------------------------------------------
-# Re-usable fragment
-# ---------------------------------------------------------------------------
 x-loki-common: &loki-common
-  image: grafana/loki:high-available-single-binary-6b96915-WIP
+  image: grafana/loki:3.7.2
   command:
     [
       "-config.file=/etc/loki/loki.yaml",
@@ -41,11 +35,8 @@ x-loki-common: &loki-common
     start_period: 30s
 
 services:
-  # ---------------------------------------------------------------------------
-  # MinIO – object storage backend
-  # ---------------------------------------------------------------------------
   minio:
-    image: minio/minio:latest
+    image: pgsty/minio:latest
     entrypoint: ["minio", "server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: loki
@@ -64,11 +55,8 @@ services:
     networks:
       - loki
 
-  # ---------------------------------------------------------------------------
-  # minio-init – creates buckets once MinIO is healthy, then exits.
-  # ---------------------------------------------------------------------------
   minio-init:
-    image: minio/mc:latest
+    image: pgsty/mc:latest
     depends_on:
       minio:
         condition: service_healthy
@@ -82,9 +70,6 @@ services:
     networks:
       - loki
 
-  # ---------------------------------------------------------------------------
-  # Loki replicas (single binary, target=all)
-  # ---------------------------------------------------------------------------
   loki-1:
     <<: *loki-common
     container_name: loki-1
@@ -93,7 +78,6 @@ services:
       LOKI_INSTANCE_ID: loki-1
       COMPACTOR_MODE: main
     volumes:
-      # - ./config/loki.yaml:/etc/loki/loki.yaml:ro
       - ./config:/etc/loki:ro
       - loki-1-data:/loki
 
@@ -104,7 +88,6 @@ services:
     environment:
       LOKI_INSTANCE_ID: loki-2
     volumes:
-      # - ./config/loki.yaml:/etc/loki/loki.yaml:ro
       - ./config:/etc/loki:ro
       - loki-2-data:/loki
 
@@ -115,48 +98,21 @@ services:
     environment:
       LOKI_INSTANCE_ID: loki-3
     volumes:
-      # - ./config/loki.yaml:/etc/loki/loki.yaml:ro
       - ./config:/etc/loki:ro
       - loki-3-data:/loki
 
-  loki-4:
-    <<: *loki-common
-    container_name: loki-4
-    hostname: loki-4
-    environment:
-      LOKI_INSTANCE_ID: loki-4
-    volumes:
-      # - ./config/loki.yaml:/etc/loki/loki.yaml:ro
-      - ./config:/etc/loki:ro
-      - loki-4-data:/loki
-
-  loki-5:
-    <<: *loki-common
-    container_name: loki-5
-    hostname: loki-5
-    environment:
-      LOKI_INSTANCE_ID: loki-5
-    volumes:
-      # - ./config/loki.yaml:/etc/loki/loki.yaml:ro
-      - ./config:/etc/loki:ro
-      - loki-5-data:/loki
-
-  # ---------------------------------------------------------------------------
-  # NGINX – reverse proxy / load balancer
-  # ---------------------------------------------------------------------------
   nginx:
     image: nginx:alpine
     container_name: nginx
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - "3100:3100" # Loki HTTP API (push + query)
+      - "3100:3100"
     depends_on:
       - loki-1
       - loki-2
       - loki-3
-      - loki-4
-      - loki-5
+    restart: always
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3100/nginx-health"]
       interval: 10s
@@ -165,20 +121,11 @@ services:
     networks:
       - loki
 
-# ---------------------------------------------------------------------------
-# Volumes
-# ---------------------------------------------------------------------------
 volumes:
   minio-data:
   loki-1-data:
   loki-2-data:
   loki-3-data:
-  loki-4-data:
-  loki-5-data:
 
-# ---------------------------------------------------------------------------
-# Networks
-# ---------------------------------------------------------------------------
 networks:
   loki:
-    driver: bridge
