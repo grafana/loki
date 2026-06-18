@@ -288,3 +288,54 @@ func TestBuilder_TimeRanges_StreamsAndPostingsUnion(t *testing.T) {
 	require.Equal(t, base.Add(-time.Hour), ranges[0].MinTime)
 	require.Equal(t, base.Add(2*time.Hour), ranges[0].MaxTime)
 }
+
+func TestUnionTimeRange(t *testing.T) {
+	base := time.Unix(1000, 0).UTC()
+
+	// Case 1: candidate has no data (candMin zero) -> accumulator returned unchanged.
+	min, max := unionTimeRange(base, base.Add(time.Hour), time.Time{}, time.Time{})
+	require.Equal(t, base, min)
+	require.Equal(t, base.Add(time.Hour), max)
+
+	// Case 2: accumulator zero, candidate non-zero -> candidate returned.
+	min, max = unionTimeRange(time.Time{}, time.Time{}, base, base.Add(time.Hour))
+	require.Equal(t, base, min)
+	require.Equal(t, base.Add(time.Hour), max)
+
+	// Case 3: both non-zero, candidate widens on both ends -> widened range.
+	min, max = unionTimeRange(base.Add(time.Hour), base.Add(2*time.Hour), base, base.Add(3*time.Hour))
+	require.Equal(t, base, min)
+	require.Equal(t, base.Add(3*time.Hour), max)
+
+	// Case 4: both non-zero, candidate inside accumulator -> accumulator unchanged.
+	min, max = unionTimeRange(base, base.Add(3*time.Hour), base.Add(time.Hour), base.Add(2*time.Hour))
+	require.Equal(t, base, min)
+	require.Equal(t, base.Add(3*time.Hour), max)
+
+	// Case 5: accumulator zero AND candidate zero -> both zero out.
+	min, max = unionTimeRange(time.Time{}, time.Time{}, time.Time{}, time.Time{})
+	require.True(t, min.IsZero())
+	require.True(t, max.IsZero())
+}
+
+func TestBuilder_TimeRanges_AfterReset(t *testing.T) {
+	b, err := NewBuilder(testBuilderConfig, nil)
+	require.NoError(t, err)
+
+	base := time.Unix(8000, 0).UTC()
+	tenant := "test-tenant"
+
+	// Observe a label posting so TimeRanges() is non-empty.
+	b.ObserveLabelPosting(tenant, postings.LabelObservation{
+		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+		StreamID: 1, Timestamp: base,
+	})
+
+	ranges := b.TimeRanges()
+	require.Len(t, ranges, 1)
+
+	// After Reset, TimeRanges() must be empty.
+	b.Reset()
+	ranges = b.TimeRanges()
+	require.Empty(t, ranges)
+}

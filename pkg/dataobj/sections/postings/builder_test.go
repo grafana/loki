@@ -20,15 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// decodeInt64Stat decodes a serialized INT64 stat value (page/column MinValue or
-// MaxValue) to its int64.
-func decodeInt64Stat(t *testing.T, b []byte) int64 {
-	t.Helper()
-	var v dataset.Value
-	require.NoError(t, v.UnmarshalBinary(b))
-	return v.Int64()
-}
-
 func timeUnix(sec, nsec int64) time.Time { return time.Unix(sec, nsec).UTC() }
 
 // checkBit returns true if bit n is set in the LSB-encoded bitmap data.
@@ -407,7 +398,7 @@ func TestBuilder_AllLabel(t *testing.T) {
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
-	ts := time.Unix(0, 0)
+	ts := time.Unix(0, 0).UTC()
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", LabelValue: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 
 	obj, closer := flushToObject(t, b)
@@ -418,6 +409,9 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 	require.Empty(t, b.labels.entries, "builder should have no label entries after flush")
 	require.Empty(t, b.blooms.entries, "builder should have no bloom entries after flush")
 	require.Zero(t, b.EstimatedSize(), "builder should have zero estimated size after flush")
+	minTime, maxTime := b.TimeRange()
+	require.True(t, minTime.IsZero(), "TimeRange min must be zero after flush")
+	require.True(t, maxTime.IsZero(), "TimeRange max must be zero after flush")
 }
 
 // TestBuilder_KindColumnRangeStats verifies the kind column carries range
@@ -437,6 +431,15 @@ func TestBuilder_KindColumnRangeStats(t *testing.T) {
 
 	require.Equal(t, int64(KindBloom), kindStat(t, sections[0]), "first section must be the bloom section")
 	require.Equal(t, int64(KindLabel), kindStat(t, sections[1]), "second section must be the label section")
+}
+
+// decodeInt64Stat decodes a serialized INT64 stat value (page/column MinValue or
+// MaxValue) to its int64.
+func decodeInt64Stat(t *testing.T, b []byte) int64 {
+	t.Helper()
+	var v dataset.Value
+	require.NoError(t, v.UnmarshalBinary(b))
+	return v.Int64()
 }
 
 // kindStat returns the kind column's range-stat value for a single-kind
@@ -536,8 +539,8 @@ func readWithKindPredicate(t *testing.T, sec *Section, wantKind int64) (rows int
 
 	require.NoError(t, reader.Open(ctx))
 
+	buf := make([]dataset.Row, 16)
 	for {
-		buf := make([]dataset.Row, 16)
 		n, err := reader.Read(ctx, buf)
 		rows += n
 		if errors.Is(err, io.EOF) {
