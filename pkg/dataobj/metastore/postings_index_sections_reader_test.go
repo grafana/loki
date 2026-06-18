@@ -116,9 +116,9 @@ func TestPostingsIndexSectionsReader_CombinesAcrossPostingsSections(t *testing.T
 	require.Nil(t, rec)
 }
 
-// readPointers must page its output in batchSize-row batches across successive
-// Read calls, mirroring the streams+pointers path, rather than returning the
-// whole result in one batch.
+// Read must page its output in batchSize-row batches across successive calls,
+// mirroring the streams+pointers path, rather than returning the whole result
+// in one batch.
 func TestPostingsIndexSectionsReader_PagesPointerOutput(t *testing.T) {
 	t.Parallel()
 
@@ -372,7 +372,9 @@ func TestPostingsIndexSectionsReader_EndToEnd(t *testing.T) {
 	})
 }
 
-func TestPostingsIndexSectionsReader_RetryAfterBloomErrorStillFiltersPredicates(t *testing.T) {
+// A bloom-read failure during resolution must surface as an error rather than
+// being silently swallowed (which would leak unfiltered pointers downstream).
+func TestPostingsIndexSectionsReader_BloomReadErrorSurfaces(t *testing.T) {
 	t.Parallel()
 
 	ctx := user.InjectOrgID(context.Background(), tenantID)
@@ -381,16 +383,19 @@ func TestPostingsIndexSectionsReader_RetryAfterBloomErrorStillFiltersPredicates(
 	start := now.Add(-4 * time.Hour)
 	end := now.Add(-time.Hour)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-	// This predicate intentionally misses so a correctly filtered retry returns EOF.
-	predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "doesnotexist")}
+	predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd")}
 
 	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 0)
 	t.Cleanup(r.Close)
-	require.NoError(t, r.Open(ctx))
-	require.NoError(t, r.lazyResolveStreams(ctx))
-	require.NotEmpty(t, r.pointerRows, "fixture should resolve at least one pointer row before bloom filtering")
 
-	// Simulate a transient bloom-read failure by swapping in an unopened reader.
+	// Drive resolution directly: open the readers and resolve streams, leaving
+	// only the bloom filtering left to fail.
+	require.NoError(t, r.init(ctx))
+	require.NoError(t, r.resolveStreams(ctx))
+	require.NotEmpty(t, r.pointerRows, "fixture should resolve at least one pointer row before bloom filtering")
+	require.NotEmpty(t, r.predicates, "traceID predicate must survive stream-label filtering")
+
+	// Swap in an unopened reader so the bloom read fails.
 	originalReaders := r.postingsReaders
 	require.NotEmpty(t, originalReaders, "fixture must open at least one postings reader")
 	r.postingsReaders = []*postings.Reader{
@@ -399,22 +404,9 @@ func TestPostingsIndexSectionsReader_RetryAfterBloomErrorStillFiltersPredicates(
 			Allocator: memory.DefaultAllocator,
 		}),
 	}
+	t.Cleanup(func() { r.postingsReaders = originalReaders }) // restore so Close releases the real readers
 
-	rec, err := r.readPointers(ctx)
-	require.Error(t, err, "first attempt should fail while bloom filtering")
-	require.Nil(t, rec)
-
-	// Contract for retry safety: bloom filtering must still be pending after an
-	// error; otherwise a retry can leak unfiltered pointers.
-	require.False(t, r.bloomFiltered, "failed bloom filtering must not mark bloom filtering as complete")
-
-	// Restore healthy readers and retry.
-	r.postingsReaders = originalReaders
-
-	rec, err = r.readPointers(ctx)
-	require.ErrorIs(t, err, io.EOF,
-		"retry must still apply bloom predicates; traceID miss should prune all rows")
-	require.Nil(t, rec)
+	require.Error(t, r.filterPointersByBloom(ctx), "bloom-read failure must surface from filtering")
 }
 
 // TestPointersRecordSchema_ParityWithPointersReader proves the batches built by

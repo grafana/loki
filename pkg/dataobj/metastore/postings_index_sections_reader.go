@@ -38,7 +38,6 @@ type postingsIndexSectionsReader struct {
 
 	// Reader state
 	initialized bool
-	resolved    bool
 
 	postingsReaders []*postings.Reader
 	batchSize       int
@@ -46,12 +45,11 @@ type postingsIndexSectionsReader struct {
 	// refers to the actual references, not to be confused with pointer sections
 	pointerRows   []postings.PointerRow
 	pointerOffset int
-	bloomFiltered bool
 
 	// Stats
 	bloomRowsRead uint64
 
-	// readSpan for recording observations, it is created once during the first Read.
+	// readSpan for recording observations, it is created once during Open.
 	readSpan *xcap.Span
 }
 
@@ -92,6 +90,17 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	}
 
 	if err := r.init(ctx); err != nil {
+		return err
+	}
+
+	// resolveStreams and filterPointersByBloom both fully materialize their
+	// results in memory, so resolve everything up front instead of lazily on the
+	// first Read. Read then only pages out the already-resolved rows.
+	ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "metastore.postingsIndexSectionsReader.Read")
+	if err := r.resolveStreams(ctx); err != nil {
+		return err
+	}
+	if err := r.filterPointersByBloom(ctx); err != nil {
 		return err
 	}
 
@@ -144,35 +153,32 @@ func (r *postingsIndexSectionsReader) init(ctx context.Context) error {
 	return nil
 }
 
-func (r *postingsIndexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, error) {
+func (r *postingsIndexSectionsReader) Read(_ context.Context) (arrow.RecordBatch, error) {
 	if !r.initialized {
 		return nil, errIndexSectionsReaderNotOpen
 	}
 
-	if r.readSpan == nil {
-		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "metastore.postingsIndexSectionsReader.Read")
-	} else {
-		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
-	}
-
-	if err := r.lazyResolveStreams(ctx); err != nil {
-		return nil, err
-	}
-	if len(r.pointerRows) == 0 {
+	if r.pointerOffset >= len(r.pointerRows) {
 		return nil, io.EOF
 	}
 
-	return r.readPointers(ctx)
+	start := r.pointerOffset
+	end := min(start+r.batchSize, len(r.pointerRows))
+	batch := r.pointerRows[start:end]
+	r.pointerOffset = end
+
+	rec := buildPointersRecord(memory.DefaultAllocator, batch)
+	if r.readSpan != nil {
+		r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
+	}
+	r.bloomRowsRead += uint64(rec.NumRows())
+	return rec, nil
 }
 
-// lazyResolveStreams resolves stream refs matching the configured matchers and
+// resolveStreams resolves stream refs matching the configured matchers and
 // collects stream label names so stream-label predicates can be dropped from
 // the bloom checks.
-func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) error {
-	if r.resolved {
-		return nil
-	}
-
+func (r *postingsIndexSectionsReader) resolveStreams(ctx context.Context) error {
 	region := xcap.RegionFromContext(ctx)
 	startTime := time.Now()
 	defer func() {
@@ -201,14 +207,13 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 		for _, name := range res.MatchingLabelColumnNames {
 			streamLabelNames[name] = struct{}{}
 		}
-		// Pointer rows come from the same scan; stash them for readPointers.
+		// Pointer rows come from the same scan; stash them for Read to page out.
 		r.pointerRows = res.Pointers
 	}
 
 	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(matchingStreamRefs))))
 
 	r.filterBloomPredicates(streamLabelNames)
-	r.resolved = true
 	return nil
 }
 
@@ -223,32 +228,10 @@ func (r *postingsIndexSectionsReader) filterBloomPredicates(streamLabelNames map
 	r.predicates = filtered
 }
 
-func (r *postingsIndexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBatch, error) {
-	if err := r.lazyFilterPointersByBloom(ctx); err != nil {
-		return nil, err
-	}
-
-	if r.pointerOffset >= len(r.pointerRows) {
-		return nil, io.EOF
-	}
-
-	start := r.pointerOffset
-	end := min(start+r.batchSize, len(r.pointerRows))
-	batch := r.pointerRows[start:end]
-	r.pointerOffset = end
-
-	rec := buildPointersRecord(memory.DefaultAllocator, batch)
-	r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
-	r.bloomRowsRead += uint64(rec.NumRows())
-	return rec, nil
-}
-
-func (r *postingsIndexSectionsReader) lazyFilterPointersByBloom(ctx context.Context) error {
-	if r.bloomFiltered {
-		return nil
-	}
+// filterPointersByBloom drops resolved pointer rows whose (object, section) did
+// not match every bloom predicate. It is a no-op when there are no predicates.
+func (r *postingsIndexSectionsReader) filterPointersByBloom(ctx context.Context) error {
 	if len(r.predicates) == 0 {
-		r.bloomFiltered = true
 		return nil
 	}
 
@@ -260,7 +243,6 @@ func (r *postingsIndexSectionsReader) lazyFilterPointersByBloom(ctx context.Cont
 	if len(r.pointerRows) == 0 {
 		level.Debug(utillog.WithContext(ctx, r.logger)).Log("msg", "no sections resolved", "reason", "no matching predicates")
 	}
-	r.bloomFiltered = true
 	return nil
 }
 
