@@ -18,6 +18,22 @@ type AmazonMskCluster struct {
 	noSmithyDocumentSerde
 }
 
+// Details of an Apache Kafka Cluster.
+type ApacheKafkaCluster struct {
+
+	// The ID of the Apache Kafka cluster.
+	//
+	// This member is required.
+	ApacheKafkaClusterId *string
+
+	// The bootstrap broker string of the Apache Kafka cluster.
+	//
+	// This member is required.
+	BootstrapBrokerString *string
+
+	noSmithyDocumentSerde
+}
+
 // Information regarding UpdateBrokerCount.
 type BrokerCountUpdateInfo struct {
 
@@ -592,6 +608,13 @@ type ConsumerGroupReplication struct {
 	// This member is required.
 	ConsumerGroupsToReplicate []string
 
+	// The consumer group offset synchronization mode. With LEGACY, offsets are
+	// synchronized when producers write to the source cluster. With ENHANCED, consumer
+	// offsets are synchronized regardless of producer location. ENHANCED requires a
+	// corresponding replicator that replicates data from the target cluster to the
+	// source cluster.
+	ConsumerGroupOffsetSyncMode ConsumerGroupOffsetSyncMode
+
 	// List of regular expression patterns indicating the consumer groups that should
 	// not be replicated.
 	ConsumerGroupsToExclude []string
@@ -765,15 +788,31 @@ type JmxExporterInfo struct {
 type KafkaCluster struct {
 
 	// Details of an Amazon MSK Cluster.
-	//
-	// This member is required.
 	AmazonMskCluster *AmazonMskCluster
+
+	// Details of an Apache Kafka Cluster.
+	ApacheKafkaCluster *ApacheKafkaCluster
+
+	// Details of the client authentication used by the Apache Kafka cluster.
+	ClientAuthentication *KafkaClusterClientAuthentication
+
+	// Details of encryption in transit to the Apache Kafka cluster.
+	EncryptionInTransit *KafkaClusterEncryptionInTransit
 
 	// Details of an Amazon VPC which has network connectivity to the Apache Kafka
 	// cluster.
+	VpcConfig *KafkaClusterClientVpcConfig
+
+	noSmithyDocumentSerde
+}
+
+// Details of the client authentication used by the Apache Kafka cluster.
+type KafkaClusterClientAuthentication struct {
+
+	// Details for SASL/SCRAM client authentication.
 	//
 	// This member is required.
-	VpcConfig *KafkaClusterClientVpcConfig
+	SaslScram *KafkaClusterSaslScramAuthentication
 
 	noSmithyDocumentSerde
 }
@@ -799,12 +838,51 @@ type KafkaClusterDescription struct {
 	// Details of an Amazon MSK Cluster.
 	AmazonMskCluster *AmazonMskCluster
 
+	// Details of an Apache Kafka Cluster.
+	ApacheKafkaCluster *ApacheKafkaCluster
+
+	// Details of the client authentication used by the Apache Kafka cluster.
+	ClientAuthentication *KafkaClusterClientAuthentication
+
+	// Details of encryption in transit to the Apache Kafka cluster.
+	EncryptionInTransit *KafkaClusterEncryptionInTransit
+
 	// The alias of the Kafka cluster. Used to prefix names of replicated topics.
 	KafkaClusterAlias *string
 
 	// Details of an Amazon VPC which has network connectivity to the Apache Kafka
 	// cluster.
 	VpcConfig *KafkaClusterClientVpcConfig
+
+	noSmithyDocumentSerde
+}
+
+// Details of encryption in transit to the Apache Kafka cluster.
+type KafkaClusterEncryptionInTransit struct {
+
+	// The type of encryption in transit to the Apache Kafka cluster.
+	//
+	// This member is required.
+	EncryptionType KafkaClusterEncryptionInTransitType
+
+	// The root CA certificate.
+	RootCaCertificate *string
+
+	noSmithyDocumentSerde
+}
+
+// Details for SASL/SCRAM client authentication.
+type KafkaClusterSaslScramAuthentication struct {
+
+	// The SASL/SCRAM authentication mechanism.
+	//
+	// This member is required.
+	Mechanism KafkaClusterSaslScramMechanism
+
+	// The Amazon Resource Name (ARN) of the Secrets Manager secret.
+	//
+	// This member is required.
+	SecretArn *string
 
 	noSmithyDocumentSerde
 }
@@ -816,6 +894,9 @@ type KafkaClusterSummary struct {
 	// Details of an Amazon MSK Cluster.
 	AmazonMskCluster *AmazonMskCluster
 
+	// Details of an Apache Kafka Cluster.
+	ApacheKafkaCluster *ApacheKafkaCluster
+
 	// The alias of the Kafka cluster. Used to prefix names of replicated topics.
 	KafkaClusterAlias *string
 
@@ -826,6 +907,15 @@ type KafkaVersion struct {
 	Status KafkaVersionStatus
 
 	Version *string
+
+	noSmithyDocumentSerde
+}
+
+// Configuration for log delivery to customer destinations.
+type LogDelivery struct {
+
+	// Configuration for replicator log delivery.
+	ReplicatorLogDelivery *ReplicatorLogDelivery
 
 	noSmithyDocumentSerde
 }
@@ -885,6 +975,9 @@ type MutableClusterInfo struct {
 
 	// This controls storage mode for supported storage tiers.
 	StorageMode StorageMode
+
+	// Access control settings for zookeeper
+	ZookeeperAccess *ZookeeperAccess
 
 	noSmithyDocumentSerde
 }
@@ -1135,25 +1228,27 @@ type ReplicationInfo struct {
 	// This member is required.
 	ConsumerGroupReplication *ConsumerGroupReplication
 
-	// The ARN of the source Kafka cluster.
-	//
-	// This member is required.
-	SourceKafkaClusterArn *string
-
 	// The compression type to use when producing records to target cluster.
 	//
 	// This member is required.
 	TargetCompressionType TargetCompressionType
 
-	// The ARN of the target Kafka cluster.
-	//
-	// This member is required.
-	TargetKafkaClusterArn *string
-
 	// Configuration relating to topic replication.
 	//
 	// This member is required.
 	TopicReplication *TopicReplication
+
+	// The ARN of the source Kafka cluster.
+	SourceKafkaClusterArn *string
+
+	// The ID of the source Kafka cluster.
+	SourceKafkaClusterId *string
+
+	// The ARN of the target Kafka cluster.
+	TargetKafkaClusterArn *string
+
+	// The ID of the target Kafka cluster.
+	TargetKafkaClusterId *string
 
 	noSmithyDocumentSerde
 }
@@ -1220,6 +1315,66 @@ type ReplicationTopicNameConfiguration struct {
 
 	// The type of replicated topic name.
 	Type ReplicationTopicNameConfigurationType
+
+	noSmithyDocumentSerde
+}
+
+// Details about delivering logs to CloudWatch Logs.
+type ReplicatorCloudWatchLogs struct {
+
+	// Whether log delivery to CloudWatch Logs is enabled.
+	//
+	// This member is required.
+	Enabled *bool
+
+	// The CloudWatch log group that is the destination for log delivery.
+	LogGroup *string
+
+	noSmithyDocumentSerde
+}
+
+// Details about delivering logs to Firehose.
+type ReplicatorFirehose struct {
+
+	// Whether log delivery to Firehose is enabled.
+	//
+	// This member is required.
+	Enabled *bool
+
+	// The Firehose delivery stream that is the destination for log delivery.
+	DeliveryStream *string
+
+	noSmithyDocumentSerde
+}
+
+// Configuration for replicator log delivery.
+type ReplicatorLogDelivery struct {
+
+	// Configuration for CloudWatch Logs delivery.
+	CloudWatchLogs *ReplicatorCloudWatchLogs
+
+	// Configuration for Firehose delivery.
+	Firehose *ReplicatorFirehose
+
+	// Configuration for S3 delivery.
+	S3 *ReplicatorS3
+
+	noSmithyDocumentSerde
+}
+
+// Details about delivering logs to S3.
+type ReplicatorS3 struct {
+
+	// Whether log delivery to S3 is enabled.
+	//
+	// This member is required.
+	Enabled *bool
+
+	// The S3 bucket that is the destination for log delivery.
+	Bucket *string
+
+	// The S3 prefix that is the destination for log delivery.
+	Prefix *string
 
 	noSmithyDocumentSerde
 }
@@ -1659,6 +1814,15 @@ type VpcConnectivityScram struct {
 type VpcConnectivityTls struct {
 
 	// TLS authentication is on or off for VPC connectivity.
+	Enabled *bool
+
+	noSmithyDocumentSerde
+}
+
+// Access control settings for zookeeper
+type ZookeeperAccess struct {
+
+	// Zookeeper Access was on or off for the cluster
 	Enabled *bool
 
 	noSmithyDocumentSerde

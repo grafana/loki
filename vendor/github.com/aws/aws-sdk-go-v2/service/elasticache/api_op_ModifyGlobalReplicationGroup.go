@@ -54,7 +54,7 @@ type ModifyGlobalReplicationGroupInput struct {
 	CacheParameterGroupName *string
 
 	// Modifies the engine listed in a global replication group message. The options
-	// are redis, memcached or valkey.
+	// are valkey, memcached or redis.
 	Engine *string
 
 	// The upgraded version of the cache engine to be run on the clusters in the
@@ -118,7 +118,7 @@ func (c *Client) addOperationModifyGlobalReplicationGroupMiddlewares(stack *midd
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -140,9 +140,6 @@ func (c *Client) addOperationModifyGlobalReplicationGroupMiddlewares(stack *midd
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

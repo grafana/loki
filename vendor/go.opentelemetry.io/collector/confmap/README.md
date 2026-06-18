@@ -126,7 +126,6 @@ service:
   extensions: [ file_storage ]
 ```
 
-
 ```yaml
 # extra_extension.yaml
 extensions:
@@ -172,7 +171,7 @@ service:
 Notice that the `service::extensions` list is a combination of both configurations. By default, the value of the last configuration source passed, `extra_extension`, would be used, so the extensions list would be: `service::extensions: [healthcheckv2]`.
 
 > [!NOTE]
-> By enabling this feature gate, all the lists in the given configuration will be merged. 
+> By enabling this feature gate, only the extensions, receivers and exporters under the `service` section are merged.
 
 ### Watching for Updates
 After the configuration was processed, the `Resolver` can be used as a single point to watch for updates in the

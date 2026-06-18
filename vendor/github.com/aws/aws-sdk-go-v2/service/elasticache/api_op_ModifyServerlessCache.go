@@ -49,7 +49,7 @@ type ModifyServerlessCacheInput struct {
 	Description *string
 
 	// Modifies the engine listed in a serverless cache request. The options are
-	// redis, memcached or valkey.
+	// valkey, memcached or redis.
 	Engine *string
 
 	// Modifies the engine vesion listed in a serverless cache request.
@@ -126,7 +126,7 @@ func (c *Client) addOperationModifyServerlessCacheMiddlewares(stack *middleware.
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -148,9 +148,6 @@ func (c *Client) addOperationModifyServerlessCacheMiddlewares(stack *middleware.
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

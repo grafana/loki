@@ -124,7 +124,7 @@ const (
 	AppAlertSpecOperator_LessThan            AppAlertSpecOperator = "LESS_THAN"
 )
 
-// AppAlertSpecRule  - CPU_UTILIZATION: Represents CPU for a given container instance. Only applicable at the component level.  - MEM_UTILIZATION: Represents RAM for a given container instance. Only applicable at the component level.  - RESTART_COUNT: Represents restart count for a given container instance. Only applicable at the component level.  - DEPLOYMENT_FAILED: Represents whether a deployment has failed. Only applicable at the app level.  - DEPLOYMENT_LIVE: Represents whether a deployment has succeeded. Only applicable at the app level.  - DEPLOYMENT_STARTED: Represents whether a deployment has started. Only applicable at the app level.  - DEPLOYMENT_CANCELED: Represents whether a deployment has been canceled. Only applicable at the app level.  - DOMAIN_FAILED: Represents whether a domain configuration has failed. Only applicable at the app level.  - DOMAIN_LIVE: Represents whether a domain configuration has succeeded. Only applicable at the app level.  - AUTOSCALE_FAILED: Represents whether autoscaling has failed. Only applicable at the app level.  - AUTOSCALE_SUCCEEDED: Represents whether autoscaling has succeeded. Only applicable at the app level. - FUNCTIONS_ACTIVATION_COUNT: Represents an activation count for a given functions instance. Only applicable to functions components.  - FUNCTIONS_AVERAGE_DURATION_MS: Represents the average duration for function runtimes. Only applicable to functions components.  - FUNCTIONS_ERROR_RATE_PER_MINUTE: Represents an error rate per minute for a given functions instance. Only applicable to functions components.  - FUNCTIONS_AVERAGE_WAIT_TIME_MS: Represents the average wait time for functions. Only applicable to functions components.  - FUNCTIONS_ERROR_COUNT: Represents an error count for a given functions instance. Only applicable to functions components.  - FUNCTIONS_GB_RATE_PER_SECOND: Represents the rate of memory consumption (GB x seconds) for functions. Only applicable to functions components.
+// AppAlertSpecRule  - CPU_UTILIZATION: Represents CPU for a given container instance. Only applicable at the component level.  - MEM_UTILIZATION: Represents RAM for a given container instance. Only applicable at the component level.  - RESTART_COUNT: Represents restart count for a given container instance. Only applicable at the component level.  - DEPLOYMENT_FAILED: Represents whether a deployment has failed. Only applicable at the app level.  - DEPLOYMENT_LIVE: Represents whether a deployment has succeeded. Only applicable at the app level.  - DEPLOYMENT_STARTED: Represents whether a deployment has started. Only applicable at the app level.  - DEPLOYMENT_CANCELED: Represents whether a deployment has been canceled. Only applicable at the app level.  - DOMAIN_FAILED: Represents whether a domain configuration has failed. Only applicable at the app level.  - DOMAIN_LIVE: Represents whether a domain configuration has succeeded. Only applicable at the app level.  - AUTOSCALE_FAILED: Represents whether autoscaling has failed. Only applicable at the app level.  - AUTOSCALE_SUCCEEDED: Represents whether autoscaling has succeeded. Only applicable at the app level.  - JOB_INVOCATION_FAILED: Represents whether a job invocation has failed. Only applicable to scheduled job components.  - FUNCTIONS_ACTIVATION_COUNT: Represents an activation count for a given functions instance. Only applicable to functions components.  - FUNCTIONS_AVERAGE_DURATION_MS: Represents the average duration for function runtimes. Only applicable to functions components.  - FUNCTIONS_ERROR_RATE_PER_MINUTE: Represents an error rate per minute for a given functions instance. Only applicable to functions components.  - FUNCTIONS_AVERAGE_WAIT_TIME_MS: Represents the average wait time for functions. Only applicable to functions components.  - FUNCTIONS_ERROR_COUNT: Represents an error count for a given functions instance. Only applicable to functions components.  - FUNCTIONS_GB_RATE_PER_SECOND: Represents the rate of memory consumption (GB x seconds) for functions. Only applicable to functions components.  - REQUESTS_PER_SECOND: Represents requests per second for a service. Only applicable to service components.  - REQUEST_DURATION_P95_MS: Represents request duration p95 in milliseconds for a service. Only applicable to service components.
 type AppAlertSpecRule string
 
 // List of AppAlertSpecRule
@@ -148,6 +148,8 @@ const (
 	AppAlertSpecRule_FunctionsAverageWaitTimeMs  AppAlertSpecRule = "FUNCTIONS_AVERAGE_WAIT_TIME_MS"
 	AppAlertSpecRule_FunctionsErrorCount         AppAlertSpecRule = "FUNCTIONS_ERROR_COUNT"
 	AppAlertSpecRule_FunctionsGBRatePerSecond    AppAlertSpecRule = "FUNCTIONS_GB_RATE_PER_SECOND"
+	AppAlertSpecRule_RequestsPerSecond           AppAlertSpecRule = "REQUESTS_PER_SECOND"
+	AppAlertSpecRule_RequestDurationP95Ms        AppAlertSpecRule = "REQUEST_DURATION_P95_MS"
 )
 
 // AppAlertSpecWindow the model 'AppAlertSpecWindow'
@@ -177,9 +179,23 @@ type AppAutoscalingSpecMetricCPU struct {
 	Percent int64 `json:"percent,omitempty"`
 }
 
+// AppAutoscalingSpecMetricRequestDuration struct for AppAutoscalingSpecMetricRequestDuration
+type AppAutoscalingSpecMetricRequestDuration struct {
+	// The p95 target request duration in milliseconds for the component.
+	P95Milliseconds int64 `json:"p95_milliseconds,omitempty"`
+}
+
+// AppAutoscalingSpecMetricRequestsPerSecond struct for AppAutoscalingSpecMetricRequestsPerSecond
+type AppAutoscalingSpecMetricRequestsPerSecond struct {
+	// The target number of requests per second per instance for the component.
+	PerInstance int64 `json:"per_instance,omitempty"`
+}
+
 // AppAutoscalingSpecMetrics struct for AppAutoscalingSpecMetrics
 type AppAutoscalingSpecMetrics struct {
-	CPU *AppAutoscalingSpecMetricCPU `json:"cpu,omitempty"`
+	CPU               *AppAutoscalingSpecMetricCPU               `json:"cpu,omitempty"`
+	RequestsPerSecond *AppAutoscalingSpecMetricRequestsPerSecond `json:"requests_per_second,omitempty"`
+	RequestDuration   *AppAutoscalingSpecMetricRequestDuration   `json:"request_duration,omitempty"`
 }
 
 // AppBuildConfig struct for AppBuildConfig
@@ -373,8 +389,8 @@ type AppIngressSpecRuleRoutingRedirect struct {
 // AppIngressSpecRuleStringMatch The string match configuration.
 type AppIngressSpecRuleStringMatch struct {
 	// Prefix-based match. For example, `/api` will match `/api`, `/api/`, and any nested paths such as `/api/v1/endpoint`.
-	Prefix string `json:"prefix,omitempty"`
-	Exact  string `json:"exact,omitempty"`
+	Prefix *string `json:"prefix,omitempty"`
+	Exact  *string `json:"exact,omitempty"`
 }
 
 type AppSecureHeaderSpec struct {
@@ -756,13 +772,15 @@ type AppWorkerSpecTermination struct {
 type AutoscalerActionScaleChange struct {
 	From int64 `json:"from,omitempty"`
 	To   int64 `json:"to,omitempty"`
+	// The metric that triggered the scale change while scaling up. Known values are \"cpu\", \"requests_per_second\", \"request_duration\". For inactivity sleep, \"scale_from_zero\" and \"scale_to_zero\" are used.
+	TriggeringMetric string `json:"triggering_metric,omitempty"`
 }
 
 // AutoscalingEventComponentScaleChange struct for AutoscalingEventComponentScaleChange
 type AutoscalingEventComponentScaleChange struct {
 	From int64 `json:"from,omitempty"`
 	To   int64 `json:"to,omitempty"`
-	// The metric that triggered the scale change while scaling up. Known values are "cpu", "requests_per_second", "request_duration". For inactivity sleep, "scale_from_zero" and "scale_to_zero" are used.
+	// The metric that triggered the scale change while scaling up. Known values are \"cpu\", \"requests_per_second\", \"request_duration\". For inactivity sleep, \"scale_from_zero\" and \"scale_to_zero\" are used.
 	TriggeringMetric string `json:"triggering_metric,omitempty"`
 }
 

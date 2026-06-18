@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/pb33f/libopenapi/utils"
 	"go.yaml.in/yaml/v4"
@@ -97,12 +99,11 @@ func extractSpecInfoInternal(spec []byte, bypass bool, skipJSON bool) (*SpecInfo
 
 	specInfo.NumLines = bytes.Count(spec, []byte{'\n'}) + 1
 
-	// Pre-process JSON to handle \/ escape sequences that YAML parser doesn't recognize.
-	// JSON (RFC 8259) allows \/ as an optional escape for forward slash, but YAML does not.
-	// See: https://github.com/pb33f/libopenapi/issues/479
+	// Pre-process JSON escapes that YAML parsers do not accept even though
+	// they are valid JSON, while preserving the existing YAML-node parse path.
 	parseBytes := spec
 	if specInfo.SpecFileType == JSONFileType {
-		parseBytes = unescapeJSONSlashes(spec)
+		parseBytes = normalizeJSONForYAMLParser(spec)
 	}
 
 	err := yaml.Unmarshal(parseBytes, &parsedSpec)
@@ -324,39 +325,126 @@ func parseVersionTypeData(d interface{}) (string, int, error) {
 	return string(r), int(r[0]) - '0', nil
 }
 
-// unescapeJSONSlashes replaces the optional \/ escape sequence in JSON with /
-// JSON (RFC 8259) allows \/ as an optional escape for forward slash, but YAML
-// parsers (including go.yaml.in/yaml/v4) do not recognize it.
-// This handles escaped backslashes correctly: \\/ becomes \/ not //
-// Returns the original slice if no transformation is needed (zero allocation).
-func unescapeJSONSlashes(jsonBytes []byte) []byte {
-	// fast path: check if transformation is needed
-	if !bytes.Contains(jsonBytes, []byte(`\/`)) {
+// normalizeJSONForYAMLParser rewrites the small set of JSON escapes accepted by
+// RFC 8259 but rejected by go.yaml.in/yaml/v4. It returns the original slice
+// without allocation unless a rewrite is required.
+func normalizeJSONForYAMLParser(jsonBytes []byte) []byte {
+	if bytes.IndexByte(jsonBytes, '\\') < 0 {
 		return jsonBytes
 	}
 
-	result := make([]byte, 0, len(jsonBytes))
-	i := 0
-	for i < len(jsonBytes) {
-		if jsonBytes[i] == '\\' && i+1 < len(jsonBytes) {
-			switch jsonBytes[i+1] {
-			case '/':
-				// \/ -> / (json optional escape for solidus)
-				result = append(result, '/')
-				i += 2
-			case '\\':
-				// preserve escaped backslash to prevent \\/ becoming //
-				result = append(result, '\\', '\\')
-				i += 2
-			default:
-				// preserve other escape sequences (\n, \t, \", etc.)
-				result = append(result, jsonBytes[i])
-				i++
-			}
-		} else {
-			result = append(result, jsonBytes[i])
-			i++
+	var result []byte
+	var runeBytes [utf8.UTFMax]byte
+	last := 0
+	scan := 0
+
+	for scan < len(jsonBytes) {
+		rel := bytes.IndexByte(jsonBytes[scan:], '\\')
+		if rel < 0 {
+			break
 		}
+
+		escape := scan + rel
+		replacement, consumed, ok := jsonEscapeReplacement(jsonBytes, escape, &runeBytes)
+		if !ok {
+			scan = nextJSONEscapeScanOffset(jsonBytes, escape)
+			continue
+		}
+
+		if result == nil {
+			result = make([]byte, 0, len(jsonBytes))
+		}
+		result = append(result, jsonBytes[last:escape]...)
+		result = append(result, replacement...)
+		scan = escape + consumed
+		last = scan
 	}
+
+	if result == nil {
+		return jsonBytes
+	}
+
+	result = append(result, jsonBytes[last:]...)
 	return result
+}
+
+func jsonEscapeReplacement(jsonBytes []byte, escape int, runeBytes *[utf8.UTFMax]byte) ([]byte, int, bool) {
+	if escape+1 >= len(jsonBytes) {
+		return nil, 0, false
+	}
+
+	switch jsonBytes[escape+1] {
+	case '/':
+		runeBytes[0] = '/'
+		return runeBytes[:1], 2, true
+	case 'u':
+		if escape+12 > len(jsonBytes) {
+			return nil, 0, false
+		}
+
+		high, ok := decodeJSONUnicodeEscape(jsonBytes[escape+2 : escape+6])
+		if !ok || !isHighSurrogate(high) {
+			return nil, 0, false
+		}
+
+		lowEscape := escape + 6
+		if jsonBytes[lowEscape] != '\\' || jsonBytes[lowEscape+1] != 'u' {
+			return nil, 0, false
+		}
+
+		low, ok := decodeJSONUnicodeEscape(jsonBytes[lowEscape+2 : lowEscape+6])
+		if !ok || !isLowSurrogate(low) {
+			return nil, 0, false
+		}
+
+		r := utf16.DecodeRune(rune(high), rune(low))
+		n := utf8.EncodeRune(runeBytes[:], r)
+		return runeBytes[:n], 12, true
+	default:
+		return nil, 0, false
+	}
+}
+
+func nextJSONEscapeScanOffset(jsonBytes []byte, escape int) int {
+	if escape+1 >= len(jsonBytes) {
+		return escape + 1
+	}
+	return escape + 2
+}
+
+func decodeJSONUnicodeEscape(hexBytes []byte) (uint16, bool) {
+	if len(hexBytes) != 4 {
+		return 0, false
+	}
+
+	var value uint16
+	for _, b := range hexBytes {
+		hex, ok := jsonHexValue(b)
+		if !ok {
+			return 0, false
+		}
+		value = value<<4 | uint16(hex)
+	}
+	return value, true
+}
+
+func jsonHexValue(b byte) (byte, bool) {
+	switch {
+	case b >= '0' && b <= '9':
+		return b - '0', true
+	case b >= 'a' && b <= 'f':
+		return b - 'a' + 10, true
+	case b >= 'A' && b <= 'F':
+		return b - 'A' + 10, true
+	default:
+		return 0, false
+	}
+}
+
+func isHighSurrogate(value uint16) bool {
+	return value >= 0xD800 && value <= 0xDBFF
+}
+
+func isLowSurrogate(value uint16) bool {
+	return value >= 0xDC00 && value <= 0xDFFF
 }

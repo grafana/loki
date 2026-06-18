@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	functionsBasePath        = "/v2/functions/namespaces"
-	functionsNamespacePath   = functionsBasePath + "/%s"
-	functionsTriggerBasePath = functionsNamespacePath + "/triggers"
+	functionsBasePath          = "/v2/functions/namespaces"
+	functionsNamespacePath     = functionsBasePath + "/%s"
+	functionsTriggerBasePath   = functionsNamespacePath + "/triggers"
+	functionsAccessKeyBasePath = functionsNamespacePath + "/keys"
 )
 
 type FunctionsService interface {
@@ -24,6 +25,11 @@ type FunctionsService interface {
 	CreateTrigger(context.Context, string, *FunctionsTriggerCreateRequest) (*FunctionsTrigger, *Response, error)
 	UpdateTrigger(context.Context, string, string, *FunctionsTriggerUpdateRequest) (*FunctionsTrigger, *Response, error)
 	DeleteTrigger(context.Context, string, string) (*Response, error)
+
+	ListAccessKeys(context.Context, string) ([]FunctionsAccessKey, *Response, error)
+	CreateAccessKey(context.Context, string, *FunctionsAccessKeyCreateRequest) (*FunctionsAccessKey, *Response, error)
+	UpdateAccessKey(context.Context, string, string, *FunctionsAccessKeyUpdateRequest) (*FunctionsAccessKey, *Response, error)
+	DeleteAccessKey(context.Context, string, string) (*Response, error)
 }
 
 type FunctionsServiceOp struct {
@@ -97,6 +103,34 @@ type FunctionsTriggerCreateRequest struct {
 type FunctionsTriggerUpdateRequest struct {
 	IsEnabled        *bool                    `json:"is_enabled,omitempty"`
 	ScheduledDetails *TriggerScheduledDetails `json:"scheduled_details,omitempty"`
+}
+
+type accessKeysRoot struct {
+	AccessKeys []FunctionsAccessKey `json:"access_keys,omitempty"`
+	Count      int                  `json:"count,omitempty"`
+}
+
+type accessKeyRoot struct {
+	AccessKey *FunctionsAccessKey `json:"access_key,omitempty"`
+}
+
+type FunctionsAccessKey struct {
+	ID         string    `json:"id,omitempty"`
+	Name       string    `json:"name,omitempty"`
+	Secret     string    `json:"secret,omitempty"`
+	ExpiresAt  time.Time `json:"expires_at,omitempty"`
+	CreatedAt  time.Time `json:"created_at,omitempty"`
+	UpdatedAt  time.Time `json:"updated_at,omitempty"`
+	LastUsedAt time.Time `json:"last_used_at,omitempty"`
+}
+
+type FunctionsAccessKeyCreateRequest struct {
+	Name      string `json:"name"`
+	ExpiresIn string `json:"expires_in,omitempty"`
+}
+
+type FunctionsAccessKeyUpdateRequest struct {
+	Name string `json:"name"`
 }
 
 // Gets a list of namespaces
@@ -225,6 +259,65 @@ func (s *FunctionsServiceOp) DeleteTrigger(ctx context.Context, namespace string
 	path := fmt.Sprintf(functionsTriggerBasePath+"/%s", namespace, trigger)
 	req, err := s.client.NewRequest(ctx, http.MethodDelete, path, nil)
 
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// ListAccessKeys lists access keys for a namespace
+func (s *FunctionsServiceOp) ListAccessKeys(ctx context.Context, namespace string) ([]FunctionsAccessKey, *Response, error) {
+	path := fmt.Sprintf(functionsAccessKeyBasePath, namespace)
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(accessKeysRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.AccessKeys, resp, nil
+}
+
+// CreateAccessKey creates an access key for a namespace
+func (s *FunctionsServiceOp) CreateAccessKey(ctx context.Context, namespace string, opts *FunctionsAccessKeyCreateRequest) (*FunctionsAccessKey, *Response, error) {
+	path := fmt.Sprintf(functionsAccessKeyBasePath, namespace)
+	req, err := s.client.NewRequest(ctx, http.MethodPost, path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(accessKeyRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.AccessKey, resp, nil
+}
+
+// UpdateAccessKey updates an access key for a namespace
+func (s *FunctionsServiceOp) UpdateAccessKey(ctx context.Context, namespace string, keyID string, opts *FunctionsAccessKeyUpdateRequest) (*FunctionsAccessKey, *Response, error) {
+	path := fmt.Sprintf(functionsAccessKeyBasePath+"/%s", namespace, keyID)
+	req, err := s.client.NewRequest(ctx, http.MethodPut, path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(accessKeyRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.AccessKey, resp, nil
+}
+
+// DeleteAccessKey deletes an access key for a namespace
+func (s *FunctionsServiceOp) DeleteAccessKey(ctx context.Context, namespace string, keyID string) (*Response, error) {
+	path := fmt.Sprintf(functionsAccessKeyBasePath+"/%s", namespace, keyID)
+	req, err := s.client.NewRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -38,7 +38,7 @@ type CreateServerlessCacheSnapshotInput struct {
 
 	// The name for the snapshot being created. Must be unique for the customer
 	// account. Available for Valkey, Redis OSS and Serverless Memcached only. Must be
-	// between 1 and 255 characters.
+	// between 1 and 255 characters. This value is stored as a lowercase string.
 	//
 	// This member is required.
 	ServerlessCacheSnapshotName *string
@@ -100,7 +100,7 @@ func (c *Client) addOperationCreateServerlessCacheSnapshotMiddlewares(stack *mid
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -122,9 +122,6 @@ func (c *Client) addOperationCreateServerlessCacheSnapshotMiddlewares(stack *mid
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

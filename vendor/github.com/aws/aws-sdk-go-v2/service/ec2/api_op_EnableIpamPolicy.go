@@ -52,14 +52,14 @@ type EnableIpamPolicyInput struct {
 	// UnauthorizedOperation .
 	DryRun *bool
 
+	// A target can be an individual Amazon Web Services account or an entity within
+	// an Amazon Web Services Organization to which an IPAM policy can be applied.
+	//
 	// The ID of the Amazon Web Services Organizations target for which to enable the
 	// IPAM policy. This parameter is required only when IPAM is integrated with Amazon
 	// Web Services Organizations. When IPAM is not integrated with Amazon Web Services
 	// Organizations, omit this parameter and the policy will apply to the current
 	// account.
-	//
-	// A target can be an individual Amazon Web Services account or an entity within
-	// an Amazon Web Services Organization to which an IPAM policy can be applied.
 	OrganizationTargetId *string
 
 	noSmithyDocumentSerde
@@ -110,7 +110,7 @@ func (c *Client) addOperationEnableIpamPolicyMiddlewares(stack *middleware.Stack
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -132,9 +132,6 @@ func (c *Client) addOperationEnableIpamPolicyMiddlewares(stack *middleware.Stack
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

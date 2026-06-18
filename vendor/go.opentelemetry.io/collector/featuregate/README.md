@@ -6,35 +6,48 @@ be able to govern the behavior of the application starting as early as possible
 and should be available to every component such that decisions may be made
 based on flags at the component level.
 
-## Usage
+## Defining Feature Gates
 
-### With mdatagen
+### Declaratively in `metadata.yaml` (Recommended)
 
-In components that use mdatagen, feature gates should be defined in the
-component's `metadata.yml`.
+The preferred way to define feature gates is declaratively in the component's
+`metadata.yaml` file. The `mdatagen` code generator will automatically register
+the gate and generate the necessary Go code.
 
 ```yaml
 feature_gates:
-	- id: namespaced.uniqueIdentifier
-		description: A brief description of what the gate controls
-		stage: stable
-		from_version: 'v0.65.0'
-		reference_url: 'https://github.com/open-telemetry/opentelemetry-collector/issues/6167'
+  - id: namespaced.uniqueIdentifier
+    description: A brief description of what the gate controls
+    stage: alpha
+    from_version: 'v0.65.0'
+    reference_url: 'https://github.com/open-telemetry/opentelemetry-collector/issues/6167'
 ```
 
-Running the mdatagen code generator with this configuration will initialize the
-feature flag in the `internal/metadata` submodule.
-The status of the gate can later be checked by calling that submodule:
+The supported fields are:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Unique identifier for the feature gate |
+| `description` | Yes | Brief description of what the gate controls |
+| `stage` | Yes | Lifecycle stage: `alpha`, `beta`, `stable`, or `deprecated` |
+| `from_version` | Yes | Version when the feature gate was introduced |
+| `to_version` | For `stable`/`deprecated` | Version when the gate reached its current stage |
+| `reference_url` | Yes | URL with contextual information (issue or PR) |
+
+Running `mdatagen` will generate the gate registration in the `internal/metadata`
+submodule. The status of the gate can then be checked in code:
 
 ```go
 if metadata.NamespacedUniqueIdentifierFeatureGate.IsEnabled() {
-	setupNewFeature()
+  setupNewFeature()
 }
 ```
 
-### In code
+See the [mdatagen documentation](../cmd/mdatagen/README.md) for more details.
 
-In components that don't use mdatagen, feature gates can be defined and
+### Programmatically in code
+
+For packages that don't use `mdatagen`, feature gates can be defined and
 registered with the global registry in an `init()` function.  This makes the
 `Gate` available to be configured and queried with the defined
 [`Stage`](#feature-lifecycle) default value.
@@ -44,12 +57,12 @@ Once a `Gate` has been marked as `Stable`, it must have a `RemovalVersion` set.
 
 ```go
 var myFeatureGate = featuregate.GlobalRegistry().MustRegister(
-	"namespaced.uniqueIdentifier",
-	featuregate.Stable,
-    featuregate.WithRegisterFromVersion("v0.65.0")
-	featuregate.WithRegisterDescription("A brief description of what the gate controls"),
-	featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/issues/6167"),
-	featuregate.WithRegisterToVersion("v0.70.0"))
+  "namespaced.uniqueIdentifier",
+  featuregate.Stable,
+  featuregate.WithRegisterFromVersion("v0.65.0")
+  featuregate.WithRegisterDescription("A brief description of what the gate controls"),
+  featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/issues/6167"),
+  featuregate.WithRegisterToVersion("v0.70.0"))
 ```
 
 The status of the gate may later be checked by interrogating the global
@@ -57,7 +70,7 @@ feature gate registry:
 
 ```go
 if myFeatureGate.IsEnabled() {
-	setupNewFeature()
+  setupNewFeature()
 }
 ```
 
