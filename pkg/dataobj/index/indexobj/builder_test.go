@@ -293,29 +293,29 @@ func TestUnionTimeRange(t *testing.T) {
 	base := time.Unix(1000, 0).UTC()
 
 	// Case 1: candidate has no data (candMin zero) -> accumulator returned unchanged.
-	min, max := unionTimeRange(base, base.Add(time.Hour), time.Time{}, time.Time{})
-	require.Equal(t, base, min)
-	require.Equal(t, base.Add(time.Hour), max)
+	gotMin, gotMax := unionTimeRange(base, base.Add(time.Hour), time.Time{}, time.Time{})
+	require.Equal(t, base, gotMin)
+	require.Equal(t, base.Add(time.Hour), gotMax)
 
 	// Case 2: accumulator zero, candidate non-zero -> candidate returned.
-	min, max = unionTimeRange(time.Time{}, time.Time{}, base, base.Add(time.Hour))
-	require.Equal(t, base, min)
-	require.Equal(t, base.Add(time.Hour), max)
+	gotMin, gotMax = unionTimeRange(time.Time{}, time.Time{}, base, base.Add(time.Hour))
+	require.Equal(t, base, gotMin)
+	require.Equal(t, base.Add(time.Hour), gotMax)
 
 	// Case 3: both non-zero, candidate widens on both ends -> widened range.
-	min, max = unionTimeRange(base.Add(time.Hour), base.Add(2*time.Hour), base, base.Add(3*time.Hour))
-	require.Equal(t, base, min)
-	require.Equal(t, base.Add(3*time.Hour), max)
+	gotMin, gotMax = unionTimeRange(base.Add(time.Hour), base.Add(2*time.Hour), base, base.Add(3*time.Hour))
+	require.Equal(t, base, gotMin)
+	require.Equal(t, base.Add(3*time.Hour), gotMax)
 
 	// Case 4: both non-zero, candidate inside accumulator -> accumulator unchanged.
-	min, max = unionTimeRange(base, base.Add(3*time.Hour), base.Add(time.Hour), base.Add(2*time.Hour))
-	require.Equal(t, base, min)
-	require.Equal(t, base.Add(3*time.Hour), max)
+	gotMin, gotMax = unionTimeRange(base, base.Add(3*time.Hour), base.Add(time.Hour), base.Add(2*time.Hour))
+	require.Equal(t, base, gotMin)
+	require.Equal(t, base.Add(3*time.Hour), gotMax)
 
 	// Case 5: accumulator zero AND candidate zero -> both zero out.
-	min, max = unionTimeRange(time.Time{}, time.Time{}, time.Time{}, time.Time{})
-	require.True(t, min.IsZero())
-	require.True(t, max.IsZero())
+	gotMin, gotMax = unionTimeRange(time.Time{}, time.Time{}, time.Time{}, time.Time{})
+	require.True(t, gotMin.IsZero())
+	require.True(t, gotMax.IsZero())
 }
 
 func TestBuilder_TimeRanges_AfterReset(t *testing.T) {
