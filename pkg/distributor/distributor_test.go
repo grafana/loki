@@ -1910,8 +1910,26 @@ func TestDistributor_PushShardStreamsPolicyOverride(t *testing.T) {
 	_, err = distributors[0].Push(ctx, mkReq(`{app="other"}`))
 	require.NoError(t, err)
 
-	// Give the async ingester pushes time to land.
-	time.Sleep(20 * time.Millisecond)
+	// The ingester writes are async (serviced by the distributor's ingester worker pool), so wait
+	// until both requests' streams have reached the ingesters before asserting.
+	streamPushed := func(app string) bool {
+		for i := range ingesters {
+			ingesters[i].mu.Lock()
+			for _, pr := range ingesters[i].pushed {
+				for _, st := range pr.Streams {
+					if strings.Contains(st.Labels, `app="`+app+`"`) {
+						ingesters[i].mu.Unlock()
+						return true
+					}
+				}
+			}
+			ingesters[i].mu.Unlock()
+		}
+		return false
+	}
+	require.Eventually(t, func() bool {
+		return streamPushed("foo") && streamPushed("other")
+	}, time.Second, 10*time.Millisecond, "expected both streams to reach the ingesters")
 
 	fooSharded, otherSharded := false, false
 	for i := range ingesters {
