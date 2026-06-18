@@ -418,8 +418,8 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) (err error) {
 }
 
 // SendMessageAsync sends a message to the remote peer asynchronously.
-// SendMessageAsync blocks until the message has been sent over the connection
-// but does not wait for an acknowledgement or response.
+// SendMessageAsync blocks until the message has been accepted into the outgoing
+// queue but does not wait for an acknowledgement or response.
 //
 // [Peer.Serve] must be running before SendMessageAsync is called, otherwise it
 // blocks until the context is canceled.
@@ -427,10 +427,12 @@ func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 	p.lazyInit()
 
 	reqID := p.requestID.Inc()
+	messageType := message.Kind().String()
+	start := time.Now()
 	err := p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message})
 
 	role, plane := p.labels()
-	p.Metrics.recordAsyncSend(role, plane, message.Kind().String(), err)
+	p.Metrics.recordAsyncSend(role, plane, messageType, time.Since(start), err)
 	return err
 }
 

@@ -51,6 +51,11 @@ const (
 )
 
 const (
+	messageClientModeSync  = "sync"
+	messageClientModeAsync = "async"
+)
+
+const (
 	queueDirectionIncoming = "incoming"
 	queueDirectionOutgoing = "outgoing"
 )
@@ -112,8 +117,8 @@ func NewMetrics() *Metrics {
 		}, []string{"role", "plane", "direction", "message_type", "outcome"}),
 		messageClientSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_scheduler_wire_message_client_seconds",
-			Help: "Time spent synchronously sending a wire message and waiting for acknowledgement.",
-		}, []string{"role", "plane", "message_type", "outcome"}),
+			Help: "Time a SendMessage or SendMessageAsync caller waits for the send API to return.",
+		}, []string{"role", "plane", "mode", "message_type", "outcome"}),
 		messageHandlerSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_scheduler_wire_message_handler_seconds",
 			Help: "Time spent handling an incoming wire message in the application handler.",
@@ -227,15 +232,18 @@ func (o sendObservation) finish(role Role, plane Plane, err error) {
 	o.m.pendingRequests.WithLabelValues(string(o.role), string(o.plane), o.messageType).Dec()
 
 	outcome := classifyClientOutcome(err)
-	o.m.messageClientSeconds.WithLabelValues(string(role), string(plane), o.messageType, outcome).Observe(time.Since(o.start).Seconds())
+	o.m.messageClientSeconds.WithLabelValues(string(role), string(plane), messageClientModeSync, o.messageType, outcome).Observe(time.Since(o.start).Seconds())
 	o.m.messagesTotal.WithLabelValues(string(role), string(plane), messageDirectionSent, o.messageType, outcome).Inc()
 }
 
 // recordAsyncSend records metrics for one asynchronous send, which completes as
 // soon as the frame is accepted into the outgoing queue.
-func (m *Metrics) recordAsyncSend(role Role, plane Plane, messageType string, err error) {
+func (m *Metrics) recordAsyncSend(role Role, plane Plane, messageType string, d time.Duration, err error) {
 	m.messagesSentTotal.WithLabelValues(messageType).Inc()
-	m.messagesTotal.WithLabelValues(string(role), string(plane), messageDirectionSent, messageType, classifyAsyncOutcome(err)).Inc()
+
+	outcome := classifyAsyncOutcome(err)
+	m.messageClientSeconds.WithLabelValues(string(role), string(plane), messageClientModeAsync, messageType, outcome).Observe(d.Seconds())
+	m.messagesTotal.WithLabelValues(string(role), string(plane), messageDirectionSent, messageType, outcome).Inc()
 }
 
 // receiveObservation records metrics across the lifetime of one incoming

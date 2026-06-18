@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,6 +59,13 @@ func TestObservationGaugeBalance(t *testing.T) {
 		obs.finish(RoleScheduler, PlaneControl, nil)
 		require.Equal(t, 0.0, testutil.ToFloat64(m.pendingRequests.WithLabelValues(string(RoleScheduler), string(PlaneUnknown), messageType)), "gauge must be decremented on the begin labels")
 		require.Equal(t, 0.0, testutil.ToFloat64(m.pendingRequests.WithLabelValues(string(RoleScheduler), string(PlaneControl), messageType)), "gauge must not leak onto the finish labels")
+		require.Equal(t, uint64(1), histogramSampleCount(t, m, "loki_engine_scheduler_wire_message_client_seconds", map[string]string{
+			"role":         string(RoleScheduler),
+			"plane":        string(PlaneControl),
+			"mode":         messageClientModeSync,
+			"message_type": messageType,
+			"outcome":      messageOutcomeAck,
+		}))
 	})
 
 	t.Run("receive", func(t *testing.T) {
@@ -69,6 +77,67 @@ func TestObservationGaugeBalance(t *testing.T) {
 		require.Equal(t, 0.0, testutil.ToFloat64(m.handlerInflight.WithLabelValues(string(RoleScheduler), string(PlaneUnknown), messageType)), "gauge must be decremented on the begin labels")
 		require.Equal(t, 0.0, testutil.ToFloat64(m.handlerInflight.WithLabelValues(string(RoleScheduler), string(PlaneControl), messageType)), "gauge must not leak onto the finish labels")
 	})
+}
+
+func TestRecordAsyncSendObservesClientWait(t *testing.T) {
+	m := NewMetrics()
+
+	m.recordAsyncSend(RoleWorker, PlaneControl, "WorkerReady", time.Second, nil)
+
+	metric := histogramMetric(t, m, "loki_engine_scheduler_wire_message_client_seconds", map[string]string{
+		"role":         string(RoleWorker),
+		"plane":        string(PlaneControl),
+		"mode":         messageClientModeAsync,
+		"message_type": "WorkerReady",
+		"outcome":      messageOutcomeAccepted,
+	})
+	require.Equal(t, uint64(1), metric.GetHistogram().GetSampleCount())
+	require.Equal(t, 1.0, metric.GetHistogram().GetSampleSum())
+	require.Equal(t, 1.0, testutil.ToFloat64(m.messagesTotal.WithLabelValues(
+		string(RoleWorker),
+		string(PlaneControl),
+		messageDirectionSent,
+		"WorkerReady",
+		messageOutcomeAccepted,
+	)))
+}
+
+func histogramSampleCount(t *testing.T, m *Metrics, name string, labels map[string]string) uint64 {
+	t.Helper()
+
+	return histogramMetric(t, m, name, labels).GetHistogram().GetSampleCount()
+}
+
+func histogramMetric(t *testing.T, m *Metrics, name string, labels map[string]string) *dto.Metric {
+	t.Helper()
+
+	families, err := m.reg.Gather()
+	require.NoError(t, err)
+
+	for _, family := range families {
+		if family.GetName() != name {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			if metricHasLabels(metric, labels) {
+				return metric
+			}
+		}
+	}
+	t.Fatalf("metric %s with labels %v not found", name, labels)
+	return nil
+}
+
+func metricHasLabels(metric *dto.Metric, labels map[string]string) bool {
+	if len(metric.GetLabel()) != len(labels) {
+		return false
+	}
+	for _, label := range metric.GetLabel() {
+		if labels[label.GetName()] != label.GetValue() {
+			return false
+		}
+	}
+	return true
 }
 
 func TestFrameMessageType(t *testing.T) {
