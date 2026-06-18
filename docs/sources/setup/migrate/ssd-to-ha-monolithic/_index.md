@@ -35,7 +35,7 @@ Migrating from a simple scalable deployment to a HA monolithic deployment with z
 |---|---|
 | Durability | ✅ |
 | High availability | ✅ |
-| Separation of concerns | ❌ |
+| Separation of execution paths | ❌ |
 | Operational complexity | 🟧 medium|
 | Scalability | 🟧 medium |
 
