@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
@@ -740,6 +741,55 @@ func TestLimits_PolicyRateOverrides(t *testing.T) {
 	require.False(t, ok)
 	_, ok = overrides.PolicyPerStreamRateLimit("tenant1", "finance")
 	require.False(t, ok)
+}
+
+func TestPolicyShardStreams(t *testing.T) {
+	timeOn := true
+	desired := flagext.ByteSize(512 * 1024)
+	base := shardstreams.Config{
+		Enabled:                  true,
+		DesiredRate:              flagext.ByteSize(1536 * 1024),
+		TimeShardingEnabled:      false,
+		TimeShardingIgnoreRecent: 40 * time.Minute,
+	}
+	limits := &Limits{
+		ShardStreams: base,
+		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
+			// Only flips time sharding; everything else must inherit the tenant config.
+			"foo": {ShardStreams: &shardstreams.PerPolicyConfigOverride{TimeShardingEnabled: &timeOn}},
+			// Overrides the desired rate only.
+			"finance": {ShardStreams: &shardstreams.PerPolicyConfigOverride{DesiredRate: &desired}},
+			// Policy entry exists but has no shard_streams override → tenant config.
+			"ops": {IngestionRateMB: 5},
+		},
+	}
+	overrides := &Overrides{defaultLimits: limits, tenantLimits: nil}
+
+	// No policy → tenant config unchanged.
+	require.Equal(t, base, overrides.PolicyShardStreams("tenant1", ""))
+
+	// foo → only time sharding flipped, rest inherited.
+	got := overrides.PolicyShardStreams("tenant1", "foo")
+	require.True(t, got.TimeShardingEnabled)
+	require.True(t, got.Enabled)
+	require.Equal(t, base.DesiredRate, got.DesiredRate)
+	require.Equal(t, base.TimeShardingIgnoreRecent, got.TimeShardingIgnoreRecent)
+
+	// finance → only desired rate overridden.
+	got = overrides.PolicyShardStreams("tenant1", "finance")
+	require.Equal(t, flagext.ByteSize(512*1024), got.DesiredRate)
+	require.False(t, got.TimeShardingEnabled)
+	require.True(t, got.Enabled)
+
+	// policy entry without a shard_streams override → tenant config.
+	require.Equal(t, base, overrides.PolicyShardStreams("tenant1", "ops"))
+
+	// unknown policy → tenant config.
+	require.Equal(t, base, overrides.PolicyShardStreams("tenant1", "unknown"))
+
+	// nil PolicyOverrideLimits → tenant config.
+	limits.PolicyOverrideLimits = nil
+	require.Equal(t, base, overrides.PolicyShardStreams("tenant1", "foo"))
 }
 
 func TestOTLPConfig(t *testing.T) {

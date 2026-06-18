@@ -610,10 +610,12 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
 	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
 
-	shardStreamsCfg := d.validator.ShardStreams(tenantID)
-	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string) {
+	// The shard-streams config is resolved per stream from its policy (see PolicyShardStreams)
+	// and threaded into these closures, so a policy can override the tenant sharding behavior
+	// (e.g. toggle time sharding or use a different desired_rate).
+	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
 		if shardStreamsCfg.Enabled {
-			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy)...)
+			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy, shardStreamsCfg)...)
 			return
 		}
 		streams = append(streams, KeyedStream{
@@ -624,21 +626,21 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		})
 	}
 
-	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string) {
+	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
 		if !shardStreamsCfg.TimeShardingEnabled {
-			maybeShardByRate(stream, pushSize, policy)
+			maybeShardByRate(stream, pushSize, policy, shardStreamsCfg)
 			return
 		}
 
 		ignoreRecentFrom := now.Add(-shardStreamsCfg.TimeShardingIgnoreRecent)
 		streamsByTime, ok := shardStreamByTime(stream, labels, d.ingesterCfg.MaxChunkAge/2, ignoreRecentFrom)
 		if !ok {
-			maybeShardByRate(stream, pushSize, policy)
+			maybeShardByRate(stream, pushSize, policy, shardStreamsCfg)
 			return
 		}
 
 		for _, ts := range streamsByTime {
-			maybeShardByRate(ts.Stream, ts.linesTotalLen, policy)
+			maybeShardByRate(ts.Stream, ts.linesTotalLen, policy, shardStreamsCfg)
 		}
 	}
 
@@ -802,7 +804,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			b.bytes += streamEntriesSize
 			b.lines += n
 
-			maybeShardStreams(stream, lbs, streamEntriesSize, policy)
+			maybeShardStreams(stream, lbs, streamEntriesSize, policy, d.validator.PolicyShardStreams(tenantID, policy))
 		}
 		return nil
 	}()
@@ -1236,8 +1238,7 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 // streams and their associated keys for hashing to ingesters.
 //
 // The number of shards is limited by the number of entries.
-func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string) []KeyedStream {
-	shardStreamsCfg := d.validator.ShardStreams(tenantID)
+func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string, shardStreamsCfg shardstreams.Config) []KeyedStream {
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 

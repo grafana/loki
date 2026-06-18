@@ -669,6 +669,9 @@ func (l *Limits) Validate() error {
 		if pl.PerStreamRateLimit.Val() < 0 || pl.PerStreamRateLimitBurst.Val() < 0 {
 			return fmt.Errorf("policy_override_limits[%q]: per_stream_rate_limit and per_stream_rate_limit_burst must be >= 0", policy)
 		}
+		if pl.ShardStreams != nil && pl.ShardStreams.DesiredRate != nil && pl.ShardStreams.DesiredRate.Val() < 0 {
+			return fmt.Errorf("policy_override_limits[%q]: shard_streams.desired_rate must be >= 0", policy)
+		}
 	}
 
 	if _, err := deletionmode.ParseMode(l.DeletionMode); err != nil {
@@ -1240,6 +1243,21 @@ func (o *Overrides) ShardStreams(userID string) shardstreams.Config {
 	return o.getOverridesForUser(userID).ShardStreams
 }
 
+// PolicyShardStreams returns the effective shard_streams config for a stream resolved to the
+// given policy: the tenant shard_streams config with the policy's overrides (if any) applied.
+// A stream with no policy (or a policy without a shard_streams override) gets the tenant config.
+func (o *Overrides) PolicyShardStreams(userID, policy string) shardstreams.Config {
+	limits := o.getOverridesForUser(userID)
+	base := limits.ShardStreams
+	if policy == "" || len(limits.PolicyOverrideLimits) == 0 {
+		return base
+	}
+	if pl, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return pl.ShardStreams.ApplyTo(base)
+	}
+	return base
+}
+
 func (o *Overrides) BlockedQueries(_ context.Context, userID string) []*validation.BlockedQuery {
 	return o.getOverridesForUser(userID).BlockedQueries
 }
@@ -1534,6 +1552,11 @@ type PolicyOverridableLimits struct {
 	IngestionBurstSizeMB    float64          `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb" doc:"ingestion_burst_size_mb for a specific policy. When unset (0), falls back to the tenant ingestion_burst_size_mb."`
 	PerStreamRateLimit      flagext.ByteSize `yaml:"per_stream_rate_limit" json:"per_stream_rate_limit" doc:"per_stream_rate_limit for a specific policy. Replaces the tenant per_stream_rate_limit for streams matching the policy."`
 	PerStreamRateLimitBurst flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst" doc:"per_stream_rate_limit_burst for a specific policy."`
+
+	// ShardStreams overrides the tenant shard_streams config for a specific policy. Only the
+	// fields set here change; unset fields inherit the tenant shard_streams config (see
+	// PerPolicyConfigOverride.ApplyTo).
+	ShardStreams *shardstreams.PerPolicyConfigOverride `yaml:"shard_streams" json:"shard_streams" doc:"shard_streams overrides for a specific policy. Only the set fields override the tenant shard_streams config."`
 }
 
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {

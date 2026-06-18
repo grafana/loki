@@ -36,6 +36,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -939,7 +940,7 @@ func TestStreamShard(t *testing.T) {
 				shardTracker:     NewShardTracker(),
 			}
 
-			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "")
+			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "", d.validator.ShardStreams("fake"))
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
 
 			for _, s := range derivedStreams {
@@ -984,7 +985,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			shardTracker:     NewShardTracker(),
 		}
 
-		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "")
+		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -995,7 +996,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
-		derivedStreams = d.shardStream(baseStream, streamRate, "fake", "")
+		derivedStreams = d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -1323,7 +1324,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1333,7 +1334,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1343,7 +1344,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1353,7 +1354,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 }
@@ -1869,6 +1870,69 @@ func TestDistributor_PushIngestionRateLimitMultiplePolicies(t *testing.T) {
 		assert.Nil(t, resp)
 		assert.Equal(t, expectedErr, err)
 	}
+}
+
+// TestDistributor_PushShardStreamsPolicyOverride verifies that a per-policy shard_streams
+// override is applied in the push path: a policy that enables time sharding gets its streams
+// split with a __time_shard__ label, while streams on the tenant default (time sharding off)
+// do not.
+func TestDistributor_PushShardStreamsPolicyOverride(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false // we push intentionally old logs to trigger time sharding
+	// Tenant default leaves time sharding off; the "foo" policy turns it on via an override.
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"foo": []*validation.PriorityStream{{Selector: `{app="foo"}`, Priority: 1}},
+	}
+	timeOn := true
+	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"foo": {ShardStreams: &shardstreams.PerPolicyConfigOverride{TimeShardingEnabled: &timeOn}},
+	}
+	require.NoError(t, limits.Validate())
+
+	// prepare() builds distributors with ingester MaxChunkAge=2h → time-shard length 1h.
+	distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+	// Logs older than time_sharding_ignore_recent (40m default), spanning two 1h buckets.
+	old := time.Now().Add(-3 * time.Hour)
+	mkReq := func(lbls string) *logproto.PushRequest {
+		return &logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels: lbls,
+			Entries: []logproto.Entry{
+				{Timestamp: old, Line: "a"},
+				{Timestamp: old.Add(time.Hour + time.Minute), Line: "b"},
+			},
+		}}}
+	}
+
+	_, err := distributors[0].Push(ctx, mkReq(`{app="foo"}`))
+	require.NoError(t, err)
+	_, err = distributors[0].Push(ctx, mkReq(`{app="other"}`))
+	require.NoError(t, err)
+
+	// Give the async ingester pushes time to land.
+	time.Sleep(20 * time.Millisecond)
+
+	fooSharded, otherSharded := false, false
+	for i := range ingesters {
+		ingesters[i].mu.Lock()
+		for _, pr := range ingesters[i].pushed {
+			for _, st := range pr.Streams {
+				if !strings.Contains(st.Labels, "__time_shard__") {
+					continue
+				}
+				if strings.Contains(st.Labels, `app="foo"`) {
+					fooSharded = true
+				}
+				if strings.Contains(st.Labels, `app="other"`) {
+					otherSharded = true
+				}
+			}
+		}
+		ingesters[i].mu.Unlock()
+	}
+	require.True(t, fooSharded, "foo stream should be time-sharded via the per-policy override")
+	require.False(t, otherSharded, "non-foo stream should not be time-sharded (tenant default off)")
 }
 
 func TestDistributor_PushIngestionBlocked(t *testing.T) {
