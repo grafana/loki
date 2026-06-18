@@ -221,7 +221,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&networkingv1.NetworkPolicy{}, updateOrDeleteOnlyPred).
-		Watches(&corev1.Service{}, r.enqueueForObjectStorageServices(), createUpdateOrDeletePred).
+		Watches(&corev1.Service{}, r.enqueueForObjectStorageServices(), createOrUpdateOnlyPred).
 		Watches(&corev1.Service{}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
 		Watches(&corev1.Secret{}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
 		Watches(&corev1.ConfigMap{}, r.enqueueForStorageCA(), createUpdateOrDeletePred)
@@ -381,13 +381,10 @@ func (r *LokiStackReconciler) enqueueForStorageCA() handler.EventHandler {
 func (r *LokiStackReconciler) enqueueForObjectStorageServices() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		lokiStacks := &lokiv1.LokiStackList{}
-		if err := r.List(ctx, lokiStacks, client.InNamespace(obj.GetNamespace())); err != nil {
+		if err := r.List(ctx, lokiStacks); err != nil {
 			r.Log.Error(err, "Error listing LokiStack resources for object storage service update")
 			return nil
 		}
-
-		// Pattern to match: serviceName.namespace.svc
-		servicePattern := fmt.Sprintf("%s.%s.svc", obj.GetName(), obj.GetNamespace())
 
 		var requests []reconcile.Request
 		for _, stack := range lokiStacks.Items {
@@ -408,6 +405,9 @@ func (r *LokiStackReconciler) enqueueForObjectStorageServices() handler.EventHan
 			if storageEndpoint == "" {
 				continue
 			}
+
+			// Pattern to match: serviceName.namespace.svc
+			servicePattern := fmt.Sprintf("%s.%s.svc", obj.GetName(), obj.GetNamespace())
 
 			// Check if endpoint contains the service pattern so that only LokiStacks that use this Service are enqueued
 			if strings.Contains(storageEndpoint, servicePattern) {
