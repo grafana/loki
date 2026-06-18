@@ -294,6 +294,120 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
+// TestCompare_FullKeyOrder locks the canonical stats sort order
+func TestCompare_FullKeyOrder(t *testing.T) {
+	const schema = "service_name,namespace"
+	base := func() Stat {
+		return Stat{
+			SortSchema:   schema,
+			Labels:       map[string]string{"service_name": "svc", "namespace": "ns"},
+			MinTimestamp: 100,
+			MaxTimestamp: 200,
+			ObjectPath:   "objA",
+			SectionIndex: 0,
+		}
+	}
+
+	// Each case mutates base() into a row that should sort strictly after it by
+	// changing exactly one key component, holding all lower-precedence
+	// components equal so the named component alone decides the order. Cases are
+	// listed from highest- to lowest-precedence key component.
+	tests := []struct {
+		name   string
+		mutate func(*Stat)
+	}{
+		{"first sort label", func(s *Stat) { s.Labels = map[string]string{"service_name": "zzz", "namespace": "ns"} }},
+		{"second sort label", func(s *Stat) { s.Labels = map[string]string{"service_name": "svc", "namespace": "zz"} }},
+		{"min timestamp", func(s *Stat) { s.MinTimestamp = 999 }},
+		{"max timestamp", func(s *Stat) { s.MaxTimestamp = 999 }},
+		{"object path", func(s *Stat) { s.ObjectPath = "objZ" }},
+		{"section index", func(s *Stat) { s.SectionIndex = 9 }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := base()
+			b := base()
+			tt.mutate(&b)
+
+			require.Negative(t, Compare(a, b), "a should sort before b")
+			require.Positive(t, Compare(b, a), "b should sort after a")
+		})
+	}
+
+	// Identical rows compare equal.
+	require.Zero(t, Compare(base(), base()))
+
+	// A higher-precedence component overrides a lower-precedence one: a sorts
+	// before b on service_name even though b has the smaller SectionIndex.
+	a := base()
+	a.Labels = map[string]string{"service_name": "aaa", "namespace": "ns"}
+	a.SectionIndex = 9
+	b := base()
+	b.Labels = map[string]string{"service_name": "zzz", "namespace": "ns"}
+	b.SectionIndex = 0
+	require.Negative(t, Compare(a, b), "service_name must outrank section_index")
+	require.Positive(t, Compare(b, a), "service_name must outrank section_index")
+}
+
+// TestBuilder_TieBreakOnObjectPathAndSectionIndex verifies that rows sharing
+// (labels, MinTimestamp, MaxTimestamp) are ordered by ObjectPath then
+// SectionIndex, matching the full-key order of [Compare] used by the
+// index-merge executor. Without this tie-break, multi-section output spill
+// produces rows whose order disagrees with the reader/verifier's expectation,
+// surfacing as "output stats not sorted".
+func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
+	b := NewBuilder(nil, defaultEncoder)
+
+	// All rows share the same (service_name, MinTimestamp, MaxTimestamp).
+	// They differ only in ObjectPath and SectionIndex, and are appended in an
+	// order that the coarse (labels, minT, maxT) sort would leave untouched.
+	const schema = "service_name"
+	labels := map[string]string{schema: "svc"}
+	b.Append(Stat{SortSchema: schema, Labels: labels, MinTimestamp: 100, MaxTimestamp: 200, ObjectPath: "objB", SectionIndex: 0})
+	b.Append(Stat{SortSchema: schema, Labels: labels, MinTimestamp: 100, MaxTimestamp: 200, ObjectPath: "objA", SectionIndex: 1})
+	b.Append(Stat{SortSchema: schema, Labels: labels, MinTimestamp: 100, MaxTimestamp: 200, ObjectPath: "objA", SectionIndex: 0})
+
+	obj, closer := buildObject(t, b)
+	t.Cleanup(func() { _ = closer.Close() })
+
+	actual := readAllRowsFromObject(t, obj)
+	// Full-key order: (objA, 0), (objA, 1), (objB, 0).
+	expected := arrowtest.Rows{
+		{
+			"object_path.utf8":        "objA",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        schema,
+			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "svc",
+		},
+		{
+			"object_path.utf8":        "objA",
+			"section_index.int64":     int64(1),
+			"sort_schema.utf8":        schema,
+			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "svc",
+		},
+		{
+			"object_path.utf8":        "objB",
+			"section_index.int64":     int64(0),
+			"sort_schema.utf8":        schema,
+			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
+			"max_timestamp.timestamp": time.Unix(0, 200).UTC(),
+			"row_count.int64":         int64(0),
+			"uncompressed_size.int64": int64(0),
+			"service_name.label.utf8": "svc",
+		},
+	}
+	require.Equal(t, expected, actual)
+}
+
 // TestBuilder_MissingServiceName verifies rows with empty/missing label values sort before non-empty ones.
 func TestBuilder_MissingServiceName(t *testing.T) {
 	b := NewBuilder(nil, defaultEncoder)
