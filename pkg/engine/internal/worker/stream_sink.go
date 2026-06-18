@@ -19,7 +19,9 @@ import (
 
 // streamSink allows for sending records remotely across a stream.
 type streamSink struct {
-	Logger      log.Logger
+	Logger log.Logger
+	// Metrics is required and records stream send/bind/status metrics.
+	Metrics     *metrics
 	WireMetrics *wire.Metrics
 	Scheduler   *wire.Peer
 	Stream      *workflow.Stream
@@ -48,10 +50,11 @@ func (sink *streamSink) Bind(ctx context.Context, destination net.Addr) error {
 		bound = true
 
 		// Best-effort inform the scheduler that we're ready to send data.
-		_ = sink.Scheduler.SendMessageAsync(ctx, wire.StreamStatusMessage{
+		err := sink.Scheduler.SendMessageAsync(ctx, wire.StreamStatusMessage{
 			StreamID: sink.Stream.ULID,
 			State:    workflow.StreamStateOpen,
 		})
+		sink.Metrics.streamStatusTotal.WithLabelValues(messageDirectionSent, classifyMessageOutcome(err)).Inc()
 
 		sink.destination = destination
 		close(sink.bound) // Wake up any Send goroutines
@@ -82,8 +85,19 @@ func (sink *streamSink) lazyInit() {
 // connection is lost.
 //
 // Send can be aborted by cancelling the provided context.
-func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) error {
+func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) (err error) {
 	sink.lazyInit()
+
+	start := time.Now()
+	defer func() {
+		outcome := classifyStreamOutcome(err, streamOutcomeSent)
+		sink.Metrics.streamDataSendSeconds.WithLabelValues(streamPhaseTotal, outcome).Observe(time.Since(start).Seconds())
+		sink.Metrics.streamDataSentTotal.WithLabelValues(outcome).Inc()
+		if err == nil {
+			sink.Metrics.streamDataSentBatchesTotal.Inc()
+			sink.Metrics.streamDataSentBytesTotal.Add(float64(recordBatchSize(rec)))
+		}
+	}()
 
 	bo := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
@@ -94,7 +108,7 @@ func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) error {
 		// We only want to retry on errors about the connection closing; errors
 		// where the peer rejected our payload should be considered
 		// nonretryable.
-		err := sink.send(ctx, rec)
+		err = sink.send(ctx, rec)
 		if err == nil {
 			break
 		}
@@ -105,10 +119,20 @@ func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) error {
 		}
 
 		level.Warn(sink.Logger).Log("msg", "failed to send data to peer", "err", err)
-		bo.Wait()
+		sink.waitRetry(bo)
 	}
 
 	return bo.Err()
+}
+
+// waitRetry counts a stream-data retry, waits for the backoff to elapse, and
+// records how long the backoff took.
+func (sink *streamSink) waitRetry(bo *backoff.Backoff) {
+	sink.Metrics.streamDataRetriesTotal.WithLabelValues(streamOutcomeConnClosed).Inc()
+
+	start := time.Now()
+	bo.Wait()
+	sink.Metrics.streamDataSendSeconds.WithLabelValues(streamPhaseRetryBackoff, classifyStreamOutcome(bo.Err(), streamOutcomeSent)).Observe(time.Since(start).Seconds())
 }
 
 func (sink *streamSink) send(ctx context.Context, rec arrow.RecordBatch) error {
@@ -135,12 +159,16 @@ func (sink *streamSink) send(ctx context.Context, rec arrow.RecordBatch) error {
 
 func (sink *streamSink) getPeer(ctx context.Context) (*wire.Peer, error) {
 	// Wait for destination.
+	bindWaitStart := time.Now()
 	select {
 	case <-ctx.Done():
+		sink.Metrics.streamDataSendSeconds.WithLabelValues(streamPhaseBindWait, classifyStreamOutcome(ctx.Err(), streamOutcomeSent)).Observe(time.Since(bindWaitStart).Seconds())
 		return nil, ctx.Err()
 	case <-sink.ctx.Done():
+		sink.Metrics.streamDataSendSeconds.WithLabelValues(streamPhaseBindWait, streamOutcomeConnClosed).Observe(time.Since(bindWaitStart).Seconds())
 		return nil, wire.ErrConnClosed
 	case <-sink.bound:
+		sink.Metrics.streamDataSendSeconds.WithLabelValues(streamPhaseBindWait, streamOutcomeSent).Observe(time.Since(bindWaitStart).Seconds())
 	}
 
 	sink.destConnMut.Lock()
@@ -150,7 +178,9 @@ func (sink *streamSink) getPeer(ctx context.Context) (*wire.Peer, error) {
 		return sink.destConn, nil
 	}
 
+	dialStart := time.Now()
 	conn, err := sink.Dialer(ctx, sink.destination)
+	sink.Metrics.streamDataSendSeconds.WithLabelValues(streamPhaseDial, classifyStreamOutcome(err, streamOutcomeSent)).Observe(time.Since(dialStart).Seconds())
 	if err != nil {
 		return nil, err
 	}
@@ -159,8 +189,10 @@ func (sink *streamSink) getPeer(ctx context.Context) (*wire.Peer, error) {
 		Logger:  sink.Logger,
 		Metrics: sink.WireMetrics,
 		Conn:    conn,
+		Role:    wire.RoleWorker,
 		Handler: nil, // This is a send-only connection.
 	}
+	peer.SetPlane(wire.PlaneData)
 
 	go func() {
 		if err := peer.Serve(sink.ctx); err != nil && errors.Is(err, context.Canceled) {
@@ -200,6 +232,7 @@ func (sink *streamSink) Close(ctx context.Context) error {
 			StreamID: sink.Stream.ULID,
 			State:    workflow.StreamStateClosed,
 		})
+		sink.Metrics.streamStatusTotal.WithLabelValues(messageDirectionSent, classifyMessageOutcome(err)).Inc()
 	})
 
 	return err

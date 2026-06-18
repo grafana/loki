@@ -299,6 +299,7 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 		Logger:  logger,
 		Metrics: w.wireMetrics,
 		Conn:    conn,
+		Role:    wire.RoleWorker,
 
 		// Allow for a backlog of 8 frames before backpressure is applied.
 		Buffer: 8,
@@ -312,6 +313,7 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 			}
 		},
 	}
+	peer.SetPlane(wire.PlaneData)
 
 	// Handle communication with the peer until the context is canceled or some
 	// error occurs.
@@ -336,6 +338,7 @@ func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
 	for bo.Ongoing() {
 		conn, err := w.dial(ctx, addr)
 		if err != nil {
+			w.metrics.schedulerReconnectsTotal.WithLabelValues(reconnectReasonDialError).Inc()
 			level.Warn(logger).Log("msg", "dial to scheduler failed, will retry after backoff", "err", err)
 			bo.Wait()
 			continue
@@ -350,6 +353,7 @@ func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
 			level.Debug(logger).Log("msg", "context canceled. stopping scheduler loop")
 			break
 		} else if err != nil {
+			w.metrics.schedulerReconnectsTotal.WithLabelValues(classifyReconnectReason(err)).Inc()
 			level.Warn(logger).Log("msg", "connection to scheduler closed; will reconnect after backoff", "err", err)
 			bo.Wait()
 			continue
@@ -367,6 +371,8 @@ func (w *Worker) dial(ctx context.Context, addr net.Addr) (wire.Conn, error) {
 // handleSchedulerConn handles a single connection to a scheduler.
 func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, conn wire.Conn) error {
 	level.Info(logger).Log("msg", "connected to scheduler")
+	w.metrics.schedulerConnectionsActive.WithLabelValues(schedulerConnectionStateConnected).Inc()
+	defer w.metrics.schedulerConnectionsActive.WithLabelValues(schedulerConnectionStateConnected).Dec()
 
 	// waitReady is used to signal that the scheduler should be told when
 	// there's a ready thread.
@@ -382,13 +388,33 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		return nil
 	}
 
-	handleAssignment := func(peer *wire.Peer, msg wire.TaskAssignMessage) error {
+	handleAssignment := func(peer *wire.Peer, msg wire.TaskAssignMessage) (err error) {
+		outcome := assignmentOutcomeAssigned
+		start := time.Now()
+		var newJobDuration, handoffDuration time.Duration
+		defer func() {
+			w.metrics.taskAssignmentHandlerSeconds.WithLabelValues(assignmentPhaseTotal, outcome).Observe(time.Since(start).Seconds())
+			if newJobDuration > 0 {
+				w.metrics.taskAssignmentHandlerSeconds.WithLabelValues(assignmentPhaseNewJob, outcome).Observe(newJobDuration.Seconds())
+			}
+			if handoffDuration > 0 {
+				w.metrics.taskAssignmentHandlerSeconds.WithLabelValues(assignmentPhaseThreadHandoff, outcome).Observe(handoffDuration.Seconds())
+			}
+		}()
+
+		newJobStart := time.Now()
 		job, err := w.newJob(ctx, peer, logger, msg)
+		newJobDuration = time.Since(newJobStart)
 		if err != nil {
+			outcome = assignmentOutcomeOtherError
 			return err
 		}
 
-		if err := w.jobManager.Send(ctx, job); err != nil {
+		handoffStart := time.Now()
+		err = w.jobManager.Send(ctx, job)
+		handoffDuration = time.Since(handoffStart)
+		if err != nil {
+			outcome = assignmentOutcomeRejected
 			job.Close()                 // Clean up resources associated with the job.
 			_ = handleWorkerSubscribe() // handleWorkerSubscribe can only return nil
 			w.metrics.rejectedAssignmentsTotal.Inc()
@@ -403,6 +429,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		Logger:  logger,
 		Metrics: w.wireMetrics,
 		Conn:    conn,
+		Role:    wire.RoleWorker,
 
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
@@ -431,6 +458,8 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		},
 	}
 
+	peer.SetPlane(wire.PlaneControl)
+
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return peer.Serve(ctx) })
 
@@ -452,13 +481,18 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 			case <-waitReady:
 			}
 
-			// Wait for a thread to become ready for another job
-			if err := w.jobManager.WaitReady(ctx); err != nil {
+			// Wait for a thread to become ready for another job.
+			waitStart := time.Now()
+			err := w.jobManager.WaitReady(ctx)
+			w.metrics.readyWaitSeconds.WithLabelValues(classifyMessageOutcome(err)).Observe(time.Since(waitStart).Seconds())
+			if err != nil {
 				return nil
 			}
 
 			// Notify the scheduler.
-			if err := peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{}); err != nil {
+			err = peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{})
+			w.metrics.readyNotificationsTotal.WithLabelValues(classifyMessageOutcome(err)).Inc()
+			if err != nil {
 				level.Warn(logger).Log("msg", "failed to send ready message", "err", err)
 			}
 		}
@@ -533,6 +567,7 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 		for _, taskSink := range taskSinks {
 			sink := &streamSink{
 				Logger:      log.With(logger, "stream", taskSink.ULID),
+				Metrics:     w.metrics,
 				WireMetrics: w.wireMetrics,
 				Scheduler:   scheduler,
 				Stream:      taskSink,
@@ -609,7 +644,11 @@ func (w *Worker) handleCancelMessage(msg wire.TaskCancelMessage) error {
 	return nil
 }
 
-func (w *Worker) handleBindMessage(ctx context.Context, msg wire.StreamBindMessage) error {
+func (w *Worker) handleBindMessage(ctx context.Context, msg wire.StreamBindMessage) (err error) {
+	defer func() {
+		w.metrics.streamBindTotal.WithLabelValues(classifyReceiveOutcome(err)).Inc()
+	}()
+
 	w.resourcesMut.RLock()
 	sink, found := w.sinks[msg.StreamID]
 	w.resourcesMut.RUnlock()
@@ -620,7 +659,11 @@ func (w *Worker) handleBindMessage(ctx context.Context, msg wire.StreamBindMessa
 	return sink.Bind(ctx, msg.Receiver)
 }
 
-func (w *Worker) handleStreamStatusMessage(msg wire.StreamStatusMessage) error {
+func (w *Worker) handleStreamStatusMessage(msg wire.StreamStatusMessage) (err error) {
+	defer func() {
+		w.metrics.streamStatusTotal.WithLabelValues(messageDirectionReceived, classifyReceiveOutcome(err)).Inc()
+	}()
+
 	w.resourcesMut.RLock()
 	source, found := w.sources[msg.StreamID]
 	w.resourcesMut.RUnlock()
@@ -636,15 +679,32 @@ func (w *Worker) handleStreamStatusMessage(msg wire.StreamStatusMessage) error {
 	return nil
 }
 
-func (w *Worker) handleDataMessage(ctx context.Context, msg wire.StreamDataMessage) error {
-	w.resourcesMut.RLock()
-	source, found := w.sources[msg.StreamID]
-	w.resourcesMut.RUnlock()
+func (w *Worker) handleDataMessage(ctx context.Context, msg wire.StreamDataMessage) (err error) {
+	obs := w.metrics.beginStreamDataReceive()
+	defer func() { obs.finish(err) }()
 
-	if !found {
-		return fmt.Errorf("stream %s not found for receiving data", msg.StreamID)
+	lookupPhase := obs.beginPhase(streamPhaseLookupSource)
+	source, err := w.lookupStreamSource(msg.StreamID)
+	lookupPhase.finish(err)
+	if err != nil {
+		return err
 	}
-	return source.Write(ctx, msg.Data)
+
+	writePhase := obs.beginPhase(streamPhaseSourceWrite)
+	err = source.Write(ctx, msg.Data)
+	writePhase.finish(err)
+	return err
+}
+
+func (w *Worker) lookupStreamSource(streamID ulid.ULID) (*streamSource, error) {
+	w.resourcesMut.RLock()
+	defer w.resourcesMut.RUnlock()
+
+	source, found := w.sources[streamID]
+	if !found {
+		return nil, fmt.Errorf("stream %s not found for receiving data", streamID)
+	}
+	return source, nil
 }
 
 // RegisterMetrics registers metrics about s to report to reg.

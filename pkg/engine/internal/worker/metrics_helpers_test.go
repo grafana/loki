@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -17,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 func TestObserveOperatorCost(t *testing.T) {
@@ -51,6 +54,40 @@ func histogramCountSum(t *testing.T, vec *prometheus.HistogramVec, lvs ...string
 	var dm dto.Metric
 	require.NoError(t, obs.(prometheus.Metric).Write(&dm))
 	return dm.GetHistogram().GetSampleCount(), dm.GetHistogram().GetSampleSum()
+}
+
+func TestHandleDataMessageRecordsReceivePhases(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{{Name: "line", Type: arrow.BinaryTypes.String}}, nil)
+	rec := arrowtest.Rows{{"line": "hello"}}.Record(memory.DefaultAllocator, schema)
+	defer rec.Release()
+
+	streamID := ulid.Make()
+	input := new(nodeSource)
+	source := new(streamSource)
+	require.NoError(t, source.Bind(input))
+
+	w := &Worker{
+		metrics: newMetrics(),
+		sources: map[ulid.ULID]*streamSource{streamID: source},
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	readErr := make(chan error, 1)
+	go func() {
+		_, err := input.Read(ctx)
+		readErr <- err
+	}()
+
+	err := w.handleDataMessage(ctx, wire.StreamDataMessage{StreamID: streamID, Data: rec})
+	require.NoError(t, err)
+	require.NoError(t, <-readErr)
+
+	for _, phase := range []string{streamPhaseLookupSource, streamPhaseSourceWrite, streamPhaseTotal} {
+		count, _ := histogramCountSum(t, w.metrics.streamDataReceiveSeconds, phase, streamOutcomeReceived)
+		require.Equal(t, uint64(1), count, "phase %s should be recorded once", phase)
+	}
 }
 
 func TestTaskTypeLabel(t *testing.T) {

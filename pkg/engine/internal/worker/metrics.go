@@ -42,6 +42,22 @@ type metrics struct {
 	statusUpdateSeconds     prometheus.Histogram
 	statusUpdateErrorsTotal *prometheus.CounterVec
 
+	taskAssignmentHandlerSeconds *prometheus.HistogramVec
+
+	streamDataSendSeconds      *prometheus.HistogramVec
+	streamDataSentTotal        *prometheus.CounterVec
+	streamDataSentBytesTotal   prometheus.Counter
+	streamDataSentBatchesTotal prometheus.Counter
+	streamDataRetriesTotal     *prometheus.CounterVec
+	streamDataReceiveSeconds   *prometheus.HistogramVec
+	streamBindTotal            *prometheus.CounterVec
+	streamStatusTotal          *prometheus.CounterVec
+
+	readyNotificationsTotal    *prometheus.CounterVec
+	readyWaitSeconds           *prometheus.HistogramVec
+	schedulerConnectionsActive *prometheus.GaugeVec
+	schedulerReconnectsTotal   *prometheus.CounterVec
+
 	// Task I/O counters, read from per-task captures at task completion. Only
 	// leaf tasks download from object storage today, so these are zero for
 	// non-leaf tasks until that changes.
@@ -142,6 +158,61 @@ func newMetrics() *metrics {
 			Help: "Total number of failures sending a task's terminal status update to the scheduler, by error class",
 		}, []string{"error_class"}),
 
+		taskAssignmentHandlerSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
+			Name: "loki_engine_worker_task_assignment_handler_seconds",
+			Help: "Time spent handling TaskAssign messages by phase and outcome.",
+		}, []string{"phase", "outcome"}),
+
+		streamDataSendSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
+			Name: "loki_engine_worker_stream_data_send_seconds",
+			Help: "Time spent sending StreamData messages from streamSink.Send by phase and outcome.",
+		}, []string{"phase", "outcome"}),
+		streamDataSentTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_worker_stream_data_sent_total",
+			Help: "Total number of StreamData send attempts by outcome.",
+		}, []string{"outcome"}),
+		streamDataSentBytesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_engine_worker_stream_data_sent_bytes_total",
+			Help: "Total bytes sent in StreamData record batches.",
+		}),
+		streamDataSentBatchesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_engine_worker_stream_data_sent_batches_total",
+			Help: "Total record batches sent in StreamData messages.",
+		}),
+		streamDataRetriesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_worker_stream_data_retries_total",
+			Help: "Total StreamData send retries by reason.",
+		}, []string{"reason"}),
+		streamDataReceiveSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
+			Name: "loki_engine_worker_stream_data_receive_seconds",
+			Help: "Time spent receiving StreamData messages by phase and outcome.",
+		}, []string{"phase", "outcome"}),
+		streamBindTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_worker_stream_bind_total",
+			Help: "Total number of StreamBind messages handled by outcome.",
+		}, []string{"outcome"}),
+		streamStatusTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_worker_stream_status_total",
+			Help: "Total number of StreamStatus messages by direction and outcome.",
+		}, []string{"direction", "outcome"}),
+
+		readyNotificationsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_worker_ready_notifications_total",
+			Help: "Total number of WorkerReady notifications sent by outcome.",
+		}, []string{"outcome"}),
+		readyWaitSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
+			Name: "loki_engine_worker_ready_wait_seconds",
+			Help: "Time spent waiting for a worker thread to become ready before notifying a scheduler.",
+		}, []string{"outcome"}),
+		schedulerConnectionsActive: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_engine_worker_scheduler_connections_active",
+			Help: "Current number of active scheduler connections by state.",
+		}, []string{"state"}),
+		schedulerReconnectsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_worker_scheduler_reconnects_total",
+			Help: "Total number of scheduler connection retries by reason.",
+		}, []string{"reason"}),
+
 		pagesDownloadedTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_engine_worker_pages_downloaded_total",
 			Help: "Total number of pages downloaded from object storage during task execution",
@@ -179,6 +250,15 @@ func (m *metrics) Register(reg prometheus.Registerer) error { return reg.Registe
 
 // Unregister unregisters metrics from the provided Registerer.
 func (m *metrics) Unregister(reg prometheus.Registerer) { reg.Unregister(m.reg) }
+
+// newNativeHistogramVec creates a HistogramVec that uses native histogram
+// buckets, registered to reg.
+func newNativeHistogramVec(reg prometheus.Registerer, opts prometheus.HistogramOpts, labels []string) *prometheus.HistogramVec {
+	opts.NativeHistogramBucketFactor = 1.1
+	opts.NativeHistogramMaxBucketNumber = 100
+	opts.NativeHistogramMinResetDuration = time.Hour
+	return promauto.With(reg).NewHistogramVec(opts, labels)
+}
 
 // observeOperatorCost records each operator's self-time and row counts, by type.
 func (m *metrics) observeOperatorCost(nodes []pipelineNode) {
