@@ -85,73 +85,41 @@ func newMetrics() *metrics {
 			Name: "loki_engine_worker_rejected_assignments_total",
 			Help: "Total number of task assignments the worker rejected because no thread slot was available (worker-side counterpart to the scheduler's assignment_backoffs_total)",
 		}),
-		taskExecSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		taskExecSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_worker_task_exec_seconds",
 			Help: "Number of seconds a task took to complete successfully",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"task_type"}),
 
-		passReadSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		passReadSeconds: newNativeHistogram(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_worker_pass_read_seconds",
 			Help: "Duration of a single read-phase pass",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
 		}),
-		passSendSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		passSendSeconds: newNativeHistogram(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_worker_pass_send_seconds",
 			Help: "Duration of a single send-phase pass",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
 		}),
 
-		taskOpenSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		taskOpenSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_worker_task_open_seconds",
 			Help: "Total time spent opening a task's pipeline (Pipeline.Open)",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"task_type"}),
-		taskReadSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		taskReadSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_worker_task_read_seconds",
 			Help: "Total time spent in the read phase (Pipeline.Read) for a task",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"task_type"}),
-		taskSendSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		taskSendSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_worker_task_send_seconds",
 			Help: "Total time spent in the send phase for a task",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"task_type"}),
 
-		setupSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		setupSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_worker_setup_seconds",
 			Help: "Time spent preparing a task for execution before its pipeline is drained",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"task_type"}),
 
-		statusUpdateSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		statusUpdateSeconds: newNativeHistogram(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_worker_status_update_seconds",
 			Help: "Time spent sending a task's terminal status update to the scheduler and waiting for acknowledgement",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		statusUpdateErrorsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_engine_worker_status_update_errors_total",
@@ -226,13 +194,9 @@ func newMetrics() *metrics {
 			Help: "Total number of bytes downloaded from object storage during task execution",
 		}),
 
-		operatorSelfSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		operatorSelfSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_worker_operator_self_seconds",
 			Help: "Per-operator wall-clock (not CPU) self-time, exclusive of child operators, by operator type",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"operator_type"}),
 		operatorRowsInTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_engine_worker_operator_rows_in_total",
@@ -250,6 +214,15 @@ func (m *metrics) Register(reg prometheus.Registerer) error { return reg.Registe
 
 // Unregister unregisters metrics from the provided Registerer.
 func (m *metrics) Unregister(reg prometheus.Registerer) { reg.Unregister(m.reg) }
+
+// newNativeHistogram creates a Histogram that uses native histogram buckets,
+// registered to reg.
+func newNativeHistogram(reg prometheus.Registerer, opts prometheus.HistogramOpts) prometheus.Histogram {
+	opts.NativeHistogramBucketFactor = 1.1
+	opts.NativeHistogramMaxBucketNumber = 100
+	opts.NativeHistogramMinResetDuration = time.Hour
+	return promauto.With(reg).NewHistogram(opts)
+}
 
 // newNativeHistogramVec creates a HistogramVec that uses native histogram
 // buckets, registered to reg.

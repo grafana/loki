@@ -91,12 +91,9 @@ func NewMetrics() *Metrics {
 			Name: "loki_engine_scheduler_wire_messages_sent_total",
 			Help: "Number of messages sent by a peer",
 		}, []string{"message_type"}),
-		messageRTTSeconds: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:                            "loki_engine_scheduler_wire_message_rtt_seconds",
-			Help:                            "Round-trip time to synchronously send a message to another peer",
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
+		messageRTTSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
+			Name: "loki_engine_scheduler_wire_message_rtt_seconds",
+			Help: "Round-trip time to synchronously send a message to another peer",
 		}, []string{"message_type"}),
 
 		messagesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{

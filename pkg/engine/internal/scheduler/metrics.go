@@ -59,22 +59,14 @@ func newMetrics() *metrics {
 			Help: "Total number of times a task was requeued after a failed assignment attempt",
 		}),
 
-		taskQueueSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		taskQueueSeconds: newNativeHistogram(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_scheduler_task_queue_seconds",
 			Help: "Number of seconds a task sat in a queue before being assigned to a worker thread",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
 		}),
 
-		taskExecSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		taskExecSeconds: newNativeHistogram(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_scheduler_task_exec_seconds",
 			Help: "Number of seconds a task took to complete successfully",
-
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: time.Hour,
 		}),
 
 		taskAssignmentAttemptsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -115,6 +107,15 @@ func (m *metrics) Register(reg prometheus.Registerer) error { return reg.Registe
 
 // Unregister unregisters metrics from the provided Registerer.
 func (m *metrics) Unregister(reg prometheus.Registerer) { reg.Unregister(m.reg) }
+
+// newNativeHistogram creates a Histogram that uses native histogram buckets,
+// registered to reg.
+func newNativeHistogram(reg prometheus.Registerer, opts prometheus.HistogramOpts) prometheus.Histogram {
+	opts.NativeHistogramBucketFactor = 1.1
+	opts.NativeHistogramMaxBucketNumber = 100
+	opts.NativeHistogramMinResetDuration = time.Hour
+	return promauto.With(reg).NewHistogram(opts)
+}
 
 // newNativeHistogramVec creates a HistogramVec that uses native histogram
 // buckets, registered to reg.
