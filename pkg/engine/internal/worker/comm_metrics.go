@@ -5,8 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
-
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 )
 
@@ -142,19 +140,4 @@ func classifyReconnectReason(err error) string {
 		return reconnectReasonConnClosed
 	}
 	return reconnectReasonOtherError
-}
-
-func recordBatchSize(rec arrow.RecordBatch) uint64 {
-	if rec == nil {
-		return 0
-	}
-
-	var size uint64
-	for _, col := range rec.Columns() {
-		if col == nil || col.Data() == nil {
-			continue
-		}
-		size += col.Data().SizeInBytes()
-	}
-	return size
 }

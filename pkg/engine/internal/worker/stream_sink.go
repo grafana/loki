@@ -95,7 +95,7 @@ func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) (err er
 		sink.Metrics.streamDataSentTotal.WithLabelValues(outcome).Inc()
 		if err == nil {
 			sink.Metrics.streamDataSentBatchesTotal.Inc()
-			sink.Metrics.streamDataSentBytesTotal.Add(float64(recordBatchSize(rec)))
+			sink.Metrics.streamDataSentBytesTotal.Add(float64(recordBatchBytes(rec)))
 		}
 	}()
 
