@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 )
@@ -128,8 +129,150 @@ func (r *StreamResolver) Resolve(ctx context.Context, sections []*Section) ([]Se
 	merged := mergeAccumulators(accs)
 	matching := r.matchingStreams(merged, activeMatchers)
 
-	// Bloom phase is a no-op until Task 6: keep all matching refs.
-	return r.assemble(merged, matching, nil /* no bloom drop */), nil
+	// Mid-finalize: drop equal-predicates that are stream labels for matched
+	// streams; those are resolved by label matching, not blooms. Bloom matching
+	// only runs on the survivors.
+	remaining := r.dropStreamLabelPredicates(merged, matching)
+
+	var bloomKeep map[Key]struct{}
+	if len(remaining) > 0 {
+		var err error
+		bloomKeep, err = bloomMatch(ctx, sections, remaining)
+		if err != nil {
+			return nil, fmt.Errorf("bloom matching: %w", err)
+		}
+	}
+
+	return r.assemble(merged, matching, bloomKeep), nil
+}
+
+// dropStreamLabelPredicates removes equal-predicates whose name is a stream
+// label on any matched stream; those are resolved by label matching, not
+// blooms. Running them through bloom matching would be a guaranteed miss (a
+// stream label is never a structured-metadata bloom entry) and a false
+// negative.
+func (r *StreamResolver) dropStreamLabelPredicates(acc *sectionAccumulator, matching map[StreamRef]struct{}) []*labels.Matcher {
+	streamLabelNames := make(map[string]struct{})
+	for ref := range matching {
+		for name := range acc.labelNamesByStream[ref] {
+			streamLabelNames[name] = struct{}{}
+		}
+	}
+	var remaining []*labels.Matcher
+	for _, p := range r.equalPredicates {
+		if _, isStreamLabel := streamLabelNames[p.Name]; !isStreamLabel {
+			remaining = append(remaining, p)
+		}
+	}
+	return remaining
+}
+
+// bloomMatch scans KindBloom rows across sections and returns the section keys
+// that satisfy every remaining equal-predicate. A KindBloom row carries one
+// (column_name, bloom_filter) per section; a section key survives only if, for
+// every predicate, some bloom row for that predicate's column tests positive
+// for the predicate value.
+func bloomMatch(ctx context.Context, sections []*Section, remaining []*labels.Matcher) (map[Key]struct{}, error) {
+	names := make([]string, 0, len(remaining))
+	for _, p := range remaining {
+		names = append(names, p.Name)
+	}
+
+	results := make([]map[Key]map[string]struct{}, len(sections))
+	g, ctx := errgroup.WithContext(ctx)
+	for i, sec := range sections {
+		g.Go(func() error {
+			matched, err := bloomMatchSection(ctx, sec, remaining, names)
+			if err != nil {
+				return err
+			}
+			results[i] = matched
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	// A section key satisfies the query only if every remaining predicate
+	// matched a bloom row in that key. Merge per-section matched-predicate sets,
+	// then keep keys whose set covers all predicate names.
+	perKeyMatched := make(map[Key]map[string]struct{})
+	for _, matched := range results {
+		for key, preds := range matched {
+			dst := perKeyMatched[key]
+			if dst == nil {
+				dst = make(map[string]struct{})
+				perKeyMatched[key] = dst
+			}
+			for name := range preds {
+				dst[name] = struct{}{}
+			}
+		}
+	}
+
+	keep := make(map[Key]struct{})
+	for key, preds := range perKeyMatched {
+		if len(preds) == len(names) {
+			keep[key] = struct{}{}
+		}
+	}
+	return keep, nil
+}
+
+// bloomMatchSection scans one section's KindBloom rows and returns, per section
+// key, the set of predicate names whose value tested positive against a bloom
+// filter on that predicate's column.
+func bloomMatchSection(ctx context.Context, sec *Section, remaining []*labels.Matcher, names []string) (map[Key]map[string]struct{}, error) {
+	kindCol := sectionColumn(sec, ColumnTypeKind)
+	nameCol := sectionColumn(sec, ColumnTypeColumnName)
+	if kindCol == nil || nameCol == nil {
+		return nil, nil
+	}
+
+	preds := []Predicate{
+		EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindBloom))},
+	}
+	if len(names) > 0 {
+		vals := make([]scalar.Scalar, len(names))
+		for i, n := range names {
+			vals[i] = scalar.NewStringScalar(n)
+		}
+		preds = append(preds, InPredicate{Column: nameCol, Values: vals})
+	}
+
+	predsByName := make(map[string][]*labels.Matcher, len(remaining))
+	for _, p := range remaining {
+		predsByName[p.Name] = append(predsByName[p.Name], p)
+	}
+
+	rr := NewRowReader(ctx, sec, preds...)
+	defer func() { _ = rr.Close() }()
+
+	matched := make(map[Key]map[string]struct{})
+	for rr.Next() {
+		row := rr.At()
+		ps := predsByName[row.ColumnName]
+		if len(ps) == 0 || len(row.BloomFilter) == 0 {
+			continue
+		}
+		var filter bloom.BloomFilter
+		if err := filter.UnmarshalBinary(row.BloomFilter); err != nil {
+			return nil, fmt.Errorf("unmarshaling bloom filter: %w", err)
+		}
+		key := Key{ObjectPath: row.ObjectPath, SectionIndex: row.SectionIndex}
+		for _, p := range ps {
+			if filter.Test([]byte(p.Value)) {
+				names := matched[key]
+				if names == nil {
+					names = make(map[string]struct{})
+					matched[key] = names
+				}
+				names[p.Name] = struct{}{}
+			}
+		}
+	}
+	return matched, rr.Err()
 }
 
 func (r *StreamResolver) activeMatchers() []*labels.Matcher {

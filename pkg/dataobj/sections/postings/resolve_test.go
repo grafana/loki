@@ -142,3 +142,54 @@ func TestStreamResolver_PerStreamAmbiguousLabels(t *testing.T) {
 	require.Equal(t, []string{"trace_id"}, byStream[1])
 	require.Empty(t, byStream[2])
 }
+
+func TestStreamResolver_BloomFilters(t *testing.T) {
+	ctx := context.Background()
+	secs, closer := buildResolveTestSection(t,
+		[]labelPosting{
+			{name: "app", value: "nginx", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
+		},
+		[]bloomPosting{
+			{columnName: "trace_id", values: []string{"abc"}, streamID: 1, obj: "obj-a", section: 0},
+		},
+	)
+	defer closer()
+	ms := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
+
+	// Predicate present in bloom -> ref kept.
+	rHit := postings.NewStreamResolver(ms,
+		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "trace_id", "abc")},
+		time.Unix(0, 0), time.Unix(0, 1000))
+	refs, err := rHit.Resolve(ctx, secs)
+	require.NoError(t, err)
+	require.Len(t, refs, 1)
+
+	// Predicate absent from bloom -> ref dropped.
+	rMiss := postings.NewStreamResolver(ms,
+		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "trace_id", "zzz")},
+		time.Unix(0, 0), time.Unix(0, 1000))
+	refs, err = rMiss.Resolve(ctx, secs)
+	require.NoError(t, err)
+	require.Empty(t, refs)
+}
+
+func TestStreamResolver_StreamLabelPredicateDropped(t *testing.T) {
+	ctx := context.Background()
+	// "app" is a stream label. A predicate on "app" must be dropped before
+	// bloom matching, not treated as a structured-metadata bloom predicate
+	// (which would never match and cause a false negative).
+	secs, closer := buildResolveTestSection(t,
+		[]labelPosting{
+			{name: "app", value: "nginx", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
+		},
+		nil, // no bloom rows
+	)
+	defer closer()
+	ms := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
+	r := postings.NewStreamResolver(ms,
+		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")},
+		time.Unix(0, 0), time.Unix(0, 1000))
+	refs, err := r.Resolve(ctx, secs)
+	require.NoError(t, err)
+	require.Len(t, refs, 1) // predicate dropped as a stream label; ref survives
+}
