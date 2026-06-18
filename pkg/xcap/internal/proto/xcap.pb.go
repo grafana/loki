@@ -6,12 +6,13 @@ package proto
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // DataType specifies the data type of a statistic's values.
@@ -228,12 +229,6 @@ func (m *Capture) Reset() {
 	*m = Capture{}
 }
 func (*Capture) ProtoMessage() {}
-func (m *Capture) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Region) Reset() {
 	if m == nil {
@@ -242,12 +237,6 @@ func (m *Region) Reset() {
 	*m = Region{}
 }
 func (*Region) ProtoMessage() {}
-func (m *Region) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Event) Reset() {
 	if m == nil {
@@ -256,12 +245,6 @@ func (m *Event) Reset() {
 	*m = Event{}
 }
 func (*Event) ProtoMessage() {}
-func (m *Event) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Status) Reset() {
 	if m == nil {
@@ -270,12 +253,6 @@ func (m *Status) Reset() {
 	*m = Status{}
 }
 func (*Status) ProtoMessage() {}
-func (m *Status) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Attribute) Reset() {
 	if m == nil {
@@ -284,12 +261,6 @@ func (m *Attribute) Reset() {
 	*m = Attribute{}
 }
 func (*Attribute) ProtoMessage() {}
-func (m *Attribute) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *AttributeValue) Reset() {
 	if m == nil {
@@ -298,12 +269,6 @@ func (m *AttributeValue) Reset() {
 	*m = AttributeValue{}
 }
 func (*AttributeValue) ProtoMessage() {}
-func (m *AttributeValue) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Statistic) Reset() {
 	if m == nil {
@@ -312,12 +277,6 @@ func (m *Statistic) Reset() {
 	*m = Statistic{}
 }
 func (*Statistic) ProtoMessage() {}
-func (m *Statistic) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Observation) Reset() {
 	if m == nil {
@@ -326,12 +285,6 @@ func (m *Observation) Reset() {
 	*m = Observation{}
 }
 func (*Observation) ProtoMessage() {}
-func (m *Observation) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ObservationValue) Reset() {
 	if m == nil {
@@ -340,12 +293,6 @@ func (m *ObservationValue) Reset() {
 	*m = ObservationValue{}
 }
 func (*ObservationValue) ProtoMessage() {}
-func (m *ObservationValue) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Capture) GetRegions() []Region {
 	if m != nil {

@@ -7,23 +7,614 @@ import (
 	"math"
 )
 
-// Per-message Compare() methods for pkg/engine/internal/proto/expressionpb/expressionpb.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/engine/internal/proto/expressionpb/expressionpb.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *Expression) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Expression)
+	if !ok {
+		that2, ok := that.(Expression)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.Kind == nil) != (that1.Kind == nil) {
+		return false
+	}
+	if this.Kind != nil {
+		switch v := this.Kind.(type) {
+		case *Expression_Unary:
+			v2, ok := that1.Kind.(*Expression_Unary)
+			if !ok {
+				return false
+			}
+			if !v.Unary.Equal(v2.Unary) {
+				return false
+			}
+		case *Expression_Binary:
+			v2, ok := that1.Kind.(*Expression_Binary)
+			if !ok {
+				return false
+			}
+			if !v.Binary.Equal(v2.Binary) {
+				return false
+			}
+		case *Expression_Variadic:
+			v2, ok := that1.Kind.(*Expression_Variadic)
+			if !ok {
+				return false
+			}
+			if !v.Variadic.Equal(v2.Variadic) {
+				return false
+			}
+		case *Expression_Literal:
+			v2, ok := that1.Kind.(*Expression_Literal)
+			if !ok {
+				return false
+			}
+			if !v.Literal.Equal(v2.Literal) {
+				return false
+			}
+		case *Expression_Column:
+			v2, ok := that1.Kind.(*Expression_Column)
+			if !ok {
+				return false
+			}
+			if !v.Column.Equal(v2.Column) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func (this *UnaryExpression) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*UnaryExpression)
+	if !ok {
+		that2, ok := that.(UnaryExpression)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Op != that1.Op {
+		return false
+	}
+	if !this.Value.Equal(that1.Value) {
+		return false
+	}
+	return true
+}
+
+func (this *BinaryExpression) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*BinaryExpression)
+	if !ok {
+		that2, ok := that.(BinaryExpression)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Op != that1.Op {
+		return false
+	}
+	if !this.Left.Equal(that1.Left) {
+		return false
+	}
+	if !this.Right.Equal(that1.Right) {
+		return false
+	}
+	return true
+}
+
+func (this *VariadicExpression) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*VariadicExpression)
+	if !ok {
+		that2, ok := that.(VariadicExpression)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Op != that1.Op {
+		return false
+	}
+	if len(this.Args) != len(that1.Args) {
+		return false
+	}
+	for i := range this.Args {
+		if !this.Args[i].Equal(that1.Args[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *LiteralExpression) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*LiteralExpression)
+	if !ok {
+		that2, ok := that.(LiteralExpression)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.Kind == nil) != (that1.Kind == nil) {
+		return false
+	}
+	if this.Kind != nil {
+		switch v := this.Kind.(type) {
+		case *LiteralExpression_NullLiteral:
+			v2, ok := that1.Kind.(*LiteralExpression_NullLiteral)
+			if !ok {
+				return false
+			}
+			if !v.NullLiteral.Equal(v2.NullLiteral) {
+				return false
+			}
+		case *LiteralExpression_BoolLiteral:
+			v2, ok := that1.Kind.(*LiteralExpression_BoolLiteral)
+			if !ok {
+				return false
+			}
+			if !v.BoolLiteral.Equal(v2.BoolLiteral) {
+				return false
+			}
+		case *LiteralExpression_StringLiteral:
+			v2, ok := that1.Kind.(*LiteralExpression_StringLiteral)
+			if !ok {
+				return false
+			}
+			if !v.StringLiteral.Equal(v2.StringLiteral) {
+				return false
+			}
+		case *LiteralExpression_IntegerLiteral:
+			v2, ok := that1.Kind.(*LiteralExpression_IntegerLiteral)
+			if !ok {
+				return false
+			}
+			if !v.IntegerLiteral.Equal(v2.IntegerLiteral) {
+				return false
+			}
+		case *LiteralExpression_FloatLiteral:
+			v2, ok := that1.Kind.(*LiteralExpression_FloatLiteral)
+			if !ok {
+				return false
+			}
+			if !v.FloatLiteral.Equal(v2.FloatLiteral) {
+				return false
+			}
+		case *LiteralExpression_TimestampLiteral:
+			v2, ok := that1.Kind.(*LiteralExpression_TimestampLiteral)
+			if !ok {
+				return false
+			}
+			if !v.TimestampLiteral.Equal(v2.TimestampLiteral) {
+				return false
+			}
+		case *LiteralExpression_DurationLiteral:
+			v2, ok := that1.Kind.(*LiteralExpression_DurationLiteral)
+			if !ok {
+				return false
+			}
+			if !v.DurationLiteral.Equal(v2.DurationLiteral) {
+				return false
+			}
+		case *LiteralExpression_BytesLiteral:
+			v2, ok := that1.Kind.(*LiteralExpression_BytesLiteral)
+			if !ok {
+				return false
+			}
+			if !v.BytesLiteral.Equal(v2.BytesLiteral) {
+				return false
+			}
+		case *LiteralExpression_StringListLiteral:
+			v2, ok := that1.Kind.(*LiteralExpression_StringListLiteral)
+			if !ok {
+				return false
+			}
+			if !v.StringListLiteral.Equal(v2.StringListLiteral) {
+				return false
+			}
+		case *LiteralExpression_LabelFmtListLiteral:
+			v2, ok := that1.Kind.(*LiteralExpression_LabelFmtListLiteral)
+			if !ok {
+				return false
+			}
+			if !v.LabelFmtListLiteral.Equal(v2.LabelFmtListLiteral) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func (this *NullLiteral) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*NullLiteral)
+	if !ok {
+		that2, ok := that.(NullLiteral)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	return true
+}
+
+func (this *BoolLiteral) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*BoolLiteral)
+	if !ok {
+		that2, ok := that.(BoolLiteral)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Value != that1.Value {
+		return false
+	}
+	return true
+}
+
+func (this *StringLiteral) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*StringLiteral)
+	if !ok {
+		that2, ok := that.(StringLiteral)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Value != that1.Value {
+		return false
+	}
+	return true
+}
+
+func (this *IntegerLiteral) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*IntegerLiteral)
+	if !ok {
+		that2, ok := that.(IntegerLiteral)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Value != that1.Value {
+		return false
+	}
+	return true
+}
+
+func (this *FloatLiteral) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*FloatLiteral)
+	if !ok {
+		that2, ok := that.(FloatLiteral)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if math.Float64bits(this.Value) != math.Float64bits(that1.Value) {
+		return false
+	}
+	return true
+}
+
+func (this *TimestampLiteral) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TimestampLiteral)
+	if !ok {
+		that2, ok := that.(TimestampLiteral)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Value != that1.Value {
+		return false
+	}
+	return true
+}
+
+func (this *DurationLiteral) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DurationLiteral)
+	if !ok {
+		that2, ok := that.(DurationLiteral)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Value != that1.Value {
+		return false
+	}
+	return true
+}
+
+func (this *BytesLiteral) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*BytesLiteral)
+	if !ok {
+		that2, ok := that.(BytesLiteral)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Value != that1.Value {
+		return false
+	}
+	return true
+}
+
+func (this *StringListLiteral) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*StringListLiteral)
+	if !ok {
+		that2, ok := that.(StringListLiteral)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Value) != len(that1.Value) {
+		return false
+	}
+	for i := range this.Value {
+		if this.Value[i] != that1.Value[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *LabelFmtListLiteral) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*LabelFmtListLiteral)
+	if !ok {
+		that2, ok := that.(LabelFmtListLiteral)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Value) != len(that1.Value) {
+		return false
+	}
+	for i := range this.Value {
+		if !this.Value[i].Equal(that1.Value[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *LabelFmtLiteral) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*LabelFmtLiteral)
+	if !ok {
+		that2, ok := that.(LabelFmtLiteral)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Name != that1.Name {
+		return false
+	}
+	if this.Value != that1.Value {
+		return false
+	}
+	if this.Rename != that1.Rename {
+		return false
+	}
+	return true
+}
+
+func (this *ColumnExpression) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ColumnExpression)
+	if !ok {
+		that2, ok := that.(ColumnExpression)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Name != that1.Name {
+		return false
+	}
+	if this.Type != that1.Type {
+		return false
+	}
+	return true
+}
 
 func (this *Expression) Compare(that interface{}) int {
 	if that == nil {

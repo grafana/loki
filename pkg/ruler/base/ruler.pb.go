@@ -6,14 +6,15 @@ package base
 import (
 	"encoding/binary"
 	"fmt"
-	logproto "github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
 	"time"
+
+	logproto "github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type RulesRequest_RuleType int32
@@ -92,12 +93,6 @@ func (m *RulesRequest) Reset() {
 	*m = RulesRequest{}
 }
 func (*RulesRequest) ProtoMessage() {}
-func (m *RulesRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *RulesResponse) Reset() {
 	if m == nil {
@@ -106,12 +101,6 @@ func (m *RulesResponse) Reset() {
 	*m = RulesResponse{}
 }
 func (*RulesResponse) ProtoMessage() {}
-func (m *RulesResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GroupStateDesc) Reset() {
 	if m == nil {
@@ -120,12 +109,6 @@ func (m *GroupStateDesc) Reset() {
 	*m = GroupStateDesc{}
 }
 func (*GroupStateDesc) ProtoMessage() {}
-func (m *GroupStateDesc) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *RuleStateDesc) Reset() {
 	if m == nil {
@@ -134,12 +117,6 @@ func (m *RuleStateDesc) Reset() {
 	*m = RuleStateDesc{}
 }
 func (*RuleStateDesc) ProtoMessage() {}
-func (m *RuleStateDesc) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *AlertStateDesc) Reset() {
 	if m == nil {
@@ -148,12 +125,6 @@ func (m *AlertStateDesc) Reset() {
 	*m = AlertStateDesc{}
 }
 func (*AlertStateDesc) ProtoMessage() {}
-func (m *AlertStateDesc) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *RulesRequest) GetFilter() RulesRequest_RuleType {
 	if m != nil {

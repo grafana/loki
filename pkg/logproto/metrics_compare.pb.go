@@ -3,23 +3,195 @@
 
 package logproto
 
-// Per-message Compare() methods for pkg/logproto/metrics.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/logproto/metrics.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *WriteRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*WriteRequest)
+	if !ok {
+		that2, ok := that.(WriteRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Timeseries) != len(that1.Timeseries) {
+		return false
+	}
+	for i := range this.Timeseries {
+		if !this.Timeseries[i].EqualWiresmith(that1.Timeseries[i]) {
+			return false
+		}
+	}
+	if this.Source != that1.Source {
+		return false
+	}
+	if len(this.Metadata) != len(that1.Metadata) {
+		return false
+	}
+	for i := range this.Metadata {
+		if (this.Metadata[i] == nil) != (that1.Metadata[i] == nil) {
+			return false
+		}
+		if this.Metadata[i] != nil && !this.Metadata[i].Equal(that1.Metadata[i]) {
+			return false
+		}
+	}
+	if this.SkipLabelNameValidation != that1.SkipLabelNameValidation {
+		return false
+	}
+	return true
+}
+
+func (this *WriteResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*WriteResponse)
+	if !ok {
+		that2, ok := that.(WriteResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	return true
+}
+
+func (this *TimeSeries) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TimeSeries)
+	if !ok {
+		that2, ok := that.(TimeSeries)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Labels) != len(that1.Labels) {
+		return false
+	}
+	for i := range this.Labels {
+		if !this.Labels[i].EqualWiresmith(that1.Labels[i]) {
+			return false
+		}
+	}
+	if len(this.Samples) != len(that1.Samples) {
+		return false
+	}
+	for i := range this.Samples {
+		if !this.Samples[i].Equal(that1.Samples[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *MetricMetadata) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*MetricMetadata)
+	if !ok {
+		that2, ok := that.(MetricMetadata)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Type != that1.Type {
+		return false
+	}
+	if this.MetricFamilyName != that1.MetricFamilyName {
+		return false
+	}
+	if this.Help != that1.Help {
+		return false
+	}
+	if this.Unit != that1.Unit {
+		return false
+	}
+	return true
+}
+
+func (this *Metric) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Metric)
+	if !ok {
+		that2, ok := that.(Metric)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Labels) != len(that1.Labels) {
+		return false
+	}
+	for i := range this.Labels {
+		if !this.Labels[i].EqualWiresmith(that1.Labels[i]) {
+			return false
+		}
+	}
+	return true
+}
 
 func (this *WriteRequest) Compare(that interface{}) int {
 	if that == nil {

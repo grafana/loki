@@ -5,12 +5,13 @@ package logproto
 
 import (
 	"fmt"
+	"io"
+	"math"
+
 	plan "github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/wiresmith/protohelpers"
 	model "github.com/prometheus/common/model"
 	"google.golang.org/protobuf/encoding/protowire"
-	"io"
-	"math"
 )
 
 type FilterChunkRefRequest struct {
@@ -55,12 +56,6 @@ func (m *FilterChunkRefRequest) Reset() {
 	*m = FilterChunkRefRequest{}
 }
 func (*FilterChunkRefRequest) ProtoMessage() {}
-func (m *FilterChunkRefRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *FilterChunkRefResponse) Reset() {
 	if m == nil {
@@ -69,12 +64,6 @@ func (m *FilterChunkRefResponse) Reset() {
 	*m = FilterChunkRefResponse{}
 }
 func (*FilterChunkRefResponse) ProtoMessage() {}
-func (m *FilterChunkRefResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ShortRef) Reset() {
 	if m == nil {
@@ -83,12 +72,6 @@ func (m *ShortRef) Reset() {
 	*m = ShortRef{}
 }
 func (*ShortRef) ProtoMessage() {}
-func (m *ShortRef) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GroupedChunkRefs) Reset() {
 	if m == nil {
@@ -97,12 +80,6 @@ func (m *GroupedChunkRefs) Reset() {
 	*m = GroupedChunkRefs{}
 }
 func (*GroupedChunkRefs) ProtoMessage() {}
-func (m *GroupedChunkRefs) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PrefetchBloomBlocksRequest) Reset() {
 	if m == nil {
@@ -111,12 +88,6 @@ func (m *PrefetchBloomBlocksRequest) Reset() {
 	*m = PrefetchBloomBlocksRequest{}
 }
 func (*PrefetchBloomBlocksRequest) ProtoMessage() {}
-func (m *PrefetchBloomBlocksRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PrefetchBloomBlocksResponse) Reset() {
 	if m == nil {
@@ -125,12 +96,6 @@ func (m *PrefetchBloomBlocksResponse) Reset() {
 	*m = PrefetchBloomBlocksResponse{}
 }
 func (*PrefetchBloomBlocksResponse) ProtoMessage() {}
-func (m *PrefetchBloomBlocksResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *FilterChunkRefRequest) GetFrom() model.Time {
 	if m != nil {

@@ -5,10 +5,11 @@ package proto
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type CompactionJob_Source interface {
@@ -112,12 +113,6 @@ func (m *Stream) Reset() {
 	*m = Stream{}
 }
 func (*Stream) ProtoMessage() {}
-func (m *Stream) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TenantStream) Reset() {
 	if m == nil {
@@ -126,12 +121,6 @@ func (m *TenantStream) Reset() {
 	*m = TenantStream{}
 }
 func (*TenantStream) ProtoMessage() {}
-func (m *TenantStream) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TimeRange) Reset() {
 	if m == nil {
@@ -140,12 +129,6 @@ func (m *TimeRange) Reset() {
 	*m = TimeRange{}
 }
 func (*TimeRange) ProtoMessage() {}
-func (m *TimeRange) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SingleTenantObjectSource) Reset() {
 	if m == nil {
@@ -154,12 +137,6 @@ func (m *SingleTenantObjectSource) Reset() {
 	*m = SingleTenantObjectSource{}
 }
 func (*SingleTenantObjectSource) ProtoMessage() {}
-func (m *SingleTenantObjectSource) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *MultiTenantObjectSource) Reset() {
 	if m == nil {
@@ -168,12 +145,6 @@ func (m *MultiTenantObjectSource) Reset() {
 	*m = MultiTenantObjectSource{}
 }
 func (*MultiTenantObjectSource) ProtoMessage() {}
-func (m *MultiTenantObjectSource) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *CompactionManifest) Reset() {
 	if m == nil {
@@ -182,12 +153,6 @@ func (m *CompactionManifest) Reset() {
 	*m = CompactionManifest{}
 }
 func (*CompactionManifest) ProtoMessage() {}
-func (m *CompactionManifest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SingleTenantObjectSourceWithTenantID) Reset() {
 	if m == nil {
@@ -196,12 +161,6 @@ func (m *SingleTenantObjectSourceWithTenantID) Reset() {
 	*m = SingleTenantObjectSourceWithTenantID{}
 }
 func (*SingleTenantObjectSourceWithTenantID) ProtoMessage() {}
-func (m *SingleTenantObjectSourceWithTenantID) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *CompactionJob) Reset() {
 	if m == nil {
@@ -210,12 +169,6 @@ func (m *CompactionJob) Reset() {
 	*m = CompactionJob{}
 }
 func (*CompactionJob) ProtoMessage() {}
-func (m *CompactionJob) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *CompactionJobResponse) Reset() {
 	if m == nil {
@@ -224,12 +177,6 @@ func (m *CompactionJobResponse) Reset() {
 	*m = CompactionJobResponse{}
 }
 func (*CompactionJobResponse) ProtoMessage() {}
-func (m *CompactionJobResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *IndexingJob) Reset() {
 	if m == nil {
@@ -238,12 +185,6 @@ func (m *IndexingJob) Reset() {
 	*m = IndexingJob{}
 }
 func (*IndexingJob) ProtoMessage() {}
-func (m *IndexingJob) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *IndexInfo) Reset() {
 	if m == nil {
@@ -252,12 +193,6 @@ func (m *IndexInfo) Reset() {
 	*m = IndexInfo{}
 }
 func (*IndexInfo) ProtoMessage() {}
-func (m *IndexInfo) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *IndexingJobResponse) Reset() {
 	if m == nil {
@@ -266,12 +201,6 @@ func (m *IndexingJobResponse) Reset() {
 	*m = IndexingJobResponse{}
 }
 func (*IndexingJobResponse) ProtoMessage() {}
-func (m *IndexingJobResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Stream) GetID() int64 {
 	if m != nil {

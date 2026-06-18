@@ -5,10 +5,11 @@ package httpgrpcpb
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // HTTPRequest is wire-identical to httpgrpc.HTTPRequest.
@@ -39,12 +40,6 @@ func (m *HTTPRequest) Reset() {
 	*m = HTTPRequest{}
 }
 func (*HTTPRequest) ProtoMessage() {}
-func (m *HTTPRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *HTTPResponse) Reset() {
 	if m == nil {
@@ -53,12 +48,6 @@ func (m *HTTPResponse) Reset() {
 	*m = HTTPResponse{}
 }
 func (*HTTPResponse) ProtoMessage() {}
-func (m *HTTPResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Header) Reset() {
 	if m == nil {
@@ -67,12 +56,6 @@ func (m *Header) Reset() {
 	*m = Header{}
 }
 func (*Header) ProtoMessage() {}
-func (m *Header) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *HTTPRequest) GetMethod() string {
 	if m != nil {

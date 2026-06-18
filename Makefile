@@ -230,12 +230,12 @@ WIRESMITH_PROTO_GROUPS := engine logqlstats querierstats limits leaves compactio
 	httpgrpc bloombuild compactorgrpc checkpoint ruler queryrange scheduler frontend
 
 WIRESMITH_PROTO_DEFS := $(foreach g,$(WIRESMITH_PROTO_GROUPS),$(WIRESMITH_PROTO_GROUP_$(g)))
-# wiresmith emits sibling files next to each <name>.pb.go; <name>_grpc.pb.go
-# only appears for protos that declare services.
+# wiresmith emits sibling files next to each <name>.pb.go: <name>_util.pb.go
+# (reflect + String + Clone) and <name>_compare.pb.go (Equal + Compare).
+# <name>_grpc.pb.go only appears for protos that declare services.
 WIRESMITH_PROTO_GOS := $(patsubst %.proto,%.pb.go,$(WIRESMITH_PROTO_DEFS)) \
+	$(patsubst %.proto,%_util.pb.go,$(WIRESMITH_PROTO_DEFS)) \
 	$(patsubst %.proto,%_compare.pb.go,$(WIRESMITH_PROTO_DEFS)) \
-	$(patsubst %.proto,%_equal.pb.go,$(WIRESMITH_PROTO_DEFS)) \
-	$(patsubst %.proto,%_reflect.pb.go,$(WIRESMITH_PROTO_DEFS)) \
 	$(patsubst %.proto,%_grpc.pb.go,$(WIRESMITH_PROTO_DEFS))
 
 # Protobuf files

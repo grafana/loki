@@ -5,10 +5,11 @@ package proto
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type ExceedsLimitsRequest struct {
@@ -66,12 +67,6 @@ func (m *ExceedsLimitsRequest) Reset() {
 	*m = ExceedsLimitsRequest{}
 }
 func (*ExceedsLimitsRequest) ProtoMessage() {}
-func (m *ExceedsLimitsRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ExceedsLimitsResponse) Reset() {
 	if m == nil {
@@ -80,12 +75,6 @@ func (m *ExceedsLimitsResponse) Reset() {
 	*m = ExceedsLimitsResponse{}
 }
 func (*ExceedsLimitsResponse) ProtoMessage() {}
-func (m *ExceedsLimitsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ExceedsLimitsResult) Reset() {
 	if m == nil {
@@ -94,12 +83,6 @@ func (m *ExceedsLimitsResult) Reset() {
 	*m = ExceedsLimitsResult{}
 }
 func (*ExceedsLimitsResult) ProtoMessage() {}
-func (m *ExceedsLimitsResult) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetAssignedPartitionsRequest) Reset() {
 	if m == nil {
@@ -108,12 +91,6 @@ func (m *GetAssignedPartitionsRequest) Reset() {
 	*m = GetAssignedPartitionsRequest{}
 }
 func (*GetAssignedPartitionsRequest) ProtoMessage() {}
-func (m *GetAssignedPartitionsRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetAssignedPartitionsResponse) Reset() {
 	if m == nil {
@@ -122,12 +99,6 @@ func (m *GetAssignedPartitionsResponse) Reset() {
 	*m = GetAssignedPartitionsResponse{}
 }
 func (*GetAssignedPartitionsResponse) ProtoMessage() {}
-func (m *GetAssignedPartitionsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StreamMetadata) Reset() {
 	if m == nil {
@@ -136,12 +107,6 @@ func (m *StreamMetadata) Reset() {
 	*m = StreamMetadata{}
 }
 func (*StreamMetadata) ProtoMessage() {}
-func (m *StreamMetadata) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StreamMetadataRecord) Reset() {
 	if m == nil {
@@ -150,12 +115,6 @@ func (m *StreamMetadataRecord) Reset() {
 	*m = StreamMetadataRecord{}
 }
 func (*StreamMetadataRecord) ProtoMessage() {}
-func (m *StreamMetadataRecord) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *UpdateRatesRequest) Reset() {
 	if m == nil {
@@ -164,12 +123,6 @@ func (m *UpdateRatesRequest) Reset() {
 	*m = UpdateRatesRequest{}
 }
 func (*UpdateRatesRequest) ProtoMessage() {}
-func (m *UpdateRatesRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *UpdateRatesResponse) Reset() {
 	if m == nil {
@@ -178,12 +131,6 @@ func (m *UpdateRatesResponse) Reset() {
 	*m = UpdateRatesResponse{}
 }
 func (*UpdateRatesResponse) ProtoMessage() {}
-func (m *UpdateRatesResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *UpdateRatesResult) Reset() {
 	if m == nil {
@@ -192,12 +139,6 @@ func (m *UpdateRatesResult) Reset() {
 	*m = UpdateRatesResult{}
 }
 func (*UpdateRatesResult) ProtoMessage() {}
-func (m *UpdateRatesResult) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ExceedsLimitsRequest) GetTenant() string {
 	if m != nil {

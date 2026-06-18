@@ -23,12 +23,6 @@ func (m *Any) Reset() {
 	*m = Any{}
 }
 func (*Any) ProtoMessage() {}
-func (m *Any) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Any) GetTypeUrl() string {
 	if m != nil {

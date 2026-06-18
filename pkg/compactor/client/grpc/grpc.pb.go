@@ -5,13 +5,14 @@ package grpc
 
 import (
 	"fmt"
-	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // JobType represents the type of job
@@ -81,12 +82,6 @@ func (m *GetDeleteRequestsRequest) Reset() {
 	*m = GetDeleteRequestsRequest{}
 }
 func (*GetDeleteRequestsRequest) ProtoMessage() {}
-func (m *GetDeleteRequestsRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetDeleteRequestsResponse) Reset() {
 	if m == nil {
@@ -95,12 +90,6 @@ func (m *GetDeleteRequestsResponse) Reset() {
 	*m = GetDeleteRequestsResponse{}
 }
 func (*GetDeleteRequestsResponse) ProtoMessage() {}
-func (m *GetDeleteRequestsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetCacheGenNumbersRequest) Reset() {
 	if m == nil {
@@ -109,12 +98,6 @@ func (m *GetCacheGenNumbersRequest) Reset() {
 	*m = GetCacheGenNumbersRequest{}
 }
 func (*GetCacheGenNumbersRequest) ProtoMessage() {}
-func (m *GetCacheGenNumbersRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetCacheGenNumbersResponse) Reset() {
 	if m == nil {
@@ -123,12 +106,6 @@ func (m *GetCacheGenNumbersResponse) Reset() {
 	*m = GetCacheGenNumbersResponse{}
 }
 func (*GetCacheGenNumbersResponse) ProtoMessage() {}
-func (m *GetCacheGenNumbersResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Job) Reset() {
 	if m == nil {
@@ -137,12 +114,6 @@ func (m *Job) Reset() {
 	*m = Job{}
 }
 func (*Job) ProtoMessage() {}
-func (m *Job) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *JobResult) Reset() {
 	if m == nil {
@@ -151,12 +122,6 @@ func (m *JobResult) Reset() {
 	*m = JobResult{}
 }
 func (*JobResult) ProtoMessage() {}
-func (m *JobResult) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ReportJobResultResponse) Reset() {
 	if m == nil {
@@ -165,12 +130,6 @@ func (m *ReportJobResultResponse) Reset() {
 	*m = ReportJobResultResponse{}
 }
 func (*ReportJobResultResponse) ProtoMessage() {}
-func (m *ReportJobResultResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetDeleteRequestsRequest) GetForQuerytimeFiltering() bool {
 	if m != nil {

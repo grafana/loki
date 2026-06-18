@@ -5,12 +5,13 @@ package ingester
 
 import (
 	"fmt"
-	logproto "github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"time"
+
+	logproto "github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // Chunk is a {de,}serializable intermediate type for chunkDesc which allows
@@ -53,12 +54,6 @@ func (m *Chunk) Reset() {
 	*m = Chunk{}
 }
 func (*Chunk) ProtoMessage() {}
-func (m *Chunk) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Series) Reset() {
 	if m == nil {
@@ -67,12 +62,6 @@ func (m *Series) Reset() {
 	*m = Series{}
 }
 func (*Series) ProtoMessage() {}
-func (m *Series) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Chunk) GetFrom() time.Time {
 	if m != nil {

@@ -5,11 +5,12 @@ package stats
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"time"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type Stats struct {
@@ -28,12 +29,6 @@ func (m *Stats) Reset() {
 	*m = Stats{}
 }
 func (*Stats) ProtoMessage() {}
-func (m *Stats) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Stats) GetWallTime() time.Duration {
 	if m != nil {

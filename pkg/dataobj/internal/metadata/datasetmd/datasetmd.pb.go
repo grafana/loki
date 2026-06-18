@@ -5,11 +5,12 @@ package datasetmd
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // PhysicalType represents the type that the column is encoded as.
@@ -322,12 +323,6 @@ func (m *SectionInfoExtension) Reset() {
 	*m = SectionInfoExtension{}
 }
 func (*SectionInfoExtension) ProtoMessage() {}
-func (m *SectionInfoExtension) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SectionMetadata) Reset() {
 	if m == nil {
@@ -336,12 +331,6 @@ func (m *SectionMetadata) Reset() {
 	*m = SectionMetadata{}
 }
 func (*SectionMetadata) ProtoMessage() {}
-func (m *SectionMetadata) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ColumnDesc) Reset() {
 	if m == nil {
@@ -350,12 +339,6 @@ func (m *ColumnDesc) Reset() {
 	*m = ColumnDesc{}
 }
 func (*ColumnDesc) ProtoMessage() {}
-func (m *ColumnDesc) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ColumnType) Reset() {
 	if m == nil {
@@ -364,12 +347,6 @@ func (m *ColumnType) Reset() {
 	*m = ColumnType{}
 }
 func (*ColumnType) ProtoMessage() {}
-func (m *ColumnType) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ColumnMetadata) Reset() {
 	if m == nil {
@@ -378,12 +355,6 @@ func (m *ColumnMetadata) Reset() {
 	*m = ColumnMetadata{}
 }
 func (*ColumnMetadata) ProtoMessage() {}
-func (m *ColumnMetadata) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PageDesc) Reset() {
 	if m == nil {
@@ -392,12 +363,6 @@ func (m *PageDesc) Reset() {
 	*m = PageDesc{}
 }
 func (*PageDesc) ProtoMessage() {}
-func (m *PageDesc) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Statistics) Reset() {
 	if m == nil {
@@ -406,12 +371,6 @@ func (m *Statistics) Reset() {
 	*m = Statistics{}
 }
 func (*Statistics) ProtoMessage() {}
-func (m *Statistics) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SortInfo_ColumnSort) Reset() {
 	if m == nil {
@@ -420,12 +379,6 @@ func (m *SortInfo_ColumnSort) Reset() {
 	*m = SortInfo_ColumnSort{}
 }
 func (*SortInfo_ColumnSort) ProtoMessage() {}
-func (m *SortInfo_ColumnSort) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SortInfo) Reset() {
 	if m == nil {
@@ -434,12 +387,6 @@ func (m *SortInfo) Reset() {
 	*m = SortInfo{}
 }
 func (*SortInfo) ProtoMessage() {}
-func (m *SortInfo) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SectionInfoExtension) GetSectionMetadataOffset() uint64 {
 	if m != nil {

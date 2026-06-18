@@ -8,23 +8,497 @@ import (
 	"math"
 )
 
-// Per-message Compare() methods for pkg/logproto/sketch.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/logproto/sketch.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *QuantileSketchMatrix) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QuantileSketchMatrix)
+	if !ok {
+		that2, ok := that.(QuantileSketchMatrix)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Values) != len(that1.Values) {
+		return false
+	}
+	for i := range this.Values {
+		if (this.Values[i] == nil) != (that1.Values[i] == nil) {
+			return false
+		}
+		if this.Values[i] != nil && !this.Values[i].Equal(that1.Values[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *QuantileSketchVector) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QuantileSketchVector)
+	if !ok {
+		that2, ok := that.(QuantileSketchVector)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Samples) != len(that1.Samples) {
+		return false
+	}
+	for i := range this.Samples {
+		if (this.Samples[i] == nil) != (that1.Samples[i] == nil) {
+			return false
+		}
+		if this.Samples[i] != nil && !this.Samples[i].Equal(that1.Samples[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *QuantileSketchSample) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QuantileSketchSample)
+	if !ok {
+		that2, ok := that.(QuantileSketchSample)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.F == nil) != (that1.F == nil) {
+		return false
+	}
+	if this.F != nil && !this.F.Equal(that1.F) {
+		return false
+	}
+	if this.TimestampMs != that1.TimestampMs {
+		return false
+	}
+	if len(this.Metric) != len(that1.Metric) {
+		return false
+	}
+	for i := range this.Metric {
+		if (this.Metric[i] == nil) != (that1.Metric[i] == nil) {
+			return false
+		}
+		if this.Metric[i] != nil && !this.Metric[i].Equal(that1.Metric[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *QuantileSketch) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QuantileSketch)
+	if !ok {
+		that2, ok := that.(QuantileSketch)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.Sketch == nil) != (that1.Sketch == nil) {
+		return false
+	}
+	if this.Sketch != nil {
+		switch v := this.Sketch.(type) {
+		case *QuantileSketch_Tdigest:
+			v2, ok := that1.Sketch.(*QuantileSketch_Tdigest)
+			if !ok {
+				return false
+			}
+			if !v.Tdigest.Equal(v2.Tdigest) {
+				return false
+			}
+		case *QuantileSketch_Ddsketch:
+			v2, ok := that1.Sketch.(*QuantileSketch_Ddsketch)
+			if !ok {
+				return false
+			}
+			if !bytes.Equal(v.Ddsketch, v2.Ddsketch) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func (this *TDigest_Centroid) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TDigest_Centroid)
+	if !ok {
+		that2, ok := that.(TDigest_Centroid)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if math.Float64bits(this.Mean) != math.Float64bits(that1.Mean) {
+		return false
+	}
+	if math.Float64bits(this.Weight) != math.Float64bits(that1.Weight) {
+		return false
+	}
+	return true
+}
+
+func (this *TDigest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TDigest)
+	if !ok {
+		that2, ok := that.(TDigest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if math.Float64bits(this.Min) != math.Float64bits(that1.Min) {
+		return false
+	}
+	if math.Float64bits(this.Max) != math.Float64bits(that1.Max) {
+		return false
+	}
+	if math.Float64bits(this.Compression) != math.Float64bits(that1.Compression) {
+		return false
+	}
+	if len(this.Processed) != len(that1.Processed) {
+		return false
+	}
+	for i := range this.Processed {
+		if (this.Processed[i] == nil) != (that1.Processed[i] == nil) {
+			return false
+		}
+		if this.Processed[i] != nil && !this.Processed[i].Equal(that1.Processed[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *CountMinSketch) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CountMinSketch)
+	if !ok {
+		that2, ok := that.(CountMinSketch)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Depth != that1.Depth {
+		return false
+	}
+	if this.Width != that1.Width {
+		return false
+	}
+	if len(this.Counters) != len(that1.Counters) {
+		return false
+	}
+	for i := range this.Counters {
+		if math.Float64bits(this.Counters[i]) != math.Float64bits(that1.Counters[i]) {
+			return false
+		}
+	}
+	if !bytes.Equal(this.Hyperloglog, that1.Hyperloglog) {
+		return false
+	}
+	return true
+}
+
+func (this *CountMinSketchVector) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CountMinSketchVector)
+	if !ok {
+		that2, ok := that.(CountMinSketchVector)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TimestampMs != that1.TimestampMs {
+		return false
+	}
+	if (this.Sketch == nil) != (that1.Sketch == nil) {
+		return false
+	}
+	if this.Sketch != nil && !this.Sketch.Equal(that1.Sketch) {
+		return false
+	}
+	if len(this.Metrics) != len(that1.Metrics) {
+		return false
+	}
+	for i := range this.Metrics {
+		if (this.Metrics[i] == nil) != (that1.Metrics[i] == nil) {
+			return false
+		}
+		if this.Metrics[i] != nil && !this.Metrics[i].Equal(that1.Metrics[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Labels) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Labels)
+	if !ok {
+		that2, ok := that.(Labels)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Metric) != len(that1.Metric) {
+		return false
+	}
+	for i := range this.Metric {
+		if (this.Metric[i] == nil) != (that1.Metric[i] == nil) {
+			return false
+		}
+		if this.Metric[i] != nil && !this.Metric[i].Equal(that1.Metric[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *TopK_Pair) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TopK_Pair)
+	if !ok {
+		that2, ok := that.(TopK_Pair)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Event != that1.Event {
+		return false
+	}
+	if math.Float64bits(this.Count) != math.Float64bits(that1.Count) {
+		return false
+	}
+	return true
+}
+
+func (this *TopK) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TopK)
+	if !ok {
+		that2, ok := that.(TopK)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.Cms == nil) != (that1.Cms == nil) {
+		return false
+	}
+	if this.Cms != nil && !this.Cms.Equal(that1.Cms) {
+		return false
+	}
+	if len(this.List) != len(that1.List) {
+		return false
+	}
+	for i := range this.List {
+		if (this.List[i] == nil) != (that1.List[i] == nil) {
+			return false
+		}
+		if this.List[i] != nil && !this.List[i].Equal(that1.List[i]) {
+			return false
+		}
+	}
+	if !bytes.Equal(this.Hyperloglog, that1.Hyperloglog) {
+		return false
+	}
+	return true
+}
+
+func (this *TopKMatrix_Vector) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TopKMatrix_Vector)
+	if !ok {
+		that2, ok := that.(TopKMatrix_Vector)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.Topk == nil) != (that1.Topk == nil) {
+		return false
+	}
+	if this.Topk != nil && !this.Topk.Equal(that1.Topk) {
+		return false
+	}
+	if this.TimestampMs != that1.TimestampMs {
+		return false
+	}
+	return true
+}
+
+func (this *TopKMatrix) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TopKMatrix)
+	if !ok {
+		that2, ok := that.(TopKMatrix)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Values) != len(that1.Values) {
+		return false
+	}
+	for i := range this.Values {
+		if (this.Values[i] == nil) != (that1.Values[i] == nil) {
+			return false
+		}
+		if this.Values[i] != nil && !this.Values[i].Equal(that1.Values[i]) {
+			return false
+		}
+	}
+	return true
+}
 
 func (this *QuantileSketchMatrix) Compare(that interface{}) int {
 	if that == nil {

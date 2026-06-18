@@ -7,23 +7,339 @@ import (
 	"sort"
 )
 
-// Per-message Compare() methods for pkg/limits/proto/limits.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/limits/proto/limits.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *ExceedsLimitsRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ExceedsLimitsRequest)
+	if !ok {
+		that2, ok := that.(ExceedsLimitsRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Tenant != that1.Tenant {
+		return false
+	}
+	if len(this.Streams) != len(that1.Streams) {
+		return false
+	}
+	for i := range this.Streams {
+		if (this.Streams[i] == nil) != (that1.Streams[i] == nil) {
+			return false
+		}
+		if this.Streams[i] != nil && !this.Streams[i].Equal(that1.Streams[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *ExceedsLimitsResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ExceedsLimitsResponse)
+	if !ok {
+		that2, ok := that.(ExceedsLimitsResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Results) != len(that1.Results) {
+		return false
+	}
+	for i := range this.Results {
+		if (this.Results[i] == nil) != (that1.Results[i] == nil) {
+			return false
+		}
+		if this.Results[i] != nil && !this.Results[i].Equal(that1.Results[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *ExceedsLimitsResult) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ExceedsLimitsResult)
+	if !ok {
+		that2, ok := that.(ExceedsLimitsResult)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.StreamHash != that1.StreamHash {
+		return false
+	}
+	if this.Reason != that1.Reason {
+		return false
+	}
+	return true
+}
+
+func (this *GetAssignedPartitionsRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*GetAssignedPartitionsRequest)
+	if !ok {
+		that2, ok := that.(GetAssignedPartitionsRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	return true
+}
+
+func (this *GetAssignedPartitionsResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*GetAssignedPartitionsResponse)
+	if !ok {
+		that2, ok := that.(GetAssignedPartitionsResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.AssignedPartitions) != len(that1.AssignedPartitions) {
+		return false
+	}
+	for k, v := range this.AssignedPartitions {
+		v2, ok := that1.AssignedPartitions[k]
+		if !ok {
+			return false
+		}
+		if v != v2 {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *StreamMetadata) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*StreamMetadata)
+	if !ok {
+		that2, ok := that.(StreamMetadata)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.StreamHash != that1.StreamHash {
+		return false
+	}
+	if this.TotalSize != that1.TotalSize {
+		return false
+	}
+	if this.IngestionPolicy != that1.IngestionPolicy {
+		return false
+	}
+	return true
+}
+
+func (this *StreamMetadataRecord) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*StreamMetadataRecord)
+	if !ok {
+		that2, ok := that.(StreamMetadataRecord)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Zone != that1.Zone {
+		return false
+	}
+	if this.Tenant != that1.Tenant {
+		return false
+	}
+	if (this.Metadata == nil) != (that1.Metadata == nil) {
+		return false
+	}
+	if this.Metadata != nil && !this.Metadata.Equal(that1.Metadata) {
+		return false
+	}
+	return true
+}
+
+func (this *UpdateRatesRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*UpdateRatesRequest)
+	if !ok {
+		that2, ok := that.(UpdateRatesRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Tenant != that1.Tenant {
+		return false
+	}
+	if len(this.Streams) != len(that1.Streams) {
+		return false
+	}
+	for i := range this.Streams {
+		if (this.Streams[i] == nil) != (that1.Streams[i] == nil) {
+			return false
+		}
+		if this.Streams[i] != nil && !this.Streams[i].Equal(that1.Streams[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *UpdateRatesResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*UpdateRatesResponse)
+	if !ok {
+		that2, ok := that.(UpdateRatesResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Results) != len(that1.Results) {
+		return false
+	}
+	for i := range this.Results {
+		if (this.Results[i] == nil) != (that1.Results[i] == nil) {
+			return false
+		}
+		if this.Results[i] != nil && !this.Results[i].Equal(that1.Results[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *UpdateRatesResult) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*UpdateRatesResult)
+	if !ok {
+		that2, ok := that.(UpdateRatesResult)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.StreamHash != that1.StreamHash {
+		return false
+	}
+	if this.Rate != that1.Rate {
+		return false
+	}
+	return true
+}
 
 func (this *ExceedsLimitsRequest) Compare(that interface{}) int {
 	if that == nil {

@@ -6,11 +6,12 @@ package expressionpb
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // UnaryOp denotes the kind of unary operation to perform.
@@ -422,12 +423,6 @@ func (m *Expression) Reset() {
 	*m = Expression{}
 }
 func (*Expression) ProtoMessage() {}
-func (m *Expression) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *UnaryExpression) Reset() {
 	if m == nil {
@@ -436,12 +431,6 @@ func (m *UnaryExpression) Reset() {
 	*m = UnaryExpression{}
 }
 func (*UnaryExpression) ProtoMessage() {}
-func (m *UnaryExpression) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *BinaryExpression) Reset() {
 	if m == nil {
@@ -450,12 +439,6 @@ func (m *BinaryExpression) Reset() {
 	*m = BinaryExpression{}
 }
 func (*BinaryExpression) ProtoMessage() {}
-func (m *BinaryExpression) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *VariadicExpression) Reset() {
 	if m == nil {
@@ -464,12 +447,6 @@ func (m *VariadicExpression) Reset() {
 	*m = VariadicExpression{}
 }
 func (*VariadicExpression) ProtoMessage() {}
-func (m *VariadicExpression) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LiteralExpression) Reset() {
 	if m == nil {
@@ -478,12 +455,6 @@ func (m *LiteralExpression) Reset() {
 	*m = LiteralExpression{}
 }
 func (*LiteralExpression) ProtoMessage() {}
-func (m *LiteralExpression) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *NullLiteral) Reset() {
 	if m == nil {
@@ -492,12 +463,6 @@ func (m *NullLiteral) Reset() {
 	*m = NullLiteral{}
 }
 func (*NullLiteral) ProtoMessage() {}
-func (m *NullLiteral) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *BoolLiteral) Reset() {
 	if m == nil {
@@ -506,12 +471,6 @@ func (m *BoolLiteral) Reset() {
 	*m = BoolLiteral{}
 }
 func (*BoolLiteral) ProtoMessage() {}
-func (m *BoolLiteral) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StringLiteral) Reset() {
 	if m == nil {
@@ -520,12 +479,6 @@ func (m *StringLiteral) Reset() {
 	*m = StringLiteral{}
 }
 func (*StringLiteral) ProtoMessage() {}
-func (m *StringLiteral) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *IntegerLiteral) Reset() {
 	if m == nil {
@@ -534,12 +487,6 @@ func (m *IntegerLiteral) Reset() {
 	*m = IntegerLiteral{}
 }
 func (*IntegerLiteral) ProtoMessage() {}
-func (m *IntegerLiteral) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *FloatLiteral) Reset() {
 	if m == nil {
@@ -548,12 +495,6 @@ func (m *FloatLiteral) Reset() {
 	*m = FloatLiteral{}
 }
 func (*FloatLiteral) ProtoMessage() {}
-func (m *FloatLiteral) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TimestampLiteral) Reset() {
 	if m == nil {
@@ -562,12 +503,6 @@ func (m *TimestampLiteral) Reset() {
 	*m = TimestampLiteral{}
 }
 func (*TimestampLiteral) ProtoMessage() {}
-func (m *TimestampLiteral) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DurationLiteral) Reset() {
 	if m == nil {
@@ -576,12 +511,6 @@ func (m *DurationLiteral) Reset() {
 	*m = DurationLiteral{}
 }
 func (*DurationLiteral) ProtoMessage() {}
-func (m *DurationLiteral) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *BytesLiteral) Reset() {
 	if m == nil {
@@ -590,12 +519,6 @@ func (m *BytesLiteral) Reset() {
 	*m = BytesLiteral{}
 }
 func (*BytesLiteral) ProtoMessage() {}
-func (m *BytesLiteral) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StringListLiteral) Reset() {
 	if m == nil {
@@ -604,12 +527,6 @@ func (m *StringListLiteral) Reset() {
 	*m = StringListLiteral{}
 }
 func (*StringListLiteral) ProtoMessage() {}
-func (m *StringListLiteral) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LabelFmtListLiteral) Reset() {
 	if m == nil {
@@ -618,12 +535,6 @@ func (m *LabelFmtListLiteral) Reset() {
 	*m = LabelFmtListLiteral{}
 }
 func (*LabelFmtListLiteral) ProtoMessage() {}
-func (m *LabelFmtListLiteral) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LabelFmtLiteral) Reset() {
 	if m == nil {
@@ -632,12 +543,6 @@ func (m *LabelFmtLiteral) Reset() {
 	*m = LabelFmtLiteral{}
 }
 func (*LabelFmtLiteral) ProtoMessage() {}
-func (m *LabelFmtLiteral) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ColumnExpression) Reset() {
 	if m == nil {
@@ -646,12 +551,6 @@ func (m *ColumnExpression) Reset() {
 	*m = ColumnExpression{}
 }
 func (*ColumnExpression) ProtoMessage() {}
-func (m *ColumnExpression) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Expression) GetKind() Expression_Kind {
 	if m != nil {

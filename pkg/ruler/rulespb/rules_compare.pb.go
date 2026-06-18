@@ -3,23 +3,130 @@
 
 package rulespb
 
-// Per-message Compare() methods for pkg/ruler/rulespb/rules.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/ruler/rulespb/rules.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *RuleGroupDesc) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*RuleGroupDesc)
+	if !ok {
+		that2, ok := that.(RuleGroupDesc)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Name != that1.Name {
+		return false
+	}
+	if this.Namespace != that1.Namespace {
+		return false
+	}
+	if this.Interval != that1.Interval {
+		return false
+	}
+	if len(this.Rules) != len(that1.Rules) {
+		return false
+	}
+	for i := range this.Rules {
+		if (this.Rules[i] == nil) != (that1.Rules[i] == nil) {
+			return false
+		}
+		if this.Rules[i] != nil && !this.Rules[i].Equal(that1.Rules[i]) {
+			return false
+		}
+	}
+	if this.User != that1.User {
+		return false
+	}
+	if len(this.Options) != len(that1.Options) {
+		return false
+	}
+	for i := range this.Options {
+		if !this.Options[i].EqualWiresmith(that1.Options[i]) {
+			return false
+		}
+	}
+	if this.Limit != that1.Limit {
+		return false
+	}
+	return true
+}
+
+func (this *RuleDesc) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*RuleDesc)
+	if !ok {
+		that2, ok := that.(RuleDesc)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Expr != that1.Expr {
+		return false
+	}
+	if this.Record != that1.Record {
+		return false
+	}
+	if this.Alert != that1.Alert {
+		return false
+	}
+	if this.For != that1.For {
+		return false
+	}
+	if len(this.Labels) != len(that1.Labels) {
+		return false
+	}
+	for i := range this.Labels {
+		if !this.Labels[i].EqualWiresmith(that1.Labels[i]) {
+			return false
+		}
+	}
+	if len(this.Annotations) != len(that1.Annotations) {
+		return false
+	}
+	for i := range this.Annotations {
+		if !this.Annotations[i].EqualWiresmith(that1.Annotations[i]) {
+			return false
+		}
+	}
+	return true
+}
 
 func (this *RuleGroupDesc) Compare(that interface{}) int {
 	if that == nil {

@@ -5,10 +5,11 @@ package metastore
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // ObjectWrittenEvent describes a new logs object being written to object storage.
@@ -25,12 +26,6 @@ func (m *ObjectWrittenEvent) Reset() {
 	*m = ObjectWrittenEvent{}
 }
 func (*ObjectWrittenEvent) ProtoMessage() {}
-func (m *ObjectWrittenEvent) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ObjectWrittenEvent) GetObjectPath() string {
 	if m != nil {

@@ -6,11 +6,12 @@ package resultscache
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"time"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type MockRequest struct {
@@ -47,12 +48,6 @@ func (m *MockRequest) Reset() {
 	*m = MockRequest{}
 }
 func (*MockRequest) ProtoMessage() {}
-func (m *MockRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *MockResponse) Reset() {
 	if m == nil {
@@ -61,12 +56,6 @@ func (m *MockResponse) Reset() {
 	*m = MockResponse{}
 }
 func (*MockResponse) ProtoMessage() {}
-func (m *MockResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *MockLabelsPair) Reset() {
 	if m == nil {
@@ -75,12 +64,6 @@ func (m *MockLabelsPair) Reset() {
 	*m = MockLabelsPair{}
 }
 func (*MockLabelsPair) ProtoMessage() {}
-func (m *MockLabelsPair) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *MockSample) Reset() {
 	if m == nil {
@@ -89,12 +72,6 @@ func (m *MockSample) Reset() {
 	*m = MockSample{}
 }
 func (*MockSample) ProtoMessage() {}
-func (m *MockSample) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *MockRequest) GetPath() string {
 	if m != nil {

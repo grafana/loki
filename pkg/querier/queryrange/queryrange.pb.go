@@ -5,6 +5,10 @@ package queryrange
 
 import (
 	"fmt"
+	"io"
+	"math"
+	"time"
+
 	push "github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -14,9 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
-	"io"
-	"math"
-	"time"
 )
 
 type QueryResponse_Response interface {
@@ -325,12 +326,6 @@ func (m *LokiRequest) Reset() {
 	*m = LokiRequest{}
 }
 func (*LokiRequest) ProtoMessage() {}
-func (m *LokiRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LokiInstantRequest) Reset() {
 	if m == nil {
@@ -339,12 +334,6 @@ func (m *LokiInstantRequest) Reset() {
 	*m = LokiInstantRequest{}
 }
 func (*LokiInstantRequest) ProtoMessage() {}
-func (m *LokiInstantRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Plan) Reset() {
 	if m == nil {
@@ -353,12 +342,6 @@ func (m *Plan) Reset() {
 	*m = Plan{}
 }
 func (*Plan) ProtoMessage() {}
-func (m *Plan) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LokiResponse) Reset() {
 	if m == nil {
@@ -367,12 +350,6 @@ func (m *LokiResponse) Reset() {
 	*m = LokiResponse{}
 }
 func (*LokiResponse) ProtoMessage() {}
-func (m *LokiResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LokiSeriesRequest) Reset() {
 	if m == nil {
@@ -381,12 +358,6 @@ func (m *LokiSeriesRequest) Reset() {
 	*m = LokiSeriesRequest{}
 }
 func (*LokiSeriesRequest) ProtoMessage() {}
-func (m *LokiSeriesRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LokiSeriesResponse) Reset() {
 	if m == nil {
@@ -395,12 +366,6 @@ func (m *LokiSeriesResponse) Reset() {
 	*m = LokiSeriesResponse{}
 }
 func (*LokiSeriesResponse) ProtoMessage() {}
-func (m *LokiSeriesResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LokiLabelNamesResponse) Reset() {
 	if m == nil {
@@ -409,12 +374,6 @@ func (m *LokiLabelNamesResponse) Reset() {
 	*m = LokiLabelNamesResponse{}
 }
 func (*LokiLabelNamesResponse) ProtoMessage() {}
-func (m *LokiLabelNamesResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LokiData) Reset() {
 	if m == nil {
@@ -423,12 +382,6 @@ func (m *LokiData) Reset() {
 	*m = LokiData{}
 }
 func (*LokiData) ProtoMessage() {}
-func (m *LokiData) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LokiPromResponse) Reset() {
 	if m == nil {
@@ -437,12 +390,6 @@ func (m *LokiPromResponse) Reset() {
 	*m = LokiPromResponse{}
 }
 func (*LokiPromResponse) ProtoMessage() {}
-func (m *LokiPromResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *IndexStatsResponse) Reset() {
 	if m == nil {
@@ -451,12 +398,6 @@ func (m *IndexStatsResponse) Reset() {
 	*m = IndexStatsResponse{}
 }
 func (*IndexStatsResponse) ProtoMessage() {}
-func (m *IndexStatsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *VolumeResponse) Reset() {
 	if m == nil {
@@ -465,12 +406,6 @@ func (m *VolumeResponse) Reset() {
 	*m = VolumeResponse{}
 }
 func (*VolumeResponse) ProtoMessage() {}
-func (m *VolumeResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TopKSketchesResponse) Reset() {
 	if m == nil {
@@ -479,12 +414,6 @@ func (m *TopKSketchesResponse) Reset() {
 	*m = TopKSketchesResponse{}
 }
 func (*TopKSketchesResponse) ProtoMessage() {}
-func (m *TopKSketchesResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QuantileSketchResponse) Reset() {
 	if m == nil {
@@ -493,12 +422,6 @@ func (m *QuantileSketchResponse) Reset() {
 	*m = QuantileSketchResponse{}
 }
 func (*QuantileSketchResponse) ProtoMessage() {}
-func (m *QuantileSketchResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *CountMinSketchResponse) Reset() {
 	if m == nil {
@@ -507,12 +430,6 @@ func (m *CountMinSketchResponse) Reset() {
 	*m = CountMinSketchResponse{}
 }
 func (*CountMinSketchResponse) ProtoMessage() {}
-func (m *CountMinSketchResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ShardsResponse) Reset() {
 	if m == nil {
@@ -521,12 +438,6 @@ func (m *ShardsResponse) Reset() {
 	*m = ShardsResponse{}
 }
 func (*ShardsResponse) ProtoMessage() {}
-func (m *ShardsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DetectedFieldsResponse) Reset() {
 	if m == nil {
@@ -535,12 +446,6 @@ func (m *DetectedFieldsResponse) Reset() {
 	*m = DetectedFieldsResponse{}
 }
 func (*DetectedFieldsResponse) ProtoMessage() {}
-func (m *DetectedFieldsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QueryPatternsResponse) Reset() {
 	if m == nil {
@@ -549,12 +454,6 @@ func (m *QueryPatternsResponse) Reset() {
 	*m = QueryPatternsResponse{}
 }
 func (*QueryPatternsResponse) ProtoMessage() {}
-func (m *QueryPatternsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DetectedLabelsResponse) Reset() {
 	if m == nil {
@@ -563,12 +462,6 @@ func (m *DetectedLabelsResponse) Reset() {
 	*m = DetectedLabelsResponse{}
 }
 func (*DetectedLabelsResponse) ProtoMessage() {}
-func (m *DetectedLabelsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QueryResponse) Reset() {
 	if m == nil {
@@ -577,12 +470,6 @@ func (m *QueryResponse) Reset() {
 	*m = QueryResponse{}
 }
 func (*QueryResponse) ProtoMessage() {}
-func (m *QueryResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QueryRequest) Reset() {
 	if m == nil {
@@ -591,12 +478,6 @@ func (m *QueryRequest) Reset() {
 	*m = QueryRequest{}
 }
 func (*QueryRequest) ProtoMessage() {}
-func (m *QueryRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LokiRequest) GetQuery() string {
 	if m != nil {

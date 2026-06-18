@@ -5,10 +5,11 @@ package resultscache
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // Defined here to prevent circular imports between logproto & queryrangebase
@@ -38,12 +39,6 @@ func (m *CachingOptions) Reset() {
 	*m = CachingOptions{}
 }
 func (*CachingOptions) ProtoMessage() {}
-func (m *CachingOptions) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *CachedResponse) Reset() {
 	if m == nil {
@@ -52,12 +47,6 @@ func (m *CachedResponse) Reset() {
 	*m = CachedResponse{}
 }
 func (*CachedResponse) ProtoMessage() {}
-func (m *CachedResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Extent) Reset() {
 	if m == nil {
@@ -66,12 +55,6 @@ func (m *Extent) Reset() {
 	*m = Extent{}
 }
 func (*Extent) ProtoMessage() {}
-func (m *Extent) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *CachingOptions) GetDisabled() bool {
 	if m != nil {

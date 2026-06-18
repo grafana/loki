@@ -5,11 +5,12 @@ package logproto
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type WriteRequest_SourceEnum int32
@@ -112,12 +113,6 @@ func (m *WriteRequest) Reset() {
 	*m = WriteRequest{}
 }
 func (*WriteRequest) ProtoMessage() {}
-func (m *WriteRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *WriteResponse) Reset() {
 	if m == nil {
@@ -126,12 +121,6 @@ func (m *WriteResponse) Reset() {
 	*m = WriteResponse{}
 }
 func (*WriteResponse) ProtoMessage() {}
-func (m *WriteResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TimeSeries) Reset() {
 	if m == nil {
@@ -140,12 +129,6 @@ func (m *TimeSeries) Reset() {
 	*m = TimeSeries{}
 }
 func (*TimeSeries) ProtoMessage() {}
-func (m *TimeSeries) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *MetricMetadata) Reset() {
 	if m == nil {
@@ -154,12 +137,6 @@ func (m *MetricMetadata) Reset() {
 	*m = MetricMetadata{}
 }
 func (*MetricMetadata) ProtoMessage() {}
-func (m *MetricMetadata) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Metric) Reset() {
 	if m == nil {
@@ -168,12 +145,6 @@ func (m *Metric) Reset() {
 	*m = Metric{}
 }
 func (*Metric) ProtoMessage() {}
-func (m *Metric) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *WriteRequest) GetTimeseries() []PreallocTimeseries {
 	if m != nil {

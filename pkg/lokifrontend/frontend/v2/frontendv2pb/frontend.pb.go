@@ -5,13 +5,14 @@ package frontendv2pb
 
 import (
 	"fmt"
+	"io"
+	"math"
+
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
-	"io"
-	"math"
 )
 
 type QueryResultRequest_Response interface {
@@ -46,12 +47,6 @@ func (m *QueryResultRequest) Reset() {
 	*m = QueryResultRequest{}
 }
 func (*QueryResultRequest) ProtoMessage() {}
-func (m *QueryResultRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QueryResultResponse) Reset() {
 	if m == nil {
@@ -60,12 +55,6 @@ func (m *QueryResultResponse) Reset() {
 	*m = QueryResultResponse{}
 }
 func (*QueryResultResponse) ProtoMessage() {}
-func (m *QueryResultResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QueryResultRequest) GetQueryID() uint64 {
 	if m != nil {

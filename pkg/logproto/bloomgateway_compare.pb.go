@@ -3,23 +3,235 @@
 
 package logproto
 
-// Per-message Compare() methods for pkg/logproto/bloomgateway.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/logproto/bloomgateway.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *FilterChunkRefRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*FilterChunkRefRequest)
+	if !ok {
+		that2, ok := that.(FilterChunkRefRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.From != that1.From {
+		return false
+	}
+	if this.Through != that1.Through {
+		return false
+	}
+	if len(this.Refs) != len(that1.Refs) {
+		return false
+	}
+	for i := range this.Refs {
+		if (this.Refs[i] == nil) != (that1.Refs[i] == nil) {
+			return false
+		}
+		if this.Refs[i] != nil && !this.Refs[i].Equal(that1.Refs[i]) {
+			return false
+		}
+	}
+	if !this.Plan.EqualWiresmith(that1.Plan) {
+		return false
+	}
+	if len(this.Blocks) != len(that1.Blocks) {
+		return false
+	}
+	for i := range this.Blocks {
+		if this.Blocks[i] != that1.Blocks[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *FilterChunkRefResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*FilterChunkRefResponse)
+	if !ok {
+		that2, ok := that.(FilterChunkRefResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.ChunkRefs) != len(that1.ChunkRefs) {
+		return false
+	}
+	for i := range this.ChunkRefs {
+		if (this.ChunkRefs[i] == nil) != (that1.ChunkRefs[i] == nil) {
+			return false
+		}
+		if this.ChunkRefs[i] != nil && !this.ChunkRefs[i].Equal(that1.ChunkRefs[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *ShortRef) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ShortRef)
+	if !ok {
+		that2, ok := that.(ShortRef)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.From != that1.From {
+		return false
+	}
+	if this.Through != that1.Through {
+		return false
+	}
+	if this.Checksum != that1.Checksum {
+		return false
+	}
+	return true
+}
+
+func (this *GroupedChunkRefs) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*GroupedChunkRefs)
+	if !ok {
+		that2, ok := that.(GroupedChunkRefs)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Fingerprint != that1.Fingerprint {
+		return false
+	}
+	if this.Tenant != that1.Tenant {
+		return false
+	}
+	if len(this.Refs) != len(that1.Refs) {
+		return false
+	}
+	for i := range this.Refs {
+		if (this.Refs[i] == nil) != (that1.Refs[i] == nil) {
+			return false
+		}
+		if this.Refs[i] != nil && !this.Refs[i].Equal(that1.Refs[i]) {
+			return false
+		}
+	}
+	if (this.Labels == nil) != (that1.Labels == nil) {
+		return false
+	}
+	if this.Labels != nil && !this.Labels.Equal(that1.Labels) {
+		return false
+	}
+	return true
+}
+
+func (this *PrefetchBloomBlocksRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PrefetchBloomBlocksRequest)
+	if !ok {
+		that2, ok := that.(PrefetchBloomBlocksRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Blocks) != len(that1.Blocks) {
+		return false
+	}
+	for i := range this.Blocks {
+		if this.Blocks[i] != that1.Blocks[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *PrefetchBloomBlocksResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PrefetchBloomBlocksResponse)
+	if !ok {
+		that2, ok := that.(PrefetchBloomBlocksResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	return true
+}
 
 func (this *FilterChunkRefRequest) Compare(that interface{}) int {
 	if that == nil {

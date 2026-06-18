@@ -5,15 +5,16 @@ package physicalpb
 
 import (
 	"fmt"
+	"io"
+	"math"
+	"strconv"
+	"time"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/expressionpb"
 	ulid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
-	"io"
-	"math"
-	"strconv"
-	"time"
 )
 
 // AggregateRangeOp represents the operation to perform on the aggregated
@@ -465,12 +466,6 @@ func (m *Plan) Reset() {
 	*m = Plan{}
 }
 func (*Plan) ProtoMessage() {}
-func (m *Plan) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PlanEdge) Reset() {
 	if m == nil {
@@ -479,12 +474,6 @@ func (m *PlanEdge) Reset() {
 	*m = PlanEdge{}
 }
 func (*PlanEdge) ProtoMessage() {}
-func (m *PlanEdge) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *NodeID) Reset() {
 	if m == nil {
@@ -493,12 +482,6 @@ func (m *NodeID) Reset() {
 	*m = NodeID{}
 }
 func (*NodeID) ProtoMessage() {}
-func (m *NodeID) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Node) Reset() {
 	if m == nil {
@@ -507,12 +490,6 @@ func (m *Node) Reset() {
 	*m = Node{}
 }
 func (*Node) ProtoMessage() {}
-func (m *Node) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *AggregateRange) Reset() {
 	if m == nil {
@@ -521,12 +498,6 @@ func (m *AggregateRange) Reset() {
 	*m = AggregateRange{}
 }
 func (*AggregateRange) ProtoMessage() {}
-func (m *AggregateRange) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Grouping) Reset() {
 	if m == nil {
@@ -535,12 +506,6 @@ func (m *Grouping) Reset() {
 	*m = Grouping{}
 }
 func (*Grouping) ProtoMessage() {}
-func (m *Grouping) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *AggregateVector) Reset() {
 	if m == nil {
@@ -549,12 +514,6 @@ func (m *AggregateVector) Reset() {
 	*m = AggregateVector{}
 }
 func (*AggregateVector) ProtoMessage() {}
-func (m *AggregateVector) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DataObjScan) Reset() {
 	if m == nil {
@@ -563,12 +522,6 @@ func (m *DataObjScan) Reset() {
 	*m = DataObjScan{}
 }
 func (*DataObjScan) ProtoMessage() {}
-func (m *DataObjScan) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TimeRange) Reset() {
 	if m == nil {
@@ -577,12 +530,6 @@ func (m *TimeRange) Reset() {
 	*m = TimeRange{}
 }
 func (*TimeRange) ProtoMessage() {}
-func (m *TimeRange) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Filter) Reset() {
 	if m == nil {
@@ -591,12 +538,6 @@ func (m *Filter) Reset() {
 	*m = Filter{}
 }
 func (*Filter) ProtoMessage() {}
-func (m *Filter) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Limit) Reset() {
 	if m == nil {
@@ -605,12 +546,6 @@ func (m *Limit) Reset() {
 	*m = Limit{}
 }
 func (*Limit) ProtoMessage() {}
-func (m *Limit) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Projection) Reset() {
 	if m == nil {
@@ -619,12 +554,6 @@ func (m *Projection) Reset() {
 	*m = Projection{}
 }
 func (*Projection) ProtoMessage() {}
-func (m *Projection) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ColumnCompat) Reset() {
 	if m == nil {
@@ -633,12 +562,6 @@ func (m *ColumnCompat) Reset() {
 	*m = ColumnCompat{}
 }
 func (*ColumnCompat) ProtoMessage() {}
-func (m *ColumnCompat) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TopK) Reset() {
 	if m == nil {
@@ -647,12 +570,6 @@ func (m *TopK) Reset() {
 	*m = TopK{}
 }
 func (*TopK) ProtoMessage() {}
-func (m *TopK) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ScanSet) Reset() {
 	if m == nil {
@@ -661,12 +578,6 @@ func (m *ScanSet) Reset() {
 	*m = ScanSet{}
 }
 func (*ScanSet) ProtoMessage() {}
-func (m *ScanSet) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ScanTarget) Reset() {
 	if m == nil {
@@ -675,12 +586,6 @@ func (m *ScanTarget) Reset() {
 	*m = ScanTarget{}
 }
 func (*ScanTarget) ProtoMessage() {}
-func (m *ScanTarget) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Merge) Reset() {
 	if m == nil {
@@ -689,12 +594,6 @@ func (m *Merge) Reset() {
 	*m = Merge{}
 }
 func (*Merge) ProtoMessage() {}
-func (m *Merge) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Parallelize) Reset() {
 	if m == nil {
@@ -703,12 +602,6 @@ func (m *Parallelize) Reset() {
 	*m = Parallelize{}
 }
 func (*Parallelize) ProtoMessage() {}
-func (m *Parallelize) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PointersScan) Reset() {
 	if m == nil {
@@ -717,12 +610,6 @@ func (m *PointersScan) Reset() {
 	*m = PointersScan{}
 }
 func (*PointersScan) ProtoMessage() {}
-func (m *PointersScan) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Join) Reset() {
 	if m == nil {
@@ -731,12 +618,6 @@ func (m *Join) Reset() {
 	*m = Join{}
 }
 func (*Join) ProtoMessage() {}
-func (m *Join) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Batching) Reset() {
 	if m == nil {
@@ -745,12 +626,6 @@ func (m *Batching) Reset() {
 	*m = Batching{}
 }
 func (*Batching) ProtoMessage() {}
-func (m *Batching) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *IndexMerge) Reset() {
 	if m == nil {
@@ -759,12 +634,6 @@ func (m *IndexMerge) Reset() {
 	*m = IndexMerge{}
 }
 func (*IndexMerge) ProtoMessage() {}
-func (m *IndexMerge) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Cache) Reset() {
 	if m == nil {
@@ -773,12 +642,6 @@ func (m *Cache) Reset() {
 	*m = Cache{}
 }
 func (*Cache) ProtoMessage() {}
-func (m *Cache) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Plan) GetNodes() []Node {
 	if m != nil {

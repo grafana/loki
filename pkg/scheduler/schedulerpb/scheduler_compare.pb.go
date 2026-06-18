@@ -3,23 +3,253 @@
 
 package schedulerpb
 
-// Per-message Compare() methods for pkg/scheduler/schedulerpb/scheduler.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/scheduler/schedulerpb/scheduler.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *QuerierToScheduler) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QuerierToScheduler)
+	if !ok {
+		that2, ok := that.(QuerierToScheduler)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.QuerierID != that1.QuerierID {
+		return false
+	}
+	return true
+}
+
+func (this *SchedulerToQuerier) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SchedulerToQuerier)
+	if !ok {
+		that2, ok := that.(SchedulerToQuerier)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.QueryID != that1.QueryID {
+		return false
+	}
+	if (this.Request == nil) != (that1.Request == nil) {
+		return false
+	}
+	if this.Request != nil {
+		switch v := this.Request.(type) {
+		case *SchedulerToQuerier_HttpRequest:
+			v2, ok := that1.Request.(*SchedulerToQuerier_HttpRequest)
+			if !ok {
+				return false
+			}
+			if !v.HttpRequest.Equal(v2.HttpRequest) {
+				return false
+			}
+		case *SchedulerToQuerier_QueryRequest:
+			v2, ok := that1.Request.(*SchedulerToQuerier_QueryRequest)
+			if !ok {
+				return false
+			}
+			if !v.QueryRequest.Equal(v2.QueryRequest) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	if this.FrontendAddress != that1.FrontendAddress {
+		return false
+	}
+	if this.UserID != that1.UserID {
+		return false
+	}
+	if this.StatsEnabled != that1.StatsEnabled {
+		return false
+	}
+	return true
+}
+
+func (this *FrontendToScheduler) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*FrontendToScheduler)
+	if !ok {
+		that2, ok := that.(FrontendToScheduler)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Type != that1.Type {
+		return false
+	}
+	if this.FrontendAddress != that1.FrontendAddress {
+		return false
+	}
+	if this.QueryID != that1.QueryID {
+		return false
+	}
+	if this.UserID != that1.UserID {
+		return false
+	}
+	if (this.Request == nil) != (that1.Request == nil) {
+		return false
+	}
+	if this.Request != nil {
+		switch v := this.Request.(type) {
+		case *FrontendToScheduler_HttpRequest:
+			v2, ok := that1.Request.(*FrontendToScheduler_HttpRequest)
+			if !ok {
+				return false
+			}
+			if !v.HttpRequest.Equal(v2.HttpRequest) {
+				return false
+			}
+		case *FrontendToScheduler_QueryRequest:
+			v2, ok := that1.Request.(*FrontendToScheduler_QueryRequest)
+			if !ok {
+				return false
+			}
+			if !v.QueryRequest.Equal(v2.QueryRequest) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	if this.StatsEnabled != that1.StatsEnabled {
+		return false
+	}
+	if len(this.QueuePath) != len(that1.QueuePath) {
+		return false
+	}
+	for i := range this.QueuePath {
+		if this.QueuePath[i] != that1.QueuePath[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SchedulerToFrontend) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SchedulerToFrontend)
+	if !ok {
+		that2, ok := that.(SchedulerToFrontend)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Status != that1.Status {
+		return false
+	}
+	if this.Error != that1.Error {
+		return false
+	}
+	return true
+}
+
+func (this *NotifyQuerierShutdownRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*NotifyQuerierShutdownRequest)
+	if !ok {
+		that2, ok := that.(NotifyQuerierShutdownRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.QuerierID != that1.QuerierID {
+		return false
+	}
+	return true
+}
+
+func (this *NotifyQuerierShutdownResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*NotifyQuerierShutdownResponse)
+	if !ok {
+		that2, ok := that.(NotifyQuerierShutdownResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	return true
+}
 
 func (this *QuerierToScheduler) Compare(that interface{}) int {
 	if that == nil {

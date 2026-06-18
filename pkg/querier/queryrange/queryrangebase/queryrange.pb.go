@@ -5,14 +5,15 @@ package queryrangebase
 
 import (
 	"fmt"
+	"io"
+	"math"
+	"time"
+
 	logproto "github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
-	"io"
-	"math"
-	"time"
 )
 
 type PrometheusRequest struct {
@@ -55,12 +56,6 @@ func (m *PrometheusRequest) Reset() {
 	*m = PrometheusRequest{}
 }
 func (*PrometheusRequest) ProtoMessage() {}
-func (m *PrometheusRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PrometheusResponse) Reset() {
 	if m == nil {
@@ -69,12 +64,6 @@ func (m *PrometheusResponse) Reset() {
 	*m = PrometheusResponse{}
 }
 func (*PrometheusResponse) ProtoMessage() {}
-func (m *PrometheusResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PrometheusData) Reset() {
 	if m == nil {
@@ -83,12 +72,6 @@ func (m *PrometheusData) Reset() {
 	*m = PrometheusData{}
 }
 func (*PrometheusData) ProtoMessage() {}
-func (m *PrometheusData) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SampleStream) Reset() {
 	if m == nil {
@@ -97,12 +80,6 @@ func (m *SampleStream) Reset() {
 	*m = SampleStream{}
 }
 func (*SampleStream) ProtoMessage() {}
-func (m *SampleStream) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PrometheusRequest) GetPath() string {
 	if m != nil {

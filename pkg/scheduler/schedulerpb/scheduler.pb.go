@@ -5,13 +5,14 @@ package schedulerpb
 
 import (
 	"fmt"
+	"io"
+	"math"
+	"strconv"
+
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
-	"io"
-	"math"
-	"strconv"
 )
 
 type FrontendToSchedulerType int32
@@ -157,12 +158,6 @@ func (m *QuerierToScheduler) Reset() {
 	*m = QuerierToScheduler{}
 }
 func (*QuerierToScheduler) ProtoMessage() {}
-func (m *QuerierToScheduler) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SchedulerToQuerier) Reset() {
 	if m == nil {
@@ -171,12 +166,6 @@ func (m *SchedulerToQuerier) Reset() {
 	*m = SchedulerToQuerier{}
 }
 func (*SchedulerToQuerier) ProtoMessage() {}
-func (m *SchedulerToQuerier) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *FrontendToScheduler) Reset() {
 	if m == nil {
@@ -185,12 +174,6 @@ func (m *FrontendToScheduler) Reset() {
 	*m = FrontendToScheduler{}
 }
 func (*FrontendToScheduler) ProtoMessage() {}
-func (m *FrontendToScheduler) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SchedulerToFrontend) Reset() {
 	if m == nil {
@@ -199,12 +182,6 @@ func (m *SchedulerToFrontend) Reset() {
 	*m = SchedulerToFrontend{}
 }
 func (*SchedulerToFrontend) ProtoMessage() {}
-func (m *SchedulerToFrontend) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *NotifyQuerierShutdownRequest) Reset() {
 	if m == nil {
@@ -213,12 +190,6 @@ func (m *NotifyQuerierShutdownRequest) Reset() {
 	*m = NotifyQuerierShutdownRequest{}
 }
 func (*NotifyQuerierShutdownRequest) ProtoMessage() {}
-func (m *NotifyQuerierShutdownRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *NotifyQuerierShutdownResponse) Reset() {
 	if m == nil {
@@ -227,12 +198,6 @@ func (m *NotifyQuerierShutdownResponse) Reset() {
 	*m = NotifyQuerierShutdownResponse{}
 }
 func (*NotifyQuerierShutdownResponse) ProtoMessage() {}
-func (m *NotifyQuerierShutdownResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QuerierToScheduler) GetQuerierID() string {
 	if m != nil {

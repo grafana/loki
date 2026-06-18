@@ -7,23 +7,126 @@ import (
 	"bytes"
 )
 
-// Per-message Compare() methods for pkg/ingester/checkpoint.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/ingester/checkpoint.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *Chunk) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Chunk)
+	if !ok {
+		that2, ok := that.(Chunk)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.From.Equal(that1.From) {
+		return false
+	}
+	if !this.To.Equal(that1.To) {
+		return false
+	}
+	if !this.FlushedAt.Equal(that1.FlushedAt) {
+		return false
+	}
+	if !this.LastUpdated.Equal(that1.LastUpdated) {
+		return false
+	}
+	if this.Closed != that1.Closed {
+		return false
+	}
+	if this.Synced != that1.Synced {
+		return false
+	}
+	if !bytes.Equal(this.Data, that1.Data) {
+		return false
+	}
+	if !bytes.Equal(this.Head, that1.Head) {
+		return false
+	}
+	return true
+}
+
+func (this *Series) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Series)
+	if !ok {
+		that2, ok := that.(Series)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.UserID != that1.UserID {
+		return false
+	}
+	if this.Fingerprint != that1.Fingerprint {
+		return false
+	}
+	if len(this.Labels) != len(that1.Labels) {
+		return false
+	}
+	for i := range this.Labels {
+		if !this.Labels[i].EqualWiresmith(that1.Labels[i]) {
+			return false
+		}
+	}
+	if len(this.Chunks) != len(that1.Chunks) {
+		return false
+	}
+	for i := range this.Chunks {
+		if !this.Chunks[i].Equal(that1.Chunks[i]) {
+			return false
+		}
+	}
+	if !this.To.Equal(that1.To) {
+		return false
+	}
+	if this.LastLine != that1.LastLine {
+		return false
+	}
+	if this.EntryCt != that1.EntryCt {
+		return false
+	}
+	if !this.HighestTs.Equal(that1.HighestTs) {
+		return false
+	}
+	return true
+}
 
 func (this *Chunk) Compare(that interface{}) int {
 	if that == nil {

@@ -5,11 +5,12 @@ package deletionproto
 
 import (
 	"fmt"
+	"io"
+	"math"
+
 	"github.com/grafana/wiresmith/protohelpers"
 	model "github.com/prometheus/common/model"
 	"google.golang.org/protobuf/encoding/protowire"
-	"io"
-	"math"
 )
 
 type DeleteRequest struct {
@@ -92,12 +93,6 @@ func (m *DeleteRequest) Reset() {
 	*m = DeleteRequest{}
 }
 func (*DeleteRequest) ProtoMessage() {}
-func (m *DeleteRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DeletionManifest) Reset() {
 	if m == nil {
@@ -106,12 +101,6 @@ func (m *DeletionManifest) Reset() {
 	*m = DeletionManifest{}
 }
 func (*DeletionManifest) ProtoMessage() {}
-func (m *DeletionManifest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ChunkIDs) Reset() {
 	if m == nil {
@@ -120,12 +109,6 @@ func (m *ChunkIDs) Reset() {
 	*m = ChunkIDs{}
 }
 func (*ChunkIDs) ProtoMessage() {}
-func (m *ChunkIDs) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ChunksGroup) Reset() {
 	if m == nil {
@@ -134,12 +117,6 @@ func (m *ChunksGroup) Reset() {
 	*m = ChunksGroup{}
 }
 func (*ChunksGroup) ProtoMessage() {}
-func (m *ChunksGroup) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Segment) Reset() {
 	if m == nil {
@@ -148,12 +125,6 @@ func (m *Segment) Reset() {
 	*m = Segment{}
 }
 func (*Segment) ProtoMessage() {}
-func (m *Segment) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DeletionJob) Reset() {
 	if m == nil {
@@ -162,12 +133,6 @@ func (m *DeletionJob) Reset() {
 	*m = DeletionJob{}
 }
 func (*DeletionJob) ProtoMessage() {}
-func (m *DeletionJob) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Chunk) Reset() {
 	if m == nil {
@@ -176,12 +141,6 @@ func (m *Chunk) Reset() {
 	*m = Chunk{}
 }
 func (*Chunk) ProtoMessage() {}
-func (m *Chunk) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StorageUpdates) Reset() {
 	if m == nil {
@@ -190,12 +149,6 @@ func (m *StorageUpdates) Reset() {
 	*m = StorageUpdates{}
 }
 func (*StorageUpdates) ProtoMessage() {}
-func (m *StorageUpdates) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StorageUpdatesCollection) Reset() {
 	if m == nil {
@@ -204,12 +157,6 @@ func (m *StorageUpdatesCollection) Reset() {
 	*m = StorageUpdatesCollection{}
 }
 func (*StorageUpdatesCollection) ProtoMessage() {}
-func (m *StorageUpdatesCollection) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DeleteRequest) GetRequestID() string {
 	if m != nil {

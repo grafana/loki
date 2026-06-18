@@ -5,10 +5,11 @@ package definitions
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type PrometheusRequestHeader struct {
@@ -28,12 +29,6 @@ func (m *PrometheusRequestHeader) Reset() {
 	*m = PrometheusRequestHeader{}
 }
 func (*PrometheusRequestHeader) ProtoMessage() {}
-func (m *PrometheusRequestHeader) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PrometheusResponseHeader) Reset() {
 	if m == nil {
@@ -42,12 +37,6 @@ func (m *PrometheusResponseHeader) Reset() {
 	*m = PrometheusResponseHeader{}
 }
 func (*PrometheusResponseHeader) ProtoMessage() {}
-func (m *PrometheusResponseHeader) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PrometheusRequestHeader) GetName() string {
 	if m != nil {

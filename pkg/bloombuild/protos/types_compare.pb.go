@@ -3,23 +3,288 @@
 
 package protos
 
-// Per-message Compare() methods for pkg/bloombuild/protos/types.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/bloombuild/protos/types.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *ProtoFingerprintBounds) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ProtoFingerprintBounds)
+	if !ok {
+		that2, ok := that.(ProtoFingerprintBounds)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Min != that1.Min {
+		return false
+	}
+	if this.Max != that1.Max {
+		return false
+	}
+	return true
+}
+
+func (this *DayTable) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DayTable)
+	if !ok {
+		that2, ok := that.(DayTable)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.DayTimestampMS != that1.DayTimestampMS {
+		return false
+	}
+	if this.Prefix != that1.Prefix {
+		return false
+	}
+	return true
+}
+
+func (this *ProtoSeries) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ProtoSeries)
+	if !ok {
+		that2, ok := that.(ProtoSeries)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Fingerprint != that1.Fingerprint {
+		return false
+	}
+	if len(this.Chunks) != len(that1.Chunks) {
+		return false
+	}
+	for i := range this.Chunks {
+		if (this.Chunks[i] == nil) != (that1.Chunks[i] == nil) {
+			return false
+		}
+		if this.Chunks[i] != nil && !this.Chunks[i].Equal(that1.Chunks[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *ProtoGapWithBlocks) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ProtoGapWithBlocks)
+	if !ok {
+		that2, ok := that.(ProtoGapWithBlocks)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Bounds.Equal(that1.Bounds) {
+		return false
+	}
+	if len(this.Series) != len(that1.Series) {
+		return false
+	}
+	for i := range this.Series {
+		if (this.Series[i] == nil) != (that1.Series[i] == nil) {
+			return false
+		}
+		if this.Series[i] != nil && !this.Series[i].Equal(that1.Series[i]) {
+			return false
+		}
+	}
+	if len(this.BlockRef) != len(that1.BlockRef) {
+		return false
+	}
+	for i := range this.BlockRef {
+		if this.BlockRef[i] != that1.BlockRef[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *ProtoTask) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ProtoTask)
+	if !ok {
+		that2, ok := that.(ProtoTask)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Id != that1.Id {
+		return false
+	}
+	if !this.Table.Equal(that1.Table) {
+		return false
+	}
+	if this.Tenant != that1.Tenant {
+		return false
+	}
+	if !this.Bounds.Equal(that1.Bounds) {
+		return false
+	}
+	if this.Tsdb != that1.Tsdb {
+		return false
+	}
+	if len(this.Gaps) != len(that1.Gaps) {
+		return false
+	}
+	for i := range this.Gaps {
+		if (this.Gaps[i] == nil) != (that1.Gaps[i] == nil) {
+			return false
+		}
+		if this.Gaps[i] != nil && !this.Gaps[i].Equal(that1.Gaps[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *ProtoMeta) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ProtoMeta)
+	if !ok {
+		that2, ok := that.(ProtoMeta)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.MetaRef != that1.MetaRef {
+		return false
+	}
+	if len(this.SourcesTSDBs) != len(that1.SourcesTSDBs) {
+		return false
+	}
+	for i := range this.SourcesTSDBs {
+		if this.SourcesTSDBs[i] != that1.SourcesTSDBs[i] {
+			return false
+		}
+	}
+	if len(this.BlockRefs) != len(that1.BlockRefs) {
+		return false
+	}
+	for i := range this.BlockRefs {
+		if this.BlockRefs[i] != that1.BlockRefs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *ProtoTaskResult) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ProtoTaskResult)
+	if !ok {
+		that2, ok := that.(ProtoTaskResult)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TaskID != that1.TaskID {
+		return false
+	}
+	if this.Error != that1.Error {
+		return false
+	}
+	if len(this.CreatedMetas) != len(that1.CreatedMetas) {
+		return false
+	}
+	for i := range this.CreatedMetas {
+		if (this.CreatedMetas[i] == nil) != (that1.CreatedMetas[i] == nil) {
+			return false
+		}
+		if this.CreatedMetas[i] != nil && !this.CreatedMetas[i].Equal(that1.CreatedMetas[i]) {
+			return false
+		}
+	}
+	return true
+}
 
 func (this *ProtoFingerprintBounds) Compare(that interface{}) int {
 	if that == nil {

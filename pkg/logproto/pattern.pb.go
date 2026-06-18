@@ -5,12 +5,13 @@ package logproto
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	model "github.com/prometheus/common/model"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"time"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	model "github.com/prometheus/common/model"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type QueryPatternsRequest struct {
@@ -42,12 +43,6 @@ func (m *QueryPatternsRequest) Reset() {
 	*m = QueryPatternsRequest{}
 }
 func (*QueryPatternsRequest) ProtoMessage() {}
-func (m *QueryPatternsRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QueryPatternsResponse) Reset() {
 	if m == nil {
@@ -56,12 +51,6 @@ func (m *QueryPatternsResponse) Reset() {
 	*m = QueryPatternsResponse{}
 }
 func (*QueryPatternsResponse) ProtoMessage() {}
-func (m *QueryPatternsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PatternSeries) Reset() {
 	if m == nil {
@@ -70,12 +59,6 @@ func (m *PatternSeries) Reset() {
 	*m = PatternSeries{}
 }
 func (*PatternSeries) ProtoMessage() {}
-func (m *PatternSeries) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PatternSample) Reset() {
 	if m == nil {
@@ -84,12 +67,6 @@ func (m *PatternSample) Reset() {
 	*m = PatternSample{}
 }
 func (*PatternSample) ProtoMessage() {}
-func (m *PatternSample) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QueryPatternsRequest) GetQuery() string {
 	if m != nil {

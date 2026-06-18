@@ -5,12 +5,13 @@ package logproto
 
 import (
 	"fmt"
+	"io"
+	"math"
+
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/wiresmith/protohelpers"
 	model "github.com/prometheus/common/model"
 	"google.golang.org/protobuf/encoding/protowire"
-	"io"
-	"math"
 )
 
 type ShardsRequest struct {
@@ -47,12 +48,6 @@ func (m *ShardsRequest) Reset() {
 	*m = ShardsRequest{}
 }
 func (*ShardsRequest) ProtoMessage() {}
-func (m *ShardsRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ShardsResponse) Reset() {
 	if m == nil {
@@ -61,12 +56,6 @@ func (m *ShardsResponse) Reset() {
 	*m = ShardsResponse{}
 }
 func (*ShardsResponse) ProtoMessage() {}
-func (m *ShardsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Shard) Reset() {
 	if m == nil {
@@ -75,12 +64,6 @@ func (m *Shard) Reset() {
 	*m = Shard{}
 }
 func (*Shard) ProtoMessage() {}
-func (m *Shard) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *FPBounds) Reset() {
 	if m == nil {
@@ -89,12 +72,6 @@ func (m *FPBounds) Reset() {
 	*m = FPBounds{}
 }
 func (*FPBounds) ProtoMessage() {}
-func (m *FPBounds) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ShardsRequest) GetFrom() model.Time {
 	if m != nil {

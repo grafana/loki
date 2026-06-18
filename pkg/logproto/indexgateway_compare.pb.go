@@ -3,23 +3,158 @@
 
 package logproto
 
-// Per-message Compare() methods for pkg/logproto/indexgateway.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/logproto/indexgateway.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *ShardsRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ShardsRequest)
+	if !ok {
+		that2, ok := that.(ShardsRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.From != that1.From {
+		return false
+	}
+	if this.Through != that1.Through {
+		return false
+	}
+	if this.Query != that1.Query {
+		return false
+	}
+	if this.TargetBytesPerShard != that1.TargetBytesPerShard {
+		return false
+	}
+	return true
+}
+
+func (this *ShardsResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ShardsResponse)
+	if !ok {
+		that2, ok := that.(ShardsResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Shards) != len(that1.Shards) {
+		return false
+	}
+	for i := range this.Shards {
+		if !this.Shards[i].Equal(that1.Shards[i]) {
+			return false
+		}
+	}
+	if !this.Statistics.Equal(that1.Statistics) {
+		return false
+	}
+	if len(this.ChunkGroups) != len(that1.ChunkGroups) {
+		return false
+	}
+	for i := range this.ChunkGroups {
+		if !this.ChunkGroups[i].Equal(that1.ChunkGroups[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Shard) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Shard)
+	if !ok {
+		that2, ok := that.(Shard)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Bounds.Equal(that1.Bounds) {
+		return false
+	}
+	if (this.Stats == nil) != (that1.Stats == nil) {
+		return false
+	}
+	if this.Stats != nil && !this.Stats.Equal(that1.Stats) {
+		return false
+	}
+	return true
+}
+
+func (this *FPBounds) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*FPBounds)
+	if !ok {
+		that2, ok := that.(FPBounds)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Min != that1.Min {
+		return false
+	}
+	if this.Max != that1.Max {
+		return false
+	}
+	return true
+}
 
 func (this *ShardsRequest) Compare(that interface{}) int {
 	if that == nil {

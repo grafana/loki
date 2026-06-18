@@ -7,23 +7,391 @@ import (
 	"sort"
 )
 
-// Per-message Compare() methods for pkg/compactor/deletion/deletionproto/types.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/compactor/deletion/deletionproto/types.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *DeleteRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DeleteRequest)
+	if !ok {
+		that2, ok := that.(DeleteRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.RequestID != that1.RequestID {
+		return false
+	}
+	if this.StartTime != that1.StartTime {
+		return false
+	}
+	if this.EndTime != that1.EndTime {
+		return false
+	}
+	if this.Query != that1.Query {
+		return false
+	}
+	if this.Status != that1.Status {
+		return false
+	}
+	if this.CreatedAt != that1.CreatedAt {
+		return false
+	}
+	if this.UserID != that1.UserID {
+		return false
+	}
+	if this.SequenceNum != that1.SequenceNum {
+		return false
+	}
+	return true
+}
+
+func (this *DeletionManifest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DeletionManifest)
+	if !ok {
+		that2, ok := that.(DeletionManifest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Requests) != len(that1.Requests) {
+		return false
+	}
+	for i := range this.Requests {
+		if !this.Requests[i].Equal(that1.Requests[i]) {
+			return false
+		}
+	}
+	if len(this.DuplicateRequests) != len(that1.DuplicateRequests) {
+		return false
+	}
+	for i := range this.DuplicateRequests {
+		if !this.DuplicateRequests[i].Equal(that1.DuplicateRequests[i]) {
+			return false
+		}
+	}
+	if this.SegmentsCount != that1.SegmentsCount {
+		return false
+	}
+	if this.ChunksCount != that1.ChunksCount {
+		return false
+	}
+	return true
+}
+
+func (this *ChunkIDs) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ChunkIDs)
+	if !ok {
+		that2, ok := that.(ChunkIDs)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.IDs) != len(that1.IDs) {
+		return false
+	}
+	for i := range this.IDs {
+		if this.IDs[i] != that1.IDs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *ChunksGroup) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ChunksGroup)
+	if !ok {
+		that2, ok := that.(ChunksGroup)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Requests) != len(that1.Requests) {
+		return false
+	}
+	for i := range this.Requests {
+		if !this.Requests[i].Equal(that1.Requests[i]) {
+			return false
+		}
+	}
+	if len(this.Chunks) != len(that1.Chunks) {
+		return false
+	}
+	for k, v := range this.Chunks {
+		v2, ok := that1.Chunks[k]
+		if !ok {
+			return false
+		}
+		if !v.Equal(v2) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Segment) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Segment)
+	if !ok {
+		that2, ok := that.(Segment)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TableName != that1.TableName {
+		return false
+	}
+	if this.UserID != that1.UserID {
+		return false
+	}
+	if len(this.ChunksGroups) != len(that1.ChunksGroups) {
+		return false
+	}
+	for i := range this.ChunksGroups {
+		if !this.ChunksGroups[i].Equal(that1.ChunksGroups[i]) {
+			return false
+		}
+	}
+	if this.ChunksCount != that1.ChunksCount {
+		return false
+	}
+	return true
+}
+
+func (this *DeletionJob) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DeletionJob)
+	if !ok {
+		that2, ok := that.(DeletionJob)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TableName != that1.TableName {
+		return false
+	}
+	if this.UserID != that1.UserID {
+		return false
+	}
+	if len(this.ChunkIDs) != len(that1.ChunkIDs) {
+		return false
+	}
+	for i := range this.ChunkIDs {
+		if this.ChunkIDs[i] != that1.ChunkIDs[i] {
+			return false
+		}
+	}
+	if len(this.DeleteRequests) != len(that1.DeleteRequests) {
+		return false
+	}
+	for i := range this.DeleteRequests {
+		if !this.DeleteRequests[i].Equal(that1.DeleteRequests[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Chunk) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Chunk)
+	if !ok {
+		that2, ok := that.(Chunk)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.From != that1.From {
+		return false
+	}
+	if this.Through != that1.Through {
+		return false
+	}
+	if this.Fingerprint != that1.Fingerprint {
+		return false
+	}
+	if this.Checksum != that1.Checksum {
+		return false
+	}
+	if this.KB != that1.KB {
+		return false
+	}
+	if this.Entries != that1.Entries {
+		return false
+	}
+	return true
+}
+
+func (this *StorageUpdates) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*StorageUpdates)
+	if !ok {
+		that2, ok := that.(StorageUpdates)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.RebuiltChunks) != len(that1.RebuiltChunks) {
+		return false
+	}
+	for k, v := range this.RebuiltChunks {
+		v2, ok := that1.RebuiltChunks[k]
+		if !ok {
+			return false
+		}
+		if !v.Equal(v2) {
+			return false
+		}
+	}
+	if len(this.ChunksToDeIndex) != len(that1.ChunksToDeIndex) {
+		return false
+	}
+	for i := range this.ChunksToDeIndex {
+		if this.ChunksToDeIndex[i] != that1.ChunksToDeIndex[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *StorageUpdatesCollection) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*StorageUpdatesCollection)
+	if !ok {
+		that2, ok := that.(StorageUpdatesCollection)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TableName != that1.TableName {
+		return false
+	}
+	if this.UserID != that1.UserID {
+		return false
+	}
+	if len(this.StorageUpdates) != len(that1.StorageUpdates) {
+		return false
+	}
+	for k, v := range this.StorageUpdates {
+		v2, ok := that1.StorageUpdates[k]
+		if !ok {
+			return false
+		}
+		if !v.Equal(v2) {
+			return false
+		}
+	}
+	return true
+}
 
 func (this *DeleteRequest) Compare(that interface{}) int {
 	if that == nil {

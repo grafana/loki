@@ -3,23 +3,137 @@
 
 package proto
 
-// Per-message Compare() methods for pkg/dataobj/compaction/v2/proto/compactionv2.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/dataobj/compaction/v2/proto/compactionv2.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *SectionRef) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SectionRef)
+	if !ok {
+		that2, ok := that.(SectionRef)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.ObjectPath != that1.ObjectPath {
+		return false
+	}
+	if this.SectionIndex != that1.SectionIndex {
+		return false
+	}
+	if len(this.MinKey) != len(that1.MinKey) {
+		return false
+	}
+	for i := range this.MinKey {
+		if this.MinKey[i] != that1.MinKey[i] {
+			return false
+		}
+	}
+	if len(this.MaxKey) != len(that1.MaxKey) {
+		return false
+	}
+	for i := range this.MaxKey {
+		if this.MaxKey[i] != that1.MaxKey[i] {
+			return false
+		}
+	}
+	if this.MinTimestamp != that1.MinTimestamp {
+		return false
+	}
+	if this.MaxTimestamp != that1.MaxTimestamp {
+		return false
+	}
+	return true
+}
+
+func (this *RunRef) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*RunRef)
+	if !ok {
+		that2, ok := that.(RunRef)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Sections) != len(that1.Sections) {
+		return false
+	}
+	for i := range this.Sections {
+		if !this.Sections[i].Equal(that1.Sections[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *TaskSpec) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TaskSpec)
+	if !ok {
+		that2, ok := that.(TaskSpec)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Tenant != that1.Tenant {
+		return false
+	}
+	if len(this.Runs) != len(that1.Runs) {
+		return false
+	}
+	for i := range this.Runs {
+		if !this.Runs[i].Equal(that1.Runs[i]) {
+			return false
+		}
+	}
+	return true
+}
 
 func (this *SectionRef) Compare(that interface{}) int {
 	if that == nil {

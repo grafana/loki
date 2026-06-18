@@ -5,14 +5,15 @@ package wirepb
 
 import (
 	"fmt"
-	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
-	ulid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
+	ulid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // TaskState represents the execution state of a task.
@@ -379,12 +380,6 @@ func (m *Frame) Reset() {
 	*m = Frame{}
 }
 func (*Frame) ProtoMessage() {}
-func (m *Frame) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *AckFrame) Reset() {
 	if m == nil {
@@ -393,12 +388,6 @@ func (m *AckFrame) Reset() {
 	*m = AckFrame{}
 }
 func (*AckFrame) ProtoMessage() {}
-func (m *AckFrame) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *NackFrame) Reset() {
 	if m == nil {
@@ -407,12 +396,6 @@ func (m *NackFrame) Reset() {
 	*m = NackFrame{}
 }
 func (*NackFrame) ProtoMessage() {}
-func (m *NackFrame) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Error) Reset() {
 	if m == nil {
@@ -421,12 +404,6 @@ func (m *Error) Reset() {
 	*m = Error{}
 }
 func (*Error) ProtoMessage() {}
-func (m *Error) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DiscardFrame) Reset() {
 	if m == nil {
@@ -435,12 +412,6 @@ func (m *DiscardFrame) Reset() {
 	*m = DiscardFrame{}
 }
 func (*DiscardFrame) ProtoMessage() {}
-func (m *DiscardFrame) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *MessageFrame) Reset() {
 	if m == nil {
@@ -449,12 +420,6 @@ func (m *MessageFrame) Reset() {
 	*m = MessageFrame{}
 }
 func (*MessageFrame) ProtoMessage() {}
-func (m *MessageFrame) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *WorkerHelloMessage) Reset() {
 	if m == nil {
@@ -463,12 +428,6 @@ func (m *WorkerHelloMessage) Reset() {
 	*m = WorkerHelloMessage{}
 }
 func (*WorkerHelloMessage) ProtoMessage() {}
-func (m *WorkerHelloMessage) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *WorkerSubscribeMessage) Reset() {
 	if m == nil {
@@ -477,12 +436,6 @@ func (m *WorkerSubscribeMessage) Reset() {
 	*m = WorkerSubscribeMessage{}
 }
 func (*WorkerSubscribeMessage) ProtoMessage() {}
-func (m *WorkerSubscribeMessage) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *WorkerReadyMessage) Reset() {
 	if m == nil {
@@ -491,12 +444,6 @@ func (m *WorkerReadyMessage) Reset() {
 	*m = WorkerReadyMessage{}
 }
 func (*WorkerReadyMessage) ProtoMessage() {}
-func (m *WorkerReadyMessage) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TaskAssignMessage) Reset() {
 	if m == nil {
@@ -505,12 +452,6 @@ func (m *TaskAssignMessage) Reset() {
 	*m = TaskAssignMessage{}
 }
 func (*TaskAssignMessage) ProtoMessage() {}
-func (m *TaskAssignMessage) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Header) Reset() {
 	if m == nil {
@@ -519,12 +460,6 @@ func (m *Header) Reset() {
 	*m = Header{}
 }
 func (*Header) ProtoMessage() {}
-func (m *Header) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TaskCancelMessage) Reset() {
 	if m == nil {
@@ -533,12 +468,6 @@ func (m *TaskCancelMessage) Reset() {
 	*m = TaskCancelMessage{}
 }
 func (*TaskCancelMessage) ProtoMessage() {}
-func (m *TaskCancelMessage) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TaskFlagMessage) Reset() {
 	if m == nil {
@@ -547,12 +476,6 @@ func (m *TaskFlagMessage) Reset() {
 	*m = TaskFlagMessage{}
 }
 func (*TaskFlagMessage) ProtoMessage() {}
-func (m *TaskFlagMessage) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TaskStatusMessage) Reset() {
 	if m == nil {
@@ -561,12 +484,6 @@ func (m *TaskStatusMessage) Reset() {
 	*m = TaskStatusMessage{}
 }
 func (*TaskStatusMessage) ProtoMessage() {}
-func (m *TaskStatusMessage) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StreamBindMessage) Reset() {
 	if m == nil {
@@ -575,12 +492,6 @@ func (m *StreamBindMessage) Reset() {
 	*m = StreamBindMessage{}
 }
 func (*StreamBindMessage) ProtoMessage() {}
-func (m *StreamBindMessage) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StreamDataMessage) Reset() {
 	if m == nil {
@@ -589,12 +500,6 @@ func (m *StreamDataMessage) Reset() {
 	*m = StreamDataMessage{}
 }
 func (*StreamDataMessage) ProtoMessage() {}
-func (m *StreamDataMessage) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StreamStatusMessage) Reset() {
 	if m == nil {
@@ -603,12 +508,6 @@ func (m *StreamStatusMessage) Reset() {
 	*m = StreamStatusMessage{}
 }
 func (*StreamStatusMessage) ProtoMessage() {}
-func (m *StreamStatusMessage) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Task) Reset() {
 	if m == nil {
@@ -617,12 +516,6 @@ func (m *Task) Reset() {
 	*m = Task{}
 }
 func (*Task) ProtoMessage() {}
-func (m *Task) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StreamList) Reset() {
 	if m == nil {
@@ -631,12 +524,6 @@ func (m *StreamList) Reset() {
 	*m = StreamList{}
 }
 func (*StreamList) ProtoMessage() {}
-func (m *StreamList) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *CachedSources) Reset() {
 	if m == nil {
@@ -645,12 +532,6 @@ func (m *CachedSources) Reset() {
 	*m = CachedSources{}
 }
 func (*CachedSources) ProtoMessage() {}
-func (m *CachedSources) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Stream) Reset() {
 	if m == nil {
@@ -659,12 +540,6 @@ func (m *Stream) Reset() {
 	*m = Stream{}
 }
 func (*Stream) ProtoMessage() {}
-func (m *Stream) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TaskStatus) Reset() {
 	if m == nil {
@@ -673,12 +548,6 @@ func (m *TaskStatus) Reset() {
 	*m = TaskStatus{}
 }
 func (*TaskStatus) ProtoMessage() {}
-func (m *TaskStatus) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ContributingTimeRange) Reset() {
 	if m == nil {
@@ -687,12 +556,6 @@ func (m *ContributingTimeRange) Reset() {
 	*m = ContributingTimeRange{}
 }
 func (*ContributingTimeRange) ProtoMessage() {}
-func (m *ContributingTimeRange) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TaskError) Reset() {
 	if m == nil {
@@ -701,12 +564,6 @@ func (m *TaskError) Reset() {
 	*m = TaskError{}
 }
 func (*TaskError) ProtoMessage() {}
-func (m *TaskError) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Frame) GetKind() Frame_Kind {
 	if m != nil {

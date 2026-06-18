@@ -7,23 +7,373 @@ import (
 	"bytes"
 )
 
-// Per-message Compare() methods for pkg/dataobj/internal/metadata/datasetmd/datasetmd.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/dataobj/internal/metadata/datasetmd/datasetmd.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *SectionInfoExtension) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SectionInfoExtension)
+	if !ok {
+		that2, ok := that.(SectionInfoExtension)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.SectionMetadataOffset != that1.SectionMetadataOffset {
+		return false
+	}
+	if this.SectionMetadataLength != that1.SectionMetadataLength {
+		return false
+	}
+	return true
+}
+
+func (this *SectionMetadata) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SectionMetadata)
+	if !ok {
+		that2, ok := that.(SectionMetadata)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Columns) != len(that1.Columns) {
+		return false
+	}
+	for i := range this.Columns {
+		if (this.Columns[i] == nil) != (that1.Columns[i] == nil) {
+			return false
+		}
+		if this.Columns[i] != nil && !this.Columns[i].Equal(that1.Columns[i]) {
+			return false
+		}
+	}
+	if len(this.Dictionary) != len(that1.Dictionary) {
+		return false
+	}
+	for i := range this.Dictionary {
+		if this.Dictionary[i] != that1.Dictionary[i] {
+			return false
+		}
+	}
+	if (this.SortInfo == nil) != (that1.SortInfo == nil) {
+		return false
+	}
+	if this.SortInfo != nil && !this.SortInfo.Equal(that1.SortInfo) {
+		return false
+	}
+	return true
+}
+
+func (this *ColumnDesc) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ColumnDesc)
+	if !ok {
+		that2, ok := that.(ColumnDesc)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.Type == nil) != (that1.Type == nil) {
+		return false
+	}
+	if this.Type != nil && !this.Type.Equal(that1.Type) {
+		return false
+	}
+	if this.TagRef != that1.TagRef {
+		return false
+	}
+	if this.PagesCount != that1.PagesCount {
+		return false
+	}
+	if this.RowsCount != that1.RowsCount {
+		return false
+	}
+	if this.ValuesCount != that1.ValuesCount {
+		return false
+	}
+	if this.Compression != that1.Compression {
+		return false
+	}
+	if this.UncompressedSize != that1.UncompressedSize {
+		return false
+	}
+	if this.CompressedSize != that1.CompressedSize {
+		return false
+	}
+	if this.ColumnMetadataOffset != that1.ColumnMetadataOffset {
+		return false
+	}
+	if this.ColumnMetadataLength != that1.ColumnMetadataLength {
+		return false
+	}
+	if (this.Statistics == nil) != (that1.Statistics == nil) {
+		return false
+	}
+	if this.Statistics != nil && !this.Statistics.Equal(that1.Statistics) {
+		return false
+	}
+	return true
+}
+
+func (this *ColumnType) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ColumnType)
+	if !ok {
+		that2, ok := that.(ColumnType)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Physical != that1.Physical {
+		return false
+	}
+	if this.LogicalRef != that1.LogicalRef {
+		return false
+	}
+	return true
+}
+
+func (this *ColumnMetadata) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ColumnMetadata)
+	if !ok {
+		that2, ok := that.(ColumnMetadata)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Pages) != len(that1.Pages) {
+		return false
+	}
+	for i := range this.Pages {
+		if (this.Pages[i] == nil) != (that1.Pages[i] == nil) {
+			return false
+		}
+		if this.Pages[i] != nil && !this.Pages[i].Equal(that1.Pages[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *PageDesc) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PageDesc)
+	if !ok {
+		that2, ok := that.(PageDesc)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.UncompressedSize != that1.UncompressedSize {
+		return false
+	}
+	if this.CompressedSize != that1.CompressedSize {
+		return false
+	}
+	if this.Crc32 != that1.Crc32 {
+		return false
+	}
+	if this.RowsCount != that1.RowsCount {
+		return false
+	}
+	if this.ValuesCount != that1.ValuesCount {
+		return false
+	}
+	if this.Encoding != that1.Encoding {
+		return false
+	}
+	if this.DataOffset != that1.DataOffset {
+		return false
+	}
+	if this.DataSize != that1.DataSize {
+		return false
+	}
+	if (this.Statistics == nil) != (that1.Statistics == nil) {
+		return false
+	}
+	if this.Statistics != nil && !this.Statistics.Equal(that1.Statistics) {
+		return false
+	}
+	return true
+}
+
+func (this *Statistics) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Statistics)
+	if !ok {
+		that2, ok := that.(Statistics)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !bytes.Equal(this.MinValue, that1.MinValue) {
+		return false
+	}
+	if !bytes.Equal(this.MaxValue, that1.MaxValue) {
+		return false
+	}
+	if this.CardinalityCount != that1.CardinalityCount {
+		return false
+	}
+	return true
+}
+
+func (this *SortInfo_ColumnSort) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SortInfo_ColumnSort)
+	if !ok {
+		that2, ok := that.(SortInfo_ColumnSort)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.ColumnIndex != that1.ColumnIndex {
+		return false
+	}
+	if this.Direction != that1.Direction {
+		return false
+	}
+	return true
+}
+
+func (this *SortInfo) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SortInfo)
+	if !ok {
+		that2, ok := that.(SortInfo)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.ColumnSorts) != len(that1.ColumnSorts) {
+		return false
+	}
+	for i := range this.ColumnSorts {
+		if (this.ColumnSorts[i] == nil) != (that1.ColumnSorts[i] == nil) {
+			return false
+		}
+		if this.ColumnSorts[i] != nil && !this.ColumnSorts[i].Equal(that1.ColumnSorts[i]) {
+			return false
+		}
+	}
+	if len(this.SchemaLabels) != len(that1.SchemaLabels) {
+		return false
+	}
+	for i := range this.SchemaLabels {
+		if this.SchemaLabels[i] != that1.SchemaLabels[i] {
+			return false
+		}
+	}
+	return true
+}
 
 func (this *SectionInfoExtension) Compare(that interface{}) int {
 	if that == nil {

@@ -6,6 +6,11 @@ package logproto
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
+	"math"
+	"strconv"
+	"time"
+
 	push "github.com/grafana/loki/pkg/push"
 	syntax "github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -14,10 +19,6 @@ import (
 	"github.com/grafana/wiresmith/protohelpers"
 	model "github.com/prometheus/common/model"
 	"google.golang.org/protobuf/encoding/protowire"
-	"io"
-	"math"
-	"strconv"
-	"time"
 )
 
 type Direction int32
@@ -374,12 +375,6 @@ func (m *LabelToValuesResponse) Reset() {
 	*m = LabelToValuesResponse{}
 }
 func (*LabelToValuesResponse) ProtoMessage() {}
-func (m *LabelToValuesResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *UniqueLabelValues) Reset() {
 	if m == nil {
@@ -388,12 +383,6 @@ func (m *UniqueLabelValues) Reset() {
 	*m = UniqueLabelValues{}
 }
 func (*UniqueLabelValues) ProtoMessage() {}
-func (m *UniqueLabelValues) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StreamRatesRequest) Reset() {
 	if m == nil {
@@ -402,12 +391,6 @@ func (m *StreamRatesRequest) Reset() {
 	*m = StreamRatesRequest{}
 }
 func (*StreamRatesRequest) ProtoMessage() {}
-func (m *StreamRatesRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StreamRatesResponse) Reset() {
 	if m == nil {
@@ -416,12 +399,6 @@ func (m *StreamRatesResponse) Reset() {
 	*m = StreamRatesResponse{}
 }
 func (*StreamRatesResponse) ProtoMessage() {}
-func (m *StreamRatesResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *StreamRate) Reset() {
 	if m == nil {
@@ -430,12 +407,6 @@ func (m *StreamRate) Reset() {
 	*m = StreamRate{}
 }
 func (*StreamRate) ProtoMessage() {}
-func (m *StreamRate) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QueryRequest) Reset() {
 	if m == nil {
@@ -444,12 +415,6 @@ func (m *QueryRequest) Reset() {
 	*m = QueryRequest{}
 }
 func (*QueryRequest) ProtoMessage() {}
-func (m *QueryRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SampleQueryRequest) Reset() {
 	if m == nil {
@@ -458,12 +423,6 @@ func (m *SampleQueryRequest) Reset() {
 	*m = SampleQueryRequest{}
 }
 func (*SampleQueryRequest) ProtoMessage() {}
-func (m *SampleQueryRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Plan) Reset() {
 	if m == nil {
@@ -472,12 +431,6 @@ func (m *Plan) Reset() {
 	*m = Plan{}
 }
 func (*Plan) ProtoMessage() {}
-func (m *Plan) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Delete) Reset() {
 	if m == nil {
@@ -486,12 +439,6 @@ func (m *Delete) Reset() {
 	*m = Delete{}
 }
 func (*Delete) ProtoMessage() {}
-func (m *Delete) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QueryResponse) Reset() {
 	if m == nil {
@@ -500,12 +447,6 @@ func (m *QueryResponse) Reset() {
 	*m = QueryResponse{}
 }
 func (*QueryResponse) ProtoMessage() {}
-func (m *QueryResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SampleQueryResponse) Reset() {
 	if m == nil {
@@ -514,12 +455,6 @@ func (m *SampleQueryResponse) Reset() {
 	*m = SampleQueryResponse{}
 }
 func (*SampleQueryResponse) ProtoMessage() {}
-func (m *SampleQueryResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LabelRequest) Reset() {
 	if m == nil {
@@ -528,12 +463,6 @@ func (m *LabelRequest) Reset() {
 	*m = LabelRequest{}
 }
 func (*LabelRequest) ProtoMessage() {}
-func (m *LabelRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LabelResponse) Reset() {
 	if m == nil {
@@ -542,12 +471,6 @@ func (m *LabelResponse) Reset() {
 	*m = LabelResponse{}
 }
 func (*LabelResponse) ProtoMessage() {}
-func (m *LabelResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Sample) Reset() {
 	if m == nil {
@@ -556,12 +479,6 @@ func (m *Sample) Reset() {
 	*m = Sample{}
 }
 func (*Sample) ProtoMessage() {}
-func (m *Sample) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LegacySample) Reset() {
 	if m == nil {
@@ -570,12 +487,6 @@ func (m *LegacySample) Reset() {
 	*m = LegacySample{}
 }
 func (*LegacySample) ProtoMessage() {}
-func (m *LegacySample) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Series) Reset() {
 	if m == nil {
@@ -584,12 +495,6 @@ func (m *Series) Reset() {
 	*m = Series{}
 }
 func (*Series) ProtoMessage() {}
-func (m *Series) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TailRequest) Reset() {
 	if m == nil {
@@ -598,12 +503,6 @@ func (m *TailRequest) Reset() {
 	*m = TailRequest{}
 }
 func (*TailRequest) ProtoMessage() {}
-func (m *TailRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TailResponse) Reset() {
 	if m == nil {
@@ -612,12 +511,6 @@ func (m *TailResponse) Reset() {
 	*m = TailResponse{}
 }
 func (*TailResponse) ProtoMessage() {}
-func (m *TailResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SeriesRequest) Reset() {
 	if m == nil {
@@ -626,12 +519,6 @@ func (m *SeriesRequest) Reset() {
 	*m = SeriesRequest{}
 }
 func (*SeriesRequest) ProtoMessage() {}
-func (m *SeriesRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SeriesResponse) Reset() {
 	if m == nil {
@@ -640,12 +527,6 @@ func (m *SeriesResponse) Reset() {
 	*m = SeriesResponse{}
 }
 func (*SeriesResponse) ProtoMessage() {}
-func (m *SeriesResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SeriesIdentifier_LabelsEntry) Reset() {
 	if m == nil {
@@ -654,12 +535,6 @@ func (m *SeriesIdentifier_LabelsEntry) Reset() {
 	*m = SeriesIdentifier_LabelsEntry{}
 }
 func (*SeriesIdentifier_LabelsEntry) ProtoMessage() {}
-func (m *SeriesIdentifier_LabelsEntry) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SeriesIdentifier) Reset() {
 	if m == nil {
@@ -668,12 +543,6 @@ func (m *SeriesIdentifier) Reset() {
 	*m = SeriesIdentifier{}
 }
 func (*SeriesIdentifier) ProtoMessage() {}
-func (m *SeriesIdentifier) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DroppedStream) Reset() {
 	if m == nil {
@@ -682,12 +551,6 @@ func (m *DroppedStream) Reset() {
 	*m = DroppedStream{}
 }
 func (*DroppedStream) ProtoMessage() {}
-func (m *DroppedStream) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LabelPair) Reset() {
 	if m == nil {
@@ -696,12 +559,6 @@ func (m *LabelPair) Reset() {
 	*m = LabelPair{}
 }
 func (*LabelPair) ProtoMessage() {}
-func (m *LabelPair) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LegacyLabelPair) Reset() {
 	if m == nil {
@@ -710,12 +567,6 @@ func (m *LegacyLabelPair) Reset() {
 	*m = LegacyLabelPair{}
 }
 func (*LegacyLabelPair) ProtoMessage() {}
-func (m *LegacyLabelPair) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Chunk) Reset() {
 	if m == nil {
@@ -724,12 +575,6 @@ func (m *Chunk) Reset() {
 	*m = Chunk{}
 }
 func (*Chunk) ProtoMessage() {}
-func (m *Chunk) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TailersCountRequest) Reset() {
 	if m == nil {
@@ -738,12 +583,6 @@ func (m *TailersCountRequest) Reset() {
 	*m = TailersCountRequest{}
 }
 func (*TailersCountRequest) ProtoMessage() {}
-func (m *TailersCountRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TailersCountResponse) Reset() {
 	if m == nil {
@@ -752,12 +591,6 @@ func (m *TailersCountResponse) Reset() {
 	*m = TailersCountResponse{}
 }
 func (*TailersCountResponse) ProtoMessage() {}
-func (m *TailersCountResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetChunkIDsRequest) Reset() {
 	if m == nil {
@@ -766,12 +599,6 @@ func (m *GetChunkIDsRequest) Reset() {
 	*m = GetChunkIDsRequest{}
 }
 func (*GetChunkIDsRequest) ProtoMessage() {}
-func (m *GetChunkIDsRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetChunkIDsResponse) Reset() {
 	if m == nil {
@@ -780,12 +607,6 @@ func (m *GetChunkIDsResponse) Reset() {
 	*m = GetChunkIDsResponse{}
 }
 func (*GetChunkIDsResponse) ProtoMessage() {}
-func (m *GetChunkIDsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ChunkRef) Reset() {
 	if m == nil {
@@ -794,12 +615,6 @@ func (m *ChunkRef) Reset() {
 	*m = ChunkRef{}
 }
 func (*ChunkRef) ProtoMessage() {}
-func (m *ChunkRef) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ChunkRefGroup) Reset() {
 	if m == nil {
@@ -808,12 +623,6 @@ func (m *ChunkRefGroup) Reset() {
 	*m = ChunkRefGroup{}
 }
 func (*ChunkRefGroup) ProtoMessage() {}
-func (m *ChunkRefGroup) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LabelValuesForMetricNameRequest) Reset() {
 	if m == nil {
@@ -822,12 +631,6 @@ func (m *LabelValuesForMetricNameRequest) Reset() {
 	*m = LabelValuesForMetricNameRequest{}
 }
 func (*LabelValuesForMetricNameRequest) ProtoMessage() {}
-func (m *LabelValuesForMetricNameRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LabelNamesForMetricNameRequest) Reset() {
 	if m == nil {
@@ -836,12 +639,6 @@ func (m *LabelNamesForMetricNameRequest) Reset() {
 	*m = LabelNamesForMetricNameRequest{}
 }
 func (*LabelNamesForMetricNameRequest) ProtoMessage() {}
-func (m *LabelNamesForMetricNameRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LineFilter) Reset() {
 	if m == nil {
@@ -850,12 +647,6 @@ func (m *LineFilter) Reset() {
 	*m = LineFilter{}
 }
 func (*LineFilter) ProtoMessage() {}
-func (m *LineFilter) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetChunkRefRequest) Reset() {
 	if m == nil {
@@ -864,12 +655,6 @@ func (m *GetChunkRefRequest) Reset() {
 	*m = GetChunkRefRequest{}
 }
 func (*GetChunkRefRequest) ProtoMessage() {}
-func (m *GetChunkRefRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetChunkRefResponse) Reset() {
 	if m == nil {
@@ -878,12 +663,6 @@ func (m *GetChunkRefResponse) Reset() {
 	*m = GetChunkRefResponse{}
 }
 func (*GetChunkRefResponse) ProtoMessage() {}
-func (m *GetChunkRefResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetSeriesRequest) Reset() {
 	if m == nil {
@@ -892,12 +671,6 @@ func (m *GetSeriesRequest) Reset() {
 	*m = GetSeriesRequest{}
 }
 func (*GetSeriesRequest) ProtoMessage() {}
-func (m *GetSeriesRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *GetSeriesResponse) Reset() {
 	if m == nil {
@@ -906,12 +679,6 @@ func (m *GetSeriesResponse) Reset() {
 	*m = GetSeriesResponse{}
 }
 func (*GetSeriesResponse) ProtoMessage() {}
-func (m *GetSeriesResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *IndexSeries) Reset() {
 	if m == nil {
@@ -920,12 +687,6 @@ func (m *IndexSeries) Reset() {
 	*m = IndexSeries{}
 }
 func (*IndexSeries) ProtoMessage() {}
-func (m *IndexSeries) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *IndexStatsRequest) Reset() {
 	if m == nil {
@@ -934,12 +695,6 @@ func (m *IndexStatsRequest) Reset() {
 	*m = IndexStatsRequest{}
 }
 func (*IndexStatsRequest) ProtoMessage() {}
-func (m *IndexStatsRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *IndexStatsResponse) Reset() {
 	if m == nil {
@@ -948,12 +703,6 @@ func (m *IndexStatsResponse) Reset() {
 	*m = IndexStatsResponse{}
 }
 func (*IndexStatsResponse) ProtoMessage() {}
-func (m *IndexStatsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *VolumeRequest) Reset() {
 	if m == nil {
@@ -962,12 +711,6 @@ func (m *VolumeRequest) Reset() {
 	*m = VolumeRequest{}
 }
 func (*VolumeRequest) ProtoMessage() {}
-func (m *VolumeRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *VolumeResponse) Reset() {
 	if m == nil {
@@ -976,12 +719,6 @@ func (m *VolumeResponse) Reset() {
 	*m = VolumeResponse{}
 }
 func (*VolumeResponse) ProtoMessage() {}
-func (m *VolumeResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Volume) Reset() {
 	if m == nil {
@@ -990,12 +727,6 @@ func (m *Volume) Reset() {
 	*m = Volume{}
 }
 func (*Volume) ProtoMessage() {}
-func (m *Volume) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DetectedFieldsRequest) Reset() {
 	if m == nil {
@@ -1004,12 +735,6 @@ func (m *DetectedFieldsRequest) Reset() {
 	*m = DetectedFieldsRequest{}
 }
 func (*DetectedFieldsRequest) ProtoMessage() {}
-func (m *DetectedFieldsRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DetectedFieldsResponse) Reset() {
 	if m == nil {
@@ -1018,12 +743,6 @@ func (m *DetectedFieldsResponse) Reset() {
 	*m = DetectedFieldsResponse{}
 }
 func (*DetectedFieldsResponse) ProtoMessage() {}
-func (m *DetectedFieldsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DetectedField) Reset() {
 	if m == nil {
@@ -1032,12 +751,6 @@ func (m *DetectedField) Reset() {
 	*m = DetectedField{}
 }
 func (*DetectedField) ProtoMessage() {}
-func (m *DetectedField) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DetectedLabelsRequest) Reset() {
 	if m == nil {
@@ -1046,12 +759,6 @@ func (m *DetectedLabelsRequest) Reset() {
 	*m = DetectedLabelsRequest{}
 }
 func (*DetectedLabelsRequest) ProtoMessage() {}
-func (m *DetectedLabelsRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DetectedLabelsResponse) Reset() {
 	if m == nil {
@@ -1060,12 +767,6 @@ func (m *DetectedLabelsResponse) Reset() {
 	*m = DetectedLabelsResponse{}
 }
 func (*DetectedLabelsResponse) ProtoMessage() {}
-func (m *DetectedLabelsResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DetectedLabel) Reset() {
 	if m == nil {
@@ -1074,12 +775,6 @@ func (m *DetectedLabel) Reset() {
 	*m = DetectedLabel{}
 }
 func (*DetectedLabel) ProtoMessage() {}
-func (m *DetectedLabel) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *LabelToValuesResponse) GetLabels() map[string]UniqueLabelValues {
 	if m != nil {

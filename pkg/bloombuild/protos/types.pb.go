@@ -5,12 +5,13 @@ package protos
 
 import (
 	"fmt"
+	"io"
+	"math"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/wiresmith/protohelpers"
 	model "github.com/prometheus/common/model"
 	"google.golang.org/protobuf/encoding/protowire"
-	"io"
-	"math"
 )
 
 // FPBounds is identical to the definition in `pkg/storage/bloom/v1/bounds.FingerprintBounds`
@@ -67,12 +68,6 @@ func (m *ProtoFingerprintBounds) Reset() {
 	*m = ProtoFingerprintBounds{}
 }
 func (*ProtoFingerprintBounds) ProtoMessage() {}
-func (m *ProtoFingerprintBounds) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *DayTable) Reset() {
 	if m == nil {
@@ -81,12 +76,6 @@ func (m *DayTable) Reset() {
 	*m = DayTable{}
 }
 func (*DayTable) ProtoMessage() {}
-func (m *DayTable) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ProtoSeries) Reset() {
 	if m == nil {
@@ -95,12 +84,6 @@ func (m *ProtoSeries) Reset() {
 	*m = ProtoSeries{}
 }
 func (*ProtoSeries) ProtoMessage() {}
-func (m *ProtoSeries) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ProtoGapWithBlocks) Reset() {
 	if m == nil {
@@ -109,12 +92,6 @@ func (m *ProtoGapWithBlocks) Reset() {
 	*m = ProtoGapWithBlocks{}
 }
 func (*ProtoGapWithBlocks) ProtoMessage() {}
-func (m *ProtoGapWithBlocks) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ProtoTask) Reset() {
 	if m == nil {
@@ -123,12 +100,6 @@ func (m *ProtoTask) Reset() {
 	*m = ProtoTask{}
 }
 func (*ProtoTask) ProtoMessage() {}
-func (m *ProtoTask) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ProtoMeta) Reset() {
 	if m == nil {
@@ -137,12 +108,6 @@ func (m *ProtoMeta) Reset() {
 	*m = ProtoMeta{}
 }
 func (*ProtoMeta) ProtoMessage() {}
-func (m *ProtoMeta) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ProtoTaskResult) Reset() {
 	if m == nil {
@@ -151,12 +116,6 @@ func (m *ProtoTaskResult) Reset() {
 	*m = ProtoTaskResult{}
 }
 func (*ProtoTaskResult) ProtoMessage() {}
-func (m *ProtoTaskResult) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ProtoFingerprintBounds) GetMin() model.Fingerprint {
 	if m != nil {

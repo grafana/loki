@@ -6,10 +6,11 @@ package stats
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // Result contains LogQL query statistics.
@@ -210,12 +211,6 @@ func (m *Result) Reset() {
 	*m = Result{}
 }
 func (*Result) ProtoMessage() {}
-func (m *Result) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Caches) Reset() {
 	if m == nil {
@@ -224,12 +219,6 @@ func (m *Caches) Reset() {
 	*m = Caches{}
 }
 func (*Caches) ProtoMessage() {}
-func (m *Caches) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Summary) Reset() {
 	if m == nil {
@@ -238,12 +227,6 @@ func (m *Summary) Reset() {
 	*m = Summary{}
 }
 func (*Summary) ProtoMessage() {}
-func (m *Summary) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Index) Reset() {
 	if m == nil {
@@ -252,12 +235,6 @@ func (m *Index) Reset() {
 	*m = Index{}
 }
 func (*Index) ProtoMessage() {}
-func (m *Index) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Querier) Reset() {
 	if m == nil {
@@ -266,12 +243,6 @@ func (m *Querier) Reset() {
 	*m = Querier{}
 }
 func (*Querier) ProtoMessage() {}
-func (m *Querier) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Ingester) Reset() {
 	if m == nil {
@@ -280,12 +251,6 @@ func (m *Ingester) Reset() {
 	*m = Ingester{}
 }
 func (*Ingester) ProtoMessage() {}
-func (m *Ingester) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Store) Reset() {
 	if m == nil {
@@ -294,12 +259,6 @@ func (m *Store) Reset() {
 	*m = Store{}
 }
 func (*Store) ProtoMessage() {}
-func (m *Store) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Dataobj) Reset() {
 	if m == nil {
@@ -308,12 +267,6 @@ func (m *Dataobj) Reset() {
 	*m = Dataobj{}
 }
 func (*Dataobj) ProtoMessage() {}
-func (m *Dataobj) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Chunk) Reset() {
 	if m == nil {
@@ -322,12 +275,6 @@ func (m *Chunk) Reset() {
 	*m = Chunk{}
 }
 func (*Chunk) ProtoMessage() {}
-func (m *Chunk) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Cache) Reset() {
 	if m == nil {
@@ -336,12 +283,6 @@ func (m *Cache) Reset() {
 	*m = Cache{}
 }
 func (*Cache) ProtoMessage() {}
-func (m *Cache) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Result) GetSummary() *Summary {
 	if m != nil {

@@ -7,23 +7,264 @@ import (
 	"math"
 )
 
-// Per-message Compare() methods for pkg/ruler/base/ruler.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/ruler/base/ruler.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *RulesRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*RulesRequest)
+	if !ok {
+		that2, ok := that.(RulesRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Filter != that1.Filter {
+		return false
+	}
+	if len(this.RuleName) != len(that1.RuleName) {
+		return false
+	}
+	for i := range this.RuleName {
+		if this.RuleName[i] != that1.RuleName[i] {
+			return false
+		}
+	}
+	if len(this.RuleGroup) != len(that1.RuleGroup) {
+		return false
+	}
+	for i := range this.RuleGroup {
+		if this.RuleGroup[i] != that1.RuleGroup[i] {
+			return false
+		}
+	}
+	if len(this.File) != len(that1.File) {
+		return false
+	}
+	for i := range this.File {
+		if this.File[i] != that1.File[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *RulesResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*RulesResponse)
+	if !ok {
+		that2, ok := that.(RulesResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Groups) != len(that1.Groups) {
+		return false
+	}
+	for i := range this.Groups {
+		if (this.Groups[i] == nil) != (that1.Groups[i] == nil) {
+			return false
+		}
+		if this.Groups[i] != nil && !this.Groups[i].Equal(that1.Groups[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *GroupStateDesc) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*GroupStateDesc)
+	if !ok {
+		that2, ok := that.(GroupStateDesc)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.Group == nil) != (that1.Group == nil) {
+		return false
+	}
+	if this.Group != nil && !this.Group.Equal(that1.Group) {
+		return false
+	}
+	if len(this.ActiveRules) != len(that1.ActiveRules) {
+		return false
+	}
+	for i := range this.ActiveRules {
+		if (this.ActiveRules[i] == nil) != (that1.ActiveRules[i] == nil) {
+			return false
+		}
+		if this.ActiveRules[i] != nil && !this.ActiveRules[i].Equal(that1.ActiveRules[i]) {
+			return false
+		}
+	}
+	if !this.EvaluationTimestamp.Equal(that1.EvaluationTimestamp) {
+		return false
+	}
+	if this.EvaluationDuration != that1.EvaluationDuration {
+		return false
+	}
+	return true
+}
+
+func (this *RuleStateDesc) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*RuleStateDesc)
+	if !ok {
+		that2, ok := that.(RuleStateDesc)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.Rule == nil) != (that1.Rule == nil) {
+		return false
+	}
+	if this.Rule != nil && !this.Rule.Equal(that1.Rule) {
+		return false
+	}
+	if this.State != that1.State {
+		return false
+	}
+	if this.Health != that1.Health {
+		return false
+	}
+	if this.LastError != that1.LastError {
+		return false
+	}
+	if len(this.Alerts) != len(that1.Alerts) {
+		return false
+	}
+	for i := range this.Alerts {
+		if (this.Alerts[i] == nil) != (that1.Alerts[i] == nil) {
+			return false
+		}
+		if this.Alerts[i] != nil && !this.Alerts[i].Equal(that1.Alerts[i]) {
+			return false
+		}
+	}
+	if !this.EvaluationTimestamp.Equal(that1.EvaluationTimestamp) {
+		return false
+	}
+	if this.EvaluationDuration != that1.EvaluationDuration {
+		return false
+	}
+	return true
+}
+
+func (this *AlertStateDesc) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*AlertStateDesc)
+	if !ok {
+		that2, ok := that.(AlertStateDesc)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.State != that1.State {
+		return false
+	}
+	if len(this.Labels) != len(that1.Labels) {
+		return false
+	}
+	for i := range this.Labels {
+		if !this.Labels[i].EqualWiresmith(that1.Labels[i]) {
+			return false
+		}
+	}
+	if len(this.Annotations) != len(that1.Annotations) {
+		return false
+	}
+	for i := range this.Annotations {
+		if !this.Annotations[i].EqualWiresmith(that1.Annotations[i]) {
+			return false
+		}
+	}
+	if math.Float64bits(this.Value) != math.Float64bits(that1.Value) {
+		return false
+	}
+	if !this.ActiveAt.Equal(that1.ActiveAt) {
+		return false
+	}
+	if !this.FiredAt.Equal(that1.FiredAt) {
+		return false
+	}
+	if !this.ResolvedAt.Equal(that1.ResolvedAt) {
+		return false
+	}
+	if !this.LastSentAt.Equal(that1.LastSentAt) {
+		return false
+	}
+	if !this.ValidUntil.Equal(that1.ValidUntil) {
+		return false
+	}
+	return true
+}
 
 func (this *RulesRequest) Compare(that interface{}) int {
 	if that == nil {

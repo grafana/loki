@@ -5,10 +5,11 @@ package protos
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type BuilderToPlanner struct {
@@ -34,12 +35,6 @@ func (m *BuilderToPlanner) Reset() {
 	*m = BuilderToPlanner{}
 }
 func (*BuilderToPlanner) ProtoMessage() {}
-func (m *BuilderToPlanner) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *PlannerToBuilder) Reset() {
 	if m == nil {
@@ -48,12 +43,6 @@ func (m *PlannerToBuilder) Reset() {
 	*m = PlannerToBuilder{}
 }
 func (*PlannerToBuilder) ProtoMessage() {}
-func (m *PlannerToBuilder) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *NotifyBuilderShutdownRequest) Reset() {
 	if m == nil {
@@ -62,12 +51,6 @@ func (m *NotifyBuilderShutdownRequest) Reset() {
 	*m = NotifyBuilderShutdownRequest{}
 }
 func (*NotifyBuilderShutdownRequest) ProtoMessage() {}
-func (m *NotifyBuilderShutdownRequest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *NotifyBuilderShutdownResponse) Reset() {
 	if m == nil {
@@ -76,12 +59,6 @@ func (m *NotifyBuilderShutdownResponse) Reset() {
 	*m = NotifyBuilderShutdownResponse{}
 }
 func (*NotifyBuilderShutdownResponse) ProtoMessage() {}
-func (m *NotifyBuilderShutdownResponse) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *BuilderToPlanner) GetBuilderID() string {
 	if m != nil {

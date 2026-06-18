@@ -7,23 +7,234 @@ import (
 	"bytes"
 )
 
-// Per-message Compare() methods for pkg/dataobj/internal/metadata/filemd/filemd.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/dataobj/internal/metadata/filemd/filemd.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *Metadata) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Metadata)
+	if !ok {
+		that2, ok := that.(Metadata)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Sections) != len(that1.Sections) {
+		return false
+	}
+	for i := range this.Sections {
+		if (this.Sections[i] == nil) != (that1.Sections[i] == nil) {
+			return false
+		}
+		if this.Sections[i] != nil && !this.Sections[i].Equal(that1.Sections[i]) {
+			return false
+		}
+	}
+	if len(this.Dictionary) != len(that1.Dictionary) {
+		return false
+	}
+	for i := range this.Dictionary {
+		if this.Dictionary[i] != that1.Dictionary[i] {
+			return false
+		}
+	}
+	if len(this.Types) != len(that1.Types) {
+		return false
+	}
+	for i := range this.Types {
+		if (this.Types[i] == nil) != (that1.Types[i] == nil) {
+			return false
+		}
+		if this.Types[i] != nil && !this.Types[i].Equal(that1.Types[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SectionType_NameRef) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SectionType_NameRef)
+	if !ok {
+		that2, ok := that.(SectionType_NameRef)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.NamespaceRef != that1.NamespaceRef {
+		return false
+	}
+	if this.KindRef != that1.KindRef {
+		return false
+	}
+	return true
+}
+
+func (this *SectionType) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SectionType)
+	if !ok {
+		that2, ok := that.(SectionType)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.NameRef == nil) != (that1.NameRef == nil) {
+		return false
+	}
+	if this.NameRef != nil && !this.NameRef.Equal(that1.NameRef) {
+		return false
+	}
+	if this.Version != that1.Version {
+		return false
+	}
+	return true
+}
+
+func (this *SectionInfo) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SectionInfo)
+	if !ok {
+		that2, ok := that.(SectionInfo)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.Layout == nil) != (that1.Layout == nil) {
+		return false
+	}
+	if this.Layout != nil && !this.Layout.Equal(that1.Layout) {
+		return false
+	}
+	if this.TypeRef != that1.TypeRef {
+		return false
+	}
+	if !bytes.Equal(this.ExtensionData, that1.ExtensionData) {
+		return false
+	}
+	if this.TenantRef != that1.TenantRef {
+		return false
+	}
+	return true
+}
+
+func (this *SectionLayout) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SectionLayout)
+	if !ok {
+		that2, ok := that.(SectionLayout)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if (this.Data == nil) != (that1.Data == nil) {
+		return false
+	}
+	if this.Data != nil && !this.Data.Equal(that1.Data) {
+		return false
+	}
+	if (this.Metadata == nil) != (that1.Metadata == nil) {
+		return false
+	}
+	if this.Metadata != nil && !this.Metadata.Equal(that1.Metadata) {
+		return false
+	}
+	return true
+}
+
+func (this *Region) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Region)
+	if !ok {
+		that2, ok := that.(Region)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Offset != that1.Offset {
+		return false
+	}
+	if this.Length != that1.Length {
+		return false
+	}
+	return true
+}
 
 func (this *Metadata) Compare(that interface{}) int {
 	if that == nil {

@@ -6,10 +6,11 @@ package logproto
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type QuantileSketch_Sketch interface {
@@ -104,12 +105,6 @@ func (m *QuantileSketchMatrix) Reset() {
 	*m = QuantileSketchMatrix{}
 }
 func (*QuantileSketchMatrix) ProtoMessage() {}
-func (m *QuantileSketchMatrix) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QuantileSketchVector) Reset() {
 	if m == nil {
@@ -118,12 +113,6 @@ func (m *QuantileSketchVector) Reset() {
 	*m = QuantileSketchVector{}
 }
 func (*QuantileSketchVector) ProtoMessage() {}
-func (m *QuantileSketchVector) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QuantileSketchSample) Reset() {
 	if m == nil {
@@ -132,12 +121,6 @@ func (m *QuantileSketchSample) Reset() {
 	*m = QuantileSketchSample{}
 }
 func (*QuantileSketchSample) ProtoMessage() {}
-func (m *QuantileSketchSample) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QuantileSketch) Reset() {
 	if m == nil {
@@ -146,12 +129,6 @@ func (m *QuantileSketch) Reset() {
 	*m = QuantileSketch{}
 }
 func (*QuantileSketch) ProtoMessage() {}
-func (m *QuantileSketch) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TDigest_Centroid) Reset() {
 	if m == nil {
@@ -160,12 +137,6 @@ func (m *TDigest_Centroid) Reset() {
 	*m = TDigest_Centroid{}
 }
 func (*TDigest_Centroid) ProtoMessage() {}
-func (m *TDigest_Centroid) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TDigest) Reset() {
 	if m == nil {
@@ -174,12 +145,6 @@ func (m *TDigest) Reset() {
 	*m = TDigest{}
 }
 func (*TDigest) ProtoMessage() {}
-func (m *TDigest) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *CountMinSketch) Reset() {
 	if m == nil {
@@ -188,12 +153,6 @@ func (m *CountMinSketch) Reset() {
 	*m = CountMinSketch{}
 }
 func (*CountMinSketch) ProtoMessage() {}
-func (m *CountMinSketch) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *CountMinSketchVector) Reset() {
 	if m == nil {
@@ -202,12 +161,6 @@ func (m *CountMinSketchVector) Reset() {
 	*m = CountMinSketchVector{}
 }
 func (*CountMinSketchVector) ProtoMessage() {}
-func (m *CountMinSketchVector) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Labels) Reset() {
 	if m == nil {
@@ -216,12 +169,6 @@ func (m *Labels) Reset() {
 	*m = Labels{}
 }
 func (*Labels) ProtoMessage() {}
-func (m *Labels) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TopK_Pair) Reset() {
 	if m == nil {
@@ -230,12 +177,6 @@ func (m *TopK_Pair) Reset() {
 	*m = TopK_Pair{}
 }
 func (*TopK_Pair) ProtoMessage() {}
-func (m *TopK_Pair) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TopK) Reset() {
 	if m == nil {
@@ -244,12 +185,6 @@ func (m *TopK) Reset() {
 	*m = TopK{}
 }
 func (*TopK) ProtoMessage() {}
-func (m *TopK) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TopKMatrix_Vector) Reset() {
 	if m == nil {
@@ -258,12 +193,6 @@ func (m *TopKMatrix_Vector) Reset() {
 	*m = TopKMatrix_Vector{}
 }
 func (*TopKMatrix_Vector) ProtoMessage() {}
-func (m *TopKMatrix_Vector) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TopKMatrix) Reset() {
 	if m == nil {
@@ -272,12 +201,6 @@ func (m *TopKMatrix) Reset() {
 	*m = TopKMatrix{}
 }
 func (*TopKMatrix) ProtoMessage() {}
-func (m *TopKMatrix) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *QuantileSketchMatrix) GetValues() []*QuantileSketchVector {
 	if m != nil {

@@ -5,10 +5,11 @@ package proto
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // SectionRef identifies one section in object storage with its sort-key bounds.
@@ -54,12 +55,6 @@ func (m *SectionRef) Reset() {
 	*m = SectionRef{}
 }
 func (*SectionRef) ProtoMessage() {}
-func (m *SectionRef) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *RunRef) Reset() {
 	if m == nil {
@@ -68,12 +63,6 @@ func (m *RunRef) Reset() {
 	*m = RunRef{}
 }
 func (*RunRef) ProtoMessage() {}
-func (m *RunRef) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *TaskSpec) Reset() {
 	if m == nil {
@@ -82,12 +71,6 @@ func (m *TaskSpec) Reset() {
 	*m = TaskSpec{}
 }
 func (*TaskSpec) ProtoMessage() {}
-func (m *TaskSpec) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SectionRef) GetObjectPath() string {
 	if m != nil {

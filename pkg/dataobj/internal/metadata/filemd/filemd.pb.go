@@ -5,10 +5,11 @@ package filemd
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // Metadata for the overall data object.
@@ -128,12 +129,6 @@ func (m *Metadata) Reset() {
 	*m = Metadata{}
 }
 func (*Metadata) ProtoMessage() {}
-func (m *Metadata) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SectionType_NameRef) Reset() {
 	if m == nil {
@@ -142,12 +137,6 @@ func (m *SectionType_NameRef) Reset() {
 	*m = SectionType_NameRef{}
 }
 func (*SectionType_NameRef) ProtoMessage() {}
-func (m *SectionType_NameRef) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SectionType) Reset() {
 	if m == nil {
@@ -156,12 +145,6 @@ func (m *SectionType) Reset() {
 	*m = SectionType{}
 }
 func (*SectionType) ProtoMessage() {}
-func (m *SectionType) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SectionInfo) Reset() {
 	if m == nil {
@@ -170,12 +153,6 @@ func (m *SectionInfo) Reset() {
 	*m = SectionInfo{}
 }
 func (*SectionInfo) ProtoMessage() {}
-func (m *SectionInfo) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *SectionLayout) Reset() {
 	if m == nil {
@@ -184,12 +161,6 @@ func (m *SectionLayout) Reset() {
 	*m = SectionLayout{}
 }
 func (*SectionLayout) ProtoMessage() {}
-func (m *SectionLayout) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Region) Reset() {
 	if m == nil {
@@ -198,12 +169,6 @@ func (m *Region) Reset() {
 	*m = Region{}
 }
 func (*Region) ProtoMessage() {}
-func (m *Region) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *Metadata) GetSections() []*SectionInfo {
 	if m != nil {

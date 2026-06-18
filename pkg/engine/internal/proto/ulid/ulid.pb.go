@@ -5,10 +5,11 @@ package ulid
 
 import (
 	"fmt"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
+
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // ProtoULID represents a Universally Unique Lexicographically Sortable
@@ -27,12 +28,6 @@ func (m *ProtoULID) Reset() {
 	*m = ProtoULID{}
 }
 func (*ProtoULID) ProtoMessage() {}
-func (m *ProtoULID) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *ProtoULID) GetValue() []byte {
 	if m != nil {

@@ -5,12 +5,13 @@ package rulespb
 
 import (
 	"fmt"
-	logproto "github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"time"
+
+	logproto "github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // RuleGroupDesc is a proto representation of a rule group.
@@ -46,12 +47,6 @@ func (m *RuleGroupDesc) Reset() {
 	*m = RuleGroupDesc{}
 }
 func (*RuleGroupDesc) ProtoMessage() {}
-func (m *RuleGroupDesc) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *RuleDesc) Reset() {
 	if m == nil {
@@ -60,12 +55,6 @@ func (m *RuleDesc) Reset() {
 	*m = RuleDesc{}
 }
 func (*RuleDesc) ProtoMessage() {}
-func (m *RuleDesc) String() string {
-	if m == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%v", *m)
-}
 
 func (m *RuleGroupDesc) GetName() string {
 	if m != nil {

@@ -3,23 +3,202 @@
 
 package queryrangebase
 
-// Per-message Compare() methods for pkg/querier/queryrange/queryrangebase/queryrange.proto.
+// Per-message value-comparison methods (Equal + Compare) for pkg/querier/queryrange/queryrangebase/queryrange.proto.
 //
-// Compare returns -1/0/+1 like bytes.Compare with the gogoproto.compare
-// nil/wrong-type preamble. Always emitted on every message; callers that
-// don't use it can rely on Go's dead-code elimination to drop the body.
+// Equal returns bool; Compare returns -1/0/+1 like bytes.Compare with the
+// gogoproto.compare nil/wrong-type preamble. Both are emitted on every
+// message; callers that don't use one can rely on Go's dead-code
+// elimination to drop the body.
 //
-// Why a separate file? Compare is never called from Marshal/Unmarshal/Size,
-// but emitting it next to those hot functions in the main .pb.go pushed
-// them onto different cache sets and produced a measured ~9% geomean
+// Why a separate file? Equal/Compare are never called from Marshal/Unmarshal/
+// Size, but emitting them next to those hot functions in the main .pb.go
+// pushed them onto different cache sets and produced a measured ~9% geomean
 // regression on OTel benchmarks (UnmarshalMap +14%, MarshalSingleSpan +13%)
-// purely from icache / iTLB / BTB pressure. Splitting Compare into its own
+// purely from icache / iTLB / BTB pressure. Splitting them into their own
 // compilation unit gives the linker freedom to place the cold half away
-// from the hot half — same trick the _reflect.pb.go split uses.
+// from the hot half — same trick the _util.pb.go split uses.
 //
-// See compiler/generator/emit_compare.go for the full rationale and the
-// benchmark methodology. DO NOT inline this file's contents back into
-// the main .pb.go without re-measuring.
+// See compiler/generator/emit_compare.go / emit_equal.go for the full
+// rationale and the benchmark methodology. DO NOT inline this file's
+// contents back into the main .pb.go without re-measuring.
+
+func (this *PrometheusRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PrometheusRequest)
+	if !ok {
+		that2, ok := that.(PrometheusRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Path != that1.Path {
+		return false
+	}
+	if !this.Start.Equal(that1.Start) {
+		return false
+	}
+	if !this.End.Equal(that1.End) {
+		return false
+	}
+	if this.Step != that1.Step {
+		return false
+	}
+	if this.Timeout != that1.Timeout {
+		return false
+	}
+	if this.Query != that1.Query {
+		return false
+	}
+	if !this.CachingOpts.Equal(that1.CachingOpts) {
+		return false
+	}
+	if len(this.Headers) != len(that1.Headers) {
+		return false
+	}
+	for i := range this.Headers {
+		if (this.Headers[i] == nil) != (that1.Headers[i] == nil) {
+			return false
+		}
+		if this.Headers[i] != nil && !this.Headers[i].Equal(that1.Headers[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *PrometheusResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PrometheusResponse)
+	if !ok {
+		that2, ok := that.(PrometheusResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Status != that1.Status {
+		return false
+	}
+	if !this.Data.Equal(that1.Data) {
+		return false
+	}
+	if this.ErrorType != that1.ErrorType {
+		return false
+	}
+	if this.Error != that1.Error {
+		return false
+	}
+	if len(this.Headers) != len(that1.Headers) {
+		return false
+	}
+	for i := range this.Headers {
+		if (this.Headers[i] == nil) != (that1.Headers[i] == nil) {
+			return false
+		}
+		if this.Headers[i] != nil && !this.Headers[i].Equal(that1.Headers[i]) {
+			return false
+		}
+	}
+	if len(this.Warnings) != len(that1.Warnings) {
+		return false
+	}
+	for i := range this.Warnings {
+		if this.Warnings[i] != that1.Warnings[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *PrometheusData) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PrometheusData)
+	if !ok {
+		that2, ok := that.(PrometheusData)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.ResultType != that1.ResultType {
+		return false
+	}
+	if len(this.Result) != len(that1.Result) {
+		return false
+	}
+	for i := range this.Result {
+		if !this.Result[i].Equal(that1.Result[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *SampleStream) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SampleStream)
+	if !ok {
+		that2, ok := that.(SampleStream)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Labels) != len(that1.Labels) {
+		return false
+	}
+	for i := range this.Labels {
+		if !this.Labels[i].EqualWiresmith(that1.Labels[i]) {
+			return false
+		}
+	}
+	if len(this.Samples) != len(that1.Samples) {
+		return false
+	}
+	for i := range this.Samples {
+		if !this.Samples[i].Equal(that1.Samples[i]) {
+			return false
+		}
+	}
+	return true
+}
 
 func (this *PrometheusRequest) Compare(that interface{}) int {
 	if that == nil {
