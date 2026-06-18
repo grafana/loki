@@ -57,6 +57,50 @@ func openPostingsSections(t *testing.T, ctx context.Context, b *postings.Builder
 	return secs, func() { _ = closer.Close() }
 }
 
+type labelPosting struct {
+	name, value  string
+	streamID     int64
+	obj          string
+	section      int64
+	minTs, maxTs int64 // unix nanos; observation timestamp uses minTs
+}
+
+type bloomPosting struct {
+	columnName string
+	values     []string
+	streamID   int64
+	obj        string
+	section    int64
+}
+
+// buildResolveTestSection builds the opened postings section(s) for an object
+// holding the given explicit postings. The builder emits bloom rows and label
+// rows into separate sections, so every postings section is returned for the
+// resolver to scan. bloomsIn may be nil for label-only fixtures.
+func buildResolveTestSection(t *testing.T, labelsIn []labelPosting, bloomsIn []bloomPosting) ([]*postings.Section, func()) {
+	t.Helper()
+	ctx := context.Background()
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
+
+	for _, lp := range labelsIn {
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: lp.obj, SectionIndex: lp.section, ColumnName: lp.name, LabelValue: lp.value,
+			StreamID: lp.streamID, Timestamp: time.Unix(0, lp.minTs).UTC(), UncompressedSize: 0,
+		})
+	}
+	for _, bp := range bloomsIn {
+		b.PrepareBloomColumn(bp.obj, bp.section, bp.columnName, 1000)
+		for _, v := range bp.values {
+			require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
+				ObjectPath: bp.obj, SectionIndex: bp.section, ColumnName: bp.columnName,
+				Value: v, StreamID: bp.streamID, Timestamp: time.Unix(0, 0).UTC(),
+			}))
+		}
+	}
+
+	return openPostingsSections(t, ctx, b)
+}
+
 // testSectionColumn returns the section column of the requested exported type.
 func testSectionColumn(t *testing.T, sec *postings.Section, ct postings.ColumnType) *postings.Column {
 	t.Helper()
