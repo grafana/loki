@@ -117,6 +117,9 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		},
 		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
 		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats: true,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("creating kind column: %w", err)
