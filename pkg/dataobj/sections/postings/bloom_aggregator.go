@@ -198,7 +198,6 @@ func (a *bloomAggregator) EstimatedSize() int {
 
 // TimeRange returns the minimum and maximum observation timestamp seen by the
 // aggregator. It returns zero time.Time values when nothing has been observed.
-// Columns that were prepared but never observed do not contribute.
 func (a *bloomAggregator) TimeRange() (time.Time, time.Time) {
 	return a.minTimestamp, a.maxTimestamp
 }

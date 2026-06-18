@@ -491,10 +491,6 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 	return timeRanges
 }
 
-// unionTimeRange folds the candidate range (candMin, candMax) into the
-// accumulated (curMin, curMax). A candidate whose min is zero is treated as no
-// contribution (the aggregator convention: zero min means no observations). A
-// zero accumulator is replaced by the first contributing candidate.
 func unionTimeRange(curMin, curMax, candMin, candMax time.Time) (time.Time, time.Time) {
 	if candMin.IsZero() {
 		return curMin, curMax
