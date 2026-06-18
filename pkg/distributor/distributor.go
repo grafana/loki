@@ -36,6 +36,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
+	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
@@ -609,10 +610,12 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
 	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
 
-	shardStreamsCfg := d.validator.ShardStreams(tenantID)
-	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string) {
+	// The shard-streams config is resolved per stream from its policy (see PolicyShardStreams)
+	// and threaded into these closures, so a policy can override the tenant sharding behavior
+	// (e.g. toggle time sharding or use a different desired_rate).
+	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
 		if shardStreamsCfg.Enabled {
-			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy)...)
+			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy, shardStreamsCfg)...)
 			return
 		}
 		streams = append(streams, KeyedStream{
@@ -623,26 +626,31 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		})
 	}
 
-	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string) {
+	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
 		if !shardStreamsCfg.TimeShardingEnabled {
-			maybeShardByRate(stream, pushSize, policy)
+			maybeShardByRate(stream, pushSize, policy, shardStreamsCfg)
 			return
 		}
 
 		ignoreRecentFrom := now.Add(-shardStreamsCfg.TimeShardingIgnoreRecent)
 		streamsByTime, ok := shardStreamByTime(stream, labels, d.ingesterCfg.MaxChunkAge/2, ignoreRecentFrom)
 		if !ok {
-			maybeShardByRate(stream, pushSize, policy)
+			maybeShardByRate(stream, pushSize, policy, shardStreamsCfg)
 			return
 		}
 
 		for _, ts := range streamsByTime {
-			maybeShardByRate(ts.Stream, ts.linesTotalLen, policy)
+			maybeShardByRate(ts.Stream, ts.linesTotalLen, policy, shardStreamsCfg)
 		}
 	}
 
 	var ingestionBlockedError error
-	var totalEntriesSize, totalLineCount int
+
+	// Ingestion rate limiting is bucketed by the effective rate-limit target: streams whose
+	// resolved policy has a per-policy ingestion rate override are metered against their own
+	// per-(tenant,policy) bucket, replacing the tenant-wide limit; all other streams share the
+	// tenant-wide bucket (keyed by "").
+	rlBuckets := map[string]*rateLimitBucket{}
 
 	err = func() error {
 		sp := trace.SpanFromContext(ctx)
@@ -774,9 +782,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 				n++
 				entrySize := util.EntryTotalSize(&entry)
-				totalEntriesSize += entrySize
 				streamEntriesSize += entrySize
-				totalLineCount++
 			}
 			stream.Entries = stream.Entries[:n]
 			if len(stream.Entries) == 0 {
@@ -784,7 +790,22 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				continue
 			}
 
-			maybeShardStreams(stream, lbs, streamEntriesSize, policy)
+			// Attribute this stream's bytes/lines to its rate-limit bucket.
+			_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, policy)
+			bucketKey := ""
+			if hasRateOverride {
+				bucketKey = policy
+			}
+			b := rlBuckets[bucketKey]
+			if b == nil {
+				b = &rateLimitBucket{policy: policy, hasOverride: hasRateOverride}
+				rlBuckets[bucketKey] = b
+			}
+			b.bytes += streamEntriesSize
+			b.lines += n
+
+			shardCfg, _ := d.validator.PolicyShardStreams(tenantID, policy)
+			maybeShardStreams(stream, lbs, streamEntriesSize, policy, shardCfg)
 		}
 		return nil
 	}()
@@ -805,13 +826,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, totalEntriesSize) {
-		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format)
-
-		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), totalLineCount, totalEntriesSize)
-		d.writeFailuresManager.Log(tenantID, err)
-		// Return a 429 to indicate to the client they are being rate limited
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+	if err := d.enforceIngestionRateLimits(ctx, now, tenantID, rlBuckets, req.Streams, validationContext, streamResolver, format); err != nil {
+		return nil, err
 	}
 
 	// These limits are checked after the ingestion rate limit as this
@@ -824,7 +840,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				for _, stream := range rejected {
 					discardedStreams = append(discardedStreams, stream.Stream)
 				}
-				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format)
+				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
 
 				// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
 				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
@@ -988,6 +1004,124 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, 
 	return len(missingLbs) > 0, missingLbs
 }
 
+// rateLimitBucket accumulates the bytes and line count of the streams metered against a
+// single ingestion rate-limit bucket (either the tenant-wide bucket or a per-policy bucket).
+type rateLimitBucket struct {
+	policy      string
+	hasOverride bool
+	bytes       int
+	lines       int
+}
+
+// rateLimitError builds the client-facing 429 error for the rate-limit buckets a request
+// exceeded. A single exceeded bucket uses the existing per-tenant or per-policy message; two
+// or more are enumerated deterministically (the caller sorts them). All limits are looked up
+// at the same "now" used for the reservation decision.
+func (d *Distributor) rateLimitError(now time.Time, tenantID string, exceeded []*rateLimitBucket) error {
+	limitOf := func(b *rateLimitBucket) int {
+		key := tenantID
+		if b.hasOverride {
+			key = encodeRateLimitKey(tenantID, b.policy)
+		}
+		return int(d.ingestionRateLimiter.Limit(now, key))
+	}
+
+	if len(exceeded) == 1 {
+		b := exceeded[0]
+		if b.hasOverride {
+			return fmt.Errorf(validation.RateLimitedPolicyErrorMsg, tenantID, b.policy, limitOf(b), b.lines, b.bytes)
+		}
+		return fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, limitOf(b), b.lines, b.bytes)
+	}
+
+	clauses := make([]string, 0, len(exceeded))
+	for _, b := range exceeded {
+		if b.hasOverride {
+			clauses = append(clauses, fmt.Sprintf("policy %q (limit: %d bytes/sec) ingesting %d lines totaling %d bytes", b.policy, limitOf(b), b.lines, b.bytes))
+		} else {
+			clauses = append(clauses, fmt.Sprintf("the tenant default (limit: %d bytes/sec) ingesting %d lines totaling %d bytes", limitOf(b), b.lines, b.bytes))
+		}
+	}
+	return fmt.Errorf(validation.RateLimitedMultiErrorMsg, tenantID, strings.Join(clauses, "; "))
+}
+
+// enforceIngestionRateLimits applies the per-bucket ingestion rate limit as an all-or-nothing
+// decision. A bucket with a per-policy override is metered independently from the tenant-wide
+// bucket. We tentatively reserve each bucket's bytes and, if any bucket can't accept them
+// immediately, cancel every reservation (returning the tokens) and reject the whole request.
+// Using reservations rather than AllowN keeps the buckets independent: a request rejected
+// because one bucket is over its limit does not consume tokens from the others, so an
+// over-limit policy can't drain the budgets of unrelated policies across client retries.
+//
+// It returns a non-nil 429 error if any bucket is over its limit (all reservations are rolled
+// back); nil means the request was admitted (the reservations are kept and the tokens consumed).
+func (d *Distributor) enforceIngestionRateLimits(
+	ctx context.Context,
+	now time.Time,
+	tenantID string,
+	rlBuckets map[string]*rateLimitBucket,
+	streams []logproto.Stream,
+	validationContext validationContext,
+	streamResolver push.StreamResolver,
+	format string,
+) error {
+	type bucketReservation struct {
+		bucket      *rateLimitBucket
+		reservation *rate.Reservation
+	}
+	reservations := make([]bucketReservation, 0, len(rlBuckets))
+	var exceeded []*rateLimitBucket
+	for _, b := range rlBuckets {
+		limiterKey := tenantID
+		if b.hasOverride {
+			limiterKey = encodeRateLimitKey(tenantID, b.policy)
+		}
+		r := d.ingestionRateLimiter.ReserveN(now, limiterKey, b.bytes)
+		reservations = append(reservations, bucketReservation{bucket: b, reservation: r})
+		// A reservation that isn't OK (bytes exceed the burst) or that requires a wait is not
+		// immediately allowed, which is equivalent to AllowN returning false. We evaluate every
+		// bucket (rather than stopping at the first failure) so the rejection error can
+		// deterministically report all exceeded buckets.
+		if !r.OK() || r.DelayFrom(now) > 0 {
+			exceeded = append(exceeded, b)
+		}
+	}
+
+	if len(exceeded) == 0 {
+		return nil
+	}
+
+	// Roll back every reservation so no tokens are consumed for a rejected request.
+	for _, br := range reservations {
+		br.reservation.CancelAt(now)
+	}
+
+	// The whole request is dropped, so attribute every stream as discarded (each under its
+	// own policy label, handled by trackDiscardedData).
+	d.trackDiscardedData(ctx, streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, nil)
+
+	// Sort exceeded buckets deterministically: the tenant-wide bucket first, then policies
+	// alphabetically. This keeps the client-facing error (and tests) stable regardless of
+	// map iteration order.
+	slices.SortFunc(exceeded, func(a, b *rateLimitBucket) int {
+		if a.hasOverride != b.hasOverride {
+			if !a.hasOverride {
+				return -1 // tenant-wide bucket sorts first
+			}
+			return 1
+		}
+		return strings.Compare(a.policy, b.policy)
+	})
+
+	err := d.rateLimitError(now, tenantID, exceeded)
+	d.writeFailuresManager.Log(tenantID, err)
+	// Return a 429 to indicate to the client they are being rate limited
+	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+}
+
+// trackDiscardedData tracks discarded samples and bytes. When policyMatch is non-nil, only
+// streams whose resolved policy satisfies it are tracked (used to attribute discards to a
+// single ingestion rate-limit bucket); a nil policyMatch tracks all streams.
 func (d *Distributor) trackDiscardedData(
 	ctx context.Context,
 	streams []logproto.Stream,
@@ -996,11 +1130,15 @@ func (d *Distributor) trackDiscardedData(
 	reason string,
 	streamResolver push.StreamResolver,
 	format string,
+	policyMatch func(policy string) bool,
 ) {
 	for _, stream := range streams {
 		lbs, _, _, retentionHours, policy, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
 		if err != nil {
 			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
+			continue
+		}
+		if policyMatch != nil && !policyMatch(policy) {
 			continue
 		}
 		discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
@@ -1101,8 +1239,7 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 // streams and their associated keys for hashing to ingesters.
 //
 // The number of shards is limited by the number of entries.
-func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string) []KeyedStream {
-	shardStreamsCfg := d.validator.ShardStreams(tenantID)
+func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string, shardStreamsCfg shardstreams.Config) []KeyedStream {
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 

@@ -28,6 +28,12 @@ const (
 	// Declared here to avoid duplication in ingester and distributor.
 	RateLimited         = "rate_limited"
 	RateLimitedErrorMsg = "ingestion rate limit exceeded for user %s (limit: %d bytes/sec) while attempting to ingest '%d' lines totaling '%d' bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased"
+	// RateLimitedPolicyErrorMsg is used when a per-policy ingestion rate override is exceeded.
+	RateLimitedPolicyErrorMsg = "ingestion rate limit exceeded for user %s, policy %s (limit: %d bytes/sec) while attempting to ingest '%d' lines totaling '%d' bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased"
+	// RateLimitedMultiErrorMsg is used when more than one ingestion rate-limit bucket is exceeded
+	// by a single request. The second %s holds a deterministic, sorted enumeration of the
+	// exceeded buckets (the tenant default and/or specific policies).
+	RateLimitedMultiErrorMsg = "ingestion rate limit exceeded for user %s across multiple buckets: %s; reduce log volume or contact your Loki administrator to see if the limits can be increased"
 	// LineTooLong is a reason for discarding too long log lines.
 	LineTooLong         = "line_too_long"
 	LineTooLongErrorMsg = "max entry size '%d' bytes exceeded for stream '%s' while adding an entry with length '%d' bytes"
