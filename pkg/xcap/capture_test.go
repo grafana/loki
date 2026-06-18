@@ -365,6 +365,33 @@ func TestCapture_Value(t *testing.T) {
 	}
 }
 
+func TestCapture_ValueFromRegion(t *testing.T) {
+	ctx, capture := NewCapture(context.Background(), nil)
+	stat := NewStatisticInt64("rows.scanned", AggregationTypeSum)
+
+	_, logsOpen := StartRegion(ctx, "logs.Reader.Open")
+	logsOpen.Record(stat.Observe(100))
+	logsOpen.End()
+
+	_, logsRead := StartRegion(ctx, "logs.Reader.Read")
+	logsRead.Record(stat.Observe(50))
+	logsRead.End()
+
+	_, streamsOpen := StartRegion(ctx, "streams.Reader.Open")
+	streamsOpen.Record(stat.Observe(1000))
+	streamsOpen.End()
+
+	got := capture.ValueFromRegion("logs.Reader.", stat)
+	require.NotNil(t, got)
+	require.Equal(t, int64(150), got.Value)
+	require.Equal(t, 2, got.Count)
+	require.Equal(t, stat.Key(), got.Statistic.Key())
+
+	require.Equal(t, int64(150), ValueFromRegion[int64](capture, "logs.Reader", stat))
+	require.Zero(t, ValueFromRegion[int64](capture, "missing.Reader", stat))
+	require.Zero(t, ValueFromRegion[float64](capture, "logs.Reader", stat))
+}
+
 func TestCapture_GetAllStatistics(t *testing.T) {
 	tests := []struct {
 		name      string

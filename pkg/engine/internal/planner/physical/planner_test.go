@@ -249,6 +249,17 @@ func TestPlanner_Convert(t *testing.T) {
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	require.NoError(t, err)
 	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+
+	// Optimize records a firing for every optimization pass, each with a stable
+	// name.
+	firings := planner.FiredRules()
+	require.NotEmpty(t, firings)
+	names := make([]string, 0, len(firings))
+	for name := range firings {
+		require.NotEmpty(t, name)
+		names = append(names, name)
+	}
+	require.Subset(t, names, []string{"PredicatePushdown", "ProjectionPushdown"})
 }
 
 func TestPlanner_Convert_WithParse(t *testing.T) {

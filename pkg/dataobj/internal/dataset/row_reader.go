@@ -225,6 +225,7 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 		passCount          int // number of rows that passed the predicate
 		primaryColumnBytes int64
 		filledColumns      = make(map[Column]struct{}, len(r.primaryColumnIndexes))
+		region             = xcap.RegionFromContext(ctx)
 	)
 
 	// sequentially apply the predicates.
@@ -275,6 +276,13 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 			passCount++
 		}
 
+		// Track rows that are relevant to the stream matchers.
+		// This is updated only if the first predicate is streamID
+		// any other applied predicates measure query selectivity.
+		if i == 0 && isStreamIDPredicate(p) {
+			region.Record(dataobj.StatStreamRelevantRows.Observe(int64(passCount)))
+		}
+
 		if passCount == 0 {
 			// No rows passed the predicate, so we can stop early.
 			break
@@ -287,7 +295,6 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 		readSize = passCount
 	}
 
-	region := xcap.RegionFromContext(ctx)
 	region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
 	region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 
@@ -825,11 +832,13 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 	region := xcap.RegionFromContext(ctx)
 
-	var ranges rangeset.Set
-
 	var (
+		ranges       rangeset.Set
 		pageStart    int
 		lastPageSize int
+
+		isStreamCol      = isStreamIDColumn(c)
+		prevPageIncluded bool // used for tracking avg run length
 	)
 
 	for result := range c.ListPages(ctx) {
@@ -847,12 +856,28 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 			End:   uint64(pageStart + pageInfo.RowCount),
 		}
 
+		if isStreamCol {
+			region.Record(dataobj.StatStreamPagesTotal.Observe(1))
+		}
+
 		minValue, maxValue, err := readMinMax(pageInfo.Stats)
 		if err != nil {
 			return rangeset.Set{}, fmt.Errorf("failed to read page stats: %w", err)
 		} else if minValue.IsNil() || maxValue.IsNil() {
 			// No stats, so we add the whole range.
 			ranges.Add(pageRange)
+
+			if isStreamCol {
+				region.Record(dataobj.StatStreamRelevantPages.Observe(1))
+
+				// record start of a new run
+				if !prevPageIncluded {
+					region.Record(dataobj.StatStreamPageRuns.Observe(1))
+				}
+
+			}
+
+			prevPageIncluded = true
 			continue
 		}
 
@@ -880,6 +905,15 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 		if include {
 			ranges.Add(pageRange)
+
+			if isStreamCol {
+				region.Record(dataobj.StatStreamRelevantPages.Observe(1))
+
+				// track start of a new run
+				if !prevPageIncluded {
+					region.Record(dataobj.StatStreamPageRuns.Observe(1))
+				}
+			}
 		} else {
 			// Page-level stats were present and the predicate ruled out the page,
 			// so the page will not be downloaded for this predicate. Pages without
@@ -887,6 +921,8 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 			// counted here.
 			region.Record(dataobj.StatDatasetPagesPruned.Observe(1))
 		}
+
+		prevPageIncluded = include
 	}
 
 	return ranges, nil
@@ -953,4 +989,17 @@ func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]C
 	}
 
 	return ret, idxs, nil
+}
+
+func isStreamIDPredicate(p Predicate) bool {
+	in, ok := p.(InPredicate)
+	if !ok {
+		return false
+	}
+
+	return isStreamIDColumn(in.Column)
+}
+
+func isStreamIDColumn(col Column) bool {
+	return col.ColumnDesc().Type.Logical == "stream_id"
 }

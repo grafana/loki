@@ -8,26 +8,40 @@
   };
 
   outputs =
-    {
-      self,
-      nixpkgs,
-      nixpkgs-unstable,
-      flake-utils,
+    { self
+    , nixpkgs
+    , nixpkgs-unstable
+    , flake-utils
+    ,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
+        # The go version in nixpkgs often trails behind the latest by a few
+        # days. Overlay to pin to the exact version go.mod expects.
+        goOverlay = final: prev: {
+          go_1_26 = prev.go_1_26.overrideAttrs (old: rec {
+            version = "1.26.4";
+            src = prev.fetchurl {
+              url = "https://go.dev/dl/go${version}.src.tar.gz";
+              hash = "sha256-T2aKMvv8ETLmqIH7lowvHa2mMUkqM5IRc1+7JVpCYC0=";
+            };
+          });
+        };
+
         base = import nixpkgs {
           inherit system;
           config = {
             allowUnfree = true;
           };
+          overlays = [ goOverlay ];
         };
         unstable = import nixpkgs-unstable {
           inherit system;
           config = {
             allowUnfree = true;
           };
+          overlays = [ goOverlay ];
         };
 
         pkgs = base // {

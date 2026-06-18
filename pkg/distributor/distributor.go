@@ -40,6 +40,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v3/pkg/distributor/rendezvous"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -243,6 +244,8 @@ func New(
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
 	dataObjConsumerPartitionRing ring.PartitionRingReader,
+	dataObjConsumerPartitionKVClient kv.Client,
+	dataObjConsumerPartitionRingKey string,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -309,9 +312,20 @@ func New(
 		)
 
 		if cfg.DataObjTeeConfig.Enabled {
+			var rendezvousPartitionWatcher *rendezvous.PartitionRingWatcher
+			if cfg.DataObjTeeConfig.UseRendezvousHashing {
+				rendezvousPartitionWatcher = rendezvous.New(
+					rendezvous.Config{Key: dataObjConsumerPartitionRingKey},
+					dataObjConsumerPartitionKVClient,
+					logger,
+				)
+				servs = append(servs, rendezvousPartitionWatcher)
+			}
 			resolver := newSegmentationPartitionResolver(
 				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
+				cfg.DataObjTeeConfig.UseRendezvousHashing,
 				dataObjConsumerPartitionRing,
+				rendezvousPartitionWatcher,
 				registerer,
 				logger,
 			)
@@ -1211,8 +1225,22 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 		}
 	}
 
-	validation.MutatedSamples.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedSamples))
-	validation.MutatedBytes.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedBytes))
+	if truncatedSamples > 0 {
+		validation.MutatedSamples.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedSamples))
+		validation.MutatedBytes.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedBytes))
+
+		// Emit a log line so operators can confirm which streams are being
+		// truncated when max_line_size_truncate is enabled, complementing the
+		// mutated_samples_total / mutated_bytes_total metrics.
+		level.Debug(d.logger).Log(
+			"msg", "truncated log lines exceeding max_line_size",
+			"tenant", vContext.userID,
+			"stream", stream.Labels,
+			"max_line_size", vContext.maxLineSize,
+			"truncated_lines", truncatedSamples,
+			"truncated_bytes", truncatedBytes,
+		)
+	}
 }
 
 type pushIngesterTask struct {

@@ -91,6 +91,17 @@ type Planner struct {
 	context *Context
 	catalog Catalog
 	plan    *Plan
+
+	// firedRules holds the rule firings from the most recent call to
+	// Optimize, so callers can surface them as observability without changing
+	// the Optimize signature.
+	firedRules map[string]bool
+}
+
+// FiredRules returns the rule firings recorded by the most recent call to
+// [Planner.Optimize]. It returns nil if Optimize has not been called.
+func (p *Planner) FiredRules() map[string]bool {
+	return p.firedRules
 }
 
 // NewPlanner creates a new planner instance with the given context.
@@ -749,6 +760,7 @@ func disambiguateExpression(expr Expression, conflictingLabels []string) (Expres
 // Optimize runs optimization passes over the plan, modifying it
 // if any optimizations can be applied.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
+	p.firedRules = nil
 	for i, root := range plan.Roots() {
 		optimizations := []*Optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
@@ -776,7 +788,14 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			),
 		}
 		optimizer := NewOptimizer(plan, optimizations)
-		optimizer.Optimize(root)
+		fired := optimizer.Optimize(root)
+		if p.firedRules == nil {
+			p.firedRules = fired
+		} else {
+			for name, applied := range fired {
+				p.firedRules[name] = p.firedRules[name] || applied
+			}
+		}
 		if i == 1 {
 			return nil, errors.New("physical plan must only have exactly one root node")
 		}

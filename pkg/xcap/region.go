@@ -97,6 +97,33 @@ func (r *Region) Record(o Observation) {
 	agg.Record(o)
 }
 
+// Name returns the name of the region.
+func (r *Region) Name() string {
+	if r == nil {
+		return ""
+	}
+	return r.name
+}
+
+// ID returns the unique identifier of the region.
+func (r *Region) ID() ID {
+	if r == nil {
+		return zeroID
+	}
+	return r.id
+}
+
+// ParentID returns the identifier of the region's parent. It returns the zero
+// ID if the region has no parent (i.e. it is a root region).
+func (r *Region) ParentID() ID {
+	if r == nil {
+		return zeroID
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.parentID
+}
+
 // Observations returns all aggregated observations recorded in the region.
 func (r *Region) Observations() []AggregatedObservation {
 	r.mu.RLock()

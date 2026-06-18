@@ -395,17 +395,9 @@ func summarizeObservations(capture *Capture) *observations {
 
 	// metastore streams and pointers scan stats
 	result.merge(
-		collect.fromRegions("metastore.indexSectionsReader.Open", false).
-			filter(
-				StatMetastoreStreamsRead.Key(),
-			).
-			normalizeKeys(),
-	)
-
-	// metastore streams and pointers scan stats
-	result.merge(
 		collect.fromRegions("metastore.indexSectionsReader.Read", false).
 			filter(
+				StatMetastoreStreamsRead.Key(),
 				StatMetastoreSectionPointersRead.Key(),
 			).
 			normalizeKeys(),

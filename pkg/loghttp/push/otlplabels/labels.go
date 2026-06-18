@@ -125,21 +125,12 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 			return false
 		}
 
-		if action == IndexLabel {
+		switch action {
+		case IndexLabel:
 			for _, lbl := range attributeAsLabels {
 				result.StreamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-
-				if !hasServiceName && shouldDiscoverServiceName {
-					for _, labelName := range discoverServiceName {
-						if lbl.Name == labelName {
-							result.StreamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
-							hasServiceName = true
-							break
-						}
-					}
-				}
 			}
-		} else if action == StructuredMetadata {
+		case StructuredMetadata:
 			result.StructuredMetadata = append(result.StructuredMetadata, attributeAsLabels...)
 		}
 
@@ -147,6 +138,16 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 	})
 	if rangeErr != nil {
 		return nil, rangeErr
+	}
+
+	if !hasServiceName && shouldDiscoverServiceName {
+		for _, labelName := range discoverServiceName {
+			if v, ok := result.StreamLabels[model.LabelName(labelName)]; ok && v != "" {
+				result.StreamLabels[model.LabelName(LabelServiceName)] = v
+				hasServiceName = true
+				break
+			}
+		}
 	}
 
 	if !hasServiceName && shouldDiscoverServiceName {

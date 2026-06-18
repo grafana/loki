@@ -6,6 +6,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/expressionpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
+
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
 type unmarshaler interface {
@@ -46,6 +48,8 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_Batching{}
 	case *physical.Cache:
 		n.Kind = &Node_Cache{}
+	case *physical.IndexMerge:
+		n.Kind = &Node_IndexMerge{}
 	default:
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
@@ -570,6 +574,52 @@ func (n *Cache) UnmarshalPhysical(from physical.Node) error {
 		CacheName:             cache.CacheName,
 		MaxCacheableSizeBytes: cache.MaxSizeBytes,
 		Compression:           cache.Compression,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_IndexMerge) UnmarshalPhysical(from physical.Node) error {
+	n.IndexMerge = new(IndexMerge)
+	return n.IndexMerge.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
+	indexMerge, ok := from.(*physical.IndexMerge)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	runs := make([]*compactionv2pb.RunRef, len(indexMerge.Runs))
+	for i, r := range indexMerge.Runs {
+		if r == nil {
+			continue
+		}
+		sections := make([]*compactionv2pb.SectionRef, len(r.Sections))
+		for j, s := range r.Sections {
+			if s == nil {
+				continue
+			}
+			sections[j] = &compactionv2pb.SectionRef{
+				ObjectPath:   s.ObjectPath,
+				SectionIndex: s.SectionIndex,
+				MinKey:       s.MinKey,
+				MaxKey:       s.MaxKey,
+				MinTimestamp: s.MinTimestamp,
+				MaxTimestamp: s.MaxTimestamp,
+			}
+		}
+		runs[i] = &compactionv2pb.RunRef{Sections: sections}
+	}
+
+	*n = IndexMerge{
+		Tenant:                  indexMerge.Tenant,
+		TocWindowStartUnixNanos: indexMerge.ToCWindowStart,
+		Runs:                    runs,
+		OutputIndexPath:         indexMerge.OutputIndexPath,
 	}
 	return nil
 }

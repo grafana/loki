@@ -83,7 +83,7 @@ func (t *indexSet) Upload(ctx context.Context) error {
 	t.indexMtx.RLock()
 	defer t.indexMtx.RUnlock()
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("uploading table %s", t.tableName))
+	level.Info(util_log.Logger).Log("msg", "uploading table", "table", t.tableName)
 
 	for name, idx := range t.index {
 		// if the file is uploaded already do not upload it again.
@@ -104,7 +104,7 @@ func (t *indexSet) Upload(ctx context.Context) error {
 		t.indexUploadTimeMtx.Unlock()
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("finished uploading table %s", t.tableName))
+	level.Info(util_log.Logger).Log("msg", "finished uploading table", "table", t.tableName)
 
 	return nil
 }
@@ -116,7 +116,7 @@ func (t *indexSet) Close() {
 
 	for name, idx := range t.index {
 		if err := idx.Close(); err != nil {
-			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to close index %s", name), "err", err)
+			level.Error(t.logger).Log("msg", "failed to close index", "index", name, "err", err)
 		}
 	}
 
@@ -125,7 +125,7 @@ func (t *indexSet) Close() {
 
 func (t *indexSet) uploadIndex(ctx context.Context, idx index.Index) error {
 	fileName := idx.Name()
-	level.Debug(t.logger).Log("msg", fmt.Sprintf("uploading index %s", fileName))
+	level.Debug(t.logger).Log("msg", "uploading index", "index", fileName)
 
 	idxPath := idx.Path()
 
@@ -183,7 +183,7 @@ func (t *indexSet) uploadIndex(ctx context.Context, idx index.Index) error {
 
 // Cleanup removes indexes which are already uploaded and have been retained for period longer than indexRetainPeriod since they were uploaded.
 func (t *indexSet) Cleanup(indexRetainPeriod time.Duration) error {
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("cleaning up unwanted indexes from table %s", t.tableName))
+	level.Info(util_log.Logger).Log("msg", "cleaning up unwanted indexes from table", "table", t.tableName)
 
 	var filesToCleanup []string
 	cutoffTime := time.Now().Add(-indexRetainPeriod)
@@ -203,7 +203,7 @@ func (t *indexSet) Cleanup(indexRetainPeriod time.Duration) error {
 	t.indexMtx.RUnlock()
 
 	for i := range filesToCleanup {
-		level.Debug(util_log.Logger).Log("msg", fmt.Sprintf("dropping uploaded index %s from table %s", filesToCleanup[i], t.tableName))
+		level.Debug(util_log.Logger).Log("msg", "dropping uploaded index from table", "index", filesToCleanup[i], "table", t.tableName)
 
 		if err := t.removeIndex(filesToCleanup[i]); err != nil {
 			return err

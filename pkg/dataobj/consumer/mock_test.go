@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 // mockBuilder mocks a [logsobj.Builder].
@@ -81,11 +83,68 @@ func (m *mockFlusher) Flush(_ context.Context, _ builder, _ string) (string, err
 
 type mockFlushCommitter struct {
 	flushes int
+	// lastBuilderCount records the number of builders passed to the most
+	// recent Flush call, letting tests assert how a partition was split
+	// across windows.
+	lastBuilderCount int
+	lastReason       string
+	lastOffset       int64
 }
 
-func (m *mockFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64) error {
+func (m *mockFlushCommitter) Flush(_ context.Context, builders []builder, reason string, offset int64) error {
 	m.flushes++
+	m.lastBuilderCount = len(builders)
+	m.lastReason = reason
+	m.lastOffset = offset
 	return nil
+}
+
+// testBuilderFactory creates real [logsobj.Builder] instances backed by an
+// in-memory scratch store. All builders share a single, unregistered
+// [logsobj.BuilderMetrics] instance, mirroring how the production factory
+// shares metrics across the builders it creates.
+type testBuilderFactory struct {
+	metrics *logsobj.BuilderMetrics
+	// created counts how many builders have been handed out. Tests use it to
+	// assert that builders are reused per window rather than recreated.
+	created int
+	// failAt, when non-negative, makes NewBuilder fail once created reaches
+	// this value. A value of -1 (the default) never fails.
+	failAt int
+}
+
+func newTestBuilderFactory() *testBuilderFactory {
+	return &testBuilderFactory{metrics: logsobj.NewBuilderMetrics(), failAt: -1}
+}
+
+func (f *testBuilderFactory) NewBuilder() (*logsobj.Builder, error) {
+	if f.failAt >= 0 && f.created >= f.failAt {
+		return nil, errors.New("boom")
+	}
+	f.created++
+	return logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), f.metrics)
+}
+
+// mockMultiBuilder wraps the production [TOCAlignedMultiBuilder] so processor
+// tests can drive real builder behaviour while still being able to force the
+// group to report itself as full.
+type mockMultiBuilder struct {
+	*TOCAlignedMultiBuilder
+	forceFull bool
+}
+
+var _ multiBuilder = (*mockMultiBuilder)(nil)
+
+func (m *mockMultiBuilder) IsFull() bool {
+	return m.forceFull || m.TOCAlignedMultiBuilder.IsFull()
+}
+
+// newTestMultiBuilder returns a multiBuilder backed by real per-window
+// builders, suitable for driving the processor in tests.
+func newTestMultiBuilder() *mockMultiBuilder {
+	return &mockMultiBuilder{
+		TOCAlignedMultiBuilder: NewTOCAlignedMultiBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize)),
+	}
 }
 
 // mockKafka mocks a [kgo.Client]. The zero value is usable.

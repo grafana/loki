@@ -3,7 +3,6 @@ package physical
 import (
 	"context"
 	"slices"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 
@@ -34,9 +33,6 @@ type LogMerge struct {
 	// OutputPath is the deterministic object-storage key where the
 	// executor writes the compacted log object.
 	OutputPath string
-
-	// TaskTTL is the per-task execution deadline.
-	TaskTTL time.Duration
 }
 
 // ID implements the Node interface.
@@ -54,7 +50,6 @@ func (n *LogMerge) Clone() Node {
 		Runs:             cloneRuns(n.Runs),
 		SourceIndexPaths: slices.Clone(n.SourceIndexPaths),
 		OutputPath:       n.OutputPath,
-		TaskTTL:          n.TaskTTL,
 	}
 }
 

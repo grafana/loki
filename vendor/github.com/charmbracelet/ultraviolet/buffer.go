@@ -704,10 +704,13 @@ func (b *RenderBuffer) TouchedLines() int {
 // SetCell sets the cell at the given x, y position and marks the line as
 // touched.
 func (b *RenderBuffer) SetCell(x, y int, c *Cell) {
-	if !cellEqual(b.CellAt(x, y), c) {
+	if p := b.CellAt(x, y); !cellEqual(p, c) {
 		width := 1
 		if c != nil && c.Width > 0 {
 			width = c.Width
+		}
+		if p != nil && p.Width > 0 {
+			width = max(width, p.Width)
 		}
 		b.TouchLine(x, y, width)
 	}
@@ -792,4 +795,38 @@ func (b *RenderBuffer) DeleteCellArea(x, y, n int, c *Cell, area Rectangle) {
 		n = remainingCells
 	}
 	b.TouchLine(x, y, n)
+}
+
+// Clear clears the buffer with space cells and marks all lines as touched.
+func (b *RenderBuffer) Clear() {
+	b.Buffer.Clear()
+	w := b.Width()
+	for y := range b.Lines {
+		b.TouchLine(0, y, w)
+	}
+}
+
+// ClearArea clears the buffer with space cells within the specified rectangle
+// and marks the affected lines as touched.
+func (b *RenderBuffer) ClearArea(area Rectangle) {
+	b.Buffer.ClearArea(area)
+	w := area.Max.X - area.Min.X
+	for y := area.Min.Y; y < area.Max.Y; y++ {
+		b.TouchLine(area.Min.X, y, w)
+	}
+}
+
+// Fill fills the buffer with the given cell and marks all lines as touched.
+func (b *RenderBuffer) Fill(c *Cell) {
+	b.FillArea(c, b.Bounds())
+}
+
+// FillArea fills the buffer with the given cell within the specified rectangle
+// and marks the affected lines as touched.
+func (b *RenderBuffer) FillArea(c *Cell, area Rectangle) {
+	b.Buffer.FillArea(c, area)
+	w := area.Max.X - area.Min.X
+	for y := area.Min.Y; y < area.Max.Y; y++ {
+		b.TouchLine(area.Min.X, y, w)
+	}
 }

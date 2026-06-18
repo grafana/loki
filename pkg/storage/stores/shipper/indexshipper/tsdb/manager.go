@@ -111,7 +111,7 @@ func (m *tsdbManager) Start() error {
 
 		bucket := f.Name()
 		if ok, err := m.tableRange.TableInRange(bucket); !ok {
-			level.Info(m.log).Log("msg", fmt.Sprintf("skip loading, table not in range: %s", f.Name()), "reason", err)
+			level.Info(m.log).Log("msg", "skip loading, table not in range", "table", f.Name(), "reason", err)
 			continue
 		}
 		buckets++

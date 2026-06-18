@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
 	clients_util "github.com/grafana/loki/v3/clients/pkg/util"
 
-	"github.com/grafana/loki/v3/pkg/util"
+	labelsutil "github.com/grafana/loki/v3/pkg/util/labels"
 )
 
 const (
@@ -375,11 +375,12 @@ func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
 			return nil, err
 		}
 	}
-	lb := labels.NewBuilder(labels.FromMap(util.ModelLabelSetToMap(lbs)))
+	lb := labels.NewBuilder(labels.EmptyLabels())
+	labelsutil.AddLabelSetToBuilder(lb, lbs)
 	if keep := relabel.ProcessBuilder(lb, relabelConfig...); !keep {
 		return nil, nil
 	}
-	return model.LabelSet(util.LabelsToMetric(lb.Labels())), nil
+	return labelsutil.BuilderToLabelSet(lb), nil
 }
 
 func parseBoolean(key string, logCtx logger.Info, defaultValue bool) (bool, error) {

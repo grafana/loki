@@ -135,19 +135,33 @@ func (a *bloomAggregator) Observe(obs BloomObservation) error {
 	return nil
 }
 
-// Entries returns all aggregated entries. Bitmap normalization (padding to
-// equal length) is NOT done here; the caller (columnarEncode) handles it
-// across both label and bloom entries.
-func (a *bloomAggregator) Entries() []*bloomPostingEntry {
+// Entries returns all aggregated entries converted to public type. Bitmap
+// normalization (padding to equal length) is NOT done here. Returns an error if
+// any bloom filter fails to marshal.
+func (a *bloomAggregator) Entries() ([]BloomEntry, error) {
 	if len(a.entries) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	result := make([]*bloomPostingEntry, 0, len(a.entries))
+	result := make([]BloomEntry, 0, len(a.entries))
 	for _, entry := range a.entries {
-		result = append(result, entry)
+		bloomBytes, err := entry.BloomBytes()
+		if err != nil {
+			return nil, fmt.Errorf("marshaling bloom filter for %q section %d column %q: %w",
+				entry.ObjectPath, entry.SectionIndex, entry.ColumnName, err)
+		}
+		result = append(result, BloomEntry{
+			ObjectPath:       entry.ObjectPath,
+			SectionIndex:     entry.SectionIndex,
+			ColumnName:       entry.ColumnName,
+			BloomFilter:      bloomBytes,
+			StreamIDBitmap:   entry.BitmapBytes(),
+			MinTimestamp:     entry.MinTimestamp,
+			MaxTimestamp:     entry.MaxTimestamp,
+			UncompressedSize: entry.UncompressedSize,
+		})
 	}
-	return result
+	return result, nil
 }
 
 // BloomBytes marshals and returns the bloom filter bytes for a specific column.

@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"errors"
+	"flag"
 	"testing"
 	"time"
 
@@ -26,7 +27,6 @@ func TestPlanner_BootShutdown(t *testing.T) {
 		},
 		PollingInterval:           defaultPollingInterval,
 		MaxRunsPerTask:            defaultMaxRunsPerTask,
-		IndexMergeTaskTTL:         defaultIndexMergeTaskTTL,
 		ToCConsolidateTimeout:     defaultToCConsolidateTimeout,
 		MaxRunningCompactionTasks: defaultMaxRunningCompactionTasks,
 		PlanVersion:               defaultPlanVersion,
@@ -90,16 +90,9 @@ func TestConfig_Validate_EnabledRejectsBadValues(t *testing.T) {
 	})
 
 	t.Run("happy path", func(t *testing.T) {
-		cfg := Config{
-			Enabled:                   true,
-			MaxRunningCompactionTasks: 16,
-			Scheduler:                 SchedulerConfig{Endpoint: defaultEndpoint},
-			PollingInterval:           defaultPollingInterval,
-			MaxRunsPerTask:            defaultMaxRunsPerTask,
-			IndexMergeTaskTTL:         defaultIndexMergeTaskTTL,
-			ToCConsolidateTimeout:     defaultToCConsolidateTimeout,
-			PlanVersion:               defaultPlanVersion,
-		}
+		var cfg Config
+		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		cfg.Enabled = true
 		require.NoError(t, cfg.Validate())
 	})
 }

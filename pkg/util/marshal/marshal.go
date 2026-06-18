@@ -17,26 +17,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
 )
 
 func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 	switch result := v.(type) {
 	case logqlmodel.Result:
-		version := loghttp.GetVersion(r.RequestURI)
 		encodeFlags := httpreq.ExtractEncodingFlags(r)
-		if version == loghttp.VersionV1 {
-			return WriteQueryResponseJSON(result.Data, result.Warnings, result.Statistics, w, encodeFlags)
-		}
-
-		return marshal_legacy.WriteQueryResponseJSON(result, w)
+		return WriteQueryResponseJSON(result.Data, result.Warnings, result.Statistics, w, encodeFlags)
 	case *logproto.LabelResponse:
-		version := loghttp.GetVersion(r.RequestURI)
-		if version == loghttp.VersionV1 {
-			return WriteLabelResponseJSON(result.GetValues(), w)
-		}
-
-		return marshal_legacy.WriteLabelResponseJSON(*result, w)
+		return WriteLabelResponseJSON(result.GetValues(), w)
 	case *logproto.SeriesResponse:
 		return WriteSeriesResponseJSON(result.GetSeries(), w)
 	case *logproto.IndexStatsResponse:

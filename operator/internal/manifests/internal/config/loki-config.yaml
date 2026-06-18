@@ -151,6 +151,7 @@ ingester:
     final_sleep: 0s
     join_after: 30s
     num_tokens: 512
+    tokens_file_path: {{ .StorageDirectory }}/ring-tokens
     {{- if .GossipRing.EnableIPv6 }}
     enable_inet6: true
     {{- end}}
