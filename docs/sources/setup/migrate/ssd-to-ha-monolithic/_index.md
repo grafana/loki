@@ -11,7 +11,7 @@ keywords:
 
 # Migrate from SSD to highly available monolithic deployment
 
-This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a highly available (HA) monolithic deployment of Loki. Before starting the migration, make sure you have read the [considerations](#considerations) section.
+This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a highly available (HA) monolithic deployment of Loki. Before starting the migration, make sure you have read the [planning](#planning-your-migration) section.
 
 {{< admonition type="warning" >}}
 Simple Scalable Deployment (SSD) mode is being deprecated and will be removed with the Loki 4.0 release. You should plan to migrate from SSD to microservices or HA monolithic deployment. You will not be able to run Loki 4.0 in SSD mode.
