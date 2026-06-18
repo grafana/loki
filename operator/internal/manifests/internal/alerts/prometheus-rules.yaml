@@ -46,7 +46,7 @@ groups:
   # Ingester CPU usage per LokiStack (cores)
   - record: openshift_logging:lokistack_ingester_cpu_cores:sum
     expr: |
-      sum by (stack_namespace, size, stack_name) (
+      sum by (stack_namespace, size) (
         label_replace(
           label_replace(
             rate(container_cpu_usage_seconds_total{container="loki-ingester"}[5m]),
@@ -54,13 +54,13 @@ groups:
           ),
           "stack_namespace", "$1", "namespace", "(.+)"
         )
-        * on (stack_namespace, stack_name) group_left(size)
+        * on (stack_namespace) group_left(size)
         lokistack_info
       )
   # Ingester memory usage by size (bytes)
   - record: openshift_logging:lokistack_ingester_memory_working_set_bytes:sum
     expr: |
-      sum by (stack_namespace, size, stack_name) (
+      sum by (stack_namespace, size) (
         label_replace(
           label_replace(
             container_memory_working_set_bytes{container="loki-ingester",pod=~".+-ingester-.+"},
@@ -74,13 +74,13 @@ groups:
           "namespace",
           "(.+)"
         )
-        * on (stack_namespace, stack_name) group_left(size)
+        * on (stack_namespace) group_left(size)
         lokistack_info
       )
   # Total bytes received by size (bytes/s)
   - record: openshift_logging:lokistack_ingestion_received_bytes_per_second:sum
     expr: |
-      sum by (stack_namespace, size, stack_name) (
+      sum by (stack_namespace, size) (
         label_replace(
           label_replace(
             rate(loki_distributor_bytes_received_total[5m]),
@@ -94,13 +94,13 @@ groups:
           "namespace",
           "(.+)"
         )
-        * on (stack_namespace, stack_name) group_left(size)
+        * on (stack_namespace) group_left(size)
         lokistack_info
       )
   # Total bytes discarded by size and reason (bytes/s)
   - record: openshift_logging:lokistack_ingestion_discarded_bytes_per_second:sum
     expr: |
-      sum by (stack_namespace, size, stack_name, reason) (
+      sum by (stack_namespace, size, reason) (
         label_replace(
           label_replace(
             rate(loki_discarded_bytes_total[5m]),
@@ -114,6 +114,6 @@ groups:
           "namespace",
           "(.+)"
         )
-        * on (stack_namespace, stack_name) group_left(size)
+        * on (stack_namespace) group_left(size)
         lokistack_info
       )
