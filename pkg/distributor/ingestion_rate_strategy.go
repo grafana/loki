@@ -64,9 +64,10 @@ func (s *localStrategy) Limit(key string) float64 {
 func (s *localStrategy) Burst(key string) int {
 	tenant, policy := decodeRateLimitKey(key)
 	if policy != "" {
-		// A policy may set a rate without an explicit burst; fall back to the tenant burst
-		// when the per-policy burst is unset (0).
-		if burst, ok := s.limits.PolicyIngestionBurstSizeBytes(tenant, policy); ok && burst > 0 {
+		// ok means the policy explicitly set a burst; honor it even when it's 0 (a 0 burst
+		// blocks ingestion for the policy). An unset per-policy burst (ok=false) inherits the
+		// tenant burst.
+		if burst, ok := s.limits.PolicyIngestionBurstSizeBytes(tenant, policy); ok {
 			return burst
 		}
 	}
@@ -108,7 +109,8 @@ func (s *globalStrategy) Burst(key string) int {
 	// to keep it easier to understand for users / operators.
 	tenant, policy := decodeRateLimitKey(key)
 	if policy != "" {
-		if burst, ok := s.limits.PolicyIngestionBurstSizeBytes(tenant, policy); ok && burst > 0 {
+		// ok means the policy explicitly set a burst; honor it even when it's 0.
+		if burst, ok := s.limits.PolicyIngestionBurstSizeBytes(tenant, policy); ok {
 			return burst
 		}
 	}

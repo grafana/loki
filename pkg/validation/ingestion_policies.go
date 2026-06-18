@@ -452,6 +452,9 @@ func (o *Overrides) PolicyIngestionRateBytes(userID, policy string) (float64, bo
 	return 0, false
 }
 
+// PolicyIngestionBurstSizeBytes returns the per-policy ingestion burst and whether it was
+// overridden. overridden is true whenever the policy explicitly sets the burst, including an
+// explicit 0 (which blocks ingestion); callers must gate on the bool, not on a non-zero value.
 func (o *Overrides) PolicyIngestionBurstSizeBytes(userID, policy string) (int, bool) {
 	if pl, ok := o.policyOverride(userID, policy); ok && pl.IngestionBurstSizeMB != nil {
 		return int(*pl.IngestionBurstSizeMB * bytesInMB), true
