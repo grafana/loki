@@ -67,7 +67,7 @@ type ContributingTimeRangeChangedNotifier interface {
 var (
 	errNotImplemented  = errors.New("pipeline not implemented")
 	errPipelineNotOpen = errors.New("pipeline not opened")
-	EOF                = fmt.Errorf("pipeline exhausted: %w", io.EOF)
+	EOF                = fmt.Errorf("pipeline exhausted: %w", io.EOF) //nolint:revive,staticcheck
 )
 
 type state struct {
