@@ -60,6 +60,8 @@ type Metrics struct {
 	reg *prometheus.Registry
 
 	framesReceivedTotal *prometheus.CounterVec
+	framesTotal         *prometheus.CounterVec
+	frameBytesTotal     *prometheus.CounterVec
 	messagesQueued      prometheus.Gauge
 	messagesSentTotal   *prometheus.CounterVec
 	messageRTTSeconds   *prometheus.HistogramVec
@@ -83,6 +85,14 @@ func NewMetrics() *Metrics {
 			Name: "loki_engine_scheduler_wire_frames_received_total",
 			Help: "Total number of frames received by the wire",
 		}, []string{"type", "message_type"}),
+		framesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_wire_frames_total",
+			Help: "Total number of encoded wire frames sent or received by role, plane, direction, frame kind, and message type.",
+		}, []string{"role", "plane", "direction", "frame_kind", "message_type"}),
+		frameBytesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_wire_frame_bytes_total",
+			Help: "Total encoded bytes in wire frames sent or received by role, plane, direction, frame kind, and message type.",
+		}, []string{"role", "plane", "direction", "frame_kind", "message_type"}),
 		messagesQueued: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_engine_scheduler_wire_messages_queued",
 			Help: "Number of messages queued by the wire",
@@ -145,6 +155,11 @@ func newNativeHistogramVec(reg prometheus.Registerer, opts prometheus.HistogramO
 
 func (m *Metrics) incFrameReceived(frame Frame) {
 	m.framesReceivedTotal.WithLabelValues(frame.FrameKind().String(), frameMessageType(frame)).Inc()
+}
+
+func (m *Metrics) recordFrame(role Role, plane Plane, direction string, frame Frame, messageType string, size int) {
+	m.framesTotal.WithLabelValues(string(role), string(plane), direction, frame.FrameKind().String(), messageType).Inc()
+	m.frameBytesTotal.WithLabelValues(string(role), string(plane), direction, frame.FrameKind().String(), messageType).Add(float64(size))
 }
 
 // frameMessageType returns the application [MessageKind] carried by frame, or

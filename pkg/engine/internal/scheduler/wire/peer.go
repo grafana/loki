@@ -115,11 +115,38 @@ type queuedFrame struct {
 	enqueuedAt  time.Time
 }
 
+type sizedSender interface {
+	sendWithSize(context.Context, Frame) (int, error)
+}
+
+type sizedReceiver interface {
+	recvWithSize(context.Context) (Frame, int, error)
+}
+
+func (p *Peer) sendFrame(ctx context.Context, frame Frame) (int, bool, error) {
+	if conn, ok := p.Conn.(sizedSender); ok {
+		size, err := conn.sendWithSize(ctx, frame)
+		return size, true, err
+	}
+
+	return 0, false, p.Conn.Send(ctx, frame)
+}
+
+func (p *Peer) recvFrame(ctx context.Context) (Frame, int, bool, error) {
+	if conn, ok := p.Conn.(sizedReceiver); ok {
+		frame, size, err := conn.recvWithSize(ctx)
+		return frame, size, true, err
+	}
+
+	frame, err := p.Conn.Recv(ctx)
+	return frame, 0, false, err
+}
+
 func (p *Peer) recvMessages(ctx context.Context) error {
 	defer close(p.done)
 
 	for {
-		frame, err := p.Conn.Recv(ctx)
+		frame, frameSize, hasFrameSize, err := p.recvFrame(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				// Context got canceled; shut down
@@ -129,11 +156,16 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 		}
 
 		p.Metrics.incFrameReceived(frame)
+		role, plane := p.labels()
 
 		switch frame := frame.(type) {
 		case MessageFrame:
+			messageType := frameMessageType(frame)
+			if hasFrameSize {
+				p.Metrics.recordFrame(role, plane, messageDirectionReceived, frame, messageType, frameSize)
+			}
+
 			// Queue the message for processing.
-			role, plane := p.labels()
 			p.Metrics.incMessageQueued()
 			p.Metrics.incQueueDepth(role, plane, queueDirectionIncoming)
 			select {
@@ -147,11 +179,18 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 		case AckFrame:
 			// If there's still a listener for this request, inform them of
 			// the success.
-			val, found := p.sentRequests.Load(frame.ID)
-			if !found {
+			var req *request
+			messageType := "none"
+			if val, found := p.sentRequests.Load(frame.ID); found {
+				req = val.(*request)
+				messageType = req.messageType
+			}
+			if hasFrameSize {
+				p.Metrics.recordFrame(role, plane, messageDirectionReceived, frame, messageType, frameSize)
+			}
+			if req == nil {
 				continue
 			}
-			req := val.(*request)
 
 			select {
 			case req.result <- nil:
@@ -162,11 +201,18 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 		case NackFrame:
 			// If there's still a listener for this request, inform them of
 			// the error.
-			val, found := p.sentRequests.Load(frame.ID)
-			if !found {
+			var req *request
+			messageType := "none"
+			if val, found := p.sentRequests.Load(frame.ID); found {
+				req = val.(*request)
+				messageType = req.messageType
+			}
+			if hasFrameSize {
+				p.Metrics.recordFrame(role, plane, messageDirectionReceived, frame, messageType, frameSize)
+			}
+			if req == nil {
 				continue
 			}
-			req := val.(*request)
 
 			select {
 			case req.result <- frame.Error:
@@ -175,6 +221,9 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 			}
 
 		case DiscardFrame:
+			if hasFrameSize {
+				p.Metrics.recordFrame(role, plane, messageDirectionReceived, frame, frameMessageType(frame), frameSize)
+			}
 			// TODO(rfratto): cancel handleMessage goroutine
 
 		default:
@@ -214,9 +263,16 @@ func (p *Peer) handleOutgoing(ctx context.Context) error {
 		case queued := <-p.outgoing:
 			p.Metrics.decQueueDepth(queued.role, queued.plane, queueDirectionOutgoing)
 			p.Metrics.observeOutgoingQueue(queued.role, queued.plane, queued.frame.FrameKind().String(), queued.messageType, time.Since(queued.enqueuedAt))
-			if err := p.Conn.Send(ctx, queued.frame); err != nil && ctx.Err() == nil {
-				level.Warn(p.Logger).Log("msg", "failed to send message", "error", err)
-				p.notifyError(queued.frame, err)
+			frameSize, hasFrameSize, err := p.sendFrame(ctx, queued.frame)
+			if err != nil {
+				if ctx.Err() == nil {
+					level.Warn(p.Logger).Log("msg", "failed to send message", "error", err)
+					p.notifyError(queued.frame, err)
+				}
+				continue
+			}
+			if hasFrameSize {
+				p.Metrics.recordFrame(queued.role, queued.plane, messageDirectionSent, queued.frame, queued.messageType, frameSize)
 			}
 		}
 	}
@@ -315,7 +371,8 @@ func convertError(err error) *Error {
 }
 
 type request struct {
-	result chan error
+	messageType string
+	result      chan error
 }
 
 // SendMessage sends a message to the remote peer. SendMessage blocks until the
@@ -328,14 +385,16 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) (err error) {
 	p.lazyInit()
 
 	reqID := p.requestID.Inc()
+	messageType := message.Kind().String()
 	req := &request{
-		result: make(chan error, 1),
+		messageType: messageType,
+		result:      make(chan error, 1),
 	}
 	p.sentRequests.Store(reqID, req)
 	defer p.sentRequests.Delete(reqID)
 
 	role, plane := p.labels()
-	obs := p.Metrics.beginSend(role, plane, message.Kind().String())
+	obs := p.Metrics.beginSend(role, plane, messageType)
 	defer func() {
 		// Re-read labels: the first message on a connection can classify an
 		// initially unknown peer as control or data plane.

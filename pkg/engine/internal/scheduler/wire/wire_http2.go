@@ -185,6 +185,7 @@ type http2Conn struct {
 
 type incomingFrame struct {
 	frame Frame
+	size  int
 	err   error
 }
 
@@ -216,8 +217,8 @@ func newHTTP2Conn(
 
 func (c *http2Conn) readLoop(ctx context.Context) {
 	for {
-		frame, err := c.codec.DecodeFrom(c.reader)
-		incoming := incomingFrame{frame: frame, err: err}
+		frame, size, err := c.codec.decodeSizedFrom(c.reader)
+		incoming := incomingFrame{frame: frame, size: size, err: err}
 		select {
 		case <-ctx.Done():
 			return
@@ -230,50 +231,60 @@ func (c *http2Conn) readLoop(ctx context.Context) {
 
 // Send sends a frame over the connection.
 func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
+	_, err := c.sendWithSize(ctx, frame)
+	return err
+}
+
+func (c *http2Conn) sendWithSize(ctx context.Context, frame Frame) (int, error) {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
 	select {
 	case <-c.ctx.Done():
-		return ErrConnClosed
+		return 0, ErrConnClosed
 	case <-ctx.Done():
-		return ctx.Err()
+		return 0, ctx.Err()
 	case <-c.closed:
-		return ErrConnClosed
+		return 0, ErrConnClosed
 	default:
 	}
 
-	err := c.codec.EncodeTo(c.writer, frame)
+	size, err := c.codec.encodeSizedTo(c.writer, frame)
 	if err != nil && isHTTP2Error(err) {
-		return ErrConnClosed
+		return 0, ErrConnClosed
 	} else if err != nil {
-		return fmt.Errorf("write frame: %w", err)
+		return 0, fmt.Errorf("write frame: %w", err)
 	}
 
 	// Flush after each frame to ensure immediate delivery
 	if c.responseController != nil {
 		err := c.responseController.Flush()
 		if err != nil && isHTTP2Error(err) {
-			return ErrConnClosed
+			return 0, ErrConnClosed
 		} else if err != nil {
-			return fmt.Errorf("flush response: %w", err)
+			return 0, fmt.Errorf("flush response: %w", err)
 		}
 	}
 
-	return nil
+	return size, nil
 }
 
 // Recv receives a frame from the connection.
 func (c *http2Conn) Recv(ctx context.Context) (Frame, error) {
+	frame, _, err := c.recvWithSize(ctx)
+	return frame, err
+}
+
+func (c *http2Conn) recvWithSize(ctx context.Context) (Frame, int, error) {
 	select {
 	case <-c.ctx.Done():
-		return nil, ErrConnClosed
+		return nil, 0, ErrConnClosed
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, 0, ctx.Err()
 	case <-c.closed:
-		return nil, ErrConnClosed
+		return nil, 0, ErrConnClosed
 	case f := <-c.incomingCh:
-		return f.frame, f.err
+		return f.frame, f.size, f.err
 	}
 }
 

@@ -46,41 +46,71 @@ func (br *byteReaderAdapter) ReadByte() (byte, error) {
 // EncodeTo encodes a frame as protobuf and writes it to the writer.
 // Format: [uvarint length][protobuf payload]
 func (c *protobufCodec) EncodeTo(w io.Writer, frame Frame) error {
-	// Convert wire.Frame to protobuf
-	pbFrame, err := c.frameToPbFrame(frame)
-	if err != nil {
-		panic(fmt.Errorf("failed to convert frame to protobuf: %w", err))
-	}
+	_, err := c.encodeSizedTo(w, frame)
+	return err
+}
 
-	// Marshal to bytes
-	data, err := proto.Marshal(pbFrame)
+func (c *protobufCodec) encodeSizedTo(w io.Writer, frame Frame) (int, error) {
+	data, err := c.encodePayload(frame)
 	if err != nil {
-		panic(fmt.Errorf("failed to marshal protobuf: %w", err))
+		panic(err)
 	}
 
 	// Write length prefix (uvarint)
 	length := uint64(len(data))
-	buf := make([]byte, binary.MaxVarintLen64)
-	n := binary.PutUvarint(buf, length)
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], length)
 	if _, err := w.Write(buf[:n]); err != nil {
-		return fmt.Errorf("failed to write length prefix: %w", err)
+		return 0, fmt.Errorf("failed to write length prefix: %w", err)
 	}
 
 	// Write payload
 	written, err := w.Write(data)
 	if err != nil {
-		return fmt.Errorf("failed to write payload: %w", err)
+		return 0, fmt.Errorf("failed to write payload: %w", err)
 	}
 	if written != len(data) {
-		return fmt.Errorf("incomplete write: wrote %d bytes, expected %d", written, len(data))
+		return 0, fmt.Errorf("incomplete write: wrote %d bytes, expected %d", written, len(data))
 	}
 
-	return nil
+	return n + written, nil
+}
+
+func (c *protobufCodec) encodedSize(frame Frame) (int, error) {
+	data, err := c.encodePayload(frame)
+	if err != nil {
+		return 0, err
+	}
+
+	return uvarintSize(uint64(len(data))) + len(data), nil
+}
+
+func uvarintSize(v uint64) int {
+	var lengthPrefix [binary.MaxVarintLen64]byte
+	return binary.PutUvarint(lengthPrefix[:], v)
+}
+
+func (c *protobufCodec) encodePayload(frame Frame) ([]byte, error) {
+	pbFrame, err := c.frameToPbFrame(frame)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert frame to protobuf: %w", err)
+	}
+
+	data, err := proto.Marshal(pbFrame)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal protobuf: %w", err)
+	}
+	return data, nil
 }
 
 // DecodeFrom reads and decodes a frame from the bound reader.
 // Format: [uvarint length][protobuf payload]
 func (c *protobufCodec) DecodeFrom(r io.Reader) (Frame, error) {
+	frame, _, err := c.decodeSizedFrom(r)
+	return frame, err
+}
+
+func (c *protobufCodec) decodeSizedFrom(r io.Reader) (Frame, int, error) {
 	// Read length prefix (uvarint)
 	// binary.ReadUvarint requires a ByteReader, so we wrap if needed
 	byteReader, ok := r.(io.ByteReader)
@@ -90,32 +120,33 @@ func (c *protobufCodec) DecodeFrom(r io.Reader) (Frame, error) {
 
 	length, err := binary.ReadUvarint(byteReader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read length prefix: %w", err)
+		return nil, 0, fmt.Errorf("failed to read length prefix: %w", err)
 	}
+	prefixSize := uvarintSize(length)
 
 	// Read payload
 	data := make([]byte, length)
 	n, err := io.ReadFull(r, data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read payload: %w", err)
+		return nil, 0, fmt.Errorf("failed to read payload: %w", err)
 	}
 	if uint64(n) != length {
-		return nil, fmt.Errorf("incomplete read: read %d bytes, expected %d", n, length)
+		return nil, 0, fmt.Errorf("incomplete read: read %d bytes, expected %d", n, length)
 	}
 
 	// Unmarshal protobuf
 	pbFrame := &wirepb.Frame{}
 	if err := proto.Unmarshal(data, pbFrame); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal protobuf: %w", err)
+		return nil, 0, fmt.Errorf("failed to unmarshal protobuf: %w", err)
 	}
 
 	// Convert protobuf to wire.Frame
 	frame, err := c.frameFromPbFrame(pbFrame)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert protobuf to frame: %w", err)
+		return nil, 0, fmt.Errorf("failed to convert protobuf to frame: %w", err)
 	}
 
-	return frame, nil
+	return frame, prefixSize + n, nil
 }
 
 func (c *protobufCodec) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {
