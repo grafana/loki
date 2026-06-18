@@ -159,6 +159,7 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 		Logger:  logger,
 		Metrics: s.wireMetrics,
 		Conn:    conn,
+		Role:    wire.RoleScheduler,
 
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
@@ -205,6 +206,7 @@ func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, ms
 	if err := worker.MarkDataPlane(); err != nil {
 		return err
 	}
+	worker.SetPlane(wire.PlaneData)
 
 	s.resourcesMut.RLock()
 	defer s.resourcesMut.RUnlock()
@@ -223,6 +225,7 @@ func (s *Scheduler) handleWorkerHello(ctx context.Context, worker *workerConn, m
 	if err := worker.HandleHello(msg); err != nil {
 		return err
 	}
+	worker.SetPlane(wire.PlaneControl)
 
 	// Request to be notified when the worker is ready.
 	s.workerSubscribe(ctx, worker)
@@ -264,8 +267,33 @@ func nudgeSemaphore(sema chan struct{}) {
 }
 
 func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, msg wire.TaskStatusMessage) error {
+	start := time.Now()
+	res, err := s.applyTaskStatus(ctx, worker, msg)
+
+	stateClass := taskStatusStateClass(msg.Status.State)
+	s.metrics.taskStatusMessagesTotal.WithLabelValues(stateClass, res.outcome).Inc()
+	s.metrics.taskStatusHandlerSeconds.WithLabelValues(taskStatusPhaseTotal, stateClass, res.outcome).Observe(time.Since(start).Seconds())
+	if res.staleReason != "" {
+		s.metrics.taskStatusStaleTotal.WithLabelValues(res.staleReason).Inc()
+	}
+	return err
+}
+
+// taskStatusResult classifies the outcome of applying a TaskStatus message so
+// handleTaskStatus can record metrics in one place without interleaving them
+// with the handler logic. staleReason is empty unless the status was stale or
+// rejected.
+type taskStatusResult struct {
+	outcome     string
+	staleReason string
+}
+
+// applyTaskStatus applies an incoming TaskStatus message to scheduler state and
+// returns how the message was classified. It performs no metric recording; that
+// is the caller's job.
+func (s *Scheduler) applyTaskStatus(ctx context.Context, worker *workerConn, msg wire.TaskStatusMessage) (taskStatusResult, error) {
 	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
-		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+		return taskStatusResult{outcome: taskStatusOutcomeHandlerError}, fmt.Errorf("worker connection must be in state %q, got %q", want, got)
 	}
 
 	var n notifier
@@ -276,58 +304,60 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 
 	task, found := s.tasks[msg.ID]
 	if !found {
-		return fmt.Errorf("task %s not found", msg.ID)
+		return taskStatusResult{outcome: taskStatusOutcomeHandlerError, staleReason: taskStatusStaleTaskNotFound}, fmt.Errorf("task %s not found", msg.ID)
 	}
 
 	changed, err := task.SetState(s.metrics, msg.Status)
 	if err != nil {
-		return err
-	} else if changed {
-		newState := msg.Status.State
-		if owner := task.owner; owner != nil && newState.Terminal() {
-			owner.Unassign(task)
-		}
-
-		switch newState {
-		case workflow.TaskStateCompleted:
-			task.wfRegion.Record(StatExecutedTasks.Observe(1))
-
-			if assignTime := task.AssignTime(); !assignTime.IsZero() {
-				// The execution time of the task is the duration from when it
-				// was first assigned to when we received the completion status.
-				//
-				// We skip the observation when assignTime is zero, which can
-				// happen when a task completes before we can process the
-				// assignment. If we didn't skip these, we'd record an
-				// observation of the maximum time.Duration value (290 years).
-				s.metrics.taskExecSeconds.Observe(time.Since(assignTime).Seconds())
-			}
-		case workflow.TaskStateCancelled:
-			// The worker has confirmed cancellation of a previously assigned
-			// task from [Scheduler.Cancel].
-			task.wfRegion.Record(StatCanceledAssignedTasks.Observe(1))
-		case workflow.TaskStateFailed:
-			task.wfRegion.Record(StatFailedTasks.Observe(1))
-		}
-
-		// Terminal states may include a capture from the worker; if so, we want
-		// to roll these up into our own per-task capture to give the event
-		// handler full visibility into the task's execution.
-		notifyStatus := msg.Status
-		if newState.Terminal() {
-			task.RecordTerminalObservations(time.Now())
-			task.capture.Merge(nil, notifyStatus.Capture)
-			notifyStatus.Capture = task.capture
-		}
-
-		// Notify the handler about the change.
-		n.AddTaskEvent(taskNotification{
-			Handler:   task.handler,
-			Task:      task.inner,
-			NewStatus: notifyStatus,
-		})
+		return taskStatusResult{outcome: taskStatusOutcomeHandlerError, staleReason: taskStatusStaleInvalidTransition}, err
+	} else if !changed {
+		return taskStatusResult{outcome: taskStatusOutcomeStale, staleReason: taskStatusStaleDuplicateNoop}, nil
 	}
-	return nil
+
+	newState := msg.Status.State
+	if owner := task.owner; owner != nil && newState.Terminal() {
+		owner.Unassign(task)
+	}
+
+	switch newState {
+	case workflow.TaskStateCompleted:
+		task.wfRegion.Record(StatExecutedTasks.Observe(1))
+
+		if assignTime := task.AssignTime(); !assignTime.IsZero() {
+			// The execution time of the task is the duration from when it
+			// was first assigned to when we received the completion status.
+			//
+			// We skip the observation when assignTime is zero, which can
+			// happen when a task completes before we can process the
+			// assignment. If we didn't skip these, we'd record an
+			// observation of the maximum time.Duration value (290 years).
+			s.metrics.taskExecSeconds.Observe(time.Since(assignTime).Seconds())
+		}
+	case workflow.TaskStateCancelled:
+		// The worker has confirmed cancellation of a previously assigned
+		// task from [Scheduler.Cancel].
+		task.wfRegion.Record(StatCanceledAssignedTasks.Observe(1))
+	case workflow.TaskStateFailed:
+		task.wfRegion.Record(StatFailedTasks.Observe(1))
+	}
+
+	// Terminal states may include a capture from the worker; if so, we want
+	// to roll these up into our own per-task capture to give the event
+	// handler full visibility into the task's execution.
+	notifyStatus := msg.Status
+	if newState.Terminal() {
+		task.RecordTerminalObservations(time.Now())
+		task.capture.Merge(nil, notifyStatus.Capture)
+		notifyStatus.Capture = task.capture
+	}
+
+	// Notify the handler about the change.
+	n.AddTaskEvent(taskNotification{
+		Handler:   task.handler,
+		Task:      task.inner,
+		NewStatus: notifyStatus,
+	})
+	return taskStatusResult{outcome: taskStatusOutcomeAccepted}, nil
 }
 
 func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, msg wire.StreamStatusMessage) error {
@@ -504,13 +534,19 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 		// fast-responding worker can't race with the post-assignment
 		// bookkeeping in finalizeAssignment. On success it also records the
 		// assignment timestamp on the task before releasing mut.
+		var sendDuration time.Duration
 		err := assignment.t.TryAssign(func() error {
 			// TODO(rfratto): allow assignment timeout to be configurable.
 			sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 
-			return worker.SendMessage(sendCtx, assignment.msg)
+			start := time.Now()
+			err := worker.SendMessage(sendCtx, assignment.msg)
+			sendDuration = time.Since(start)
+			return err
 		})
+		assignmentOutcome := classifyTaskAssignmentOutcome(err)
+		observeTaskAssignment(s.metrics, assignmentOutcome, sendDuration)
 
 		if err != nil && errors.Is(err, errUnassignable) {
 			// Task is already in a terminal state or has been interrupted,
@@ -518,7 +554,7 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 			continue
 		} else if err != nil {
 			// Generic error: restore the task to its original queue position.
-			s.requeueTask(assignment.t, assignment.pos)
+			s.requeueTask(assignment.t, assignment.pos, assignmentOutcome)
 
 			if isTooManyRequestsError(err) {
 				s.metrics.backoffsTotal.Inc()
@@ -623,7 +659,7 @@ func (s *Scheduler) buildAssignMessage(t *task) wire.TaskAssignMessage {
 
 // requeueTask re-inserts a task at its original position after a failed
 // assignment, undoing the scope cost adjustment.
-func (s *Scheduler) requeueTask(t *task, pos fair.Position) {
+func (s *Scheduler) requeueTask(t *task, pos fair.Position, reason string) {
 	s.assignMut.Lock()
 	defer s.assignMut.Unlock()
 
@@ -637,6 +673,7 @@ func (s *Scheduler) requeueTask(t *task, pos fair.Position) {
 
 	t.MarkRequeued()
 	s.metrics.requeueTotal.Inc()
+	s.metrics.taskAssignmentRequeueTotal.WithLabelValues(reason).Inc()
 
 	if len(s.connectedWorkers) > 0 {
 		nudgeSemaphore(s.assignSema)
@@ -763,19 +800,12 @@ func (s *Scheduler) prepareBindMessage(check *stream) *pendingMessage {
 	return nil
 }
 
-func isTooManyRequestsError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	var wireError *wire.Error
-	return errors.As(err, &wireError) && wireError.Code == http.StatusTooManyRequests
-}
-
 // workerSubscribe sends a WorkerSubscribe message to the provided worker. The
 // worker will eventually send a WorkerReady message in response.
 func (s *Scheduler) workerSubscribe(ctx context.Context, worker *workerConn) {
-	if err := worker.SendMessageAsync(ctx, wire.WorkerSubscribeMessage{}); err != nil {
+	err := worker.SendMessageAsync(ctx, wire.WorkerSubscribeMessage{})
+	s.metrics.workerSubscriptionsTotal.WithLabelValues(classifyMessageOutcome(err)).Inc()
+	if err != nil {
 		level.Warn(s.logger).Log("msg", "failed to request subscription for ready worker thread", "err", err)
 	}
 }

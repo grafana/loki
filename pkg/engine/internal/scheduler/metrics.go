@@ -20,6 +20,16 @@ type metrics struct {
 
 	taskQueueSeconds prometheus.Histogram
 	taskExecSeconds  prometheus.Histogram
+
+	taskAssignmentAttemptsTotal *prometheus.CounterVec
+	taskAssignmentSendSeconds   *prometheus.HistogramVec
+	taskAssignmentRequeueTotal  *prometheus.CounterVec
+
+	taskStatusMessagesTotal  *prometheus.CounterVec
+	taskStatusHandlerSeconds *prometheus.HistogramVec
+	taskStatusStaleTotal     *prometheus.CounterVec
+
+	workerSubscriptionsTotal *prometheus.CounterVec
 }
 
 func newMetrics() *metrics {
@@ -66,6 +76,37 @@ func newMetrics() *metrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}),
+
+		taskAssignmentAttemptsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_task_assignment_attempts_total",
+			Help: "Total number of scheduler task assignment attempts by outcome.",
+		}, []string{"outcome"}),
+		taskAssignmentSendSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
+			Name: "loki_engine_scheduler_task_assignment_send_seconds",
+			Help: "Time spent sending TaskAssign messages to workers by assignment outcome.",
+		}, []string{"outcome"}),
+		taskAssignmentRequeueTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_task_assignment_requeue_total",
+			Help: "Total number of task assignment requeues by reason.",
+		}, []string{"reason"}),
+
+		taskStatusMessagesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_task_status_messages_total",
+			Help: "Total number of scheduler TaskStatus messages by state class and outcome.",
+		}, []string{"state_class", "outcome"}),
+		taskStatusHandlerSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
+			Name: "loki_engine_scheduler_task_status_handler_seconds",
+			Help: "Time spent handling TaskStatus messages by phase, state class, and outcome.",
+		}, []string{"phase", "state_class", "outcome"}),
+		taskStatusStaleTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_task_status_stale_total",
+			Help: "Total number of stale or ignored TaskStatus messages by reason.",
+		}, []string{"reason"}),
+
+		workerSubscriptionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_worker_subscriptions_total",
+			Help: "Total number of WorkerSubscribe messages sent by outcome.",
+		}, []string{"outcome"}),
 	}
 }
 
@@ -74,3 +115,12 @@ func (m *metrics) Register(reg prometheus.Registerer) error { return reg.Registe
 
 // Unregister unregisters metrics from the provided Registerer.
 func (m *metrics) Unregister(reg prometheus.Registerer) { reg.Unregister(m.reg) }
+
+// newNativeHistogramVec creates a HistogramVec that uses native histogram
+// buckets, registered to reg.
+func newNativeHistogramVec(reg prometheus.Registerer, opts prometheus.HistogramOpts, labels []string) *prometheus.HistogramVec {
+	opts.NativeHistogramBucketFactor = 1.1
+	opts.NativeHistogramMaxBucketNumber = 100
+	opts.NativeHistogramMinResetDuration = time.Hour
+	return promauto.With(reg).NewHistogramVec(opts, labels)
+}
