@@ -322,13 +322,8 @@ func buildLokiAllowGatewayIngress(opts Options) *networkingv1.NetworkPolicy {
 // buildLokiAllowBucketEgress NetworkPolicy to allow egress traffic from
 // components that need to access object storage to object storage
 func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
-	objstorePort := []int32{443} // Default HTTPS port
-	if len(opts.NetworkPolicyObjStorePorts) > 0 {
-		objstorePort = opts.NetworkPolicyObjStorePorts
-	}
-
-	networkPorts := make([]networkingv1.NetworkPolicyPort, 0, len(objstorePort))
-	for _, port := range objstorePort {
+	networkPorts := make([]networkingv1.NetworkPolicyPort, 0, len(opts.NetworkPolicyObjStorePorts))
+	for _, port := range opts.NetworkPolicyObjStorePorts {
 		networkPorts = append(networkPorts, networkingv1.NetworkPolicyPort{
 			Protocol: ptr.To(corev1.ProtocolTCP),
 			Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: port},

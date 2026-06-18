@@ -48,7 +48,7 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time,
 		stack.Status.Storage.CredentialMode = statusInfo.Storage
 		stack.Status.NetworkPolicyRuleSet = statusInfo.NetworkPolicies //nolint:staticcheck
 		stack.Status.NetworkPolicyStatus.RuleSet = statusInfo.NetworkPolicies
-		stack.Status.NetworkPolicyStatus.ObjectStoragePorts = statusInfo.NetworkPolicyObjStorePorts
+		stack.Status.NetworkPolicyStatus.ObjectStorageAllowedEgressPorts = statusInfo.NetworkPolicyObjStorePorts
 	}
 
 	statusUpdater(&stack)

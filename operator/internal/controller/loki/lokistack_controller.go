@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -406,11 +407,12 @@ func (r *LokiStackReconciler) enqueueForObjectStorageServices() handler.EventHan
 				continue
 			}
 
-			// Pattern to match: serviceName.namespace.svc
-			servicePattern := fmt.Sprintf("%s.%s.svc", obj.GetName(), obj.GetNamespace())
-
-			// Check if endpoint contains the service pattern so that only LokiStacks that use this Service are enqueued
-			if strings.Contains(storageEndpoint, servicePattern) {
+			storageURL, err := url.Parse(string(secret.Data["endpoint"]))
+			if err != nil || storageURL.Hostname() == "" {
+				continue
+			}
+			svcHostname := fmt.Sprintf("%s.%s.svc", obj.GetName(), obj.GetNamespace())
+			if storageURL.Hostname() == svcHostname || strings.HasPrefix(storageURL.Hostname(), svcHostname+".") {
 				requests = append(requests, reconcile.Request{
 					NamespacedName: types.NamespacedName{
 						Namespace: stack.Namespace,

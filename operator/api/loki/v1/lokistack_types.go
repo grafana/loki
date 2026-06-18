@@ -1558,11 +1558,11 @@ type LokiStackNetworkPolicyStatus struct {
 	// +kubebuilder:validation:Optional
 	RuleSet NetworkPolicyRuleSet `json:"ruleSet,omitempty"`
 
-	// ObjectStoragePorts contains the TCP ports allowed for egress to object storage endpoints.
+	// ObjectStorageAllowedEgressPorts contains the TCP ports allowed for egress to object storage endpoints.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	ObjectStoragePorts []int32 `json:"objectStoragePorts,omitempty"`
+	ObjectStorageAllowedEgressPorts []int32 `json:"objectStorageAllowedEgressPorts,omitempty"`
 }
 
 // LokiStackStatus defines the observed state of LokiStack

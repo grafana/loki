@@ -4176,9 +4176,9 @@ spec:
                 description: NetworkPolicyStatus provides details about the applied
                   NetworkPolicies configuration
                 properties:
-                  objectStoragePorts:
-                    description: ObjectStoragePorts contains the TCP ports allowed
-                      for egress to object storage endpoints.
+                  objectStorageAllowedEgressPorts:
+                    description: ObjectStorageAllowedEgressPorts contains the TCP
+                      ports allowed for egress to object storage endpoints.
                     items:
                       format: int32
                       type: integer
