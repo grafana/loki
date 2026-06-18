@@ -2,7 +2,7 @@
 
 HA monolithic deployment is a replacement for the Simple Scalable Deployment (removed with Loki 4.0) where high availability is more important than scalability.
 
-This example demonstrates how to run a number of single binary Loki instances (`-target=all`) behind a reverse proxy (NGINX) for high availability and durability. The demo uses Docker compose, but the mechanics can be applied to any other deployment model, such as Helm or Tanka.
+This example demonstrates how to run a number of single-binary Loki instances (`-target=all`) behind a reverse proxy (NGINX) for high availability and durability. The demo uses Docker compose, but the mechanics can be applied to any other deployment model, such as Helm or Tanka.
 
 This folder contains a `docker-compose.yaml` and a `config` directory with configuration files for Loki and NGIX.
 
