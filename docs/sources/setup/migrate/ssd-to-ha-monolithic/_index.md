@@ -11,7 +11,7 @@ keywords:
 
 # Migrate from SSD to highly available monolithic deployment
 
-This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a highly available monolithic deployment of Loki. Before starting the migration, make sure you have read the [considerations](#considerations) section.
+This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a highly available (HA) monolithic deployment of Loki. Before starting the migration, make sure you have read the [considerations](#considerations) section.
 
 {{< admonition type="warning" >}}
 Simple Scalable Deployment (SSD) mode is being deprecated and will be removed with the Loki 4.0 release. You should plan to migrate from SSD to microservices or HA monolithic deployment. You will not be able to run Loki 4.0 in SSD mode.
@@ -21,7 +21,7 @@ Simple Scalable Deployment (SSD) mode is being deprecated and will be removed wi
 This guide assumes a Docker compose setup with NGINX as gateway. However, the migration process can be mirrored for other deployment methods (Helm, Tanka, etc.) as well.
 {{< /admonition >}}
 
-## Considerations
+## Planning your migration
 
 Migrating from a simple scalable deployment to a HA monolithic deployment with zero downtime is possible but requires careful planning. The following considerations should be taken into account:
 
@@ -49,20 +49,20 @@ Before beginning the actual migration you want to check your existing deployment
 
 1. Set `ingester.lifecycler.unregister_on_shutdown: true` so that after final shutdown ingesters leave the ring immediately.
 
-1. Restart existing deployment so changes to config take affect.
+1. Restart your existing deployment to ensure configuration changes take effect.
 
 ## Stage 2: Deploying the monolithic component
 
 In this stage, we will deploy the new component alongside the existing SSD components.
-Since there is only a single type of Loki node in this deployment, all instances can be configured equally and started with the `-target=all` target.
+Since there is only a single type of Loki node in the HA monolithic deployment, all instances can be configured equally and started with the `-target=all` target.
 
 To achive high availability you need **at least three Loki instances** and a replication factor (`common.replication_factor`) of 3. This ensures that you still have high availability - a quorum of two - during restarts where one instance is not available.
 
-However, because only a single main compactor (`-compactor.horizontal-scaling-mode=main`) must run at any given time, one Loki instance needs to act as such. This is done by overriding the default value `worker` with `main` in the configuration of that node using an environment variable or via the CLI argument. The `common.compactor_grpc_address` needs to point to this dedicated compactor node, which in our case is `loki-1:9095`.
+However, because you must run only a single main compactor (`-compactor.horizontal-scaling-mode=main`) at any given time, you must configure one Loki instance as `main`. This is done by overriding the default value `worker` with `main` in the configuration of that node using an environment variable or via the CLI argument. The `common.compactor_grpc_address` setting needs to point to this dedicated compactor node, which in our case is `loki-1:9095`.
 
-To achieve a zero-downtime transition you need to configure the storage equally to the existing deployment. We strongly recommend to use the Thanos object client (`storage_config.use_thanos_objstore: true` and the `storage_config.object_store` configuration block), because the legacy object store clients are deprecated.
+To achieve a zero-downtime transition you need to configure the HA monolithic storage equal to the existing deployment. We strongly recommend using the Thanos object client (`storage_config.use_thanos_objstore: true` and the `storage_config.object_store` configuration block), because the legacy object store clients are deprecated.
 
-Once all Loki instances are started and running you can check the ring page (`/ring`) on one of the instances if all instances are registered and in `ACTIVE` state.
+Once all Loki instances are started and running you can check the ring page (`/ring`) for one of the instances to verify that all instances are registered and in an `ACTIVE` state.
 
 ## Stage 3: Transitioning to monolithic components
 
@@ -98,8 +98,8 @@ http {
 
 The dedicated `location` for the compactor is needed to route delete requests correctly to the main compactor instance. This is only needed when deletes are enabled and you want to be able to access the API from outside.
 
-Once the reverse proxy configuration has been updated and the service was restarted the new components will receive the traffic for both writes (push) and reads (queries).
+Once the reverse proxy configuration has been updated and the service is restarted, the new components will receive the traffic for both writes (push) and reads (queries).
 
-However, you also need to shut down (or at least flush) the `write` components of the old simple scalable deployment in order to query the data that was still hold in memory.
+However, you also need to shut down (or at least flush) the `write` components of the old simple scalable deployment in order to query the data that was still held in memory.
 
-Finally, all old `write`, `read`, and `backend` targets can be terminated and cleaned up.
+Finally, all old `write`, `read`, and `backend` SSD targets can be terminated and cleaned up.
