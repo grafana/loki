@@ -71,22 +71,11 @@ func (b *Builder) Reset() {
 	b.rows = b.rows[:0]
 }
 
-// Compare reports the canonical sort order of two [Stat] rows: label values in
-// SortSchema order, then MinTimestamp, MaxTimestamp, ObjectPath, and finally
-// SectionIndex. It returns a negative value if a sorts before b, a positive
-// value if a sorts after b, and zero if they share the full key.
+// Compare reports the canonical sort order of two [Stat] rows. It returns a
+// negative value if a sorts before b, a positive value if a sorts after b, and
+// zero if they share the full key.
 //
-// Compare is the single source of truth for stats ordering, used by both the
-// builder's per-section flush sort and the index-merge executor's k-way merge.
-// The ObjectPath/SectionIndex tie-breaks matter when a merged output spills
-// into multiple sections, which are sorted independently: without the full key,
-// rows sharing (labels, minT, maxT) can straddle a section boundary in an order
-// the reader/verifier rejects as "output stats not sorted".
-//
-// Both rows must share the same SortSchema; only a.SortSchema is consulted to
-// decide which labels to compare. All current callers satisfy this: a builder's
-// rows share one schema, and the executor validates schema homogeneity upstream
-// in classifyRuns.
+// Both rows must share the same SortSchema.
 func Compare(a, b Stat) int {
 	// Iterates the SortSchema with [strings.SplitSeq] so the function does not
 	// allocate per comparison; the flush sort invokes it O(n log n) times.
