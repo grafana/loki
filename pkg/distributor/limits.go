@@ -31,6 +31,7 @@ type Limits interface {
 	LogLevelFromJSONMaxDepth(userID string) int
 
 	ShardStreams(userID string) shardstreams.Config
+	PolicyShardStreams(userID, policy string) shardstreams.Config
 	IngestionRateStrategy() string
 	IngestionRateBytes(userID string) float64
 	IngestionBurstSizeBytes(userID string) int

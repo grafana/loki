@@ -4,6 +4,8 @@ import (
 	"flag"
 	"time"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
@@ -28,4 +30,39 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.LoggingEnabled, prefix+".logging-enabled", false, "Enable logging when sharding streams")
 	cfg.DesiredRate.Set("1536KB") //nolint:errcheck
 	fs.Var(&cfg.DesiredRate, prefix+".desired-rate", "threshold used to cut a new shard. Default (1536KB) means if a rate is above 1536KB/s, it will be sharded.")
+}
+
+// PerPolicyConfigOverride holds optional per-policy overrides for the sharding Config. Each field is a
+// pointer so that a nil field inherits the value from the base (tenant) Config — this lets a
+// policy change just one setting (e.g. toggle time sharding) without restating the rest.
+type PerPolicyConfigOverride struct {
+	Enabled                  *bool             `yaml:"enabled" json:"enabled" doc:"description=Override shard_streams.enabled for a specific policy."`
+	DesiredRate              *flagext.ByteSize `yaml:"desired_rate" json:"desired_rate" doc:"description=Override shard_streams.desired_rate for a specific policy."`
+	TimeShardingEnabled      *bool             `yaml:"time_sharding_enabled" json:"time_sharding_enabled" doc:"description=Override shard_streams.time_sharding_enabled for a specific policy."`
+	TimeShardingIgnoreRecent *model.Duration   `yaml:"time_sharding_ignore_recent" json:"time_sharding_ignore_recent" doc:"description=Override shard_streams.time_sharding_ignore_recent for a specific policy."`
+	LoggingEnabled           *bool             `yaml:"logging_enabled" json:"logging_enabled" doc:"description=Override shard_streams.logging_enabled for a specific policy."`
+}
+
+// ApplyTo returns base with only the override's non-nil fields replaced. A nil override (or one
+// with all-nil fields) returns base unchanged.
+func (o *PerPolicyConfigOverride) ApplyTo(base Config) Config {
+	if o == nil {
+		return base
+	}
+	if o.Enabled != nil {
+		base.Enabled = *o.Enabled
+	}
+	if o.DesiredRate != nil {
+		base.DesiredRate = *o.DesiredRate
+	}
+	if o.TimeShardingEnabled != nil {
+		base.TimeShardingEnabled = *o.TimeShardingEnabled
+	}
+	if o.TimeShardingIgnoreRecent != nil {
+		base.TimeShardingIgnoreRecent = time.Duration(*o.TimeShardingIgnoreRecent)
+	}
+	if o.LoggingEnabled != nil {
+		base.LoggingEnabled = *o.LoggingEnabled
+	}
+	return base
 }
