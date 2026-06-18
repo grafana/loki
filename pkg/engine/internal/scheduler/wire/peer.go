@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -25,10 +26,19 @@ type Peer struct {
 	Handler Handler // Handler for incoming messages from the remote peer.
 	Buffer  int     // Buffer size for incoming and outgoing messages.
 
-	done     chan struct{}     // Closed when the peer connection is closed.
-	incoming chan MessageFrame // Buffered frame of incoming messages.
-	outgoing chan Frame        // Buffered frame of outgoing frames.
+	// Role is the role of the local peer for communication metrics. It is set at
+	// construction, immutable once Serve runs, and defaults to RoleUnknown.
+	Role Role
+
+	done     chan struct{}      // Closed when the peer connection is closed.
+	incoming chan queuedMessage // Buffered frame of incoming messages.
+	outgoing chan queuedFrame   // Buffered frame of outgoing frames.
 	initOnce sync.Once
+
+	// plane is the communication plane for metrics. Unlike Role, a peer's plane
+	// is often not known until its first message arrives, so it is discovered at
+	// runtime through SetPlane rather than set at construction.
+	plane atomic.String
 
 	requestID    atomic.Uint64
 	sentRequests sync.Map // map[uint64]*request
@@ -65,9 +75,44 @@ func (p *Peer) Serve(ctx context.Context) error {
 func (p *Peer) lazyInit() {
 	p.initOnce.Do(func() {
 		p.done = make(chan struct{})
-		p.incoming = make(chan MessageFrame, p.Buffer)
-		p.outgoing = make(chan Frame, p.Buffer)
+		p.incoming = make(chan queuedMessage, p.Buffer)
+		p.outgoing = make(chan queuedFrame, p.Buffer)
 	})
+}
+
+// SetPlane updates the communication plane label used for future peer metrics.
+// A peer's plane is often not known until its first message arrives.
+func (p *Peer) SetPlane(plane Plane) {
+	p.plane.Store(string(plane))
+}
+
+// labels returns the role and plane labels for the peer's metrics. Role is
+// immutable; plane may have been updated by SetPlane.
+func (p *Peer) labels() (Role, Plane) {
+	role := p.Role
+	if role == "" {
+		role = RoleUnknown
+	}
+	plane := Plane(p.plane.Load())
+	if plane == "" {
+		plane = PlaneUnknown
+	}
+	return role, plane
+}
+
+type queuedMessage struct {
+	frame      MessageFrame
+	role       Role
+	plane      Plane
+	enqueuedAt time.Time
+}
+
+type queuedFrame struct {
+	frame       Frame
+	role        Role
+	plane       Plane
+	messageType string
+	enqueuedAt  time.Time
 }
 
 func (p *Peer) recvMessages(ctx context.Context) error {
@@ -88,10 +133,14 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 		switch frame := frame.(type) {
 		case MessageFrame:
 			// Queue the message for processing.
+			role, plane := p.labels()
+			p.Metrics.incMessageQueued()
+			p.Metrics.incQueueDepth(role, plane, queueDirectionIncoming)
 			select {
-			case p.incoming <- frame:
-				p.Metrics.incMessageQueued()
+			case p.incoming <- queuedMessage{frame: frame, role: role, plane: plane, enqueuedAt: time.Now()}:
 			case <-ctx.Done():
+				p.Metrics.decMessageQueued()
+				p.Metrics.decQueueDepth(role, plane, queueDirectionIncoming)
 				return nil
 			}
 
@@ -135,31 +184,63 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 }
 
 func (p *Peer) handleIncoming(ctx context.Context) error {
+	defer p.drainIncomingQueue()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-p.done:
 			return nil // Closed connection.
-		case frame := <-p.incoming:
+		case queued := <-p.incoming:
+			role, plane := p.labels()
 			p.Metrics.decMessageQueued()
-			p.processMessage(ctx, frame.ID, frame.Message)
+			p.Metrics.decQueueDepth(queued.role, queued.plane, queueDirectionIncoming)
+			p.Metrics.observeIncomingQueue(role, plane, queued.frame.Message.Kind().String(), time.Since(queued.enqueuedAt))
+			p.processMessage(ctx, queued.frame.ID, queued.frame.Message)
 		}
 	}
 }
 
 func (p *Peer) handleOutgoing(ctx context.Context) error {
+	defer p.drainOutgoingQueue()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-p.done:
 			return nil // Closed connection.
-		case frame := <-p.outgoing:
-			if err := p.Conn.Send(ctx, frame); err != nil && ctx.Err() == nil {
+		case queued := <-p.outgoing:
+			p.Metrics.decQueueDepth(queued.role, queued.plane, queueDirectionOutgoing)
+			p.Metrics.observeOutgoingQueue(queued.role, queued.plane, queued.frame.FrameKind().String(), queued.messageType, time.Since(queued.enqueuedAt))
+			if err := p.Conn.Send(ctx, queued.frame); err != nil && ctx.Err() == nil {
 				level.Warn(p.Logger).Log("msg", "failed to send message", "error", err)
-				p.notifyError(frame, err)
+				p.notifyError(queued.frame, err)
 			}
+		}
+	}
+}
+
+func (p *Peer) drainIncomingQueue() {
+	for {
+		select {
+		case queued := <-p.incoming:
+			p.Metrics.decMessageQueued()
+			p.Metrics.decQueueDepth(queued.role, queued.plane, queueDirectionIncoming)
+		default:
+			return
+		}
+	}
+}
+
+func (p *Peer) drainOutgoingQueue() {
+	for {
+		select {
+		case queued := <-p.outgoing:
+			p.Metrics.decQueueDepth(queued.role, queued.plane, queueDirectionOutgoing)
+		default:
+			return
 		}
 	}
 }
@@ -190,19 +271,35 @@ func (p *Peer) notifyError(frame Frame, err error) {
 
 // processMessage handles a message received from the peer.
 func (p *Peer) processMessage(ctx context.Context, id uint64, message Message) {
-	if p.Handler == nil {
-		_ = p.enqueueFrame(ctx, NackFrame{ID: id, Error: Errorf(http.StatusNotImplemented, "not implemented")})
+	messageType := message.Kind().String()
+	role, plane := p.labels()
+	obs := p.Metrics.beginReceive(role, plane, messageType)
+
+	err := p.handle(ctx, message)
+
+	// Re-read labels after the handler: the first message on a connection can
+	// classify an initially unknown peer as control or data plane.
+	role, plane = p.labels()
+	obs.finish(role, plane, err)
+
+	if err != nil {
+		// TODO(rfratto): What should we do if this fails? Logs? Metrics?
+		_ = p.enqueueFrameWithMessageType(ctx, NackFrame{ID: id, Error: convertError(err)}, messageType)
 		return
 	}
 
-	switch err := p.Handler(ctx, p, message); err {
-	case nil:
-		// TODO(rfratto): What should we do if this fails? Logs? Metrics?
-		_ = p.enqueueFrame(ctx, AckFrame{ID: id})
-	default:
-		// TODO(rfratto): What should we do if this fails? Logs? Metrics?
-		_ = p.enqueueFrame(ctx, NackFrame{ID: id, Error: convertError(err)})
+	// TODO(rfratto): What should we do if this fails? Logs? Metrics?
+	_ = p.enqueueFrameWithMessageType(ctx, AckFrame{ID: id}, messageType)
+}
+
+// handle dispatches a message to the application handler, returning the
+// handler's result. If no handler is configured, it returns a not-implemented
+// error.
+func (p *Peer) handle(ctx context.Context, message Message) error {
+	if p.Handler == nil {
+		return Errorf(http.StatusNotImplemented, "not implemented")
 	}
+	return p.Handler(ctx, p, message)
 }
 
 func convertError(err error) *Error {
@@ -227,7 +324,7 @@ type request struct {
 //
 // [Peer.Serve] must be running when SendMessage is called, otherwise it blocks
 // until the context is canceled.
-func (p *Peer) SendMessage(ctx context.Context, message Message) error {
+func (p *Peer) SendMessage(ctx context.Context, message Message) (err error) {
 	p.lazyInit()
 
 	reqID := p.requestID.Inc()
@@ -237,11 +334,16 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 	p.sentRequests.Store(reqID, req)
 	defer p.sentRequests.Delete(reqID)
 
-	timer := p.Metrics.newMessageRTTTimer(message.Kind().String())
-	defer timer.ObserveDuration()
-	p.Metrics.incMessageSent(message.Kind().String())
+	role, plane := p.labels()
+	obs := p.Metrics.beginSend(role, plane, message.Kind().String())
+	defer func() {
+		// Re-read labels: the first message on a connection can classify an
+		// initially unknown peer as control or data plane.
+		role, plane := p.labels()
+		obs.finish(role, plane, err)
+	}()
 
-	if err := p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message}); err != nil {
+	if err = p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message}); err != nil {
 		return err
 	}
 
@@ -251,7 +353,7 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 		return ctx.Err()
 	case <-p.done:
 		return ErrConnClosed
-	case err := <-req.result:
+	case err = <-req.result:
 		return err
 	}
 }
@@ -266,18 +368,29 @@ func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 	p.lazyInit()
 
 	reqID := p.requestID.Inc()
-	p.Metrics.incMessageSent(message.Kind().String())
-	return p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message})
+	err := p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message})
+
+	role, plane := p.labels()
+	p.Metrics.recordAsyncSend(role, plane, message.Kind().String(), err)
+	return err
 }
 
 // enqueueFrame enqueues a frame to be sent to the remote peer.
 func (p *Peer) enqueueFrame(ctx context.Context, frame Frame) error {
+	return p.enqueueFrameWithMessageType(ctx, frame, frameMessageType(frame))
+}
+
+func (p *Peer) enqueueFrameWithMessageType(ctx context.Context, frame Frame, messageType string) error {
+	role, plane := p.labels()
+	p.Metrics.incQueueDepth(role, plane, queueDirectionOutgoing)
 	select {
 	case <-ctx.Done():
+		p.Metrics.decQueueDepth(role, plane, queueDirectionOutgoing)
 		return ctx.Err()
 	case <-p.done:
+		p.Metrics.decQueueDepth(role, plane, queueDirectionOutgoing)
 		return ErrConnClosed
-	case p.outgoing <- frame:
+	case p.outgoing <- queuedFrame{frame: frame, role: role, plane: plane, messageType: messageType, enqueuedAt: time.Now()}:
 		return nil
 	}
 }
