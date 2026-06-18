@@ -1552,6 +1552,12 @@ type LokiStackStorageStatus struct {
 
 // LokiStackNetworkPolicyStatus defines the observed network policy configuration
 type LokiStackNetworkPolicyStatus struct {
+	// RuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	RuleSet NetworkPolicyRuleSet `json:"ruleSet,omitempty"`
+
 	// ObjectStoragePorts contains the TCP ports allowed for egress to object storage endpoints.
 	//
 	// +optional
@@ -1576,6 +1582,9 @@ type LokiStackStatus struct {
 	Storage LokiStackStorageStatus `json:"storage,omitempty"`
 
 	// NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.
+	//
+	// Deprecated: This field is deprecated and will be removed in a future release.
+	// Use NetworkPolicyStatus.RuleSet instead.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional

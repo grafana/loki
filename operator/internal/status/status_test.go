@@ -61,6 +61,9 @@ func TestRefreshSuccess(t *testing.T) {
 			CredentialMode: lokiv1.CredentialModeStatic,
 		},
 		NetworkPolicyRuleSet: lokiv1.NetworkPolicyRuleSetNone,
+		NetworkPolicyStatus: lokiv1.LokiStackNetworkPolicyStatus{
+			RuleSet: lokiv1.NetworkPolicyRuleSetNone,
+		},
 		Conditions: []metav1.Condition{
 			{
 				Type:               string(lokiv1.ConditionReady),
