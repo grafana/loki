@@ -1,3 +1,49 @@
+# v1.54.2 (2026-06-04)
+
+* **Dependency Update**: Update to smithy-go v1.27.1 to fix several union-related deserialization bugs in schema-serde-enabled services.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.54.1 (2026-06-03)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.54.0 (2026-06-02)
+
+* **Feature**: Amazon ElastiCache for Valkey now supports durability. This new capability is enabled through a Multi-AZ transactional log, enabling fast recovery and restart during failures.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.53.0 (2026-06-01)
+
+* **Feature**: Adding new BDD representation of endpoint ruleset
+
+# v1.52.4 (2026-05-29)
+
+* **Dependency Update**: Update to smithy-go v1.26.0.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.52.3 (2026-05-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.52.2 (2026-04-29)
+
+* **Dependency Update**: Update to smithy-go v1.25.1.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.52.1 (2026-04-17)
+
+* **Dependency Update**: Bump smithy-go to 1.25.0 to support endpointBdd trait
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.52.0 (2026-04-01)
+
+* **Feature**: Updated SnapshotRetentionLimit documentation for ServerlessCache to correctly describe the parameter as number of days (max 35) instead of number of snapshots.
+
+# v1.51.13 (2026-03-26)
+
+* **Bug Fix**: Fix a bug where a recorded clock skew could persist on the client even if the client and server clock ended up realigning.
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.51.12 (2026-03-13)
 
 * **Dependency Update**: Updated to the latest SDK module versions

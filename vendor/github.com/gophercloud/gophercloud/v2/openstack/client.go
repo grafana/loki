@@ -464,6 +464,14 @@ func NewLoadBalancerV2(client *gophercloud.ProviderClient, eo gophercloud.Endpoi
 	return sc, err
 }
 
+// NewMetricV1 creates a ServiceClient that may be used with the v1 metric-storage
+// service (Aetos).
+func NewMetricV1(client *gophercloud.ProviderClient, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {
+	sc, err := initClientOpts(client, eo, "metric-storage", 1)
+	sc.ResourceBase = sc.Endpoint + "api/v1/"
+	return sc, err
+}
+
 // NewMessagingV2 creates a ServiceClient that may be used with the v2 messaging
 // service.
 func NewMessagingV2(client *gophercloud.ProviderClient, clientID string, eo gophercloud.EndpointOpts) (*gophercloud.ServiceClient, error) {

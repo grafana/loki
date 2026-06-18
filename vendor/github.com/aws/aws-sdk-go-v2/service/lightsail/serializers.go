@@ -10500,6 +10500,11 @@ func awsAwsjson11_serializeDocumentInputOrigin(v *types.InputOrigin, value smith
 	object := value.Object()
 	defer object.Close()
 
+	if len(v.IpAddressType) > 0 {
+		ok := object.Key("ipAddressType")
+		ok.String(string(v.IpAddressType))
+	}
+
 	if v.Name != nil {
 		ok := object.Key("name")
 		ok.String(*v.Name)
@@ -13533,6 +13538,13 @@ func awsAwsjson11_serializeOpDocumentPutAlarmInput(v *PutAlarmInput, value smith
 	if v.NotificationTriggers != nil {
 		ok := object.Key("notificationTriggers")
 		if err := awsAwsjson11_serializeDocumentNotificationTriggerList(v.NotificationTriggers, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.Tags != nil {
+		ok := object.Key("tags")
+		if err := awsAwsjson11_serializeDocumentTagList(v.Tags, ok); err != nil {
 			return err
 		}
 	}

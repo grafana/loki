@@ -111,6 +111,25 @@ func (ConfigurationState) Values() []ConfigurationState {
 	}
 }
 
+type ConsumerGroupOffsetSyncMode string
+
+// Enum values for ConsumerGroupOffsetSyncMode
+const (
+	ConsumerGroupOffsetSyncModeLegacy   ConsumerGroupOffsetSyncMode = "LEGACY"
+	ConsumerGroupOffsetSyncModeEnhanced ConsumerGroupOffsetSyncMode = "ENHANCED"
+)
+
+// Values returns all known values for ConsumerGroupOffsetSyncMode. Note that this
+// can be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ConsumerGroupOffsetSyncMode) Values() []ConsumerGroupOffsetSyncMode {
+	return []ConsumerGroupOffsetSyncMode{
+		"LEGACY",
+		"ENHANCED",
+	}
+}
+
 type CustomerActionStatus string
 
 // Enum values for CustomerActionStatus
@@ -152,6 +171,44 @@ func (EnhancedMonitoring) Values() []EnhancedMonitoring {
 		"PER_BROKER",
 		"PER_TOPIC_PER_BROKER",
 		"PER_TOPIC_PER_PARTITION",
+	}
+}
+
+type KafkaClusterEncryptionInTransitType string
+
+// Enum values for KafkaClusterEncryptionInTransitType
+const (
+	KafkaClusterEncryptionInTransitTypeTls KafkaClusterEncryptionInTransitType = "TLS"
+)
+
+// Values returns all known values for KafkaClusterEncryptionInTransitType. Note
+// that this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (KafkaClusterEncryptionInTransitType) Values() []KafkaClusterEncryptionInTransitType {
+	return []KafkaClusterEncryptionInTransitType{
+		"TLS",
+	}
+}
+
+type KafkaClusterSaslScramMechanism string
+
+// Enum values for KafkaClusterSaslScramMechanism
+const (
+	KafkaClusterSaslScramMechanismSha256 KafkaClusterSaslScramMechanism = "SHA256"
+	KafkaClusterSaslScramMechanismSha512 KafkaClusterSaslScramMechanism = "SHA512"
+)
+
+// Values returns all known values for KafkaClusterSaslScramMechanism. Note that
+// this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (KafkaClusterSaslScramMechanism) Values() []KafkaClusterSaslScramMechanism {
+	return []KafkaClusterSaslScramMechanism{
+		"SHA256",
+		"SHA512",
 	}
 }
 

@@ -43,6 +43,10 @@ type ListTasksInput struct {
 	// results to tasks that belong to that container instance.
 	ContainerInstance *string
 
+	// The name of the daemon to use when filtering the ListTasks results. Specifying
+	// a daemonName limits the results to tasks that belong to that daemon.
+	DaemonName *string
+
 	// The task desired status to use when filtering the ListTasks results. Specifying
 	// a desiredStatus of STOPPED limits the results to tasks that Amazon ECS has set
 	// the desired status to STOPPED . This can be useful for debugging tasks that
@@ -146,7 +150,7 @@ func (c *Client) addOperationListTasksMiddlewares(stack *middleware.Stack, optio
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -168,9 +172,6 @@ func (c *Client) addOperationListTasksMiddlewares(stack *middleware.Stack, optio
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

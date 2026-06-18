@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package v3
@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/maphash"
 	"strings"
+	"sync"
 
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
@@ -42,6 +43,8 @@ type Responses struct {
 	RootNode   *yaml.Node
 	index      *index.SpecIndex
 	context    context.Context
+	nodeStore  sync.Map
+	reference  low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -76,8 +79,15 @@ func (r *Responses) Build(ctx context.Context, keyNode, root *yaml.Node, idx *in
 	r.KeyNode = keyNode
 	root = utils.NodeAlias(root)
 	r.RootNode = root
-	r.Reference = new(low.Reference)
-	r.Nodes = low.ExtractNodes(ctx, root)
+	r.reference = low.Reference{}
+	r.Reference = &r.reference
+	r.nodeStore = sync.Map{}
+	r.Nodes = &r.nodeStore
+	if len(root.Content) > 0 {
+		r.NodeMap.ExtractNodes(root, false)
+	} else {
+		r.AddNode(root.Line, root)
+	}
 	r.Extensions = low.ExtractExtensions(root)
 	r.index = idx
 	r.context = ctx
