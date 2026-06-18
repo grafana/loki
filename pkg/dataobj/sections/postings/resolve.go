@@ -104,12 +104,17 @@ func (r *StreamResolver) Resolve(ctx context.Context, sections []*Section) ([]Se
 		return nil, fmt.Errorf("too many matchers: got=%d max=%d", len(activeMatchers), maxMatchers)
 	}
 
+	// Only label names that a matcher or an equal-predicate references are read
+	// later (missing-label semantics and AmbiguousLabels). Recording just those
+	// bounds each stream's stored name set instead of its full label set.
+	relevantNames := r.relevantNames(activeMatchers)
+
 	accs := make([]*sectionAccumulator, len(sections))
 	g, ctx := errgroup.WithContext(ctx)
 	for i, sec := range sections {
 		g.Go(func() error {
 			acc := newSectionAccumulator()
-			if err := r.scanLabels(ctx, sec, acc, activeMatchers, startNanos, endNanos); err != nil {
+			if err := r.scanLabels(ctx, sec, acc, activeMatchers, relevantNames, startNanos, endNanos); err != nil {
 				return fmt.Errorf("scanning labels: %w", err)
 			}
 			accs[i] = acc
@@ -137,12 +142,27 @@ func (r *StreamResolver) activeMatchers() []*labels.Matcher {
 	return active
 }
 
+// relevantNames returns the label names whose per-stream membership is read
+// during finalize: matcher names (missing-label semantics) and equal-predicate
+// names (AmbiguousLabels).
+func (r *StreamResolver) relevantNames(matchers []*labels.Matcher) map[string]struct{} {
+	names := make(map[string]struct{}, len(matchers)+len(r.equalPredicates))
+	for _, m := range matchers {
+		names[m.Name] = struct{}{}
+	}
+	for _, p := range r.equalPredicates {
+		names[p.Name] = struct{}{}
+	}
+	return names
+}
+
 // scanLabels drains sec's KindLabel rows into acc.
 func (r *StreamResolver) scanLabels(
 	ctx context.Context,
 	sec *Section,
 	acc *sectionAccumulator,
 	matchers []*labels.Matcher,
+	relevantNames map[string]struct{},
 	startNanos, endNanos int64,
 ) error {
 	kindCol := sectionColumn(sec, ColumnTypeKind)
@@ -156,7 +176,7 @@ func (r *StreamResolver) scanLabels(
 	defer func() { _ = rr.Close() }()
 
 	for rr.Next() {
-		observeLabelRow(rr.At(), acc, matchers, startNanos, endNanos)
+		observeLabelRow(rr.At(), acc, matchers, relevantNames, startNanos, endNanos)
 	}
 	return rr.Err()
 }
@@ -172,10 +192,10 @@ func sectionColumn(sec *Section, ct ColumnType) *Column {
 }
 
 // observeLabelRow folds one KindLabel Row into acc: records the row's label
-// name per stream, sets the matched-bit for every matcher this (name, value)
-// satisfies, and updates time-pruned section-ref bounds for every stream in the
-// row's bitmap.
-func observeLabelRow(row Row, acc *sectionAccumulator, matchers []*labels.Matcher, startNanos, endNanos int64) {
+// name per stream (only when the name is read at finalize), sets the
+// matched-bit for every matcher this (name, value) satisfies, and updates
+// time-pruned section-ref bounds for every stream in the row's bitmap.
+func observeLabelRow(row Row, acc *sectionAccumulator, matchers []*labels.Matcher, relevantNames map[string]struct{}, startNanos, endNanos int64) {
 	name, value := row.ColumnName, row.LabelValue
 
 	var matchedBits uint64
@@ -185,6 +205,8 @@ func observeLabelRow(row Row, acc *sectionAccumulator, matchers []*labels.Matche
 		}
 	}
 
+	_, nameRelevant := relevantNames[name]
+
 	// Time overlap for ref bounds. Null bounds (both zero) are kept.
 	hasBounds := row.MinTimestamp != 0 || row.MaxTimestamp != 0
 	overlaps := !hasBounds || (row.MaxTimestamp >= startNanos && row.MinTimestamp <= endNanos)
@@ -192,7 +214,7 @@ func observeLabelRow(row Row, acc *sectionAccumulator, matchers []*labels.Matche
 	for streamID := range row.StreamIDs() {
 		ref := StreamRef{ObjectPath: row.ObjectPath, StreamID: streamID}
 
-		if name != "" {
+		if name != "" && nameRelevant {
 			names := acc.labelNamesByStream[ref]
 			if names == nil {
 				names = make(map[string]struct{})
@@ -217,19 +239,19 @@ func observeLabelRow(row Row, acc *sectionAccumulator, matchers []*labels.Matche
 	}
 }
 
-func mergeBounds(b *bounds, minTs, maxTs int64, hasBounds bool) {
+func mergeBounds(b *bounds, minTS, maxTS int64, hasBounds bool) {
 	if !hasBounds {
 		return
 	}
 	if !b.hasBounds {
-		b.min, b.max, b.hasBounds = minTs, maxTs, true
+		b.min, b.max, b.hasBounds = minTS, maxTS, true
 		return
 	}
-	if minTs < b.min {
-		b.min = minTs
+	if minTS < b.min {
+		b.min = minTS
 	}
-	if maxTs > b.max {
-		b.max = maxTs
+	if maxTS > b.max {
+		b.max = maxTS
 	}
 }
 
