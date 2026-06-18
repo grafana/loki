@@ -59,7 +59,7 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 
 // sortRecords sorts the set of records according to the specified sort order.
 func sortRecords(records []Record, sortOrder SortOrder) {
-	slices.SortFunc(records, func(a, b Record) int {
+	slices.SortStableFunc(records, func(a, b Record) int {
 		switch sortOrder {
 		case SortStreamASC:
 			// Sort by [streamID ASC, timestamp DESC]
