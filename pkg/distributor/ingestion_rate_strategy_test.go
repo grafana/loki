@@ -123,8 +123,9 @@ func TestIngestionRateStrategy_PolicyOverride(t *testing.T) {
 		IngestionRateMB:      1.0,
 		IngestionBurstSizeMB: 2.0,
 		PolicyOverrideLimits: map[string]validation.PolicyOverridableLimits{
-			"finance": {IngestionRateMB: 5.0, IngestionBurstSizeMB: 10.0},
-			"ops":     {IngestionRateMB: 5.0}, // rate set, burst unset -> falls back to tenant burst
+			"finance": {IngestionRateMB: ptr(5.0), IngestionBurstSizeMB: ptr(10.0)},
+			"ops":     {IngestionRateMB: ptr(5.0)},                                 // rate set, burst unset -> falls back to tenant burst
+			"blocked": {IngestionRateMB: ptr(5.0), IngestionBurstSizeMB: ptr(0.0)}, // explicit 0 burst must be honored (blocks), not fall back
 		},
 	}
 	overrides, err := validation.NewOverrides(limits, nil)
@@ -148,6 +149,9 @@ func TestIngestionRateStrategy_PolicyOverride(t *testing.T) {
 		// unknown policy -> tenant rate/burst.
 		assert.Equal(t, 1.0*float64(bytesInMB), s.Limit(encodeRateLimitKey("123", "unknown")))
 		assert.Equal(t, int(2.0*float64(bytesInMB)), s.Burst(encodeRateLimitKey("123", "unknown")))
+
+		// policy with an explicit 0 burst -> 0 is honored (blocks ingestion), not the tenant burst.
+		assert.Equal(t, 0, s.Burst(encodeRateLimitKey("123", "blocked")))
 	})
 
 	t.Run("global divides policy rate by distributor count", func(t *testing.T) {

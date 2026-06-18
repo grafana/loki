@@ -30,13 +30,11 @@ type Limits interface {
 	UseOwnedStreamCount(userID string) bool
 	MaxLocalStreamsPerUser(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
-	PolicyMaxLocalStreamsPerUser(userID, policy string) int
-	PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool)
 	PerStreamRateLimit(userID string) validation.RateLimit
-	PolicyPerStreamRateLimit(userID, policy string) (validation.RateLimit, bool)
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
 
+	validation.IngestionPolicyOverrideLimits
 	retention.Limits
 }
 
@@ -90,14 +88,13 @@ func (l *Limiter) GetStreamCountLimit(tenantID string, policy string) (calculate
 	// so we do convert the global limit into a local limit
 	globalLimit = l.limits.MaxGlobalStreamsPerUser(tenantID)
 
-	// Check for policy-specific overrides if policy is specified
-	// NOTE: Whereas for the regular stream limits 0 means no limit, for policy limit 0 means no per-policy limit override is specified
+	// Check for policy-specific overrides if policy is specified. A non-nil override (ok=true)
+	// replaces the tenant value for that policy.
 	if policy != noPolicy {
-		policyLocalLimit := l.limits.PolicyMaxLocalStreamsPerUser(tenantID, policy)
-		if policyLocalLimit > 0 {
+		if policyLocalLimit, ok := l.limits.PolicyMaxLocalStreamsPerUser(tenantID, policy); ok {
 			localLimit = policyLocalLimit
 		}
-		if policyGlobalLimit, exists := l.limits.PolicyMaxGlobalStreamsPerUser(tenantID, policy); exists {
+		if policyGlobalLimit, ok := l.limits.PolicyMaxGlobalStreamsPerUser(tenantID, policy); ok {
 			globalLimit = policyGlobalLimit
 		}
 	}

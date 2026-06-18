@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // Limits is an interface for distributor limits/related configs
@@ -31,12 +32,9 @@ type Limits interface {
 	LogLevelFromJSONMaxDepth(userID string) int
 
 	ShardStreams(userID string) shardstreams.Config
-	PolicyShardStreams(userID, policy string) shardstreams.Config
 	IngestionRateStrategy() string
 	IngestionRateBytes(userID string) float64
 	IngestionBurstSizeBytes(userID string) int
-	PolicyIngestionRateBytes(userID, policy string) (float64, bool)
-	PolicyIngestionBurstSizeBytes(userID, policy string) (int, bool)
 	AllowStructuredMetadata(userID string) bool
 	MaxStructuredMetadataSize(userID string) int
 	MaxStructuredMetadataCount(userID string) int
@@ -51,4 +49,6 @@ type Limits interface {
 	IngestionPartitionsTenantShardSize(userID string) int
 
 	SimulatedPushLatency(userID string) time.Duration
+
+	validation.IngestionPolicyOverrideLimits
 }
