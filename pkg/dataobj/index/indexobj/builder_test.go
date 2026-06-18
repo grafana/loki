@@ -10,9 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -200,4 +202,89 @@ func BenchmarkIndexObjBuilder_ObserveLogLine(b *testing.B) {
 			require.NoError(b, err)
 		}
 	}
+}
+
+func TestBuilder_TimeRanges_PostingsOnly(t *testing.T) {
+	b, err := NewBuilder(testBuilderConfig, nil)
+	require.NoError(t, err)
+
+	base := time.Unix(8000, 0).UTC()
+	tenant := "tenant-a"
+
+	b.ObserveLabelPosting(tenant, postings.LabelObservation{
+		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+		StreamID: 1, Timestamp: base,
+	})
+	b.ObserveLabelPosting(tenant, postings.LabelObservation{
+		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "y",
+		StreamID: 2, Timestamp: base.Add(time.Hour),
+	})
+
+	ranges := b.TimeRanges()
+	require.Len(t, ranges, 1)
+	require.Equal(t, tenant, ranges[0].Tenant)
+	require.Equal(t, base, ranges[0].MinTime)
+	require.Equal(t, base.Add(time.Hour), ranges[0].MaxTime)
+}
+
+func TestBuilder_TimeRanges_MultiTenantUnion(t *testing.T) {
+	b, err := NewBuilder(testBuilderConfig, nil)
+	require.NoError(t, err)
+
+	base := time.Unix(9000, 0).UTC()
+
+	// tenant-a: postings only.
+	b.ObserveLabelPosting("tenant-a", postings.LabelObservation{
+		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+		StreamID: 1, Timestamp: base,
+	})
+	// tenant-b: postings only, different window.
+	b.ObserveLabelPosting("tenant-b", postings.LabelObservation{
+		ObjectPath: "/b", SectionIndex: 0, ColumnName: "app", LabelValue: "z",
+		StreamID: 1, Timestamp: base.Add(2 * time.Hour),
+	})
+
+	ranges := b.TimeRanges()
+	require.Len(t, ranges, 2)
+
+	byTenant := map[string]multitenancy.TimeRange{}
+	for _, r := range ranges {
+		byTenant[r.Tenant] = r
+	}
+	require.Equal(t, base, byTenant["tenant-a"].MinTime)
+	require.Equal(t, base, byTenant["tenant-a"].MaxTime)
+	require.Equal(t, base.Add(2*time.Hour), byTenant["tenant-b"].MinTime)
+	require.Equal(t, base.Add(2*time.Hour), byTenant["tenant-b"].MaxTime)
+}
+
+func TestBuilder_TimeRanges_StreamsAndPostingsUnion(t *testing.T) {
+	b, err := NewBuilder(testBuilderConfig, nil)
+	require.NoError(t, err)
+
+	base := time.Unix(10000, 0).UTC()
+	tenant := "tenant-a"
+
+	// Streams cover [base, base+1h]; postings extend the window on both ends.
+	_, err = b.AppendStream(tenant, streams.Stream{
+		Labels:           labels.FromStrings("app", "x"),
+		MinTimestamp:     base,
+		MaxTimestamp:     base.Add(time.Hour),
+		UncompressedSize: 1,
+	})
+	require.NoError(t, err)
+
+	b.ObserveLabelPosting(tenant, postings.LabelObservation{
+		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+		StreamID: 1, Timestamp: base.Add(-time.Hour),
+	})
+	b.ObserveLabelPosting(tenant, postings.LabelObservation{
+		ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x",
+		StreamID: 2, Timestamp: base.Add(2 * time.Hour),
+	})
+
+	ranges := b.TimeRanges()
+	require.Len(t, ranges, 1)
+	require.Equal(t, tenant, ranges[0].Tenant)
+	require.Equal(t, base.Add(-time.Hour), ranges[0].MinTime)
+	require.Equal(t, base.Add(2*time.Hour), ranges[0].MaxTime)
 }
