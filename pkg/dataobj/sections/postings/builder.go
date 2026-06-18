@@ -51,15 +51,15 @@ func (b *Builder) TimeRange() (time.Time, time.Time) {
 	lMin, lMax := b.labels.TimeRange()
 	bMin, bMax := b.blooms.TimeRange()
 
-	min := lMin
-	if min.IsZero() || (!bMin.IsZero() && bMin.Before(min)) {
-		min = bMin
+	minTime := lMin
+	if minTime.IsZero() || (!bMin.IsZero() && bMin.Before(minTime)) {
+		minTime = bMin
 	}
-	max := lMax
-	if max.IsZero() || (!bMax.IsZero() && bMax.After(max)) {
-		max = bMax
+	maxTime := lMax
+	if maxTime.IsZero() || (!bMax.IsZero() && bMax.After(maxTime)) {
+		maxTime = bMax
 	}
-	return min, max
+	return minTime, maxTime
 }
 
 // Type returns the [dataobj.SectionType] of the postings builder.
