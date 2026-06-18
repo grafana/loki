@@ -43,7 +43,7 @@ Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.
 
 For the best possible experience in production, we recommend deploying Loki in distributed mode. Please refer to the [Migrating from SSD to distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/migrate/ssd-to-distributed/) guide for instructions how to migrate your deployment to distributed mode.
 
-A second option, especially for smaller scale deployments, is to migrate to single binary, which reduces the complexity of the deployment.
+A second option for smaller scale deployments that still need high availability, is to migrate to HA Monolithic, which reduces the complexity of the deployment. Please refer to the [Migrate from SSD to HA Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/migrate/ssd-to-ha-monolithic/) guide for instructions how to migrate your deployment.
 
 ### Breaking change: Removal of various configuration options
 
