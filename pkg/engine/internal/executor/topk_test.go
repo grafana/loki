@@ -33,6 +33,7 @@ func Test_topk(t *testing.T) {
 	var (
 		pipelineA = NewArrowtestPipeline(schema, arrowtest.Rows{
 			{colTs: time.Unix(1, 0).UTC(), colMsg: "line A"},
+			{colTs: time.Unix(1, 0).UTC(), colMsg: "line A2"},
 			{colTs: time.Unix(6, 0).UTC(), colMsg: "line F"},
 		}, arrowtest.Rows{
 			{colTs: time.Unix(2, 0).UTC(), colMsg: "line B"},
@@ -59,7 +60,7 @@ func Test_topk(t *testing.T) {
 			},
 		},
 		Ascending: true,
-		K:         3,
+		K:         4,
 		MaxUnused: 5,
 	})
 	require.NoError(t, err, "should be able to create a topk pipeline")
@@ -74,6 +75,7 @@ func Test_topk(t *testing.T) {
 	require.NoError(t, err, "should be able to read the sorted batch")
 
 	expect := arrowtest.Rows{
+		{colTs: time.Unix(1, 0).UTC(), colMsg: "line A2"},
 		{colTs: time.Unix(1, 0).UTC(), colMsg: "line A"},
 		{colTs: time.Unix(2, 0).UTC(), colMsg: "line B"},
 		{colTs: time.Unix(3, 0).UTC(), colMsg: "line C"},
