@@ -1,6 +1,6 @@
 module github.com/grafana/loki/pkg/push
 
-go 1.24.0
+go 1.26.4
 
 toolchain go1.25.11
 
