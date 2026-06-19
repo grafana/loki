@@ -208,9 +208,9 @@ func TestBenchE2EQuery(t *testing.T) {
 			require.Equal(t, 1, len(res.Data.(logqlmodel.Streams)))
 			entries := res.Data.(logqlmodel.Streams)[0].Entries
 			require.Equal(t, 3, len(entries))
-			require.Equal(t, "1", entries[0].Line)
+			require.Equal(t, "3", entries[0].Line)
 			require.Equal(t, "2", entries[1].Line)
-			require.Equal(t, "3", entries[2].Line)
+			require.Equal(t, "1", entries[2].Line)
 		})
 	}
 }
