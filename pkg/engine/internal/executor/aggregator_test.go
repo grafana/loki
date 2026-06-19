@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
@@ -14,12 +16,73 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
-var (
-	groupBy = []arrow.Field{
-		semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
-		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
+var groupBy = []arrow.Field{
+	semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
+	semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
+}
+
+// runAggregator runs fn against map and array aggregator storage.
+func runAggregator(t *testing.T, op aggregationOperation, fn func(t *testing.T, agg *aggregator)) {
+	t.Helper()
+
+	fn(t, newAggregator(0, op))
+}
+
+var samplesMem = memory.NewGoAllocator()
+
+func samplesSchema(labelFields []arrow.Field) *arrow.Schema {
+	return arrow.NewSchema(append([]arrow.Field{
+		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
+		semconv.FieldFromIdent(semconv.ColumnIdentValue, false),
+	}, labelFields...), nil)
+}
+
+// addSamples ingests rows through BatchAddSample for tests.
+func addSamples(agg *aggregator, labelFields []arrow.Field, schema *arrow.Schema, rows arrowtest.Rows) error {
+	if len(rows) == 0 {
+		return nil
 	}
-)
+	if schema == nil {
+		schema = samplesSchema(labelFields)
+	}
+
+	record := rows.Record(samplesMem, schema)
+	defer record.Release()
+
+	return batchAddRecord(agg, labelFields, record)
+}
+
+func batchAddRecord(agg *aggregator, labelFields []arrow.Field, record arrow.RecordBatch) error {
+	if record.NumRows() == 0 {
+		return nil
+	}
+
+	tsCol := record.Column(0).(*array.Timestamp)
+	valCol := record.Column(1).(*array.Float64)
+	labelCols := make([]*array.String, len(labelFields))
+	for i := range labelFields {
+		labelCols[i] = record.Column(2 + i).(*array.String)
+	}
+
+	return agg.BatchAddSample(tsCol, valCol, nil, labelCols, labelFields)
+}
+
+func mustAddSamples(t *testing.T, agg *aggregator, labelFields []arrow.Field, schema *arrow.Schema, rows arrowtest.Rows) {
+	t.Helper()
+	require.NoError(t, addSamples(agg, labelFields, schema, rows))
+}
+
+func requireAggregatedRows(t *testing.T, agg *aggregator, expect arrowtest.Rows) {
+	t.Helper()
+
+	record, err := agg.BuildRecord()
+	require.NoError(t, err)
+
+	rows, err := arrowtest.RecordRows(record)
+	require.NoError(t, err, "should be able to convert record back to rows")
+	require.Equal(t, len(expect), len(rows), "number of rows should match")
+	require.ElementsMatch(t, expect, rows)
+}
 
 func TestAggregator(t *testing.T) {
 	colTs := semconv.ColumnIdentTimestamp.FQN()
@@ -27,368 +90,434 @@ func TestAggregator(t *testing.T) {
 	colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String).FQN()
 	colSvc := semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String).FQN()
 
+	ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+	ts3 := time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC)
+
+	basicInput := arrowtest.Rows{
+		{colTs: ts1, colVal: 10.0, colEnv: "prod", colSvc: "app1"},
+		{colTs: ts1, colVal: 20.0, colEnv: "prod", colSvc: "app2"},
+		{colTs: ts1, colVal: 30.0, colEnv: "dev", colSvc: "app1"},
+		{colTs: ts2, colVal: 15.0, colEnv: "prod", colSvc: "app1"},
+		{colTs: ts2, colVal: 25.0, colEnv: "prod", colSvc: "app2"},
+		{colTs: ts2, colVal: 35.0, colEnv: "dev", colSvc: "app2"},
+		{colTs: ts1, colVal: 5.0, colEnv: "prod", colSvc: "app1"},
+		{colTs: ts2, colVal: 10.0, colEnv: "prod", colSvc: "app1"},
+	}
+
 	t.Run("basic SUM aggregation with record building", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationSum)
-		agg.AddLabels(groupBy)
+		runAggregator(t, aggregationOperationSum, func(t *testing.T, agg *aggregator) {
+			agg.AddLabels(groupBy)
+			mustAddSamples(t, agg, groupBy, nil, basicInput)
 
-		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
-		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+			requireAggregatedRows(t, agg, arrowtest.Rows{
+				{colTs: ts1, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
+				{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
+				{colTs: ts1, colVal: float64(30), colEnv: "dev", colSvc: "app1"},
 
-		// Add test data
-		// ts1: prod/app1 = 10, prod/app2 = 20, dev/app1 = 30
-		_ = agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
-
-		// ts2: prod/app1 = 15, prod/app2 = 25, dev/app2 = 35
-		_ = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts2, 35, groupBy, []string{"dev", "app2"})
-
-		// Add more data to same groups to test aggregation
-		_ = agg.Add(ts1, 5, groupBy, []string{"prod", "app1"})  // prod/app1 at ts1 should now be 15
-		_ = agg.Add(ts2, 10, groupBy, []string{"prod", "app1"}) // prod/app1 at ts2 should now be 25
-
-		record, err := agg.BuildRecord()
-		require.NoError(t, err)
-
-		expect := arrowtest.Rows{
-			{colTs: ts1, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
-			{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
-			{colTs: ts1, colVal: float64(30), colEnv: "dev", colSvc: "app1"},
-
-			{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app1"},
-			{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app2"},
-			{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
-		}
-
-		rows, err := arrowtest.RecordRows(record)
-		require.NoError(t, err, "should be able to convert record back to rows")
-		require.Equal(t, len(expect), len(rows), "number of rows should match")
-		require.ElementsMatch(t, expect, rows)
+				{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app1"},
+				{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app2"},
+				{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
+			})
+		})
 	})
 
 	t.Run("basic AVG aggregation with record building", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationAvg)
-		agg.AddLabels(groupBy)
+		runAggregator(t, aggregationOperationAvg, func(t *testing.T, agg *aggregator) {
+			agg.AddLabels(groupBy)
+			mustAddSamples(t, agg, groupBy, nil, basicInput)
 
-		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
-		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+			requireAggregatedRows(t, agg, arrowtest.Rows{
+				{colTs: ts1, colVal: float64(7.5), colEnv: "prod", colSvc: "app1"},
+				{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
+				{colTs: ts1, colVal: float64(30), colEnv: "dev", colSvc: "app1"},
 
-		// Add test data
-		// ts1: prod/app1 = 10, prod/app2 = 20, dev/app1 = 30
-		_ = agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
-
-		// ts2: prod/app1 = 15, prod/app2 = 25, dev/app2 = 35
-		_ = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts2, 35, groupBy, []string{"dev", "app2"})
-
-		// Add more data to same groups to test aggregation
-		_ = agg.Add(ts1, 5, groupBy, []string{"prod", "app1"})  // prod/app1 at ts1 should now be 7.5
-		_ = agg.Add(ts2, 10, groupBy, []string{"prod", "app1"}) // prod/app1 at ts2 should now be 12.5
-
-		record, err := agg.BuildRecord()
-		require.NoError(t, err)
-
-		expect := arrowtest.Rows{
-			{colTs: ts1, colVal: float64(7.5), colEnv: "prod", colSvc: "app1"},
-			{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
-			{colTs: ts1, colVal: float64(30), colEnv: "dev", colSvc: "app1"},
-
-			{colTs: ts2, colVal: float64(12.5), colEnv: "prod", colSvc: "app1"},
-			{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app2"},
-			{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
-		}
-
-		rows, err := arrowtest.RecordRows(record)
-		require.NoError(t, err, "should be able to convert record back to rows")
-		require.Equal(t, len(expect), len(rows), "number of rows should match")
-		require.ElementsMatch(t, expect, rows)
+				{colTs: ts2, colVal: float64(12.5), colEnv: "prod", colSvc: "app1"},
+				{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app2"},
+				{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
+			})
+		})
 	})
 
 	t.Run("basic COUNT aggregation with record building", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationCount)
-		agg.AddLabels(groupBy)
+		runAggregator(t, aggregationOperationCount, func(t *testing.T, agg *aggregator) {
+			agg.AddLabels(groupBy)
+			mustAddSamples(t, agg, groupBy, nil, arrowtest.Rows{
+				{colTs: ts1, colVal: 10.0, colEnv: "prod", colSvc: "app1"},
+				{colTs: ts1, colVal: 20.0, colEnv: "prod", colSvc: "app2"},
+				{colTs: ts1, colVal: 30.0, colEnv: "dev", colSvc: "app1"},
+				{colTs: ts2, colVal: 15.0, colEnv: "prod", colSvc: "app1"},
+				{colTs: ts2, colVal: 25.0, colEnv: "prod", colSvc: "app2"},
+				{colTs: ts2, colVal: 35.0, colEnv: "dev", colSvc: "app2"},
+				{colTs: ts3, colVal: 15.0, colEnv: "prod", colSvc: "app1"},
+				{colTs: ts3, colVal: 25.0, colEnv: "prod", colSvc: "app2"},
+				{colTs: ts3, colVal: 35.0, colEnv: "dev", colSvc: "app2"},
+				{colTs: ts1, colVal: 5.0, colEnv: "prod", colSvc: "app1"},
+				{colTs: ts2, colVal: 10.0, colEnv: "prod", colSvc: "app2"},
+				{colTs: ts1, colVal: 25.0, colEnv: "prod", colSvc: "app1"},
+			})
 
-		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
-		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
-		ts3 := time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC)
+			requireAggregatedRows(t, agg, arrowtest.Rows{
+				{colTs: ts1, colVal: float64(3), colEnv: "prod", colSvc: "app1"},
+				{colTs: ts1, colVal: float64(1), colEnv: "prod", colSvc: "app2"},
+				{colTs: ts1, colVal: float64(1), colEnv: "dev", colSvc: "app1"},
 
-		// Add test data
-		// ts1: add one datapoint for prod/app1, prod/app2, and dev/app1
-		_ = agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
+				{colTs: ts2, colVal: float64(1), colEnv: "prod", colSvc: "app1"},
+				{colTs: ts2, colVal: float64(2), colEnv: "prod", colSvc: "app2"},
+				{colTs: ts2, colVal: float64(1), colEnv: "dev", colSvc: "app2"},
 
-		// ts2: add another datapoint for prod/app1, prod/app2, and dev/app2
-		_ = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts2, 35, groupBy, []string{"dev", "app2"})
-
-		// ts3: add another datapoint for prod/app1, prod/app2, and dev/app2
-		_ = agg.Add(ts3, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts3, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts3, 35, groupBy, []string{"dev", "app2"})
-
-		// Add more datapoints for prod/app1 and prod/app2
-		_ = agg.Add(ts1, 5, groupBy, []string{"prod", "app1"})  // prod/app1 at ts1 should now be count 2
-		_ = agg.Add(ts2, 10, groupBy, []string{"prod", "app2"}) // prod/app2 at ts2 should now be count 2
-		_ = agg.Add(ts1, 25, groupBy, []string{"prod", "app1"}) // prod/app1 at ts1 should now be count 3
-
-		record, err := agg.BuildRecord()
-		require.NoError(t, err)
-
-		expect := arrowtest.Rows{
-			{colTs: ts1, colVal: float64(3), colEnv: "prod", colSvc: "app1"},
-			{colTs: ts1, colVal: float64(1), colEnv: "prod", colSvc: "app2"},
-			{colTs: ts1, colVal: float64(1), colEnv: "dev", colSvc: "app1"},
-
-			{colTs: ts2, colVal: float64(1), colEnv: "prod", colSvc: "app1"},
-			{colTs: ts2, colVal: float64(2), colEnv: "prod", colSvc: "app2"},
-			{colTs: ts2, colVal: float64(1), colEnv: "dev", colSvc: "app2"},
-
-			{colTs: ts3, colVal: float64(1), colEnv: "prod", colSvc: "app1"},
-			{colTs: ts3, colVal: float64(1), colEnv: "prod", colSvc: "app2"},
-			{colTs: ts3, colVal: float64(1), colEnv: "dev", colSvc: "app2"},
-		}
-
-		rows, err := arrowtest.RecordRows(record)
-		require.NoError(t, err, "should be able to convert record back to rows")
-		require.Equal(t, len(expect), len(rows), "number of rows should match")
-		require.ElementsMatch(t, expect, rows)
+				{colTs: ts3, colVal: float64(1), colEnv: "prod", colSvc: "app1"},
+				{colTs: ts3, colVal: float64(1), colEnv: "prod", colSvc: "app2"},
+				{colTs: ts3, colVal: float64(1), colEnv: "dev", colSvc: "app2"},
+			})
+		})
 	})
 
 	t.Run("basic MAX aggregation with record building", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationMax)
-		agg.AddLabels(groupBy)
+		runAggregator(t, aggregationOperationMax, func(t *testing.T, agg *aggregator) {
+			agg.AddLabels(groupBy)
+			mustAddSamples(t, agg, groupBy, nil, arrowtest.Rows{
+				{colTs: ts1, colVal: 10.0, colEnv: "prod", colSvc: "app1"},
+				{colTs: ts1, colVal: 20.0, colEnv: "prod", colSvc: "app2"},
+				{colTs: ts1, colVal: 30.0, colEnv: "dev", colSvc: "app1"},
+				{colTs: ts2, colVal: 15.0, colEnv: "prod", colSvc: "app1"},
+				{colTs: ts2, colVal: 25.0, colEnv: "prod", colSvc: "app2"},
+				{colTs: ts2, colVal: 35.0, colEnv: "dev", colSvc: "app2"},
+				{colTs: ts1, colVal: 5.0, colEnv: "prod", colSvc: "app1"},
+				{colTs: ts2, colVal: 50.0, colEnv: "prod", colSvc: "app2"},
+				{colTs: ts1, colVal: 15.0, colEnv: "prod", colSvc: "app1"},
+			})
 
-		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
-		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+			requireAggregatedRows(t, agg, arrowtest.Rows{
+				{colTs: ts1, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
+				{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
+				{colTs: ts1, colVal: float64(30), colEnv: "dev", colSvc: "app1"},
 
-		// Add test data
-		// ts1: add one datapoint for prod/app1, prod/app2, and dev/app1
-		_ = agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
-
-		// ts2: add another datapoint for prod/app1, prod/app2, and dev/app2
-		_ = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts2, 35, groupBy, []string{"dev", "app2"})
-
-		// Add more datapoints for prod/app1 and prod/app2
-		_ = agg.Add(ts1, 5, groupBy, []string{"prod", "app1"})  // prod/app1 at ts1 should still be 10
-		_ = agg.Add(ts2, 50, groupBy, []string{"prod", "app2"}) // prod/app2 at ts2 should now be 50
-		_ = agg.Add(ts1, 15, groupBy, []string{"prod", "app1"}) // prod/app1 at ts1 should now be 15
-
-		record, err := agg.BuildRecord()
-		require.NoError(t, err)
-
-		expect := arrowtest.Rows{
-			{colTs: ts1, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
-			{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
-			{colTs: ts1, colVal: float64(30), colEnv: "dev", colSvc: "app1"},
-
-			{colTs: ts2, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
-			{colTs: ts2, colVal: float64(50), colEnv: "prod", colSvc: "app2"},
-			{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
-		}
-
-		rows, err := arrowtest.RecordRows(record)
-		require.NoError(t, err, "should be able to convert record back to rows")
-		require.Equal(t, len(expect), len(rows), "number of rows should match")
-		require.ElementsMatch(t, expect, rows)
+				{colTs: ts2, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
+				{colTs: ts2, colVal: float64(50), colEnv: "prod", colSvc: "app2"},
+				{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
+			})
+		})
 	})
 
 	t.Run("basic MIN aggregation with record building", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationMin)
-		agg.AddLabels(groupBy)
+		runAggregator(t, aggregationOperationMin, func(t *testing.T, agg *aggregator) {
+			agg.AddLabels(groupBy)
+			mustAddSamples(t, agg, groupBy, nil, arrowtest.Rows{
+				{colTs: ts1, colVal: 10.0, colEnv: "prod", colSvc: "app1"},
+				{colTs: ts1, colVal: 20.0, colEnv: "prod", colSvc: "app2"},
+				{colTs: ts1, colVal: 30.0, colEnv: "dev", colSvc: "app1"},
+				{colTs: ts2, colVal: 15.0, colEnv: "prod", colSvc: "app1"},
+				{colTs: ts2, colVal: 25.0, colEnv: "prod", colSvc: "app2"},
+				{colTs: ts2, colVal: 35.0, colEnv: "dev", colSvc: "app2"},
+				{colTs: ts1, colVal: 5.0, colEnv: "prod", colSvc: "app1"},
+				{colTs: ts2, colVal: 40.0, colEnv: "prod", colSvc: "app2"},
+				{colTs: ts1, colVal: 25.0, colEnv: "prod", colSvc: "app1"},
+			})
 
-		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
-		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+			requireAggregatedRows(t, agg, arrowtest.Rows{
+				{colTs: ts1, colVal: float64(5), colEnv: "prod", colSvc: "app1"},
+				{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
+				{colTs: ts1, colVal: float64(30), colEnv: "dev", colSvc: "app1"},
 
-		// Add test data
-		// ts1: add one datapoint for prod/app1, prod/app2, and dev/app1
-		_ = agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
-
-		// ts2: add another datapoint for prod/app1, prod/app2, and dev/app2
-		_ = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, groupBy, []string{"prod", "app2"})
-		_ = agg.Add(ts2, 35, groupBy, []string{"dev", "app2"})
-
-		// Add more datapoints for prod/app1 and prod/app2
-		_ = agg.Add(ts1, 5, groupBy, []string{"prod", "app1"})  // prod/app1 at ts1 should now be 5
-		_ = agg.Add(ts2, 40, groupBy, []string{"prod", "app2"}) // prod/app2 at ts2 should still be 25
-		_ = agg.Add(ts1, 25, groupBy, []string{"prod", "app1"}) // prod/app1 at ts1 should still be 5
-
-		record, err := agg.BuildRecord()
-		require.NoError(t, err)
-
-		expect := arrowtest.Rows{
-			{colTs: ts1, colVal: float64(5), colEnv: "prod", colSvc: "app1"},
-			{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
-			{colTs: ts1, colVal: float64(30), colEnv: "dev", colSvc: "app1"},
-
-			{colTs: ts2, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
-			{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app2"},
-			{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
-		}
-
-		rows, err := arrowtest.RecordRows(record)
-		require.NoError(t, err, "should be able to convert record back to rows")
-		require.Equal(t, len(expect), len(rows), "number of rows should match")
-		require.ElementsMatch(t, expect, rows)
+				{colTs: ts2, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
+				{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app2"},
+				{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
+			})
+		})
 	})
 
 	t.Run("SUM aggregation with empty groupBy", func(t *testing.T) {
-		// Empty groupBy represents sum by () or sum(...) - all values aggregated into single group
-		groupBy := []arrow.Field{}
-
-		agg := newAggregator(1, aggregationOperationSum)
-		agg.AddLabels(groupBy)
-
-		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
-		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
-
-		// Add test data
-		// ts1: prod/app1 = 10, prod/app2 = 20, dev/app1 = 30
-		_ = agg.Add(ts1, 10, groupBy, []string{}) // "prod", "app1"
-		_ = agg.Add(ts1, 20, groupBy, []string{}) // "prod", "app2"
-		_ = agg.Add(ts1, 30, groupBy, []string{}) // "dev", "app1"
-
-		// ts2: prod/app1 = 15, prod/app2 = 25, dev/app2 = 35
-		_ = agg.Add(ts2, 15, groupBy, []string{}) // "prod", "app1"
-		_ = agg.Add(ts2, 25, groupBy, []string{}) // "prod", "app2"
-		_ = agg.Add(ts2, 35, groupBy, []string{}) // "dev", "app2"
-
-		_ = agg.Add(ts1, 5, groupBy, []string{})  // "prod", "app1"
-		_ = agg.Add(ts2, 10, groupBy, []string{}) // "prod", "app1"
-
-		record, err := agg.BuildRecord()
-		require.NoError(t, err)
-
-		expect := arrowtest.Rows{
-			// ts1: all series aggregated into single value = 65
-			{colTs: ts1, colVal: float64(65)},
-			// ts2: all series aggregated into single value = 85
-			{colTs: ts2, colVal: float64(85)},
+		emptyGroupBy := []arrow.Field{}
+		emptyInput := arrowtest.Rows{
+			{colTs: ts1, colVal: 10.0},
+			{colTs: ts1, colVal: 20.0},
+			{colTs: ts1, colVal: 30.0},
+			{colTs: ts2, colVal: 15.0},
+			{colTs: ts2, colVal: 25.0},
+			{colTs: ts2, colVal: 35.0},
+			{colTs: ts1, colVal: 5.0},
+			{colTs: ts2, colVal: 10.0},
 		}
 
-		rows, err := arrowtest.RecordRows(record)
-		require.NoError(t, err, "should be able to convert record back to rows")
-		require.Equal(t, len(expect), len(rows), "number of rows should match")
-		require.ElementsMatch(t, expect, rows)
+		runAggregator(t, aggregationOperationSum, func(t *testing.T, agg *aggregator) {
+			agg.AddLabels(emptyGroupBy)
+			mustAddSamples(t, agg, emptyGroupBy, nil, emptyInput)
+
+			requireAggregatedRows(t, agg, arrowtest.Rows{
+				{colTs: ts1, colVal: float64(65)},
+				{colTs: ts2, colVal: float64(85)},
+			})
+		})
 	})
 
 	t.Run("basic SUM aggregation with without() grouping", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationSum)
-
-		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
-		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
-
-		buildFields := func(names ...string) []arrow.Field {
-			result := make([]arrow.Field, len(names))
-			for i, name := range names {
-				result[i] = semconv.FieldFromIdent(semconv.NewIdentifier(name, types.ColumnTypeLabel, types.Loki.String), true)
-			}
-			return result
-		}
-
-		agg.AddLabels(buildFields("env", "service", "cluster", "method"))
-
-		// Add test data
-		_ = agg.Add(ts1, 10, buildFields("env", "service"), []string{"prod", "app1"})
-		_ = agg.Add(ts1, 20, buildFields("env", "cluster"), []string{"prod", "east-1"})
-		_ = agg.Add(ts1, 30, buildFields("method"), []string{"init"})
-
-		_ = agg.Add(ts2, 15, buildFields("env", "service"), []string{"prod", "app1"})
-		_ = agg.Add(ts2, 25, buildFields("env", "cluster"), []string{"prod", "east-1"})
-		_ = agg.Add(ts2, 35, buildFields("method"), []string{"init"})
-
-		// Add more data to same groups to test aggregation
-		_ = agg.Add(ts1, 5, buildFields("env", "service"), []string{"prod", "app1"})
-		_ = agg.Add(ts2, 10, buildFields("env", "cluster"), []string{"prod", "east-1"})
-
-		record, err := agg.BuildRecord()
-		require.NoError(t, err)
-
 		colCluster := semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String).FQN()
 		colMethod := semconv.NewIdentifier("method", types.ColumnTypeLabel, types.Loki.String).FQN()
 
-		expect := arrowtest.Rows{
-			{colTs: ts1, colVal: float64(15), colEnv: "prod", colSvc: "app1", colMethod: nil, colCluster: nil},
-			{colTs: ts1, colVal: float64(20), colEnv: "prod", colCluster: "east-1", colSvc: nil, colMethod: nil},
-			{colTs: ts1, colVal: float64(30), colMethod: "init", colEnv: nil, colSvc: nil, colCluster: nil},
-
-			{colTs: ts2, colVal: float64(15), colEnv: "prod", colSvc: "app1", colMethod: nil, colCluster: nil},
-			{colTs: ts2, colVal: float64(35), colEnv: "prod", colCluster: "east-1", colSvc: nil, colMethod: nil},
-			{colTs: ts2, colVal: float64(35), colMethod: "init", colEnv: nil, colSvc: nil, colCluster: nil},
+		allLabelFields := []arrow.Field{
+			semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
+			semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
+			semconv.FieldFromIdent(semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String), true),
+			semconv.FieldFromIdent(semconv.NewIdentifier("method", types.ColumnTypeLabel, types.Loki.String), true),
 		}
 
-		rows, err := arrowtest.RecordRows(record)
-		require.NoError(t, err, "should be able to convert record back to rows")
-		require.Equal(t, len(expect), len(rows), "number of rows should match")
-		require.ElementsMatch(t, expect, rows)
+		withoutInput := arrowtest.Rows{
+			{colTs: ts1, colVal: 10.0, colEnv: "prod", colSvc: "app1", colCluster: nil, colMethod: nil},
+			{colTs: ts1, colVal: 20.0, colEnv: "prod", colCluster: "east-1", colSvc: nil, colMethod: nil},
+			{colTs: ts1, colVal: 30.0, colMethod: "init", colEnv: nil, colSvc: nil, colCluster: nil},
+			{colTs: ts2, colVal: 15.0, colEnv: "prod", colSvc: "app1", colCluster: nil, colMethod: nil},
+			{colTs: ts2, colVal: 25.0, colEnv: "prod", colCluster: "east-1", colSvc: nil, colMethod: nil},
+			{colTs: ts2, colVal: 35.0, colMethod: "init", colEnv: nil, colSvc: nil, colCluster: nil},
+			{colTs: ts1, colVal: 5.0, colEnv: "prod", colSvc: "app1", colCluster: nil, colMethod: nil},
+			{colTs: ts2, colVal: 10.0, colEnv: "prod", colCluster: "east-1", colSvc: nil, colMethod: nil},
+		}
+
+		runAggregator(t, aggregationOperationSum, func(t *testing.T, agg *aggregator) {
+			agg.AddLabels(allLabelFields)
+			mustAddSamples(t, agg, allLabelFields, samplesSchema(allLabelFields), withoutInput)
+
+			requireAggregatedRows(t, agg, arrowtest.Rows{
+				{colTs: ts1, colVal: float64(15), colEnv: "prod", colSvc: "app1", colMethod: nil, colCluster: nil},
+				{colTs: ts1, colVal: float64(20), colEnv: "prod", colCluster: "east-1", colSvc: nil, colMethod: nil},
+				{colTs: ts1, colVal: float64(30), colMethod: "init", colEnv: nil, colSvc: nil, colCluster: nil},
+
+				{colTs: ts2, colVal: float64(15), colEnv: "prod", colSvc: "app1", colMethod: nil, colCluster: nil},
+				{colTs: ts2, colVal: float64(35), colEnv: "prod", colCluster: "east-1", colSvc: nil, colMethod: nil},
+				{colTs: ts2, colVal: float64(35), colMethod: "init", colEnv: nil, colSvc: nil, colCluster: nil},
+			})
+		})
 	})
 
 	t.Run("series limit enforcement", func(t *testing.T) {
-		agg := newAggregator(10, aggregationOperationSum)
-		agg.AddLabels(groupBy)
-		agg.SetMaxSeries(3) // Limit to 3 series
+		initialInput := arrowtest.Rows{
+			{colTs: ts1, colVal: 10.0, colEnv: "prod", colSvc: "app1"},
+			{colTs: ts1, colVal: 20.0, colEnv: "prod", colSvc: "app2"},
+			{colTs: ts1, colVal: 30.0, colEnv: "dev", colSvc: "app1"},
+		}
+		overflowInput := arrowtest.Rows{
+			{colTs: ts2, colVal: 10.0, colEnv: "dev", colSvc: "app2"},
+		}
+		afterLimitInput := arrowtest.Rows{
+			{colTs: ts2, colVal: 15.0, colEnv: "prod", colSvc: "app1"},
+		}
+		finalInput := arrowtest.Rows{
+			{colTs: ts2, colVal: 10.0, colEnv: "dev", colSvc: "app2"},
+		}
 
-		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
-		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+		runAggregator(t, aggregationOperationSum, func(t *testing.T, agg *aggregator) {
+			agg.AddLabels(groupBy)
+			agg.SetMaxSeries(3)
 
-		// Add first 3 series at ts1 - should succeed
-		err := agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
-		require.NoError(t, err)
+			require.NoError(t, addSamples(agg, groupBy, nil, initialInput))
 
-		err = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
-		require.NoError(t, err)
+			err := addSamples(agg, groupBy, nil, overflowInput)
+			require.Error(t, err)
+			require.True(t, errors.Is(err, ErrSeriesLimitExceeded))
 
-		err = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
-		require.NoError(t, err)
+			require.NoError(t, addSamples(agg, groupBy, nil, afterLimitInput))
 
-		// Try to add 4th unique series should fail
-		err = agg.Add(ts2, 10, groupBy, []string{"dev", "app2"})
-		require.Error(t, err)
-		require.True(t, errors.Is(err, ErrSeriesLimitExceeded))
-
-		// Adding same series again at different timestamp should succeed (not a new unique series)
-		err = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
-		require.NoError(t, err)
-
-		// unset the limit
-		agg.SetMaxSeries(0)
-
-		// Now adding new series should succeed
-		err = agg.Add(ts2, 10, groupBy, []string{"dev", "app2"})
-		require.NoError(t, err)
+			agg.SetMaxSeries(0)
+			require.NoError(t, addSamples(agg, groupBy, nil, finalInput))
+		})
 	})
 }
 
-func BenchmarkAggregator(b *testing.B) {
+func TestAggregator_addSamplesFromColumns(t *testing.T) {
+	colTs := semconv.ColumnIdentTimestamp.FQN()
+	colVal := semconv.ColumnIdentValue.FQN()
+	colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String).FQN()
+	colSvc := semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String).FQN()
+
 	fields := []arrow.Field{
 		semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
-		semconv.FieldFromIdent(semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String), true),
 		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
 	}
 
-	agg := newAggregator(10, aggregationOperationSum)
+	ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+	rows := arrowtest.Rows{
+		{colTs: ts1, colVal: 10.0, colEnv: "prod", colSvc: "app1"},
+		{colTs: ts1, colVal: 20.0, colEnv: "prod", colSvc: "app2"},
+	}
+	record := rows.Record(memory.NewGoAllocator(), arrow.NewSchema(fields, nil))
+	t.Cleanup(func() { record.Release() })
+
+	labelCols := []*array.String{
+		record.Column(0).(*array.String),
+		record.Column(1).(*array.String),
+	}
+
+	// Simulate overlapping fan-out: each row contributes to two windows.
+	outputTs := []time.Time{ts1, ts2, ts1, ts2}
+	values := []float64{10, 10, 20, 20}
+	sourceRows := []int{0, 0, 1, 1}
+
+	expect := arrowtest.Rows{
+		{colTs: ts1, colVal: float64(10), colEnv: "prod", colSvc: "app1"},
+		{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
+		{colTs: ts2, colVal: float64(10), colEnv: "prod", colSvc: "app1"},
+		{colTs: ts2, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
+	}
+
+	single := newAggregator(0, aggregationOperationSum)
+	single.AddLabels(fields)
+	for i := range outputTs {
+		require.NoError(t, single.AddSample(outputTs[i], values[i], labelCols, fields, sourceRows[i]))
+	}
+
+	batch := newAggregator(0, aggregationOperationSum)
+	batch.AddLabels(fields)
+	outputTsArr, valuesArr, sourceRowsArr := batchSampleArrays(t, outputTs, values, sourceRows)
+	t.Cleanup(func() {
+		outputTsArr.Release()
+		valuesArr.Release()
+		sourceRowsArr.Release()
+	})
+	require.NoError(t, batch.BatchAddSample(outputTsArr, valuesArr, sourceRowsArr, labelCols, fields))
+
+	requireAggregatedRows(t, single, expect)
+	requireAggregatedRows(t, batch, expect)
+
+	// Repeated source rows in one batch should accumulate without re-hashing labels.
+	repeated := newAggregator(0, aggregationOperationSum)
+	repeated.AddLabels(fields)
+	repeatedTs, repeatedVals, repeatedRows := batchSampleArrays(t, []time.Time{ts1, ts1}, []float64{10, 10}, []int{0, 0})
+	t.Cleanup(func() {
+		repeatedTs.Release()
+		repeatedVals.Release()
+		repeatedRows.Release()
+	})
+	require.NoError(t, repeated.BatchAddSample(repeatedTs, repeatedVals, repeatedRows, labelCols, fields))
+	requireAggregatedRows(t, repeated, arrowtest.Rows{
+		{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app1"},
+	})
+}
+
+func batchSampleArrays(t *testing.T, outputTs []time.Time, values []float64, sourceRows []int) (*array.Timestamp, *array.Float64, *array.Int32) {
+	t.Helper()
+
+	mem := memory.NewGoAllocator()
+	tsBuilder := array.NewTimestampBuilder(mem, &arrow.TimestampType{Unit: arrow.Nanosecond})
+	valBuilder := array.NewFloat64Builder(mem)
+	rowBuilder := array.NewInt32Builder(mem)
+
+	for i := range outputTs {
+		tsValue, err := arrow.TimestampFromTime(outputTs[i], arrow.Nanosecond)
+		require.NoError(t, err)
+		tsBuilder.Append(tsValue)
+		valBuilder.Append(values[i])
+		rowBuilder.Append(int32(sourceRows[i]))
+	}
+
+	return tsBuilder.NewArray().(*array.Timestamp), valBuilder.NewArray().(*array.Float64), rowBuilder.NewArray().(*array.Int32)
+}
+
+var benchGroupingFields = []arrow.Field{
+	semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
+	semconv.FieldFromIdent(semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String), true),
+	semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
+}
+
+// benchRows builds n samples. interleaved rotates label values; otherwise uses one series.
+func benchRows(interleaved bool, fields []arrow.Field, startTs time.Time, step time.Duration, numPoints, n int) arrowtest.Rows {
+	colTs := semconv.ColumnIdentTimestamp.FQN()
+	colVal := semconv.ColumnIdentValue.FQN()
+
+	rows := make(arrowtest.Rows, n)
+	for i := range n {
+		ts := startTs.Add(step * time.Duration(i%numPoints))
+		row := arrowtest.Row{colTs: ts, colVal: 10.0}
+		if interleaved {
+			row[fields[0].Name] = fmt.Sprintf("env-%d", i%3)
+			row[fields[1].Name] = fmt.Sprintf("cluster-%d", i%10)
+			row[fields[2].Name] = fmt.Sprintf("service-%d", i%7)
+		} else {
+			row[fields[0].Name] = "prod"
+			row[fields[1].Name] = "app1"
+			row[fields[2].Name] = "east-1"
+		}
+		rows[i] = row
+	}
+	return rows
+}
+
+func BenchmarkAggregatorAdd(b *testing.B) {
+	const (
+		numPoints = 10_000
+		batchSize = 1024
+	)
+	startTs := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	step := time.Second
+
+	fields := benchGroupingFields
+	schema := samplesSchema(fields)
+
+	for _, tc := range []struct {
+		name        string
+		interleaved bool
+	}{
+		{"interleaved", true},
+		{"single_series", false},
+	} {
+		rows := benchRows(tc.interleaved, fields, startTs, step, numPoints, batchSize)
+		record := rows.Record(memory.NewGoAllocator(), schema)
+		b.Cleanup(func() { record.Release() })
+
+		labelCols := make([]*array.String, len(fields))
+		for i := range fields {
+			labelCols[i] = record.Column(2 + i).(*array.String)
+		}
+
+		b.Run("case="+tc.name, func(b *testing.B) {
+			agg := newAggregator(0, aggregationOperationSum)
+			agg.AddLabels(fields)
+
+			tsCol := record.Column(0).(*array.Timestamp)
+			valCol := record.Column(1).(*array.Float64)
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if err := agg.BatchAddSample(tsCol, valCol, nil, labelCols, fields); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkAggregatorBuildRecord(b *testing.B) {
+	const (
+		numPoints = 8192
+		batchSize = 1024
+	)
+	startTs := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	step := time.Second
+
+	fields := benchGroupingFields
+	schema := samplesSchema(fields)
+
+	agg := newAggregator(0, aggregationOperationSum)
 	agg.AddLabels(fields)
+
+	for offset := 0; offset < numPoints; offset += batchSize {
+		n := batchSize
+		if offset+n > numPoints {
+			n = numPoints - offset
+		}
+		batch := benchRows(true, fields, startTs.Add(step*time.Duration(offset)), step, numPoints, n)
+		record := batch.Record(memory.NewGoAllocator(), schema)
+		if err := batchAddRecord(agg, fields, record); err != nil {
+			record.Release()
+			b.Fatal(err)
+		}
+		record.Release()
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Second)
-		env := fmt.Sprintf("env-%d", i%3)
-		cluster := fmt.Sprintf("cluster-%d", i%10)
-		service := fmt.Sprintf("service-%d", i%7)
-
-		_ = agg.Add(ts, 10, fields, []string{env, cluster, service})
+		_, _ = agg.BuildRecord()
 	}
 }
