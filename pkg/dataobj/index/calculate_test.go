@@ -18,6 +18,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 
@@ -197,6 +199,37 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.GreaterOrEqual(t, count, tenants)
 
 		requireValidPointers(t, obj)
+	})
+
+	t.Run("postings-only section writes", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
+		require.NoError(t, err)
+		indexBuilder.SetWritePostingsSectionsOnly(true)
+
+		calculator := NewCalculator(indexBuilder)
+		for i := 0; i < objects; i++ {
+			obj := createTestLogObject(t, tenants)
+			path := fmt.Sprintf("test/path-%d", i)
+			err = calculator.Calculate(context.Background(), logger, obj, path)
+			require.NoError(t, err)
+		}
+
+		timeRanges := calculator.TimeRanges()
+		obj, closer, err := calculator.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+
+		require.Equal(t, tenants, len(timeRanges))
+		for _, timeRange := range timeRanges {
+			require.NotEmpty(t, timeRange.Tenant)
+			require.Equal(t, time.Unix(10, 0).UTC(), timeRange.MinTime)
+			require.Equal(t, time.Unix(25, 0).UTC(), timeRange.MaxTime)
+		}
+
+		require.Equal(t, 0, obj.Sections().Count(streams.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(pointers.CheckSection))
+		require.GreaterOrEqual(t, obj.Sections().Count(postings.CheckSection), tenants)
+		require.GreaterOrEqual(t, obj.Sections().Count(stats.CheckSection), tenants)
 	})
 }
 

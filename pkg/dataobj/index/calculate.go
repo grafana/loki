@@ -57,14 +57,20 @@ type logsCalculationContext struct {
 	builder      *indexobj.Builder
 }
 
-// These steps are applied to all logs and are unique to a section
-func getLogsCalculationSteps() []logsIndexCalculation {
-	return []logsIndexCalculation{
-		&streamStatisticsCalculation{},
-		&columnValuesCalculation{},
+// These steps are applied to all logs and are unique to a section.
+func getLogsCalculationSteps(writePostingsSectionsOnly bool) []logsIndexCalculation {
+	steps := []logsIndexCalculation{
 		&statsCalculation{sortSchemaKeys: defaultSortSchemaKeys},
 		&labelPostingsCalculation{},
 	}
+	if writePostingsSectionsOnly {
+		return steps
+	}
+
+	return append([]logsIndexCalculation{
+		&streamStatisticsCalculation{},
+		&columnValuesCalculation{},
+	}, steps...)
 }
 
 // Calculator is used to calculate the indexes for a logs object and write them to the builder.
@@ -250,7 +256,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	lockFreeContext := *calculationContext
 	lockFreeContext.builder = nil
 
-	calculationSteps := getLogsCalculationSteps()
+	calculationSteps := getLogsCalculationSteps(c.indexobjBuilder.WritePostingsSectionsOnly())
 
 	// Track cumulative duration per calculation step across all batches + flush.
 	stepDurations := make([]time.Duration, len(calculationSteps))
