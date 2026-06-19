@@ -455,10 +455,33 @@ func (b *Builder) estimatedSize() int {
 }
 
 // TimeRanges returns the time range of the data in the builder, by tenant.
+// For each tenant, the range is the union of its streams and postings ranges;
+// a source with no observations (zero time range) does not contribute.
 func (b *Builder) TimeRanges() []multitenancy.TimeRange {
-	timeRanges := make([]multitenancy.TimeRange, 0, len(b.streams))
-	for tenantID, tenantStreams := range b.streams {
-		minTime, maxTime := tenantStreams.TimeRange()
+	tenantIDs := make(map[string]struct{}, len(b.streams)+len(b.postings))
+	for tenantID := range b.streams {
+		tenantIDs[tenantID] = struct{}{}
+	}
+	for tenantID := range b.postings {
+		tenantIDs[tenantID] = struct{}{}
+	}
+
+	timeRanges := make([]multitenancy.TimeRange, 0, len(tenantIDs))
+	for tenantID := range tenantIDs {
+		var minTime, maxTime time.Time
+
+		if s, ok := b.streams[tenantID]; ok {
+			sMin, sMax := s.TimeRange()
+			minTime, maxTime = unionTimeRange(minTime, maxTime, sMin, sMax)
+		}
+		if p, ok := b.postings[tenantID]; ok {
+			pMin, pMax := p.TimeRange()
+			minTime, maxTime = unionTimeRange(minTime, maxTime, pMin, pMax)
+		}
+
+		if minTime.IsZero() && maxTime.IsZero() {
+			continue
+		}
 		timeRanges = append(timeRanges, multitenancy.TimeRange{
 			Tenant:  tenantID,
 			MinTime: minTime,
@@ -466,6 +489,19 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 		})
 	}
 	return timeRanges
+}
+
+func unionTimeRange(curMin, curMax, candMin, candMax time.Time) (time.Time, time.Time) {
+	if candMin.IsZero() {
+		return curMin, curMax
+	}
+	if curMin.IsZero() || candMin.Before(curMin) {
+		curMin = candMin
+	}
+	if curMax.IsZero() || candMax.After(curMax) {
+		curMax = candMax
+	}
+	return curMin, curMax
 }
 
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result
