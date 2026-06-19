@@ -24,9 +24,9 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   newIngesterStatefulSet(name, container, with_anti_affinity=true)::
     $.newLokiStatefulSet(name, 3, container, [self.ingester_data_pvc, self.ingester_wal_pvc]) +
-    // When the ingester needs to flush blocks to the storage, it may take quite a lot of time.
-    // For this reason, we grant an high termination period (80 minutes).
-    statefulSet.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800) +
+    // With WAL enabled (default), ingesters persist data to disk and replay on restart,
+    // so a long termination period is no longer needed. Aligned with the Helm chart default.
+    statefulSet.mixin.spec.template.spec.withTerminationGracePeriodSeconds(300) +
     // $.lokiVolumeMounts +
     $.util.podPriority('high') +
     (if with_anti_affinity then $.util.antiAffinity else {}),
