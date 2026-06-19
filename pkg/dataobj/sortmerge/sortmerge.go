@@ -27,7 +27,7 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 	sequences := make([]*sectionSequence, 0, len(sections))
 
 	// The buffer size is a trade-off between memory overhead and performance: Share a sensible batch size amongst the sections.
-	bufferSize := max(128, 8192/len(sections))
+	bufferSize := max(128, 8192/max(1, len(sections)))
 
 	for _, s := range sections {
 		sec, err := logs.Open(ctx, s)
