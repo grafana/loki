@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.26.2
+ARG GO_VERSION=1.26.4
 
 FROM golang:${GO_VERSION}-bookworm AS build
 ARG IMAGE_TAG

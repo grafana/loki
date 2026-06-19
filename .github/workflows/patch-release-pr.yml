@@ -21,7 +21,7 @@ jobs:
       pull-requests: "write"
     uses: "grafana/loki-release/.github/workflows/check.yml@eb4e89778be445f9e79533b704cbdee404592eb4"
     with:
-      build_image: "grafana/loki-build-image:0.35.1"
+      build_image: "grafana/loki-build-image:0.35.2"
       golang_ci_lint_version: "v2.11.4"
       release_lib_ref: "eb4e89778be445f9e79533b704cbdee404592eb4"
       skip_validation: false
@@ -167,10 +167,10 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.35.1"
+          --entrypoint /bin/sh "grafana/loki-build-image:0.35.2"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
-          if echo "grafana/loki-build-image:0.35.1" | grep -q "golang"; then
+          if echo "grafana/loki-build-image:0.35.2" | grep -q "golang"; then
             /src/loki/.github/vendor/github.com/grafana/loki-release/workflows/install_workflow_dependencies.sh dist
           fi
           make dist packages
@@ -796,7 +796,7 @@ jobs:
         build-args: |
           IMAGE_TAG=${{ needs.version.outputs.version }}
           GOARCH=${{ steps.platform.outputs.platform_short }}
-          BUILD_IMAGE=grafana/loki-build-image:0.35.1
+          BUILD_IMAGE=grafana/loki-build-image:0.35.2
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
         outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
