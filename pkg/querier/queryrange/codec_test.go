@@ -2673,7 +2673,7 @@ func Benchmark_CodecEncodeLogs(b *testing.B) {
 	resp := &LokiResponse{
 		Status:    loghttp.QueryStatusSuccess,
 		Direction: logproto.BACKWARD,
-		Version:   uint32(loghttp.VersionV1),
+		Version:   1,
 		Limit:     1000,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
