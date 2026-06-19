@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -66,7 +67,7 @@ type ContributingTimeRangeChangedNotifier interface {
 var (
 	errNotImplemented  = errors.New("pipeline not implemented")
 	errPipelineNotOpen = errors.New("pipeline not opened")
-	EOF                = errors.New("pipeline exhausted") //nolint:revive,staticcheck
+	EOF                = fmt.Errorf("pipeline exhausted: %w", io.EOF) //nolint:revive,staticcheck
 )
 
 type state struct {
