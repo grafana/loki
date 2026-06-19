@@ -8,8 +8,10 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
 	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
@@ -190,7 +192,64 @@ NextInput:
 	if compacted == nil {
 		return nil, EOF
 	}
-	return compacted, nil
+	return reverseSameTimestampRows(compacted), nil
+}
+
+// reverseSameTimestampRows returns a copy of rec with the same overall row
+// order, except that runs of consecutive rows sharing the same timestamp are
+// reversed. This is a deliberately hacky/inefficient implementation used to
+// test a hypothesis: it rebuilds the record one row at a time.
+func reverseSameTimestampRows(rec arrow.RecordBatch) arrow.RecordBatch {
+	if rec == nil || rec.NumRows() <= 1 {
+		return rec
+	}
+
+	// Locate the timestamp column.
+	tsCol := -1
+	for i := 0; i < int(rec.NumCols()); i++ {
+		ident, err := semconv.ParseFQN(rec.Schema().Field(i).Name)
+		if err != nil {
+			continue
+		}
+		if semconv.ColumnIdentTimestamp.Equal(ident) {
+			tsCol = i
+			break
+		}
+	}
+	if tsCol < 0 {
+		return rec // No timestamp column; nothing to reverse.
+	}
+
+	ts, ok := rec.Column(tsCol).(*array.Timestamp)
+	if !ok {
+		return rec
+	}
+
+	numRows := int(rec.NumRows())
+
+	// Build the permutation: walk runs of equal timestamps and reverse each run.
+	order := make([]int, 0, numRows)
+	for start := 0; start < numRows; {
+		end := start + 1
+		for end < numRows && ts.Value(end) == ts.Value(start) {
+			end++
+		}
+		for i := end - 1; i >= start; i-- {
+			order = append(order, i)
+		}
+		start = end
+	}
+
+	// Rebuild the record one row at a time in the new order.
+	compactor := arrowagg.NewRecords(memory.DefaultAllocator)
+	for _, row := range order {
+		compactor.AppendSlice(rec, int64(row), int64(row+1))
+	}
+	reordered, err := compactor.Aggregate()
+	if err != nil {
+		return rec
+	}
+	return reordered
 }
 
 // Close closes the resources of the pipeline.
