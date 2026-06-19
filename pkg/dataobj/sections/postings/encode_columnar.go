@@ -4,27 +4,113 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
-// columnarEncode encodes bloom and label entries into the provided columnar
-// encoder. Bloom entries (Kind=0) are encoded first, followed by label entries
-// (Kind=1), using the same 10 column builders.
-//
-// pageSizeHint and pageMaxRowCount control the page splitting behaviour of the
-// underlying column builders.
-func columnarEncode(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *columnar.Encoder, pageSizeHint, pageMaxRowCount int) error {
+// postingsEncoder encodes sorted posting entries into size-bounded sections,
+// splitting at run boundaries. Stateless and reusable across flushes.
+type postingsEncoder struct {
+	pageSizeHint           int
+	pageMaxRowCount        int
+	targetSectionSizeBytes int
+}
+
+func newPostingsEncoder(pageSizeHint, pageMaxRowCount, targetSectionSizeBytes int) *postingsEncoder {
+	return &postingsEncoder{
+		pageSizeHint:           pageSizeHint,
+		pageMaxRowCount:        pageMaxRowCount,
+		targetSectionSizeBytes: targetSectionSizeBytes,
+	}
+}
+
+// encodeBloomEntries splits sorted bloom entries into size-bounded sections,
+// writing each to w, and returns the total bytes written.
+func (p *postingsEncoder) encodeBloomEntries(w dataobj.SectionWriter, tenant string, entries []BloomEntry) (int64, error) {
+	var total int64
+	err := encodeInSections(entries, p.targetSectionSizeBytes, bloomEntrySize, func(section []BloomEntry) error {
+		n, err := p.writeSection(w, tenant, section, nil)
+		if err != nil {
+			return err
+		}
+		total += n
+		return nil
+	})
+	return total, err
+}
+
+// encodeLabelEntries splits sorted label entries into size-bounded sections,
+// writing each to w, and returns the total bytes written.
+func (p *postingsEncoder) encodeLabelEntries(w dataobj.SectionWriter, tenant string, entries []LabelEntry) (int64, error) {
+	var total int64
+	err := encodeInSections(entries, p.targetSectionSizeBytes, labelEntrySize, func(section []LabelEntry) error {
+		n, err := p.writeSection(w, tenant, nil, section)
+		if err != nil {
+			return err
+		}
+		total += n
+		return nil
+	})
+	return total, err
+}
+
+// encodeInSections splits sorted entries into size-bounded sections, cutting at
+// any row boundary once accumulated estimated size reaches target. A single
+// entry larger than target becomes its own section.
+func encodeInSections[E any](entries []E, target int, sizeOf func(E) int, emit func([]E) error) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	start := 0
+	size := 0
+	for i := range entries {
+		if i > start && size >= target {
+			if err := emit(entries[start:i]); err != nil {
+				return err
+			}
+			start = i
+			size = 0
+		}
+		size += sizeOf(entries[i])
+	}
+	return emit(entries[start:])
+}
+
+// bloomEntrySize estimates the encoded size of one bloom entry.
+func bloomEntrySize(e BloomEntry) int {
+	return 5*8 + len(e.ObjectPath) + len(e.ColumnName) + len(e.BloomFilter) + len(e.StreamIDBitmap)
+}
+
+// labelEntrySize estimates the encoded size of one label entry.
+func labelEntrySize(e LabelEntry) int {
+	return 5*8 + len(e.ObjectPath) + len(e.ColumnName) + len(e.LabelValue) + len(e.StreamIDBitmap)
+}
+
+// writeSection encodes a single-kind section (blooms or labels) into a columnar
+// encoder, flushes to w, and returns bytes written. Encoder is reset on return.
+func (p *postingsEncoder) writeSection(w dataobj.SectionWriter, tenant string, blooms []BloomEntry, labels []LabelEntry) (int64, error) {
+	var enc columnar.Encoder
+	defer enc.Reset()
+	if err := p.encodeColumns(blooms, labels, &enc); err != nil {
+		return 0, err
+	}
+	enc.SetTenant(tenant)
+	return enc.Flush(w)
+}
+
+// encodeColumns encodes bloom and label entries into the provided columnar
+// encoder. Bloom entries (Kind=0) first, label entries (Kind=1) second.
+func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *columnar.Encoder) error {
 	// Build column builders for all 10 columns.
 
-	// kind is a 2-value flag (0=bloom, 1=label). DELTA is the only encoding
-	// available for INT64 in the dataset package. With sorted rows (blooms first,
+	// kind is a 2-value flag (0=bloom, 1=label). With sorted rows (blooms first,
 	// then labels), deltas are almost all zeros — ZSTD compresses these runs very
-	// well, unlike delta encodings on our other int64 cols
+	// well, unlike delta encodings on our other int64 cols.
 	kindBuilder, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint:    pageSizeHint,
-		PageMaxRowCount: pageMaxRowCount,
+		PageSizeHint:    p.pageSizeHint,
+		PageMaxRowCount: p.pageMaxRowCount,
 		Type: dataset.ColumnType{
 			Physical: datasetmd.PHYSICAL_TYPE_INT64,
 			Logical:  ColumnTypeKind.String(),
@@ -36,29 +122,29 @@ func columnarEncode(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *c
 		return fmt.Errorf("creating kind column: %w", err)
 	}
 
-	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, pageSizeHint, pageMaxRowCount)
+	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, p.pageSizeHint, p.pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating object_path column: %w", err)
 	}
 
-	sectionIndexBuilder, err := numberColumnBuilder(ColumnTypeSectionIndex, pageSizeHint, pageMaxRowCount)
+	sectionIndexBuilder, err := numberColumnBuilder(ColumnTypeSectionIndex, p.pageSizeHint, p.pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating section_index column: %w", err)
 	}
 
-	columnNameBuilder, err := binaryColumnBuilder(ColumnTypeColumnName, pageSizeHint, pageMaxRowCount)
+	columnNameBuilder, err := binaryColumnBuilder(ColumnTypeColumnName, p.pageSizeHint, p.pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating column_name column: %w", err)
 	}
 
-	labelValueBuilder, err := binaryColumnBuilder(ColumnTypeLabelValue, pageSizeHint, pageMaxRowCount)
+	labelValueBuilder, err := binaryColumnBuilder(ColumnTypeLabelValue, p.pageSizeHint, p.pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating label_value column: %w", err)
 	}
 
 	bloomFilterBuilder, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint:    pageSizeHint,
-		PageMaxRowCount: pageMaxRowCount,
+		PageSizeHint:    p.pageSizeHint,
+		PageMaxRowCount: p.pageMaxRowCount,
 		Type: dataset.ColumnType{
 			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypeBloomFilter.String(),
@@ -70,22 +156,22 @@ func columnarEncode(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *c
 		return fmt.Errorf("creating bloom_filter column: %w", err)
 	}
 
-	streamIDBitmapBuilder, err := binaryColumnBuilder(ColumnTypeStreamIDBitmap, pageSizeHint, pageMaxRowCount)
+	streamIDBitmapBuilder, err := binaryColumnBuilder(ColumnTypeStreamIDBitmap, p.pageSizeHint, p.pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating stream_id_bitmap column: %w", err)
 	}
 
-	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, pageSizeHint, pageMaxRowCount)
+	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, p.pageSizeHint, p.pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating uncompressed_size column: %w", err)
 	}
 
-	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, pageSizeHint, pageMaxRowCount)
+	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, p.pageSizeHint, p.pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating min_timestamp column: %w", err)
 	}
 
-	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, pageSizeHint, pageMaxRowCount)
+	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, p.pageSizeHint, p.pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating max_timestamp column: %w", err)
 	}
@@ -144,18 +230,15 @@ func columnarEncode(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *c
 		rowIdx++
 	}
 
-	// Set sort info: [kind(0), object_path(1), section_index(2), column_name(3), label_value(4)]
-	// Column indices: kind=0, object_path=1, section_index=2, column_name=3, label_value=4,
-	// bloom_filter=5, stream_id_bitmap=6, uncompressed_size=7, min_timestamp=8, max_timestamp=9.
-	// Data is sorted by [kind, objectPath, sectionIndex, columnName, labelValue]; timestamps
-	// are not part of the sort key.
 	enc.SetSortInfo(&datasetmd.SortInfo{
 		ColumnSorts: []*datasetmd.SortInfo_ColumnSort{
 			{ColumnIndex: 0, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // kind
-			{ColumnIndex: 1, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // object_path
-			{ColumnIndex: 2, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // section_index
 			{ColumnIndex: 3, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // column_name
 			{ColumnIndex: 4, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // label_value
+			{ColumnIndex: 8, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // min_timestamp
+			{ColumnIndex: 9, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // max_timestamp
+			{ColumnIndex: 1, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // object_path
+			{ColumnIndex: 2, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // section_index
 		},
 	})
 

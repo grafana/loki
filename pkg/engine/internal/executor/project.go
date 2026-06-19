@@ -242,9 +242,18 @@ func labelFmtRenameSources(expr physical.Expression) map[string]struct{} {
 	return renameSources
 }
 
-// mergeColumns merges two columns by preferring non-null and non-empty values from the new column (b).
-// If b has a null or empty value at index i, keep the value from a at that index.
-// If b has a non-null and non-empty value at index i, use the value from b (overwriting a).
+// mergeColumns merges two columns by preferring values from the new column (b),
+// falling back to the old column (a) only where b is null. An explicit empty
+// string in b is treated as a real value and overwrites a.
+//
+// The null-vs-empty distinction matters: producers (line_format / label_format
+// / logfmt / json / regexp) emit null only when this row didn't contribute a
+// value for the key (so the old column's value should survive), and emit ""
+// when the value is genuinely empty (template rendered "", rename source was
+// "", parsed key extracted an empty value). Treating "" as a missing value
+// silently turned every "rendered to empty" into "keep original", which
+// diverges from v1 — most visibly for `line_format` whose output column always
+// collides with the builtin `message` column.
 func mergeColumns(a, b arrow.Array) arrow.Array {
 	// Only handle string arrays for now (which is what parsers produce)
 	aStr, aOk := a.(*array.String)
@@ -259,8 +268,8 @@ func mergeColumns(a, b arrow.Array) arrow.Array {
 	builder.Reserve(aStr.Len())
 
 	for i := range aStr.Len() {
-		if bStr.IsNull(i) || bStr.Value(i) == "" {
-			// New value is null or empty, keep old value
+		if bStr.IsNull(i) {
+			// New column has no value for this row, keep the old one.
 			if aStr.IsNull(i) {
 				builder.AppendNull()
 			} else {

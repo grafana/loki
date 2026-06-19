@@ -6152,6 +6152,14 @@ http_client_cluster_validation:
   # Primary cluster validation label.
   # CLI flag: -runtime-config.http-client-cluster-validation.label
   [label: <string> | default = ""]
+
+# Disable HTTP keep-alives for the runtime config HTTP client. When enabled,
+# each reload opens a new connection, which prevents long-lived connections from
+# being pinned to a single backend when the runtime config URL is served by
+# multiple replicas behind a connection-level (L4) load balancer, such as a
+# Kubernetes Service.
+# CLI flag: -runtime-config.http-client-disable-keep-alives
+[http_client_disable_keep_alives: <boolean> | default = true]
 ```
 
 ### s3_storage_config

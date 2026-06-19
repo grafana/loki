@@ -22,7 +22,6 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -1177,7 +1176,6 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 		}
 
 		task.MarkQueued()
-		task.region.Record(schedulerstat.TaskStagingDuration.Observe(task.QueueTime().Sub(task.createTime).Nanoseconds()))
 		if err := s.taskQueue.Push(task.scope, task); err != nil {
 			level.Error(s.logger).Log("msg", "failed to enqueue task; task will not be executed", "id", task.inner.ULID, "err", err)
 		}

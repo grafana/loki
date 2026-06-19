@@ -146,7 +146,7 @@ func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder
 	}
 	pb, ok := b.postings[tenantID]
 	if !ok {
-		pb = postings.NewBuilder(b.metrics.postings, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+		pb = postings.NewBuilder(b.metrics.postings, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, int(b.cfg.TargetSectionSize))
 		pb.SetTenant(tenantID)
 		b.postings[tenantID] = pb
 	}
