@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -14,5 +11,5 @@ const (
 	module = "github.com/Azure/azure-sdk-for-go/sdk/" + component
 
 	// Version is the semantic version (see http://semver.org) of this module.
-	version = "v1.13.1"
+	version = "v1.14.0"
 )
