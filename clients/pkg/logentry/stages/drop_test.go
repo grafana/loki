@@ -328,6 +328,42 @@ func Test_dropStage_Process(t *testing.T) {
 			shouldDrop: false,
 		},
 		{
+			name: "Regex matches empty string but source is absent",
+			config: &DropConfig{
+				Source:     "key",
+				Expression: ptrFromString(".*"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"pokey": "pal1",
+			},
+			shouldDrop: false,
+		},
+		{
+			name: "Regex matches empty string but all sources are absent",
+			config: &DropConfig{
+				Source:     []string{"key1", "key2"},
+				Expression: ptrFromString(".*"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"other": "val",
+			},
+			shouldDrop: false,
+		},
+		{
+			name: "Regex matches empty string and source is present",
+			config: &DropConfig{
+				Source:     "key",
+				Expression: ptrFromString(".*"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key": "anything",
+			},
+			shouldDrop: true,
+		},
+		{
 			name: "Regex Did Not Match Line",
 			config: &DropConfig{
 				Expression: ptrFromString(".*val.*"),

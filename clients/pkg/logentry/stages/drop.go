@@ -243,6 +243,13 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 				extractedData = append(extractedData, s)
 			}
 		}
+		// No configured source was found, so the source condition is not met: don't drop.
+		if len(extractedData) == 0 {
+			if Debug {
+				level.Debug(m.logger).Log("msg", "line will not be dropped, none of the provided sources were found in the extracted map")
+			}
+			return false
+		}
 		if !m.cfg.regex.MatchString(strings.Join(extractedData, *m.cfg.Separator)) {
 			// Not a match to the regex, don't drop
 			if Debug {
