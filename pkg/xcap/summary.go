@@ -403,6 +403,20 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
+	// metastore postings sections scan stats
+	result.merge(
+		collect.fromRegions("metastore.postingsIndexSectionsReader.Read", true).
+			filter(
+				StatMetastoreStreamsRead.Key(),
+				StatMetastoreSectionPointersRead.Key(),
+				StatPostingsLabelsResolved.Key(),
+				StatPostingsPointersRead.Key(),
+				StatPostingsBloomRowsRead.Key(),
+				StatPostingsBloomDeserializeFailures.Key(),
+			).
+			normalizeKeys(),
+	)
+
 	// metastore dataset reader and task stats (rollUp to include children)
 	result.merge(
 		collect.fromRegions("engine.metastoreResolver", true).

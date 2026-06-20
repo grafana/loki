@@ -584,13 +584,17 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 				return fmt.Errorf("collect sections: %w", err)
 			}
 
-			// Merge the section descriptors for the object into the global section descriptors in one batch
-			sectionsMu.Lock()
-
 			// this is temporary, the stats will be collected differently in a distributed metastore
 			statsProvider := reader.(bloomStatsProvider)
-			totalSections.Add(statsProvider.totalReadRows())
+			readRows := statsProvider.totalReadRows()
+			resolvedForObject := len(sectionsResp.SectionsResponse.Sections)
 
+			m.metrics.indexReadRowsPerObject.WithLabelValues(statsProvider.readFlow()).Observe(float64(readRows))
+			m.metrics.resolvedSectionsPerObject.WithLabelValues(statsProvider.readFlow()).Observe(float64(resolvedForObject))
+
+			// Merge the section descriptors for the object into the global section descriptors in one batch
+			sectionsMu.Lock()
+			totalSections.Add(readRows)
 			sections = append(sections, sectionsResp.SectionsResponse.Sections...)
 			sectionsMu.Unlock()
 
@@ -642,6 +646,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		}
 		// Index objects written before postings still read from streams sections
 		if hasPostings {
+			m.metrics.postingsReaderSelectedTotal.WithLabelValues(flowPostings).Inc()
 			reader := newPostingsIndexSectionsReader(
 				m.logger,
 				idxObj,
@@ -653,6 +658,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 			)
 			return IndexSectionsReaderResponse{Reader: reader}, nil
 		}
+		m.metrics.postingsReaderSelectedTotal.WithLabelValues(flowStreams).Inc()
 	}
 
 	reader := newIndexSectionsReader(
@@ -667,6 +673,12 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil
 }
+
+// Read path flow labels for per-flow metric attribution.
+const (
+	flowPostings = "postings"
+	flowStreams  = "streams"
+)
 
 // hasPostingsSection reports whether obj contains a postings section for the tenant
 func hasPostingsSection(ctx context.Context, obj *dataobj.Object) (bool, error) {

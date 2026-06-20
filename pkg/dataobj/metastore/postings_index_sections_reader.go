@@ -203,6 +203,7 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 		}
 		// Pointer rows come from the same scan; stash them for readPointers.
 		r.pointerRows = res.Pointers
+		r.bloomRowsRead = uint64(len(res.Pointers))
 	}
 
 	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(matchingStreamRefs))))
@@ -239,7 +240,6 @@ func (r *postingsIndexSectionsReader) readPointers(ctx context.Context) (arrow.R
 
 	rec := buildPointersRecord(memory.DefaultAllocator, batch)
 	r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
-	r.bloomRowsRead += uint64(rec.NumRows())
 	return rec, nil
 }
 
@@ -334,6 +334,10 @@ func (r *postingsIndexSectionsReader) Close() {
 
 func (r *postingsIndexSectionsReader) totalReadRows() uint64 {
 	return r.bloomRowsRead
+}
+
+func (r *postingsIndexSectionsReader) readFlow() string {
+	return flowPostings
 }
 
 const (
