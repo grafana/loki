@@ -12,7 +12,7 @@
 
 ---
 
-A foundational library to analyze an OAI specification document for easier reasoning about the content.
+A foundational library to analyze, diff, flatten, merge, and fix OAI specification documents for easier reasoning about the content.
 
 ## Announcements
 
@@ -38,6 +38,7 @@ go get github.com/go-openapi/analysis
 
 * An analyzer providing methods to walk the functional content of a specification
 * A spec flattener producing a self-contained document bundle, while preserving `$ref`s
+* A spec differ ("diff") to compare two specs and report structural and compatibility changes
 * A spec merger ("mixin") to merge several spec documents into a primary spec
 * A spec "fixer" ensuring that response descriptions are non empty
 
