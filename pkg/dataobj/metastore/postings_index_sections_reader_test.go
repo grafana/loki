@@ -116,9 +116,9 @@ func TestPostingsIndexSectionsReader_CombinesAcrossPostingsSections(t *testing.T
 	require.Nil(t, rec)
 }
 
-// readPointers must page its output in batchSize-row batches across successive
-// Read calls, mirroring the streams+pointers path, rather than returning the
-// whole result in one batch.
+// Read must page its output in batchSize-row batches across successive Read
+// calls, mirroring the streams+pointers path, rather than returning the whole
+// result in one batch.
 func TestPostingsIndexSectionsReader_PagesPointerOutput(t *testing.T) {
 	t.Parallel()
 
@@ -198,7 +198,7 @@ func TestPostingsIndexSectionsReader_NoPostingsSectionReturnsEOF(t *testing.T) {
 	rec, err := r.Read(ctx)
 	require.ErrorIs(t, err, io.EOF)
 	require.Nil(t, rec)
-	require.Empty(t, r.pointerRows, "no postings section ⇒ no matching streams")
+	require.Empty(t, r.pointersCursor.pointers, "no postings section ⇒ no matching streams")
 }
 
 func TestPostingsIndexSectionsReader_StreamLabelPredicateOnDisjointName(t *testing.T) {
@@ -387,8 +387,10 @@ func TestPostingsIndexSectionsReader_RetryAfterBloomErrorStillFiltersPredicates(
 	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 0)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
-	require.NoError(t, r.lazyResolveStreams(ctx))
-	require.NotEmpty(t, r.pointerRows, "fixture should resolve at least one pointer row before bloom filtering")
+
+	resolved, err := r.findPointers(ctx, r.postingsReaders, r.matchers, r.start, r.end, r.batchSize)
+	require.NoError(t, err)
+	require.NotEmpty(t, resolved.pointers, "fixture should resolve at least one pointer row before bloom filtering")
 
 	// Simulate a transient bloom-read failure by swapping in an unopened reader.
 	originalReaders := r.postingsReaders
@@ -400,21 +402,20 @@ func TestPostingsIndexSectionsReader_RetryAfterBloomErrorStillFiltersPredicates(
 		}),
 	}
 
-	rec, err := r.readPointers(ctx)
+	_, err = r.filterBlooms(ctx, r.predicates, resolved)
 	require.Error(t, err, "first attempt should fail while bloom filtering")
-	require.Nil(t, rec)
 
-	// Contract for retry safety: bloom filtering must still be pending after an
-	// error; otherwise a retry can leak unfiltered pointers.
-	require.False(t, r.bloomFiltered, "failed bloom filtering must not mark bloom filtering as complete")
+	// Contract for retry safety: a failed bloom filter must leave the resolved
+	// pointers untouched; otherwise a retry can leak or lose rows.
+	require.NotEmpty(t, resolved.pointers, "failed bloom filtering must not consume the resolved pointers")
 
 	// Restore healthy readers and retry.
 	r.postingsReaders = originalReaders
 
-	rec, err = r.readPointers(ctx)
-	require.ErrorIs(t, err, io.EOF,
+	filtered, err := r.filterBlooms(ctx, r.predicates, resolved)
+	require.NoError(t, err)
+	require.Empty(t, filtered.pointers,
 		"retry must still apply bloom predicates; traceID miss should prune all rows")
-	require.Nil(t, rec)
 }
 
 // TestPointersRecordSchema_ParityWithPointersReader proves the batches built by
