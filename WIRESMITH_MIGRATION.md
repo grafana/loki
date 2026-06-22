@@ -4,6 +4,15 @@ Status of generating Loki's protobuf Go code with
 [wiresmith](https://github.com/grafana/wiresmith) instead of the current
 `protoc --gogoslick_out` toolchain.
 
+> **2026-06-22 (branch `wiresmith`, rebased on upstream/main post-#22468):**
+> `go.mod` pins `v0.0.0-20260618160438-f15959a1e4e7` (`f15959a`), the
+> squash-merge of the `databases` branch into `grafana/wiresmith` main (#142).
+> The compiler source (`compiler/`/`protohelpers/`/`proto/`) is byte-identical
+> to `edd3e465d382`; the only codegen difference is stdlib import ordering
+> (stdlib imports now appear after third-party, vs leading in `edd3e46`).
+> Rebased on upstream/main HEAD `eecfe8a42c`; all workarounds preserved.
+> Build + touched-package tests green.
+>
 > **2026-06-18 (branch `wiresmith-der5-7m6-validate`):** `go.mod` pins the
 > published pseudo-version `v0.0.0-20260618101418-7b3348950083`
 > (`databases`@`7b33489`, now on `grafana/wiresmith`), no `replace`. This is
@@ -421,10 +430,10 @@ handling.
 ## Reproduction
 
 - Regenerate: `make wiresmith-protos BUILD_IN_CONTAINER=false` (the public
-  `github.com/grafana/wiresmith@4f41063` binary on PATH —
-  `go install github.com/grafana/wiresmith@v0.0.0-20260611164808-4f41063d76a2`).
-  Reproducible — byte-identical output across runs (verified twice on
-  2026-06-12).
+  `github.com/grafana/wiresmith@f15959a` binary on PATH —
+  `go install github.com/grafana/wiresmith/cmd/wiresmith@v0.0.0-20260618160438-f15959a1e4e7`).
+  Targets post-#142 merged main (`databases` → `grafana/wiresmith` main).
+  Reproducible — byte-identical output across runs.
 - The gogo pipeline (`make protos`) still generates the remaining gogo protos
   (push/push-rf1, indexgateway, vendored Thanos/dskit) and excludes the
   migrated ones via `WIRESMITH_PROTO_DEFS`.

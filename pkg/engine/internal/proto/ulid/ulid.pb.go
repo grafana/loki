@@ -5,11 +5,10 @@ package ulid
 
 import (
 	"fmt"
-	"io"
-	"math"
-
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
 )
 
 // ProtoULID represents a Universally Unique Lexicographically Sortable

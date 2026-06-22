@@ -5,11 +5,10 @@ package proto
 
 import (
 	"fmt"
-	"io"
-	"math"
-
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
 )
 
 // SectionRef identifies one section in object storage with its sort-key bounds.

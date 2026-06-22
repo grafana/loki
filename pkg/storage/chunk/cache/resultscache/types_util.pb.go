@@ -5,16 +5,15 @@ package resultscache
 
 import (
 	"fmt"
+	"github.com/grafana/wiresmith/protohelpers"
+	"github.com/grafana/wiresmith/types/known/anypb"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/runtime/protoimpl"
 	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"unsafe"
-
-	"github.com/grafana/wiresmith/protohelpers"
-	"github.com/grafana/wiresmith/types/known/anypb"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/runtime/protoimpl"
 )
 
 // Cold companion utilities for pkg/storage/chunk/cache/resultscache/types.proto.

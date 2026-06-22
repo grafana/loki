@@ -4,11 +4,10 @@
 package logproto
 
 import (
-	"reflect"
-	"unsafe"
-
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoimpl"
+	"reflect"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/logproto/ingester-rf1.proto.

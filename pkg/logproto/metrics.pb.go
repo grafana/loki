@@ -5,12 +5,11 @@ package logproto
 
 import (
 	"fmt"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
-
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 )
 
 type WriteRequest_SourceEnum int32

@@ -5,12 +5,6 @@ package base
 
 import (
 	"fmt"
-	"reflect"
-	"slices"
-	"strconv"
-	"strings"
-	"unsafe"
-
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 	"github.com/grafana/wiresmith/protohelpers"
@@ -18,6 +12,11 @@ import (
 	"google.golang.org/protobuf/runtime/protoimpl"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/ruler/base/ruler.proto.

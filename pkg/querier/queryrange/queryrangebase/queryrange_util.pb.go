@@ -5,12 +5,6 @@ package queryrangebase
 
 import (
 	"fmt"
-	"reflect"
-	"slices"
-	"strconv"
-	"strings"
-	"unsafe"
-
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
@@ -19,6 +13,11 @@ import (
 	"google.golang.org/protobuf/runtime/protoimpl"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/querier/queryrange/queryrangebase/queryrange.proto.

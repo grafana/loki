@@ -5,15 +5,14 @@ package proto
 
 import (
 	"fmt"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/runtime/protoimpl"
 	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"unsafe"
-
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/runtime/protoimpl"
 )
 
 // Cold companion utilities for pkg/dataobj/compaction/v2/proto/compactionv2.proto.

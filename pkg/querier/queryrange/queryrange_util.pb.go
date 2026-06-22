@@ -5,13 +5,6 @@ package queryrange
 
 import (
 	"fmt"
-	"reflect"
-	"slices"
-	"sort"
-	"strconv"
-	"strings"
-	"unsafe"
-
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -23,6 +16,12 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoimpl"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"reflect"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/querier/queryrange/queryrange.proto.

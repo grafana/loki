@@ -5,17 +5,16 @@ package grpc
 
 import (
 	"fmt"
-	"reflect"
-	"slices"
-	"strconv"
-	"strings"
-	"unsafe"
-
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoimpl"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/compactor/client/grpc/grpc.proto.

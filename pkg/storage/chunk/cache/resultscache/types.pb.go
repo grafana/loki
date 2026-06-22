@@ -5,11 +5,10 @@ package resultscache
 
 import (
 	"fmt"
-	"io"
-	"math"
-
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
 )
 
 // Defined here to prevent circular imports between logproto & queryrangebase

@@ -5,13 +5,12 @@ package protos
 
 import (
 	"fmt"
-	"io"
-	"math"
-
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/wiresmith/protohelpers"
 	model "github.com/prometheus/common/model"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
 )
 
 // FPBounds is identical to the definition in `pkg/storage/bloom/v1/bounds.FingerprintBounds`

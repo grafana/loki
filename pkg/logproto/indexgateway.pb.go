@@ -5,13 +5,12 @@ package logproto
 
 import (
 	"fmt"
-	"io"
-	"math"
-
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/wiresmith/protohelpers"
 	model "github.com/prometheus/common/model"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
 )
 
 type ShardsRequest struct {

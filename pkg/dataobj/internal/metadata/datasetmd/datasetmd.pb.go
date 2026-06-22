@@ -5,12 +5,11 @@ package datasetmd
 
 import (
 	"fmt"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
-
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // PhysicalType represents the type that the column is encoded as.

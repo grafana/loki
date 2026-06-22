@@ -5,16 +5,15 @@ package deletionproto
 
 import (
 	"fmt"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/runtime/protoimpl"
 	"reflect"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"unsafe"
-
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/runtime/protoimpl"
 )
 
 // Cold companion utilities for pkg/compactor/deletion/deletionproto/types.proto.

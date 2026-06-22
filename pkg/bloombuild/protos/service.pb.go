@@ -5,11 +5,10 @@ package protos
 
 import (
 	"fmt"
-	"io"
-	"math"
-
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
 )
 
 type BuilderToPlanner struct {

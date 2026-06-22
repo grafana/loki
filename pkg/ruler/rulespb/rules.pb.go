@@ -5,13 +5,12 @@ package rulespb
 
 import (
 	"fmt"
-	"io"
-	"math"
-	"time"
-
 	logproto "github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
+	"time"
 )
 
 // RuleGroupDesc is a proto representation of a rule group.

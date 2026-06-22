@@ -5,11 +5,10 @@ package metastore
 
 import (
 	"fmt"
-	"io"
-	"math"
-
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
 )
 
 // ObjectWrittenEvent describes a new logs object being written to object storage.

@@ -5,14 +5,13 @@ package frontendv2pb
 
 import (
 	"fmt"
-	"io"
-	"math"
-
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
 )
 
 type QueryResultRequest_Response interface {

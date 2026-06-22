@@ -6,12 +6,11 @@ package expressionpb
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
-
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // UnaryOp denotes the kind of unary operation to perform.

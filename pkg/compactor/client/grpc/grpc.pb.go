@@ -5,14 +5,13 @@ package grpc
 
 import (
 	"fmt"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
 	"time"
-
-	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // JobType represents the type of job

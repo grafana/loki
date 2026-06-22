@@ -6,11 +6,10 @@ package stats
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
-	"math"
-
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
 )
 
 // Result contains LogQL query statistics.

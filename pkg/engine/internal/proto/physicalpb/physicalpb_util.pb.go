@@ -5,12 +5,6 @@ package physicalpb
 
 import (
 	"fmt"
-	"reflect"
-	"slices"
-	"strconv"
-	"strings"
-	"unsafe"
-
 	"github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/expressionpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
@@ -19,6 +13,11 @@ import (
 	"google.golang.org/protobuf/runtime/protoimpl"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/engine/internal/proto/physicalpb/physicalpb.proto.

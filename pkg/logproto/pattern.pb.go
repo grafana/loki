@@ -5,13 +5,12 @@ package logproto
 
 import (
 	"fmt"
-	"io"
-	"math"
-	"time"
-
 	"github.com/grafana/wiresmith/protohelpers"
 	model "github.com/prometheus/common/model"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
+	"time"
 )
 
 type QueryPatternsRequest struct {

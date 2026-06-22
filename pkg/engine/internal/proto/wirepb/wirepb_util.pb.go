@@ -5,19 +5,18 @@ package wirepb
 
 import (
 	"fmt"
-	"reflect"
-	"slices"
-	"sort"
-	"strconv"
-	"strings"
-	"unsafe"
-
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoimpl"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"reflect"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/engine/internal/proto/wirepb/wirepb.proto.

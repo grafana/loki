@@ -5,16 +5,15 @@ package frontendv2pb
 
 import (
 	"fmt"
-	"reflect"
-	"strings"
-	"unsafe"
-
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoimpl"
+	"reflect"
+	"strings"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/lokifrontend/frontend/v2/frontendv2pb/frontend.proto.

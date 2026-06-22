@@ -5,13 +5,12 @@ package stats
 
 import (
 	"fmt"
-	"reflect"
-	"strings"
-	"unsafe"
-
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoimpl"
+	"reflect"
+	"strings"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/logqlmodel/stats/stats.proto.

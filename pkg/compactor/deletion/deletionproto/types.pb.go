@@ -5,12 +5,11 @@ package deletionproto
 
 import (
 	"fmt"
-	"io"
-	"math"
-
 	"github.com/grafana/wiresmith/protohelpers"
 	model "github.com/prometheus/common/model"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
 )
 
 type DeleteRequest struct {

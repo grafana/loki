@@ -5,16 +5,15 @@ package frontendv1pb
 
 import (
 	"fmt"
-	"reflect"
-	"strconv"
-	"strings"
-	"unsafe"
-
 	"github.com/grafana/loki/v3/pkg/querier/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoimpl"
+	"reflect"
+	"strconv"
+	"strings"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/lokifrontend/frontend/v1/frontendv1pb/frontend.proto.

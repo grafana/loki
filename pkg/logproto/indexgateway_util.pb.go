@@ -5,16 +5,15 @@ package logproto
 
 import (
 	"fmt"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/runtime/protoimpl"
 	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"unsafe"
-
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/runtime/protoimpl"
 )
 
 // Cold companion utilities for pkg/logproto/indexgateway.proto.

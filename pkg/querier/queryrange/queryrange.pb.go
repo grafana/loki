@@ -5,10 +5,6 @@ package queryrange
 
 import (
 	"fmt"
-	"io"
-	"math"
-	"time"
-
 	push "github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -18,6 +14,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
+	"time"
 )
 
 type QueryResponse_Response interface {

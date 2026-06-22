@@ -5,15 +5,14 @@ package queryrangebase
 
 import (
 	"fmt"
-	"io"
-	"math"
-	"time"
-
 	logproto "github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
+	"time"
 )
 
 type PrometheusRequest struct {

@@ -5,14 +5,13 @@ package schedulerpb
 
 import (
 	"fmt"
-	"io"
-	"math"
-	"strconv"
-
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
+	"strconv"
 )
 
 type FrontendToSchedulerType int32

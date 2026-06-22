@@ -387,7 +387,7 @@ func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
 
 	req := defaultReq()
 	req.Query = `{app="foo"}`
-	req.Plan = &plan.QueryPlan{
+	req.Plan = plan.QueryPlan{
 		AST: syntax.MustParseExpr(req.Query),
 	}
 	ctx := context.WithValue(context.Background(), strategyContextKey{}, "strategy-context")

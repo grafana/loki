@@ -5,13 +5,12 @@ package ingester
 
 import (
 	"fmt"
-	"io"
-	"math"
-	"time"
-
 	logproto "github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
+	"time"
 )
 
 // Chunk is a {de,}serializable intermediate type for chunkDesc which allows

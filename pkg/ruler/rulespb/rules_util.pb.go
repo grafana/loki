@@ -5,18 +5,17 @@ package rulespb
 
 import (
 	"fmt"
-	"reflect"
-	"slices"
-	"strconv"
-	"strings"
-	"unsafe"
-
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/wiresmith/protohelpers"
 	"github.com/grafana/wiresmith/types/known/anypb"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoimpl"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/ruler/rulespb/rules.proto.

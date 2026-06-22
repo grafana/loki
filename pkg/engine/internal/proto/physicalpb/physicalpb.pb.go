@@ -5,16 +5,15 @@ package physicalpb
 
 import (
 	"fmt"
-	"io"
-	"math"
-	"strconv"
-	"time"
-
 	"github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/expressionpb"
 	ulid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
+	"strconv"
+	"time"
 )
 
 // AggregateRangeOp represents the operation to perform on the aggregated

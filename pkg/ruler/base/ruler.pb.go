@@ -6,15 +6,14 @@ package base
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
-	"math"
-	"strconv"
-	"time"
-
 	logproto "github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
+	"strconv"
+	"time"
 )
 
 type RulesRequest_RuleType int32

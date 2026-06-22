@@ -6,13 +6,12 @@ package proto
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/grafana/wiresmith/protohelpers"
+	"google.golang.org/protobuf/encoding/protowire"
 	"io"
 	"math"
 	"strconv"
 	"time"
-
-	"github.com/grafana/wiresmith/protohelpers"
-	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // DataType specifies the data type of a statistic's values.

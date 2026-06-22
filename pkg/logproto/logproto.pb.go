@@ -6,11 +6,6 @@ package logproto
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
-	"math"
-	"strconv"
-	"time"
-
 	push "github.com/grafana/loki/pkg/push"
 	syntax "github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -19,6 +14,10 @@ import (
 	"github.com/grafana/wiresmith/protohelpers"
 	model "github.com/prometheus/common/model"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
+	"strconv"
+	"time"
 )
 
 type Direction int32

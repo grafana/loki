@@ -5,14 +5,13 @@ package stats
 
 import (
 	"fmt"
-	"reflect"
-	"strings"
-	"unsafe"
-
 	"github.com/grafana/wiresmith/protohelpers"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoimpl"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"reflect"
+	"strings"
+	"unsafe"
 )
 
 // Cold companion utilities for pkg/querier/stats/stats.proto.

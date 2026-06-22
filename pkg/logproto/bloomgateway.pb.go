@@ -5,13 +5,12 @@ package logproto
 
 import (
 	"fmt"
-	"io"
-	"math"
-
 	plan "github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/wiresmith/protohelpers"
 	model "github.com/prometheus/common/model"
 	"google.golang.org/protobuf/encoding/protowire"
+	"io"
+	"math"
 )
 
 type FilterChunkRefRequest struct {
