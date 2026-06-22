@@ -224,6 +224,9 @@ type Builder struct {
 	streams map[string]*streams.Builder
 	logs    map[string]*logs.Builder
 
+	// sortSchemaLabels caches the schema labels for enabled tenants.
+	sortSchemaLabels map[string][]string
+
 	// earliestRecordTime tracks the timestamp of the earliest record appended
 	// to the builder. It is required for the metastore index.
 	earliestRecordTime time.Time
@@ -251,13 +254,14 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderM
 	}
 
 	return &Builder{
-		cfg:        cfg,
-		metrics:    metrics,
-		logger:     log.NewNopLogger(),
-		labelCache: labelCache,
-		builder:    dataobj.NewBuilder(scratchStore),
-		streams:    make(map[string]*streams.Builder),
-		logs:       make(map[string]*logs.Builder),
+		cfg:              cfg,
+		metrics:          metrics,
+		logger:           log.NewNopLogger(),
+		labelCache:       labelCache,
+		builder:          dataobj.NewBuilder(scratchStore),
+		streams:          make(map[string]*streams.Builder),
+		logs:             make(map[string]*logs.Builder),
+		sortSchemaLabels: make(map[string][]string),
 	}, nil
 }
 
@@ -279,14 +283,35 @@ func (b *Builder) initBuilder(tenant string) {
 		b.streams[tenant] = sb
 	}
 	if _, ok := b.logs[tenant]; !ok {
+		var schemaLabels []string
+		if b.cfg.DataobjUseSortSchema && b.overrides != nil {
+			schemaLabels = b.overrides.SortSchemaLabels(tenant)
+		}
+
+		sortOrder := parseSortOrder(b.cfg.DataobjSortOrder)
+		appendStrategy := appendStrategy(b.cfg.AppendOrderedEnabled)
+
+		if len(schemaLabels) > 0 {
+			sortOrder = logs.SortSchemaASC
+
+			// TODO(ashwanth): SortSchemaASC does not support AppendUnordered
+			// It cannot merge stripes with schema ordering. This is
+			// good to have as sorting stripes can help lower peak
+			// memory usage compared to sorting entire section at once.
+			// Force to always use AppendOrdered temporarily.
+			appendStrategy = logs.AppendOrdered
+		}
+
+		b.sortSchemaLabels[tenant] = schemaLabels
 		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
 			PageSizeHint:              int(b.cfg.TargetPageSize),
 			PageMaxRowCount:           b.cfg.MaxPageRows,
 			BufferSize:                int(b.cfg.BufferSize),
 			StripeMergeLimit:          b.cfg.SectionStripeMergeLimit,
-			AppendStrategy:            appendStrategy(b.cfg.AppendOrderedEnabled),
+			AppendStrategy:            appendStrategy,
 			EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
-			SortOrder:                 parseSortOrder(b.cfg.DataobjSortOrder),
+			SortOrder:                 sortOrder,
+			SchemaLabels:              schemaLabels,
 		})
 		lb.SetTenant(tenant)
 		b.logs[tenant] = lb
@@ -322,6 +347,15 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
+	var sortKey string
+	if schemaLabels := b.sortSchemaLabels[tenant]; len(schemaLabels) > 0 {
+		var err error
+		sortKey, err = computeSortKey(ls, schemaLabels)
+		if err != nil {
+			return fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
+		}
+	}
+
 	for _, entry := range stream.Entries {
 		sz := int64(len(entry.Line))
 		for _, md := range entry.StructuredMetadata {
@@ -335,6 +369,7 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 			Timestamp: entry.Timestamp,
 			Metadata:  convertMetadata(entry.StructuredMetadata),
 			Line:      []byte(entry.Line),
+			SortKey:   sortKey,
 		})
 
 		// If our logs section has gotten big enough, we want to flush it to the
@@ -620,6 +655,7 @@ func (b *Builder) Reset() {
 	// relative to our memory limit. Maybe we will consider this in future.
 	clear(b.logs)
 	clear(b.streams)
+	clear(b.sortSchemaLabels)
 
 	b.earliestRecordTime = time.Time{}
 	b.currentSizeEstimate = 0

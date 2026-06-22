@@ -483,6 +483,61 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		timestampsDescWithinGroups(t, obj2, "t1")
 	})
 
+	t.Run("initial flush emits schema-ordered logs sections", func(t *testing.T) {
+		cfg := makeCfg(true)
+		overrides := tenantOverrides{"t1": {"label:app"}}
+		obj := buildObj(t, cfg, "t1", []string{"zoo", "alpha", "middle"}, overrides)
+
+		streamToApp := make(map[int64]string)
+		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
+			return streams.CheckSection(s) && s.Tenant == "t1"
+		}) {
+			streamSec, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			for res := range streams.IterSection(t.Context(), streamSec) {
+				val, err := res.Value()
+				require.NoError(t, err)
+				streamToApp[val.ID] = val.Labels.Get("app")
+			}
+		}
+
+		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
+			return logs.CheckSection(s) && s.Tenant == "t1"
+		}) {
+			logsSection, err := logs.Open(t.Context(), sec)
+			require.NoError(t, err)
+			schemaLabels, err := logsSection.SchemaLabels()
+			require.NoError(t, err)
+			require.Equal(t, []string{"label:app"}, schemaLabels)
+
+			var (
+				prevApp      string
+				prevStreamID int64
+				prevTS       time.Time
+				firstRecord  = true
+			)
+			for res := range iterLogsSection(t, sec) {
+				val, err := res.Value()
+				require.NoError(t, err)
+				app := streamToApp[val.StreamID]
+				if !firstRecord {
+					switch {
+					case app != prevApp:
+						require.GreaterOrEqual(t, app, prevApp)
+					case val.StreamID != prevStreamID:
+						require.GreaterOrEqual(t, val.StreamID, prevStreamID)
+					default:
+						require.LessOrEqual(t, val.Timestamp.UnixNano(), prevTS.UnixNano())
+					}
+				}
+				prevApp = app
+				prevStreamID = val.StreamID
+				prevTS = val.Timestamp
+				firstRecord = false
+			}
+		}
+	})
+
 	t.Run("idempotent: second CopyAndSort reads schema from metadata, not overrides", func(t *testing.T) {
 		cfg := makeCfg(true)
 		overrides := tenantOverrides{"t1": {"label:app"}}
