@@ -190,7 +190,13 @@ func (r *postingsIndexSectionsReader) lazyResolve(ctx context.Context) error {
 // resolvedRow per set stream ID, carrying the section's timestamp envelope and
 // ambiguous names.
 func expandResults(results []postings.SectionResult) []resolvedRow {
-	var rows []resolvedRow
+	total := 0
+	for _, result := range results {
+		bmap := lokimem.BitmapFrom(result.StreamBitmap, len(result.StreamBitmap)*8, 0)
+		total += bmap.SetCount()
+	}
+
+	rows := make([]resolvedRow, 0, total)
 	for _, result := range results {
 		bmap := lokimem.BitmapFrom(result.StreamBitmap, len(result.StreamBitmap)*8, 0)
 		for id := range bmap.IterValues(true) {

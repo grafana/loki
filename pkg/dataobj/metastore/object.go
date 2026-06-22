@@ -82,16 +82,17 @@ type DataobjSectionDescriptor struct {
 	AmbiguousPredicates []string
 }
 
+// dedupeStringSlice returns s with duplicates removed, order preserved. The
+// ambiguous-name set is small (bounded by query predicate count), so a linear
+// scan is cheaper than a map.
 func dedupeStringSlice(s []string) []string {
-	if len(s) == 0 {
+	if len(s) <= 1 {
 		return s
 	}
-	seen := make(map[string]struct{})
 	result := make([]string, 0, len(s))
 	for _, v := range s {
-		if _, exists := seen[v]; !exists {
+		if !slices.Contains(result, v) {
 			result = append(result, v)
-			seen[v] = struct{}{}
 		}
 	}
 	return result
@@ -127,19 +128,9 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls [
 		d.End = pointer.EndTs
 	}
 
-	if len(lbls) == 0 {
-		return
-	}
-
-	seen := make(map[string]struct{})
-	for _, lbl := range d.AmbiguousPredicates {
-		seen[lbl] = struct{}{}
-	}
-
 	for _, lbl := range lbls {
-		if _, exists := seen[lbl]; !exists {
+		if !slices.Contains(d.AmbiguousPredicates, lbl) {
 			d.AmbiguousPredicates = append(d.AmbiguousPredicates, lbl)
-			seen[lbl] = struct{}{}
 		}
 	}
 }

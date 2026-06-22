@@ -59,10 +59,11 @@ type keyAccum struct {
 	hasTS        bool
 }
 
-// orInto unions src into the bitmap at dst, initializing dst on first use.
+// orInto unions src into the bitmap at dst. The result is always a fresh bitmap
+// owned by dst, so callers never alias src's backing array.
 func orInto(dst **memory.Bitmap, src *memory.Bitmap) {
 	if *dst == nil {
-		*dst = src
+		*dst = orEmpty(nil).Or(src)
 	} else {
 		*dst = (*dst).Or(src)
 	}
@@ -92,13 +93,20 @@ func (r *StreamResolver) Resolve(ctx context.Context, sections []*Section) ([]Se
 		return nil, fmt.Errorf("postings resolver requires at least one non-empty-capable matcher")
 	}
 
+	// Compile each positive matcher's value predicate once, shared across all
+	// sections, so regex matchers are not recompiled per section.
+	compiledPositive, err := compileMatchers(positive)
+	if err != nil {
+		return nil, err
+	}
+
 	startNanos, endNanos := r.start.UnixNano(), r.end.UnixNano()
 
 	perSection := make([]map[sectionKey]*keyAccum, len(sections))
 	g, ctx := errgroup.WithContext(ctx)
 	for i := range sections {
 		g.Go(func() error {
-			accums, err := r.resolveSection(ctx, sections[i], positive, emptyCapable, startNanos, endNanos)
+			accums, err := r.resolveSection(ctx, sections[i], compiledPositive, emptyCapable, startNanos, endNanos)
 			if err != nil {
 				return fmt.Errorf("resolving section: %w", err)
 			}
@@ -138,7 +146,8 @@ func (r *StreamResolver) Resolve(ctx context.Context, sections []*Section) ([]Se
 func (r *StreamResolver) resolveSection(
 	ctx context.Context,
 	sec *Section,
-	positive, emptyCapable []*labels.Matcher,
+	positive []compiledMatcher,
+	emptyCapable []*labels.Matcher,
 	startNanos, endNanos int64,
 ) (map[sectionKey]*keyAccum, error) {
 	kindCol := sectionColumn(sec, ColumnTypeKind)
@@ -149,8 +158,8 @@ func (r *StreamResolver) resolveSection(
 	}
 
 	accums := make(map[sectionKey]*keyAccum)
-	for i, m := range positive {
-		hits, err := r.scanMatcher(ctx, sec, kindCol, nameCol, valueCol, m, accums, startNanos, endNanos)
+	for i, cm := range positive {
+		hits, err := r.scanMatcher(ctx, sec, kindCol, nameCol, valueCol, cm, accums, startNanos, endNanos)
 		if err != nil {
 			return nil, err
 		}
@@ -217,24 +226,21 @@ func (r *StreamResolver) scanMatcher(
 	ctx context.Context,
 	sec *Section,
 	kindCol, nameCol, valueCol *Column,
-	m *labels.Matcher,
+	cm compiledMatcher,
 	accums map[sectionKey]*keyAccum,
 	startNanos, endNanos int64,
 ) (map[sectionKey]*memory.Bitmap, error) {
-	valuePred, err := valuePredicate(valueCol, m)
-	if err != nil {
-		return nil, err
-	}
+	name := cm.matcher.Name
 	pred := AndPredicate{
-		Left:  labelNamePredicate(kindCol, nameCol, m.Name),
-		Right: valuePred,
+		Left:  labelNamePredicate(kindCol, nameCol, name),
+		Right: cm.valuePredicate(valueCol),
 	}
 
 	hits := make(map[sectionKey]*memory.Bitmap)
-	err = r.eachRow(ctx, sec, pred, func(row Row) {
+	err := r.eachRow(ctx, sec, pred, func(row Row) {
 		key := keyOf(row)
 		acc := ensureAccum(accums, key)
-		acc.streamLabels[m.Name] = struct{}{}
+		acc.streamLabels[name] = struct{}{}
 		bits := bitmapOf(row)
 		existing := hits[key]
 		orInto(&existing, bits)
@@ -572,28 +578,46 @@ func labelNamePredicate(kindCol, nameCol *Column, name string) Predicate {
 	}
 }
 
-// valuePredicate translates a positive matcher's value selection into a scan
-// predicate over the label-value column.
-func valuePredicate(valueCol *Column, m *labels.Matcher) (Predicate, error) {
+// compiledMatcher is a positive matcher with its regex compiled once, ready to
+// be turned into a per-section scan predicate.
+type compiledMatcher struct {
+	matcher *labels.Matcher
+	regex   *labels.FastRegexMatcher // non-nil only for regex matcher types
+}
+
+// compileMatchers compiles each matcher's regex once so it is shared across all
+// sections rather than recompiled per section.
+func compileMatchers(matchers []*labels.Matcher) ([]compiledMatcher, error) {
+	out := make([]compiledMatcher, 0, len(matchers))
+	for _, m := range matchers {
+		cm := compiledMatcher{matcher: m}
+		if m.Type == labels.MatchRegexp || m.Type == labels.MatchNotRegexp {
+			re, err := labels.NewFastRegexMatcher(m.Value)
+			if err != nil {
+				return nil, fmt.Errorf("compiling regex %q: %w", m.Value, err)
+			}
+			cm.regex = re
+		}
+		out = append(out, cm)
+	}
+	return out, nil
+}
+
+// valuePredicate translates the matcher's value selection into a scan predicate
+// over the label-value column, reusing the precompiled regex.
+func (cm compiledMatcher) valuePredicate(valueCol *Column) Predicate {
+	m := cm.matcher
 	switch m.Type {
 	case labels.MatchEqual:
-		return EqualPredicate{Column: valueCol, Value: scalar.NewStringScalar(m.Value)}, nil
+		return EqualPredicate{Column: valueCol, Value: scalar.NewStringScalar(m.Value)}
 	case labels.MatchNotEqual:
-		return NotPredicate{Inner: EqualPredicate{Column: valueCol, Value: scalar.NewStringScalar(m.Value)}}, nil
+		return NotPredicate{Inner: EqualPredicate{Column: valueCol, Value: scalar.NewStringScalar(m.Value)}}
 	case labels.MatchRegexp:
-		re, err := labels.NewFastRegexMatcher(m.Value)
-		if err != nil {
-			return nil, fmt.Errorf("compiling regex %q: %w", m.Value, err)
-		}
-		return RegexMatchPredicate{Column: valueCol, Matcher: re}, nil
+		return RegexMatchPredicate{Column: valueCol, Matcher: cm.regex}
 	case labels.MatchNotRegexp:
-		re, err := labels.NewFastRegexMatcher(m.Value)
-		if err != nil {
-			return nil, fmt.Errorf("compiling regex %q: %w", m.Value, err)
-		}
-		return NotPredicate{Inner: RegexMatchPredicate{Column: valueCol, Matcher: re}}, nil
+		return NotPredicate{Inner: RegexMatchPredicate{Column: valueCol, Matcher: cm.regex}}
 	default:
-		return nil, fmt.Errorf("unsupported matcher type %v", m.Type)
+		return FalsePredicate{}
 	}
 }
 
