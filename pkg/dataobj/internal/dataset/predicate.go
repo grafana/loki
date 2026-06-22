@@ -72,6 +72,17 @@ type (
 		// If Keep returns true, the row is kept.
 		Keep func(column Column, value Value) bool
 	}
+
+	// BloomMatchPredicate is a [Predicate] which asserts that a row may only be
+	// included if the bloom filter stored in Column's binary value tests positive
+	// for Value.
+	//
+	// Instances of BloomMatchPredicate are ineligible for page filtering: a bloom
+	// blob has no min/max page statistics to prune on.
+	BloomMatchPredicate struct {
+		Column Column
+		Value  []byte
+	}
 )
 
 func (AndPredicate) isPredicate()         {}
@@ -84,6 +95,7 @@ func (InPredicate) isPredicate()          {}
 func (GreaterThanPredicate) isPredicate() {}
 func (LessThanPredicate) isPredicate()    {}
 func (FuncPredicate) isPredicate()        {}
+func (BloomMatchPredicate) isPredicate()  {}
 
 // WalkPredicate traverses a predicate in depth-first order: it starts by
 // calling fn(p). If fn(p) returns true, WalkPredicate is invoked recursively
@@ -113,6 +125,7 @@ func WalkPredicate(p Predicate, fn func(p Predicate) bool) {
 	case GreaterThanPredicate: // No children.
 	case LessThanPredicate: // No children.
 	case FuncPredicate: // No children.
+	case BloomMatchPredicate: // No children.
 
 	default:
 		panic(fmt.Sprintf("dataset.WalkPredicate: unsupported predicate type %T", p))
