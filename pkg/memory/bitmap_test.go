@@ -336,3 +336,58 @@ func TestBitmap_Slice(t *testing.T) {
 		require.Equal(t, !before, cloned.Get(2), "cloned bit 2 should be flipped")
 	})
 }
+
+func TestBitmap_SetAlgebra(t *testing.T) {
+	// Helper: build a Bitmap from explicit set bits.
+	build := func(bits ...int) *memory.Bitmap {
+		b := memory.NewBitmap(nil, 0)
+		maxBit := -1
+		for _, x := range bits {
+			if x > maxBit {
+				maxBit = x
+			}
+		}
+		b.Resize(maxBit + 1)
+		for _, x := range bits {
+			b.Set(x, true)
+		}
+		return &b
+	}
+	ids := func(b *memory.Bitmap) []int {
+		var out []int
+		for id := range b.IterValues(true) {
+			out = append(out, id)
+		}
+		return out
+	}
+
+	a := build(1, 2)
+	c := build(0, 1)
+
+	require.Equal(t, []int{0, 1, 2}, ids(a.Or(c)))
+	require.Equal(t, []int{1}, ids(a.And(c)))
+	require.Equal(t, []int{2}, ids(a.AndNot(c))) // in a, not c
+
+	// Mismatched lengths: shorter operand is zero-extended.
+	wide := build(70) // bit beyond one byte
+	narrow := build(1)
+	require.Equal(t, []int{1, 70}, ids(wide.Or(narrow)))
+	require.Empty(t, ids(wide.And(narrow)))
+	require.Equal(t, []int{70}, ids(wide.AndNot(narrow)))
+
+	// Empty detection via existing SetCount.
+	require.Equal(t, 0, build().SetCount())
+	require.NotEqual(t, 0, a.SetCount())
+
+	// Offset operand (sliced) is normalized before combining.
+	sliced := build(0, 1, 2, 3).Slice(1, 4) // bits 0,1,2 within the slice
+	require.Equal(t, []int{0, 1, 2}, ids(sliced.Or(build())))
+	require.Equal(t, []int{0, 2}, ids(sliced.AndNot(build(1))))
+
+	// Stale bits beyond Len in an operand's trailing byte do not leak into the result.
+	stale := build(0, 1, 2, 3, 4, 5, 6, 7)
+	stale.Resize(2) // bits 2..7 remain set in the backing byte but are out of range
+	require.Equal(t, []int{0, 1}, ids(stale.Or(build())))
+	data, _ := stale.Or(build()).BytesTrimmed()
+	require.Equal(t, uint8(0b0000_0011), data[0])
+}

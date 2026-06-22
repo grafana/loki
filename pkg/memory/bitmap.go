@@ -320,3 +320,52 @@ func (bmap *Bitmap) IterValues(value bool) iter.Seq[int] {
 		}
 	}
 }
+
+// Or returns a new Bitmap containing the bits set in bmap or other. The result
+// length is the larger of the two; the shorter operand is zero-extended.
+func (bmap *Bitmap) Or(other *Bitmap) *Bitmap {
+	return bmap.combine(other, func(a, b uint8) uint8 { return a | b }, max(bmap.len, other.len))
+}
+
+// And returns a new Bitmap containing the bits set in both bmap and other.
+func (bmap *Bitmap) And(other *Bitmap) *Bitmap {
+	return bmap.combine(other, func(a, b uint8) uint8 { return a & b }, max(bmap.len, other.len))
+}
+
+// AndNot returns a new Bitmap containing the bits set in bmap but not in other
+// (bmap &^ other).
+func (bmap *Bitmap) AndNot(other *Bitmap) *Bitmap {
+	return bmap.combine(other, func(a, b uint8) uint8 { return a &^ b }, bmap.len)
+}
+
+// combine applies op byte-wise to the normalized bytes of bmap and other,
+// zero-extending the shorter, and returns a new offset-0 Bitmap of length n.
+func (bmap *Bitmap) combine(other *Bitmap, op func(a, b uint8) uint8, n int) *Bitmap {
+	aData, aOff := bmap.BytesTrimmed()
+	bData, bOff := other.BytesTrimmed()
+	if aOff != 0 {
+		aData, _ = bmap.Clone(nil).BytesTrimmed()
+	}
+	if bOff != 0 {
+		bData, _ = other.Clone(nil).BytesTrimmed()
+	}
+
+	out := NewBitmap(nil, n)
+	out.Resize(n)
+	outData, _ := out.Bytes()
+	nBytes := (n + 7) / 8
+	for i := range nBytes {
+		var av, bv uint8
+		if i < len(aData) {
+			av = aData[i]
+		}
+		if i < len(bData) {
+			bv = bData[i]
+		}
+		outData[i] = op(av, bv)
+	}
+	if tail := n % 8; tail != 0 {
+		outData[nBytes-1] &= (1 << tail) - 1
+	}
+	return &out
+}
