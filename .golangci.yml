@@ -39,6 +39,7 @@ linters:
     - unconvert
   disable:
     - unparam
+    - unused # Ignore unused results for release branches which are primarily only used for bug fixes.
   settings:
     depguard:
       rules:
