@@ -2,6 +2,7 @@ package uploads
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -22,6 +23,9 @@ type TableManager interface {
 	Stop()
 	AddIndex(tableName, userID string, index index.Index) error
 	ForEach(tableName, userID string, callback index.ForEachIndexCallback) error
+	// ForceUpload synchronously uploads all tables to object storage, returning
+	// any upload error (rather than only logging it like the periodic loop).
+	ForceUpload(ctx context.Context) error
 }
 
 type tableManager struct {
@@ -129,17 +133,25 @@ func (tm *tableManager) ForEach(tableName, userID string, callback index.ForEach
 	return table.ForEach(userID, callback)
 }
 
-func (tm *tableManager) uploadTables(ctx context.Context) {
+// ForceUpload synchronously uploads all tables to object storage, returning any
+// upload error. It shares its implementation with the periodic upload loop.
+func (tm *tableManager) ForceUpload(ctx context.Context) error {
+	return tm.uploadTables(ctx)
+}
+
+func (tm *tableManager) uploadTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
 	level.Info(tm.logger).Log("msg", "uploading tables")
 
 	status := statusSuccess
+	var uploadErr error
 	for _, table := range tm.tables {
 		err := table.Upload(ctx)
 		if err != nil {
 			status = statusFailure
+			uploadErr = errors.Join(uploadErr, err)
 			level.Error(tm.logger).Log("msg", "failed to upload table", "table", table.Name(), "err", err)
 			continue
 		}
@@ -153,4 +165,5 @@ func (tm *tableManager) uploadTables(ctx context.Context) {
 	}
 
 	tm.metrics.tablesUploadOperationTotal.WithLabelValues(status).Inc()
+	return uploadErr
 }

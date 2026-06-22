@@ -165,6 +165,16 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	return s, nil
 }
 
+// FlushIndex forces the underlying store to ship its in-memory index to object
+// storage, if supported. No-op otherwise.
+func (s *LokiStore) FlushIndex(ctx context.Context) error {
+	f, ok := s.Store.(index.Flusher)
+	if !ok {
+		return nil
+	}
+	return f.FlushIndex(ctx)
+}
+
 func (s *LokiStore) init() error {
 	for i, p := range s.schemaCfg.Configs {
 		chunkClient, err := s.chunkClientForPeriod(p)

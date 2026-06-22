@@ -3,9 +3,13 @@ package ingester
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -375,11 +379,115 @@ func TestFlushLoopCanExitDuringInitialWait(t *testing.T) {
 	require.True(t, duration < 5*time.Second, "ingester could not shut down while waiting for initial delay")
 }
 
+func TestFlushTenantHandler(t *testing.T) {
+	const userID = "testUser"
+
+	for _, tc := range []struct {
+		name string
+		// pushStreams pushes streams {app="a"} and {app="b"} for userID before the request.
+		pushStreams bool
+		// orgID is injected into the request context; an empty value means no tenant is set.
+		orgID    string
+		setQuery bool
+		query    string
+
+		expectedStatus   int
+		expectedChunks   int    // number of chunks flushed for userID
+		expectedAppLabel string // if set, assert the single flushed chunk carries this app label
+		expectedFlushes  int32  // number of forced index ships (FlushIndex calls)
+	}{
+		{
+			name:             "matcher scopes flush to matching streams",
+			pushStreams:      true,
+			orgID:            userID,
+			setQuery:         true,
+			query:            `{app="a"}`,
+			expectedStatus:   http.StatusNoContent,
+			expectedChunks:   1,
+			expectedAppLabel: "a",
+			expectedFlushes:  1,
+		},
+		{
+			name:            "empty matcher flushes the whole tenant",
+			pushStreams:     true,
+			orgID:           userID,
+			expectedStatus:  http.StatusNoContent,
+			expectedChunks:  2,
+			expectedFlushes: 1,
+		},
+		{
+			name:           "missing tenant is a bad request",
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "invalid matcher is a bad request",
+			orgID:          userID,
+			setQuery:       true,
+			query:          "not-a-matcher",
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "unknown tenant is a no-op",
+			orgID:          "no-such-tenant",
+			expectedStatus: http.StatusNoContent,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+			defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+			if tc.pushStreams {
+				pushTwoStreams(t, ing, userID)
+			}
+
+			target := "/flush/tenant"
+			if tc.setQuery {
+				target += "?query=" + url.QueryEscape(tc.query)
+			}
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, target, nil)
+			if tc.orgID != "" {
+				r = r.WithContext(user.InjectOrgID(r.Context(), tc.orgID))
+			}
+
+			ing.FlushTenantHandler(w, r)
+
+			require.Equal(t, tc.expectedStatus, w.Code)
+
+			chunks := store.getChunksForUser(userID)
+			require.Len(t, chunks, tc.expectedChunks)
+			if tc.expectedAppLabel != "" {
+				require.Equal(t, tc.expectedAppLabel, chunks[0].Metric.Get("app"))
+			}
+			require.Equal(t, tc.expectedFlushes, store.flushIndexCalls.Load())
+		})
+	}
+}
+
+func pushTwoStreams(t *testing.T, ing *Ingester, userID string) {
+	t.Helper()
+	now := time.Now()
+	_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: `{app="a"}`, Entries: []logproto.Entry{{Timestamp: now, Line: "a1"}}},
+		{Labels: `{app="b"}`, Entries: []logproto.Entry{{Timestamp: now, Line: "b1"}}},
+	}})
+	require.NoError(t, err)
+}
+
 type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.
 	chunks map[string][]chunk.Chunk
 	onPut  func(ctx context.Context, chunks []chunk.Chunk) error
+
+	// flushIndexCalls counts how many times FlushIndex was invoked, so tests can
+	// assert the handler forces the index ship after flushing chunks.
+	flushIndexCalls atomic.Int32
+}
+
+func (s *testStore) FlushIndex(_ context.Context) error {
+	s.flushIndexCalls.Add(1)
+	return nil
 }
 
 // Note: the ingester New() function creates it's own WAL first which we then override if specified.

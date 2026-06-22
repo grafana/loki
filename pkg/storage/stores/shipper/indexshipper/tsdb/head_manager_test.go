@@ -53,6 +53,22 @@ func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier, _ bool
 }
 func (m noopTSDBManager) Start() error { return nil }
 
+// recordingTSDBManager counts BuildFromHead calls so tests can assert that a
+// head was built. It is only used single-threaded within a test.
+type recordingTSDBManager struct {
+	noopTSDBManager
+	builds int
+}
+
+func newRecordingTSDBManager(name, dir string) *recordingTSDBManager {
+	return &recordingTSDBManager{noopTSDBManager: newNoopTSDBManager(name, dir)}
+}
+
+func (m *recordingTSDBManager) BuildFromHead(_ *tenantHeads) error {
+	m.builds++
+	return nil
+}
+
 type zeroValueLimits struct {
 }
 
@@ -432,6 +448,54 @@ func Test_HeadManager_QueryAfterRotate(t *testing.T) {
 		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
 	}
 
+}
+
+func Test_HeadManager_ForceFlush(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+
+	c := struct {
+		Labels      labels.Labels
+		Fingerprint uint64
+		Chunks      []index.ChunkMeta
+		User        string
+	}{
+		User:        "tenant1",
+		Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
+		Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`)),
+		Chunks:      []index.ChunkMeta{{MinTime: 1, MaxTime: 10, Checksum: 3}},
+	}
+
+	storeName := "store_2010-10-10"
+	mgr := newRecordingTSDBManager(storeName, dir)
+	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, hm.Rotate(now)) // initialize active head (usually done by Start())
+
+	require.Nil(t, hm.Append(c.User, c.Labels, labels.StableHash(c.Labels), c.Chunks))
+
+	// Force a flush mid-period: the active head should be rotated out and built
+	// without waiting for the period boundary.
+	require.Nil(t, hm.ForceFlush())
+	require.Equal(t, 1, mgr.builds, "active head should have been built exactly once")
+
+	// Data remains queryable, served from the retained in-memory heads.
+	refs, err := hm.GetChunkRefs(
+		context.Background(),
+		c.User,
+		0, math.MaxInt64,
+		nil, nil,
+		labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+	)
+	require.Nil(t, err)
+	require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
+
+	// A periodic tick in the same period right after ForceFlush must not rotate
+	// or build again (the cadence self-heals).
+	hm.tick(time.Now())
+	require.Equal(t, 1, mgr.builds, "tick right after ForceFlush should not build again")
 }
 
 func Test_HeadManager_ChunkFilterer(t *testing.T) {

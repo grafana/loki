@@ -230,6 +230,7 @@ type Interface interface {
 
 	CheckReady(ctx context.Context) error
 	FlushHandler(w http.ResponseWriter, _ *http.Request)
+	FlushTenantHandler(w http.ResponseWriter, r *http.Request)
 	GetOrCreateInstance(instanceID string) (*instance, error)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
 	PrepareShutdown(w http.ResponseWriter, r *http.Request)

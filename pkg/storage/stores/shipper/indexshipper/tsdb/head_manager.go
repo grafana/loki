@@ -230,6 +230,35 @@ func (m *HeadManager) loop() {
 	}
 }
 
+// ForceFlush forces the active head to be rotated out and built into TSDB
+// files immediately, instead of waiting for the next period rotation. It is
+// the rotate-and-build branch of tick() invoked on demand with the real clock
+// and without the period-boundary gate.
+//
+// The freshly built TSDBs are handed to the index shipper but are not yet
+// uploaded to object storage; callers wanting them durable in object storage
+// must also force an upload (see (*store).FlushIndex).
+func (m *HeadManager) ForceFlush() error {
+	// Drain any pending previous period first (mirroring tick()), so the forced
+	// rotation below doesn't discard a not-yet-built prev head.
+	if err := m.buildPrev(); err != nil {
+		return errors.Wrap(err, "building pending prev head before force flush")
+	}
+
+	if err := m.Rotate(time.Now()); err != nil {
+		m.metrics.headRotations.WithLabelValues(statusFailure).Inc()
+		return errors.Wrap(err, "force-rotating tsdb head")
+	}
+	m.metrics.headRotations.WithLabelValues(statusSuccess).Inc()
+
+	// Build the just-rotated-out (now frozen) head into TSDB files.
+	if err := m.buildPrev(); err != nil {
+		return errors.Wrap(err, "building tsdb from force-rotated head")
+	}
+
+	return nil
+}
+
 func (m *HeadManager) Stop() error {
 	close(m.cancel)
 	m.wg.Wait()
