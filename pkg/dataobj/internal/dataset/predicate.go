@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"iter"
 	"unsafe"
+
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 // Predicate is an expression used to filter rows in a [RowReader].
@@ -83,6 +85,16 @@ type (
 		Column Column
 		Value  []byte
 	}
+
+	// RegexMatchPredicate is a [Predicate] which asserts that a row may only be
+	// included if Column's string value matches Matcher.
+	//
+	// Instances of RegexMatchPredicate are ineligible for page filtering: a regex
+	// has no min/max page statistics to prune on.
+	RegexMatchPredicate struct {
+		Column  Column
+		Matcher *labels.FastRegexMatcher
+	}
 )
 
 func (AndPredicate) isPredicate()         {}
@@ -96,6 +108,7 @@ func (GreaterThanPredicate) isPredicate() {}
 func (LessThanPredicate) isPredicate()    {}
 func (FuncPredicate) isPredicate()        {}
 func (BloomMatchPredicate) isPredicate()  {}
+func (RegexMatchPredicate) isPredicate()  {}
 
 // WalkPredicate traverses a predicate in depth-first order: it starts by
 // calling fn(p). If fn(p) returns true, WalkPredicate is invoked recursively
@@ -126,6 +139,7 @@ func WalkPredicate(p Predicate, fn func(p Predicate) bool) {
 	case LessThanPredicate: // No children.
 	case FuncPredicate: // No children.
 	case BloomMatchPredicate: // No children.
+	case RegexMatchPredicate: // No children.
 
 	default:
 		panic(fmt.Sprintf("dataset.WalkPredicate: unsupported predicate type %T", p))

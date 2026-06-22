@@ -13,6 +13,7 @@ import (
 
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/dustin/go-humanize"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -202,6 +203,18 @@ func TestRowReader_BloomMatchPredicate(t *testing.T) {
 	rows := readAllRows(t, dset, []Column{col}, BloomMatchPredicate{Column: col, Value: []byte("foo")})
 	require.Len(t, rows, 1)
 	require.Equal(t, hitBytes, rows[0].Values[0].Binary())
+}
+
+func TestRowReader_RegexMatchPredicate(t *testing.T) {
+	re, err := labels.NewFastRegexMatcher("foo.*")
+	require.NoError(t, err)
+
+	dset, col := buildBinaryColumnDataset(t, [][]byte{[]byte("foobar"), []byte("baz"), []byte("foo")})
+
+	rows := readAllRows(t, dset, []Column{col}, RegexMatchPredicate{Column: col, Matcher: re})
+	require.Len(t, rows, 2)
+	require.Equal(t, []byte("foobar"), rows[0].Values[0].Binary())
+	require.Equal(t, []byte("foo"), rows[1].Values[0].Binary())
 }
 
 func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {

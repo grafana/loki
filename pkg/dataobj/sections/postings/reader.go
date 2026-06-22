@@ -82,6 +82,8 @@ func (opts *ReaderOptions) validate() error {
 				perr = checkSection(p.Column)
 			case BloomMatchPredicate:
 				perr = checkSection(p.Column)
+			case RegexMatchPredicate:
+				perr = checkSection(p.Column)
 			}
 			return true
 		})
@@ -311,6 +313,9 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 	case BloomMatchPredicate:
 		col := lookupColumn(p.Column, columnLookup)
 		return dataset.BloomMatchPredicate{Column: col, Value: p.Value}
+	case RegexMatchPredicate:
+		col := lookupColumn(p.Column, columnLookup)
+		return dataset.RegexMatchPredicate{Column: col, Matcher: p.Matcher}
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
 	}

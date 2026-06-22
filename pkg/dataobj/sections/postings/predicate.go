@@ -1,6 +1,9 @@
 package postings
 
-import "github.com/apache/arrow-go/v18/arrow/scalar"
+import (
+	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/prometheus/prometheus/model/labels"
+)
 
 // Predicate is an expression used to filter rows in a [Reader]. Every [Column]
 // referenced by a predicate must belong to the same [Section] as the projected
@@ -61,6 +64,13 @@ type (
 		Column *Column // Column holding the bloom filter.
 		Value  []byte  // Value to test for membership.
 	}
+
+	// RegexMatchPredicate asserts a row is included only if Column's string value
+	// matches Matcher.
+	RegexMatchPredicate struct {
+		Column  *Column                  // Column to check.
+		Matcher *labels.FastRegexMatcher // Compiled regex to match against.
+	}
 )
 
 func (AndPredicate) isPredicate()         {}
@@ -73,6 +83,7 @@ func (InPredicate) isPredicate()          {}
 func (GreaterThanPredicate) isPredicate() {}
 func (LessThanPredicate) isPredicate()    {}
 func (BloomMatchPredicate) isPredicate()  {}
+func (RegexMatchPredicate) isPredicate()  {}
 
 // walkPredicate traverses a predicate in depth-first order: it starts by
 // calling fn(p). If fn(p) returns true, walkPredicate is invoked recursively
@@ -98,6 +109,7 @@ func walkPredicate(p Predicate, fn func(Predicate) bool) {
 	case GreaterThanPredicate: // No children.
 	case LessThanPredicate: // No children.
 	case BloomMatchPredicate: // No children.
+	case RegexMatchPredicate: // No children.
 	default:
 		panic("postings.walkPredicate: unsupported predicate type")
 	}
@@ -134,6 +146,8 @@ func predicateColumns(predicates []Predicate) []*Column {
 			case LessThanPredicate:
 				appendColumn(p.Column)
 			case BloomMatchPredicate:
+				appendColumn(p.Column)
+			case RegexMatchPredicate:
 				appendColumn(p.Column)
 			}
 			return true

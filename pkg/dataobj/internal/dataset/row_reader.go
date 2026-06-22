@@ -394,6 +394,17 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 		}
 		return filter.Test(p.Value)
 
+	case RegexMatchPredicate:
+		columnIndex, ok := lookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+		value := row.Values[columnIndex]
+		if value.IsNil() || value.Type() != p.Column.ColumnDesc().Type.Physical {
+			return false
+		}
+		return p.Matcher.MatchString(string(value.Binary()))
+
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
 	}
@@ -566,6 +577,8 @@ func (r *RowReader) validatePredicate() error {
 				err = process(p.Column)
 			case BloomMatchPredicate:
 				err = process(p.Column)
+			case RegexMatchPredicate:
+				err = process(p.Column)
 			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
 			default:
@@ -687,6 +700,8 @@ func (r *RowReader) fillPrimaryMask(mask *bitmask.Mask) {
 				process(p.Column)
 			case BloomMatchPredicate:
 				process(p.Column)
+			case RegexMatchPredicate:
+				process(p.Column)
 			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
 			default:
@@ -758,7 +773,7 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 	case LessThanPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
 
-	case TruePredicate, FuncPredicate, BloomMatchPredicate, nil:
+	case TruePredicate, FuncPredicate, BloomMatchPredicate, RegexMatchPredicate, nil:
 		// These predicates (and nil) don't support any filtering, so it maps to
 		// the full range being valid.
 		//
@@ -985,6 +1000,8 @@ func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]C
 		case FuncPredicate:
 			columns[p.Column] = struct{}{}
 		case BloomMatchPredicate:
+			columns[p.Column] = struct{}{}
+		case RegexMatchPredicate:
 			columns[p.Column] = struct{}{}
 		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 			// No columns to process.
