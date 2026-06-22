@@ -90,3 +90,29 @@ func TestPostingsIndexSectionsReader_ReadBeforeOpenErrors(t *testing.T) {
 	require.ErrorIs(t, err, errIndexSectionsReaderNotOpen)
 	require.Nil(t, rec)
 }
+
+func TestPostingsReader_ExpandsBitmapToStreamRows(t *testing.T) {
+	results := []postings.SectionResult{{
+		ObjectPath:     "obj-a",
+		SectionIndex:   1,
+		StreamBitmap:   []byte{0b0000_0110}, // streams 1, 2
+		MinTimestamp:   100,
+		MaxTimestamp:   400,
+		AmbiguousNames: []string{"pod"},
+	}}
+
+	rows := expandResults(results)
+	require.Len(t, rows, 2)
+	require.Equal(t, int64(1), rows[0].streamID)
+	require.Equal(t, int64(2), rows[1].streamID)
+	for _, row := range rows {
+		require.Equal(t, "obj-a", row.objectPath)
+		require.Equal(t, int64(1), row.sectionIndex)
+		require.Equal(t, int64(100), row.minTimestamp)
+		require.Equal(t, int64(400), row.maxTimestamp)
+		require.Equal(t, []string{"pod"}, row.ambiguousNames)
+	}
+
+	rec := sectionResultsToRecordBatch(rows)
+	require.Equal(t, int64(2), rec.NumRows())
+}

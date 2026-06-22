@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	lokimem "github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -26,7 +27,7 @@ var (
 )
 
 // postingsResultSchema is the pointers-section Arrow schema the resolver's
-// SectionRefs are serialized into, so the postings reader is a drop-in for the
+// results are serialized into, so the postings reader is a drop-in for the
 // legacy reader on the shared ArrowRecordBatchReader seam. The query semantics
 // live in the resolver; this schema is only the wire format consumers already
 // decode via pointers.FromRecordBatch / pointers.InternalLabelsColumn.
@@ -42,11 +43,22 @@ var postingsResultSchema = arrow.NewSchema([]arrow.Field{
 	{Name: pointers.InternalLabelsFieldName, Type: arrow.BinaryTypes.String, Nullable: true},
 }, nil)
 
-// postingsIndexSectionsReader resolves SectionRefs from an index object's
-// postings sections via a postings.StreamResolver, then serializes the resolved
-// refs into the pointers-section Arrow schema in batchSize chunks. Section
-// lifetime is bound to the underlying *dataobj.Object, so the reader does not
-// close sections itself.
+// resolvedRow is one pointers-schema row: a single stream within a resolved
+// section, expanded from that section's stream-ID bitmap.
+type resolvedRow struct {
+	objectPath     string
+	sectionIndex   int64
+	streamID       int64
+	minTimestamp   int64
+	maxTimestamp   int64
+	ambiguousNames []string
+}
+
+// postingsIndexSectionsReader resolves SectionResults from an index object's
+// postings sections via a postings.StreamResolver, expands each result's
+// stream-ID bitmap into one pointers-schema row per stream, and serializes those
+// rows in batchSize chunks. Section lifetime is bound to the underlying
+// *dataobj.Object, so the reader does not close sections itself.
 type postingsIndexSectionsReader struct {
 	logger log.Logger
 	obj    *dataobj.Object
@@ -60,7 +72,7 @@ type postingsIndexSectionsReader struct {
 	resolved    bool
 
 	openSections []*postings.Section
-	refs         []postings.SectionRef
+	rows         []resolvedRow
 	offset       int
 
 	resolvedRefs uint64
@@ -136,17 +148,17 @@ func (r *postingsIndexSectionsReader) Read(ctx context.Context) (arrow.RecordBat
 	if err := r.lazyResolve(ctx); err != nil {
 		return nil, err
 	}
-	if r.offset >= len(r.refs) {
+	if r.offset >= len(r.rows) {
 		return nil, io.EOF
 	}
 
 	start := r.offset
-	end := min(start+r.batchSize, len(r.refs))
-	batch := r.refs[start:end]
+	end := min(start+r.batchSize, len(r.rows))
+	batch := r.rows[start:end]
 	r.offset = end
 
 	r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(int64(len(batch))))
-	return sectionRefsToRecordBatch(batch), nil
+	return sectionResultsToRecordBatch(batch), nil
 }
 
 func (r *postingsIndexSectionsReader) lazyResolve(ctx context.Context) error {
@@ -162,16 +174,37 @@ func (r *postingsIndexSectionsReader) lazyResolve(ctx context.Context) error {
 	}()
 
 	resolver := postings.NewStreamResolver(r.matchers, r.predicates, r.start, r.end)
-	refs, err := resolver.Resolve(ctx, r.openSections)
+	results, err := resolver.Resolve(ctx, r.openSections)
 	if err != nil {
 		return fmt.Errorf("resolving postings sections: %w", err)
 	}
-	r.refs = refs
-	r.resolvedRefs = uint64(len(refs))
+	r.rows = expandResults(results)
+	r.resolvedRefs = uint64(len(r.rows))
 	r.resolved = true
 
-	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(refs))))
+	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.rows))))
 	return nil
+}
+
+// expandResults flattens each SectionResult's stream-ID bitmap into one
+// resolvedRow per set stream ID, carrying the section's timestamp envelope and
+// ambiguous names.
+func expandResults(results []postings.SectionResult) []resolvedRow {
+	var rows []resolvedRow
+	for _, result := range results {
+		bmap := lokimem.BitmapFrom(result.StreamBitmap, len(result.StreamBitmap)*8, 0)
+		for id := range bmap.IterValues(true) {
+			rows = append(rows, resolvedRow{
+				objectPath:     result.ObjectPath,
+				sectionIndex:   result.SectionIndex,
+				streamID:       int64(id),
+				minTimestamp:   result.MinTimestamp,
+				maxTimestamp:   result.MaxTimestamp,
+				ambiguousNames: result.AmbiguousNames,
+			})
+		}
+	}
+	return rows
 }
 
 func (r *postingsIndexSectionsReader) Close() {
@@ -185,12 +218,12 @@ func (r *postingsIndexSectionsReader) totalReadRows() uint64 {
 	return r.resolvedRefs
 }
 
-// sectionRefsToRecordBatch serializes resolved SectionRefs into the
+// sectionResultsToRecordBatch serializes expanded per-stream rows into the
 // pointers-section Arrow schema. stream_id is the index-internal stream ID,
-// which SectionRef does not carry and no consumer reads from this batch, so it
+// which the resolver does not carry and no consumer reads from this batch, so it
 // is set to 0.
-func sectionRefsToRecordBatch(refs []postings.SectionRef) arrow.RecordBatch {
-	n := len(refs)
+func sectionResultsToRecordBatch(rows []resolvedRow) arrow.RecordBatch {
+	n := len(rows)
 	pathB := array.NewStringBuilder(memory.DefaultAllocator)
 	sectionB := array.NewInt64Builder(memory.DefaultAllocator)
 	streamIDB := array.NewInt64Builder(memory.DefaultAllocator)
@@ -211,17 +244,17 @@ func sectionRefsToRecordBatch(refs []postings.SectionRef) arrow.RecordBatch {
 	sizeB.Reserve(n)
 	labelsB.Reserve(n)
 
-	for _, ref := range refs {
-		pathB.Append(ref.ObjectPath)
-		sectionB.Append(ref.SectionIndex)
+	for _, row := range rows {
+		pathB.Append(row.objectPath)
+		sectionB.Append(row.sectionIndex)
 		streamIDB.Append(0)
-		streamIDRefB.Append(ref.StreamID)
-		minTsB.Append(arrow.Timestamp(ref.MinTimestamp))
-		maxTsB.Append(arrow.Timestamp(ref.MaxTimestamp))
-		rowCountB.Append(ref.RowCount)
-		sizeB.Append(ref.UncompressedSize)
-		if len(ref.AmbiguousLabels) > 0 {
-			labelsB.Append(strings.Join(ref.AmbiguousLabels, ","))
+		streamIDRefB.Append(row.streamID)
+		minTsB.Append(arrow.Timestamp(row.minTimestamp))
+		maxTsB.Append(arrow.Timestamp(row.maxTimestamp))
+		rowCountB.Append(0)
+		sizeB.Append(0)
+		if len(row.ambiguousNames) > 0 {
+			labelsB.Append(strings.Join(row.ambiguousNames, ","))
 		} else {
 			labelsB.AppendNull()
 		}
