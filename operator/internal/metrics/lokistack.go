@@ -10,10 +10,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 const (
-	metricsPrefix = "lokistack_"
+	metricsPrefix   = "lokistack_"
+	factorMebibytes = 1024 * 1024
 )
 
 var (
@@ -26,13 +28,25 @@ var (
 	lokiStackInfoDesc = prometheus.NewDesc(
 		metricsPrefix+"info",
 		"Information about deployed LokiStack instances. Value is always 1.",
-		metricsCommonLabels, nil,
+		append(metricsCommonLabels, "object_storage_type", "credential_mode", "schema_version", "tenancy_mode"), nil,
 	)
 
 	lokiStackConditionsCountDesc = prometheus.NewDesc(
 		metricsPrefix+"status_condition",
 		"Counts the current status conditions of the LokiStack.",
 		append(metricsCommonLabels, "condition", "reason", "status"), nil,
+	)
+
+	lokiStackComponentReplicasDesc = prometheus.NewDesc(
+		metricsPrefix+"component_replicas",
+		"Replica count for components.",
+		append(metricsCommonLabels, "component"), nil,
+	)
+
+	lokiStackIngestionRateLimitDesc = prometheus.NewDesc(
+		metricsPrefix+"global_ingestion_rate_limit_bytes",
+		"Global ingestion rate limit in bytes.",
+		metricsCommonLabels, nil,
 	)
 
 	// Main conditions should always be present to make things like alerts easier to write.
@@ -56,6 +70,8 @@ type lokiStackCollector struct {
 func (l *lokiStackCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- lokiStackInfoDesc
 	ch <- lokiStackConditionsCountDesc
+	ch <- lokiStackComponentReplicasDesc
+	ch <- lokiStackIngestionRateLimitDesc
 }
 
 func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
@@ -75,7 +91,13 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 			string(stack.Spec.Size),
 		}
 
-		m <- prometheus.MustNewConstMetric(lokiStackInfoDesc, prometheus.GaugeValue, 1.0, labels...)
+		infoLabels := append(labels,
+			string(stack.Spec.Storage.Secret.Type),
+			storageCredentialsMode(&stack),
+			currentSchemaVersion(&stack),
+			tenancyMode(&stack),
+		)
+		m <- prometheus.MustNewConstMetric(lokiStackInfoDesc, prometheus.GaugeValue, 1.0, infoLabels...)
 
 		for _, c := range conditionInDefault {
 			if !slices.ContainsFunc(stack.Status.Conditions, func(cond metav1.Condition) bool { return cond.Type == string(c) }) {
@@ -103,5 +125,99 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 				append(labels, c.Type, c.Reason, "false")...,
 			)
 		}
+
+		defaults := manifests.DefaultLokiStackSpec(stack.Spec.Size)
+		if defaults == nil ||
+			defaults.Template == nil ||
+			defaults.Limits == nil ||
+			defaults.Limits.Global == nil ||
+			defaults.Limits.Global.IngestionLimits == nil {
+			l.log.Error(nil, "invalid defaults for LokiStack size",
+				"stack", stack.Name,
+				"namespace", stack.Namespace,
+				"size", stack.Spec.Size)
+			continue
+		}
+
+		componentReplicas := componentReplicas(&stack, defaults)
+		for component, replicas := range componentReplicas {
+			componentLabels := append(labels, component)
+			m <- prometheus.MustNewConstMetric(
+				lokiStackComponentReplicasDesc,
+				prometheus.GaugeValue,
+				float64(replicas),
+				componentLabels...)
+		}
+
+		if ingestionRate := globalIngestionRateLimit(&stack, defaults); ingestionRate > 0 {
+			m <- prometheus.MustNewConstMetric(
+				lokiStackIngestionRateLimitDesc,
+				prometheus.GaugeValue,
+				float64(ingestionRate)*factorMebibytes,
+				labels...)
+		}
 	}
+}
+
+func storageCredentialsMode(stack *lokiv1.LokiStack) string {
+	if stack.Spec.Storage.Secret.CredentialMode != "" {
+		return string(stack.Spec.Storage.Secret.CredentialMode)
+	}
+	return string(lokiv1.CredentialModeStatic)
+}
+
+func currentSchemaVersion(stack *lokiv1.LokiStack) string {
+	if len(stack.Status.Storage.Schemas) == 0 {
+		return string(lokiv1.ObjectStorageSchemaV11)
+	}
+
+	return string(stack.Status.Storage.Schemas[len(stack.Status.Storage.Schemas)-1].Version)
+}
+
+func globalIngestionRateLimit(stack *lokiv1.LokiStack, defaults *lokiv1.LokiStackSpec) int32 {
+	if stack.Spec.Limits != nil &&
+		stack.Spec.Limits.Global != nil &&
+		stack.Spec.Limits.Global.IngestionLimits != nil &&
+		stack.Spec.Limits.Global.IngestionLimits.IngestionRate > 0 {
+		return stack.Spec.Limits.Global.IngestionLimits.IngestionRate
+	}
+
+	return defaults.Limits.Global.IngestionLimits.IngestionRate
+}
+
+func componentReplicas(stack *lokiv1.LokiStack, defaults *lokiv1.LokiStackSpec) map[string]int32 {
+	userTemplate := &lokiv1.LokiTemplateSpec{}
+	if stack.Spec.Template != nil {
+		userTemplate = stack.Spec.Template
+	}
+
+	components := []struct {
+		name     string
+		userSpec *lokiv1.LokiComponentSpec
+		defSpec  *lokiv1.LokiComponentSpec
+	}{
+		{"distributor", userTemplate.Distributor, defaults.Template.Distributor},
+		{"ingester", userTemplate.Ingester, defaults.Template.Ingester},
+		{"querier", userTemplate.Querier, defaults.Template.Querier},
+		{"query-frontend", userTemplate.QueryFrontend, defaults.Template.QueryFrontend},
+		{"compactor", userTemplate.Compactor, defaults.Template.Compactor},
+		{"index-gateway", userTemplate.IndexGateway, defaults.Template.IndexGateway},
+		{"gateway", userTemplate.Gateway, defaults.Template.Gateway},
+		{"ruler", userTemplate.Ruler, defaults.Template.Ruler},
+	}
+	replicas := make(map[string]int32, len(components))
+	for _, component := range components {
+		replicas[component.name] = component.defSpec.Replicas
+		if component.userSpec != nil && component.userSpec.Replicas != 0 {
+			replicas[component.name] = component.userSpec.Replicas
+		}
+	}
+	return replicas
+}
+
+func tenancyMode(stack *lokiv1.LokiStack) string {
+	if stack.Spec.Tenants == nil || stack.Spec.Tenants.Mode == "" {
+		return "static"
+	}
+	return string(stack.Spec.Tenants.Mode)
 }

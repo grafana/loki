@@ -62,9 +62,13 @@ func TestLabelMatchersToBloomTest(t *testing.T) {
 			match: false,
 		},
 		{
-			name:  "filter non-indexed key with empty value",
+			// LogQL: `field=""` matches rows where the label is absent OR
+			// empty. Blooms can't positively assert "label is absent", so the
+			// bloom test must pass (no chunk pruning); the per-row label
+			// filter decides each row downstream.
+			name:  "non-indexed key with empty value passes (bloom can't prove absence)",
 			query: `{app="fake"} | noexist=""`,
-			match: false,
+			match: true,
 		},
 		{
 			name:  "ignore label from series",
@@ -90,6 +94,16 @@ func TestLabelMatchersToBloomTest(t *testing.T) {
 			name:  "ignore label from series with empty value",
 			query: `{app="fake"} | app=""`,
 			match: false,
+		},
+		{
+			// Trace_id is a structured-metadata key (recorded per row in the
+			// bloom for some rows). Some rows in the chunk may have it absent;
+			// LogQL says those match `trace_id=""`. The bloom can't tell us
+			// "no row had trace_id" so the chunk must pass; the per-row
+			// filter handles each row.
+			name:  "structured-metadata key with empty-value filter passes the bloom",
+			query: `{app="fake"} | trace_id=""`,
+			match: true,
 		},
 		{
 			name:  "ignore unsupported operator",
