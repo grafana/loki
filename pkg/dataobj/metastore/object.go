@@ -587,10 +587,11 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			// this is temporary, the stats will be collected differently in a distributed metastore
 			statsProvider := reader.(bloomStatsProvider)
 			readRows := statsProvider.totalReadRows()
-			resolvedForObject := len(sectionsResp.SectionsResponse.Sections)
 
-			m.metrics.indexReadRowsPerObject.WithLabelValues(statsProvider.readFlow()).Observe(float64(readRows))
-			m.metrics.resolvedSectionsPerObject.WithLabelValues(statsProvider.readFlow()).Observe(float64(resolvedForObject))
+			// Per-object/per-flow metrics (resolved_sections_per_object,
+			// index_read_rows_per_object) are recorded by the reader itself in
+			// Close, so they also populate in the v2 engine path — which resolves
+			// sections via IndexSectionsReader+CollectSections and never calls Sections.
 
 			// Merge the section descriptors for the object into the global section descriptors in one batch
 			sectionsMu.Lock()
@@ -656,6 +657,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 				req.SectionsRequest.Predicates,
 				req.BatchSize,
 			)
+			reader.metrics = m.metrics
 			return IndexSectionsReaderResponse{Reader: reader}, nil
 		}
 		m.metrics.postingsReaderSelectedTotal.WithLabelValues(flowStreams).Inc()
@@ -670,6 +672,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.SectionsRequest.Predicates,
 		req.BatchSize,
 	)
+	reader.metrics = m.metrics
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil
 }

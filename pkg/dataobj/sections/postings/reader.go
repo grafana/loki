@@ -25,6 +25,9 @@ import (
 
 var tracer = otel.Tracer("pkg/dataobj/sections/postings")
 
+// RegionPrefix is the prefix used for postings reader xcap regions.
+var RegionPrefix = "postings.Reader."
+
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
 	// Columns to read. Each column must belong to the same [Section].

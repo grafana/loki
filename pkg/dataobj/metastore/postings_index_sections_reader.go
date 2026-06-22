@@ -51,6 +51,11 @@ type postingsIndexSectionsReader struct {
 	// Stats
 	bloomRowsRead uint64
 
+	// metrics, when non-nil, receives per-object/per-flow observations at Close.
+	// statsRecorded guards against double-recording if Close runs more than once.
+	metrics       *ObjectMetastoreMetrics
+	statsRecorded bool
+
 	// readSpan for recording observations, it is created once during the first Read.
 	readSpan *xcap.Span
 }
@@ -137,6 +142,7 @@ func (r *postingsIndexSectionsReader) init(ctx context.Context) error {
 		}
 
 		readers = append(readers, reader)
+		sp.Record(StatMetastorePointerSectionsOpened.Observe(1))
 	}
 	r.postingsReaders = readers
 
@@ -204,6 +210,13 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 		// Pointer rows come from the same scan; stash them for readPointers.
 		r.pointerRows = res.Pointers
 		r.bloomRowsRead = uint64(len(res.Pointers))
+
+		// The postings sections collectively yielded at least one matching
+		// pointer, so count this object as a productive resolution (mirrors the
+		// streams+pointers path's StatMetastorePointerSectionsProductive).
+		if len(res.Pointers) > 0 {
+			region.Record(StatMetastorePointerSectionsProductive.Observe(1))
+		}
 	}
 
 	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(matchingStreamRefs))))
@@ -327,6 +340,12 @@ func (r *postingsIndexSectionsReader) readMatchedSectionKeys(ctx context.Context
 func (r *postingsIndexSectionsReader) Close() {
 	closeAll(r.postingsReaders)
 
+	if r.initialized && r.metrics != nil && !r.statsRecorded {
+		r.statsRecorded = true
+		r.metrics.indexReadRowsPerObject.WithLabelValues(flowPostings).Observe(float64(r.totalReadRows()))
+		r.metrics.resolvedSectionsPerObject.WithLabelValues(flowPostings).Observe(float64(r.resolvedSectionCount()))
+	}
+
 	if r.readSpan != nil {
 		r.readSpan.End()
 	}
@@ -334,6 +353,17 @@ func (r *postingsIndexSectionsReader) Close() {
 
 func (r *postingsIndexSectionsReader) totalReadRows() uint64 {
 	return r.bloomRowsRead
+}
+
+// resolvedSectionCount returns the number of distinct sections resolved for this
+// object, i.e. the distinct (object path, section) tuples across the resolved
+// pointer rows after stream matching and bloom filtering.
+func (r *postingsIndexSectionsReader) resolvedSectionCount() int {
+	seen := make(map[SectionKey]struct{}, len(r.pointerRows))
+	for _, row := range r.pointerRows {
+		seen[SectionKey{ObjectPath: row.ObjectPath, SectionIdx: row.SectionIndex}] = struct{}{}
+	}
+	return len(seen)
 }
 
 func (r *postingsIndexSectionsReader) readFlow() string {
