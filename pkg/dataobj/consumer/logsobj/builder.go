@@ -576,7 +576,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			}
 
 			sortOrder = logs.SortSchemaASC
-			iter, iterErr = sortedSchemaIter(ctx, sections, streamRemap.sortKeys, streamRemap.ids, parseSortOrder(b.cfg.DataobjSortOrder))
+			iter, iterErr = sortedSchemaIter(ctx, sections, streamRemap.sortKeys, streamRemap.ids)
 		} else {
 			if err := b.buildStreamSection(ctx, tenant, streamsSectionIter(ctx, streamSections[0]), sb); err != nil {
 				return nil, nil, err
