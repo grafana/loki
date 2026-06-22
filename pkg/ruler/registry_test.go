@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -167,11 +169,9 @@ func newFakeLimitsBackwardCompat() fakeLimits {
 		limits: map[string]*validation.Limits{
 			enabledRWTenant: {
 				RulerRemoteWriteQueueCapacity: 987,
-				RulerEnableWALReplay:          true,
 			},
 			disabledRWTenant: {
 				RulerRemoteWriteDisabled: true,
-				RulerEnableWALReplay:     false,
 			},
 			additionalHeadersRWTenant: {
 				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{
@@ -232,11 +232,9 @@ func newFakeLimits() fakeLimits {
 						QueueConfig: config.QueueConfig{Capacity: 987},
 					},
 				},
-				RulerEnableWALReplay: true,
 			},
 			disabledRWTenant: {
 				RulerRemoteWriteDisabled: true,
-				RulerEnableWALReplay:     false,
 			},
 			additionalHeadersRWTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
@@ -935,6 +933,51 @@ func TestWALRegistryCreation(t *testing.T) {
 
 	_, ok = regDisabled.(nullRegistry)
 	assert.Truef(t, ok, "instance is not of expected type")
+}
+
+func TestWALRegistryWipeOnStartup(t *testing.T) {
+	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	configWithDir := func(dir string, remoteWriteEnabled bool) Config {
+		cfg := Config{
+			RemoteWrite: RemoteWriteConfig{Enabled: remoteWriteEnabled},
+		}
+		cfg.WAL.Dir = dir
+		return cfg
+	}
+
+	// seedWAL creates a WAL directory containing leftover per-tenant WAL data,
+	// mimicking what a previous ruler run would have left on disk.
+	seedWAL := func(t *testing.T) string {
+		t.Helper()
+		walDir := filepath.Join(t.TempDir(), "ruler-wal")
+		segment := filepath.Join(walDir, "tenant", "wal", "00000000")
+		require.NoError(t, os.MkdirAll(filepath.Dir(segment), 0o755))
+		require.NoError(t, os.WriteFile(segment, []byte("stale"), 0o644))
+		return walDir
+	}
+
+	t.Run("wipes the WAL directory on startup", func(t *testing.T) {
+		walDir := seedWAL(t)
+
+		reg := newWALRegistry(log.NewNopLogger(), nil, configWithDir(walDir, true), overrides)
+		t.Cleanup(reg.stop)
+
+		_, statErr := os.Stat(walDir)
+		require.Truef(t, os.IsNotExist(statErr), "expected WAL dir to be wiped, stat err: %v", statErr)
+	})
+
+	t.Run("does not wipe when remote-write is disabled", func(t *testing.T) {
+		walDir := seedWAL(t)
+
+		// With remote-write disabled the WAL is never used, so newWALRegistry
+		// short-circuits to a null registry and must not touch the directory.
+		newWALRegistry(log.NewNopLogger(), nil, configWithDir(walDir, false), overrides)
+
+		_, statErr := os.Stat(filepath.Join(walDir, "tenant", "wal", "00000000"))
+		require.NoError(t, statErr, "expected WAL contents to be preserved when remote-write is disabled")
+	})
 }
 
 func TestStorageSetup(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -57,7 +58,19 @@ func newWALRegistry(logger log.Logger, reg prometheus.Registerer, config Config,
 		return nullRegistry{}
 	}
 
-	manager := createInstanceManager(logger, reg, overrides)
+	// Wipe the WAL directory before any per-tenant storage is opened. This runs
+	// exactly once per ruler startup (newWALRegistry is called once), unlike the
+	// per-tenant wal.NewStorage which is re-invoked whenever a tenant instance
+	// restarts. Because the WAL is always discarded here, there is nothing to
+	// replay when the per-tenant storage is later opened.
+	level.Info(logger).Log("msg", "wiping ruler WAL directory on startup", "dir", config.WAL.Dir)
+	if err := os.RemoveAll(config.WAL.Dir); err != nil {
+		// Non-fatal: a failed wipe just leaves stale data on disk, so we log and
+		// continue rather than blocking ruler startup.
+		level.Error(logger).Log("msg", "failed to wipe ruler WAL directory on startup", "dir", config.WAL.Dir, "err", err)
+	}
+
+	manager := createInstanceManager(logger, reg)
 
 	return &walRegistry{
 		logger:    logger,
@@ -75,11 +88,10 @@ func newWALRegistry(logger log.Logger, reg prometheus.Registerer, config Config,
 	}
 }
 
-func createInstanceManager(logger log.Logger, reg prometheus.Registerer, overrides RulesLimits) *instance.BasicManager {
+func createInstanceManager(logger log.Logger, reg prometheus.Registerer) *instance.BasicManager {
 	tenantManager := &tenantWALManager{
-		reg:       reg,
-		logger:    log.With(logger, "manager", "tenant-wal"),
-		overrides: overrides,
+		reg:    reg,
+		logger: log.With(logger, "manager", "tenant-wal"),
 	}
 
 	return instance.NewBasicManager(instance.BasicManagerConfig{
@@ -455,9 +467,8 @@ type readyChecker interface {
 }
 
 type tenantWALManager struct {
-	logger    log.Logger
-	reg       prometheus.Registerer
-	overrides RulesLimits
+	logger log.Logger
+	reg    prometheus.Registerer
 }
 
 func (t *tenantWALManager) newInstance(c instance.Config) (instance.ManagedInstance, error) {
@@ -465,14 +476,8 @@ func (t *tenantWALManager) newInstance(c instance.Config) (instance.ManagedInsta
 		"tenant": c.Tenant,
 	}, t.reg)
 
-	// Get the per-tenant setting for WAL replay from overrides
-	enableReplay := true // Default to true for backward compatibility
-	if t.overrides != nil {
-		enableReplay = t.overrides.RulerEnableWALReplay(c.Tenant)
-	}
-
 	// create the instance with our custom walFactory
-	return instance.New(reg, c, wal.NewMetrics(reg), t.logger, enableReplay)
+	return instance.New(reg, c, wal.NewMetrics(reg), t.logger)
 }
 
 type storageRegistryMetrics struct {
