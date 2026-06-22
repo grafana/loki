@@ -205,7 +205,7 @@ func (seq *DatasetSequence) Close() {
 }
 
 // CompareForSortSchema returns a comparison function for k-way merge using
-// schema-based sort order: [sortKey ASC, timestamp DESC].
+// schema-based sort order: [sortKey ASC, streamID ASC, timestamp DESC].
 // sortKeys maps streamID to its pre-computed sort key.
 // math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
 func CompareForSortSchema(sortKeys map[int64]string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
@@ -225,6 +225,9 @@ func CompareForSortSchema(sortKeys map[int64]string) func(result.Result[dataset.
 			aKey := sortKeys[aStreamID]
 			bKey := sortKeys[bStreamID]
 			if res := cmp.Compare(aKey, bKey); res != 0 {
+				return res
+			}
+			if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
 				return res
 			}
 			aTS := ra.Values[1].Int64()

@@ -175,6 +175,20 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 			expectedLineOrder: []string{"C", "B", "A"},
 		},
 		{
+			// SortSchemaASC with equal sort keys falls back to streamID ASC before timestamp DESC
+			name:      "SortSchemaASC_equalSortKeysUsesStreamID",
+			sortOrder: SortSchemaASC,
+			input: []Record{
+				{StreamID: 15, Timestamp: t1, SortKey: "app-b", Line: []byte("A")},
+				{StreamID: 15, Timestamp: t3, SortKey: "app-a", Line: []byte("B")},
+				{StreamID: 15, Timestamp: t1, SortKey: "app-a", Line: []byte("C")},
+				{StreamID: 10, Timestamp: t2, SortKey: "app-a", Line: []byte("D")},
+				{StreamID: 20, Timestamp: t1, SortKey: "app-b", Line: []byte("E")},
+				{StreamID: 20, Timestamp: t1, SortKey: "app-a", Line: []byte("F")},
+			},
+			expectedLineOrder: []string{"D", "B", "C", "F", "A", "E"},
+		},
+		{
 			// SortSchemaASC with equal timestamps uses primary ordering
 			name:      "SortSchemaASC_equalTimestamps",
 			sortOrder: SortSchemaASC,
