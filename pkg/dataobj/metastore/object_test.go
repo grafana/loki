@@ -552,38 +552,36 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 	mstore := newTestObjectMetastore(bucket)
 
 	tests := []struct {
-		name                 string
-		matchers             []*labels.Matcher
-		predicates           []*labels.Matcher
-		start, end           time.Time
-		wantCount            int
-		wantLabelsByStreamID map[int64][]string // Expected stream ID -> labels mapping
+		name       string
+		matchers   []*labels.Matcher
+		predicates []*labels.Matcher
+		start, end time.Time
+		wantCount  int
+		wantLabels []string // Expected section-level ambiguous labels
 	}{
 		{
 			name: "no predicates doesn't return any labels",
 			matchers: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
-			predicates:           nil,
-			start:                now.Add(-4 * time.Hour),
-			end:                  now.Add(time.Hour),
-			wantCount:            2,
-			wantLabelsByStreamID: nil,
+			predicates: nil,
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  2,
+			wantLabels: nil,
 		},
 		{
-			name: "ambiguous predicates returns predicate label names for the stream",
+			name: "ambiguous predicates returns predicate label names",
 			matchers: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
 			},
 			predicates: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
 			},
-			start:     now.Add(-4 * time.Hour),
-			end:       now.Add(time.Hour),
-			wantCount: 1,
-			wantLabelsByStreamID: map[int64][]string{
-				2: {"env"},
-			},
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  1,
+			wantLabels: []string{"env"},
 		},
 	}
 
@@ -593,22 +591,14 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
 
-			if tt.wantLabelsByStreamID != nil {
-				// Collect all stream ID -> labels mappings across all sections
-				gotLabelsByStreamID := make(map[int64][]string)
+			if tt.wantLabels != nil {
+				// Collect all labels across all sections
+				var gotLabels []string
 				for _, section := range sectionsResp.Sections {
-					for streamID, lbls := range section.AmbiguousPredicatesByStream {
-						gotLabelsByStreamID[streamID] = lbls
-					}
+					gotLabels = append(gotLabels, section.AmbiguousPredicates...)
 				}
 
-				// Verify each expected stream ID has the correct labels
-				require.Len(t, gotLabelsByStreamID, len(tt.wantLabelsByStreamID), "unexpected number of streams")
-				for streamID, wantLabels := range tt.wantLabelsByStreamID {
-					gotLabels, ok := gotLabelsByStreamID[streamID]
-					require.True(t, ok, "missing labels for stream ID %d", streamID)
-					require.Equal(t, wantLabels, gotLabels, "labels mismatch for stream ID %d", streamID)
-				}
+				require.ElementsMatch(t, tt.wantLabels, gotLabels, "labels mismatch")
 			}
 		})
 	}
@@ -743,9 +733,9 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 	}
 }
 
-// TestDataobjSectionDescriptorMerge_NilMapPanic is a regression test for
-// https://github.com/grafana/loki/pull/21268
-func TestDataobjSectionDescriptorMerge_NilMapPanic(t *testing.T) {
+// TestDataobjSectionDescriptorMerge_NilLabels verifies that merging labels into
+// a descriptor created with no ambiguous labels unions them in cleanly.
+func TestDataobjSectionDescriptorMerge_NilLabels(t *testing.T) {
 	ptr1 := pointers.SectionPointer{
 		Path:        "test-path",
 		Section:     0,
@@ -766,12 +756,9 @@ func TestDataobjSectionDescriptorMerge_NilMapPanic(t *testing.T) {
 	// Create descriptor with no ambiguous labels.
 	desc := NewSectionDescriptor(ptr1, nil)
 
-	// Before the fix this panicked with "assignment to entry in nil map".
-	require.NotPanics(t, func() {
-		desc.Merge(ptr2, []string{"env"})
-	})
+	desc.Merge(ptr2, []string{"env"})
 
-	require.Equal(t, []string{"env"}, desc.AmbiguousPredicatesByStream[ptr2.StreamIDRef])
+	require.ElementsMatch(t, []string{"env"}, desc.AmbiguousPredicates)
 }
 
 func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
@@ -932,7 +919,7 @@ func TestCollectSections_PostingsAndLegacyParity(t *testing.T) {
 		})
 		require.NoError(t, err)
 		t.Cleanup(resp.Reader.Close)
-		out, err := m.CollectSections(ctx, CollectSectionsRequest{Reader: resp.Reader})
+		out, err := m.CollectSections(ctx, CollectSectionsRequest(resp))
 		require.NoError(t, err)
 		require.Len(t, out.SectionsResponse.Sections, 1)
 		return out.SectionsResponse.Sections[0]
@@ -948,5 +935,5 @@ func TestCollectSections_PostingsAndLegacyParity(t *testing.T) {
 
 	require.Equal(t, legacyDesc.SectionKey, postingsDesc.SectionKey)
 	require.ElementsMatch(t, legacyDesc.StreamIDs, postingsDesc.StreamIDs)
-	require.Equal(t, legacyDesc.AmbiguousPredicatesByStream, postingsDesc.AmbiguousPredicatesByStream)
+	require.ElementsMatch(t, legacyDesc.AmbiguousPredicates, postingsDesc.AmbiguousPredicates)
 }

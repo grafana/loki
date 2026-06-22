@@ -76,26 +76,41 @@ type DataobjSectionDescriptor struct {
 	Start     time.Time
 	End       time.Time
 
-	// Ambiguous predicates are predicates which are present in the stream's labels as well as the LogQL query, and are therefore ambiguous.
-	AmbiguousPredicatesByStream map[int64][]string
+	// AmbiguousPredicates are predicate names present both as a stream label in
+	// the section and in the LogQL query, and are therefore ambiguous. It is the
+	// deduped union across the section's streams.
+	AmbiguousPredicates []string
+}
+
+func dedupeStringSlice(s []string) []string {
+	if len(s) == 0 {
+		return s
+	}
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(s))
+	for _, v := range s {
+		if _, exists := seen[v]; !exists {
+			result = append(result, v)
+			seen[v] = struct{}{}
+		}
+	}
+	return result
 }
 
 // NewSectionDescriptor creates a new section descriptor with the given pointer and labels.
 func NewSectionDescriptor(pointer pointers.SectionPointer, ambiguousLabelNames []string) *DataobjSectionDescriptor {
+	deduped := dedupeStringSlice(ambiguousLabelNames)
 	obj := &DataobjSectionDescriptor{
 		SectionKey: SectionKey{
 			ObjectPath: pointer.Path,
 			SectionIdx: pointer.Section,
 		},
-		StreamIDs:                   []int64{pointer.StreamIDRef},
-		RowCount:                    int(pointer.LineCount),
-		Size:                        pointer.UncompressedSize,
-		Start:                       pointer.StartTs,
-		End:                         pointer.EndTs,
-		AmbiguousPredicatesByStream: make(map[int64][]string),
-	}
-	if len(ambiguousLabelNames) > 0 {
-		obj.AmbiguousPredicatesByStream[pointer.StreamIDRef] = ambiguousLabelNames
+		StreamIDs:           []int64{pointer.StreamIDRef},
+		RowCount:            int(pointer.LineCount),
+		Size:                pointer.UncompressedSize,
+		Start:               pointer.StartTs,
+		End:                 pointer.EndTs,
+		AmbiguousPredicates: deduped,
 	}
 	return obj
 }
@@ -116,14 +131,17 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls [
 		return
 	}
 
-	curLbls, exists := d.AmbiguousPredicatesByStream[pointer.StreamIDRef]
-	if !exists {
-		d.AmbiguousPredicatesByStream[pointer.StreamIDRef] = lbls
-		return
+	seen := make(map[string]struct{})
+	for _, lbl := range d.AmbiguousPredicates {
+		seen[lbl] = struct{}{}
 	}
 
-	curLbls = append(curLbls, lbls...)
-	d.AmbiguousPredicatesByStream[pointer.StreamIDRef] = curLbls
+	for _, lbl := range lbls {
+		if _, exists := seen[lbl]; !exists {
+			d.AmbiguousPredicates = append(d.AmbiguousPredicates, lbl)
+			seen[lbl] = struct{}{}
+		}
+	}
 }
 
 // TableOfContentsPath returns the object-storage path of the ToC file that
