@@ -35,13 +35,16 @@ func Build(opts Options) (*monitoringv1.PrometheusRuleSpec, error) {
 		return nil, kverrors.Wrap(err, "failed to create prometheus alerts")
 	}
 
-	recordingRules, err := ruleSpec("prometheus-rules.yaml", rulesYAMLTmpl, opts)
-	if err != nil {
-		return nil, kverrors.Wrap(err, "failed to create prometheus rules")
-	}
-
 	spec := alerts.DeepCopy()
-	spec.Groups = append(alerts.Groups, recordingRules.Groups...)
+
+	// Only include telemetry recording rules if Openshift feature gate is enabled
+	if opts.IncludeTelemetryRules {
+		recordingRules, err := ruleSpec("prometheus-rules.yaml", rulesYAMLTmpl, opts)
+		if err != nil {
+			return nil, kverrors.Wrap(err, "failed to create prometheus rules")
+		}
+		spec.Groups = append(spec.Groups, recordingRules.Groups...)
+	}
 
 	return spec, nil
 }
