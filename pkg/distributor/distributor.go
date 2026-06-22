@@ -156,6 +156,77 @@ type KafkaProducer interface {
 	Close()
 }
 
+type metrics struct {
+	// distributor metrics
+	ingesterAppends                       *prometheus.CounterVec
+	ingesterAppendTimeouts                *prometheus.CounterVec
+	replicationFactor                     prometheus.Gauge
+	streamShardCount                      prometheus.Counter
+	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
+
+	// kafka metrics
+	kafkaAppends           *prometheus.CounterVec
+	kafkaWriteBytesTotal   prometheus.Counter
+	kafkaWriteLatency      prometheus.Histogram
+	kafkaRecordsPerRequest prometheus.Histogram
+}
+
+func newMetrics(registerer prometheus.Registerer) *metrics {
+	return &metrics{
+		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_ingester_appends_total",
+			Help:      "The total number of batch appends sent to ingesters.",
+		}, []string{"ingester"}),
+		ingesterAppendTimeouts: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_ingester_append_timeouts_total",
+			Help:      "The total number of failed batch appends sent to ingesters due to timeouts.",
+		}, []string{"ingester"}),
+		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_replication_factor",
+			Help:      "The configured replication factor.",
+		}),
+		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "stream_sharding_count",
+			Help:      "Total number of times the distributor has sharded streams",
+		}),
+		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_push_structured_metadata_sanitized_total",
+			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
+		}, []string{"tenant", "format"}),
+
+		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_appends_total",
+			Help:      "The total number of appends sent to kafka ingest path.",
+		}, []string{"partition", "status"}),
+		kafkaWriteLatency: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "distributor_kafka_latency_seconds",
+			Help:                            "Latency to write an incoming request to the ingest storage.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
+		kafkaWriteBytesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_sent_bytes_total",
+			Help:      "Total number of bytes sent to the ingest storage.",
+		}),
+		kafkaRecordsPerRequest: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_records_per_write_request",
+			Help:      "The number of records a single per-partition write request has been split into.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
+		}),
+	}
+}
+
 // Distributor coordinates replicates and distribution of log streams.
 type Distributor struct {
 	services.Service
@@ -163,6 +234,7 @@ type Distributor struct {
 	cfg              Config
 	ingesterCfg      ingester.Config
 	logger           log.Logger
+	m                *metrics
 	clientCfg        ingester_client.Config
 	tenantConfigs    *runtime.TenantConfigs
 	tenantsRetention *retention.TenantsRetention
@@ -193,13 +265,6 @@ type Distributor struct {
 
 	RequestParserWrapper push.RequestParserWrapper
 
-	// metrics
-	ingesterAppends                       *prometheus.CounterVec
-	ingesterAppendTimeouts                *prometheus.CounterVec
-	replicationFactor                     prometheus.Gauge
-	streamShardCount                      prometheus.Counter
-	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
-
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
@@ -220,12 +285,6 @@ type Distributor struct {
 	// Track the max inflight bytes in the last 1 minute.
 	inflightBytesHighWatermark prometheus.Summary
 	inflightBytes              atomic.Int64
-
-	// kafka metrics
-	kafkaAppends           *prometheus.CounterVec
-	kafkaWriteBytesTotal   prometheus.Counter
-	kafkaWriteLatency      prometheus.Histogram
-	kafkaRecordsPerRequest prometheus.Histogram
 }
 
 // New a distributor creates.
@@ -367,56 +426,7 @@ func New(
 		tee:                   tee,
 		usageTracker:          usageTracker,
 		ingesterTasks:         make(chan pushIngesterTask),
-		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_ingester_appends_total",
-			Help:      "The total number of batch appends sent to ingesters.",
-		}, []string{"ingester"}),
-		ingesterAppendTimeouts: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_ingester_append_timeouts_total",
-			Help:      "The total number of failed batch appends sent to ingesters due to timeouts.",
-		}, []string{"ingester"}),
-		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_replication_factor",
-			Help:      "The configured replication factor.",
-		}),
-		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "stream_sharding_count",
-			Help:      "Total number of times the distributor has sharded streams",
-		}),
-		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_push_structured_metadata_sanitized_total",
-			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
-		}, []string{"tenant", "format"}),
-		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_kafka_appends_total",
-			Help:      "The total number of appends sent to kafka ingest path.",
-		}, []string{"partition", "status"}),
-		kafkaWriteLatency: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace:                       constants.Loki,
-			Name:                            "distributor_kafka_latency_seconds",
-			Help:                            "Latency to write an incoming request to the ingest storage.",
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMinResetDuration: 1 * time.Hour,
-			NativeHistogramMaxBucketNumber:  100,
-			Buckets:                         prometheus.DefBuckets,
-		}),
-		kafkaWriteBytesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_kafka_sent_bytes_total",
-			Help:      "Total number of bytes sent to the ingest storage.",
-		}),
-		kafkaRecordsPerRequest: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_kafka_records_per_write_request",
-			Help:      "The number of records a single per-partition write request has been split into.",
-			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
-		}),
+		m:                     newMetrics(registerer),
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
@@ -449,7 +459,7 @@ func New(
 	d.distributorsRing = distributorsRing
 	d.distributorsLifecycler = distributorsLifecycler
 
-	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
+	d.m.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
 
 	rs := NewRateStore(
@@ -732,11 +742,11 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 						normalizedBuilder.Del(lbl.Name)
 						normalizedBuilder.Set(normalized, lbl.Value)
 
-						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
+						d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
 					}
 					if strings.ContainsRune(lbl.Value, utf8.RuneError) {
 						normalizedBuilder.Set(normalized, strings.Map(removeInvalidUtf, lbl.Value))
-						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
+						d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
 					}
 				}
 
@@ -1247,7 +1257,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream, Policy: policy}}
 	}
 
-	d.streamShardCount.Inc()
+	d.m.streamShardCount.Inc()
 	if shardStreamsCfg.LoggingEnabled {
 		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
 	}
@@ -1444,12 +1454,12 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	}
 
 	_, err = c.(logproto.PusherClient).Push(ctx, req)
-	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
+	d.m.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
 			switch e.Code() {
 			case codes.DeadlineExceeded:
-				d.ingesterAppendTimeouts.WithLabelValues(ingester.Addr).Inc()
+				d.m.ingesterAppendTimeouts.WithLabelValues(ingester.Addr).Inc()
 			}
 		}
 	}
@@ -1462,7 +1472,7 @@ func (d *Distributor) sendStreamsToKafka(ctx context.Context, tenant string, str
 	if err != nil {
 		// We need to add len(streams) to the counter as we later count successes and
 		// failures per stream too.
-		d.kafkaAppends.WithLabelValues("kafka", "fail").Add(float64(len(streams)))
+		d.m.kafkaAppends.WithLabelValues("kafka", "fail").Add(float64(len(streams)))
 		tracker.doneWithResult(err)
 		return
 	}
@@ -1473,23 +1483,23 @@ func (d *Distributor) sendStreamsToKafka(ctx context.Context, tenant string, str
 		tracker.doneWithResult(nil)
 		return
 	}
-	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
+	d.m.kafkaRecordsPerRequest.Observe(float64(len(records)))
 	// Produce the records to Kafka.
-	writeLatency := prometheus.NewTimer(d.kafkaWriteLatency)
+	writeLatency := prometheus.NewTimer(d.m.kafkaWriteLatency)
 	results := d.kafkaWriter.ProduceSync(ctx, records)
 	if count, sizeBytes := successfulProduceRecordsStats(results); count > 0 {
 		// TODO(grobinson): We should emit the write latency even when we failed.
 		// This has been kept as-is for now to preserve behavior.
 		writeLatency.ObserveDuration()
-		d.kafkaWriteBytesTotal.Add(float64(sizeBytes))
+		d.m.kafkaWriteBytesTotal.Add(float64(sizeBytes))
 	}
 	var finalErr error
 	for _, result := range results {
 		if result.Err != nil {
-			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", result.Record.Partition), "fail").Inc()
+			d.m.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", result.Record.Partition), "fail").Inc()
 			finalErr = result.Err
 		} else {
-			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", result.Record.Partition), "success").Inc()
+			d.m.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", result.Record.Partition), "success").Inc()
 		}
 	}
 	tracker.doneWithResult(finalErr)
