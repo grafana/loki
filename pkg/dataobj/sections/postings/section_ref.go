@@ -1,17 +1,14 @@
 package postings
 
-// SectionRef is a reference into a logs object's section, scoped to a single
-// stream within that section. It is the resolved output of any metastore index
-// reader (postings or legacy streams+pointers). Fields a given source format
-// cannot supply are left at their zero value; MinTimestamp/MaxTimestamp use 0
-// to mean "unknown" (callers map 0 to a zero time, not the Unix epoch).
-type SectionRef struct {
-	ObjectPath       string
-	SectionIndex     int64
-	StreamID         int64
-	MinTimestamp     int64 // unix nanos; 0 means unknown
-	MaxTimestamp     int64 // unix nanos; 0 means unknown
-	RowCount         int64 // log-line count; 0 for the postings path
-	UncompressedSize int64 // 0 when unknown
-	AmbiguousLabels  []string
+// SectionResult is the resolved output for a single section: the set of matching
+// streams (as a stream-ID bitmap, bit position = stream ID), a conservative
+// section-wide timestamp envelope, and the section-level set of ambiguous label
+// names (equal-predicate names that are also stream labels in this section).
+type SectionResult struct {
+	ObjectPath     string
+	SectionIndex   int64
+	StreamBitmap   []byte // bit i set => stream i matches; expand via memory.BitmapFrom(...).IterValues(true)
+	MinTimestamp   int64  // unix nanos; 0 means unknown
+	MaxTimestamp   int64  // unix nanos; 0 means unknown
+	AmbiguousNames []string
 }

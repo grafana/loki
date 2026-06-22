@@ -1,36 +1,24 @@
 package postings
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/scalar"
-	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-// StreamResolver resolves SectionRefs from one or more postings sections that
+// StreamResolver resolves SectionResults from one or more postings sections that
 // match stream matchers, a time range, and structured-metadata predicates.
 type StreamResolver struct {
 	matchers        []*labels.Matcher
 	equalPredicates []*labels.Matcher
 	start, end      time.Time
-}
-
-// StreamRef identifies a single stream within an object. It is globally unique
-// across objects, so accumulator maps keyed on it union safely across sections.
-type StreamRef struct {
-	ObjectPath string
-	StreamID   int64
-}
-
-// Key identifies a single section within an object. The bloom phase scopes
-// resolved refs to the section keys that satisfy every remaining predicate.
-type Key struct {
-	ObjectPath   string
-	SectionIndex int64
 }
 
 // NewStreamResolver builds a resolver. predicates arrives unfiltered; only
@@ -50,75 +38,71 @@ func NewStreamResolver(matchers, predicates []*labels.Matcher, start, end time.T
 	}
 }
 
-// maxMatchers bounds how many matchers the bitset-based accumulator can track.
-// A query with more than 64 stream matchers is implausible; Resolve rejects it
-// rather than silently truncating the matched-bit set.
-const maxMatchers = 64
-
-// sectionAccumulator holds the per-section state produced by the label phase.
-// Each section scans into its own instance; instances are merged before
-// finalize. Maps key on (ObjectPath, StreamID) via StreamRef, which is globally
-// unique, so merges are plain set/bitwise unions. Section refs key on
-// (ObjectPath, SectionIndex, StreamID) and merge time bounds on collision.
-//
-// matchedBits[ref] is a bitset over matcher indices: bit i is set when the
-// stream satisfied matcher i. A stream matches the query when its bits equal
-// the full matcher mask. Whether a stream carries a given matcher's label name
-// (needed for missing-label semantics) and the per-stream AmbiguousLabels set
-// are both derived from labelNamesByStream rather than stored separately.
-type sectionAccumulator struct {
-	matchedBits        map[StreamRef]uint64
-	labelNamesByStream map[StreamRef]map[string]struct{}
-	refBounds          map[refKey]bounds
-}
-
-type refKey struct {
+// sectionKey identifies a logical section within an object. A single physical
+// postings section interleaves rows for many logical sections, and a stream-ID
+// bit is only meaningful within one logical section, so all accumulation is
+// keyed on it.
+type sectionKey struct {
 	objectPath   string
 	sectionIndex int64
-	streamID     int64
 }
 
-type bounds struct {
-	min, max  int64
-	hasBounds bool
+// keyAccum holds the per-logical-section bitmaps. Bit position = stream ID.
+// result is the running intersection of every matcher's hit; timeOverlap is the
+// streams whose rows fall within the query window. The timestamp envelope spans
+// the overlapping rows.
+type keyAccum struct {
+	result       *memory.Bitmap
+	streamLabels map[string]struct{}
+	timeOverlap  *memory.Bitmap
+	minTS, maxTS int64
+	hasTS        bool
 }
 
-func newSectionAccumulator() *sectionAccumulator {
-	return &sectionAccumulator{
-		matchedBits:        make(map[StreamRef]uint64),
-		labelNamesByStream: make(map[StreamRef]map[string]struct{}),
-		refBounds:          make(map[refKey]bounds),
+// orInto unions src into the bitmap at dst, initializing dst on first use.
+func orInto(dst **memory.Bitmap, src *memory.Bitmap) {
+	if *dst == nil {
+		*dst = src
+	} else {
+		*dst = (*dst).Or(src)
 	}
 }
 
-// Resolve scans the already-opened sections and returns matching SectionRefs.
-// The caller owns opening and closing the sections; Resolve opens and closes
-// its own RowReaders per section per phase.
-func (r *StreamResolver) Resolve(ctx context.Context, sections []*Section) ([]SectionRef, error) {
+// orEmpty returns b, or an empty bitmap when b is nil, so set-algebra operands
+// are never nil.
+func orEmpty(b *memory.Bitmap) *memory.Bitmap {
+	if b == nil {
+		return &memory.Bitmap{}
+	}
+	return b
+}
+
+// Resolve scans the already-opened sections and returns matching SectionResults,
+// one per logical section that has at least one matching stream. The caller owns
+// opening and closing the sections; Resolve opens and closes its own RowReaders.
+func (r *StreamResolver) Resolve(ctx context.Context, sections []*Section) ([]SectionResult, error) {
 	if len(r.matchers) == 0 {
 		return nil, nil
 	}
 
-	startNanos, endNanos := r.start.UnixNano(), r.end.UnixNano()
-	activeMatchers := r.activeMatchers()
-	if len(activeMatchers) > maxMatchers {
-		return nil, fmt.Errorf("too many matchers: got=%d max=%d", len(activeMatchers), maxMatchers)
+	positive, emptyCapable := r.partitionMatchers()
+	if len(positive) == 0 {
+		// LogQL requires at least one positive matcher; without one the stream
+		// universe is unbounded and missing-label semantics cannot be resolved.
+		return nil, fmt.Errorf("postings resolver requires at least one non-empty-capable matcher")
 	}
 
-	// Only label names that a matcher or an equal-predicate references are read
-	// later (missing-label semantics and AmbiguousLabels). Recording just those
-	// bounds each stream's stored name set instead of its full label set.
-	relevantNames := r.relevantNames(activeMatchers)
+	startNanos, endNanos := r.start.UnixNano(), r.end.UnixNano()
 
-	accs := make([]*sectionAccumulator, len(sections))
+	perSection := make([]map[sectionKey]*keyAccum, len(sections))
 	g, ctx := errgroup.WithContext(ctx)
-	for i, sec := range sections {
+	for i := range sections {
 		g.Go(func() error {
-			acc := newSectionAccumulator()
-			if err := r.scanLabels(ctx, sec, acc, activeMatchers, relevantNames, startNanos, endNanos); err != nil {
-				return fmt.Errorf("scanning labels: %w", err)
+			accums, err := r.resolveSection(ctx, sections[i], positive, emptyCapable, startNanos, endNanos)
+			if err != nil {
+				return fmt.Errorf("resolving section: %w", err)
 			}
-			accs[i] = acc
+			perSection[i] = accums
 			return nil
 		})
 	}
@@ -126,67 +110,323 @@ func (r *StreamResolver) Resolve(ctx context.Context, sections []*Section) ([]Se
 		return nil, err
 	}
 
-	merged := mergeAccumulators(accs)
-	matching := r.matchingStreams(merged, activeMatchers)
+	bloomSurvivors, err := r.bloomGate(ctx, sections, perSection)
+	if err != nil {
+		return nil, err
+	}
 
-	// Mid-finalize: drop equal-predicates that are stream labels for matched
-	// streams; those are resolved by label matching, not blooms. Bloom matching
-	// only runs on the survivors.
-	remaining := r.dropStreamLabelPredicates(merged, matching)
+	var out []SectionResult
+	for _, accums := range perSection {
+		for key, acc := range accums {
+			if bloomSurvivors != nil {
+				if _, ok := bloomSurvivors[key]; !ok {
+					continue
+				}
+			}
+			if result, ok := r.finalize(key, acc, startNanos, endNanos); ok {
+				out = append(out, result)
+			}
+		}
+	}
+	return out, nil
+}
 
-	var bloomKeep map[Key]struct{}
-	if len(remaining) > 0 {
-		var err error
-		bloomKeep, err = bloomMatch(ctx, sections, remaining)
+// resolveSection scans one physical section and returns, per logical section
+// key, the matching stream bitmap. Positive matchers are pushed into the scan
+// and intersected; empty-capable matchers are applied via their absent-stream
+// complement.
+func (r *StreamResolver) resolveSection(
+	ctx context.Context,
+	sec *Section,
+	positive, emptyCapable []*labels.Matcher,
+	startNanos, endNanos int64,
+) (map[sectionKey]*keyAccum, error) {
+	kindCol := sectionColumn(sec, ColumnTypeKind)
+	nameCol := sectionColumn(sec, ColumnTypeColumnName)
+	valueCol := sectionColumn(sec, ColumnTypeLabelValue)
+	if kindCol == nil || nameCol == nil || valueCol == nil {
+		return nil, nil
+	}
+
+	accums := make(map[sectionKey]*keyAccum)
+	for i, m := range positive {
+		hits, err := r.scanMatcher(ctx, sec, kindCol, nameCol, valueCol, m, accums, startNanos, endNanos)
 		if err != nil {
-			return nil, fmt.Errorf("bloom matching: %w", err)
+			return nil, err
+		}
+		if i == 0 {
+			seedResults(accums, hits)
+		} else {
+			intersectResults(accums, hits)
+		}
+		if len(accums) == 0 {
+			return nil, nil
 		}
 	}
 
-	return r.assemble(merged, matching, bloomKeep), nil
+	for _, m := range emptyCapable {
+		if err := r.applyEmptyCapable(ctx, sec, kindCol, nameCol, m, accums, startNanos, endNanos); err != nil {
+			return nil, err
+		}
+		if len(accums) == 0 {
+			return nil, nil
+		}
+	}
+
+	if err := r.recordPredicateStreamLabels(ctx, sec, kindCol, nameCol, accums); err != nil {
+		return nil, err
+	}
+	return accums, nil
 }
 
-// dropStreamLabelPredicates removes equal-predicates whose name is a stream
-// label on any matched stream; those are resolved by label matching, not
-// blooms. Running them through bloom matching would be a guaranteed miss (a
-// stream label is never a structured-metadata bloom entry) and a false
-// negative.
-func (r *StreamResolver) dropStreamLabelPredicates(acc *sectionAccumulator, matching map[StreamRef]struct{}) []*labels.Matcher {
-	streamLabelNames := make(map[string]struct{})
-	for ref := range matching {
-		for name := range acc.labelNamesByStream[ref] {
-			streamLabelNames[name] = struct{}{}
+// seedResults sets each key's result to its first positive matcher's hit.
+func seedResults(accums map[sectionKey]*keyAccum, hits map[sectionKey]*memory.Bitmap) {
+	for key, acc := range accums {
+		hit := hits[key]
+		if hit == nil || hit.SetCount() == 0 {
+			delete(accums, key)
+			continue
+		}
+		acc.result = hit
+	}
+}
+
+// intersectResults ANDs each key's running result with the matcher's hit,
+// dropping keys the matcher did not hit. A key created by a later matcher's scan
+// but never seeded by the first matcher has a nil result and is dropped: it
+// cannot satisfy every matcher.
+func intersectResults(accums map[sectionKey]*keyAccum, hits map[sectionKey]*memory.Bitmap) {
+	for key, acc := range accums {
+		hit := hits[key]
+		if acc.result == nil || hit == nil {
+			delete(accums, key)
+			continue
+		}
+		acc.result = acc.result.And(hit)
+		if acc.result.SetCount() == 0 {
+			delete(accums, key)
 		}
 	}
-	var remaining []*labels.Matcher
+}
+
+// scanMatcher pushes a positive matcher's value selection into the scan and
+// returns, per logical section key, the union of the matching rows' stream
+// bitmaps. It records the matcher's name as a stream label and folds the
+// timestamp envelope into each key's accumulator.
+func (r *StreamResolver) scanMatcher(
+	ctx context.Context,
+	sec *Section,
+	kindCol, nameCol, valueCol *Column,
+	m *labels.Matcher,
+	accums map[sectionKey]*keyAccum,
+	startNanos, endNanos int64,
+) (map[sectionKey]*memory.Bitmap, error) {
+	valuePred, err := valuePredicate(valueCol, m)
+	if err != nil {
+		return nil, err
+	}
+	pred := AndPredicate{
+		Left:  labelNamePredicate(kindCol, nameCol, m.Name),
+		Right: valuePred,
+	}
+
+	hits := make(map[sectionKey]*memory.Bitmap)
+	err = r.eachRow(ctx, sec, pred, func(row Row) {
+		key := keyOf(row)
+		acc := ensureAccum(accums, key)
+		acc.streamLabels[m.Name] = struct{}{}
+		bits := bitmapOf(row)
+		existing := hits[key]
+		orInto(&existing, bits)
+		hits[key] = existing
+		acc.foldTimestampOverlap(bits, row, startNanos, endNanos)
+	})
+	return hits, err
+}
+
+// applyEmptyCapable scans every row of an empty-capable matcher's name to build,
+// per key, the name's presence and its positive value hit, then ANDs each key's
+// result with the matcher's stream set: rows whose value matches, unioned with
+// the streams that lack the name (the complement of presence within the result).
+func (r *StreamResolver) applyEmptyCapable(
+	ctx context.Context,
+	sec *Section,
+	kindCol, nameCol *Column,
+	m *labels.Matcher,
+	accums map[sectionKey]*keyAccum,
+	startNanos, endNanos int64,
+) error {
+	present := make(map[sectionKey]*memory.Bitmap)
+	positive := make(map[sectionKey]*memory.Bitmap)
+	err := r.eachRow(ctx, sec, labelNamePredicate(kindCol, nameCol, m.Name), func(row Row) {
+		key := keyOf(row)
+		acc, ok := accums[key]
+		if !ok {
+			return // no positive matcher hit this key; it cannot survive
+		}
+		acc.streamLabels[m.Name] = struct{}{}
+		bits := bitmapOf(row)
+		p := present[key]
+		orInto(&p, bits)
+		present[key] = p
+		if m.Matches(row.LabelValue) {
+			h := positive[key]
+			orInto(&h, bits)
+			positive[key] = h
+		}
+		acc.foldTimestampOverlap(bits, row, startNanos, endNanos)
+	})
+	if err != nil {
+		return err
+	}
+
+	for key, acc := range accums {
+		// Streams lacking the name are the complement of presence within the
+		// running result; because result is a subset of the section universe
+		// this is equivalent to complementing against the full universe.
+		missing := acc.result.AndNot(orEmpty(present[key]))
+		hit := positive[key]
+		orInto(&hit, missing)
+		acc.result = acc.result.And(orEmpty(hit))
+		if acc.result.SetCount() == 0 {
+			delete(accums, key)
+		}
+	}
+	return nil
+}
+
+// recordPredicateStreamLabels marks any equal-predicate name that exists as a
+// stream label in each surviving key. Such predicates are resolved by label
+// matching, so the bloom gate drops them and they surface as ambiguous names.
+func (r *StreamResolver) recordPredicateStreamLabels(ctx context.Context, sec *Section, kindCol, nameCol *Column, accums map[sectionKey]*keyAccum) error {
 	for _, p := range r.equalPredicates {
-		if _, isStreamLabel := streamLabelNames[p.Name]; !isStreamLabel {
-			remaining = append(remaining, p)
+		pending := false
+		for _, acc := range accums {
+			if _, known := acc.streamLabels[p.Name]; !known {
+				pending = true
+				break
+			}
+		}
+		if !pending {
+			continue
+		}
+		keys, err := keysWithLabelName(ctx, sec, kindCol, nameCol, p.Name)
+		if err != nil {
+			return err
+		}
+		for key := range keys {
+			if acc, ok := accums[key]; ok {
+				acc.streamLabels[p.Name] = struct{}{}
+			}
 		}
 	}
-	return remaining
+	return nil
 }
 
-// bloomMatch scans KindBloom rows across sections and returns the section keys
-// that satisfy every remaining equal-predicate. A KindBloom row carries one
-// (column_name, bloom_filter) per section; a section key survives only if, for
-// every predicate, some bloom row for that predicate's column tests positive
-// for the predicate value.
-func bloomMatch(ctx context.Context, sections []*Section, remaining []*labels.Matcher) (map[Key]struct{}, error) {
-	names := make([]string, 0, len(remaining))
-	for _, p := range remaining {
-		names = append(names, p.Name)
+// keysWithLabelName returns the logical section keys that contain a KindLabel
+// row for the given label name.
+func keysWithLabelName(ctx context.Context, sec *Section, kindCol, nameCol *Column, name string) (map[sectionKey]struct{}, error) {
+	rr := NewRowReader(ctx, sec, labelNamePredicate(kindCol, nameCol, name))
+	defer func() { _ = rr.Close() }()
+	keys := make(map[sectionKey]struct{})
+	for rr.Next() {
+		row := rr.At()
+		keys[keyOf(row)] = struct{}{}
+	}
+	return keys, rr.Err()
+}
+
+// eachRow scans sec with pred, invoking fn for every row carrying streams.
+func (r *StreamResolver) eachRow(ctx context.Context, sec *Section, pred Predicate, fn func(Row)) error {
+	rr := NewRowReader(ctx, sec, pred)
+	defer func() { _ = rr.Close() }()
+
+	for rr.Next() {
+		row := rr.At()
+		if len(row.StreamIDBitmap) == 0 {
+			continue
+		}
+		fn(row)
+	}
+	return rr.Err()
+}
+
+// finalize applies time pruning and emits the SectionResult for one key.
+func (r *StreamResolver) finalize(key sectionKey, acc *keyAccum, startNanos, endNanos int64) (SectionResult, bool) {
+	result := acc.result
+	if result == nil || result.SetCount() == 0 {
+		return SectionResult{}, false
 	}
 
-	results := make([]map[Key]map[string]struct{}, len(sections))
+	if startNanos > 0 || endNanos > 0 {
+		if acc.timeOverlap == nil {
+			return SectionResult{}, false
+		}
+		result = result.And(acc.timeOverlap)
+		if result.SetCount() == 0 {
+			return SectionResult{}, false
+		}
+	}
+
+	data, _ := result.BytesTrimmed()
+	return SectionResult{
+		ObjectPath:     key.objectPath,
+		SectionIndex:   key.sectionIndex,
+		StreamBitmap:   bytes.Clone(data),
+		MinTimestamp:   acc.minTS,
+		MaxTimestamp:   acc.maxTS,
+		AmbiguousNames: r.ambiguousNames(acc),
+	}, true
+}
+
+// foldTimestampOverlap folds the row into the key's timestamp envelope and
+// overlap bitmap when it falls within the query window. Null-bounded rows are
+// kept.
+func (acc *keyAccum) foldTimestampOverlap(bits *memory.Bitmap, row Row, startNanos, endNanos int64) {
+	hasBounds := row.MinTimestamp != 0 || row.MaxTimestamp != 0
+	if hasBounds && (row.MaxTimestamp < startNanos || row.MinTimestamp > endNanos) {
+		return
+	}
+	orInto(&acc.timeOverlap, bits)
+	if !acc.hasTS {
+		acc.minTS, acc.maxTS, acc.hasTS = row.MinTimestamp, row.MaxTimestamp, true
+		return
+	}
+	if row.MinTimestamp < acc.minTS {
+		acc.minTS = row.MinTimestamp
+	}
+	if row.MaxTimestamp > acc.maxTS {
+		acc.maxTS = row.MaxTimestamp
+	}
+}
+
+// bloomGate returns the logical section keys whose structured-metadata blooms
+// admit every equal-predicate, or nil when there are no predicates to gate on.
+// Equal-predicates whose name is a stream label in a key are resolved by label
+// matching, not blooms, so they are dropped per key. Blooms and the label rows
+// they gate live in distinct physical sections sharing a logical key, so the
+// gate scans every section and correlates on that key.
+func (r *StreamResolver) bloomGate(ctx context.Context, sections []*Section, perSection []map[sectionKey]*keyAccum) (map[sectionKey]struct{}, error) {
+	if len(r.equalPredicates) == 0 {
+		return nil, nil
+	}
+
+	streamLabelsByKey := make(map[sectionKey]map[string]struct{})
+	for _, accums := range perSection {
+		for key, acc := range accums {
+			streamLabelsByKey[key] = acc.streamLabels
+		}
+	}
+
+	hits := make([]map[sectionKey]map[predicateValue]struct{}, len(sections))
 	g, ctx := errgroup.WithContext(ctx)
-	for i, sec := range sections {
+	for i := range sections {
 		g.Go(func() error {
-			matched, err := bloomMatchSection(ctx, sec, remaining, names)
+			matched, err := bloomHitsInSection(ctx, sections[i], r.equalPredicates)
 			if err != nil {
 				return err
 			}
-			results[i] = matched
+			hits[i] = matched
 			return nil
 		})
 	}
@@ -194,137 +434,174 @@ func bloomMatch(ctx context.Context, sections []*Section, remaining []*labels.Ma
 		return nil, err
 	}
 
-	// A section key satisfies the query only if every remaining predicate
-	// matched a bloom row in that key. Merge per-section matched-predicate sets,
-	// then keep keys whose set covers all predicate names.
-	perKeyMatched := make(map[Key]map[string]struct{})
-	for _, matched := range results {
-		for key, preds := range matched {
-			dst := perKeyMatched[key]
+	bloomHitsByKey := make(map[sectionKey]map[predicateValue]struct{})
+	for _, matched := range hits {
+		for key, values := range matched {
+			dst := bloomHitsByKey[key]
 			if dst == nil {
-				dst = make(map[string]struct{})
-				perKeyMatched[key] = dst
+				dst = make(map[predicateValue]struct{})
+				bloomHitsByKey[key] = dst
 			}
-			for name := range preds {
-				dst[name] = struct{}{}
+			for pv := range values {
+				dst[pv] = struct{}{}
 			}
 		}
 	}
 
-	keep := make(map[Key]struct{})
-	for key, preds := range perKeyMatched {
-		if len(preds) == len(names) {
+	keep := make(map[sectionKey]struct{})
+	for key, streamLabels := range streamLabelsByKey {
+		if r.keyAdmitsPredicates(streamLabels, bloomHitsByKey[key]) {
 			keep[key] = struct{}{}
 		}
 	}
 	return keep, nil
 }
 
-// bloomMatchSection scans one section's KindBloom rows and returns, per section
-// key, the set of predicate names whose value tested positive against a bloom
-// filter on that predicate's column.
-func bloomMatchSection(ctx context.Context, sec *Section, remaining []*labels.Matcher, names []string) (map[Key]map[string]struct{}, error) {
+// predicateValue identifies one equal-predicate by name and value so that two
+// predicates on the same name but different values are gated independently.
+type predicateValue struct {
+	name  string
+	value string
+}
+
+// keyAdmitsPredicates reports whether every equal-predicate is satisfied for a
+// section key: each predicate is either a stream label there or tests positive
+// against a bloom there.
+func (r *StreamResolver) keyAdmitsPredicates(streamLabels map[string]struct{}, bloomHits map[predicateValue]struct{}) bool {
+	for _, p := range r.equalPredicates {
+		if _, isStreamLabel := streamLabels[p.Name]; isStreamLabel {
+			continue
+		}
+		if _, hit := bloomHits[predicateValue{p.Name, p.Value}]; !hit {
+			return false
+		}
+	}
+	return true
+}
+
+// bloomHitsInSection scans a section's KindBloom rows and returns, per logical
+// section key, the equal-predicate (name, value) pairs that test positive
+// against a bloom on that predicate's column.
+func bloomHitsInSection(ctx context.Context, sec *Section, predicates []*labels.Matcher) (map[sectionKey]map[predicateValue]struct{}, error) {
 	kindCol := sectionColumn(sec, ColumnTypeKind)
 	nameCol := sectionColumn(sec, ColumnTypeColumnName)
-	if kindCol == nil || nameCol == nil {
+	bloomCol := sectionColumn(sec, ColumnTypeBloomFilter)
+	if kindCol == nil || nameCol == nil || bloomCol == nil {
 		return nil, nil
 	}
 
-	preds := []Predicate{
-		EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindBloom))},
-	}
-	if len(names) > 0 {
-		vals := make([]scalar.Scalar, len(names))
-		for i, n := range names {
-			vals[i] = scalar.NewStringScalar(n)
+	matched := make(map[sectionKey]map[predicateValue]struct{})
+	for _, p := range predicates {
+		rr := NewRowReader(ctx, sec,
+			AndPredicate{
+				Left: AndPredicate{
+					Left:  EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindBloom))},
+					Right: EqualPredicate{Column: nameCol, Value: scalar.NewStringScalar(p.Name)},
+				},
+				Right: BloomMatchPredicate{Column: bloomCol, Value: []byte(p.Value)},
+			},
+		)
+		for rr.Next() {
+			row := rr.At()
+			key := keyOf(row)
+			pv := predicateValue{p.Name, p.Value}
+			values := matched[key]
+			if values == nil {
+				values = make(map[predicateValue]struct{})
+				matched[key] = values
+			}
+			values[pv] = struct{}{}
 		}
-		preds = append(preds, InPredicate{Column: nameCol, Values: vals})
+		if err := rr.Err(); err != nil {
+			_ = rr.Close()
+			return nil, err
+		}
+		_ = rr.Close()
 	}
+	return matched, nil
+}
 
-	predsByName := make(map[string][]*labels.Matcher, len(remaining))
-	for _, p := range remaining {
-		predsByName[p.Name] = append(predsByName[p.Name], p)
-	}
-
-	rr := NewRowReader(ctx, sec, preds...)
-	defer func() { _ = rr.Close() }()
-
-	matched := make(map[Key]map[string]struct{})
-	for rr.Next() {
-		row := rr.At()
-		ps := predsByName[row.ColumnName]
-		if len(ps) == 0 || len(row.BloomFilter) == 0 {
+// partitionMatchers splits the resolver's matchers into positive matchers (which
+// select on a value and seed the result) and empty-capable matchers (which also
+// match streams lacking the label name). The split mirrors LogQL's
+// util.SplitFiltersAndMatchers, including treating a `.*` regex as positive.
+func (r *StreamResolver) partitionMatchers() (positive, emptyCapable []*labels.Matcher) {
+	for _, m := range r.matchers {
+		if m == nil {
 			continue
 		}
-		var filter bloom.BloomFilter
-		if err := filter.UnmarshalBinary(row.BloomFilter); err != nil {
-			return nil, fmt.Errorf("unmarshaling bloom filter: %w", err)
-		}
-		key := Key{ObjectPath: row.ObjectPath, SectionIndex: row.SectionIndex}
-		for _, p := range ps {
-			if filter.Test([]byte(p.Value)) {
-				names := matched[key]
-				if names == nil {
-					names = make(map[string]struct{})
-					matched[key] = names
-				}
-				names[p.Name] = struct{}{}
-			}
+		if isEmptyCapable(m) {
+			emptyCapable = append(emptyCapable, m)
+		} else {
+			positive = append(positive, m)
 		}
 	}
-	return matched, rr.Err()
+	return positive, emptyCapable
 }
 
-func (r *StreamResolver) activeMatchers() []*labels.Matcher {
-	active := make([]*labels.Matcher, 0, len(r.matchers))
-	for _, m := range r.matchers {
-		if m != nil {
-			active = append(active, m)
-		}
-	}
-	return active
-}
-
-// relevantNames returns the label names whose per-stream membership is read
-// during finalize: matcher names (missing-label semantics) and equal-predicate
-// names (AmbiguousLabels).
-func (r *StreamResolver) relevantNames(matchers []*labels.Matcher) map[string]struct{} {
-	names := make(map[string]struct{}, len(matchers)+len(r.equalPredicates))
-	for _, m := range matchers {
-		names[m.Name] = struct{}{}
-	}
+// ambiguousNames returns the equal-predicate names that are also stream labels
+// observed in the key.
+func (r *StreamResolver) ambiguousNames(acc *keyAccum) []string {
+	var out []string
 	for _, p := range r.equalPredicates {
-		names[p.Name] = struct{}{}
+		if _, ok := acc.streamLabels[p.Name]; ok {
+			out = append(out, p.Name)
+		}
 	}
-	return names
+	return out
 }
 
-// scanLabels drains sec's KindLabel rows into acc.
-func (r *StreamResolver) scanLabels(
-	ctx context.Context,
-	sec *Section,
-	acc *sectionAccumulator,
-	matchers []*labels.Matcher,
-	relevantNames map[string]struct{},
-	startNanos, endNanos int64,
-) error {
-	kindCol := sectionColumn(sec, ColumnTypeKind)
-	if kindCol == nil {
-		return nil // section has no kind column; nothing to scan
+func ensureAccum(accums map[sectionKey]*keyAccum, key sectionKey) *keyAccum {
+	acc, ok := accums[key]
+	if !ok {
+		acc = &keyAccum{streamLabels: make(map[string]struct{})}
+		accums[key] = acc
 	}
-	rr := NewRowReader(ctx, sec, EqualPredicate{
-		Column: kindCol,
-		Value:  scalar.NewInt64Scalar(int64(KindLabel)),
-	})
-	defer func() { _ = rr.Close() }()
-
-	for rr.Next() {
-		observeLabelRow(rr.At(), acc, matchers, relevantNames, startNanos, endNanos)
-	}
-	return rr.Err()
+	return acc
 }
 
-// sectionColumn returns the section column of the given type, or nil.
+func keyOf(row Row) sectionKey {
+	return sectionKey{objectPath: row.ObjectPath, sectionIndex: row.SectionIndex}
+}
+
+// labelNamePredicate selects the KindLabel rows for a single label name.
+func labelNamePredicate(kindCol, nameCol *Column, name string) Predicate {
+	return AndPredicate{
+		Left:  EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindLabel))},
+		Right: EqualPredicate{Column: nameCol, Value: scalar.NewStringScalar(name)},
+	}
+}
+
+// valuePredicate translates a positive matcher's value selection into a scan
+// predicate over the label-value column.
+func valuePredicate(valueCol *Column, m *labels.Matcher) (Predicate, error) {
+	switch m.Type {
+	case labels.MatchEqual:
+		return EqualPredicate{Column: valueCol, Value: scalar.NewStringScalar(m.Value)}, nil
+	case labels.MatchNotEqual:
+		return NotPredicate{Inner: EqualPredicate{Column: valueCol, Value: scalar.NewStringScalar(m.Value)}}, nil
+	case labels.MatchRegexp:
+		re, err := labels.NewFastRegexMatcher(m.Value)
+		if err != nil {
+			return nil, fmt.Errorf("compiling regex %q: %w", m.Value, err)
+		}
+		return RegexMatchPredicate{Column: valueCol, Matcher: re}, nil
+	case labels.MatchNotRegexp:
+		re, err := labels.NewFastRegexMatcher(m.Value)
+		if err != nil {
+			return nil, fmt.Errorf("compiling regex %q: %w", m.Value, err)
+		}
+		return NotPredicate{Inner: RegexMatchPredicate{Column: valueCol, Matcher: re}}, nil
+	default:
+		return nil, fmt.Errorf("unsupported matcher type %v", m.Type)
+	}
+}
+
+func bitmapOf(row Row) *memory.Bitmap {
+	b := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
+	return &b
+}
+
 func sectionColumn(sec *Section, ct ColumnType) *Column {
 	for _, c := range sec.Columns() {
 		if c.Type == ct {
@@ -334,201 +611,13 @@ func sectionColumn(sec *Section, ct ColumnType) *Column {
 	return nil
 }
 
-// observeLabelRow folds one KindLabel Row into acc: records the row's label
-// name per stream (only when the name is read at finalize), sets the
-// matched-bit for every matcher this (name, value) satisfies, and updates
-// time-pruned section-ref bounds for every stream in the row's bitmap.
-func observeLabelRow(row Row, acc *sectionAccumulator, matchers []*labels.Matcher, relevantNames map[string]struct{}, startNanos, endNanos int64) {
-	name, value := row.ColumnName, row.LabelValue
-
-	var matchedBits uint64
-	for i, m := range matchers {
-		if m.Name == name && m.Matches(value) {
-			matchedBits |= 1 << uint(i)
-		}
-	}
-
-	_, nameRelevant := relevantNames[name]
-
-	// Time overlap for ref bounds. Null bounds (both zero) are kept.
-	hasBounds := row.MinTimestamp != 0 || row.MaxTimestamp != 0
-	overlaps := !hasBounds || (row.MaxTimestamp >= startNanos && row.MinTimestamp <= endNanos)
-
-	for streamID := range row.StreamIDs() {
-		ref := StreamRef{ObjectPath: row.ObjectPath, StreamID: streamID}
-
-		if name != "" && nameRelevant {
-			names := acc.labelNamesByStream[ref]
-			if names == nil {
-				names = make(map[string]struct{})
-				acc.labelNamesByStream[ref] = names
-			}
-			names[name] = struct{}{}
-		}
-		if matchedBits != 0 {
-			acc.matchedBits[ref] |= matchedBits
-		} else if _, seen := acc.matchedBits[ref]; !seen {
-			// Ensure the stream is tracked even before it satisfies a matcher,
-			// so missing-label semantics can find it at finalize.
-			acc.matchedBits[ref] = 0
-		}
-
-		if overlaps {
-			k := refKey{objectPath: row.ObjectPath, sectionIndex: row.SectionIndex, streamID: streamID}
-			b := acc.refBounds[k]
-			mergeBounds(&b, row.MinTimestamp, row.MaxTimestamp, hasBounds)
-			acc.refBounds[k] = b
-		}
-	}
-}
-
-func mergeBounds(b *bounds, minTS, maxTS int64, hasBounds bool) {
-	if !hasBounds {
-		return
-	}
-	if !b.hasBounds {
-		b.min, b.max, b.hasBounds = minTS, maxTS, true
-		return
-	}
-	if minTS < b.min {
-		b.min = minTS
-	}
-	if maxTS > b.max {
-		b.max = maxTS
-	}
-}
-
-// mergeAccumulators unions per-section accumulators into one. Matched-bit sets
-// merge by bitwise OR; label-name sets and ref bounds merge by union.
-func mergeAccumulators(accs []*sectionAccumulator) *sectionAccumulator {
-	out := newSectionAccumulator()
-	for _, acc := range accs {
-		if acc == nil {
-			continue
-		}
-		for ref, bits := range acc.matchedBits {
-			out.matchedBits[ref] |= bits
-		}
-		for ref, names := range acc.labelNamesByStream {
-			dst := out.labelNamesByStream[ref]
-			if dst == nil {
-				dst = make(map[string]struct{})
-				out.labelNamesByStream[ref] = dst
-			}
-			for n := range names {
-				dst[n] = struct{}{}
-			}
-		}
-		for k, b := range acc.refBounds {
-			existing, ok := out.refBounds[k]
-			if !ok {
-				out.refBounds[k] = b
-				continue
-			}
-			mergeBounds(&existing, b.min, b.max, b.hasBounds)
-			out.refBounds[k] = existing
-		}
-	}
-	return out
-}
-
-// matchingStreams returns the streams that satisfied every matcher, after
-// applying missing-label semantics. A stream matches when its matched-bit set
-// equals the full matcher mask.
-func (r *StreamResolver) matchingStreams(acc *sectionAccumulator, matchers []*labels.Matcher) map[StreamRef]struct{} {
-	if len(matchers) == 0 {
-		return map[StreamRef]struct{}{}
-	}
-	applyMissingLabelSemantics(acc, matchers)
-
-	fullMask := uint64(1)<<uint(len(matchers)) - 1
-	out := make(map[StreamRef]struct{})
-	for ref, bits := range acc.matchedBits {
-		if bits == fullMask {
-			out[ref] = struct{}{}
-		}
-	}
-	return out
-}
-
-// applyMissingLabelSemantics: a matcher that matches the empty value also
-// matches streams that never carried its label name. Whether a stream carries
-// matcher i's name is derived from labelNamesByStream.
-func applyMissingLabelSemantics(acc *sectionAccumulator, matchers []*labels.Matcher) {
-	for i, m := range matchers {
-		if !matcherMatchesEmpty(m) {
-			continue
-		}
-		bit := uint64(1) << uint(i)
-		for ref, bits := range acc.matchedBits {
-			if bits&bit != 0 {
-				continue // already matched on a value
-			}
-			if _, has := acc.labelNamesByStream[ref][m.Name]; has {
-				continue // carries the name but did not match -> stays unmatched
-			}
-			acc.matchedBits[ref] = bits | bit
-		}
-	}
-}
-
-func matcherMatchesEmpty(m *labels.Matcher) bool {
-	switch m.Type {
-	case labels.MatchEqual:
-		return m.Value == ""
-	case labels.MatchNotEqual:
-		return m.Value != ""
-	case labels.MatchRegexp, labels.MatchNotRegexp:
-		return m.Matches("")
-	default:
+// isEmptyCapable reports whether a matcher also matches streams lacking its label
+// name. It mirrors util.SplitFiltersAndMatchers: a matcher that matches "" is
+// empty-capable, except a `.*` regex which selects every stream and is treated
+// as positive.
+func isEmptyCapable(m *labels.Matcher) bool {
+	if m.Type == labels.MatchRegexp && m.Value == ".*" {
 		return false
 	}
-}
-
-// assemble scopes refs to matching streams, drops refs whose section key failed
-// bloom matching (when bloomKeep is non-nil), and populates AmbiguousLabels.
-func (r *StreamResolver) assemble(
-	acc *sectionAccumulator,
-	matching map[StreamRef]struct{},
-	bloomKeep map[Key]struct{},
-) []SectionRef {
-	predNames := make(map[string]struct{}, len(r.equalPredicates))
-	for _, p := range r.equalPredicates {
-		predNames[p.Name] = struct{}{}
-	}
-
-	var out []SectionRef
-	for k, b := range acc.refBounds {
-		ref := StreamRef{ObjectPath: k.objectPath, StreamID: k.streamID}
-		if _, ok := matching[ref]; !ok {
-			continue
-		}
-		if bloomKeep != nil {
-			if _, ok := bloomKeep[Key{ObjectPath: k.objectPath, SectionIndex: k.sectionIndex}]; !ok {
-				continue
-			}
-		}
-		out = append(out, SectionRef{
-			ObjectPath:      k.objectPath,
-			SectionIndex:    k.sectionIndex,
-			StreamID:        k.streamID,
-			MinTimestamp:    b.min,
-			MaxTimestamp:    b.max,
-			AmbiguousLabels: ambiguousLabelsFor(acc.labelNamesByStream[ref], predNames),
-		})
-	}
-	return out
-}
-
-func ambiguousLabelsFor(streamLabels, predNames map[string]struct{}) []string {
-	if len(streamLabels) == 0 || len(predNames) == 0 {
-		return nil
-	}
-	var out []string
-	for name := range streamLabels {
-		if _, ok := predNames[name]; ok {
-			out = append(out, name)
-		}
-	}
-	return out
+	return m.Matches("")
 }
