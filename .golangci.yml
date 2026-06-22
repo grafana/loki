@@ -88,7 +88,6 @@ linters:
       - .*.deepcopy.go
       - win_eventlog$
       - operator
-      - clients/pkg/promtail
 issues:
   fix: true
 formatters:
@@ -109,4 +108,3 @@ formatters:
       - .*.deepcopy.go
       - win_eventlog$
       - operator
-      - clients/pkg/promtail
