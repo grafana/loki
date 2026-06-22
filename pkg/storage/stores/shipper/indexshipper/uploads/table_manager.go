@@ -62,7 +62,7 @@ func (tm *tableManager) loop() {
 	tm.wg.Add(1)
 	defer tm.wg.Done()
 
-	tm.uploadTables(context.Background())
+	_ = tm.uploadTables(context.Background())
 
 	syncTicker := time.NewTicker(tm.cfg.UploadInterval)
 	defer syncTicker.Stop()
@@ -70,7 +70,7 @@ func (tm *tableManager) loop() {
 	for {
 		select {
 		case <-syncTicker.C:
-			tm.uploadTables(context.Background())
+			_ = tm.uploadTables(context.Background())
 		case <-tm.ctx.Done():
 			return
 		}
@@ -83,7 +83,7 @@ func (tm *tableManager) Stop() {
 	tm.cancel()
 	tm.wg.Wait()
 
-	tm.uploadTables(context.Background())
+	_ = tm.uploadTables(context.Background())
 
 	tm.tablesMtx.Lock()
 	defer tm.tablesMtx.Unlock()
