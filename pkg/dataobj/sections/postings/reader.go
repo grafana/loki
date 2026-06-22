@@ -76,6 +76,12 @@ func (opts *ReaderOptions) validate() error {
 				perr = checkSection(p.Column)
 			case InPredicate:
 				perr = checkSection(p.Column)
+			case GreaterThanPredicate:
+				perr = checkSection(p.Column)
+			case LessThanPredicate:
+				perr = checkSection(p.Column)
+			case BloomMatchPredicate:
+				perr = checkSection(p.Column)
 			}
 			return true
 		})
@@ -290,6 +296,21 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 			panic("InPredicate not implemented for datatype")
 		}
 		return dataset.InPredicate{Column: col, Values: valueSet}
+	case GreaterThanPredicate:
+		col := lookupColumn(p.Column, columnLookup)
+		return dataset.GreaterThanPredicate{
+			Column: col,
+			Value:  arrowconv.FromScalar(p.Value, mustConvertType(p.Value.DataType())),
+		}
+	case LessThanPredicate:
+		col := lookupColumn(p.Column, columnLookup)
+		return dataset.LessThanPredicate{
+			Column: col,
+			Value:  arrowconv.FromScalar(p.Value, mustConvertType(p.Value.DataType())),
+		}
+	case BloomMatchPredicate:
+		col := lookupColumn(p.Column, columnLookup)
+		return dataset.BloomMatchPredicate{Column: col, Value: p.Value}
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
 	}

@@ -204,3 +204,57 @@ func TestRowReader_CloseIdempotent(t *testing.T) {
 	require.NoError(t, reader.Close(), "second Close must be a safe no-op")
 	require.False(t, reader.Next(), "Next() after Close() must return false, not panic")
 }
+
+// TestRowReader_BloomMatchPredicate verifies BloomMatchPredicate filters bloom
+// rows to only those matching a target value.
+func TestRowReader_BloomMatchPredicate(t *testing.T) {
+	ctx := context.Background()
+
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
+	ts := time.Unix(0, 0).UTC()
+
+	b.PrepareBloomColumn("/obj", 0, "pod", 1000)
+	require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
+		ObjectPath:       "/obj",
+		SectionIndex:     0,
+		ColumnName:       "pod",
+		Value:            "foo",
+		StreamID:         1,
+		Timestamp:        ts,
+		UncompressedSize: 100,
+	}))
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(b))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	var sec *postings.Section
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err = postings.Open(ctx, s)
+		require.NoError(t, err)
+		break
+	}
+	require.NotNil(t, sec)
+
+	bloomCol := testSectionColumn(t, sec, postings.ColumnTypeBloomFilter)
+	require.NotNil(t, bloomCol)
+
+	countMatches := func(value string) int {
+		rr := postings.NewRowReader(ctx, sec, postings.BloomMatchPredicate{Column: bloomCol, Value: []byte(value)})
+		defer func() { _ = rr.Close() }()
+		var got int
+		for rr.Next() {
+			got++
+		}
+		require.NoError(t, rr.Err())
+		return got
+	}
+
+	require.Equal(t, 1, countMatches("foo"))
+	require.Equal(t, 0, countMatches("absent-value"))
+}

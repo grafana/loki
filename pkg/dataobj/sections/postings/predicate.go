@@ -40,15 +40,39 @@ type (
 		Column *Column         // Column to check.
 		Values []scalar.Scalar // Values to check for inclusion.
 	}
+
+	// A GreaterThanPredicate asserts a row is included only if Column's value is
+	// greater than Value.
+	GreaterThanPredicate struct {
+		Column *Column       // Column to check.
+		Value  scalar.Scalar // Value to compare against.
+	}
+
+	// A LessThanPredicate asserts a row is included only if Column's value is less
+	// than Value.
+	LessThanPredicate struct {
+		Column *Column       // Column to check.
+		Value  scalar.Scalar // Value to compare against.
+	}
+
+	// BloomMatchPredicate asserts a row is included only if the bloom filter in
+	// Column's binary value tests positive for Value.
+	BloomMatchPredicate struct {
+		Column *Column // Column holding the bloom filter.
+		Value  []byte  // Value to test for membership.
+	}
 )
 
-func (AndPredicate) isPredicate()   {}
-func (OrPredicate) isPredicate()    {}
-func (NotPredicate) isPredicate()   {}
-func (TruePredicate) isPredicate()  {}
-func (FalsePredicate) isPredicate() {}
-func (EqualPredicate) isPredicate() {}
-func (InPredicate) isPredicate()    {}
+func (AndPredicate) isPredicate()         {}
+func (OrPredicate) isPredicate()          {}
+func (NotPredicate) isPredicate()         {}
+func (TruePredicate) isPredicate()        {}
+func (FalsePredicate) isPredicate()       {}
+func (EqualPredicate) isPredicate()       {}
+func (InPredicate) isPredicate()          {}
+func (GreaterThanPredicate) isPredicate() {}
+func (LessThanPredicate) isPredicate()    {}
+func (BloomMatchPredicate) isPredicate()  {}
 
 // walkPredicate traverses a predicate in depth-first order: it starts by
 // calling fn(p). If fn(p) returns true, walkPredicate is invoked recursively
@@ -71,6 +95,9 @@ func walkPredicate(p Predicate, fn func(Predicate) bool) {
 	case FalsePredicate: // No children.
 	case EqualPredicate: // No children.
 	case InPredicate: // No children.
+	case GreaterThanPredicate: // No children.
+	case LessThanPredicate: // No children.
+	case BloomMatchPredicate: // No children.
 	default:
 		panic("postings.walkPredicate: unsupported predicate type")
 	}
@@ -101,6 +128,12 @@ func predicateColumns(predicates []Predicate) []*Column {
 			case EqualPredicate:
 				appendColumn(p.Column)
 			case InPredicate:
+				appendColumn(p.Column)
+			case GreaterThanPredicate:
+				appendColumn(p.Column)
+			case LessThanPredicate:
+				appendColumn(p.Column)
+			case BloomMatchPredicate:
 				appendColumn(p.Column)
 			}
 			return true
