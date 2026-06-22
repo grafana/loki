@@ -38,14 +38,16 @@ type Config struct {
 	// single IndexMerge task may consume. Memory grows linearly with K.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
 
-	// IndexMergeTaskTTL is the per-IndexMerge-task deadline.
-	// Enforced inside the executor via context.WithDeadline.
-	IndexMergeTaskTTL time.Duration `yaml:"index_merge_task_ttl"`
-
 	// ToCConsolidateTimeout bounds the coordinator's inline ReplaceIndexPointers
 	// call. NOT a task TTL — applied as context.WithTimeout around the metastore
 	// RPC; on expiry the cycle aborts inline and the next polling tick re-plans.
 	ToCConsolidateTimeout time.Duration `yaml:"toc_consolidate_timeout"`
+
+	// DryRun, when true, skips the post-compaction ReplaceIndexPointers ToC
+	// swap. Planning and IndexMerge task execution still run and the
+	// per-output audit log is still emitted, but the ToC is never mutated.
+	// Intended for testing index compaction.
+	DryRun bool `yaml:"dry_run"`
 
 	// PlanVersion is hashed into IndexMerge output paths so a planner
 	// change invalidates previously-written outputs. Bump on any
@@ -134,7 +136,6 @@ const (
 
 	defaultPollingInterval       = 5 * time.Minute
 	defaultMaxRunsPerTask        = 8
-	defaultIndexMergeTaskTTL     = 10 * time.Minute
 	defaultToCConsolidateTimeout = 30 * time.Second
 	defaultPlanVersion           = uint(1)
 )
@@ -157,10 +158,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Coordinator main-loop cadence.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
-	f.DurationVar(&cfg.IndexMergeTaskTTL, prefix+"index-merge-task-ttl", defaultIndexMergeTaskTTL,
-		"Experimental: Per-IndexMerge-task deadline.")
 	f.DurationVar(&cfg.ToCConsolidateTimeout, prefix+"toc-consolidate-timeout", defaultToCConsolidateTimeout,
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
+	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,
+		"Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap. Planning, IndexMerge task execution, and per-output audit logging still run, but the ToC is never mutated.")
 	f.UintVar(&cfg.PlanVersion, prefix+"plan-version", defaultPlanVersion,
 		"Experimental: Plan version hashed into IndexMerge output paths. Bump to invalidate previously-written outputs after a planner-algorithm change.")
 	f.StringVar(&cfg.Scheduler.AdvertiseAddr, prefix+"scheduler.advertise-addr", "",
@@ -207,9 +208,6 @@ func (cfg *Config) Validate() error {
 	if cfg.PollingInterval <= 0 {
 		return errInvalidPollingInterval
 	}
-	if cfg.IndexMergeTaskTTL <= 0 {
-		return errInvalidIndexMergeTaskTTL
-	}
 	if cfg.ToCConsolidateTimeout <= 0 {
 		return errInvalidToCConsolidateTimeout
 	}
@@ -229,7 +227,6 @@ var (
 	errInvalidMaxRunningCompactionTasks = errors.New("dataobj.compaction.max_running_compaction_tasks must be >= 0")
 	errEmptySchedulerEndpoint           = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
 	errInvalidPollingInterval           = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
-	errInvalidIndexMergeTaskTTL         = errors.New("dataobj.compaction.index_merge_task_ttl must be > 0 when compaction is enabled")
 	errInvalidToCConsolidateTimeout     = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
 	errInvalidMaxRunsPerTask            = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
 )

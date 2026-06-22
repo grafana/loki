@@ -1596,6 +1596,11 @@ dataobj:
     # CLI flag: -dataobj-metastore.partition-ratio
     [partition_ratio: <int> | default = 10]
 
+    # Experimental: When enabled, reads from new-format postings sections in
+    # index objects instead of the streams sections. Defaults to false.
+    # CLI flag: -dataobj-metastore.read-postings-sections
+    [read_postings_sections: <boolean> | default = false]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).
@@ -1617,14 +1622,16 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
-    # Experimental: Per-IndexMerge-task deadline.
-    # CLI flag: -dataobj.compaction.index-merge-task-ttl
-    [index_merge_task_ttl: <duration> | default = 10m]
-
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
     # CLI flag: -dataobj.compaction.toc-consolidate-timeout
     [toc_consolidate_timeout: <duration> | default = 30s]
+
+    # Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap.
+    # Planning, IndexMerge task execution, and per-output audit logging still
+    # run, but the ToC is never mutated.
+    # CLI flag: -dataobj.compaction.dry-run
+    [dry_run: <boolean> | default = false]
 
     # Experimental: Plan version hashed into IndexMerge output paths. Bump to
     # invalidate previously-written outputs after a planner-algorithm change.
@@ -3439,6 +3446,11 @@ dataobj_tee:
   # to 0 to disable batching.
   # CLI flag: -distributor.dataobj-tee.rate-batch-window
   [rate_batch_window: <duration> | default = 0s]
+
+  # Enables use of rendezvous hashing. When this is false, consistent hashing is
+  # used instead.
+  # CLI flag: -distributor.dataobj-tee.use-rendezvous-hashing
+  [use_rendezvous_hashing: <boolean> | default = false]
 ```
 
 ### etcd
@@ -6145,6 +6157,14 @@ http_client_cluster_validation:
   # Primary cluster validation label.
   # CLI flag: -runtime-config.http-client-cluster-validation.label
   [label: <string> | default = ""]
+
+# Disable HTTP keep-alives for the runtime config HTTP client. When enabled,
+# each reload opens a new connection, which prevents long-lived connections from
+# being pinned to a single backend when the runtime config URL is served by
+# multiple replicas behind a connection-level (L4) load balancer, such as a
+# Kubernetes Service.
+# CLI flag: -runtime-config.http-client-disable-keep-alives
+[http_client_disable_keep_alives: <boolean> | default = true]
 ```
 
 ### s3_storage_config

@@ -381,6 +381,8 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.ingestLimitsFrontendRing,
 		t.Cfg.IngestLimits.NumPartitions,
 		t.dataObjConsumerPartitionRing,
+		t.dataObjConsumerPartitionKVClient,
+		consumer.PartitionRingKey,
 		logger,
 	)
 	if err != nil {
@@ -1859,6 +1861,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		t.Server.HTTP.Path(constants.PathLokiDelete).Methods("GET").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.GetAllDeleteRequestsHandler))
 		t.Server.HTTP.Path(constants.PathLokiDelete).Methods("DELETE").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.CancelDeleteRequestHandler))
 		t.Server.HTTP.Path(constants.PathLokiCacheGenNumbers).Methods("GET").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.GetCacheGenerationNumberHandler))
+		t.Server.HTTP.Path(constants.PathLokiIncreaseCacheGenNumbers).Methods("POST").Handler(t.addCompactorMiddleware(t.compactor.DeleteRequestsHandler.UpdateCacheGenerationNumberHandler))
 		grpc.RegisterCompactorServer(t.Server.GRPC, t.compactor.DeleteRequestsGRPCHandler)
 	}
 
@@ -2282,6 +2285,7 @@ func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create KV store for dataobj ring watcher: %w", err)
 	}
+	t.dataObjConsumerPartitionKVClient = kvClient
 	ringOptions := ring.DefaultPartitionRingOptions()
 	ringOptions.ShuffleShardCacheSize = t.Cfg.DataObj.Consumer.PartitionRingConfig.ShuffleShardCacheSize
 
@@ -2408,6 +2412,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		Bucket:          indexBucket,
 		MetastoreWriter: tocWriter,
 		Logger:          logger,
+		Registerer:      prometheus.DefaultRegisterer,
 	})
 	if err != nil {
 		return nil, err

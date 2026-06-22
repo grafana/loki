@@ -1,5 +1,6 @@
-// +build !appengine,!appenginevm
+// +build !appengine,!appenginevm, !tinygo
 
+// SYS-REQ-001, SYS-REQ-013, SYS-REQ-014: unsafe build-tag byte utilities
 package jsonparser
 
 import (

@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=../schema.json
+---
+queries:
+  - description: line_format renders empty template output as empty line, not original raw line
+    query: ${SELECTOR} | logfmt | line_format `{{.error}}`
+    kind: log
+    time_range:
+      length: 24h
+    directions: backward # forward log queries unsupported by v2 engine
+    tags:
+      - logfmt
+      - line_format
+      - absent-field
+      - empty-rendering
+    notes: >
+      Regression for the v2 mergeColumns "empty-as-missing" bug.
+      The `error` logfmt field is only emitted for error-level lines, so its
+      parsed column is null for every non-error row. After PR #22342,
+      valueStrOrEmpty renders null entries as "" at the template-input
+      boundary, so `{{.error}}` renders to "" on non-error rows. Before the
+      mergeColumns fix, the projection layer treated that "" as "missing,
+      keep old" and silently returned the original raw log line for those
+      rows — making line_format appear to have no effect. v1 always
+      overwrites the line with the template output, including an empty
+      result. The returned lines and per-stream counts must match v1 across
+      both error and non-error rows.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - error
+  - description: filter `field=""` on absent column must match (not silently prune the section)
+    query: ${SELECTOR} | logfmt | field_that_does_not_exist=""
+    kind: log
+    time_range:
+      length: 24h
+    directions: backward # forward log queries unsupported by v2 engine
+    tags:
+      - logfmt
+      - label-filter
+      - absent-field
+      - empty-string
+      - section-prune
+    notes: >
+      Regression for the v2 scan-layer predicate-pushdown bug. LogQL says an
+      absent label compares as "" — the post-scan filter layer already treats
+      null column entries as "". But section-level pruning happens first:
+      `dataobjscan_predicate.go` returned FalsePredicate whenever a referenced
+      column was missing from a section AND the literal was non-null, which
+      silently dropped the section even for `field=""`. v1 returns all rows
+      (the absent label matches the empty literal). v2 must do the same.
+      Catches any regression to the section-prune layer.
+    requires:
+      log_format: logfmt

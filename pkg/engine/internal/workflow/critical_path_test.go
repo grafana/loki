@@ -1,13 +1,93 @@
 package workflow
 
 import (
+	"bytes"
+	"context"
+	"strings"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+func TestFlushTaskSummaries_FlagsCriticalPath(t *testing.T) {
+	newTask := func(name byte) *Task {
+		var id ulid.ULID
+		id[len(id)-1] = name
+		return &Task{ULID: id, Fragment: physical.FromGraph(dag.Graph[physical.Node]{})}
+	}
+
+	var graph dag.Graph[*Task]
+	a := graph.Add(newTask('A'))
+	b := graph.Add(newTask('B'))
+	c := graph.Add(newTask('C'))
+	require.NoError(t, graph.AddEdge(dag.Edge[*Task]{Parent: a, Child: b}))
+	require.NoError(t, graph.AddEdge(dag.Edge[*Task]{Parent: a, Child: c}))
+
+	// C finishes after B, so the critical path is A -> C; B is off the path.
+	_, capture := xcap.NewCapture(context.Background(), nil)
+	terminal := func(finish int64) pendingSummary {
+		return pendingSummary{oldState: TaskStateRunning, status: TaskStatus{State: TaskStateCompleted, Capture: capture}, taskFinishNanos: finish}
+	}
+
+	var buf bytes.Buffer
+	wf := &Workflow{
+		logger:           log.NewLogfmtLogger(&buf),
+		graph:            graph,
+		pendingSummaries: map[*Task]pendingSummary{a: terminal(100), b: terminal(20), c: terminal(40)},
+	}
+
+	wf.flushTaskSummaries()
+
+	out := buf.String()
+	require.Equal(t, 3, strings.Count(out, "msg=task-summary"), "one summary per task")
+
+	lineFor := func(task *Task) string {
+		for _, ln := range strings.Split(out, "\n") {
+			if strings.Contains(ln, " task_id="+task.ULID.String()) {
+				return ln
+			}
+		}
+		return ""
+	}
+	require.Contains(t, lineFor(a), "on_critical_path=true")
+	require.Contains(t, lineFor(c), "on_critical_path=true")
+	require.Contains(t, lineFor(b), "on_critical_path=false")
+}
+
+func TestOnTaskChange_DefersSummary(t *testing.T) {
+	var graph dag.Graph[*Task]
+	task := graph.Add(&Task{ULID: ulid.Make(), Fragment: physical.FromGraph(dag.Graph[physical.Node]{})})
+
+	wf := &Workflow{
+		logger:           log.NewNopLogger(),
+		runner:           newFakeRunner(),
+		graph:            graph,
+		taskStates:       make(map[*Task]TaskState),
+		resultsPipeline:  newStreamPipe(),
+		pendingSummaries: make(map[*Task]pendingSummary),
+	}
+	capCtx, capture := xcap.NewCapture(context.Background(), nil)
+	_, region := xcap.StartRegion(capCtx, "task")
+	region.Record(schedulerstat.TaskFinishTime.Observe(42))
+
+	// A terminal transition records the summary and finish time together,
+	// deferred (not logged).
+	wf.onTaskChange(context.Background(), task, TaskStatus{State: TaskStateCompleted, Capture: capture})
+	require.Len(t, wf.pendingSummaries, 1)
+	require.Contains(t, wf.pendingSummaries, task)
+	require.Equal(t, int64(42), wf.pendingSummaries[task].taskFinishNanos)
+
+	// A duplicate terminal notification does not double-record.
+	wf.onTaskChange(context.Background(), task, TaskStatus{State: TaskStateCompleted, Capture: capture})
+	require.Len(t, wf.pendingSummaries, 1)
+}
 
 func TestCriticalPath(t *testing.T) {
 	// newTask returns a task with a deterministic, recognizable ULID so that
@@ -109,27 +189,24 @@ func TestCriticalPath(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			graph, tasks := buildGraph(tc.edges)
 
-			finish := map[*Task]int64{}
+			summaries := map[*Task]pendingSummary{}
 			for name, value := range tc.finish {
-				finish[tasks[name]] = value
+				summary := pendingSummary{taskFinishNanos: value}
+				summaries[tasks[name]] = summary
 			}
 
-			got := criticalPath(&graph, finish)
+			got := criticalPath(&graph, summaries)
 
 			gotNames := make([]byte, len(got))
 			for i, task := range got {
 				gotNames[i] = task.ULID[len(task.ULID)-1]
 			}
 			require.Equal(t, tc.want, gotNames)
-
-			// cp_position is the slice index and cp_total_length is len(path);
-			// assert the invariant the emitter relies on.
-			require.Len(t, got, len(tc.want))
 		})
 	}
 }
 
 func TestCriticalPath_EmptyGraph(t *testing.T) {
 	var graph dag.Graph[*Task]
-	require.Nil(t, criticalPath(&graph, map[*Task]int64{}))
+	require.Nil(t, criticalPath(&graph, map[*Task]pendingSummary{}))
 }

@@ -1,10 +1,10 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
     "with":
       "build_image": "golang:1.26.4"
       "golang_ci_lint_version": "v2.10.1"
-      "release_lib_ref": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+      "release_lib_ref": "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
       "skip_validation": false
       "use_github_app_token": true
   "logql-analyzer-image":
@@ -12,7 +12,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.4"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+      "RELEASE_LIB_REF": "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -152,7 +152,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.4"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+      "RELEASE_LIB_REF": "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -292,7 +292,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.4"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+      "RELEASE_LIB_REF": "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -432,7 +432,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.4"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+      "RELEASE_LIB_REF": "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -572,7 +572,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.26.4"
       "IMAGE_PREFIX": "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-      "RELEASE_LIB_REF": "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+      "RELEASE_LIB_REF": "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"

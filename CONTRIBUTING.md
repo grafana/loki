@@ -82,6 +82,10 @@ The `go.work` file is gitignored and does not affect other contributors.
 
 ## Submitting a pull request
 
+Effective June 22, 2026, all Grafana Labs repositories will [require signed commits](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches#require-signed-commits). To learn how to enable commit verification, see [about commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification) and see this page to learn about [checking your commit signature verification status](https://docs.github.com/en/authentication/troubleshooting-commit-signature-verification/checking-your-commit-and-tag-signature-verification-status).
+
+**NOTE** Unsigned commits and pull requests will be rejected and closed. This includes pull requests that have been authored by Agents.
+
 ### Loki Improvement Documents (LIDs)
 
 Before opening a large pull request to add or significantly change functionality, create a _Loki Improvement Document (LID)_. LIDs allow the community to discuss and vet ideas in an open, transparent way, inspired by Python's [PEP](https://peps.python.org/pep-0001/) and Kafka's [KIP](https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Improvement+Proposals) processes.

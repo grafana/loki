@@ -283,9 +283,9 @@ local runner = import 'runner.libsonnet',
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
-            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --group-pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --manifest-file .release-please-manifest.json \
-            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \
@@ -297,9 +297,9 @@ local runner = import 'runner.libsonnet',
             --consider-all-branches \
             --dry-run \
             --dry-run-output release.json \
-            --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --group-pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --manifest-file .release-please-manifest.json \
-            --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+            --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
             --release-type simple \
             --repo-url "${{ env.RELEASE_REPO }}" \
             --separate-pull-requests false \

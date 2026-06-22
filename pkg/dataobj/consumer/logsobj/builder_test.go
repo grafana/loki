@@ -259,6 +259,44 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 	}
 }
 
+func BenchmarkBuilder_CopyAndSort(b *testing.B) {
+	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+
+	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
+	numRows := 8192   // 16 rows with 1KiB each line and 8KiB section size ~> 2 logs sections per tenant. 48KB total
+	sizeOfRow := 1024 // 1KiB log line
+	tenants := []string{"tenant-a", "tenant-b", "tenant-c"}
+
+	for _, tenant := range tenants {
+		for i := range numRows {
+			err := builder.Append(tenant, logproto.Stream{
+				Labels: `{cluster="test",app="foo"}`,
+				Entries: []push.Entry{{
+					Timestamp: now.Add(time.Duration(i%8) * time.Second),
+					Line:      strings.Repeat("a", 1024), // 1KiB log line
+				}},
+			}, now.Add(time.Duration(i%8)*time.Second))
+			require.NoError(b, err)
+		}
+	}
+
+	dataSize := numRows * sizeOfRow * len(tenants) // 8192 rows * 1KiB each line * 3 tenants = 24MB
+	b.SetBytes(int64(dataSize))
+
+	obj1, closer1, err := builder.Flush()
+	require.NoError(b, err)
+	defer closer1.Close()
+
+	newBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+
+	for b.Loop() {
+		newBuilder.Reset()
+		_, closer2, err := newBuilder.CopyAndSort(b.Context(), obj1)
+		require.NoError(b, err)
+		defer closer2.Close()
+	}
+}
+
 // tenantOverrides maps tenant IDs to their schema labels.
 type tenantOverrides map[string][]string
 

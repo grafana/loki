@@ -44,7 +44,7 @@ These GKE requirements are the minimum specification needed to deploy Loki using
 In this guide, we deploy Loki using `n2-standard-8` instances. This is a instance type that should work for most scenarios. However, you can modify the instance types and count based on your specific needs.
 {{< /admonition >}}
 
-The minimum requirements for deploying Loki on GKE are: 
+The minimum requirements for deploying Loki on GKE are:
 
 - Kubernetes version `1.30` or above.
 - `3` nodes for the GKE cluster.
@@ -119,7 +119,6 @@ Creating gs://loki-gcp-chunks/...
 Creating gs://loki-gcp-ruler/...
 ```
 
-
 ## Defining IAM roles and policies
 
 IAM determines who can access which resources on GCP and can be configured in several ways. The recommended method for allowing Loki to access GCS is to use Workload Identity Federation. This method is more secure than creating and distributing a service account key. The following steps show how to create the role and policy using the gcloud CLI.
@@ -175,6 +174,7 @@ You should get the output:
 ```bash
 namespace/loki created
 ```
+
 ### Create Kubernetes Service Account (KSA)
 
 A KSA is a cluster identity (service account, named `default` by default) assigned to pods that allows pods to interact with each other.
@@ -277,6 +277,7 @@ Before we can deploy the Loki Helm chart, we need to add the Grafana Community c
     ```bash
     helm repo add grafana-community https://grafana-community.github.io/helm-charts
     ```
+
 2. Update the chart repository:
 
     ```bash
@@ -296,9 +297,10 @@ Loki by default does not come with any authentication. Since we will be deployin
     ```bash
     htpasswd -c .htpasswd <username>
     ```
+
     This will create a file called `auth` with the username `loki`. You will be prompted to enter a password.
 
- 2. Create a Kubernetes secret with the `.htpasswd` file:
+1. Create a Kubernetes secret with the `.htpasswd` file:
 
     ```bash
     kubectl create secret generic loki-basic-auth --from-file=.htpasswd -n loki
@@ -306,7 +308,7 @@ Loki by default does not come with any authentication. Since we will be deployin
 
     This will create a secret called `loki-basic-auth` in the `loki` namespace. We will reference this secret in the Loki Helm chart configuration.
   
-3. Create a `canary-basic-auth` secret for the canary:
+1. Create a `canary-basic-auth` secret for the canary:
 
     ```bash
     kubectl create secret generic canary-basic-auth \
@@ -314,8 +316,9 @@ Loki by default does not come with any authentication. Since we will be deployin
       --from-literal=password=<PASSWORD> \
       -n loki
     ```
+
     We create a literal secret with the username and password for Loki canary to authenticate with the Loki gateway.
-    **Make sure to replace the placeholders with your desired username and password.** 
+    **Make sure to replace the placeholders with your desired username and password.**
 
 ### Loki Helm chart configuration
 
@@ -427,7 +430,7 @@ lokiCanary:
           name: canary-basic-auth
           key: username
 
-# Enable minio for storage
+# Disable minio storage
 minio:
   enabled: false
 
@@ -477,7 +480,6 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
   - Defines how the Loki gateway will be exposed.
   - We are using a `LoadBalancer` service type in this configuration.
 
-
 ### Deploy Loki
 
 Now that you have created the `values.yaml` file, you can deploy Loki using the Helm chart.
@@ -487,6 +489,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     ```bash
     helm install --values values.yaml loki grafana-community/loki -n loki --create-namespace
     ```
+
     **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account.**
 
 2. Verify the deployment:
@@ -494,6 +497,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     ```bash
     kubectl get pods -n loki
     ```
+
     You should see the Loki pods running.
 
     ```console
@@ -536,6 +540,7 @@ To find the Loki Gateway service, run the following command:
 ```bash
 kubectl get svc -n loki
 ```
+
 You should see the Loki Gateway service with an external IP address. This is the address you will use to write to and query Loki.
 
 ```console
@@ -644,6 +649,7 @@ k6 is one of the fastest ways to test your Loki deployment. This will allow you 
     This will run the test and output the results. You should see the test writing logs to Loki and querying logs from Loki.
 
 Now that you have successfully deployed Loki in microservices mode on GCP, you may wish to explore the following:
+
 - [Monitor a Loki Cluster](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/)
 - [Sending data to Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/)
 - [Querying Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/query/)

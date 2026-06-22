@@ -6,7 +6,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // MergeBuilder accumulates posting entries from pre-aggregated rows (e.g., from
@@ -15,29 +14,28 @@ import (
 // Call [MergeBuilder.Flush] to encode all accumulated data and write a postings
 // section to the provided [dataobj.SectionWriter].
 type MergeBuilder struct {
-	metrics *Metrics
-	tenant  string
-	labels  map[labelPostingKey]LabelEntry
-	blooms  map[bloomPostingKey]BloomEntry
+	metrics       *Metrics
+	tenant        string
+	labels        map[labelPostingKey]LabelEntry
+	blooms        map[bloomPostingKey]BloomEntry
+	estimatedSize int
 
-	pageSizeHint    int
-	pageMaxRowCount int
-	estimatedSize   int
+	encoder *postingsEncoder
 }
 
 // NewMergeBuilder creates a new [MergeBuilder] for accumulating pre-aggregated
 // posting entries.
 //
 // pageSizeHint and pageMaxRowCount control page splitting of the underlying
-// column builders (0 means use defaults).
-// metrics may be nil to disable instrumentation.
-func NewMergeBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount int) *MergeBuilder {
+// column builders (0 means use defaults). targetSectionSizeBytes is the uncompressed
+// size threshold in bytes at which Flush splits accumulated entries into multiple
+// sections; it must be > 0. metrics may be nil to disable instrumentation.
+func NewMergeBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount, targetSectionSizeBytes int) *MergeBuilder {
 	return &MergeBuilder{
-		metrics:         metrics,
-		labels:          make(map[labelPostingKey]LabelEntry),
-		blooms:          make(map[bloomPostingKey]BloomEntry),
-		pageSizeHint:    pageSizeHint,
-		pageMaxRowCount: pageMaxRowCount,
+		metrics: metrics,
+		labels:  make(map[labelPostingKey]LabelEntry),
+		blooms:  make(map[bloomPostingKey]BloomEntry),
+		encoder: newPostingsEncoder(pageSizeHint, pageMaxRowCount, targetSectionSizeBytes),
 	}
 }
 
@@ -66,9 +64,7 @@ func (b *MergeBuilder) AppendLabelEntry(entry LabelEntry) error {
 	}
 
 	b.labels[key] = entry
-
-	// Track size: 5 int64 fields + string sizes + bitmap bytes.
-	b.estimatedSize += 5*8 + len(entry.ObjectPath) + len(entry.ColumnName) + len(entry.LabelValue) + len(entry.StreamIDBitmap)
+	b.estimatedSize += labelEntrySize(entry)
 
 	return nil
 }
@@ -88,9 +84,7 @@ func (b *MergeBuilder) AppendBloomEntry(entry BloomEntry) error {
 	}
 
 	b.blooms[key] = entry
-
-	// Track size: 5 int64 fields + string sizes + bloom bytes + bitmap bytes.
-	b.estimatedSize += 5*8 + len(entry.ObjectPath) + len(entry.ColumnName) + len(entry.BloomFilter) + len(entry.StreamIDBitmap)
+	b.estimatedSize += bloomEntrySize(entry)
 
 	return nil
 }
@@ -112,7 +106,7 @@ func (b *MergeBuilder) Reset() {
 // [dataobj.SectionWriter] and returns the number of bytes written.
 //
 // After a successful flush, the builder is reset.
-func (b *MergeBuilder) Flush(w dataobj.SectionWriter) (n int64, err error) {
+func (b *MergeBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
 	// Convert maps to slices.
 	labelEntries := make([]LabelEntry, 0, len(b.labels))
 	for _, entry := range b.labels {
@@ -136,17 +130,14 @@ func (b *MergeBuilder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	sortLabelEntries(labelEntries)
 	sortBloomEntries(bloomEntries)
 
-	var enc columnar.Encoder
-	defer enc.Reset()
-
-	if err := columnarEncode(bloomEntries, labelEntries, &enc, b.pageSizeHint, b.pageMaxRowCount); err != nil {
-		return 0, fmt.Errorf("encoding postings: %w", err)
+	nBloom, err := b.encoder.encodeBloomEntries(w, b.tenant, bloomEntries)
+	if err != nil {
+		return 0, err
 	}
-
-	enc.SetTenant(b.tenant)
-	n, err = enc.Flush(w)
-	if err == nil {
-		b.Reset()
+	nLabel, err := b.encoder.encodeLabelEntries(w, b.tenant, labelEntries)
+	if err != nil {
+		return 0, err
 	}
-	return n, err
+	b.Reset()
+	return nBloom + nLabel, nil
 }
