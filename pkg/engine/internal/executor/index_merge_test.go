@@ -449,8 +449,8 @@ func TestExecuteIndexMerge_Smoke_BothKinds(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant-1",
 		OutputIndexPath: outputPath,
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{
 				{ObjectPath: srcPath, SectionIndex: 0}, // SectionIndex is a placeholder; executor scans all
 			}},
 		},
@@ -497,8 +497,8 @@ func TestExecuteIndexMerge_SkipsLegacySections(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant-1",
 		OutputIndexPath: outputPath,
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{
 				{ObjectPath: srcPath, SectionIndex: 0}, // SectionIndex is a placeholder
 			}},
 		},
@@ -963,9 +963,9 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		Runs: []*compactionv2pb.RunRef{
+		Runs: []compactionv2pb.RunRef{
 			{
-				Sections: []*compactionv2pb.SectionRef{
+				Sections: []compactionv2pb.SectionRef{
 					{ObjectPath: sourceAPath, SectionIndex: 0},
 					{ObjectPath: sourceBPath, SectionIndex: 0},
 				},
@@ -1059,9 +1059,9 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		Runs: []*compactionv2pb.RunRef{
+		Runs: []compactionv2pb.RunRef{
 			{
-				Sections: []*compactionv2pb.SectionRef{
+				Sections: []compactionv2pb.SectionRef{
 					{ObjectPath: sourceAPath, SectionIndex: 0},
 					{ObjectPath: sourceBPath, SectionIndex: 0},
 				},
@@ -1133,14 +1133,14 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		Runs: []*compactionv2pb.RunRef{
+		Runs: []compactionv2pb.RunRef{
 			{
-				Sections: []*compactionv2pb.SectionRef{
+				Sections: []compactionv2pb.SectionRef{
 					{ObjectPath: postingsPath, SectionIndex: 0},
 				},
 			},
 			{
-				Sections: []*compactionv2pb.SectionRef{
+				Sections: []compactionv2pb.SectionRef{
 					{ObjectPath: statsPath, SectionIndex: 0},
 				},
 			},
@@ -1212,9 +1212,9 @@ func TestExecuteIndexMerge_ExistenceShortCircuit(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		Runs: []*compactionv2pb.RunRef{
+		Runs: []compactionv2pb.RunRef{
 			{
-				Sections: []*compactionv2pb.SectionRef{
+				Sections: []compactionv2pb.SectionRef{
 					{ObjectPath: sourcePath, SectionIndex: 0},
 				},
 			},
@@ -1272,9 +1272,9 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		Runs: []*compactionv2pb.RunRef{
+		Runs: []compactionv2pb.RunRef{
 			{
-				Sections: []*compactionv2pb.SectionRef{},
+				Sections: []compactionv2pb.SectionRef{},
 			},
 		},
 	}
@@ -1282,7 +1282,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 	for i := 0; i < sourceCount; i++ {
 		path := fmt.Sprintf("source/index-%d.dat", i)
 		node.Runs[0].Sections = append(node.Runs[0].Sections,
-			&compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: 0})
+			compactionv2pb.SectionRef{ObjectPath: path, SectionIndex: 0})
 	}
 
 	execCtx := newTestExecutorContext(t, bucket)
@@ -1314,7 +1314,7 @@ func TestExecuteIndexMerge_EmptyInputs(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		Runs: []*compactionv2pb.RunRef{
+		Runs: []compactionv2pb.RunRef{
 			{
 				Sections: nil, // Empty input
 			},
@@ -1432,9 +1432,9 @@ func TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		Runs: []*compactionv2pb.RunRef{
+		Runs: []compactionv2pb.RunRef{
 			{
-				Sections: []*compactionv2pb.SectionRef{
+				Sections: []compactionv2pb.SectionRef{
 					{ObjectPath: sourceAPath, SectionIndex: 0},
 					{ObjectPath: sourceBPath, SectionIndex: 0},
 				},
@@ -1545,11 +1545,11 @@ func TestExecuteIndexMerge_CrossTenantSectionsExcluded(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          targetTenant,
 		OutputIndexPath: outputPath,
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{
 				{ObjectPath: source0, SectionIndex: 0},
 			}},
-			{Sections: []*compactionv2pb.SectionRef{
+			{Sections: []compactionv2pb.SectionRef{
 				{ObjectPath: source1, SectionIndex: 0},
 			}},
 		},

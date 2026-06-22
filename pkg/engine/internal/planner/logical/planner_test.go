@@ -581,7 +581,7 @@ func TestConvertAST_UnimplementedErrorNamesFeature(t *testing.T) {
 				start:     3600,
 				end:       7200,
 				step:      time.Minute,
-				direction: logproto.BACKWARD,
+				direction: logproto.Direction_BACKWARD,
 				limit:     1000,
 			}
 

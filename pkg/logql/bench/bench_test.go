@@ -195,7 +195,7 @@ func TestBenchE2EQuery(t *testing.T) {
 				time.Now(),
 				0,
 				0,
-				logproto.BACKWARD,
+				logproto.Direction_BACKWARD,
 				1000,
 				nil,
 				nil,
