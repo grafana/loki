@@ -218,6 +218,7 @@ type Store interface {
 	storage.SelectStore
 	storage.SchemaConfigProvider
 	indexstore.StatsReader
+	indexstore.Flusher
 }
 
 // Interface is an interface for the Ingester

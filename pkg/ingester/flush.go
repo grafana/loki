@@ -199,7 +199,7 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Force the in-memory index to be built and shipped so the just-flushed
 	// chunks are referenceable from object storage.
-	if err := i.flushIndex(ctx); err != nil {
+	if err := i.store.FlushIndex(ctx); err != nil {
 		level.Error(i.logger).Log("msg", "failed flushing index", "tenant", tenantID, "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -233,18 +233,6 @@ func (i *Ingester) flushMatchedStreams(tenantID string, fps []model.Fingerprint)
 		})
 	}
 	return g.Wait()
-}
-
-// flushIndex forces the ingester's store to ship its in-memory index (the TSDB
-// head) to object storage, if the store supports it. No-op otherwise.
-func (i *Ingester) flushIndex(ctx context.Context) error {
-	f, ok := i.store.(interface {
-		FlushIndex(context.Context) error
-	})
-	if !ok {
-		return nil
-	}
-	return f.FlushIndex(ctx)
 }
 
 type flushOp struct {

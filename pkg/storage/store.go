@@ -71,6 +71,7 @@ type Store interface {
 	SelectStore
 	SchemaConfigProvider
 	Instrumentable
+	index.Flusher
 }
 
 type LokiStore struct {
