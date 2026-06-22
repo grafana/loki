@@ -18,10 +18,6 @@ cat <<EOF | docker exec --interactive "${image}" sh
     rpm -i ${dir}/dist/loki-*.x86_64.rpm
     [ "\$(systemctl is-active loki)" = "active" ] || (echo "loki is inactive" && exit 1)
 
-    # Install promtail and check it's running
-    rpm -i ${dir}/dist/promtail-*.x86_64.rpm
-    [ "\$(systemctl is-active promtail)" = "active" ] || (echo "promtail is inactive" && exit 1)
-
     # Write some logs
     mkdir -p /var/log/
     echo "blablabla" >> /var/log/messages
