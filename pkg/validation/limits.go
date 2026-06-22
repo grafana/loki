@@ -662,6 +662,12 @@ func (l *Limits) Validate() error {
 		}
 	}
 
+	for policy, pl := range l.PolicyOverrideLimits {
+		if err := pl.Validate(); err != nil {
+			return fmt.Errorf("policy_override_limits[%q]: %w", policy, err)
+		}
+	}
+
 	if _, err := deletionmode.ParseMode(l.DeletionMode); err != nil {
 		return err
 	}
@@ -810,45 +816,10 @@ func (o *Overrides) MaxLocalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxLocalStreamsPerUser
 }
 
-// PolicyMaxLocalStreamsPerUser returns the maximum number of streams a user is allowed to store
-// in a single ingester for a specific policy. Returns 0 if no policy-specific override is set.
-func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) int {
-	if policy == "" {
-		return 0
-	}
-	limits := o.getOverridesForUser(userID)
-	if len(limits.PolicyOverrideLimits) == 0 {
-		return 0
-	}
-	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return policyLimits.MaxLocalStreamsPerUser
-	}
-	return 0
-}
-
 // MaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
 // across the cluster.
 func (o *Overrides) MaxGlobalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalStreamsPerUser
-}
-
-// PolicyMaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
-// across the cluster for a specific policy.
-// Returns 0 and false if the policy does not have a custom stream limit override.
-// Returns the custom stream limit override and true if it exists.
-func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool) {
-	if policy == "" {
-		return 0, false
-	}
-	limits := o.getOverridesForUser(userID)
-	if len(limits.PolicyOverrideLimits) == 0 {
-		return 0, false
-	}
-
-	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return policyLimits.MaxGlobalStreamsPerUser, true
-	}
-	return 0, false
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
@@ -1456,12 +1427,6 @@ func (o *Overrides) getOverridesForUser(userID string) *Limits {
 // as opposed to merging.
 type OverwriteMarshalingStringMap struct {
 	m map[string]string
-}
-
-// PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
-type PolicyOverridableLimits struct {
-	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"max_streams_per_user for a specific policy. 0 means unlimited."`
-	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"max_global_streams_per_user for a specific policy. 0 means unlimited."`
 }
 
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {

@@ -939,7 +939,7 @@ func TestStreamShard(t *testing.T) {
 				shardTracker:     NewShardTracker(),
 			}
 
-			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "")
+			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "", d.validator.ShardStreams("fake"))
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
 
 			for _, s := range derivedStreams {
@@ -984,7 +984,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			shardTracker:     NewShardTracker(),
 		}
 
-		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "")
+		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -995,7 +995,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
-		derivedStreams = d.shardStream(baseStream, streamRate, "fake", "")
+		derivedStreams = d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -1323,7 +1323,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1333,7 +1333,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1343,7 +1343,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 
@@ -1353,7 +1353,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "", d.validator.ShardStreams("fake")) //nolint:errcheck
 		}
 	})
 }
@@ -1751,6 +1751,205 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDistributor_PushIngestionRateLimitedByPolicy(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+	// Generous tenant-wide limit so the tenant bucket never rejects in this test.
+	limits.IngestionRateMB = datasize.ByteSize(1000).MBytes()
+	limits.IngestionBurstSizeMB = datasize.ByteSize(1000).MBytes()
+	// {foo="bar"} resolves to the "finance" policy, which carries a strict ingestion rate
+	// override that must REPLACE the tenant limit for those streams.
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"finance": []*validation.PriorityStream{{Selector: `{foo="bar"}`, Priority: 1}},
+	}
+	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"finance": {
+			IngestionRateMB:      ptr(datasize.ByteSize(50).MBytes()),
+			IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes()),
+		},
+	}
+	// Validate populates the stream-selector matchers used by PolicyFor (the real config-load
+	// path does this); without it an empty matcher set would match every stream.
+	require.NoError(t, limits.Validate())
+
+	distributors, _ := prepare(t, 1, 5, limits, nil)
+
+	// A push under the "finance" policy exceeding its 50-byte budget is rejected against the
+	// per-policy limit (50), not the generous tenant limit.
+	resp, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 60, []string{`{foo="bar"}`}, false, false, false))
+	assert.Nil(t, resp)
+	assert.Equal(t, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedPolicyErrorMsg, "test", "finance", 50, 1, 60), err)
+
+	// A push with labels not matched to any policy uses the tenant-wide bucket and is allowed.
+	resp, err = distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 60, []string{`{other="x"}`}, false, false, false))
+	assert.NoError(t, err)
+	assert.Equal(t, success, resp)
+}
+
+// TestDistributor_PushIngestionRateLimitPolicyAllOrNothing verifies that when a request mixes
+// streams from two policies and only one is over its limit, rejecting the request does NOT
+// consume tokens from the under-limit policy's bucket (the reservations are cancelled).
+func TestDistributor_PushIngestionRateLimitPolicyAllOrNothing(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+	limits.IngestionRateMB = datasize.ByteSize(1000).MBytes()
+	limits.IngestionBurstSizeMB = datasize.ByteSize(1000).MBytes()
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"finance": []*validation.PriorityStream{{Selector: `{app="finance"}`, Priority: 1}},
+		"ops":     []*validation.PriorityStream{{Selector: `{app="ops"}`, Priority: 1}},
+	}
+	// Both policies get a 50-byte budget.
+	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"finance": {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
+		"ops":     {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
+	}
+	require.NoError(t, limits.Validate())
+
+	distributors, _ := prepare(t, 1, 5, limits, nil)
+
+	// Request mixes a finance stream that is over its 50-byte budget (60 bytes) with an ops
+	// stream that is under its budget (40 bytes). The whole request must be rejected because
+	// finance is over limit.
+	req := makeWriteRequestWithLabels(1, 60, []string{`{app="finance"}`}, false, false, false)
+	opsStreams := makeWriteRequestWithLabels(1, 40, []string{`{app="ops"}`}, false, false, false)
+	req.Streams = append(req.Streams, opsStreams.Streams...)
+
+	resp, err := distributors[0].Push(ctx, req)
+	assert.Nil(t, resp)
+	assert.Equal(t, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedPolicyErrorMsg, "test", "finance", 50, 1, 60), err)
+
+	// The ops bucket must NOT have been drained by the rejected request: a fresh ops push that
+	// fills its entire 50-byte budget still succeeds. (Without reservation cancellation, the
+	// earlier 40 bytes would have been consumed and this 50-byte push would be rate limited.)
+	resp, err = distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 50, []string{`{app="ops"}`}, false, false, false))
+	assert.NoError(t, err)
+	assert.Equal(t, success, resp)
+}
+
+// TestDistributor_PushIngestionRateLimitMultiplePolicies verifies that when several policy
+// buckets are over their limit in the same request, the 429 error deterministically enumerates
+// all exceeded policies (sorted), regardless of map iteration order.
+func TestDistributor_PushIngestionRateLimitMultiplePolicies(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+	limits.IngestionRateMB = datasize.ByteSize(1000).MBytes()
+	limits.IngestionBurstSizeMB = datasize.ByteSize(1000).MBytes()
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"finance": []*validation.PriorityStream{{Selector: `{app="finance"}`, Priority: 1}},
+		"ops":     []*validation.PriorityStream{{Selector: `{app="ops"}`, Priority: 1}},
+	}
+	// Both policies get a 50-byte budget; the request puts each well over (bytes > burst), so
+	// both reservations are rejected deterministically on every attempt.
+	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"finance": {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
+		"ops":     {IngestionRateMB: ptr(datasize.ByteSize(50).MBytes()), IngestionBurstSizeMB: ptr(datasize.ByteSize(50).MBytes())},
+	}
+	require.NoError(t, limits.Validate())
+
+	distributors, _ := prepare(t, 1, 5, limits, nil)
+
+	req := makeWriteRequestWithLabels(1, 60, []string{`{app="finance"}`}, false, false, false)
+	opsStreams := makeWriteRequestWithLabels(1, 70, []string{`{app="ops"}`}, false, false, false)
+	req.Streams = append(req.Streams, opsStreams.Streams...)
+
+	// The error must enumerate both policies in sorted order (finance before ops), with each
+	// bucket's own limit/lines/bytes.
+	expectedDetail := `policy "finance" (limit: 50 bytes/sec) ingesting 1 lines totaling 60 bytes; ` +
+		`policy "ops" (limit: 50 bytes/sec) ingesting 1 lines totaling 70 bytes`
+	expectedErr := httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedMultiErrorMsg, "test", expectedDetail)
+
+	// Push twice to demonstrate the message is deterministic (independent of map iteration order).
+	for i := 0; i < 2; i++ {
+		resp, err := distributors[0].Push(ctx, req)
+		assert.Nil(t, resp)
+		assert.Equal(t, expectedErr, err)
+	}
+}
+
+// TestDistributor_PushShardStreamsPolicyOverride verifies that a per-policy shard_streams
+// override is applied in the push path: a policy that enables time sharding gets its streams
+// split with a __time_shard__ label, while streams on the tenant default (time sharding off)
+// do not.
+func TestDistributor_PushShardStreamsPolicyOverride(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false // we push intentionally old logs to trigger time sharding
+	// Tenant default leaves time sharding off; the "foo" policy turns it on via an override.
+	limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"foo": []*validation.PriorityStream{{Selector: `{app="foo"}`, Priority: 1}},
+	}
+	timeOn := true
+	limits.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"foo": {ShardStreams: &validation.PerPolicyConfigOverride{TimeShardingEnabled: &timeOn}},
+	}
+	require.NoError(t, limits.Validate())
+
+	// prepare() builds distributors with ingester MaxChunkAge=2h → time-shard length 1h.
+	distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+	// Logs older than time_sharding_ignore_recent (40m default), spanning two 1h buckets.
+	old := time.Now().Add(-3 * time.Hour)
+	mkReq := func(lbls string) *logproto.PushRequest {
+		return &logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels: lbls,
+			Entries: []logproto.Entry{
+				{Timestamp: old, Line: "a"},
+				{Timestamp: old.Add(time.Hour + time.Minute), Line: "b"},
+			},
+		}}}
+	}
+
+	_, err := distributors[0].Push(ctx, mkReq(`{app="foo"}`))
+	require.NoError(t, err)
+	_, err = distributors[0].Push(ctx, mkReq(`{app="other"}`))
+	require.NoError(t, err)
+
+	// The ingester writes are async (serviced by the distributor's ingester worker pool), so wait
+	// until both requests' streams have reached the ingesters before asserting.
+	streamPushed := func(app string) bool {
+		for i := range ingesters {
+			ingesters[i].mu.Lock()
+			for _, pr := range ingesters[i].pushed {
+				for _, st := range pr.Streams {
+					if strings.Contains(st.Labels, `app="`+app+`"`) {
+						ingesters[i].mu.Unlock()
+						return true
+					}
+				}
+			}
+			ingesters[i].mu.Unlock()
+		}
+		return false
+	}
+	require.Eventually(t, func() bool {
+		return streamPushed("foo") && streamPushed("other")
+	}, time.Second, 10*time.Millisecond, "expected both streams to reach the ingesters")
+
+	fooSharded, otherSharded := false, false
+	for i := range ingesters {
+		ingesters[i].mu.Lock()
+		for _, pr := range ingesters[i].pushed {
+			for _, st := range pr.Streams {
+				if !strings.Contains(st.Labels, "__time_shard__") {
+					continue
+				}
+				if strings.Contains(st.Labels, `app="foo"`) {
+					fooSharded = true
+				}
+				if strings.Contains(st.Labels, `app="other"`) {
+					otherSharded = true
+				}
+			}
+		}
+		ingesters[i].mu.Unlock()
+	}
+	require.True(t, fooSharded, "foo stream should be time-sharded via the per-policy override")
+	require.False(t, otherSharded, "non-foo stream should not be time-sharded (tenant default off)")
 }
 
 func TestDistributor_PushIngestionBlocked(t *testing.T) {
@@ -2862,3 +3061,5 @@ func TestConfig_Validate(t *testing.T) {
 		})
 	}
 }
+
+func ptr[T any](v T) *T { return &v }

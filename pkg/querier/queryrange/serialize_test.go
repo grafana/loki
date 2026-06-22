@@ -26,7 +26,7 @@ func TestResponseFormat(t *testing.T) {
 		expectedRespone string
 	}{
 		{
-			url: "/loki/api/v1/query",
+			url: "/api/prom/query",
 			response: &LokiResponse{
 				Direction: logproto.BACKWARD,
 				Limit:     200,
@@ -49,17 +49,18 @@ func TestResponseFormat(t *testing.T) {
 			},
 			expectedCode: http.StatusOK,
 			expectedRespone: `{
-				"status": "success",
-				"data": {
-				  "resultType": "streams",
 				` + statsResultString + `
-				  "result": [{
-					"stream": {"foo": "bar"},
-					"values": [
-					  ["123456789012345", "super line"]
-					]
-				  }]
-				}
+				"streams": [
+				  {
+				    "labels": "{foo=\"bar\"}",
+				    "entries": [
+				      {
+				        "line": "super line",
+				        "ts": "1970-01-02T10:17:36.789012345Z"
+				      }
+				    ]
+				  }
+				]
 			}`,
 		},
 		{

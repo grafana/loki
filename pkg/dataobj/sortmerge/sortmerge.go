@@ -25,6 +25,10 @@ import (
 // according to sort.
 func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
 	sequences := make([]*sectionSequence, 0, len(sections))
+
+	// The buffer size is a trade-off between memory overhead and performance: Share a sensible batch size amongst the sections.
+	bufferSize := max(128, 8192/max(1, len(sections)))
+
 	for _, s := range sections {
 		sec, err := logs.Open(ctx, s)
 		if err != nil {
@@ -52,7 +56,7 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 
 		sequences = append(sequences, &sectionSequence{
 			section:         sec,
-			DatasetSequence: logs.NewDatasetSequence(r, 8<<10),
+			DatasetSequence: logs.NewDatasetSequence(r, bufferSize),
 		})
 	}
 

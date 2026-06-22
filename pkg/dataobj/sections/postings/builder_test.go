@@ -14,7 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func timeUnix(sec, nsec int64) time.Time { return time.Unix(sec, nsec).UTC() }
@@ -395,7 +398,7 @@ func TestBuilder_AllLabel(t *testing.T) {
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
-	ts := time.Unix(0, 0)
+	ts := time.Unix(0, 0).UTC()
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", LabelValue: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 
 	obj, closer := flushToObject(t, b)
@@ -406,6 +409,163 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 	require.Empty(t, b.labels.entries, "builder should have no label entries after flush")
 	require.Empty(t, b.blooms.entries, "builder should have no bloom entries after flush")
 	require.Zero(t, b.EstimatedSize(), "builder should have zero estimated size after flush")
+	minTime, maxTime := b.TimeRange()
+	require.True(t, minTime.IsZero(), "TimeRange min must be zero after flush")
+	require.True(t, maxTime.IsZero(), "TimeRange max must be zero after flush")
+}
+
+// TestBuilder_KindColumnRangeStats verifies the kind column carries range
+// statistics so a kind predicate can prune pages whose kind is out of range.
+func TestBuilder_KindColumnRangeStats(t *testing.T) {
+	b := NewBuilder(nil, 0, 0, 1<<20)
+
+	ts := time.Unix(0, 1000).UTC()
+	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: ts}))
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "env", LabelValue: "x", StreamID: 2, Timestamp: ts})
+
+	// Blooms are encoded before labels, so each section is single-kind and the
+	// kind column's range stats pin that kind (min == max).
+	sections := flushAndOpenSections(t, b)
+	require.Len(t, sections, 2)
+
+	require.Equal(t, int64(KindBloom), kindStat(t, sections[0]), "first section must be the bloom section")
+	require.Equal(t, int64(KindLabel), kindStat(t, sections[1]), "second section must be the label section")
+}
+
+// decodeInt64Stat decodes a serialized INT64 stat value (page/column MinValue or
+// MaxValue) to its int64.
+func decodeInt64Stat(t *testing.T, b []byte) int64 {
+	t.Helper()
+	var v dataset.Value
+	require.NoError(t, v.UnmarshalBinary(b))
+	return v.Int64()
+}
+
+// kindStat returns the kind column's range-stat value for a single-kind
+// section, asserting the column carries stats and that min == max.
+func kindStat(t *testing.T, sec *Section) int64 {
+	t.Helper()
+
+	var kindCol *Column
+	for _, c := range sec.Columns() {
+		if c.Type == ColumnTypeKind {
+			kindCol = c
+			break
+		}
+	}
+	require.NotNil(t, kindCol, "kind column must be present")
+
+	stats := kindCol.inner.Metadata().Statistics
+	require.NotNil(t, stats, "kind column must carry statistics")
+	require.NotNil(t, stats.MinValue, "kind column must carry a min value")
+	require.NotNil(t, stats.MaxValue, "kind column must carry a max value")
+
+	minKind := decodeInt64Stat(t, stats.MinValue)
+	maxKind := decodeInt64Stat(t, stats.MaxValue)
+	require.Equal(t, minKind, maxKind, "kind min and max must be equal within a section")
+	return minKind
+}
+
+// TestBuilder_KindColumnPruning verifies that a kind == X equality predicate
+// prunes the section whose kind is not X: reading the bloom section with a
+// label predicate (and vice versa) returns no rows, while the matching
+// predicate returns all rows.
+func TestBuilder_KindColumnPruning(t *testing.T) {
+	b := NewBuilder(nil, 0, 0, 1<<20)
+
+	ts := time.Unix(0, 1000).UTC()
+	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: ts}))
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "env", LabelValue: "x", StreamID: 2, Timestamp: ts})
+
+	// Blooms are encoded before labels: sections[0] is the bloom section,
+	// sections[1] is the label section.
+	sections := flushAndOpenSections(t, b)
+	require.Len(t, sections, 2)
+
+	bloomSection, labelSection := sections[0], sections[1]
+
+	// Matching kind: the row is returned and no page is pruned.
+	rows, pruned := readWithKindPredicate(t, bloomSection, int64(KindBloom))
+	require.Equal(t, 1, rows, "bloom section with kind=bloom must return the row")
+	require.Equal(t, int64(0), pruned, "matching kind must not prune the page")
+
+	rows, pruned = readWithKindPredicate(t, labelSection, int64(KindLabel))
+	require.Equal(t, 1, rows, "label section with kind=label must return the row")
+	require.Equal(t, int64(0), pruned, "matching kind must not prune the page")
+
+	// Non-matching kind: the kind column's range stats let the reader skip the
+	// page entirely, so a page is pruned and no row is read.
+	rows, pruned = readWithKindPredicate(t, bloomSection, int64(KindLabel))
+	require.Equal(t, 0, rows, "bloom section with kind=label must return no rows")
+	require.Equal(t, int64(1), pruned, "non-matching kind must prune the page via range stats")
+
+	rows, pruned = readWithKindPredicate(t, labelSection, int64(KindBloom))
+	require.Equal(t, 0, rows, "label section with kind=bloom must return no rows")
+	require.Equal(t, int64(1), pruned, "non-matching kind must prune the page via range stats")
+}
+
+// readWithKindPredicate reads sec through a dataset RowReader with a
+// kind == wantKind equality predicate and returns the number of rows returned
+// and the number of pages pruned by page-level range statistics.
+func readWithKindPredicate(t *testing.T, sec *Section, wantKind int64) (rows int, pagesPruned int64) {
+	t.Helper()
+
+	dset, err := columnar.MakeDataset(sec.inner, columnarColumns(sec))
+	require.NoError(t, err)
+
+	cols := dset.Columns()
+	var kindCol dataset.Column
+	for i, c := range sec.Columns() {
+		if c.Type == ColumnTypeKind {
+			kindCol = cols[i]
+			break
+		}
+	}
+	require.NotNil(t, kindCol, "kind column not found in dataset")
+
+	reader := dataset.NewRowReader(dataset.RowReaderOptions{
+		Dataset: dset,
+		Columns: cols,
+		Predicates: []dataset.Predicate{
+			dataset.EqualPredicate{Column: kindCol, Value: dataset.Int64Value(wantKind)},
+		},
+	})
+
+	ctx, _ := xcap.NewCapture(context.Background(), nil)
+	ctx, region := xcap.StartRegion(ctx, "postings.kindPruning")
+	defer region.End()
+
+	require.NoError(t, reader.Open(ctx))
+
+	buf := make([]dataset.Row, 16)
+	for {
+		n, err := reader.Read(ctx, buf)
+		rows += n
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+	}
+
+	for _, obs := range region.Observations() {
+		if obs.Statistic.Name() == dataobj.StatDatasetPagesPruned.Name() {
+			pagesPruned = obs.Value.(int64)
+		}
+	}
+	return rows, pagesPruned
+}
+
+// columnarColumns returns the inner columnar columns for a postings section,
+// in the same order as sec.Columns().
+func columnarColumns(sec *Section) []*columnar.Column {
+	cols := sec.Columns()
+	inner := make([]*columnar.Column, len(cols))
+	for i, c := range cols {
+		inner[i] = c.inner
+	}
+	return inner
 }
 
 // TestBuilder_Type verifies that the section type is correct.
@@ -455,7 +615,6 @@ func TestReader_SmallBatchSize(t *testing.T) {
 		if batch != nil {
 			require.LessOrEqual(t, batch.NumRows(), int64(2), "batch should not exceed batchSize")
 			totalRows += batch.NumRows()
-			batch.Release()
 		}
 		if errors.Is(err, io.EOF) {
 			break
@@ -993,4 +1152,63 @@ func TestBuilder_SplitPreservesAllEntries(t *testing.T) {
 
 	// All values should be preserved in sorted order.
 	require.Equal(t, expectedValues, allValues, "all entries must be preserved across sections")
+}
+
+func TestBuilder_TimeRange(t *testing.T) {
+	b := NewBuilder(nil, 0, 0, 1024)
+
+	gotMin, gotMax := b.TimeRange()
+	require.True(t, gotMin.IsZero())
+	require.True(t, gotMax.IsZero())
+	require.NotEqual(t, time.Unix(0, 0).UTC(), gotMin, "empty min must not be the Unix epoch")
+
+	base := time.Unix(5000, 0).UTC()
+
+	// Label-only.
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x", StreamID: 1, Timestamp: base})
+	gotMin, gotMax = b.TimeRange()
+	require.Equal(t, base, gotMin)
+	require.Equal(t, base, gotMax)
+
+	// Bloom observation extends the range on both ends.
+	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 2, Timestamp: base.Add(-time.Hour)}))
+	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "w", StreamID: 3, Timestamp: base.Add(time.Hour)}))
+
+	gotMin, gotMax = b.TimeRange()
+	require.Equal(t, base.Add(-time.Hour), gotMin)
+	require.Equal(t, base.Add(time.Hour), gotMax)
+
+	// Reset clears the range back to empty (verifies Builder.Reset propagates
+	// to both aggregators).
+	b.Reset()
+	gotMin, gotMax = b.TimeRange()
+	require.True(t, gotMin.IsZero(), "after Reset min must be zero")
+	require.True(t, gotMax.IsZero(), "after Reset max must be zero")
+}
+
+func TestBuilder_TimeRange_BloomOnly(t *testing.T) {
+	b := NewBuilder(nil, 0, 0, 1024)
+	base := time.Unix(6000, 0).UTC()
+
+	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: base}))
+
+	gotMin, gotMax := b.TimeRange()
+	require.Equal(t, base, gotMin)
+	require.Equal(t, base, gotMax)
+}
+
+func TestBuilder_TimeRange_PreparedBloomNoObservation(t *testing.T) {
+	b := NewBuilder(nil, 0, 0, 1024)
+	base := time.Unix(7000, 0).UTC()
+
+	// Label observation sets the range.
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x", StreamID: 1, Timestamp: base})
+	// Prepared-but-unobserved bloom column must not widen the range.
+	b.PrepareBloomColumn("/a", 0, "svc", 16)
+
+	gotMin, gotMax := b.TimeRange()
+	require.Equal(t, base, gotMin)
+	require.Equal(t, base, gotMax)
 }
