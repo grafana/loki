@@ -450,7 +450,7 @@ func Test_HeadManager_QueryAfterRotate(t *testing.T) {
 
 }
 
-func Test_HeadManager_ForceFlush(t *testing.T) {
+func Test_HeadManager_RotateAndBuild(t *testing.T) {
 	now := time.Now()
 	dir := t.TempDir()
 
@@ -476,9 +476,9 @@ func Test_HeadManager_ForceFlush(t *testing.T) {
 
 	require.Nil(t, hm.Append(c.User, c.Labels, labels.StableHash(c.Labels), c.Chunks))
 
-	// Force a flush mid-period: the active head should be rotated out and built
-	// without waiting for the period boundary.
-	require.Nil(t, hm.ForceFlush())
+	// Force a rotation mid-period: the active head should be rotated out and
+	// built without waiting for the period boundary.
+	require.Nil(t, hm.rotateAndBuild(time.Now(), true))
 	require.Equal(t, 1, mgr.builds, "active head should have been built exactly once")
 
 	// Data remains queryable, served from the retained in-memory heads.
@@ -492,10 +492,34 @@ func Test_HeadManager_ForceFlush(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
 
-	// A periodic tick in the same period right after ForceFlush must not rotate
-	// or build again (the cadence self-heals).
+	// A periodic tick in the same period right after the forced flush must not
+	// rotate or build again (the cadence self-heals).
 	hm.tick(time.Now())
-	require.Equal(t, 1, mgr.builds, "tick right after ForceFlush should not build again")
+	require.Equal(t, 1, mgr.builds, "tick right after a forced flush should not build again")
+}
+
+// Test_HeadManager_Flush exercises the public, channel-triggered Flush() end to
+// end: the request is serviced on the running loop goroutine.
+func Test_HeadManager_Flush(t *testing.T) {
+	dir := t.TempDir()
+	storeName := "store_2010-10-10"
+	mgr := newRecordingTSDBManager(storeName, dir)
+	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
+	for _, d := range managerRequiredDirs(storeName, dir) {
+		require.Nil(t, util.EnsureDirectory(d))
+	}
+	require.Nil(t, hm.Rotate(time.Now())) // initialize active head
+
+	// Run the loop so the channel-triggered Flush() is serviced on it.
+	hm.wg.Add(1)
+	go hm.loop()
+	t.Cleanup(func() { _ = hm.Stop() })
+
+	ls := mustParseLabels(`{foo="bar"}`)
+	require.Nil(t, hm.Append("tenant1", ls, labels.StableHash(ls), []index.ChunkMeta{{MinTime: 1, MaxTime: 10, Checksum: 3}}))
+
+	require.Nil(t, hm.Flush())
+	require.Equal(t, 1, mgr.builds, "Flush should rotate and build the active head exactly once")
 }
 
 func Test_HeadManager_ChunkFilterer(t *testing.T) {

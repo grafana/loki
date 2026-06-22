@@ -165,7 +165,7 @@ func (s *store) FlushIndex(ctx context.Context) error {
 		return nil
 	}
 
-	if err := hm.ForceFlush(); err != nil {
+	if err := hm.Flush(); err != nil {
 		return errors.Wrap(err, "force-flushing tsdb head")
 	}
 
