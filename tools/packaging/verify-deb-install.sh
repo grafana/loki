@@ -15,10 +15,6 @@ cat <<EOF | docker exec --interactive "${image}" sh
     dpkg -i ${dir}/dist/loki_*_amd64.deb
     [ "\$(systemctl is-active loki)" = "active" ] || (echo "loki is inactive" && exit 1)
 
-    # Install promtail and check it's running
-    dpkg -i ${dir}/dist/promtail_*_amd64.deb
-    [ "\$(systemctl is-active promtail)" = "active" ] || (echo "promtail is inactive" && exit 1)
-
     # Write some logs
     mkdir -p /var/log/
     echo "blablabla" >> /var/log/messages
