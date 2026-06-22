@@ -8,9 +8,9 @@ var (
 	StatMetastoreTocTables = xcap.NewStatisticInt64("metastore.toc.tables", xcap.AggregationTypeSum)
 
 	// StatMetastorePointerSectionsOpened is the number of pointer section opened.
-	StatMetastorePointerSectionsOpened = xcap.NewStatisticInt64("metastore.sections.opened", xcap.AggregationTypeSum)
+	StatMetastorePointerSectionsOpened = xcap.StatMetastorePointerSectionsOpened
 
 	// StatMetastorePointerSectionsProductive counts the number of pointer sections that yielded
 	// atleast one pointer.
-	StatMetastorePointerSectionsProductive = xcap.NewStatisticInt64("metastore.sections.productive", xcap.AggregationTypeSum)
+	StatMetastorePointerSectionsProductive = xcap.StatMetastorePointerSectionsProductive
 )

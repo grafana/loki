@@ -677,6 +677,14 @@ func printMetastoreLocalitySummary(q *query, sectionsResolved int) {
 		sectionsOpened     = xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsOpened)
 		sectionsProductive = xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsProductive)
 
+		streamsRead  = xcap.Value[int64](q.capture, xcap.StatMetastoreStreamsRead)
+		pointersRead = xcap.Value[int64](q.capture, xcap.StatMetastoreSectionPointersRead)
+
+		postingsLabelsResolved           = xcap.Value[int64](q.capture, xcap.StatPostingsLabelsResolved)
+		postingsPointersRead             = xcap.Value[int64](q.capture, xcap.StatPostingsPointersRead)
+		postingsBloomRowsRead            = xcap.Value[int64](q.capture, xcap.StatPostingsBloomRowsRead)
+		postingsBloomDeserializeFailures = xcap.Value[int64](q.capture, xcap.StatPostingsBloomDeserializeFailures)
+
 		pagesTotal    = xcap.ValueFromRegion[int64](q.capture, postings.RegionPrefix, dataobj.StatPostingsColumnNamePagesTotal)
 		pagesRelevant = xcap.ValueFromRegion[int64](q.capture, postings.RegionPrefix, dataobj.StatPostingsColumnNameRelevantPages)
 		pageRuns      = xcap.ValueFromRegion[int64](q.capture, postings.RegionPrefix, dataobj.StatPostingsColumnNamePageRuns)
@@ -689,6 +697,12 @@ func printMetastoreLocalitySummary(q *query, sectionsResolved int) {
 		"index_sections_opened", sectionsOpened,
 		"index_sections_productive", sectionsProductive,
 		"logs_sections_resolved", sectionsResolved,
+		"streams_read", streamsRead,
+		"pointers_read", pointersRead,
+		"postings_labels_resolved", postingsLabelsResolved,
+		"postings_pointers_read", postingsPointersRead,
+		"postings_bloom_rows_read", postingsBloomRowsRead,
+		"postings_bloom_deserialize_failures", postingsBloomDeserializeFailures,
 		"postings_column_name_pages_total", pagesTotal,
 		"postings_column_name_pages_relevant", pagesRelevant,
 		"postings_column_name_page_runs", pageRuns,

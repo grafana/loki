@@ -210,13 +210,6 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 		// Pointer rows come from the same scan; stash them for readPointers.
 		r.pointerRows = res.Pointers
 		r.bloomRowsRead = uint64(len(res.Pointers))
-
-		// The postings sections collectively yielded at least one matching
-		// pointer, so count this object as a productive resolution (mirrors the
-		// streams+pointers path's StatMetastorePointerSectionsProductive).
-		if len(res.Pointers) > 0 {
-			region.Record(StatMetastorePointerSectionsProductive.Observe(1))
-		}
 	}
 
 	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(matchingStreamRefs))))

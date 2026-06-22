@@ -74,8 +74,10 @@ var (
 	StatMetastoreSectionPointersRead     = NewStatisticInt64("metastore.sections.pointers.read", AggregationTypeSum)
 	StatMetastoreSectionPointersReadTime = NewStatisticFloat64("metastore.sections.pointers.read.duration", AggregationTypeSum)
 
+	StatMetastorePointerSectionsOpened     = NewStatisticInt64("metastore.sections.opened", AggregationTypeSum)
+	StatMetastorePointerSectionsProductive = NewStatisticInt64("metastore.sections.productive", AggregationTypeSum)
+
 	StatPostingsPointersRead             = NewStatisticInt64("postings.pointers.read", AggregationTypeSum)
-	StatPostingsPointersReadTime         = NewStatisticFloat64("postings.pointers.read.duration", AggregationTypeSum)
 	StatPostingsBloomRowsRead            = NewStatisticInt64("postings.bloom.rows.read", AggregationTypeSum)
 	StatPostingsLabelsResolved           = NewStatisticInt64("postings.labels.resolved", AggregationTypeSum)
 	StatPostingsBloomDeserializeFailures = NewStatisticInt64("postings.bloom.deserialize.failures", AggregationTypeSum)

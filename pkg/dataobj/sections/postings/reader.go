@@ -203,7 +203,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	}
 
 	if r.readSpan == nil {
-		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "postings.Reader.Read")
+		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, RegionPrefix+"Read")
 	} else {
 		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
 	}
@@ -226,7 +226,7 @@ func (r *Reader) init(ctx context.Context) error {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.Open")
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionPrefix+"Open")
 	defer span.End()
 
 	cols := r.opts.Columns
@@ -329,7 +329,7 @@ func (r *Reader) readBloomRows(ctx context.Context, columnNames []string) (arrow
 		return nil, errReaderNotOpen
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ReadBloomRows")
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionPrefix+"ReadBloomRows")
 	defer span.End()
 	defer r.alloc.Reclaim()
 
@@ -626,7 +626,7 @@ func matcherMatchesMissingLabel(m *labels.Matcher) bool {
 	}
 }
 
-// ScanLabelsInto drains this reader's KindLabel rows in batchSize-row batches into acc
+// ScanLabelsInto drains this reader's KindLabel rows in batchSize-row batches into acc.
 func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize int) error {
 	if !r.ready {
 		return errReaderNotOpen
@@ -635,7 +635,7 @@ func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize 
 		batchSize = streamScanBatchSize
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.ScanLabels")
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionPrefix+"ScanLabels")
 	defer span.End()
 	defer r.alloc.Reclaim()
 
@@ -720,6 +720,7 @@ func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize 
 		columnToField(colKind),
 	}, nil)
 
+	var productive bool
 	for {
 		colBatch, readErr := adapter.Read(ctx, r.alloc, batchSize)
 		if colBatch != nil && colBatch.NumRows() > 0 {
@@ -727,12 +728,14 @@ func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize 
 			if convErr != nil {
 				return fmt.Errorf("converting ScanLabels columnar batch to arrow: %w", convErr)
 			}
-			if err := accumulateStreamScan(
+			batchProductive, err := accumulateStreamScan(
 				innerRB,
 				acc,
-			); err != nil {
+			)
+			if err != nil {
 				return err
 			}
+			productive = productive || batchProductive
 		}
 		if errors.Is(readErr, io.EOF) {
 			break
@@ -740,6 +743,10 @@ func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize 
 		if readErr != nil {
 			return fmt.Errorf("reading ScanLabels batch: %w", readErr)
 		}
+	}
+
+	if productive {
+		xcap.RegionFromContext(ctx).Record(xcap.StatMetastorePointerSectionsProductive.Observe(1))
 	}
 
 	return nil
@@ -845,37 +852,39 @@ func intersectMatcherStreams(perMatcherStreams map[matcherIndex]map[StreamRef]st
 func accumulateStreamScan(
 	rb arrow.RecordBatch,
 	acc *StreamScan,
-) error {
+) (bool, error) {
 	if rb.NumRows() == 0 {
-		return nil
+		return false, nil
 	}
+	var productive bool
+
 	objectPathCol, ok := rb.Column(0).(*array.String)
 	if !ok {
-		return fmt.Errorf("ResolveStreamsAndPointers object_path has unexpected type %T", rb.Column(0))
+		return productive, fmt.Errorf("ResolveStreamsAndPointers object_path has unexpected type %T", rb.Column(0))
 	}
 	sectionIndexCol, ok := rb.Column(1).(*array.Int64)
 	if !ok {
-		return fmt.Errorf("ResolveStreamsAndPointers section_index has unexpected type %T", rb.Column(1))
+		return productive, fmt.Errorf("ResolveStreamsAndPointers section_index has unexpected type %T", rb.Column(1))
 	}
 	columnNameCol, ok := rb.Column(2).(*array.String)
 	if !ok {
-		return fmt.Errorf("ResolveStreamsAndPointers column_name has unexpected type %T", rb.Column(2))
+		return productive, fmt.Errorf("ResolveStreamsAndPointers column_name has unexpected type %T", rb.Column(2))
 	}
 	labelValueCol, ok := rb.Column(3).(*array.String)
 	if !ok {
-		return fmt.Errorf("ResolveStreamsAndPointers label_value has unexpected type %T", rb.Column(3))
+		return productive, fmt.Errorf("ResolveStreamsAndPointers label_value has unexpected type %T", rb.Column(3))
 	}
 	bitmapCol, ok := rb.Column(4).(*array.Binary)
 	if !ok {
-		return fmt.Errorf("ResolveStreamsAndPointers stream_id_bitmap has unexpected type %T", rb.Column(4))
+		return productive, fmt.Errorf("ResolveStreamsAndPointers stream_id_bitmap has unexpected type %T", rb.Column(4))
 	}
 	minTsCol, ok := rb.Column(5).(*array.Timestamp)
 	if !ok {
-		return fmt.Errorf("ResolveStreamsAndPointers min_timestamp has unexpected type %T", rb.Column(5))
+		return productive, fmt.Errorf("ResolveStreamsAndPointers min_timestamp has unexpected type %T", rb.Column(5))
 	}
 	maxTsCol, ok := rb.Column(6).(*array.Timestamp)
 	if !ok {
-		return fmt.Errorf("ResolveStreamsAndPointers max_timestamp has unexpected type %T", rb.Column(6))
+		return productive, fmt.Errorf("ResolveStreamsAndPointers max_timestamp has unexpected type %T", rb.Column(6))
 	}
 
 	for i := 0; i < int(rb.NumRows()); i++ {
@@ -937,6 +946,7 @@ func accumulateStreamScan(
 		if len(matched) == 0 && !boundsOK {
 			continue
 		}
+		productive = true
 
 		// Single decode of the LSB bitmap: byte b, bit p set => streamID = b*8+p.
 		for byteIdx, b := range bitmapBytes {
@@ -981,7 +991,7 @@ func accumulateStreamScan(
 			}
 		}
 	}
-	return nil
+	return productive, nil
 }
 
 // mapPredicates translates a slice of postings [Predicate] values into the
