@@ -488,3 +488,61 @@ byte-identical. Remaining step: bump to the `wiresmith` main pseudo-version
 once `databases` merges to main. The squash-merge will orphan the `854b4c6`
 commit, but the module proxy keeps the pseudo-version fetchable indefinitely,
 so the pin stays valid until that bump.
+
+## Performance: pointer-drop (value slices) — 2026-06-22
+
+### Methodology
+
+Serialization-focused profiling pass. New micro-benchmarks written in
+`pkg/logproto/serialization_bench_test.go` cover the proto types that are
+serialized on real RPC hot paths:
+
+| Benchmark | Type | Payload |
+|---|---|---|
+| `BenchmarkFilterChunkRefResponse_{Marshal,Unmarshal,Size}` | `FilterChunkRefResponse.ChunkRefs []*GroupedChunkRefs`, `GroupedChunkRefs.Refs []*ShortRef` | 1 000 series × 10 ShortRef each (p50 bloom shard) |
+| `BenchmarkChunkRefGroup_{Marshal,Unmarshal,Size}` | `ChunkRefGroup.Refs []*ChunkRef` | 5 000 refs (p90 high-cardinality stream/hr) |
+| `BenchmarkQueryPatternsResponse_{Marshal,Unmarshal}` | `QueryPatternsResponse.Series []*PatternSeries`, `PatternSeries.Samples []*PatternSample` | 100 series × 500 samples |
+| `BenchmarkQuantileSketchMatrix_{Marshal,Unmarshal}` | `QuantileSketchMatrix.Values []*QuantileSketchVector`, `QuantileSketchVector.Samples []*QuantileSketchSample`, `TDigest.Processed []*TDigest_Centroid` | 100 vectors × 50 centroids |
+
+Profiled with `-test.memprofile` → `go tool pprof -alloc_objects`. Confirmed
+`&GroupedChunkRefs{}`, `&ShortRef{}`, `&ChunkRef{}`, `&PatternSeries{}`,
+`&PatternSample{}` allocations at each element decode site in the generated code.
+
+### Fields converted
+
+**`pkg/logproto/pattern.proto`:**
+- `QueryPatternsResponse.Series []*PatternSeries` → `[]PatternSeries`
+- `PatternSeries.Samples []*PatternSample` → `[]PatternSample`
+
+**Skipped fields with justification:**
+
+| Field | Reason |
+|---|---|
+| `FilterChunkRefResponse.ChunkRefs []*GroupedChunkRefs`, `FilterChunkRefRequest.Refs []*GroupedChunkRefs` | bloom-gateway uses `*GroupedChunkRefs` pointers throughout (`queue.NewSlicePool[*GroupedChunkRefs]`, iterators, `mergeSeries`, `Resolve`). Converting would require a pointer-to-value reshape of the entire internal bloom pipeline — a separate, larger refactor. |
+| `GroupedChunkRefs.Refs []*ShortRef` | `bloomgateway.go:488` casts `cur.Refs[i]` to `*v1.ChunkRef` exploiting the pointer-to-pointer layout (`type ChunkRef logproto.ShortRef`). Also `mergeChunkSets` in `client.go` appends pointers directly between sorted slices. Both are convertible but require non-trivial bloomgateway call-site work. |
+| `ChunkRefGroup.Refs []*ChunkRef`, `GetChunkRefResponse.Refs []*ChunkRef` | `indexgateway/gateway.go` passes `result.Refs` (`[]*ChunkRef`) directly to `bloomQuerier.FilterChunkRefs(... []*logproto.ChunkRef ...)` which returns `[]*logproto.ChunkRef` assigned back to `result.Refs`. Converting would require changing the `bloomQuerier` interface and all callers. The `series_index_gateway_store.go:57` copy `result[i] = *ref` would be eliminated but is overshadowed by the interface change scope. |
+| All `Headers []*PrometheusResponseHeader` fields | `definitions.Response` interface requires `GetHeaders() []*PrometheusResponseHeader`. Changing to value slice breaks the interface contract. |
+| `QuantileSketchMatrix.*`, `TDigest.Processed`, etc. | Sketch responses are low-volume (not on push or main query path). Profiled baseline (100 vecs × 50 centroids): 6 001 allocs/op unmarshal. Low production volume doesn't justify the sketched call-site refactor. |
+| `StreamRatesResponse.streamRates`, `TailResponse.droppedStreams`, `QueryRequest.deletes` | Rare/low-volume paths. |
+
+### Benchstat — `QueryPatternsResponse_Unmarshal` (alternated, n=20, Apple M4 Pro)
+
+```
+                                   │    before     │             after              │
+                                   │    sec/op     │   sec/op     vs base           │
+QueryPatternsResponse_Unmarshal-14   919.3µ ± 2%   525.5µ ± 2%  -42.84% (p=0.000 n=20)
+
+                                   │     B/op      │     B/op      vs base          │
+QueryPatternsResponse_Unmarshal-14  1189.9Ki ± 0%   807.6Ki ± 0%  -32.13% (p=0.000 n=20)
+
+                                   │  allocs/op    │ allocs/op   vs base            │
+QueryPatternsResponse_Unmarshal-14  50301.0 ± 0%   201.0 ± 0%  -99.60% (p=0.000 n=20)
+```
+
+Marshal is unchanged (1 alloc/op both before and after — wire encoding allocates only the output byte slice).
+
+**Root cause of the win:** `QueryPatternsResponse.Unmarshal` previously heap-allocated `&PatternSeries{}` for each of 100 series and `&PatternSample{}` for each of 50 000 samples on every decode. After the pointer-drop, both types are decoded directly into a pre-allocated value slice — 99.60% alloc reduction.
+
+The 201 remaining allocs/op are: 1 (the output slice backing array) + 100 (one `PatternSeries.Samples` value slice per series) + 100 × 1 (`Pattern` string copy per series) — not attributable to the pointer option.
+
+The `query_client.go` conversion loop (`*sample` dereference to build `[]PatternSample`) was also eliminated — `NewQueryResponseIterator` now passes `s.Samples` directly to `NewSlice`.

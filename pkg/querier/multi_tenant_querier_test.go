@@ -744,16 +744,16 @@ func TestMultiTenantQuerierPatterns(t *testing.T) {
 
 			// Mock the Patterns method to return a response
 			querier.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{
-				Series: []*logproto.PatternSeries{
+				Series: []logproto.PatternSeries{
 					{
 						Pattern: "pattern1",
-						Samples: []*logproto.PatternSample{
+						Samples: []logproto.PatternSample{
 							{Timestamp: 0, Value: 100},
 						},
 					},
 					{
 						Pattern: "pattern2",
-						Samples: []*logproto.PatternSample{
+						Samples: []logproto.PatternSample{
 							{Timestamp: 0, Value: 50},
 						},
 					},

@@ -426,13 +426,13 @@ func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) 
 // Mock pattern responses
 var mockPatternResponse = func(now time.Time, patterns []string) *logproto.QueryPatternsResponse {
 	resp := &logproto.QueryPatternsResponse{
-		Series: make([]*logproto.PatternSeries, 0),
+		Series: make([]logproto.PatternSeries, 0),
 	}
 	for i, pattern := range patterns {
-		resp.Series = append(resp.Series, &logproto.PatternSeries{
+		resp.Series = append(resp.Series, logproto.PatternSeries{
 			Pattern: pattern,
 			Level:   constants.LogLevelInfo,
-			Samples: []*logproto.PatternSample{
+			Samples: []logproto.PatternSample{
 				{
 					Timestamp: model.Time(now.Unix() * 1000),
 					Value:     int64((i + 1) * 100),
@@ -544,7 +544,7 @@ func TestPatternsHandler(t *testing.T) {
 			queryIngestersWithin: 3 * time.Hour,
 			setupQuerier: func() Querier {
 				q := &querierMock{}
-				q.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{Series: []*logproto.PatternSeries{}}, nil)
+				q.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{Series: []logproto.PatternSeries{}}, nil)
 				return q
 			},
 		},
@@ -569,16 +569,16 @@ func TestPatternsHandler(t *testing.T) {
 			setupQuerier: func() Querier {
 				q := &querierMock{}
 				q.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{
-					Series: []*logproto.PatternSeries{
+					Series: []logproto.PatternSeries{
 						{
 							Pattern: "common_pattern",
-							Samples: []*logproto.PatternSample{
+							Samples: []logproto.PatternSample{
 								{Timestamp: model.Time(now.Add(-30*time.Minute).Unix() * 1000), Value: 100},
 							},
 						},
 						{
 							Pattern: "ingester_pattern",
-							Samples: []*logproto.PatternSample{
+							Samples: []logproto.PatternSample{
 								{Timestamp: model.Time(now.Add(-15*time.Minute).Unix() * 1000), Value: 200},
 							},
 						},

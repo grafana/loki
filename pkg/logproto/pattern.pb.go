@@ -21,13 +21,13 @@ type QueryPatternsRequest struct {
 }
 
 type QueryPatternsResponse struct {
-	Series []*PatternSeries `protobuf:"bytes,1,rep,name=series,proto3" json:"series,omitempty"`
+	Series []PatternSeries `protobuf:"bytes,1,rep,name=series,proto3" json:"series,omitempty"`
 }
 
 type PatternSeries struct {
-	Pattern string           `protobuf:"bytes,1,opt,name=pattern,proto3" json:"pattern,omitempty"`
-	Samples []*PatternSample `protobuf:"bytes,2,rep,name=samples,proto3" json:"samples,omitempty"`
-	Level   string           `protobuf:"bytes,3,opt,name=level,proto3" json:"level,omitempty"`
+	Pattern string          `protobuf:"bytes,1,opt,name=pattern,proto3" json:"pattern,omitempty"`
+	Samples []PatternSample `protobuf:"bytes,2,rep,name=samples,proto3" json:"samples,omitempty"`
+	Level   string          `protobuf:"bytes,3,opt,name=level,proto3" json:"level,omitempty"`
 }
 
 type PatternSample struct {
@@ -95,7 +95,7 @@ func (m *QueryPatternsRequest) GetStep() int64 {
 	return 0
 }
 
-func (m *QueryPatternsResponse) GetSeries() []*PatternSeries {
+func (m *QueryPatternsResponse) GetSeries() []PatternSeries {
 	if m != nil {
 		return m.Series
 	}
@@ -109,7 +109,7 @@ func (m *PatternSeries) GetPattern() string {
 	return ""
 }
 
-func (m *PatternSeries) GetSamples() []*PatternSample {
+func (m *PatternSeries) GetSamples() []PatternSample {
 	if m != nil {
 		return m.Samples
 	}
@@ -166,10 +166,7 @@ func (m *QueryPatternsResponse) Size() int {
 	}
 	var n int
 	for i := range m.Series {
-		if m.Series[i] == nil {
-			continue
-		}
-		s := (*m.Series[i]).Size()
+		s := m.Series[i].Size()
 		n += 1 + protowire.SizeVarint(uint64(s)) + s
 	}
 	return n
@@ -184,10 +181,7 @@ func (m *PatternSeries) Size() int {
 		n += 1 + protowire.SizeVarint(uint64(len(m.Pattern))) + len(m.Pattern)
 	}
 	for i := range m.Samples {
-		if m.Samples[i] == nil {
-			continue
-		}
-		s := (*m.Samples[i]).Size()
+		s := m.Samples[i].Size()
 		n += 1 + protowire.SizeVarint(uint64(s)) + s
 	}
 	if len(m.Level) > 0 {
@@ -305,10 +299,7 @@ func (m *QueryPatternsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	i := len(dAtA)
 	for iNdEx := len(m.Series) - 1; iNdEx >= 0; iNdEx-- {
-		if m.Series[iNdEx] == nil {
-			continue
-		}
-		size, err := (*m.Series[iNdEx]).MarshalToSizedBuffer(dAtA[:i])
+		size, err := m.Series[iNdEx].MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -367,10 +358,7 @@ func (m *PatternSeries) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		dAtA[i] = 0x1a
 	}
 	for iNdEx := len(m.Samples) - 1; iNdEx >= 0; iNdEx-- {
-		if m.Samples[iNdEx] == nil {
-			continue
-		}
-		size, err := (*m.Samples[iNdEx]).MarshalToSizedBuffer(dAtA[:i])
+		size, err := m.Samples[iNdEx].MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -748,7 +736,7 @@ func (m *QueryPatternsResponse) unmarshal(dAtA []byte, depth int) error {
 				c = preCapMax
 			}
 			if len(m.Series) == 0 && cap(m.Series) < c {
-				m.Series = make([]*PatternSeries, 0, c)
+				m.Series = make([]PatternSeries, 0, c)
 			}
 		}
 	}
@@ -822,7 +810,7 @@ func (m *QueryPatternsResponse) unmarshal(dAtA []byte, depth int) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Series = append(m.Series, &PatternSeries{})
+			m.Series = append(m.Series, PatternSeries{})
 			if err := m.Series[len(m.Series)-1].unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
 				return err
 			}
@@ -923,7 +911,7 @@ func (m *PatternSeries) unmarshal(dAtA []byte, depth int) error {
 				c = preCapMax
 			}
 			if len(m.Samples) == 0 && cap(m.Samples) < c {
-				m.Samples = make([]*PatternSample, 0, c)
+				m.Samples = make([]PatternSample, 0, c)
 			}
 		}
 	}
@@ -1042,7 +1030,7 @@ func (m *PatternSeries) unmarshal(dAtA []byte, depth int) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Samples = append(m.Samples, &PatternSample{})
+			m.Samples = append(m.Samples, PatternSample{})
 			if err := m.Samples[len(m.Samples)-1].unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
 				return err
 			}

@@ -25,7 +25,7 @@ func TestReadBatch(t *testing.T) {
 			samples:   []logproto.PatternSample{},
 			batchSize: 2,
 			expected: &logproto.QueryPatternsResponse{
-				Series: []*logproto.PatternSeries{},
+				Series: []logproto.PatternSeries{},
 			},
 		},
 		{
@@ -35,11 +35,11 @@ func TestReadBatch(t *testing.T) {
 			samples:   []logproto.PatternSample{{Timestamp: 10, Value: 2}, {Timestamp: 20, Value: 4}, {Timestamp: 30, Value: 6}},
 			batchSize: 2,
 			expected: &logproto.QueryPatternsResponse{
-				Series: []*logproto.PatternSeries{
+				Series: []logproto.PatternSeries{
 					{
 						Pattern: "foo",
 						Level:   constants.LogLevelInfo,
-						Samples: []*logproto.PatternSample{
+						Samples: []logproto.PatternSample{
 							{Timestamp: 10, Value: 2},
 							{Timestamp: 20, Value: 4},
 						},
@@ -54,11 +54,11 @@ func TestReadBatch(t *testing.T) {
 			samples:   []logproto.PatternSample{{Timestamp: 10, Value: 2}, {Timestamp: 20, Value: 4}, {Timestamp: 30, Value: 6}},
 			batchSize: 4,
 			expected: &logproto.QueryPatternsResponse{
-				Series: []*logproto.PatternSeries{
+				Series: []logproto.PatternSeries{
 					{
 						Pattern: "foo",
 						Level:   constants.LogLevelInfo,
-						Samples: []*logproto.PatternSample{
+						Samples: []logproto.PatternSample{
 							{Timestamp: 10, Value: 2},
 							{Timestamp: 20, Value: 4},
 							{Timestamp: 30, Value: 6},

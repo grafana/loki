@@ -26,12 +26,12 @@ message QueryPatternsRequest {
 }
 
 message QueryPatternsResponse {
-  repeated PatternSeries series = 1 [(wiresmith.options.pointer) = true];
+  repeated PatternSeries series = 1;
 }
 
 message PatternSeries {
   string pattern = 1;
-  repeated PatternSample samples = 2 [(wiresmith.options.pointer) = true];
+  repeated PatternSample samples = 2;
   string level = 3;
 }
 

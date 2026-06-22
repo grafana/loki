@@ -79,10 +79,7 @@ func (this *QueryPatternsResponse) Equal(that interface{}) bool {
 		return false
 	}
 	for i := range this.Series {
-		if (this.Series[i] == nil) != (that1.Series[i] == nil) {
-			return false
-		}
-		if this.Series[i] != nil && !this.Series[i].Equal(that1.Series[i]) {
+		if !this.Series[i].Equal(that1.Series[i]) {
 			return false
 		}
 	}
@@ -115,10 +112,7 @@ func (this *PatternSeries) Equal(that interface{}) bool {
 		return false
 	}
 	for i := range this.Samples {
-		if (this.Samples[i] == nil) != (that1.Samples[i] == nil) {
-			return false
-		}
-		if this.Samples[i] != nil && !this.Samples[i].Equal(that1.Samples[i]) {
+		if !this.Samples[i].Equal(that1.Samples[i]) {
 			return false
 		}
 	}
@@ -234,16 +228,8 @@ func (this *QueryPatternsResponse) Compare(that interface{}) int {
 		return 1
 	}
 	for i := range this.Series {
-		if (this.Series[i] == nil) != (that1.Series[i] == nil) {
-			if this.Series[i] == nil {
-				return -1
-			}
-			return 1
-		}
-		if this.Series[i] != nil {
-			if c := this.Series[i].Compare(that1.Series[i]); c != 0 {
-				return c
-			}
+		if c := this.Series[i].Compare(that1.Series[i]); c != 0 {
+			return c
 		}
 	}
 	return 0
@@ -287,16 +273,8 @@ func (this *PatternSeries) Compare(that interface{}) int {
 		return 1
 	}
 	for i := range this.Samples {
-		if (this.Samples[i] == nil) != (that1.Samples[i] == nil) {
-			if this.Samples[i] == nil {
-				return -1
-			}
-			return 1
-		}
-		if this.Samples[i] != nil {
-			if c := this.Samples[i].Compare(that1.Samples[i]); c != 0 {
-				return c
-			}
+		if c := this.Samples[i].Compare(that1.Samples[i]); c != 0 {
+			return c
 		}
 	}
 	if this.Level != that1.Level {

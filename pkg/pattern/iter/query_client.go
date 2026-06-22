@@ -57,12 +57,7 @@ func (i *queryClientIterator) Close() error {
 func NewQueryResponseIterator(resp *logproto.QueryPatternsResponse) Iterator {
 	iters := make([]Iterator, len(resp.Series))
 	for i, s := range resp.Series {
-		// todo we should avoid this conversion
-		samples := make([]logproto.PatternSample, len(s.Samples))
-		for j, sample := range s.Samples {
-			samples[j] = *sample
-		}
-		iters[i] = NewSlice(s.Pattern, s.Level, samples)
+		iters[i] = NewSlice(s.Pattern, s.Level, s.Samples)
 	}
 	return NewMerge(iters...)
 }
