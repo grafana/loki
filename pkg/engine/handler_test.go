@@ -721,6 +721,34 @@ func TestQueryHandler_ValidateRequest(t *testing.T) {
 			},
 			expectError: false,
 		},
+		{
+			name:    "full-length query with a small range interval is allowed (range interval within grace)",
+			query:   `count_over_time({app="test"}[1h])`,
+			limit:   100,
+			startTs: now.Add(-24 * time.Hour), // query spans exactly the limit
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLengthVal:          24 * time.Hour,
+			},
+			// 1h range interval is within the 24h grace, so it adds nothing: 24h == 24h limit.
+			expectError: false,
+		},
+		{
+			name:    "range interval beyond the grace pushes the query over the max length",
+			query:   `count_over_time({app="test"}[48h])`,
+			limit:   100,
+			startTs: now.Add(-24 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLengthVal:          24 * time.Hour,
+			},
+			// 24h range + (48h interval - 24h grace) = 48h of data touched, exceeds the 24h limit.
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "the query time range exceeds the limit",
+		},
 		// MaxQueryRange tests
 		{
 			name:    "metric query with range within limit is allowed",
@@ -917,6 +945,105 @@ func TestQueryHandler_ValidateRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestQueryHandler_ValidateMaxQueryLookback_RangeInterval(t *testing.T) {
+	cfg := Config{Executor: ExecutorConfig{BatchSize: 100}}
+
+	// runWithCapturedStart executes a range query and returns the start time the
+	// engine actually received, so we can assert how the lookback clamp behaved.
+	runWithCapturedStart := func(t *testing.T, query string, lookback time.Duration, start, end time.Time) time.Time {
+		t.Helper()
+
+		var capturedParams logql.Params
+		eng := &mockEngine{
+			executeFunc: func(_ context.Context, params logql.Params) (logqlmodel.Result, error) {
+				capturedParams = params
+				return logqlmodel.Result{Data: logqlmodel.Streams{}}, nil
+			},
+		}
+		limits := &querytest.MockLimits{
+			MaxEntriesLimitPerQueryVal: 1000,
+			MaxQueryLookbackVal:        lookback,
+		}
+		handler := newTestHandler(cfg, eng, limits)
+
+		expr, err := syntax.ParseExpr(query)
+		require.NoError(t, err)
+
+		req := &queryrange.LokiRequest{
+			Query:   query,
+			Limit:   100,
+			Step:    int64(time.Hour / time.Millisecond),
+			StartTs: start,
+			EndTs:   end,
+			Plan:    &plan.QueryPlan{AST: expr},
+		}
+
+		_, err = handler.Do(user.InjectOrgID(t.Context(), "fake"), req)
+		require.NoError(t, err)
+		require.NotNil(t, capturedParams)
+		return capturedParams.Start()
+	}
+
+	t.Run("range interval beyond grace clamps start, counting only the excess", func(t *testing.T) {
+		now := time.Now()
+		// 30d lookback, full-window query, [10d] range. The engine would read from
+		// start-10d = now-40d. Only the excess beyond the 24h grace counts, so the
+		// start is clamped forward to minStartTime + (10d - 1d) = now-21d.
+		gotStart := runWithCapturedStart(t, `count_over_time({app="test"}[240h])`,
+			720*time.Hour, now.Add(-720*time.Hour), now)
+		require.WithinDuration(t, now.Add(-504*time.Hour), gotStart, time.Second,
+			"start should be clamped to minStartTime + (rangeInterval - grace)")
+	})
+
+	t.Run("range interval within grace does not clamp the full-window query", func(t *testing.T) {
+		now := time.Now()
+		// The user's scenario: 30d lookback, full-window query, [1h] range. The 1h is
+		// within the 24h grace, so the start is left untouched (no surprising clamp).
+		gotStart := runWithCapturedStart(t, `count_over_time({app="test"}[1h])`,
+			720*time.Hour, now.Add(-720*time.Hour), now)
+		require.WithinDuration(t, now.Add(-720*time.Hour), gotStart, time.Second,
+			"start should be unchanged when the range interval is within the grace")
+	})
+
+	t.Run("log query without range interval is unaffected", func(t *testing.T) {
+		now := time.Now()
+
+		var capturedParams logql.Params
+		eng := &mockEngine{
+			executeFunc: func(_ context.Context, params logql.Params) (logqlmodel.Result, error) {
+				capturedParams = params
+				return logqlmodel.Result{Data: logqlmodel.Streams{}}, nil
+			},
+		}
+		limits := &querytest.MockLimits{
+			MaxEntriesLimitPerQueryVal: 1000,
+			MaxQueryLookbackVal:        time.Hour,
+		}
+		handler := newTestHandler(cfg, eng, limits)
+
+		const query = `{app="test"}`
+		expr, err := syntax.ParseExpr(query)
+		require.NoError(t, err)
+
+		// Start is within the lookback window; with no range interval it stays put.
+		req := &queryrange.LokiRequest{
+			Query:   query,
+			Limit:   100,
+			StartTs: now.Add(-50 * time.Minute),
+			EndTs:   now,
+			Plan:    &plan.QueryPlan{AST: expr},
+		}
+
+		ctx := user.InjectOrgID(t.Context(), "fake")
+		_, err = handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.NotNil(t, capturedParams)
+		require.WithinDuration(t, now.Add(-50*time.Minute), capturedParams.Start(), time.Second,
+			"start should be unchanged when the query has no range interval")
+	})
 }
 
 func TestExecutorHandler_AlignQueriesWithStep(t *testing.T) {

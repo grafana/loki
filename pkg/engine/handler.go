@@ -270,7 +270,7 @@ func (h *queryHandler) validateRequest(ctx context.Context, req *queryrange.Loki
 
 	// Validate and potentially adjust the query time range based on lookback limit
 	// If the adjusted start is different from the original start, update the request.
-	adjustedStart, err := h.validateMaxQueryLookback(ctx, req.StartTs, req.EndTs)
+	adjustedStart, err := h.validateMaxQueryLookback(ctx, req.Plan.AST, req.StartTs, req.EndTs)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +278,7 @@ func (h *queryHandler) validateRequest(ctx context.Context, req *queryrange.Loki
 		req = req.WithStartEnd(adjustedStart, req.EndTs).(*queryrange.LokiRequest)
 	}
 
-	if err := h.validateMaxQueryLength(ctx, req.StartTs, req.EndTs); err != nil {
+	if err := h.validateMaxQueryLength(ctx, req.Plan.AST, req.StartTs, req.EndTs); err != nil {
 		return nil, err
 	}
 
@@ -308,7 +308,14 @@ func (h *queryHandler) validateMaxEntriesLimits(ctx context.Context, expr syntax
 // validateMaxQueryLookback validates that the query time range is within the max lookback period.
 // Returns an error if the query end time is before the minimum allowed start time.
 // Returns the adjusted start time if the query start time needs to be clamped.
-func (h *queryHandler) validateMaxQueryLookback(ctx context.Context, start, end time.Time) (time.Time, error) {
+//
+// A range vector / subquery causes the engine to read data starting at
+// (start - rangeInterval) rather than at start (see Context.GetResolveTimeRange),
+// so the lookback boundary is enforced against that effective start (minus the
+// rangeIntervalGrace). This prevents a query like {start: now-30d, end: now} with
+// a long range from resolving indexes far before the lookback window even though
+// its requested start is within it.
+func (h *queryHandler) validateMaxQueryLookback(ctx context.Context, expr syntax.Expr, start, end time.Time) (time.Time, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return start, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
@@ -330,17 +337,37 @@ func (h *queryHandler) validateMaxQueryLookback(ctx context.Context, start, end 
 			end.Format(time.RFC3339), minStartTime.Format(time.RFC3339))
 	}
 
-	// If the query start time is before the minimum allowed start time,
-	// clamp it to the minimum allowed start time.
-	if start.Before(minStartTime) {
-		return minStartTime, nil
+	// The earliest data the engine reads is (start - rangeInterval). Clamp the
+	// start so this effective start is not before the minimum allowed start time.
+	minQueryStart := minStartTime.Add(effectiveRangeInterval(expr))
+	if start.Before(minQueryStart) {
+		// Never push the start past the query end (end >= minStartTime here, but
+		// adding the range interval can move minQueryStart beyond end).
+		if minQueryStart.After(end) {
+			return end, nil
+		}
+		return minQueryStart, nil
 	}
 
 	return start, nil
 }
 
+// rangeIntervalGrace is the portion of a query's range-vector interval that is
+// exempt from the time-range limit checks (max query length and max query lookback).
+// A range vector / subquery causes the engine to read data starting at
+// (start - rangeInterval) rather than at start (see Context.GetResolveTimeRange),
+// so the interval effectively extends the scanned window backwards. Counting the
+// full interval would reject/clamp a query spanning the whole retention window the
+// moment it used any [range] (e.g. max_query_length == retention == 30d, query
+// {now-30d, now} with [1h]). To avoid that papercut, only the part of the interval
+// beyond this grace is counted: ordinary range vectors (up to a day) are free,
+// while pathologically long ranges/subqueries that materially increase the amount
+// of data scanned are still caught.
+// TODO: consider promoting this to a per-tenant limit.
+const rangeIntervalGrace = 24 * time.Hour
+
 // validateMaxQueryLength validates that the query time range does not exceed the max query length.
-func (h *queryHandler) validateMaxQueryLength(ctx context.Context, start, end time.Time) error {
+func (h *queryHandler) validateMaxQueryLength(ctx context.Context, expr syntax.Expr, start, end time.Time) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
@@ -352,13 +379,46 @@ func (h *queryHandler) validateMaxQueryLength(ctx context.Context, start, end ti
 		return nil
 	}
 
-	queryLen := end.Sub(start)
+	// Only the range interval beyond the grace counts towards the length limit.
+	queryLen := end.Sub(start) + effectiveRangeInterval(expr)
 	if queryLen > maxQueryLength {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			util_validation.ErrQueryTooLong, queryLen, model.Duration(maxQueryLength))
 	}
 
 	return nil
+}
+
+// maxRangeInterval returns the largest range-vector interval ([range]) present in
+// the query expression, or 0 if there are none (e.g. a plain log query). This
+// mirrors the lookback the planner applies in Context.GetResolveTimeRange.
+func maxRangeInterval(expr syntax.Expr) time.Duration {
+	if expr == nil {
+		return 0
+	}
+
+	var maxInterval time.Duration
+	expr.Walk(func(e syntax.Expr) bool {
+		if rangeExpr, ok := e.(*syntax.LogRangeExpr); ok {
+			if rangeExpr.Interval > maxInterval {
+				maxInterval = rangeExpr.Interval
+			}
+		}
+		return true
+	})
+	return maxInterval
+}
+
+// effectiveRangeInterval returns the portion of the query's largest range-vector
+// interval that counts towards the time-range limits, i.e. the interval beyond
+// rangeIntervalGrace, never negative. It is 0 for queries without a [range] and
+// for ranges within the grace, so those checks behave exactly as if there were no
+// range interval at all.
+func effectiveRangeInterval(expr syntax.Expr) time.Duration {
+	if excess := maxRangeInterval(expr) - rangeIntervalGrace; excess > 0 {
+		return excess
+	}
+	return 0
 }
 
 // validateMaxQueryRange validates that range vector intervals in the query do not exceed the limit.
@@ -555,7 +615,7 @@ func (h *queryHandler) validateInstantRequest(ctx context.Context, req *queryran
 	}
 
 	// For instant queries, we check if the query time is within the lookback period
-	_, err := h.validateMaxQueryLookback(ctx, req.TimeTs, req.TimeTs)
+	_, err := h.validateMaxQueryLookback(ctx, req.Plan.AST, req.TimeTs, req.TimeTs)
 	return err
 }
 
