@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"testing"
 	"time"
@@ -64,6 +65,26 @@ func (m *mockGatewayConn) GetChunkRef(context.Context, *logproto.GetChunkRefRequ
 		return nil, errors.New("mock error")
 	}
 	return &logproto.GetChunkRefResponse{}, nil
+}
+
+func (m *mockGatewayConn) GetShards(_ context.Context, _ *logproto.ShardsRequest, _ ...grpc.CallOption) (logproto.IndexGateway_GetShardsClient, error) {
+	if m.returnErrors {
+		return nil, errors.New("mock error")
+	}
+	return &mockShardsClient{}, nil
+}
+
+type mockShardsClient struct {
+	grpc.ClientStream
+	done bool
+}
+
+func (m *mockShardsClient) Recv() (*logproto.ShardsResponse, error) {
+	if m.done {
+		return nil, io.EOF
+	}
+	m.done = true
+	return &logproto.ShardsResponse{}, nil
 }
 
 func (m *mockGatewayConn) Check(context.Context, *grpc_health_v1.HealthCheckRequest, ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
@@ -240,19 +261,42 @@ func configurePool(t *testing.T, client *GatewayClient, logger log.Logger, numEr
 	return pool
 }
 
-func TestGatewayClient_SimpleMode_Retries(t *testing.T) {
-	logger, _, client := createSimpleGatewayClient(t, []string{"1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"})
+func TestGatewayClient_SimpleMode_RetriesGetShards(t *testing.T) {
+	logger, _, client := createSimpleGatewayClient(t, []string{
+		"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4",
+		"5.5.5.5", "6.6.6.6", "7.7.7.7", "8.8.8.8", "9.9.9.9",
+	})
 	ctx := user.InjectOrgID(context.Background(), "tenant-123")
 
 	// Retry up to 2 errors
 	for numErrorsToReturn := 0; numErrorsToReturn <= 2; numErrorsToReturn++ {
 		configurePool(t, client, logger, numErrorsToReturn)
-		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		_, err := client.GetShards(ctx, &logproto.ShardsRequest{})
 		require.NoError(t, err)
 	}
 
 	// Fail after 3 errors
 	configurePool(t, client, logger, 3)
+	_, err := client.GetShards(ctx, &logproto.ShardsRequest{})
+	require.Error(t, err)
+}
+
+func TestGatewayClient_SimpleMode_OtherMethods(t *testing.T) {
+	logger, _, client := createSimpleGatewayClient(t, []string{
+		"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4",
+		"5.5.5.5", "6.6.6.6", "7.7.7.7", "8.8.8.8", "9.9.9.9",
+	})
+	ctx := user.InjectOrgID(context.Background(), "tenant-123")
+
+	// Retry until we run out of index gateways
+	for numErrorsToReturn := 0; numErrorsToReturn <= 9; numErrorsToReturn++ {
+		configurePool(t, client, logger, numErrorsToReturn)
+		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		require.NoError(t, err)
+	}
+
+	// Fail after every gateway has been tried
+	configurePool(t, client, logger, 10)
 	_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
 	require.Error(t, err)
 }

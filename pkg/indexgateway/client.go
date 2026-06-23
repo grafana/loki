@@ -242,7 +242,7 @@ func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRe
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
+	}, -1)
 	return resp, err
 }
 
@@ -256,7 +256,7 @@ func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesReq
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
+	}, -1)
 	return resp, err
 }
 
@@ -270,7 +270,7 @@ func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logprot
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
+	}, -1)
 	return resp, err
 }
 
@@ -284,7 +284,7 @@ func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logpro
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
+	}, -1)
 	return resp, err
 }
 
@@ -298,7 +298,7 @@ func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsReq
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
+	}, -1)
 	return resp, err
 }
 
@@ -312,7 +312,7 @@ func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeReques
 		return err
 	}, func(addrs []string) []string {
 		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
+	}, -1)
 	return resp, err
 }
 
@@ -348,6 +348,7 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 		func(addrs []string) []string {
 			return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
 		},
+		2,
 	); err != nil {
 		return nil, err
 	}
@@ -358,7 +359,12 @@ const maxErrors int = 2
 
 // poolDo executes the given function for each Index Gateway instance in the ring mapping to the correct tenant in the index.
 // In case of callback failure, we'll try another member of the ring for that tenant ID.
-func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logproto.IndexGatewayClient) error, filterServerList func([]string) []string) error {
+func (s *GatewayClient) poolDo(
+	ctx context.Context,
+	callback func(client logproto.IndexGatewayClient) error,
+	filterServerList func([]string) []string,
+	maxRetries int, // -1 for unlimited retries, 0 to disable retries
+) error {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return errors.Wrap(err, "index gateway client get tenant ID")
@@ -403,7 +409,7 @@ func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logprot
 			errCount++
 			level.Error(s.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
 
-			if errCount > maxErrors {
+			if maxRetries >= 0 && errCount > maxRetries {
 				return err
 			}
 			continue
