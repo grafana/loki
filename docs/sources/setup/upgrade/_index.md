@@ -37,6 +37,10 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Common object storage config is now applied to the ruler storage
+
+When `use_thanos_objstore` is enabled, the `common.storage.object_store` configuration is now also applied to `ruler_storage`, the same way the legacy common storage types have always been applied to the ruler. This means settings such as TLS, credentials, and endpoints configured in the common object storage section are inherited by the ruler instead of being silently ignored. An explicitly configured `ruler_storage` section still takes precedence. If you previously relied on the ruler not starting because `ruler_storage` was left unconfigured while `common.storage.object_store` was set, the ruler will now start using the common object storage configuration.
+
 ### Breaking change: Removal of various configuration options
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
