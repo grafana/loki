@@ -506,9 +506,9 @@ func Test_HeadManager_Flush(t *testing.T) {
 	mgr := newRecordingTSDBManager(storeName, dir)
 	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
 	for _, d := range managerRequiredDirs(storeName, dir) {
-		require.Nil(t, util.EnsureDirectory(d))
+		require.NoError(t, util.EnsureDirectory(d))
 	}
-	require.Nil(t, hm.Rotate(time.Now())) // initialize active head
+	require.NoError(t, hm.Rotate(time.Now())) // initialize active head
 
 	// Run the loop so the channel-triggered Flush() is serviced on it.
 	hm.wg.Add(1)
@@ -516,9 +516,9 @@ func Test_HeadManager_Flush(t *testing.T) {
 	t.Cleanup(func() { _ = hm.Stop() })
 
 	ls := mustParseLabels(`{foo="bar"}`)
-	require.Nil(t, hm.Append("tenant1", ls, labels.StableHash(ls), []index.ChunkMeta{{MinTime: 1, MaxTime: 10, Checksum: 3}}))
+	require.NoError(t, hm.Append("tenant1", ls, labels.StableHash(ls), []index.ChunkMeta{{MinTime: 1, MaxTime: 10, Checksum: 3}}))
 
-	require.Nil(t, hm.Flush())
+	require.NoError(t, hm.Flush())
 	require.Equal(t, 1, mgr.builds, "Flush should rotate and build the active head exactly once")
 }
 

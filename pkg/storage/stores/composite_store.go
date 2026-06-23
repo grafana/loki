@@ -342,8 +342,6 @@ func (c CompositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-// FlushIndexes forces every underlying store that supports it to ship its
-// in-memory indexes to object storage.
 func (c CompositeStore) Stop() {
 	for _, store := range c.stores {
 		store.Stop()
