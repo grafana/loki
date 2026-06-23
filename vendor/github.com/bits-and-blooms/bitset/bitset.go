@@ -672,6 +672,9 @@ func (b *BitSet) NextSetMany(i uint, buffer []uint) (uint, []uint) {
 // including possibly the current index
 // along with an error code (true = valid, false = no bit found i.e. all bits are set)
 func (b *BitSet) NextClear(i uint) (uint, bool) {
+	if i >= b.length {
+		return 0, false
+	}
 	x := int(i >> log2WordSize)
 	if x >= len(b.set) {
 		return 0, false
@@ -692,7 +695,7 @@ func (b *BitSet) NextClear(i uint) (uint, bool) {
 	x++
 	for idx, word := range b.set[x:] {
 		if word != allBits {
-			index = uint((x+idx)*wordSize + bits.TrailingZeros64(^word))
+			index = uint((x+idx)<<log2WordSize + bits.TrailingZeros64(^word))
 			if index < b.length {
 				return index, true
 			}
