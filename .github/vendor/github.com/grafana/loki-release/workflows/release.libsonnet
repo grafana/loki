@@ -210,6 +210,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         })
         + step.withRun(|||
           echo "downloading images to $(pwd)/images"
+          mkdir -p images
           gcloud artifacts generic download \
             --project="grafanalabs-dev" \
             --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
@@ -247,6 +248,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         })
         + step.withRun(|||
           echo "downloading plugins to $(pwd)/plugins"
+          mkdir -p plugins
           gcloud artifacts generic download \
             --project="grafanalabs-dev" \
             --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
