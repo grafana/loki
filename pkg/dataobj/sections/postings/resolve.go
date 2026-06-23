@@ -118,7 +118,7 @@ func (r *StreamResolver) Resolve(ctx context.Context, sections []*Section) ([]Se
 		return nil, err
 	}
 
-	bloomSurvivors, err := r.bloomGate(ctx, sections, perSection)
+	bloomSurvivors, predicateLabels, err := r.bloomGate(ctx, sections, perSection)
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +130,9 @@ func (r *StreamResolver) Resolve(ctx context.Context, sections []*Section) ([]Se
 				if _, ok := bloomSurvivors[key]; !ok {
 					continue
 				}
+			}
+			for name := range predicateLabels[key] {
+				acc.streamLabels[name] = struct{}{}
 			}
 			if result, ok := r.finalize(key, acc, startNanos, endNanos); ok {
 				out = append(out, result)
@@ -177,9 +180,6 @@ func (r *StreamResolver) resolveSection(
 		}
 	}
 
-	if err := r.recordPredicateStreamLabels(ctx, sec, kindCol, nameCol, accums); err != nil {
-		return nil, err
-	}
 	return accums, nil
 }
 
@@ -208,47 +208,6 @@ func combine(accums map[sectionKey]*keyAccum, hits map[sectionKey]*memory.Bitmap
 			delete(accums, key)
 		}
 	}
-}
-
-// recordPredicateStreamLabels marks any equal-predicate name that exists as a
-// stream label in each surviving key. Such predicates are resolved by label
-// matching, so the bloom gate drops them and they surface as ambiguous names.
-func (r *StreamResolver) recordPredicateStreamLabels(ctx context.Context, sec *Section, kindCol, nameCol *Column, accums map[sectionKey]*keyAccum) error {
-	for _, p := range r.equalPredicates {
-		pending := false
-		for _, acc := range accums {
-			if _, known := acc.streamLabels[p.Name]; !known {
-				pending = true
-				break
-			}
-		}
-		if !pending {
-			continue
-		}
-		keys, err := keysWithLabelName(ctx, sec, kindCol, nameCol, p.Name)
-		if err != nil {
-			return err
-		}
-		for key := range keys {
-			if acc, ok := accums[key]; ok {
-				acc.streamLabels[p.Name] = struct{}{}
-			}
-		}
-	}
-	return nil
-}
-
-// keysWithLabelName returns the logical section keys that contain a KindLabel
-// row for the given label name.
-func keysWithLabelName(ctx context.Context, sec *Section, kindCol, nameCol *Column, name string) (map[sectionKey]struct{}, error) {
-	rr := NewRowReader(ctx, sec, labelNamePredicate(kindCol, nameCol, name))
-	defer func() { _ = rr.Close() }()
-	keys := make(map[sectionKey]struct{})
-	for rr.Next() {
-		row := rr.At()
-		keys[keyOf(row)] = struct{}{}
-	}
-	return keys, rr.Err()
 }
 
 // eachRow scans sec with pred, invoking fn for every row carrying streams.
@@ -316,14 +275,15 @@ func (acc *keyAccum) foldTimestampOverlap(bits *memory.Bitmap, row Row, startNan
 }
 
 // bloomGate returns the logical section keys whose structured-metadata blooms
-// admit every equal-predicate, or nil when there are no predicates to gate on.
-// Equal-predicates whose name is a stream label in a key are resolved by label
-// matching, not blooms, so they are dropped per key. Blooms and the label rows
-// they gate live in distinct physical sections sharing a logical key, so the
-// gate scans every section and correlates on that key.
-func (r *StreamResolver) bloomGate(ctx context.Context, sections []*Section, perSection []map[sectionKey]*keyAccum) (map[sectionKey]struct{}, error) {
+// admit every equal-predicate (nil when there are no predicates), plus the
+// per-key set of equal-predicate names that exist as stream labels. Predicates
+// whose name is a stream label in a key are resolved by label matching, not
+// blooms, so they are dropped per key. Blooms and the label rows they gate live
+// in distinct physical sections sharing a logical key, so the gate scans every
+// section and correlates on that key.
+func (r *StreamResolver) bloomGate(ctx context.Context, sections []*Section, perSection []map[sectionKey]*keyAccum) (map[sectionKey]struct{}, map[sectionKey]map[string]struct{}, error) {
 	if len(r.equalPredicates) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	streamLabelsByKey := make(map[sectionKey]map[string]struct{})
@@ -333,24 +293,26 @@ func (r *StreamResolver) bloomGate(ctx context.Context, sections []*Section, per
 		}
 	}
 
-	hits := make([]map[sectionKey]map[predicateValue]struct{}, len(sections))
+	bloomHits := make([]map[sectionKey]map[predicateValue]struct{}, len(sections))
+	labelHits := make([]map[sectionKey]map[string]struct{}, len(sections))
 	g, ctx := errgroup.WithContext(ctx)
 	for i := range sections {
 		g.Go(func() error {
-			matched, err := bloomHitsInSection(ctx, sections[i], r.equalPredicates)
+			matched, labelNames, err := bloomHitsInSection(ctx, sections[i], r.equalPredicates)
 			if err != nil {
 				return err
 			}
-			hits[i] = matched
+			bloomHits[i] = matched
+			labelHits[i] = labelNames
 			return nil
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	bloomHitsByKey := make(map[sectionKey]map[predicateValue]struct{})
-	for _, matched := range hits {
+	for _, matched := range bloomHits {
 		for key, values := range matched {
 			dst := bloomHitsByKey[key]
 			if dst == nil {
@@ -363,13 +325,45 @@ func (r *StreamResolver) bloomGate(ctx context.Context, sections []*Section, per
 		}
 	}
 
+	predicateLabelsByKey := make(map[sectionKey]map[string]struct{})
+	for _, names := range labelHits {
+		for key, set := range names {
+			dst := predicateLabelsByKey[key]
+			if dst == nil {
+				dst = make(map[string]struct{})
+				predicateLabelsByKey[key] = dst
+			}
+			for name := range set {
+				dst[name] = struct{}{}
+			}
+		}
+	}
+
 	keep := make(map[sectionKey]struct{})
-	for key, streamLabels := range streamLabelsByKey {
-		if r.keyAdmitsPredicates(streamLabels, bloomHitsByKey[key]) {
+	for key := range streamLabelsByKey {
+		if r.keyAdmitsPredicates(gateLabels(streamLabelsByKey[key], predicateLabelsByKey[key]), bloomHitsByKey[key]) {
 			keep[key] = struct{}{}
 		}
 	}
-	return keep, nil
+	return keep, predicateLabelsByKey, nil
+}
+
+// gateLabels unions the matcher-recorded stream labels with the predicate names
+// discovered as labels, without mutating either input, so keyAdmitsPredicates
+// sees every name even when no matcher scanned it. The merge into the
+// accumulator's own streamLabels happens once, later, in Resolve.
+func gateLabels(streamLabels, predicateLabels map[string]struct{}) map[string]struct{} {
+	if len(predicateLabels) == 0 {
+		return streamLabels
+	}
+	out := make(map[string]struct{}, len(streamLabels)+len(predicateLabels))
+	for name := range streamLabels {
+		out[name] = struct{}{}
+	}
+	for name := range predicateLabels {
+		out[name] = struct{}{}
+	}
+	return out
 }
 
 // predicateValue identifies one equal-predicate by name and value so that two
@@ -394,18 +388,21 @@ func (r *StreamResolver) keyAdmitsPredicates(streamLabels map[string]struct{}, b
 	return true
 }
 
-// bloomHitsInSection scans a section's KindBloom rows and returns, per logical
-// section key, the equal-predicate (name, value) pairs that test positive
-// against a bloom on that predicate's column.
-func bloomHitsInSection(ctx context.Context, sec *Section, predicates []*labels.Matcher) (map[sectionKey]map[predicateValue]struct{}, error) {
+// bloomHitsInSection scans a section's KindBloom rows for equal-predicate
+// positives, and its KindLabel rows for equal-predicate names that exist as
+// labels. The first return is the per-key (name, value) bloom hits; the second
+// is the per-key set of predicate names found as labels (resolved by label
+// matching rather than bloom gating).
+func bloomHitsInSection(ctx context.Context, sec *Section, predicates []*labels.Matcher) (map[sectionKey]map[predicateValue]struct{}, map[sectionKey]map[string]struct{}, error) {
 	kindCol := sectionColumn(sec, ColumnTypeKind)
 	nameCol := sectionColumn(sec, ColumnTypeColumnName)
 	bloomCol := sectionColumn(sec, ColumnTypeBloomFilter)
 	if kindCol == nil || nameCol == nil || bloomCol == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	matched := make(map[sectionKey]map[predicateValue]struct{})
+	labelNames := make(map[sectionKey]map[string]struct{})
 	for _, p := range predicates {
 		rr := NewRowReader(ctx, sec,
 			AndPredicate{
@@ -429,11 +426,27 @@ func bloomHitsInSection(ctx context.Context, sec *Section, predicates []*labels.
 		}
 		if err := rr.Err(); err != nil {
 			_ = rr.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		_ = rr.Close()
+
+		lr := NewRowReader(ctx, sec, labelNamePredicate(kindCol, nameCol, p.Name))
+		for lr.Next() {
+			key := keyOf(lr.At())
+			names := labelNames[key]
+			if names == nil {
+				names = make(map[string]struct{})
+				labelNames[key] = names
+			}
+			names[p.Name] = struct{}{}
+		}
+		if err := lr.Err(); err != nil {
+			_ = lr.Close()
+			return nil, nil, err
+		}
+		_ = lr.Close()
 	}
-	return matched, nil
+	return matched, labelNames, nil
 }
 
 // partitionMatchers splits the resolver's matchers into positive matchers (which
