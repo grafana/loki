@@ -223,6 +223,15 @@ func CompareForSortSchema(sortKeys []string) func(result.Result[dataset.Row], re
 		aStreamID := aVal.Values[0].Int64()
 		bStreamID := bVal.Values[0].Int64()
 
+		// Guard against the loser-tree sentinel (MaxInt64 means sequence exhausted).
+		// The sentinel must never "win" the tournament.
+		if aStreamID == math.MaxInt64 {
+			return false
+		}
+		if bStreamID == math.MaxInt64 {
+			return true
+		}
+
 		aKey := sortKeys[aStreamID]
 		bKey := sortKeys[bStreamID]
 		if res := cmp.Compare(aKey, bKey); res != 0 {
