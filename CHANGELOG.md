@@ -1,5 +1,28 @@
 # Changelog
 
+## [3.6.12](https://github.com/grafana/loki/compare/v3.6.11...v3.6.12) (2026-06-23)
+
+
+### Bug Fixes
+
+* **ci:** Log into dockerhub for patch releases ([#22529](https://github.com/grafana/loki/issues/22529)) ([dfeedf2](https://github.com/grafana/loki/commit/dfeedf247da0b98242635d528008094aba1f910b))
+* **ci:** remove nfpm, like main ([#22502](https://github.com/grafana/loki/issues/22502)) ([1a7d0e2](https://github.com/grafana/loki/commit/1a7d0e2ce0aaae55ec5964c2e5c80df80be18faf))
+* **security/HIGH/cmd/segment-inspect:** Update security cmd/segment-inspect github.com/prometheus/prometheus to v0.311.3 [SECURITY] (release-3.6.x) ([#22205](https://github.com/grafana/loki/issues/22205)) ([bfd37e4](https://github.com/grafana/loki/commit/bfd37e49ee48426397337ef4be0abbeec588d288))
+* **security/HIGH/cmd/segment-inspect:** Update security cmd/segment-inspect go.opentelemetry.io/otel to v1.41.0 [SECURITY] (release-3.6.x) ([#22206](https://github.com/grafana/loki/issues/22206)) ([0ed7bce](https://github.com/grafana/loki/commit/0ed7bceaef8e9590f3b1dd053136161ce9dd9e30))
+* **security/HIGH/:** Update module github.com/containerd/containerd/v2 to v2.0.9 [SECURITY] (release-3.6.x) ([#22204](https://github.com/grafana/loki/issues/22204)) ([ed38a68](https://github.com/grafana/loki/commit/ed38a68cc44f004860327e97ec3d899b19e49086))
+* **security/MEDIUM/cmd/dataobj-inspect:** Update security cmd/dataobj-inspect github.com/grafana/loki/v3 to v3.6.4 [SECURITY] (release-3.6.x) ([#22209](https://github.com/grafana/loki/issues/22209)) ([d6117ed](https://github.com/grafana/loki/commit/d6117ed6fc4b7b0d9e57bd49e0e9e5726746604f))
+* **security/MEDIUM/cmd/segment-inspect:** Update security cmd/segment-inspect github.com/grafana/loki/v3 to v3.6.4 [SECURITY] (release-3.6.x) ([#22210](https://github.com/grafana/loki/issues/22210)) ([186b9a9](https://github.com/grafana/loki/commit/186b9a9c26a90e52693db4570427ad22ae978df0))
+* **security/UNKNOWN/cmd/chunks-inspect:** Update go toolchain directive to v1.25.11 [SECURITY] (release-3.6.x) ([#22202](https://github.com/grafana/loki/issues/22202)) ([90e12c9](https://github.com/grafana/loki/commit/90e12c9ea77b713a16d4eab4e9c25d64ea511628))
+* **security/UNKNOWN/cmd/dataobj-inspect:** Update module golang.org/x/sys to v0.44.0 [SECURITY] (release-3.6.x) ([#22215](https://github.com/grafana/loki/issues/22215)) ([c696c66](https://github.com/grafana/loki/commit/c696c667e2d253b84f560212cea8b0e54f2906c0))
+* **security/UNKNOWN/cmd/segment-inspect:** Update security cmd/segment-inspect go to v1.25.11 [SECURITY] (release-3.6.x) ([#22203](https://github.com/grafana/loki/issues/22203)) ([2c67a33](https://github.com/grafana/loki/commit/2c67a33fd4131937f07a8562441ca04d78479470))
+* **security/UNKNOWN/cmd/segment-inspect:** Update security cmd/segment-inspect golang.org/x/crypto to v0.52.0 [SECURITY] (release-3.6.x) ([#22216](https://github.com/grafana/loki/issues/22216)) ([807ffd7](https://github.com/grafana/loki/commit/807ffd7f81ee8486f713d724a7f69a371ca9cf58))
+* **security/UNKNOWN/cmd/segment-inspect:** Update security cmd/segment-inspect golang.org/x/net to v0.55.0 [SECURITY] (release-3.6.x) ([#22217](https://github.com/grafana/loki/issues/22217)) ([7081875](https://github.com/grafana/loki/commit/7081875187749fdf3288b60d64694e0e4d0ad8fa))
+* **security/UNKNOWN/cmd/segment-inspect:** Update security cmd/segment-inspect golang.org/x/sys to v0.44.0 [SECURITY] (release-3.6.x) ([#22218](https://github.com/grafana/loki/issues/22218)) ([36deca1](https://github.com/grafana/loki/commit/36deca186377d70909a2f75e8511d8761e6584b7))
+* **security/UNKNOWN/pkg/push:** Update security pkg/push golang.org/x/net to v0.55.0 [SECURITY] (release-3.6.x) ([#22224](https://github.com/grafana/loki/issues/22224)) ([0c53ce1](https://github.com/grafana/loki/commit/0c53ce1c6b839306f399466e3a22307c8cb23523))
+* **security/UNKNOWN/:** Update security golang.org/x/crypto to v0.52.0 [SECURITY] (release-3.6.x) ([#22212](https://github.com/grafana/loki/issues/22212)) ([424e5ff](https://github.com/grafana/loki/commit/424e5ff4368ed7aa02e26739532de99eef051eeb))
+* **security/UNKNOWN/:** Update security golang.org/x/net to v0.55.0 [SECURITY] (release-3.6.x) ([#22213](https://github.com/grafana/loki/issues/22213)) ([90ae8f3](https://github.com/grafana/loki/commit/90ae8f3602c4d2d47239e292636e9e1c179a3e29))
+* **security/UNKNOWN/:** Update security golang.org/x/sys to v0.44.0 [SECURITY] (release-3.6.x) ([#22214](https://github.com/grafana/loki/issues/22214)) ([49b9a22](https://github.com/grafana/loki/commit/49b9a22eb2a37052365de0b143b16b6eee4c8086))
+
 ## [3.6.11](https://github.com/grafana/loki/compare/v3.6.10...v3.6.11) (2026-05-13)
 
 
