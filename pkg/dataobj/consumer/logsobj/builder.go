@@ -247,7 +247,7 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderMetrics) (*Builder, error) {
+func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderMetrics, logger log.Logger, overrides TenantOverrides) (*Builder, error) {
 	labelCache, err := lru.New[string, labels.Labels](5000)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
@@ -256,23 +256,14 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderM
 	return &Builder{
 		cfg:              cfg,
 		metrics:          metrics,
-		logger:           log.NewNopLogger(),
+		logger:           logger,
+		overrides:        overrides,
 		labelCache:       labelCache,
 		builder:          dataobj.NewBuilder(scratchStore),
 		streams:          make(map[string]*streams.Builder),
 		logs:             make(map[string]*logs.Builder),
 		sortSchemaLabels: make(map[string][]string),
 	}, nil
-}
-
-// SetOverrides configures per-tenant overrides used when DataobjUseSortSchema is enabled.
-func (b *Builder) SetOverrides(overrides TenantOverrides) {
-	b.overrides = overrides
-}
-
-// SetLogger sets the logger used by the builder.
-func (b *Builder) SetLogger(logger log.Logger) {
-	b.logger = logger
 }
 
 // initBuilder initializes the builders for the tenant.

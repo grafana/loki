@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -114,11 +115,8 @@ func TestBuilder_EndToEnd(t *testing.T) {
 				expectedSchemaLabels = schemaLabels
 			}
 
-			b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
+			b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 			require.NoError(t, err)
-			if overrides != nil {
-				b.SetOverrides(overrides)
-			}
 			appendDataset(t, b)
 
 			obj1, closer, err := b.Flush()
@@ -141,11 +139,8 @@ func TestBuilder_EndToEnd(t *testing.T) {
 				intermediateByTenant[tenant] = resolveTenantLogs(t, obj1, tenant)
 			}
 
-			mergeBuilder, err := NewBuilder(cfg, nil, NewBuilderMetrics())
+			mergeBuilder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 			require.NoError(t, err)
-			if overrides != nil {
-				mergeBuilder.SetOverrides(overrides)
-			}
 			obj2, closer2, err := mergeBuilder.CopyAndSort(t.Context(), obj1)
 			require.NoError(t, err)
 			defer closer2.Close()

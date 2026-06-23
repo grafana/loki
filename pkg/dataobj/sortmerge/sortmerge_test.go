@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/push"
@@ -33,7 +34,7 @@ const testTenant = "test"
 func buildObject(t *testing.T, labels string, base time.Time, lineCount int) (*dataobj.Object, func()) {
 	t.Helper()
 
-	b, err := logsobj.NewBuilder(testBuilderConfig, nil, logsobj.NewBuilderMetrics())
+	b, err := logsobj.NewBuilder(testBuilderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	entries := make([]push.Entry, 0, lineCount)

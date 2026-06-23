@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -77,7 +78,7 @@ func TestBuilder(t *testing.T) {
 	}
 
 	t.Run("Build", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 		require.NoError(t, err)
 
 		for _, entry := range testStreams {
@@ -98,7 +99,7 @@ func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	tenant := "test"
@@ -147,13 +148,13 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 	}
 
 	t.Run("zero on an empty builder", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 		require.NoError(t, err)
 		require.True(t, builder.GetEarliestRecordTime().IsZero())
 	})
 
 	t.Run("set on first append", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 		require.NoError(t, err)
 
 		recTime := time.Unix(100, 0).UTC()
@@ -162,7 +163,7 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 	})
 
 	t.Run("tracks the minimum across appends", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 		require.NoError(t, err)
 
 		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(100, 0).UTC()))
@@ -175,7 +176,7 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 	})
 
 	t.Run("reset on Reset", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 		require.NoError(t, err)
 
 		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(100, 0).UTC()))
@@ -184,7 +185,7 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 	})
 
 	t.Run("reset on Flush", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+		builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 		require.NoError(t, err)
 
 		require.NoError(t, builder.Append("tenant", newStream(), time.Unix(100, 0).UTC()))
@@ -196,7 +197,7 @@ func TestBuilder_EarliestRecordTime(t *testing.T) {
 }
 
 func TestBuilder_CopyAndSort(t *testing.T) {
-	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 	numRows := 16 // 16 rows with 1KiB each line and 8KiB section size ~> 2 logs sections per tenant
@@ -218,7 +219,7 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 	require.NoError(t, err)
 	defer closer1.Close()
 
-	newBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+	newBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
 
 	obj2, closer2, err := newBuilder.CopyAndSort(t.Context(), obj1)
 	require.NoError(t, err)
@@ -335,10 +336,7 @@ func BenchmarkBuilder_CopyAndSort(b *testing.B) {
 
 	for _, bc := range benchCases {
 		b.Run(bc.name, func(b *testing.B) {
-			builder, _ := NewBuilder(bc.cfg, nil, NewBuilderMetrics())
-			if bc.overrides != nil {
-				builder.SetOverrides(bc.overrides)
-			}
+			builder, _ := NewBuilder(bc.cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), bc.overrides)
 
 			for _, tenant := range tenants {
 				for i := range numRows {
@@ -360,10 +358,7 @@ func BenchmarkBuilder_CopyAndSort(b *testing.B) {
 			require.NoError(b, err)
 			defer closer1.Close()
 
-			newBuilder, _ := NewBuilder(bc.cfg, nil, NewBuilderMetrics())
-			if bc.overrides != nil {
-				newBuilder.SetOverrides(bc.overrides)
-			}
+			newBuilder, _ := NewBuilder(bc.cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), bc.overrides)
 
 			b.Logf("sections=%d, size=%d", obj1.Sections().Count(logs.CheckSection), obj1.Size())
 			b.ResetTimer()
@@ -401,11 +396,8 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 	buildObj := func(t *testing.T, cfg BuilderConfig, tenant string, appVals []string, overrides TenantOverrides) *dataobj.Object {
 		t.Helper()
-		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
-		if overrides != nil {
-			b.SetOverrides(overrides)
-		}
 		for _, app := range appVals {
 			for i := range 4 {
 				require.NoError(t, b.Append(tenant, logproto.Stream{
@@ -425,11 +417,8 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 	copyAndSort := func(t *testing.T, cfg BuilderConfig, src *dataobj.Object, overrides TenantOverrides) *dataobj.Object {
 		t.Helper()
-		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
-		if overrides != nil {
-			b.SetOverrides(overrides)
-		}
 		obj, closer, err := b.CopyAndSort(t.Context(), src)
 		require.NoError(t, err)
 		t.Cleanup(func() { closer.Close() })
@@ -503,9 +492,8 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		cfg := makeCfg(true)
 		overrides := tenantOverrides{"schema-tenant": {"label:app"}}
 
-		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
-		b.SetOverrides(overrides)
 		for _, app := range []string{"zoo", "alpha", "middle"} {
 			for i := range 4 {
 				require.NoError(t, b.Append("schema-tenant", logproto.Stream{
@@ -633,9 +621,8 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 	t.Run("multi-label compound key", func(t *testing.T) {
 		cfg := makeCfg(true)
 		overrides := tenantOverrides{"t1": {"label:namespace", "label:app"}}
-		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
-		b.SetOverrides(overrides)
 
 		type entry struct{ ns, app string }
 		for _, e := range []entry{{"ns-b", "app-z"}, {"ns-a", "app-z"}, {"ns-a", "app-a"}, {"ns-b", "app-a"}} {
@@ -687,9 +674,8 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		overrides := tenantOverrides{"t1": {"label:app"}}
 		schemaLabels := []string{"label:app"}
 
-		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
 		require.NoError(t, err)
-		b.SetOverrides(overrides)
 
 		streamsToAppend := []struct {
 			app      string
