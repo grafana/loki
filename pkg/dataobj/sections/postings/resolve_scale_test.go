@@ -250,3 +250,127 @@ func TestStreamResolver_OracleParityMultiSection(t *testing.T) {
 		})
 	}
 }
+
+// TestStreamResolver_EmptyCapableNameAbsentFromSection guards that an
+// empty-capable matcher on a label name present in no row of the section keeps
+// every seeded stream: all of them lack the label. app=loki seeds {0,1}; "team"
+// is absent from the section, so team!="bar" must leave {0,1} intact.
+func TestStreamResolver_EmptyCapableNameAbsentFromSection(t *testing.T) {
+	ctx := context.Background()
+	secs, closer := buildResolveTestSection(t, []labelPosting{
+		{name: "app", value: "loki", streamID: 0, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
+		{name: "app", value: "loki", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
+	}, nil)
+	defer closer()
+
+	r := postings.NewStreamResolver([]*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "app", "loki"),
+		labels.MustNewMatcher(labels.MatchNotEqual, "team", "bar"),
+	}, nil, time.Unix(0, 0), time.Unix(0, 1000))
+
+	res, err := r.Resolve(ctx, secs)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	require.ElementsMatch(t, []int64{0, 1}, streamIDs(res[0]))
+}
+
+// randomEqualPredicates generates 0..2 MatchEqual predicates whose names are
+// drawn from schemaNames, so predicate names collide with label names and
+// exercise the predicate-as-stream-label path.
+func randomEqualPredicates(rng *rand.Rand) []*labels.Matcher {
+	n := rng.Intn(3)
+	out := make([]*labels.Matcher, 0, n)
+	for i := 0; i < n; i++ {
+		name := schemaNames[rng.Intn(len(schemaNames))]
+		value := schemaValues[rng.Intn(len(schemaValues))]
+		out = append(out, labels.MustNewMatcher(labels.MatchEqual, name, value))
+	}
+	return out
+}
+
+// bloomsForPredicates emits, per stream that carries a predicate's name as a
+// label, a bloom posting on that column holding the stream's actual value. This
+// mirrors how structured-metadata blooms are populated, so the bloom gate
+// admits a section exactly when some stream's value tests positive.
+func bloomsForPredicates(groundTruth map[int64]map[string]string, preds []*labels.Matcher) []bloomPosting {
+	var out []bloomPosting
+	for streamID, streamLabels := range groundTruth {
+		for _, p := range preds {
+			if v, ok := streamLabels[p.Name]; ok {
+				out = append(out, bloomPosting{
+					columnName: p.Name,
+					values:     []string{v},
+					streamID:   streamID,
+					obj:        "obj-0",
+					section:    0,
+				})
+			}
+		}
+	}
+	return out
+}
+
+// oracleAmbiguousNames returns the predicate names that exist as a label on any
+// stream in the section, when the section survives. The resolver records a name
+// as ambiguous if it observed that name as a stream label anywhere in the
+// section, independent of which streams ultimately survive, so the oracle scans
+// the whole ground truth rather than only the survivors.
+func oracleAmbiguousNames(groundTruth map[int64]map[string]string, survivors map[int64]struct{}, preds []*labels.Matcher) map[string]struct{} {
+	out := make(map[string]struct{})
+	if len(survivors) == 0 {
+		return out
+	}
+	for _, p := range preds {
+		for _, streamLabels := range groundTruth {
+			if _, ok := streamLabels[p.Name]; ok {
+				out[p.Name] = struct{}{}
+				break
+			}
+		}
+	}
+	return out
+}
+
+// TestStreamResolver_OracleParityWithPredicates verifies the resolver against
+// the oracle on randomized inputs that include equal-predicates colliding with
+// label names, covering the predicate-as-stream-label path and AmbiguousNames.
+func TestStreamResolver_OracleParityWithPredicates(t *testing.T) {
+	ctx := context.Background()
+
+	for seed := int64(0); seed < 300; seed++ {
+		t.Run(fmt.Sprintf("seed_%d", seed), func(t *testing.T) {
+			rng := rand.New(rand.NewSource(seed))
+			nStreams := 200 + rng.Intn(800)
+			nMatchers := 1 + rng.Intn(4)
+
+			labelPostings, groundTruth := generateSection(rng, nStreams)
+			matchers := randomMatchers(rng, nMatchers)
+			preds := randomEqualPredicates(rng)
+			blooms := bloomsForPredicates(groundTruth, preds)
+
+			secs, closer := buildResolveTestSection(t, labelPostings, blooms)
+			defer closer()
+
+			r := postings.NewStreamResolver(matchers, preds, time.Unix(0, 0), time.Unix(0, 2000000))
+			got, err := r.Resolve(ctx, secs)
+			require.NoError(t, err)
+
+			gotIDs := make(map[int64]struct{})
+			gotAmbiguous := make(map[string]struct{})
+			for _, sr := range got {
+				for _, id := range streamIDs(sr) {
+					gotIDs[id] = struct{}{}
+				}
+				for _, name := range sr.AmbiguousNames {
+					gotAmbiguous[name] = struct{}{}
+				}
+			}
+
+			want := oracleMatch(groundTruth, matchers)
+			require.Equal(t, want, gotIDs, "seed=%d matchers=%v preds=%v", seed, matchers, preds)
+
+			wantAmbiguous := oracleAmbiguousNames(groundTruth, want, preds)
+			require.Equal(t, wantAmbiguous, gotAmbiguous, "seed=%d preds=%v", seed, preds)
+		})
+	}
+}
