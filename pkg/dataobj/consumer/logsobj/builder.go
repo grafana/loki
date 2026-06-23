@@ -561,7 +561,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		}
 
 		if len(schemaLabels) > 0 {
-			streamIter, streamRemap, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, schemaLabels, streamsSection.NumStreams())
+			streamIter, streamRemap, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, schemaLabels, streamsSection.NumRows())
 			if err != nil {
 				return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 			}
