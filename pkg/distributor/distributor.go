@@ -162,6 +162,7 @@ type metrics struct {
 	ingesterAppendTimeouts                *prometheus.CounterVec
 	replicationFactor                     prometheus.Gauge
 	streamShardCount                      prometheus.Counter
+	zeroStreamCount                       *prometheus.CounterVec
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
 	// kafka metrics
@@ -193,6 +194,11 @@ func newMetrics(registerer prometheus.Registerer) *metrics {
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
+		zeroStreamCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_push_zero_streams_count",
+			Help:      "Total number of push requests with 0 streams",
+		}, []string{"tenant", "stage"}),
 		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_push_structured_metadata_sanitized_total",
@@ -604,6 +610,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
+		d.m.zeroStreamCount.WithLabelValues(tenantID, "pre-validation").Inc()
 		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
 
@@ -833,6 +840,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	// Return early if none of the streams contained entries
 	if len(streams) == 0 {
+		d.m.zeroStreamCount.WithLabelValues(tenantID, "post-validation").Inc()
 		return &logproto.PushResponse{}, validationErr
 	}
 
