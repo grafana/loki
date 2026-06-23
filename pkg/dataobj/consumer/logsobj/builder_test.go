@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/push"
@@ -602,6 +603,179 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		require.Equal(t, []pair{{"ns-a", "app-a"}, {"ns-a", "app-z"}, {"ns-b", "app-a"}, {"ns-b", "app-z"}}, got)
 	})
 
+	t.Run("stream IDs remapped to sort key order", func(t *testing.T) {
+		cfg := makeCfg(true)
+		overrides := tenantOverrides{"t1": {"label:app"}}
+		schemaLabels := []string{"label:app"}
+
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics())
+		require.NoError(t, err)
+		b.SetOverrides(overrides)
+
+		streamsToAppend := []struct {
+			app      string
+			instance string
+		}{
+			{app: "zoo", instance: "b"},
+			{app: "alpha", instance: "b"},
+			{app: "middle", instance: "a"},
+			{app: "alpha", instance: "a"},
+			{app: "zoo", instance: "a"},
+			{app: "middle", instance: "b"},
+		}
+
+		for streamIdx, stream := range streamsToAppend {
+			entries := make([]push.Entry, 0, 3)
+			for i := range 3 {
+				ts := now.Add(time.Duration(i) * time.Second)
+				entries = append(entries, push.Entry{
+					Timestamp: ts,
+					Line:      fmt.Sprintf("%s/%s/%d/%s", stream.app, stream.instance, i, strings.Repeat("x", 1024)),
+					StructuredMetadata: push.LabelsAdapter{
+						{Name: "trace_id", Value: fmt.Sprintf("trace-%d-%d", streamIdx, i)},
+					},
+				})
+			}
+			require.NoError(t, b.Append("t1", logproto.Stream{
+				Labels:  fmt.Sprintf(`{app=%q,instance=%q}`, stream.app, stream.instance),
+				Entries: entries,
+			}, now))
+		}
+
+		obj1, closer1, err := b.Flush()
+		require.NoError(t, err)
+		defer closer1.Close()
+
+		obj2 := copyAndSort(t, cfg, obj1, overrides)
+
+		type streamSnapshot struct {
+			id     int64
+			labels labels.Labels
+		}
+		readStreams := func(t *testing.T, obj *dataobj.Object) []streamSnapshot {
+			t.Helper()
+
+			var got []streamSnapshot
+			for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
+				return streams.CheckSection(s) && s.Tenant == "t1"
+			}) {
+				streamSec, err := streams.Open(t.Context(), sec)
+				require.NoError(t, err)
+				for res := range streams.IterSection(t.Context(), streamSec) {
+					stream, err := res.Value()
+					require.NoError(t, err)
+					got = append(got, streamSnapshot{id: stream.ID, labels: stream.Labels})
+				}
+			}
+			return got
+		}
+
+		type logSnapshot struct {
+			streamID int64
+			labels   labels.Labels
+			ts       int64
+			line     string
+			metadata string
+		}
+		readLogs := func(t *testing.T, obj *dataobj.Object, streamByID map[int64]labels.Labels) []logSnapshot {
+			t.Helper()
+
+			var got []logSnapshot
+			for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
+				return logs.CheckSection(s) && s.Tenant == "t1"
+			}) {
+				for res := range iterLogsSection(t, sec) {
+					record, err := res.Value()
+					require.NoError(t, err)
+
+					ls, ok := streamByID[record.StreamID]
+					require.Truef(t, ok, "record references unknown stream ID %d", record.StreamID)
+					got = append(got, logSnapshot{
+						streamID: record.StreamID,
+						labels:   ls,
+						ts:       record.Timestamp.UnixNano(),
+						line:     string(record.Line),
+						metadata: record.Metadata.String(),
+					})
+				}
+			}
+			return got
+		}
+
+		streamsBefore := readStreams(t, obj1)
+		streamsAfter := readStreams(t, obj2)
+		require.Len(t, streamsAfter, len(streamsBefore))
+
+		var beforeLabels, afterLabels []string
+		for _, stream := range streamsBefore {
+			beforeLabels = append(beforeLabels, stream.labels.String())
+		}
+
+		streamIDsAfter := make(map[int64]struct{}, len(streamsAfter))
+		for i, stream := range streamsAfter {
+			require.Equal(t, int64(i+1), stream.id)
+			afterLabels = append(afterLabels, stream.labels.String())
+			streamIDsAfter[stream.id] = struct{}{}
+
+			if i > 0 {
+				prevKey, err := computeSortKey(streamsAfter[i-1].labels, schemaLabels)
+				require.NoError(t, err)
+				currKey, err := computeSortKey(stream.labels, schemaLabels)
+				require.NoError(t, err)
+				require.LessOrEqual(t, prevKey, currKey)
+			}
+		}
+		require.ElementsMatch(t, beforeLabels, afterLabels)
+
+		logsBefore := readLogs(t, obj1, func() map[int64]labels.Labels {
+			m := make(map[int64]labels.Labels, len(streamsBefore))
+			for _, stream := range streamsBefore {
+				m[stream.id] = stream.labels
+			}
+			return m
+		}())
+		logsAfter := readLogs(t, obj2, func() map[int64]labels.Labels {
+			m := make(map[int64]labels.Labels, len(streamsAfter))
+			for _, stream := range streamsAfter {
+				m[stream.id] = stream.labels
+			}
+			return m
+		}())
+
+		contentCounts := func(records []logSnapshot) map[string]int {
+			counts := make(map[string]int, len(records))
+			for _, record := range records {
+				key := fmt.Sprintf("%s\x00%d\x00%s\x00%s", record.labels.String(), record.ts, record.line, record.metadata)
+				counts[key]++
+			}
+			return counts
+		}
+		require.Equal(t, contentCounts(logsBefore), contentCounts(logsAfter))
+
+		for i, record := range logsAfter {
+			_, ok := streamIDsAfter[record.streamID]
+			require.Truef(t, ok, "record references unknown stream ID %d", record.streamID)
+
+			if i == 0 {
+				continue
+			}
+			prev := logsAfter[i-1]
+			prevKey, err := computeSortKey(prev.labels, schemaLabels)
+			require.NoError(t, err)
+			currKey, err := computeSortKey(record.labels, schemaLabels)
+			require.NoError(t, err)
+
+			switch {
+			case prevKey != currKey:
+				require.LessOrEqual(t, prevKey, currKey)
+			case prev.streamID != record.streamID:
+				require.LessOrEqual(t, prev.streamID, record.streamID)
+			default:
+				require.LessOrEqual(t, record.ts, prev.ts)
+			}
+		}
+	})
+
 	t.Run("flag off: schema config ignored, DataobjSortOrder used", func(t *testing.T) {
 		cfg := makeCfg(false)
 		overrides := tenantOverrides{"t1": {"label:app"}}
@@ -633,6 +807,65 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			require.Empty(t, schemaLabels, "SchemaLabels must be absent when flag is off")
 		}
 	})
+}
+
+func TestComputeSortKey(t *testing.T) {
+	tests := []struct {
+		name         string
+		labels       labels.Labels
+		schemaLabels []string
+		want         string
+		wantErr      bool
+	}{
+		{
+			name:         "single label",
+			labels:       labels.FromStrings("app", "foo"),
+			schemaLabels: []string{"label:app"},
+			want:         "foo",
+		},
+		{
+			name:         "multiple labels",
+			labels:       labels.FromStrings("namespace", "ns", "app", "foo"),
+			schemaLabels: []string{"label:namespace", "label:app"},
+			want:         "ns\x00foo",
+		},
+		{
+			name:         "missing label",
+			labels:       labels.FromStrings("app", "foo"),
+			schemaLabels: []string{"label:missing"},
+			want:         "",
+		},
+		{
+			name:         "invalid fqn without colon",
+			labels:       labels.FromStrings("app", "foo"),
+			schemaLabels: []string{"app"},
+			wantErr:      true,
+		},
+		{
+			name:         "invalid fqn type",
+			labels:       labels.FromStrings("app", "foo"),
+			schemaLabels: []string{"metadata:app"},
+			wantErr:      true,
+		},
+		{
+			name:         "empty schema labels",
+			labels:       labels.FromStrings("app", "foo"),
+			schemaLabels: nil,
+			want:         "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := computeSortKey(tt.labels, tt.schemaLabels)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func iterLogsSection(t *testing.T, section *dataobj.Section) result.Seq[logs.Record] {
