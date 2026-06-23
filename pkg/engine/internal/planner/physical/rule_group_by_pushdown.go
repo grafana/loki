@@ -1,7 +1,6 @@
 package physical
 
 import (
-	"fmt"
 	"slices"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -22,10 +21,9 @@ func (r *groupByPushdown) apply(root Node) bool {
 
 	var changed bool
 	for _, n := range nodes {
-		fmt.Println("applyGroupByPushdown", n.Type())
 		vecAgg := n.(*VectorAggregation)
 
-		// Cannot push down a without() grouping
+		// VectorAggregation: Cannot push down a without() grouping
 		if vecAgg.Grouping.Without {
 			continue
 		}
@@ -58,30 +56,24 @@ func (r *groupByPushdown) applyToTargets(node Node, grouping []ColumnExpression,
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
-		fmt.Println("applyGroupByPushdownToTargets", node.Type(), node.Grouping.Without, grouping, supportedAggTypes)
 		if !slices.Contains(supportedAggTypes, node.Operation) {
-			fmt.Println("applyGroupByPushdownToTargets", node.Type(), "not supported")
 			return false
 		}
 
-		// Cannot push down into a non-empty without()
 		// RangeAggregation's without(X) cannot be overriden. However, an empty without() is treated as an No grouping instead of Unbounded grouping.
 		if node.Grouping.Without && len(node.Grouping.Columns) > 0 {
-			fmt.Println("applyGroupByPushdownToTargets", node.Type(), "cannot push down into a non-empty without()")
 			return false
 		}
 
 		for _, colExpr := range grouping {
 			colExpr, ok := colExpr.(*ColumnExpr)
 			if !ok {
-				fmt.Println("applyGroupByPushdownToTargets", node.Type(), "not a ColumnExpr")
 				continue
 			}
 
 			var wasAdded bool
 			node.Grouping.Columns, wasAdded = addUniqueColumnExpr(node.Grouping.Columns, colExpr)
 			if wasAdded {
-				fmt.Println("applyGroupByPushdownToTargets", node.Type(), "was added")
 				node.Grouping.Without = false
 				changed = true
 			}
