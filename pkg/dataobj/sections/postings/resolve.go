@@ -157,26 +157,21 @@ func (r *StreamResolver) resolveSection(
 		return nil, nil
 	}
 
+	matchers := make([]matcher, 0, len(positive)+len(emptyCapable))
+	for _, cm := range positive {
+		matchers = append(matchers, positiveMatcher{cm: cm})
+	}
+	for _, m := range emptyCapable {
+		matchers = append(matchers, emptyCapableMatcher{m: m})
+	}
+
 	accums := make(map[sectionKey]*keyAccum)
-	for i, cm := range positive {
-		hits, err := r.scanMatcher(ctx, sec, kindCol, nameCol, valueCol, cm, accums, startNanos, endNanos)
+	for i, m := range matchers {
+		hits, err := m.scan(ctx, r, sec, kindCol, nameCol, valueCol, accums, startNanos, endNanos)
 		if err != nil {
 			return nil, err
 		}
-		if i == 0 {
-			seedResults(accums, hits)
-		} else {
-			intersectResults(accums, hits)
-		}
-		if len(accums) == 0 {
-			return nil, nil
-		}
-	}
-
-	for _, m := range emptyCapable {
-		if err := r.applyEmptyCapable(ctx, sec, kindCol, nameCol, m, accums, startNanos, endNanos); err != nil {
-			return nil, err
-		}
+		combine(accums, hits, i == 0)
 		if len(accums) == 0 {
 			return nil, nil
 		}
@@ -188,26 +183,23 @@ func (r *StreamResolver) resolveSection(
 	return accums, nil
 }
 
-// seedResults sets each key's result to its first positive matcher's hit.
-func seedResults(accums map[sectionKey]*keyAccum, hits map[sectionKey]*memory.Bitmap) {
+// combine folds a matcher's per-key hits into accums. On the first matcher it
+// seeds each key's result; afterwards it ANDs. Keys with no hit, an empty hit,
+// or no prior result are dropped, so the next matcher's scan sees only live
+// keys. This pruning is what lets an empty-capable scan safely skip keys absent
+// from accums.
+func combine(accums map[sectionKey]*keyAccum, hits map[sectionKey]*memory.Bitmap, first bool) {
 	for key, acc := range accums {
 		hit := hits[key]
 		if hit == nil || hit.SetCount() == 0 {
 			delete(accums, key)
 			continue
 		}
-		acc.result = hit
-	}
-}
-
-// intersectResults ANDs each key's running result with the matcher's hit,
-// dropping keys the matcher did not hit. A key created by a later matcher's scan
-// but never seeded by the first matcher has a nil result and is dropped: it
-// cannot satisfy every matcher.
-func intersectResults(accums map[sectionKey]*keyAccum, hits map[sectionKey]*memory.Bitmap) {
-	for key, acc := range accums {
-		hit := hits[key]
-		if acc.result == nil || hit == nil {
+		if first {
+			acc.result = hit
+			continue
+		}
+		if acc.result == nil {
 			delete(accums, key)
 			continue
 		}
@@ -216,89 +208,6 @@ func intersectResults(accums map[sectionKey]*keyAccum, hits map[sectionKey]*memo
 			delete(accums, key)
 		}
 	}
-}
-
-// scanMatcher pushes a positive matcher's value selection into the scan and
-// returns, per logical section key, the union of the matching rows' stream
-// bitmaps. It records the matcher's name as a stream label and folds the
-// timestamp envelope into each key's accumulator.
-func (r *StreamResolver) scanMatcher(
-	ctx context.Context,
-	sec *Section,
-	kindCol, nameCol, valueCol *Column,
-	cm compiledMatcher,
-	accums map[sectionKey]*keyAccum,
-	startNanos, endNanos int64,
-) (map[sectionKey]*memory.Bitmap, error) {
-	name := cm.matcher.Name
-	pred := AndPredicate{
-		Left:  labelNamePredicate(kindCol, nameCol, name),
-		Right: cm.valuePredicate(valueCol),
-	}
-
-	hits := make(map[sectionKey]*memory.Bitmap)
-	err := r.eachRow(ctx, sec, pred, func(row Row) {
-		key := keyOf(row)
-		acc := ensureAccum(accums, key)
-		acc.streamLabels[name] = struct{}{}
-		bits := bitmapOf(row)
-		existing := hits[key]
-		orInto(&existing, bits)
-		hits[key] = existing
-		acc.foldTimestampOverlap(bits, row, startNanos, endNanos)
-	})
-	return hits, err
-}
-
-// applyEmptyCapable scans every row of an empty-capable matcher's name to build,
-// per key, the name's presence and its positive value hit, then ANDs each key's
-// result with the matcher's stream set: rows whose value matches, unioned with
-// the streams that lack the name (the complement of presence within the result).
-func (r *StreamResolver) applyEmptyCapable(
-	ctx context.Context,
-	sec *Section,
-	kindCol, nameCol *Column,
-	m *labels.Matcher,
-	accums map[sectionKey]*keyAccum,
-	startNanos, endNanos int64,
-) error {
-	present := make(map[sectionKey]*memory.Bitmap)
-	positive := make(map[sectionKey]*memory.Bitmap)
-	err := r.eachRow(ctx, sec, labelNamePredicate(kindCol, nameCol, m.Name), func(row Row) {
-		key := keyOf(row)
-		acc, ok := accums[key]
-		if !ok {
-			return // no positive matcher hit this key; it cannot survive
-		}
-		acc.streamLabels[m.Name] = struct{}{}
-		bits := bitmapOf(row)
-		p := present[key]
-		orInto(&p, bits)
-		present[key] = p
-		if m.Matches(row.LabelValue) {
-			h := positive[key]
-			orInto(&h, bits)
-			positive[key] = h
-		}
-		acc.foldTimestampOverlap(bits, row, startNanos, endNanos)
-	})
-	if err != nil {
-		return err
-	}
-
-	for key, acc := range accums {
-		// Streams lacking the name are the complement of presence within the
-		// running result; because result is a subset of the section universe
-		// this is equivalent to complementing against the full universe.
-		missing := acc.result.AndNot(orEmpty(present[key]))
-		hit := positive[key]
-		orInto(&hit, missing)
-		acc.result = acc.result.And(orEmpty(hit))
-		if acc.result.SetCount() == 0 {
-			delete(accums, key)
-		}
-	}
-	return nil
 }
 
 // recordPredicateStreamLabels marks any equal-predicate name that exists as a
@@ -619,6 +528,79 @@ func (cm compiledMatcher) valuePredicate(valueCol *Column) Predicate {
 	default:
 		return FalsePredicate{}
 	}
+}
+
+// matcher produces, per logical section key, the stream bitmap it selects in a
+// section, folding stream labels and the timestamp envelope into accums as a
+// side effect. Positive and empty-capable matchers differ only in how the
+// bitmap is computed; both are combined identically by combine.
+type matcher interface {
+	scan(ctx context.Context, r *StreamResolver, sec *Section, kindCol, nameCol, valueCol *Column, accums map[sectionKey]*keyAccum, startNanos, endNanos int64) (map[sectionKey]*memory.Bitmap, error)
+}
+
+// positiveMatcher pushes its value predicate into the scan and selects the union
+// of matching rows' stream bitmaps per key.
+type positiveMatcher struct{ cm compiledMatcher }
+
+func (pm positiveMatcher) scan(ctx context.Context, r *StreamResolver, sec *Section, kindCol, nameCol, valueCol *Column, accums map[sectionKey]*keyAccum, startNanos, endNanos int64) (map[sectionKey]*memory.Bitmap, error) {
+	name := pm.cm.matcher.Name
+	pred := AndPredicate{
+		Left:  labelNamePredicate(kindCol, nameCol, name),
+		Right: pm.cm.valuePredicate(valueCol),
+	}
+
+	hits := make(map[sectionKey]*memory.Bitmap)
+	err := r.eachRow(ctx, sec, pred, func(row Row) {
+		key := keyOf(row)
+		acc := ensureAccum(accums, key)
+		acc.streamLabels[name] = struct{}{}
+		bits := bitmapOf(row)
+		existing := hits[key]
+		orInto(&existing, bits)
+		hits[key] = existing
+		acc.foldTimestampOverlap(bits, row, startNanos, endNanos)
+	})
+	return hits, err
+}
+
+// emptyCapableMatcher selects rows whose value matches, unioned with streams
+// that lack the label name. "Lacks the name" is the complement of presence
+// within the running result; result is read as input and never modified here.
+type emptyCapableMatcher struct{ m *labels.Matcher }
+
+func (em emptyCapableMatcher) scan(ctx context.Context, r *StreamResolver, sec *Section, kindCol, nameCol, _ *Column, accums map[sectionKey]*keyAccum, startNanos, endNanos int64) (map[sectionKey]*memory.Bitmap, error) {
+	present := make(map[sectionKey]*memory.Bitmap)
+	positive := make(map[sectionKey]*memory.Bitmap)
+	err := r.eachRow(ctx, sec, labelNamePredicate(kindCol, nameCol, em.m.Name), func(row Row) {
+		key := keyOf(row)
+		acc, ok := accums[key]
+		if !ok {
+			return // no positive matcher seeded this key; it cannot survive
+		}
+		acc.streamLabels[em.m.Name] = struct{}{}
+		bits := bitmapOf(row)
+		p := present[key]
+		orInto(&p, bits)
+		present[key] = p
+		if em.m.Matches(row.LabelValue) {
+			h := positive[key]
+			orInto(&h, bits)
+			positive[key] = h
+		}
+		acc.foldTimestampOverlap(bits, row, startNanos, endNanos)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	hits := make(map[sectionKey]*memory.Bitmap)
+	for key, acc := range accums {
+		missing := acc.result.AndNot(orEmpty(present[key]))
+		hit := positive[key]
+		orInto(&hit, missing)
+		hits[key] = orEmpty(hit)
+	}
+	return hits, nil
 }
 
 func bitmapOf(row Row) *memory.Bitmap {
