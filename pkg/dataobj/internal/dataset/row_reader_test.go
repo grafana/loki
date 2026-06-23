@@ -11,7 +11,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/dustin/go-humanize"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -184,6 +186,36 @@ func TestRowReader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
 	expectedLastNames := []string{"[nil]"}
 	require.Equal(t, expectedFirstNames, actualFirstNames)
 	require.Equal(t, expectedLastNames, actualLastNames)
+}
+
+func TestRowReader_BloomMatchPredicate(t *testing.T) {
+	hit := bloom.NewWithEstimates(100, 0.01)
+	hit.Add([]byte("foo"))
+	hitBytes, err := hit.MarshalBinary()
+	require.NoError(t, err)
+
+	miss := bloom.NewWithEstimates(100, 0.01)
+	miss.Add([]byte("bar"))
+	missBytes, err := miss.MarshalBinary()
+	require.NoError(t, err)
+
+	dset, col := buildBinaryColumnDataset(t, [][]byte{hitBytes, missBytes, []byte("not-a-bloom")})
+
+	rows := readAllRows(t, dset, []Column{col}, BloomMatchPredicate{Column: col, Value: []byte("foo")})
+	require.Len(t, rows, 1)
+	require.Equal(t, hitBytes, rows[0].Values[0].Binary())
+}
+
+func TestRowReader_RegexMatchPredicate(t *testing.T) {
+	re, err := labels.NewFastRegexMatcher("foo.*")
+	require.NoError(t, err)
+
+	dset, col := buildBinaryColumnDataset(t, [][]byte{[]byte("foobar"), []byte("baz"), []byte("foo")})
+
+	rows := readAllRows(t, dset, []Column{col}, RegexMatchPredicate{Column: col, Matcher: re})
+	require.Len(t, rows, 2)
+	require.Equal(t, []byte("foobar"), rows[0].Values[0].Binary())
+	require.Equal(t, []byte("foo"), rows[1].Values[0].Binary())
 }
 
 func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
@@ -969,4 +1001,47 @@ func Test_Reader_Stats(t *testing.T) {
 	require.Equal(t, int64(3), obsMap[dataobj.StatDatasetRowsAfterPruning.Name()])
 	require.Equal(t, int64(3), obsMap[dataobj.StatDatasetPrimaryRowsRead.Name()])
 	require.Equal(t, int64(1), obsMap[dataobj.StatDatasetSecondaryRowsRead.Name()])
+}
+
+// buildBinaryColumnDataset creates a dataset with a single binary column containing the given values.
+func buildBinaryColumnDataset(t *testing.T, values [][]byte) (Dataset, Column) {
+	t.Helper()
+
+	builder, err := NewColumnBuilder("bloom_data", BuilderOptions{
+		Type:        ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "binary"},
+		Compression: datasetmd.COMPRESSION_TYPE_NONE,
+		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+		Statistics:  StatisticsOptions{},
+	})
+	require.NoError(t, err)
+
+	for i, val := range values {
+		require.NoError(t, builder.Append(i, BinaryValue(val)))
+	}
+
+	col, err := builder.Flush()
+	require.NoError(t, err)
+
+	dset := FromMemory([]*MemColumn{col})
+	cols, err := result.Collect(dset.ListColumns(context.Background()))
+	require.NoError(t, err)
+	require.Len(t, cols, 1)
+
+	return dset, cols[0]
+}
+
+// readAllRows reads all rows from a dataset with the given columns and predicates.
+func readAllRows(t *testing.T, dset Dataset, columns []Column, predicates ...Predicate) []Row {
+	t.Helper()
+
+	r := NewRowReader(RowReaderOptions{
+		Dataset:    dset,
+		Columns:    columns,
+		Predicates: predicates,
+	})
+	defer r.Close()
+
+	rows, err := readDataset(r, 3)
+	require.NoError(t, err)
+	return rows
 }
