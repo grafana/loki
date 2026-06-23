@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -261,40 +262,118 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 }
 
 func BenchmarkBuilder_CopyAndSort(b *testing.B) {
-	builder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
-
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
-	numRows := 8192   // 16 rows with 1KiB each line and 8KiB section size ~> 2 logs sections per tenant. 48KB total
-	sizeOfRow := 1024 // 1KiB log line
+	numRows := 768 << 10 // 786432 rows per tenant
+	sizeOfRow := 1024
 	tenants := []string{"tenant-a", "tenant-b", "tenant-c"}
+	apps := []string{"alpha", "bravo", "charlie", "delta"}
+	instances := []string{"i-0", "i-1", "i-2"}
 
-	for _, tenant := range tenants {
-		for i := range numRows {
-			err := builder.Append(tenant, logproto.Stream{
-				Labels: `{cluster="test",app="foo"}`,
-				Entries: []push.Entry{{
-					Timestamp: now.Add(time.Duration(i%8) * time.Second),
-					Line:      strings.Repeat("a", 1024), // 1KiB log line
-				}},
-			}, now.Add(time.Duration(i%8)*time.Second))
-			require.NoError(b, err)
-		}
+	// Pre-generate random lines so they don't compress away.
+	// 256 unique lines reused round-robin keeps setup cheap
+	// while defeating columnar compression.
+	//
+	// This is done to avoid all lines from ending up in a single section.
+	// CopyAndSort is only tested when we are merging multiple input sections.
+	const numLines = 256
+	rng := rand.New(rand.NewSource(42))
+	linePool := make([]string, numLines)
+	for i := range linePool {
+		buf := make([]byte, sizeOfRow)
+		rng.Read(buf)
+		linePool[i] = string(buf)
 	}
 
-	dataSize := numRows * sizeOfRow * len(tenants) // 8192 rows * 1KiB each line * 3 tenants = 24MB
-	b.SetBytes(int64(dataSize))
+	// Need ~128K rows per section to reach target size of 128 MiB.
+	// ~6 logs sections per tenant would require ~768K rows per tenant.
+	benchBaseCfg := BuilderBaseConfig{
+		TargetPageSize:          2 << 20,   // 2 MiB
+		TargetObjectSize:        128 << 20, // 128 MiB (compressed)
+		TargetSectionSize:       128 << 20, // 128 MiB (uncompressed)
+		BufferSize:              16 << 20,  // 16 MiB
+		SectionStripeMergeLimit: 2,
+	}
 
-	obj1, closer1, err := builder.Flush()
-	require.NoError(b, err)
-	defer closer1.Close()
+	benchCases := []struct {
+		name      string
+		cfg       BuilderConfig
+		overrides TenantOverrides
+		labels    func(tenant string, i int) string
+	}{
+		{
+			name: "default",
+			cfg: BuilderConfig{
+				BuilderBaseConfig: benchBaseCfg,
+				DataobjSortOrder:  sortTimestampDESC,
+			},
+			labels: func(_ string, i int) string {
+				app := apps[i%len(apps)]
+				inst := instances[i%len(instances)]
+				return fmt.Sprintf(`{cluster="test",app=%q,instance=%q}`, app, inst)
+			},
+		},
+		{
+			name: "sort_schema",
+			cfg: BuilderConfig{
+				BuilderBaseConfig:    benchBaseCfg,
+				DataobjSortOrder:     sortStreamASC,
+				DataobjUseSortSchema: true,
+				AppendOrderedEnabled: true,
+			},
+			overrides: tenantOverrides{
+				"tenant-a": {"label:app"},
+				"tenant-b": {"label:app"},
+				"tenant-c": {"label:app"},
+			},
+			labels: func(_ string, i int) string {
+				app := apps[i%len(apps)]
+				inst := instances[i%len(instances)]
+				return fmt.Sprintf(`{cluster="test",app=%q,instance=%q}`, app, inst)
+			},
+		},
+	}
 
-	newBuilder, _ := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics())
+	for _, bc := range benchCases {
+		b.Run(bc.name, func(b *testing.B) {
+			builder, _ := NewBuilder(bc.cfg, nil, NewBuilderMetrics())
+			if bc.overrides != nil {
+				builder.SetOverrides(bc.overrides)
+			}
 
-	for b.Loop() {
-		newBuilder.Reset()
-		_, closer2, err := newBuilder.CopyAndSort(b.Context(), obj1)
-		require.NoError(b, err)
-		defer closer2.Close()
+			for _, tenant := range tenants {
+				for i := range numRows {
+					err := builder.Append(tenant, logproto.Stream{
+						Labels: bc.labels(tenant, i),
+						Entries: []push.Entry{{
+							Timestamp: now.Add(time.Duration(i%8) * time.Second),
+							Line:      linePool[i%numLines],
+						}},
+					}, now.Add(time.Duration(i%8)*time.Second))
+					require.NoError(b, err)
+				}
+			}
+
+			dataSize := numRows * sizeOfRow * len(tenants)
+			b.SetBytes(int64(dataSize))
+
+			obj1, closer1, err := builder.Flush()
+			require.NoError(b, err)
+			defer closer1.Close()
+
+			newBuilder, _ := NewBuilder(bc.cfg, nil, NewBuilderMetrics())
+			if bc.overrides != nil {
+				newBuilder.SetOverrides(bc.overrides)
+			}
+
+			b.Logf("sections=%d, size=%d", obj1.Sections().Count(logs.CheckSection), obj1.Size())
+			b.ResetTimer()
+			for b.Loop() {
+				newBuilder.Reset()
+				_, closer2, err := newBuilder.CopyAndSort(b.Context(), obj1)
+				require.NoError(b, err)
+				defer closer2.Close()
+			}
+		})
 	}
 }
 
