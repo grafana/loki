@@ -235,15 +235,9 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 	p.plan.graph.Add(scanSet)
 
 	for _, dataObj := range dataObjs {
-		// TODO: Labels are tracked per stream in the dataObj so that this can eventually be smarter.
-		// If we track labels per stream in the ScanTarget, and disambiguate per streamID when
-		// actually scanning, we can be more precise. For now we just disambiguate columns as metadata
-		// when they aren't in any of the label sets seen for this query.
 		ambiguousLbls := map[string]struct{}{}
-		for _, lbls := range dataObj.PredicatesInStreams {
-			for _, lbl := range lbls {
-				ambiguousLbls[lbl] = struct{}{}
-			}
+		for _, lbl := range dataObj.AmbiguousPredicates {
+			ambiguousLbls[lbl] = struct{}{}
 		}
 
 		lblNames := make([]string, 0, len(ambiguousLbls))

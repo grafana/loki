@@ -4,54 +4,79 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	lokimem "github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// postingsIndexSectionsReader resolves section pointers from a postings
-// section. It resolves stream refs matching the stream matchers and time
-// range, reads the pointer rows for those refs, then applies bloom filter
-// predicates to further filter the results.
+var (
+	_ ArrowRecordBatchReader = (*postingsIndexSectionsReader)(nil)
+	_ bloomStatsProvider     = (*postingsIndexSectionsReader)(nil)
+)
+
+// postingsResultSchema is the pointers-section Arrow schema the resolver's
+// results are serialized into, so the postings reader is a drop-in for the
+// legacy reader on the shared ArrowRecordBatchReader seam. The query semantics
+// live in the resolver; this schema is only the wire format consumers already
+// decode via pointers.FromRecordBatch / pointers.InternalLabelsColumn.
+var postingsResultSchema = arrow.NewSchema([]arrow.Field{
+	{Name: "path.path.utf8", Type: arrow.BinaryTypes.String},
+	{Name: "section.int64", Type: arrow.PrimitiveTypes.Int64},
+	{Name: "stream_id.int64", Type: arrow.PrimitiveTypes.Int64},
+	{Name: "stream_id_ref.int64", Type: arrow.PrimitiveTypes.Int64},
+	{Name: "min_timestamp.timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns},
+	{Name: "max_timestamp.timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns},
+	{Name: "row_count.int64", Type: arrow.PrimitiveTypes.Int64},
+	{Name: "uncompressed_size.int64", Type: arrow.PrimitiveTypes.Int64},
+	{Name: pointers.InternalLabelsFieldName, Type: arrow.BinaryTypes.String, Nullable: true},
+}, nil)
+
+// resolvedRow is one pointers-schema row: a single stream within a resolved
+// section, expanded from that section's stream-ID bitmap.
+type resolvedRow struct {
+	objectPath     string
+	sectionIndex   int64
+	streamID       int64
+	minTimestamp   int64
+	maxTimestamp   int64
+	ambiguousNames []string
+}
+
+// postingsIndexSectionsReader resolves matching streams from an index object's
+// postings sections via a streamSelector, expands each result's
+// stream-ID bitmap into one pointers-schema row per stream, and serializes those
+// rows in batchSize chunks. Section lifetime is bound to the underlying
+// *dataobj.Object, so the reader does not close sections itself.
 type postingsIndexSectionsReader struct {
 	logger log.Logger
 	obj    *dataobj.Object
 
-	// Stream matching configuration
-	matchers []*labels.Matcher
-	start    time.Time
-	end      time.Time
-
-	// Bloom filter predicates (filtered to remove stream labels after streams are resolved)
+	matchers   []*labels.Matcher
 	predicates []*labels.Matcher
+	start, end time.Time
+	batchSize  int
 
-	// Reader state
 	initialized bool
 	resolved    bool
 
-	postingsReaders []*postings.Reader
-	batchSize       int
+	openSections []*postings.Section
+	rows         []resolvedRow
+	offset       int
 
-	// refers to the actual references, not to be confused with pointer sections
-	pointerRows   []postings.PointerRow
-	pointerOffset int
-	bloomFiltered bool
+	resolvedRefs uint64
 
-	// Stats
-	bloomRowsRead uint64
-
-	// readSpan for recording observations, it is created once during the first Read.
 	readSpan *xcap.Span
 }
 
@@ -63,26 +88,17 @@ func newPostingsIndexSectionsReader(
 	predicates []*labels.Matcher,
 	batchSize int,
 ) *postingsIndexSectionsReader {
-	// Only keep equal predicates for bloom filtering
-	var equalPredicates []*labels.Matcher
-	for _, p := range predicates {
-		if p.Type == labels.MatchEqual {
-			equalPredicates = append(equalPredicates, p)
-		}
-	}
-
 	if batchSize <= 0 {
 		batchSize = 8192
 	}
-
 	return &postingsIndexSectionsReader{
 		logger:     logger,
 		obj:        obj,
 		matchers:   matchers,
-		predicates: equalPredicates,
-		batchSize:  batchSize,
+		predicates: predicates,
 		start:      start,
 		end:        end,
+		batchSize:  batchSize,
 	}
 }
 
@@ -90,57 +106,32 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	if r.initialized {
 		return nil
 	}
-
-	if err := r.init(ctx); err != nil {
-		return err
-	}
-
-	r.initialized = true
-	return nil
-}
-
-func (r *postingsIndexSectionsReader) init(ctx context.Context) error {
 	if len(r.matchers) == 0 {
+		r.initialized = true
 		return nil
 	}
 
 	ctx, sp := xcap.StartSpan(ctx, tracer, "metastore.postingsIndexSectionsReader.Open")
 	defer sp.End()
 
-	targetTenant, err := user.ExtractOrgID(ctx)
+	tenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return fmt.Errorf("extracting org ID: %w", err)
 	}
 
-	readers := make([]*postings.Reader, 0)
+	var opened []*postings.Section
 	for _, section := range r.obj.Sections() {
-		if section.Tenant != targetTenant {
+		if section.Tenant != tenant || !postings.CheckSection(section) {
 			continue
 		}
-		if !postings.CheckSection(section) {
-			continue
-		}
-
 		sec, err := postings.Open(ctx, section)
 		if err != nil {
-			closeAll(readers)
 			return fmt.Errorf("opening postings section: %w", err)
 		}
-
-		reader := postings.NewReader(postings.ReaderOptions{
-			Columns:   sec.Columns(),
-			Allocator: memory.DefaultAllocator,
-		})
-		if err := reader.Open(ctx); err != nil {
-			closeAll(readers)
-			return fmt.Errorf("opening postings reader: %w", err)
-		}
-
-		readers = append(readers, reader)
+		opened = append(opened, sec)
 	}
-	r.postingsReaders = readers
-
-	// If there are no postings sections for this tenant, Read returns io.EOF.
+	r.openSections = opened
+	r.initialized = true
 	return nil
 }
 
@@ -148,27 +139,29 @@ func (r *postingsIndexSectionsReader) Read(ctx context.Context) (arrow.RecordBat
 	if !r.initialized {
 		return nil, errIndexSectionsReaderNotOpen
 	}
-
 	if r.readSpan == nil {
 		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "metastore.postingsIndexSectionsReader.Read")
 	} else {
 		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
 	}
 
-	if err := r.lazyResolveStreams(ctx); err != nil {
+	if err := r.lazyResolve(ctx); err != nil {
 		return nil, err
 	}
-	if len(r.pointerRows) == 0 {
+	if r.offset >= len(r.rows) {
 		return nil, io.EOF
 	}
 
-	return r.readPointers(ctx)
+	start := r.offset
+	end := min(start+r.batchSize, len(r.rows))
+	batch := r.rows[start:end]
+	r.offset = end
+
+	r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(int64(len(batch))))
+	return sectionResultsToRecordBatch(batch), nil
 }
 
-// lazyResolveStreams resolves stream refs matching the configured matchers and
-// collects stream label names so stream-label predicates can be dropped from
-// the bloom checks.
-func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) error {
+func (r *postingsIndexSectionsReader) lazyResolve(ctx context.Context) error {
 	if r.resolved {
 		return nil
 	}
@@ -177,220 +170,111 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 	startTime := time.Now()
 	defer func() {
 		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
+		r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(startTime).Seconds()))
 	}()
 
-	var matchingStreamRefs map[postings.StreamRef]struct{}
-	streamLabelNames := make(map[string]struct{})
-
-	if len(r.postingsReaders) > 0 {
-		pointerStart := time.Now()
-
-		acc := postings.NewStreamScan(r.matchers, r.start, r.end)
-		for _, reader := range r.postingsReaders {
-			if err := reader.ScanLabelsInto(ctx, acc, r.batchSize); err != nil {
-				return fmt.Errorf("scanning postings labels: %w", err)
-			}
-		}
-		res := acc.Finalize(ctx)
-
-		if r.readSpan != nil {
-			r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(pointerStart).Seconds()))
-		}
-
-		matchingStreamRefs = res.MatchingStreamRefs
-		for _, name := range res.MatchingLabelColumnNames {
-			streamLabelNames[name] = struct{}{}
-		}
-		// Pointer rows come from the same scan; stash them for readPointers.
-		r.pointerRows = res.Pointers
+	selector := newStreamSelector(r.matchers, r.predicates, r.start, r.end)
+	results, err := selector.selectStreams(ctx, r.openSections)
+	if err != nil {
+		return fmt.Errorf("resolving postings sections: %w", err)
 	}
-
-	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(matchingStreamRefs))))
-
-	r.filterBloomPredicates(streamLabelNames)
+	r.rows = expandResults(results)
+	r.resolvedRefs = uint64(len(r.rows))
 	r.resolved = true
+
+	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.rows))))
 	return nil
 }
 
-// filterBloomPredicates removes predicates on stream labels
-func (r *postingsIndexSectionsReader) filterBloomPredicates(streamLabelNames map[string]struct{}) {
-	filtered := make([]*labels.Matcher, 0, len(r.predicates))
-	for _, predicate := range r.predicates {
-		if _, isStreamLabel := streamLabelNames[predicate.Name]; !isStreamLabel {
-			filtered = append(filtered, predicate)
+// expandResults flattens each SectionStreams' stream-ID bitmap into one
+// resolvedRow per set stream ID, carrying the section's timestamp envelope and
+// ambiguous names.
+func expandResults(results []SectionStreams) []resolvedRow {
+	total := 0
+	for _, result := range results {
+		bmap := lokimem.BitmapFrom(result.StreamBitmap, len(result.StreamBitmap)*8, 0)
+		total += bmap.SetCount()
+	}
+
+	rows := make([]resolvedRow, 0, total)
+	for _, result := range results {
+		bmap := lokimem.BitmapFrom(result.StreamBitmap, len(result.StreamBitmap)*8, 0)
+		for id := range bmap.IterValues(true) {
+			rows = append(rows, resolvedRow{
+				objectPath:     result.Section.ObjectPath,
+				sectionIndex:   result.Section.SectionIndex,
+				streamID:       int64(id),
+				minTimestamp:   result.MinTimestamp,
+				maxTimestamp:   result.MaxTimestamp,
+				ambiguousNames: result.AmbiguousNames,
+			})
 		}
 	}
-	r.predicates = filtered
+	return rows
 }
 
-func (r *postingsIndexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBatch, error) {
-	if err := r.lazyFilterPointersByBloom(ctx); err != nil {
-		return nil, err
-	}
-
-	if r.pointerOffset >= len(r.pointerRows) {
-		return nil, io.EOF
-	}
-
-	start := r.pointerOffset
-	end := min(start+r.batchSize, len(r.pointerRows))
-	batch := r.pointerRows[start:end]
-	r.pointerOffset = end
-
-	rec := buildPointersRecord(memory.DefaultAllocator, batch)
-	r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
-	r.bloomRowsRead += uint64(rec.NumRows())
-	return rec, nil
-}
-
-func (r *postingsIndexSectionsReader) lazyFilterPointersByBloom(ctx context.Context) error {
-	if r.bloomFiltered {
-		return nil
-	}
-	if len(r.predicates) == 0 {
-		r.bloomFiltered = true
-		return nil
-	}
-
-	matchedSectionKeys, err := r.readMatchedSectionKeys(ctx)
-	if err != nil {
-		return fmt.Errorf("reading matched section keys: %w", err)
-	}
-	r.pointerRows = filterRowsBySectionKeys(r.pointerRows, matchedSectionKeys)
-	if len(r.pointerRows) == 0 {
-		level.Debug(utillog.WithContext(ctx, r.logger)).Log("msg", "no sections resolved", "reason", "no matching predicates")
-	}
-	r.bloomFiltered = true
-	return nil
-}
-
-// filterRowsBySectionKeys returns the pointer rows whose (object path, section)
-// tuple is present in keys, preserving order.
-func filterRowsBySectionKeys(rows []postings.PointerRow, keys map[SectionKey]struct{}) []postings.PointerRow {
-	n := 0
-	for _, row := range rows {
-		sk := SectionKey{ObjectPath: row.ObjectPath, SectionIdx: row.SectionIndex}
-		if _, ok := keys[sk]; ok {
-			rows[n] = row
-			n++
-		}
-	}
-	return rows[:n]
-}
-
-// readMatchedSectionKeys reads bloom rows from the postings section and
-// returns the section keys matching every bloom predicate.
-func (r *postingsIndexSectionsReader) readMatchedSectionKeys(ctx context.Context) (map[SectionKey]struct{}, error) {
-	predicateNames := make([]string, 0, len(r.predicates))
-	for _, predicate := range r.predicates {
-		predicateNames = append(predicateNames, predicate.Name)
-	}
-
-	// Each bloom row is self-contained, so reading the bloom rows from every
-	// postings section and matching them together is equivalent to a single
-	// section: the matched keys are simply the union across sections.
-	var recs []arrow.RecordBatch
-	for _, reader := range r.postingsReaders {
-		rec, err := reader.ReadBloomRowsForColumns(ctx, predicateNames)
-		if err != nil {
-			return nil, fmt.Errorf("reading postings bloom rows: %w", err)
-		}
-		if rec == nil || rec.NumRows() == 0 {
-			continue
-		}
-		recs = append(recs, rec)
-	}
-	defer func() {
-		for _, rec := range recs {
-			if rec != nil {
-				rec.Release()
-			}
-		}
-	}()
-	if len(recs) == 0 {
-		return map[SectionKey]struct{}{}, nil
-	}
-
-	postingsKeys, err := postings.MatchSections(ctx, recs, r.predicates)
-	if err != nil {
-		return nil, fmt.Errorf("matching postings bloom rows: %w", err)
-	}
-
-	matched := make(map[SectionKey]struct{}, len(postingsKeys))
-	for k := range postingsKeys {
-		matched[SectionKey{ObjectPath: k.ObjectPath, SectionIdx: k.SectionIndex}] = struct{}{}
-	}
-	return matched, nil
-}
-
-// Close releases the postings reader held by this postingsIndexSectionsReader.
 func (r *postingsIndexSectionsReader) Close() {
-	closeAll(r.postingsReaders)
-
+	r.openSections = nil
 	if r.readSpan != nil {
 		r.readSpan.End()
 	}
 }
 
 func (r *postingsIndexSectionsReader) totalReadRows() uint64 {
-	return r.bloomRowsRead
+	return r.resolvedRefs
 }
 
-const (
-	streamLabelNamesField        = "__streamLabelNames__"
-	pointerKindStreamIndex int64 = 1
-)
+// sectionResultsToRecordBatch serializes expanded per-stream rows into the
+// pointers-section Arrow schema. stream_id is the index-internal stream ID,
+// which the resolver does not carry and no consumer reads from this batch, so it
+// is set to 0.
+func sectionResultsToRecordBatch(rows []resolvedRow) arrow.RecordBatch {
+	n := len(rows)
+	pathB := array.NewStringBuilder(memory.DefaultAllocator)
+	sectionB := array.NewInt64Builder(memory.DefaultAllocator)
+	streamIDB := array.NewInt64Builder(memory.DefaultAllocator)
+	streamIDRefB := array.NewInt64Builder(memory.DefaultAllocator)
+	minTsB := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
+	maxTsB := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
+	rowCountB := array.NewInt64Builder(memory.DefaultAllocator)
+	sizeB := array.NewInt64Builder(memory.DefaultAllocator)
+	labelsB := array.NewStringBuilder(memory.DefaultAllocator)
 
-var postingsPointersSchema = newPointersRecordSchema()
-
-func pointersRecordSchema() *arrow.Schema {
-	return postingsPointersSchema
-}
-
-func newPointersRecordSchema() *arrow.Schema {
-	mkField := func(label, typeName string, dty arrow.DataType) arrow.Field {
-		name := typeName + "." + dty.Name()
-		if label != "" {
-			name = label + "." + name
-		}
-		return arrow.Field{Name: name, Type: dty, Nullable: true}
-	}
-	fields := []arrow.Field{
-		// The path column carries Tag="path"; all others have an empty Tag.
-		mkField("path", "path", arrow.BinaryTypes.String),
-		mkField("", "section", arrow.PrimitiveTypes.Int64),
-		mkField("", "pointer_kind", arrow.PrimitiveTypes.Int64),
-		mkField("", "stream_id", arrow.PrimitiveTypes.Int64),
-		mkField("", "stream_id_ref", arrow.PrimitiveTypes.Int64),
-		mkField("", "min_timestamp", arrow.FixedWidthTypes.Timestamp_ns),
-		mkField("", "max_timestamp", arrow.FixedWidthTypes.Timestamp_ns),
-		mkField("", "row_count", arrow.PrimitiveTypes.Int64),
-		mkField("", "uncompressed_size", arrow.PrimitiveTypes.Int64),
-		// Internal label-names column; null here, populated by upstream label
-		// resolution. Kept for schema parity with the streams+pointers path.
-		{Name: streamLabelNamesField, Type: arrow.BinaryTypes.String, Nullable: true},
-	}
-	return arrow.NewSchema(fields, nil)
-}
-
-// buildPointersRecord builds a batch in [pointersRecordSchema] field order from
-// the pointer rows resolved out of the postings section.
-func buildPointersRecord(alloc memory.Allocator, rows []postings.PointerRow) arrow.RecordBatch {
-	rb := array.NewRecordBuilder(alloc, pointersRecordSchema())
+	pathB.Reserve(n)
+	sectionB.Reserve(n)
+	streamIDB.Reserve(n)
+	streamIDRefB.Reserve(n)
+	minTsB.Reserve(n)
+	maxTsB.Reserve(n)
+	rowCountB.Reserve(n)
+	sizeB.Reserve(n)
+	labelsB.Reserve(n)
 
 	for _, row := range rows {
-		rb.Field(0).(*array.StringBuilder).Append(row.ObjectPath)
-		rb.Field(1).(*array.Int64Builder).Append(row.SectionIndex)
-		rb.Field(2).(*array.Int64Builder).Append(pointerKindStreamIndex)
-		rb.Field(3).(*array.Int64Builder).Append(row.StreamID)
-		rb.Field(4).(*array.Int64Builder).Append(row.StreamID)
-		rb.Field(5).(*array.TimestampBuilder).Append(arrow.Timestamp(row.MinTimestamp))
-		rb.Field(6).(*array.TimestampBuilder).Append(arrow.Timestamp(row.MaxTimestamp))
-		rb.Field(7).(*array.Int64Builder).Append(0)
-		rb.Field(8).(*array.Int64Builder).Append(0)
-		// __streamLabelNames__: null here, populated by upstream label resolution.
-		rb.Field(9).(*array.StringBuilder).AppendNull()
+		pathB.Append(row.objectPath)
+		sectionB.Append(row.sectionIndex)
+		streamIDB.Append(0)
+		streamIDRefB.Append(row.streamID)
+		minTsB.Append(arrow.Timestamp(row.minTimestamp))
+		maxTsB.Append(arrow.Timestamp(row.maxTimestamp))
+		rowCountB.Append(0)
+		sizeB.Append(0)
+		if len(row.ambiguousNames) > 0 {
+			labelsB.Append(strings.Join(row.ambiguousNames, ","))
+		} else {
+			labelsB.AppendNull()
+		}
 	}
 
-	return rb.NewRecordBatch()
+	return array.NewRecordBatch(postingsResultSchema, []arrow.Array{
+		pathB.NewArray(),
+		sectionB.NewArray(),
+		streamIDB.NewArray(),
+		streamIDRefB.NewArray(),
+		minTsB.NewArray(),
+		maxTsB.NewArray(),
+		rowCountB.NewArray(),
+		sizeB.NewArray(),
+		labelsB.NewArray(),
+	}, int64(n))
 }

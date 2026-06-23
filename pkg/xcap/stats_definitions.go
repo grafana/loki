@@ -74,11 +74,9 @@ var (
 	StatMetastoreSectionPointersRead     = NewStatisticInt64("metastore.sections.pointers.read", AggregationTypeSum)
 	StatMetastoreSectionPointersReadTime = NewStatisticFloat64("metastore.sections.pointers.read.duration", AggregationTypeSum)
 
-	StatPostingsPointersRead             = NewStatisticInt64("postings.pointers.read", AggregationTypeSum)
-	StatPostingsPointersReadTime         = NewStatisticFloat64("postings.pointers.read.duration", AggregationTypeSum)
-	StatPostingsBloomRowsRead            = NewStatisticInt64("postings.bloom.rows.read", AggregationTypeSum)
-	StatPostingsLabelsResolved           = NewStatisticInt64("postings.labels.resolved", AggregationTypeSum)
-	StatPostingsBloomDeserializeFailures = NewStatisticInt64("postings.bloom.deserialize.failures", AggregationTypeSum)
+	// Bloom rows scanned while resolving postings sections. The pointer and
+	// stream counts are already covered by the metastore.sections.* stats above.
+	StatPostingsBloomRowsRead = NewStatisticInt64("postings.bloom.rows.read", AggregationTypeSum)
 )
 
 // Task scheduling statistics.
