@@ -391,3 +391,47 @@ func TestBitmap_SetAlgebra(t *testing.T) {
 	data, _ := stale.Or(build()).BytesTrimmed()
 	require.Equal(t, uint8(0b0000_0011), data[0])
 }
+
+func TestOrEmpty(t *testing.T) {
+	require.NotNil(t, memory.OrEmpty(nil), "nil yields a usable empty bitmap")
+	require.Equal(t, 0, memory.OrEmpty(nil).SetCount())
+
+	b := memory.NewBitmap(nil, 0)
+	require.Same(t, &b, memory.OrEmpty(&b), "non-nil input is returned unchanged")
+}
+
+func TestOrInto(t *testing.T) {
+	build := func(bits ...int) *memory.Bitmap {
+		b := memory.NewBitmap(nil, 0)
+		maxBit := -1
+		for _, x := range bits {
+			if x > maxBit {
+				maxBit = x
+			}
+		}
+		b.Resize(maxBit + 1)
+		for _, x := range bits {
+			b.Set(x, true)
+		}
+		return &b
+	}
+	ids := func(b *memory.Bitmap) []int {
+		var out []int
+		for id := range b.IterValues(true) {
+			out = append(out, id)
+		}
+		return out
+	}
+
+	// nil dst is seeded with a fresh union of src, not an alias of src.
+	var dst *memory.Bitmap
+	src := build(1, 3)
+	memory.OrInto(&dst, src)
+	require.Equal(t, []int{1, 3}, ids(dst))
+	src.Set(5, true)
+	require.Equal(t, []int{1, 3}, ids(dst), "dst must not alias src's backing array")
+
+	// non-nil dst accumulates the union.
+	memory.OrInto(&dst, build(3, 7))
+	require.Equal(t, []int{1, 3, 7}, ids(dst))
+}

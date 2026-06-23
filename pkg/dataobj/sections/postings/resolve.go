@@ -59,25 +59,6 @@ type keyAccum struct {
 	hasTS        bool
 }
 
-// orInto unions src into the bitmap at dst. The result is always a fresh bitmap
-// owned by dst, so callers never alias src's backing array.
-func orInto(dst **memory.Bitmap, src *memory.Bitmap) {
-	if *dst == nil {
-		*dst = orEmpty(nil).Or(src)
-	} else {
-		*dst = (*dst).Or(src)
-	}
-}
-
-// orEmpty returns b, or an empty bitmap when b is nil, so set-algebra operands
-// are never nil.
-func orEmpty(b *memory.Bitmap) *memory.Bitmap {
-	if b == nil {
-		return &memory.Bitmap{}
-	}
-	return b
-}
-
 // Resolve scans the already-opened sections and returns matching SectionResults,
 // one per logical section that has at least one matching stream. The caller owns
 // opening and closing the sections; Resolve opens and closes its own RowReaders.
@@ -270,7 +251,7 @@ func (acc *keyAccum) foldTimestampOverlap(bits *memory.Bitmap, row Row, startNan
 	if hasBounds && (row.MaxTimestamp < startNanos || row.MinTimestamp > endNanos) {
 		return
 	}
-	orInto(&acc.timeOverlap, bits)
+	memory.OrInto(&acc.timeOverlap, bits)
 	if !acc.hasTS {
 		acc.minTS, acc.maxTS, acc.hasTS = row.MinTimestamp, row.MaxTimestamp, true
 		return
@@ -579,7 +560,7 @@ func (pm positiveMatcher) scan(ctx context.Context, r *StreamResolver, sec *Sect
 		acc.streamLabels[name] = struct{}{}
 		bits := bitmapOf(row)
 		existing := hits[key]
-		orInto(&existing, bits)
+		memory.OrInto(&existing, bits)
 		hits[key] = existing
 		acc.foldTimestampOverlap(bits, row, startNanos, endNanos)
 	})
@@ -603,11 +584,11 @@ func (em emptyCapableMatcher) scan(ctx context.Context, r *StreamResolver, sec *
 		acc.streamLabels[em.m.Name] = struct{}{}
 		bits := bitmapOf(row)
 		p := present[key]
-		orInto(&p, bits)
+		memory.OrInto(&p, bits)
 		present[key] = p
 		if em.m.Matches(row.LabelValue) {
 			h := positive[key]
-			orInto(&h, bits)
+			memory.OrInto(&h, bits)
 			positive[key] = h
 		}
 		acc.foldTimestampOverlap(bits, row, startNanos, endNanos)
@@ -618,10 +599,10 @@ func (em emptyCapableMatcher) scan(ctx context.Context, r *StreamResolver, sec *
 
 	hits := make(map[sectionKey]*memory.Bitmap)
 	for key, acc := range accums {
-		missing := acc.result.AndNot(orEmpty(present[key]))
+		missing := acc.result.AndNot(memory.OrEmpty(present[key]))
 		hit := positive[key]
-		orInto(&hit, missing)
-		hits[key] = orEmpty(hit)
+		memory.OrInto(&hit, missing)
+		hits[key] = memory.OrEmpty(hit)
 	}
 	return hits, nil
 }

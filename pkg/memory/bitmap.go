@@ -369,3 +369,23 @@ func (bmap *Bitmap) combine(other *Bitmap, op func(a, b uint8) uint8, n int) *Bi
 	}
 	return &out
 }
+
+// OrEmpty returns b, or a fresh empty Bitmap when b is nil, so set-algebra
+// operands are never nil.
+func OrEmpty(b *Bitmap) *Bitmap {
+	if b == nil {
+		return &Bitmap{}
+	}
+	return b
+}
+
+// OrInto unions src into the Bitmap at dst, handling a nil *dst. The result is
+// always a fresh Bitmap owned by dst, so callers never alias src's backing
+// array.
+func OrInto(dst **Bitmap, src *Bitmap) {
+	if *dst == nil {
+		*dst = OrEmpty(nil).Or(src)
+	} else {
+		*dst = (*dst).Or(src)
+	}
+}
