@@ -50,7 +50,7 @@ require (
 	github.com/hashicorp/consul/api v1.33.7 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jmespath/go-jmespath v0.4.0
-	github.com/joncrlsn/dque v0.0.0-20211108142734-c2ef48c5192a
+	github.com/joncrlsn/dque v0.0.0-20241024143830-7723fd131a64
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.18.6
 	github.com/klauspost/pgzip v1.2.6
