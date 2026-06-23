@@ -102,6 +102,10 @@ func (r *StreamResolver) Resolve(ctx context.Context, sections []*Section) ([]Se
 
 	startNanos, endNanos := r.start.UnixNano(), r.end.UnixNano()
 
+	// perSection is indexed by physical postings section; each entry maps the
+	// logical (object, sectionIndex) keys found in that physical section to
+	// their accumulators. "section" is overloaded: sections here are physical
+	// postings sections, while sectionKey identifies a logical section.
 	perSection := make([]map[sectionKey]*keyAccum, len(sections))
 	g, ctx := errgroup.WithContext(ctx)
 	for i := range sections {
@@ -118,6 +122,10 @@ func (r *StreamResolver) Resolve(ctx context.Context, sections []*Section) ([]Se
 		return nil, err
 	}
 
+	// predicateLabels holds, per key, the equal-predicate names found as KindLabel
+	// rows (not bloom rows) in the section. Such a predicate is resolved by label
+	// matching rather than the bloom gate, and surfaces in AmbiguousNames, so the
+	// names are merged into streamLabels before finalize.
 	bloomSurvivors, predicateLabels, err := r.bloomGate(ctx, sections, perSection)
 	if err != nil {
 		return nil, err
