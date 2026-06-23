@@ -149,8 +149,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                        --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
                        --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
                        --shas-to-tag "$(echo $OUTPUTS_PR_NUMBER | tr -d '"'):$(echo ${SHA} | tr -d '"')" \
-                       --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
-                       --group-pull-request-title-pattern "chore\${scope}: Release\${component} \${version}")
+                       --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}")
                      echo "$output"
                      if [[ "$output" == "[]" || -z "$output" ]]; then
                        echo "::error::release-please did not create a release"
