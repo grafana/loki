@@ -408,7 +408,7 @@ func mkChks(n int) (chks []ChunkMeta) {
 }
 
 func chkFrom(i int) ChunkMeta {
-	const ingestedAtOffset = 1000
+	const ingestedAtOffset = 20_000 * ingestedAtDayMilliseconds
 
 	return ChunkMeta{
 		Checksum:   uint32(i),
@@ -417,6 +417,14 @@ func chkFrom(i int) ChunkMeta {
 		IngestedAt: ingestedAtOffset + int64(i),
 		KB:         uint32(i),
 		Entries:    uint32(i),
+	}
+}
+
+func roundIngestedAtUpToDay(chks []ChunkMeta) {
+	for i := range chks {
+		if chks[i].IngestedAt != 0 {
+			chks[i].IngestedAt = ceilEpochDay(chks[i].IngestedAt) * ingestedAtDayMilliseconds
+		}
 	}
 }
 
@@ -454,6 +462,8 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 							for i := range chks {
 								chks[i].IngestedAt = 0
 							}
+						} else {
+							roundIngestedAtUpToDay(chks)
 						}
 						require.Equal(t, chks, dst)
 					}
@@ -464,20 +474,20 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 	}
 }
 
-func TestChunkEncodingIngestedAtDelta(t *testing.T) {
-	// IngestedAt is delta-encoded against MaxTime, so values on either side of
-	// MaxTime and far from it must round-trip exactly.
+func TestChunkEncodingIngestedAtDayDelta(t *testing.T) {
+	// IngestedAt is stored at day precision, rounded up, using a day delta from MaxTime.
+	baseDay := int64(20_000 * ingestedAtDayMilliseconds)
 	for _, tc := range []struct {
 		desc string
 		chk  ChunkMeta
 	}{
 		{
-			desc: "ingested shortly after maxtime",
-			chk:  ChunkMeta{MinTime: 100, MaxTime: 200, IngestedAt: 5200, KB: 1, Entries: 1, Checksum: 1},
+			desc: "ingested same day as maxtime",
+			chk:  ChunkMeta{MinTime: baseDay, MaxTime: baseDay + 200, IngestedAt: baseDay + 5200, KB: 1, Entries: 1, Checksum: 1},
 		},
 		{
-			desc: "ingested before maxtime (clock drift / future-dated entries)",
-			chk:  ChunkMeta{MinTime: 100, MaxTime: 5000, IngestedAt: 4000, KB: 1, Entries: 1, Checksum: 1},
+			desc: "ingested day before maxtime",
+			chk:  ChunkMeta{MinTime: baseDay, MaxTime: baseDay + ingestedAtDayMilliseconds, IngestedAt: baseDay, KB: 1, Entries: 1, Checksum: 1},
 		},
 		{
 			desc: "large backfill delta",
@@ -490,6 +500,9 @@ func TestChunkEncodingIngestedAtDelta(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			chks := []ChunkMeta{tc.chk}
+			expected := append([]ChunkMeta(nil), chks...)
+			roundIngestedAtUpToDay(expected)
+
 			var w Creator
 			w.Version = FormatV4
 			primary := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
@@ -501,7 +514,56 @@ func TestChunkEncodingIngestedAtDelta(t *testing.T) {
 
 			dst := []ChunkMeta{}
 			require.Nil(t, dec.readChunks(FormatV4, &decbuf, 0, 0, math.MaxInt64, &dst))
-			require.Equal(t, chks, dst)
+			require.Equal(t, expected, dst)
+		})
+	}
+}
+
+func TestEncodeIngestedAtDayDelta(t *testing.T) {
+	baseDay := int64(20_000 * ingestedAtDayMilliseconds)
+	for _, tc := range []struct {
+		desc       string
+		ingestedAt int64
+		maxTime    int64
+		expected   uint64
+	}{
+		{
+			desc:       "zero sentinel",
+			ingestedAt: 0,
+			maxTime:    baseDay,
+			expected:   0,
+		},
+		{
+			// Sub-day ingestion rounds up to the next day boundary (day +1 vs maxTime).
+			desc:       "same day rounds up",
+			ingestedAt: baseDay + 1000,
+			maxTime:    baseDay + 2000,
+			expected:   3,
+		},
+		{
+			desc:       "two days after maxtime",
+			ingestedAt: baseDay + 2*ingestedAtDayMilliseconds,
+			maxTime:    baseDay,
+			expected:   5,
+		},
+		{
+			desc:       "previous day (future-dated entries)",
+			ingestedAt: baseDay,
+			maxTime:    baseDay + ingestedAtDayMilliseconds,
+			expected:   2,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			encoded := encodeIngestedAtDayDelta(tc.ingestedAt, tc.maxTime)
+			require.Equal(t, tc.expected, encoded)
+			require.Less(t, encoded, uint64(128))
+
+			decoded := decodeIngestedAtDayDelta(encoded, tc.maxTime)
+			if tc.ingestedAt == 0 {
+				require.Zero(t, decoded)
+			} else {
+				require.Equal(t, ceilEpochDay(tc.ingestedAt)*ingestedAtDayMilliseconds, decoded)
+			}
 		})
 	}
 }

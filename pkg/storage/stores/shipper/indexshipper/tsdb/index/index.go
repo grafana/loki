@@ -586,6 +586,8 @@ func (w *Creator) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Enc
 	primary.PutBytes(scratch.Get())
 }
 
+const ingestedAtDayMilliseconds = int64((24 * time.Hour) / time.Millisecond)
+
 func (w *Creator) encodeChunkMeta(dst *encoding.Encbuf, chk ChunkMeta, prevChunkMaxt int64) {
 	// Encode the diff against previous chunk as varint
 	// instead of uvarint because chunks may overlap.
@@ -595,8 +597,63 @@ func (w *Creator) encodeChunkMeta(dst *encoding.Encbuf, chk ChunkMeta, prevChunk
 	dst.PutUvarint32(chk.Entries)
 	dst.PutBE32(chk.Checksum)
 	if w.Version >= FormatV4 {
-		dst.PutVarint64(chk.IngestedAt - chk.MaxTime)
+		dst.PutUvarint64(encodeIngestedAtDayDelta(chk.IngestedAt, chk.MaxTime))
 	}
+}
+
+func encodeIngestedAtDayDelta(ingestedAt, maxTime int64) uint64 {
+	if ingestedAt == 0 {
+		return 0
+	}
+
+	// Round IngestedAt UP to its UTC day boundary so the stored value is never
+	// earlier than the true ingestion time. Retention measured from ingestion
+	// must never expire a chunk before its window elapses, so any sub-day
+	// rounding has to over-retain (keep at most ~1 day longer) rather than
+	// under-retain. maxTime is decoded at full precision, so flooring it here
+	// only keeps the encoded delta small.
+	deltaDays := ceilEpochDay(ingestedAt) - unixEpochDay(maxTime)
+	return encodeSignedDayDelta(deltaDays) + 1
+}
+
+func decodeIngestedAtDayDelta(encoded uint64, maxTime int64) int64 {
+	if encoded == 0 {
+		return 0
+	}
+
+	deltaDays := decodeSignedDayDelta(encoded - 1)
+	return (unixEpochDay(maxTime) + deltaDays) * ingestedAtDayMilliseconds
+}
+
+func unixEpochDay(t int64) int64 {
+	if t >= 0 {
+		return t / ingestedAtDayMilliseconds
+	}
+	return (t - ingestedAtDayMilliseconds + 1) / ingestedAtDayMilliseconds
+}
+
+// ceilEpochDay returns the UTC epoch day covering t, rounding up. Timestamps
+// already on a day boundary map to their own day, so re-encoding an
+// already-rounded IngestedAt is stable.
+func ceilEpochDay(t int64) int64 {
+	day := unixEpochDay(t)
+	if day*ingestedAtDayMilliseconds == t {
+		return day
+	}
+	return day + 1
+}
+
+// encodeSignedDayDelta maps signed day deltas to unsigned values that stay
+// small for both positive and negative deltas. This lets uvarint encode common
+// values compactly: 0 days -> 0, -1 day -> 1, +1 day -> 2. The ingestion-time
+// field stores this value plus one so encoded zero remains a sentinel for
+// "ingestion timestamp unavailable".
+func encodeSignedDayDelta(deltaDays int64) uint64 {
+	return uint64(deltaDays<<1) ^ uint64(deltaDays>>63)
+}
+
+func decodeSignedDayDelta(encoded uint64) int64 {
+	return int64(encoded>>1) ^ -int64(encoded&1)
 }
 
 func (w *Creator) startSymbols() error {
@@ -2514,7 +2571,7 @@ func readChunkMetaWithForcedMintime(version int, d *encoding.Decbuf, mint int64,
 	chunkMeta.Checksum = d.Be32()
 	chunkMeta.IngestedAt = 0
 	if version >= FormatV4 {
-		chunkMeta.IngestedAt = chunkMeta.MaxTime + d.Varint64()
+		chunkMeta.IngestedAt = decodeIngestedAtDayDelta(d.Uvarint64(), chunkMeta.MaxTime)
 	}
 
 	if d.Err() != nil {
