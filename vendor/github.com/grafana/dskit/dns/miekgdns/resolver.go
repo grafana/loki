@@ -61,8 +61,8 @@ type Resolver struct {
 
 // NewResolver creates a new Resolver that uses the provided resolv.conf configuration
 // to perform DNS queries. Configuration from resolv.conf will be periodically reloaded.
-func NewResolver(resolvConf string, logger log.Logger) *Resolver {
-	return NewResolverWithClient(resolvConf, logger, defaultResolvConfReload, NewPoolingClient(defaultMaxConnsPerHost))
+func NewResolver(resolvConf string, maxIdle uint, logger log.Logger) *Resolver {
+	return NewResolverWithClient(resolvConf, logger, defaultResolvConfReload, NewPoolingClient(maxIdle))
 }
 
 // NewResolverWithClient creates a new Resolver that uses the provided resolv.conf configuration,
@@ -290,14 +290,14 @@ func defaultClientConfig() *dns.ClientConfig {
 // PoolingClient is a DNS client that pools TCP connections to each nameserver.
 type PoolingClient struct {
 	network string
-	maxOpen int
+	maxOpen uint
 
 	mtx   sync.Mutex
 	pools map[string]*Pool
 }
 
 // NewPoolingClient creates a new PoolingClient instance that keeps up to maxOpen connections to each nameserver.
-func NewPoolingClient(maxOpen int) *PoolingClient {
+func NewPoolingClient(maxOpen uint) *PoolingClient {
 	return &PoolingClient{
 		network: "tcp",
 		maxOpen: maxOpen,
@@ -370,7 +370,7 @@ type Pool struct {
 }
 
 // NewPool creates a new DNS connection Pool, keeping up to maxConns open.
-func NewPool(maxConns int) *Pool {
+func NewPool(maxConns uint) *Pool {
 	return &Pool{
 		conns: make(chan *dns.Conn, maxConns),
 	}

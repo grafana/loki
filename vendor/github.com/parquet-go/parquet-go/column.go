@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 
 	"github.com/parquet-go/parquet-go/compress"
@@ -33,10 +34,10 @@ type Column struct {
 	encoding    encoding.Encoding
 	compression compress.Codec
 
-	depth              int8
+	depth              byte
 	maxRepetitionLevel byte
 	maxDefinitionLevel byte
-	index              int16
+	index              uint16
 }
 
 // Type returns the type of the column.
@@ -99,7 +100,7 @@ func (c *Column) Pages() Pages {
 }
 
 func (c *Column) PagesFrom(reader io.ReaderAt) Pages {
-	if c.index < 0 || c.file == nil {
+	if c.index == math.MaxUint16 || c.file == nil {
 		return emptyPages{}
 	}
 	r := &columnPages{
@@ -178,7 +179,12 @@ func (c *Column) MaxDefinitionLevel() int { return int(c.maxDefinitionLevel) }
 
 // Index returns the position of the column in a row. Only leaf columns have a
 // column index, the method returns -1 when called on non-leaf columns.
-func (c *Column) Index() int { return int(c.index) }
+func (c *Column) Index() int {
+	if c.index == math.MaxUint16 {
+		return -1
+	}
+	return int(c.index)
+}
 
 // GoType returns the Go type that best represents the parquet column.
 func (c *Column) GoType() reflect.Type { return goTypeOf(c) }
@@ -249,18 +255,18 @@ func (c *Column) setLevels(depth, repetition, definition, index int) (int, error
 		}
 	}
 
-	c.depth = int8(depth)
+	c.depth = byte(depth)
 	c.maxRepetitionLevel = byte(repetition)
 	c.maxDefinitionLevel = byte(definition)
 	depth++
 
 	// Only leaf columns get a column index.
 	if isLeafSchemaElement(c.schema) {
-		c.index = int16(index)
+		c.index = uint16(index)
 		index++
 	} else {
 		// Groups (including empty groups) don't get a column index
-		c.index = -1
+		c.index = math.MaxUint16
 	}
 
 	var err error
@@ -546,7 +552,7 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 		case deprecated.Bson:
 			return &bsonType{}
 		case deprecated.Interval:
-			// TODO
+			return &intervalType{}
 		}
 	}
 

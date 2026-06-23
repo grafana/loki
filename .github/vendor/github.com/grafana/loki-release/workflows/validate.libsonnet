@@ -30,7 +30,7 @@ local setupValidationDeps = function(job) job {
   ] + job.steps,
 };
 
-local validationJob = _validationJob(false);
+local validationJob = _validationJob();
 
 {
   local validationMakeStep = function(name, target)
@@ -175,7 +175,7 @@ local validationJob = _validationJob(false);
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',
           'only-new-issues': false,  // we want a PR to fail if the target branch fails
-          args: '-v --timeout 15m --build-tags linux,promtail_journal_enabled',
+          args: '-v --timeout 15m --build-tags linux',
         }),
       ],
     )

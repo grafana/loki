@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 )
 
 const messageSizeLargerErrFmt = "%w than max (%d vs %d)"

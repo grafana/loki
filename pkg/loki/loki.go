@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/modules"
@@ -443,6 +444,7 @@ type Loki struct {
 	dataObjConsumerRing                 *ring.Ring
 	dataObjConsumerPartitionRing        *ring.PartitionInstanceRing
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
+	dataObjConsumerPartitionKVClient    kv.Client
 	dataObjIndexBuilder                 *dataobjindex.Builder
 	dataObjCompactionPlanner            *enginecompactor.Planner
 	dataObjCompactionWorker             *enginecompactor.Worker
@@ -693,9 +695,7 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 
 		// Ingester has a special check that makes sure that it was able to register into the ring,
 		// and that all other ring entries are OK too.
-		// In inmemory dataobj mode the write path bypasses the ingester entirely, so skip this gate.
-		inMemoryDataObjMode := t.Cfg.DataObj.Enabled && t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory
-		if t.Ingester != nil && !inMemoryDataObjMode {
+		if t.Ingester != nil {
 			if err := t.Ingester.CheckReady(r.Context()); err != nil {
 				http.Error(w, fmt.Sprintf("Ingester not ready: %s", err), http.StatusServiceUnavailable)
 				return
@@ -733,13 +733,6 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 		if t.ingestLimitsFrontend != nil {
 			if err := t.ingestLimitsFrontend.CheckReady(r.Context()); err != nil {
 				http.Error(w, fmt.Sprintf("Ingest Limits Frontend not ready: %s", err), http.StatusServiceUnavailable)
-				return
-			}
-		}
-
-		if t.dataObjConsumer != nil {
-			if err := t.dataObjConsumer.CheckReady(r.Context()); err != nil {
-				http.Error(w, fmt.Sprintf("DataObj Consumer not ready: %s", err), http.StatusServiceUnavailable)
 				return
 			}
 		}
@@ -859,7 +852,7 @@ func (t *Loki) setupModuleManager() error {
 		DataObjConsumer:              {MemberlistKV, ScratchStore, PartitionRing, Server, UI, Overrides},
 		DataObjIndexBuilder:          {ScratchStore, Server, UIRing},
 		DataObjCompactionPlanner:     {Server, UIRing},
-		DataObjCompactionWorker:      {Server, UIRing},
+		DataObjCompactionWorker:      {ScratchStore, Server, UIRing},
 		ScratchStore:                 {},
 
 		Read:    {QueryFrontend, Querier},
@@ -871,14 +864,6 @@ func (t *Loki) setupModuleManager() error {
 
 	if t.Cfg.IngestLimits.Enabled {
 		deps[All] = append(deps[All], IngestLimits, IngestLimitsFrontend)
-	}
-
-	if t.Cfg.DataObj.Enabled {
-		deps[All] = append(deps[All], DataObjConsumer, DataObjIndexBuilder)
-		if t.Cfg.DataObj.Consumer.IngestMode == consumer.IngestModeInMemory {
-			// DataObjConsumer must be initialized before Distributor so that
-			deps[Distributor] = append(deps[Distributor], DataObjConsumer)
-		}
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

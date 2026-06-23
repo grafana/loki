@@ -126,12 +126,7 @@ storage_config:
     s3forcepathstyle: true
     insecure: true
     endpoint: minio:9000
-  index_queries_cache_config:
-    memcached:
-      batch_size: 256
-      parallelism: 10
-    memcached_client:
-      addresses: memcached:11211
+    region: minio
   tsdb_shipper:
     active_index_directory: /data/tsdb-index
     cache_location: /data/tsdb-cache

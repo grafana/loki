@@ -113,6 +113,8 @@ type DataDecoder struct {
 const (
 	// This is the value used in libmaxminddb.
 	maximumDataStructureDepth = 512
+	pointerBase2              = 2048
+	pointerBase3              = 526336
 )
 
 // NewDataDecoder creates a [DataDecoder].
@@ -129,25 +131,50 @@ func (d *DataDecoder) getBuffer() []byte {
 }
 
 // decodeCtrlData decodes the control byte and data info at the given offset.
+// Encoding follows the MaxMind DB spec: the control byte's high 3 bits
+// encode the type (or KindExtended if zero, in which case the next byte
+// holds kind-7 and the decoder adds 7 back), and the low 5 bits encode
+// size. Sizes 0..28 are encoded directly; 29 reads 1 extra byte (+29),
+// 30 reads 2 (+285), and 31 reads 3 (+65821).
 func (d *DataDecoder) decodeCtrlData(offset uint) (Kind, uint, uint, error) {
+	bufferLen := uint(len(d.buffer))
 	newOffset := offset + 1
-	if offset >= uint(len(d.buffer)) {
+	if offset >= bufferLen {
 		return 0, 0, 0, mmdberrors.NewOffsetError()
 	}
 	ctrlByte := d.buffer[offset]
 
 	kindNum := Kind(ctrlByte >> 5)
 	if kindNum == KindExtended {
-		if newOffset >= uint(len(d.buffer)) {
+		if newOffset >= bufferLen {
 			return 0, 0, 0, mmdberrors.NewOffsetError()
 		}
 		kindNum = Kind(d.buffer[newOffset] + 7)
 		newOffset++
 	}
 
-	var size uint
-	size, newOffset, err := d.sizeFromCtrlByte(ctrlByte, newOffset, kindNum)
-	return kindNum, size, newOffset, err
+	size := uint(ctrlByte & 0x1f)
+	if size < 29 {
+		return kindNum, size, newOffset, nil
+	}
+
+	endOffset := newOffset + size - 28
+	if endOffset > bufferLen {
+		return 0, 0, 0, mmdberrors.NewOffsetError()
+	}
+
+	switch size {
+	case 29:
+		return kindNum, 29 + uint(d.buffer[newOffset]), newOffset + 1, nil
+	case 30:
+		value := uint(d.buffer[newOffset])<<8 | uint(d.buffer[newOffset+1])
+		return kindNum, 285 + value, endOffset, nil
+	default: // size == 31
+		value := uint(d.buffer[newOffset])<<16 |
+			uint(d.buffer[newOffset+1])<<8 |
+			uint(d.buffer[newOffset+2])
+		return kindNum, 65821 + value, endOffset, nil
+	}
 }
 
 // decodeBytes decodes a byte slice from the given offset with the given size.
@@ -240,9 +267,9 @@ func (d *DataDecoder) decodePointer(
 	case 1, 4:
 		pointerValueOffset = 0
 	case 2:
-		pointerValueOffset = 2048
+		pointerValueOffset = pointerBase2
 	case 3:
-		pointerValueOffset = 526336
+		pointerValueOffset = pointerBase3
 	default:
 		return 0, 0, mmdberrors.NewInvalidDatabaseError("invalid pointer size: %d", pointerSize)
 	}
@@ -375,6 +402,24 @@ func append64(val uint64, b byte) (uint64, byte) {
 // copying the bytes when decoding a struct. Previously, we achieved this by
 // using unsafe.
 func (d *DataDecoder) decodeKey(offset uint) ([]byte, uint, error) {
+	bufferLen := uint(len(d.buffer))
+	if offset >= bufferLen {
+		return nil, 0, mmdberrors.NewOffsetError()
+	}
+
+	ctrlByte := d.buffer[offset]
+	if Kind(ctrlByte>>5) == KindString {
+		size := uint(ctrlByte & 0x1f)
+		if size < 29 {
+			dataOffset := offset + 1
+			newOffset := dataOffset + size
+			if newOffset > bufferLen {
+				return nil, 0, mmdberrors.NewOffsetError()
+			}
+			return d.buffer[dataOffset:newOffset], newOffset, nil
+		}
+	}
+
 	kindNum, size, dataOffset, err := d.decodeCtrlData(offset)
 	if err != nil {
 		return nil, 0, err
@@ -411,7 +456,7 @@ func (d *DataDecoder) decodeKey(offset uint) ([]byte, uint, error) {
 		)
 	}
 	newOffset := dataOffset + size
-	if newOffset > uint(len(d.buffer)) {
+	if newOffset > bufferLen {
 		return nil, 0, mmdberrors.NewOffsetError()
 	}
 	return d.buffer[dataOffset:newOffset], nextOffset, nil
@@ -451,43 +496,6 @@ func (d *DataDecoder) nextValueOffset(offset, numberToSkip uint) (uint, error) {
 		numberToSkip--
 	}
 	return offset, nil
-}
-
-func (d *DataDecoder) sizeFromCtrlByte(
-	ctrlByte byte,
-	offset uint,
-	kindNum Kind,
-) (uint, uint, error) {
-	size := uint(ctrlByte & 0x1f)
-	if kindNum == KindExtended {
-		return size, offset, nil
-	}
-
-	var bytesToRead uint
-	if size < 29 {
-		return size, offset, nil
-	}
-
-	bytesToRead = size - 28
-	newOffset := offset + bytesToRead
-	if newOffset > uint(len(d.buffer)) {
-		return 0, 0, mmdberrors.NewOffsetError()
-	}
-	if size == 29 {
-		return 29 + uint(d.buffer[offset]), offset + 1, nil
-	}
-
-	sizeBytes := d.buffer[offset:newOffset]
-
-	switch {
-	case size == 30:
-		size = 285 + uintFromBytes(0, sizeBytes)
-	case size > 30:
-		size = uintFromBytes(0, sizeBytes) + 65821
-	default:
-		// size < 30, no modification needed
-	}
-	return size, newOffset, nil
 }
 
 func decodeBool(size, offset uint) (bool, uint) {

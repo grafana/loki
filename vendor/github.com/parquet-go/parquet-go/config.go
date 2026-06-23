@@ -1,6 +1,7 @@
 package parquet
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"math"
@@ -32,6 +33,7 @@ const (
 	DefaultSkipMagicBytes       = false
 	DefaultSkipPageIndex        = false
 	DefaultSkipBloomFilters     = false
+	DefaultPrefetchBloomFilters = false
 	DefaultMaxRowsPerRowGroup   = math.MaxInt64
 	DefaultReadMode             = ReadModeSync
 )
@@ -95,25 +97,28 @@ func formatCreatedBy(application, version, build string) string {
 //		ReadMode:         ReadModeAsync,
 //	})
 type FileConfig struct {
-	SkipMagicBytes   bool
-	SkipPageIndex    bool
-	SkipBloomFilters bool
-	OptimisticRead   bool
-	ReadBufferSize   int
-	ReadMode         ReadMode
-	Schema           *Schema
+	SkipMagicBytes       bool
+	SkipPageIndex        bool
+	SkipBloomFilters     bool
+	PrefetchBloomFilters bool
+	OptimisticRead       bool
+	ReadBufferSize       int
+	ReadMode             ReadMode
+	Schema               *Schema
+	Decryption           *DecryptionConfig
 }
 
 // DefaultFileConfig returns a new FileConfig value initialized with the
 // default file configuration.
 func DefaultFileConfig() *FileConfig {
 	return &FileConfig{
-		SkipMagicBytes:   DefaultSkipMagicBytes,
-		SkipPageIndex:    DefaultSkipPageIndex,
-		SkipBloomFilters: DefaultSkipBloomFilters,
-		ReadBufferSize:   defaultReadBufferSize,
-		ReadMode:         DefaultReadMode,
-		Schema:           nil,
+		SkipMagicBytes:       DefaultSkipMagicBytes,
+		SkipPageIndex:        DefaultSkipPageIndex,
+		SkipBloomFilters:     DefaultSkipBloomFilters,
+		PrefetchBloomFilters: DefaultPrefetchBloomFilters,
+		ReadBufferSize:       defaultReadBufferSize,
+		ReadMode:             DefaultReadMode,
+		Schema:               nil,
 	}
 }
 
@@ -138,12 +143,14 @@ func (c *FileConfig) Apply(options ...FileOption) {
 // ConfigureFile applies configuration options from c to config.
 func (c *FileConfig) ConfigureFile(config *FileConfig) {
 	*config = FileConfig{
-		SkipMagicBytes:   c.SkipMagicBytes,
-		SkipPageIndex:    c.SkipPageIndex,
-		SkipBloomFilters: c.SkipBloomFilters,
-		ReadBufferSize:   coalesceInt(c.ReadBufferSize, config.ReadBufferSize),
-		ReadMode:         ReadMode(coalesceInt(int(c.ReadMode), int(config.ReadMode))),
-		Schema:           coalesceSchema(c.Schema, config.Schema),
+		SkipMagicBytes:       c.SkipMagicBytes,
+		SkipPageIndex:        c.SkipPageIndex,
+		SkipBloomFilters:     c.SkipBloomFilters,
+		PrefetchBloomFilters: c.PrefetchBloomFilters,
+		ReadBufferSize:       cmp.Or(c.ReadBufferSize, config.ReadBufferSize),
+		ReadMode:             ReadMode(cmp.Or(int(c.ReadMode), int(config.ReadMode))),
+		Schema:               cmp.Or(c.Schema, config.Schema),
+		Decryption:           cmp.Or(c.Decryption, config.Decryption),
 	}
 }
 
@@ -194,8 +201,8 @@ func (c *ReaderConfig) Apply(options ...ReaderOption) {
 // ConfigureReader applies configuration options from c to config.
 func (c *ReaderConfig) ConfigureReader(config *ReaderConfig) {
 	*config = ReaderConfig{
-		Schema:       coalesceSchema(c.Schema, config.Schema),
-		SchemaConfig: coalesceSchemaConfig(c.SchemaConfig, config.SchemaConfig),
+		Schema:       cmp.Or(c.Schema, config.Schema),
+		SchemaConfig: cmp.Or(c.SchemaConfig, config.SchemaConfig),
 	}
 }
 
@@ -225,6 +232,8 @@ type WriterConfig struct {
 	KeyValueMetadata             map[string]string
 	Schema                       *Schema
 	BloomFilters                 []BloomFilterColumn
+	DeferredBloomFiltersBuffers  BufferPool
+	BloomFilterCompression       compress.Codec
 	Compression                  compress.Codec
 	Sorting                      SortingConfig
 	SkipPageBounds               [][]string
@@ -232,6 +241,7 @@ type WriterConfig struct {
 	Encodings                    map[Kind]encoding.Encoding
 	DictionaryMaxBytes           int64
 	SchemaConfig                 *SchemaConfig
+	Encryption                   *EncryptionConfig
 }
 
 // DefaultWriterConfig returns a new WriterConfig value initialized with the
@@ -290,24 +300,27 @@ func (c *WriterConfig) ConfigureWriter(config *WriterConfig) {
 	}
 
 	*config = WriterConfig{
-		CreatedBy:                    coalesceString(c.CreatedBy, config.CreatedBy),
-		ColumnPageBuffers:            coalesceBufferPool(c.ColumnPageBuffers, config.ColumnPageBuffers),
-		ColumnIndexSizeLimit:         coalesceColumnIndexLimit(c.ColumnIndexSizeLimit, config.ColumnIndexSizeLimit),
-		PageBufferSize:               coalesceInt(c.PageBufferSize, config.PageBufferSize),
-		WriteBufferSize:              coalesceInt(c.WriteBufferSize, config.WriteBufferSize),
-		DataPageVersion:              coalesceInt(c.DataPageVersion, config.DataPageVersion),
-		DataPageStatistics:           coalesceBool(c.DataPageStatistics, config.DataPageStatistics),
-		DeprecatedDataPageStatistics: coalesceBool(c.DeprecatedDataPageStatistics, config.DeprecatedDataPageStatistics),
-		MaxRowsPerRowGroup:           coalesceInt64(c.MaxRowsPerRowGroup, config.MaxRowsPerRowGroup),
+		CreatedBy:                    cmp.Or(c.CreatedBy, config.CreatedBy),
+		ColumnPageBuffers:            cmp.Or(c.ColumnPageBuffers, config.ColumnPageBuffers),
+		ColumnIndexSizeLimit:         coalesceFunc(c.ColumnIndexSizeLimit, config.ColumnIndexSizeLimit),
+		PageBufferSize:               cmp.Or(c.PageBufferSize, config.PageBufferSize),
+		WriteBufferSize:              cmp.Or(c.WriteBufferSize, config.WriteBufferSize),
+		DataPageVersion:              cmp.Or(c.DataPageVersion, config.DataPageVersion),
+		DataPageStatistics:           c.DataPageStatistics || config.DataPageStatistics,
+		DeprecatedDataPageStatistics: c.DeprecatedDataPageStatistics || config.DeprecatedDataPageStatistics,
+		MaxRowsPerRowGroup:           cmp.Or(c.MaxRowsPerRowGroup, config.MaxRowsPerRowGroup),
 		KeyValueMetadata:             keyValueMetadata,
-		Schema:                       coalesceSchema(c.Schema, config.Schema),
+		Schema:                       cmp.Or(c.Schema, config.Schema),
 		BloomFilters:                 coalesceSlices(c.BloomFilters, config.BloomFilters),
-		Compression:                  coalesceCompression(c.Compression, config.Compression),
+		DeferredBloomFiltersBuffers:  cmp.Or(c.DeferredBloomFiltersBuffers, config.DeferredBloomFiltersBuffers),
+		BloomFilterCompression:       cmp.Or(c.BloomFilterCompression, config.BloomFilterCompression),
+		Compression:                  cmp.Or(c.Compression, config.Compression),
 		Sorting:                      coalesceSortingConfig(c.Sorting, config.Sorting),
 		SkipPageBounds:               coalesceSlices(c.SkipPageBounds, config.SkipPageBounds),
 		SkipPageStatistics:           coalesceSlices(c.SkipPageStatistics, config.SkipPageStatistics),
 		Encodings:                    encodings,
-		SchemaConfig:                 coalesceSchemaConfig(c.SchemaConfig, config.SchemaConfig),
+		SchemaConfig:                 cmp.Or(c.SchemaConfig, config.SchemaConfig),
+		Encryption:                   cmp.Or(c.Encryption, config.Encryption),
 	}
 }
 
@@ -375,8 +388,8 @@ func (c *RowGroupConfig) Apply(options ...RowGroupOption) {
 
 func (c *RowGroupConfig) ConfigureRowGroup(config *RowGroupConfig) {
 	*config = RowGroupConfig{
-		ColumnBufferCapacity: coalesceInt(c.ColumnBufferCapacity, config.ColumnBufferCapacity),
-		Schema:               coalesceSchema(c.Schema, config.Schema),
+		ColumnBufferCapacity: cmp.Or(c.ColumnBufferCapacity, config.ColumnBufferCapacity),
+		Schema:               cmp.Or(c.Schema, config.Schema),
 		Sorting:              coalesceSortingConfig(c.Sorting, config.Sorting),
 	}
 }
@@ -493,13 +506,24 @@ func SkipPageIndex(skip bool) FileOption {
 }
 
 // SkipBloomFilters is a file configuration option which prevents automatically
-// reading the bloom filters when opening a parquet file, when set to true.
-// This is useful as an optimization when programs know that they will not need
-// to consume the bloom filters.
+// reading the bloom filter headers when opening a parquet file, when set to
+// true. This is useful as an optimization when programs know that they will not
+// need to consume the bloom filters.
 //
 // Defaults to false.
 func SkipBloomFilters(skip bool) FileOption {
 	return fileOption(func(config *FileConfig) { config.SkipBloomFilters = skip })
+}
+
+// PrefetchBloomFilters is a file configuration option that controls whether the
+// bloom filter contents are loaded into memory when a file is opened. By
+// default, only the headers are parsed, requiring further reads to the file to
+// probe the filter. Using this option with OptimisticRead can be useful when
+// reading from remote storage, reducing network round trips.
+//
+// Defaults to false.
+func PrefetchBloomFilters(prefetch bool) FileOption {
+	return fileOption(func(config *FileConfig) { config.PrefetchBloomFilters = prefetch })
 }
 
 // OptimisticRead configures a file to optimistically perform larger buffered
@@ -691,6 +715,27 @@ func BloomFilters(filters ...BloomFilterColumn) WriterOption {
 	return writerOption(func(config *WriterConfig) { config.BloomFilters = filters })
 }
 
+// DeferBloomFiltersWithBuffers creates a configuration option which delays the
+// writing of bloom filters until the end of the file. This can be beneficial for
+// files read from remote storage with a custom reader, as an optimistic read can
+// capture the file footer along with the bloom filters in a single request.
+//
+// When this option is enabled, the accumulated bloom filters need to be retained
+// until the file is closed; it is therefore required to provide a buffer when
+// using this option.
+//
+// Defaults to nil; bloom filters are written immediately after each row group.
+func DeferBloomFiltersWithBuffers(buffer BufferPool) WriterOption {
+	return writerOption(func(config *WriterConfig) { config.DeferredBloomFiltersBuffers = buffer })
+}
+
+// BloomFilterCompression creates a configuration option which sets the
+// compression codec used when writing bloom filters. The default is
+// uncompressed for backward compatibility.
+func BloomFilterCompression(codec compress.Codec) WriterOption {
+	return writerOption(func(config *WriterConfig) { config.BloomFilterCompression = codec })
+}
+
 // Compression creates a configuration option which sets the default compression
 // codec used by a writer for columns where none were defined.
 func Compression(codec compress.Codec) WriterOption {
@@ -835,7 +880,7 @@ type SchemaConfig struct {
 }
 
 func (c *SchemaConfig) ConfigureSchema(config *SchemaConfig) {
-	config.StructTags = coalesceStructTags(c.StructTags, config.StructTags)
+	config.StructTags = coalesceSlices(c.StructTags, config.StructTags)
 }
 
 func (c *SchemaConfig) ConfigureReader(config *ReaderConfig) {
@@ -907,31 +952,6 @@ type sortingOption func(*SortingConfig)
 
 func (opt sortingOption) ConfigureSorting(config *SortingConfig) { opt(config) }
 
-func coalesceBool(i1, i2 bool) bool {
-	return i1 || i2
-}
-
-func coalesceInt(i1, i2 int) int {
-	if i1 != 0 {
-		return i1
-	}
-	return i2
-}
-
-func coalesceInt64(i1, i2 int64) int64 {
-	if i1 != 0 {
-		return i1
-	}
-	return i2
-}
-
-func coalesceString(s1, s2 string) string {
-	if s1 != "" {
-		return s1
-	}
-	return s2
-}
-
 func coalesceSlices[T any](s1, s2 []T) []T {
 	if s1 != nil {
 		return s1
@@ -939,54 +959,19 @@ func coalesceSlices[T any](s1, s2 []T) []T {
 	return s2
 }
 
-func coalesceColumnIndexLimit(f1, f2 func([]string) int) func([]string) int {
+func coalesceFunc[F ~func(I) O, I, O any](f1, f2 F) F {
 	if f1 != nil {
 		return f1
 	}
 	return f2
-}
-
-func coalesceBufferPool(p1, p2 BufferPool) BufferPool {
-	if p1 != nil {
-		return p1
-	}
-	return p2
-}
-
-func coalesceSchema(s1, s2 *Schema) *Schema {
-	if s1 != nil {
-		return s1
-	}
-	return s2
 }
 
 func coalesceSortingConfig(c1, c2 SortingConfig) SortingConfig {
 	return SortingConfig{
-		SortingBuffers:     coalesceBufferPool(c1.SortingBuffers, c2.SortingBuffers),
+		SortingBuffers:     cmp.Or(c1.SortingBuffers, c2.SortingBuffers),
 		SortingColumns:     coalesceSlices(c1.SortingColumns, c2.SortingColumns),
 		DropDuplicatedRows: c1.DropDuplicatedRows,
 	}
-}
-
-func coalesceCompression(c1, c2 compress.Codec) compress.Codec {
-	if c1 != nil {
-		return c1
-	}
-	return c2
-}
-
-func coalesceSchemaConfig(f1, f2 *SchemaConfig) *SchemaConfig {
-	if f1 != nil {
-		return f1
-	}
-	return f2
-}
-
-func coalesceStructTags(s1, s2 []StructTagOption) []StructTagOption {
-	if len(s1) > 0 {
-		return s1
-	}
-	return s2
 }
 
 func validatePositiveInt(optionName string, optionValue int) error {

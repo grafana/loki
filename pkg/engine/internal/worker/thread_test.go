@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -11,6 +12,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
@@ -74,7 +76,7 @@ func TestThread_drainPipeline(t *testing.T) {
 
 	sink := &mockRecordSink{}
 	th := &thread{Logger: log.NewNopLogger(), Metrics: newMetrics()}
-	totalRows, err := th.drainPipeline(ctx, pipeline, []recordSink{sink}, log.NewNopLogger())
+	totalRows, err := th.drainPipeline(ctx, taskTypeLeaf, pipeline, []recordSink{sink}, log.NewNopLogger())
 	require.NoError(t, err)
 	require.Equal(t, 3, totalRows)
 
@@ -82,6 +84,36 @@ func TestThread_drainPipeline(t *testing.T) {
 	defer sink.mu.Unlock()
 	require.Equal(t, 3, sink.SendCount, "one send per record")
 	require.Equal(t, int64(3), sink.TotalRows)
+}
+
+type failingPipeline struct {
+	openErr error
+	readErr error
+}
+
+func (p failingPipeline) Open(context.Context) error                      { return p.openErr }
+func (p failingPipeline) Read(context.Context) (arrow.RecordBatch, error) { return nil, p.readErr }
+func (p failingPipeline) Close()                                          {}
+
+func TestThread_drainPipeline_RecordsPhasesOnFailure(t *testing.T) {
+	tests := []struct {
+		name     string
+		pipeline executor.Pipeline
+	}{
+		{"open fails", failingPipeline{openErr: errors.New("open boom")}},
+		{"read fails", failingPipeline{readErr: errors.New("read boom")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			th := &thread{Logger: log.NewNopLogger(), Metrics: newMetrics()}
+			_, err := th.drainPipeline(t.Context(), taskTypeLeaf, tt.pipeline, nil, log.NewNopLogger())
+			require.Error(t, err)
+
+			require.Equal(t, 1, testutil.CollectAndCount(th.Metrics.taskOpenSeconds))
+			require.Equal(t, 1, testutil.CollectAndCount(th.Metrics.taskReadSeconds))
+			require.Equal(t, 1, testutil.CollectAndCount(th.Metrics.taskSendSeconds))
+		})
+	}
 }
 
 func TestThread_runJob_IgnoresClosedSourceBindErrors(t *testing.T) {

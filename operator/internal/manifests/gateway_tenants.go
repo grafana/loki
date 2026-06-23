@@ -69,41 +69,34 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 func configureGatewayDeploymentForMode(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec, fg configv1.FeatureGates, minTLSVersion string, ciphers string, adminGroups []string) error {
 	switch tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
-		if tenants != nil {
-			return configureCAVolumes(d, tenants)
-		}
-		return nil
+		return configureCAVolumes(d, tenants)
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tlsDir := gatewayServerHTTPTLSDir()
 		return openshift.ConfigureGatewayDeployment(d, tenants.Mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption, adminGroups)
+	default:
+		return nil
 	}
-
-	return nil
 }
 
 func configureGatewayDeploymentRulesAPIForMode(d *appsv1.Deployment, mode lokiv1.ModeType) error {
 	switch mode {
-	case lokiv1.Static, lokiv1.Dynamic, lokiv1.OpenshiftNetwork:
-		return nil // nothing to configure
 	case lokiv1.OpenshiftLogging:
 		return openshift.ConfigureGatewayDeploymentRulesAPI(d, gatewayContainerName)
+	default:
+		return nil
 	}
-
-	return nil
 }
 
 func configureGatewayServiceForMode(s *corev1.ServiceSpec, mode lokiv1.ModeType) error {
 	switch mode {
-	case lokiv1.Static, lokiv1.Dynamic:
-		return nil // nothing to configure
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		return openshift.ConfigureGatewayService(s)
+	default:
+		return nil
 	}
-
-	return nil
 }
 
-func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Object {
+func configureGatewayObjectsForOpenShift(objs []client.Object, opts Options) []client.Object {
 	if !opts.Gates.OpenShift.Enabled {
 		return objs
 	}

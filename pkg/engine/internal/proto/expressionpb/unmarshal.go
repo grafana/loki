@@ -165,6 +165,8 @@ func (e *LiteralExpression) UnmarshalPhysical(from physical.Expression) error {
 		e.Kind = &LiteralExpression_BytesLiteral{}
 	case types.StringListLiteral:
 		e.Kind = &LiteralExpression_StringListLiteral{}
+	case types.LabelFmtListLiteral:
+		e.Kind = &LiteralExpression_LabelFmtListLiteral{}
 	default:
 		return fmt.Errorf("invalid literal type for %v: %T (%T)", ty, ty, from)
 	}

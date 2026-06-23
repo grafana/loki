@@ -43,7 +43,7 @@ type Value struct {
 	// levels
 	definitionLevel byte
 	repetitionLevel byte
-	columnIndex     int16 // XOR so the zero-value is -1
+	columnIndex     uint16 // XOR so the zero-value is -1
 }
 
 // ValueReader is an interface implemented by types that support reading
@@ -354,6 +354,15 @@ func makeValue(k Kind, lt *format.LogicalType, v reflect.Value) Value {
 			if v.Type().Elem().Kind() == reflect.Uint8 {
 				return makeValueBytes(k, v.Bytes())
 			}
+		case reflect.Struct:
+			if v.Type() == reflect.TypeOf(Interval{}) {
+				iv := v.Interface().(Interval)
+				buf := make([]byte, 12)
+				binary.LittleEndian.PutUint32(buf[0:4], iv.Months)
+				binary.LittleEndian.PutUint32(buf[4:8], iv.Days)
+				binary.LittleEndian.PutUint32(buf[8:12], iv.Milliseconds)
+				return makeValueByteArray(k, unsafe.SliceData(buf), 12)
+			}
 		}
 	}
 
@@ -478,7 +487,13 @@ func (v *Value) uint64() uint64          { return v.u64 }
 func (v *Value) byteArray() []byte       { return unsafe.Slice(v.ptr, v.u64) }
 func (v *Value) string() string          { return unsafe.String(v.ptr, v.u64) }
 func (v *Value) be128() *[16]byte        { return (*[16]byte)(unsafe.Pointer(v.ptr)) }
-func (v *Value) column() int             { return int(^v.columnIndex) }
+func (v *Value) column() int {
+	col := ^v.columnIndex
+	if col == math.MaxUint16 {
+		return -1
+	}
+	return int(col)
+}
 
 func (v Value) convertToBoolean(x bool) Value {
 	v.kind = ^int8(Boolean)

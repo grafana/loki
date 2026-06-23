@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -99,10 +99,10 @@ func TestYamlMapStructure(t *testing.T) {
 	t.Parallel()
 
 	// testing that we can use yaml data into mapstructure.
-	var mapstruct map[interface{}]interface{}
+	var mapstruct map[string]interface{}
 	err := yaml.Unmarshal([]byte(cfg), &mapstruct)
 	assert.NoError(t, err, "error while un-marshalling config: %s", err)
-	p, ok := mapstruct["json"].(map[interface{}]interface{})
+	p, ok := mapstruct["json"].(map[string]interface{})
 	assert.True(t, ok, "could not read parser %+v", mapstruct["json"])
 	got, err := parseJSONConfig(p)
 	assert.NoError(t, err, "could not create parser from yaml: %s", err)

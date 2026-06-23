@@ -359,18 +359,18 @@ func (m *Memberlist) probeNode(node *NodeState) {
 			m.logger.Printf("[ERR] memberlist: Failed to encode UDP ping message: %s", err)
 			return
 		} else {
-			msgs = append(msgs, buf.Bytes())
+			msgs = append(msgs, buf)
 		}
 		s := suspect{Incarnation: node.Incarnation, Node: node.Name, From: m.config.Name}
 		if buf, err := encode(suspectMsg, &s, m.config.MsgpackUseNewTimeFormat); err != nil {
 			m.logger.Printf("[ERR] memberlist: Failed to encode suspect message: %s", err)
 			return
 		} else {
-			msgs = append(msgs, buf.Bytes())
+			msgs = append(msgs, buf)
 		}
 
 		compound := makeCompoundMessage(msgs)
-		if err := m.rawSendMsgPacket(node.FullAddress(), &node.Node, compound.Bytes()); err != nil {
+		if err := m.rawSendMsgPacket(node.FullAddress(), &node.Node, compound); err != nil {
 			m.logger.Printf("[ERR] memberlist: Failed to send UDP compound ping and suspect message to %s: %s", addr, err)
 			if failedRemote(err) {
 				goto HANDLE_REMOTE_FAILURE
@@ -635,7 +635,7 @@ func (m *Memberlist) gossip() {
 			// Otherwise create and send one or more compound messages
 			compounds := makeCompoundMessages(msgs)
 			for _, compound := range compounds {
-				if err := m.rawSendMsgPacket(node.FullAddress(), &node, compound.Bytes()); err != nil {
+				if err := m.rawSendMsgPacket(node.FullAddress(), &node, compound); err != nil {
 					m.logger.Printf("[ERR] memberlist: Failed to send gossip to %s: %s", addr, err)
 				}
 			}

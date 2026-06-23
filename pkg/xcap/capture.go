@@ -56,6 +56,7 @@ package xcap
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/gogo/protobuf/proto"
@@ -257,6 +258,42 @@ func (c *Capture) Value(stat Statistic) *AggregatedObservation {
 	return rolled
 }
 
+// ValueFromRegion computes the value of a statistic from regions with
+// names that start with prefix. If the statistic is not present in any matching
+// region, ValueFromRegion returns nil.
+func (c *Capture) ValueFromRegion(prefix string, stat Statistic) *AggregatedObservation {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	key := stat.Key()
+	var rolled *AggregatedObservation
+
+	for _, region := range c.regions {
+		if !strings.HasPrefix(region.name, prefix) {
+			continue
+		}
+
+		region.mu.RLock()
+		obs, ok := region.observations[key]
+		if !ok {
+			region.mu.RUnlock()
+			continue
+		}
+		if rolled == nil {
+			rolled = &AggregatedObservation{
+				Statistic: obs.Statistic,
+				Value:     obs.Value,
+				Count:     obs.Count,
+			}
+		} else {
+			rolled.Merge(obs)
+		}
+		region.mu.RUnlock()
+	}
+
+	return rolled
+}
+
 // Value gets a typed value from a capture. If the statistic it not present in
 // any region from the capture, or the statistic is not of type T, Value returns
 // the zero value for T.
@@ -266,6 +303,25 @@ func (c *Capture) Value(stat Statistic) *AggregatedObservation {
 func Value[T any](c *Capture, stat Statistic) T {
 	v, _ := TryValue[T](c, stat)
 	return v
+}
+
+// ValueFromRegion gets a typed value from a capture, aggregating only
+// regions with names that start with prefix. If the statistic is not present in
+// any matching region, or the statistic is not of type T, ValueFromRegion
+// returns the zero value for T.
+func ValueFromRegion[T any](c *Capture, prefix string, stat Statistic) T {
+	rolled := c.ValueFromRegion(prefix, stat)
+	if rolled == nil {
+		var zero T
+		return zero
+	}
+
+	val, ok := rolled.Value.(T)
+	if !ok {
+		var zero T
+		return zero
+	}
+	return val
 }
 
 // TryValue gets a typed value from a capture, returning both the value and a

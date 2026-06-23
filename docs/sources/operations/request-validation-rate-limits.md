@@ -91,11 +91,13 @@ This error occurs when a log line exceeds the maximum allowable length in bytes.
 
 This value can be modified globally in the [`limits_config`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](/docs/loki/<LOKI_VERSION>/configuration/#runtime-configuration-file) file. To increase the maximum line size, adjust `max_line_size`.  We recommend that you do not increase this value above 256kb for performance reasons. Alternatively, Loki can be configured to ingest truncated versions of log lines over the length limit by using the `max_line_size_truncate` option.
 
+When `max_line_size_truncate` is enabled, lines exceeding `max_line_size` are truncated and ingested rather than discarded, so they do **not** appear in the `loki_discarded_samples_total` / `loki_discarded_bytes_total` metrics. Truncation events can instead be observed with the `loki_mutated_samples_total` and `loki_mutated_bytes_total` metrics, both labelled with `reason="line_too_long"` and the `tenant` they belong to. The `distributor` also emits a debug-level log line (`msg="truncated log lines exceeding max_line_size"`) reporting the affected stream, the number of truncated lines, and the number of truncated bytes.
+
 | Property                | Value            |
 |-------------------------|------------------|
 | Enforced by             | `distributor`    |
 | Retryable               | **No**           |
-| Sample discarded        | **Yes**          |
+| Sample discarded        | **Yes** (truncated when `max_line_size_truncate` is enabled) |
 | Configurable per tenant | Yes              |
 
 ### `invalid_labels`

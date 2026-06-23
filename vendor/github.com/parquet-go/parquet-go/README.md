@@ -84,6 +84,54 @@ For the full reference of supported tags, type constraints, and examples, see
 the [`SchemaOf`](https://pkg.go.dev/github.com/parquet-go/parquet-go#SchemaOf)
 documentation.
 
+### Variant Types
+
+The library supports the [Parquet VARIANT logical type](https://github.com/apache/parquet-format/blob/master/LogicalTypes.md#variant)
+for storing semi-structured data (JSON-like values) in a columnar format.
+
+The simplest way to use variants is with the `variant` struct tag, which
+automatically marshals and unmarshals Go values to/from the variant binary
+format:
+
+```go
+type Event struct {
+    ID   int64 `parquet:"id"`
+    Data any   `parquet:"data,variant"`
+}
+
+writer := parquet.NewGenericWriter[Event](output)
+writer.Write([]Event{
+    {ID: 1, Data: "hello"},
+    {ID: 2, Data: int32(42)},
+    {ID: 3, Data: map[string]any{"key": "value"}},
+})
+writer.Close()
+```
+
+For shredded variants (which store typed columns alongside the raw value for
+faster queries), build a schema with `parquet.ShreddedVariant()`:
+
+```go
+shreddedType, err := parquet.ShreddedVariant(parquet.String())
+schema := parquet.NewSchema("Record", parquet.Group{
+    "data": shreddedType,
+})
+writer := parquet.NewGenericWriter[Record](output, schema)
+```
+
+For low-level access to raw variant bytes, use a struct with `Metadata` and
+`Value` []byte fields:
+
+```go
+type VariantData struct {
+    Metadata []byte `parquet:"metadata"`
+    Value    []byte `parquet:"value"`
+}
+```
+
+For more examples, see the `ExampleVariant` and `ExampleShreddedVariant`
+functions in `example_variant_test.go`.
+
 ### Writing Parquet Files: [parquet.GenericWriter[T]](https://pkg.go.dev/github.com/parquet-go/parquet-go#GenericWriter)
 
 A parquet file is a collection of rows sharing the same schema, arranged in

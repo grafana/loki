@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 // validWorkerCfg returns a minimal valid WorkerConfig for tests. The
@@ -31,9 +33,10 @@ func validWorkerCfg() WorkerConfig {
 // attempts DNS-SRV lookup, finds no scheduler, and shuts down cleanly.
 func TestWorker_BootShutdown(t *testing.T) {
 	w, err := NewWorker(WorkerParams{
-		Config: validWorkerCfg(),
-		Bucket: objstore.NewInMemBucket(),
-		Logger: log.NewNopLogger(),
+		Config:       validWorkerCfg(),
+		Bucket:       objstore.NewInMemBucket(),
+		ScratchStore: scratch.NewMemory(),
+		Logger:       log.NewNopLogger(),
 		// Metastore left nil: no tasks arrive (no scheduler), so the
 		// metastore is never dereferenced.
 		Registerer: prometheus.NewRegistry(),
@@ -63,10 +66,11 @@ func TestWorker_BootShutdown(t *testing.T) {
 // worker is useless without a bucket.
 func TestNewWorker_RequiresBucket(t *testing.T) {
 	_, err := NewWorker(WorkerParams{
-		Config:     validWorkerCfg(),
-		Bucket:     nil,
-		Logger:     log.NewNopLogger(),
-		Registerer: prometheus.NewRegistry(),
+		Config:       validWorkerCfg(),
+		Bucket:       nil,
+		ScratchStore: scratch.NewMemory(),
+		Logger:       log.NewNopLogger(),
+		Registerer:   prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "bucket")
@@ -79,10 +83,11 @@ func TestNewWorker_RequiresSchedulerLookupAddress(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.SchedulerLookupAddress = ""
 	_, err := NewWorker(WorkerParams{
-		Config:     cfg,
-		Bucket:     objstore.NewInMemBucket(),
-		Logger:     log.NewNopLogger(),
-		Registerer: prometheus.NewRegistry(),
+		Config:       cfg,
+		Bucket:       objstore.NewInMemBucket(),
+		ScratchStore: scratch.NewMemory(),
+		Logger:       log.NewNopLogger(),
+		Registerer:   prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "scheduler_lookup_address",
@@ -97,10 +102,11 @@ func TestNewWorker_RequiresAdvertiseAddr(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.AdvertiseAddr = ""
 	_, err := NewWorker(WorkerParams{
-		Config:     cfg,
-		Bucket:     objstore.NewInMemBucket(),
-		Logger:     log.NewNopLogger(),
-		Registerer: prometheus.NewRegistry(),
+		Config:       cfg,
+		Bucket:       objstore.NewInMemBucket(),
+		ScratchStore: scratch.NewMemory(),
+		Logger:       log.NewNopLogger(),
+		Registerer:   prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "advertise_addr",
@@ -115,10 +121,11 @@ func TestNewWorker_RequiresEndpoint(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.Endpoint = ""
 	_, err := NewWorker(WorkerParams{
-		Config:     cfg,
-		Bucket:     objstore.NewInMemBucket(),
-		Logger:     log.NewNopLogger(),
-		Registerer: prometheus.NewRegistry(),
+		Config:       cfg,
+		Bucket:       objstore.NewInMemBucket(),
+		ScratchStore: scratch.NewMemory(),
+		Logger:       log.NewNopLogger(),
+		Registerer:   prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "endpoint",
@@ -132,10 +139,11 @@ func TestNewWorker_InvalidAdvertiseAddr(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.AdvertiseAddr = "not-a-valid-host:port:::"
 	_, err := NewWorker(WorkerParams{
-		Config:     cfg,
-		Bucket:     objstore.NewInMemBucket(),
-		Logger:     log.NewNopLogger(),
-		Registerer: prometheus.NewRegistry(),
+		Config:       cfg,
+		Bucket:       objstore.NewInMemBucket(),
+		ScratchStore: scratch.NewMemory(),
+		Logger:       log.NewNopLogger(),
+		Registerer:   prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "resolve worker advertise address",

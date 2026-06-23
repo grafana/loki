@@ -37,6 +37,13 @@ func (p *BufferedPipeline) Read(_ context.Context) (arrow.RecordBatch, error) {
 	return p.records[p.current], nil
 }
 
+// Reset rewinds the pipeline so the next Read returns the first record again.
+// Records are not released; the caller must still call Close when done.
+// Primarily used for testing.
+func (p *BufferedPipeline) Reset() {
+	p.current = -1
+}
+
 // Close implements Pipeline. It releases all unreturned records.
 func (p *BufferedPipeline) Close() {
 	p.records = nil

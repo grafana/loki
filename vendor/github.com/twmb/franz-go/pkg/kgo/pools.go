@@ -105,6 +105,14 @@ func recordPoolsCtx(pools []Pool, decompressBytes []byte, recs []Record) (*recor
 //
 // This method is only relevant if you are using the [WithPools] option.
 //
+// For share group records (KIP-932): Recycle releases the record's
+// backing memory but does NOT by itself ack. Any record not explicitly
+// acked is auto-accepted on the next [Client.PollRecords] via the
+// standard share-consumer next-poll auto-accept pass; this is true
+// regardless of whether the record was Recycled. If you need a
+// non-Accept outcome (Release/Reject/Renew), call [Record.Ack] with
+// the appropriate status BEFORE Recycle.
+//
 // NOTE: It is invalid to continue using the record after calling recycle;
 // doing so may result in corruption and data races. If you use
 // PoolDecompressBytes, you cannot continue to use a shallow copy of any

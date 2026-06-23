@@ -17,8 +17,8 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/sigv4"
+	yaml "go.yaml.in/yaml/v4"
 	"golang.org/x/time/rate"
-	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -602,7 +602,7 @@ func (l *Limits) SetDefaultPolicyStreamMapping(cfg PolicyStreamMapping) error {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (l *Limits) UnmarshalYAML(value *yaml.Node) error {
 	// We want to set c to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
@@ -620,7 +620,7 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		// set the otlp config to nil, which would help to detect later if it was set in the tenant override
 		l.OTLPConfig = nil
 	}
-	if err := unmarshal((*plain)(l)); err != nil {
+	if err := value.Decode((*plain)(l)); err != nil {
 		return err
 	}
 
@@ -659,6 +659,12 @@ func (l *Limits) Validate() error {
 	if l.PolicyStreamMapping != nil {
 		if err := l.PolicyStreamMapping.Validate(); err != nil {
 			return err
+		}
+	}
+
+	for policy, pl := range l.PolicyOverrideLimits {
+		if err := pl.Validate(); err != nil {
+			return fmt.Errorf("policy_override_limits[%q]: %w", policy, err)
 		}
 	}
 
@@ -810,45 +816,10 @@ func (o *Overrides) MaxLocalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxLocalStreamsPerUser
 }
 
-// PolicyMaxLocalStreamsPerUser returns the maximum number of streams a user is allowed to store
-// in a single ingester for a specific policy. Returns 0 if no policy-specific override is set.
-func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) int {
-	if policy == "" {
-		return 0
-	}
-	limits := o.getOverridesForUser(userID)
-	if len(limits.PolicyOverrideLimits) == 0 {
-		return 0
-	}
-	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return policyLimits.MaxLocalStreamsPerUser
-	}
-	return 0
-}
-
 // MaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
 // across the cluster.
 func (o *Overrides) MaxGlobalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalStreamsPerUser
-}
-
-// PolicyMaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
-// across the cluster for a specific policy.
-// Returns 0 and false if the policy does not have a custom stream limit override.
-// Returns the custom stream limit override and true if it exists.
-func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool) {
-	if policy == "" {
-		return 0, false
-	}
-	limits := o.getOverridesForUser(userID)
-	if len(limits.PolicyOverrideLimits) == 0 {
-		return 0, false
-	}
-
-	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return policyLimits.MaxGlobalStreamsPerUser, true
-	}
-	return 0, false
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
@@ -902,7 +873,7 @@ func (o *Overrides) TSDBMaxBytesPerShard(userID string) int {
 }
 
 // TSDBShardingStrategy returns the sharding strategy to use in query planning.
-func (o *Overrides) TSDBShardingStrategy(userID string) string {
+func (o *Overrides) TSDBShardingStrategy(_ context.Context, userID string) string {
 	return o.getOverridesForUser(userID).TSDBShardingStrategy
 }
 
@@ -1458,12 +1429,6 @@ type OverwriteMarshalingStringMap struct {
 	m map[string]string
 }
 
-// PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
-type PolicyOverridableLimits struct {
-	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"max_streams_per_user for a specific policy. 0 means unlimited."`
-	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"max_global_streams_per_user for a specific policy. 0 means unlimited."`
-}
-
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {
 	return OverwriteMarshalingStringMap{m: m}
 }
@@ -1494,10 +1459,10 @@ func (sm OverwriteMarshalingStringMap) MarshalYAML() (interface{}, error) {
 	return sm.m, nil
 }
 
-func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(value *yaml.Node) error {
 	var def map[string]string
 
-	err := unmarshal(&def)
+	err := value.Decode(&def)
 	if err != nil {
 		return err
 	}

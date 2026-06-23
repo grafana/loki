@@ -334,13 +334,13 @@ func (ko *Koanf) Get(path string) any {
 
 	// Does the path exist?
 	ko.mu.RLock()
+	defer ko.mu.RUnlock()
+
 	p, ok := ko.keyMap[path]
 	if !ok {
-		ko.mu.RUnlock()
 		return nil
 	}
 	res := maps.Search(ko.confMap, p)
-	ko.mu.RUnlock()
 
 	// Non-reference types are okay to return directly.
 	// Other types are "copied" with maps.Copy or json.Marshal
@@ -355,7 +355,7 @@ func (ko *Koanf) Get(path string) any {
 		return nil
 	}
 
-	// Skil nil pointers before copying.
+	// Skip nil pointers before copying.
 	if rv := reflect.ValueOf(res); rv.Kind() == reflect.Ptr && rv.IsNil() {
 		return res
 	}

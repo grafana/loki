@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -31,9 +32,9 @@ func (m NotificationRateLimitMap) Set(s string) error {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (m NotificationRateLimitMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (m NotificationRateLimitMap) UnmarshalYAML(value *yaml.Node) error {
 	newMap := map[string]float64{}
-	return m.updateMap(unmarshal(newMap), newMap)
+	return m.updateMap(value.Decode(newMap), newMap)
 }
 
 func (m NotificationRateLimitMap) updateMap(unmarshalErr error, newMap map[string]float64) error {

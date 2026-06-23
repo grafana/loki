@@ -21,6 +21,7 @@ package models
 
 import (
 	"context"
+	stderrors "errors"
 
 	"github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
@@ -85,11 +86,15 @@ func (m *AlertmanagerStatus) validateCluster(formats strfmt.Registry) error {
 
 	if m.Cluster != nil {
 		if err := m.Cluster.Validate(formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
+			ve := new(errors.Validation)
+			if stderrors.As(err, &ve) {
 				return ve.ValidateName("cluster")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
+			}
+			ce := new(errors.CompositeError)
+			if stderrors.As(err, &ce) {
 				return ce.ValidateName("cluster")
 			}
+
 			return err
 		}
 	}
@@ -105,11 +110,15 @@ func (m *AlertmanagerStatus) validateConfig(formats strfmt.Registry) error {
 
 	if m.Config != nil {
 		if err := m.Config.Validate(formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
+			ve := new(errors.Validation)
+			if stderrors.As(err, &ve) {
 				return ve.ValidateName("config")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
+			}
+			ce := new(errors.CompositeError)
+			if stderrors.As(err, &ce) {
 				return ce.ValidateName("config")
 			}
+
 			return err
 		}
 	}
@@ -138,11 +147,15 @@ func (m *AlertmanagerStatus) validateVersionInfo(formats strfmt.Registry) error 
 
 	if m.VersionInfo != nil {
 		if err := m.VersionInfo.Validate(formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
+			ve := new(errors.Validation)
+			if stderrors.As(err, &ve) {
 				return ve.ValidateName("versionInfo")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
+			}
+			ce := new(errors.CompositeError)
+			if stderrors.As(err, &ce) {
 				return ce.ValidateName("versionInfo")
 			}
+
 			return err
 		}
 	}
@@ -177,11 +190,15 @@ func (m *AlertmanagerStatus) contextValidateCluster(ctx context.Context, formats
 	if m.Cluster != nil {
 
 		if err := m.Cluster.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
+			ve := new(errors.Validation)
+			if stderrors.As(err, &ve) {
 				return ve.ValidateName("cluster")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
+			}
+			ce := new(errors.CompositeError)
+			if stderrors.As(err, &ce) {
 				return ce.ValidateName("cluster")
 			}
+
 			return err
 		}
 	}
@@ -194,11 +211,15 @@ func (m *AlertmanagerStatus) contextValidateConfig(ctx context.Context, formats 
 	if m.Config != nil {
 
 		if err := m.Config.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
+			ve := new(errors.Validation)
+			if stderrors.As(err, &ve) {
 				return ve.ValidateName("config")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
+			}
+			ce := new(errors.CompositeError)
+			if stderrors.As(err, &ce) {
 				return ce.ValidateName("config")
 			}
+
 			return err
 		}
 	}
@@ -211,11 +232,15 @@ func (m *AlertmanagerStatus) contextValidateVersionInfo(ctx context.Context, for
 	if m.VersionInfo != nil {
 
 		if err := m.VersionInfo.ContextValidate(ctx, formats); err != nil {
-			if ve, ok := err.(*errors.Validation); ok {
+			ve := new(errors.Validation)
+			if stderrors.As(err, &ve) {
 				return ve.ValidateName("versionInfo")
-			} else if ce, ok := err.(*errors.CompositeError); ok {
+			}
+			ce := new(errors.CompositeError)
+			if stderrors.As(err, &ce) {
 				return ce.ValidateName("versionInfo")
 			}
+
 			return err
 		}
 	}

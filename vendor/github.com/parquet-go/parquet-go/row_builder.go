@@ -17,9 +17,9 @@ type columnLevel struct {
 
 type columnGroup struct {
 	baseColumn      []Value
-	members         []int16
-	startIndex      int16
-	endIndex        int16
+	members         []uint16
+	startIndex      uint16
+	endIndex        uint16
 	repetitionLevel byte
 	definitionLevel byte
 }
@@ -47,7 +47,7 @@ func NewRowBuilder(schema Node) *RowBuilder {
 	return b
 }
 
-func (b *RowBuilder) configure(node Node, columnIndex int16, level columnLevel, group *columnGroup) (endIndex int16) {
+func (b *RowBuilder) configure(node Node, columnIndex uint16, level columnLevel, group *columnGroup) (endIndex uint16) {
 	switch {
 	case node.Optional():
 		level.definitionLevel++
@@ -115,7 +115,7 @@ func (b *RowBuilder) Add(columnIndex int, columnValue Value) {
 	level := &b.levels[columnIndex]
 	columnValue.repetitionLevel = level.repetitionLevel
 	columnValue.definitionLevel = level.definitionLevel
-	columnValue.columnIndex = ^int16(columnIndex)
+	columnValue.columnIndex = ^uint16(columnIndex)
 	level.repetitionLevel = level.repetitionDepth
 	b.columns[columnIndex] = append(b.columns[columnIndex], columnValue)
 }
@@ -130,7 +130,7 @@ func (b *RowBuilder) Add(columnIndex int, columnValue Value) {
 // Next must be called after adding a sequence of records.
 func (b *RowBuilder) Next(columnIndex int) {
 	for _, group := range b.groups {
-		if group.startIndex <= int16(columnIndex) && int16(columnIndex) < group.endIndex {
+		if group.startIndex <= uint16(columnIndex) && uint16(columnIndex) < group.endIndex {
 			for i := group.startIndex; i < group.endIndex; i++ {
 				if level := &b.levels[i]; level.repetitionLevel != 0 {
 					level.repetitionLevel = group.repetitionLevel
@@ -181,7 +181,7 @@ func (b *RowBuilder) AppendRow(row Row) Row {
 					n := len(column)
 					column = append(column, maxColumn[n:]...)
 
-					columnIndex := group.startIndex + int16(i)
+					columnIndex := group.startIndex + uint16(i)
 					model := b.models[columnIndex]
 
 					for n < len(column) {

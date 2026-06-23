@@ -46,7 +46,7 @@ These EKS requirements are the minimum specification needed to deploy Loki using
 In this guide, we deploy Loki using `m5.xlarge` instances. This is a instance type that should work for most scenarios. However, you can modify the instance types and count based on your specific needs.
 {{< /admonition >}}
 
-The minimum requirements for deploying Loki on EKS are: 
+The minimum requirements for deploying Loki on EKS are:
 
 - Kubernetes version `1.30` or above.
 - `3` nodes for the EKS cluster.
@@ -86,10 +86,10 @@ managedNodeGroups:
     ebsOptimized: true
 ```
 
-
 The following plugins must also be installed within the EKS cluster:
+
 - **Amazon EBS CSI Driver**: Enables Kubernetes to dynamically provision and manage EBS volumes as persistent storage for applications. We use this to provision the node volumes for Loki.
-- **CoreDNS**: Provides internal DNS service for Kubernetes clusters, ensuring that services and pods can communicate with each other using DNS names. 
+- **CoreDNS**: Provides internal DNS service for Kubernetes clusters, ensuring that services and pods can communicate with each other using DNS names.
 - **kube-proxy**: Maintains network rules on nodes, enabling communication between pods and services within the cluster.
 
 You must also install an **OIDC (OpenID Connect) provider** on the EKS cluster. This is required for the IAM roles and policies to work correctly. If you are using EKSctl, you can install the OIDC provider using the following command:
@@ -118,6 +118,7 @@ GEL customers will require a third bucket to store the admin data. This bucket i
 aws s3api create-bucket --bucket  <YOUR CHUNK BUCKET NAME e.g. `loki-aws-dev-chunks`> --region <S3 region your account is on, e.g. `eu-west-2`> --create-bucket-configuration LocationConstraint=<S3 region your account is on, e.g. `eu-west-2`> \
 aws s3api create-bucket --bucket  <YOUR RULER BUCKET NAME e.g. `loki-aws-dev-ruler`> --region <S3 REGION your account is on, e.g. `eu-west-2`> --create-bucket-configuration LocationConstraint=<S3 REGION your account is on, e.g. `eu-west-2`>
 ```
+
 Make sure to replace the `region` and `bucket` name with your desired values. We will revisit the bucket policy later in this guide.
 
 ## Defining IAM roles and policies
@@ -160,7 +161,7 @@ The recommended method for connecting Loki to AWS S3 is to use an IAM role. This
     aws iam create-policy --policy-name LokiS3AccessPolicy --policy-document file://loki-s3-policy.json
     ```
 
-2. Create a trust policy document named `trust-policy.json` with the following content:
+1. Create a trust policy document named `trust-policy.json` with the following content:
 
     ```json
     {
@@ -182,19 +183,21 @@ The recommended method for connecting Loki to AWS S3 is to use an IAM role. This
         ]
     }
     ```
+
    **Make sure to replace the placeholders with your AWS account ID, region, and the OIDC ID (you can find this in the EKS cluster configuration).**
 
-3. Create the IAM role using the AWS CLI:
+1. Create the IAM role using the AWS CLI:
 
     ```bash
     aws iam create-role --role-name LokiServiceAccountRole --assume-role-policy-document file://trust-policy.json
     ```
 
-4. Attach the policy to the role:
+1. Attach the policy to the role:
 
     ```bash
     aws iam attach-role-policy --role-name LokiServiceAccountRole --policy-arn arn:aws:iam::<Account ID>:policy/LokiS3AccessPolicy
     ```
+
     **Make sure to replace the placeholder with your AWS account ID.**
 
 ## Deploying the Helm chart
@@ -206,16 +209,19 @@ Before we can deploy the Loki Helm chart, we need to add the Grafana Community c
     ```bash
     helm repo add grafana-community https://grafana-community.github.io/helm-charts
     ```
+
 1. Update the chart repository:
 
     ```bash
     helm repo update
     ```
+
 1. Create a new namespace for Loki:
 
     ```bash
     kubectl create namespace loki
     ```
+
 ### Loki Basic Authentication
 
 Loki by default does not come with any authentication. Since we will be deploying Loki to AWS and exposing the gateway to the internet, we recommend adding at least basic authentication. In this guide we will give Loki a username and password:
@@ -229,9 +235,10 @@ Loki by default does not come with any authentication. Since we will be deployin
     ```bash
     htpasswd -c .htpasswd <username>
     ```
+
     This will create a file called `auth` with the username `loki`. You will be prompted to enter a password.
 
- 1. Create a Kubernetes secret with the `.htpasswd` file:
+1. Create a Kubernetes secret with the `.htpasswd` file:
 
     ```bash
     kubectl create secret generic loki-basic-auth --from-file=.htpasswd -n loki
@@ -247,8 +254,9 @@ Loki by default does not come with any authentication. Since we will be deployin
       --from-literal=password=<PASSWORD> \
       -n loki
     ```
+
     We create a literal secret with the username and password for Loki canary to authenticate with the Loki gateway.
-    **Make sure to replace the placeholders with your desired username and password.** 
+    **Make sure to replace the placeholders with your desired username and password.**
 
 ### Loki Helm chart configuration
 
@@ -368,7 +376,7 @@ lokiCanary:
           name: canary-basic-auth
           key: username
 
-# Enable minio for storage
+# Disable minio storage
 minio:
   enabled: false
 
@@ -414,7 +422,6 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
   - Defines how the Loki gateway will be exposed.
   - We are using a `LoadBalancer` service type in this configuration.
 
-
 ### Deploy Loki
 
 Now that you have created the `values.yaml` file, you can deploy Loki using the Helm chart.
@@ -424,6 +431,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     ```bash
     helm install --values values.yaml loki grafana-community/loki -n loki --create-namespace
     ```
+
     **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account.**
 
 1. Verify the deployment:
@@ -431,6 +439,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     ```bash
     kubectl get pods -n loki
     ```
+
     You should see the Loki pods running.
 
     ```console
@@ -473,6 +482,7 @@ To find the Loki Gateway service, run the following command:
 ```bash
 kubectl get svc -n loki
 ```
+
 You should see the Loki Gateway service with an external IP address. This is the address you will use to write to and query Loki.
 
 ```console

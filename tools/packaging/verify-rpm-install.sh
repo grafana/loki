@@ -11,9 +11,6 @@ fi
 echo "Running on directory: ${dir}"
 
 cat <<EOF | docker exec --interactive "${image}" sh
-    # Import the Grafana GPG key
-    rpm --import https://packages.grafana.com/gpg.key
-
     # Install loki and check it's running
     rpm -i ${dir}/dist/loki-*.x86_64.rpm
     [ "\$(systemctl is-active loki)" = "active" ] || (echo "loki is inactive" && exit 1)

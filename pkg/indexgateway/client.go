@@ -14,7 +14,6 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
@@ -30,15 +29,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
 	"github.com/grafana/loki/v3/pkg/util/jumphash"
-)
-
-const (
-	maxQueriesPerGrpc      = 100
-	maxConcurrentGrpcCalls = 10
 )
 
 // ClientConfig configures the Index Gateway client used to communicate with
@@ -242,24 +235,6 @@ func (s *GatewayClient) Stop() {
 	}
 }
 
-func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
-	if len(queries) <= maxQueriesPerGrpc {
-		return s.doQueries(ctx, queries, callback)
-	}
-
-	jobsCount := len(queries) / maxQueriesPerGrpc
-	if len(queries)%maxQueriesPerGrpc != 0 {
-		jobsCount++
-	}
-	return concurrency.ForEachJob(ctx, jobsCount, maxConcurrentGrpcCalls, func(ctx context.Context, idx int) error {
-		return s.doQueries(ctx, queries[idx*maxQueriesPerGrpc:min((idx+1)*maxQueriesPerGrpc, len(queries))], callback)
-	})
-}
-
-func (s *GatewayClient) QueryIndex(_ context.Context, _ *logproto.QueryIndexRequest, _ ...grpc.CallOption) (logproto.IndexGateway_QueryIndexClient, error) {
-	panic("not implemented")
-}
-
 func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
 	var (
 		resp *logproto.GetChunkRefResponse
@@ -398,59 +373,6 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 	return res, nil
 }
 
-func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
-	queryKeyQueryMap := make(map[string]index.Query, len(queries))
-	gatewayQueries := make([]*logproto.IndexQuery, 0, len(queries))
-
-	for _, query := range queries {
-		queryKeyQueryMap[index.QueryKey(query)] = query
-		gatewayQueries = append(gatewayQueries, &logproto.IndexQuery{
-			TableName:        query.TableName,
-			HashValue:        query.HashValue,
-			RangeValuePrefix: query.RangeValuePrefix,
-			RangeValueStart:  query.RangeValueStart,
-			ValueEqual:       query.ValueEqual,
-		})
-	}
-
-	return s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		return s.clientDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback, client)
-	}, noFilter)
-
-}
-
-// clientDoQueries send a query request to an Index Gateway instance using the given gRPC client.
-//
-// It is used by both, simple and ring mode.
-func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*logproto.IndexQuery,
-	queryKeyQueryMap map[string]index.Query, callback index.QueryPagesCallback, client logproto.IndexGatewayClient,
-) error {
-	streamer, err := client.QueryIndex(ctx, &logproto.QueryIndexRequest{Queries: gatewayQueries})
-	if err != nil {
-		return errors.Wrap(err, "query index")
-	}
-
-	for {
-		resp, err := streamer.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		query, ok := queryKeyQueryMap[resp.QueryKey]
-		if !ok {
-			level.Error(s.logger).Log("msg", fmt.Sprintf("unexpected %s QueryKey received, expected queries %s", resp.QueryKey, fmt.Sprint(queryKeyQueryMap)))
-			return fmt.Errorf("unexpected %s QueryKey received", resp.QueryKey)
-		}
-		if !callback(query, &readBatch{resp}) {
-			return nil
-		}
-	}
-
-	return nil
-}
-
 // poolDo executes the given function for each Index Gateway instance in the ring mapping to the correct tenant in the index.
 // In case of callback failure, we'll try another member of the ring for that tenant ID.
 func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logproto.IndexGatewayClient) error, filterServerList func([]string) []string) error {
@@ -568,43 +490,6 @@ func (s *GatewayClient) getServerAddresses(tenantID string) ([]string, error) {
 	return addrs, nil
 }
 
-func (s *GatewayClient) NewWriteBatch() index.WriteBatch {
-	panic("unsupported")
-}
-
-func (s *GatewayClient) BatchWrite(_ context.Context, _ index.WriteBatch) error {
-	panic("unsupported")
-}
-
-type readBatch struct {
-	*logproto.QueryIndexResponse
-}
-
-func (r *readBatch) Iterator() index.ReadBatchIterator {
-	return &grpcIter{
-		i:                  -1,
-		QueryIndexResponse: r.QueryIndexResponse,
-	}
-}
-
-type grpcIter struct {
-	i int
-	*logproto.QueryIndexResponse
-}
-
-func (b *grpcIter) Next() bool {
-	b.i++
-	return b.i < len(b.Rows)
-}
-
-func (b *grpcIter) RangeValue() []byte {
-	return b.Rows[b.i].RangeValue
-}
-
-func (b *grpcIter) Value() []byte {
-	return b.Rows[b.i].Value
-}
-
 func instrumentation(cfg ClientConfig, clientRequestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
@@ -656,5 +541,3 @@ func addressesForQueryEndTime(addrs []string, t time.Time, buckets []time.Durati
 
 	return addrs[start:end]
 }
-
-func noFilter(addrs []string) []string { return addrs }

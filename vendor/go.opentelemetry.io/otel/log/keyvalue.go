@@ -390,7 +390,7 @@ func (a KeyValue) String() string {
 // ValueFromAttribute converts [attribute.Value] to [Value].
 func ValueFromAttribute(value attribute.Value) Value {
 	switch value.Type() {
-	case attribute.INVALID:
+	case attribute.EMPTY:
 		return Value{}
 	case attribute.BOOL:
 		return BoolValue(value.AsBool())

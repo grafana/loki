@@ -9,10 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	boltdbcommon "github.com/grafana/loki/v3/pkg/storage/common/boltdb"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/testutil"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
 )
 
 func TestDeleteRequestsTable(t *testing.T) {
@@ -40,7 +39,7 @@ func TestDeleteRequestsTable(t *testing.T) {
 	require.NoError(t, testDeleteRequestsTable.BatchWrite(context.Background(), batch))
 
 	// see if right records were written
-	testutil.VerifySingleIndexFile(t, index.Query{}, testDeleteRequestsTable.db, local.IndexBucketName, 0, 10)
+	testutil.VerifySingleIndexFile(t, boltdbcommon.Query{}, testDeleteRequestsTable.db, boltdbcommon.IndexBucketName, 0, 10)
 
 	// upload the file to the storage
 	require.NoError(t, testDeleteRequestsTable.uploadFile())
@@ -73,7 +72,7 @@ func TestDeleteRequestsTable(t *testing.T) {
 	require.NotEmpty(t, testDeleteRequestsTable.dbPath)
 
 	// validate records in local db
-	testutil.VerifySingleIndexFile(t, index.Query{}, testDeleteRequestsTable.db, local.IndexBucketName, 0, 20)
+	testutil.VerifySingleIndexFile(t, boltdbcommon.Query{}, testDeleteRequestsTable.db, boltdbcommon.IndexBucketName, 0, 20)
 }
 
 func checkRecordsInStorage(t *testing.T, storageFilePath string, start, numRecords int) {
@@ -81,17 +80,17 @@ func checkRecordsInStorage(t *testing.T, storageFilePath string, start, numRecor
 	tempFilePath := filepath.Join(tempDir, DeleteRequestsTableName)
 	testutil.DecompressFile(t, storageFilePath, tempFilePath)
 
-	tempDB, err := util.SafeOpenBoltdbFile(tempFilePath)
+	tempDB, err := boltdbcommon.SafeOpenBoltdbFile(tempFilePath)
 	require.NoError(t, err)
 
 	defer func() {
 		require.NoError(t, tempDB.Close())
 	}()
 
-	boltdbIndexClient, err := local.NewBoltDBIndexClient(local.BoltDBConfig{Directory: tempDir})
+	boltdbIndexClient, err := boltdbcommon.NewBoltDBIndexClient(boltdbcommon.Config{Directory: tempDir})
 	require.NoError(t, err)
 
 	defer boltdbIndexClient.Stop()
 
-	testutil.VerifySingleIndexFile(t, index.Query{}, tempDB, local.IndexBucketName, start, numRecords)
+	testutil.VerifySingleIndexFile(t, boltdbcommon.Query{}, tempDB, boltdbcommon.IndexBucketName, start, numRecords)
 }

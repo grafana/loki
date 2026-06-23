@@ -306,19 +306,7 @@
       },
 
       storage_config:
-        {
-          index_queries_cache_config: {
-            memcached: {
-              batch_size: 100,
-              parallelism: 100,
-            },
-            memcached_client: {
-              host: 'memcached-index-queries.%s.svc.cluster.local' % $._config.namespace,
-              service: 'memcached-client',
-              consistent_hash: true,
-            },
-          },
-        } + $._config.object_store_config +
+        $._config.object_store_config +
         (
           if $._config.use_thanos_objstore then {
             use_thanos_objstore: true,

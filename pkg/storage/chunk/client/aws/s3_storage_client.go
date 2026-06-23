@@ -2,8 +2,10 @@ package aws
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -524,20 +526,33 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 		if err != nil {
 			return err
 		}
+
+		// Pre-compute SHA-256 checksum before calling the SDK so the checksum
+		// is sent as a plain request header (x-amz-checksum-sha256) rather than
+		// as an aws-chunked trailer.
+		//
+		// When ChecksumAlgorithm is set without a pre-computed value, the AWS SDK
+		// v2 switches to trailing-checksum mode which wraps the body in
+		// aws-chunked transfer encoding (Content-Encoding: aws-chunked). This
+		// encoding is an AWS-proprietary protocol that S3-compatible backends
+		// such as OpenStack Swift do not support, causing 501 NotImplemented
+		// errors (grafana/loki#21791).
+		h := sha256.New()
+		if _, err := io.Copy(h, readSeeker); err != nil {
+			return fmt.Errorf("computing sha256 checksum for PutObject: %w", err)
+		}
+		sha256Checksum := base64.StdEncoding.EncodeToString(h.Sum(nil))
+		if _, err := readSeeker.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("rewinding body after checksum computation: %w", err)
+		}
+
 		putObjectInput := &s3.PutObjectInput{
-			Body:         readSeeker,
-			Bucket:       aws.String(a.bucketFromKey(objectKey)),
-			Key:          aws.String(a.convertObjectKey(objectKey, true)),
-			StorageClass: types.StorageClass(a.cfg.StorageClass),
-			// Buckets with Object Lock enabled reject PutObject requests
-			// that lack either Content-MD5 or one of the x-amz-checksum-*
-			// headers with `InvalidRequest: Content-MD5 OR x-amz-checksum-
-			// HTTP header is required for Put Object requests with Object
-			// Lock parameters`. Ask the SDK to compute and attach a
-			// SHA-256 trailer so compliance buckets accept uploads
-			// without forcing operators to buffer every chunk for MD5
-			// (grafana/loki#20088).
+			Body:              readSeeker,
+			Bucket:            aws.String(a.bucketFromKey(objectKey)),
+			Key:               aws.String(a.convertObjectKey(objectKey, true)),
+			StorageClass:      types.StorageClass(a.cfg.StorageClass),
 			ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+			ChecksumSHA256:    aws.String(sha256Checksum),
 		}
 
 		if a.sseConfig != nil {

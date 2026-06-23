@@ -26,9 +26,9 @@ var _ log.Exporter = (*Exporter)(nil)
 //
 // It is recommended to use it with a [BatchProcessor]
 // or other processor exporting records asynchronously.
-func New(_ context.Context, options ...Option) (*Exporter, error) {
+func New(ctx context.Context, options ...Option) (*Exporter, error) {
 	cfg := newConfig(options)
-	c, err := newHTTPClient(cfg)
+	c, err := newHTTPClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}

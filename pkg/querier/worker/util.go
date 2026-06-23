@@ -132,14 +132,11 @@ func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, h
 
 	resp, err := handler.Do(ctx, r)
 	if err != nil {
-		if s, ok := status.FromError(err); ok {
-			return &queryrange.QueryResponse{
-				Status: s.Proto(),
-			}
-		}
-
-		// This block covers any errors that are not gRPC errors and will include all query errors.
-		// It's important to map non-retryable errors to a non 5xx status code so they will not be retried.
+		// QueryResponseWrapError maps the error through ClientHTTPStatusAndError,
+		// which classifies query errors (e.g. parse errors) as non-5xx so they
+		// are not retried, while preserving genuine gRPC statuses for other
+		// errors. Returning a pre-existing gRPC status verbatim here would
+		// misclassify a wrapped client error as a server error.
 		return queryrange.QueryResponseWrapError(err)
 	}
 

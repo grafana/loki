@@ -60,8 +60,8 @@ func (LabelFmtExpr) isExpr()               {}
 func (JSONExpressionParserExpr) isExpr()   {}
 func (LogfmtExpressionParserExpr) isExpr() {}
 func (LogRangeExpr) isExpr()               {}
-func (OffsetExpr) isExpr()                 {}
-func (UnwrapExpr) isExpr()                 {}
+func (OffsetExpr) isExpr()                 {} //nolint:unused // sealed-interface marker
+func (UnwrapExpr) isExpr()                 {} //nolint:unused // sealed-interface marker
 func (MultiVariantExpr) isExpr()           {}
 
 // LogSelectorExpr is a expression filtering and returning logs.
@@ -77,7 +77,7 @@ type LogSelectorExpr interface {
 
 func (MatchersExpr) isLogSelectorExpr()   {}
 func (PipelineExpr) isLogSelectorExpr()   {}
-func (MultiStageExpr) isLogSelectorExpr() {}
+func (MultiStageExpr) isLogSelectorExpr() {} //nolint:unused // sealed-interface marker
 func (LiteralExpr) isLogSelectorExpr()    {}
 func (VectorExpr) isLogSelectorExpr()     {}
 

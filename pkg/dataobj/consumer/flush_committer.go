@@ -65,18 +65,28 @@ func newFlushCommitter(
 	}
 }
 
-// Flush the data object builder and, if successful, commit the offset.
-func (c *flushCommitterImpl) Flush(ctx context.Context, builder builder, reason string, offset int64, earliestRecordTime time.Time) error {
-	objectPath, err := c.flusher.Flush(ctx, builder, reason)
-	if err != nil {
-		return fmt.Errorf("failed to flush data object: %w", err)
+// Flush multiple data object builders and, if successful, commit the offset.
+func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reason string, offset int64) error {
+	for _, b := range builders {
+		// Read before flushing: flushing resets the builder, which clears the earliest record time.
+		earliestRecordTime := b.GetEarliestRecordTime()
+		objectPath, err := c.flusher.Flush(ctx, b, reason)
+		if err != nil {
+			return fmt.Errorf("failed to flush data object: %w", err)
+		}
+
+		// TODO(ivkalita): send events in batch
+		// emitEvent returns an error only if context is cancelled, otherwise
+		// it retries indefinitely.
+		if err := c.emitEvent(ctx, objectPath, earliestRecordTime); err != nil {
+			return fmt.Errorf("failed to emit metastore event: %w", err)
+		}
 	}
-	if err := c.emitEvent(ctx, objectPath, earliestRecordTime); err != nil {
-		return fmt.Errorf("failed to emit metastore event: %w", err)
-	}
+
+	// commit returns an error only if context is cancelled, otherwise it retries indefinitely
 	if err := c.commit(ctx, offset); err != nil {
 		c.commitFailures.Inc()
-		return fmt.Errorf("failed to commit data object: %w", err)
+		return fmt.Errorf("failed to commit data object offset %d: %w", offset, err)
 	}
 	return nil
 }

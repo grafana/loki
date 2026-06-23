@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 
@@ -38,9 +40,9 @@ func TestProcessor_BuilderMaxAge(t *testing.T) {
 		var (
 			ctx            = t.Context()
 			reg            = prometheus.NewRegistry()
-			builder        = newTestBuilder(t, reg)
+			m              = newTestMultiBuilder()
 			flushCommitter = &mockFlushCommitter{}
-			proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, IngestModeKafka, log.NewNopLogger(), reg)
+			proc           = newProcessor(m, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
 		)
 
 		// Since no records have been pushed, the first append time should be zero,
@@ -82,14 +84,47 @@ func TestProcessor_BuilderMaxAge(t *testing.T) {
 	})
 }
 
+func TestProcessor_FlushesWhenBuilderFull(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var (
+			ctx            = t.Context()
+			reg            = prometheus.NewRegistry()
+			m              = newTestMultiBuilder()
+			flushCommitter = &mockFlushCommitter{}
+			proc           = newProcessor(m, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+		)
+
+		// While the builder is not full, processing a record should append
+		// without flushing.
+		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
+		require.Equal(t, 0, flushCommitter.flushes)
+		require.Equal(t, time.Now(), proc.firstAppend)
+
+		// Mark the builder as full. The next record should trigger a flush
+		// before it is appended, starting a new data object.
+		m.forceFull = true
+		flushedAt := time.Now()
+		time.Sleep(time.Minute)
+		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
+
+		// Exactly one flush should have occurred, and the record should still
+		// have been appended afterwards, resetting firstAppend to the current
+		// time rather than the time of the first append.
+		require.Equal(t, 1, flushCommitter.flushes)
+		require.NotEqual(t, flushedAt, proc.firstAppend)
+		require.Equal(t, time.Now(), proc.firstAppend)
+		require.Equal(t, time.Now(), proc.lastAppend)
+	})
+}
+
 func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (
 			ctx            = t.Context()
 			reg            = prometheus.NewRegistry()
-			builder        = newTestBuilder(t, reg)
+			m              = newTestMultiBuilder()
 			flushCommitter = &mockFlushCommitter{}
-			proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, IngestModeKafka, log.NewNopLogger(), reg)
+			proc           = newProcessor(m, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
 		)
 
 		// The idle flush timeout has not been exceeded, no flush should occur.
@@ -133,8 +168,18 @@ func (f *failureFlusher) Flush(_ context.Context, _ builder, _ string) (string, 
 
 type failureFlushCommitter struct{}
 
-func (m *failureFlushCommitter) Flush(_ context.Context, _ builder, _ string, _ int64, _ time.Time) error {
+func (m *failureFlushCommitter) Flush(_ context.Context, _ []builder, _ string, _ int64) error {
 	return errors.New("mock error")
+}
+
+// fixedErrFlushCommitter always returns the configured error. It is used to
+// verify how the processor classifies flush failures (recoverable vs. not).
+type fixedErrFlushCommitter struct {
+	err error
+}
+
+func (m *fixedErrFlushCommitter) Flush(_ context.Context, _ []builder, _ string, _ int64) error {
+	return m.err
 }
 
 func TestPartitionProcessor_Flush(t *testing.T) {
@@ -143,9 +188,9 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 			var (
 				ctx            = t.Context()
 				reg            = prometheus.NewRegistry()
-				builder        = newTestBuilder(t, reg)
+				m              = newTestMultiBuilder()
 				flushCommitter = &mockFlushCommitter{}
-				proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, IngestModeKafka, log.NewNopLogger(), reg)
+				proc           = newProcessor(m, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
 			)
 
 			// No flush should have occurred.
@@ -165,7 +210,6 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			// The following fields should be reset at the end of every flush.
 			require.True(t, proc.firstAppend.IsZero())
-			require.True(t, proc.earliestRecordTime.IsZero())
 			require.True(t, proc.lastAppend.IsZero())
 		})
 	})
@@ -175,9 +219,9 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 			var (
 				ctx            = t.Context()
 				reg            = prometheus.NewRegistry()
-				builder        = newTestBuilder(t, reg)
+				m              = newTestMultiBuilder()
 				flushCommitter = &failureFlushCommitter{}
-				proc           = newProcessor(builder, nil, flushCommitter, 5*time.Minute, 30*time.Minute, IngestModeKafka, log.NewNopLogger(), reg)
+				proc           = newProcessor(m, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
 			)
 
 			// Process a record containing some log lines. No flush should occur.
@@ -187,23 +231,82 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 			require.Equal(t, time.Now(), proc.lastAppend)
 			require.Equal(t, rec.Offset, proc.lastOffset)
 
-			// Advance time and force a flush. This flush should fail.
+			// Advance time and force a flush. This flush should fail. Because the
+			// flusher is not re-entrant, a non-cancellation failure is escalated
+			// to an unrecoverable error so the partition processor restarts and
+			// replays from Kafka.
 			time.Sleep(time.Second)
-			require.EqualError(t, proc.flush(ctx, "forced"), "mock error")
+			err := proc.flush(ctx, "forced")
+			require.ErrorIs(t, err, errUnrecoverableFlush)
+			require.ErrorContains(t, err, "mock error")
 
 			// Despite the failure, the following fields should still be reset.
 			require.True(t, proc.firstAppend.IsZero())
-			require.True(t, proc.earliestRecordTime.IsZero())
 			require.True(t, proc.lastAppend.IsZero())
 		})
+	})
+
+	t.Run("should not escalate a canceled flush", func(t *testing.T) {
+		// During shutdown the flush context is canceled. A canceled flush must
+		// be surfaced as-is rather than escalated to errUnrecoverableFlush, so
+		// the processor shuts down gracefully instead of restarting.
+		synctest.Test(t, func(t *testing.T) {
+			var (
+				ctx            = t.Context()
+				reg            = prometheus.NewRegistry()
+				m              = newTestMultiBuilder()
+				flushCommitter = &fixedErrFlushCommitter{err: context.Canceled}
+				proc           = newProcessor(m, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+			)
+
+			require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant", time.Now())))
+
+			time.Sleep(time.Second)
+			err := proc.flush(ctx, "forced")
+			require.ErrorIs(t, err, context.Canceled)
+			require.NotErrorIs(t, err, errUnrecoverableFlush)
+		})
+	})
+}
+
+func TestPartitionProcessor_FlushSplitsAcrossWindows(t *testing.T) {
+	// A single record whose entries span multiple TOC windows must be flushed
+	// as one builder per window, while still committing a single Kafka offset.
+	synctest.Test(t, func(t *testing.T) {
+		var (
+			ctx            = t.Context()
+			reg            = prometheus.NewRegistry()
+			m              = newTestMultiBuilder()
+			flushCommitter = &mockFlushCommitter{}
+			proc           = newProcessor(m, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+		)
+
+		w1 := time.Date(2026, time.April, 17, 0, 0, 0, 0, time.UTC)
+		w2 := w1.Add(metastore.MetastoreWindowSize)
+		w3 := w2.Add(metastore.MetastoreWindowSize)
+		rec := newTestMultiWindowRecord(t, "tenant", []time.Time{w1, w2, w3})
+		require.NoError(t, proc.processRecord(ctx, rec))
+
+		// Three windows means three per-window builders.
+		require.Len(t, m.GetBuilders(), 3)
+
+		require.NoError(t, proc.flush(ctx, "forced"))
+		require.Equal(t, 1, flushCommitter.flushes)
+		require.Equal(t, 3, flushCommitter.lastBuilderCount)
+		require.Equal(t, rec.Offset, flushCommitter.lastOffset)
+
+		// The multi-builder is reset after a successful flush.
+		require.Empty(t, m.GetBuilders())
+		require.Equal(t, 0, m.GetEstimatedSize())
 	})
 }
 
 // newTestBuilder returns a new logsobj.Builder with registered metrics.
 func newTestBuilder(t *testing.T, reg prometheus.Registerer) *logsobj.Builder {
-	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
+	m := logsobj.NewBuilderMetrics()
+	require.NoError(t, m.Register(reg))
+	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), m)
 	require.NoError(t, err)
-	require.NoError(t, b.RegisterMetrics(reg))
 	return b
 }
 
@@ -219,6 +322,28 @@ func newTestRecord(t *testing.T, tenant string, now time.Time) *kgo.Record {
 			Timestamp: now,
 			Line:      "baz",
 		}},
+	}
+	var err error
+	rec.Value, err = stream.Marshal()
+	require.NoError(t, err)
+	return &rec
+}
+
+// newTestMultiWindowRecord returns a record whose stream contains one entry
+// per provided timestamp. It is used to exercise records that span multiple
+// TOC windows. The record timestamp is the first window.
+func newTestMultiWindowRecord(t *testing.T, tenant string, windows []time.Time) *kgo.Record {
+	require.NotEmpty(t, windows)
+	rec := kgo.Record{
+		Key:       []byte(tenant),
+		Timestamp: windows[0],
+	}
+	stream := logproto.Stream{Labels: `{foo="bar"}`}
+	for i, w := range windows {
+		stream.Entries = append(stream.Entries, push.Entry{
+			Timestamp: w.Add(time.Minute),
+			Line:      fmt.Sprintf("line-%d", i),
+		})
 	}
 	var err error
 	rec.Value, err = stream.Marshal()

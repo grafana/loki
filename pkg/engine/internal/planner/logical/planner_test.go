@@ -456,6 +456,10 @@ func TestCanExecuteQuery(t *testing.T) {
 		{
 			statement: `sum(count_over_time({env="prod"} | logfmt | drop __error__=~"Unknown Error: .*" [1m]))`,
 		},
+		{
+			// match pattern is not supported
+			statement: `sum(count_over_time({env="prod"} |> "ts=<_>" [1m]))`,
+		},
 	} {
 		t.Run(tt.statement, func(t *testing.T) {
 			q := &query{
@@ -549,6 +553,44 @@ RETURN %17
 
 		require.ErrorContains(t, err, "delete request with unsupported stages")
 	})
+}
+
+// TestConvertAST_UnimplementedErrorNamesFeature ensures that when the planner
+// rejects a query it cannot build, the returned error names the specific
+// unsupported feature (wrapping errUnimplemented) rather than the bare sentinel.
+func TestConvertAST_UnimplementedErrorNamesFeature(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		statement string
+		feature   string
+	}{
+		{
+			name:      "range aggregation with offset",
+			statement: `count_over_time({app="foo"}[5m] offset 5m)`,
+			feature:   "range aggregation with offset",
+		},
+		{
+			name:      "unsupported log parser",
+			statement: `{app="foo"} | pattern "<msg>"`,
+			feature:   `log parser "pattern"`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := &query{
+				statement: tc.statement,
+				start:     3600,
+				end:       7200,
+				step:      time.Minute,
+				direction: logproto.BACKWARD,
+				limit:     1000,
+			}
+
+			plan, err := BuildPlan(context.Background(), q)
+			require.Nil(t, plan)
+			require.ErrorIs(t, err, errUnimplemented)
+			require.ErrorContains(t, err, tc.feature)
+		})
+	}
 }
 
 func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {

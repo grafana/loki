@@ -156,7 +156,7 @@ func newGRPCStorageClient(ctx context.Context, opts ...storageOption) (*grpcStor
 	s := initSettings(opts...)
 	s.clientOption = append(defaultGRPCOptions(), s.clientOption...)
 	// Disable all gax-level retries in favor of retry logic in the veneer client.
-	s.gax = append(s.gax, gax.WithRetry(nil), gax.WithTimeout(0))
+	s.gax = append(s.gax, gax.WithRetry(nil))
 
 	config := newStorageConfig(s.clientOption...)
 	if config.readAPIWasSet {
@@ -187,8 +187,21 @@ func newGRPCStorageClient(ctx context.Context, opts ...storageOption) (*grpcStor
 	if err != nil {
 		return nil, err
 	}
+	configureStreamingTimeouts(g)
 	c.raw = g
 	return c, nil
+}
+
+// configureStreamingTimeouts explicitly overrides default call timeouts to 0 (unbounded)
+// for all generated payload streaming RPCs. This guarantees that long-running data reads
+// and writes are not prematurely aborted by default transport deadlines, while allowing
+// all transactional and metadata/unary operations to retain their safety deadlines.
+func configureStreamingTimeouts(g *gapic.Client) {
+	g.CallOptions.ReadObject = append(g.CallOptions.ReadObject, gax.WithTimeout(0))
+	g.CallOptions.WriteObject = append(g.CallOptions.WriteObject, gax.WithTimeout(0))
+	g.CallOptions.BidiReadObject = append(g.CallOptions.BidiReadObject, gax.WithTimeout(0))
+	g.CallOptions.BidiWriteObject = append(g.CallOptions.BidiWriteObject, gax.WithTimeout(0))
+	g.CallOptions.CancelResumableWrite = append(g.CallOptions.CancelResumableWrite, gax.WithTimeout(0))
 }
 
 func (c *grpcStorageClient) routingInterceptors() (grpc.UnaryClientInterceptor, grpc.StreamClientInterceptor) {
@@ -536,6 +549,9 @@ func (c *grpcStorageClient) LockBucketRetentionPolicy(ctx context.Context, bucke
 }
 func (c *grpcStorageClient) ListObjects(ctx context.Context, bucket string, q *Query, opts ...storageOption) *ObjectIterator {
 	s := callSettings(c.settings, opts...)
+	if s.userProject != "" {
+		ctx = setUserProjectMetadata(ctx, s.userProject)
+	}
 	it := &ObjectIterator{
 		ctx: ctx,
 	}
@@ -556,9 +572,6 @@ func (c *grpcStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 		IncludeFoldersAsPrefixes: it.query.IncludeFoldersAsPrefixes,
 		Filter:                   it.query.Filter,
 	}
-	if s.userProject != "" {
-		ctx = setUserProjectMetadata(ctx, s.userProject)
-	}
 	fetch := func(pageSize int, pageToken string) (token string, err error) {
 		// Add trace span around List API call within the fetch.
 		ctx, _ = startSpan(ctx, "grpcStorageClient.ObjectsListCall")
@@ -567,7 +580,6 @@ func (c *grpcStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 		var gitr *gapic.ObjectIterator
 		err = run(it.ctx, func(ctx context.Context) error {
 			gitr = c.raw.ListObjects(ctx, req, s.gax...)
-			it.ctx = ctx
 			objects, token, err = gitr.InternalFetch(pageSize, pageToken)
 			return err
 		}, s.retry, s.idempotent)
