@@ -6,7 +6,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "5f9df7bc2982ed2faa63925979af611e9443120d"
+  RELEASE_LIB_REF: "8834ccf472ac60f2a1b426bf741a368873b3440f"
   RELEASE_REPO: "grafana/loki"
 jobs:
   createRelease:
@@ -102,8 +102,7 @@ jobs:
           --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
           --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
           --shas-to-tag "$(echo $OUTPUTS_PR_NUMBER | tr -d '"'):$(echo ${SHA} | tr -d '"')" \
-          --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}" \
-          --group-pull-request-title-pattern "chore\${scope}: Release\${component} \${version}")
+          --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}")
         echo "$output"
         if [[ "$output" == "[]" || -z "$output" ]]; then
           echo "::error::release-please did not create a release"
