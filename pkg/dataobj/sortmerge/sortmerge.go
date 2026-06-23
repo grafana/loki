@@ -32,7 +32,7 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 // by [schema sort key ASC, streamID ASC, timestamp DESC].
 //
 // It expects sortKeys to contain a mapping from StreamID to schema sort key.
-func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, sortKeys map[int64]string) (result.Seq[logs.Record], error) {
+func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, sortKeys []string) (result.Seq[logs.Record], error) {
 	return iterator(ctx, sections, logs.CompareForSortSchema(sortKeys))
 }
 

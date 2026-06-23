@@ -13,7 +13,7 @@ import (
 // sortedSchemaIter merges schema-sorted input sections, injects schema sort
 // keys, remaps stream IDs, and returns an iterator suitable for AppendOrdered.
 func sortedSchemaIter(
-	ctx context.Context, sections []*dataobj.Section, sortKeys map[int64]string, streamIDs map[int64]int64,
+	ctx context.Context, sections []*dataobj.Section, sortKeys []string, streamIDs []int64,
 ) (result.Seq[logs.Record], error) {
 	iter, err := sortmerge.IteratorForSchema(ctx, sections, sortKeys)
 	if err != nil {
@@ -28,12 +28,16 @@ func sortedSchemaIter(
 			}
 
 			oldStreamID := rec.StreamID
-			sortKey, ok := sortKeys[oldStreamID]
-			if !ok {
+			if oldStreamID <= 0 || oldStreamID >= int64(len(sortKeys)) {
 				return fmt.Errorf("missing schema sort key for stream ID %d", oldStreamID)
 			}
-			streamID, ok := streamIDs[oldStreamID]
-			if !ok {
+			sortKey := sortKeys[oldStreamID]
+
+			if oldStreamID >= int64(len(streamIDs)) {
+				return fmt.Errorf("missing stream ID remap for stream ID %d", oldStreamID)
+			}
+			streamID := streamIDs[oldStreamID]
+			if streamID == 0 {
 				return fmt.Errorf("missing stream ID remap for stream ID %d", oldStreamID)
 			}
 			rec.SortKey = sortKey

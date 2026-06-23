@@ -208,7 +208,7 @@ func (seq *DatasetSequence) Close() {
 // schema-based sort order: [sortKey ASC, streamID ASC, timestamp DESC].
 // sortKeys maps streamID to its pre-computed sort key.
 // math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
-func CompareForSortSchema(sortKeys map[int64]string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+func CompareForSortSchema(sortKeys []string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
 	return func(a, b result.Result[dataset.Row]) bool {
 		return result.Compare(a, b, func(ra, rb dataset.Row) int {
 			aStreamID := ra.Values[0].Int64()

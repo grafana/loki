@@ -555,9 +555,13 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, fmt.Errorf("multiple streams sections found for tenant: %v", tenant)
 		}
 
+		streamsSection, err := streams.Open(ctx, streamSections[0])
+		if err != nil {
+			return nil, nil, fmt.Errorf("opening streams section for tenant %s: %w", tenant, err)
+		}
+
 		if len(schemaLabels) > 0 {
-			var err error
-			streamIter, streamRemap, err := sortAndRemapStreams(streamsSectionIter(ctx, streamSections[0]), tenant, schemaLabels)
+			streamIter, streamRemap, err := sortAndRemapStreams(streamsSectionIter(ctx, streamsSection), tenant, schemaLabels, streamsSection.NumStreams())
 			if err != nil {
 				return nil, nil, fmt.Errorf("building stream ID remap for tenant %s: %w", tenant, err)
 			}
@@ -569,7 +573,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			sortOrder = logs.SortSchemaASC
 			iter, iterErr = sortedSchemaIter(ctx, sections, streamRemap.sortKeys, streamRemap.ids)
 		} else {
-			if err := b.buildStreamSection(ctx, tenant, streamsSectionIter(ctx, streamSections[0]), sb); err != nil {
+			if err := b.buildStreamSection(ctx, tenant, streamsSectionIter(ctx, streamsSection), sb); err != nil {
 				return nil, nil, err
 			}
 
@@ -701,8 +705,8 @@ func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter re
 }
 
 type streamIDRemap struct {
-	sortKeys map[int64]string
-	ids      map[int64]int64
+	sortKeys []string
+	ids      []int64
 }
 
 type streamWithSortKey struct {
@@ -723,12 +727,12 @@ type streamWithSortKey struct {
 // compression and pruning at query time.
 //
 // Log records must also be remapped to keep their stream references valid.
-func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string) (result.Seq[streams.Stream], streamIDRemap, error) {
+func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaLabels []string, numStreams int) (result.Seq[streams.Stream], streamIDRemap, error) {
 	var (
-		collected []streamWithSortKey
+		collected = make([]streamWithSortKey, 0, numStreams)
 		remap     = streamIDRemap{
-			sortKeys: make(map[int64]string),
-			ids:      make(map[int64]int64),
+			sortKeys: make([]string, numStreams+1),
+			ids:      make([]int64, numStreams+1),
 		}
 	)
 
@@ -758,7 +762,10 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 		oldID := collected[i].stream.ID
 		newID := int64(i + 1)
 
-		if prevNewID, ok := remap.ids[oldID]; ok {
+		if oldID <= 0 || oldID > int64(numStreams) {
+			return nil, streamIDRemap{}, fmt.Errorf("stream id %d out of range for tenant %s with %d streams", oldID, tenant, numStreams)
+		}
+		if prevNewID := remap.ids[oldID]; prevNewID != 0 {
 			return nil, streamIDRemap{}, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prevNewID, newID)
 		}
 
@@ -779,12 +786,8 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 	}), remap, nil
 }
 
-func streamsSectionIter(ctx context.Context, sec *dataobj.Section) result.Seq[streams.Stream] {
+func streamsSectionIter(ctx context.Context, section *streams.Section) result.Seq[streams.Stream] {
 	return result.Iter(func(yield func(streams.Stream) bool) error {
-		section, err := streams.Open(ctx, sec)
-		if err != nil {
-			return fmt.Errorf("failed to open streams section: %w", err)
-		}
 		for res := range streams.IterSection(ctx, section) {
 			stream, err := res.Value()
 			if err != nil {
