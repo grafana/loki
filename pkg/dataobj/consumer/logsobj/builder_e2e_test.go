@@ -289,10 +289,10 @@ func compareRecords(t *testing.T, a, b builderE2EResolvedRecord, sortOrder strin
 			return res
 		}
 		return cmp.Compare(a.streamID, b.streamID)
-	} else {
-		t.Fatalf("unknown sort order: %q", sortOrder)
-		return 0
 	}
+
+	t.Fatalf("unknown sort order: %q", sortOrder)
+	return 0
 }
 
 func countTenantSections(obj *dataobj.Object, tenant string, check func(*dataobj.Section) bool) int {
