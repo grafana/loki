@@ -44,14 +44,13 @@ type storeEntry struct {
 	ChunkWriter
 }
 
-// FlushIndex forces the entry's index reader to ship its in-memory index, if it
-// supports it (i.e. a writable TSDB store). No-op otherwise.
-func (c *storeEntry) FlushIndex(ctx context.Context) error {
+// FlushIndexes forces the entry's index reader to ship its in-memory indexes.
+func (c *storeEntry) FlushIndexes(ctx context.Context) error {
 	f, ok := c.indexReader.(index.Flusher)
 	if !ok {
 		return nil
 	}
-	return f.FlushIndex(ctx)
+	return f.FlushIndexes(ctx)
 }
 
 func (c *storeEntry) GetChunks(

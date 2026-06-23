@@ -384,65 +384,65 @@ func TestFlushTenantHandler(t *testing.T) {
 
 	for _, tc := range []struct {
 		name string
-		// pushStreams pushes streams {app="a"} and {app="b"} for userID before the request.
-		pushStreams bool
+		// pushStreams are pushed for userID before the request (built with makeStream).
+		pushStreams []logproto.Stream
 		// orgID is injected into the request context; an empty value means no tenant is set.
-		orgID    string
-		setQuery bool
-		query    string
+		orgID string
+		// flushStreamsSelector is the LogQL selector sent as the "query" param;
+		// an empty value means no selector (flush the whole tenant).
+		flushStreamsSelector string
 
-		expectedStatus   int
-		expectedChunks   int    // number of chunks flushed for userID
-		expectedAppLabel string // if set, assert the single flushed chunk carries this app label
-		expectedFlushes  int32  // number of forced index ships (FlushIndex calls)
+		expectedFlushStatusCode int
+		// expectedStreams are the label sets expected to have been flushed to the store.
+		expectedStreams []string
+		// expectedFlushes is the number of forced index ships (FlushIndexes calls).
+		expectedFlushes int32
 	}{
 		{
-			name:             "matcher scopes flush to matching streams",
-			pushStreams:      true,
-			orgID:            userID,
-			setQuery:         true,
-			query:            `{app="a"}`,
-			expectedStatus:   http.StatusNoContent,
-			expectedChunks:   1,
-			expectedAppLabel: "a",
-			expectedFlushes:  1,
+			name:                    "matcher scopes flush to matching streams",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
+			orgID:                   userID,
+			flushStreamsSelector:    `{app="a"}`,
+			expectedFlushStatusCode: http.StatusNoContent,
+			expectedStreams:         []string{`{app="a"}`},
+			expectedFlushes:         1,
 		},
 		{
-			name:            "empty matcher flushes the whole tenant",
-			pushStreams:     true,
-			orgID:           userID,
-			expectedStatus:  http.StatusNoContent,
-			expectedChunks:  2,
-			expectedFlushes: 1,
+			name:                    "empty selector flushes the whole tenant",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
+			orgID:                   userID,
+			expectedFlushStatusCode: http.StatusNoContent,
+			expectedStreams:         []string{`{app="a"}`, `{app="b"}`},
+			expectedFlushes:         1,
 		},
 		{
-			name:           "missing tenant is a bad request",
-			expectedStatus: http.StatusBadRequest,
+			name:                    "missing tenant is a bad request",
+			expectedFlushStatusCode: http.StatusBadRequest,
 		},
 		{
-			name:           "invalid matcher is a bad request",
-			orgID:          userID,
-			setQuery:       true,
-			query:          "not-a-matcher",
-			expectedStatus: http.StatusBadRequest,
+			name:                    "invalid matcher is a bad request",
+			orgID:                   userID,
+			flushStreamsSelector:    "not-a-matcher",
+			expectedFlushStatusCode: http.StatusBadRequest,
 		},
 		{
-			name:           "unknown tenant is a no-op",
-			orgID:          "no-such-tenant",
-			expectedStatus: http.StatusNoContent,
+			name:                    "unknown tenant is a no-op",
+			orgID:                   "no-such-tenant",
+			expectedFlushStatusCode: http.StatusNoContent,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
 			defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
 
-			if tc.pushStreams {
-				pushTwoStreams(t, ing, userID)
+			if len(tc.pushStreams) > 0 {
+				_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{Streams: tc.pushStreams})
+				require.NoError(t, err)
 			}
 
 			target := "/flush/tenant"
-			if tc.setQuery {
-				target += "?query=" + url.QueryEscape(tc.query)
+			if tc.flushStreamsSelector != "" {
+				target += "?query=" + url.QueryEscape(tc.flushStreamsSelector)
 			}
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodPost, target, nil)
@@ -452,26 +452,27 @@ func TestFlushTenantHandler(t *testing.T) {
 
 			ing.FlushTenantHandler(w, r)
 
-			require.Equal(t, tc.expectedStatus, w.Code)
+			require.Equal(t, tc.expectedFlushStatusCode, w.Code)
 
-			chunks := store.getChunksForUser(userID)
-			require.Len(t, chunks, tc.expectedChunks)
-			if tc.expectedAppLabel != "" {
-				require.Equal(t, tc.expectedAppLabel, chunks[0].Metric.Get("app"))
+			var flushedStreams []string
+			for _, c := range store.getChunksForUser(userID) {
+				flushedStreams = append(flushedStreams, c.Metric.String())
 			}
+			require.ElementsMatch(t, tc.expectedStreams, flushedStreams)
+
 			require.Equal(t, tc.expectedFlushes, store.flushIndexCalls.Load())
 		})
 	}
 }
 
-func pushTwoStreams(t *testing.T, ing *Ingester, userID string) {
-	t.Helper()
+// makeStream builds a stream with the given labels and numLogs log lines.
+func makeStream(labels string, numLogs int) logproto.Stream {
 	now := time.Now()
-	_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{Streams: []logproto.Stream{
-		{Labels: `{app="a"}`, Entries: []logproto.Entry{{Timestamp: now, Line: "a1"}}},
-		{Labels: `{app="b"}`, Entries: []logproto.Entry{{Timestamp: now, Line: "b1"}}},
-	}})
-	require.NoError(t, err)
+	entries := make([]logproto.Entry, 0, numLogs)
+	for i := 0; i < numLogs; i++ {
+		entries = append(entries, logproto.Entry{Timestamp: now, Line: fmt.Sprintf("line-%d", i)})
+	}
+	return logproto.Stream{Labels: labels, Entries: entries}
 }
 
 type testStore struct {
@@ -480,12 +481,12 @@ type testStore struct {
 	chunks map[string][]chunk.Chunk
 	onPut  func(ctx context.Context, chunks []chunk.Chunk) error
 
-	// flushIndexCalls counts how many times FlushIndex was invoked, so tests can
+	// flushIndexCalls counts how many times FlushIndexes was invoked, so tests can
 	// assert the handler forces the index ship after flushing chunks.
 	flushIndexCalls atomic.Int32
 }
 
-func (s *testStore) FlushIndex(_ context.Context) error {
+func (s *testStore) FlushIndexes(_ context.Context) error {
 	s.flushIndexCalls.Add(1)
 	return nil
 }

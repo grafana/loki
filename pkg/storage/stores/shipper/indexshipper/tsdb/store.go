@@ -156,10 +156,9 @@ func (s *store) Stop() {
 	})
 }
 
-// FlushIndex forces the in-memory TSDB head to be built into TSDB files and
-// uploaded to object storage immediately. It is a no-op when the store isn't
-// backed by a writable HeadManager (read-only / noop / disabled modes).
-func (s *store) FlushIndex(ctx context.Context) error {
+// FlushIndexes forces the in-memory TSDB head to be built into TSDB files and
+// uploaded to object storage immediately.
+func (s *store) FlushIndexes(ctx context.Context) error {
 	hm, ok := s.indexWriter.(*HeadManager)
 	if !ok {
 		return nil
@@ -169,7 +168,7 @@ func (s *store) FlushIndex(ctx context.Context) error {
 		return errors.Wrap(err, "force-flushing tsdb head")
 	}
 
-	return s.indexShipper.ForceUpload(ctx)
+	return s.indexShipper.FlushIndexes(ctx)
 }
 
 func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {

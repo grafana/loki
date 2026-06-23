@@ -166,14 +166,13 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	return s, nil
 }
 
-// FlushIndex forces the underlying store to ship its in-memory index to object
-// storage, if supported. No-op otherwise.
-func (s *LokiStore) FlushIndex(ctx context.Context) error {
+// FlushIndexes forces the underlying store to ship its in-memory index to object xstorage.
+func (s *LokiStore) FlushIndexes(ctx context.Context) error {
 	f, ok := s.Store.(index.Flusher)
 	if !ok {
 		return nil
 	}
-	return f.FlushIndex(ctx)
+	return f.FlushIndexes(ctx)
 }
 
 func (s *LokiStore) init() error {

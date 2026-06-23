@@ -191,7 +191,7 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 
 	level.Info(i.logger).Log("msg", "flushing tenant streams", "tenant", tenantID, "streams", len(fps))
 
-	if err := i.flushMatchedStreams(tenantID, fps); err != nil {
+	if err := i.flushMatchedStreamsChunks(tenantID, fps); err != nil {
 		level.Error(i.logger).Log("msg", "failed flushing tenant streams", "tenant", tenantID, "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -199,7 +199,7 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Force the in-memory index to be built and shipped so the just-flushed
 	// chunks are referenceable from object storage.
-	if err := i.store.FlushIndex(ctx); err != nil {
+	if err := i.store.FlushIndexes(ctx); err != nil {
 		level.Error(i.logger).Log("msg", "failed flushing index", "tenant", tenantID, "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -208,11 +208,12 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// flushMatchedStreams synchronously flushes the given streams for a tenant,
-// bounded by the configured flush concurrency (ConcurrentFlushes), matching the
-// regular flush path. Each stream is flushed through flushOp so it gets the same
-// FlushOpBackoff retry behaviour as the regular (queue-driven) immediate flush.
-func (i *Ingester) flushMatchedStreams(tenantID string, fps []model.Fingerprint) error {
+// flushMatchedStreamsChunks synchronously flushes the chunks of the given streams
+// for a tenant, bounded by the configured flush concurrency (ConcurrentFlushes),
+// matching the regular flush path. Each stream is flushed through flushOp so it
+// gets the same FlushOpBackoff retry behaviour as the regular (queue-driven)
+// immediate flush.
+func (i *Ingester) flushMatchedStreamsChunks(tenantID string, fps []model.Fingerprint) error {
 	if len(fps) == 0 {
 		return nil
 	}

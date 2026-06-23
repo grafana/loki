@@ -65,12 +65,12 @@ type ReaderWriter interface {
 	Writer
 }
 
-// Flusher is implemented by index stores that can force their in-memory index
+// Flusher is implemented by index stores that can force their in-memory indexes
 // (e.g. the TSDB head) to be built and shipped to object storage on demand,
 // rather than waiting for the periodic rotation/upload.
 type Flusher interface {
-	// FlushIndex forces any in-memory index data to be persisted to object storage.
-	FlushIndex(ctx context.Context) error
+	// FlushIndexes forces any in-memory index data to be persisted to object storage.
+	FlushIndexes(ctx context.Context) error
 }
 
 type MonitoredReaderWriter struct {
@@ -85,14 +85,14 @@ func NewMonitoredReaderWriter(rw ReaderWriter, reg prometheus.Registerer) *Monit
 	}
 }
 
-// FlushIndex forces the underlying index store to ship its in-memory index, if
+// FlushIndexes forces the underlying index store to ship its in-memory index, if
 // it supports doing so. It is a no-op for stores that don't implement Flusher.
-func (m MonitoredReaderWriter) FlushIndex(ctx context.Context) error {
+func (m MonitoredReaderWriter) FlushIndexes(ctx context.Context) error {
 	f, ok := m.rw.(Flusher)
 	if !ok {
 		return nil
 	}
-	return f.FlushIndex(ctx)
+	return f.FlushIndexes(ctx)
 }
 
 func (m MonitoredReaderWriter) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {

@@ -342,16 +342,15 @@ func (c CompositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-// FlushIndex forces every underlying store that supports it to ship its
-// in-memory index to object storage. There is no time range to scope this to,
-// so it fans out to all stores. It is a no-op for stores that don't support it.
-func (c CompositeStore) FlushIndex(ctx context.Context) error {
+// FlushIndexes forces every underlying store that supports it to ship its
+// in-memory indexes to object storage.
+func (c CompositeStore) FlushIndexes(ctx context.Context) error {
 	for _, store := range c.stores {
 		f, ok := store.Store.(index.Flusher)
 		if !ok {
 			continue
 		}
-		if err := f.FlushIndex(ctx); err != nil {
+		if err := f.FlushIndexes(ctx); err != nil {
 			return err
 		}
 	}

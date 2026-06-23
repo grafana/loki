@@ -247,7 +247,7 @@ var errHeadManagerStopped = errors.New("head manager is stopping")
 //
 // The freshly built TSDBs are handed to the index shipper but are not yet
 // uploaded to object storage; callers wanting them durable in object storage
-// must also force an upload (see (*store).FlushIndex).
+// must also force an upload (see (*store).FlushIndexes).
 func (m *HeadManager) Flush() error {
 	resp := make(chan error, 1)
 	select {

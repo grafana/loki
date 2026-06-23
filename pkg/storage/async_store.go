@@ -62,14 +62,14 @@ func NewAsyncStore(cfg AsyncStoreCfg, store stores.Store, scfg config.SchemaConf
 	}
 }
 
-// FlushIndex forces the wrapped store to ship its in-memory index to object
+// FlushIndexes forces the wrapped store to ship its in-memory index to object
 // storage, if supported. No-op otherwise.
-func (a *AsyncStore) FlushIndex(ctx context.Context) error {
+func (a *AsyncStore) FlushIndexes(ctx context.Context) error {
 	f, ok := a.Store.(index.Flusher)
 	if !ok {
 		return nil
 	}
-	return f.FlushIndex(ctx)
+	return f.FlushIndexes(ctx)
 }
 
 // queryIngesters uses the queryIngestersWithin flag but will always query them when it's 0.

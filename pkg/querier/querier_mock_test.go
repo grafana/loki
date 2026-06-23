@@ -305,7 +305,7 @@ func (s *storeMock) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) er
 	return errors.New("storeMock.PutOne() has not been mocked")
 }
 
-func (s *storeMock) FlushIndex(_ context.Context) error {
+func (s *storeMock) FlushIndexes(_ context.Context) error {
 	return nil
 }
 

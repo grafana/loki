@@ -470,15 +470,15 @@ func Test_HeadManager_RotateAndBuild(t *testing.T) {
 	mgr := newRecordingTSDBManager(storeName, dir)
 	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
 	for _, d := range managerRequiredDirs(storeName, dir) {
-		require.Nil(t, util.EnsureDirectory(d))
+		require.NoError(t, util.EnsureDirectory(d))
 	}
-	require.Nil(t, hm.Rotate(now)) // initialize active head (usually done by Start())
+	require.NoError(t, hm.Rotate(now)) // initialize active head (usually done by Start())
 
-	require.Nil(t, hm.Append(c.User, c.Labels, labels.StableHash(c.Labels), c.Chunks))
+	require.NoError(t, hm.Append(c.User, c.Labels, labels.StableHash(c.Labels), c.Chunks))
 
 	// Force a rotation mid-period: the active head should be rotated out and
 	// built without waiting for the period boundary.
-	require.Nil(t, hm.rotateAndBuild(time.Now(), true))
+	require.NoError(t, hm.rotateAndBuild(time.Now(), true))
 	require.Equal(t, 1, mgr.builds, "active head should have been built exactly once")
 
 	// Data remains queryable, served from the retained in-memory heads.
@@ -489,7 +489,7 @@ func Test_HeadManager_RotateAndBuild(t *testing.T) {
 		nil, nil,
 		labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 	)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
 
 	// A periodic tick in the same period right after the forced flush must not

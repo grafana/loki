@@ -43,7 +43,7 @@ func buildTestTableManager(t *testing.T, testDir string) (TableManager, stopFunc
 	}
 }
 
-func TestTableManager_ForceUpload(t *testing.T) {
+func TestTableManager_UploadTables(t *testing.T) {
 	testDir := t.TempDir()
 
 	tm, stopFunc := buildTestTableManager(t, testDir)
@@ -60,8 +60,8 @@ func TestTableManager_ForceUpload(t *testing.T) {
 		require.NoError(t, tm.AddIndex(tableName, userID, testIndex))
 	}
 
-	// Force a synchronous upload and ensure it surfaces success.
-	require.NoError(t, tm.ForceUpload(context.Background()))
+	// Synchronously upload all tables and ensure it surfaces success.
+	require.NoError(t, tm.UploadTables(context.Background()))
 
 	// The indexes should now be present in object storage.
 	uploadedDir := filepath.Join(testDir, objectsStorageDirName, tableName, userID)

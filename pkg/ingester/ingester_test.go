@@ -451,7 +451,7 @@ func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
-func (s *mockStore) FlushIndex(_ context.Context) error {
+func (s *mockStore) FlushIndexes(_ context.Context) error {
 	return nil
 }
 
