@@ -476,7 +476,7 @@ func TestChunkEncodingRoundTrip(t *testing.T) {
 
 func TestChunkEncodingIngestedAtDayDelta(t *testing.T) {
 	// IngestedAt is stored at day precision, rounded up, using a day delta from MaxTime.
-	baseDay := int64(20_000 * ingestedAtDayMilliseconds)
+	baseDay := 20_000 * ingestedAtDayMilliseconds
 	for _, tc := range []struct {
 		desc string
 		chk  ChunkMeta
@@ -520,7 +520,7 @@ func TestChunkEncodingIngestedAtDayDelta(t *testing.T) {
 }
 
 func TestEncodeIngestedAtDayDelta(t *testing.T) {
-	baseDay := int64(20_000 * ingestedAtDayMilliseconds)
+	baseDay := 20_000 * ingestedAtDayMilliseconds
 	for _, tc := range []struct {
 		desc       string
 		ingestedAt int64
