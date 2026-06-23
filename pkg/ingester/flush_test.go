@@ -388,7 +388,7 @@ func TestFlushTenantHandler(t *testing.T) {
 		pushStreams []logproto.Stream
 		// orgID is injected into the request context; an empty value means no tenant is set.
 		orgID string
-		// flushStreamsSelector is the LogQL selector sent as the "query" param;
+		// flushStreamsSelector is the LogQL selector sent as the "streams" param;
 		// an empty value means no selector (flush the whole tenant).
 		flushStreamsSelector string
 
@@ -442,7 +442,7 @@ func TestFlushTenantHandler(t *testing.T) {
 
 			target := "/flush/tenant"
 			if tc.flushStreamsSelector != "" {
-				target += "?query=" + url.QueryEscape(tc.flushStreamsSelector)
+				target += "?streams=" + url.QueryEscape(tc.flushStreamsSelector)
 			}
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodPost, target, nil)
