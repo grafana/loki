@@ -12,7 +12,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 
@@ -60,16 +59,6 @@ func NewAsyncStore(cfg AsyncStoreCfg, store stores.Store, scfg config.SchemaConf
 		ingesterQuerier:      cfg.IngesterQuerier,
 		queryIngestersWithin: cfg.QueryIngestersWithin,
 	}
-}
-
-// FlushIndexes forces the wrapped store to ship its in-memory index to object
-// storage, if supported. No-op otherwise.
-func (a *AsyncStore) FlushIndexes(ctx context.Context) error {
-	f, ok := a.Store.(index.Flusher)
-	if !ok {
-		return nil
-	}
-	return f.FlushIndexes(ctx)
 }
 
 // queryIngesters uses the queryIngestersWithin flag but will always query them when it's 0.

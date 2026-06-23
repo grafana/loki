@@ -44,15 +44,6 @@ type storeEntry struct {
 	ChunkWriter
 }
 
-// FlushIndexes forces the entry's index reader to ship its in-memory indexes.
-func (c *storeEntry) FlushIndexes(ctx context.Context) error {
-	f, ok := c.indexReader.(index.Flusher)
-	if !ok {
-		return nil
-	}
-	return f.FlushIndexes(ctx)
-}
-
 func (c *storeEntry) GetChunks(
 	ctx context.Context,
 	userID string,

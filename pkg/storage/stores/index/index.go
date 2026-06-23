@@ -85,16 +85,6 @@ func NewMonitoredReaderWriter(rw ReaderWriter, reg prometheus.Registerer) *Monit
 	}
 }
 
-// FlushIndexes forces the underlying index store to ship its in-memory index, if
-// it supports doing so. It is a no-op for stores that don't implement Flusher.
-func (m MonitoredReaderWriter) FlushIndexes(ctx context.Context) error {
-	f, ok := m.rw.(Flusher)
-	if !ok {
-		return nil
-	}
-	return f.FlushIndexes(ctx)
-}
-
 func (m MonitoredReaderWriter) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {
 	var chunks []logproto.ChunkRef
 
