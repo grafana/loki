@@ -283,7 +283,7 @@ func (c *Client) Flush() error {
 func (c *Client) FlushTenant(selector string) error {
 	u := fmt.Sprintf("%s/flush/tenant", c.baseURL)
 	if selector != "" {
-		u += "?streamSelector=" + url.QueryEscape(selector)
+		u += "?streams=" + url.QueryEscape(selector)
 	}
 
 	req, err := c.request(context.Background(), "POST", u)

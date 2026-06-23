@@ -1300,12 +1300,12 @@ rotation.
 
 Unlike `/flush`, this endpoint is tenant-scoped: the tenant is taken from the
 `X-Scope-OrgID` header (when running with multi-tenancy enabled). An optional
-`streamSelector` parameter restricts the flush to the streams matching a log
-stream selector; when omitted, all of the tenant's in-memory streams are flushed.
+`streams` parameter restricts the flush to the streams matching a log stream
+selector; when omitted, all of the tenant's in-memory streams are flushed.
 
 **URL query parameters:**
 
-- `streamSelector=<selector>`:
+- `streams=<selector>`:
   Optional log stream selector that selects the streams to flush, for example `{app="foo"}`.
   If omitted, all in-memory streams for the tenant are flushed.
 

@@ -147,8 +147,8 @@ func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 
 // FlushTenantHandler triggers a synchronous flush of the in-memory chunks for a
 // single tenant (read from the X-Scope-OrgID header), optionally restricted to
-// the streams matching a LogQL stream selector passed via the "streamSelector"
-// param. An empty/absent selector flushes all of the tenant's in-memory streams.
+// the streams matching a LogQL stream selector passed via the "streams" param.
+// An empty/absent selector flushes all of the tenant's in-memory streams.
 //
 // After the matched chunks are flushed, it forces the in-memory index (the TSDB
 // head) to be built and shipped to object storage so the flushed chunks are
@@ -163,8 +163,8 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var matchers []*labels.Matcher
-	if streamSelector := r.URL.Query().Get("streamSelector"); streamSelector != "" {
-		matchers, err = syntax.ParseMatchers(streamSelector, true)
+	if streams := r.URL.Query().Get("streams"); streams != "" {
+		matchers, err = syntax.ParseMatchers(streams, true)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
