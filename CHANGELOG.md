@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.7.3](https://github.com/grafana/loki/compare/v3.7.2...v3.7.3) (2026-06-23)
+
+
+### Bug Fixes
+
+* **ci:** Remove test checking for nfpm vars, like main ([#22501](https://github.com/grafana/loki/issues/22501)) ([5f48f39](https://github.com/grafana/loki/commit/5f48f3997e8150716e1022c655ed6d8abaca4081))
+* **ci:** Use latest workflow definitions for 3.7.x ([#22496](https://github.com/grafana/loki/issues/22496)) ([0bed459](https://github.com/grafana/loki/commit/0bed459c9df1a5fb7b8268b522e432260d3e2af5))
+* **security/HIGH/cmd/dataobj-inspect:** Update module go.opentelemetry.io/otel to v1.41.0 [SECURITY] (release-3.7.x) ([#22188](https://github.com/grafana/loki/issues/22188)) ([dc8f4de](https://github.com/grafana/loki/commit/dc8f4de36fe654dd344c4dea3d80bf180aaf20a6))
+* **security/HIGH/:** Update module github.com/containerd/containerd/v2 to v2.0.9 [SECURITY] (release-3.7.x) ([#22187](https://github.com/grafana/loki/issues/22187)) ([365c7e9](https://github.com/grafana/loki/commit/365c7e90010ccd124b1950847133d73a8b2a5864))
+* **security/UNKNOWN/cmd/chunks-inspect:** Update go toolchain directive to v1.25.11 [SECURITY] (release-3.7.x) ([#22192](https://github.com/grafana/loki/issues/22192)) ([d5d7a54](https://github.com/grafana/loki/commit/d5d7a542e23cee6eed6c5420f7866f28b24b4f3c))
+* **security/UNKNOWN/cmd/dataobj-inspect:** Update go module directive to v1.25.11 [SECURITY] (release-3.7.x) ([#22184](https://github.com/grafana/loki/issues/22184)) ([6b77fa9](https://github.com/grafana/loki/commit/6b77fa959561f39d3b6392960183729aaf84ee2f))
+* **security/UNKNOWN/cmd/dataobj-inspect:** Update security cmd/dataobj-inspect golang.org/x/sys to v0.44.0 [SECURITY] (release-3.7.x) ([#22193](https://github.com/grafana/loki/issues/22193)) ([707bcf7](https://github.com/grafana/loki/commit/707bcf735c9799c0627d67197e91925b3f41b7e8))
+* **security/UNKNOWN/pkg/push:** Update go toolchain directive to v1.25.11 [SECURITY] (release-3.7.x) ([#22199](https://github.com/grafana/loki/issues/22199)) ([9ea02bf](https://github.com/grafana/loki/commit/9ea02bf2249aaa935a6fa711b1b78d1ebc721dca))
+* **security/UNKNOWN/:** Update security golang.org/x/crypto to v0.52.0 [SECURITY] (release-3.7.x) ([#22189](https://github.com/grafana/loki/issues/22189)) ([6383bfe](https://github.com/grafana/loki/commit/6383bfe93470072d61d736a119d3a892cbbce352))
+* **security/UNKNOWN/:** Update security golang.org/x/net to v0.55.0 [SECURITY] (release-3.7.x) ([#22190](https://github.com/grafana/loki/issues/22190)) ([3d93fb8](https://github.com/grafana/loki/commit/3d93fb875c2bf12a92d18ad6a44244d269ba1e69))
+* **security/UNKNOWN/:** Update security golang.org/x/sys to v0.44.0 [SECURITY] (release-3.7.x) ([#22191](https://github.com/grafana/loki/issues/22191)) ([3379538](https://github.com/grafana/loki/commit/3379538689660c3472f80de8b16c71a5f61627e1))
+
 ## [3.7.2](https://github.com/grafana/loki/compare/v3.7.1...v3.7.2) (2026-05-13)
 
 
