@@ -10,116 +10,137 @@ import (
 )
 
 func TestGroupByPushdown(t *testing.T) {
-	t.Run("pushdown to RangeAggregation", func(t *testing.T) {
-		grouping := Grouping{
-			Columns: []ColumnExpression{
-				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
-				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
-			},
-			Without: false,
-		}
-
-		// generate plan for sum by(service, instance) (count_over_time{...}[])
-		plan := &Plan{}
+	type testCase struct {
+		name              string
+		rangeAggOperation types.RangeAggregationType
+		vectorAgg         *VectorAggregation
+		expectedRangeAgg  *RangeAggregation
+	}
+	testCases := []testCase{
 		{
-			scanSet := plan.graph.Add(&ScanSet{
-				Targets: []*ScanTarget{
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-				},
-
-				Predicates: []Expression{},
-			})
-			rangeAgg := plan.graph.Add(&RangeAggregation{
-				Operation: types.RangeAggregationTypeCount,
-			})
-			vectorAgg := plan.graph.Add(&VectorAggregation{
+			name:              "pushdown to RangeAggregation with empty group by",
+			rangeAggOperation: types.RangeAggregationTypeCount,
+			vectorAgg: &VectorAggregation{
 				Operation: types.VectorAggregationTypeSum,
-				Grouping:  grouping,
-			})
-
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet})
-		}
-
-		// apply optimisation
-		optimizations := []*Optimization{
-			newOptimization("groupBy pushdown", plan).withRules(
-				&groupByPushdown{plan: plan},
-			),
-		}
-		o := NewOptimizer(plan, optimizations)
-		o.Optimize(plan.Roots()[0])
-
-		expectedPlan := &Plan{}
-		{
-			scanSet := expectedPlan.graph.Add(&ScanSet{
-				Targets: []*ScanTarget{
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				Grouping: Grouping{
+					Columns: []ColumnExpression{
+						&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+						&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+					},
 				},
-				Predicates: []Expression{},
-			})
-			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
-				Operation: types.RangeAggregationTypeCount,
-				Grouping:  grouping,
-			})
-			vectorAgg := expectedPlan.graph.Add(&VectorAggregation{
-				Operation: types.VectorAggregationTypeSum,
-				Grouping:  grouping,
-			})
-
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet})
-		}
-
-		actual := PrintAsTree(plan)
-		expected := PrintAsTree(expectedPlan)
-		require.Equal(t, expected, actual)
-	})
-
-	t.Run("MAX->SUM is not allowed", func(t *testing.T) {
-		grouping := Grouping{
-			Columns: []ColumnExpression{
-				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
 			},
-			Without: false,
-		}
-
-		// generate plan for max by(service) (sum_over_time{...}[])
-		plan := &Plan{}
-		{
-			scanSet := plan.graph.Add(&ScanSet{
-				Targets: []*ScanTarget{
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+			expectedRangeAgg: &RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{
+						&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+						&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+					},
+					Without: false,
 				},
-				Predicates: []Expression{},
-			})
-			rangeAgg := plan.graph.Add(&RangeAggregation{
-				Operation: types.RangeAggregationTypeSum,
-			})
-			vectorAgg := plan.graph.Add(&VectorAggregation{
+			},
+		},
+		{
+			name:              "pushdown to RangeAggregation with empty group by",
+			rangeAggOperation: types.RangeAggregationTypeCount,
+			vectorAgg: &VectorAggregation{
+				Operation: types.VectorAggregationTypeSum,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{},
+					Without: false,
+				},
+			},
+			expectedRangeAgg: &RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{},
+					Without: false,
+				},
+			},
+		},
+		{
+			name:              "pushdown to RangeAggregation as 'without'",
+			rangeAggOperation: types.RangeAggregationTypeCount,
+			vectorAgg: &VectorAggregation{
+				Operation: types.VectorAggregationTypeSum,
+				Grouping: Grouping{
+					Columns: []ColumnExpression{
+						&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+					},
+					Without: true,
+				},
+			},
+			expectedRangeAgg: &RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+			},
+		},
+		{
+			name:              "MAX->SUM is not allowed",
+			rangeAggOperation: types.RangeAggregationTypeSum,
+			vectorAgg: &VectorAggregation{
 				Operation: types.VectorAggregationTypeMax,
-				Grouping:  grouping,
-			})
+				Grouping: Grouping{
+					Columns: []ColumnExpression{
+						&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+					},
+				},
+			},
+			expectedRangeAgg: &RangeAggregation{
+				Operation: types.RangeAggregationTypeSum,
+			},
+		},
+	}
 
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet})
-		}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			// generate plan for sum by(service, instance) (count_over_time{...}[])
+			plan := &Plan{}
+			{
+				scanSet := plan.graph.Add(&ScanSet{
+					Targets: []*ScanTarget{
+						{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+						{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					},
 
-		orig := PrintAsTree(plan)
+					Predicates: []Expression{},
+				})
+				rangeAgg := plan.graph.Add(&RangeAggregation{
+					Operation: testCase.rangeAggOperation,
+				})
+				vectorAgg := plan.graph.Add(testCase.vectorAgg)
 
-		// apply optimisation
-		optimizations := []*Optimization{
-			newOptimization("projection pushdown", plan).withRules(
-				&groupByPushdown{plan: plan},
-			),
-		}
-		o := NewOptimizer(plan, optimizations)
-		o.Optimize(plan.Roots()[0])
+				_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
+				_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet})
+			}
 
-		actual := PrintAsTree(plan)
-		require.Equal(t, orig, actual)
-	})
+			// apply optimisation
+			optimizations := []*Optimization{
+				newOptimization("groupBy pushdown", plan).withRules(
+					&groupByPushdown{plan: plan},
+				),
+			}
+			o := NewOptimizer(plan, optimizations)
+			o.Optimize(plan.Roots()[0])
+
+			expectedPlan := &Plan{}
+			{
+				scanSet := expectedPlan.graph.Add(&ScanSet{
+					Targets: []*ScanTarget{
+						{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+						{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					},
+					Predicates: []Expression{},
+				})
+				rangeAgg := expectedPlan.graph.Add(testCase.expectedRangeAgg)
+				vectorAgg := expectedPlan.graph.Add(testCase.vectorAgg)
+
+				_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
+				_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet})
+			}
+
+			actual := PrintAsTree(plan)
+			expected := PrintAsTree(expectedPlan)
+			require.Equal(t, expected, actual)
+		})
+	}
 }

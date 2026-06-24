@@ -325,36 +325,6 @@ The compactor requires a working directory for index compaction, but none is con
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
 
-### Error: Invalid target with legacy read mode
-
-**Error message:**
-
-```text
-CONFIG ERROR: invalid target, cannot run backend target with legacy read mode
-```
-
-**Cause:**
-
-The `backend` target is configured while legacy read mode is enabled. These are incompatible deployment configurations.
-
-**Resolution:**
-
-- **Disable legacy read mode** if using the `backend` target:
-
-  ```yaml
-  # Remove or set to false:
-  legacy_read_mode: false
-  ```
-
-- **Or use a different target** compatible with legacy read mode.
-
-**Properties:**
-
-- Enforced by: Configuration validation
-- Retryable: No (configuration must be fixed)
-- HTTP status: N/A (startup failure)
-- Configurable per tenant: No
-
 ### Error: Unrecognized index or store type
 
 **Error message:**

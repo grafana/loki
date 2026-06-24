@@ -65,6 +65,14 @@ type ReaderWriter interface {
 	Writer
 }
 
+// Flusher is implemented by index stores that can force their in-memory indexes
+// (e.g. the TSDB head) to be built and shipped to object storage on demand,
+// rather than waiting for the periodic rotation/upload.
+type Flusher interface {
+	// FlushIndexes forces any in-memory index data to be persisted to object storage.
+	FlushIndexes(ctx context.Context) error
+}
+
 type MonitoredReaderWriter struct {
 	rw      ReaderWriter
 	metrics *metrics
