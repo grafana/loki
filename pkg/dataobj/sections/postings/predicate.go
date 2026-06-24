@@ -4,10 +4,11 @@ import (
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 // Predicate is an expression used to filter rows in a [Reader].
