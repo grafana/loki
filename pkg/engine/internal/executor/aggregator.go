@@ -21,6 +21,7 @@ type interner struct {
 	interned map[string]string
 }
 
+// Get returns an interned copy of the input string. It is safe to call with unsafe strings.
 func (s *interner) Get(name string) string {
 	if value, ok := s.interned[name]; ok {
 		return value
@@ -30,6 +31,7 @@ func (s *interner) Get(name string) string {
 	return cloned
 }
 
+// Reset clears the interner and resets it to its initial empty state.
 func (s *interner) Reset() {
 	clear(s.interned)
 }
@@ -54,11 +56,10 @@ const (
 
 // aggregator is used to aggregate sample values by a set of grouping keys for each point in time.
 type aggregator struct {
-	points            map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
-	digest            *xxhash.Digest                       // used to compute key for each group
-	operation         aggregationOperation                 // aggregation type
-	labels            map[string]arrow.Field               // combined list of all label fields for all sample values
-	clonedLabelValues map[string]string                    // cache of cloned strings to reduce allocations for repeated values
+	points    map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
+	digest    *xxhash.Digest                       // used to compute key for each group
+	operation aggregationOperation                 // aggregation type
+	labels    map[string]arrow.Field               // combined list of all label fields for all sample values
 
 	// Track unique series across all timestamps to enforce maxSeries limit
 	maxSeries    int                          // maximum number of unique series allowed (0 means no limit)
@@ -137,7 +138,7 @@ func (a *aggregator) add(ts time.Time, value float64, key uint64) {
 	}
 }
 
-// Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
+// AddN adds new sample values to the aggregation for the given timestamps and grouping labels.
 // It expects labelValues to be in the same order as the groupBy columns.
 func (a *aggregator) AddN(timestamps []time.Time, value float64, labels []arrow.Field, labelValues []string) error {
 	if len(labels) != len(labelValues) {
