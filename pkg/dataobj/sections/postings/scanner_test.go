@@ -207,5 +207,5 @@ func buildLabelBloomSection(t *testing.T, labelsIn []labelPosting, bloomsIn []bl
 		}
 	}
 
-	return openPostingsSections(t, ctx, b)
+	return openPostingsSections(ctx, t, b)
 }

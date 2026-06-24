@@ -32,12 +32,12 @@ func buildTestSection(t *testing.T) ([]*postings.Section, func()) {
 		StreamID: 2, Timestamp: ts, UncompressedSize: 200,
 	}))
 
-	return openPostingsSections(t, ctx, b)
+	return openPostingsSections(ctx, t, b)
 }
 
 // openPostingsSections flushes b into an object and opens every postings
 // section it contains.
-func openPostingsSections(t *testing.T, ctx context.Context, b *postings.Builder) ([]*postings.Section, func()) {
+func openPostingsSections(ctx context.Context, t *testing.T, b *postings.Builder) ([]*postings.Section, func()) {
 	t.Helper()
 	objBuilder := dataobj.NewBuilder(nil)
 	require.NoError(t, objBuilder.Append(b))
