@@ -76,6 +76,10 @@ type ClientConfig struct {
 	GRCPStreamClientInterceptors []grpc.StreamClientInterceptor `yaml:"-"`
 
 	TimeBasedShardingBuckets []string `yaml:"time_based_sharding_buckets" category:"Experimental"`
+
+	// MinShuffleShardSize is the minimum number of index gateway instances included in the
+	// shuffle shard, regardless of the max-capacity setting. Only applies to simple mode.
+	MinShuffleShardSize int `yaml:"min_shuffle_shard_size"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
@@ -92,6 +96,7 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		prefix+".time-based-sharding-buckets",
 		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
 	)
+	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
@@ -458,6 +463,9 @@ func (s *GatewayClient) jumpHashShuffleSharding(tenant string, addrs []string) [
 
 	maxAvailableGateways := len(addrs)
 	numUserGateways := int(math.Ceil(float64(maxAvailableGateways) * f))
+	if numUserGateways < s.cfg.MinShuffleShardSize {
+		numUserGateways = s.cfg.MinShuffleShardSize
+	}
 	if numUserGateways >= maxAvailableGateways {
 		return addrs
 	}

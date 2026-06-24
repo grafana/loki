@@ -376,16 +376,75 @@ func Test_jumpHashShuffleSharding(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.description, func(t *testing.T) {
 			mockLimits := &mockLimits{maxCapacity: tt.factor}
-			client := &GatewayClient{limits: mockLimits}
+			// MinShuffleShardSize=0 so the floor does not interfere with these cases
+			client := &GatewayClient{limits: mockLimits, cfg: ClientConfig{MinShuffleShardSize: 0}}
 
 			result := client.jumpHashShuffleSharding("tenant1", tt.input)
 			require.Equal(t, tt.expected, result)
 		})
 	}
 
+	t.Run("min shard size", func(t *testing.T) {
+		tenGateways := func() []string {
+			addrs := make([]string, 10)
+			for i := range addrs {
+				addrs[i] = fmt.Sprintf("gateway-%d", i)
+			}
+			return addrs
+		}()
+
+		tests := []struct {
+			description  string
+			addrs        []string
+			factor       float64
+			minShardSize int
+			expectedLen  int
+		}{
+			{
+				description:  "floors the computed size",
+				addrs:        tenGateways,
+				factor:       0.1, // ceil(10*0.1)=1, raised to min=3
+				minShardSize: 3,
+				expectedLen:  3,
+			},
+			{
+				description:  "does not reduce a larger computed size",
+				addrs:        tenGateways,
+				factor:       0.5, // ceil(10*0.5)=5, already > min=3
+				minShardSize: 3,
+				expectedLen:  5,
+			},
+			{
+				description:  "0 disables the floor",
+				addrs:        tenGateways,
+				factor:       0.1, // ceil(10*0.1)=1, min=0 leaves it at 1
+				minShardSize: 0,
+				expectedLen:  1,
+			},
+			{
+				description:  "capped at total available gateways",
+				addrs:        []string{"gateway-0", "gateway-1", "gateway-2", "gateway-3"},
+				factor:       0.1, // ceil(4*0.1)=1, min=10 exceeds total so returns all 4
+				minShardSize: 10,
+				expectedLen:  4,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.description, func(t *testing.T) {
+				client := &GatewayClient{
+					limits: &mockLimits{maxCapacity: tt.factor},
+					cfg:    ClientConfig{MinShuffleShardSize: tt.minShardSize},
+				}
+				result := client.jumpHashShuffleSharding("tenant1", tt.addrs)
+				require.Len(t, result, tt.expectedLen)
+			})
+		}
+	})
+
 	t.Run("same tenant gets same subset", func(t *testing.T) {
 		mockLimits := &mockLimits{maxCapacity: 0.5}
-		client := &GatewayClient{limits: mockLimits}
+		client := &GatewayClient{limits: mockLimits, cfg: ClientConfig{MinShuffleShardSize: 0}}
 
 		addrs := []string{"gateway-1", "gateway-2", "gateway-3"}
 
@@ -400,7 +459,7 @@ func Test_jumpHashShuffleSharding(t *testing.T) {
 
 	t.Run("different tenants get different subsets", func(t *testing.T) {
 		mockLimits := &mockLimits{maxCapacity: 0.3}
-		client := &GatewayClient{limits: mockLimits}
+		client := &GatewayClient{limits: mockLimits, cfg: ClientConfig{MinShuffleShardSize: 0}}
 
 		addrs := make([]string, 9)
 		for i := range len(addrs) {
