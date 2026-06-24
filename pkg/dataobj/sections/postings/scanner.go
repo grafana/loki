@@ -60,7 +60,7 @@ func (s *Scanner) MatchLabel(ctx context.Context, cm CompiledMatcher) (map[Secti
 		ref := refOf(row)
 		ms := out[ref]
 		bits := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
-		memory.OrInto(&ms.Matched, &bits)
+		ms.Matched = ms.Matched.Or(&bits)
 		ms.widen(row)
 		out[ref] = ms
 	})
@@ -87,9 +87,9 @@ func (s *Scanner) LabelStreams(ctx context.Context, cm CompiledMatcher) (map[Sec
 		ref := refOf(row)
 		ls := out[ref]
 		bits := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
-		memory.OrInto(&ls.Present, &bits)
+		ls.Present = ls.Present.Or(&bits)
 		if cm.matcher.Matches(row.LabelValue) {
-			memory.OrInto(&ls.Matched, &bits)
+			ls.Matched = ls.Matched.Or(&bits)
 		}
 		ls.widen(row)
 		out[ref] = ls
