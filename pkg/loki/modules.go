@@ -159,6 +159,16 @@ const (
 	Read                         = "read"
 	Write                        = "write"
 	Backend                      = "backend"
+	AuthMiddleware               = "auth-middleware"
+	LabelAccess                  = "label-access"
+	LabelAccessUserIDTransformer = "label-access-user-id-transformer"
+	LabelAccessInterceptors      = "label-access-interceptors"
+	LabelAccessStoreWrapper      = "label-access-store-wrapper"
+	LabelAccessIngesterWrapper   = "label-access-ingester-wrapper"
+	LabelAccessV2Engine          = "label-access-v2-engine"
+	LabelAccessTripperware       = "label-access-tripperware"
+	Filterers                    = "filterers"
+	AuthTripperware              = "auth-tripperware"
 )
 
 const (
