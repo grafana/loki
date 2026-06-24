@@ -63,7 +63,7 @@ func (tm *tableManager) loop() {
 	defer tm.wg.Done()
 
 	if err := tm.UploadTables(context.Background()); err != nil {
-		level.Error(tm.logger).Log("msg", "failed to upload tables", "err", err)
+		level.Error(tm.logger).Log("msg", "failed to upload tables", "phase", "startup", "err", err)
 	}
 
 	syncTicker := time.NewTicker(tm.cfg.UploadInterval)
@@ -73,7 +73,7 @@ func (tm *tableManager) loop() {
 		select {
 		case <-syncTicker.C:
 			if err := tm.UploadTables(context.Background()); err != nil {
-				level.Error(tm.logger).Log("msg", "failed to upload tables", "err", err)
+				level.Error(tm.logger).Log("msg", "failed to upload tables", "phase", "periodic", "err", err)
 			}
 		case <-tm.ctx.Done():
 			return
@@ -88,7 +88,7 @@ func (tm *tableManager) Stop() {
 	tm.wg.Wait()
 
 	if err := tm.UploadTables(context.Background()); err != nil {
-		level.Error(tm.logger).Log("msg", "failed to upload tables", "err", err)
+		level.Error(tm.logger).Log("msg", "failed to upload tables", "phase", "shutdown", "err", err)
 	}
 
 	tm.tablesMtx.Lock()
