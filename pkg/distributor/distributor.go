@@ -163,6 +163,7 @@ type metrics struct {
 	replicationFactor                     prometheus.Gauge
 	streamShardCount                      prometheus.Counter
 	zeroStreamCount                       *prometheus.CounterVec
+	pushStatsCount                        *prometheus.CounterVec
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
 	// kafka metrics
@@ -199,6 +200,11 @@ func newMetrics(registerer prometheus.Registerer) *metrics {
 			Name:      "distributor_push_zero_streams_count",
 			Help:      "Total number of push requests with 0 streams",
 		}, []string{"tenant", "stage"}),
+		pushStatsCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_push_stats_count",
+			Help:      "Total number of successfully validated push requests aggregated by tenant, content-type, encoding, version, format",
+		}, []string{"tenant", "content_type", "encoding", "version", "format"}),
 		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_push_structured_metadata_sanitized_total",
