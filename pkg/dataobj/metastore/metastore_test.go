@@ -32,18 +32,20 @@ func BenchmarkWriteMetastores(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		ctx, cancel := context.WithTimeout(b.Context(), time.Second)
-		// Test writing metastores
-		stats := stats[i%len(stats)]
-		err := toc.WriteEntry(ctx, "path", []multitenancy.TimeRange{
-			{
-				Tenant:  tenantID,
-				MinTime: stats.MinTimestamp,
-				MaxTime: stats.MaxTimestamp,
-			},
-		})
-		require.NoError(b, err)
-		cancel()
+		{
+			ctx, cancel := context.WithTimeout(b.Context(), time.Second)
+			defer cancel()
+			// Test writing metastores
+			stats := stats[i%len(stats)]
+			err := toc.WriteEntry(ctx, "path", []multitenancy.TimeRange{
+				{
+					Tenant:  tenantID,
+					MinTime: stats.MinTimestamp,
+					MaxTime: stats.MaxTimestamp,
+				},
+			})
+			require.NoError(b, err)
+		}
 	}
 
 	require.Len(b, bucket.Objects(), 1)
