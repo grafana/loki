@@ -15,6 +15,7 @@ const (
 
 var (
 	expectedConfigDeletes = []string{
+		"legacy-read-mode",
 		"ingester.max_transfer_retries",
 		"querier.engine.timeout",
 		"query_range.split_queries_by_interval",
@@ -65,7 +66,6 @@ var (
 	}
 
 	expectedConfigDeprecates = []string{
-		"legacy-read-mode",
 		"ruler.remote_write.client",
 		"index_gateway.ring.replication_factor",
 		"limits_config.ruler_remote_write_url",

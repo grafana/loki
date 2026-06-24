@@ -282,7 +282,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.NoError(t, err)
 		checkMetricValue(t, "loki_ingester_chunks_flushed_total", metrics, 6)
 
-		// reset boltdb-shipper client and restart querier
+		// reset tsdb-shipper client and restart querier
 		require.NoError(t, tQuerier.Restart())
 	})
 

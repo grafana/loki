@@ -1,5 +1,6 @@
 auth_enabled: false
-legacy-read-mode: true
+
+legacy-read-mode: true # DELETED
 
 server:
   http_listen_port: 3100
@@ -84,9 +85,9 @@ storage_config:
     dynamodb: # DEPRECATED
       dynamodb_url: "dynamodb.123abc.net"
   s3: *s3_cfg
-  index_queries_cache_config: # REMOVED
+  index_queries_cache_config: # DELETED
     memcached: {}
-  index_cache_validity: 1m # REMOVED
+  index_cache_validity: 1m # DELETED
 
 schema_config:
   configs:
@@ -120,7 +121,7 @@ schema_config:
 
 limits_config:
   ingestion_rate_mb: 100
-  unordered_writes: true # REMOVED
+  unordered_writes: true # DELETED
   enforce_metric_name: true # DELETED
   ruler_evaluation_delay_duration: 1m # DELETED
   ruler_remote_write_url: "push.123abc.net" # DEPRECATED

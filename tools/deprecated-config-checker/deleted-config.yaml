@@ -2,6 +2,8 @@
 #
 # The syntax for this file is the same as the syntax for deprecated-config.yaml.
 
+legacy-read-mode: "Legacy read SSD mode is deprecated and will be eventually removed. Use the new read and backend targets."
+
 ingester:
   max_transfer_retries: "Enable the ingester WAL and rely on new ingesters to replay the WAL."
 
