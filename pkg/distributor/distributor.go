@@ -203,8 +203,8 @@ func newMetrics(registerer prometheus.Registerer) *metrics {
 		pushStatsCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_push_stats_count",
-			Help:      "Total number of successfully validated push requests aggregated by tenant, content-type, encoding, version, format",
-		}, []string{"tenant", "content_type", "encoding", "version", "format"}),
+			Help:      "Total number of successfully parsed push requests aggregated by tenant, content-type, encoding, version, format",
+		}, []string{"tenant", "content_type", "content_encoding", "content_version", "format"}),
 		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_push_structured_metadata_sanitized_total",
