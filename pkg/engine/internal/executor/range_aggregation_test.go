@@ -102,16 +102,24 @@ func BenchmarkRangeAggregation(b *testing.B) {
 			defer pipeline.Close()
 
 			b.ResetTimer()
+			rowsProduced := 0
+			eofCount := 0
 			for b.Loop() {
-				record, err := pipeline.Read(b.Context())
+				rec, err := pipeline.Read(b.Context())
 				if err == EOF {
+					eofCount++
 					input.Reset()
 					pipeline.inputsExhausted = false
+					pipeline.aggregator.Reset()
 					continue
 				}
+				rowsProduced += int(rec.NumRows())
+				rec.Release()
 				require.NoError(b, err)
-				record.Release()
 			}
+
+			// Check at least one row per non-EOF iteration was produced.
+			require.GreaterOrEqual(b, rowsProduced, b.N-eofCount)
 
 			b.ReportMetric(float64(tc.series*tc.intervals*b.N)/b.Elapsed().Seconds(), "datapoints/s")
 		})
