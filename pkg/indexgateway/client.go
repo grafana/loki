@@ -102,6 +102,7 @@ type GatewayClient struct {
 	logger                            log.Logger
 	cfg                               ClientConfig
 	storeGatewayClientRequestDuration *prometheus.HistogramVec
+	retriesHistogram                  *prometheus.HistogramVec
 	dnsProvider                       discovery.DNS
 	pool                              *client.Pool
 	ring                              ring.ReadRing
@@ -132,6 +133,23 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		}
 	}
 
+	retries := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: constants.Loki,
+		Name:      "index_gateway_request_retries",
+		Help:      "Number of retries attempted before a successful or failed index gateway request",
+		Buckets:   []float64{0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 40, 50, 100},
+	}, []string{"status"})
+	if r != nil {
+		err := r.Register(retries)
+		if err != nil {
+			alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
+			if !ok {
+				return nil, err
+			}
+			retries = alreadyErr.ExistingCollector.(*prometheus.HistogramVec)
+		}
+	}
+
 	buckets := make([]time.Duration, len(cfg.TimeBasedShardingBuckets))
 	for i := range len(buckets) {
 		b, err := time.ParseDuration(cfg.TimeBasedShardingBuckets[i])
@@ -148,6 +166,7 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		logger:                            logger,
 		cfg:                               cfg,
 		storeGatewayClientRequestDuration: latency,
+		retriesHistogram:                  retries,
 		ring:                              cfg.Ring,
 		limits:                            limits,
 		buckets:                           buckets,
@@ -355,8 +374,6 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 	return res, nil
 }
 
-const maxErrors int = 2
-
 // poolDo executes the given function for each Index Gateway instance in the ring mapping to the correct tenant in the index.
 // In case of callback failure, we'll try another member of the ring for that tenant ID.
 func (s *GatewayClient) poolDo(
@@ -410,14 +427,17 @@ func (s *GatewayClient) poolDo(
 			level.Error(s.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
 
 			if maxRetries >= 0 && errCount > maxRetries {
+				s.retriesHistogram.WithLabelValues("failure").Observe(float64(errCount))
 				return err
 			}
 			continue
 		}
 
+		s.retriesHistogram.WithLabelValues("success").Observe(float64(errCount))
 		return nil
 	}
 
+	s.retriesHistogram.WithLabelValues("failure").Observe(float64(errCount))
 	return lastErr
 }
 

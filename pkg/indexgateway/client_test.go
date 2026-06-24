@@ -30,21 +30,21 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-type mockDnsProvider struct {
+type mockDNSProvider struct {
 	addrs []string
 }
 
-func newMockDnsProvider(addrs []string) discovery.DNS {
-	return &mockDnsProvider{
+func newMockDNSProvider(addrs []string) discovery.DNS {
+	return &mockDNSProvider{
 		addrs: addrs,
 	}
 }
 
-func (m *mockDnsProvider) Addresses() []string {
+func (m *mockDNSProvider) Addresses() []string {
 	return m.addrs
 }
 
-func (m *mockDnsProvider) Stop() {}
+func (m *mockDNSProvider) Stop() {}
 
 type mockIndexGatewayServer struct {
 	logproto.IndexGatewayServer
@@ -234,7 +234,7 @@ func createSimpleGatewayClient(t *testing.T, addrs []string) (log.Logger, *dskit
 	require.NoError(t, err)
 	defer client.Stop()
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), client.pool))
-	client.dnsProvider = newMockDnsProvider(addrs)
+	client.dnsProvider = newMockDNSProvider(addrs)
 	pool := configurePool(t, client, logger, 0)
 	return logger, pool, client
 }
