@@ -116,7 +116,7 @@ func (v *validate) traverseField(ctx context.Context, parent reflect.Value, curr
 
 		if ct.hasTag {
 			if kind == reflect.Invalid {
-				v.str1 = string(append(ns, cf.altName...))
+				v.str1 = appendAltName(ns, cf.altName)
 				if v.v.hasTagNameFunc {
 					v.str2 = string(append(structNs, cf.name...))
 				} else {
@@ -138,7 +138,7 @@ func (v *validate) traverseField(ctx context.Context, parent reflect.Value, curr
 				return
 			}
 
-			v.str1 = string(append(ns, cf.altName...))
+			v.str1 = appendAltName(ns, cf.altName)
 			if v.v.hasTagNameFunc {
 				v.str2 = string(append(structNs, cf.name...))
 			} else {
@@ -192,7 +192,9 @@ OUTER:
 				// VarWithField - this allows for validating against each field within the struct against a specific value
 				//                pretty handy in certain situations
 				if len(cf.name) > 0 {
-					ns = append(append(ns, cf.altName...), '.')
+					if len(cf.altName) > 0 {
+						ns = append(append(ns, cf.altName...), '.')
+					}
 					structNs = append(append(structNs, cf.name...), '.')
 				}
 
@@ -212,7 +214,9 @@ OUTER:
 				// VarWithField - this allows for validating against each field within the struct against a specific value
 				//                pretty handy in certain situations
 				if len(cf.name) > 0 {
-					ns = append(append(ns, cf.altName...), '.')
+					if len(cf.altName) > 0 {
+						ns = append(append(ns, cf.altName...), '.')
+					}
 					structNs = append(append(structNs, cf.name...), '.')
 				}
 
@@ -409,7 +413,7 @@ OUTER:
 
 				if ct.isBlockEnd || ct.next == nil {
 					// if we get here, no valid 'or' value and no more tags
-					v.str1 = string(append(ns, cf.altName...))
+					v.str1 = appendAltName(ns, cf.altName)
 
 					if v.v.hasTagNameFunc {
 						v.str2 = string(append(structNs, cf.name...))
@@ -468,7 +472,7 @@ OUTER:
 			v.ct = ct
 
 			if !ct.fn(ctx, v) {
-				v.str1 = string(append(ns, cf.altName...))
+				v.str1 = appendAltName(ns, cf.altName)
 
 				if v.v.hasTagNameFunc {
 					v.str2 = string(append(structNs, cf.name...))
@@ -497,6 +501,16 @@ OUTER:
 			ct = ct.next
 		}
 	}
+}
+
+func appendAltName(ns []byte, altName string) string {
+	if len(altName) > 0 {
+		return string(append(ns, altName...))
+	}
+	if n := len(ns); n > 0 && ns[n-1] == '.' {
+		return string(ns[:n-1])
+	}
+	return string(ns)
 }
 
 func getValue(val reflect.Value) interface{} {
