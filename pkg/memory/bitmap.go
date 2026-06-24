@@ -204,14 +204,18 @@ func (bmap *Bitmap) Resize(n int) {
 	bmap.len = n
 }
 
-// Len returns the length of bmap.
-func (bmap *Bitmap) Len() int { return bmap.len }
+// Len returns the length of bmap. A nil receiver has length zero.
+func (bmap *Bitmap) Len() int { return bmap.length() }
 
 // Cap returns how many values bmap can hold without needing a new allocation.
 func (bmap *Bitmap) Cap() int { return bmap.capValues() }
 
-// SetCount returns the number of bits set in the bitmap.
+// SetCount returns the number of bits set in the bitmap. A nil receiver counts
+// as zero.
 func (bmap *Bitmap) SetCount() int {
+	if bmap == nil {
+		return 0
+	}
 	return bitutil.CountSetBits(bmap.data, bmap.off, bmap.len)
 }
 
@@ -319,4 +323,80 @@ func (bmap *Bitmap) IterValues(value bool) iter.Seq[int] {
 			start += 8
 		}
 	}
+}
+
+// Or returns a new Bitmap containing the bits set in bmap or other. The result
+// length is the larger of the two; the shorter operand is zero-extended. A nil
+// receiver or argument is treated as an empty bitmap.
+func (bmap *Bitmap) Or(other *Bitmap) *Bitmap {
+	return combine(bitutil.BitmapOr, bmap, other, max(bmap.length(), other.length()))
+}
+
+// And returns a new Bitmap containing the bits set in both bmap and other. A
+// nil receiver or argument is treated as an empty bitmap.
+func (bmap *Bitmap) And(other *Bitmap) *Bitmap {
+	return combine(bitutil.BitmapAnd, bmap, other, max(bmap.length(), other.length()))
+}
+
+// AndNot returns a new Bitmap containing the bits set in bmap but not in other
+// (bmap &^ other). A nil receiver or argument is treated as an empty bitmap.
+func (bmap *Bitmap) AndNot(other *Bitmap) *Bitmap {
+	return combine(bitutil.BitmapAndNot, bmap, other, bmap.length())
+}
+
+// length returns the bitmap's length, treating a nil receiver as empty.
+func (bmap *Bitmap) length() int {
+	if bmap == nil {
+		return 0
+	}
+	return bmap.len
+}
+
+// bitmapOp is the shared signature of bitutil's BitmapAnd/Or/AndNot helpers,
+// which write op(left, right) over length bits into out.
+type bitmapOp func(left, right []byte, lOffset, rOffset int64, out []byte, outOffset int64, length int64)
+
+// combine applies op over the first n bits of a and b, zero-extending the
+// shorter operand, and returns a new offset-0 Bitmap of length n. A nil operand
+// is treated as an empty bitmap. The result never aliases a's or b's backing
+// array.
+func combine(op bitmapOp, a, b *Bitmap, n int) *Bitmap {
+	var out Bitmap
+	out.Resize(n)
+	if n == 0 {
+		return &out
+	}
+	outData, _ := out.Bytes()
+
+	// bitutil reads exactly n bits from each operand, so zero-extend any operand
+	// shorter than n into a scratch buffer. Out is freshly zeroed, so a missing
+	// operand contributes all-zero bits.
+	aData, aOff := operandBytes(a, n)
+	bData, bOff := operandBytes(b, n)
+
+	op(aData, bData, int64(aOff), int64(bOff), outData, 0, int64(n))
+
+	if tail := n % 8; tail != 0 {
+		nBytes := (n + 7) / 8
+		outData[nBytes-1] &= (1 << tail) - 1
+	}
+	return &out
+}
+
+// operandBytes returns bmap's bits and offset, guaranteeing the slice holds at
+// least n bits past the offset by zero-extending into a fresh buffer when
+// needed. A nil bmap yields a zeroed buffer of the required size.
+func operandBytes(bmap *Bitmap, n int) (data []byte, off int) {
+	nBytes := (n + 7) / 8
+	if bmap == nil || bmap.len == 0 {
+		return make([]byte, nBytes), 0
+	}
+
+	data, off = bmap.BytesTrimmed()
+	if need := (off + n + 7) / 8; len(data) < need {
+		extended := make([]byte, need)
+		copy(extended, data)
+		data = extended
+	}
+	return data, off
 }

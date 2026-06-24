@@ -131,3 +131,33 @@ func BenchmarkBitmap_Counting(b *testing.B) {
 		}
 	})
 }
+
+func BenchmarkBitmap_SetAlgebra(b *testing.B) {
+	build := func() *memory.Bitmap {
+		bmap := memory.NewBitmap(nil, 100_000)
+		bmap.Resize(100_000)
+		for i := 0; i < 100_000; i += 3 {
+			bmap.Set(i, true)
+		}
+		return &bmap
+	}
+	left, right := build(), build()
+
+	b.Run("method=Or", func(b *testing.B) {
+		for b.Loop() {
+			_ = left.Or(right)
+		}
+	})
+
+	b.Run("method=And", func(b *testing.B) {
+		for b.Loop() {
+			_ = left.And(right)
+		}
+	})
+
+	b.Run("method=AndNot", func(b *testing.B) {
+		for b.Loop() {
+			_ = left.AndNot(right)
+		}
+	})
+}
