@@ -217,7 +217,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 
 				for i := range int(batch.NumRows()) {
 					// Preserve existing values over adding null
-					if existingDestCol != nil && !existingDestCol.IsNull(i) && existingDestCol.Value(i) != "" {
+					if existingDestCol != nil && !existingDestCol.IsNull(i) {
 						existingVal := existingDestCol.Value(i)
 						if col.IsNull(i) || !col.IsValid(i) {
 							sourceFieldBuilder.AppendNull()             // append NULL to original column
