@@ -10,11 +10,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// timeBounds is the timestamp envelope over the rows a scan visited. Min and Max
-// are unix nanos and only meaningful once Has is true.
+// timeBounds is the timestamp bounds over all rows a scan visited. MinNS and
+// MaxNS are unix nanos and only meaningful once Has is true.
 type timeBounds struct {
-	Min, Max int64
-	Has      bool
+	MinNS, MaxNS int64
+	Has          bool
 }
 
 // MatchedStreams is one logs section's result from a name and value scan.
@@ -40,8 +40,8 @@ type Scanner struct {
 func NewScanner(sec *Section) *Scanner { return &Scanner{sec: sec} }
 
 // MatchLabel scans the section's label rows for cm's label name AND value.
-// Returns per logs section the matched-stream bitmap and the timestamp envelope.
-// Returns nil when the section lacks the required columns.
+// Returns per logs section a bitmap of matched streams and the timestamp
+// bounds. Returns nil when the section lacks the required columns.
 func (s *Scanner) MatchLabel(ctx context.Context, cm CompiledMatcher) (map[SectionRef]MatchedStreams, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
@@ -70,10 +70,10 @@ func (s *Scanner) MatchLabel(ctx context.Context, cm CompiledMatcher) (map[Secti
 	return out, nil
 }
 
-// LabelStreams scans the section's label rows for cm's label name only (no value
-// pushdown), returning per logs section the present streams (every stream
-// carrying the name), the value-matched subset, and the timestamp envelope.
-// Returns nil when the section lacks the required columns.
+// LabelStreams scans the section's label rows for cm's label name only (no
+// value pushdown), returning per logs section the present streams (every stream
+// carrying the name), the subset that also matched on value, and the timestamp
+// bounds. Returns nil when the section lacks the required columns.
 func (s *Scanner) LabelStreams(ctx context.Context, cm CompiledMatcher) (map[SectionRef]LabelStreams, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
@@ -102,7 +102,7 @@ func (s *Scanner) LabelStreams(ctx context.Context, cm CompiledMatcher) (map[Sec
 
 func (s *Scanner) eachRow(ctx context.Context, pred Predicate, fn func(Row)) error {
 	rr := NewRowReader(ctx, s.sec, pred)
-	defer func() { _ = rr.Close() }()
+	defer rr.Close()
 	for rr.Next() {
 		row := rr.At()
 		if len(row.StreamIDBitmap) == 0 {
@@ -116,14 +116,14 @@ func (s *Scanner) eachRow(ctx context.Context, pred Predicate, fn func(Row)) err
 // widen extends the bounds to include row's [MinTimestamp,MaxTimestamp].
 func (b *timeBounds) widen(row Row) {
 	if !b.Has {
-		b.Min, b.Max, b.Has = row.MinTimestamp, row.MaxTimestamp, true
+		b.MinNS, b.MaxNS, b.Has = row.MinTimestamp, row.MaxTimestamp, true
 		return
 	}
-	if row.MinTimestamp < b.Min {
-		b.Min = row.MinTimestamp
+	if row.MinTimestamp < b.MinNS {
+		b.MinNS = row.MinTimestamp
 	}
-	if row.MaxTimestamp > b.Max {
-		b.Max = row.MaxTimestamp
+	if row.MaxTimestamp > b.MaxNS {
+		b.MaxNS = row.MaxTimestamp
 	}
 }
 
@@ -132,13 +132,9 @@ func refOf(row Row) SectionRef {
 }
 
 // MatcherHits scans the section against [matchers]. The first return is the
-// per-section (name,value) bloom hits; the second is the per-section set of
-// names resolved label matching on label name only. Returns nil maps when the
-// section lacks the required columns.
-//
-// The label-name resolution for every matcher is collected in a single scan
-// (kind=Label AND name IN names). The bloom hits keep one scan per matcher
-// because each needs its own value pushed down to the bloom filter.
+// per-section (name,value) bloom hits. The second is the per-section set of
+// matcher names that occur as a stream label. Returns nil maps when the section
+// lacks the required columns.
 func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
@@ -178,11 +174,14 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (
 	}
 	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsBloomRowsRead.Observe(bloomRowsRead))
 
-	ambiguous, err := s.labelNameHits(ctx, kindCol, nameCol, matchers)
+	// matchers are predicates from outside the stream selector, so a name may
+	// resolve to either a stream label or a parsed/metadata label. Report which
+	// ones occur as stream labels here so the caller can resolve the collision.
+	matchersInLabelNames, err := s.labelNameHits(ctx, kindCol, nameCol, matchers)
 	if err != nil {
 		return nil, nil, err
 	}
-	return matched, ambiguous, nil
+	return matched, matchersInLabelNames, nil
 }
 
 // labelNameHits scans the section once for all matcher names (kind=Label AND
@@ -203,20 +202,20 @@ func (s *Scanner) labelNameHits(ctx context.Context, kindCol, nameCol *Column, m
 		Left:  EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindLabel))},
 		Right: InPredicate{Column: nameCol, Values: names},
 	})
-	defer func() { _ = lr.Close() }()
+	defer lr.Close()
 
-	ambiguous := make(map[SectionRef]map[string]struct{})
+	hits := make(map[SectionRef]map[string]struct{})
 	for lr.Next() {
 		row := lr.At()
 		ref := refOf(row)
-		set := ambiguous[ref]
+		set := hits[ref]
 		if set == nil {
 			set = make(map[string]struct{})
-			ambiguous[ref] = set
+			hits[ref] = set
 		}
 		set[row.ColumnName] = struct{}{}
 	}
-	return ambiguous, lr.Err()
+	return hits, lr.Err()
 }
 
 // sectionColumn returns the section's column of the given type, or nil if absent.

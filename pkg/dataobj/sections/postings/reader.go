@@ -12,7 +12,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -26,8 +25,7 @@ type ReaderOptions struct {
 	Columns []*Column
 
 	// Predicates filter the rows returned by the Reader. Optional; when empty
-	// all rows from Columns are returned. Every column referenced by a
-	// predicate must belong to the same [Section] as Columns.
+	// all rows from Columns are returned.
 	Predicates []Predicate
 
 	// Allocator to use for allocating Arrow records. If nil,
@@ -45,7 +43,7 @@ func (opts *ReaderOptions) validate() error {
 	var section *Section
 	checkSection := func(col *Column) error {
 		if col == nil {
-			return errors.New("predicate references a nil column")
+			return errors.New("column is nil")
 		}
 		if section == nil {
 			section = col.Section
@@ -56,9 +54,6 @@ func (opts *ReaderOptions) validate() error {
 	}
 
 	for i, col := range opts.Columns {
-		if col == nil {
-			return fmt.Errorf("ReaderOptions.Columns[%d] is nil", i)
-		}
 		if err := checkSection(col); err != nil {
 			return fmt.Errorf("ReaderOptions.Columns[%d]: %w", i, err)
 		}
@@ -70,19 +65,8 @@ func (opts *ReaderOptions) validate() error {
 			if perr != nil {
 				return false
 			}
-			switch p := p.(type) {
-			case EqualPredicate:
-				perr = checkSection(p.Column)
-			case InPredicate:
-				perr = checkSection(p.Column)
-			case GreaterThanPredicate:
-				perr = checkSection(p.Column)
-			case LessThanPredicate:
-				perr = checkSection(p.Column)
-			case BloomMatchPredicate:
-				perr = checkSection(p.Column)
-			case RegexMatchPredicate:
-				perr = checkSection(p.Column)
+			if col, ok := predicateColumn(p); ok {
+				perr = checkSection(col)
 			}
 			return true
 		})
@@ -231,109 +215,6 @@ func (r *Reader) init(ctx context.Context) error {
 
 	r.ready = true
 	return nil
-}
-
-// mapPredicates converts postings predicates into dataset predicates, resolving
-// each referenced [Column] to its [dataset.Column] via columnLookup.
-func mapPredicates(ps []Predicate, columnLookup map[*Column]dataset.Column) (predicates []dataset.Predicate, err error) {
-	// mapPredicate panics on unsupported conversions; recover into an error so a
-	// bad predicate does not crash the goroutine.
-	defer func() {
-		if r := recover(); r == nil {
-			return
-		} else if recoveredErr, ok := r.(error); ok {
-			err = recoveredErr
-		} else {
-			err = fmt.Errorf("error while mapping: %v", r)
-		}
-	}()
-
-	for _, p := range ps {
-		predicates = append(predicates, mapPredicate(p, columnLookup))
-	}
-	return
-}
-
-func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.Predicate {
-	switch p := p.(type) {
-	case AndPredicate:
-		return dataset.AndPredicate{
-			Left:  mapPredicate(p.Left, columnLookup),
-			Right: mapPredicate(p.Right, columnLookup),
-		}
-	case OrPredicate:
-		return dataset.OrPredicate{
-			Left:  mapPredicate(p.Left, columnLookup),
-			Right: mapPredicate(p.Right, columnLookup),
-		}
-	case NotPredicate:
-		return dataset.NotPredicate{Inner: mapPredicate(p.Inner, columnLookup)}
-	case TruePredicate:
-		return dataset.TruePredicate{}
-	case FalsePredicate:
-		return dataset.FalsePredicate{}
-	case EqualPredicate:
-		col := lookupColumn(p.Column, columnLookup)
-		return dataset.EqualPredicate{
-			Column: col,
-			Value:  arrowconv.FromScalar(p.Value, mustConvertType(p.Value.DataType())),
-		}
-	case InPredicate:
-		col := lookupColumn(p.Column, columnLookup)
-		vals := make([]dataset.Value, len(p.Values))
-		for i := range p.Values {
-			vals[i] = arrowconv.FromScalar(p.Values[i], mustConvertType(p.Values[i].DataType()))
-		}
-
-		var valueSet dataset.ValueSet
-		switch col.ColumnDesc().Type.Physical {
-		case datasetmd.PHYSICAL_TYPE_INT64:
-			valueSet = dataset.NewInt64ValueSet(vals)
-		case datasetmd.PHYSICAL_TYPE_UINT64:
-			valueSet = dataset.NewUint64ValueSet(vals)
-		case datasetmd.PHYSICAL_TYPE_BINARY:
-			valueSet = dataset.NewBinaryValueSet(vals)
-		default:
-			panic("InPredicate not implemented for datatype")
-		}
-		return dataset.InPredicate{Column: col, Values: valueSet}
-	case GreaterThanPredicate:
-		col := lookupColumn(p.Column, columnLookup)
-		return dataset.GreaterThanPredicate{
-			Column: col,
-			Value:  arrowconv.FromScalar(p.Value, mustConvertType(p.Value.DataType())),
-		}
-	case LessThanPredicate:
-		col := lookupColumn(p.Column, columnLookup)
-		return dataset.LessThanPredicate{
-			Column: col,
-			Value:  arrowconv.FromScalar(p.Value, mustConvertType(p.Value.DataType())),
-		}
-	case BloomMatchPredicate:
-		col := lookupColumn(p.Column, columnLookup)
-		return dataset.BloomMatchPredicate{Column: col, Value: p.Value}
-	case RegexMatchPredicate:
-		col := lookupColumn(p.Column, columnLookup)
-		return dataset.RegexMatchPredicate{Column: col, Matcher: p.Matcher}
-	default:
-		panic(fmt.Sprintf("unsupported predicate type %T", p))
-	}
-}
-
-func lookupColumn(col *Column, columnLookup map[*Column]dataset.Column) dataset.Column {
-	dc, ok := columnLookup[col]
-	if !ok {
-		panic(fmt.Sprintf("column %p not found in column lookup", col))
-	}
-	return dc
-}
-
-func mustConvertType(dtype arrow.DataType) datasetmd.PhysicalType {
-	toType, ok := arrowconv.DatasetType(dtype)
-	if !ok {
-		panic(fmt.Sprintf("unsupported dataset type %s", dtype))
-	}
-	return toType
 }
 
 // appendMissingColumns appends columns from src to dst that are not already

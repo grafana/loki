@@ -151,7 +151,7 @@ func TestRowReader_KindPredicate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			n := 0
 			for _, sec := range secs {
-				kindCol := testSectionColumn(t, sec, postings.ColumnTypeKind)
+				kindCol := getSectionColumn(t, sec, postings.ColumnTypeKind)
 				rr := postings.NewRowReader(ctx, sec, postings.EqualPredicate{
 					Column: kindCol,
 					Value:  scalar.NewInt64Scalar(int64(tc.kind)),
@@ -242,7 +242,7 @@ func TestRowReader_BloomMatchPredicate(t *testing.T) {
 	}
 	require.NotNil(t, sec)
 
-	bloomCol := testSectionColumn(t, sec, postings.ColumnTypeBloomFilter)
+	bloomCol := getSectionColumn(t, sec, postings.ColumnTypeBloomFilter)
 	require.NotNil(t, bloomCol)
 
 	countMatches := func(value string) int {
@@ -260,6 +260,8 @@ func TestRowReader_BloomMatchPredicate(t *testing.T) {
 	require.Equal(t, 0, countMatches("absent-value"))
 }
 
+// TestRowReader_RegexMatchPredicate verifies RegexMatchPredicate filters rows
+// to only those matching a target regex.
 func TestRowReader_RegexMatchPredicate(t *testing.T) {
 	ctx := context.Background()
 
@@ -313,7 +315,7 @@ func TestRowReader_RegexMatchPredicate(t *testing.T) {
 	}
 	require.NotNil(t, sec)
 
-	lvCol := testSectionColumn(t, sec, postings.ColumnTypeLabelValue)
+	lvCol := getSectionColumn(t, sec, postings.ColumnTypeLabelValue)
 	require.NotNil(t, lvCol)
 
 	countMatches := func(pattern string) int {

@@ -46,8 +46,8 @@ func TestScanner_MatchLabel_PushesValuePredicate(t *testing.T) {
 
 	require.Equal(t, []int{1}, bitmapIDs(ms.Matched), "only stream 1 (env=prod) is returned")
 	require.True(t, ms.Has)
-	require.Equal(t, int64(10), ms.Min)
-	require.Equal(t, int64(20), ms.Max, "envelope spans only the matching row")
+	require.Equal(t, int64(10), ms.MinNS)
+	require.Equal(t, int64(20), ms.MaxNS, "envelope spans only the matching row")
 }
 
 func TestScanner_LabelStreams_PresentAndMatched(t *testing.T) {
@@ -73,8 +73,8 @@ func TestScanner_LabelStreams_PresentAndMatched(t *testing.T) {
 	require.Equal(t, []int{1, 2}, bitmapIDs(ls.Present), "both streams carry env (name-only scan)")
 	require.Equal(t, []int{1}, bitmapIDs(ls.Matched), "only stream 1 has env=prod")
 	require.True(t, ls.Has)
-	require.Equal(t, int64(10), ls.Min)
-	require.Equal(t, int64(40), ls.Max, "envelope spans every row for the name")
+	require.Equal(t, int64(10), ls.MinNS)
+	require.Equal(t, int64(40), ls.MaxNS, "envelope spans every row for the name")
 }
 
 // scanAll runs scan over each section and returns the single non-empty result

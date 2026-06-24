@@ -57,8 +57,8 @@ func openPostingsSections(t *testing.T, ctx context.Context, b *postings.Builder
 	return secs, func() { _ = closer.Close() }
 }
 
-// testSectionColumn returns the section column of the requested exported type.
-func testSectionColumn(t *testing.T, sec *postings.Section, ct postings.ColumnType) *postings.Column {
+// getSectionColumn returns the section column of the requested exported type.
+func getSectionColumn(t *testing.T, sec *postings.Section, ct postings.ColumnType) *postings.Column {
 	t.Helper()
 	for _, c := range sec.Columns() {
 		if c.Type == ct {

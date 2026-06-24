@@ -1,13 +1,16 @@
 package postings
 
 import (
+	"fmt"
+
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-// Predicate is an expression used to filter rows in a [Reader]. Every [Column]
-// referenced by a predicate must belong to the same [Section] as the projected
-// columns.
+// Predicate is an expression used to filter rows in a [Reader].
 type Predicate interface{ isPredicate() }
 
 // Supported predicates.
@@ -117,6 +120,27 @@ func walkPredicate(p Predicate, fn func(Predicate) bool) {
 	fn(nil)
 }
 
+// predicateColumn returns the column referenced by a leaf predicate. ok is true
+// for column-bearing leaf predicates (even when the column is nil) and false for
+// composite or constant predicates that carry no column.
+func predicateColumn(p Predicate) (col *Column, ok bool) {
+	switch p := p.(type) {
+	case EqualPredicate:
+		return p.Column, true
+	case InPredicate:
+		return p.Column, true
+	case GreaterThanPredicate:
+		return p.Column, true
+	case LessThanPredicate:
+		return p.Column, true
+	case BloomMatchPredicate:
+		return p.Column, true
+	case RegexMatchPredicate:
+		return p.Column, true
+	}
+	return nil, false
+}
+
 // predicateColumns returns the de-duplicated set of columns referenced by the
 // given predicates.
 func predicateColumns(predicates []Predicate) []*Column {
@@ -136,23 +160,123 @@ func predicateColumns(predicates []Predicate) []*Column {
 
 	for _, p := range predicates {
 		walkPredicate(p, func(p Predicate) bool {
-			switch p := p.(type) {
-			case EqualPredicate:
-				appendColumn(p.Column)
-			case InPredicate:
-				appendColumn(p.Column)
-			case GreaterThanPredicate:
-				appendColumn(p.Column)
-			case LessThanPredicate:
-				appendColumn(p.Column)
-			case BloomMatchPredicate:
-				appendColumn(p.Column)
-			case RegexMatchPredicate:
-				appendColumn(p.Column)
-			}
+			col, _ := predicateColumn(p)
+			appendColumn(col)
 			return true
 		})
 	}
 
 	return columns
+}
+
+// mapPredicates converts postings predicates into dataset predicates, resolving
+// each referenced [Column] to its [dataset.Column] via columnLookup.
+func mapPredicates(ps []Predicate, columnLookup map[*Column]dataset.Column) ([]dataset.Predicate, error) {
+	predicates := make([]dataset.Predicate, 0, len(ps))
+	for _, p := range ps {
+		mapped, err := mapPredicate(p, columnLookup)
+		if err != nil {
+			return nil, err
+		}
+		predicates = append(predicates, mapped)
+	}
+	return predicates, nil
+}
+
+func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) (dataset.Predicate, error) {
+	switch p := p.(type) {
+	case AndPredicate:
+		left, err := mapPredicate(p.Left, columnLookup)
+		if err != nil {
+			return nil, err
+		}
+		right, err := mapPredicate(p.Right, columnLookup)
+		if err != nil {
+			return nil, err
+		}
+		return dataset.AndPredicate{Left: left, Right: right}, nil
+	case OrPredicate:
+		left, err := mapPredicate(p.Left, columnLookup)
+		if err != nil {
+			return nil, err
+		}
+		right, err := mapPredicate(p.Right, columnLookup)
+		if err != nil {
+			return nil, err
+		}
+		return dataset.OrPredicate{Left: left, Right: right}, nil
+	case NotPredicate:
+		inner, err := mapPredicate(p.Inner, columnLookup)
+		if err != nil {
+			return nil, err
+		}
+		return dataset.NotPredicate{Inner: inner}, nil
+	case TruePredicate:
+		return dataset.TruePredicate{}, nil
+	case FalsePredicate:
+		return dataset.FalsePredicate{}, nil
+	case EqualPredicate:
+		value, err := convertScalar(p.Value)
+		if err != nil {
+			return nil, err
+		}
+		return dataset.EqualPredicate{Column: lookupColumn(p.Column, columnLookup), Value: value}, nil
+	case InPredicate:
+		col := lookupColumn(p.Column, columnLookup)
+		vals := make([]dataset.Value, len(p.Values))
+		for i := range p.Values {
+			value, err := convertScalar(p.Values[i])
+			if err != nil {
+				return nil, err
+			}
+			vals[i] = value
+		}
+
+		var valueSet dataset.ValueSet
+		switch physical := col.ColumnDesc().Type.Physical; physical {
+		case datasetmd.PHYSICAL_TYPE_INT64:
+			valueSet = dataset.NewInt64ValueSet(vals)
+		case datasetmd.PHYSICAL_TYPE_UINT64:
+			valueSet = dataset.NewUint64ValueSet(vals)
+		case datasetmd.PHYSICAL_TYPE_BINARY:
+			valueSet = dataset.NewBinaryValueSet(vals)
+		default:
+			return nil, fmt.Errorf("InPredicate not supported for physical type %s", physical)
+		}
+		return dataset.InPredicate{Column: col, Values: valueSet}, nil
+	case GreaterThanPredicate:
+		value, err := convertScalar(p.Value)
+		if err != nil {
+			return nil, err
+		}
+		return dataset.GreaterThanPredicate{Column: lookupColumn(p.Column, columnLookup), Value: value}, nil
+	case LessThanPredicate:
+		value, err := convertScalar(p.Value)
+		if err != nil {
+			return nil, err
+		}
+		return dataset.LessThanPredicate{Column: lookupColumn(p.Column, columnLookup), Value: value}, nil
+	case BloomMatchPredicate:
+		return dataset.BloomMatchPredicate{Column: lookupColumn(p.Column, columnLookup), Value: p.Value}, nil
+	case RegexMatchPredicate:
+		return dataset.RegexMatchPredicate{Column: lookupColumn(p.Column, columnLookup), Matcher: p.Matcher}, nil
+	default:
+		panic(fmt.Sprintf("unsupported predicate type %T", p))
+	}
+}
+
+func lookupColumn(col *Column, columnLookup map[*Column]dataset.Column) dataset.Column {
+	dc, ok := columnLookup[col]
+	if !ok {
+		panic(fmt.Sprintf("column %p not found in column lookup", col))
+	}
+	return dc
+}
+
+func convertScalar(s scalar.Scalar) (dataset.Value, error) {
+	toType, ok := arrowconv.DatasetType(s.DataType())
+	if !ok {
+		return dataset.Value{}, fmt.Errorf("unsupported dataset type %s", s.DataType())
+	}
+	return arrowconv.FromScalar(s, toType), nil
 }
