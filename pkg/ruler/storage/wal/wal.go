@@ -106,8 +106,6 @@ func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Regis
 		}
 	}
 
-	// The ruler wipes the WAL directory on startup (see newWALRegistry), so a
-	// freshly-opened WAL is always empty; there is nothing to replay.
 	go storage.recordSize()
 
 	return storage, nil
