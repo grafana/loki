@@ -216,6 +216,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				valArr = valVec.(*array.Float64)
 			}
 
+			windowEnds := make([]time.Time, 0, 4) // best guess
 			for row := range int(record.NumRows()) {
 				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
 				if len(windows) == 0 {
@@ -234,10 +235,13 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				labelValues := labelValuesCache.getLabelValues(arrays, row)
 				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
+				windowEnds = windowEnds[:0]
 				for _, w := range windows {
-					if err := r.aggregator.Add(w.end, value, labels, labelValues); err != nil {
-						return nil, err
-					}
+					windowEnds = append(windowEnds, w.end)
+				}
+
+				if err := r.aggregator.AddN(windowEnds, value, labels, labelValues); err != nil {
+					return nil, err
 				}
 			}
 		}

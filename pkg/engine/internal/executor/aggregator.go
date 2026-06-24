@@ -82,32 +82,12 @@ func (a *aggregator) SetMaxSeries(maxSeries int) {
 	a.maxSeries = maxSeries
 }
 
-// Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
-// It expects labelValues to be in the same order as the groupBy columns.
-func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) error {
-	if len(labels) != len(labelValues) {
-		panic("len(labels) != len(labelValues)")
-	}
-
+func (a *aggregator) Add(ts time.Time, value float64, key uint64) {
+	// Add all observations to the aggregation
 	point, ok := a.points[ts]
 	if !ok {
 		point = make(map[uint64]*groupState)
 		a.points[ts] = point
-	}
-
-	var key uint64
-	if len(labelValues) != 0 {
-		a.digest.Reset()
-		for i, val := range labelValues {
-			if i > 0 {
-				_, _ = a.digest.Write([]byte{0}) // separator
-			}
-
-			_, _ = a.digest.WriteString(labels[i].Name)
-			_, _ = a.digest.Write([]byte("="))
-			_, _ = a.digest.WriteString(val)
-		}
-		key = a.digest.Sum64()
 	}
 
 	if state, ok := point[key]; ok {
@@ -131,35 +111,66 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 
 		state.count++
 	} else {
-		if series, exists := a.uniqueSeries[key]; !exists {
-			// Check series limit before adding a new series
-			if a.maxSeries > 0 && len(a.uniqueSeries) >= a.maxSeries {
-				return ErrSeriesLimitExceeded
-			}
-
-			if len(labels) > 0 {
-				series = make(map[string]string)
-				for i, v := range labelValues {
-					// copy the value as this is backed by the arrow array data buffer.
-					// We could retain the record to avoid this copy, but that would hold
-					// all other columns in memory for as long as the query is evaluated.
-					cloned, ok := a.clonedLabelValues[v]
-					if !ok {
-						cloned = strings.Clone(v)
-						a.clonedLabelValues[v] = cloned
-					}
-					series[labels[i].Name] = cloned
-				}
-			}
-
-			a.uniqueSeries[key] = series
-		}
-
 		point[key] = &groupState{
 			value: value,
 			count: int64(1),
 		}
 	}
+}
+
+// Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
+// It expects labelValues to be in the same order as the groupBy columns.
+func (a *aggregator) AddN(timestamps []time.Time, value float64, labels []arrow.Field, labelValues []string) error {
+	if len(labels) != len(labelValues) {
+		panic("len(labels) != len(labelValues)")
+	}
+
+	// Calculate the hash key for all windows
+	var key uint64
+	if len(labelValues) != 0 {
+		a.digest.Reset()
+		for i, val := range labelValues {
+			if i > 0 {
+				_, _ = a.digest.Write([]byte{0}) // separator
+			}
+
+			_, _ = a.digest.WriteString(labels[i].Name)
+			_, _ = a.digest.Write([]byte("="))
+			_, _ = a.digest.WriteString(val)
+		}
+		key = a.digest.Sum64()
+	}
+
+	// Record the unique series if its new
+	if series, exists := a.uniqueSeries[key]; !exists {
+		// Check series limit before adding a new series
+		if a.maxSeries > 0 && len(a.uniqueSeries) >= a.maxSeries {
+			return ErrSeriesLimitExceeded
+		}
+
+		if len(labels) > 0 {
+			series = make(map[string]string)
+			for i, v := range labelValues {
+				// copy the value as this is backed by the arrow array data buffer.
+				// We could retain the record to avoid this copy, but that would hold
+				// all other columns in memory for as long as the query is evaluated.
+				cloned, ok := a.clonedLabelValues[v]
+				if !ok {
+					cloned = strings.Clone(v)
+					a.clonedLabelValues[v] = cloned
+				}
+				series[labels[i].Name] = cloned
+			}
+		}
+
+		a.uniqueSeries[key] = series
+	}
+
+	// Add all observations to the aggregation
+	for _, ts := range timestamps {
+		a.Add(ts, value, key)
+	}
+
 	return nil
 }
 
