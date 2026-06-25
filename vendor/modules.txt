@@ -1764,7 +1764,7 @@ go.opentelemetry.io/collector/pipeline/internal/globalsignal
 # go.opentelemetry.io/collector/processor v1.59.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/collector/processor
-# go.opentelemetry.io/contrib/bridges/prometheus v0.68.0
+# go.opentelemetry.io/contrib/bridges/prometheus v0.69.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/contrib/bridges/prometheus
 # go.opentelemetry.io/contrib/detectors/gcp v1.42.0
