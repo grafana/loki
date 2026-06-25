@@ -150,7 +150,7 @@ require (
 
 require (
 	github.com/dlclark/regexp2/v2 v2.1.1 // indirect
-	gopkg.in/ini.v1 v1.67.2 // indirect
+	gopkg.in/ini.v1 v1.67.3 // indirect
 )
 
 require (
