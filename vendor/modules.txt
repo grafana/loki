@@ -1294,7 +1294,7 @@ github.com/oschwald/maxminddb-golang/v2/mmdbdata
 ## explicit; go 1.24.0
 github.com/parquet-go/bitpack
 github.com/parquet-go/bitpack/unsafecast
-# github.com/parquet-go/jsonlite v1.0.0
+# github.com/parquet-go/jsonlite v1.5.2
 ## explicit; go 1.23
 github.com/parquet-go/jsonlite
 # github.com/parquet-go/parquet-go v0.30.1
