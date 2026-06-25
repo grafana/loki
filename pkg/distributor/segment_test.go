@@ -68,7 +68,7 @@ func TestGetSegmentationKey(t *testing.T) {
 			},
 		}, []string{"service"})
 		require.EqualError(t, err, "1:2: parse error: unexpected end of input inside braces")
-		require.Equal(t, segmentationKey(""), keys[0])
+		require.Nil(t, keys)
 	})
 
 	t.Run("stream with service_name", func(t *testing.T) {
@@ -76,7 +76,7 @@ func TestGetSegmentationKey(t *testing.T) {
 			Stream: logproto.Stream{
 				Labels: "{service_name=\"foo\"}",
 			},
-		}, []string{"service"})
+		}, []string{"service_name"})
 		require.NoError(t, err)
 		require.Equal(t, segmentationKey("foo"), keys[0])
 	})
