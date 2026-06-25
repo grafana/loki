@@ -495,10 +495,13 @@ func TestTableManager_TriggerSyncRecordsManualMetric(t *testing.T) {
 	defer stop()
 
 	require.True(t, tm.TriggerSync())
-	require.Eventually(t, func() bool {
-		return !tm.SyncStatus().InProgress
-	}, 5*time.Second, 10*time.Millisecond)
 
-	require.Equal(t, float64(1), testutil.ToFloat64(
-		tm.metrics.tablesSyncOperationTotal.WithLabelValues(statusSuccess, syncTriggerManual)))
+	// TriggerSync runs the sync on a background goroutine where markStarted (and thus
+	// InProgress) is set, so the in-progress flag is briefly still false right after it
+	// returns. Poll the success metric itself - the definitive "manual sync completed"
+	// signal - rather than racing that flag, which can read false before the sync runs.
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(
+			tm.metrics.tablesSyncOperationTotal.WithLabelValues(statusSuccess, syncTriggerManual)) == 1
+	}, 5*time.Second, 10*time.Millisecond)
 }
