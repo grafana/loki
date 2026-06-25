@@ -38,7 +38,7 @@ func newSyncTestGateway(t *testing.T, q IndexQuerier) *Gateway {
 
 func TestSyncIndexesHandler(t *testing.T) {
 	t.Run("starts a sync", func(t *testing.T) {
-		m := &syncerQuerierMock{triggerResult: true}
+		m := &syncerQuerierMock{triggerResult: true, statuses: []index.SyncStatus{{Name: "p1"}}}
 		rec := httptest.NewRecorder()
 		newSyncTestGateway(t, m).SyncIndexesHandler(rec, httptest.NewRequest(http.MethodPut, "/sync-indexes", nil))
 
@@ -47,7 +47,7 @@ func TestSyncIndexesHandler(t *testing.T) {
 	})
 
 	t.Run("already in progress", func(t *testing.T) {
-		m := &syncerQuerierMock{triggerResult: false}
+		m := &syncerQuerierMock{triggerResult: false, statuses: []index.SyncStatus{{Name: "p1"}}}
 		rec := httptest.NewRecorder()
 		newSyncTestGateway(t, m).SyncIndexesHandler(rec, httptest.NewRequest(http.MethodPut, "/sync-indexes", nil))
 
@@ -59,6 +59,15 @@ func TestSyncIndexesHandler(t *testing.T) {
 		// indexQuerierMock does not implement index.Syncer.
 		rec := httptest.NewRecorder()
 		newSyncTestGateway(t, newIngesterQuerierMock()).SyncIndexesHandler(rec, httptest.NewRequest(http.MethodPut, "/sync-indexes", nil))
+
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		require.Contains(t, rec.Body.String(), "not supported")
+	})
+
+	t.Run("store has no syncable indexes", func(t *testing.T) {
+		// A syncer reporting an empty status list (e.g. a non-TSDB backend) is unsupported.
+		rec := httptest.NewRecorder()
+		newSyncTestGateway(t, &syncerQuerierMock{}).SyncIndexesHandler(rec, httptest.NewRequest(http.MethodPut, "/sync-indexes", nil))
 
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 		require.Contains(t, rec.Body.String(), "not supported")
@@ -114,6 +123,14 @@ func TestSyncIndexStatusHandler(t *testing.T) {
 	t.Run("store does not support syncing", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		newSyncTestGateway(t, newIngesterQuerierMock()).SyncIndexStatusHandler(rec, httptest.NewRequest(http.MethodGet, "/sync-indexes", nil))
+
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		require.Contains(t, rec.Body.String(), "not supported")
+	})
+
+	t.Run("store has no syncable indexes", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		newSyncTestGateway(t, &syncerQuerierMock{}).SyncIndexStatusHandler(rec, httptest.NewRequest(http.MethodGet, "/sync-indexes", nil))
 
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 		require.Contains(t, rec.Body.String(), "not supported")

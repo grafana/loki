@@ -93,11 +93,15 @@ type indexSyncer interface {
 // SyncIndexesHandler triggers an asynchronous index sync (refresh the
 // object-listing cache, then download newly shipped indexes) so freshly flushed
 // indexes become queryable without waiting for the periodic list-cache TTL. It
-// responds 202 if a new sync was started, or 409 if one is already in progress.
-// The operation is cluster-wide (not tenant-scoped).
+// responds 202 if a new sync was started, 409 if one is already in progress, or
+// 503 if the configured index store has no syncable indexes. The operation is
+// cluster-wide (not tenant-scoped).
 func (g *Gateway) SyncIndexesHandler(w http.ResponseWriter, _ *http.Request) {
+	// A store that is not an indexSyncer, or one with no syncable indexes (an
+	// empty status list - e.g. a non-TSDB backend, or a querier backed by an
+	// index-gateway client), does not support on-demand syncing.
 	syncer, ok := g.indexQuerier.(indexSyncer)
-	if !ok {
+	if !ok || len(syncer.SyncStatuses()) == 0 {
 		level.Warn(g.log).Log("msg", "index sync requested but the configured index store does not support it")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte("index sync not supported by the configured index store\n"))
@@ -121,7 +125,13 @@ func (g *Gateway) SyncIndexesHandler(w http.ResponseWriter, _ *http.Request) {
 // per-index JSON shape is defined by index.SyncStatus.MarshalJSON.
 func (g *Gateway) SyncIndexStatusHandler(w http.ResponseWriter, _ *http.Request) {
 	syncer, ok := g.indexQuerier.(indexSyncer)
-	if !ok {
+	var statuses []index.SyncStatus
+	if ok {
+		statuses = syncer.SyncStatuses()
+	}
+	// No syncable indexes (not an indexSyncer, or an empty status list) means the
+	// configured index store does not support on-demand syncing.
+	if len(statuses) == 0 {
 		level.Warn(g.log).Log("msg", "index sync status requested but the configured index store does not support it")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte("index sync not supported by the configured index store\n"))
@@ -129,7 +139,7 @@ func (g *Gateway) SyncIndexStatusHandler(w http.ResponseWriter, _ *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(syncer.SyncStatuses()); err != nil {
+	if err := json.NewEncoder(w).Encode(statuses); err != nil {
 		level.Error(g.log).Log("msg", "failed encoding index sync status response", "err", err)
 	}
 }

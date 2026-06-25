@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 )
 
 // blockingSync is an injectable sync func for syncManager tests. It records the

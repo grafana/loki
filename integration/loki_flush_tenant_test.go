@@ -188,27 +188,43 @@ func TestFlushTenant(t *testing.T) {
 	require.Empty(t, queryLines(cliFrontendA, `{app="b"}`), "stream excluded by the selector must not be flushed")
 
 	// 5. Whole-tenant flush (empty selector) for tenant A - a SECOND forced flush in
-	//    this index period that also ships the previously-excluded {app="b"}. It
-	//    writes a distinct multitenant TSDB, but the index-gateway re-lists object
-	//    storage through a ~1m per-table cache (cacheTimeout in
-	//    pkg/storage/stores/shipper/indexshipper/storage/cached_client.go), so the
-	//    new file in the already-cached table is not surfaced by the periodic resync.
-	//    PUT /sync-indexes refreshes that cache and downloads the new index on demand.
+	//    this index period that also ships the previously-excluded {app="b"}. The new
+	//    file lands in the already-tracked today table, which the index gateway serves
+	//    from a ~1m cached object listing (cacheTimeout in
+	//    pkg/storage/stores/shipper/indexshipper/storage/cached_client.go), so it stays
+	//    invisible until /sync-indexes refreshes that cache and downloads the index.
 	require.NoError(t, flushClient(tenantA).FlushTenant(""))
 
+	// The new file is shipped but not yet synced, so the store-only querier still
+	// cannot see {app="b"}: the index gateway is serving its stale cached listing.
+	require.Empty(t, queryLines(cliFrontendA, `{app="b"}`), "second flush must not be queryable before the sync")
+
 	syncClient := client.New("", "", tIndexGateway.HTTPURL())
-	hasLineB := eventuallyHasLine(cliFrontendA, `{app="b"}`, lineB)
+
+	// Trigger a manual (cache-refreshing) sync. A periodic resync may momentarily
+	// hold the sync lock and 409 our request - and, unlike the manual sync, it does
+	// not refresh the list cache - so retry until ours is accepted (almost always
+	// the first attempt).
 	require.Eventually(t, func() bool {
-		// Re-trigger on each poll: a single PUT no-ops if a periodic sync happens to
-		// be in progress (and the periodic sync does not refresh the list cache), so
-		// keep asking until the manual, cache-refreshing sync runs and the
-		// index-gateway downloads the new index.
-		if err := syncClient.TriggerSyncIndexes(); err != nil {
-			return false
-		}
-		return hasLineB()
-	}, 15*time.Second, 250*time.Millisecond,
-		"second forced flush should become queryable after an explicit index sync")
+		started, err := syncClient.TriggerSyncIndexes()
+		return err == nil && started
+	}, 5*time.Second, 50*time.Millisecond, "a manual index sync should be accepted")
+
+	// The sync we just started is reported in progress, then completes.
+	require.Eventually(t, func() bool {
+		inProgress, err := syncClient.SyncIndexesInProgress()
+		return err == nil && inProgress
+	}, 10*time.Second, time.Millisecond, "the index sync should be reported in progress")
+
+	require.Eventually(t, func() bool {
+		inProgress, err := syncClient.SyncIndexesInProgress()
+		return err == nil && !inProgress
+	}, 15*time.Second, 100*time.Millisecond, "the index sync should complete")
+
+	// With the new index downloaded, {app="b"} is now queryable from the store.
+	require.Eventually(t, eventuallyHasLine(cliFrontendA, `{app="b"}`, lineB),
+		10*time.Second, 250*time.Millisecond,
+		"second forced flush should be queryable after the index sync")
 
 	// 6. Cross-tenant isolation: tenant B was never flushed, so its data is absent
 	//    from the store.

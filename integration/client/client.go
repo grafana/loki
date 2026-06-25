@@ -303,28 +303,63 @@ func (c *Client) FlushTenant(selector string) error {
 	return fmt.Errorf("request failed with status code %d", res.StatusCode)
 }
 
-// TriggerSyncIndexes asks the index-gateway to refresh its object-listing cache
-// and download any newly shipped indexes. The sync runs asynchronously on the
-// index-gateway; this returns once the request is accepted (202) or rejected
-// because a sync is already in progress (409). Both outcomes mean a sync is (or
-// was) running, so neither is treated as an error. The endpoint is cluster-wide,
-// so no tenant scoping is required.
-func (c *Client) TriggerSyncIndexes() error {
+// TriggerSyncIndexes asks the index-gateway to asynchronously refresh its
+// object-listing cache and download any newly shipped indexes. It returns
+// whether a new sync was started: true on 202 Accepted, false on 409 Conflict
+// (a sync was already in progress). The endpoint is cluster-wide, so no tenant
+// scoping is required.
+func (c *Client) TriggerSyncIndexes() (started bool, err error) {
 	req, err := c.request(context.Background(), "PUT", fmt.Sprintf("%s/sync-indexes", c.baseURL))
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	res, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer res.Body.Close()
 
-	if res.StatusCode/100 == 2 || res.StatusCode == http.StatusConflict {
-		return nil
+	switch res.StatusCode {
+	case http.StatusAccepted:
+		return true, nil
+	case http.StatusConflict:
+		return false, nil
+	default:
+		return false, fmt.Errorf("request failed with status code %d", res.StatusCode)
 	}
-	return fmt.Errorf("request failed with status code %d", res.StatusCode)
+}
+
+// SyncIndexesInProgress reports whether the index-gateway currently has an index
+// sync in progress for any tracked index (GET /sync-indexes).
+func (c *Client) SyncIndexesInProgress() (bool, error) {
+	req, err := c.request(context.Background(), "GET", fmt.Sprintf("%s/sync-indexes", c.baseURL))
+	if err != nil {
+		return false, err
+	}
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode/100 != 2 {
+		return false, fmt.Errorf("request failed with status code %d", res.StatusCode)
+	}
+
+	var statuses []struct {
+		InProgress bool `json:"in_progress"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&statuses); err != nil {
+		return false, err
+	}
+	for _, s := range statuses {
+		if s.InProgress {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 type DeleteRequestParams struct {
