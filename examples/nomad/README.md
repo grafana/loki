@@ -1,5 +1,7 @@
 # Loki Nomad examples
 
+There are example [Nomad jobs](./nomad) that can be used to deploy Loki with [Nomad](https://www.nomadproject.io/) - simple and powerful workload orchestrator from HashiCorp.
+
 ## Requirements
 
 ### Hard requirements
