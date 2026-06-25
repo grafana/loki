@@ -361,7 +361,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		"duration", duration,
 		"status", terminalStatus.State,
 	}
-	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
 
 	level.Info(logger).Log(logValues...)
 	t.Metrics.taskExecSeconds.WithLabelValues(taskType).Observe(duration.Seconds())

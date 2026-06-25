@@ -46,15 +46,6 @@ var (
 	StatDatasetReadCalls = NewStatisticInt64("dataset.read.calls", AggregationTypeSum)
 )
 
-// Range IO statistics.
-var (
-	StatRangeIOInputCount     = NewStatisticInt64("input.ranges", AggregationTypeSum)
-	StatRangeIOInputSize      = NewStatisticInt64("input.ranges.size.bytes", AggregationTypeSum)
-	StatRangeIOOptimizedCount = NewStatisticInt64("optimized.ranges", AggregationTypeSum)
-	StatRangeIOOptimizedSize  = NewStatisticInt64("optimized.ranges.size.bytes", AggregationTypeSum)
-	StatRangeIOThroughput     = NewStatisticFloat64("optimized.ranges.min.throughput", AggregationTypeMin)
-)
-
 // Bucket operation statistics.
 var (
 	StatBucketGet        = NewStatisticInt64("bucket.get", AggregationTypeSum)
@@ -75,7 +66,6 @@ var (
 	StatMetastoreSectionPointersReadTime = NewStatisticFloat64("metastore.sections.pointers.read.duration", AggregationTypeSum)
 
 	StatPostingsPointersRead             = NewStatisticInt64("postings.pointers.read", AggregationTypeSum)
-	StatPostingsPointersReadTime         = NewStatisticFloat64("postings.pointers.read.duration", AggregationTypeSum)
 	StatPostingsBloomRowsRead            = NewStatisticInt64("postings.bloom.rows.read", AggregationTypeSum)
 	StatPostingsLabelsResolved           = NewStatisticInt64("postings.labels.resolved", AggregationTypeSum)
 	StatPostingsBloomDeserializeFailures = NewStatisticInt64("postings.bloom.deserialize.failures", AggregationTypeSum)
@@ -93,11 +83,6 @@ var (
 
 	// Time spent waiting for task admission (before being queued) in seconds.
 	StatTaskAdmissionWaitDuration = NewStatisticFloat64("task.admission.wait.duration", AggregationTypeSum)
-)
-
-var (
-	// Track number of predicates applied to enforce delete request filtering.
-	StatDeletePredicates = NewStatisticInt64("delete.request.predicates", AggregationTypeFirst)
 )
 
 // Task cache statistics.

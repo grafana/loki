@@ -31,20 +31,6 @@ func TestObservations(t *testing.T) {
 		require.Equal(t, int64(20), filtered.data[statB.Key()].Value)
 	})
 
-	t.Run("prefix", func(t *testing.T) {
-		prefixed := obs.filter(statA.Key()).prefix("metastore_")
-		expectedKey := StatisticKey{Name: "metastore_stat.one", DataType: DataTypeInt64, Aggregation: AggregationTypeSum}
-		require.Len(t, prefixed.data, 1)
-		require.Equal(t, int64(10), prefixed.data[expectedKey].Value)
-	})
-
-	t.Run("normalizeKeys", func(t *testing.T) {
-		normalized := obs.filter(statC.Key()).normalizeKeys()
-		expectedKey := StatisticKey{Name: "stat_three", DataType: DataTypeInt64, Aggregation: AggregationTypeSum}
-		require.Len(t, normalized.data, 1)
-		require.Equal(t, int64(30), normalized.data[expectedKey].Value)
-	})
-
 	t.Run("merge", func(t *testing.T) {
 		target := newObservations()
 		target.merge(obs.filter(statA.Key(), statB.Key()))
@@ -54,17 +40,6 @@ func TestObservations(t *testing.T) {
 		require.Equal(t, int64(10), target.data[statA.Key()].Value)
 		require.Equal(t, int64(40), target.data[statB.Key()].Value)
 		require.Equal(t, int64(30), target.data[statC.Key()].Value)
-	})
-
-	t.Run("toLogValues", func(t *testing.T) {
-		logValues := obs.toLogValues()
-		// Sorted: stat.one, stat.two, stat.three
-		require.Equal(t, []any{"stat.one", int64(10), "stat.three", int64(30), "stat.two", int64(20)}, logValues)
-	})
-
-	t.Run("chaining", func(t *testing.T) {
-		result := obs.filter(statC.Key()).prefix("logs_").normalizeKeys().toLogValues()
-		require.Equal(t, []any{"logs_stat_three", int64(30)}, result)
 	})
 }
 

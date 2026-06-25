@@ -3,10 +3,10 @@
 //
 // xcap can be used in two ways, both starting with a [Capture]:
 //
-// # Standalone: regions and log summaries
+// # Standalone: observation aggregation
 //
-// Use [StartRegion] when you only need observation aggregation and
-// structured log output, without creating OTel spans.
+// Use [StartRegion] when you only need observation aggregation without
+// creating OTel spans.
 //
 //	// Create a capture to collect observations.
 //	ctx, capture := xcap.NewCapture(ctx, nil)
@@ -21,18 +21,16 @@
 //	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
 //	// pages.scanned is now 2 (sum aggregation)
 //
-//	// After the capture ends, summarise all observations as log values.
-//	logValues := xcap.SummaryLogValues(capture)
-//	level.Info(logger).Log(logValues...)
+//	// After the capture ends, get the value of a statistic from the capture.
+//	capture.Value(xcap.StatDatasetPagesScanned) // returns 2
 //
-// # With OTel tracing: spans, observations and log summaries
+// # With OTel tracing: spans creation and observation aggregation
 //
-// Use [StartSpan] when you want observations flushed as OTel span
-// attributes in addition to the log summary. [StartSpan] takes a
-// standard [trace.Tracer] and returns a [Span] whose End method writes
-// the aggregated observations as span attributes before ending the
-// span. The observations are also registered with the [Capture] for
-// log summaries.
+// Use [StartSpan] when you also want observations flushed as OTel span
+// attributes. [StartSpan] takes a standard [trace.Tracer] and returns
+// a [Span] whose End method writes the aggregated observations as span
+// attributes before ending the span. The observations are also registered
+// with the [Capture] for retrieval after the capture ends.
 //
 //	// Create a capture to collect observations.
 //	ctx, capture := xcap.NewCapture(ctx, nil)
