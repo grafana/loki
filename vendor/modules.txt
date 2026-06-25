@@ -1660,8 +1660,8 @@ github.com/uber/jaeger-client-go/utils
 ## explicit
 github.com/uber/jaeger-lib/metrics
 github.com/uber/jaeger-lib/metrics/prometheus
-# github.com/ugorji/go/codec v1.1.7
-## explicit
+# github.com/ugorji/go/codec v1.3.1
+## explicit; go 1.21
 github.com/ugorji/go/codec
 # github.com/x448/float16 v0.8.4
 ## explicit; go 1.11
