@@ -1,6 +1,7 @@
 rule_files:
   - ../prometheus-alerts.yaml
   - ../prometheus-rules.yaml
+  - ../prometheus-rules-openshift.yaml
 
 evaluation_interval: 1m
 

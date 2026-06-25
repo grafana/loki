@@ -23,8 +23,8 @@ func BuildPrometheusRule(opts Options) ([]client.Object, error) {
 // NewPrometheusRule creates a prometheus rule
 func NewPrometheusRule(opts Options) (*monitoringv1.PrometheusRule, error) {
 	alertOpts := alerts.Options{
-		RunbookURL:            alerts.RunbookDefaultURL,
-		IncludeTelemetryRules: opts.Gates.OpenShift.Enabled,
+		RunbookURL:       alerts.RunbookDefaultURL,
+		OpenShiftEnabled: opts.Gates.OpenShift.Enabled,
 	}
 
 	spec, err := alerts.Build(alertOpts)
