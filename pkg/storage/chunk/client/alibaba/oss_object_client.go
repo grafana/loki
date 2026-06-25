@@ -13,11 +13,12 @@ import (
 	"github.com/aliyun/credentials-go/credentials"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const NoSuchKeyErr = "NoSuchKey"
