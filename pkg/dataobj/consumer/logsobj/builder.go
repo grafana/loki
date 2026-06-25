@@ -160,7 +160,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 
 	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-order", sortStreamASC, "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")
 	f.BoolVar(&cfg.AppendOrderedEnabled, prefix+"append-ordered-enabled", true, "Skips intermediate stripe sorting and merging. Expects data to be sorted before appending.")
-	f.BoolVar(&cfg.DataobjUseSortSchema, prefix+"dataobj-use-sort-schema", false, "Experimental: When enabled, use the per-tenant sort_schema tenant config to determine sort order of data objects instead of dataobj-sort-order.")
+	f.BoolVar(&cfg.DataobjUseSortSchema, prefix+"dataobj-use-sort-schema", false, "Experimental: When enabled, use the per-tenant sort_schema tenant config to determine sort order of data objects. dataobj-sort-order is used as fallback sort order if schema labels are empty for a tenant.")
 }
 
 // Validate validates the BuilderConfig.
@@ -224,9 +224,6 @@ type Builder struct {
 	streams map[string]*streams.Builder
 	logs    map[string]*logs.Builder
 
-	// sortSchemaLabels caches the schema labels for enabled tenants.
-	sortSchemaLabels map[string][]string
-
 	// earliestRecordTime tracks the timestamp of the earliest record appended
 	// to the builder. It is required for the metastore index.
 	earliestRecordTime time.Time
@@ -254,15 +251,14 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderM
 	}
 
 	return &Builder{
-		cfg:              cfg,
-		metrics:          metrics,
-		logger:           logger,
-		overrides:        overrides,
-		labelCache:       labelCache,
-		builder:          dataobj.NewBuilder(scratchStore),
-		streams:          make(map[string]*streams.Builder),
-		logs:             make(map[string]*logs.Builder),
-		sortSchemaLabels: make(map[string][]string),
+		cfg:        cfg,
+		metrics:    metrics,
+		logger:     logger,
+		overrides:  overrides,
+		labelCache: labelCache,
+		builder:    dataobj.NewBuilder(scratchStore),
+		streams:    make(map[string]*streams.Builder),
+		logs:       make(map[string]*logs.Builder),
 	}, nil
 }
 
@@ -300,7 +296,6 @@ func (b *Builder) initBuilder(tenant string) {
 			}
 		}
 
-		b.sortSchemaLabels[tenant] = schemaLabels
 		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
 			PageSizeHint:              int(b.cfg.TargetPageSize),
 			PageMaxRowCount:           b.cfg.MaxPageRows,
@@ -346,11 +341,14 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 	defer timer.ObserveDuration()
 
 	var sortKey string
-	if schemaLabels := b.sortSchemaLabels[tenant]; len(schemaLabels) > 0 {
-		var err error
-		sortKey, err = computeSortKey(ls, schemaLabels)
-		if err != nil {
-			return fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
+	if b.cfg.DataobjUseSortSchema && b.overrides != nil {
+		schemaLabels := b.overrides.SortSchemaLabels(tenant)
+		if len(schemaLabels) > 0 {
+			var err error
+			sortKey, err = computeSortKey(ls, schemaLabels)
+			if err != nil {
+				return fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
+			}
 		}
 	}
 
@@ -648,7 +646,6 @@ func (b *Builder) Reset() {
 	// relative to our memory limit. Maybe we will consider this in future.
 	clear(b.logs)
 	clear(b.streams)
-	clear(b.sortSchemaLabels)
 
 	b.earliestRecordTime = time.Time{}
 	b.currentSizeEstimate = 0
