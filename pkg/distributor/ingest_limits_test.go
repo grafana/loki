@@ -341,6 +341,10 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 }
 
 func TestIngestLimits_UpdateRates(t *testing.T) {
+
+	segmentationKeyHash1 := segmentationKey("test").Sum64()
+	combinedHash := segmentationKey("testtest2").Sum64()
+
 	tests := []struct {
 		name            string
 		tenant          string
@@ -354,7 +358,7 @@ func TestIngestLimits_UpdateRates(t *testing.T) {
 		name:   "error should be returned if rates cannot be updated",
 		tenant: "test",
 		streams: []segmentedStream{{
-			SegmentationKey: segmentationKey("test"),
+			SegmentationKeys: []segmentationKey{"test"},
 		}},
 		responseErr: errors.New("failed to update rates"),
 		expectedErr: "failed to update rates",
@@ -362,8 +366,8 @@ func TestIngestLimits_UpdateRates(t *testing.T) {
 		name:   "updates rates",
 		tenant: "test",
 		streams: []segmentedStream{{
-			SegmentationKey:     segmentationKey("test"),
-			SegmentationKeyHash: 13113208752873574959,
+			SegmentationKeys:      []segmentationKey{"test"},
+			SegmentationKeyHashes: []uint64{13113208752873574959},
 		}},
 		expectedRequest: &proto.UpdateRatesRequest{
 			Tenant: "test",
@@ -380,6 +384,37 @@ func TestIngestLimits_UpdateRates(t *testing.T) {
 		expectedResult: []*proto.UpdateRatesResult{{
 			StreamHash: 13113208752873574959,
 			Rate:       1024,
+		}},
+	}, {
+		name:   "updates rates for multiple segmentation keys",
+		tenant: "test",
+		streams: []segmentedStream{{
+			SegmentationKeys:      []segmentationKey{"test", "test2"},
+			SegmentationKeyHashes: []uint64{segmentationKeyHash1, combinedHash},
+		}},
+		expectedRequest: &proto.UpdateRatesRequest{
+			Tenant: "test",
+			Streams: []*proto.StreamMetadata{{
+				StreamHash: segmentationKeyHash1,
+			}, {
+				StreamHash: combinedHash,
+			}},
+		},
+		response: &proto.UpdateRatesResponse{
+			Results: []*proto.UpdateRatesResult{{
+				StreamHash: segmentationKeyHash1,
+				Rate:       1024,
+			}, {
+				StreamHash: combinedHash,
+				Rate:       1024, // fixed
+			}},
+		},
+		expectedResult: []*proto.UpdateRatesResult{{
+			StreamHash: segmentationKeyHash1,
+			Rate:       1024,
+		}, {
+			StreamHash: combinedHash,
+			Rate:       1024, // fixed
 		}},
 	}}
 

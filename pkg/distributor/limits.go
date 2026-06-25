@@ -50,5 +50,7 @@ type Limits interface {
 
 	SimulatedPushLatency(userID string) time.Duration
 
+	SortSchemaLabels(userID string) []string
+
 	validation.IngestionPolicyOverrideLimits
 }

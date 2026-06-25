@@ -40,7 +40,7 @@ func TestSegmentationPartitionResolver_Resolve_ConsistentHashing(t *testing.T) {
 	t.Run("returns error if no active partitions", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := newSegmentationPartitionResolver(1024, false, emptyRing, nil, reg, log.NewNopLogger())
-		partition, err := resolver.Resolve("tenant", "test", 0x1, 0, 0)
+		partition, err := resolver.Resolve("tenant", []segmentationKey{"test"}, 0x1, []uint64{0}, 0)
 		require.EqualError(t, err, "no active partitions")
 		require.Equal(t, int32(0), partition)
 		// Check the metrics to make sure it fell back to random shuffle and
@@ -65,7 +65,7 @@ func TestSegmentationPartitionResolver_Resolve_ConsistentHashing(t *testing.T) {
 	t.Run("uses random shuffle if rate unknown", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := newSegmentationPartitionResolver(1024, false, ringWithActivePartition, nil, reg, log.NewNopLogger())
-		partition, err := resolver.Resolve("tenant", "test", 0x1, 0, 0)
+		partition, err := resolver.Resolve("tenant", []segmentationKey{"test"}, 0x1, []uint64{0}, 0)
 		require.NoError(t, err)
 		// Should return partition 1 since that is the only active partition.
 		require.Equal(t, int32(1), partition)
@@ -90,7 +90,7 @@ func TestSegmentationPartitionResolver_Resolve_ConsistentHashing(t *testing.T) {
 	t.Run("shuffle shards on segmentation key if rate is known", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := newSegmentationPartitionResolver(1024, false, ringWithActivePartition, nil, reg, log.NewNopLogger())
-		partition, err := resolver.Resolve("tenant", "test", 0x1, 512, 0)
+		partition, err := resolver.Resolve("tenant", []segmentationKey{"test"}, 0x1, []uint64{512}, 0)
 		require.NoError(t, err)
 		require.Equal(t, int32(1), partition)
 		require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`

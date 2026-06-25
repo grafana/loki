@@ -29,15 +29,21 @@ func (key segmentationKey) Sum64() uint64 {
 }
 
 // getSegmentationKey returns the segmentation key for the stream or an error.
-func getSegmentationKey(stream KeyedStream) (segmentationKey, error) {
+func getSegmentationKeys(stream KeyedStream, sortSchemaLabels []string) ([]segmentationKey, error) {
 	labels, err := syntax.ParseLabels(stream.Stream.Labels)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	if serviceName := labels.Get("service_name"); serviceName != "" {
-		return segmentationKey(serviceName), nil
+	segmentationKeys := make([]segmentationKey, 0, len(sortSchemaLabels))
+	for _, key := range sortSchemaLabels {
+		label := key
+		labelValue := labels.Get(label)
+		if labelValue == "" {
+			labelValue = "unknown_" + label
+		}
+		segmentationKeys = append(segmentationKeys, segmentationKey(labelValue))
 	}
-	return "unknown_service", nil
+	return segmentationKeys, nil
 }
 
 // segmentationPartitionResolver resolves the partition for a segmentation key.
@@ -96,16 +102,17 @@ func newSegmentationPartitionResolver(
 	}
 }
 
-func (r *segmentationPartitionResolver) Resolve(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateBytesLimit uint64) (int32, error) {
+func (r *segmentationPartitionResolver) Resolve(tenant string, keys []segmentationKey, hashKey uint32, rateBytes []uint64, tenantRateBytesLimit uint64) (int32, error) {
 	if r.useRendezvousHashing {
-		return r.resolveRendezvousHashing(tenant, key, hashKey, rateBytes, tenantRateBytesLimit)
+		return r.resolveRendezvousHashing(tenant, keys, hashKey, rateBytes, tenantRateBytesLimit)
 	}
 
 	// TODO(danhopper): remove consistent hashing once we have confidence in rendezvous hashing
-	return r.resolveConsistentHashing(tenant, key, hashKey, rateBytes, tenantRateBytesLimit)
+	// TODO(benclive): Running an experiment on rendezvous hashing... just hard coding some defaults here.
+	return r.resolveConsistentHashing(tenant, keys[0], hashKey, rateBytes[0], tenantRateBytesLimit)
 }
 
-func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, key segmentationKey, hashKey uint32, rateBytes, tenantRateLimitBytes uint64) (int32, error) {
+func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, keys []segmentationKey, hashKey uint32, rateBytes []uint64, tenantRateLimitBytes uint64) (int32, error) {
 	r.resolveTotal.Inc()
 
 	shuffleSharder := r.partitionRingWatcher.ShuffleSharder()
@@ -123,9 +130,12 @@ func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, 
 	}
 	shuffleSharder = shuffleSharder.ShuffleShard(tenant, numTenantShuffleShardPartitions)
 
-	// Shuffle shard for the segmentation key.
-	numSegKeyShuffleShardPartitions := numPartitionsForRateRendezvousHashing(rateBytes, r.perPartitionRateBytes, shuffleSharder.Size())
-	shuffleSharder = shuffleSharder.ShuffleShard(string(key), numSegKeyShuffleShardPartitions)
+	numSegKeyShuffleShardPartitions := 0
+	for i, key := range keys {
+		// Shuffle shard for the segmentation keys, iteratively.
+		numSegKeyShuffleShardPartitions = numPartitionsForRateRendezvousHashing(rateBytes[i], r.perPartitionRateBytes, shuffleSharder.Size())
+		shuffleSharder = shuffleSharder.ShuffleShard(string(key), numSegKeyShuffleShardPartitions)
+	}
 
 	r.tenantShuffleShardSize.Observe(float64(numTenantShuffleShardPartitions))
 	r.segmentationKeyShuffleShardSize.Observe(float64(numSegKeyShuffleShardPartitions))

@@ -327,14 +327,10 @@ func (f SortKeyFqn) Validate() error {
 
 // SortSchema is an ordered list of SortKeyFqn sort keys for a tenant.
 // The timestamp is always implicitly appended as the final sort key.
-// An empty schema means "use DefaultSortSchema".
+// An empty schema means "use natural ordering" and is not recommended..
 type SortSchema []SortKeyFqn
 
-// DefaultSortSchema is the broad default schema used when no tenant-specific schema is configured.
-var DefaultSortSchema = SortSchema{"label:service_name"}
-
 // Validate checks that the sort schema is well-formed.
-// An empty schema is valid (callers fall back to DefaultSortSchema).
 func (s SortSchema) Validate() error {
 	seen := make(map[SortKeyFqn]struct{}, len(s))
 	for _, fqn := range s {
@@ -345,6 +341,24 @@ func (s SortSchema) Validate() error {
 			return fmt.Errorf("sort_schema entry %q is duplicated", fqn)
 		}
 		seen[fqn] = struct{}{}
+	}
+	return nil
+}
+
+// String implements flag.Value
+func (s SortSchema) String() string {
+	parts := make([]string, len(s))
+	for i, fqn := range s {
+		parts[i] = string(fqn)
+	}
+	return strings.Join(parts, ",")
+}
+
+// Set implements flag.Value.
+func (s *SortSchema) Set(v string) error {
+	parts := strings.Split(v, ",")
+	for _, part := range parts {
+		*s = append(*s, SortKeyFqn(part))
 	}
 	return nil
 }
@@ -584,6 +598,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxScanTaskParallelism, "limits.max-scan-task-parallelism", 0, "Experimental: Controls the amount of scan tasks that can be running in parallel in the new query engine. The default of 0 means unlimited parallelism and all tasks will be scheduled at once.")
 	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
 	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
+
+	l.SortSchema = SortSchema{"label:service_name"}
+	f.Var((&l.SortSchema), "limits.sort-schema", "Ordered, comma separated list of keys to use for sorting data in the new query engine, provided in the form `label:<name>,label:<name>,...`. Only the label type is currently supported. Defaults to "+l.SortSchema.String()+".")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -1413,6 +1430,26 @@ func (o *Overrides) DebugEngineStreams(userID string) bool {
 	return o.getOverridesForUser(userID).DebugEngineStreams
 }
 
+func (o *Overrides) SimulatedPushLatency(userID string) time.Duration {
+	return o.getOverridesForUser(userID).SimulatedPushLatency
+}
+
+// SortSchema returns the per-tenant sort schema. Falls back to DefaultSortSchema if not set.
+func (o *Overrides) SortSchema(userID string) SortSchema {
+	return o.getOverridesForUser(userID).SortSchema
+}
+
+// SortSchemaLabels returns the ordered SortKeyFqn sort keys from the per-tenant sort schema as strings.
+// Implements logsobj.TenantOverrides.
+func (o *Overrides) SortSchemaLabels(userID string) []string {
+	schema := o.SortSchema(userID)
+	result := make([]string, len(schema))
+	for i, fqn := range schema {
+		result[i] = string(fqn)
+	}
+	return result
+}
+
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.TenantLimits(userID)
@@ -1469,28 +1506,4 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(value *yaml.Node) error {
 	sm.m = def
 
 	return nil
-}
-
-func (o *Overrides) SimulatedPushLatency(userID string) time.Duration {
-	return o.getOverridesForUser(userID).SimulatedPushLatency
-}
-
-// SortSchema returns the per-tenant sort schema. Falls back to DefaultSortSchema if not set.
-func (o *Overrides) SortSchema(userID string) SortSchema {
-	s := o.getOverridesForUser(userID).SortSchema
-	if len(s) == 0 {
-		return DefaultSortSchema
-	}
-	return s
-}
-
-// SortSchemaLabels returns the ordered SortKeyFqn sort keys from the per-tenant sort schema as strings.
-// Implements logsobj.TenantOverrides.
-func (o *Overrides) SortSchemaLabels(userID string) []string {
-	schema := o.SortSchema(userID)
-	result := make([]string, len(schema))
-	for i, fqn := range schema {
-		result[i] = string(fqn)
-	}
-	return result
 }

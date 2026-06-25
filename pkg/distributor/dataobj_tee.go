@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -151,8 +152,8 @@ func NewDataObjTee(
 // A segmentedStream is a KeyedStream with a segmentation key.
 type segmentedStream struct {
 	KeyedStream
-	SegmentationKey     segmentationKey
-	SegmentationKeyHash uint64
+	SegmentationKeys      []segmentationKey
+	SegmentationKeyHashes []uint64
 }
 
 func (t *DataObjTee) Register(_ context.Context, _ string, streams []KeyedStream, pushTracker *PushTracker) {
@@ -162,18 +163,28 @@ func (t *DataObjTee) Register(_ context.Context, _ string, streams []KeyedStream
 
 // Duplicate implements the [Tee] interface.
 func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []KeyedStream, pushTracker *PushTracker) {
+	sortSchemaLabels := t.limits.SortSchemaLabels(tenant)
+
 	segmentationKeyStreams := make([]segmentedStream, 0, len(streams))
 	for _, stream := range streams {
-		segmentationKey, err := getSegmentationKey(stream)
+		segmentationKeys, err := getSegmentationKeys(stream, sortSchemaLabels)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to get segmentation key", "err", err)
 			t.streamFailures.Inc()
 			return
 		}
+
+		// Write a key for each combination of key1, key1+key2, key1+key2+key3, etc.
+		cumulativeKeyHashes := make([]uint64, 0, len(segmentationKeys))
+		partialKey := strings.Builder{}
+		for i := range segmentationKeys {
+			partialKey.WriteString(sortSchemaLabels[i] + "=" + string(segmentationKeys[i]) + ",")
+			cumulativeKeyHashes = append(cumulativeKeyHashes, segmentationKey(partialKey.String()).Sum64())
+		}
 		segmentationKeyStreams = append(segmentationKeyStreams, segmentedStream{
-			KeyedStream:         stream,
-			SegmentationKey:     segmentationKey,
-			SegmentationKeyHash: segmentationKey.Sum64(),
+			KeyedStream:           stream,
+			SegmentationKeys:      segmentationKeys,
+			SegmentationKeyHashes: cumulativeKeyHashes,
 		})
 	}
 
@@ -204,19 +215,23 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 
 	for _, s := range segmentationKeyStreams {
 		go func(stream segmentedStream) {
-			rateBytes := fastRates[stream.SegmentationKeyHash]
-			if t.cfg.DebugMetricsEnabled {
-				t.estimateRateBytes.WithLabelValues(tenant, string(stream.SegmentationKey)).Set(float64(rateBytes))
+			rateBytes := make([]uint64, len(stream.SegmentationKeys))
+			for i, key := range stream.SegmentationKeys {
+				rateBytesForKey := fastRates[stream.SegmentationKeyHashes[i]]
+				rateBytes[i] = rateBytesForKey
+				if t.cfg.DebugMetricsEnabled {
+					t.estimateRateBytes.WithLabelValues(tenant, string(key)).Set(float64(rateBytes[i]))
+				}
 			}
 			t.duplicate(ctx, tenant, stream, rateBytes, tenantRateBytesLimit, pushTracker)
 		}(s)
 	}
 }
 
-func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmentedStream, rateBytes, tenantRateBytesLimit uint64, pushTracker *PushTracker) {
+func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmentedStream, rateBytes []uint64, tenantRateBytesLimit uint64, pushTracker *PushTracker) {
 	t.streams.Inc()
 
-	partition, err := t.resolver.Resolve(tenant, stream.SegmentationKey, stream.HashKey, rateBytes, tenantRateBytesLimit)
+	partition, err := t.resolver.Resolve(tenant, stream.SegmentationKeys, stream.HashKey, rateBytes, tenantRateBytesLimit)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to resolve partition", "err", err)
 		t.streamFailures.Inc()
@@ -248,7 +263,11 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmen
 	for _, rec := range records {
 		size += int64(len(rec.Value))
 	}
-	t.observeDuplicate(partition, tenant, string(stream.SegmentationKey), size)
+	compoundKey := ""
+	for _, key := range stream.SegmentationKeys {
+		compoundKey += string(key) + ","
+	}
+	t.observeDuplicate(partition, tenant, compoundKey, size)
 
 	pushTracker.doneWithResult(nil)
 }

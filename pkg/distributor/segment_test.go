@@ -56,39 +56,39 @@ func newUninitialisedPartitionRingWatcher() *rendezvous.PartitionRingWatcher {
 
 func TestGetSegmentationKey(t *testing.T) {
 	t.Run("stream without labels", func(t *testing.T) {
-		key, err := getSegmentationKey(KeyedStream{})
+		keys, err := getSegmentationKeys(KeyedStream{}, []string{"service"})
 		require.NoError(t, err)
-		require.Equal(t, segmentationKey("unknown_service"), key)
+		require.Equal(t, segmentationKey("unknown_service"), keys[0])
 	})
 
 	t.Run("stream with invalid labels", func(t *testing.T) {
-		key, err := getSegmentationKey(KeyedStream{
+		keys, err := getSegmentationKeys(KeyedStream{
 			Stream: logproto.Stream{
 				Labels: "{",
 			},
-		})
+		}, []string{"service"})
 		require.EqualError(t, err, "1:2: parse error: unexpected end of input inside braces")
-		require.Equal(t, segmentationKey(""), key)
+		require.Equal(t, segmentationKey(""), keys[0])
 	})
 
 	t.Run("stream with service_name", func(t *testing.T) {
-		key, err := getSegmentationKey(KeyedStream{
+		keys, err := getSegmentationKeys(KeyedStream{
 			Stream: logproto.Stream{
 				Labels: "{service_name=\"foo\"}",
 			},
-		})
+		}, []string{"service"})
 		require.NoError(t, err)
-		require.Equal(t, segmentationKey("foo"), key)
+		require.Equal(t, segmentationKey("foo"), keys[0])
 	})
 
 	t.Run("stream without service_name", func(t *testing.T) {
-		key, err := getSegmentationKey(KeyedStream{
+		keys, err := getSegmentationKeys(KeyedStream{
 			Stream: logproto.Stream{
 				Labels: "{bar=\"baz\"}",
 			},
-		})
+		}, []string{"service"})
 		require.NoError(t, err)
-		require.Equal(t, segmentationKey("unknown_service"), key)
+		require.Equal(t, segmentationKey("unknown_service"), keys[0])
 	})
 }
 
@@ -107,7 +107,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		watcher := newPartitionRingWatcher(t) // empty ring — zero active partitions
 		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, reg, log.NewNopLogger())
-		_, err := resolver.Resolve("tenant", segmentationKey("test"), 0x1, 0, 0)
+		_, err := resolver.Resolve("tenant", []segmentationKey{"test"}, 0x1, []uint64{0}, 0)
 		require.EqualError(t, err, "no active partitions")
 
 		require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
@@ -131,7 +131,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		watcher := newPartitionRingWatcher(t, 1)
 		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, reg, log.NewNopLogger())
-		partition, err := resolver.Resolve("tenant", "test", 0x1, 0, 0)
+		partition, err := resolver.Resolve("tenant", []segmentationKey{"test"}, 0x1, []uint64{0}, 0)
 		require.NoError(t, err)
 		// Should return partition 1 since that is the only active partition.
 		require.Equal(t, int32(1), partition)
@@ -156,9 +156,9 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 	t.Run("resolution is deterministic for same inputs", func(t *testing.T) {
 		watcher := newPartitionRingWatcher(t, 1, 2, 3)
 		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, prometheus.NewRegistry(), log.NewNopLogger())
-		p1, err := resolver.Resolve("tenant-a", "svc", 0x1, 0, 0)
+		p1, err := resolver.Resolve("tenant-a", []segmentationKey{"svc"}, 0x1, []uint64{0}, 0)
 		require.NoError(t, err)
-		p2, err := resolver.Resolve("tenant-a", "svc", 0x1, 0, 0)
+		p2, err := resolver.Resolve("tenant-a", []segmentationKey{"svc"}, 0x1, []uint64{0}, 0)
 		require.NoError(t, err)
 		require.Equal(t, p1, p2)
 	})
@@ -166,7 +166,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 	t.Run("uninitialised ring returns error", func(t *testing.T) {
 		watcher := newUninitialisedPartitionRingWatcher()
 		resolver := newSegmentationPartitionResolver(1024, true, nil, watcher, prometheus.NewRegistry(), log.NewNopLogger())
-		_, err := resolver.Resolve("tenant", "test", 0x1, 0, 0)
+		_, err := resolver.Resolve("tenant", []segmentationKey{"test"}, 0x1, []uint64{0}, 0)
 		require.EqualError(t, err, "no active partitions")
 	})
 }
@@ -193,7 +193,7 @@ func TestSegmentationPartitionResolver_TenantShuffleShard(t *testing.T) {
 		t.Run(fmt.Sprintf("perPartitionRateBytes=1024,rateBytes=%d,tenantRateLimitBytes=%d", test.rateBytes, test.tenantRateLimitBytes), func(t *testing.T) {
 			seen := make(map[int32]struct{}, 2)
 			for i := 0; i < 100; i++ {
-				partition, err := resolver.Resolve("tenant", "test", uint32(i), test.rateBytes, test.tenantRateLimitBytes)
+				partition, err := resolver.Resolve("tenant", []segmentationKey{"test"}, uint32(i), []uint64{test.rateBytes}, test.tenantRateLimitBytes)
 				require.NoError(t, err)
 				seen[partition] = struct{}{}
 				require.InDelta(t, 3, partition, 2)

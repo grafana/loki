@@ -267,11 +267,16 @@ func newUpdateRatesRequest(tenant string, streams []segmentedStream) (*proto.Upd
 	streamMetadata := make([]*proto.StreamMetadata, 0, len(streams))
 	for _, stream := range streams {
 		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
-			StreamHash:      stream.SegmentationKeyHash,
-			TotalSize:       entriesSize + structuredMetadataSize,
-			IngestionPolicy: stream.Policy,
-		})
+		totalSize := entriesSize + structuredMetadataSize
+		// TODO(benclive): Figure out how to correctly apply this limit. For now, spread the size evenly over the number of keys to avoid going over the rate limit and keep it proportional to the true rate.
+		totalSizePerKey := totalSize / uint64(len(stream.SegmentationKeys))
+		for _, hash := range stream.SegmentationKeyHashes {
+			streamMetadata = append(streamMetadata, &proto.StreamMetadata{
+				StreamHash:      hash,
+				TotalSize:       totalSizePerKey,
+				IngestionPolicy: stream.Policy,
+			})
+		}
 	}
 	return &proto.UpdateRatesRequest{
 		Tenant:  tenant,

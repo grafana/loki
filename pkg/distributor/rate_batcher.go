@@ -117,10 +117,12 @@ func (b *rateBatcher) Add(tenant string, streams []segmentedStream) map[uint64]u
 	b.ratesMu.RLock()
 	tenantRates := b.rates[tenant]
 	for _, stream := range streams {
-		if tenantRates != nil {
-			rates[stream.SegmentationKeyHash] = tenantRates[stream.SegmentationKeyHash]
-		} else {
-			rates[stream.SegmentationKeyHash] = 0
+		for _, hash := range stream.SegmentationKeyHashes {
+			if tenantRates != nil {
+				rates[hash] = tenantRates[hash]
+			} else {
+				rates[hash] = 0
+			}
 		}
 	}
 	b.ratesMu.RUnlock()
@@ -134,17 +136,17 @@ func (b *rateBatcher) Add(tenant string, streams []segmentedStream) map[uint64]u
 	}
 
 	for _, stream := range streams {
-		hash := stream.SegmentationKeyHash
-		totalSize := uint64(stream.Stream.Size())
-
-		// If we already have this stream in the pending batch, accumulate the size.
-		if existing, ok := tenantPending[hash]; ok {
-			existing.TotalSize += totalSize
-		} else {
-			tenantPending[hash] = &proto.StreamMetadata{
-				StreamHash:      hash,
-				TotalSize:       totalSize,
-				IngestionPolicy: stream.Policy,
+		totalSize := uint64(stream.Stream.Size()) / uint64(len(stream.SegmentationKeyHashes)) // TODO(benclive): Figure out how to correctly apply this limit. For now, spread the size evenly over the number of keys to avoid going over the rate limit and keep it proportional to the true rate.
+		for _, hash := range stream.SegmentationKeyHashes {
+			// If we already have this stream in the pending batch, accumulate the size.
+			if existing, ok := tenantPending[hash]; ok {
+				existing.TotalSize += totalSize
+			} else {
+				tenantPending[hash] = &proto.StreamMetadata{
+					StreamHash:      hash,
+					TotalSize:       totalSize,
+					IngestionPolicy: stream.Policy,
+				}
 			}
 		}
 	}
