@@ -1078,49 +1078,6 @@ pattern_ingester:
     # CLI flag: -pattern-ingester.tee.stop-flush-timeout
     [stop_flush_timeout: <duration> | default = 30s]
 
-    # How records are ingested: "kafka" reads from a Kafka topic; "inmemory"
-    # uses an in-process channel (experimental, single-node, no durability
-    # guarantees, each replica holds independent data).
-    # CLI flag: -pattern-ingester.tee.ingest-mode
-    [ingest_mode: <string> | default = "inmemory"]
-
-    ring_config:
-      # The key to use for the pattern ingester ring.
-      # CLI flag: -pattern-ingester.tee.ring.key
-      [key: <string> | default = ""]
-
-      # The name to use for the pattern ingester ring.
-      # CLI flag: -pattern-ingester.tee.ring.name
-      [name: <string> | default = ""]
-
-      # Configuration for memberlist client. Only applies if the selected
-      # kvstore is memberlist.
-      # 
-      # When a memberlist config with atleast 1 join_members is defined, kvstore
-      # of type memberlist is automatically selected for all the components that
-      # require a ring unless otherwise specified in the component's
-      # configuration section.
-      # The CLI flags prefix for this block configuration is:
-      # pattern-ingester.tee.ring.memberlist
-      [memberlist: <memberlist>]
-
-      # Size of the buffer for key watchers.
-      # CLI flag: -pattern-ingester.tee.ring.watcher-buffer-size
-      [watcher_buffer_size: <int> | default = 0]
-
-      # How long to wait for the partition ring to be populated before failing
-      # startup.
-      # CLI flag: -pattern-ingester.tee.ring.startup-timeout
-      [startup_timeout: <duration> | default = 1m]
-
-    # The Kafka session timeout
-    # CLI flag: -pattern-ingester.tee.kafka-session-timeout
-    [kafka_session_timeout: <duration> | default = 2m]
-
-    # The Kafka instance ID
-    # CLI flag: -pattern-ingester.tee.kafka-instance-id
-    [kafka_instance_id: <string> | default = ""]
-
   # Timeout for connections between the Loki and the pattern ingester.
   # CLI flag: -pattern-ingester.connection-timeout
   [connection_timeout: <duration> | default = 2s]
@@ -1145,6 +1102,102 @@ pattern_ingester:
   # the top X% of log volume will be persisted (0-1).
   # CLI flag: -pattern-ingester.volume-threshold
   [volume_threshold: <float> | default = 0.99]
+
+  # How records are ingested: "kafka" reads from a Kafka topic; "inmemory" uses
+  # an in-process channel (experimental, single-node, no durability guarantees,
+  # each replica holds independent data).
+  # CLI flag: -pattern-ingester.ingest-mode
+  [ingest_mode: <string> | default = "kafka"]
+
+  ring_config:
+    # The key to use for the pattern ingester ring.
+    # CLI flag: -pattern-ingester.ring.ring.key
+    [key: <string> | default = "pattern-ingester"]
+
+    # Configuration for memberlist client. Only applies if the selected kvstore
+    # is memberlist.
+    # 
+    # When a memberlist config with atleast 1 join_members is defined, kvstore
+    # of type memberlist is automatically selected for all the components that
+    # require a ring unless otherwise specified in the component's configuration
+    # section.
+    # The CLI flags prefix for this block configuration is:
+    # pattern-ingester.ring.ring.memberlist
+    [memberlist: <memberlist>]
+
+    # Size of the buffer for key watchers.
+    # CLI flag: -pattern-ingester.ring.ring.watcher-buffer-size
+    [watcher_buffer_size: <int> | default = 0]
+
+    # How long to wait for the partition ring to be populated before failing
+    # startup.
+    # CLI flag: -pattern-ingester.ring.ring.startup-timeout
+    [startup_timeout: <duration> | default = 1m]
+
+  # Configures how the pattern ingester will connect to Kafka.
+  kafka_config:
+    [topic: <string> | default = ""]
+
+    [dial_timeout: <duration>]
+
+    [write_timeout: <duration>]
+
+    reader_config:
+      [address: <string> | default = ""]
+
+      [client_id: <string> | default = ""]
+
+    writer_config:
+      [address: <string> | default = ""]
+
+      [client_id: <string> | default = ""]
+
+    [sasl_username: <string> | default = ""]
+
+    sasl_password:
+
+    [consumer_group: <string> | default = ""]
+
+    [consumer_group_offset_commit_interval: <duration>]
+
+    [last_produced_offset_retry_timeout: <duration>]
+
+    [auto_create_topic_enabled: <boolean>]
+
+    [auto_create_topic_default_partitions: <int>]
+
+    [producer_max_record_size_bytes: <int>]
+
+    [producer_max_buffered_bytes: <int>]
+
+    [max_consumer_lag_at_startup: <duration>]
+
+    [max_consumer_workers: <int>]
+
+    [enable_kafka_histograms: <boolean>]
+
+    [tracing_enabled: <boolean>]
+
+  # The number of log flushes to queue before dropping
+  # CLI flag: -pattern-ingester.flush-queue-size
+  [flush_queue_size: <int> | default = 1000]
+
+  # the number of concurrent workers sending logs to the template service
+  # CLI flag: -pattern-ingester.flush-worker-count
+  [flush_worker_count: <int> | default = 100]
+
+  # The Kafka instance ID
+  # CLI flag: -pattern-ingester.kafka-instance-id
+  [kafka_instance_id: <string> | default = ""]
+
+  # The Kafka session timeout
+  # CLI flag: -pattern-ingester.kafka-session-timeout
+  [kafka_session_timeout: <duration> | default = 2m]
+
+  # The max time we will try to flush any remaining logs to be mined when the
+  # service is stopped
+  # CLI flag: -pattern-ingester.stop-flush-timeout
+  [stop_flush_timeout: <duration> | default = 30s]
 
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
@@ -5174,19 +5227,19 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # Size of the internal queue for messages received from other nodes. Increasing
 # this value may help to avoid dropping messages when the node is processing a
 # large number of messages from other nodes.
-# CLI flag: -memberlist.received-messages-queue-size
+# CLI flag: -<prefix>.memberlist.received-messages-queue-size
 [received_messages_queue_size: <int> | default = 1024]
 
 # Size of the per-key internal queue for processing messages received from other
 # nodes. Increasing this value may help to avoid dropping per-key updates when
 # the node is processing many updates for the same key.
-# CLI flag: -memberlist.processed-messages-queue-size
+# CLI flag: -<prefix>.memberlist.processed-messages-queue-size
 [processed_messages_queue_size: <int> | default = 1024]
 
 # Compression algorithm used for outgoing messages when
 # -memberlist.compression-enabled is true. Supported values: lzw, snappy.
 # Ignored when -memberlist.compression-enabled is false.
-# CLI flag: -memberlist.compression-algorithm
+# CLI flag: -<prefix>.memberlist.compression-algorithm
 [compression_algorithm: <string> | default = "lzw"]
 
 # Gossip address to advertise to other members in the cluster. Used for NAT
@@ -5326,7 +5379,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 
 # The TLS configuration.
 # The CLI flags prefix for this block configuration is:
-# pattern-ingester.tee.ring.memberlist.memberlist
+# pattern-ingester.ring.ring.memberlist.memberlist
 [<tls_config>]
 
 zone_aware_routing:
@@ -7488,7 +7541,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `memberlist`
 - `pattern-ingester.client`
 - `pattern-ingester.etcd`
-- `pattern-ingester.tee.ring.memberlist.memberlist`
+- `pattern-ingester.ring.ring.memberlist.memberlist`
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`

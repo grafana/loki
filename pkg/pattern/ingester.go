@@ -32,26 +32,44 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-const readBatchSize = 1024
+const (
+	readBatchSize         = 1024
+	DefaultStartupTimeout = 1 * time.Minute
+	// DefaultKafkaSessionTimeout is the consumer-group session timeout used
+	// when KafkaSessionTimeout is unset. It must be long enough that a
+	// normal pod restart completes before the broker considers the member
+	// dead (and triggers a rebalance), but short enough that a genuinely
+	// dead pod is evicted promptly so its partitions get reassigned.
+	defaultKafkaSessionTimeout  = 2 * time.Minute
+	defaultPatternConsumerGroup = "pattern-ingester"
+)
 
 type Config struct {
-	Enabled               bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
-	LifecyclerConfig      ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
-	ClientConfig          clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
-	ConcurrentFlushes     int                   `yaml:"concurrent_flushes"`
-	FlushCheckPeriod      time.Duration         `yaml:"flush_check_period"`
-	MaxClusters           int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
-	MaxEvictionRatio      float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
-	MetricAggregation     aggregation.Config    `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
-	PatternPersistence    PersistenceConfig     `yaml:"pattern_persistence,omitempty" doc:"description=Configures how detected patterns are pushed back to Loki for persistence."`
-	TeeConfig             TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
-	ConnectionTimeout     time.Duration         `yaml:"connection_timeout"`
-	MaxAllowedLineLength  int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
-	RetainFor             time.Duration         `yaml:"retain_for,omitempty" doc:"description=How long to retain patterns in the pattern ingester after they are pushed."`
-	MaxChunkAge           time.Duration         `yaml:"max_chunk_age,omitempty" doc:"description=The maximum time span for a single pattern chunk."`
-	PatternSampleInterval time.Duration         `yaml:"pattern_sample_interval,omitempty" doc:"description=The time resolution for pattern samples within chunks."`
-	VolumeThreshold       float64               `yaml:"volume_threshold,omitempty" doc:"description=The threshold for filtering patterns by volume. Only patterns representing the top X% of log volume will be persisted (0-1)."`
-
+	Enabled                 bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
+	LifecyclerConfig        ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
+	ClientConfig            clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
+	ConcurrentFlushes       int                   `yaml:"concurrent_flushes"`
+	FlushCheckPeriod        time.Duration         `yaml:"flush_check_period"`
+	MaxClusters             int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
+	MaxEvictionRatio        float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
+	MetricAggregation       aggregation.Config    `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
+	PatternPersistence      PersistenceConfig     `yaml:"pattern_persistence,omitempty" doc:"description=Configures how detected patterns are pushed back to Loki for persistence."`
+	TeeConfig               TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
+	ConnectionTimeout       time.Duration         `yaml:"connection_timeout"`
+	MaxAllowedLineLength    int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
+	RetainFor               time.Duration         `yaml:"retain_for,omitempty" doc:"description=How long to retain patterns in the pattern ingester after they are pushed."`
+	MaxChunkAge             time.Duration         `yaml:"max_chunk_age,omitempty" doc:"description=The maximum time span for a single pattern chunk."`
+	PatternSampleInterval   time.Duration         `yaml:"pattern_sample_interval,omitempty" doc:"description=The time resolution for pattern samples within chunks."`
+	VolumeThreshold         float64               `yaml:"volume_threshold,omitempty" doc:"description=The threshold for filtering patterns by volume. Only patterns representing the top X% of log volume will be persisted (0-1)."`
+	IngestMode              IngestMode            `yaml:"ingest_mode"`
+	RingConfig              RingConfig            `yaml:"ring_config,omitempty"`
+	KafkaConfig             kafka.Config          `yaml:"kafka_config,omitempty" doc:"description=Configures how the pattern ingester will connect to Kafka."`
+	FlushQueueSize          int                   `yaml:"flush_queue_size"`
+	FlushWorkerCount        int                   `yaml:"flush_worker_count"`
+	KafkaInstanceId         string                `yaml:"kafka_instance_id"`
+	KafkaSessionTimeout     time.Duration         `yaml:"kafka_session_timeout"`
+	StopFlushTimeout        time.Duration         `yaml:"stop_flush_timeout"`
+	disableStaticMembership bool                  `yaml:"-"`
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 }
@@ -130,6 +148,43 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 		0.99,
 		"The threshold for filtering patterns by volume. Only patterns representing the top X% of log volume will be persisted (0-1).",
 	)
+	fs.StringVar(
+		(*string)(&cfg.IngestMode),
+		"pattern-ingester.ingest-mode",
+		string(IngestModeKafka),
+		`How records are ingested: "kafka" reads from a Kafka topic; "inmemory" uses an in-process channel (experimental, single-node, no durability guarantees, each replica holds independent data).`,
+	)
+	fs.DurationVar(
+		&cfg.KafkaSessionTimeout,
+		"pattern-ingester.kafka-session-timeout",
+		defaultKafkaSessionTimeout,
+		"The Kafka session timeout",
+	)
+	fs.StringVar(
+		&cfg.KafkaInstanceId,
+		"pattern-ingester.kafka-instance-id",
+		"",
+		"The Kafka instance ID",
+	)
+	fs.IntVar(
+		&cfg.FlushQueueSize,
+		"pattern-ingester.flush-queue-size",
+		1000,
+		"The number of log flushes to queue before dropping",
+	)
+	fs.IntVar(
+		&cfg.FlushWorkerCount,
+		"pattern-ingester.flush-worker-count",
+		100,
+		"the number of concurrent workers sending logs to the template service",
+	)
+	fs.DurationVar(
+		&cfg.StopFlushTimeout,
+		"pattern-ingester.stop-flush-timeout",
+		30*time.Second,
+		"The max time we will try to flush any remaining logs to be mined when the service is stopped",
+	)
+	cfg.RingConfig.RegisterFlags(fs, "pattern-ingester.ring.")
 }
 
 // IngestMode determines how the consumer receives records.
@@ -139,31 +194,15 @@ const (
 	// IngestModeKafka reads records from a Kafka topic (default).
 	IngestModeKafka IngestMode = "kafka"
 	// IngestModeInMemory receives records via an in-process Go channel (no Kafka required).
-	IngestModeInMemory          IngestMode = "inmemory"
-	defaultPatternConsumerGroup            = "pattern-ingester"
-	defaultTopic                           = "" // set via flag -kafka.topic; how to pass to here?
-	// DefaultKafkaSessionTimeout is the consumer-group session timeout used
-	// when KafkaSessionTimeout is unset. It must be long enough that a
-	// normal pod restart completes before the broker considers the member
-	// dead (and triggers a rebalance), but short enough that a genuinely
-	// dead pod is evicted promptly so its partitions get reassigned.
-	defaultKafkaSessionTimeout = 2 * time.Minute
-	DefaultFlushCheckInterval  = 5 * time.Minute
-	DefaultStartupTimeout      = 1 * time.Minute
+	IngestModeInMemory IngestMode = "inmemory"
 )
 
 type TeeConfig struct {
-	BatchFlushInterval      time.Duration `yaml:"batch_flush_interval"`
-	FlushQueueSize          int           `yaml:"flush_queue_size"`
-	FlushWorkerCount        int           `yaml:"flush_worker_count"`
-	MaxBufferedBytes        int           `yaml:"max_buffered_bytes"`
-	StopFlushTimeout        time.Duration `yaml:"stop_flush_timeout"`
-	IngestMode              IngestMode    `yaml:"ingest_mode"`
-	KafkaConfig             kafka.Config  `yaml:"-"`
-	RingConfig              RingConfig    `yaml:"ring_config"`
-	KafkaSessionTimeout     time.Duration `yaml:"kafka_session_timeout"`
-	KafkaInstanceId         string        `yaml:"kafka_instance_id"`
-	disableStaticMembership bool          `yaml:"-"`
+	BatchFlushInterval time.Duration `yaml:"batch_flush_interval"`
+	FlushQueueSize     int           `yaml:"flush_queue_size"`
+	FlushWorkerCount   int           `yaml:"flush_worker_count"`
+	MaxBufferedBytes   int           `yaml:"max_buffered_bytes"`
+	StopFlushTimeout   time.Duration `yaml:"stop_flush_timeout"`
 }
 
 type RingConfig struct {
@@ -217,35 +256,9 @@ func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 		30*time.Second,
 		"The max time we will try to flush any remaining logs to be mined when the service is stopped",
 	)
-	f.StringVar(
-		(*string)(&cfg.IngestMode),
-		prefix+"tee.ingest-mode",
-		string(IngestModeKafka),
-		`How records are ingested: "kafka" reads from a Kafka topic; "inmemory" uses an in-process channel (experimental, single-node, no durability guarantees, each replica holds independent data).`,
-	)
-	f.DurationVar(
-		&cfg.KafkaSessionTimeout,
-		prefix+"tee.kafka-session-timeout",
-		defaultKafkaSessionTimeout,
-		"The Kafka session timeout",
-	)
-	f.StringVar(
-		&cfg.KafkaInstanceId,
-		prefix+"tee.kafka-instance-id",
-		"",
-		"The Kafka instance ID",
-	)
-	cfg.RingConfig.RegisterFlags(f, prefix+"tee.")
 }
 
 func (cfg *TeeConfig) Validate() error {
-	switch cfg.IngestMode {
-	case IngestModeKafka:
-	case IngestModeInMemory:
-	default:
-		return fmt.Errorf("unknown ingest_mode %q: must be %q or %q", cfg.IngestMode, IngestModeKafka, IngestModeInMemory)
-	}
-
 	return nil
 }
 

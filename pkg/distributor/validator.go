@@ -150,6 +150,7 @@ func (v Validator) IsPatternStream(ls labels.Labels) bool {
 }
 
 func (v Validator) IsInternalStream(ls labels.Labels) bool {
+	// can we not rewrite these to the distributors?
 	return v.IsAggregatedMetricStream(ls) || v.IsPatternStream(ls)
 }
 
