@@ -188,9 +188,12 @@ func (r *segmentationPartitionResolver) resolveConsistentHashing(tenant string, 
 		r.resolveFailed.Inc()
 		return 0, fmt.Errorf("failed to shuffle shard tenant: %w", err)
 	}
+	r.tenantShuffleShardSize.Observe(float64(subring.ActivePartitionsCount()))
+
 	// If the rate is 0, we cannot make a decision to shuffle shard the segmentation
 	// key. We fallback to choosing a partition for the hash key.
 	if rateBytes == 0 {
+		r.resolveRateAbsent.Inc()
 		return subring.ActivePartitionForKey(hashKey)
 	}
 	numShuffleShardPartitions := numPartitionsForRateConsistentHashing(rateBytes, r.perPartitionRateBytes, subring.ActivePartitionsCount())
@@ -204,6 +207,7 @@ func (r *segmentationPartitionResolver) resolveConsistentHashing(tenant string, 
 		r.resolveFailed.Inc()
 		return 0, fmt.Errorf("failed to get segmentation key subring: %w", err)
 	}
+	r.segmentationKeyShuffleShardSize.Observe(float64(subring.ActivePartitionsCount()))
 	// TODO(grobinson): We need to use a different method that does not depend on
 	// stream sharding, as this information comes from the ingesters.
 	return subring.ActivePartitionForKey(hashKey)
