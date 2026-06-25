@@ -159,7 +159,7 @@ That being said, in some cases you may wish to add some extra labels, which can 
 
 Loki places the same restrictions on label naming as [Prometheus](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels):
 
-- It may contain ASCII letters and digits, as well as underscores and colons. It must match the regex `[a-zA-Z_:][a-zA-Z0-9_:]*`.
+- It may contain ASCII letters, digits, and underscores. It must match the regex `[a-zA-Z_][a-zA-Z0-9_]*`. Colons are reserved for Prometheus recording rules and are **not** valid in Loki label names.
 - Unsupported characters in the label should be converted to an underscore. For example, the label `app.kubernetes.io/name` should be written as `app_kubernetes_io_name`.
 - However, do not begin and end your label names with double underscores, as this naming convention is used for internal labels, for example, \__stream_shard__, that are hidden by default in the label browser, query builder, and autocomplete to avoid creating confusion for users.
 
