@@ -9,7 +9,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -70,7 +69,7 @@ func TestStatsSummary(t *testing.T) {
 		require.Equal(t, int64(230), result.Querier.Store.Dataobj.PostFilterRows)
 	})
 
-	t.Run("computes cache and wire stats from all regions", func(t *testing.T) {
+	t.Run("computes cache stats from all regions", func(t *testing.T) {
 		ctx, capture := xcap.NewCapture(context.Background(), nil)
 
 		_, region := xcap.StartRegion(ctx, "thread.runJob")
@@ -82,7 +81,6 @@ func TestStatsSummary(t *testing.T) {
 		region.Record(executor.DataObjScanCacheMisses.Observe(6))
 		region.Record(executor.DataObjScanCacheBatches.Observe(7))
 		region.Record(executor.DataObjScanCacheBytes.Observe(8))
-		region.Record(workerstat.TaskWireBytes.Observe(9))
 		region.End()
 
 		capture.End()
@@ -93,7 +91,6 @@ func TestStatsSummary(t *testing.T) {
 		require.Equal(t, int32(14), result.Caches.TaskResult.EntriesRequested)
 		require.Equal(t, int32(10), result.Caches.TaskResult.Requests)
 		require.Equal(t, int64(12), result.Caches.TaskResult.BytesReceived)
-		require.Equal(t, int64(9), result.Querier.Store.Dataobj.WireBytesTransferred)
 	})
 
 	t.Run("missing statistics result in zero values", func(t *testing.T) {
