@@ -813,7 +813,7 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 		}
 		return t.PatternIngester, nil
 	case pattern.IngestModeKafka:
-		svc, err := pattern.NewKafkaService(t.Cfg.Pattern,
+		svc, err := pattern.NewKafka(t.Cfg.Pattern,
 			t.Overrides,
 			t.PatternRingClient,
 			t.tenantConfigs,

@@ -35,6 +35,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
+// A processor receives records and builds data objects from them.
+// flushRequest is used to send a flush request to the processor's Run loop.
+type flushRequest struct {
+	done chan<- error
+}
+
 type KafkaIngester struct {
 	services.Service
 	lifecycler *ring.Lifecycler
@@ -655,6 +661,34 @@ func (i *KafkaIngester) downsampleMetrics(ts model.Time) {
 	for _, instance := range instances {
 		if i.limits.MetricAggregationEnabled(instance.instanceID) {
 			instance.Downsample(ts)
+		}
+	}
+}
+
+// waitForPartitions polls partitionRing until it reports at least one
+// partition or the deadline expires.
+func waitForPartitions(ctx context.Context, r ring.PartitionRingReader, timeout time.Duration, logger log.Logger) error {
+	if r.PartitionRing().PartitionsCount() > 0 {
+		return nil
+	}
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+
+	_ = level.Info(logger).Log("msg", "waiting for partition ring to be populated", "timeout", timeout)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return fmt.Errorf("partition ring did not become populated within %s "+
+				"(check ring.key, ring.memberlist.cluster_label, and ring.memberlist.join_members)", timeout)
+		case <-tick.C:
+			if c := r.PartitionRing().PartitionsCount(); c > 0 {
+				_ = level.Info(logger).Log("msg", "partition ring populated", "partitions", c)
+				return nil
+			}
 		}
 	}
 }
