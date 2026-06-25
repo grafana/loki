@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/grafana/dskit/instrument"
@@ -71,6 +72,59 @@ type ReaderWriter interface {
 type Flusher interface {
 	// FlushIndexes forces any in-memory index data to be persisted to object storage.
 	FlushIndexes(ctx context.Context) error
+}
+
+// SyncStatus reports the state of an index store's background sync.
+type SyncStatus struct {
+	// Name identifies the index this status belongs to (e.g. the schema period's
+	// store name). Set by the composite store that aggregates per-index statuses.
+	Name string
+	// InProgress is true while a sync (manual or periodic) is running.
+	InProgress bool
+	// CurrentDuration is how long the in-progress sync has been running. Only
+	// meaningful when InProgress is true.
+	CurrentDuration time.Duration
+	// LastDuration is how long the previous completed sync took. Zero if no sync
+	// has completed yet.
+	LastDuration time.Duration
+	// LastTrigger is what triggered the current or most recent sync ("periodic"
+	// or "manual"). Empty if no sync has run yet.
+	LastTrigger string
+}
+
+// MarshalJSON renders the status for the HTTP API: durations as Go duration
+// strings (e.g. "1m30s"), with CurrentDuration included only while a sync is in
+// progress. time.Duration would otherwise encode as integer nanoseconds, since
+// encoding/json never calls its String method.
+func (s SyncStatus) MarshalJSON() ([]byte, error) {
+	out := struct {
+		Name            string  `json:"name"`
+		InProgress      bool    `json:"in_progress"`
+		LastTrigger     string  `json:"last_trigger,omitempty"`
+		CurrentDuration *string `json:"current_duration,omitempty"`
+		LastDuration    string  `json:"last_duration"`
+	}{
+		Name:         s.Name,
+		InProgress:   s.InProgress,
+		LastTrigger:  s.LastTrigger,
+		LastDuration: s.LastDuration.String(),
+	}
+	if s.InProgress {
+		d := s.CurrentDuration.String()
+		out.CurrentDuration = &d
+	}
+	return json.Marshal(out)
+}
+
+// Syncer is implemented by index stores that can, on demand, refresh their
+// object-listing cache and download newly shipped index files asynchronously,
+// rather than waiting for the periodic resync.
+type Syncer interface {
+	// TriggerSync starts a background sync (refreshing the list cache first) if
+	// none is already in progress. It returns true if a new sync was started.
+	TriggerSync() bool
+	// SyncStatus reports the current/last sync status.
+	SyncStatus() SyncStatus
 }
 
 type MonitoredReaderWriter struct {

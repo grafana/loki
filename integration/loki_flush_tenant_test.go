@@ -31,10 +31,11 @@ import (
 //   - tenant A pushes {app="a"} and {app="b"} and flushes only {app="a"} (scoped);
 //   - tenant B pushes {app="c"} and is never flushed (cross-tenant isolation).
 //
-// A whole-tenant (empty-selector) flush of tenant A, as a SECOND forced flush in
-// the same index period, is left as a disabled step (step 5): its index is
-// durable immediately but only becomes queryable once the index-gateway's ~1m
-// list cache expires, which is impractical to assert in a fast test.
+// Step 5 then does a whole-tenant (empty-selector) flush of tenant A - a SECOND
+// forced flush in the same index period that also ships {app="b"}. Its index is
+// durable immediately but, because the index-gateway re-lists object storage
+// through a ~1m per-table cache, only becomes queryable after an explicit
+// PUT /sync-indexes, which refreshes that cache and downloads the new index.
 func TestFlushTenant(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
@@ -187,18 +188,27 @@ func TestFlushTenant(t *testing.T) {
 	require.Empty(t, queryLines(cliFrontendA, `{app="b"}`), "stream excluded by the selector must not be flushed")
 
 	// 5. Whole-tenant flush (empty selector) for tenant A - a SECOND forced flush in
-	//    this index period that would also ship the previously-excluded {app="b"}.
-	//    It writes a distinct multitenant TSDB, but the index-gateway re-lists
-	//    object storage through a ~1m per-table cache (cacheTimeout in
-	//    pkg/storage/stores/shipper/indexshipper/storage/cached_client.go), so a new
-	//    file added to an already-cached table is not surfaced until that cache
-	//    expires - the index is durable, not lost.
-	// TODO(salvacorts): Disabling this until we can either make the list-cache TTL configurable or add an endpoint to invalidate it
-	//                   Otherwise, the test takes >1m to complete
-	// require.NoError(t, flushClient(tenantA).FlushTenant(""))
-	// require.Eventually(t, eventuallyHasLine(cliFrontendA, `{app="b"}`, lineB),
-	// 	90*time.Second, 5*time.Second,
-	// 	"second forced flush should become queryable once the index-gateway list cache expires")
+	//    this index period that also ships the previously-excluded {app="b"}. It
+	//    writes a distinct multitenant TSDB, but the index-gateway re-lists object
+	//    storage through a ~1m per-table cache (cacheTimeout in
+	//    pkg/storage/stores/shipper/indexshipper/storage/cached_client.go), so the
+	//    new file in the already-cached table is not surfaced by the periodic resync.
+	//    PUT /sync-indexes refreshes that cache and downloads the new index on demand.
+	require.NoError(t, flushClient(tenantA).FlushTenant(""))
+
+	syncClient := client.New("", "", tIndexGateway.HTTPURL())
+	hasLineB := eventuallyHasLine(cliFrontendA, `{app="b"}`, lineB)
+	require.Eventually(t, func() bool {
+		// Re-trigger on each poll: a single PUT no-ops if a periodic sync happens to
+		// be in progress (and the periodic sync does not refresh the list cache), so
+		// keep asking until the manual, cache-refreshing sync runs and the
+		// index-gateway downloads the new index.
+		if err := syncClient.TriggerSyncIndexes(); err != nil {
+			return false
+		}
+		return hasLineB()
+	}, 15*time.Second, 250*time.Millisecond,
+		"second forced flush should become queryable after an explicit index sync")
 
 	// 6. Cross-tenant isolation: tenant B was never flushed, so its data is absent
 	//    from the store.

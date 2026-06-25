@@ -2,8 +2,10 @@ package indexgateway
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 	"sort"
 	"time"
 
@@ -78,6 +80,58 @@ func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Reg
 	})
 
 	return g, nil
+}
+
+// indexSyncer is implemented by an index store that can trigger an on-demand
+// sync and report per-index sync status. The gateway's indexQuerier satisfies it
+// when backed by a syncable (TSDB) index store.
+type indexSyncer interface {
+	TriggerSync() bool
+	SyncStatuses() []index.SyncStatus
+}
+
+// SyncIndexesHandler triggers an asynchronous index sync (refresh the
+// object-listing cache, then download newly shipped indexes) so freshly flushed
+// indexes become queryable without waiting for the periodic list-cache TTL. It
+// responds 202 if a new sync was started, or 409 if one is already in progress.
+// The operation is cluster-wide (not tenant-scoped).
+func (g *Gateway) SyncIndexesHandler(w http.ResponseWriter, _ *http.Request) {
+	syncer, ok := g.indexQuerier.(indexSyncer)
+	if !ok {
+		level.Warn(g.log).Log("msg", "index sync requested but the configured index store does not support it")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("index sync not supported by the configured index store\n"))
+		return
+	}
+
+	if syncer.TriggerSync() {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("index sync started; use GET /sync-indexes for status\n"))
+		return
+	}
+
+	// A sync (manual or periodic) is already running, so we did not start a new
+	// one: a conflict with the current state of the resource.
+	w.WriteHeader(http.StatusConflict)
+	_, _ = w.Write([]byte("index sync already in progress; use GET /sync-indexes for status\n"))
+}
+
+// SyncIndexStatusHandler reports the current/last sync status of each synced
+// index as a JSON array (one entry per index, e.g. per schema period). The
+// per-index JSON shape is defined by index.SyncStatus.MarshalJSON.
+func (g *Gateway) SyncIndexStatusHandler(w http.ResponseWriter, _ *http.Request) {
+	syncer, ok := g.indexQuerier.(indexSyncer)
+	if !ok {
+		level.Warn(g.log).Log("msg", "index sync status requested but the configured index store does not support it")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("index sync not supported by the configured index store\n"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(syncer.SyncStatuses()); err != nil {
+		level.Error(g.log).Log("msg", "failed encoding index sync status response", "err", err)
+	}
 }
 
 func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (result *logproto.GetChunkRefResponse, err error) {

@@ -171,6 +171,17 @@ func (s *store) FlushIndexes(ctx context.Context) error {
 	return s.indexShipper.FlushIndexes(ctx)
 }
 
+// TriggerSync starts a background index sync (refreshing the object-listing
+// cache and downloading newly shipped indexes) if none is already in progress.
+func (s *store) TriggerSync() bool {
+	return s.indexShipper.TriggerSync()
+}
+
+// SyncStatus reports the current/last index sync status.
+func (s *store) SyncStatus() index.SyncStatus {
+	return s.indexShipper.SyncStatus()
+}
+
 func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))

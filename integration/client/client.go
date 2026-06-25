@@ -303,6 +303,30 @@ func (c *Client) FlushTenant(selector string) error {
 	return fmt.Errorf("request failed with status code %d", res.StatusCode)
 }
 
+// TriggerSyncIndexes asks the index-gateway to refresh its object-listing cache
+// and download any newly shipped indexes. The sync runs asynchronously on the
+// index-gateway; this returns once the request is accepted (202) or rejected
+// because a sync is already in progress (409). Both outcomes mean a sync is (or
+// was) running, so neither is treated as an error. The endpoint is cluster-wide,
+// so no tenant scoping is required.
+func (c *Client) TriggerSyncIndexes() error {
+	req, err := c.request(context.Background(), "PUT", fmt.Sprintf("%s/sync-indexes", c.baseURL))
+	if err != nil {
+		return err
+	}
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode/100 == 2 || res.StatusCode == http.StatusConflict {
+		return nil
+	}
+	return fmt.Errorf("request failed with status code %d", res.StatusCode)
+}
+
 type DeleteRequestParams struct {
 	Query string `json:"query"`
 	Start string `json:"start,omitempty"`
