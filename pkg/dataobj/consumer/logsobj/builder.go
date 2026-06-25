@@ -275,22 +275,29 @@ func (b *Builder) initBuilder(tenant string) {
 	}
 	if _, ok := b.logs[tenant]; !ok {
 		var schemaLabels []string
-		if b.cfg.DataobjUseSortSchema && b.overrides != nil {
-			schemaLabels = b.overrides.SortSchemaLabels(tenant)
-		}
-
 		sortOrder := parseSortOrder(b.cfg.DataobjSortOrder)
 		appendStrategy := appendStrategy(b.cfg.AppendOrderedEnabled)
 
-		if len(schemaLabels) > 0 {
-			sortOrder = logs.SortSchemaASC
+		if b.cfg.DataobjUseSortSchema {
+			if b.overrides != nil {
+				schemaLabels = b.overrides.SortSchemaLabels(tenant)
+			}
 
-			// TODO(ashwanth): SortSchemaASC does not support AppendUnordered
-			// It cannot merge stripes with schema ordering. This is
-			// good to have as sorting stripes can help lower peak
-			// memory usage compared to sorting entire section at once.
-			// Force to always use AppendOrdered temporarily.
-			appendStrategy = logs.AppendOrdered
+			if len(schemaLabels) == 0 {
+				level.Warn(b.logger).Log("msg", "sort schema labels not configured, falling back to dataobj_sort_order", "tenant", tenant, "dataobj_sort_order", b.cfg.DataobjSortOrder)
+			} else {
+				schemaLabelsStr := strings.Join(schemaLabels, ",")
+				level.Info(b.logger).Log("msg", "sort schema configured, dataobj-sort-order value will be ignored.", "tenant", tenant, "schema_labels", schemaLabelsStr)
+
+				sortOrder = logs.SortSchemaASC
+
+				// TODO(ashwanth): SortSchemaASC does not support AppendUnordered
+				// It cannot merge stripes with schema ordering. This is
+				// good to have as sorting stripes can help lower peak
+				// memory usage compared to sorting entire section at once.
+				// Force to always use AppendOrdered temporarily.
+				appendStrategy = logs.AppendOrdered
+			}
 		}
 
 		b.sortSchemaLabels[tenant] = schemaLabels
@@ -525,21 +532,12 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		)
 
 		if b.cfg.DataobjUseSortSchema {
-			if len(sections) > 0 {
-				firstSec, err := logs.Open(ctx, sections[0])
-				if err != nil {
-					return nil, nil, fmt.Errorf("opening logs section to read schema labels: %w", err)
-				}
-				schemaLabels, err = firstSec.SchemaLabels()
-				if err != nil {
-					return nil, nil, fmt.Errorf("reading schema labels from logs section: %w", err)
-				}
-			}
-			if len(schemaLabels) == 0 && b.overrides != nil {
+			if b.overrides != nil {
 				schemaLabels = b.overrides.SortSchemaLabels(tenant)
 			}
+
 			if len(schemaLabels) == 0 {
-				level.Warn(b.logger).Log("msg", "sort schema: no schema labels resolved, falling back to dataobj_sort_order", "tenant", tenant, "overrides_configured", b.overrides != nil)
+				level.Warn(b.logger).Log("msg", "sort schema labels not configured, falling back to dataobj_sort_order", "tenant", tenant, "dataobj_sort_order", b.cfg.DataobjSortOrder)
 			}
 		}
 
