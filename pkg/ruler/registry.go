@@ -207,9 +207,9 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 	if rwCfg.Enabled {
 		for id := range r.config.RemoteWrite.Clients {
 			clt := rwCfg.Clients[id]
-			if rwCfg.Clients[id].Headers == nil {
-				clt.Headers = make(map[string]string)
-			}
+			// Prometheus remote write keeps this map and iterates over it while
+			// sending requests, so detach it from shared overrides before mutating.
+			clt.Headers = cloneHeaders(clt.Headers)
 
 			// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
 			for k := range clt.Headers {
@@ -235,6 +235,14 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 	return conf, nil
 }
 
+func cloneHeaders(headers map[string]string) map[string]string {
+	cloned := make(map[string]string, len(headers))
+	for k, v := range headers {
+		cloned[k] = v
+	}
+	return cloned
+}
+
 func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWriteConfig) (*RemoteWriteConfig, error) {
 	overrides, err := base.Clone()
 	if err != nil {
@@ -258,7 +266,7 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 			if err != nil {
 				return nil, fmt.Errorf("error parsing given remote-write URL: %w", err)
 			}
-			clt.URL = &promConfig.URL{u}
+			clt.URL = &promConfig.URL{URL: u}
 		}
 		if v := r.overrides.RulerRemoteWriteTimeout(tenant); v > 0 {
 			clt.RemoteTimeout = model.Duration(v)

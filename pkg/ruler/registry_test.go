@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -708,6 +709,115 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 	// and a user who didn't set any header overrides still gets the X-Scope-OrgId header
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
 	assert.Equal(t, tenantCfg.RemoteWrite[1].Headers[user.OrgIDHeaderName], enabledRWTenant)
+}
+
+func TestTenantRemoteWriteHeaderOverridesAreCopied(t *testing.T) {
+	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+
+	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
+	require.NoError(t, err)
+
+	tenantCfg.RemoteWrite[0].Headers["Mutated"] = "value"
+	delete(tenantCfg.RemoteWrite[0].Headers, "Additional")
+	delete(tenantCfg.RemoteWrite[0].Headers, user.OrgIDHeaderName)
+
+	overrideHeaders := reg.overrides.RulerRemoteWriteHeaders(additionalHeadersRWTenant)
+	require.Equal(t, "Header", overrideHeaders["Additional"])
+	require.Equal(t, "overridden", overrideHeaders[user.OrgIDHeaderName])
+	require.NotContains(t, overrideHeaders, "Mutated")
+
+	nextTenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
+	require.NoError(t, err)
+	require.Equal(t, "Header", nextTenantCfg.RemoteWrite[0].Headers["Additional"])
+	require.Equal(t, additionalHeadersRWTenant, nextTenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName])
+	require.NotContains(t, nextTenantCfg.RemoteWrite[0].Headers, "Mutated")
+}
+
+func TestTenantRemoteWriteClientHeaderOverridesAreCopied(t *testing.T) {
+	reg := setupRegistry(t, cfg, newFakeLimits())
+
+	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
+	require.NoError(t, err)
+
+	headers := remoteWriteHeadersWithKey(t, tenantCfg, "Additional")
+	headers["Mutated"] = "value"
+	delete(headers, "Additional")
+	delete(headers, user.OrgIDHeaderName)
+
+	overrideCfg := reg.overrides.RulerRemoteWriteConfig(additionalHeadersRWTenant, remote1)
+	require.NotNil(t, overrideCfg)
+	require.Equal(t, "Header", overrideCfg.Headers["Additional"])
+	require.Equal(t, "overridden", overrideCfg.Headers[user.OrgIDHeaderName])
+	require.NotContains(t, overrideCfg.Headers, "Mutated")
+
+	nextTenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
+	require.NoError(t, err)
+	nextHeaders := remoteWriteHeadersWithKey(t, nextTenantCfg, "Additional")
+	require.Equal(t, "Header", nextHeaders["Additional"])
+	require.Equal(t, additionalHeadersRWTenant, nextHeaders[user.OrgIDHeaderName])
+	require.NotContains(t, nextHeaders, "Mutated")
+}
+
+func TestTenantRemoteWriteConfigRefreshDoesNotMutateActiveHeaders(t *testing.T) {
+	headers := map[string]string{
+		user.OrgIDHeaderName: "overridden",
+		"Additional":         "Header",
+	}
+	for i := 0; i < 1000; i++ {
+		headers[fmt.Sprintf("Header-%d", i)] = "value"
+	}
+
+	reg := setupRegistry(t, backCompatCfg, fakeLimits{
+		limits: map[string]*validation.Limits{
+			additionalHeadersRWTenant: {
+				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(headers),
+				RulerEnableWALReplay:    true,
+			},
+		},
+	})
+
+	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
+	require.NoError(t, err)
+	activeHeaders := tenantCfg.RemoteWrite[0].Headers
+
+	readerEntered := make(chan struct{})
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+
+		signaled := false
+		for i := 0; i < 1000; i++ {
+			for k, v := range activeHeaders {
+				if !signaled {
+					close(readerEntered)
+					signaled = true
+				}
+				_, _ = k, v
+				runtime.Gosched()
+			}
+		}
+	}()
+
+	<-readerEntered
+	for i := 0; i < 1000; i++ {
+		_, err := reg.getTenantConfig(additionalHeadersRWTenant)
+		require.NoError(t, err)
+	}
+
+	<-readerDone
+}
+
+func remoteWriteHeadersWithKey(t *testing.T, cfg instance.Config, key string) map[string]string {
+	t.Helper()
+
+	for _, rw := range cfg.RemoteWrite {
+		if _, ok := rw.Headers[key]; ok {
+			return rw.Headers
+		}
+	}
+
+	require.FailNowf(t, "remote write config not found", "no remote write config contains header %q", key)
+	return nil
 }
 
 func TestTenantRemoteWriteHeadersReset(t *testing.T) {
