@@ -51,6 +51,7 @@ type segmentationPartitionResolver struct {
 	// Metrics.
 	resolveFailed                   prometheus.Counter
 	resolveTotal                    prometheus.Counter
+	resolveRateAbsent               prometheus.Counter
 	tenantShuffleShardSize          prometheus.Histogram
 	segmentationKeyShuffleShardSize prometheus.Histogram
 }
@@ -75,6 +76,10 @@ func newSegmentationPartitionResolver(
 		resolveTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_total",
 			Help: "Total number of segmentation keys passed to the resolver.",
+		}),
+		resolveRateAbsent: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_segmentation_partition_resolver_keys_rate_absent_total",
+			Help: "Total number of segmentation keys that we skipped shuffle sharding on segmentation key for due to absent rate.",
 		}),
 		tenantShuffleShardSize: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_distributor_segmentation_partition_resolver_tenant_shuffle_shard_size",
@@ -124,7 +129,17 @@ func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, 
 	shuffleSharder = shuffleSharder.ShuffleShard(tenant, numTenantShuffleShardPartitions)
 
 	// Shuffle shard for the segmentation key.
-	numSegKeyShuffleShardPartitions := numPartitionsForRateRendezvousHashing(rateBytes, r.perPartitionRateBytes, shuffleSharder.Size())
+	var numSegKeyShuffleShardPartitions int
+	if rateBytes == 0 {
+		// rateBytes being 0 doesn't imply that the segmentation key has low/no traffic, it
+		// tells us that we don't have rate data for this segmentation key.
+		// If the segmentation key rate is unknown, don't shard based on the segmentation key - all the
+		// traffic for that key would end up in one partition, potentially creating a hotspot.
+		r.resolveRateAbsent.Inc()
+		numSegKeyShuffleShardPartitions = shuffleSharder.Size()
+	} else {
+		numSegKeyShuffleShardPartitions = numPartitionsForRateRendezvousHashing(rateBytes, r.perPartitionRateBytes, shuffleSharder.Size())
+	}
 	shuffleSharder = shuffleSharder.ShuffleShard(string(key), numSegKeyShuffleShardPartitions)
 
 	r.tenantShuffleShardSize.Observe(float64(numTenantShuffleShardPartitions))
