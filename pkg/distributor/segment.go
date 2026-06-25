@@ -194,12 +194,14 @@ func (r *segmentationPartitionResolver) resolveConsistentHashing(tenant string, 
 	// key. We fallback to choosing a partition for the hash key.
 	if rateBytes == 0 {
 		r.resolveRateAbsent.Inc()
+		r.segmentationKeyShuffleShardSize.Observe(float64(subring.ActivePartitionsCount()))
 		return subring.ActivePartitionForKey(hashKey)
 	}
 	numShuffleShardPartitions := numPartitionsForRateConsistentHashing(rateBytes, r.perPartitionRateBytes, subring.ActivePartitionsCount())
 	// If the segmentation key is small enough that it does not need to be sharded,
 	// we can avoid doing an expensive shuffle shard.
 	if numShuffleShardPartitions == 1 {
+		r.segmentationKeyShuffleShardSize.Observe(1)
 		return subring.ActivePartitionForKey(uint32(key.Sum64()))
 	}
 	subring, err = subring.ShuffleShard(string(key), numShuffleShardPartitions)
