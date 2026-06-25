@@ -47,7 +47,6 @@ func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	startRecv := time.Now()
 	defer func() {
 		recvDuration := time.Since(startRecv)
-		region.Record(xcap.TaskRecvDuration.Observe(recvDuration.Seconds()))
 		region.Record(workerstat.TaskExecutionReadRecvDuration.Observe(recvDuration.Nanoseconds()))
 	}()
 

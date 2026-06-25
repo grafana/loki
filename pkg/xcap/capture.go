@@ -16,13 +16,15 @@
 //	ctx, region := xcap.StartRegion(ctx, "DataObjScan")
 //	defer region.End()
 //
+//	pagesScanned := xcap.NewStatisticInt64("pages.scanned", xcap.AggregationTypeSum)
+//
 //	// Record observations — multiple calls aggregate by statistic.
-//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
-//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
+//	region.Record(pagesScanned.Observe(1))
+//	region.Record(pagesScanned.Observe(1))
 //	// pages.scanned is now 2 (sum aggregation)
 //
 //	// After the capture ends, get the value of a statistic from the capture.
-//	capture.Value(xcap.StatDatasetPagesScanned) // returns 2
+//	capture.Value(pagesScanned) // returns 2
 //
 // # With OTel tracing: spans creation and observation aggregation
 //
@@ -44,8 +46,9 @@
 //
 //	// Deep in the call stack, retrieve the region from context.
 //	region := xcap.RegionFromContext(ctx)
-//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
-//	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
+//	pagesScanned := xcap.NewStatisticInt64("pages.scanned", xcap.AggregationTypeSum)
+//	region.Record(pagesScanned.Observe(1))
+//	region.Record(pagesScanned.Observe(1))
 //	// When span.End() is called:
 //	//   1. pages.scanned=2 is set as a span attribute.
 //	//   2. The observation is also available via SummaryLogValues(capture).
