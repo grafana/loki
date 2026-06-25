@@ -61,7 +61,7 @@ type OssConfig struct {
 }
 
 type Credentials struct {
-	AccessKeyId     string
+	AccessKeyID     string
 	AccessKeySecret string
 	SecurityToken   string
 }
@@ -284,7 +284,7 @@ func (s *OssObjectClient) IsObjectNotFoundErr(err error) bool {
 func (s *OssObjectClient) IsRetryableErr(error) bool { return false }
 
 func (c *Credentials) GetAccessKeyID() string {
-	return c.AccessKeyId
+	return c.AccessKeyID
 }
 
 func (c *Credentials) GetAccessKeySecret() string {
@@ -311,7 +311,7 @@ func (cp *CredentialsProvider) GetCredentialsE() (oss.Credentials, error) {
 	}
 
 	return &Credentials{
-		AccessKeyId:     *cred.AccessKeyId,
+		AccessKeyID:     *cred.AccessKeyId,
 		AccessKeySecret: *cred.AccessKeySecret,
 		SecurityToken:   *cred.SecurityToken,
 	}, nil
@@ -329,7 +329,7 @@ func buildAuth(cfg *OssConfig) (ak string, sk string, opts []oss.ClientOption, e
 	}
 
 	if cfg.SignatureVersion == SignatureVersionV1 {
-		return cfg.AccessKeyID, cfg.SecretAccessKey.String(), nil, errors.New("ECS RAM role-based access is enabled only when neither access_key_id nor secret_access_key is configured, and requires signature_version=v4.")
+		return cfg.AccessKeyID, cfg.SecretAccessKey.String(), nil, errors.New("ecs RAM role-based access is enabled only when neither access_key_id nor secret_access_key is configured, and requires signature_version=v4")
 	}
 
 	_, opts, err = buildRAMRoleProvider(cfg.RAMRoleName)
