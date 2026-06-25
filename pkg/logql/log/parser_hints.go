@@ -3,7 +3,7 @@ package log
 import (
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/logqlerr"
 )
 
 func NoParserHints() ParserHint {
@@ -190,7 +190,7 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 
 func containsError(hints []string) bool {
 	for _, s := range hints {
-		if s == logqlmodel.ErrorLabel {
+		if s == logqlerr.ErrorLabel {
 			return true
 		}
 	}

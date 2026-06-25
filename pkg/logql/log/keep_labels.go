@@ -1,7 +1,7 @@
 package log
 
 import (
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/logqlerr"
 )
 
 type KeepLabels struct {
@@ -50,7 +50,7 @@ func (kl *KeepLabels) RequiredLabelNames() []string {
 
 func isSpecialLabel(lblName string) bool {
 	switch lblName {
-	case logqlmodel.ErrorLabel, logqlmodel.ErrorDetailsLabel, logqlmodel.PreserveErrorLabel:
+	case logqlerr.ErrorLabel, logqlerr.ErrorDetailsLabel, logqlerr.PreserveErrorLabel:
 		return true
 	}
 

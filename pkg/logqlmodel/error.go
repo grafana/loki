@@ -1,103 +1,41 @@
 package logqlmodel
 
 import (
-	"errors"
-	"fmt"
-
-	"github.com/prometheus/prometheus/model/labels"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/logqlerr"
 )
 
-// Those errors are useful for comparing error returned by the engine.
-// e.g. errors.Is(err,logqlmodel.ErrParse) let you know if this is a ast parsing error.
+// The parse errors and reserved label keys below were moved to
+// pkg/logqlmodel/logqlerr so that the logql parser/pipeline packages can depend
+// on them without pulling in the rest of pkg/logqlmodel (and its heavy
+// transitive dependencies). They are re-exported here for backwards
+// compatibility; errors.Is and type assertions keep working because these are
+// aliases to the same variables and types.
 var (
-	ErrParse                            = errors.New("failed to parse the log query")
-	ErrPipeline                         = errors.New("failed execute pipeline")
-	ErrLimit                            = errors.New("limit reached while evaluating the query")
-	ErrIntervalLimit                    = errors.New("[interval] value exceeds limit")
-	ErrBlocked                          = errors.New("query blocked by policy")
-	ErrParseMatchers                    = errors.New("only label matchers are supported")
-	ErrUnsupportedSyntaxForInstantQuery = errors.New(
-		"log queries are not supported as an instant query type, please change your query to a range query type",
-	)
-	ErrVariantsDisabled = errors.New(
-		"multi variant queries are disabled for this instance",
-	)
-	ErrorLabel         = "__error__"
-	PreserveErrorLabel = "__preserve_error__"
-	ErrorDetailsLabel  = "__error_details__"
+	ErrParse                            = logqlerr.ErrParse
+	ErrPipeline                         = logqlerr.ErrPipeline
+	ErrLimit                            = logqlerr.ErrLimit
+	ErrIntervalLimit                    = logqlerr.ErrIntervalLimit
+	ErrBlocked                          = logqlerr.ErrBlocked
+	ErrParseMatchers                    = logqlerr.ErrParseMatchers
+	ErrUnsupportedSyntaxForInstantQuery = logqlerr.ErrUnsupportedSyntaxForInstantQuery
+	ErrVariantsDisabled                 = logqlerr.ErrVariantsDisabled
+	ErrorLabel                          = logqlerr.ErrorLabel
+	PreserveErrorLabel                  = logqlerr.PreserveErrorLabel
+	ErrorDetailsLabel                   = logqlerr.ErrorDetailsLabel
 )
 
 // ParseError is what is returned when we failed to parse.
-type ParseError struct {
-	msg       string
-	line, col int
-}
+type ParseError = logqlerr.ParseError
 
-func (p ParseError) Error() string {
-	if p.col == 0 && p.line == 0 {
-		return fmt.Sprintf("parse error : %s", p.msg)
-	}
-	return fmt.Sprintf("parse error at line %d, col %d: %s", p.line, p.col, p.msg)
-}
+var (
+	NewParseError = logqlerr.NewParseError
+	NewStageError = logqlerr.NewStageError
+)
 
-// Is allows to use errors.Is(err,ErrParse) on this error.
-func (p ParseError) Is(target error) bool {
-	return target == ErrParse
-}
+type PipelineError = logqlerr.PipelineError
 
-func NewParseError(msg string, line, col int) ParseError {
-	return ParseError{
-		msg:  msg,
-		line: line,
-		col:  col,
-	}
-}
+var NewPipelineErr = logqlerr.NewPipelineErr
 
-func NewStageError(expr string, err error) ParseError {
-	return ParseError{
-		msg:  fmt.Sprintf(`stage '%s' : %s`, expr, err),
-		line: 0,
-		col:  0,
-	}
-}
+type LimitError = logqlerr.LimitError
 
-type PipelineError struct {
-	metric    labels.Labels
-	errorType string
-}
-
-func NewPipelineErr(metric labels.Labels) *PipelineError {
-	return &PipelineError{
-		metric:    metric,
-		errorType: metric.Get(ErrorLabel),
-	}
-}
-
-func (e PipelineError) Error() string {
-	return fmt.Sprintf(
-		"pipeline error: '%s' for series: '%s'.\n"+
-			"Use a label filter to intentionally skip this error. (e.g | __error__!=\"%s\").\n"+
-			"To skip all potential errors you can match empty errors.(e.g __error__=\"\")\n"+
-			"The label filter can also be specified after unwrap. (e.g | unwrap latency | __error__=\"\" )\n",
-		e.errorType, e.metric, e.errorType)
-}
-
-// Is allows to use errors.Is(err,ErrPipeline) on this error.
-func (e PipelineError) Is(target error) bool {
-	return target == ErrPipeline
-}
-
-type LimitError struct {
-	error
-}
-
-func NewSeriesLimitError(limit int) *LimitError {
-	return &LimitError{
-		error: fmt.Errorf("maximum number of series (%d) reached for a single query; consider reducing query cardinality by adding more specific stream selectors, reducing the time range, or aggregating results with functions like sum(), count() or topk()", limit),
-	}
-}
-
-// Is allows to use errors.Is(err,ErrLimit) on this error.
-func (e LimitError) Is(target error) bool {
-	return target == ErrLimit
-}
+var NewSeriesLimitError = logqlerr.NewSeriesLimitError
