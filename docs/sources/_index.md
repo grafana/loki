@@ -60,7 +60,7 @@ Loki's indexing model differs significantly from other observability products. C
 **Labels** define a log stream. Every unique combination of label values creates a new stream, which is stored and indexed separately.
 
 - ✅ Use labels for **low-cardinality** dimensions you will always filter on: `env`, `cluster`, `namespace`, `app`, `job`.
-- ❌ Do not use labels for **high-cardinality** values: request IDs, user IDs, trace IDs, HTTP status codes, IP addresses. Each unique value creates a new stream, causing "cardinality explosion" that degrades ingestion and query performance.
+- ❌ Do not use labels for **high-cardinality** values: pod, instance IDs, request IDs, user IDs, trace IDs, HTTP status codes, IP addresses. Each unique value creates a new stream, causing "cardinality explosion" that degrades ingestion and query performance.
 
 **Structured metadata** (introduced in Loki 3.0) allows attaching key-value pairs to log entries without creating new streams. Use it for values you want to filter or display but that are too high-cardinality for labels:
 
@@ -116,6 +116,8 @@ If a `service_name` label is already present on the stream, Loki uses it directl
 - `discover_service_name` is disabled in your Loki configuration.
 
 **Verify by checking your stream labels** in Explore. If none of the above keys are present as labels, configure your log shipper to include them. For Alloy, ensure `loki.source.kubernetes` or `discovery.kubernetes` is passing through pod metadata.
+
+You can customize the list of labels Loki checks by setting `discover_service_name` in `limits_config`.
 
 ### How do I fix "ingestion rate limit exceeded" (HTTP 429) errors?
 
