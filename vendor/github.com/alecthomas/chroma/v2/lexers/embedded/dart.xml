@@ -81,7 +81,7 @@
       <rule pattern="[^\S\n]+">
         <token type="Text"/>
       </rule>
-      <rule pattern="//.*?\n">
+      <rule pattern="//[^\n]*\n?">
         <token type="CommentSingle"/>
       </rule>
       <rule pattern="/\*.*?\*/">

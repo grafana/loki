@@ -16,7 +16,7 @@ keywords:
 
 The [scalable](../install-scalable/) installation requires a managed object store such as AWS S3 or Google Cloud Storage or a self-hosted store such as Minio. The [single binary](../install-monolithic/) installation can use the filesystem for storage, but we recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
 
-This guide assumes Loki will be installed in one of the modes above and that a `values.yaml ` has been created.
+This guide assumes Loki will be installed in one of the modes above and that a `values.yaml` has been created.
 
 **To use a managed object store:**
 
@@ -24,14 +24,18 @@ This guide assumes Loki will be installed in one of the modes above and that a `
 
 1. Configure the storage client under `loki.storage.azure`, `loki.storage.gcs`, or `loki.storage.s3`.
 
-
 **To install Minio alongside Loki:**
+
+{{< admonition type="warning" >}}
+The built-in MinIO subchart is deprecated and will be removed on 2026-10-31. Setting `minio.enabled=true` fails chart rendering with v17+ unless `ignoreMinioDeprecation: true` is also set. Grafana recommends configuring a dedicated external object storage backend instead of using the built-in MinIO subchart for new deployments.
+{{< /admonition >}}
 
 1. Change the configuration in `values.yaml`:
 
     - Enable Minio
 
     ```yaml
+    ignoreMinioDeprecation: true  # Temporary workaround – MinIO will be removed 2026-10-31
     minio:
       enabled: true
     ```
@@ -62,7 +66,7 @@ Loki supports using Thanos-compatible storage clients as an alternative to the b
 
 1. Add the IAM role annotation to the service account in `values.yaml`:
 
-   ```
+   ```yaml
    serviceAccount:
      annotations:
        "eks.amazonaws.com/role-arn": "arn:aws:iam::<account id>:role/<role name>"
@@ -70,7 +74,7 @@ Loki supports using Thanos-compatible storage clients as an alternative to the b
 
 1. Configure the storage:
 
-   ```
+   ```yaml
    loki:
      storage:
        type: "s3"

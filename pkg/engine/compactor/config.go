@@ -43,6 +43,12 @@ type Config struct {
 	// RPC; on expiry the cycle aborts inline and the next polling tick re-plans.
 	ToCConsolidateTimeout time.Duration `yaml:"toc_consolidate_timeout"`
 
+	// DryRun, when true, skips the post-compaction ReplaceIndexPointers ToC
+	// swap. Planning and IndexMerge task execution still run and the
+	// per-output audit log is still emitted, but the ToC is never mutated.
+	// Intended for testing index compaction.
+	DryRun bool `yaml:"dry_run"`
+
 	// PlanVersion is hashed into IndexMerge output paths so a planner
 	// change invalidates previously-written outputs. Bump on any
 	// breaking change to the planner or merge semantics. Stored as uint
@@ -154,6 +160,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.DurationVar(&cfg.ToCConsolidateTimeout, prefix+"toc-consolidate-timeout", defaultToCConsolidateTimeout,
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
+	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,
+		"Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap. Planning, IndexMerge task execution, and per-output audit logging still run, but the ToC is never mutated.")
 	f.UintVar(&cfg.PlanVersion, prefix+"plan-version", defaultPlanVersion,
 		"Experimental: Plan version hashed into IndexMerge output paths. Bump to invalidate previously-written outputs after a planner-algorithm change.")
 	f.StringVar(&cfg.Scheduler.AdvertiseAddr, prefix+"scheduler.advertise-addr", "",

@@ -37,8 +37,15 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 		return errors.New("no object store bucket configured")
 	}
 
-	// Check if output already exists (short-circuit on retry)
-	exists, err := c.bucket.Exists(ctx, node.OutputIndexPath)
+	// Check if output already exists (short-circuit on retry).
+	//
+	// We probe with a GetObject rather than Exists/HeadObject: under IRSA roles
+	// that grant s3:GetObject/s3:PutObject but not s3:ListBucket, a HeadObject on
+	// a missing key returns 403 AccessDenied instead of 404 NoSuchKey, which
+	// objstore surfaces as a hard error. GetObject returns a genuine NoSuchKey on
+	// a missing key without requiring ListBucket. Treat access-denied here as
+	// "not present" too, so a restrictive read policy never blocks the merge.
+	exists, err := c.outputExists(ctx, node.OutputIndexPath)
 	if err != nil {
 		return fmt.Errorf("checking output existence: %w", err)
 	}
@@ -69,11 +76,16 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 		return fmt.Errorf("merging stats: %w", err)
 	}
 
+	// Snapshot the builder's in-memory accumulated size BEFORE Flush. This is the
+	// uncompressed pre-encoding size used for the output_bytes_uncompressed
+	// histogram observation below.
+	uncompressedBytes := int64(builder.GetEstimatedSize())
+
 	// Flush builder and upload result
 	obj, closer, err := builder.Flush()
 	if err != nil {
 		if errors.Is(err, indexobj.ErrBuilderEmpty) {
-			// Upload a zero-byte sentinel
+			// Upload a zero-byte sentinel.
 			return c.bucket.Upload(ctx, node.OutputIndexPath, io.NopCloser(bytes.NewReader([]byte{})))
 		}
 		return fmt.Errorf("flushing builder: %w", err)
@@ -90,7 +102,30 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 	if err := c.bucket.Upload(ctx, node.OutputIndexPath, reader); err != nil {
 		return fmt.Errorf("uploading merged index: %w", err)
 	}
+
+	// Observe output sizes once the upload has succeeded. obj.Size() reflects
+	// the encoded/compressed bytes that just got written.
+	if c.indexMergeObserver != nil {
+		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, obj.Size(), uncompressedBytes)
+	}
 	return nil
+}
+
+// outputExists reports whether the IndexMerge output object is already present.
+// It probes with GetObject so a restrictive read policy (s3:GetObject without
+// s3:ListBucket) still yields a correct answer: a missing key returns
+// not-found, and an access-denied response is treated as not-present rather
+// than a fatal error.
+func (c *Context) outputExists(ctx context.Context, path string) (bool, error) {
+	rc, err := c.bucket.Get(ctx, path)
+	if err != nil {
+		if c.bucket.IsObjNotFoundErr(err) || c.bucket.IsAccessDeniedErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	_ = rc.Close()
+	return true, nil
 }
 
 // classifyRuns scans all sections of each referenced source object and
@@ -141,6 +176,11 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	for _, path := range paths {
 		entry := objects[path]
 		for _, sec := range entry.obj.Sections() {
+			// Index objects are multi-tenant; only merge sections for the tenant
+			// being compacted, or other tenants' rows leak into this output.
+			if sec.Tenant != node.Tenant {
+				continue
+			}
 			switch {
 			case postings.CheckSection(sec):
 				postingsSections = append(postingsSections, runSection{
@@ -309,7 +349,7 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 		readers,
 		heapVal[stats.Stat]{isMax: true},
 		heapAt[stats.Stat],
-		heapLess(compareStatsRow),
+		heapLess(stats.Compare),
 		closeSeq[stats.Stat])
 	defer tree.Close()
 
@@ -321,14 +361,14 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 
 		row := tree.Winner().At()
 
-		// The comparator includes (ObjectPath, SectionIndex) as final
+		// stats.Compare includes (ObjectPath, SectionIndex) as final
 		// tiebreakers, so an equal-key collision here means two source indexes
 		// reference the same physical (ObjectPath, SectionIndex) — which
 		// shouldn't happen. SortSchema and Labels are guaranteed to match on
 		// such collisions (same source section), as are the aggregate counts;
 		// keep the first row, drop the later duplicate, warn, and observe an
 		// xcap statistic.
-		if last != nil && compareStatsRow(*last, row) == 0 {
+		if last != nil && stats.Compare(*last, row) == 0 {
 			if region := xcap.RegionFromContext(ctx); region != nil {
 				region.Record(statIndexMergeDuplicateStats.Observe(1))
 			}

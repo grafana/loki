@@ -3,36 +3,46 @@ package postings
 import "sort"
 
 // sortLabelEntries sorts label entries by
-// [objectPath, sectionIndex, columnName, labelValue]. The sort is stable so
-// callers that rely on insertion order for equal keys keep that order.
+// [ColumnName, LabelValue, MinTimestamp, MaxTimestamp, ObjectPath, SectionIndex].
 func sortLabelEntries(entries []LabelEntry) {
-	sort.SliceStable(entries, func(i, j int) bool {
+	sort.Slice(entries, func(i, j int) bool {
 		a, b := entries[i], entries[j]
-		if a.ObjectPath != b.ObjectPath {
-			return a.ObjectPath < b.ObjectPath
-		}
-		if a.SectionIndex != b.SectionIndex {
-			return a.SectionIndex < b.SectionIndex
-		}
 		if a.ColumnName != b.ColumnName {
 			return a.ColumnName < b.ColumnName
 		}
-		return a.LabelValue < b.LabelValue
+		if a.LabelValue != b.LabelValue {
+			return a.LabelValue < b.LabelValue
+		}
+		if a.MinTimestamp != b.MinTimestamp {
+			return a.MinTimestamp < b.MinTimestamp
+		}
+		if a.MaxTimestamp != b.MaxTimestamp {
+			return a.MaxTimestamp < b.MaxTimestamp
+		}
+		if a.ObjectPath != b.ObjectPath {
+			return a.ObjectPath < b.ObjectPath
+		}
+		return a.SectionIndex < b.SectionIndex
 	})
 }
 
 // sortBloomEntries sorts bloom entries by
-// [objectPath, sectionIndex, columnName]. The sort is stable so callers that
-// rely on insertion order for equal keys keep that order.
+// [ColumnName, MinTimestamp, MaxTimestamp, ObjectPath, SectionIndex].
 func sortBloomEntries(entries []BloomEntry) {
-	sort.SliceStable(entries, func(i, j int) bool {
+	sort.Slice(entries, func(i, j int) bool {
 		a, b := entries[i], entries[j]
+		if a.ColumnName != b.ColumnName {
+			return a.ColumnName < b.ColumnName
+		}
+		if a.MinTimestamp != b.MinTimestamp {
+			return a.MinTimestamp < b.MinTimestamp
+		}
+		if a.MaxTimestamp != b.MaxTimestamp {
+			return a.MaxTimestamp < b.MaxTimestamp
+		}
 		if a.ObjectPath != b.ObjectPath {
 			return a.ObjectPath < b.ObjectPath
 		}
-		if a.SectionIndex != b.SectionIndex {
-			return a.SectionIndex < b.SectionIndex
-		}
-		return a.ColumnName < b.ColumnName
+		return a.SectionIndex < b.SectionIndex
 	})
 }

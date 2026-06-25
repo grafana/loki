@@ -1402,6 +1402,7 @@ type fakeLimits struct {
 	maxMetadataCacheFreshness   time.Duration
 	volumeEnabled               bool
 	enableMultiVariantQueries   bool
+	tsdbShardingStrategy        func(context.Context, string) string
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1529,7 +1530,10 @@ func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
 }
 
-func (f fakeLimits) TSDBShardingStrategy(string) string {
+func (f fakeLimits) TSDBShardingStrategy(ctx context.Context, userID string) string {
+	if f.tsdbShardingStrategy != nil {
+		return f.tsdbShardingStrategy(ctx, userID)
+	}
 	return logql.PowerOfTwoVersion.String()
 }
 

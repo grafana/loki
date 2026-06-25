@@ -1,6 +1,8 @@
 package postings
 
 import (
+	"time"
+
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -40,6 +42,8 @@ func (e *labelPostingEntry) BitmapBytes() []byte {
 type labelAggregator struct {
 	entries       map[labelPostingKey]*labelPostingEntry
 	estimatedSize int
+	minTimestamp  time.Time
+	maxTimestamp  time.Time
 }
 
 // newLabelAggregator creates a new labelAggregator.
@@ -59,6 +63,14 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 	}
 
 	tsNano := obs.Timestamp.UnixNano()
+
+	ts := obs.Timestamp.UTC()
+	if a.minTimestamp.IsZero() || ts.Before(a.minTimestamp) {
+		a.minTimestamp = ts
+	}
+	if a.maxTimestamp.IsZero() || ts.After(a.maxTimestamp) {
+		a.maxTimestamp = ts
+	}
 
 	entry, ok := a.entries[key]
 	if !ok {
@@ -126,8 +138,16 @@ func (a *labelAggregator) EstimatedSize() int {
 	return a.estimatedSize
 }
 
+// TimeRange returns the minimum and maximum observation timestamp seen by the
+// aggregator. It returns zero time.Time values when nothing has been observed.
+func (a *labelAggregator) TimeRange() (time.Time, time.Time) {
+	return a.minTimestamp, a.maxTimestamp
+}
+
 // Reset clears all accumulated state.
 func (a *labelAggregator) Reset() {
 	a.entries = make(map[labelPostingKey]*labelPostingEntry)
 	a.estimatedSize = 0
+	a.minTimestamp = time.Time{}
+	a.maxTimestamp = time.Time{}
 }

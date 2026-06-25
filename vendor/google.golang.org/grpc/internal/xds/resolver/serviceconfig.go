@@ -19,7 +19,6 @@
 package resolver
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"math/bits"
@@ -37,7 +36,6 @@ import (
 	"google.golang.org/grpc/internal/wrr"
 	"google.golang.org/grpc/internal/xds/balancer/clusterimpl"
 	"google.golang.org/grpc/internal/xds/balancer/clustermanager"
-	"google.golang.org/grpc/internal/xds/httpfilter"
 	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -115,6 +113,7 @@ type route struct {
 	m                 *xdsresource.CompositeMatcher // converted from route matchers
 	actionType        xdsresource.RouteActionType   // holds route action type
 	clusters          wrr.WRR                       // holds *routeCluster entries
+	interceptors      []iresolver.ClientInterceptor // Interceptors across clusters belonging to this route
 	maxStreamDuration time.Duration
 	retryConfig       *xdsresource.RetryConfig
 	hashPolicies      []*xdsresource.HashPolicy
@@ -161,6 +160,7 @@ type configSelector struct {
 	clusters         map[string]*clusterInfo
 	plugins          map[string]*clusterInfo
 	httpFilterConfig []xdsresource.HTTPFilter
+	xdsConfig        *xdsresource.XDSConfig
 }
 
 var errNoMatchedRouteFound = status.Errorf(codes.Unavailable, "no matched route was found")
@@ -208,6 +208,7 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 	atomic.AddInt32(ref, 1)
 
 	lbCtx := clustermanager.SetPickedCluster(rpcInfo.Context, cluster.name)
+	lbCtx = xdsresource.NewContextWithXDSConfig(lbCtx, cs.xdsConfig)
 	lbCtx = iringhash.SetXDSRequestHash(lbCtx, cs.generateHash(rpcInfo, rt.hashPolicies))
 	if rt.autoHostRewrite {
 		lbCtx = clusterimpl.EnableAutoHostRewrite(lbCtx)
@@ -336,6 +337,14 @@ func (cs *configSelector) stop() {
 	if cs == nil {
 		return
 	}
+
+	// Stop all interceptors associated with this config selector.
+	for _, r := range cs.routes {
+		for _, i := range r.interceptors {
+			i.Close()
+		}
+	}
+
 	// If any reference counts drop to zero, a service config update is required
 	// to remove the clusters. Since the old config selector is stopped
 	// after a new one is active, we must trigger a subsequent update to delete
@@ -350,51 +359,4 @@ func (cs *configSelector) stop() {
 			cs.sendNewServiceConfig()
 		}
 	}
-}
-
-// newInterceptor builds a chain of client interceptors for the given filters
-// and override configuration. The cluster override has the highest priority,
-// followed by the route override, and finally the virtual host override.
-func newInterceptor(filters []xdsresource.HTTPFilter, clusterOverride, routeOverride, virtualHostOverride map[string]httpfilter.FilterConfig) (iresolver.ClientInterceptor, error) {
-	if len(filters) == 0 {
-		return nil, nil
-	}
-	interceptors := make([]iresolver.ClientInterceptor, 0, len(filters))
-	for _, filter := range filters {
-		override := clusterOverride[filter.Name]
-		if override == nil {
-			override = routeOverride[filter.Name]
-		}
-		if override == nil {
-			override = virtualHostOverride[filter.Name]
-		}
-		ib, ok := filter.Filter.(httpfilter.ClientInterceptorBuilder)
-		if !ok {
-			// Should not happen if it passed xdsClient validation.
-			return nil, fmt.Errorf("filter %q does not support use in client", filter.Name)
-		}
-		i, err := ib.BuildClientInterceptor(filter.Config, override)
-		if err != nil {
-			return nil, fmt.Errorf("error constructing filter: %v", err)
-		}
-		if i != nil {
-			interceptors = append(interceptors, i)
-		}
-	}
-	return &interceptorList{interceptors: interceptors}, nil
-}
-
-type interceptorList struct {
-	interceptors []iresolver.ClientInterceptor
-}
-
-func (il *interceptorList) NewStream(ctx context.Context, ri iresolver.RPCInfo, _ func(), newStream func(ctx context.Context, _ func()) (iresolver.ClientStream, error)) (iresolver.ClientStream, error) {
-	for i := len(il.interceptors) - 1; i >= 0; i-- {
-		ns := newStream
-		interceptor := il.interceptors[i]
-		newStream = func(ctx context.Context, done func()) (iresolver.ClientStream, error) {
-			return interceptor.NewStream(ctx, ri, done, ns)
-		}
-	}
-	return newStream(ctx, func() {})
 }

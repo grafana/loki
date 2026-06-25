@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
@@ -110,6 +111,12 @@ type PutObjectOptions struct {
 	// This can be used for faster uploads on non-seekable or slow-to-seek input.
 	ConcurrentStreamParts bool
 	Internal              AdvancedPutOptions
+
+	// RDMABuffer, when non-nil and Options.EnableRDMA=true, selects the RDMA
+	// path via libminiocpp.so. Must reference RDMABufferSize contiguous bytes.
+	// When set, the reader / size args to PutObject are ignored.
+	RDMABuffer     unsafe.Pointer
+	RDMABufferSize int
 
 	customHeaders http.Header
 }
@@ -322,6 +329,9 @@ func (a completedParts) Less(i, j int) bool { return a[i].PartNumber < a[j].Part
 func (c *Client) PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64,
 	opts PutObjectOptions,
 ) (info UploadInfo, err error) {
+	if opts.RDMABuffer != nil && c.rdmaEnabled {
+		return c.putObjectRDMA(ctx, bucketName, objectName, opts)
+	}
 	if size < 0 && opts.DisableMultipart {
 		return UploadInfo{}, errors.New("object size must be provided with disable multipart upload")
 	}

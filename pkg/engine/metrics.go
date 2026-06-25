@@ -49,6 +49,7 @@ type queryMetrics struct {
 	subqueries    *prometheus.CounterVec   // {status, query_type}
 	stageFailures *prometheus.CounterVec   // {stage, reason, query_type}
 	other         *prometheus.HistogramVec // {query_type}
+	close         *prometheus.HistogramVec // {query_type}
 }
 
 // planningMetrics covers logical, physical, and prepare planning.
@@ -113,6 +114,10 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			other: newNativeHistogramVec(r, prometheus.HistogramOpts{
 				Name: "loki_engine_v2_other_duration_seconds",
 				Help: "Per-query residual duration in seconds: wall-clock time not attributed to any tracked phase (mirrors the duration_other_ms summary field)",
+			}, []string{queryTypeLabel}),
+			close: newNativeHistogramVec(r, prometheus.HistogramOpts{
+				Name: "loki_engine_v2_close_duration_seconds",
+				Help: "Duration of query close (workflow and pipeline teardown) in seconds",
 			}, []string{queryTypeLabel}),
 		},
 
