@@ -6,13 +6,13 @@ server:
   grpc_listen_port: {{ env "NOMAD_PORT_grpc" }}
 
 common:
-  replication_factor: 1
+  replication_factor: 3
   # Tell Loki which address to advertise
   instance_addr: {{ env "NOMAD_IP_grpc" }}
   # Add the compactor address
-  compactor_address: http://loki-backend.service.consul
+  compactor_grpc_address: loki.service.consul:{{ env "NOMAD_PORT_grpc" }}
   ring:
-    # Tell Loki which address to advertise in ring
+    instance_id: {{ env "NOMAD_ALLOC_NAME" }}
     instance_addr: {{ env "NOMAD_IP_grpc" }}
     kvstore:
       store: consul
@@ -72,4 +72,4 @@ ruler:
     local:
       directory: {{ env "NOMAD_TASK_DIR" }}/rules
   wal:
-    dir: {{ env "NOMAD_ALLOC_DIR" }}/data/ruler
+    dir: "{{ env "NOMAD_ALLOC_DIR" }}/data/ruler"

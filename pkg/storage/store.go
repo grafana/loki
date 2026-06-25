@@ -71,6 +71,7 @@ type Store interface {
 	SelectStore
 	SchemaConfigProvider
 	Instrumentable
+	index.Flusher
 }
 
 type LokiStore struct {
@@ -97,6 +98,10 @@ type LokiStore struct {
 	congestionControllerFactory func(cfg congestion.Config, logger log.Logger, metrics *congestion.Metrics) congestion.Controller
 
 	metricsNamespace string
+
+	// indexFlushers are the writable index stores (TSDB), collected at construction,
+	// used to force the in-memory index head to object storage on demand.
+	indexFlushers []index.Flusher
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -163,6 +168,17 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		return nil, err
 	}
 	return s, nil
+}
+
+// FlushIndexes forces every writable index store collected at construction to
+// build and ship its in-memory indexes (the TSDB head) to object storage.
+func (s *LokiStore) FlushIndexes(ctx context.Context) error {
+	for _, f := range s.indexFlushers {
+		if err := f.FlushIndexes(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *LokiStore) init() error {
@@ -260,6 +276,22 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+
+	// Collect the writable index store so the ingester can force-flush its in-memory
+	// index head to object storage on demand (see (*LokiStore).FlushIndexes), captured
+	// here before the monitored-reader-writer wrap.
+	//
+	// We deliberately keep FlushIndexes off the index.Reader/Writer/ReaderWriter
+	// interfaces rather than adding it to index.Writer. Those interfaces are also
+	// implemented by stores that have no in-memory head to flush -- e.g. the read-only
+	// index-gateway client store (which only stubs IndexChunk) and the monitored wrapper
+	// -- so requiring the method there would force meaningless no-op flush methods onto
+	// read-only components. Instead we treat flushing as an optional capability: collect
+	// only the stores that actually implement index.Flusher (today, the TSDB store), and
+	// let everything else simply not implement it.
+	if flusher, ok := indexReaderWriter.(index.Flusher); ok {
+		s.indexFlushers = append(s.indexFlushers, flusher)
 	}
 
 	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
