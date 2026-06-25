@@ -129,4 +129,6 @@ func (s *mockStore) Volume(_ context.Context, _ string, _, _ model.Time, limit i
 	}, nil
 }
 
+func (s *mockStore) FlushIndexes(_ context.Context) error { return nil }
+
 func (s *mockStore) Stop() {}
