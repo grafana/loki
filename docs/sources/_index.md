@@ -224,18 +224,21 @@ By default, LogQL metric queries return no data points for intervals where no lo
 )
 ```
 
-**For ratio/percentage queries**, wrap both the numerator and denominator:
+**For ratio/percentage queries**, guard the denominator with `> 0` to avoid dividing by zero (which produces `NaN`), and wrap the entire expression with `or on() vector(0)` so quiet periods return `0` instead of no data:
 
 ```logql
 (
-  sum(count_over_time({app="my-app"} | json | status=~"5.." [5m]))
-  or on() vector(0)
+  (
+    sum(count_over_time({app="my-app"} | json | status=~"5.." [5m]))
+    or on() vector(0)
+  )
+  /
+  (
+    sum(count_over_time({app="my-app"} [5m]))
+    > 0
+  )
 )
-/
-(
-  sum(count_over_time({app="my-app"} [5m]))
-  or on() vector(0)
-)
+or on() vector(0)
 ```
 
 **For alerting**, this pattern is essential. Without it, an alert rule using `count_over_time` produces no evaluation result (not `0`) during quiet periods, which can cause alerts to flap or never resolve correctly.
