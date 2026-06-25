@@ -127,6 +127,7 @@ func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, 
 		numTenantShuffleShardPartitions = numPartitionsForRateRendezvousHashing(tenantRateLimitBytes, r.perPartitionRateBytes, shuffleSharder.Size())
 	}
 	shuffleSharder = shuffleSharder.ShuffleShard(tenant, numTenantShuffleShardPartitions)
+	r.tenantShuffleShardSize.Observe(float64(numTenantShuffleShardPartitions))
 
 	// Shuffle shard for the segmentation key.
 	var numSegKeyShuffleShardPartitions int
@@ -139,11 +140,9 @@ func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, 
 		numSegKeyShuffleShardPartitions = shuffleSharder.Size()
 	} else {
 		numSegKeyShuffleShardPartitions = numPartitionsForRateRendezvousHashing(rateBytes, r.perPartitionRateBytes, shuffleSharder.Size())
+		r.segmentationKeyShuffleShardSize.Observe(float64(numSegKeyShuffleShardPartitions))
 	}
 	shuffleSharder = shuffleSharder.ShuffleShard(string(key), numSegKeyShuffleShardPartitions)
-
-	r.tenantShuffleShardSize.Observe(float64(numTenantShuffleShardPartitions))
-	r.segmentationKeyShuffleShardSize.Observe(float64(numSegKeyShuffleShardPartitions))
 
 	// Finally, shard based on the hash key.
 	partition, err := shuffleSharder.Shard(hashKey)
@@ -194,7 +193,6 @@ func (r *segmentationPartitionResolver) resolveConsistentHashing(tenant string, 
 	// key. We fallback to choosing a partition for the hash key.
 	if rateBytes == 0 {
 		r.resolveRateAbsent.Inc()
-		r.segmentationKeyShuffleShardSize.Observe(float64(subring.ActivePartitionsCount()))
 		return subring.ActivePartitionForKey(hashKey)
 	}
 	numShuffleShardPartitions := numPartitionsForRateConsistentHashing(rateBytes, r.perPartitionRateBytes, subring.ActivePartitionsCount())
