@@ -103,11 +103,18 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 	defer labelpool.Put(labelBuilder)
 
 	for columnIndex, columnValue := range row.Values {
+		column := columns[columnIndex]
+
 		if columnValue.IsNil() || columnValue.IsZero() {
+			switch column.Type {
+			case ColumnTypeMessage:
+				// Clear the message field so callers that reuse the Record
+				// don't see stale line data from a previous row.
+				record.Line = record.Line[:0]
+			}
 			continue
 		}
 
-		column := columns[columnIndex]
 		switch column.Type {
 		case ColumnTypeStreamID:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {

@@ -46,7 +46,7 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 			BufferSize:              2048 * 8,
 			SectionStripeMergeLimit: 2,
 		},
-	}, nil, logsobj.NewBuilderMetrics())
+	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	// Add test streams with structured metadata

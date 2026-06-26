@@ -305,7 +305,7 @@ func TestPartitionProcessor_FlushSplitsAcrossWindows(t *testing.T) {
 func newTestBuilder(t *testing.T, reg prometheus.Registerer) *logsobj.Builder {
 	m := logsobj.NewBuilderMetrics()
 	require.NoError(t, m.Register(reg))
-	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), m)
+	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), m, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	return b
 }
